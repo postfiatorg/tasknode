@@ -1,39 +1,54 @@
+# standard imports
+import asyncio
+from datetime import datetime, time
+import datetime
+from pathlib import Path
+from dataclasses import dataclass
+import traceback
+import getpass
+import pytz
+import sys
+from typing import Optional
+
+# third party imports
 from xrpl.wallet import Wallet
 import discord
 from discord import Object, Interaction, SelectOption, app_commands
 from discord.ui import Modal, TextInput, View, Select
+from loguru import logger
+
+# nodetools imports
+import nodetools.configuration.constants as global_constants
+import nodetools.configuration.configuration as config
 from nodetools.ai.openai import OpenAIRequestTool
 from nodetools.utilities.credentials import CredentialManager
 from nodetools.utilities.generic_pft_utilities import *
-from nodetools.task_processing.task_management import PostFiatTaskGenerationSystem
-from nodetools.task_processing.constants import TaskType
+from nodetools.configuration.configure_logger import configure_logger
+from nodetools.ai.openrouter import OpenRouterTool
 from nodetools.utilities.generic_pft_utilities import GenericPFTUtilities
-from nodetools.chatbots.personas.odv import odv_system_prompt
 from nodetools.performance.monitor import PerformanceMonitor
 from nodetools.configuration.configuration import RuntimeConfig, get_network_config
-from nodetools.task_processing.user_context_parsing import UserTaskParser
-import asyncio
-from datetime import datetime, time
-import pytz
-import datetime
-import nodetools.configuration.constants as global_constants
-import nodetools.configuration.configuration as config
-import getpass
-from loguru import logger
-from nodetools.configuration.configure_logger import configure_logger
-from pathlib import Path
-from dataclasses import dataclass
-import traceback
-from nodetools.chatbots.personas.odv import odv_system_prompt
-from nodetools.chatbots.odv_sprint_planner import ODVSprintPlannerO1
-from nodetools.chatbots.odv_context_doc_improvement import ODVContextDocImprover
-from nodetools.ai.openrouter import OpenRouterTool
-from nodetools.chatbots.corbanu_beta import CorbanuChatBot
-from nodetools.task_processing.constants import TASK_PATTERNS
-import sys
 
-class MyClient(discord.Client):
-    def __init__(self, *args, **kwargs):
+# tasknode imports
+from tasknode.task_processing.task_management import SupplementalDiscordFunctions
+from tasknode.task_processing.constants import TaskType
+from tasknode.chatbots.personas.odv import odv_system_prompt
+from tasknode.chatbots.personas.odv import odv_system_prompt
+from tasknode.chatbots.odv_sprint_planner import ODVSprintPlannerO1
+from tasknode.chatbots.odv_context_doc_improvement import ODVContextDocImprover
+from tasknode.task_processing.user_context_parsing import UserTaskParser
+from tasknode.chatbots.corbanu_beta import CorbanuChatBot
+from tasknode.task_processing.constants import TASK_PATTERNS
+from tasknode.task_processing.core_business_logic import TaskManagementRules
+
+class TaskNodeDiscordBot(discord.Client):
+    def __init__(
+            self, 
+            *args,
+            generic_pft_utilities: GenericPFTUtilities,
+            supplemental_discord_functions: SupplementalDiscordFunctions,
+            **kwargs
+        ):
         super().__init__(*args, **kwargs)
         # Get network configuration and set network-specific attributes
         self.network_config = config.get_network_config()
@@ -43,10 +58,10 @@ class MyClient(discord.Client):
         # Initialize components
         self.openrouter = OpenRouterTool()
         self.openai_request_tool = OpenAIRequestTool()
-        self.generic_pft_utilities = GenericPFTUtilities()
-        self.post_fiat_task_generation_system = PostFiatTaskGenerationSystem()
+        self.generic_pft_utilities = generic_pft_utilities
+        self.supplemental_discord_functions = supplemental_discord_functions
         self.user_task_parser = UserTaskParser(
-            generic_pft_utilities=self.generic_pft_utilities,
+            generic_pft_utilities=generic_pft_utilities,
         )
 
         # Set network-specific attributes
@@ -786,7 +801,7 @@ class MyClient(discord.Client):
                     acceptance_string = self.acceptance_string.value
                     
                     # Call the discord__task_acceptance function
-                    output_string = post_fiat_task_generation_system.discord__task_acceptance(
+                    output_string = supplemental_discord_functions.discord__task_acceptance(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_accept=self.task_id,
@@ -901,7 +916,7 @@ class MyClient(discord.Client):
                     refusal_string = self.refusal_string.value
                     
                     # Call the discord__task_refusal function
-                    output_string = post_fiat_task_generation_system.discord__task_refusal(
+                    output_string = supplemental_discord_functions.discord__task_refusal(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_refuse=self.task_id,
@@ -1052,7 +1067,7 @@ class MyClient(discord.Client):
 
             try:
                 # Call the charting function
-                post_fiat_task_generation_system.output_pft_KPI_graph_for_address(user_wallet=wallet.address)
+                supplemental_discord_functions.output_pft_KPI_graph_for_address(user_wallet=wallet.address)
                 
                 # Create the file object from the saved image
                 chart_file = discord.File(f'pft_rewards__{wallet.address}.png', filename='pft_chart.png')
@@ -1361,7 +1376,7 @@ class MyClient(discord.Client):
                             await message_obj.edit(content="Sending commitment and encrypted google doc link to node...")
 
                             # Attempt the initiation rite
-                            post_fiat_task_generation_system.discord__initiation_rite(
+                            supplemental_discord_functions.discord__initiation_rite(
                                 user_seed=seed, 
                                 initiation_rite=self.commitment_sentence.value, 
                                 google_doc_link=self.google_doc_link.value, 
@@ -1442,7 +1457,7 @@ class MyClient(discord.Client):
                             await message_obj.edit(content="Sending encrypted google doc link to node...")
 
                             # Construct and send the encrypted memo
-                            post_fiat_task_generation_system.discord__update_google_doc_link(
+                            supplemental_discord_functions.discord__update_google_doc_link(
                                 user_seed=seed,
                                 google_doc_link=self.google_doc_link.value,
                                 username=username
@@ -1489,7 +1504,7 @@ class MyClient(discord.Client):
             
             try:
                 # Send the Post Fiat request
-                response = post_fiat_task_generation_system.discord__send_postfiat_request(
+                response = supplemental_discord_functions.discord__send_postfiat_request(
                     user_request=task_request,
                     user_name=user_name,
                     user_seed=seed  # TODO: change to wallet
@@ -1593,7 +1608,7 @@ class MyClient(discord.Client):
                     completion_string = self.completion_justification.value
                     
                     # Call the discord__initial_submission function
-                    output_string = post_fiat_task_generation_system.discord__initial_submission(
+                    output_string = supplemental_discord_functions.discord__initial_submission(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_accept=self.task_id,
@@ -1955,7 +1970,7 @@ Note: XRP wallets need 15 XRP to transact.
                     justification_string = self.verification_justification.value
                     
                     # Call the discord__final_submission function
-                    output_string = post_fiat_task_generation_system.discord__final_submission(
+                    output_string = supplemental_discord_functions.discord__final_submission(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_submit=self.task_id,
@@ -2249,7 +2264,7 @@ Note: XRP wallets need 15 XRP to transact.
             return
 
         # Call the function to get new messages and update the database
-        messages_to_send = post_fiat_task_generation_system.sync_and_format_new_transactions()
+        messages_to_send = supplemental_discord_functions.sync_and_format_new_transactions()
 
         # DEBUGGING
         len_messages_to_send = len(messages_to_send)
@@ -2290,7 +2305,7 @@ Note: XRP wallets need 15 XRP to transact.
                             logger.debug(f"MyClient.death_march_reminder: Spawning wallet to fetch info for {target_user_id}")
                             user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                             user_address = user_wallet.classic_address
-                            tactical_string = self.post_fiat_task_generation_system.get_o1_coaching_string_for_account(user_address)
+                            tactical_string = self.supplemental_discord_functions.get_o1_coaching_string_for_account(user_address)
                             
                             # Send the message to the channel
                             await self.send_long_message_to_channel(channel, f"<@{target_user_id}> Death March Update:\n{tactical_string}")
@@ -2480,7 +2495,7 @@ My specific question/request is: {user_query}"""
                     logger.debug(f"MyClient.blackprint: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
-                    tactical_string = self.post_fiat_task_generation_system.generate_coaching_string_for_account(user_address)
+                    tactical_string = self.supplemental_discord_functions.generate_coaching_string_for_account(user_address)
                     
                     await self.send_long_message(message, tactical_string)
             
@@ -2499,7 +2514,7 @@ My specific question/request is: {user_query}"""
                     logger.debug(f"MyClient.deathmarch: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
-                    tactical_string = self.post_fiat_task_generation_system.get_o1_coaching_string_for_account(user_address)
+                    tactical_string = self.supplemental_discord_functions.get_o1_coaching_string_for_account(user_address)
                     
                     await self.send_long_message(message, tactical_string)
             
@@ -2517,7 +2532,7 @@ My specific question/request is: {user_query}"""
                     logger.debug(f"MyClient.redpill: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
-                    tactical_string = self.post_fiat_task_generation_system.o1_redpill(user_address)
+                    tactical_string = self.supplemental_discord_functions.o1_redpill(user_address)
                     
                     await self.send_long_message(message, tactical_string)
             
@@ -2535,7 +2550,7 @@ My specific question/request is: {user_query}"""
                     logger.debug(f"MyClient.docrewrite: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
-                    tactical_string = self.post_fiat_task_generation_system.generate_document_rewrite_instructions(user_address)
+                    tactical_string = self.supplemental_discord_functions.generate_document_rewrite_instructions(user_address)
                     
                     await self.send_long_message(message, tactical_string)
             
@@ -2577,7 +2592,7 @@ My specific question/request is: {user_query}"""
                 user_name = message.author.name
                 memo_to_send = generic_pft_utilities.construct_standardized_xrpl_memo(memo_data=message_to_send, memo_format = user_name, memo_type=task_id)
                 seed = self.user_seeds[user_id]
-                response = post_fiat_task_generation_system.discord__send_postfiat_request(user_request= message_to_send, user_name=user_name, user_seed=seed)
+                response = supplemental_discord_functions.discord__send_postfiat_request(user_request= message_to_send, user_name=user_name, user_seed=seed)
                 transaction_info = generic_pft_utilities.extract_transaction_info_from_response_object(response=response)
                 clean_string = transaction_info['clean_string']
                 await self.send_long_message(message, f"Task Requested with Details {clean_string}")
@@ -3279,12 +3294,10 @@ class AccountInfo:
     weekly_pft_avg: float = 0
     google_doc_link: Optional[str] = None
 
-def init_bot():
+def init_bot(generic_pft_utilities: GenericPFTUtilities):
     """Initialize and return the Discord bot with required intents"""
-    intents = discord.Intents.default()
-    intents.message_content = True
-    intents.guild_messages = True
-    return MyClient(intents=intents)
+
+    return TaskNodeDiscordBot(intents=intents, generic_pft_utilities=generic_pft_utilities)
 
 def configure_runtime():
     """Configure runtime settings based on user input"""
@@ -3312,7 +3325,7 @@ def configure_runtime():
 def init_services():
     """Initialize and return core services"""
     openai_request_tool = OpenAIRequestTool()
-    post_fiat_task_generation_system = PostFiatTaskGenerationSystem()
+    post_fiat_task_generation_system = SupplementalDiscordFunctions()
     generic_pft_utilities = GenericPFTUtilities()
 
     return (
@@ -3353,18 +3366,28 @@ if __name__ == "__main__":
             print("\nStartup cancelled")
             sys.exit(0)
 
-        # Instantiate services
-        openai_request_tool = OpenAIRequestTool()
-        post_fiat_task_generation_system = PostFiatTaskGenerationSystem()
-        generic_pft_utilities = GenericPFTUtilities()
+        # Initialize business logic
+        business_logic = TaskManagementRules.create()
 
         # Initialize services
+        generic_pft_utilities = GenericPFTUtilities(business_logic_provider=business_logic)
+        openai_request_tool = OpenAIRequestTool()
+        supplemental_discord_functions = SupplementalDiscordFunctions(
+            generic_pft_utilities=generic_pft_utilities
+        )
+
+        # Start the async components
         generic_pft_utilities.initialize()
 
-        logger.debug("---Services initialized successfully!---")
-
-        # Initialize and run the bot
-        client = init_bot()
+        # Initialize and run the discord bot
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.guild_messages = True
+        client = TaskNodeDiscordBot(
+            intents=intents,
+            generic_pft_utilities=generic_pft_utilities,
+            supplemental_discord_functions=supplemental_discord_functions
+        )
         discord_credential_key = "discordbot_testnet_secret" if RuntimeConfig.USE_TESTNET else "discordbot_secret"
         client.run(cred_manager.get_credential(discord_credential_key))
 

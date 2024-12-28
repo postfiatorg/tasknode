@@ -1,11 +1,20 @@
-from setuptools import setup, find_packages
+from setuptools import setup, find_namespace_packages
+import os
+
+# Debug: Print current directory and contents
+print("Current directory:", os.getcwd())
+print("Directory contents:", os.listdir())
+
+# Explicitly find packages in the tasknode directory
+packages = find_namespace_packages(include=["tasknode*"])
+print("Found packages:", packages)
 
 setup(
     name="tasknode",
     version="0.1.0",
     description="Post Fiat Foundation Task Node",
     author="Alex Good",
-    packages=find_packages(),
+    packages=packages,
     install_requires=[
         "nodetools @ git+https://github.com/postfiatorg/nodetools.git@async#egg=nodetools",
         'numpy',

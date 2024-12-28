@@ -36,8 +36,6 @@ from loguru import logger
 
 # NodeTools imports
 from nodetools.utilities.exceptions import HandshakeRequiredException
-from nodetools.task_processing.constants import TaskType, MessageType
-from nodetools.task_processing.user_context_parsing import UserTaskParser
 from nodetools.utilities.credentials import SecretType
 from nodetools.protocols.transaction_repository import TransactionRepository
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
@@ -63,16 +61,18 @@ from nodetools.models.models import (
     Dependencies
 )
 
-# Task management node imports
-from nodetools.chatbots.personas.odv import odv_system_prompt
-from nodetools.prompts.initiation_rite import phase_4__system, phase_4__user
-from nodetools.prompts.rewards_manager import (
+# Task node imports
+from tasknode.task_processing.constants import TaskType, MessageType
+from tasknode.task_processing.user_context_parsing import UserTaskParser
+from tasknode.chatbots.personas.odv import odv_system_prompt
+from tasknode.prompts.initiation_rite import phase_4__system, phase_4__user
+from tasknode.prompts.rewards_manager import (
     verification_system_prompt,
     verification_user_prompt,
     reward_system_prompt,
     reward_user_prompt
 )
-from nodetools.task_processing.task_creation import NewTaskGeneration
+from tasknode.task_processing.task_creation import NewTaskGeneration
 
 ##############################################################################
 ############################## MEMO PATTERNS #################################
@@ -137,125 +137,129 @@ ODV_RESPONSE_PATTERN = MemoPattern(
 ####################### BUSINESS LOGIC PROVIDER ##########################
 ##########################################################################
 
-def create_business_logic() -> BusinessLogicProvider:
-    """Factory function to create all business logic components"""
-    # Setup transaction graph
-    graph = InteractionGraph()
+class TaskManagementRules(BusinessLogicProvider):
+    """Business logic for task management"""
 
-    # Create rules so we can map them to patterns
-    rules = {
-        "initiation_rite": InitiationRiteRule(),
-        "initiation_reward": InitiationRewardRule(),
-        "google_doc_link": GoogleDocLinkRule(),
-        "handshake_request": HandshakeRequestRule(),
-        "handshake_response": HandshakeResponseRule(),
-        "request_post_fiat": RequestPostFiatRule(),
-        "proposal": ProposalRule(),
-        "acceptance": AcceptanceRule(),
-        "refusal": RefusalRule(),
-        "task_output": TaskOutputRule(),
-        "verification_prompt": VerificationPromptRule(),
-        "verification_response": VerificationResponseRule(),
-        "reward": RewardRule(),
-        "odv_request": ODVRequestRule(),
-        "odv_response": ODVResponseRule()
-    }
+    @classmethod
+    def create(cls) -> 'TaskManagementRules':
+        """Factory function to create all business logic components"""
+        # Setup transaction graph
+        graph = InteractionGraph()
 
-    # Add initiation rite patterns to graph
-    graph.add_pattern(
-        pattern_id="initiation_rite",
-        memo_pattern=INITIATION_RITE_PATTERN,
-        transaction_type=InteractionType.REQUEST,
-        valid_responses={INITIATION_REWARD_PATTERN}
-    )
-    graph.add_pattern(
-        pattern_id="initiation_reward",
-        memo_pattern=INITIATION_REWARD_PATTERN,
-        transaction_type=InteractionType.RESPONSE,
-    )
+        # Create rules so we can map them to patterns
+        rules = {
+            "initiation_rite": InitiationRiteRule(),
+            "initiation_reward": InitiationRewardRule(),
+            "google_doc_link": GoogleDocLinkRule(),
+            "handshake_request": HandshakeRequestRule(),
+            "handshake_response": HandshakeResponseRule(),
+            "request_post_fiat": RequestPostFiatRule(),
+            "proposal": ProposalRule(),
+            "acceptance": AcceptanceRule(),
+            "refusal": RefusalRule(),
+            "task_output": TaskOutputRule(),
+            "verification_prompt": VerificationPromptRule(),
+            "verification_response": VerificationResponseRule(),
+            "reward": RewardRule(),
+            "odv_request": ODVRequestRule(),
+            "odv_response": ODVResponseRule()
+        }
 
-    # Add google doc link patterns to graph
-    graph.add_pattern(
-        pattern_id="google_doc_link",
-        memo_pattern=GOOGLE_DOC_LINK_PATTERN,
-        transaction_type=InteractionType.STANDALONE,
-    )
+        # Add initiation rite patterns to graph
+        graph.add_pattern(
+            pattern_id="initiation_rite",
+            memo_pattern=INITIATION_RITE_PATTERN,
+            transaction_type=InteractionType.REQUEST,
+            valid_responses={INITIATION_REWARD_PATTERN}
+        )
+        graph.add_pattern(
+            pattern_id="initiation_reward",
+            memo_pattern=INITIATION_REWARD_PATTERN,
+            transaction_type=InteractionType.RESPONSE,
+        )
 
-    # Add handshake patterns to graph
-    graph.add_pattern(
-        pattern_id="handshake_request",
-        memo_pattern=HANDSHAKE_PATTERN,
-        transaction_type=InteractionType.REQUEST,
-        valid_responses={HANDSHAKE_PATTERN}
-    )
-    graph.add_pattern(
-        pattern_id="handshake_response",
-        memo_pattern=HANDSHAKE_PATTERN,
-        transaction_type=InteractionType.RESPONSE,
-    )
+        # Add google doc link patterns to graph
+        graph.add_pattern(
+            pattern_id="google_doc_link",
+            memo_pattern=GOOGLE_DOC_LINK_PATTERN,
+            transaction_type=InteractionType.STANDALONE,
+        )
 
-    # Add patterns to graph
-    graph.add_pattern(
-        pattern_id="request_post_fiat",
-        memo_pattern=REQUEST_POST_FIAT_PATTERN,
-        transaction_type=InteractionType.REQUEST,
-        valid_responses={PROPOSAL_PATTERN}
-    )
-    graph.add_pattern(
-        pattern_id="proposal",
-        memo_pattern=PROPOSAL_PATTERN,
-        transaction_type=InteractionType.RESPONSE,
-    )
-    graph.add_pattern(
-        pattern_id="acceptance",
-        memo_pattern=ACCEPTANCE_PATTERN,
-        transaction_type=InteractionType.STANDALONE,
-    )
-    graph.add_pattern(
-        pattern_id="refusal",
-        memo_pattern=REFUSAL_PATTERN,
-        transaction_type=InteractionType.STANDALONE,
-    )
-    graph.add_pattern(
-        pattern_id="task_output",
-        memo_pattern=TASK_OUTPUT_PATTERN,
-        transaction_type=InteractionType.REQUEST,
-        valid_responses={VERIFICATION_PROMPT_PATTERN}
-    )
-    graph.add_pattern(
-        pattern_id="verification_prompt",
-        memo_pattern=VERIFICATION_PROMPT_PATTERN,
-        transaction_type=InteractionType.RESPONSE
-    )
-    graph.add_pattern(
-        pattern_id="verification_response",
-        memo_pattern=VERIFICATION_RESPONSE_PATTERN,
-        transaction_type=InteractionType.REQUEST,
-        valid_responses={REWARD_PATTERN}
-    )
-    graph.add_pattern(
-        pattern_id="reward",
-        memo_pattern=REWARD_PATTERN,
-        transaction_type=InteractionType.RESPONSE
-    )
+        # Add handshake patterns to graph
+        graph.add_pattern(
+            pattern_id="handshake_request",
+            memo_pattern=HANDSHAKE_PATTERN,
+            transaction_type=InteractionType.REQUEST,
+            valid_responses={HANDSHAKE_PATTERN}
+        )
+        graph.add_pattern(
+            pattern_id="handshake_response",
+            memo_pattern=HANDSHAKE_PATTERN,
+            transaction_type=InteractionType.RESPONSE,
+        )
 
-    # Add ODV patterns to graph
-    graph.add_pattern(
-        pattern_id="odv_request",
-        memo_pattern=ODV_REQUEST_PATTERN,
-        transaction_type=InteractionType.REQUEST,
-        valid_responses={ODV_RESPONSE_PATTERN}
-    )
-    graph.add_pattern(
-        pattern_id="odv_response",
-        memo_pattern=ODV_RESPONSE_PATTERN,
-        transaction_type=InteractionType.RESPONSE,
-    )
+        # Add patterns to graph
+        graph.add_pattern(
+            pattern_id="request_post_fiat",
+            memo_pattern=REQUEST_POST_FIAT_PATTERN,
+            transaction_type=InteractionType.REQUEST,
+            valid_responses={PROPOSAL_PATTERN}
+        )
+        graph.add_pattern(
+            pattern_id="proposal",
+            memo_pattern=PROPOSAL_PATTERN,
+            transaction_type=InteractionType.RESPONSE,
+        )
+        graph.add_pattern(
+            pattern_id="acceptance",
+            memo_pattern=ACCEPTANCE_PATTERN,
+            transaction_type=InteractionType.STANDALONE,
+        )
+        graph.add_pattern(
+            pattern_id="refusal",
+            memo_pattern=REFUSAL_PATTERN,
+            transaction_type=InteractionType.STANDALONE,
+        )
+        graph.add_pattern(
+            pattern_id="task_output",
+            memo_pattern=TASK_OUTPUT_PATTERN,
+            transaction_type=InteractionType.REQUEST,
+            valid_responses={VERIFICATION_PROMPT_PATTERN}
+        )
+        graph.add_pattern(
+            pattern_id="verification_prompt",
+            memo_pattern=VERIFICATION_PROMPT_PATTERN,
+            transaction_type=InteractionType.RESPONSE
+        )
+        graph.add_pattern(
+            pattern_id="verification_response",
+            memo_pattern=VERIFICATION_RESPONSE_PATTERN,
+            transaction_type=InteractionType.REQUEST,
+            valid_responses={REWARD_PATTERN}
+        )
+        graph.add_pattern(
+            pattern_id="reward",
+            memo_pattern=REWARD_PATTERN,
+            transaction_type=InteractionType.RESPONSE
+        )
 
-    return BusinessLogicProvider(
-        transaction_graph=graph,
-        pattern_rule_map=rules
-    )
+        # Add ODV patterns to graph
+        graph.add_pattern(
+            pattern_id="odv_request",
+            memo_pattern=ODV_REQUEST_PATTERN,
+            transaction_type=InteractionType.REQUEST,
+            valid_responses={ODV_RESPONSE_PATTERN}
+        )
+        graph.add_pattern(
+            pattern_id="odv_response",
+            memo_pattern=ODV_RESPONSE_PATTERN,
+            transaction_type=InteractionType.RESPONSE,
+        )
+
+        return cls(
+            transaction_graph=graph,
+            pattern_rule_map=rules
+        )
 
 ##########################################################################
 ########################## HELPER FUNCTIONS ##############################

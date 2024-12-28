@@ -1,22 +1,10 @@
 
 from nodetools.ai.openai import OpenAIRequestTool
 from nodetools.ai.openrouter import OpenRouterTool
-from nodetools.prompts import task_generation
-from nodetools.prompts.initiation_rite import phase_4__system
-from nodetools.prompts.initiation_rite import phase_4__user
-from nodetools.prompts.task_generation import phase_1_b__user
-from nodetools.prompts.task_generation import phase_1_b__system
-from nodetools.prompts.task_generation import phase_1_b__user
-from nodetools.prompts.task_generation import phase_1_b__system
 import numpy as np
-from nodetools.prompts.task_generation import o1_1_shot
 from nodetools.utilities.generic_pft_utilities import *
-from nodetools.prompts.rewards_manager import verification_user_prompt
-from nodetools.prompts.rewards_manager import verification_system_prompt
-from nodetools.prompts.rewards_manager import reward_system_prompt
-from nodetools.prompts.rewards_manager import reward_user_prompt
 from nodetools.utilities.db_manager import DBConnectionManager
-from nodetools.chatbots.personas.odv import odv_system_prompt
+from tasknode.chatbots.personas.odv import odv_system_prompt
 import datetime
 import pytz
 import pandas as pd
@@ -27,13 +15,14 @@ import nodetools.configuration.constants as global_constants
 from nodetools.utilities.credentials import CredentialManager
 from nodetools.utilities.exceptions import *
 from nodetools.performance.monitor import PerformanceMonitor
-from nodetools.prompts.chat_processor import ChatProcessor
 import nodetools.configuration.configuration as config
-from nodetools.task_processing.user_context_parsing import UserTaskParser
-from nodetools.task_processing.task_creation import NewTaskGeneration
+from tasknode.task_processing.user_context_parsing import UserTaskParser
+from tasknode.task_processing.task_creation import NewTaskGeneration
 from nodetools.sql.sql_manager import SQLManager
+from nodetools.protocols.encryption import MessageEncryption
+from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
 
-class PostFiatTaskGenerationSystem:
+class SupplementalDiscordFunctions:
     _instance = None
     _initialized = False
 
@@ -42,7 +31,9 @@ class PostFiatTaskGenerationSystem:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self,
+            generic_pft_utilities: GenericPFTUtilities
+        ):
         if not self.__class__._initialized:
             # Get network configuration
             self.network_config = config.get_network_config()
@@ -54,16 +45,10 @@ class PostFiatTaskGenerationSystem:
             self.cred_manager = CredentialManager()
             self.openrouter_tool = OpenRouterTool()
             self.openai_request_tool= OpenAIRequestTool()
-            self.generic_pft_utilities = GenericPFTUtilities()
+            self.generic_pft_utilities = generic_pft_utilities
             self.db_connection_manager = DBConnectionManager()
-            self.message_encryption = MessageEncryption(pft_utilities=self.generic_pft_utilities)
             self.user_task_parser = UserTaskParser(
                 generic_pft_utilities=self.generic_pft_utilities,
-            )
-            self.chat_processor = ChatProcessor(
-                task_management_system=self,
-                generic_pft_utilities=self.generic_pft_utilities,
-                openai_request_tool=self.openai_request_tool,
             )
             self.monitor = PerformanceMonitor()
             self.task_generator = NewTaskGeneration(
@@ -122,31 +107,31 @@ class PostFiatTaskGenerationSystem:
             wallet, initiation_rite, username, allow_reinitiation
         )
 
-        # Spawn node wallet
-        logger.debug(f"PostFiatTaskGenerationSystem.discord__initiation_rite: Spawning node wallet for sending initial PFT grant")
-        node_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(
-            seed=self.cred_manager.get_credential(f'{self.node_config.node_name}__v1xrpsecret')
-        )
+        # # Spawn node wallet
+        # logger.debug(f"PostFiatTaskGenerationSystem.discord__initiation_rite: Spawning node wallet for sending initial PFT grant")
+        # node_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(
+        #     seed=self.cred_manager.get_credential(f'{self.node_config.node_name}__v1xrpsecret')
+        # )
         
-        # Send initial PFT grant
-        memo = self.generic_pft_utilities.construct_standardized_xrpl_memo(
-            memo_data='Initial PFT Grant Post Initiation',
-            memo_type=global_constants.SystemMemoType.INITIATION_GRANT.value,
-            memo_format=self.node_config.node_name
-        )
+        # # Send initial PFT grant
+        # memo = self.generic_pft_utilities.construct_standardized_xrpl_memo(
+        #     memo_data='Initial PFT Grant Post Initiation',
+        #     memo_type=global_constants.SystemMemoType.INITIATION_GRANT.value,
+        #     memo_format=self.node_config.node_name
+        # )
 
-        response = self.generic_pft_utilities.send_memo(
-            wallet_seed_or_wallet=node_wallet,
-            destination=wallet.classic_address,
-            memo=memo,
-            username=username,
-            pft_amount=10
-        )
+        # response = self.generic_pft_utilities.send_memo(
+        #     wallet_seed_or_wallet=node_wallet,
+        #     destination=wallet.classic_address,
+        #     memo=memo,
+        #     username=username,
+        #     pft_amount=10
+        # )
 
-        if not self.generic_pft_utilities.verify_transaction_response(response):
-            logger.error(f"PostFiatTaskGenerationSystem.discord__initiation_rite: Failed to send initial PFT grant to {wallet.classic_address}")
+        # if not self.generic_pft_utilities.verify_transaction_response(response):
+        #     logger.error(f"PostFiatTaskGenerationSystem.discord__initiation_rite: Failed to send initial PFT grant to {wallet.classic_address}")
         
-        return response
+        # return response
     
     def discord__update_google_doc_link(self, user_seed: str, google_doc_link: str, username: str):
         """Update the user's Google Doc link."""

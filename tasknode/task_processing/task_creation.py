@@ -1,11 +1,11 @@
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
 from nodetools.protocols.openrouter import OpenRouterTool
-from nodetools.prompts.task_generation import (
+from tasknode.prompts.task_generation import (
     task_generation_one_shot_user_prompt,
     task_generation_one_shot_system_prompt
 )
-from nodetools.task_processing.user_context_parsing import UserTaskParser
-from nodetools.task_processing.constants import TaskType
+from tasknode.task_processing.user_context_parsing import UserTaskParser
+from tasknode.task_processing.constants import TaskType
 import uuid
 import re
 from loguru import logger

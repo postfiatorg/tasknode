@@ -1,11 +1,11 @@
 import pandas as pd
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
-import nodetools.task_processing.constants as node_constants
+import tasknode.task_processing.constants as node_constants
 from typing import Optional, Union
 from loguru import logger
 import traceback
 import re
-from nodetools.task_processing.constants import TaskType, TASK_PATTERNS
+from tasknode.task_processing.constants import TaskType, TASK_PATTERNS
 
 class UserTaskParser:
     _instance = None
