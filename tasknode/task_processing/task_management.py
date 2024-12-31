@@ -114,7 +114,7 @@ class SupplementalDiscordFunctions:
         # )
         
         # # Send initial PFT grant
-        # memo = self.generic_pft_utilities.construct_standardized_xrpl_memo(
+        # memo = self.generic_pft_utilities.construct_memo(
         #     memo_data='Initial PFT Grant Post Initiation',
         #     memo_type=global_constants.SystemMemoType.INITIATION_GRANT.value,
         #     memo_format=self.node_config.node_name
@@ -165,7 +165,7 @@ class SupplementalDiscordFunctions:
 
         logger.debug(f"PostFiatTaskGenerationSystem.discord__send_postfiat_request: User {user_name} ({wallet_address}) has requested task {task_id}: {user_request}")
 
-        xmemo_to_send = self.generic_pft_utilities.construct_standardized_xrpl_memo(
+        xmemo_to_send = self.generic_pft_utilities.construct_memo(
             memo_data=full_memo_string, 
             memo_type=memo_type,
             memo_format=memo_format
@@ -199,7 +199,7 @@ class SupplementalDiscordFunctions:
         logger.debug(f'PostFiatTaskGenerationSystem.discord__task_acceptance: Spawning wallet for user {user_name} to accept task {task_id_to_accept}')
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
 
-        acceptance_memo = self.generic_pft_utilities.construct_standardized_xrpl_memo(
+        acceptance_memo = self.generic_pft_utilities.construct_memo(
             memo_data=global_constants.TaskType.ACCEPTANCE.value + acceptance_string, 
             memo_format=user_name, 
             memo_type=task_id_to_accept
@@ -237,7 +237,7 @@ class SupplementalDiscordFunctions:
         logger.debug(f'PostFiatTaskGenerationSystem.discord__task_refusal: Spawning wallet for user {user_name} to refuse task {task_id_to_refuse}')
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
 
-        refusal_memo= self.generic_pft_utilities.construct_standardized_xrpl_memo(
+        refusal_memo= self.generic_pft_utilities.construct_memo(
             memo_data=global_constants.TaskType.REFUSAL.value + refusal_string, 
             memo_format=user_name, 
             memo_type=task_id_to_refuse
@@ -276,7 +276,7 @@ class SupplementalDiscordFunctions:
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
 
         # Format completion memo
-        completion_memo= self.generic_pft_utilities.construct_standardized_xrpl_memo(
+        completion_memo= self.generic_pft_utilities.construct_memo(
             memo_data=global_constants.TaskType.TASK_OUTPUT.value + initial_completion_string, 
             memo_format=user_name, 
             memo_type=task_id_to_accept
@@ -316,7 +316,7 @@ class SupplementalDiscordFunctions:
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
 
         # Format verification response memo
-        completion_memo = self.generic_pft_utilities.construct_standardized_xrpl_memo(
+        completion_memo = self.generic_pft_utilities.construct_memo(
             memo_data=global_constants.TaskType.VERIFICATION_RESPONSE.value + justification_string, 
             memo_format=user_name, 
             memo_type=task_id_to_submit

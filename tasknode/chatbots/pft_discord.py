@@ -96,7 +96,7 @@ class TaskNodeDiscordBot(discord.Client):
         guild = Object(id=guild_id)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
-        logger.debug(f"MyClient.setup_hook: Slash commands synced to guild ID: {guild_id}")
+        logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced to guild ID: {guild_id}")
 
         self.bg_task = self.loop.create_task(self.transaction_checker())
 
@@ -138,14 +138,14 @@ class TaskNodeDiscordBot(discord.Client):
                     pft_utils=self.generic_pft_utilities
                 )
                 self.sprint_planners[user_id] = odv_planner
-                logger.debug(f"MyClient.odv_sprint: Initialized ODV sprint planner for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.odv_sprint: Initialized ODV sprint planner for {interaction.user.name}")
 
                 # Potentially long operation
-                logger.debug(f"MyClient.odv_sprint: Getting initial response for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.odv_sprint: Getting initial response for {interaction.user.name}")
                 initial_response = await odv_planner.get_response_async("Please provide your context analysis.")
 
                 # Use the helper function to send the possibly long response
-                logger.debug(f"MyClient.odv_sprint: Sending initial response for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.odv_sprint: Sending initial response for {interaction.user.name}")
                 await self.send_long_interaction_response(
                     interaction, 
                     f"**ODV Sprint Planning Initialized**\n\n{initial_response}", 
@@ -171,14 +171,14 @@ class TaskNodeDiscordBot(discord.Client):
                 return
 
             odv_planner: ODVSprintPlannerO1 = self.sprint_planners[user_id]
-            logger.debug(f"MyClient.odv_sprint_reply: Continuing ODV sprint planning session for {interaction.user.name}")
+            logger.debug(f"TaskNodeDiscordBot.odv_sprint_reply: Continuing ODV sprint planning session for {interaction.user.name}")
             await interaction.response.defer(ephemeral=True)
 
             try:
                 # Now using async version
-                logger.debug(f"MyClient.odv_sprint_reply: Getting response for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.odv_sprint_reply: Getting response for {interaction.user.name}")
                 response = await odv_planner.get_response_async(message)
-                logger.debug(f"MyClient.odv_sprint_reply: Response received for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.odv_sprint_reply: Response received for {interaction.user.name}")
                 await self.send_long_interaction_response(interaction, response, ephemeral=True)
             except Exception as e:
                 logger.error(f"Error in odv_sprint_reply: {str(e)}")
@@ -187,7 +187,7 @@ class TaskNodeDiscordBot(discord.Client):
                     ephemeral=True
                 )
 
-        # Inside MyClient.setup_hook or a similar initialization section in your MyClient class
+        # Inside TaskNodeDiscordBot.setup_hook or a similar initialization section in your TaskNodeDiscordBot class
         @self.tree.command(name="odv_context_doc", description="Start an ODV context document improvement session")
         async def odv_context_doc(interaction: discord.Interaction):
             user_id = interaction.user.id
@@ -232,12 +232,12 @@ class TaskNodeDiscordBot(discord.Client):
                     self.doc_improvers = {}
 
                 self.doc_improvers[user_id] = doc_improver
-                logger.debug(f"MyClient.odv_context_doc: Initialized ODV context document improver for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.odv_context_doc: Initialized ODV context document improver for {interaction.user.name}")
 
                 # Potentially long operation: getting the initial suggestion
-                logger.debug(f"MyClient.odv_context_doc: Getting initial response for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.odv_context_doc: Getting initial response for {interaction.user.name}")
                 initial_response = await doc_improver.get_response_async("Please provide your first improvement suggestion.")
-                logger.debug(f"MyClient.odv_context_doc: Sending initial response for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.odv_context_doc: Sending initial response for {interaction.user.name}")
 
                 # Use the helper function to send the possibly long response
                 await self.send_long_interaction_response(
@@ -266,13 +266,13 @@ class TaskNodeDiscordBot(discord.Client):
                 return
 
             doc_improver: ODVContextDocImprover = self.doc_improvers[user_id]
-            logger.debug(f"MyClient.odv_context_doc_reply: Continuing ODV context document improvement session for {interaction.user.name}")
+            logger.debug(f"TaskNodeDiscordBot.odv_context_doc_reply: Continuing ODV context document improvement session for {interaction.user.name}")
             await interaction.response.defer(ephemeral=True)
 
             try:
-                logger.debug(f"MyClient.odv_context_doc_reply: Getting response for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.odv_context_doc_reply: Getting response for {interaction.user.name}")
                 response = await doc_improver.get_response_async(message)
-                logger.debug(f"MyClient.odv_context_doc_reply: Response received for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.odv_context_doc_reply: Response received for {interaction.user.name}")
                 await self.send_long_interaction_response(interaction, response, ephemeral=True)
             except Exception as e:
                 logger.error(f"Error in odv_context_doc_reply: {str(e)}")
@@ -322,7 +322,7 @@ class TaskNodeDiscordBot(discord.Client):
 
             try:
                 # Initialize the CorbanuChatBot instance
-                logger.debug(f"MyClient.corbanu_offering: {interaction.user.name} has requested a Corbanu offering. Initializing CorbanuChatBot instance.")
+                logger.debug(f"TaskNodeDiscordBot.corbanu_offering: {interaction.user.name} has requested a Corbanu offering. Initializing CorbanuChatBot instance.")
                 corbanu = CorbanuChatBot(
                     account_address=wallet.classic_address,
                     openrouter=self.openrouter,
@@ -340,7 +340,7 @@ class TaskNodeDiscordBot(discord.Client):
 
                 # Generate a question as the Corbanu offering 
                 question = await corbanu.generate_question()
-                logger.debug(f"MyClient.corbanu_offering: Question generated for {interaction.user.name}: {question}")
+                logger.debug(f"TaskNodeDiscordBot.corbanu_offering: Question generated for {interaction.user.name}: {question}")
 
                 # Store the question so we can use it in /corbanu_reply
                 self.user_questions[user_id] = question
@@ -396,7 +396,7 @@ class TaskNodeDiscordBot(discord.Client):
 
             try:
                 question = self.user_questions[user_id]
-                logger.debug(f"MyClient.corbanu_reply: Received user answer for {interaction.user.name}.\nQuestion:\n{question}\nAnswer: \n{answer}")
+                logger.debug(f"TaskNodeDiscordBot.corbanu_reply: Received user answer for {interaction.user.name}.\nQuestion:\n{question}\nAnswer: \n{answer}")
                 
                 corbanu = CorbanuChatBot(
                     account_address=wallet.classic_address,
@@ -444,14 +444,14 @@ class TaskNodeDiscordBot(discord.Client):
                     message_obj=message_obj
                 )
                 if not handshake_success:
-                    logger.error(f"MyClient.corbanu_reply: Handshake failed for {interaction.user.name}.")
+                    logger.error(f"TaskNodeDiscordBot.corbanu_reply: Handshake failed for {interaction.user.name}.")
                     await message_obj.edit(content="Handshake failed. Aborting operation.")
                     return
                 
                 await message_obj.edit(content="Handshake verified. Proceeding to send memo...")
 
                 # Send Q&A from user wallet to remembrancer
-                response = self.generic_pft_utilities.send_memo(
+                response = self.generic_pft_utilities.send_memo_legacy(
                     wallet_seed_or_wallet=wallet,
                     username="Corbanu",  # This is memo_format
                     destination=self.remembrancer,
@@ -492,7 +492,7 @@ class TaskNodeDiscordBot(discord.Client):
                 # Check per-offering reward limit
                 reward_value = min(reward_value, corbanu.MAX_PER_OFFERING_REWARD_VALUE)
 
-                logger.debug(f"MyClient.corbanu_reply: Sending reward of {reward_value} PFT to {wallet.classic_address}")
+                logger.debug(f"TaskNodeDiscordBot.corbanu_reply: Sending reward of {reward_value} PFT to {wallet.classic_address}")
                 
                 reward_tx = self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=foundation_wallet,
@@ -661,7 +661,7 @@ class TaskNodeDiscordBot(discord.Client):
                 return
 
             seed = self.user_seeds[user_id]
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
             initiation_check_success = await self._check_initiation_rite(
@@ -677,8 +677,9 @@ class TaskNodeDiscordBot(discord.Client):
                 amount = discord.ui.TextInput(label='Amount')
                 message = discord.ui.TextInput(label='Message', style=discord.TextStyle.long, required=False)
 
-                def __init__(self, seed, *args, **kwargs):
+                def __init__(self, parent: TaskNodeDiscordBot, seed, *args, **kwargs):
                     super().__init__(*args, **kwargs)
+                    self.parent = parent
                     self.seed = seed  # Store the user's seed
 
                 async def on_submit(self, interaction: discord.Interaction):
@@ -691,14 +692,14 @@ class TaskNodeDiscordBot(discord.Client):
                     message = self.message.value
 
                     # construct memo
-                    memo = generic_pft_utilities.construct_standardized_xrpl_memo(
+                    memo = self.parent.generic_pft_utilities.construct_memo(
                         memo_data=message, 
                         memo_type='DISCORD_SERVER', 
                         memo_format=interaction.user.name
                     )
 
                     # send memo with PFT attached
-                    response = generic_pft_utilities.send_memo(
+                    response = self.parent.generic_pft_utilities.send_memo(
                         wallet_seed_or_wallet=self.seed,
                         destination=destination_address,
                         memo=memo,
@@ -707,7 +708,7 @@ class TaskNodeDiscordBot(discord.Client):
                     )
 
                     # extract response from last memo
-                    tx_info = generic_pft_utilities.extract_transaction_info_from_response_object(response)['clean_string']
+                    tx_info = self.parent.generic_pft_utilities.extract_transaction_info_from_response_object(response)['clean_string']
 
                     await interaction.followup.send(
                         f'Transaction result: {tx_info}',
@@ -715,7 +716,7 @@ class TaskNodeDiscordBot(discord.Client):
                     )
 
             # Pass the user's seed to the modal
-            await interaction.response.send_modal(SimpleTransactionModal(seed=seed))
+            await interaction.response.send_modal(SimpleTransactionModal(parent=self, seed=seed))
             
         @self.tree.command(name="pf_accept", description="Accept tasks")
         async def pf_accept_menu(interaction: discord.Interaction):
@@ -728,8 +729,8 @@ class TaskNodeDiscordBot(discord.Client):
             seed = self.user_seeds[user_id]
 
             # Fetch the tasks that are not yet accepted
-            logger.debug(f"MyClient.setup_hook.pf_accept_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_accept_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
             initiation_check_success = await self._check_initiation_rite(
@@ -741,7 +742,7 @@ class TaskNodeDiscordBot(discord.Client):
                 return
 
             # Fetch proposal acceptance pairs
-            memo_history = generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
+            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
 
             # Return immediately if memo history is empty
             if memo_history.empty:
@@ -749,7 +750,7 @@ class TaskNodeDiscordBot(discord.Client):
                 return
 
             # Get pending proposals
-            pf_df = self.user_context_parser.get_pending_proposals(account=memo_history)
+            pf_df = self.user_task_parser.get_pending_proposals(account=memo_history)
 
             # Return immediately if proposal acceptance pairs are empty
             if pf_df.empty:
@@ -771,8 +772,9 @@ class TaskNodeDiscordBot(discord.Client):
 
             # Define the modal for inputting the acceptance string
             class AcceptanceModal(Modal):
-                def __init__(self, task_id: str, task_text: str, seed: str, user_name: str):
+                def __init__(self, parent: TaskNodeDiscordBot, task_id: str, task_text: str, seed: str, user_name: str):
                     super().__init__(title="Accept Task")
+                    self.parent = parent
                     self.task_id = task_id
                     self.seed = seed
                     self.user_name = user_name
@@ -801,7 +803,7 @@ class TaskNodeDiscordBot(discord.Client):
                     acceptance_string = self.acceptance_string.value
                     
                     # Call the discord__task_acceptance function
-                    output_string = supplemental_discord_functions.discord__task_acceptance(
+                    output_string = self.parent.supplemental_discord_functions.discord__task_acceptance(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_accept=self.task_id,
@@ -817,6 +819,7 @@ class TaskNodeDiscordBot(discord.Client):
                 task_text = str(pf_df.loc[selected_task_id, 'proposal'])  # Get just the proposal text
                 # Open the modal to get the acceptance string with the task text pre-populated
                 await interaction.response.send_modal(AcceptanceModal(
+                    parent=self,
                     task_id=selected_task_id,
                     task_text=task_text,
                     seed=seed,
@@ -843,8 +846,8 @@ class TaskNodeDiscordBot(discord.Client):
 
             seed = self.user_seeds[user_id]
 
-            logger.debug(f"MyClient.setup_hook.pf_refuse_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_refuse_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
             initiation_check_success = await self._check_initiation_rite(
@@ -856,7 +859,7 @@ class TaskNodeDiscordBot(discord.Client):
                 return
             
             # Fetch account history
-            memo_history = generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
+            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
 
             # Get pending proposals
             pf_df = user_task_parser.get_refuseable_proposals(account=memo_history)
@@ -886,8 +889,9 @@ class TaskNodeDiscordBot(discord.Client):
 
             # Define the modal for inputting the refusal string
             class RefusalModal(Modal):
-                def __init__(self, task_id: str, task_text: str, seed: str, user_name: str):
+                def __init__(self, parent: TaskNodeDiscordBot, task_id: str, task_text: str, seed: str, user_name: str):
                     super().__init__(title="Refuse Task")
+                    self.parent = parent
                     self.task_id = task_id
                     self.seed = seed
                     self.user_name = user_name
@@ -916,7 +920,7 @@ class TaskNodeDiscordBot(discord.Client):
                     refusal_string = self.refusal_string.value
                     
                     # Call the discord__task_refusal function
-                    output_string = supplemental_discord_functions.discord__task_refusal(
+                    output_string = self.parent.supplemental_discord_functions.discord__task_refusal(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_refuse=self.task_id,
@@ -932,6 +936,7 @@ class TaskNodeDiscordBot(discord.Client):
                 task_text = map_of_eligible_tasks[selected_task_id]
                 # Open the modal to get the refusal string with the task text pre-populated
                 await interaction.response.send_modal(RefusalModal(
+                    parent=self,
                     task_id=selected_task_id,
                     task_text=task_text,
                     seed=seed,
@@ -960,6 +965,7 @@ class TaskNodeDiscordBot(discord.Client):
                 
                 await interaction.response.send_message(embed=embed, ephemeral=True)
             except Exception as e:
+                logger.error(traceback.format_exc())
                 await interaction.response.send_message(f"An error occurred: {str(e)}", ephemeral=True)
 
         @self.tree.command(name="pf_log", description="Send a long message to the remembrancer wallet")
@@ -967,17 +973,17 @@ class TaskNodeDiscordBot(discord.Client):
             user_id = interaction.user.id
             
             # Check if the user has a stored seed
-            if user_id not in client.user_seeds:
+            if user_id not in self.user_seeds:
                 await interaction.response.send_message(
                     "You must store a seed using /pf_store_seed before using this command.",
                     ephemeral=True
                 )
                 return
 
-            seed = client.user_seeds[user_id]
+            seed = self.user_seeds[user_id]
             user_name = interaction.user.name
-            logger.debug(f"MyClient.pf_remembrancer: Spawning wallet to send message to remembrancer for {interaction.user.name}")
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+            logger.debug(f"TaskNodeDiscordBot.pf_remembrancer: Spawning wallet to send message to remembrancer for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
             initiation_check_success = await self._check_initiation_rite(
@@ -1013,7 +1019,7 @@ class TaskNodeDiscordBot(discord.Client):
                     
                     await message_obj.edit(content="Handshake verified. Proceeding to send memo...")
 
-                response = generic_pft_utilities.send_memo(
+                response = self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=wallet,
                     username=user_name,
                     destination=self.remembrancer,
@@ -1024,7 +1030,7 @@ class TaskNodeDiscordBot(discord.Client):
                 )
                 response = response[-1] if isinstance(response, list) else response
 
-                transaction_info = generic_pft_utilities.extract_transaction_info_from_response_object(
+                transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(
                     response=response
                 )
                 clean_string = transaction_info['clean_string']
@@ -1050,8 +1056,8 @@ class TaskNodeDiscordBot(discord.Client):
                 return
 
             seed = self.user_seeds[user_id]
-            logger.debug(f"MyClient.setup_hook.pf_chart: Spawning wallet to generate chart for {interaction.user.name}")
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed)
+            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_chart: Spawning wallet to generate chart for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
             # Check initiation status
             initiation_check_success = await self._check_initiation_rite(
@@ -1067,7 +1073,7 @@ class TaskNodeDiscordBot(discord.Client):
 
             try:
                 # Call the charting function
-                supplemental_discord_functions.output_pft_KPI_graph_for_address(user_wallet=wallet.address)
+                self.supplemental_discord_functions.output_pft_KPI_graph_for_address(user_wallet=wallet.address)
                 
                 # Create the file object from the saved image
                 chart_file = discord.File(f'pft_rewards__{wallet.address}.png', filename='pft_chart.png')
@@ -1155,8 +1161,8 @@ class TaskNodeDiscordBot(discord.Client):
                 return
 
             seed = self.user_seeds[user_id]
-            logger.debug(f"MyClient.setup_hook.pf_outstanding: Spawning wallet to fetch tasks for {interaction.user.name}")
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed)
+            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_outstanding: Spawning wallet to fetch tasks for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
             # Check initiation status
             initiation_check_success = await self._check_initiation_rite(
@@ -1174,7 +1180,7 @@ class TaskNodeDiscordBot(discord.Client):
                 # Get the unformatted output message
                 output_message = self.create_full_outstanding_pft_string(account_address=wallet.address)
 
-                logger.debug(f"MyClient.pf_outstanding: Output message: {output_message}")
+                logger.debug(f"TaskNodeDiscordBot.pf_outstanding: Output message: {output_message}")
                 
                 # Format the message using the new formatting function
                 formatted_chunks = self.format_tasks_for_discord(output_message)
@@ -1187,7 +1193,7 @@ class TaskNodeDiscordBot(discord.Client):
                     await interaction.followup.send(chunk, ephemeral=True)
 
             except Exception as e:
-                logger.error(f"MyClient.pf_outstanding: Error fetching outstanding tasks: {str(e)}")
+                logger.error(f"TaskNodeDiscordBot.pf_outstanding: Error fetching outstanding tasks: {str(e)}")
                 logger.error(traceback.format_exc())
                 await interaction.followup.send(
                     f"An error occurred while fetching your outstanding tasks: {str(e)}", 
@@ -1208,8 +1214,9 @@ class TaskNodeDiscordBot(discord.Client):
             seed = self.user_seeds[user_id]
 
             class XRPTransactionModal(discord.ui.Modal, title='XRP Transaction Details'):
-                def __init__(self, seed, *args, **kwargs):
+                def __init__(self, parent: TaskNodeDiscordBot, seed, *args, **kwargs):
                     super().__init__(*args, **kwargs)
+                    self.parent = parent
                     self.seed = seed
 
                 address = discord.ui.TextInput(label='Recipient Address')
@@ -1235,7 +1242,7 @@ class TaskNodeDiscordBot(discord.Client):
                     destination_tag = self.destination_tag.value
 
                     # Create the memo
-                    memo = generic_pft_utilities.construct_standardized_xrpl_memo(
+                    memo = self.parent.generic_pft_utilities.construct_memo(
                         memo_data=message,
                         memo_format=interaction.user.name,
                         memo_type="XRP_SEND"
@@ -1246,7 +1253,7 @@ class TaskNodeDiscordBot(discord.Client):
                         dt = int(destination_tag) if destination_tag else None
 
                         # Call the send_xrp_with_info__seed_based function
-                        response = generic_pft_utilities.send_xrp_with_info__seed_based(
+                        response = self.parent.generic_pft_utilities.send_xrp_with_info__seed_based(
                             wallet_seed=self.seed,
                             amount=amount,
                             destination=destination_address,
@@ -1255,7 +1262,7 @@ class TaskNodeDiscordBot(discord.Client):
                         )
 
                         # Extract transaction information using the improved function
-                        transaction_info = generic_pft_utilities.extract_transaction_info_from_response_object__standard_xrp(response)
+                        transaction_info = self.parent.generic_pft_utilities.extract_transaction_info_from_response_object__standard_xrp(response)
                         
                         # Create an embed for better formatting
                         embed = discord.Embed(title="XRP Transaction Sent", color=0x00ff00)
@@ -1274,7 +1281,7 @@ class TaskNodeDiscordBot(discord.Client):
                         await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
 
             # Create and send the modal
-            modal = XRPTransactionModal(seed=seed)
+            modal = XRPTransactionModal(parent=self, seed=seed)
             await interaction.response.send_modal(modal)
 
         @self.tree.command(name="pf_store_seed", description="Store a seed")
@@ -1283,34 +1290,34 @@ class TaskNodeDiscordBot(discord.Client):
             class SeedModal(discord.ui.Modal, title='Store Your Seed'):
                 seed = discord.ui.TextInput(label='Seed', style=discord.TextStyle.long)
 
-                def __init__(self, client, *args, **kwargs):
+                def __init__(self, parent: TaskNodeDiscordBot, *args, **kwargs):
                     super().__init__(*args, **kwargs)
-                    self.client = client  # Save the client reference
+                    self.parent = parent  # Save the client reference
 
                 async def on_submit(self, interaction: discord.Interaction):
                     user_id = interaction.user.id
 
                     # Test seed for validity
                     try:
-                        generic_pft_utilities.spawn_wallet_from_seed(self.seed.value.strip())
+                        self.parent.generic_pft_utilities.spawn_wallet_from_seed(self.seed.value.strip())
                     except Exception as e:
                         await interaction.response.send_message(f"An error occurred while storing your seed: {str(e)}", ephemeral=True)
                         return
                     
-                    self.client.user_seeds[user_id] = self.seed.value.strip()  # Store the seed
+                    self.parent.user_seeds[user_id] = self.seed.value.strip()  # Store the seed
                     await interaction.response.send_message(f'Seed stored successfully for user {interaction.user.name}.', ephemeral=True)
 
             # Pass the client instance to the modal
-            await interaction.response.send_modal(SeedModal(client=self))
-            logger.debug(f"MyClient.setup_hook.store_seed: Seed storage command executed by {interaction.user.name}")
+            await interaction.response.send_modal(SeedModal(parent=self))
+            logger.debug(f"TaskNodeDiscordBot.setup_hook.store_seed: Seed storage command executed by {interaction.user.name}")
 
         # Sync the commands to the guild
         await self.tree.sync(guild=guild)
-        logger.debug(f"MyClient.setup_hook: Slash commands synced to guild ID: {guild_id}")
+        logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced to guild ID: {guild_id}")
 
         # Sync the commands to the guild
         await self.tree.sync(guild=guild)
-        logger.debug(f"MyClient.setup_hook: Slash commands synced to guild ID: {guild_id}")
+        logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced to guild ID: {guild_id}")
 
         @self.tree.command(name="pf_initiate", description="Initiate your commitment")
         async def pf_initiate(interaction: discord.Interaction):
@@ -1325,10 +1332,10 @@ class TaskNodeDiscordBot(discord.Client):
 
             try:
                 # Spawn the user's wallet
-                logger.debug(f"MyClient.setup_hook.pf_initiate: Spawning wallet to initiate for {interaction.user.name}")
+                logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_initiate: Spawning wallet to initiate for {interaction.user.name}")
                 username = interaction.user.name
                 seed = self.user_seeds[user_id]
-                wallet = generic_pft_utilities.spawn_wallet_from_seed(seed)
+                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
                 # Check initiation status
                 initiation_check_success = await self._check_initiation_rite(
@@ -1342,9 +1349,9 @@ class TaskNodeDiscordBot(discord.Client):
 
                 # Define the modal to collect Google Doc Link and Commitment
                 class InitiationModal(discord.ui.Modal, title='Initiation Commitment'):
-                    def __init__(self, client_instance: discord.Client, *args, **kwargs):
+                    def __init__(self, parent: TaskNodeDiscordBot, *args, **kwargs):
                         super().__init__(*args, **kwargs)
-                        self.client = client_instance
+                        self.parent = parent
 
                     google_doc_link = discord.ui.TextInput(
                         label='Please enter your Google Doc Link', 
@@ -1362,10 +1369,10 @@ class TaskNodeDiscordBot(discord.Client):
                         await interaction.response.defer(ephemeral=True)
                         
                         try:
-                            handshake_success, user_key, node_key, message_obj = await self.client._ensure_handshake(
+                            handshake_success, user_key, node_key, message_obj = await self.parent._ensure_handshake(
                                 interaction=interaction,
                                 seed=seed,
-                                counterparty=generic_pft_utilities.node_address,
+                                counterparty=self.parent.generic_pft_utilities.node_address,
                                 username=username,
                                 command_name="pf_initiate"
                             )
@@ -1376,7 +1383,7 @@ class TaskNodeDiscordBot(discord.Client):
                             await message_obj.edit(content="Sending commitment and encrypted google doc link to node...")
 
                             # Attempt the initiation rite
-                            supplemental_discord_functions.discord__initiation_rite(
+                            self.parent.supplemental_discord_functions.discord__initiation_rite(
                                 user_seed=seed, 
                                 initiation_rite=self.commitment_sentence.value, 
                                 google_doc_link=self.google_doc_link.value, 
@@ -1390,14 +1397,14 @@ class TaskNodeDiscordBot(discord.Client):
                             )
 
                         except Exception as e:
-                            logger.error(f"MyClient.setup_hook.pf_initiate: Error during initiation: {str(e)}")
+                            logger.error(f"TaskNodeDiscordBot.setup_hook.pf_initiate: Error during initiation: {str(e)}")
                             await message_obj.edit(content=f"An error occurred during initiation: {str(e)}")
 
                 # Show modal immediately
-                await interaction.response.send_modal(InitiationModal(client_instance=self))
+                await interaction.response.send_modal(InitiationModal(parent=self))
 
             except Exception as e:
-                logger.error(f"MyClient.setup_hook.pf_initiate: Error during initiation: {str(e)}")
+                logger.error(f"TaskNodeDiscordBot.setup_hook.pf_initiate: Error during initiation: {str(e)}")
                 await interaction.followup.send(f"An error occurred during initiation: {str(e)}", ephemeral=True)
 
         @self.tree.command(name="pf_update_link", description="Update your Google Doc link")
@@ -1413,10 +1420,10 @@ class TaskNodeDiscordBot(discord.Client):
                 return
             
             try:
-                logger.debug(f"MyClient.pf_update_link: Spawning wallet for {interaction.user.name} to update google doc link")
+                logger.debug(f"TaskNodeDiscordBot.pf_update_link: Spawning wallet for {interaction.user.name} to update google doc link")
                 seed = self.user_seeds[user_id]
                 username = interaction.user.name
-                wallet = generic_pft_utilities.spawn_wallet_from_seed(seed)
+                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
                 # Check initiation status
                 initiation_check_success = await self._check_initiation_rite(
@@ -1429,9 +1436,9 @@ class TaskNodeDiscordBot(discord.Client):
                 
                 # Define the modal for new Google Doc link
                 class UpdateLinkModal(discord.ui.Modal, title='Update Google Doc Link'):
-                    def __init__(self, client_instance: discord.Client, *args, **kwargs):
+                    def __init__(self, parent: TaskNodeDiscordBot, *args, **kwargs):
                         super().__init__(*args, **kwargs)
-                        self.client = client_instance
+                        self.parent = parent
 
                     google_doc_link = discord.ui.TextInput(
                         label='Please enter new Google Doc Link', 
@@ -1443,10 +1450,10 @@ class TaskNodeDiscordBot(discord.Client):
                         await interaction.response.defer(ephemeral=True)
 
                         try:
-                            handshake_success, user_key, node_key, message_obj = await self.client._ensure_handshake(
+                            handshake_success, user_key, node_key, message_obj = await self.parent._ensure_handshake(
                                 interaction=interaction,
                                 seed=seed,
-                                counterparty=generic_pft_utilities.node_address,
+                                counterparty=self.parent.generic_pft_utilities.node_address,
                                 username=username,
                                 command_name="pf_update_link"
                             )
@@ -1457,7 +1464,7 @@ class TaskNodeDiscordBot(discord.Client):
                             await message_obj.edit(content="Sending encrypted google doc link to node...")
 
                             # Construct and send the encrypted memo
-                            supplemental_discord_functions.discord__update_google_doc_link(
+                            self.supplemental_discord_functions.discord__update_google_doc_link(
                                 user_seed=seed,
                                 google_doc_link=self.google_doc_link.value,
                                 username=username
@@ -1466,14 +1473,14 @@ class TaskNodeDiscordBot(discord.Client):
                             await message_obj.edit(content=f"Google Doc link updated to {self.google_doc_link.value}")
 
                         except Exception as e:
-                            logger.error(f"MyClient.pf_update_link: Error during update: {str(e)}")
+                            logger.error(f"TaskNodeDiscordBot.pf_update_link: Error during update: {str(e)}")
                             await interaction.followup.send(f"An error occurred during update: {str(e)}", ephemeral=True)
 
                 # Show modal immediately
-                await interaction.response.send_modal(UpdateLinkModal(client_instance=self))
+                await interaction.response.send_modal(UpdateLinkModal(parent=self))
 
             except Exception as e:
-                logger.error(f"MyClient.pf_update_link: Error during update: {str(e)}")
+                logger.error(f"TaskNodeDiscordBot.pf_update_link: Error during update: {str(e)}")
                 await interaction.followup.send(f"An error occurred during update: {str(e)}", ephemeral=True)
 
         @self.tree.command(name="pf_request_task", description="Request a Post Fiat task")
@@ -1488,7 +1495,7 @@ class TaskNodeDiscordBot(discord.Client):
             # Get the user's seed and other necessary information
             seed = self.user_seeds[user_id]
             user_name = interaction.user.name
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed)
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
             
             # Check initiation status
             initiation_check_success = await self._check_initiation_rite(
@@ -1504,14 +1511,14 @@ class TaskNodeDiscordBot(discord.Client):
             
             try:
                 # Send the Post Fiat request
-                response = supplemental_discord_functions.discord__send_postfiat_request(
+                response = self.supplemental_discord_functions.discord__send_postfiat_request(
                     user_request=task_request,
                     user_name=user_name,
                     user_seed=seed  # TODO: change to wallet
                 )
                 
                 # Extract transaction information
-                transaction_info = generic_pft_utilities.extract_transaction_info_from_response_object(response=response)
+                transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response=response)
                 clean_string = transaction_info['clean_string']
                 
                 # Send the response
@@ -1532,8 +1539,8 @@ class TaskNodeDiscordBot(discord.Client):
 
             seed = self.user_seeds[user_id]
 
-            logger.debug(f"MyClient.setup_hook.pf_initial_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_initial_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
             initiation_check_success = await self._check_initiation_rite(
@@ -1545,7 +1552,7 @@ class TaskNodeDiscordBot(discord.Client):
                 return
 
             # Fetch the tasks that are accepted but not completed
-            memo_history = generic_pft_utilities.get_account_memo_history(wallet.address).copy()
+            memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
 
             pf_df = user_task_parser.get_accepted_proposals(account=memo_history)
 
@@ -1578,8 +1585,9 @@ class TaskNodeDiscordBot(discord.Client):
 
             # Define the modal for inputting the completion justification
             class CompletionModal(Modal):
-                def __init__(self, task_id: str, task_text: str, seed: str, user_name: str):
+                def __init__(self, parent: TaskNodeDiscordBot, task_id: str, task_text: str, seed: str, user_name: str):
                     super().__init__(title="Submit Task for Verification")
+                    self.parent = parent
                     self.task_id = task_id
                     self.seed = seed
                     self.user_name = user_name
@@ -1608,7 +1616,7 @@ class TaskNodeDiscordBot(discord.Client):
                     completion_string = self.completion_justification.value
                     
                     # Call the discord__initial_submission function
-                    output_string = supplemental_discord_functions.discord__initial_submission(
+                    output_string = self.parent.supplemental_discord_functions.discord__initial_submission(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_accept=self.task_id,
@@ -1769,15 +1777,15 @@ Note: XRP wallets need 15 XRP to transact.
 
             try:
                 seed = self.user_seeds[user_id]
-                logger.debug(f"MyClient.setup_hook.pf_my_wallet: Spawning wallet to fetch info for {interaction.user.name}")
-                wallet = generic_pft_utilities.spawn_wallet_from_seed(seed)
+                logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_my_wallet: Spawning wallet to fetch info for {interaction.user.name}")
+                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
                 wallet_address = wallet.classic_address
 
                 # Get account info
                 account_info = self.generate_basic_balance_info_string(address=wallet.address)
                 
                 # Get recent messages
-                incoming_messages, outgoing_messages = generic_pft_utilities.get_recent_messages(wallet_address)
+                incoming_messages, outgoing_messages = self.generic_pft_utilities.get_recent_messages(wallet_address)
 
                 # Split long strings if they exceed Discord's limit
                 def truncate_field(content, max_length=1024):
@@ -1836,8 +1844,8 @@ Note: XRP wallets need 15 XRP to transact.
                 return
 
             seed = self.user_seeds[user_id]
-            logger.debug(f"MyClient.setup_hook.pf_rewards: Spawning wallet to fetch rewards for {interaction.user.name}")
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed)
+            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_rewards: Spawning wallet to fetch rewards for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
             # Check initiation status
             initiation_check_success = await self._check_initiation_rite(
@@ -1852,14 +1860,14 @@ Note: XRP wallets need 15 XRP to transact.
             await interaction.response.defer(ephemeral=True)
 
             try:
-                memo_history = generic_pft_utilities.get_account_memo_history(wallet.address).copy().sort_values('datetime')
+                memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy().sort_values('datetime')
 
                 # Return immediately if memo history is empty
                 if memo_history.empty:
                     await interaction.followup.send("You have no rewards to show.", ephemeral=True)
                     return
 
-                reward_summary_map = self.generic_pft_utilities.get_reward_data(all_account_info=memo_history)
+                reward_summary_map = self.get_reward_data(all_account_info=memo_history)
                 recent_rewards = self.format_reward_summary(reward_summary_map['reward_summaries'].tail(10))
 
                 # Split the message into chunks if it's too long
@@ -1898,8 +1906,8 @@ Note: XRP wallets need 15 XRP to transact.
                 return
 
             seed = self.user_seeds[user_id]
-            logger.debug(f"MyClient.setup_hook.pf_final_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_final_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
             initiation_check_success = await self._check_initiation_rite(
@@ -1911,7 +1919,7 @@ Note: XRP wallets need 15 XRP to transact.
                 return
 
             # Fetch the tasks that are in the verification queue
-            memo_history = generic_pft_utilities.get_account_memo_history(wallet.address).copy()
+            memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
 
             # Return immediately if memo history is empty
             if memo_history.empty:
@@ -1940,8 +1948,9 @@ Note: XRP wallets need 15 XRP to transact.
 
             # Define the modal for inputting the verification justification
             class VerificationModal(Modal):
-                def __init__(self, task_id: str, task_text: str, seed: str, user_name: str):
+                def __init__(self, parent: TaskNodeDiscordBot, task_id: str, task_text: str, seed: str, user_name: str):
                     super().__init__(title="Submit Final Verification")
+                    self.parent = parent
                     self.task_id = task_id
                     self.seed = seed
                     self.user_name = user_name
@@ -1970,7 +1979,7 @@ Note: XRP wallets need 15 XRP to transact.
                     justification_string = self.verification_justification.value
                     
                     # Call the discord__final_submission function
-                    output_string = supplemental_discord_functions.discord__final_submission(
+                    output_string = self.parent.supplemental_discord_functions.discord__final_submission(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_submit=self.task_id,
@@ -1986,6 +1995,7 @@ Note: XRP wallets need 15 XRP to transact.
                 task_text = outstanding_verification.loc[selected_task_id, 'verification']
                 # Open the modal to get the verification justification with the task text pre-populated
                 await interaction.response.send_modal(VerificationModal(
+                    parent=self,
                     task_id=selected_task_id,
                     task_text=task_text,
                     seed=seed,
@@ -2019,7 +2029,7 @@ Note: XRP wallets need 15 XRP to transact.
         Returns:
             bool: True if check passes (can proceed), False if should block
         """
-        memo_history = generic_pft_utilities.get_account_memo_history(
+        memo_history = self.generic_pft_utilities.get_account_memo_history(
             account_address=wallet_address, 
             pft_only=False
         )
@@ -2037,7 +2047,7 @@ Note: XRP wallets need 15 XRP to transact.
         else:
             # Block re-initiation unless on testnet with ENABLE_REINITIATIONS
             if has_initiated and not (config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.ENABLE_REINITIATIONS):
-                logger.debug(f"MyClient._check_initiation_status: Blocking re-initiation for {interaction.user.name} ({wallet_address})")
+                logger.debug(f"TaskNodeDiscordBot._check_initiation_status: Blocking re-initiation for {interaction.user.name} ({wallet_address})")
                 return False
         return True
 
@@ -2075,16 +2085,16 @@ Note: XRP wallets need 15 XRP to transact.
                 )
 
             # Check handshake status
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-            user_key, counterparty_key = generic_pft_utilities.get_handshake_for_address(
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+            user_key, counterparty_key = self.generic_pft_utilities.get_handshake_for_address(
                 channel_address=wallet.classic_address,
                 channel_counterparty=counterparty
             )
 
             if not user_key:
                 # Send handshake if we haven't yet
-                logger.debug(f"MyClient.{command_name}: Initiating handshake for {username} with {counterparty}")
-                generic_pft_utilities.send_handshake(
+                logger.debug(f"TaskNodeDiscordBot.{command_name}: Initiating handshake for {username} with {counterparty}")
+                self.generic_pft_utilities.send_handshake(
                     wallet_seed=seed,
                     destination=counterparty,
                     username=username
@@ -2093,15 +2103,15 @@ Note: XRP wallets need 15 XRP to transact.
 
                 # Verify handshake completion and response from counterparty (node or remembrancer)
                 for attempt in range(global_constants.NODE_HANDSHAKE_RESPONSE_USER_VERIFICATION_ATTEMPTS):
-                    logger.debug(f"MyClient.{command_name}: Checking handshake status for {username} with {counterparty} (attempt {attempt+1})")
+                    logger.debug(f"TaskNodeDiscordBot.{command_name}: Checking handshake status for {username} with {counterparty} (attempt {attempt+1})")
 
-                    user_key, counterparty_key = generic_pft_utilities.get_handshake_for_address(
+                    user_key, counterparty_key = self.generic_pft_utilities.get_handshake_for_address(
                         channel_address=wallet.classic_address,
                         channel_counterparty=counterparty
                     )
 
                     if counterparty_key:
-                        logger.debug(f"MyClient.{command_name}: Handshake confirmed for {username} with {counterparty}")
+                        logger.debug(f"TaskNodeDiscordBot.{command_name}: Handshake confirmed for {username} with {counterparty}")
                         break
 
                     if user_key:
@@ -2121,20 +2131,20 @@ Note: XRP wallets need 15 XRP to transact.
             return True, user_key, counterparty_key, message_obj
 
         except Exception as e:
-            logger.error(f"MyClient.{command_name}: An error occurred while ensuring handshake: {str(e)}")
+            logger.error(f"TaskNodeDiscordBot.{command_name}: An error occurred while ensuring handshake: {str(e)}")
             await message_obj.edit(content=f"An error occurred during handshake setup: {str(e)}")
             return False, None, None, message_obj
 
     async def on_ready(self):
-        logger.debug(f'MyClient.on_ready: Logged in as {self.user} (ID: {self.user.id})')
-        logger.debug('MyClient.on_ready: ------------------------------')
-        logger.debug('MyClient.on_ready: Connected to the following guilds:')
+        logger.debug(f'TaskNodeDiscordBot.on_ready: Logged in as {self.user} (ID: {self.user.id})')
+        logger.debug('TaskNodeDiscordBot.on_ready: ------------------------------')
+        logger.debug('TaskNodeDiscordBot.on_ready: Connected to the following guilds:')
         for guild in self.guilds:
             logger.debug(f'- {guild.name} (ID: {guild.id})')
 
         # Optionally, re-sync slash commands in all guilds
         await self.tree.sync()
-        logger.debug('MyClient.on_ready: Slash commands synced across all guilds.')
+        logger.debug('TaskNodeDiscordBot.on_ready: Slash commands synced across all guilds.')
 
 
     async def send_message_chunks(self, channel, message, user):
@@ -2260,16 +2270,16 @@ Note: XRP wallets need 15 XRP to transact.
         channel = self.get_channel(CHANNEL_ID)
         
         if not channel:
-            logger.error(f"MyClient.check_and_notify_new_transactions: ERROR: Channel with ID {CHANNEL_ID} not found.")
+            logger.error(f"TaskNodeDiscordBot.check_and_notify_new_transactions: ERROR: Channel with ID {CHANNEL_ID} not found.")
             return
 
         # Call the function to get new messages and update the database
-        messages_to_send = supplemental_discord_functions.sync_and_format_new_transactions()
+        messages_to_send = self.supplemental_discord_functions.sync_and_format_new_transactions()
 
         # DEBUGGING
         len_messages_to_send = len(messages_to_send)
         if len_messages_to_send > 0:
-            logger.debug(f"MyClient.check_and_notify_new_transactions: Sending {len_messages_to_send} messages to the Discord channel") 
+            logger.debug(f"TaskNodeDiscordBot.check_and_notify_new_transactions: Sending {len_messages_to_send} messages to the Discord channel") 
 
         # Send each new message to the Discord channel
         for message in messages_to_send:
@@ -2302,7 +2312,7 @@ Note: XRP wallets need 15 XRP to transact.
                     if channel:
                         if target_user_id in self.user_seeds:
                             seed = self.user_seeds[target_user_id]
-                            logger.debug(f"MyClient.death_march_reminder: Spawning wallet to fetch info for {target_user_id}")
+                            logger.debug(f"TaskNodeDiscordBot.death_march_reminder: Spawning wallet to fetch info for {target_user_id}")
                             user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                             user_address = user_wallet.classic_address
                             tactical_string = self.supplemental_discord_functions.get_o1_coaching_string_for_account(user_address)
@@ -2310,13 +2320,13 @@ Note: XRP wallets need 15 XRP to transact.
                             # Send the message to the channel
                             await self.send_long_message_to_channel(channel, f"<@{target_user_id}> Death March Update:\n{tactical_string}")
                         else:
-                            logger.debug(f"MyClient.death_march_reminder: No seed found for user {target_user_id}")
+                            logger.debug(f"TaskNodeDiscordBot.death_march_reminder: No seed found for user {target_user_id}")
                     else:
-                        logger.debug(f"MyClient.death_march_reminder: Channel with ID {channel_id} not found")
+                        logger.debug(f"TaskNodeDiscordBot.death_march_reminder: Channel with ID {channel_id} not found")
                 else:
-                    logger.debug("MyClient.death_march_reminder: Outside of allowed time range. Skipping Death March reminder.")
+                    logger.debug("TaskNodeDiscordBot.death_march_reminder: Outside of allowed time range. Skipping Death March reminder.")
             except Exception as e:
-                logger.error(f"MyClient.death_march_reminder: An error occurred: {str(e)}")
+                logger.error(f"TaskNodeDiscordBot.death_march_reminder: An error occurred: {str(e)}")
 
             # Wait for 30 minutes before the next reminder (10 seconds for testing)
             await asyncio.sleep(30*60)  # Change to 1800 (30 minutes) for production
@@ -2358,7 +2368,7 @@ Note: XRP wallets need 15 XRP to transact.
                 seed = self.user_seeds[user_id]
                 
                 try:
-                    logger.debug(f"MyClient.tactics: Spawning wallet to fetch info for {message.author.name}")
+                    logger.debug(f"TaskNodeDiscordBot.tactics: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     memo_history = self.generic_pft_utilities.get_account_memo_history(user_wallet.classic_address)
                     full_user_context = self.user_task_parser.get_full_user_context_string(user_wallet.classic_address, memo_history=memo_history)
@@ -2403,13 +2413,13 @@ Note: XRP wallets need 15 XRP to transact.
                 
                 try:
                     # Get user's wallet address
-                    logger.debug(f"MyClient.coach: Spawning wallet to fetch info for {message.author.name}")
+                    logger.debug(f"TaskNodeDiscordBot.coach: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     wallet_address = user_wallet.classic_address
 
                     # Check PFT balance
                     pft_balance = self.fetch_pft_balance(wallet_address)
-                    logger.debug(f"MyClient.coach: PFT balance for {message.author.name} is {pft_balance}")
+                    logger.debug(f"TaskNodeDiscordBot.coach: PFT balance for {message.author.name} is {pft_balance}")
                     if not (config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.DISABLE_PFT_REQUIREMENTS):
                         if pft_balance < 25000:
                             await message.reply(
@@ -2480,7 +2490,7 @@ My specific question/request is: {user_query}"""
                     
                 except Exception as e:
                     await message.remove_reaction('⏳', self.user)
-                    logger.error(f"MyClient.coach: An error occurred while processing your request: {str(e)}")
+                    logger.error(f"TaskNodeDiscordBot.coach: An error occurred while processing your request: {str(e)}")
                     logger.error(traceback.format_exc())
                     error_msg = f"An error occurred while processing your request: {str(e)}"
                     await message.reply(error_msg, mention_author=True)
@@ -2492,7 +2502,7 @@ My specific question/request is: {user_query}"""
                 seed = self.user_seeds[user_id]
                 
                 try:
-                    logger.debug(f"MyClient.blackprint: Spawning wallet to fetch info for {message.author.name}")
+                    logger.debug(f"TaskNodeDiscordBot.blackprint: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
                     tactical_string = self.supplemental_discord_functions.generate_coaching_string_for_account(user_address)
@@ -2511,7 +2521,7 @@ My specific question/request is: {user_query}"""
                 seed = self.user_seeds[user_id]
                 
                 try:
-                    logger.debug(f"MyClient.deathmarch: Spawning wallet to fetch info for {message.author.name}")
+                    logger.debug(f"TaskNodeDiscordBot.deathmarch: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
                     tactical_string = self.supplemental_discord_functions.get_o1_coaching_string_for_account(user_address)
@@ -2529,7 +2539,7 @@ My specific question/request is: {user_query}"""
                 seed = self.user_seeds[user_id]
                 
                 try:
-                    logger.debug(f"MyClient.redpill: Spawning wallet to fetch info for {message.author.name}")
+                    logger.debug(f"TaskNodeDiscordBot.redpill: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
                     tactical_string = self.supplemental_discord_functions.o1_redpill(user_address)
@@ -2547,7 +2557,7 @@ My specific question/request is: {user_query}"""
                 seed = self.user_seeds[user_id]
                 
                 try:
-                    logger.debug(f"MyClient.docrewrite: Spawning wallet to fetch info for {message.author.name}")
+                    logger.debug(f"TaskNodeDiscordBot.docrewrite: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
                     tactical_string = self.supplemental_discord_functions.generate_document_rewrite_instructions(user_address)
@@ -2562,7 +2572,7 @@ My specific question/request is: {user_query}"""
 
 
         if message.content.startswith('!new_wallet'):
-            wallet_maker =  generic_pft_utilities.create_xrp_wallet()
+            wallet_maker = self.generic_pft_utilities.create_xrp_wallet()
             await self.send_long_message_then_delete(message, wallet_maker, delete_after=60)
 
         if message.content.startswith('!wallet_info'):
@@ -2588,12 +2598,12 @@ My specific question/request is: {user_query}"""
         if message.content.startswith('!pf_task'):
             if user_id in self.user_seeds:
                 message_to_send = message.content.replace('!pf_task', '').strip()
-                task_id = generic_pft_utilities.generate_custom_id()
+                task_id = self.generic_pft_utilities.generate_custom_id()
                 user_name = message.author.name
-                memo_to_send = generic_pft_utilities.construct_standardized_xrpl_memo(memo_data=message_to_send, memo_format = user_name, memo_type=task_id)
+                memo_to_send = self.generic_pft_utilities.construct_memo(memo_data=message_to_send, memo_format = user_name, memo_type=task_id)
                 seed = self.user_seeds[user_id]
-                response = supplemental_discord_functions.discord__send_postfiat_request(user_request= message_to_send, user_name=user_name, user_seed=seed)
-                transaction_info = generic_pft_utilities.extract_transaction_info_from_response_object(response=response)
+                response = self.supplemental_discord_functions.discord__send_postfiat_request(user_request= message_to_send, user_name=user_name, user_seed=seed)
+                transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response=response)
                 clean_string = transaction_info['clean_string']
                 await self.send_long_message(message, f"Task Requested with Details {clean_string}")
             else:
@@ -2603,8 +2613,8 @@ My specific question/request is: {user_query}"""
             # Retrieve and show the stored seed for the user
             if user_id in self.user_seeds:
                 seed = self.user_seeds[user_id]
-                logger.debug(f"MyClient.my_wallet: Spawning wallet to fetch info for {message.author.name}")
-                wallet = generic_pft_utilities.spawn_wallet_from_seed(seed)
+                logger.debug(f"TaskNodeDiscordBot.my_wallet: Spawning wallet to fetch info for {message.author.name}")
+                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
                 wallet_address = wallet.address
                 account_info = self.generate_basic_balance_info_string(address=wallet_address)
                 await self.send_long_message(message, f"Based on your seed your linked {account_info}")
@@ -2619,15 +2629,15 @@ My specific question/request is: {user_query}"""
                 await message.reply("You must store a seed before initiating.", mention_author=True)
                 return
             seed = self.user_seeds[user_id]
-            logger.debug(f"MyClient.pf_initiate: Spawning wallet to initiate for {message.author.name}")
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed)
+            logger.debug(f"TaskNodeDiscordBot.pf_initiate: Spawning wallet to initiate for {message.author.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
             wallet_address = wallet.classic_address
-            xrp_balance = generic_pft_utilities.fetch_xrp_balance(address=wallet_address)
+            xrp_balance = self.generic_pft_utilities.fetch_xrp_balance(address=wallet_address)
             if xrp_balance < global_constants.MIN_XRP_BALANCE:
                 await message.reply(f"You must fund your wallet with at least {global_constants.MIN_XRP_BALANCE} XRP before initiating.", mention_author=True)
                 return
 
-            memo_history = generic_pft_utilities.get_account_memo_history(account_address=wallet_address,pft_only=False)
+            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address,pft_only=False)
             if len(memo_history[memo_history['memo_type']=="INITIATION_RITE"]) > 0:
                 await message.reply("You have already performed an initiation rite with this wallet.", mention_author=True)
                 return
@@ -2637,8 +2647,8 @@ My specific question/request is: {user_query}"""
             if user_id not in self.user_seeds:
                 await message.reply("You must store a seed before getting outstanding tasks.", mention_author=True)
                 return
-            logger.debug(f"MyClient.pf_outstanding: Spawning wallet to fetch tasks for {message.author.name}")
-            wallet = generic_pft_utilities.spawn_wallet_from_seed(seed)
+            logger.debug(f"TaskNodeDiscordBot.pf_outstanding: Spawning wallet to fetch tasks for {message.author.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
             wallet_address = wallet.classic_address
             output_message = self.create_full_outstanding_pft_string(account_address=wallet_address)
             await self.send_long_escaped_message(message, output_message)
@@ -2656,7 +2666,7 @@ My specific question/request is: {user_query}"""
         account_info = AccountInfo(address=address)
 
         try:
-            memo_history = generic_pft_utilities.get_account_memo_history(account_address=address)
+            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=address)
 
             if not memo_history.empty:
 
@@ -2687,6 +2697,7 @@ My specific question/request is: {user_query}"""
 
         except Exception as e:
             logger.error(f"Error generating account info for {address}: {e}")
+            logger.error(traceback.format_exc())
 
         return self._format_account_info(account_info)
     
@@ -2866,7 +2877,7 @@ My specific question/request is: {user_query}"""
         This takes in an account address and outputs the current state of its outstanding tasks.
         Returns empty string for accounts with no PFT-related transactions.
         """ 
-        memo_history = generic_pft_utilities.get_account_memo_history(account_address=account_address, pft_only=True)
+        memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_address, pft_only=True)
         if memo_history.empty:
             return ""
         
@@ -2947,7 +2958,7 @@ My specific question/request is: {user_query}"""
 
         return reward_details
 
-    def get_reward_data(self, all_account_info):
+    def get_reward_data(self, all_account_info: pd.DataFrame):
         """Get reward time series and task completion history.
         
         Args:
@@ -3294,11 +3305,6 @@ class AccountInfo:
     weekly_pft_avg: float = 0
     google_doc_link: Optional[str] = None
 
-def init_bot(generic_pft_utilities: GenericPFTUtilities):
-    """Initialize and return the Discord bot with required intents"""
-
-    return TaskNodeDiscordBot(intents=intents, generic_pft_utilities=generic_pft_utilities)
-
 def configure_runtime():
     """Configure runtime settings based on user input"""
 
@@ -3320,21 +3326,8 @@ def configure_runtime():
 
     logger.debug(f"\nInitializing services for {network_config.name}...")
     logger.info(f"Using {'local' if RuntimeConfig.HAS_LOCAL_NODE else 'public'} endpoints...")
-    
 
-def init_services():
-    """Initialize and return core services"""
-    openai_request_tool = OpenAIRequestTool()
-    post_fiat_task_generation_system = SupplementalDiscordFunctions()
-    generic_pft_utilities = GenericPFTUtilities()
-
-    return (
-        openai_request_tool,
-        post_fiat_task_generation_system,
-        generic_pft_utilities
-    )
-
-if __name__ == "__main__":
+def main():
     generic_pft_utilities = None
 
     try:
@@ -3371,7 +3364,6 @@ if __name__ == "__main__":
 
         # Initialize services
         generic_pft_utilities = GenericPFTUtilities(business_logic_provider=business_logic)
-        openai_request_tool = OpenAIRequestTool()
         supplemental_discord_functions = SupplementalDiscordFunctions(
             generic_pft_utilities=generic_pft_utilities
         )
@@ -3403,3 +3395,6 @@ if __name__ == "__main__":
         # else:
         #     print("Cancelled")
         sys.exit(0)
+
+if __name__ == "__main__":
+    main()

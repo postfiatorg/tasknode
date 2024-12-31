@@ -16,7 +16,8 @@ setup(
     author="Alex Good",
     packages=packages,
     install_requires=[
-        "nodetools @ git+https://github.com/postfiatorg/nodetools.git@async#egg=nodetools",
+        # "nodetools @ git+https://github.com/postfiatorg/nodetools.git@async#egg=nodetools",
+        "nodetools @ file:///home/ubuntu/development/nodetools",
         'numpy',
         'pandas',
         'sqlalchemy',
@@ -32,5 +33,10 @@ setup(
         'PyNaCl',
         'loguru'
     ],
-    python_requires=">=3.11",  # Adjust version as needed
+    python_requires=">=3.11",  # Adjust version as needed,
+    entry_points={
+        'console_scripts': [
+            'tasknode=tasknode.chatbots.pft_discord:main',
+        ],
+    },
 )

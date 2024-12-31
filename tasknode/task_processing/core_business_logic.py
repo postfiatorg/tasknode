@@ -423,7 +423,7 @@ class InitiationRewardGenerator(ResponseGenerator):
         """Construct reward memo and parameters"""
         try:
             # Construct reward memo
-            memo = self.generic_pft_utilities.construct_standardized_xrpl_memo(
+            memo = self.generic_pft_utilities.construct_memo(
                 memo_data=evaluation_result['justification'],
                 memo_type=SystemMemoType.INITIATION_REWARD.value,
                 memo_format=self.node_config.node_name
@@ -506,7 +506,7 @@ class HandshakeRequestRule(RequestRule):
                 request_destination := %(destination)s,
                 request_time := %(request_time)s,
                 response_memo_type := %(response_memo_type)s,
-                require_after_request := FALSE  -- Check for ANY existing response
+                require_after_request := TRUE  -- Check for ANY existing response
             );
         """
 
@@ -717,7 +717,7 @@ class ProposalResponseGenerator(ResponseGenerator):
         ) -> ResponseParameters:
         """Construct the proposal response parameters"""
         try:
-            memo = self.generic_pft_utilities.construct_standardized_xrpl_memo(
+            memo = self.generic_pft_utilities.construct_memo(
                 memo_data=evaluation_result['pf_proposal_string'],
                 memo_format=self.node_config.node_name,
                 memo_type=request_tx['memo_type']
@@ -913,7 +913,7 @@ class VerificationPromptGenerator(ResponseGenerator):
             )
             
             # Construct memo
-            memo = self.generic_pft_utilities.construct_standardized_xrpl_memo(
+            memo = self.generic_pft_utilities.construct_memo(
                 memo_data=verification_string,
                 memo_format=self.node_config.node_name,
                 memo_type=request_tx['memo_type']
@@ -1206,7 +1206,7 @@ class RewardResponseGenerator(ResponseGenerator):
                 evaluation_result['summary']
             )
 
-            memo = self.generic_pft_utilities.construct_standardized_xrpl_memo(
+            memo = self.generic_pft_utilities.construct_memo(
                 memo_data=reward_string,
                 memo_format=self.node_config.node_name,
                 memo_type=request_tx['memo_type']
@@ -1324,7 +1324,7 @@ class ODVResponseGenerator(ResponseGenerator):
         account = request_tx['account']
         model = "openai/o1-preview-2024-09-12"
         odv_text = request_tx.get('memo_data')
-        # logger.debug(f"ODVResponseGenerator.evaluate_request: Evaluating ODV submission: {odv_text}")
+        logger.debug(f"ODVResponseGenerator.evaluate_request: Evaluating ODV submission: {odv_text}")
 
         user_context = self._get_user_context(account)
         system_prompt = odv_system_prompt
@@ -1340,6 +1340,8 @@ class ODVResponseGenerator(ResponseGenerator):
             user_prompt=user_prompt
         )
         content = response['choices'][0]['message']['content']
+
+        logger.debug(f"ODVResponseGenerator.evaluate_request: ODV response: {content}")
 
         return {'odv_response': "ODV SYSTEM: " + content}
     
@@ -1406,7 +1408,7 @@ class ODVResponseGenerator(ResponseGenerator):
                 )
 
             # Construct response memo
-            memo = self.generic_pft_utilities.construct_standardized_xrpl_memo(
+            memo = self.generic_pft_utilities.construct_memo(
                 memo_data=response_memo_data,
                 memo_type=f"{request_tx.get('memo_type')}_response",  # Uses request memo_type + _response
                 memo_format="odv"
