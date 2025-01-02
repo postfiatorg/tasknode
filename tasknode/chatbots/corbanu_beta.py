@@ -16,6 +16,7 @@ import pandas as pd
 from nodetools.utilities.db_manager import DBConnectionManager
 from nodetools.protocols.openrouter import OpenRouterTool
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
+from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
 
 # tasknode imports
 from tasknode.protocols.user_context_parsing import UserTaskParser
@@ -44,6 +45,7 @@ class CorbanuChatBot:
             openrouter: OpenRouterTool,
             user_context_parser: UserTaskParser,
             pft_utils: GenericPFTUtilities,
+            tasknode_utilities: TaskNodeUtilities,
             db_connection_manager: DBConnectionManager = None
     ):
         # Initialize tools
@@ -51,6 +53,7 @@ class CorbanuChatBot:
         self.pft_utils = pft_utils
         self.user_context_parser = user_context_parser
         self.db_connection_manager = db_connection_manager or DBConnectionManager()
+        self.tasknode_utilities = tasknode_utilities
 
         # Initialize model
         self.model = "openai/o1-preview"
@@ -404,12 +407,9 @@ class CorbanuChatBot:
             memo_history = self.pft_utils.get_account_memo_history(account_address=account_address)
 
         try:
-            google_url = self.pft_utils.get_latest_outgoing_context_doc_link(
-                account_address=account_address, 
-                memo_history=memo_history
-            )
+            google_url = self.tasknode_utilities.get_latest_outgoing_context_doc_link(account_address=account_address)
             # Retrieve google doc text and limit to 10000 characters
-            core_element__google_doc_text = self.pft_utils.get_google_doc_text(google_url)[:self.GOOGLE_DOC_TEXT_CHAR_LIMIT]
+            core_element__google_doc_text = self.tasknode_utilities.get_google_doc_text(google_url)[:self.GOOGLE_DOC_TEXT_CHAR_LIMIT]
         except Exception as e:
             logger.error(f"Failed retrieving user google doc: {e}")
             logger.error(traceback.format_exc())

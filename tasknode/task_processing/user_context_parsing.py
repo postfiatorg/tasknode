@@ -1,11 +1,14 @@
 import pandas as pd
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
 import tasknode.task_processing.constants as node_constants
-from typing import Optional, Union
+from typing import Optional, Union, TYPE_CHECKING
 from loguru import logger
 import traceback
 import re
 from tasknode.task_processing.constants import TaskType, TASK_PATTERNS
+
+if TYPE_CHECKING:
+    from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
 
 class UserTaskParser:
     _instance = None
@@ -26,10 +29,12 @@ class UserTaskParser:
     def __init__(
             self,
             generic_pft_utilities: GenericPFTUtilities,
+            tasknode_utilities: 'TaskNodeUtilities',
         ):
         """Initialize UserTaskParser with GenericPFTUtilities for core functionality"""
         if not self.__class__._initialized:
             self.generic_pft_utilities = generic_pft_utilities
+            self.tasknode_utilities = tasknode_utilities
             self.__class__._initialized = True
 
     def classify_task_string(self, string: str) -> str:
@@ -371,11 +376,8 @@ class UserTaskParser:
         # Get optional context elements
         if get_google_doc:
             try:
-                google_url = self.generic_pft_utilities.get_latest_outgoing_context_doc_link(
-                    account_address=account_address, 
-                    memo_history=memo_history
-                )
-                core_element__google_doc_text = self.generic_pft_utilities.get_google_doc_text(google_url)
+                google_url = self.tasknode_utilities.get_latest_outgoing_context_doc_link(account_address=account_address)
+                core_element__google_doc_text = self.tasknode_utilities.get_google_doc_text(google_url)
             except Exception as e:
                 logger.error(f"Failed retrieving user google doc: {e}")
                 logger.error(traceback.format_exc())

@@ -73,6 +73,7 @@ from tasknode.prompts.rewards_manager import (
     reward_user_prompt
 )
 from tasknode.task_processing.task_creation import NewTaskGeneration
+from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
 
 ##############################################################################
 ############################## MEMO PATTERNS #################################
@@ -661,9 +662,17 @@ class ProposalRule(ResponseRule):
     
     def get_response_generator(self, dependencies: Dependencies) -> ResponseGenerator:
         """Get response generator for proposals with all dependencies"""
+        tasknode_utilities = TaskNodeUtilities(
+            generic_pft_utilities=dependencies.generic_pft_utilities
+        )
+        user_task_parser = UserTaskParser(
+            generic_pft_utilities=dependencies.generic_pft_utilities,
+            tasknode_utilities=tasknode_utilities
+        )
         task_generator = NewTaskGeneration(
             generic_pft_utilities=dependencies.generic_pft_utilities,
-            openrouter_tool=dependencies.openrouter
+            openrouter_tool=dependencies.openrouter,
+            user_task_parser=user_task_parser
         )
         return ProposalResponseGenerator(
             node_config=dependencies.node_config,
@@ -1010,6 +1019,9 @@ class RewardResponseGenerator(ResponseGenerator):
         ):
         self.node_config = node_config
         self.generic_pft_utilities = generic_pft_utilities
+        self.tasknode_utilities = TaskNodeUtilities(
+            generic_pft_utilities=self.generic_pft_utilities
+        )
         self.openrouter = openrouter
         self.transaction_repository = transaction_repository
 
@@ -1113,11 +1125,11 @@ class RewardResponseGenerator(ResponseGenerator):
     async def _get_verification_details(self, account: str) -> str:
         """Get verification details from Google Doc"""
         try:
-            link = self.generic_pft_utilities.get_latest_outgoing_context_doc_link(account)
+            link = self.tasknode_utilities.get_latest_outgoing_context_doc_link(account)
             if not link:
                 return "No Google Document Uploaded - please instruct user that Google Document has not been uploaded in response"
             
-            raw_text = self.generic_pft_utilities.get_google_doc_text(share_link=link)
+            raw_text = self.tasknode_utilities.get_google_doc_text(share_link=link)
             return self._extract_verification_text(raw_text)
         except Exception as e:
             logger.error(f"Error getting Google Doc details for {account}: {e}")
@@ -1288,12 +1300,20 @@ class ODVResponseRule(ResponseRule):
     
     def get_response_generator(self, dependencies: Dependencies) -> ResponseGenerator:
         """Get response generator for ODV responses with all dependencies"""
+        tasknode_utilities = TaskNodeUtilities(
+            generic_pft_utilities=dependencies.generic_pft_utilities
+        )
+        user_task_parser = UserTaskParser(
+            generic_pft_utilities=dependencies.generic_pft_utilities,
+            tasknode_utilities=tasknode_utilities
+        )
         return ODVResponseGenerator(
             openrouter=dependencies.openrouter,
             node_config=dependencies.node_config,
             generic_pft_utilities=dependencies.generic_pft_utilities,
             message_encryption=dependencies.message_encryption,
-            credential_manager=dependencies.credential_manager
+            credential_manager=dependencies.credential_manager,
+            user_task_parser=user_task_parser
         )
 
 class ODVResponseGenerator(ResponseGenerator):
@@ -1308,14 +1328,13 @@ class ODVResponseGenerator(ResponseGenerator):
             node_config: NodeConfig,
             generic_pft_utilities: GenericPFTUtilities,
             message_encryption: MessageEncryption,
-            credential_manager: CredentialManager
+            credential_manager: CredentialManager,
+            user_task_parser: UserTaskParser
         ):
         self.openrouter = openrouter
         self.node_config = node_config
         self.generic_pft_utilities = generic_pft_utilities
-        self.user_task_parser = UserTaskParser(
-            generic_pft_utilities=self.generic_pft_utilities
-        )
+        self.user_task_parser = user_task_parser
         self.message_encryption = message_encryption
         self.credential_manager = credential_manager
 

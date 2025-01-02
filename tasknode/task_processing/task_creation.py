@@ -92,7 +92,8 @@ class NewTaskGeneration:
     def __init__(
             self,
             generic_pft_utilities: GenericPFTUtilities,
-            openrouter_tool: OpenRouterTool
+            openrouter_tool: OpenRouterTool,
+            user_task_parser: UserTaskParser
         ):
         """
         Initialize NewTaskGeneration with CredentialManager and create GenericPFTUtilities instance.
@@ -104,9 +105,7 @@ class NewTaskGeneration:
             self.generic_pft_utilities = generic_pft_utilities
             self.user_context = UserContext()
             self.openrouter_tool = openrouter_tool
-            self.user_task_parser = UserTaskParser(
-                generic_pft_utilities=generic_pft_utilities
-            )
+            self.user_task_parser = user_task_parser
             self.__class__._initialized = True
 
     def extract_final_output(self, text):

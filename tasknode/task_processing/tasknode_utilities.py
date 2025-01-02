@@ -1,29 +1,38 @@
-
-from nodetools.ai.openai import OpenAIRequestTool
-from nodetools.ai.openrouter import OpenRouterTool
-import numpy as np
-from nodetools.utilities.generic_pft_utilities import *
-from nodetools.utilities.db_manager import DBConnectionManager
-from tasknode.chatbots.personas.odv import odv_system_prompt
+# Standard imports
 import datetime
 import pytz
+from typing import Optional
+import requests
+import traceback
+
+# Third party imports
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 import matplotlib.ticker as ticker
+from loguru import logger
+import xrpl
+
+# Nodetools imports
+from nodetools.ai.openai import OpenAIRequestTool
+from nodetools.ai.openrouter import OpenRouterTool
+from nodetools.utilities.db_manager import DBConnectionManager
 import nodetools.configuration.constants as global_constants
 from nodetools.utilities.credentials import CredentialManager
 from nodetools.utilities.exceptions import *
 from nodetools.performance.monitor import PerformanceMonitor
 import nodetools.configuration.configuration as config
+from nodetools.sql.sql_manager import SQLManager
+from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
+from nodetools.protocols.transaction_repository import TransactionRepository
+
+# Tasknode imports
+from tasknode.chatbots.personas.odv import odv_system_prompt
 from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.task_processing.task_creation import NewTaskGeneration
-from nodetools.sql.sql_manager import SQLManager
-from nodetools.protocols.encryption import MessageEncryption
-from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
 from tasknode.task_processing.constants import TaskType
 
-class SupplementalDiscordFunctions:
+class TaskNodeUtilities:
     _instance = None
     _initialized = False
 
@@ -35,6 +44,7 @@ class SupplementalDiscordFunctions:
     def __init__(self,
             generic_pft_utilities: GenericPFTUtilities
         ):
+        # TODO: Clean up dependencies
         if not self.__class__._initialized:
             # Get network configuration
             self.network_config = config.get_network_config()
@@ -50,18 +60,239 @@ class SupplementalDiscordFunctions:
             self.db_connection_manager = DBConnectionManager()
             self.user_task_parser = UserTaskParser(
                 generic_pft_utilities=self.generic_pft_utilities,
+                tasknode_utilities=self
             )
+            self.transaction_repository: TransactionRepository = self.generic_pft_utilities.transaction_repository
             self.monitor = PerformanceMonitor()
-            self.task_generator = NewTaskGeneration(
-                generic_pft_utilities=self.generic_pft_utilities,
-                openrouter_tool=self.openrouter_tool
-            )
             self.stop_threads = False
             self.default_model = global_constants.DEFAULT_OPEN_AI_MODEL
 
             self.bot_start_time = datetime.datetime.now(datetime.UTC)
             
             self.__class__._initialized = True
+
+    def get_latest_outgoing_context_doc_link(
+            self, 
+            account_address: str
+        ) -> Optional[str]:
+        """Get the most recent Google Doc context link sent by this wallet.
+        Handles both encrypted and unencrypted links for backwards compatibility.
+            
+        Args:
+            account_address: Account address
+            
+        Returns:
+            str or None: Most recent Google Doc link or None if not found
+        """
+        try:
+            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_address, pft_only=False)
+
+            if memo_history.empty or len(memo_history) == 0:
+                logger.debug(f"TaskNodeUtilities.get_latest_outgoing_context_doc_link: No memo history found for {account_address}. Returning None")
+                return None
+
+            context_docs = memo_history[
+                (memo_history['memo_type'].apply(lambda x: global_constants.SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value in str(x))) &
+                (memo_history['account'] == account_address) &
+                (memo_history['transaction_result'] == "tesSUCCESS")
+            ]
+            
+            if len(context_docs) > 0:
+                latest_doc = context_docs.iloc[-1]
+                
+                return self.generic_pft_utilities.process_memo_data(
+                    memo_type=latest_doc['memo_type'],
+                    memo_data=latest_doc['memo_data'],
+                    channel_address=self.node_address,
+                    channel_counterparty=account_address,
+                    memo_history=memo_history,
+                    channel_private_key=self.cred_manager.get_credential(f"{self.node_config.node_name}__v1xrpsecret")
+                )
+            else:
+                logger.debug(f"TaskNodeUtilities.get_latest_outgoing_context_doc_link: No context doc found for {account_address}. Returning None")
+
+            return None
+            
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.get_latest_outgoing_context_doc_link: Error getting latest context doc link: {e}")
+            return None
+
+    @staticmethod
+    def get_google_doc_text(share_link):
+        """Get the plain text content of a Google Doc.
+        
+        Args:
+            share_link: Google Doc share link
+            
+        Returns:
+            str: Plain text content of the Google Doc
+        """
+        # Extract the document ID from the share link
+        doc_id = share_link.split('/')[5]
+    
+        # Construct the Google Docs API URL
+        url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+    
+        # Send a GET request to the API URL
+        response = requests.get(url)
+    
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Return the plain text content of the document
+            return response.text
+        else:
+            # Return an error message if the request was unsuccessful
+            # DON'T CHANGE THIS STRING, IT'S USED FOR GOOGLE DOC VALIDATION
+            return f"Failed to retrieve the document. Status code: {response.status_code}"
+
+    def check_if_google_doc_is_valid(self, wallet: xrpl.wallet.Wallet, google_doc_link):
+        """ Checks if the google doc is valid """
+
+        # Check 1: google doc is a valid url
+        if not google_doc_link.startswith('https://docs.google.com/document/d/'):
+            raise InvalidGoogleDocException(google_doc_link)
+        
+        google_doc_text = self.get_google_doc_text(google_doc_link)
+
+        # Check 2: google doc exists
+        if "Status code: 404" in google_doc_text:
+            raise GoogleDocNotFoundException(google_doc_link)
+
+        # Check 3: google doc is shared
+        if "Status code: 401" in google_doc_text:
+            raise GoogleDocIsNotSharedException(google_doc_link)
+
+    def handle_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str, username: str):
+        """
+        Validate and process Google Doc submission.
+        
+        Args:
+            wallet: XRPL wallet object
+            google_doc_link: Link to the Google Doc
+            username: Discord username
+            
+        Returns:
+            dict: Status of Google Doc operation with keys:
+                - success (bool): Whether operation was successful
+                - message (str): Description of what happened
+                - tx_hash (str, optional): Transaction hash if doc was sent
+        """
+        logger.debug(f"TaskNodeUtilities.handle_google_doc: Handling google doc for {username} ({wallet.classic_address})")
+        try:
+            self.check_if_google_doc_is_valid(wallet, google_doc_link)
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.handle_google_doc: Error validating Google Doc: {e}")
+            raise
+        
+        return self.send_google_doc(wallet, google_doc_link, username)
+    
+    def construct_google_doc_context_memo(self, user, google_doc_link):               
+        return self.generic_pft_utilities.construct_memo(
+            memo_format=user, 
+            memo_type=global_constants.SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value, 
+            memo_data=google_doc_link
+        ) 
+
+    def send_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str, username: str) -> dict:
+        """Send Google Doc context link to the node.
+        
+        Args:
+            wallet: XRPL wallet object
+            google_doc_link: Google Doc URL
+            username: Discord username
+            
+        Returns:
+            dict: Transaction status
+        """
+        try:
+            google_doc_memo = self.construct_google_doc_context_memo(
+                user=username,
+                google_doc_link=google_doc_link
+            )
+            logger.debug(f"TaskNodeUtilities.send_google_doc: Sending Google Doc link transaction from {wallet.classic_address} to node {self.node_address}: {google_doc_link}")
+            
+            response = self.generic_pft_utilities.send_memo(
+                wallet_seed_or_wallet=wallet,
+                username=username,
+                memo=google_doc_memo,
+                destination=self.node_address,
+                encrypt=True  # Google Doc link is always encrypted
+            )
+
+            if not self.generic_pft_utilities.verify_transaction_response(response):
+                raise Exception(f"TaskNodeUtilities.send_google_doc: Failed to send Google Doc link: {response}")
+
+            return response  # Return last response for compatibility with existing code
+
+        except Exception as e:
+            raise Exception(f"TaskNodeUtilities.send_google_doc: Error sending Google Doc: {str(e)}")
+        
+    def has_initiation_rite(self, wallet: xrpl.wallet.Wallet, allow_reinitiation: bool = False) -> bool:
+        """Check if wallet has a successful initiation rite.
+        
+        Args:
+            wallet: XRPL wallet object
+            allow_reinitiation: if True, always returns False to allow re-initiation (for testing)
+            
+        Returns:
+            bool: True if successful initiation exists
+
+        Raises:
+            Exception: If there is an error checking for the initiation rite
+        """
+        if allow_reinitiation and config.RuntimeConfig.USE_TESTNET:
+            logger.debug(f"TaskNodeUtilities.has_initiation_rite: Re-initiation allowed for {wallet.classic_address} (test mode)")
+            return False
+        
+        try: 
+            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet.classic_address, pft_only=False)
+            successful_initiations = memo_history[
+                (memo_history['memo_type'] == global_constants.SystemMemoType.INITIATION_RITE.value) & 
+                (memo_history['transaction_result'] == "tesSUCCESS")
+            ]
+            return len(successful_initiations) > 0
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.has_initiation_rite: Error checking if user {wallet.classic_address} has a successful initiation rite: {e}")
+            return False
+    
+    def handle_initiation_rite(
+            self, 
+            wallet: xrpl.wallet.Wallet, 
+            initiation_rite: str, 
+            username: str,
+            allow_reinitiation: bool = False
+        ) -> dict:
+        """Send initiation rite if none exists.
+        
+        Args:
+            wallet: XRPL wallet object
+            initiation_rite: Commitment message
+            username: Discord username
+            allow_reinitiation: If True, allows re-initiation when in test mode
+
+        Raises:
+            Exception: If there is an error sending the initiation rite
+        """
+        logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Handling initiation rite for {username} ({wallet.classic_address})")
+
+        if self.has_initiation_rite(wallet, allow_reinitiation):
+            logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Initiation rite already exists for {username} ({wallet.classic_address})")
+        else:
+            initiation_memo = self.generic_pft_utilities.construct_memo(
+                memo_data=initiation_rite, 
+                memo_type=global_constants.SystemMemoType.INITIATION_RITE.value, 
+                memo_format=username
+            )
+            logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Sending initiation rite transaction from {wallet.classic_address} to node {self.node_address}")
+            response = self.generic_pft_utilities.send_memo(
+                wallet_seed_or_wallet=wallet,
+                memo=initiation_memo,
+                destination=self.node_address,
+                username=username,
+                compress=False
+            )
+            if not self.generic_pft_utilities.verify_transaction_response(response):
+                raise Exception("Initiation rite failed to send")
 
     def discord__initiation_rite(
             self, 
@@ -98,41 +329,15 @@ class SupplementalDiscordFunctions:
             raise InsufficientXrpBalanceException(wallet.classic_address)
         
         # Handle Google Doc
-        self.generic_pft_utilities.handle_google_doc(wallet, google_doc_link, username)
+        self.handle_google_doc(wallet, google_doc_link, username)
         
         # Handle PFT trustline
         self.generic_pft_utilities.handle_trust_line(wallet, username)
         
         # Handle initiation rite
-        self.generic_pft_utilities.handle_initiation_rite(
+        self.handle_initiation_rite(
             wallet, initiation_rite, username, allow_reinitiation
         )
-
-        # # Spawn node wallet
-        # logger.debug(f"PostFiatTaskGenerationSystem.discord__initiation_rite: Spawning node wallet for sending initial PFT grant")
-        # node_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(
-        #     seed=self.cred_manager.get_credential(f'{self.node_config.node_name}__v1xrpsecret')
-        # )
-        
-        # # Send initial PFT grant
-        # memo = self.generic_pft_utilities.construct_memo(
-        #     memo_data='Initial PFT Grant Post Initiation',
-        #     memo_type=global_constants.SystemMemoType.INITIATION_GRANT.value,
-        #     memo_format=self.node_config.node_name
-        # )
-
-        # response = self.generic_pft_utilities.send_memo(
-        #     wallet_seed_or_wallet=node_wallet,
-        #     destination=wallet.classic_address,
-        #     memo=memo,
-        #     username=username,
-        #     pft_amount=10
-        # )
-
-        # if not self.generic_pft_utilities.verify_transaction_response(response):
-        #     logger.error(f"PostFiatTaskGenerationSystem.discord__initiation_rite: Failed to send initial PFT grant to {wallet.classic_address}")
-        
-        # return response
     
     def discord__update_google_doc_link(self, user_seed: str, google_doc_link: str, username: str):
         """Update the user's Google Doc link."""
@@ -356,6 +561,7 @@ class SupplementalDiscordFunctions:
             logger.warning(f"Error processing memo data for hash {row.name}: {e}")
             return row['memo_data']  # Return original if processing fails
 
+    # TODO: Change to async
     def sync_and_format_new_transactions(self):
         """
         Gets newly processed transactions and formats them for Discord notifications.

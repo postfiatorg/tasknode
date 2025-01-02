@@ -29,7 +29,7 @@ from nodetools.performance.monitor import PerformanceMonitor
 from nodetools.configuration.configuration import RuntimeConfig, get_network_config
 
 # tasknode imports
-from tasknode.task_processing.task_management import SupplementalDiscordFunctions
+from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
 from tasknode.task_processing.constants import TaskType
 from tasknode.chatbots.personas.odv import odv_system_prompt
 from tasknode.chatbots.personas.odv import odv_system_prompt
@@ -73,7 +73,7 @@ class TaskNodeDiscordBot(discord.Client):
             self, 
             *args,
             generic_pft_utilities: GenericPFTUtilities,
-            supplemental_discord_functions: SupplementalDiscordFunctions,
+            tasknode_utilities: TaskNodeUtilities,
             **kwargs
         ):
         super().__init__(*args, **kwargs)
@@ -86,9 +86,10 @@ class TaskNodeDiscordBot(discord.Client):
         self.openrouter = OpenRouterTool()
         self.openai_request_tool = OpenAIRequestTool()
         self.generic_pft_utilities = generic_pft_utilities
-        self.supplemental_discord_functions = supplemental_discord_functions
+        self.tasknode_utilities = tasknode_utilities
         self.user_task_parser = UserTaskParser(
             generic_pft_utilities=generic_pft_utilities,
+            tasknode_utilities=tasknode_utilities
         )
 
         # Set network-specific attributes
@@ -1139,7 +1140,7 @@ class TaskNodeDiscordBot(discord.Client):
                     acceptance_string = self.acceptance_string.value
                     
                     # Call the discord__task_acceptance function
-                    output_string = self.parent.supplemental_discord_functions.discord__task_acceptance(
+                    output_string = self.parent.tasknode_utilities.discord__task_acceptance(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_accept=self.task_id,
@@ -1257,7 +1258,7 @@ class TaskNodeDiscordBot(discord.Client):
                     refusal_string = self.refusal_string.value
                     
                     # Call the discord__task_refusal function
-                    output_string = self.parent.supplemental_discord_functions.discord__task_refusal(
+                    output_string = self.parent.tasknode_utilities.discord__task_refusal(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_refuse=self.task_id,
@@ -1464,7 +1465,7 @@ class TaskNodeDiscordBot(discord.Client):
 
             try:
                 # Call the charting function
-                self.supplemental_discord_functions.output_pft_KPI_graph_for_address(user_wallet=wallet.address)
+                self.tasknode_utilities.output_pft_KPI_graph_for_address(user_wallet=wallet.address)
                 
                 # Create the file object from the saved image
                 chart_file = discord.File(f'pft_rewards__{wallet.address}.png', filename='pft_chart.png')
@@ -1777,7 +1778,7 @@ class TaskNodeDiscordBot(discord.Client):
                             await message_obj.edit(content="Sending commitment and encrypted google doc link to node...")
 
                             # Attempt the initiation rite
-                            self.parent.supplemental_discord_functions.discord__initiation_rite(
+                            self.parent.tasknode_utilities.discord__initiation_rite(
                                 user_seed=seed, 
                                 initiation_rite=self.commitment_sentence.value, 
                                 google_doc_link=self.google_doc_link.value, 
@@ -1907,7 +1908,7 @@ class TaskNodeDiscordBot(discord.Client):
             
             try:
                 # Send the Post Fiat request
-                response = self.supplemental_discord_functions.discord__send_postfiat_request(
+                response = self.tasknode_utilities.discord__send_postfiat_request(
                     user_request=task_request,
                     user_name=user_name,
                     user_seed=seed  # TODO: change to wallet
@@ -2015,7 +2016,7 @@ class TaskNodeDiscordBot(discord.Client):
                     completion_string = self.completion_justification.value
                     
                     # Call the discord__initial_submission function
-                    output_string = self.parent.supplemental_discord_functions.discord__initial_submission(
+                    output_string = self.parent.tasknode_utilities.discord__initial_submission(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_accept=self.task_id,
@@ -2365,7 +2366,7 @@ Note: XRP wallets need 15 XRP to transact.
                     justification_string = self.verification_justification.value
                     
                     # Call the discord__final_submission function
-                    output_string = self.parent.supplemental_discord_functions.discord__final_submission(
+                    output_string = self.parent.tasknode_utilities.discord__final_submission(
                         user_seed=self.seed,
                         user_name=self.user_name,
                         task_id_to_submit=self.task_id,
@@ -2408,6 +2409,7 @@ Note: XRP wallets need 15 XRP to transact.
         wallet_address: str,
         require_initiation: bool = True
     ) -> bool:
+        # TODO: Replace with tasknode_utilities.has_initiation_rite
         """
         Check if a wallet has completed the initiation rite.
         
@@ -2677,7 +2679,7 @@ Note: XRP wallets need 15 XRP to transact.
             return
 
         # Call the function to get new messages and update the database
-        messages_to_send = self.supplemental_discord_functions.sync_and_format_new_transactions()
+        messages_to_send = self.tasknode_utilities.sync_and_format_new_transactions()
 
         # DEBUGGING
         len_messages_to_send = len(messages_to_send)
@@ -2774,7 +2776,7 @@ Note: XRP wallets need 15 XRP to transact.
                             logger.debug(f"TaskNodeDiscordBot.death_march_reminder: Spawning wallet to fetch info for {target_user_id}")
                             user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                             user_address = user_wallet.classic_address
-                            tactical_string = self.supplemental_discord_functions.get_o1_coaching_string_for_account(user_address)
+                            tactical_string = self.tasknode_utilities.get_o1_coaching_string_for_account(user_address)
                             
                             # Send the message to the channel
                             await self.send_long_message_to_channel(channel, f"<@{target_user_id}> Death March Update:\n{tactical_string}")
@@ -2964,7 +2966,7 @@ My specific question/request is: {user_query}"""
                     logger.debug(f"TaskNodeDiscordBot.blackprint: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
-                    tactical_string = self.supplemental_discord_functions.generate_coaching_string_for_account(user_address)
+                    tactical_string = self.tasknode_utilities.generate_coaching_string_for_account(user_address)
                     
                     await self.send_long_message(message, tactical_string)
             
@@ -3009,7 +3011,7 @@ My specific question/request is: {user_query}"""
                     logger.debug(f"TaskNodeDiscordBot.redpill: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
-                    tactical_string = self.supplemental_discord_functions.o1_redpill(user_address)
+                    tactical_string = self.tasknode_utilities.o1_redpill(user_address)
                     
                     await self.send_long_message(message, tactical_string)
             
@@ -3027,7 +3029,7 @@ My specific question/request is: {user_query}"""
                     logger.debug(f"TaskNodeDiscordBot.docrewrite: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
-                    tactical_string = self.supplemental_discord_functions.generate_document_rewrite_instructions(user_address)
+                    tactical_string = self.tasknode_utilities.generate_document_rewrite_instructions(user_address)
                     
                     await self.send_long_message(message, tactical_string)
             
@@ -3069,7 +3071,7 @@ My specific question/request is: {user_query}"""
                 user_name = message.author.name
                 memo_to_send = self.generic_pft_utilities.construct_memo(memo_data=message_to_send, memo_format = user_name, memo_type=task_id)
                 seed = self.user_seeds[user_id]
-                response = self.supplemental_discord_functions.discord__send_postfiat_request(user_request= message_to_send, user_name=user_name, user_seed=seed)
+                response = self.tasknode_utilities.discord__send_postfiat_request(user_request= message_to_send, user_name=user_name, user_seed=seed)
                 transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response=response)
                 clean_string = transaction_info['clean_string']
                 await self.send_long_message(message, f"Task Requested with Details {clean_string}")
@@ -3164,7 +3166,7 @@ My specific question/request is: {user_query}"""
 
             # Get google doc link
             if owns_wallet:
-                account_info.google_doc_link = self.generic_pft_utilities.get_latest_outgoing_context_doc_link(address)
+                account_info.google_doc_link = self.tasknode_utilities.get_latest_outgoing_context_doc_link(address)
 
         except Exception as e:
             logger.error(f"Error generating account info for {address}: {e}")
@@ -3858,7 +3860,7 @@ def main():
 
         # Initialize services
         generic_pft_utilities = GenericPFTUtilities(business_logic_provider=business_logic)
-        supplemental_discord_functions = SupplementalDiscordFunctions(
+        supplemental_discord_functions = TaskNodeUtilities(
             generic_pft_utilities=generic_pft_utilities
         )
 
@@ -3872,7 +3874,7 @@ def main():
         client = TaskNodeDiscordBot(
             intents=intents,
             generic_pft_utilities=generic_pft_utilities,
-            supplemental_discord_functions=supplemental_discord_functions
+            tasknode_utilities=supplemental_discord_functions
         )
         discord_credential_key = "discordbot_testnet_secret" if RuntimeConfig.USE_TESTNET else "discordbot_secret"
         client.run(cred_manager.get_credential(discord_credential_key))
