@@ -21,6 +21,7 @@ from tasknode.task_processing.task_creation import NewTaskGeneration
 from nodetools.sql.sql_manager import SQLManager
 from nodetools.protocols.encryption import MessageEncryption
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
+from tasknode.task_processing.constants import TaskType
 
 class SupplementalDiscordFunctions:
     _instance = None
@@ -155,7 +156,7 @@ class SupplementalDiscordFunctions:
             dict: Transaction response object containing:
         """
         task_id = self.generic_pft_utilities.generate_custom_id()
-        full_memo_string = global_constants.TaskType.REQUEST_POST_FIAT.value + user_request
+        full_memo_string = TaskType.REQUEST_POST_FIAT.value + user_request
         memo_type = task_id
         memo_format = user_name
 
@@ -200,7 +201,7 @@ class SupplementalDiscordFunctions:
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
 
         acceptance_memo = self.generic_pft_utilities.construct_memo(
-            memo_data=global_constants.TaskType.ACCEPTANCE.value + acceptance_string, 
+            memo_data=TaskType.ACCEPTANCE.value + acceptance_string, 
             memo_format=user_name, 
             memo_type=task_id_to_accept
         )
@@ -238,7 +239,7 @@ class SupplementalDiscordFunctions:
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
 
         refusal_memo= self.generic_pft_utilities.construct_memo(
-            memo_data=global_constants.TaskType.REFUSAL.value + refusal_string, 
+            memo_data=TaskType.REFUSAL.value + refusal_string, 
             memo_format=user_name, 
             memo_type=task_id_to_refuse
         )
@@ -277,7 +278,7 @@ class SupplementalDiscordFunctions:
 
         # Format completion memo
         completion_memo= self.generic_pft_utilities.construct_memo(
-            memo_data=global_constants.TaskType.TASK_OUTPUT.value + initial_completion_string, 
+            memo_data=TaskType.TASK_OUTPUT.value + initial_completion_string, 
             memo_format=user_name, 
             memo_type=task_id_to_accept
         )
@@ -317,7 +318,7 @@ class SupplementalDiscordFunctions:
 
         # Format verification response memo
         completion_memo = self.generic_pft_utilities.construct_memo(
-            memo_data=global_constants.TaskType.VERIFICATION_RESPONSE.value + justification_string, 
+            memo_data=TaskType.VERIFICATION_RESPONSE.value + justification_string, 
             memo_format=user_name, 
             memo_type=task_id_to_submit
         )
@@ -431,8 +432,7 @@ class SupplementalDiscordFunctions:
         memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_to_work,pft_only=True)
         full_context = self.user_task_parser.get_full_user_context_string(account_address=account_to_work, memo_history=memo_history)
         simplified_rewards=memo_history[memo_history['memo_data'].apply(lambda x: 'reward' in x)].copy()
-        simplified_rewards['simple_date']=pd.to_datetime(simplified_rewards['datetime'].apply(lambda x: x.strftime('%Y-%m-%d')))
-        daily_ts = simplified_rewards[['pft_absolute_amount','simple_date']].groupby('simple_date').sum()
+        daily_ts = simplified_rewards[['pft_absolute_amount','datetime']].groupby('datetime').sum()
         daily_ts_pft= daily_ts.resample('D').last().fillna(0)
         daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(7).mean()
         daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(30).mean()
@@ -499,8 +499,7 @@ _________________________________
         memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_to_work,pft_only=True)
         full_context = self.user_task_parser.get_full_user_context_string(account_address=account_to_work, memo_history=memo_history)
         simplified_rewards=memo_history[memo_history['memo_data'].apply(lambda x: 'reward' in x)].copy()
-        simplified_rewards['simple_date']=pd.to_datetime(simplified_rewards['datetime'].apply(lambda x: x.strftime('%Y-%m-%d')))
-        daily_ts = simplified_rewards[['pft_absolute_amount','simple_date']].groupby('simple_date').sum()
+        daily_ts = simplified_rewards[['pft_absolute_amount','datetime']].groupby('datetime').sum()
         daily_ts_pft= daily_ts.resample('D').last().fillna(0)
         daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(7).mean()
         daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(30).mean()
@@ -594,8 +593,7 @@ _________________________________
         memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_to_work,pft_only=True)
         full_context = self.user_task_parser.get_full_user_context_string(account_address=account_to_work, memo_history=memo_history)
         simplified_rewards=memo_history[memo_history['memo_data'].apply(lambda x: 'reward' in x)].copy()
-        simplified_rewards['simple_date']=pd.to_datetime(simplified_rewards['datetime'].apply(lambda x: x.strftime('%Y-%m-%d')))
-        daily_ts = simplified_rewards[['pft_absolute_amount','simple_date']].groupby('simple_date').sum()
+        daily_ts = simplified_rewards[['pft_absolute_amount','datetime']].groupby('datetime').sum()
         daily_ts_pft= daily_ts.resample('D').last().fillna(0)
         daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(7).mean()
         daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(30).mean()
@@ -691,8 +689,7 @@ _________________________________
         memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_to_work,pft_only=True)
         full_context = self.user_task_parser.get_full_user_context_string(account_address=account_to_work, memo_history=memo_history)
         simplified_rewards=memo_history[memo_history['memo_data'].apply(lambda x: 'reward' in x)].copy()
-        simplified_rewards['simple_date']=pd.to_datetime(simplified_rewards['datetime'].apply(lambda x: x.strftime('%Y-%m-%d')))
-        daily_ts = simplified_rewards[['pft_absolute_amount','simple_date']].groupby('simple_date').sum()
+        daily_ts = simplified_rewards[['pft_absolute_amount','datetime']].groupby('datetime').sum()
         daily_ts_pft= daily_ts.resample('D').last().fillna(0)
         daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(7).mean()
         daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(30).mean()

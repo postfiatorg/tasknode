@@ -446,7 +446,7 @@ class TaskNodeDiscordBot(discord.Client):
             memo_data = f"DEATH_MARCH Payment: {days} days, {checks_per_day} checks/day"
             
             try:
-                response = self.generic_pft_utilities.send_memo_legacy(
+                response = self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=user_wallet,
                     destination=self.node_config.remembrancer_address,  # Or wherever you want the PFT to go
                     memo=memo_data,
@@ -784,7 +784,7 @@ class TaskNodeDiscordBot(discord.Client):
                 await message_obj.edit(content="Handshake verified. Proceeding to send memo...")
 
                 # Send Q&A from user wallet to remembrancer
-                response = self.generic_pft_utilities.send_memo_legacy(
+                response = self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=wallet,
                     username="Corbanu",  # This is memo_format
                     destination=self.remembrancer,
@@ -827,7 +827,7 @@ class TaskNodeDiscordBot(discord.Client):
 
                 logger.debug(f"TaskNodeDiscordBot.corbanu_reply: Sending reward of {reward_value} PFT to {wallet.classic_address}")
                 
-                reward_tx = self.generic_pft_utilities.send_memo_legacy(
+                reward_tx = self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=foundation_wallet,
                     destination=wallet.classic_address,
                     memo=short_reward_message,
@@ -952,7 +952,7 @@ class TaskNodeDiscordBot(discord.Client):
                     await message_obj.edit(content="Handshake verified. Proceeding to send memo...")
 
                 # Send summarized message from user's wallet to remembrancer
-                send_response = self.generic_pft_utilities.send_memo_legacy(
+                send_response = self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=wallet,
                     username=user_name,
                     destination=self.remembrancer,
@@ -1034,7 +1034,7 @@ class TaskNodeDiscordBot(discord.Client):
                     )
 
                     # send memo with PFT attached
-                    response = self.parent.generic_pft_utilities.send_memo_legacy(
+                    response = self.parent.generic_pft_utilities.send_memo(
                         wallet_seed_or_wallet=self.seed,
                         destination=destination_address,
                         memo=memo,
@@ -1408,7 +1408,7 @@ class TaskNodeDiscordBot(discord.Client):
                     
                     await message_obj.edit(content=f"Handshake verified. Proceeding to send message {message}...")
 
-                response = self.generic_pft_utilities.send_memo_legacy(
+                response = self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=wallet,
                     username=user_name,
                     destination=self.remembrancer,
@@ -1920,6 +1920,8 @@ class TaskNodeDiscordBot(discord.Client):
                 # Send the response
                 await interaction.followup.send(f"Task Requested with Details: {clean_string}", ephemeral=ephemeral_setting)
             except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.pf_task_slash: Error during task request: {str(e)}")
+                logger.error(traceback.format_exc())
                 await interaction.followup.send(f"An error occurred while processing your request: {str(e)}", ephemeral=True)
 
         @self.tree.command(name="pf_initial_verification", description="Submit a task for verification")
@@ -2077,7 +2079,7 @@ class TaskNodeDiscordBot(discord.Client):
                     self.client.user_seeds[user_id] = self.seed.value
 
                     await interaction.response.send_message(
-                        "Wallet created successfully. You must fund the wallet with 15+ XRP to use as a Post Fiat Wallet. "
+                        f"Wallet created successfully. You must fund the wallet with {global_constants.MIN_XRP_BALANCE} XRP to use as a Post Fiat Wallet. "
                         "The seed is stored to Discord Hot Wallet. To store different seed use /pf_store_seed. "
                         "We recommend you often sweep the wallet to a cold wallet. Use the /pf_send command to do so",
                         ephemeral=True
@@ -2421,6 +2423,7 @@ Note: XRP wallets need 15 XRP to transact.
             account_address=wallet_address, 
             pft_only=False
         )
+
         existing_initiations = memo_history[
             (memo_history['memo_type'] == 'INITIATION_RITE') & 
             (memo_history['transaction_result'] == 'tesSUCCESS')
@@ -2463,6 +2466,10 @@ Note: XRP wallets need 15 XRP to transact.
         Returns:
             tuple[bool, str, str, discord.Message]: (success, user_key, counterparty_key, message_obj)
         """
+        # Transaction verification parameters from the user's perspective
+        NODE_HANDSHAKE_RESPONSE_USER_VERIFICATION_ATTEMPTS = 24
+        NODE_HANDSHAKE_RESPONSE_USER_VERIFICATION_INTERVAL = 5  # in seconds
+
         try:
             # Send message if we don't have a message object
             if not message_obj:
@@ -2490,7 +2497,7 @@ Note: XRP wallets need 15 XRP to transact.
                 await message_obj.edit(content="Encryption handshake initiated. Waiting for onchain confirmation...")
 
                 # Verify handshake completion and response from counterparty (node or remembrancer)
-                for attempt in range(global_constants.NODE_HANDSHAKE_RESPONSE_USER_VERIFICATION_ATTEMPTS):
+                for attempt in range(NODE_HANDSHAKE_RESPONSE_USER_VERIFICATION_ATTEMPTS):
                     logger.debug(f"TaskNodeDiscordBot.{command_name}: Checking handshake status for {username} with {counterparty} (attempt {attempt+1})")
 
                     user_key, counterparty_key = self.generic_pft_utilities.get_handshake_for_address(
@@ -2505,7 +2512,7 @@ Note: XRP wallets need 15 XRP to transact.
                     if user_key:
                         await message_obj.edit(content="Handshake sent. Waiting for node to process...")
 
-                    await asyncio.sleep(global_constants.NODE_HANDSHAKE_RESPONSE_USER_VERIFICATION_INTERVAL)
+                    await asyncio.sleep(NODE_HANDSHAKE_RESPONSE_USER_VERIFICATION_INTERVAL)
 
             if not user_key:
                 await message_obj.edit(content="Encryption handshake failed to send. Please reach out to support.")
@@ -3125,6 +3132,15 @@ My specific question/request is: {user_query}"""
         """
         account_info = AccountInfo(address=address)
 
+        # Get balances
+        try:
+            account_info.xrp_balance = self.generic_pft_utilities.fetch_xrp_balance(address)
+            account_info.pft_balance = self.generic_pft_utilities.fetch_pft_balance(address)
+        except Exception as e:
+            # Account probably not activated yet
+            account_info.xrp_balance = 0
+            account_info.pft_balance = 0
+
         try:
             memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=address)
 
@@ -3134,22 +3150,17 @@ My specific question/request is: {user_query}"""
                 account_info.transaction_count = len(memo_history)
 
                 # Likely username
-                account_info.username = list(memo_history[memo_history['direction']=='OUTGOING']['memo_format'].mode())[0]
+                outgoing_memo_format = list(memo_history[memo_history['direction']=='OUTGOING']['memo_format'].mode())
+                if len(outgoing_memo_format) > 0:
+                    account_info.username = outgoing_memo_format[0]
+                else:
+                    account_info.username = "Unknown"
 
                 # Reward statistics
                 reward_data = self.get_reward_data(all_account_info=memo_history)
                 if not reward_data['reward_ts'].empty:
                     account_info.monthly_pft_avg = float(reward_data['reward_ts'].tail(4).mean().iloc[0])
                     account_info.weekly_pft_avg = float(reward_data['reward_ts'].tail(1).mean().iloc[0])
-
-            # Get balances
-            try:
-                account_info.xrp_balance = self.generic_pft_utilities.fetch_xrp_balance(address)
-                account_info.pft_balance = self.generic_pft_utilities.fetch_pft_balance(address)
-            except Exception as e:
-                # Account probably not activated yet
-                account_info.xrp_balance = 0
-                account_info.pft_balance = 0
 
             # Get google doc link
             if owns_wallet:
@@ -3358,7 +3369,7 @@ My specific question/request is: {user_query}"""
         
         Returns DataFrame with weekly_total column indexed by date"""
         # Calculate daily totals
-        daily_totals = specific_rewards[['directional_pft', 'simple_date']].groupby('simple_date').sum()
+        daily_totals = specific_rewards[['directional_pft', 'datetime']].groupby('datetime').sum()
 
         if daily_totals.empty:
             logger.warning("No rewards data available to calculate weekly totals.")
@@ -3434,6 +3445,12 @@ My specific question/request is: {user_query}"""
         specific_rewards = reward_responses[
             reward_responses.memo_data.apply(lambda x: "REWARD RESPONSE" in x)
         ]
+
+        if specific_rewards.empty or len(specific_rewards) == 0:
+            return {
+                'reward_ts': pd.DataFrame(),
+                'reward_summaries': pd.DataFrame()
+            }
 
         # Get weekly totals
         weekly_totals = self._calculate_weekly_reward_totals(specific_rewards)
@@ -3521,14 +3538,13 @@ My specific question/request is: {user_query}"""
             (all_transactions['pft_amount'] != 0)
         ].copy()
 
-
         # Convert and clean up datetime
         memo_transactions['datetime'] = pd.to_datetime(
             memo_transactions['close_time_iso']
         ).dt.tz_localize(None)
         
-        memo_transactions['simple_date'] = memo_transactions['datetime'].dt.strftime('%Y-%m-%d')
-        memo_transactions['simple_date'] = pd.to_datetime(memo_transactions['simple_date'])
+        memo_transactions['datetime'] = memo_transactions['datetime'].dt.strftime('%Y-%m-%d')
+        memo_transactions['datetime'] = pd.to_datetime(memo_transactions['datetime'])
 
         return memo_transactions
 
