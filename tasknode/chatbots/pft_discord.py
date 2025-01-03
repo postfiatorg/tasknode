@@ -8,6 +8,7 @@ import getpass
 import pytz
 import sys
 from typing import Optional, Dict
+import signal
 
 # third party imports
 from xrpl.wallet import Wallet
@@ -170,8 +171,14 @@ class TaskNodeDiscordBot(discord.Client):
         """Sets up the slash commands for the bot and initiates background tasks."""
         guild_id = self.node_config.discord_guild_id
         guild = Object(id=guild_id)
-        self.bg_task = self.loop.create_task(self.transaction_checker())
-        self.cleanup_task = self.loop.create_task(self.cleanup_caches())
+        self.bg_task = self.loop.create_task(
+            self.transaction_checker(),
+            name="DiscordBotTransactionChecker"
+        )
+        self.cleanup_task = self.loop.create_task(
+            self.cleanup_caches(),
+            name="DiscordBotCleanupCaches"
+        )
 
         @self.tree.command(name="pf_new_wallet", description="Generate a new XRP wallet")
         async def pf_new_wallet(interaction: Interaction):
@@ -3390,6 +3397,14 @@ def configure_runtime():
 def main():
     generic_pft_utilities = None
 
+    # Configure logger
+    configure_logger(
+        log_to_file=True,
+        output_directory=Path.cwd() / "nodetools",
+        log_filename="nodetools.log",
+        level="DEBUG"
+    )
+
     try:
         # Startup phase
         try:
@@ -3404,14 +3419,6 @@ def main():
             # Initialize performance monitor
             monitor = PerformanceMonitor(time_window=60)
             monitor.start()
-
-            # Configure logger
-            configure_logger(
-                log_to_file=True,
-                output_directory=Path.cwd() / "nodetools",
-                log_filename="nodetools.log",
-                level="DEBUG"
-            )
 
             configure_runtime()
 
@@ -3429,7 +3436,7 @@ def main():
         )
 
         # Start the async components
-        generic_pft_utilities.initialize()
+        generic_pft_utilities.start()
 
         # Initialize and run the discord bot
         intents = discord.Intents.default()
@@ -3440,20 +3447,43 @@ def main():
             generic_pft_utilities=generic_pft_utilities,
             tasknode_utilities=supplemental_discord_functions
         )
+
+        # Set up signal handlers before running discord
+        def signal_handler(sig, frame):
+            logger.debug("Keyboard interrupt detected")
+            if generic_pft_utilities and generic_pft_utilities.running:
+                logger.info("Shutting down gracefully...")
+                try:
+                    # Close the Discord client
+                    if client:
+                        asyncio.get_event_loop().run_until_complete(client.close())
+                    # Clean up resources
+                    generic_pft_utilities.shutdown()
+                    logger.info("Shutdown complete")
+                except Exception as e:
+                    logger.error(f"Error during shutdown: {e}")
+            else:
+                logger.info("Cancelled")
+            sys.exit(0)
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        
         discord_credential_key = "discordbot_testnet_secret" if RuntimeConfig.USE_TESTNET else "discordbot_secret"
         client.run(cred_manager.get_credential(discord_credential_key))
 
-    except KeyboardInterrupt:
-        # if generic_pft_utilities:
-        #     print("\nShutting down gracefully...")
-        #     try:
-        #         # Clean up resources
-        #         generic_pft_utilities.shutdown()
-        #         print("Shutdown complete")
-        #     except Exception as e:
-        #         print(f"Error during shutdown: {e}")
-        # else:
-        #     print("Cancelled")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        if generic_pft_utilities and generic_pft_utilities.running:
+            logger.info("\nShutting down gracefully...")
+            try:
+                # Clean up resources
+                generic_pft_utilities.shutdown()
+                logger.info("Shutdown complete")
+            except Exception as e:
+                logger.error(f"Error during shutdown: {e}")
+        else:
+            logger.info("Cancelled")
         sys.exit(0)
 
 if __name__ == "__main__":
