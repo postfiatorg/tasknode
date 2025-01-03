@@ -77,6 +77,11 @@ class DeathMarchSettings:
     session_end: Optional[datetime.datetime] = None
     last_checkin: Optional[datetime.datetime] = None
 
+class CacheEntry:
+    def __init__(self, data):
+        self.data = data
+        self.timestamp = time.time()
+
 class TaskNodeDiscordBot(discord.Client):
 
     NON_EPHEMERAL_USERS = {402536023483088896}
@@ -122,6 +127,39 @@ class TaskNodeDiscordBot(discord.Client):
         self.refuseable_tasks_cache = {}
         self.accepted_tasks_cache = {}
         self.verification_tasks_cache = {}
+        self.cache_timeout = 300  # 5 minutes in seconds
+        self.cleanup_task = None
+
+    async def cleanup_caches(self):
+        """Background task to prevent memory leaks from unactivated deferred modals"""
+        while True:
+            await asyncio.sleep(60)  # Check every minute
+            current_time = time.time()
+
+            # List of all caches to clean
+            caches = [
+                self.pending_tasks_cache,
+                self.refuseable_tasks_cache,
+                self.accepted_tasks_cache,
+                self.verification_tasks_cache
+            ]
+
+            for cache in caches:
+                expired_keys = [
+                    k for k, v in cache.items()
+                    if current_time - v.timestamp > self.cache_timeout
+                ]
+                for k in expired_keys:
+                    del cache[k]
+
+    def set_cache_entry(self, cache_dict, key, value):
+        cache_dict[key] = CacheEntry(value)
+
+    def get_cache_entry(self, cache_dict, key):
+        entry = cache_dict.get(key)
+        if entry is None:
+            return None
+        return entry.data
 
     def is_special_user_non_ephemeral(self, interaction: discord.Interaction) -> bool:
         """Return False if the user is not in the NON_EPHEMERAL_USERS set, else True."""
@@ -133,6 +171,7 @@ class TaskNodeDiscordBot(discord.Client):
         guild_id = self.node_config.discord_guild_id
         guild = Object(id=guild_id)
         self.bg_task = self.loop.create_task(self.transaction_checker())
+        self.cleanup_task = self.loop.create_task(self.cleanup_caches())
 
         @self.tree.command(name="pf_new_wallet", description="Generate a new XRP wallet")
         async def pf_new_wallet(interaction: Interaction):
@@ -478,7 +517,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 return
             
             try:
-                logger.debug(f"MyClient.pf_update_link: Spawning wallet for {interaction.user.name} to update google doc link")
+                logger.debug(f"TaskNodeDiscordBot.pf_update_link: Spawning wallet for {interaction.user.name} to update google doc link")
                 seed = self.user_seeds[user_id]
                 username = interaction.user.name
                 wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
@@ -1456,7 +1495,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
 
             seed = self.user_seeds[user_id]
 
-            logger.debug(f"MyClient.setup_hook.pf_accept_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
+            logger.debug(f"TaskNodeDiscordBot.pf_accept_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
@@ -1478,7 +1517,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 await interaction.followup.send("You have no tasks to accept.", ephemeral=ephemeral_setting)
                 return
             
-            self.pending_tasks_cache[user_id] = pending_tasks
+            # Hack to allow for deferred modals
+            self.set_cache_entry(self.pending_tasks_cache, user_id, pending_tasks)
 
             # Create dropdown options based on the non-accepted tasks
             options = [
@@ -1496,7 +1536,16 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
             # Create the Select menu with its callback
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
-                task_text = str(self.pending_tasks_cache[user_id].loc[selected_task_id, 'proposal'])
+                cached_tasks = self.get_cache_entry(self.pending_tasks_cache, user_id)
+
+                if cached_tasks is None:
+                    await interaction.response.send_message(
+                        "This menu has expired. Please run the /pf_accept command again.",
+                        ephemeral=True
+                    )
+                    return
+                
+                task_text = str(cached_tasks.loc[selected_task_id, 'proposal'])
                 self.pending_tasks_cache.pop(user_id, None)
 
                 await interaction.response.send_modal(
@@ -1536,7 +1585,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
 
             seed = self.user_seeds[user_id]
 
-            logger.debug(f"MyClient.setup_hook.pf_refuse_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
+            logger.debug(f"TaskNodeDiscordBot.pf_refuse_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
@@ -1558,7 +1607,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 await interaction.followup.send("You have no tasks to refuse.", ephemeral=ephemeral_setting)
                 return
 
-            self.refuseable_tasks_cache[user_id] = refuseable_tasks
+            # Hack to allow for deferred modals
+            self.set_cache_entry(self.refuseable_tasks_cache, user_id, refuseable_tasks)
 
             # Create dropdown options based on the non-accepted tasks
             options = [
@@ -1576,7 +1626,16 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
             # Define the callback for when a user selects an option
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
-                task_text = str(self.refuseable_tasks_cache[user_id].loc[selected_task_id, 'proposal'])
+                cached_tasks = self.get_cache_entry(self.refuseable_tasks_cache, user_id)
+
+                if cached_tasks is None:
+                    await interaction.response.send_message(
+                        "This menu has expired. Please run the /pf_refuse command again.",
+                        ephemeral=True
+                    )
+                    return
+                
+                task_text = str(cached_tasks.loc[selected_task_id, 'proposal'])
                 self.refuseable_tasks_cache.pop(user_id, None)
     
                 await interaction.response.send_modal(
@@ -1616,7 +1675,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
 
             seed = self.user_seeds[user_id]
 
-            logger.debug(f"MyClient.setup_hook.pf_initial_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
+            logger.debug(f"TaskNodeDiscordBot.pf_initial_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
@@ -1638,7 +1697,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 await interaction.followup.send("You have no tasks to submit for verification.", ephemeral=ephemeral_setting)
                 return
 
-            self.accepted_tasks_cache[user_id] = accepted_tasks
+            # Hack to allow for deferred modals
+            self.set_cache_entry(self.accepted_tasks_cache, user_id, accepted_tasks)
 
             # Create dropdown options based on the accepted tasks
             options = [
@@ -1656,7 +1716,16 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
             # Define the callback for when a user selects an option
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
-                task_text = str(self.accepted_tasks_cache[user_id].loc[selected_task_id, 'proposal'])
+                cached_tasks = self.get_cache_entry(self.accepted_tasks_cache, user_id)
+
+                if cached_tasks is None:
+                    await interaction.response.send_message(
+                        "This menu has expired. Please run the /pf_initial_verification command again.",
+                        ephemeral=True
+                    )
+                    return
+                
+                task_text = str(cached_tasks.loc[selected_task_id, 'proposal'])
                 self.accepted_tasks_cache.pop(user_id, None)
 
                 await interaction.response.send_modal(
@@ -1693,7 +1762,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 return
 
             seed = self.user_seeds[user_id]
-            logger.debug(f"MyClient.setup_hook.pf_final_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
+            logger.debug(f"TaskNodeDiscordBot.pf_final_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
@@ -1715,7 +1784,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 await interaction.followup.send("You have no tasks pending final verification.", ephemeral=ephemeral_setting)
                 return
 
-            self.verification_tasks_cache[user_id] = verification_tasks
+            # Hack to allow for deferred modals
+            self.set_cache_entry(self.verification_tasks_cache, user_id, verification_tasks)
 
             # Create dropdown options based on the tasks in the verification queue
             options = [
@@ -1733,7 +1803,16 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
             # Define the callback for when a user selects an option
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
-                task_text = str(self.verification_tasks_cache[user_id].loc[selected_task_id, 'verification'])
+                cached_tasks = self.get_cache_entry(self.verification_tasks_cache, user_id)
+
+                if cached_tasks is None:
+                    await interaction.response.send_message(
+                        "This menu has expired. Please run the /pf_final_verification command again.",
+                        ephemeral=True
+                    )
+                    return
+                
+                task_text = str(cached_tasks.loc[selected_task_id, 'verification'])
                 self.verification_tasks_cache.pop(user_id, None)
 
                 # Open the modal to get the verification justification with the task text pre-populated
@@ -1773,7 +1852,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 return
 
             seed = self.user_seeds[user_id]
-            logger.debug(f"MyClient.setup_hook.pf_rewards: Spawning wallet to fetch rewards for {interaction.user.name}")
+            logger.debug(f"TaskNodeDiscordBot.pf_rewards: Spawning wallet to fetch rewards for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
             # Check initiation status
@@ -1991,7 +2070,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
         # Sync the commands to the guild
         # self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
-        logger.debug(f"MyClient.setup_hook: Slash commands synced to guild ID: {guild_id}")
+        logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced to guild ID: {guild_id}")
 
     async def _ensure_handshake(
         self,
