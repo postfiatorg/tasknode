@@ -258,7 +258,7 @@ class CorbanuChatBot:
             account_address: str
     ) -> dict:
         """Score user's answer to generate appropriate reward"""
-        logger.debug(f"MyClient.corbanu_reply: Generating scoring output for {account_address}.")
+        logger.debug(f"CorbanuChatBot.generate_user_question_scoring_output: Generating scoring output for {account_address}.")
         prompt = corbanu_scoring_user_prompt.replace('__full_user_context__', self.user_context)
         prompt = prompt.replace('__user_conversation__', '')
         prompt = prompt.replace('__original_question__', original_question)
@@ -273,7 +273,7 @@ class CorbanuChatBot:
                 ],
                 temperature=0
             )
-            logger.debug(f"MyClient.corbanu_reply: Scoring output for {account_address}: {response}")
+            logger.debug(f"CorbanuChatBot.generate_user_question_scoring_output: Scoring output for {account_address}: {response}")
             return self._parse_scoring_output(response)
 
         except Exception as e:
@@ -284,7 +284,7 @@ class CorbanuChatBot:
     def _parse_scoring_output(self, scoring_string: str) -> dict:
         """Parse scoring output into structured format"""
         try:
-            logger.debug(f"MyClient.corbanu_reply: Parsing scoring output: {scoring_string}")
+            logger.debug(f"CorbanuChatBot.generate_user_question_scoring_output: Parsing scoring output: {scoring_string}")
             value_match = re.search(r'\|\s*REWARD VALUE\s*\|\s*(\d+)\s*\|', scoring_string)
             desc_match = re.search(r'\|\s*REWARD DESCRIPTION\s*\|\s*([^|]+)\|', scoring_string)
             

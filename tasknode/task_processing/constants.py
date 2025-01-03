@@ -7,6 +7,9 @@ MAX_VERIFICATIONS_IN_CONTEXT = 5
 MAX_REWARDS_IN_CONTEXT = 5
 MAX_CHUNK_MESSAGES_IN_CONTEXT = 10
 
+# Maximum length for a commitment sentence
+MAX_COMMITMENT_SENTENCE_LENGTH = 950
+
 # Task types where the memo_type = task_id, requiring further disambiguation in the memo_data
 class TaskType(Enum):
     """Task-related memo types for workflow management"""

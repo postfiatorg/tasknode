@@ -227,40 +227,34 @@ class TaskNodeUtilities:
         except Exception as e:
             raise Exception(f"TaskNodeUtilities.send_google_doc: Error sending Google Doc: {str(e)}")
         
-    def has_initiation_rite(self, wallet: xrpl.wallet.Wallet, allow_reinitiation: bool = False) -> bool:
+    def has_initiation_rite(self, wallet_address: str) -> bool:
         """Check if wallet has a successful initiation rite.
         
         Args:
-            wallet: XRPL wallet object
-            allow_reinitiation: if True, always returns False to allow re-initiation (for testing)
+            wallet_address: XRPL wallet address
             
         Returns:
             bool: True if successful initiation exists
 
         Raises:
             Exception: If there is an error checking for the initiation rite
-        """
-        if allow_reinitiation and config.RuntimeConfig.USE_TESTNET:
-            logger.debug(f"TaskNodeUtilities.has_initiation_rite: Re-initiation allowed for {wallet.classic_address} (test mode)")
-            return False
-        
+        """        
         try: 
-            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet.classic_address, pft_only=False)
+            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address, pft_only=False)
             successful_initiations = memo_history[
                 (memo_history['memo_type'] == global_constants.SystemMemoType.INITIATION_RITE.value) & 
                 (memo_history['transaction_result'] == "tesSUCCESS")
             ]
             return len(successful_initiations) > 0
         except Exception as e:
-            logger.error(f"TaskNodeUtilities.has_initiation_rite: Error checking if user {wallet.classic_address} has a successful initiation rite: {e}")
+            logger.error(f"TaskNodeUtilities.has_initiation_rite: Error checking if user {wallet_address} has a successful initiation rite: {e}")
             return False
     
     def handle_initiation_rite(
             self, 
             wallet: xrpl.wallet.Wallet, 
             initiation_rite: str, 
-            username: str,
-            allow_reinitiation: bool = False
+            username: str
         ) -> dict:
         """Send initiation rite if none exists.
         
@@ -275,24 +269,21 @@ class TaskNodeUtilities:
         """
         logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Handling initiation rite for {username} ({wallet.classic_address})")
 
-        if self.has_initiation_rite(wallet, allow_reinitiation):
-            logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Initiation rite already exists for {username} ({wallet.classic_address})")
-        else:
-            initiation_memo = self.generic_pft_utilities.construct_memo(
-                memo_data=initiation_rite, 
-                memo_type=global_constants.SystemMemoType.INITIATION_RITE.value, 
-                memo_format=username
-            )
-            logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Sending initiation rite transaction from {wallet.classic_address} to node {self.node_address}")
-            response = self.generic_pft_utilities.send_memo(
-                wallet_seed_or_wallet=wallet,
-                memo=initiation_memo,
-                destination=self.node_address,
-                username=username,
-                compress=False
-            )
-            if not self.generic_pft_utilities.verify_transaction_response(response):
-                raise Exception("Initiation rite failed to send")
+        initiation_memo = self.generic_pft_utilities.construct_memo(
+            memo_data=initiation_rite, 
+            memo_type=global_constants.SystemMemoType.INITIATION_RITE.value, 
+            memo_format=username
+        )
+        logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Sending initiation rite transaction from {wallet.classic_address} to node {self.node_address}")
+        response = self.generic_pft_utilities.send_memo(
+            wallet_seed_or_wallet=wallet,
+            memo=initiation_memo,
+            destination=self.node_address,
+            username=username,
+            compress=False
+        )
+        if not self.generic_pft_utilities.verify_transaction_response(response):
+            raise Exception("Initiation rite failed to send")
 
     def discord__initiation_rite(
             self, 
@@ -344,7 +335,7 @@ class TaskNodeUtilities:
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
         return self.generic_pft_utilities.handle_google_doc(wallet, google_doc_link, username)
 
-    def discord__send_postfiat_request(self, user_request, user_name, user_seed):
+    def discord__send_postfiat_request(self, user_request, user_name, user_wallet: xrpl.wallet.Wallet):
         """Send a PostFiat task request via Discord.
 
         This method constructs and sends a transaction to request a new task. It:
@@ -355,7 +346,7 @@ class TaskNodeUtilities:
         Args:
             user_request (str): The task request text from the user
             user_name (str): Discord username (format: '.username')
-            seed (str): Wallet seed for transaction signing
+            user_wallet (xrpl.wallet.Wallet): Wallet for transaction signing
 
         Returns:
             dict: Transaction response object containing:
@@ -365,11 +356,10 @@ class TaskNodeUtilities:
         memo_type = task_id
         memo_format = user_name
 
-        logger.debug(f'PostFiatTaskGenerationSystem.discord__send_postfiat_request: Spawning wallet for user {user_name} to request task {task_id}')
-        sending_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(user_seed)
-        wallet_address = sending_wallet.classic_address
-
-        logger.debug(f"PostFiatTaskGenerationSystem.discord__send_postfiat_request: User {user_name} ({wallet_address}) has requested task {task_id}: {user_request}")
+        logger.debug(
+            f"PostFiatTaskGenerationSystem.discord__send_postfiat_request: "
+            f"User {user_name} ({user_wallet.address}) has requested task {task_id}: {user_request}"
+        )
 
         xmemo_to_send = self.generic_pft_utilities.construct_memo(
             memo_data=full_memo_string, 
@@ -378,14 +368,14 @@ class TaskNodeUtilities:
         )
 
         response = self.generic_pft_utilities.send_memo(
-            wallet_seed_or_wallet=sending_wallet,
-            destination=self.generic_pft_utilities.node_address,
+            wallet_seed_or_wallet=user_wallet,
+            destination=self.node_address,
             memo=xmemo_to_send,
             username=user_name
         )
 
         if not self.generic_pft_utilities.verify_transaction_response(response):
-            logger.error(f"PostFiatTaskGenerationSystem.discord__send_postfiat_request: Failed to send PF request to node from {sending_wallet.address}")
+            logger.error(f"PostFiatTaskGenerationSystem.discord__send_postfiat_request: Failed to send PF request to node from {user_wallet.address}")
 
         return response
 

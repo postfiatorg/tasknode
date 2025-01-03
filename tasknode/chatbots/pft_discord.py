@@ -13,7 +13,7 @@ from typing import Optional, Dict
 from xrpl.wallet import Wallet
 import discord
 from discord import Object, Interaction, SelectOption, app_commands
-from discord.ui import Modal, TextInput, View, Select
+from discord.ui import Modal, TextInput, View, Select, Button
 from loguru import logger
 
 # nodetools imports
@@ -40,6 +40,18 @@ from tasknode.chatbots.corbanu_beta import CorbanuChatBot
 from tasknode.task_processing.constants import TASK_PATTERNS
 from tasknode.task_processing.core_business_logic import TaskManagementRules
 from tasknode.chatbots.odv_focus_analyzer import ODVFocusAnalyzer
+from tasknode.chatbots.discord_modals import (
+    WalletInfoModal,
+    SeedModal,
+    PFTTransactionModal,
+    XRPTransactionModal,
+    AcceptanceModal,
+    RefusalModal,
+    InitiationModal,
+    UpdateLinkModal,
+    CompletionModal,
+    VerificationModal
+)
 
 @dataclass
 class AccountInfo:
@@ -105,45 +117,416 @@ class TaskNodeDiscordBot(discord.Client):
         
         self.tree = app_commands.CommandTree(self)
 
+        # Caches for dataframes to enable deferred modals
+        self.pending_tasks_cache = {}
+        self.refuseable_tasks_cache = {}
+        self.accepted_tasks_cache = {}
+        self.verification_tasks_cache = {}
+
     def is_special_user_non_ephemeral(self, interaction: discord.Interaction) -> bool:
         """Return False if the user is not in the NON_EPHEMERAL_USERS set, else True."""
         output = not (interaction.user.id in self.NON_EPHEMERAL_USERS)
         return output
 
-    def chunk_message(self, message, max_length=1900):
-            """Split a message into multiple parts to avoid exceeding Discord's 2000-char limit."""
-            lines = message.split('\n')
-            chunks = []
-            current_chunk = ""
-            for line in lines:
-                if len(current_chunk) + len(line) + 1 > max_length:
-                    chunks.append(current_chunk.strip())
-                    current_chunk = line + "\n"
-                else:
-                    current_chunk += line + "\n"
-            if current_chunk.strip():
-                chunks.append(current_chunk.strip())
-            return chunks
-
     async def setup_hook(self):
         """Sets up the slash commands for the bot and initiates background tasks."""
         guild_id = self.node_config.discord_guild_id
         guild = Object(id=guild_id)
-        self.tree.copy_global_to(guild=guild)
-        await self.tree.sync(guild=guild)
-        logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced to guild ID: {guild_id}")
-
         self.bg_task = self.loop.create_task(self.transaction_checker())
 
-        user_task_parser = self.user_task_parser
+        @self.tree.command(name="pf_new_wallet", description="Generate a new XRP wallet")
+        async def pf_new_wallet(interaction: Interaction):
+            # Generate the wallet
+            new_wallet = Wallet.create()
+
+            # Create the modal with the client reference and send it
+            modal = WalletInfoModal(
+                classic_address=new_wallet.classic_address,
+                wallet_seed=new_wallet.seed,
+                client=interaction.client
+            )
+            await interaction.response.send_modal(modal)
+
+        @self.tree.command(name="pf_show_seed", description="Show your stored seed")
+        async def pf_show_seed(interaction: discord.Interaction):
+            user_id = interaction.user.id
+            
+            # Check if the user has a stored seed
+            if user_id in self.user_seeds:
+                seed = self.user_seeds[user_id]
+                
+                # Create and send an ephemeral message with the seed
+                await interaction.response.send_message(
+                    f"Your stored seed is: {seed}\n"
+                    "This message will be deleted in 30 seconds for security reasons.",
+                    ephemeral=True,
+                    delete_after=30
+                )
+            else:
+                await interaction.response.send_message(
+                    "No seed found for your account. Use /pf_store_seed to store a seed first.",
+                    ephemeral=True
+                )
+
+        @self.tree.command(name="pf_guide", description="Show a guide of all available commands")
+        async def pf_guide(interaction: discord.Interaction):
+            guide_text = """
+# Post Fiat Discord Bot Guide
+
+### Info Commands
+1. /pf_guide: Show this guide
+2. /pf_my_wallet: Show information about your stored wallet.
+3. /wallet_info: Get information about a specific wallet address.
+4. /pf_show_seed: Display your stored seed 
+5. /pf_rewards: Show recent PFT rewards.
+6. /pf_outstanding: Show your outstanding tasks.
+
+### Initiation
+1. /pf_new_wallet: Generate a new XRP wallet. You need to fund via Coinbase etc to continue
+2. /pf_store_seed: Securely store your wallet seed.
+3. /pf_initiate: Initiate your commitment to the Post Fiat system, get access to PFT and initial grant
+4. /pf_update_link: Update your Google Doc link
+
+### Task Request
+1. /pf_request_task: Request a new Post Fiat task.
+2. /pf_accept: View and accept available tasks.
+3. /pf_refuse: View and refuse available tasks.
+4. /pf_initial_verification: Submit a completed task for verification.
+5. /pf_final_verification: Submit final verification for a task to receive reward
+
+### Transaction
+1. /xrp_send: Send XRP to a destination address with a memo.
+2. /pf_send: Open a transaction form to send PFT tokens with a memo.
+3. /pf_log: take notes re your workflows, with optional encryption
+
+## Post Fiat operates on a Google Document.
+1. Set your Document to be shared (File/Share/Share With Others/Anyone With Link)
+2. The PF Initiate Function requires a document and a verbal committment
+3. Place the following section in your document:
+___x TASK VERIFICATION SECTION START x___ 
+task verification details are here 
+___x TASK VERIFICATION SECTION END x___
+
+## Local Version
+You can run a local version of the wallet. Please reference the Post Fiat Github
+https://github.com/postfiatorg/pftpyclient
+
+Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with a bit more to start.
+"""
+            
+            await interaction.response.send_message(guide_text, ephemeral=True)
+
+        @self.tree.command(name="pf_my_wallet", description="Show your wallet information")
+        async def pf_my_wallet(interaction: discord.Interaction):
+            user_id = interaction.user.id
+            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            
+            # Defer the response to avoid timeout
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+            
+            if user_id not in self.user_seeds:
+                await interaction.followup.send(
+                    "No seed found for your account. Use /pf_store_seed to store a seed first.",
+                    ephemeral=True
+                )
+                return
+
+            try:
+                seed = self.user_seeds[user_id]
+                logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_my_wallet: Spawning wallet to fetch info for {interaction.user.name}")
+                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
+                wallet_address = wallet.classic_address
+
+                # Get account info
+                account_info = self.generate_basic_balance_info_string(address=wallet.address)
+                
+                # Get recent messages
+                incoming_messages, outgoing_messages = self.generic_pft_utilities.get_recent_messages(wallet_address)
+
+                # Split long strings if they exceed Discord's limit
+                def truncate_field(content, max_length=1024):
+                    if len(content) > max_length:
+                        return content[:max_length-3] + "..."
+                    return content
+
+                # Create multiple embeds if needed
+                embeds = []
+                
+                # First embed with basic info
+                embed = discord.Embed(title="Your Wallet Information", color=0x00ff00)
+                embed.add_field(name="Wallet Address", value=wallet_address, inline=False)
+                
+                # Split account info into multiple fields if needed
+                if len(account_info) > 1024:
+                    parts = [account_info[i:i+1024] for i in range(0, len(account_info), 1024)]
+                    for i, part in enumerate(parts):
+                        embed.add_field(name=f"Balance Information {i+1}", value=part, inline=False)
+                else:
+                    embed.add_field(name="Balance Information", value=account_info, inline=False)
+                
+                embeds.append(embed)
+
+                if incoming_messages or outgoing_messages:
+                    embed2 = discord.Embed(title="Recent Transactions", color=0x00ff00)
+                    
+                    if incoming_messages:
+                        incoming = truncate_field(incoming_messages)
+                        embed2.add_field(name="Most Recent Incoming Transaction", value=incoming, inline=False)
+                    
+                    if outgoing_messages:
+                        outgoing = truncate_field(outgoing_messages)
+                        embed2.add_field(name="Most Recent Outgoing Transaction", value=outgoing, inline=False)
+                    
+                    embeds.append(embed2)
+
+                # Send all embeds
+                await interaction.followup.send(embeds=embeds, ephemeral=ephemeral_setting)
+            
+            except Exception as e:
+                error_message = f"An unexpected error occurred: {str(e)}. Please try again later or contact support if the issue persists."
+                logger.error(f"TaskNodeDiscordBot.pf_my_wallet: An error occurred: {str(e)}")
+                logger.error(traceback.format_exc())
+                await interaction.followup.send(error_message, ephemeral=True)
+
+        @self.tree.command(name="wallet_info", description="Get information about a wallet")
+        async def wallet_info(interaction: discord.Interaction, wallet_address: str):
+            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            try:
+                account_info = self.generate_basic_balance_info_string(address=wallet_address, owns_wallet=False)
+                
+                # Create an embed for better formatting
+                embed = discord.Embed(title="Wallet Information", color=0x00ff00)
+                embed.add_field(name="Wallet Address", value=wallet_address, inline=False)
+                embed.add_field(name="Account Info", value=account_info, inline=False)
+                
+                await interaction.response.send_message(embed=embed, ephemeral=ephemeral_setting)
+            except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.wallet_info: An error occurred: {str(e)}")
+                logger.error(traceback.format_exc())
+                await interaction.response.send_message(f"An error occurred: {str(e)}", ephemeral=True)
+
+        @self.tree.command(name="admin_debug_full_user_context", description="Return the full user context")
+        async def admin_debug_full_user_context(interaction: discord.Interaction, wallet_address: str):
+            # Check if the user has permission (matches the specific ID)
+            if interaction.user.id not in global_constants.DISCORD_SUPER_USER_IDS:
+                await interaction.response.send_message(
+                    "You don't have permission to use this command.", 
+                    ephemeral=True
+                )
+                return
+            try:
+                await interaction.response.defer(ephemeral=True)
+                full_user_context = self.user_task_parser.get_full_user_context_string(
+                    account_address=wallet_address,
+                    n_memos_in_context=20
+                )
+                await self.send_long_interaction_response(
+                        interaction, 
+                        f"\n{full_user_context}", 
+                        ephemeral=True
+                    )
+            except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.admin_debug_full_user_context: An error occurred: {str(e)}")
+                logger.error(traceback.format_exc())
+                await interaction.followup.send(
+                    f"An error occurred while fetching the full user context: {str(e)}", 
+                    ephemeral=True
+                )
+
+        @self.tree.command(name="admin_change_ephemeral_setting", description="Change the ephemeral setting for self")
+        async def admin_change_ephemeral_setting(interaction: discord.Interaction, public: bool):
+            # Check if the user has permission (matches the specific ID)
+            if interaction.user.id not in global_constants.DISCORD_SUPER_USER_IDS:
+                await interaction.response.send_message(
+                    "You don't have permission to use this command.", 
+                    ephemeral=True
+                )
+                return
+            
+            user_id = interaction.user.id
+            if public:
+                self.NON_EPHEMERAL_USERS.add(user_id)
+                setting = "PUBLIC"
+            else:
+                self.NON_EPHEMERAL_USERS.discard(user_id)
+                setting = "PRIVATE"
+            
+            await interaction.response.send_message(
+                f"Your messages will now be {setting}",
+                ephemeral=True
+            )
+
+        @self.tree.command(name="pf_send", description="Open a transaction form")
+        async def pf_send(interaction: Interaction):
+            user_id = interaction.user.id
+
+            # Check if the user has a stored seed
+            if user_id not in self.user_seeds:
+                await interaction.response.send_message(
+                    "You must store a seed using /store_seed before initiating a transaction.", 
+                    ephemeral=True
+                )
+                return
+
+            seed = self.user_seeds[user_id]
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+
+            # Pass the user's wallet to the modal
+            await interaction.response.send_modal(
+                PFTTransactionModal(
+                    wallet=wallet,
+                    generic_pft_utilities=self.generic_pft_utilities
+                )
+            )
+
+        @self.tree.command(name="xrp_send", description="Send XRP to a destination address")
+        async def xrp_send(interaction: discord.Interaction):
+            user_id = interaction.user.id
+            
+            # Check if the user has a stored seed
+            if user_id not in self.user_seeds:
+                await interaction.response.send_message(
+                    "You must store a seed using /pf_store_seed before initiating a transaction.", ephemeral=True
+                )
+                return
+
+            seed = self.user_seeds[user_id]
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+
+            # Pass the user's wallet to the modal
+            await interaction.response.send_modal(
+                XRPTransactionModal(
+                    wallet=wallet,
+                    generic_pft_utilities=self.generic_pft_utilities
+                )
+            )
+
+        @self.tree.command(name="pf_store_seed", description="Store a seed")
+        async def store_seed(interaction: discord.Interaction):
+            await interaction.response.send_modal(SeedModal(parent=self))
+            logger.debug(f"TaskNodeDiscordBot.store_seed: Seed storage command executed by {interaction.user.name}")
+
+        @self.tree.command(name="pf_initiate", description="Initiate your commitment")
+        async def pf_initiate(interaction: discord.Interaction):
+            user_id = interaction.user.id
+            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+
+            # Check if the user has a stored seed
+            if user_id not in self.user_seeds:
+                await interaction.followup.send(
+                    "You must store a seed using /store_seed before initiating.", 
+                    ephemeral=ephemeral_setting
+                )
+                return
+
+            try:
+                # Spawn the user's wallet
+                logger.debug(f"TaskNodeDiscordBot.pf_initiate: Spawning wallet to initiate for {interaction.user.name}")
+                username = interaction.user.name
+                seed = self.user_seeds[user_id]
+                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
+
+                if not (config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.ENABLE_REINITIATIONS):
+                    if self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                        await interaction.followup.send(
+                            "You've already completed an initiation rite. Re-initiation is not allowed.", 
+                            ephemeral=ephemeral_setting
+                        )
+                    return
+
+                # Create a button to trigger the modal
+                async def button_callback(button_interaction: discord.Interaction):
+                    await button_interaction.response.send_modal(
+                        InitiationModal(
+                            seed=seed,
+                            username=username,
+                            client_instance=self,
+                            tasknode_utilities=self.tasknode_utilities,
+                            ephemeral_setting=ephemeral_setting
+                        )
+                    )
+
+                button = Button(label="Begin Initiation", style=discord.ButtonStyle.primary)
+                button.callback = button_callback
+
+                view = View()
+                view.add_item(button)
+                await interaction.followup.send(
+                    "Click the button below to begin your initiation:", 
+                    view=view, 
+                    ephemeral=ephemeral_setting
+                )
+
+            except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.pf_initiate: An error occurred: {str(e)}")
+                logger.error(traceback.format_exc())
+                await interaction.followup.send(f"An error occurred during initiation: {str(e)}", ephemeral=ephemeral_setting)
+
+        @self.tree.command(name="pf_update_link", description="Update your Google Doc link")
+        async def pf_update_link(interaction: discord.Interaction):
+            user_id = interaction.user.id
+            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+
+            # Check if the user has a stored seed
+            if user_id not in self.user_seeds:
+                await interaction.followup.send(
+                    "You must store a seed using /pf_store_seed first.",
+                    ephemeral=ephemeral_setting
+                )
+                return
+            
+            try:
+                logger.debug(f"MyClient.pf_update_link: Spawning wallet for {interaction.user.name} to update google doc link")
+                seed = self.user_seeds[user_id]
+                username = interaction.user.name
+                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
+
+                # Check initiation status
+                if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                    await interaction.followup.send(
+                        "You must perform the initiation rite first. Run /pf_initiate to do so.", 
+                        ephemeral=ephemeral_setting
+                    )
+                    return
+
+                # Create a button to trigger the modal
+                async def button_callback(button_interaction: discord.Interaction):
+                    await button_interaction.response.send_modal(
+                        UpdateLinkModal(
+                            seed=seed,
+                            username=username,
+                            client_instance=self,
+                            tasknode_utilities=self.tasknode_utilities,
+                            ephemeral_setting=ephemeral_setting
+                        )
+                    )
+
+                button = Button(label="Update Google Doc Link", style=discord.ButtonStyle.primary)
+                button.callback = button_callback
+
+                view = View()
+                view.add_item(button)
+                await interaction.followup.send(
+                    "Click the button below to update your Google Doc link:", 
+                    view=view, 
+                    ephemeral=ephemeral_setting
+                )
+
+            except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.pf_update_link: An error occurred: {str(e)}")
+                logger.error(traceback.format_exc())
+                await interaction.followup.send(f"An error occurred during update: {str(e)}", ephemeral=True)
 
         @self.tree.command(name="odv_sprint", description="Start an ODV sprint planning session")
         async def odv_sprint(interaction: discord.Interaction):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             if user_id not in self.user_seeds:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You must store a seed using /pf_store_seed before starting an ODV sprint planning session.", 
                     ephemeral=True
                 )
@@ -152,19 +535,12 @@ class TaskNodeDiscordBot(discord.Client):
             seed = self.user_seeds[user_id]
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message(
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=True
                 )
                 return
-
-            # Defer early
-            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             try:
                 odv_planner = ODVSprintPlannerO1(
@@ -188,7 +564,8 @@ class TaskNodeDiscordBot(discord.Client):
                     ephemeral=ephemeral_setting
                 )
             except Exception as e:
-                logger.error(f"Error in odv_sprint: {str(e)}")
+                logger.error(f"TaskNodeDiscordBot.odv_sprint: An error occurred: {str(e)}")
+                logger.error(traceback.format_exc())
                 await interaction.followup.send(
                     f"An error occurred while initializing the ODV sprint planning session: {str(e)}", 
                     ephemeral=True
@@ -218,7 +595,8 @@ class TaskNodeDiscordBot(discord.Client):
                 logger.debug(f"TaskNodeDiscordBot.odv_sprint_reply: Response received for {interaction.user.name}")
                 await self.send_long_interaction_response(interaction, response, ephemeral=ephemeral_setting)
             except Exception as e:
-                logger.error(f"Error in odv_sprint_reply: {str(e)}")
+                logger.error(f"TaskNodeDiscordBot.odv_sprint_reply: An error occurred: {str(e)}")
+                logger.error(traceback.format_exc())
                 await interaction.followup.send(
                     f"An error occurred: {str(e)}", 
                     ephemeral=True
@@ -388,9 +766,11 @@ class TaskNodeDiscordBot(discord.Client):
         async def pf_death_march_start(interaction: discord.Interaction, days: int):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+
             # 1. Check user has a stored seed
             if user_id not in self.user_seeds:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You must store a seed using /pf_store_seed first.", 
                     ephemeral=True
                 )
@@ -398,20 +778,18 @@ class TaskNodeDiscordBot(discord.Client):
             seed = self.user_seeds[user_id]
             user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
             user_address = user_wallet.classic_address
+
             # 2. Check initiation
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=user_address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message(
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=user_address):
+                await interaction.followup.send(
                     "You must perform the initiation rite first ( /pf_initiate ).", 
                     ephemeral=True
                 )
                 return
+            
             # 3. Check user has configured death march settings
             if user_id not in self.user_deathmarch_settings:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You must set your death march configuration using /pf_configure_deathmarch first.", 
                     ephemeral=True
                 )
@@ -419,12 +797,12 @@ class TaskNodeDiscordBot(discord.Client):
             
             # 4. Check if user is already in a death march
             if user_id in self.user_deathmarch_settings and self.user_deathmarch_settings[user_id].session_end is not None:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You are already in an active death march. Use /pf_death_march_end to end it first.", 
                     ephemeral=True
                 )
                 return
-            await interaction.response.defer(ephemeral=ephemeral_setting)
+            
             # Calculate cost based on check-in frequency
             settings = self.user_deathmarch_settings[user_id]
             checks_per_day, cost = self._calculate_death_march_costs(settings, days)
@@ -518,14 +896,15 @@ class TaskNodeDiscordBot(discord.Client):
                     ephemeral=ephemeral_setting
                 )
 
-        # Inside TaskNodeDiscordBot.setup_hook or a similar initialization section in your TaskNodeDiscordBot class
         @self.tree.command(name="odv_context_doc", description="Start an ODV context document improvement session")
         async def odv_context_doc(interaction: discord.Interaction):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+
             # Check if the user has a stored seed
             if user_id not in self.user_seeds:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You must store a seed using /pf_store_seed before starting an ODV context document improvement session.", 
                     ephemeral=True
                 )
@@ -535,19 +914,12 @@ class TaskNodeDiscordBot(discord.Client):
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message(
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=True
                 )
                 return
-
-            # Defer early so Discord knows we're working
-            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             try:
                 # Initialize the ODVContextDocImprover
@@ -577,7 +949,8 @@ class TaskNodeDiscordBot(discord.Client):
                     ephemeral=ephemeral_setting
                 )
             except Exception as e:
-                logger.error(f"Error in odv_context_doc: {str(e)}")
+                logger.error(f"TaskNodeDiscordBot.odv_context_doc: An error occurred: {str(e)}")
+                logger.error(traceback.format_exc())
                 await interaction.followup.send(
                     f"An error occurred while initializing the ODV context document improvement session: {str(e)}", 
                     ephemeral=True
@@ -607,21 +980,22 @@ class TaskNodeDiscordBot(discord.Client):
                 logger.debug(f"TaskNodeDiscordBot.odv_context_doc_reply: Response received for {interaction.user.name}")
                 await self.send_long_interaction_response(interaction, response, ephemeral=ephemeral_setting)
             except Exception as e:
-                logger.error(f"Error in odv_context_doc_reply: {str(e)}")
+                logger.error(f"TaskNodeDiscordBot.odv_context_doc_reply: An error occurred: {str(e)}")
+                logger.error(traceback.format_exc())
                 await interaction.followup.send(
                     f"An error occurred: {str(e)}", 
                     ephemeral=True
                 )
 
-        # In the corbanu_offering command:
         @self.tree.command(name="corbanu_offering", description="Generate a Corbanu offering")
         async def corbanu_offering(interaction: discord.Interaction):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             # Check if the user has a stored seed
             if user_id not in self.user_seeds:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You must store a seed using /pf_store_seed before using this command.",
                     ephemeral=True
                 )
@@ -631,12 +1005,8 @@ class TaskNodeDiscordBot(discord.Client):
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.classic_address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message(
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
+                await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=True
                 )
@@ -644,14 +1014,11 @@ class TaskNodeDiscordBot(discord.Client):
             
             # Return the existing question if the user has one
             if user_id in self.user_questions:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     f"Corbanu Offering:\n\n{self.user_questions[user_id]}",
                     ephemeral=ephemeral_setting
                 )
                 return
-
-            # Defer the response since generating the Corbanu offering might take time
-            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             try:
                 # Initialize the CorbanuChatBot instance
@@ -662,14 +1029,6 @@ class TaskNodeDiscordBot(discord.Client):
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities
                 )
-
-                # NOTE: Even without recent conversation history, Claude sonnet 3.5 has too much context to generate a non-duplicate question
-                # Retrieve the user's recent conversation messages
-                # conversation_history = self.conversations.get(user_id, [])
-                # recent_messages = conversation_history[-5:]
-                # user_chat_history = "\n".join(
-                #     f"{msg['role'].upper()}: {msg['content']}" for msg in recent_messages
-                # )
 
                 # Generate a question as the Corbanu offering 
                 question = await corbanu.generate_question()
@@ -696,9 +1055,10 @@ class TaskNodeDiscordBot(discord.Client):
         async def corbanu_reply(interaction: discord.Interaction, answer: str):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             if user_id not in self.user_seeds:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You must store a seed using /pf_store_seed before using this command.",
                     ephemeral=True
                 )
@@ -708,25 +1068,19 @@ class TaskNodeDiscordBot(discord.Client):
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.classic_address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message(
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
+                await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.",
                     ephemeral=True
                 )
                 return
 
             if user_id not in self.user_questions:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "No Corbanu question found. Please use /corbanu_offering first.",
                     ephemeral=ephemeral_setting
                 )
                 return
-
-            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             try:
                 question = self.user_questions[user_id]
@@ -748,16 +1102,18 @@ class TaskNodeDiscordBot(discord.Client):
                 reward_value = scoring.get('reward_value', 0)
                 reward_description = scoring.get('reward_description', 'No description')
 
-                full_message = (f"CORBANU_OFFERING\n"
+                full_message = ("**Corbanu Summary**\n"
+                                "CORBANU_OFFERING\n"
                                 f"Q: {question}\n\n"
                                 f"A: {answer}\n\n"
                                 f"Reward: {reward_value} PFT\n"
                                 f"{reward_description}")
-
-                # Send a short summary to the user in Discord
-                summary_chunks = self.chunk_message(f"**Corbanu Summary**\n{full_message}")
-                for chunk in summary_chunks:
-                    await interaction.followup.send(chunk, ephemeral=ephemeral_setting)
+                
+                await self.send_long_interaction_response(
+                    interaction=interaction,
+                    message=full_message,
+                    ephemeral=ephemeral_setting
+                )
 
                 # Now the user will send the Q&A to the remembrancer
                 # Similar to pf_log, we need to ensure a handshake if encrypt=True
@@ -793,7 +1149,9 @@ class TaskNodeDiscordBot(discord.Client):
                     chunk=True,
                     compress=True,
                     encrypt=encrypt,
-                    pft_amount=Decimal(0)  # No PFT here, just sending the message
+                    # No PFT here, just sending the message
+                    # NOTE: This means we won't see this memo if we filter by PFT
+                    pft_amount=Decimal(0)
                 )
 
                 # Verify that the large message was successfully sent
@@ -847,11 +1205,13 @@ class TaskNodeDiscordBot(discord.Client):
                 reward_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(
                     reward_tx
                 )
-                reward_clean_string = reward_info['clean_string']
+                reward_clean_string = "Reward transaction sent successfully:\n" + reward_info['clean_string']
 
-                reward_chunks = self.chunk_message(f"Reward transaction sent successfully:\n{reward_clean_string}")
-                for chunk in reward_chunks:
-                    await interaction.followup.send(chunk, ephemeral=ephemeral_setting)
+                await self.send_long_interaction_response(
+                    interaction=interaction,
+                    message=reward_clean_string,
+                    ephemeral=ephemeral_setting
+                )
 
                 # Clear stored question
                 del self.user_questions[user_id]
@@ -859,19 +1219,22 @@ class TaskNodeDiscordBot(discord.Client):
             except Exception as e:
                 logger.error(f"Error in corbanu_reply: {str(e)}")
                 logger.error(traceback.format_exc())
-                error_chunks = self.chunk_message(f"An error occurred while processing your reply: {str(e)}")
-                for chunk in error_chunks:
-                    await interaction.followup.send(chunk, ephemeral=True)
+                await self.send_long_interaction_response(
+                    interaction=interaction,
+                    message=f"An error occurred while processing your reply: {str(e)}",
+                    ephemeral=True
+                )
 
         @self.tree.command(name="corbanu_request", description="Send a request to Corbanu and get a response from Angron or Fulgrim")
         @app_commands.describe(message="Your message to Corbanu")
         async def corbanu_request(interaction: discord.Interaction, message: str):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             # Check if the user has a stored seed
             if user_id not in self.user_seeds:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You must store a seed using /pf_store_seed before using this command.",
                     ephemeral=True
                 )
@@ -881,19 +1244,12 @@ class TaskNodeDiscordBot(discord.Client):
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.classic_address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message(
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
+                await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=True
                 )
                 return
-
-            # Defer since response might be long
-            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             try:
                 # Add the user message to their conversation history
@@ -913,10 +1269,11 @@ class TaskNodeDiscordBot(discord.Client):
                 # Get Corbanu's response asynchronously
                 response = await corbanu.get_response_async(message)
 
-                # Chunk the response if needed and send to user
-                response_chunks = self.chunk_message(response)
-                for chunk in response_chunks:
-                    await interaction.followup.send(chunk, ephemeral=ephemeral_setting)
+                await self.send_long_interaction_response(
+                    interaction=interaction,
+                    message=response,
+                    ephemeral=ephemeral_setting
+                )
 
                 # Append Corbanu's response to conversation history
                 self.conversations[user_id].append({"role": "assistant", "content": response})
@@ -961,6 +1318,8 @@ class TaskNodeDiscordBot(discord.Client):
                     chunk=True,
                     compress=True,
                     encrypt=encrypt,
+                    # No PFT here, just sending the message
+                    # NOTE: This means we won't see this memo if we filter by PFT
                     pft_amount=Decimal(0)
                 )
 
@@ -980,188 +1339,176 @@ class TaskNodeDiscordBot(discord.Client):
             except Exception as e:
                 logger.error(f"Error in corbanu_request: {str(e)}")
                 logger.error(traceback.format_exc())
-                error_chunks = self.chunk_message(f"An error occurred: {str(e)}")
-                for chunk in error_chunks:
-                    await interaction.followup.send(chunk, ephemeral=True)
+                await self.send_long_interaction_response(
+                    interaction=interaction,
+                    message=f"An error occurred: {str(e)}",
+                    ephemeral=True
+                )
 
-        @self.tree.command(name="pf_send", description="Open a transaction form")
-        async def pf_send(interaction: Interaction):
+        @self.tree.command(name="pf_outstanding", description="Show your outstanding tasks and verification tasks")
+        async def pf_outstanding(interaction: discord.Interaction):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+            
             # Check if the user has a stored seed
             if user_id not in self.user_seeds:
-                await interaction.response.send_message(
-                    "You must store a seed using /store_seed before initiating a transaction.", ephemeral=True
+                await interaction.followup.send(
+                    "You must store a seed using /pf_store_seed before viewing outstanding tasks.", 
+                    ephemeral=True
                 )
                 return
 
             seed = self.user_seeds[user_id]
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_outstanding: Spawning wallet to fetch tasks for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
             # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
+                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
+                    ephemeral=True
+                )
                 return
 
-            class SimpleTransactionModal(discord.ui.Modal, title='Transaction Details'):
-                address = discord.ui.TextInput(label='Recipient Address')
-                amount = discord.ui.TextInput(label='Amount')
-                message = discord.ui.TextInput(label='Message', style=discord.TextStyle.long, required=False)
+            try:
+                # Get the unformatted output message
+                output_message = self.create_full_outstanding_pft_string(account_address=wallet.address)
 
-                def __init__(self, parent: TaskNodeDiscordBot, seed, *args, **kwargs):
-                    super().__init__(*args, **kwargs)
-                    self.parent = parent
-                    self.seed = seed  # Store the user's seed
+                logger.debug(f"TaskNodeDiscordBot.pf_outstanding: Output message: {output_message}")
+                
+                # Format the message using the formatting function
+                formatted_chunks = self.format_tasks_for_discord(output_message)
+                
+                # Send the first chunk
+                await interaction.followup.send(formatted_chunks[0], ephemeral=ephemeral_setting)
 
-                async def on_submit(self, interaction: discord.Interaction):
-                    # Defer the interaction response to avoid timeout
-                    await interaction.response.defer(ephemeral=ephemeral_setting)
+                # Send the rest of the chunks
+                for chunk in formatted_chunks[1:]:
+                    await interaction.followup.send(chunk, ephemeral=ephemeral_setting)
 
-                    # Perform the transaction using the details provided in the modal
-                    destination_address = self.address.value
-                    amount = self.amount.value
-                    message = self.message.value
+            except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.pf_outstanding: Error fetching outstanding tasks: {str(e)}")
+                logger.error(traceback.format_exc())
+                await interaction.followup.send(
+                    f"An error occurred while fetching your outstanding tasks: {str(e)}", 
+                    ephemeral=True
+                )
 
-                    # construct memo
-                    memo = self.parent.generic_pft_utilities.construct_memo(
-                        memo_data=message, 
-                        memo_type='DISCORD_SERVER', 
-                        memo_format=interaction.user.name
-                    )
+        @self.tree.command(name="pf_request_task", description="Request a Post Fiat task")
+        async def pf_task_slash(interaction: discord.Interaction, task_request: str):
+            user_id = interaction.user.id
+            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
 
-                    # send memo with PFT attached
-                    response = self.parent.generic_pft_utilities.send_memo(
-                        wallet_seed_or_wallet=self.seed,
-                        destination=destination_address,
-                        memo=memo,
-                        username=interaction.user.name,
-                        pft_amount=Decimal(amount)
-                    )
+            # Check if the user has stored a seed
+            if user_id not in self.user_seeds:
+                await interaction.followup.send(
+                    "You must store a seed using /pf_store_seed before generating a task.", 
+                    ephemeral=True
+                )
+                return
 
-                    # extract response from last memo
-                    tx_info = self.parent.generic_pft_utilities.extract_transaction_info_from_response_object(response)['clean_string']
-
-                    await interaction.followup.send(
-                        f'Transaction result: {tx_info}',
-                        ephemeral=ephemeral_setting
-                    )
-
-            # Pass the user's seed to the modal
-            await interaction.response.send_modal(SimpleTransactionModal(parent=self, seed=seed))
+            # Get the user's seed and other necessary information
+            seed = self.user_seeds[user_id]
+            user_name = interaction.user.name
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
             
+            # Check initiation status
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
+                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
+                    ephemeral=True
+                )
+                return
+            
+            try:
+                # Send the Post Fiat request, running in a thread pool
+                response = await interaction.client.loop.run_in_executor(
+                    None,
+                    self.tasknode_utilities.discord__send_postfiat_request,
+                    task_request,
+                    user_name,
+                    wallet
+                )
+                
+                # Extract transaction information
+                transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response=response)
+                clean_string = transaction_info['clean_string']
+                
+                # Send the response
+                await interaction.followup.send(f"Task Requested with Details: {clean_string}", ephemeral=ephemeral_setting)
+            except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.pf_task_slash: Error during task request: {str(e)}")
+                logger.error(traceback.format_exc())
+                await interaction.followup.send(f"An error occurred while processing your request: {str(e)}", ephemeral=True)
+
         @self.tree.command(name="pf_accept", description="Accept tasks")
         async def pf_accept_menu(interaction: discord.Interaction):
             # Fetch the user's seed
             user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction) 
+            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+
             if user_id not in self.user_seeds:
-                await interaction.response.send_message("You must store a seed using /store_seed before accepting tasks.", ephemeral=True)
+                await interaction.followup.send("You must store a seed using /store_seed before accepting tasks.", ephemeral=ephemeral_setting)
                 return
 
             seed = self.user_seeds[user_id]
 
-            # Fetch the tasks that are not yet accepted
-            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_accept_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
+            logger.debug(f"MyClient.setup_hook.pf_accept_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
+                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
+                    ephemeral=ephemeral_setting
+                )
                 return
 
             # Fetch proposal acceptance pairs
             memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
 
-            # Return immediately if memo history is empty
-            if memo_history.empty:
-                await interaction.response.send_message("You have no tasks to accept.", ephemeral=ephemeral_setting)
-                return
-
             # Get pending proposals
-            pf_df = self.user_task_parser.get_pending_proposals(account=memo_history)
+            pending_tasks = self.user_task_parser.get_pending_proposals(account=memo_history)
 
-            # Return immediately if proposal acceptance pairs are empty
-            if pf_df.empty:
-                await interaction.response.send_message("You have no tasks to accept.", ephemeral=ephemeral_setting)
+            # Return if proposal acceptance pairs are empty
+            if pending_tasks.empty:
+                await interaction.followup.send("You have no tasks to accept.", ephemeral=ephemeral_setting)
                 return
+            
+            self.pending_tasks_cache[user_id] = pending_tasks
 
             # Create dropdown options based on the non-accepted tasks
             options = [
                 SelectOption(
                     label=task_id, 
-                    description=str(pf_df.loc[task_id, 'proposal'])[:100],  # get just the proposal text
+                    description=str(pending_tasks.loc[task_id, 'proposal'])[:100],  # get just the proposal text
                     value=task_id
                 )
-                for task_id in pf_df.index
+                for task_id in pending_tasks.index
             ]
 
             # Create the Select menu
             select = Select(placeholder="Choose a task to accept", options=options)
 
-            # Define the modal for inputting the acceptance string
-            class AcceptanceModal(Modal):
-                def __init__(self, parent: TaskNodeDiscordBot, task_id: str, task_text: str, seed: str, user_name: str):
-                    super().__init__(title="Accept Task")
-                    self.parent = parent
-                    self.task_id = task_id
-                    self.seed = seed
-                    self.user_name = user_name
-                    
-                    # Add a label to display the full task description
-                    self.task_description = discord.ui.TextInput(
-                        label="Task Description (Do not modify)",
-                        default=task_text,
-                        style=discord.TextStyle.paragraph,
-                        required=False
-                    )
-                    self.add_item(self.task_description)
-                    
-                    # Add the acceptance string input
-                    self.acceptance_string = TextInput(
-                        label="Acceptance String", 
-                        placeholder="Type your acceptance string here",
-                        style=discord.TextStyle.paragraph
-                    )
-                    self.add_item(self.acceptance_string)
-
-                async def on_submit(self, interaction: discord.Interaction):
-                    # Defer the response to avoid interaction timeout
-                    await interaction.response.defer(ephemeral=ephemeral_setting)
-                    
-                    acceptance_string = self.acceptance_string.value
-                    
-                    # Call the discord__task_acceptance function
-                    output_string = self.parent.tasknode_utilities.discord__task_acceptance(
-                        user_seed=self.seed,
-                        user_name=self.user_name,
-                        task_id_to_accept=self.task_id,
-                        acceptance_string=acceptance_string
-                    )
-                    
-                    # Send a follow-up message with the result
-                    await interaction.followup.send(output_string, ephemeral=ephemeral_setting)
-
-            # Define the callback for when a user selects an option
+            # Create the Select menu with its callback
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
-                task_text = str(pf_df.loc[selected_task_id, 'proposal'])  # Get just the proposal text
-                # Open the modal to get the acceptance string with the task text pre-populated
-                await interaction.response.send_modal(AcceptanceModal(
-                    parent=self,
-                    task_id=selected_task_id,
-                    task_text=task_text,
-                    seed=seed,
-                    user_name=interaction.user.name
-                ))
+                task_text = str(self.pending_tasks_cache[user_id].loc[selected_task_id, 'proposal'])
+                self.pending_tasks_cache.pop(user_id, None)
+
+                await interaction.response.send_modal(
+                    AcceptanceModal(
+                        task_id=selected_task_id,
+                        task_text=task_text,
+                        seed=seed,
+                        user_name=interaction.user.name,
+                        tasknode_utilities=self.tasknode_utilities,
+                        ephemeral_setting=ephemeral_setting
+                    )
+                )
 
             # Attach the callback to the select element
             select.callback = select_callback
@@ -1171,115 +1518,77 @@ class TaskNodeDiscordBot(discord.Client):
             view.add_item(select)
 
             # Send the message with the dropdown menu
-            await interaction.response.send_message("Please choose a task to accept:", view=view, ephemeral=ephemeral_setting)
-        
+            await interaction.followup.send("Please choose a task to accept:", view=view, ephemeral=ephemeral_setting)
+
         @self.tree.command(name="pf_refuse", description="Refuse tasks")
         async def pf_refuse_menu(interaction: discord.Interaction):
             # Fetch the user's seed
             user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction) 
+            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+
             if user_id not in self.user_seeds:
-                await interaction.response.send_message("You must store a seed using /store_seed before refusing tasks.", ephemeral=True)
+                await interaction.followup.send(
+                    "You must store a seed using /store_seed before refusing tasks.", 
+                    ephemeral=ephemeral_setting
+                )
                 return
 
             seed = self.user_seeds[user_id]
 
-            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_refuse_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
+            logger.debug(f"MyClient.setup_hook.pf_refuse_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
+                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
+                    ephemeral=ephemeral_setting
+                )
                 return
             
             # Fetch account history
             memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
 
-            # Get pending proposals
-            pf_df = user_task_parser.get_refuseable_proposals(account=memo_history)
+            # Get refuseable proposals
+            refuseable_tasks = self.user_task_parser.get_refuseable_proposals(account=memo_history)
 
-            # Return immediately if proposal refusal pairs are empty
-            if pf_df.empty:
-                await interaction.response.send_message("You have no tasks to refuse.", ephemeral=ephemeral_setting)
+            # Return if proposal refusal pairs are empty
+            if refuseable_tasks.empty:
+                await interaction.followup.send("You have no tasks to refuse.", ephemeral=ephemeral_setting)
                 return
 
-            eligible_tasks = pf_df.copy()
-
-            map_of_eligible_tasks = eligible_tasks['proposal']
-
-            # If there are no non-accepted tasks, notify the user
-            if map_of_eligible_tasks.empty:
-                await interaction.response.send_message("You have no tasks to refuse.", ephemeral=ephemeral_setting)
-                return
+            self.refuseable_tasks_cache[user_id] = refuseable_tasks
 
             # Create dropdown options based on the non-accepted tasks
             options = [
-                SelectOption(label=task_id, description=proposal[:100], value=task_id)
-                for task_id, proposal in map_of_eligible_tasks.items()
+                SelectOption(
+                    label=task_id, 
+                    description=str(refuseable_tasks.loc[task_id, 'proposal'])[:100], 
+                    value=task_id
+                )
+                for task_id in refuseable_tasks.index
             ]
 
             # Create the Select menu
             select = Select(placeholder="Choose a task to refuse", options=options)
 
-            # Define the modal for inputting the refusal string
-            class RefusalModal(Modal):
-                def __init__(self, parent: TaskNodeDiscordBot, task_id: str, task_text: str, seed: str, user_name: str):
-                    super().__init__(title="Refuse Task")
-                    self.parent = parent
-                    self.task_id = task_id
-                    self.seed = seed
-                    self.user_name = user_name
-                    
-                    # Add a label to display the full task description
-                    self.task_description = discord.ui.TextInput(
-                        label="Task Description (Do not modify)",
-                        default=task_text,
-                        style=discord.TextStyle.paragraph,
-                        required=False
-                    )
-                    self.add_item(self.task_description)
-                    
-                    # Add the refusal string input
-                    self.refusal_string = TextInput(
-                        label="Refusal Reason", 
-                        placeholder="Type your reason for refusing this task",
-                        style=discord.TextStyle.paragraph
-                    )
-                    self.add_item(self.refusal_string)
-
-                async def on_submit(self, interaction: discord.Interaction):
-                    # Defer the response to avoid interaction timeout
-                    await interaction.response.defer(ephemeral=ephemeral_setting)
-                    
-                    refusal_string = self.refusal_string.value
-                    
-                    # Call the discord__task_refusal function
-                    output_string = self.parent.tasknode_utilities.discord__task_refusal(
-                        user_seed=self.seed,
-                        user_name=self.user_name,
-                        task_id_to_refuse=self.task_id,
-                        refusal_string=refusal_string
-                    )
-                    
-                    # Send a follow-up message with the result
-                    await interaction.followup.send(output_string, ephemeral=ephemeral_setting)
-
             # Define the callback for when a user selects an option
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
-                task_text = map_of_eligible_tasks[selected_task_id]
-                # Open the modal to get the refusal string with the task text pre-populated
-                await interaction.response.send_modal(RefusalModal(
-                    parent=self,
-                    task_id=selected_task_id,
-                    task_text=task_text,
-                    seed=seed,
-                    user_name=interaction.user.name
-                ))
+                task_text = str(self.refuseable_tasks_cache[user_id].loc[selected_task_id, 'proposal'])
+                self.refuseable_tasks_cache.pop(user_id, None)
+    
+                await interaction.response.send_modal(
+                    RefusalModal(
+                        task_id=selected_task_id,
+                        task_text=task_text,
+                        seed=seed,
+                        user_name=interaction.user.name,
+                        tasknode_utilities=self.tasknode_utilities,
+                        ephemeral_setting=ephemeral_setting
+                    )
+                )
 
             # Attach the callback to the select element
             select.callback = select_callback
@@ -1289,84 +1598,225 @@ class TaskNodeDiscordBot(discord.Client):
             view.add_item(select)
 
             # Send the message with the dropdown menu
-            await interaction.response.send_message("Please choose a task to refuse:", view=view, ephemeral=ephemeral_setting)
+            await interaction.followup.send("Please choose a task to refuse:", view=view, ephemeral=ephemeral_setting)
 
-        @self.tree.command(name="wallet_info", description="Get information about a wallet")
-        async def wallet_info(interaction: discord.Interaction, wallet_address: str):
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-            try:
-                account_info = self.generate_basic_balance_info_string(address=wallet_address, owns_wallet=False)
-                
-                # Create an embed for better formatting
-                embed = discord.Embed(title="Wallet Information", color=0x00ff00)
-                embed.add_field(name="Wallet Address", value=wallet_address, inline=False)
-                embed.add_field(name="Account Info", value=account_info, inline=False)
-                
-                await interaction.response.send_message(embed=embed, ephemeral=ephemeral_setting)
-            except Exception as e:
-                logger.error(traceback.format_exc())
-                await interaction.response.send_message(f"An error occurred: {str(e)}", ephemeral=True)
-
-        @self.tree.command(name="admin_debug_full_user_context", description="Return the full user context")
-        async def admin_debug_full_user_context(interaction: discord.Interaction, wallet_address: str):
-            # Check if the user has permission (matches the specific ID)
-            if interaction.user.id not in global_constants.DISCORD_SUPER_USER_IDS:
-                await interaction.response.send_message(
-                    "You don't have permission to use this command.", 
-                    ephemeral=True
-                )
-                return
-            try:
-                await interaction.response.defer(ephemeral=True)
-                full_user_context = self.user_task_parser.get_full_user_context_string(
-                    account_address=wallet_address,
-                    n_memos_in_context=20
-                )
-                await self.send_long_interaction_response(
-                        interaction, 
-                        f"\n{full_user_context}", 
-                        ephemeral=True
-                    )
-            except Exception as e:
-                logger.error(f"Error in admin_debug_full_user_context: {str(e)}")
-                await interaction.followup.send(
-                    f"An error occurred while fetching the full user context: {str(e)}", 
-                    ephemeral=True
-                )
-
-        @self.tree.command(name="admin_change_ephemeral_setting", description="Change the ephemeral setting for self")
-        async def admin_change_ephemeral_setting(interaction: discord.Interaction, public: bool):
-            # Check if the user has permission (matches the specific ID)
-            if interaction.user.id not in global_constants.DISCORD_SUPER_USER_IDS:
-                await interaction.response.send_message(
-                    "You don't have permission to use this command.", 
-                    ephemeral=True
-                )
-                return
-            
+        @self.tree.command(name="pf_initial_verification", description="Submit a task for verification")
+        async def pf_submit_for_verification(interaction: discord.Interaction):
             user_id = interaction.user.id
-            if public:
-                self.NON_EPHEMERAL_USERS.add(user_id)
-                setting = "PUBLIC"
-            else:
-                self.NON_EPHEMERAL_USERS.discard(user_id)
-                setting = "PRIVATE"
+            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+
+            # Check if the user has a stored seed
+            if user_id not in self.user_seeds:
+                await interaction.followup.send(
+                    "You must store a seed using /store_seed before submitting a task for verification.", 
+                    ephemeral=ephemeral_setting
+                )
+                return
+
+            seed = self.user_seeds[user_id]
+
+            logger.debug(f"MyClient.setup_hook.pf_initial_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+
+            # Check initiation status
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
+                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
+                    ephemeral=ephemeral_setting
+                )
+                return
+
+            # Fetch account history
+            memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
+
+            # Fetch accepted tasks
+            accepted_tasks = self.user_task_parser.get_accepted_proposals(account=memo_history)
+
+            # Return if no accepted tasks
+            if accepted_tasks.empty:
+                await interaction.followup.send("You have no tasks to submit for verification.", ephemeral=ephemeral_setting)
+                return
+
+            self.accepted_tasks_cache[user_id] = accepted_tasks
+
+            # Create dropdown options based on the accepted tasks
+            options = [
+                SelectOption(
+                    label=task_id, 
+                    description=str(accepted_tasks.loc[task_id, 'proposal'])[:100], 
+                    value=task_id
+                )
+                for task_id in accepted_tasks.index
+            ]
+
+            # Create the Select menu
+            select = Select(placeholder="Choose a task to submit for verification", options=options)
+
+            # Define the callback for when a user selects an option
+            async def select_callback(interaction: discord.Interaction):
+                selected_task_id = select.values[0]
+                task_text = str(self.accepted_tasks_cache[user_id].loc[selected_task_id, 'proposal'])
+                self.accepted_tasks_cache.pop(user_id, None)
+
+                await interaction.response.send_modal(
+                    CompletionModal(
+                        task_id=selected_task_id,
+                        task_text=task_text,
+                        seed=seed,
+                        user_name=interaction.user.name,
+                        tasknode_utilities=self.tasknode_utilities,
+                        ephemeral_setting=ephemeral_setting
+                    )
+                )
+
+            # Attach the callback to the select element
+            select.callback = select_callback
+
+            # Create a view and add the select element to it
+            view = View()
+            view.add_item(select)
+            await interaction.followup.send("Please choose a task to submit for verification:", view=view, ephemeral=ephemeral_setting)
+
+        @self.tree.command(name="pf_final_verification", description="Submit final verification for a task")
+        async def pf_final_verification(interaction: discord.Interaction):
+            user_id = interaction.user.id
+            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+
+            # Check if the user has a stored seed
+            if user_id not in self.user_seeds:
+                await interaction.followup.send(
+                    "You must store a seed using /store_seed before submitting final verification.", 
+                    ephemeral=ephemeral_setting
+                )
+                return
+
+            seed = self.user_seeds[user_id]
+            logger.debug(f"MyClient.setup_hook.pf_final_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+
+            # Check initiation status
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
+                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
+                    ephemeral=ephemeral_setting
+                )
+                return
+
+            # Fetch account history
+            memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
+
+            # Fetch verification tasks
+            verification_tasks = self.user_task_parser.get_verification_proposals(account=memo_history)
             
-            await interaction.response.send_message(
-                f"Your messages will now be {setting}",
-                ephemeral=True
-            )
+            # If there are no tasks in the verification queue, notify the user
+            if verification_tasks.empty:
+                await interaction.followup.send("You have no tasks pending final verification.", ephemeral=ephemeral_setting)
+                return
+
+            self.verification_tasks_cache[user_id] = verification_tasks
+
+            # Create dropdown options based on the tasks in the verification queue
+            options = [
+                SelectOption(
+                    label=task_id, 
+                    description=str(verification_tasks.loc[task_id, 'verification'])[:100], 
+                    value=task_id
+                )
+                for task_id in verification_tasks.index
+            ]
+
+            # Create the Select menu
+            select = Select(placeholder="Choose a task to submit for final verification", options=options)
+
+            # Define the callback for when a user selects an option
+            async def select_callback(interaction: discord.Interaction):
+                selected_task_id = select.values[0]
+                task_text = str(self.verification_tasks_cache[user_id].loc[selected_task_id, 'verification'])
+                self.verification_tasks_cache.pop(user_id, None)
+
+                # Open the modal to get the verification justification with the task text pre-populated
+                await interaction.response.send_modal(
+                    VerificationModal(
+                        task_id=selected_task_id,
+                        task_text=task_text,
+                        seed=seed,
+                        user_name=interaction.user.name,
+                        tasknode_utilities=self.tasknode_utilities,
+                        ephemeral_setting=ephemeral_setting
+                    )
+                )
+
+            # Attach the callback to the select element
+            select.callback = select_callback
+
+            # Create a view and add the select element to it
+            view = View()
+            view.add_item(select)
+
+            # Send the message with the dropdown menu
+            await interaction.followup.send("Please choose a task for final verification:", view=view, ephemeral=ephemeral_setting)
+
+        @self.tree.command(name="pf_rewards", description="Show your recent Post Fiat rewards")
+        async def pf_rewards(interaction: discord.Interaction):
+            user_id = interaction.user.id
+            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
+
+            # Check if the user has a stored seed
+            if user_id not in self.user_seeds:
+                await interaction.followup.send(
+                    "You must store a seed using /pf_store_seed before viewing rewards.",
+                    ephemeral=ephemeral_setting
+                )
+                return
+
+            seed = self.user_seeds[user_id]
+            logger.debug(f"MyClient.setup_hook.pf_rewards: Spawning wallet to fetch rewards for {interaction.user.name}")
+            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
+
+            # Check initiation status
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
+                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
+                    ephemeral=ephemeral_setting
+                )
+                return
+
+            try:
+                memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy().sort_values('datetime')
+
+                # Return immediately if memo history is empty
+                if memo_history.empty:
+                    await interaction.followup.send("You have no rewards to show.", ephemeral=ephemeral_setting)
+                    return
+
+                reward_summary_map = self.get_reward_data(all_account_info=memo_history)
+                recent_rewards = self.format_reward_summary(reward_summary_map['reward_summaries'].tail(10))
+
+                await self.send_long_interaction_response(
+                    interaction=interaction,
+                    content=recent_rewards,
+                    ephemeral=ephemeral_setting
+                )
+
+            except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.pf_rewards: An error occurred while fetching your rewards: {str(e)}")
+                logger.error(traceback.format_exc())
+                await interaction.followup.send(f"An error occurred while fetching your rewards: {str(e)}", ephemeral=True)
 
         @self.tree.command(name="pf_log", description="Send a long message to the remembrancer wallet")
         async def pf_remembrancer(interaction: discord.Interaction, message: str, encrypt: bool = False):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
             
             # Check if the user has a stored seed
             if user_id not in self.user_seeds:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You must store a seed using /pf_store_seed before using this command.",
-                    ephemeral=True
+                    ephemeral=ephemeral_setting
                 )
                 return
 
@@ -1376,16 +1826,12 @@ class TaskNodeDiscordBot(discord.Client):
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
+                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
+                    ephemeral=ephemeral_setting
+                )
                 return
-
-            # Defer the response to avoid timeout for longer operations
-            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             try:
 
@@ -1427,23 +1873,25 @@ class TaskNodeDiscordBot(discord.Client):
 
                 mode = "Encrypted message" if encrypt else "Message"
                 await message_obj.edit(
-                    content=f"""Post Fiat Log: {message} 
-{mode} sent to remembrancer successfully. Last chunk details:\n{clean_string}""", 
+                    content=f"Post Fiat Log: {message}\n{mode} sent to remembrancer successfully. Last chunk details:\n{clean_string}"
                 )
 
             except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.pf_remembrancer: An error occurred while sending the message: {str(e)}")
+                logger.error(traceback.format_exc())
                 await interaction.followup.send(f"An error occurred while sending the message: {str(e)}", ephemeral=True)
         
         @self.tree.command(name="pf_chart", description="Generate a chart of your PFT rewards and metrics")
         async def pf_chart(interaction: discord.Interaction):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             # Check if the user has a stored seed
             if user_id not in self.user_seeds:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You must store a seed using /pf_store_seed before generating a chart.", 
-                    ephemeral=True
+                    ephemeral=ephemeral_setting
                 )
                 return
 
@@ -1452,16 +1900,12 @@ class TaskNodeDiscordBot(discord.Client):
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
             # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
+            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                await interaction.followup.send(
+                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
+                    ephemeral=ephemeral_setting
+                )
                 return
-
-            # Defer the response since chart generation might take time
-            await interaction.response.defer(ephemeral=ephemeral_setting)
 
             try:
                 # Call the charting function
@@ -1491,6 +1935,8 @@ class TaskNodeDiscordBot(discord.Client):
                 os.remove(f'pft_rewards__{wallet.address}.png')
 
             except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.pf_chart: An error occurred while generating your PFT chart: {str(e)}")
+                logger.error(traceback.format_exc())
                 await interaction.followup.send(
                     f"An error occurred while generating your PFT chart: {str(e)}", 
                     ephemeral=True
@@ -1536,913 +1982,16 @@ class TaskNodeDiscordBot(discord.Client):
                 os.remove("test_leaderboard.png")
                 
             except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.pf_leaderboard: An error occurred while generating the leaderboard: {str(e)}")
+                logger.error(traceback.format_exc())
                 await interaction.followup.send(
                     f"An error occurred while generating the leaderboard: {str(e)}"
                 )
 
-        @self.tree.command(name="pf_outstanding", description="Show your outstanding tasks and verification tasks")
-        async def pf_outstanding(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-            
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.response.send_message(
-                    "You must store a seed using /pf_store_seed before viewing outstanding tasks.", 
-                    ephemeral=True
-                )
-                return
-
-            seed = self.user_seeds[user_id]
-            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_outstanding: Spawning wallet to fetch tasks for {interaction.user.name}")
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
-
-            # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
-                return
-
-            # Defer the response to avoid timeout for longer operations
-            await interaction.response.defer(ephemeral=ephemeral_setting)
-
-            try:
-                # Get the unformatted output message
-                output_message = self.create_full_outstanding_pft_string(account_address=wallet.address)
-
-                logger.debug(f"TaskNodeDiscordBot.pf_outstanding: Output message: {output_message}")
-                
-                # Format the message using the new formatting function
-                formatted_chunks = self.format_tasks_for_discord(output_message)
-                
-                # Send the first chunk
-                await interaction.followup.send(formatted_chunks[0], ephemeral=ephemeral_setting)
-
-                # Send the rest of the chunks
-                for chunk in formatted_chunks[1:]:
-                    await interaction.followup.send(chunk, ephemeral=ephemeral_setting)
-
-            except Exception as e:
-                logger.error(f"TaskNodeDiscordBot.pf_outstanding: Error fetching outstanding tasks: {str(e)}")
-                logger.error(traceback.format_exc())
-                await interaction.followup.send(
-                    f"An error occurred while fetching your outstanding tasks: {str(e)}", 
-                    ephemeral=True
-                )
-
-        @self.tree.command(name="xrp_send", description="Send XRP to a destination address")
-        async def xrp_send(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.response.send_message(
-                    "You must store a seed using /pf_store_seed before initiating a transaction.", ephemeral=True
-                )
-                return
-
-            seed = self.user_seeds[user_id]
-
-            class XRPTransactionModal(discord.ui.Modal, title='XRP Transaction Details'):
-                def __init__(self, parent: TaskNodeDiscordBot, seed, *args, **kwargs):
-                    super().__init__(*args, **kwargs)
-                    self.parent = parent
-                    self.seed = seed
-
-                address = discord.ui.TextInput(label='Recipient Address')
-                amount = discord.ui.TextInput(label='Amount (in XRP)')
-                message = discord.ui.TextInput(
-                    label='Message', 
-                    style=discord.TextStyle.long, 
-                    required=False,
-                    placeholder='Insert an optional message'
-                )
-                destination_tag = discord.ui.TextInput(
-                    label='Destination Tag',
-                    required=False,
-                    placeholder='Required for most exchanges'
-                )
-
-                async def on_submit(self, interaction: discord.Interaction):
-                    await interaction.response.defer(ephemeral=ephemeral_setting)
-
-                    destination_address = self.address.value
-                    amount = self.amount.value
-                    message = self.message.value
-                    destination_tag = self.destination_tag.value
-
-                    # Create the memo
-                    memo = self.parent.generic_pft_utilities.construct_memo(
-                        memo_data=message,
-                        memo_format=interaction.user.name,
-                        memo_type="XRP_SEND"
-                    )
-
-                    try:
-                        # Convert destination_tag to integer if it exists
-                        dt = int(destination_tag) if destination_tag else None
-
-                        # Call the send_xrp_with_info__seed_based function
-                        response = self.parent.generic_pft_utilities.send_xrp_with_info__seed_based(
-                            wallet_seed=self.seed,
-                            amount=amount,
-                            destination=destination_address,
-                            memo=memo,
-                            destination_tag=dt
-                        )
-
-                        # Extract transaction information using the improved function
-                        transaction_info = self.parent.generic_pft_utilities.extract_transaction_info_from_response_object__standard_xrp(response)
-                        
-                        # Create an embed for better formatting
-                        embed = discord.Embed(title="XRP Transaction Sent", color=0x00ff00)
-                        embed.add_field(name="Details", value=transaction_info['clean_string'], inline=False)
-                        
-                        # Add additional fields if available
-                        if dt:
-                            embed.add_field(name="Destination Tag", value=str(dt), inline=False)
-                        if 'hash' in transaction_info:
-                            embed.add_field(name="Transaction Hash", value=transaction_info['hash'], inline=False)
-                        if 'xrpl_explorer_url' in transaction_info:
-                            embed.add_field(name="Explorer Link", value=transaction_info['xrpl_explorer_url'], inline=False)
-                        
-                        await interaction.followup.send(embed=embed, ephemeral=ephemeral_setting)
-                    except Exception as e:
-                        await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
-
-            # Create and send the modal
-            modal = XRPTransactionModal(parent=self, seed=seed)
-            await interaction.response.send_modal(modal)
-
-        @self.tree.command(name="pf_store_seed", description="Store a seed")
-        async def store_seed(interaction: discord.Interaction):
-            # Define the modal with a reference to the client
-            class SeedModal(discord.ui.Modal, title='Store Your Seed'):
-                seed = discord.ui.TextInput(label='Seed', style=discord.TextStyle.long)
-
-                def __init__(self, parent: TaskNodeDiscordBot, *args, **kwargs):
-                    super().__init__(*args, **kwargs)
-                    self.parent = parent  # Save the client reference
-
-                async def on_submit(self, interaction: discord.Interaction):
-                    user_id = interaction.user.id
-
-                    # Test seed for validity
-                    try:
-                        self.parent.generic_pft_utilities.spawn_wallet_from_seed(self.seed.value.strip())
-                    except Exception as e:
-                        await interaction.response.send_message(f"An error occurred while storing your seed: {str(e)}", ephemeral=True)
-                        return
-                    
-                    self.parent.user_seeds[user_id] = self.seed.value.strip()  # Store the seed
-                    await interaction.response.send_message(f'Seed stored successfully for user {interaction.user.name}.', ephemeral=True)
-
-            # Pass the client instance to the modal
-            await interaction.response.send_modal(SeedModal(parent=self))
-            logger.debug(f"TaskNodeDiscordBot.setup_hook.store_seed: Seed storage command executed by {interaction.user.name}")
-
         # Sync the commands to the guild
+        # self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
-        logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced to guild ID: {guild_id}")
-
-        # Sync the commands to the guild
-        await self.tree.sync(guild=guild)
-        logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced to guild ID: {guild_id}")
-
-        @self.tree.command(name="pf_initiate", description="Initiate your commitment")
-        async def pf_initiate(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.response.send_message(
-                    "You must store a seed using /store_seed before initiating.", ephemeral=True
-                )
-                return
-
-            try:
-                # Spawn the user's wallet
-                logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_initiate: Spawning wallet to initiate for {interaction.user.name}")
-                username = interaction.user.name
-                seed = self.user_seeds[user_id]
-                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
-
-                # Check initiation status
-                initiation_check_success = await self._check_initiation_rite(
-                    interaction=interaction,
-                    wallet_address=wallet.address,
-                    require_initiation=False  # this means block re-initiations unless on testnet with ENABLE_REINITIATIONS = True
-                )
-                if not initiation_check_success:
-                    await interaction.response.send_message("You've already completed an initiation rite. Re-initiation is not allowed.", ephemeral=True)
-                    return
-
-                # Define the modal to collect Google Doc Link and Commitment
-                class InitiationModal(discord.ui.Modal, title='Initiation Commitment'):
-                    def __init__(self, parent: TaskNodeDiscordBot, *args, **kwargs):
-                        super().__init__(*args, **kwargs)
-                        self.parent = parent
-
-                    google_doc_link = discord.ui.TextInput(
-                        label='Please enter your Google Doc Link', 
-                        style=discord.TextStyle.long,
-                        placeholder="Your link will be encrypted but the node operator retains access for effective task generation."
-                    )
-                    commitment_sentence = discord.ui.TextInput(
-                        label='Commit to a Long-Term Objective',
-                        style=discord.TextStyle.long,
-                        max_length=global_constants.MAX_COMMITMENT_SENTENCE_LENGTH,
-                        placeholder="A 1-sentence commitment to a long-term objective"
-                    )
-
-                    async def on_submit(self, interaction: discord.Interaction):
-                        await interaction.response.defer(ephemeral=ephemeral_setting)
-                        
-                        try:
-                            handshake_success, user_key, node_key, message_obj = await self.parent._ensure_handshake(
-                                interaction=interaction,
-                                seed=seed,
-                                counterparty=self.parent.generic_pft_utilities.node_address,
-                                username=username,
-                                command_name="pf_initiate"
-                            )
-                            
-                            if not handshake_success:
-                                return
-                            
-                            await message_obj.edit(content="Sending commitment and encrypted google doc link to node...")
-
-                            # Attempt the initiation rite
-                            self.parent.tasknode_utilities.discord__initiation_rite(
-                                user_seed=seed, 
-                                initiation_rite=self.commitment_sentence.value, 
-                                google_doc_link=self.google_doc_link.value, 
-                                username=username,
-                                allow_reinitiation=config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.ENABLE_REINITIATIONS  # Allow re-initiation in test mode
-                            )
-                            
-                            mode = "(TEST MODE)" if config.RuntimeConfig.USE_TESTNET else ""
-                            await message_obj.edit(
-                                content=f"Initiation complete! {mode}\nCommitment: {self.commitment_sentence.value}\nGoogle Doc: {self.google_doc_link.value}"
-                            )
-
-                        except Exception as e:
-                            logger.error(f"TaskNodeDiscordBot.setup_hook.pf_initiate: Error during initiation: {str(e)}")
-                            await message_obj.edit(content=f"An error occurred during initiation: {str(e)}")
-
-                # Show modal immediately
-                await interaction.response.send_modal(InitiationModal(parent=self))
-
-            except Exception as e:
-                logger.error(f"TaskNodeDiscordBot.setup_hook.pf_initiate: Error during initiation: {str(e)}")
-                await interaction.followup.send(f"An error occurred during initiation: {str(e)}", ephemeral=True)
-
-        @self.tree.command(name="pf_update_link", description="Update your Google Doc link")
-        async def pf_update_link(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.response.send_message(
-                    "You must store a seed using /pf_store_seed first.",
-                    ephemeral=True
-                )
-                return
-            
-            try:
-                logger.debug(f"TaskNodeDiscordBot.pf_update_link: Spawning wallet for {interaction.user.name} to update google doc link")
-                seed = self.user_seeds[user_id]
-                username = interaction.user.name
-                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
-
-                # Check initiation status
-                initiation_check_success = await self._check_initiation_rite(
-                    interaction=interaction,
-                    wallet_address=wallet.address
-                )
-                if not initiation_check_success:
-                    await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
-                    return
-                
-                # Define the modal for new Google Doc link
-                class UpdateLinkModal(discord.ui.Modal, title='Update Google Doc Link'):
-                    def __init__(self, parent: TaskNodeDiscordBot, *args, **kwargs):
-                        super().__init__(*args, **kwargs)
-                        self.parent = parent
-
-                    google_doc_link = discord.ui.TextInput(
-                        label='Please enter new Google Doc Link', 
-                        style=discord.TextStyle.long,
-                        placeholder="Your link will be encrypted but the node operator retains access for effective task generation."
-                    )
-
-                    async def on_submit(self, interaction: discord.Interaction):
-                        await interaction.response.defer(ephemeral=ephemeral_setting)
-
-                        try:
-                            handshake_success, user_key, node_key, message_obj = await self.parent._ensure_handshake(
-                                interaction=interaction,
-                                seed=seed,
-                                counterparty=self.parent.generic_pft_utilities.node_address,
-                                username=username,
-                                command_name="pf_update_link"
-                            )
-
-                            if not handshake_success:
-                                return
-
-                            await message_obj.edit(content="Sending encrypted google doc link to node...")
-
-                            # Construct and send the encrypted memo
-                            self.supplemental_discord_functions.discord__update_google_doc_link(
-                                user_seed=seed,
-                                google_doc_link=self.google_doc_link.value,
-                                username=username
-                            )
-
-                            await message_obj.edit(content=f"Google Doc link updated to {self.google_doc_link.value}")
-
-                        except Exception as e:
-                            logger.error(f"TaskNodeDiscordBot.pf_update_link: Error during update: {str(e)}")
-                            await interaction.followup.send(f"An error occurred during update: {str(e)}", ephemeral=True)
-
-                # Show modal immediately
-                await interaction.response.send_modal(UpdateLinkModal(parent=self))
-
-            except Exception as e:
-                logger.error(f"TaskNodeDiscordBot.pf_update_link: Error during update: {str(e)}")
-                await interaction.followup.send(f"An error occurred during update: {str(e)}", ephemeral=True)
-
-        @self.tree.command(name="pf_request_task", description="Request a Post Fiat task")
-        async def pf_task_slash(interaction: discord.Interaction, task_request: str):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-
-            # Check if the user has stored a seed
-            if user_id not in self.user_seeds:
-                await interaction.response.send_message("You must store a seed using /pf_store_seed before generating a task.", ephemeral=True)
-                return
-
-            # Get the user's seed and other necessary information
-            seed = self.user_seeds[user_id]
-            user_name = interaction.user.name
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
-            
-            # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
-                return
-
-            # Defer the response to avoid timeout
-            await interaction.response.defer(ephemeral=ephemeral_setting)
-            
-            try:
-                # Send the Post Fiat request
-                response = self.tasknode_utilities.discord__send_postfiat_request(
-                    user_request=task_request,
-                    user_name=user_name,
-                    user_seed=seed  # TODO: change to wallet
-                )
-                
-                # Extract transaction information
-                transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response=response)
-                clean_string = transaction_info['clean_string']
-                
-                # Send the response
-                await interaction.followup.send(f"Task Requested with Details: {clean_string}", ephemeral=ephemeral_setting)
-            except Exception as e:
-                logger.error(f"TaskNodeDiscordBot.pf_task_slash: Error during task request: {str(e)}")
-                logger.error(traceback.format_exc())
-                await interaction.followup.send(f"An error occurred while processing your request: {str(e)}", ephemeral=True)
-
-        @self.tree.command(name="pf_initial_verification", description="Submit a task for verification")
-        async def pf_submit_for_verification(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-            
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.response.send_message(
-                    "You must store a seed using /store_seed before submitting a task for verification.", ephemeral=True
-                )
-                return
-
-            seed = self.user_seeds[user_id]
-
-            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_initial_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-
-            # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
-                return
-
-            # Fetch the tasks that are accepted but not completed
-            memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
-
-            pf_df = user_task_parser.get_accepted_proposals(account=memo_history)
-
-            # Return immediately if proposal acceptance pairs are empty
-            if pf_df.empty:
-                await interaction.response.send_message("You have no tasks to submit for verification.", ephemeral=True)
-                return
-
-            # Filter for accepted tasks that have not been completed yet
-            accepted_tasks = pf_df[
-                (pf_df['acceptance'] != '') & 
-                ~pf_df.index.isin(memo_history[
-                    memo_history['memo_data'].str.contains(TaskType.VERIFICATION_PROMPT.value, na=False)
-                ]['memo_type'].unique())
-            ].copy()
-            
-            # If there are no accepted tasks, notify the user
-            if accepted_tasks.empty:
-                await interaction.response.send_message("You have no accepted tasks to submit for verification.", ephemeral=True)
-                return
-
-            # Create dropdown options based on the accepted tasks
-            options = [
-                SelectOption(label=task_id, description=proposal[:100], value=task_id)
-                for task_id, proposal in accepted_tasks['proposal'].items()
-            ]
-
-            # Create the Select menu
-            select = Select(placeholder="Choose a task to submit for verification", options=options)
-
-            # Define the modal for inputting the completion justification
-            class CompletionModal(Modal):
-                def __init__(self, parent: TaskNodeDiscordBot, task_id: str, task_text: str, seed: str, user_name: str):
-                    super().__init__(title="Submit Task for Verification")
-                    self.parent = parent
-                    self.task_id = task_id
-                    self.seed = seed
-                    self.user_name = user_name
-                    
-                    # Add a label to display the full task description
-                    self.task_description = discord.ui.TextInput(
-                        label="Task Description (Do not modify)",
-                        default=task_text,
-                        style=discord.TextStyle.paragraph,
-                        required=False
-                    )
-                    self.add_item(self.task_description)
-                    
-                    # Add the completion justification input
-                    self.completion_justification = TextInput(
-                        label="Completion Justification", 
-                        placeholder="Explain how you completed the task",
-                        style=discord.TextStyle.paragraph
-                    )
-                    self.add_item(self.completion_justification)
-
-                async def on_submit(self, interaction: discord.Interaction):
-                    # Defer the response to avoid interaction timeout
-                    await interaction.response.defer(ephemeral=ephemeral_setting)
-                    
-                    completion_string = self.completion_justification.value
-                    
-                    # Call the discord__initial_submission function
-                    output_string = self.parent.tasknode_utilities.discord__initial_submission(
-                        user_seed=self.seed,
-                        user_name=self.user_name,
-                        task_id_to_accept=self.task_id,
-                        initial_completion_string=completion_string
-                    )
-                    
-                    # Send a follow-up message with the result
-                    await interaction.followup.send(output_string, ephemeral=ephemeral_setting)
-
-            # Define the callback for when a user selects an option
-            async def select_callback(interaction: discord.Interaction):
-                selected_task_id = select.values[0]
-                task_text = accepted_tasks.loc[selected_task_id, 'proposal']
-                # Open the modal to get the completion justification with the task text pre-populated
-                await interaction.response.send_modal(CompletionModal(
-                    task_id=selected_task_id,
-                    task_text=task_text,
-                    seed=seed,
-                    user_name=interaction.user.name
-                ))
-
-            # Attach the callback to the select element
-            select.callback = select_callback
-
-            # Create a view and add the select element to it
-            view = View()
-            view.add_item(select)
-
-            # Send the message with the dropdown menu
-            await interaction.response.send_message("Please choose a task to submit for verification:", view=view, ephemeral=True)
-
-        @self.tree.command(name="pf_new_wallet", description="Generate a new XRP wallet")
-        async def pf_new_wallet(interaction: Interaction):
-            # Generate the wallet
-            test_wallet = Wallet.create()
-            classic_address = test_wallet.classic_address
-            wallet_seed = test_wallet.seed
-
-            # Create and send the modal
-            class WalletInfoModal(discord.ui.Modal, title='New XRP Wallet'):
-                def __init__(self, client):
-                    super().__init__()
-                    self.client = client
-
-                address = discord.ui.TextInput(
-                    label='Address (Do not modify)',
-                    default=classic_address,
-                    style=discord.TextStyle.short,
-                    required=True
-                )
-                seed = discord.ui.TextInput(
-                    label='Secret - Submit Stores. Cancel (Exit)',
-                    default=wallet_seed,
-                    style=discord.TextStyle.short,
-                    required=True
-                )
-
-                async def on_submit(self, interaction: discord.Interaction):
-                    user_id = interaction.user.id
-                    logger.debug(f"WalletInfoModal.on_submit: Storing seed for user {interaction.user.name} (ID: {user_id})")
-                    self.client.user_seeds[user_id] = self.seed.value
-
-                    await interaction.response.send_message(
-                        f"Wallet created successfully. You must fund the wallet with {global_constants.MIN_XRP_BALANCE} XRP to use as a Post Fiat Wallet. "
-                        "The seed is stored to Discord Hot Wallet. To store different seed use /pf_store_seed. "
-                        "We recommend you often sweep the wallet to a cold wallet. Use the /pf_send command to do so",
-                        ephemeral=True
-                    )
-
-            # Create the modal with the client reference and send it
-            modal = WalletInfoModal(interaction.client)
-            await interaction.response.send_modal(modal)
-
-        @self.tree.command(name="pf_show_seed", description="Show your stored seed")
-        async def pf_show_seed(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            
-            # Check if the user has a stored seed
-            if user_id in self.user_seeds:
-                seed = self.user_seeds[user_id]
-                
-                # Create and send an ephemeral message with the seed
-                await interaction.response.send_message(
-                    f"Your stored seed is: {seed}\n"
-                    "This message will be deleted in 30 seconds for security reasons.",
-                    ephemeral=True,
-                    delete_after=30
-                )
-            else:
-                await interaction.response.send_message(
-                    "No seed found for your account. Use /pf_store_seed to store a seed first.",
-                    ephemeral=True
-                )
-        
-        @self.tree.command(name="pf_guide", description="Show a guide of all available commands")
-        async def pf_guide(interaction: discord.Interaction):
-            guide_text = """
-# Post Fiat Discord Bot Guide
-
-### Info Commands
-1. /pf_guide: Show this guide
-2. /pf_my_wallet: Show information about your stored wallet.
-3. /wallet_info: Get information about a specific wallet address.
-4. /pf_show_seed: Display your stored seed 
-5. /pf_rewards: Show recent PFT rewards.
-6. /pf_outstanding: Show your outstanding tasks and verification tasks.
-
-### Initiation
-1. /pf_new_wallet: Generate a new XRP wallet. You need to fund via Coinbase etc to continue
-2. /pf_store_seed: Securely store your wallet seed.
-3. /pf_initiate: Initiate your commitment to the Post Fiat system, get access to PFT and initial grant
-4. /pf_update_link: Update your Google Doc link
-
-### Task Request
-1. /pf_request_task: Request a new Post Fiat task.
-2. /pf_accept: View and accept available tasks.
-3. /pf_refuse: View and refuse available tasks.
-4. /pf_initial_verification: Submit a completed task for verification.
-5. /pf_final_verification: Submit final verification for a task to receive reward
-
-### Transaction
-1. /xrp_send: Send XRP to a destination address with a memo.
-2. /pf_send: Open a transaction form to send PFT tokens with a memo.
-3. /pf_log: take notes re your workflows, with optional encryption
-
-## Post Fiat operates on a Google Document.
-1. Place your Funded Wallet Address at the top of the Google Document 
-2. Set the Document to be shared (File/Share/Share With Others/Anyone With Link)
-3. Note this is fully public as are transactions on the XRP ledger
-4. The PF Initiate Function requires a document and a verbal committment
-5. After your address place a section like
-___x TASK VERIFICATION SECTION START x___ 
-task verification details are here 
-___x TASK VERIFICATION SECTION END x___
-
-## Local Version
-You can run a local version of the wallet. Please reference the Post Fiat Github
-https://github.com/postfiatorg/pftpyclient
-
-Note: XRP wallets need 15 XRP to transact.
-"""
-            
-            await interaction.response.send_message(guide_text, ephemeral=True)
-
-        @self.tree.command(name="pf_my_wallet", description="Show your wallet information")
-        async def pf_my_wallet(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            
-            # Defer the response to avoid timeout
-            await interaction.response.defer(ephemeral=True)
-            
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "No seed found for your account. Use /pf_store_seed to store a seed first.",
-                    ephemeral=True
-                )
-                return
-
-            try:
-                seed = self.user_seeds[user_id]
-                logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_my_wallet: Spawning wallet to fetch info for {interaction.user.name}")
-                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
-                wallet_address = wallet.classic_address
-
-                # Get account info
-                account_info = self.generate_basic_balance_info_string(address=wallet.address)
-                
-                # Get recent messages
-                incoming_messages, outgoing_messages = self.generic_pft_utilities.get_recent_messages(wallet_address)
-
-                # Split long strings if they exceed Discord's limit
-                def truncate_field(content, max_length=1024):
-                    if len(content) > max_length:
-                        return content[:max_length-3] + "..."
-                    return content
-
-                # Create multiple embeds if needed
-                embeds = []
-                
-                # First embed with basic info
-                embed = discord.Embed(title="Your Wallet Information", color=0x00ff00)
-                embed.add_field(name="Wallet Address", value=wallet_address, inline=False)
-                
-                # Split account info into multiple fields if needed
-                if len(account_info) > 1024:
-                    parts = [account_info[i:i+1024] for i in range(0, len(account_info), 1024)]
-                    for i, part in enumerate(parts):
-                        embed.add_field(name=f"Balance Information {i+1}", value=part, inline=False)
-                else:
-                    embed.add_field(name="Balance Information", value=account_info, inline=False)
-                
-                embeds.append(embed)
-
-                if incoming_messages or outgoing_messages:
-                    embed2 = discord.Embed(title="Recent Transactions", color=0x00ff00)
-                    
-                    if incoming_messages:
-                        incoming = truncate_field(incoming_messages)
-                        embed2.add_field(name="Most Recent Incoming Transaction", value=incoming, inline=False)
-                    
-                    if outgoing_messages:
-                        outgoing = truncate_field(outgoing_messages)
-                        embed2.add_field(name="Most Recent Outgoing Transaction", value=outgoing, inline=False)
-                    
-                    embeds.append(embed2)
-
-                # Send all embeds
-                await interaction.followup.send(embeds=embeds, ephemeral=True)
-            
-            except Exception as e:
-                error_message = f"An unexpected error occurred: {str(e)}. Please try again later or contact support if the issue persists."
-                logger.error(f"Full traceback: {traceback.format_exc()}")
-                await interaction.followup.send(error_message, ephemeral=True)
-
-        @self.tree.command(name="pf_rewards", description="Show your recent Post Fiat rewards")
-        async def pf_rewards(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.response.send_message(
-                    "You must store a seed using /pf_store_seed before viewing rewards.",
-                    ephemeral=True
-                )
-                return
-
-            seed = self.user_seeds[user_id]
-            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_rewards: Spawning wallet to fetch rewards for {interaction.user.name}")
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
-
-            # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
-                return
-
-            # Defer the response to avoid timeout for longer operations
-            await interaction.response.defer(ephemeral=ephemeral_setting)
-
-            try:
-                memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy().sort_values('datetime')
-
-                # Return immediately if memo history is empty
-                if memo_history.empty:
-                    await interaction.followup.send("You have no rewards to show.", ephemeral=ephemeral_setting)
-                    return
-
-                reward_summary_map = self.get_reward_data(all_account_info=memo_history)
-                recent_rewards = self.format_reward_summary(reward_summary_map['reward_summaries'].tail(10))
-
-                await self.send_long_interaction_response(
-                    interaction=interaction,
-                    content=recent_rewards,
-                    ephemeral=ephemeral_setting
-                )
-
-            except Exception as e:
-                await interaction.followup.send(f"An error occurred while fetching your rewards: {str(e)}", ephemeral=True)
-
-        @self.tree.command(name="pf_final_verification", description="Submit final verification for a task")
-        async def pf_final_verification(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.response.send_message(
-                    "You must store a seed using /store_seed before submitting final verification.", ephemeral=True
-                )
-                return
-
-            seed = self.user_seeds[user_id]
-            logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_final_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-
-            # Check initiation status
-            initiation_check_success = await self._check_initiation_rite(
-                interaction=interaction,
-                wallet_address=wallet.address
-            )
-            if not initiation_check_success:
-                await interaction.response.send_message("You must perform the initiation rite first. Run /pf_initiate to do so.", ephemeral=True)
-                return
-
-            # Fetch the tasks that are in the verification queue
-            memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
-
-            # Return immediately if memo history is empty
-            if memo_history.empty:
-                await interaction.response.send_message("You have no tasks in the verification queue.", ephemeral=True)
-                return
-
-            outstanding_verification = user_task_parser.get_verification_proposals(account=memo_history)
-            
-            # If there are no tasks in the verification queue, notify the user
-            if outstanding_verification.empty:
-                await interaction.response.send_message("You have no tasks in the verification queue.", ephemeral=True)
-                return
-
-            # Create dropdown options based on the tasks in the verification queue
-            options = [
-                SelectOption(
-                    label=task_id, 
-                    description=verification[:100], 
-                    value=task_id
-                )
-                for task_id, verification in zip(outstanding_verification.index, outstanding_verification['verification'])
-            ]
-
-            # Create the Select menu
-            select = Select(placeholder="Choose a task for final verification", options=options)
-
-            # Define the modal for inputting the verification justification
-            class VerificationModal(Modal):
-                def __init__(self, parent: TaskNodeDiscordBot, task_id: str, task_text: str, seed: str, user_name: str):
-                    super().__init__(title="Submit Final Verification")
-                    self.parent = parent
-                    self.task_id = task_id
-                    self.seed = seed
-                    self.user_name = user_name
-                    
-                    # Add a label to display the full task description
-                    self.task_description = discord.ui.TextInput(
-                        label="Task Description (Do not modify)",
-                        default=task_text,
-                        style=discord.TextStyle.paragraph,
-                        required=False
-                    )
-                    self.add_item(self.task_description)
-                    
-                    # Add the verification justification input
-                    self.verification_justification = TextInput(
-                        label="Verification Justification", 
-                        placeholder="Explain how you verified the task completion",
-                        style=discord.TextStyle.paragraph
-                    )
-                    self.add_item(self.verification_justification)
-
-                async def on_submit(self, interaction: discord.Interaction):
-                    # Defer the response to avoid interaction timeout
-                    await interaction.response.defer(ephemeral=ephemeral_setting)
-                    
-                    justification_string = self.verification_justification.value
-                    
-                    # Call the discord__final_submission function
-                    output_string = self.parent.tasknode_utilities.discord__final_submission(
-                        user_seed=self.seed,
-                        user_name=self.user_name,
-                        task_id_to_submit=self.task_id,
-                        justification_string=justification_string
-                    )
-                    
-                    # Send a follow-up message with the result
-                    await interaction.followup.send(output_string, ephemeral=ephemeral_setting)
-
-            # Define the callback for when a user selects an option
-            async def select_callback(interaction: discord.Interaction):
-                selected_task_id = select.values[0]
-                task_text = outstanding_verification.loc[selected_task_id, 'verification']
-                # Open the modal to get the verification justification with the task text pre-populated
-                await interaction.response.send_modal(VerificationModal(
-                    parent=self,
-                    task_id=selected_task_id,
-                    task_text=task_text,
-                    seed=seed,
-                    user_name=interaction.user.name
-                ))
-
-            # Attach the callback to the select element
-            select.callback = select_callback
-
-            # Create a view and add the select element to it
-            view = View()
-            view.add_item(select)
-
-            # Send the message with the dropdown menu
-            await interaction.response.send_message(
-                "Please choose a task for final verification:", 
-                view=view, 
-                ephemeral=ephemeral_setting
-            )
-
-    async def _check_initiation_rite(
-        self,
-        interaction: discord.Interaction,
-        wallet_address: str,
-        require_initiation: bool = True
-    ) -> bool:
-        # TODO: Replace with tasknode_utilities.has_initiation_rite
-        """
-        Check if a wallet has completed the initiation rite.
-        
-        Args:
-            wallet_address: The wallet address to check
-            interaction: Discord interaction object for sending responses
-            require_initiation: If True, requires initiation to proceed. If False, blocks re-initiation.
-        
-        Returns:
-            bool: True if check passes (can proceed), False if should block
-        """
-        memo_history = self.generic_pft_utilities.get_account_memo_history(
-            account_address=wallet_address, 
-            pft_only=False
-        )
-
-        existing_initiations = memo_history[
-            (memo_history['memo_type'] == 'INITIATION_RITE') & 
-            (memo_history['transaction_result'] == 'tesSUCCESS')
-        ]
-
-        has_initiated = not existing_initiations.empty
-
-        if require_initiation:
-            # Block if not initiated
-            if not has_initiated: 
-                return False
-        else:
-            # Block re-initiation unless on testnet with ENABLE_REINITIATIONS
-            if has_initiated and not (config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.ENABLE_REINITIATIONS):
-                logger.debug(f"TaskNodeDiscordBot._check_initiation_status: Blocking re-initiation for {interaction.user.name} ({wallet_address})")
-                return False
-        return True
+        logger.debug(f"MyClient.setup_hook: Slash commands synced to guild ID: {guild_id}")
 
     async def _ensure_handshake(
         self,
@@ -2539,136 +2088,147 @@ Note: XRP wallets need 15 XRP to transact.
         for guild in self.guilds:
             logger.debug(f'- {guild.name} (ID: {guild.id})')
 
-        # Optionally, re-sync slash commands in all guilds
-        await self.tree.sync()
-        logger.debug('TaskNodeDiscordBot.on_ready: Slash commands synced across all guilds.')
-
-    async def send_message_chunks(self, channel, message, user):
-        max_chunk_size = 1900
-        max_chunks = 5
-
-        # Split the message into chunks
-        chunks = []
-        current_chunk = ""
-        for line in message.split("\n"):
-            if len(current_chunk) + len(line) + 1 <= max_chunk_size:
-                current_chunk += line + "\n"
-            else:
-                chunks.append(current_chunk.strip())
-                current_chunk = line + "\n"
-        if current_chunk:
-            chunks.append(current_chunk.strip())
-
-        # Send the message chunks
-        for i, chunk in enumerate(chunks[:max_chunks], start=1):
-            formatted_chunk = f"```\n{chunk}\n```"
-            if i == 1:
-                await channel.send(f"{user.mention}\n{formatted_chunk}")
-            else:
-                await channel.send(formatted_chunk)
-            await asyncio.sleep(1)
-
-        # Send a message if there are more chunks than the maximum allowed
-        if len(chunks) > max_chunks:
-            remaining_chunks = len(chunks) - max_chunks
-            await channel.send(f"... ({remaining_chunks} more chunk(s) omitted)")
-
-    async def send_long_message_to_channel(self, channel, long_message):
-        while len(long_message) > 0:
-            if len(long_message) > 1999:
-                cutoff = long_message[:1999].rfind(' ')  # Find last space within limit
-                if cutoff == -1:
-                    cutoff = 1999  # No spaces found; cut off at limit
-                to_send = long_message[:cutoff]
-                long_message = long_message[cutoff:]
-            else:
-                to_send = long_message
-                long_message = ''
-            await channel.send(to_send)
-
-    async def send_long_interaction_response(self, interaction: discord.Interaction, content: str, ephemeral: bool = True):
-        max_chunk_size = 1900  # Leave room for code block formatting
-        prefix = "```\n"
-        suffix = "\n```"
-        wrapper_length = len(prefix) + len(suffix)
+    async def _split_message_into_chunks(self, content: str, max_chunk_size: int = 1900) -> list[str]:
+        """Split a message into chunks that fit within Discord's message limit.
         
-        # Split content into chunks based on character count
+        Args:
+            content: The message content to split
+            max_chunk_size: Maximum size for each chunk (default: 1900 to leave room for formatting)
+            
+        Returns:
+            List of message chunks
+        """
         chunks = []
         while content:
-            if len(content) <= max_chunk_size - wrapper_length:
+            if len(content) <= max_chunk_size:
                 chunks.append(content)
                 break
                 
             # Find the last space within the limit to avoid splitting words
-            split_index = content[:max_chunk_size - wrapper_length].rfind(' ')
+            split_index = content[:max_chunk_size].rfind(' ')
             if split_index == -1:  # No space found, force split at max length
-                split_index = max_chunk_size - wrapper_length
+                split_index = max_chunk_size
                 
             chunks.append(content[:split_index])
-            content = content[split_index:].lstrip()  # Remove leading whitespace from next chunk
+            content = content[split_index:].lstrip()  # Remove leading whitespace
+            
+        return chunks
+    
+    async def _format_chunk(self, chunk: str, code_block: bool = False) -> str:
+        """Format a message chunk with optional code block formatting.
         
-        # Send each chunk with code block formatting
+        Args:
+            chunk: The message chunk to format
+            code_block: Whether to wrap the chunk in a code block
+            
+        Returns:
+            Formatted message chunk
+        """
+        if code_block:
+            return f"```\n{chunk}\n```"
+        return chunk
+    
+    async def _send_long_message(
+        self,
+        content: str,
+        *,
+        channel: Optional[discord.abc.GuildChannel] = None,
+        message: Optional[discord.Message] = None,
+        interaction: Optional[discord.Interaction] = None,
+        code_block: bool = False,
+        ephemeral: bool = True,
+        mention_author: bool = True,
+        delete_after: Optional[int] = None
+    ) -> list[discord.Message]:
+        """Send a long message, splitting it into chunks if necessary.
+        
+        Args:
+            content: The message content to send
+            channel: Discord channel to send to (optional)
+            message: Original message to reply to (optional) 
+            interaction: Discord interaction to respond to (optional)
+            code_block: Whether to wrap chunks in code blocks
+            ephemeral: Whether interaction responses should be ephemeral
+            mention_author: Whether to mention author in replies
+            delete_after: Number of seconds after which to delete messages
+            
+        Returns:
+            List of sent messages
+        """
+        sent_messages = []
+        chunks = await self._split_message_into_chunks(content)
+        
         for chunk in chunks:
-            formatted_chunk = f"{prefix}{chunk}{suffix}"
-            await interaction.followup.send(formatted_chunk, ephemeral=ephemeral)
+            formatted_chunk = await self._format_chunk(chunk, code_block)
+            
+            try:
+                if interaction:
+                    # For slash commands
+                    await interaction.followup.send(formatted_chunk, ephemeral=ephemeral)
+                elif channel:
+                    # For direct channel messages
+                    sent = await channel.send(formatted_chunk)
+                    sent_messages.append(sent)
+                elif message:
+                    # For message replies
+                    sent = await message.reply(formatted_chunk, mention_author=mention_author)
+                    sent_messages.append(sent)
+                else:
+                    raise ValueError("Must provide either channel, message, or interaction")
+                    
+            except discord.errors.HTTPException as e:
+                logger.error(f"Error sending message chunk: {e}")
+                continue
+                
+        if delete_after and sent_messages:
+            await asyncio.sleep(delete_after)
+            for sent in sent_messages:
+                try:
+                    await sent.delete()
+                except discord.errors.NotFound:
+                    pass  # Message already deleted
+                    
+            if message:
+                try:
+                    await message.delete()
+                except discord.errors.NotFound:
+                    pass  # Original message already deleted
+                    
+        return sent_messages
+
+    # Maintaining old methods for compatibility
+    # TODO: Refactor to use _send_long_message directly
+    async def send_long_message_to_channel(self, channel, long_message):
+        return await self._send_long_message(long_message, channel=channel)
+
+    async def send_long_interaction_response(self, interaction: discord.Interaction, content: str, ephemeral: bool = True):
+        return await self._send_long_message(
+            content,
+            interaction=interaction,
+            code_block=True,
+            ephemeral=ephemeral
+        )
         
     async def send_long_message(self, message, long_message):
-        sent_messages = []
-        while len(long_message) > 0:
-            if len(long_message) > 1999:
-                cutoff = long_message[:1999].rfind(' ')  # Find last space within limit
-                if cutoff == -1:
-                    cutoff = 1999  # No spaces found; cut off at limit
-                to_send = long_message[:cutoff]
-                long_message = long_message[cutoff:]
-            else:
-                to_send = long_message
-                long_message = ''
-            sent_message = await message.reply(to_send, mention_author=True)
-            sent_messages.append(sent_message)
-        return sent_messages
-
+        return await self._send_long_message(
+            content=long_message,
+            message=message,
+            mention_author=True
+        )
     async def send_long_message_then_delete(self, message, long_message, delete_after):
-        sent_messages = await self.send_long_message(message, long_message)
-        await asyncio.sleep(delete_after)
-        for sent_message in sent_messages:
-            try:
-                await sent_message.delete()
-            except discord.errors.NotFound:
-                pass  # Message was already deleted
-        try:
-            await message.delete()
-        except discord.errors.NotFound:
-            pass  # Message was already deleted
+        return await self._send_long_message(
+            long_message,
+            message=message,
+            delete_after=delete_after
+        )
 
     async def send_long_escaped_message(self, message, long_message):
-        sent_messages = []
-        chunk_size = 1950  # Reduced to account for added formatting
-
-        # Split the message into chunks, preserving newlines
-        chunks = []
-        current_chunk = ""
-        for line in long_message.split('\n'):
-            if len(current_chunk) + len(line) + 1 > chunk_size:
-                chunks.append(current_chunk)
-                current_chunk = line + '\n'
-            else:
-                current_chunk += line + '\n'
-        if current_chunk:
-            chunks.append(current_chunk)
-
-        # Send chunks with proper formatting
-        for chunk in chunks:
-            to_send = f"```\n{chunk.rstrip()}\n```"
-
-            # Ensure we don't exceed Discord's message limit
-            if len(to_send) > 2000:
-                to_send = to_send[:1997] + "```"
-
-            sent_message = await message.reply(to_send, mention_author=True)
-            sent_messages.append(sent_message)
-
-        return sent_messages
+        return await self._send_long_message(
+            long_message,
+            message=message,
+            code_block=True,
+            mention_author=True
+        )
 
     async def check_and_notify_new_transactions(self):
         CHANNEL_ID = self.node_config.discord_activity_channel_id
@@ -2699,8 +2259,10 @@ Note: XRP wallets need 15 XRP to transact.
     async def death_march_checker_for_user(self, user_id: int):
         """Individual death march checker for a single user."""
         settings = self.user_deathmarch_settings[user_id]
+
         while not self.is_closed():
             now_utc = datetime.now(timezone.utc)
+
             # Check if death march has ended
             if now_utc >= settings.session_end:
                 logger.debug(f"death_march_checker: user_id={user_id} - Death March ended; clearing session.")
@@ -2709,9 +2271,11 @@ Note: XRP wallets need 15 XRP to transact.
                 settings.channel_id = None
                 settings.last_checkin = None
                 break
+
             # Check local time window
             user_tz = pytz.timezone(settings.timezone)
             now_local = datetime.now(user_tz).time()
+
             if settings.start_time <= now_local <= settings.end_time:
                 # Check if enough time has passed since last check-in
                 if settings.last_checkin:
@@ -2725,6 +2289,7 @@ Note: XRP wallets need 15 XRP to transact.
                     if not seed:
                         logger.debug(f"death_march_checker: user_id={user_id} has no stored seed; ending death march.")
                         break
+
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     analyzer = ODVFocusAnalyzer(
                         account_address=user_wallet.classic_address,
@@ -2733,6 +2298,7 @@ Note: XRP wallets need 15 XRP to transact.
                         pft_utils=self.generic_pft_utilities
                     )
                     focus_text = await analyzer.get_response_async("Death March Check-In")
+
                     channel = self.get_channel(settings.channel_id)
                     if channel:
                         # Mention the user
@@ -2748,8 +2314,10 @@ Note: XRP wallets need 15 XRP to transact.
                     logger.error(
                         f"death_march_checker: Error processing user_id={user_id}: {str(e)}"
                     )
+
             # Sleep until next interval
             await asyncio.sleep(settings.check_interval * 60)
+
         logger.info(f"death_march_checker: Ending death march loop for user_id={user_id}")
 
     async def death_march_reminder(self):
@@ -3038,89 +2606,6 @@ My specific question/request is: {user_query}"""
                     await message.reply(error_message, mention_author=True)
             else:
                 await message.reply("You must store a seed using /pf_store_seed before getting tactical advice.", mention_author=True)
-
-
-        if message.content.startswith('!new_wallet'):
-            wallet_maker = self.generic_pft_utilities.create_xrp_wallet()
-            await self.send_long_message_then_delete(message, wallet_maker, delete_after=60)
-
-        if message.content.startswith('!wallet_info'):
-            wallet_to_get = message.content.replace('!wallet_info','').strip()
-            account_info = self.generate_basic_balance_info_string(address=wallet_to_get, owns_wallet=False)
-            await self.send_long_message(message, account_info)
-
-        if message.content.startswith('!store_seed'):
-            # Extract the seed from the message
-            seed = message.content.replace('!store_seed', '').strip()
-            # Store the seed for the user
-            self.user_seeds[user_id] = seed
-            await message.reply("Seed stored successfully.", mention_author=True)
-
-        if message.content.startswith('!show_seed'):
-            # Retrieve and show the stored seed for the user
-            if user_id in self.user_seeds:
-                seed = self.user_seeds[user_id]
-                await self.send_long_message_then_delete(message, f"Your stored seed is: {seed}", delete_after=30)
-            else:
-                await message.reply("No seed found for your account.", mention_author=True)
-
-        if message.content.startswith('!pf_task'):
-            if user_id in self.user_seeds:
-                message_to_send = message.content.replace('!pf_task', '').strip()
-                task_id = self.generic_pft_utilities.generate_custom_id()
-                user_name = message.author.name
-                memo_to_send = self.generic_pft_utilities.construct_memo(memo_data=message_to_send, memo_format = user_name, memo_type=task_id)
-                seed = self.user_seeds[user_id]
-                response = self.tasknode_utilities.discord__send_postfiat_request(user_request= message_to_send, user_name=user_name, user_seed=seed)
-                transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response=response)
-                clean_string = transaction_info['clean_string']
-                await self.send_long_message(message, f"Task Requested with Details {clean_string}")
-            else:
-                await message.reply("You must store a seed before generating a task.", mention_author=True)
-
-        if message.content.startswith('!my_wallet'):
-            # Retrieve and show the stored seed for the user
-            if user_id in self.user_seeds:
-                seed = self.user_seeds[user_id]
-                logger.debug(f"TaskNodeDiscordBot.my_wallet: Spawning wallet to fetch info for {message.author.name}")
-                wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
-                wallet_address = wallet.address
-                account_info = self.generate_basic_balance_info_string(address=wallet_address)
-                await self.send_long_message(message, f"Based on your seed your linked {account_info}")
-            else:
-                await message.reply("No seed found for your account.", mention_author=True)
-
-
-        if message.content.startswith('!pf_initiate'):
-            # check that xrp wallet is funded
-            
-            if user_id not in self.user_seeds:
-                await message.reply("You must store a seed before initiating.", mention_author=True)
-                return
-            seed = self.user_seeds[user_id]
-            logger.debug(f"TaskNodeDiscordBot.pf_initiate: Spawning wallet to initiate for {message.author.name}")
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
-            wallet_address = wallet.classic_address
-            xrp_balance = self.generic_pft_utilities.fetch_xrp_balance(address=wallet_address)
-            if xrp_balance < global_constants.MIN_XRP_BALANCE:
-                await message.reply(f"You must fund your wallet with at least {global_constants.MIN_XRP_BALANCE} XRP before initiating.", mention_author=True)
-                return
-
-            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address,pft_only=False)
-            if len(memo_history[memo_history['memo_type']=="INITIATION_RITE"]) > 0:
-                await message.reply("You have already performed an initiation rite with this wallet.", mention_author=True)
-                return
-
-        if message.content.startswith('!pf_outstanding'):
-            seed = self.user_seeds[user_id]
-            if user_id not in self.user_seeds:
-                await message.reply("You must store a seed before getting outstanding tasks.", mention_author=True)
-                return
-            logger.debug(f"TaskNodeDiscordBot.pf_outstanding: Spawning wallet to fetch tasks for {message.author.name}")
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
-            wallet_address = wallet.classic_address
-            output_message = self.create_full_outstanding_pft_string(account_address=wallet_address)
-            await self.send_long_escaped_message(message, output_message)
 
     def generate_basic_balance_info_string(self, address: str, owns_wallet: bool = True) -> str:
         """Generate account information summary including balances and stats.
