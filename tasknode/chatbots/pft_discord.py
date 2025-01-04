@@ -78,11 +78,6 @@ class DeathMarchSettings:
     session_end: Optional[datetime.datetime] = None
     last_checkin: Optional[datetime.datetime] = None
 
-class CacheEntry:
-    def __init__(self, data):
-        self.data = data
-        self.timestamp = time.time()
-
 class TaskNodeDiscordBot(discord.Client):
 
     NON_EPHEMERAL_USERS = {402536023483088896}
@@ -128,39 +123,7 @@ class TaskNodeDiscordBot(discord.Client):
         self.refuseable_tasks_cache = {}
         self.accepted_tasks_cache = {}
         self.verification_tasks_cache = {}
-        self.cache_timeout = 300  # 5 minutes in seconds
-        self.cleanup_task = None
-
-    async def cleanup_caches(self):
-        """Background task to prevent memory leaks from unactivated deferred modals"""
-        while True:
-            await asyncio.sleep(60)  # Check every minute
-            current_time = time.time()
-
-            # List of all caches to clean
-            caches = [
-                self.pending_tasks_cache,
-                self.refuseable_tasks_cache,
-                self.accepted_tasks_cache,
-                self.verification_tasks_cache
-            ]
-
-            for cache in caches:
-                expired_keys = [
-                    k for k, v in cache.items()
-                    if current_time - v.timestamp > self.cache_timeout
-                ]
-                for k in expired_keys:
-                    del cache[k]
-
-    def set_cache_entry(self, cache_dict, key, value):
-        cache_dict[key] = CacheEntry(value)
-
-    def get_cache_entry(self, cache_dict, key):
-        entry = cache_dict.get(key)
-        if entry is None:
-            return None
-        return entry.data
+        self.cache_timeout = 300  # seconds
 
     def is_special_user_non_ephemeral(self, interaction: discord.Interaction) -> bool:
         """Return False if the user is not in the NON_EPHEMERAL_USERS set, else True."""
@@ -174,10 +137,6 @@ class TaskNodeDiscordBot(discord.Client):
         self.bg_task = self.loop.create_task(
             self.transaction_checker(),
             name="DiscordBotTransactionChecker"
-        )
-        self.cleanup_task = self.loop.create_task(
-            self.cleanup_caches(),
-            name="DiscordBotCleanupCaches"
         )
 
         @self.tree.command(name="pf_new_wallet", description="Generate a new XRP wallet")
@@ -475,11 +434,12 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
 
                 if not (config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.ENABLE_REINITIATIONS):
                     if self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                        logger.debug(f"Blocking re-initiation for user {interaction.user.name}, wallet address {wallet.address}")
                         await interaction.followup.send(
                             "You've already completed an initiation rite. Re-initiation is not allowed.", 
                             ephemeral=ephemeral_setting
                         )
-                    return
+                        return
 
                 # Create a button to trigger the modal
                 async def button_callback(button_interaction: discord.Interaction):
@@ -747,8 +707,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 if len(user_choices) == 4:  # All selections made
                     try:
                         # Convert time strings to time objects
-                        start_time = datetime.strptime(user_choices["start_time"], "%H:%M").time()
-                        end_time = datetime.strptime(user_choices["end_time"], "%H:%M").time()
+                        start_time = datetime.datetime.strptime(user_choices["start_time"], "%H:%M").time()
+                        end_time = datetime.datetime.strptime(user_choices["end_time"], "%H:%M").time()
                         
                         # Create or update DeathMarchSettings
                         settings = DeathMarchSettings(
@@ -890,7 +850,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 return
             
             # 7. Update death march settings
-            session_start = datetime.now(timezone.utc)
+            session_start = datetime.datetime.now(datetime.timezone.utc)
             session_end = session_start + timedelta(days=days)
             
             settings.channel_id = interaction.channel_id
@@ -1073,7 +1033,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     account_address=wallet.classic_address,
                     openrouter=self.openrouter,
                     user_context_parser=self.user_task_parser,
-                    pft_utils=self.generic_pft_utilities
+                    pft_utils=self.generic_pft_utilities,
+                    tasknode_utilities=self.tasknode_utilities
                 )
 
                 # Generate a question as the Corbanu offering 
@@ -1136,7 +1097,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     account_address=wallet.classic_address,
                     openrouter=self.openrouter,
                     user_context_parser=self.user_task_parser,
-                    pft_utils=self.generic_pft_utilities
+                    pft_utils=self.generic_pft_utilities,
+                    tasknode_utilities=self.tasknode_utilities
                 )
 
                 scoring = await corbanu.generate_user_question_scoring_output(
@@ -1186,6 +1148,10 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 
                 await message_obj.edit(content="Handshake verified. Proceeding to send memo...")
 
+                # No PFT here, just sending the message
+                # NOTE: This means we won't see this memo if we filter by PFT
+                pft_amount=Decimal(0)
+
                 # Send Q&A from user wallet to remembrancer
                 response = self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=wallet,
@@ -1195,9 +1161,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     chunk=True,
                     compress=True,
                     encrypt=encrypt,
-                    # No PFT here, just sending the message
-                    # NOTE: This means we won't see this memo if we filter by PFT
-                    pft_amount=Decimal(0)
+                    pft_amount=pft_amount,
+                    disable_pft_check=True
                 )
 
                 # Verify that the large message was successfully sent
@@ -1206,9 +1171,14 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     return
 
                 last_response = response[-1] if isinstance(response, list) else response
-                transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(
-                    response=last_response
-                )
+                if pft_amount > 0:
+                    transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(
+                        response=last_response
+                    )
+                else:
+                    transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object__standard_xrp(
+                        response=last_response
+                    )
                 clean_string = transaction_info['clean_string']
 
                 await message_obj.edit(
@@ -1309,7 +1279,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     account_address=wallet.classic_address,
                     openrouter=self.openrouter,
                     user_context_parser=self.user_task_parser,
-                    pft_utils=self.generic_pft_utilities
+                    pft_utils=self.generic_pft_utilities,
+                    tasknode_utilities=self.tasknode_utilities
                 )
 
                 # Get Corbanu's response asynchronously
@@ -1355,6 +1326,10 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     
                     await message_obj.edit(content="Handshake verified. Proceeding to send memo...")
 
+                # No PFT here, just sending the message
+                # NOTE: This means we won't see this memo if we filter by PFT
+                pft_amount = Decimal(0)
+
                 # Send summarized message from user's wallet to remembrancer
                 send_response = self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=wallet,
@@ -1364,9 +1339,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     chunk=True,
                     compress=True,
                     encrypt=encrypt,
-                    # No PFT here, just sending the message
-                    # NOTE: This means we won't see this memo if we filter by PFT
-                    pft_amount=Decimal(0)
+                    pft_amount=pft_amount,
+                    disable_pft_check=True
                 )
 
                 # Verify transaction
@@ -1375,7 +1349,11 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     return
 
                 last_response = send_response[-1] if isinstance(send_response, list) else send_response
-                transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(last_response)
+                # TODO: Refactor these two methods into a single method
+                if pft_amount > 0:
+                    transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(last_response)
+                else:
+                    transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object__standard_xrp(last_response)
                 clean_string = transaction_info['clean_string']
 
                 await message_obj.edit(
@@ -1420,8 +1398,6 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
             try:
                 # Get the unformatted output message
                 output_message = self.create_full_outstanding_pft_string(account_address=wallet.address)
-
-                logger.debug(f"TaskNodeDiscordBot.pf_outstanding: Output message: {output_message}")
                 
                 # Format the message using the formatting function
                 formatted_chunks = self.format_tasks_for_discord(output_message)
@@ -1524,8 +1500,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 await interaction.followup.send("You have no tasks to accept.", ephemeral=ephemeral_setting)
                 return
             
-            # Hack to allow for deferred modals
-            self.set_cache_entry(self.pending_tasks_cache, user_id, pending_tasks)
+            # Cache the pending tasks
+            self.pending_tasks_cache[user_id] = pending_tasks
 
             # Create dropdown options based on the non-accepted tasks
             options = [
@@ -1543,15 +1519,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
             # Create the Select menu with its callback
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
-                cached_tasks = self.get_cache_entry(self.pending_tasks_cache, user_id)
-
-                if cached_tasks is None:
-                    await interaction.response.send_message(
-                        "This menu has expired. Please run the /pf_accept command again.",
-                        ephemeral=True
-                    )
-                    return
-                
+                cached_tasks = self.pending_tasks_cache[user_id]
                 task_text = str(cached_tasks.loc[selected_task_id, 'proposal'])
                 self.pending_tasks_cache.pop(user_id, None)
 
@@ -1566,12 +1534,25 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     )
                 )
 
+            async def on_timeout():
+                # Clear cache
+                self.pending_tasks_cache.pop(user_id, None)
+                # Update message to indicate expiration
+                try:
+                    await interaction.edit_original_response(
+                        content="This task selection menu has expired. Please run /pf_accept again.",
+                        view=None  # This removes the select menu
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update message on timeout: {e}")
+
             # Attach the callback to the select element
             select.callback = select_callback
 
             # Create a view and add the select element to it
-            view = View()
+            view = View(timeout=self.cache_timeout)
             view.add_item(select)
+            view.on_timeout = on_timeout
 
             # Send the message with the dropdown menu
             await interaction.followup.send("Please choose a task to accept:", view=view, ephemeral=ephemeral_setting)
@@ -1614,8 +1595,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 await interaction.followup.send("You have no tasks to refuse.", ephemeral=ephemeral_setting)
                 return
 
-            # Hack to allow for deferred modals
-            self.set_cache_entry(self.refuseable_tasks_cache, user_id, refuseable_tasks)
+            # Cache the refuseable tasks
+            self.refuseable_tasks_cache[user_id] = refuseable_tasks
 
             # Create dropdown options based on the non-accepted tasks
             options = [
@@ -1633,15 +1614,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
             # Define the callback for when a user selects an option
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
-                cached_tasks = self.get_cache_entry(self.refuseable_tasks_cache, user_id)
-
-                if cached_tasks is None:
-                    await interaction.response.send_message(
-                        "This menu has expired. Please run the /pf_refuse command again.",
-                        ephemeral=True
-                    )
-                    return
-                
+                cached_tasks = self.refuseable_tasks_cache[user_id]
                 task_text = str(cached_tasks.loc[selected_task_id, 'proposal'])
                 self.refuseable_tasks_cache.pop(user_id, None)
     
@@ -1656,12 +1629,25 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     )
                 )
 
+            async def on_timeout():
+                # Clear cache
+                self.refuseable_tasks_cache.pop(user_id, None)
+                # Update message to indicate expiration
+                try:
+                    await interaction.edit_original_response(
+                        content="This task selection menu has expired. Please run /pf_refuse again.",
+                        view=None  # This removes the select menu
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update message on timeout: {e}")          
+
             # Attach the callback to the select element
             select.callback = select_callback
 
             # Create a view and add the select element to it
-            view = View()
+            view = View(timeout=self.cache_timeout)
             view.add_item(select)
+            view.on_timeout = on_timeout
 
             # Send the message with the dropdown menu
             await interaction.followup.send("Please choose a task to refuse:", view=view, ephemeral=ephemeral_setting)
@@ -1704,8 +1690,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 await interaction.followup.send("You have no tasks to submit for verification.", ephemeral=ephemeral_setting)
                 return
 
-            # Hack to allow for deferred modals
-            self.set_cache_entry(self.accepted_tasks_cache, user_id, accepted_tasks)
+            # Cache the accepted tasks
+            self.accepted_tasks_cache[user_id] = accepted_tasks
 
             # Create dropdown options based on the accepted tasks
             options = [
@@ -1723,15 +1709,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
             # Define the callback for when a user selects an option
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
-                cached_tasks = self.get_cache_entry(self.accepted_tasks_cache, user_id)
-
-                if cached_tasks is None:
-                    await interaction.response.send_message(
-                        "This menu has expired. Please run the /pf_initial_verification command again.",
-                        ephemeral=True
-                    )
-                    return
-                
+                cached_tasks = self.accepted_tasks_cache[user_id]
                 task_text = str(cached_tasks.loc[selected_task_id, 'proposal'])
                 self.accepted_tasks_cache.pop(user_id, None)
 
@@ -1746,12 +1724,26 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     )
                 )
 
+            async def on_timeout():
+                # Clear cache
+                self.accepted_tasks_cache.pop(user_id, None)
+                # Update message to indicate expiration
+                try:
+                    await interaction.edit_original_response(
+                        content="This task selection menu has expired. Please run /pf_initial_verification again.",
+                        view=None  # This removes the select menu
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update message on timeout: {e}")
+
             # Attach the callback to the select element
             select.callback = select_callback
 
             # Create a view and add the select element to it
-            view = View()
+            view = View(timeout=self.cache_timeout)
             view.add_item(select)
+            view.on_timeout = on_timeout
+
             await interaction.followup.send("Please choose a task to submit for verification:", view=view, ephemeral=ephemeral_setting)
 
         @self.tree.command(name="pf_final_verification", description="Submit final verification for a task")
@@ -1791,8 +1783,8 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                 await interaction.followup.send("You have no tasks pending final verification.", ephemeral=ephemeral_setting)
                 return
 
-            # Hack to allow for deferred modals
-            self.set_cache_entry(self.verification_tasks_cache, user_id, verification_tasks)
+            # Cache the verification tasks
+            self.verification_tasks_cache[user_id] = verification_tasks
 
             # Create dropdown options based on the tasks in the verification queue
             options = [
@@ -1810,15 +1802,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
             # Define the callback for when a user selects an option
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
-                cached_tasks = self.get_cache_entry(self.verification_tasks_cache, user_id)
-
-                if cached_tasks is None:
-                    await interaction.response.send_message(
-                        "This menu has expired. Please run the /pf_final_verification command again.",
-                        ephemeral=True
-                    )
-                    return
-                
+                cached_tasks = self.verification_tasks_cache[user_id]                
                 task_text = str(cached_tasks.loc[selected_task_id, 'verification'])
                 self.verification_tasks_cache.pop(user_id, None)
 
@@ -1834,12 +1818,25 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
                     )
                 )
 
+            async def on_timeout():
+                # Clear cache
+                self.verification_tasks_cache.pop(user_id, None)
+                # Update message to indicate expiration
+                try:
+                    await interaction.edit_original_response(
+                        content="This task selection menu has expired. Please run /pf_final_verification again.",
+                        view=None  # This removes the select menu
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update message on timeout: {e}")
+
             # Attach the callback to the select element
             select.callback = select_callback
 
             # Create a view and add the select element to it
-            view = View()
+            view = View(timeout=self.cache_timeout)
             view.add_item(select)
+            view.on_timeout = on_timeout
 
             # Send the message with the dropdown menu
             await interaction.followup.send("Please choose a task for final verification:", view=view, ephemeral=ephemeral_setting)
@@ -1883,7 +1880,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
 
                 await self.send_long_interaction_response(
                     interaction=interaction,
-                    content=recent_rewards,
+                    message=recent_rewards,
                     ephemeral=ephemeral_setting
                 )
 
@@ -2287,9 +2284,9 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
     async def send_long_message_to_channel(self, channel, long_message):
         return await self._send_long_message(long_message, channel=channel)
 
-    async def send_long_interaction_response(self, interaction: discord.Interaction, content: str, ephemeral: bool = True):
+    async def send_long_interaction_response(self, interaction: discord.Interaction, message: str, ephemeral: bool = True):
         return await self._send_long_message(
-            content,
+            message,
             interaction=interaction,
             code_block=True,
             ephemeral=ephemeral
@@ -2347,7 +2344,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
         settings = self.user_deathmarch_settings[user_id]
 
         while not self.is_closed():
-            now_utc = datetime.now(timezone.utc)
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
 
             # Check if death march has ended
             if now_utc >= settings.session_end:
@@ -2360,7 +2357,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
 
             # Check local time window
             user_tz = pytz.timezone(settings.timezone)
-            now_local = datetime.now(user_tz).time()
+            now_local = datetime.datetime.now(user_tz).time()
 
             if settings.start_time <= now_local <= settings.end_time:
                 # Check if enough time has passed since last check-in
@@ -2421,7 +2418,7 @@ Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with
         
         while not self.is_closed():
             try:
-                now = datetime.now(est_tz).time()
+                now = datetime.datetime.now(est_tz).time()
                 if start_time <= now <= end_time:
                     channel = self.get_channel(channel_id)
                     if channel:
@@ -3353,8 +3350,8 @@ My specific question/request is: {user_query}"""
         Returns:
             tuple[int, int]: (checks_per_day, total_cost)
         """
-        start_dt = datetime.combine(datetime.today(), settings.start_time)
-        end_dt = datetime.combine(datetime.today(), settings.end_time)
+        start_dt = datetime.datetime.combine(datetime.datetime.today(), settings.start_time)
+        end_dt = datetime.datetime.combine(datetime.datetime.today(), settings.end_time)
         daily_duration = (end_dt - start_dt).total_seconds() / 60  # duration in minutes
         checks_per_day = int(daily_duration / settings.check_interval)
         total_cost = checks_per_day * days * 30  # 30 PFT per check-in

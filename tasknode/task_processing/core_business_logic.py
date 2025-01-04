@@ -1,5 +1,5 @@
 """
-This module defines the business logic rules for processing XRPL transactions in NodeTools.
+This module defines the business logic rules for processing TaskNode XRPL transactions.
 There are two distinct layers of validation:
 
 1. Pattern Matching (handled by TransactionGraph):
@@ -9,21 +9,28 @@ There are two distinct layers of validation:
    - Example: Checking if a memo matches the pattern for a proposal (PROPOSED PF ___)
 
 2. Business Rule Validation (handled by Rule classes):
-   - Validates transaction-level requirements (e.g., transaction success)
    - Enforces content-specific rules (e.g., minimum length for initiation rites)
-   - Validates contextual requirements (e.g., proper sequencing)
+   - Checking that a transaction is addressed to the node address or remembrancer address
    - Example: Checking if an initiation rite contains meaningful content
 
 Example Flow:
 1. Transaction received: memo_type="2024-03-20_14:30", memo_data="REQUEST_POST_FIAT ___ Can i get a task to do?"
 2. TransactionGraph matches this to the "request_post_fiat" pattern
-3. RequestPostFiatRule then used to validate that:
-   - The transaction was successful
-   - Any other request_post_fiat-specific business rules
+3. RequestPostFiatRule then used to validate that the transaction was addressed to the node
+4. After validation, node will check against its database to see if the request already has a valid response, 
+    according to the valid_responses set in the TransactionGraph
+5. If no valid response is found, node will conclude that the request is unfulfilled and will call the response rule's generator
+6. The response rule's generator will generate a response
+7. The node will send the response back to the user and mark it for re-review
+8. The node will queue the response for re-review and confirm that the response was sent
+9. The node will then mark the request as fulfilled
+10. The interaction is complete
 
 When adding new rules, remember:
+- A request requires a single valid response 
 - Pattern matching logic belongs in create_business_logic()
-- Only transaction-specific validation logic belongs in Rule.validate()
+- Only transaction-specific validation logic belongs in InteractionRule.validate()
+- NodeTools ignores failed transactions by default, so explicitly checking for transaction success is not necessary
 """
 # Standard library imports
 from typing import Dict, Any, Optional
@@ -1076,19 +1083,19 @@ class RewardResponseGenerator(ResponseGenerator):
         verification_prompt = prompt_results[0]['memo_data']
 
         # Get recent rewards history
-        rewards_query = """
+        # TODO: Consider querying off of transaction_memos table instead of decoded_memos view
+        rewards_query = f"""
             SELECT memo_data, pft_absolute_amount
             FROM decoded_memos 
-            WHERE account = %(account)s
+            WHERE account = $1
             AND transaction_result = 'tesSUCCESS'
-            AND memo_data LIKE %(reward_pattern)s
-            AND datetime >= NOW() - INTERVAL '%(window)s days'
+            AND memo_data LIKE $2
+            AND datetime >= NOW() - INTERVAL '{self.REWARD_PROCESSING_WINDOW} days'
             ORDER BY datetime DESC;
         """
         rewards_params = {
             'account': request_tx['account'],
-            'reward_pattern': regex_to_sql_pattern(REWARD_PATTERN.memo_data),
-            'window': self.REWARD_PROCESSING_WINDOW
+            'reward_pattern': regex_to_sql_pattern(REWARD_PATTERN.memo_data)
         }
         rewards_results = await self.transaction_repository.execute_query(rewards_query, rewards_params)
         

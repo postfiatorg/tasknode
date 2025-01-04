@@ -356,18 +356,6 @@ class CorbanuChatBot:
             # Get last 24 hours of memos
             memo_history = self.pft_utils.get_account_memo_history(account_address=account_address)
 
-            # Add PFT amount column to the full DataFrame first
-            def try_get_pft_absolute_amount(x):
-                try:
-                    # Parse JSON if it's a string
-                    if isinstance(x, str):
-                        x = json.loads(x)
-                    return int(x['DeliverMax']['value'])
-                except:
-                    return 0
-                
-            memo_history['amount_pft'] = memo_history['tx_json'].apply(try_get_pft_absolute_amount)
-
             # Calculate 24 hours ago timestamp in UTC
             utc_now = datetime.now(timezone.utc)
             cutoff_time = utc_now - timedelta(hours=24)
@@ -383,7 +371,7 @@ class CorbanuChatBot:
             ]
 
             # Sum rewards in last 24 hours
-            total_recent_rewards = Decimal(int(corbanu_rewards['amount_pft'].sum()))
+            total_recent_rewards = Decimal(int(corbanu_rewards['pft_amount'].sum()))
 
             remaining_limit = max(Decimal(self.MAX_DAILY_REWARD_VALUE) - total_recent_rewards, Decimal(0))
                     
@@ -451,13 +439,18 @@ class CorbanuChatBot:
             # Get all messages and select relevant columns
             messages_df = self.pft_utils.get_all_account_compressed_messages_for_remembrancer(
                 account_address=account_address,
-            )[['processed_message', 'datetime', 'memo_format']]
+            )
+            if messages_df.empty:
+                return ""
+
+            # Get only the columns we need
+            messages_df = messages_df[['processed_message', 'datetime', 'memo_format']]
 
             # Filter for Corbanu messages
             corbanu_messages = messages_df[messages_df['memo_format'] == 'Corbanu']
 
             if corbanu_messages.empty:
-                return json.dumps({})
+                return ""
             
             # Get most recent messages, sort by time, and convert to JSON
             recent_messages = (corbanu_messages
@@ -471,4 +464,4 @@ class CorbanuChatBot:
 
         except Exception as e:
             logger.error(f"CorbanuChatBot.get_recent_corbanu_interactions: Failed to get recent Corbanu interactions for account {account_address}: {e}")
-            return json.dumps({})
+            return ""

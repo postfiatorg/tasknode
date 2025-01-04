@@ -9,7 +9,7 @@ from loguru import logger
 import nodetools.configuration.constants as global_constants
 import nodetools.configuration.configuration as config
 from tasknode.task_processing.constants import MAX_COMMITMENT_SENTENCE_LENGTH
-
+import traceback
 if TYPE_CHECKING:
     from tasknode.chatbots.pft_discord import TaskNodeDiscordBot
 
@@ -37,6 +37,8 @@ class WalletInfoModal(discord.ui.Modal, title='New XRP Wallet'):
             style=discord.TextStyle.short,
             required=True
         )
+        self.add_item(self.address)
+        self.add_item(self.seed)
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = interaction.user.id
@@ -85,6 +87,8 @@ class PFTTransactionModal(discord.ui.Modal, title='Send PFT'):
         self.generic_pft_utilities = generic_pft_utilities
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
         # Perform the transaction using the details provided in the modal
         destination_address = self.address.value
         amount = self.amount.value
@@ -97,13 +101,16 @@ class PFTTransactionModal(discord.ui.Modal, title='Send PFT'):
             memo_format=interaction.user.name
         )
 
-        # send memo with PFT attached
-        response = self.generic_pft_utilities.send_memo(
-            wallet_seed_or_wallet=self.wallet,
-            destination=destination_address,
-            memo=memo,
-            username=interaction.user.name,
-            pft_amount=Decimal(amount)
+        # Run the blocking function in a thread pool
+        response = await interaction.client.loop.run_in_executor(
+            None,
+            lambda: self.generic_pft_utilities.send_memo(
+                wallet_seed_or_wallet=self.wallet,
+                destination=destination_address,
+                memo=memo,
+                username=interaction.user.name,
+                pft_amount=Decimal(amount)
+            )
         )
 
         # extract response from last memo
@@ -139,6 +146,8 @@ class XRPTransactionModal(discord.ui.Modal, title='XRP Transaction Details'):
         self.generic_pft_utilities = generic_pft_utilities
 
     async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
         destination_address = self.address.value
         amount = self.amount.value
         message = self.message.value
@@ -155,13 +164,15 @@ class XRPTransactionModal(discord.ui.Modal, title='XRP Transaction Details'):
             # Convert destination_tag to integer if it exists
             dt = int(destination_tag) if destination_tag else None
 
-            # Call the send_xrp_with_info__seed_based function
-            response = self.generic_pft_utilities.send_xrp_with_info__seed_based(
-                wallet_seed=self.wallet,
-                amount=amount,
-                destination=destination_address,
-                memo=memo,
-                destination_tag=dt
+            # Run the blocking function in a thread pool
+            response = await interaction.client.loop.run_in_executor(
+                None,  # Uses default thread pool
+                self.generic_pft_utilities.send_xrp,
+                self.wallet,
+                amount,
+                destination_address,
+                memo,
+                dt
             )
 
             # Extract transaction information using the improved function
@@ -247,6 +258,7 @@ class InitiationModal(discord.ui.Modal, title='Initiation Rite'):
 
         except Exception as e:
             logger.error(f"InitiationModal.on_submit: Error during initiation: {str(e)}")
+            logger.error(traceback.format_exc())
             await message_obj.edit(content=f"An error occurred during initiation: {str(e)}")
 
 class UpdateLinkModal(discord.ui.Modal, title='Update Google Doc Link'):

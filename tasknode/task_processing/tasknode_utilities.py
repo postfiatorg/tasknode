@@ -262,7 +262,6 @@ class TaskNodeUtilities:
             wallet: XRPL wallet object
             initiation_rite: Commitment message
             username: Discord username
-            allow_reinitiation: If True, allows re-initiation when in test mode
 
         Raises:
             Exception: If there is an error sending the initiation rite
@@ -326,9 +325,7 @@ class TaskNodeUtilities:
         self.generic_pft_utilities.handle_trust_line(wallet, username)
         
         # Handle initiation rite
-        self.handle_initiation_rite(
-            wallet, initiation_rite, username, allow_reinitiation
-        )
+        self.handle_initiation_rite(wallet, initiation_rite, username)
     
     def discord__update_google_doc_link(self, user_seed: str, google_doc_link: str, username: str):
         """Update the user's Google Doc link."""
@@ -551,8 +548,8 @@ class TaskNodeUtilities:
             logger.warning(f"Error processing memo data for hash {row.name}: {e}")
             return row['memo_data']  # Return original if processing fails
 
-    # TODO: Change to async
     def sync_and_format_new_transactions(self):
+        #TODO: Replace this with asynchronous logic handled by the core business logic 
         """
         Gets newly processed transactions and formats them for Discord notifications.
         Uses the transaction processing pipeline to avoid duplicate notifications.
@@ -569,11 +566,15 @@ class TaskNodeUtilities:
                 with dbconnx.cursor() as cur:
                     sql_manager = SQLManager()
                     query = sql_manager.load_query('discord','get_new_processed_transactions')
-                    display_memo_types = [
+                    exclude_memo_types = [
+                        'PFT_SEND',
+                        'XRP_SEND'
+                    ]
+                    include_memo_types = [
                         global_constants.SystemMemoType.INITIATION_RITE.value,
                         global_constants.SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value
                     ]
-                    cur.execute(query, (self.bot_start_time, display_memo_types))
+                    cur.execute(query, (self.bot_start_time, exclude_memo_types, include_memo_types))
 
                     # Convert to list of dicts
                     columns = [desc[0] for desc in cur.description]
@@ -599,7 +600,7 @@ class TaskNodeUtilities:
                             f"Memo Format: `{row['memo_format']}`\n"
                             f"Memo Type: `{row['memo_type']}`\n"
                             f"Memo Data: `{row['memo_data']}`\n"
-                            f"Directional PFT: {row['pft_absolute_amount']}\n"
+                            f"PFT: {row['pft_absolute_amount']}\n"  # decoded_memos.pft_absolute_amount = transaction_memos.pft_amount
                             f"Rule: {row['rule_name']}\n"
                             f"URL: {url}"
                         )
@@ -628,10 +629,10 @@ class TaskNodeUtilities:
         memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_to_work,pft_only=True)
         full_context = self.user_task_parser.get_full_user_context_string(account_address=account_to_work, memo_history=memo_history)
         simplified_rewards=memo_history[memo_history['memo_data'].apply(lambda x: 'reward' in x)].copy()
-        daily_ts = simplified_rewards[['pft_absolute_amount','datetime']].groupby('datetime').sum()
+        daily_ts = simplified_rewards[['pft_amount','datetime']].groupby('datetime').sum()
         daily_ts_pft= daily_ts.resample('D').last().fillna(0)
-        daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(7).mean()
-        daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(30).mean()
+        daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_amount'].rolling(7).mean()
+        daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_amount'].rolling(30).mean()
         max_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'].max()
         average_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'].mean()
         current_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'][-1:].mean()
@@ -695,10 +696,10 @@ _________________________________
         memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_to_work,pft_only=True)
         full_context = self.user_task_parser.get_full_user_context_string(account_address=account_to_work, memo_history=memo_history)
         simplified_rewards=memo_history[memo_history['memo_data'].apply(lambda x: 'reward' in x)].copy()
-        daily_ts = simplified_rewards[['pft_absolute_amount','datetime']].groupby('datetime').sum()
+        daily_ts = simplified_rewards[['pft_amount','datetime']].groupby('datetime').sum()
         daily_ts_pft= daily_ts.resample('D').last().fillna(0)
-        daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(7).mean()
-        daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(30).mean()
+        daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_amount'].rolling(7).mean()
+        daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_amount'].rolling(30).mean()
         max_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'].max()
         average_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'].mean()
         current_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'][-1:].mean()
@@ -789,10 +790,10 @@ _________________________________
         memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_to_work,pft_only=True)
         full_context = self.user_task_parser.get_full_user_context_string(account_address=account_to_work, memo_history=memo_history)
         simplified_rewards=memo_history[memo_history['memo_data'].apply(lambda x: 'reward' in x)].copy()
-        daily_ts = simplified_rewards[['pft_absolute_amount','datetime']].groupby('datetime').sum()
+        daily_ts = simplified_rewards[['pft_amount','datetime']].groupby('datetime').sum()
         daily_ts_pft= daily_ts.resample('D').last().fillna(0)
-        daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(7).mean()
-        daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(30).mean()
+        daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_amount'].rolling(7).mean()
+        daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_amount'].rolling(30).mean()
         max_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'].max()
         average_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'].mean()
         current_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'][-1:].mean()
@@ -885,10 +886,10 @@ _________________________________
         memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_to_work,pft_only=True)
         full_context = self.user_task_parser.get_full_user_context_string(account_address=account_to_work, memo_history=memo_history)
         simplified_rewards=memo_history[memo_history['memo_data'].apply(lambda x: 'reward' in x)].copy()
-        daily_ts = simplified_rewards[['pft_absolute_amount','datetime']].groupby('datetime').sum()
+        daily_ts = simplified_rewards[['pft_amount','datetime']].groupby('datetime').sum()
         daily_ts_pft= daily_ts.resample('D').last().fillna(0)
-        daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(7).mean()
-        daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_absolute_amount'].rolling(30).mean()
+        daily_ts_pft['pft_per_day__weekly_avg']=daily_ts_pft['pft_amount'].rolling(7).mean()
+        daily_ts_pft['pft_per_day__monthly_avg']=daily_ts_pft['pft_amount'].rolling(30).mean()
         max_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'].max()
         average_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'].mean()
         current_post_fiat_generation__monthly = daily_ts_pft['pft_per_day__monthly_avg'][-1:].mean()
@@ -958,16 +959,16 @@ _________________________________
     def output_pft_KPI_graph_for_address(self,user_wallet = 'r3UHe45BzAVB3ENd21X9LeQngr4ofRJo5n'):
         
         memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=user_wallet)
-        full_pft_history= memo_history[memo_history['memo_data'].apply(lambda x: 'REWARD' in x)][['datetime','pft_absolute_amount']].set_index('datetime').resample('H').sum()#.rolling(24).mean().plot()
+        full_pft_history= memo_history[memo_history['memo_data'].apply(lambda x: 'REWARD' in x)][['datetime','pft_amount']].set_index('datetime').resample('H').sum()#.rolling(24).mean().plot()
         
         hourly_append = pd.DataFrame(pd.date_range(list(full_pft_history.tail(1).index)[0], datetime.datetime.now(),freq='H'))
         hourly_append.columns=['datetime']
-        hourly_append['pft_absolute_amount']=0
-        full_hourly_hist = pd.concat([full_pft_history,hourly_append.set_index('datetime')['pft_absolute_amount']]).groupby('datetime').sum()
-        full_hourly_hist['24H']=full_hourly_hist['pft_absolute_amount'].rolling(24).mean()
-        full_hourly_hist['3D']=full_hourly_hist['pft_absolute_amount'].rolling(24*3).mean()
-        full_hourly_hist['1W']=full_hourly_hist['pft_absolute_amount'].rolling(24*7).mean()
-        full_hourly_hist['1M']=full_hourly_hist['pft_absolute_amount'].rolling(24*30).mean()
+        hourly_append['pft_amount']=0
+        full_hourly_hist = pd.concat([full_pft_history,hourly_append.set_index('datetime')['pft_amount']]).groupby('datetime').sum()
+        full_hourly_hist['24H']=full_hourly_hist['pft_amount'].rolling(24).mean()
+        full_hourly_hist['3D']=full_hourly_hist['pft_amount'].rolling(24*3).mean()
+        full_hourly_hist['1W']=full_hourly_hist['pft_amount'].rolling(24*7).mean()
+        full_hourly_hist['1M']=full_hourly_hist['pft_amount'].rolling(24*30).mean()
         full_hourly_hist['MoM']=full_hourly_hist['1M']-full_hourly_hist['1M'].shift(30)
         
         def plot_pft_with_oscillator(df, figure_size=(15, 8)):
