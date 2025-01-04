@@ -247,8 +247,7 @@ class InitiationModal(discord.ui.Modal, title='Initiation Rite'):
                 self.seed, 
                 self.commitment_sentence.value, 
                 self.google_doc_link.value, 
-                self.username,
-                config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.ENABLE_REINITIATIONS  # Allow re-initiation in test mode
+                self.username
             )
             
             mode = "(TEST MODE)" if config.RuntimeConfig.USE_TESTNET else ""

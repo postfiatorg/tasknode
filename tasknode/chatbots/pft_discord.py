@@ -31,7 +31,7 @@ from nodetools.configuration.configuration import RuntimeConfig, get_network_con
 
 # tasknode imports
 from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
-from tasknode.task_processing.constants import TaskType
+from tasknode.task_processing.constants import TaskType, INITIATION_RITE_XRP_COST
 from tasknode.chatbots.personas.odv import odv_system_prompt
 from tasknode.chatbots.personas.odv import odv_system_prompt
 from tasknode.chatbots.odv_sprint_planner import ODVSprintPlannerO1
@@ -175,7 +175,7 @@ class TaskNodeDiscordBot(discord.Client):
 
         @self.tree.command(name="pf_guide", description="Show a guide of all available commands")
         async def pf_guide(interaction: discord.Interaction):
-            guide_text = """
+            guide_text = f"""
 # Post Fiat Discord Bot Guide
 
 ### Info Commands
@@ -216,7 +216,9 @@ ___x TASK VERIFICATION SECTION END x___
 You can run a local version of the wallet. Please reference the Post Fiat Github
 https://github.com/postfiatorg/pftpyclient
 
-Note: XRP wallets need 1 XRP to transact. We recommend you fund your wallet with a bit more to start.
+Note: XRP wallets need {global_constants.MIN_XRP_BALANCE} XRP to transact, and initiation rites cost {INITIATION_RITE_XRP_COST} XRP. 
+So you need at least {global_constants.MIN_XRP_BALANCE + INITIATION_RITE_XRP_COST} XRP to start, 
+but we recommend funding with a bit more to cover ongoing transaction fees.
 """
             
             await interaction.response.send_message(guide_text, ephemeral=True)

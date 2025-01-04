@@ -10,7 +10,6 @@ class TaskNodeUtilities(Protocol):
         initiation_rite: str, 
         google_doc_link: str, 
         username: str,
-        allow_reinitiation: bool = False
     ) -> str:
         """
         Process an initiation rite for a new user. Will raise exceptions if there are any issues.

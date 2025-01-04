@@ -16,8 +16,8 @@ setup(
     author="Alex Good",
     packages=packages,
     install_requires=[
-        # "nodetools @ git+https://github.com/postfiatorg/nodetools.git@async#egg=nodetools",
-        "nodetools @ file:///home/ubuntu/development/nodetools",
+        "nodetools @ git+https://github.com/postfiatorg/nodetools.git@async#egg=nodetools",
+        # "nodetools @ file:///home/ubuntu/development/nodetools",
         'numpy',
         'pandas',
         'sqlalchemy',

@@ -10,6 +10,8 @@ MAX_CHUNK_MESSAGES_IN_CONTEXT = 10
 # Maximum length for a commitment sentence
 MAX_COMMITMENT_SENTENCE_LENGTH = 950
 
+INITIATION_RITE_XRP_COST = 5
+
 # Task types where the memo_type = task_id, requiring further disambiguation in the memo_data
 class TaskType(Enum):
     """Task-related memo types for workflow management"""

@@ -31,6 +31,7 @@ from tasknode.chatbots.personas.odv import odv_system_prompt
 from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.task_processing.task_creation import NewTaskGeneration
 from tasknode.task_processing.constants import TaskType
+from tasknode.task_processing.constants import INITIATION_RITE_XRP_COST
 
 class TaskNodeUtilities:
     _instance = None
@@ -274,13 +275,15 @@ class TaskNodeUtilities:
             memo_format=username
         )
         logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Sending initiation rite transaction from {wallet.classic_address} to node {self.node_address}")
-        response = self.generic_pft_utilities.send_memo(
+        
+        response = self.generic_pft_utilities.send_xrp(
             wallet_seed_or_wallet=wallet,
-            memo=initiation_memo,
+            amount=INITIATION_RITE_XRP_COST,
             destination=self.node_address,
-            username=username,
-            compress=False
+            memo=initiation_memo,
+            destination_tag=None
         )
+
         if not self.generic_pft_utilities.verify_transaction_response(response):
             raise Exception("Initiation rite failed to send")
 
@@ -289,8 +292,7 @@ class TaskNodeUtilities:
             user_seed: str, 
             initiation_rite: str, 
             google_doc_link: str, 
-            username: str,
-            allow_reinitiation: bool = False
+            username: str
         ) -> str:
         """
         Process an initiation rite for a new user. Will raise exceptions if there are any issues.
