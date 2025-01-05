@@ -153,9 +153,9 @@ class TaskNodeDiscordBot(discord.Client):
             logger.info(f"Guild {guild.name} (ID: {guild.id}) is available")
 
         @self.event
-        async def on_member_ban(guild: discord.Guild, user: discord.User):
+        async def on_member_remove(user: discord.User):
             """Handle member ban events by deauthorizing their addresses."""
-            logger.info(f"Ban event received for user {user.name} from guild {guild.name}")
+            logger.info(f"Member remove event received for user {user.name} (ID: {user.id}). Deauthorizing addresses...")
             try:
                 # Remove their seed if it exists
                 self.user_seeds.pop(user.id, None)
@@ -166,29 +166,16 @@ class TaskNodeDiscordBot(discord.Client):
                     auth_source_user_id=str(user.id)
                 )
                 
-                logger.info(
-                    f"Deauthorized all addresses for banned user {user.name} (ID: {user.id})"
-                )
-                
             except Exception as e:
                 logger.error(
                     f"Error deauthorizing addresses for banned user {user.name} (ID: {user.id}): {e}"
                 )
                 logger.error(traceback.format_exc())
 
-        @self.event
-        async def on_member_unban(guild: discord.Guild, user: discord.User):
-            """Log member unban events - reauthorization requires manual verification."""
-            logger.info(
-                f"User {user.name} (ID: {user.id}) was unbanned. "
-                "They will need to re-verify their address(es) to use Post-Fiat features."
-            )
-
-        @self.event  # Use self.event inside the class
-        async def on_socket_raw_receive(msg):
-            """Debug log for raw events."""
-            if "GUILD_BAN" in str(msg):
-                logger.debug(f"Raw ban-related event received: {msg}")
+        # @self.event
+        # async def on_socket_raw_receive(msg):
+        #     """Debug log for raw events."""
+        #     logger.debug(f"Raw Socket Event: {msg}")
 
         @self.tree.command(name="pf_verify", description="Verify an XRP address for use with Post-Fiat features")
         async def pf_verify(interaction: Interaction):
@@ -3505,7 +3492,8 @@ def main():
         client = TaskNodeDiscordBot(
             intents=intents,
             generic_pft_utilities=generic_pft_utilities,
-            tasknode_utilities=supplemental_discord_functions
+            tasknode_utilities=supplemental_discord_functions,
+            enable_debug_events=True
         )
 
         # Set up signal handlers before running discord
