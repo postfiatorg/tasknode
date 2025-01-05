@@ -10,8 +10,56 @@ import nodetools.configuration.constants as global_constants
 import nodetools.configuration.configuration as config
 from tasknode.task_processing.constants import MAX_COMMITMENT_SENTENCE_LENGTH
 import traceback
+import re
 if TYPE_CHECKING:
     from tasknode.chatbots.pft_discord import TaskNodeDiscordBot
+
+class VerifyAddressModal(discord.ui.Modal, title='Verify XRP Address'):
+    def __init__(self, client: 'TaskNodeDiscordBot'):
+        super().__init__()
+        self.client = client
+
+        self.address = discord.ui.TextInput(
+            label='XRP Address to Verify',
+            placeholder='rXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+            style=discord.TextStyle.short,
+            required=True,
+            min_length=25,
+            max_length=35
+        )
+        self.add_item(self.address)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        address = self.address.value.strip()
+        user_id = str(interaction.user.id)
+        
+        try:
+            # Validate XRP address format
+            if not re.match('^r[1-9A-HJ-NP-Za-km-z]{25,34}$', address):
+                await interaction.response.send_message(
+                    "Invalid XRP address format. Please try again.",
+                    ephemeral=True
+                )
+                return
+
+            # Store authorization in database
+            await self.client.transaction_repository.authorize_address(
+                address=address,
+                auth_source='discord',
+                auth_source_user_id=str(user_id)
+            )
+
+            await interaction.response.send_message(
+                f"Successfully verified address {address}. You can now use Post-Fiat features with this address.",
+                ephemeral=True
+            )
+
+        except Exception as e:
+            logger.error(f"Error verifying address: {e}")
+            await interaction.response.send_message(
+                "An error occurred while verifying your address. Please try again later.",
+                ephemeral=True
+            )
 
 class WalletInfoModal(discord.ui.Modal, title='New XRP Wallet'):
     def __init__(
@@ -45,6 +93,13 @@ class WalletInfoModal(discord.ui.Modal, title='New XRP Wallet'):
         logger.debug(f"WalletInfoModal.on_submit: Storing seed for user {interaction.user.name} (ID: {user_id})")
         self.client.user_seeds[user_id] = self.seed.value
 
+        # Automatically authorize the address
+        await self.client.transaction_repository.authorize_address(
+            address=self.address.value,
+            auth_source='discord',
+            auth_source_user_id=str(user_id)
+        )
+
         await interaction.response.send_message(
             f"Wallet created successfully. You must fund the wallet with {global_constants.MIN_XRP_BALANCE} XRP to use as a Post Fiat Wallet. "
             "The seed is stored to Discord Hot Wallet. To store different seed use /pf_store_seed. "
@@ -55,22 +110,32 @@ class WalletInfoModal(discord.ui.Modal, title='New XRP Wallet'):
 class SeedModal(discord.ui.Modal, title='Store Your Seed'):
     seed = discord.ui.TextInput(label='Seed', style=discord.TextStyle.long)
 
-    def __init__(self, parent: 'TaskNodeDiscordBot'):
+    def __init__(self, client: 'TaskNodeDiscordBot'):
         super().__init__()
-        self.parent = parent  # Save the client reference
+        self.client = client  # Save the client reference
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = interaction.user.id
 
         # Test seed for validity
         try:
-            self.parent.generic_pft_utilities.spawn_wallet_from_seed(self.seed.value.strip())
+            wallet = self.client.generic_pft_utilities.spawn_wallet_from_seed(self.seed.value.strip())
         except Exception as e:
             await interaction.response.send_message(f"An error occurred while storing your seed: {str(e)}", ephemeral=True)
             return
         
-        self.parent.user_seeds[user_id] = self.seed.value.strip()  # Store the seed
-        await interaction.response.send_message(f'Seed stored successfully for user {interaction.user.name}.', ephemeral=True)
+        self.client.user_seeds[user_id] = self.seed.value.strip()  # Store the seed
+
+        # Automatically authorize the address
+        await self.client.transaction_repository.authorize_address(
+            address=wallet.classic_address,
+            auth_source='discord',
+            auth_source_user_id=str(user_id)
+        )
+        await interaction.response.send_message(
+            f'Seed stored and address {wallet.classic_address} authorized for user {interaction.user.name}.', 
+            ephemeral=True
+        )
 
 class PFTTransactionModal(discord.ui.Modal, title='Send PFT'):
     address = discord.ui.TextInput(label='Recipient Address')

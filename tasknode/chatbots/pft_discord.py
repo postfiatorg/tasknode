@@ -12,10 +12,13 @@ import signal
 
 # third party imports
 from xrpl.wallet import Wallet
+from xrpl.models import AccountLines
+from xrpl.clients import JsonRpcClient
 import discord
 from discord import Object, Interaction, SelectOption, app_commands
 from discord.ui import Modal, TextInput, View, Select, Button
 from loguru import logger
+import pandas as pd
 
 # nodetools imports
 import nodetools.configuration.constants as global_constants
@@ -28,6 +31,7 @@ from nodetools.ai.openrouter import OpenRouterTool
 from nodetools.utilities.generic_pft_utilities import GenericPFTUtilities
 from nodetools.performance.monitor import PerformanceMonitor
 from nodetools.configuration.configuration import RuntimeConfig, get_network_config
+from nodetools.protocols.transaction_repository import TransactionRepository
 
 # tasknode imports
 from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
@@ -42,6 +46,7 @@ from tasknode.task_processing.constants import TASK_PATTERNS
 from tasknode.task_processing.core_business_logic import TaskManagementRules
 from tasknode.chatbots.odv_focus_analyzer import ODVFocusAnalyzer
 from tasknode.chatbots.discord_modals import (
+    VerifyAddressModal,
     WalletInfoModal,
     SeedModal,
     PFTTransactionModal,
@@ -104,6 +109,7 @@ class TaskNodeDiscordBot(discord.Client):
             generic_pft_utilities=generic_pft_utilities,
             tasknode_utilities=tasknode_utilities
         )
+        self.transaction_repository: TransactionRepository = self.generic_pft_utilities.transaction_repository
 
         # Set network-specific attributes
         self.default_openai_model = global_constants.DEFAULT_OPEN_AI_MODEL
@@ -138,6 +144,57 @@ class TaskNodeDiscordBot(discord.Client):
             self.transaction_checker(),
             name="DiscordBotTransactionChecker"
         )
+
+        self.tree.clear_commands(guild=guild)
+    
+        @self.event  # Use self.event inside the class
+        async def on_guild_available(guild: discord.Guild):
+            """Log when a guild becomes available."""
+            logger.info(f"Guild {guild.name} (ID: {guild.id}) is available")
+
+        @self.event
+        async def on_member_ban(guild: discord.Guild, user: discord.User):
+            """Handle member ban events by deauthorizing their addresses."""
+            logger.info(f"Ban event received for user {user.name} from guild {guild.name}")
+            try:
+                # Remove their seed if it exists
+                self.user_seeds.pop(user.id, None)
+                
+                # Deauthorize all addresses associated with this Discord user
+                await self.transaction_repository.deauthorize_addresses(
+                    auth_source='discord',
+                    auth_source_user_id=str(user.id)
+                )
+                
+                logger.info(
+                    f"Deauthorized all addresses for banned user {user.name} (ID: {user.id})"
+                )
+                
+            except Exception as e:
+                logger.error(
+                    f"Error deauthorizing addresses for banned user {user.name} (ID: {user.id}): {e}"
+                )
+                logger.error(traceback.format_exc())
+
+        @self.event
+        async def on_member_unban(guild: discord.Guild, user: discord.User):
+            """Log member unban events - reauthorization requires manual verification."""
+            logger.info(
+                f"User {user.name} (ID: {user.id}) was unbanned. "
+                "They will need to re-verify their address(es) to use Post-Fiat features."
+            )
+
+        @self.event  # Use self.event inside the class
+        async def on_socket_raw_receive(msg):
+            """Debug log for raw events."""
+            if "GUILD_BAN" in str(msg):
+                logger.debug(f"Raw ban-related event received: {msg}")
+
+        @self.tree.command(name="pf_verify", description="Verify an XRP address for use with Post-Fiat features")
+        async def pf_verify(interaction: Interaction):
+            # Create and send the verification modal
+            modal = VerifyAddressModal(client=interaction.client)
+            await interaction.response.send_modal(modal)
 
         @self.tree.command(name="pf_new_wallet", description="Generate a new XRP wallet")
         async def pf_new_wallet(interaction: Interaction):
@@ -410,7 +467,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="pf_store_seed", description="Store a seed")
         async def store_seed(interaction: discord.Interaction):
-            await interaction.response.send_modal(SeedModal(parent=self))
+            await interaction.response.send_modal(SeedModal(client=self))
             logger.debug(f"TaskNodeDiscordBot.store_seed: Seed storage command executed by {interaction.user.name}")
 
         @self.tree.command(name="pf_initiate", description="Initiate your commitment")
@@ -2073,10 +2130,12 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     f"An error occurred while generating the leaderboard: {str(e)}"
                 )
 
-        # Sync the commands to the guild
-        # self.tree.copy_global_to(guild=guild)
-        await self.tree.sync(guild=guild)
-        logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced to guild ID: {guild_id}")
+        # Sync the commands
+        await self.tree.sync()
+        logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced")
+
+        commands = await self.tree.fetch_commands(guild=guild)
+        logger.debug(f"Registered commands: {[cmd.name for cmd in commands]}")
 
     async def _ensure_handshake(
         self,
@@ -3439,6 +3498,8 @@ def main():
 
         # Initialize and run the discord bot
         intents = discord.Intents.default()
+        intents.members = True  # For member events
+        intents.moderation = True  # For ban/unban events
         intents.message_content = True
         intents.guild_messages = True
         client = TaskNodeDiscordBot(

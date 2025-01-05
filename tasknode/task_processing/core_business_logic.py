@@ -324,8 +324,16 @@ class InitiationRiteRule(RequestRule):
         Must:
         1. Have valid rite text
         2. Be sent to the node address
+        3. Be a verified address associated with an active Discord user
         """
         if tx.get('destination') != dependencies.node_config.node_address:
+            return False
+        
+        is_authorized = await dependencies.transaction_repository.is_address_authorized(
+            tx.get('account')
+        )
+        if not is_authorized:
+            logger.debug(f"InitiationRiteRule.validate: Address {tx.get('account')} is not authorized")
             return False
 
         return self.is_valid_initiation_rite(tx.get('memo_data', ''))
@@ -477,8 +485,16 @@ class HandshakeRequestRule(RequestRule):
         Must:
         1. Be sent an address in the node's auto-handshake addresses
         2. Be a valid ECDH public key
+        3. Be a verified address associated with an active Discord user
         """
         if tx.get('destination') not in dependencies.node_config.auto_handshake_addresses:
+            return False
+        
+        is_authorized = await dependencies.transaction_repository.is_address_authorized(
+            tx.get('account')
+        )
+        if not is_authorized:
+            logger.debug(f"HandshakeRequestRule.validate: Address {tx.get('account')} is not authorized")
             return False
         
         try:
@@ -632,8 +648,18 @@ class RequestPostFiatRule(RequestRule):
         Pattern matching is handled by TransactionGraph.
         Must:
         1. Be addressed to the node address
+        2. Be a verified address associated with an active Discord user
         """
-        return tx.get('destination') == dependencies.node_config.node_address
+        if tx.get('destination') != dependencies.node_config.node_address:
+            return False
+        
+        is_authorized = await dependencies.transaction_repository.is_address_authorized(
+            tx.get('account')
+        )
+        if not is_authorized:
+            logger.debug(f"RequestPostFiatRule.validate: Address {tx.get('account')} is not authorized")
+
+        return is_authorized
     
     async def find_response(
             self,
@@ -782,8 +808,18 @@ class TaskOutputRule(RequestRule):
         Pattern matching is handled by TransactionGraph.
         Must:
         1. Be addressed to the node address
+        2. Be a verified address associated with an active Discord user
         """
-        return tx.get('destination') == dependencies.node_config.node_address
+        if tx.get('destination') != dependencies.node_config.node_address:
+            return False
+        
+        is_authorized = await dependencies.transaction_repository.is_address_authorized(
+            tx.get('account')
+        )
+        if not is_authorized:
+            logger.debug(f"TaskOutputRule.validate: Address {tx.get('account')} is not authorized")
+            
+        return is_authorized
     
     async def find_response(
             self,
@@ -966,8 +1002,18 @@ class VerificationResponseRule(RequestRule):
         Pattern matching is handled by TransactionGraph.
         Must:
         1. Be addressed to the node address
+        2. Be a verified address associated with an active Discord user
         """
-        return tx.get('destination') == dependencies.node_config.node_address
+        if tx.get('destination') != dependencies.node_config.node_address:
+            return False
+        
+        is_authorized = await dependencies.transaction_repository.is_address_authorized(
+            tx.get('account')
+        )
+        if not is_authorized:
+            logger.debug(f"VerificationResponseRule.validate: Address {tx.get('account')} is not authorized")
+            
+        return is_authorized
     
     async def find_response(
             self,
@@ -1258,6 +1304,7 @@ class ODVRequestRule(RequestRule):
         Validates that:
         1. Request is sent to remembrancer address
         2. User has minimum required PFT balance (2000)
+        3. User is an authorized address associated with an active Discord user
         """
         try:
             # Check destination is remembrancer
@@ -1267,6 +1314,14 @@ class ODVRequestRule(RequestRule):
             # Check user's PFT balance
             balance = dependencies.generic_pft_utilities.get_pft_balance(tx['account'])
             if balance < 2000:
+                return False
+            
+            # Check if user is an authorized address associated with an active Discord user
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(
+                tx.get('account')
+            )
+            if not is_authorized:
+                logger.debug(f"ODVRequestRule.validate: Address {tx.get('account')} is not authorized")
                 return False
             
             return True
