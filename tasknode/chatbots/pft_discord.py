@@ -9,6 +9,8 @@ import pytz
 import sys
 from typing import Optional, Dict
 import signal
+import re
+from decimal import Decimal
 
 # third party imports
 from xrpl.wallet import Wallet
@@ -146,8 +148,9 @@ class TaskNodeDiscordBot(discord.Client):
         )
 
         self.tree.clear_commands(guild=guild)
+        await self.tree.sync(guild=guild)
     
-        @self.event  # Use self.event inside the class
+        @self.event
         async def on_guild_available(guild: discord.Guild):
             """Log when a guild becomes available."""
             logger.info(f"Guild {guild.name} (ID: {guild.id}) is available")
@@ -877,7 +880,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             memo_data = f"DEATH_MARCH Payment: {days} days, {checks_per_day} checks/day"
             
             try:
-                response = self.generic_pft_utilities.send_memo(
+                response = await self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=user_wallet,
                     destination=self.node_config.remembrancer_address,  # Or wherever you want the PFT to go
                     memo=memo_data,
@@ -887,7 +890,6 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     encrypt=False,
                     pft_amount=Decimal(cost)
                 )
-                # Verify
                 if not self.generic_pft_utilities.verify_transaction_response(response):
                     await interaction.followup.send("Transaction for Death March payment failed.", ephemeral=ephemeral_setting)
                     return
@@ -1199,7 +1201,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 pft_amount=Decimal(0)
 
                 # Send Q&A from user wallet to remembrancer
-                response = self.generic_pft_utilities.send_memo(
+                response = await self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=wallet,
                     username="Corbanu",  # This is memo_format
                     destination=self.remembrancer,
@@ -1248,7 +1250,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
                 logger.debug(f"TaskNodeDiscordBot.corbanu_reply: Sending reward of {reward_value} PFT to {wallet.classic_address}")
                 
-                reward_tx = self.generic_pft_utilities.send_memo(
+                reward_tx = await self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=foundation_wallet,
                     destination=wallet.classic_address,
                     memo=short_reward_message,
@@ -1377,7 +1379,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 pft_amount = Decimal(0)
 
                 # Send summarized message from user's wallet to remembrancer
-                send_response = self.generic_pft_utilities.send_memo(
+                send_response = await self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=wallet,
                     username=user_name,
                     destination=self.remembrancer,
@@ -1984,7 +1986,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     
                     await message_obj.edit(content=f"Handshake verified. Proceeding to send message {message}...")
 
-                response = self.generic_pft_utilities.send_memo(
+                response = await self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=wallet,
                     username=user_name,
                     destination=self.remembrancer,
@@ -2118,7 +2120,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 )
 
         # Sync the commands
-        await self.tree.sync()
+        await self.tree.sync(guild=guild)
         logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced")
 
         commands = await self.tree.fetch_commands(guild=guild)
@@ -2171,7 +2173,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             if not user_key:
                 # Send handshake if we haven't yet
                 logger.debug(f"TaskNodeDiscordBot.{command_name}: Initiating handshake for {username} with {counterparty}")
-                self.generic_pft_utilities.send_handshake(
+                await self.generic_pft_utilities.send_handshake(
                     wallet_seed=seed,
                     destination=counterparty,
                     username=username
@@ -2578,7 +2580,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     wallet_address = user_wallet.classic_address
 
                     # Check PFT balance
-                    pft_balance = self.fetch_pft_balance(wallet_address)
+                    pft_balance = await self.generic_pft_utilities.fetch_pft_balance(wallet_address)
                     logger.debug(f"TaskNodeDiscordBot.coach: PFT balance for {message.author.name} is {pft_balance}")
                     if not (config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.DISABLE_PFT_REQUIREMENTS):
                         if pft_balance < 25000:
@@ -2738,7 +2740,7 @@ My specific question/request is: {user_query}"""
             else:
                 await message.reply("You must store a seed using /pf_store_seed before getting tactical advice.", mention_author=True)
 
-    def generate_basic_balance_info_string(self, address: str, owns_wallet: bool = True) -> str:
+    async def generate_basic_balance_info_string(self, address: str, owns_wallet: bool = True) -> str:
         """Generate account information summary including balances and stats.
         
         Args:
@@ -2752,8 +2754,8 @@ My specific question/request is: {user_query}"""
 
         # Get balances
         try:
-            account_info.xrp_balance = self.generic_pft_utilities.fetch_xrp_balance(address)
-            account_info.pft_balance = self.generic_pft_utilities.fetch_pft_balance(address)
+            account_info.xrp_balance = await self.generic_pft_utilities.fetch_xrp_balance(address)
+            account_info.pft_balance = await self.generic_pft_utilities.fetch_pft_balance(address)
         except Exception as e:
             # Account probably not activated yet
             account_info.xrp_balance = 0
@@ -3103,34 +3105,6 @@ My specific question/request is: {user_query}"""
         
         output_string = "REWARD SUMMARY\n\n" + "\n".join(formatted_rewards)
         return output_string
-
-    def fetch_pft_balance(self, account_address: str) -> float:
-        """
-        Get the PFT balance for a given account address.
-        Returns the balance as a float, or 0.0 if no PFT trustline exists or on error.
-        
-        Args:
-            account_address (str): The XRPL account address to check
-            
-        Returns:
-            float: The PFT balance for the account
-        """
-        client = JsonRpcClient(self.generic_pft_utilities.https_url)
-        try:
-            account_lines = AccountLines(
-                account=account_address,
-                ledger_index="validated"
-            )
-            account_line_response = client.request(account_lines)
-            pft_lines = [i for i in account_line_response.result['lines'] 
-                        if i['account'] == self.generic_pft_utilities.pft_issuer]
-            
-            if pft_lines:
-                return float(pft_lines[0]['balance'])
-            return 0.0
-        except Exception as e:
-            logger.error(f"GenericPFTUtilities.get_account_pft_balance: Error getting PFT balance for {account_address}: {str(e)}")
-            return 0.0
         
     def get_all_transactions_for_active_wallets(self):
         """Get all transactions for active post fiat wallets (balance <= -2000)"""

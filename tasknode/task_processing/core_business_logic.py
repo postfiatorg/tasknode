@@ -82,6 +82,8 @@ from tasknode.prompts.rewards_manager import (
 from tasknode.task_processing.task_creation import NewTaskGeneration
 from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
 
+REQUIRE_AUTHORIZATION = True  # Disable for testing only
+
 ##############################################################################
 ############################## MEMO PATTERNS #################################
 ##############################################################################
@@ -329,12 +331,13 @@ class InitiationRiteRule(RequestRule):
         if tx.get('destination') != dependencies.node_config.node_address:
             return False
         
-        is_authorized = await dependencies.transaction_repository.is_address_authorized(
-            tx.get('account')
-        )
-        if not is_authorized:
-            logger.debug(f"InitiationRiteRule.validate: Address {tx.get('account')} is not authorized")
-            return False
+        if REQUIRE_AUTHORIZATION:
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(
+                tx.get('account')
+            )
+            if not is_authorized:
+                logger.debug(f"InitiationRiteRule.validate: Address {tx.get('account')} is not authorized")
+                return False
 
         return self.is_valid_initiation_rite(tx.get('memo_data', ''))
     
@@ -490,12 +493,13 @@ class HandshakeRequestRule(RequestRule):
         if tx.get('destination') not in dependencies.node_config.auto_handshake_addresses:
             return False
         
-        is_authorized = await dependencies.transaction_repository.is_address_authorized(
-            tx.get('account')
-        )
-        if not is_authorized:
-            logger.debug(f"HandshakeRequestRule.validate: Address {tx.get('account')} is not authorized")
-            return False
+        if REQUIRE_AUTHORIZATION:
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(
+                tx.get('account')
+            )
+            if not is_authorized:
+                logger.debug(f"HandshakeRequestRule.validate: Address {tx.get('account')} is not authorized")
+                return False
         
         try:
             # Determine which secret type to use based on receiving address
@@ -653,13 +657,15 @@ class RequestPostFiatRule(RequestRule):
         if tx.get('destination') != dependencies.node_config.node_address:
             return False
         
-        is_authorized = await dependencies.transaction_repository.is_address_authorized(
-            tx.get('account')
-        )
-        if not is_authorized:
-            logger.debug(f"RequestPostFiatRule.validate: Address {tx.get('account')} is not authorized")
+        if REQUIRE_AUTHORIZATION:
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(
+                tx.get('account')
+            )
+            if not is_authorized:
+                logger.debug(f"RequestPostFiatRule.validate: Address {tx.get('account')} is not authorized")
+                return False
 
-        return is_authorized
+        return True
     
     async def find_response(
             self,
@@ -813,13 +819,15 @@ class TaskOutputRule(RequestRule):
         if tx.get('destination') != dependencies.node_config.node_address:
             return False
         
-        is_authorized = await dependencies.transaction_repository.is_address_authorized(
-            tx.get('account')
-        )
-        if not is_authorized:
-            logger.debug(f"TaskOutputRule.validate: Address {tx.get('account')} is not authorized")
+        if REQUIRE_AUTHORIZATION:
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(
+                tx.get('account')
+            )
+            if not is_authorized:
+                logger.debug(f"TaskOutputRule.validate: Address {tx.get('account')} is not authorized")
+                return False
             
-        return is_authorized
+        return True
     
     async def find_response(
             self,
@@ -1007,13 +1015,15 @@ class VerificationResponseRule(RequestRule):
         if tx.get('destination') != dependencies.node_config.node_address:
             return False
         
-        is_authorized = await dependencies.transaction_repository.is_address_authorized(
-            tx.get('account')
-        )
-        if not is_authorized:
-            logger.debug(f"VerificationResponseRule.validate: Address {tx.get('account')} is not authorized")
+        if REQUIRE_AUTHORIZATION:
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(
+                tx.get('account')
+            )
+            if not is_authorized:
+                logger.debug(f"VerificationResponseRule.validate: Address {tx.get('account')} is not authorized")
+                return False
             
-        return is_authorized
+        return True
     
     async def find_response(
             self,
@@ -1242,8 +1252,8 @@ class RewardResponseGenerator(ResponseGenerator):
             proposed_reward=context['proposed_reward']
         )
 
-        logger.debug(f"system_prompt: {system_prompt}")
-        logger.debug(f"user_prompt: {user_prompt}")
+        # logger.debug(f"system_prompt: {system_prompt}")
+        # logger.debug(f"user_prompt: {user_prompt}")
 
         # Generate reward response
         response = await self.openrouter.create_single_chat_completion(
@@ -1317,12 +1327,13 @@ class ODVRequestRule(RequestRule):
                 return False
             
             # Check if user is an authorized address associated with an active Discord user
-            is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.get('account')
-            )
-            if not is_authorized:
-                logger.debug(f"ODVRequestRule.validate: Address {tx.get('account')} is not authorized")
-                return False
+            if REQUIRE_AUTHORIZATION:
+                is_authorized = await dependencies.transaction_repository.is_address_authorized(
+                    tx.get('account')
+                )
+                if not is_authorized:
+                    logger.debug(f"ODVRequestRule.validate: Address {tx.get('account')} is not authorized")
+                    return False
             
             return True
         except Exception as e:

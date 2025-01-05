@@ -19,7 +19,6 @@ from nodetools.ai.openrouter import OpenRouterTool
 from nodetools.utilities.db_manager import DBConnectionManager
 import nodetools.configuration.constants as global_constants
 from nodetools.utilities.credentials import CredentialManager
-from nodetools.utilities.exceptions import *
 from nodetools.performance.monitor import PerformanceMonitor
 import nodetools.configuration.configuration as config
 from nodetools.sql.sql_manager import SQLManager
@@ -32,6 +31,7 @@ from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.task_processing.task_creation import NewTaskGeneration
 from tasknode.task_processing.constants import TaskType
 from tasknode.task_processing.constants import INITIATION_RITE_XRP_COST
+from tasknode.task_processing.exceptions import *
 
 class TaskNodeUtilities:
     _instance = None
@@ -128,6 +128,7 @@ class TaskNodeUtilities:
         Returns:
             str: Plain text content of the Google Doc
         """
+        logger.debug(f"TaskNodeUtilities.get_google_doc_text: Getting Google Doc text for {share_link}")
         # Extract the document ID from the share link
         doc_id = share_link.split('/')[5]
     
@@ -194,7 +195,7 @@ class TaskNodeUtilities:
             memo_data=google_doc_link
         ) 
 
-    def send_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str, username: str) -> dict:
+    async def send_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str, username: str) -> dict:
         """Send Google Doc context link to the node.
         
         Args:
@@ -212,7 +213,7 @@ class TaskNodeUtilities:
             )
             logger.debug(f"TaskNodeUtilities.send_google_doc: Sending Google Doc link transaction from {wallet.classic_address} to node {self.node_address}: {google_doc_link}")
             
-            response = self.generic_pft_utilities.send_memo(
+            response = await self.generic_pft_utilities.send_memo(
                 wallet_seed_or_wallet=wallet,
                 username=username,
                 memo=google_doc_memo,
@@ -228,7 +229,7 @@ class TaskNodeUtilities:
         except Exception as e:
             raise Exception(f"TaskNodeUtilities.send_google_doc: Error sending Google Doc: {str(e)}")
         
-    def has_initiation_rite(self, wallet_address: str) -> bool:
+    async def has_initiation_rite(self, wallet_address: str) -> bool:
         """Check if wallet has a successful initiation rite.
         
         Args:
@@ -241,7 +242,7 @@ class TaskNodeUtilities:
             Exception: If there is an error checking for the initiation rite
         """        
         try: 
-            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address, pft_only=False)
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address, pft_only=False)
             successful_initiations = memo_history[
                 (memo_history['memo_type'] == global_constants.SystemMemoType.INITIATION_RITE.value) & 
                 (memo_history['transaction_result'] == "tesSUCCESS")
@@ -251,7 +252,7 @@ class TaskNodeUtilities:
             logger.error(f"TaskNodeUtilities.has_initiation_rite: Error checking if user {wallet_address} has a successful initiation rite: {e}")
             return False
     
-    def handle_initiation_rite(
+    async def handle_initiation_rite(
             self, 
             wallet: xrpl.wallet.Wallet, 
             initiation_rite: str, 
@@ -276,7 +277,7 @@ class TaskNodeUtilities:
         )
         logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Sending initiation rite transaction from {wallet.classic_address} to node {self.node_address}")
         
-        response = self.generic_pft_utilities.send_xrp(
+        response = await self.generic_pft_utilities.send_xrp(
             wallet_seed_or_wallet=wallet,
             amount=INITIATION_RITE_XRP_COST,
             destination=self.node_address,
@@ -287,7 +288,7 @@ class TaskNodeUtilities:
         if not self.generic_pft_utilities.verify_transaction_response(response):
             raise Exception("Initiation rite failed to send")
 
-    def discord__initiation_rite(
+    async def discord__initiation_rite(
             self, 
             user_seed: str, 
             initiation_rite: str, 
@@ -305,6 +306,7 @@ class TaskNodeUtilities:
             username (str): Discord username
         """
         minimum_xrp_balance = global_constants.MIN_XRP_BALANCE
+        initiation_rite_xrp_cost = INITIATION_RITE_XRP_COST
 
         # Initialize user wallet
         logger.debug(f"PostFiatTaskGenerationSystem.discord__initiation_rite: Spawning wallet for {username} to submit initiation rite")
@@ -313,28 +315,28 @@ class TaskNodeUtilities:
         logger.debug(f"PostFiatTaskGenerationSystem.discord__initiation_rite: {username} ({wallet.classic_address}) submitting commitment: {initiation_rite}")
 
         # Check XRP balance
-        balance_status = self.generic_pft_utilities.verify_xrp_balance(
+        balance_status = await self.generic_pft_utilities.verify_xrp_balance(
             wallet.classic_address,
-            minimum_xrp_balance
+            minimum_xrp_balance + initiation_rite_xrp_cost
         )
         if not balance_status[0]:
             raise InsufficientXrpBalanceException(wallet.classic_address)
         
         # Handle Google Doc
-        self.handle_google_doc(wallet, google_doc_link, username)
+        await self.handle_google_doc(wallet, google_doc_link, username)
         
         # Handle PFT trustline
-        self.generic_pft_utilities.handle_trust_line(wallet, username)
+        await self.generic_pft_utilities.handle_trust_line(wallet, username)
         
         # Handle initiation rite
-        self.handle_initiation_rite(wallet, initiation_rite, username)
+        await self.handle_initiation_rite(wallet, initiation_rite, username)
     
     def discord__update_google_doc_link(self, user_seed: str, google_doc_link: str, username: str):
         """Update the user's Google Doc link."""
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
         return self.generic_pft_utilities.handle_google_doc(wallet, google_doc_link, username)
 
-    def discord__send_postfiat_request(self, user_request, user_name, user_wallet: xrpl.wallet.Wallet):
+    async def discord__send_postfiat_request(self, user_request, user_name, user_wallet: xrpl.wallet.Wallet):
         """Send a PostFiat task request via Discord.
 
         This method constructs and sends a transaction to request a new task. It:
@@ -366,7 +368,7 @@ class TaskNodeUtilities:
             memo_format=memo_format
         )
 
-        response = self.generic_pft_utilities.send_memo(
+        response = await self.generic_pft_utilities.send_memo(
             wallet_seed_or_wallet=user_wallet,
             destination=self.node_address,
             memo=xmemo_to_send,
@@ -378,7 +380,7 @@ class TaskNodeUtilities:
 
         return response
 
-    def discord__task_acceptance(self, user_seed, user_name, task_id_to_accept, acceptance_string):
+    async def discord__task_acceptance(self, user_seed, user_name, task_id_to_accept, acceptance_string):
         """Accept a proposed task via Discord.
         
         Args:
@@ -400,7 +402,7 @@ class TaskNodeUtilities:
             memo_type=task_id_to_accept
         )
         
-        response = self.generic_pft_utilities.send_memo(
+        response = await self.generic_pft_utilities.send_memo(
             wallet_seed_or_wallet=wallet,
             destination=self.node_address,
             memo=acceptance_memo,
@@ -416,7 +418,7 @@ class TaskNodeUtilities:
 
         return output_string
 
-    def discord__task_refusal(self, user_seed, user_name, task_id_to_refuse, refusal_string):
+    async def discord__task_refusal(self, user_seed, user_name, task_id_to_refuse, refusal_string):
         """Refuse a proposed task via Discord.
         
         Args:
@@ -438,7 +440,7 @@ class TaskNodeUtilities:
             memo_type=task_id_to_refuse
         )
 
-        response = self.generic_pft_utilities.send_memo(
+        response = await self.generic_pft_utilities.send_memo(
             wallet_seed_or_wallet=wallet,
             destination=self.node_address,
             memo=refusal_memo,
@@ -454,7 +456,7 @@ class TaskNodeUtilities:
 
         return output_string
 
-    def discord__initial_submission(self, user_seed, user_name, task_id_to_accept, initial_completion_string):
+    async def discord__initial_submission(self, user_seed, user_name, task_id_to_accept, initial_completion_string):
         """Submit initial task completion via Discord interface.
         
         Args:
@@ -478,7 +480,7 @@ class TaskNodeUtilities:
         )
 
         # Send completion memo transaction
-        response = self.generic_pft_utilities.send_memo(
+        response = await self.generic_pft_utilities.send_memo(
             wallet_seed_or_wallet=wallet,
             destination=self.node_address,
             memo=completion_memo,
@@ -494,7 +496,7 @@ class TaskNodeUtilities:
 
         return output_string
 
-    def discord__final_submission(self, user_seed, user_name, task_id_to_submit, justification_string):
+    async def discord__final_submission(self, user_seed, user_name, task_id_to_submit, justification_string):
         """Submit final verification response for a task via Discord interface.
         
         Args:
@@ -518,7 +520,7 @@ class TaskNodeUtilities:
         )
 
         # Send verification response memo transaction
-        response = self.generic_pft_utilities.send_memo(
+        response = await self.generic_pft_utilities.send_memo(
             wallet_seed_or_wallet=wallet,
             destination=self.node_address,
             memo=completion_memo,

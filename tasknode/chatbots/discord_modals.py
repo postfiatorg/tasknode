@@ -167,15 +167,12 @@ class PFTTransactionModal(discord.ui.Modal, title='Send PFT'):
         )
 
         # Run the blocking function in a thread pool
-        response = await interaction.client.loop.run_in_executor(
-            None,
-            lambda: self.generic_pft_utilities.send_memo(
-                wallet_seed_or_wallet=self.wallet,
-                destination=destination_address,
-                memo=memo,
-                username=interaction.user.name,
-                pft_amount=Decimal(amount)
-            )
+        response = await self.generic_pft_utilities.send_memo(
+            wallet_seed_or_wallet=self.wallet,
+            destination=destination_address,
+            memo=memo,
+            username=interaction.user.name,
+            pft_amount=Decimal(amount)
         )
 
         # extract response from last memo
@@ -229,15 +226,12 @@ class XRPTransactionModal(discord.ui.Modal, title='XRP Transaction Details'):
             # Convert destination_tag to integer if it exists
             dt = int(destination_tag) if destination_tag else None
 
-            # Run the blocking function in a thread pool
-            response = await interaction.client.loop.run_in_executor(
-                None,  # Uses default thread pool
-                self.generic_pft_utilities.send_xrp,
-                self.wallet,
-                amount,
-                destination_address,
-                memo,
-                dt
+            response = await self.generic_pft_utilities.send_xrp(
+                wallet_seed_or_wallet=self.wallet,
+                amount=Decimal(amount),
+                destination=destination_address,
+                memo=memo,
+                destination_tag=dt
             )
 
             # Extract transaction information using the improved function
@@ -306,13 +300,11 @@ class InitiationModal(discord.ui.Modal, title='Initiation Rite'):
             await message_obj.edit(content="Sending commitment and encrypted google doc link to node...")
 
             # Run the blocking function in a thread pool
-            await interaction.client.loop.run_in_executor(
-                None,  # Uses default thread pool
-                self.tasknode_utilities.discord__initiation_rite,
-                self.seed, 
-                self.commitment_sentence.value, 
-                self.google_doc_link.value, 
-                self.username
+            await self.tasknode_utilities.discord__initiation_rite(
+                user_seed=self.seed, 
+                commitment_sentence=self.commitment_sentence.value, 
+                google_doc_link=self.google_doc_link.value, 
+                username=self.username
             )
             
             mode = "(TEST MODE)" if config.RuntimeConfig.USE_TESTNET else ""
@@ -364,13 +356,10 @@ class UpdateLinkModal(discord.ui.Modal, title='Update Google Doc Link'):
 
             await message_obj.edit(content="Sending encrypted google doc link to node...")
 
-            # Run the blocking function in a thread pool
-            await interaction.client.loop.run_in_executor(
-                None,  # Uses default thread pool
-                self.tasknode_utilities.discord__update_google_doc_link,
-                self.seed,
-                self.google_doc_link.value,
-                self.username
+            await self.tasknode_utilities.discord__update_google_doc_link(
+                user_seed=self.seed,
+                google_doc_link=self.google_doc_link.value,
+                username=self.username
             )
 
             await message_obj.edit(content=f"Google Doc link updated to {self.google_doc_link.value}")
@@ -419,14 +408,11 @@ class AcceptanceModal(Modal):
 
         acceptance_string = self.acceptance_string.value
         
-        # Run the blocking function in a thread pool
-        output_string = await interaction.client.loop.run_in_executor(
-            None,  # Uses default thread pool
-            self.tasknode_utilities.discord__task_acceptance,
-            self.seed,
-            self.user_name,
-            self.task_id,
-            acceptance_string
+        output_string = await self.tasknode_utilities.discord__task_acceptance(
+            user_seed=self.seed,
+            user_name=self.user_name,
+            task_id_to_accept=self.task_id,
+            acceptance_string=acceptance_string
         )
         
         # Send a follow-up message with the result
@@ -471,14 +457,11 @@ class RefusalModal(Modal):
         
         refusal_string = self.refusal_string.value
         
-        # Run the blocking function in a thread pool
-        output_string = await interaction.client.loop.run_in_executor(
-            None,  # Uses default thread pool
-            self.tasknode_utilities.discord__task_refusal,
-            self.seed,
-            self.user_name,
-            self.task_id,
-            refusal_string
+        output_string = await self.tasknode_utilities.discord__task_refusal(
+            user_seed=self.seed,
+            user_name=self.user_name,
+            task_id_to_refuse=self.task_id,
+            refusal_string=refusal_string
         )
         
         # Send a follow-up message with the result
@@ -523,14 +506,11 @@ class CompletionModal(Modal):
 
         completion_string = self.completion_justification.value
         
-        # Run the blocking function in a thread pool
-        output_string = await interaction.client.loop.run_in_executor(
-            None,  # Uses default thread pool
-            self.tasknode_utilities.discord__initial_submission,
-            self.seed,
-            self.user_name,
-            self.task_id,
-            completion_string
+        output_string = await self.tasknode_utilities.discord__initial_submission(
+            user_seed=self.seed,
+            user_name=self.user_name,
+            task_id_to_accept=self.task_id,
+            initial_completion_string=completion_string
         )
         
         # Send a follow-up message with the result
@@ -575,14 +555,11 @@ class VerificationModal(Modal):
         
         justification_string = self.verification_justification.value
         
-        # Run the blocking function in a thread pool
-        output_string = await interaction.client.loop.run_in_executor(
-            None,  # Uses default thread pool
-            self.tasknode_utilities.discord__final_submission,
-            self.seed,
-            self.user_name,
-            self.task_id,
-            justification_string
+        output_string = await self.tasknode_utilities.discord__final_submission(
+            user_seed=self.seed,
+            user_name=self.user_name,
+            task_id_to_submit=self.task_id,
+            justification_string=justification_string
         )
         
         # Send a follow-up message with the result

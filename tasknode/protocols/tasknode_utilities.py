@@ -4,7 +4,7 @@ import pandas as pd
 class TaskNodeUtilities(Protocol):
     """Protocol defining the interface for TaskNodeUtilities implementations"""
 
-    def discord__initiation_rite(
+    async def discord__initiation_rite(
         self, 
         user_seed: str, 
         initiation_rite: str, 
@@ -23,11 +23,11 @@ class TaskNodeUtilities(Protocol):
         """
         ...
 
-    def discord__update_google_doc_link(self, user_seed: str, google_doc_link: str, username: str):
+    async def discord__update_google_doc_link(self, user_seed: str, google_doc_link: str, username: str):
         """Update the user's Google Doc link."""
         ...
 
-    def discord__final_submission(self, user_seed, user_name, task_id_to_submit, justification_string):
+    async def discord__final_submission(self, user_seed, user_name, task_id_to_submit, justification_string):
         """Submit final verification response for a task via Discord interface.
         
         Args:
@@ -41,7 +41,7 @@ class TaskNodeUtilities(Protocol):
         """
         ...
 
-    def discord__initial_submission(self, user_seed, user_name, task_id_to_accept, initial_completion_string):
+    async def discord__initial_submission(self, user_seed, user_name, task_id_to_accept, initial_completion_string):
         """Submit initial task completion via Discord interface.
         
         Args:
@@ -55,7 +55,7 @@ class TaskNodeUtilities(Protocol):
         """
         ...
 
-    def discord__task_refusal(self, user_seed, user_name, task_id_to_refuse, refusal_string):
+    async def discord__task_refusal(self, user_seed, user_name, task_id_to_refuse, refusal_string):
         """Refuse a proposed task via Discord.
         
         Args:
@@ -69,7 +69,7 @@ class TaskNodeUtilities(Protocol):
         """
         ... 
 
-    def discord__task_acceptance(self, user_seed, user_name, task_id_to_accept, acceptance_string):
+    async def discord__task_acceptance(self, user_seed, user_name, task_id_to_accept, acceptance_string):
         """Accept a proposed task via Discord.
         
         Args:
