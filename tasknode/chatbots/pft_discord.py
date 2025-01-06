@@ -292,7 +292,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 wallet_address = wallet.classic_address
 
                 # Get account info
-                account_info = self.generate_basic_balance_info_string(address=wallet.address)
+                account_info = await self.generate_basic_balance_info_string(address=wallet.address)
                 
                 # Get recent messages
                 incoming_messages, outgoing_messages = self.generic_pft_utilities.get_recent_messages(wallet_address)
@@ -346,7 +346,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         async def wallet_info(interaction: discord.Interaction, wallet_address: str):
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             try:
-                account_info = self.generate_basic_balance_info_string(address=wallet_address, owns_wallet=False)
+                account_info = await self.generate_basic_balance_info_string(address=wallet_address, owns_wallet=False)
                 
                 # Create an embed for better formatting
                 embed = discord.Embed(title="Wallet Information", color=0x00ff00)
@@ -482,7 +482,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
                 if not (config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.ENABLE_REINITIATIONS):
-                    if self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                    if await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                         logger.debug(f"Blocking re-initiation for user {interaction.user.name}, wallet address {wallet.address}")
                         await interaction.followup.send(
                             "You've already completed an initiation rite. Re-initiation is not allowed.", 
@@ -539,7 +539,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
                 # Check initiation status
-                if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+                if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                     await interaction.followup.send(
                         "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                         ephemeral=ephemeral_setting
@@ -590,7 +590,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             seed = self.user_seeds[user_id]
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=True
@@ -835,7 +835,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             user_address = user_wallet.classic_address
 
             # 2. Check initiation
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=user_address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=user_address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first ( /pf_initiate ).", 
                     ephemeral=True
@@ -968,7 +968,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=True
@@ -1059,7 +1059,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=True
@@ -1123,7 +1123,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.",
                     ephemeral=True
@@ -1308,7 +1308,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=True
@@ -1436,7 +1436,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=True
@@ -1485,7 +1485,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
             
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=True
@@ -1493,13 +1493,11 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
             
             try:
-                # Send the Post Fiat request, running in a thread pool
-                response = await interaction.client.loop.run_in_executor(
-                    None,
-                    self.tasknode_utilities.discord__send_postfiat_request,
-                    task_request,
-                    user_name,
-                    wallet
+                # Send the Post Fiat request
+                response = await self.tasknode_utilities.discord__send_postfiat_request(
+                    user_request=task_request,
+                    user_name=user_name,
+                    user_wallet=wallet
                 )
                 
                 # Extract transaction information
@@ -1530,7 +1528,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=ephemeral_setting
@@ -1625,7 +1623,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=ephemeral_setting
@@ -1720,7 +1718,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=ephemeral_setting
@@ -1813,7 +1811,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=ephemeral_setting
@@ -1908,7 +1906,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=ephemeral_setting
@@ -1957,7 +1955,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=ephemeral_setting
@@ -2004,7 +2002,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
                 mode = "Encrypted message" if encrypt else "Message"
                 await message_obj.edit(
-                    content=f"Post Fiat Log: {message}\n{mode} sent to remembrancer successfully. Last chunk details:\n{clean_string}"
+                    content=f"Post Fiat Log: {message[:100]}...\n{mode} sent to remembrancer successfully. Last chunk details:\n{clean_string[:100]}..."
                 )
 
             except Exception as e:
@@ -2031,7 +2029,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
             # Check initiation status
-            if not self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                 await interaction.followup.send(
                     "You must perform the initiation rite first. Run /pf_initiate to do so.", 
                     ephemeral=ephemeral_setting

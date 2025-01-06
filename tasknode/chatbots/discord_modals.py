@@ -302,7 +302,7 @@ class InitiationModal(discord.ui.Modal, title='Initiation Rite'):
             # Run the blocking function in a thread pool
             await self.tasknode_utilities.discord__initiation_rite(
                 user_seed=self.seed, 
-                commitment_sentence=self.commitment_sentence.value, 
+                initiation_rite=self.commitment_sentence.value, 
                 google_doc_link=self.google_doc_link.value, 
                 username=self.username
             )

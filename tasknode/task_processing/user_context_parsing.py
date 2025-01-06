@@ -237,6 +237,9 @@ class UserTaskParser:
         pending = self.get_proposals_by_state(account, state_type=TaskType.PROPOSAL)
         accepted = self.get_proposals_by_state(account, state_type=TaskType.ACCEPTANCE)
         verification = self.get_proposals_by_state(account, state_type=TaskType.VERIFICATION_PROMPT)
+
+        if pending.empty and accepted.empty and verification.empty:
+            return pd.DataFrame()
         
         # Combine all proposals, keeping only the proposal text column
         all_proposals = pd.concat([

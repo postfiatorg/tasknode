@@ -24,6 +24,7 @@ import nodetools.configuration.configuration as config
 from nodetools.sql.sql_manager import SQLManager
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
 from nodetools.protocols.transaction_repository import TransactionRepository
+from nodetools.utilities.exceptions import *
 
 # Tasknode imports
 from tasknode.chatbots.personas.odv import odv_system_prompt
@@ -164,7 +165,7 @@ class TaskNodeUtilities:
         if "Status code: 401" in google_doc_text:
             raise GoogleDocIsNotSharedException(google_doc_link)
 
-    def handle_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str, username: str):
+    async def handle_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str, username: str):
         """
         Validate and process Google Doc submission.
         
@@ -186,7 +187,7 @@ class TaskNodeUtilities:
             logger.error(f"TaskNodeUtilities.handle_google_doc: Error validating Google Doc: {e}")
             raise
         
-        return self.send_google_doc(wallet, google_doc_link, username)
+        return await self.send_google_doc(wallet, google_doc_link, username)
     
     def construct_google_doc_context_memo(self, user, google_doc_link):               
         return self.generic_pft_utilities.construct_memo(
@@ -242,7 +243,7 @@ class TaskNodeUtilities:
             Exception: If there is an error checking for the initiation rite
         """        
         try: 
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address, pft_only=False)
+            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address, pft_only=False)
             successful_initiations = memo_history[
                 (memo_history['memo_type'] == global_constants.SystemMemoType.INITIATION_RITE.value) & 
                 (memo_history['transaction_result'] == "tesSUCCESS")
@@ -331,10 +332,10 @@ class TaskNodeUtilities:
         # Handle initiation rite
         await self.handle_initiation_rite(wallet, initiation_rite, username)
     
-    def discord__update_google_doc_link(self, user_seed: str, google_doc_link: str, username: str):
+    async def discord__update_google_doc_link(self, user_seed: str, google_doc_link: str, username: str):
         """Update the user's Google Doc link."""
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
-        return self.generic_pft_utilities.handle_google_doc(wallet, google_doc_link, username)
+        return await self.handle_google_doc(wallet, google_doc_link, username)
 
     async def discord__send_postfiat_request(self, user_request, user_name, user_wallet: xrpl.wallet.Wallet):
         """Send a PostFiat task request via Discord.

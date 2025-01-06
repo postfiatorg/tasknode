@@ -336,7 +336,7 @@ class InitiationRiteRule(RequestRule):
                 tx.get('account')
             )
             if not is_authorized:
-                logger.debug(f"InitiationRiteRule.validate: Address {tx.get('account')} is not authorized")
+                # logger.debug(f"InitiationRiteRule.validate: Address {tx.get('account')} is not authorized")
                 return False
 
         return self.is_valid_initiation_rite(tx.get('memo_data', ''))
@@ -498,7 +498,7 @@ class HandshakeRequestRule(RequestRule):
                 tx.get('account')
             )
             if not is_authorized:
-                logger.debug(f"HandshakeRequestRule.validate: Address {tx.get('account')} is not authorized")
+                # logger.debug(f"HandshakeRequestRule.validate: Address {tx.get('account')} is not authorized")
                 return False
         
         try:
@@ -662,7 +662,7 @@ class RequestPostFiatRule(RequestRule):
                 tx.get('account')
             )
             if not is_authorized:
-                logger.debug(f"RequestPostFiatRule.validate: Address {tx.get('account')} is not authorized")
+                # logger.debug(f"RequestPostFiatRule.validate: Address {tx.get('account')} is not authorized")
                 return False
 
         return True
@@ -824,7 +824,7 @@ class TaskOutputRule(RequestRule):
                 tx.get('account')
             )
             if not is_authorized:
-                logger.debug(f"TaskOutputRule.validate: Address {tx.get('account')} is not authorized")
+                # logger.debug(f"TaskOutputRule.validate: Address {tx.get('account')} is not authorized")
                 return False
             
         return True
@@ -1020,7 +1020,7 @@ class VerificationResponseRule(RequestRule):
                 tx.get('account')
             )
             if not is_authorized:
-                logger.debug(f"VerificationResponseRule.validate: Address {tx.get('account')} is not authorized")
+                # logger.debug(f"VerificationResponseRule.validate: Address {tx.get('account')} is not authorized")
                 return False
             
         return True
@@ -1332,7 +1332,7 @@ class ODVRequestRule(RequestRule):
                     tx.get('account')
                 )
                 if not is_authorized:
-                    logger.debug(f"ODVRequestRule.validate: Address {tx.get('account')} is not authorized")
+                    # logger.debug(f"ODVRequestRule.validate: Address {tx.get('account')} is not authorized")
                     return False
             
             return True
@@ -1446,10 +1446,7 @@ class ODVResponseGenerator(ResponseGenerator):
         Returns:
             Context string for the account
         """
-        return self.user_task_parser.get_full_user_context_string(
-            account_address,
-            memo_history=self.generic_pft_utilities.get_account_memo_history(account_address)
-        )
+        return self.user_task_parser.get_full_user_context_string(account_address)
     
     @staticmethod
     def _construct_user_prompt(user_context: str, user_query: str) -> str:
@@ -1494,7 +1491,7 @@ class ODVResponseGenerator(ResponseGenerator):
                     received_key=counterparty_key,
                     secret_type=SecretType.REMEMBRANCER
                 )
-                response_memo_data = MessageEncryption.process_encrypted_message(
+                response_memo_data = MessageEncryption.prepare_encrypted_message(
                     message=response_memo_data,
                     shared_secret=shared_secret
                 )
