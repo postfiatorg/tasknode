@@ -14,38 +14,37 @@ from decimal import Decimal
 
 # third party imports
 from xrpl.wallet import Wallet
-from xrpl.models import AccountLines
-from xrpl.clients import JsonRpcClient
 import discord
 from discord import Object, Interaction, SelectOption, app_commands
-from discord.ui import Modal, TextInput, View, Select, Button
+from discord.ui import View, Select, Button
 from loguru import logger
 import pandas as pd
 
 # nodetools imports
 import nodetools.configuration.constants as global_constants
-import nodetools.configuration.configuration as config
-from nodetools.ai.openai import OpenAIRequestTool
-from nodetools.utilities.credentials import CredentialManager
-from nodetools.utilities.generic_pft_utilities import *
+from nodetools.configuration.configuration import (
+    RuntimeConfig, 
+    NetworkConfig, 
+    NodeConfig,
+)
 from nodetools.configuration.configure_logger import configure_logger
 from nodetools.ai.openrouter import OpenRouterTool
+from nodetools.ai.openai import OpenAIRequestTool
+from nodetools.utilities.credentials import CredentialManager
 from nodetools.utilities.generic_pft_utilities import GenericPFTUtilities
+from nodetools.utilities.transaction_repository import TransactionRepository
 from nodetools.performance.monitor import PerformanceMonitor
-from nodetools.configuration.configuration import RuntimeConfig, get_network_config
-from nodetools.protocols.transaction_repository import TransactionRepository
+from nodetools.container.service_container import ServiceContainer
 
 # tasknode imports
 from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
-from tasknode.task_processing.constants import TaskType, INITIATION_RITE_XRP_COST
-from tasknode.chatbots.personas.odv import odv_system_prompt
+from tasknode.task_processing.constants import TaskType, INITIATION_RITE_XRP_COST, TASK_PATTERNS
+from tasknode.task_processing.user_context_parsing import UserTaskParser
+from tasknode.task_processing.core_business_logic import TaskManagementRules
 from tasknode.chatbots.personas.odv import odv_system_prompt
 from tasknode.chatbots.odv_sprint_planner import ODVSprintPlannerO1
 from tasknode.chatbots.odv_context_doc_improvement import ODVContextDocImprover
-from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.chatbots.corbanu_beta import CorbanuChatBot
-from tasknode.task_processing.constants import TASK_PATTERNS
-from tasknode.task_processing.core_business_logic import TaskManagementRules
 from tasknode.chatbots.odv_focus_analyzer import ODVFocusAnalyzer
 from tasknode.chatbots.discord_modals import (
     VerifyAddressModal,
@@ -81,9 +80,9 @@ class DeathMarchSettings:
     check_interval: int # Minutes between check-ins
     # Session-specific data
     channel_id: Optional[int] = None
-    session_start: Optional[datetime.datetime] = None
-    session_end: Optional[datetime.datetime] = None
-    last_checkin: Optional[datetime.datetime] = None
+    session_start: Optional[datetime] = None
+    session_end: Optional[datetime] = None
+    last_checkin: Optional[datetime] = None
 
 class TaskNodeDiscordBot(discord.Client):
 
@@ -92,26 +91,25 @@ class TaskNodeDiscordBot(discord.Client):
     def __init__(
             self, 
             *args,
-            generic_pft_utilities: GenericPFTUtilities,
+            openai_request_tool: OpenAIRequestTool,
             tasknode_utilities: TaskNodeUtilities,
+            user_task_parser: UserTaskParser,
+            nodetools: ServiceContainer,
             **kwargs
         ):
         super().__init__(*args, **kwargs)
         # Get network configuration and set network-specific attributes
-        self.network_config = config.get_network_config()
-        self.node_config = config.get_node_config()
+        self.network_config = nodetools.network_config
+        self.node_config = nodetools.node_config
         self.remembrancer = self.node_config.remembrancer_address
 
         # Initialize components
-        self.openrouter = OpenRouterTool()
-        self.openai_request_tool = OpenAIRequestTool()
-        self.generic_pft_utilities = generic_pft_utilities
+        self.openai_request_tool = openai_request_tool
         self.tasknode_utilities = tasknode_utilities
-        self.user_task_parser = UserTaskParser(
-            generic_pft_utilities=generic_pft_utilities,
-            tasknode_utilities=tasknode_utilities
-        )
-        self.transaction_repository: TransactionRepository = self.generic_pft_utilities.transaction_repository
+        self.user_task_parser = user_task_parser
+        self.openrouter_tool = nodetools.dependencies.openrouter
+        self.generic_pft_utilities = nodetools.dependencies.generic_pft_utilities
+        self.transaction_repository = nodetools.dependencies.transaction_repository
 
         # Set network-specific attributes
         self.default_openai_model = global_constants.DEFAULT_OPEN_AI_MODEL
@@ -147,6 +145,7 @@ class TaskNodeDiscordBot(discord.Client):
             name="DiscordBotTransactionChecker"
         )
 
+        # Prevents duplicate commands but also makes launch slow. Disable for testing only
         self.tree.clear_commands(guild=guild)
         await self.tree.sync(guild=guild)
     
@@ -481,7 +480,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 seed = self.user_seeds[user_id]
                 wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
-                if not (config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.ENABLE_REINITIATIONS):
+                if not (RuntimeConfig.USE_TESTNET and RuntimeConfig.ENABLE_REINITIATIONS):
                     if await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
                         logger.debug(f"Blocking re-initiation for user {interaction.user.name}, wallet address {wallet.address}")
                         await interaction.followup.send(
@@ -672,7 +671,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 SelectOption(label="Pacific/Auckland", description="Auckland, Wellington (UTC+12/13)")
             ]
             # Time options vary based on environment
-            if config.RuntimeConfig.USE_TESTNET:
+            if RuntimeConfig.USE_TESTNET:
                 # Testing: Allow any hour
                 start_time_options = [
                     SelectOption(label=f"{hour:02d}:00", value=f"{hour:02d}:00") 
@@ -756,8 +755,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 if len(user_choices) == 4:  # All selections made
                     try:
                         # Convert time strings to time objects
-                        start_time = datetime.datetime.strptime(user_choices["start_time"], "%H:%M").time()
-                        end_time = datetime.datetime.strptime(user_choices["end_time"], "%H:%M").time()
+                        start_time = datetime.strptime(user_choices["start_time"], "%H:%M").time()
+                        end_time = datetime.strptime(user_choices["end_time"], "%H:%M").time()
                         
                         # Create or update DeathMarchSettings
                         settings = DeathMarchSettings(
@@ -898,7 +897,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
             
             # 7. Update death march settings
-            session_start = datetime.datetime.now(datetime.timezone.utc)
+            session_start = datetime.now(timezone.utc)
             session_end = session_start + timedelta(days=days)
             
             settings.channel_id = interaction.channel_id
@@ -1536,7 +1535,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             # Fetch proposal acceptance pairs
-            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history_async(account_address=wallet.address).copy()
 
             # Get pending proposals
             pending_tasks = self.user_task_parser.get_pending_proposals(account=memo_history)
@@ -1631,7 +1630,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
             
             # Fetch account history
-            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history_async(account_address=wallet.address).copy()
 
             # Get refuseable proposals
             refuseable_tasks = self.user_task_parser.get_refuseable_proposals(account=memo_history)
@@ -1726,7 +1725,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             # Fetch account history
-            memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history_async(wallet.address).copy()
 
             # Fetch accepted tasks
             accepted_tasks = self.user_task_parser.get_accepted_proposals(account=memo_history)
@@ -1819,7 +1818,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             # Fetch account history
-            memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history_async(wallet.address).copy()
 
             # Fetch verification tasks
             verification_tasks = self.user_task_parser.get_verification_proposals(account=memo_history)
@@ -1914,7 +1913,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             try:
-                memo_history = self.generic_pft_utilities.get_account_memo_history(wallet.address).copy().sort_values('datetime')
+                memo_history = await self.generic_pft_utilities.get_account_memo_history_async(wallet.address).copy().sort_values('datetime')
 
                 # Return immediately if memo history is empty
                 if memo_history.empty:
@@ -2163,7 +2162,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
             # Check handshake status
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-            user_key, counterparty_key = self.generic_pft_utilities.get_handshake_for_address(
+            user_key, counterparty_key = await self.generic_pft_utilities.get_handshake_for_address(
                 channel_address=wallet.classic_address,
                 channel_counterparty=counterparty
             )
@@ -2182,7 +2181,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 for attempt in range(NODE_HANDSHAKE_RESPONSE_USER_VERIFICATION_ATTEMPTS):
                     logger.debug(f"TaskNodeDiscordBot.{command_name}: Checking handshake status for {username} with {counterparty} (attempt {attempt+1})")
 
-                    user_key, counterparty_key = self.generic_pft_utilities.get_handshake_for_address(
+                    user_key, counterparty_key = await self.generic_pft_utilities.get_handshake_for_address(
                         channel_address=wallet.classic_address,
                         channel_counterparty=counterparty
                     )
@@ -2392,7 +2391,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         settings = self.user_deathmarch_settings[user_id]
 
         while not self.is_closed():
-            now_utc = datetime.datetime.now(datetime.timezone.utc)
+            now_utc = datetime.now(timezone.utc)
 
             # Check if death march has ended
             if now_utc >= settings.session_end:
@@ -2405,7 +2404,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
             # Check local time window
             user_tz = pytz.timezone(settings.timezone)
-            now_local = datetime.datetime.now(user_tz).time()
+            now_local = datetime.now(user_tz).time()
 
             if settings.start_time <= now_local <= settings.end_time:
                 # Check if enough time has passed since last check-in
@@ -2466,7 +2465,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         
         while not self.is_closed():
             try:
-                now = datetime.datetime.now(est_tz).time()
+                now = datetime.now(est_tz).time()
                 if start_time <= now <= end_time:
                     channel = self.get_channel(channel_id)
                     if channel:
@@ -2530,7 +2529,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 try:
                     logger.debug(f"TaskNodeDiscordBot.tactics: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-                    memo_history = self.generic_pft_utilities.get_account_memo_history(user_wallet.classic_address)
+                    memo_history = await self.generic_pft_utilities.get_account_memo_history_async(user_wallet.classic_address)
                     full_user_context = self.user_task_parser.get_full_user_context_string(user_wallet.classic_address, memo_history=memo_history)
                     
                     openai_request_tool = OpenAIRequestTool()
@@ -2580,7 +2579,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     # Check PFT balance
                     pft_balance = await self.generic_pft_utilities.fetch_pft_balance(wallet_address)
                     logger.debug(f"TaskNodeDiscordBot.coach: PFT balance for {message.author.name} is {pft_balance}")
-                    if not (config.RuntimeConfig.USE_TESTNET and config.RuntimeConfig.DISABLE_PFT_REQUIREMENTS):
+                    if not (RuntimeConfig.USE_TESTNET and RuntimeConfig.DISABLE_PFT_REQUIREMENTS):
                         if pft_balance < 25000:
                             await message.reply(
                                 f"You need at least 25,000 PFT to use the coach command. Your current balance is {pft_balance:,.2f} PFT.", 
@@ -2589,7 +2588,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                             return
 
                     # Get user's full context
-                    memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address)
+                    memo_history = await self.generic_pft_utilities.get_account_memo_history_async(account_address=wallet_address)
                     full_context = self.user_task_parser.get_full_user_context_string(account_address=wallet_address, memo_history=memo_history)
                     
                     # Get chat history
@@ -2760,7 +2759,7 @@ My specific question/request is: {user_query}"""
             account_info.pft_balance = 0
 
         try:
-            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=address)
+            memo_history = await self.generic_pft_utilities.get_account_memo_history_async(account_address=address)
 
             if not memo_history.empty:
 
@@ -2782,7 +2781,7 @@ My specific question/request is: {user_query}"""
 
             # Get google doc link
             if owns_wallet:
-                account_info.google_doc_link = self.tasknode_utilities.get_latest_outgoing_context_doc_link(address)
+                account_info.google_doc_link = self.user_task_parser.get_latest_outgoing_context_doc_link(address)
 
         except Exception as e:
             logger.error(f"Error generating account info for {address}: {e}")
@@ -2839,7 +2838,7 @@ My specific question/request is: {user_query}"""
             """Format task ID and extract date"""
             try:
                 datetime_str = task_id.split('__')[0]
-                date_obj = datetime.datetime.strptime(datetime_str, '%Y-%m-%d_%H:%M')
+                date_obj = datetime.strptime(datetime_str, '%Y-%m-%d_%H:%M')
                 formatted_date = date_obj.strftime('%d %b %Y %H:%M')
                 return task_id, formatted_date
             except (ValueError, IndexError):
@@ -3214,7 +3213,7 @@ My specific question/request is: {user_query}"""
         # Sort by account for readability
         account_modes = account_modes.sort_values('account')
         account_name_map = account_modes.groupby('account').first()['memo_format']
-        past_month_transactions = all_accounts[all_accounts['datetime']>datetime.datetime.now()-datetime.timedelta(30)]
+        past_month_transactions = all_accounts[all_accounts['datetime']>datetime.now()-datetime.timedelta(30)]
         node_transactions = past_month_transactions[past_month_transactions['account']==self.generic_pft_utilities.node_address].copy()
         rewards_only=node_transactions[node_transactions['memo_data'].apply(lambda x: TaskType.REWARD.value in str(x))].copy()
         rewards_only['count']=1
@@ -3357,7 +3356,7 @@ My specific question/request is: {user_query}"""
         final_score_frame['overall_score']= (final_score_frame['reward_percentile']*.7)+(final_score_frame['total_qualitative_score']*.3)
         final_leaderboard = final_score_frame[['account_name','total_rewards','yellow_flag_pct','reward_percentile','focus','motivation','efficacy','honesty','total_qualitative_score','overall_score']].copy()
         final_leaderboard['total_rewards']=final_leaderboard['total_rewards'].apply(lambda x: int(x))
-        final_leaderboard.index.name = 'Foundation Node Leaderboard as of '+datetime.datetime.now().strftime('%Y-%m-%d')
+        final_leaderboard.index.name = 'Foundation Node Leaderboard as of '+datetime.now().strftime('%Y-%m-%d')
         return final_leaderboard
     
     def _calculate_death_march_costs(self, settings: DeathMarchSettings, days: int = 1) -> tuple[int, int]:
@@ -3370,8 +3369,8 @@ My specific question/request is: {user_query}"""
         Returns:
             tuple[int, int]: (checks_per_day, total_cost)
         """
-        start_dt = datetime.datetime.combine(datetime.datetime.today(), settings.start_time)
-        end_dt = datetime.datetime.combine(datetime.datetime.today(), settings.end_time)
+        start_dt = datetime.combine(datetime.today(), settings.start_time)
+        end_dt = datetime.combine(datetime.today(), settings.end_time)
         daily_duration = (end_dt - start_dt).total_seconds() / 60  # duration in minutes
         checks_per_day = int(daily_duration / settings.check_interval)
         total_cost = checks_per_day * days * 30  # 30 PFT per check-in
@@ -3389,30 +3388,7 @@ class AccountInfo:
     weekly_pft_avg: float = 0
     google_doc_link: Optional[str] = None
 
-def configure_runtime():
-    """Configure runtime settings based on user input"""
-
-    # Network selection
-    print(f"Network Configuration:\n1. Mainnet\n2. Testnet")
-    network_choice = input("Select network (1/2) [default=2]: ").strip() or "2"
-    RuntimeConfig.USE_TESTNET = network_choice == "2"
-    network_config = get_network_config()
-
-    # Local node configuration with network-specific context
-    if network_config.local_rpc_url:
-        print(f"\nLocal node configuration:")
-        print(f"Local {network_config.name} node URL: {network_config.local_rpc_url}")
-        use_local = input("Do you have a local node configured? (y/n) [default=n]: ").strip() or "n"
-        RuntimeConfig.HAS_LOCAL_NODE = use_local == "y"
-    else:
-        print(f"\nNo local node configuration available for {network_config.name}")
-        RuntimeConfig.HAS_LOCAL_NODE = False
-
-    logger.debug(f"\nInitializing services for {network_config.name}...")
-    logger.info(f"Using {'local' if RuntimeConfig.HAS_LOCAL_NODE else 'public'} endpoints...")
-
 def main():
-    generic_pft_utilities = None
 
     # Configure logger
     configure_logger(
@@ -3423,37 +3399,38 @@ def main():
     )
 
     try:
-        # Startup phase
-        try:
-            while True:
-                try:
-                    password = getpass.getpass("Enter your password: ")
-                    cred_manager = CredentialManager(password=password)
-                    break
-                except Exception as e:
-                    print("Invalid password. Please try again.")
-
-            # Initialize performance monitor
-            monitor = PerformanceMonitor(time_window=60)
-            monitor.start()
-
-            configure_runtime()
-
-        except KeyboardInterrupt:
-            print("\nStartup cancelled")
-            sys.exit(0)
+        # Initialize performance monitor
+        monitor = PerformanceMonitor(time_window=60)
 
         # Initialize business logic
         business_logic = TaskManagementRules.create()
 
-        # Initialize services
-        generic_pft_utilities = GenericPFTUtilities(business_logic_provider=business_logic)
-        supplemental_discord_functions = TaskNodeUtilities(
-            generic_pft_utilities=generic_pft_utilities
+        # Initialize NodeTools services
+        nodetools = ServiceContainer.initialize(
+            business_logic=business_logic,
+            performance_monitor=monitor
         )
 
-        # Start the async components
-        generic_pft_utilities.start()
+        # Initialize TaskNode-specific services
+        openai_request_tool = OpenAIRequestTool(
+            credential_manager=nodetools.dependencies.credential_manager,
+            db_connection_manager=nodetools.db_connection_manager
+        )
+        user_task_parser = UserTaskParser(
+            generic_pft_utilities=nodetools.dependencies.generic_pft_utilities,
+            node_config=nodetools.dependencies.node_config,
+            credential_manager=nodetools.dependencies.credential_manager
+        )
+        tasknode_utilities = TaskNodeUtilities(
+            openai_request_tool=openai_request_tool,
+            user_task_parser=user_task_parser,
+            nodetools=nodetools
+        )
+        logger.info("All TaskNode services initialized")
+
+        # Start the Transaction Orchestrator
+        logger.info("Starting async components...")
+        nodetools.start()
 
         # Initialize and run the discord bot
         intents = discord.Intents.default()
@@ -3463,22 +3440,24 @@ def main():
         intents.guild_messages = True
         client = TaskNodeDiscordBot(
             intents=intents,
-            generic_pft_utilities=generic_pft_utilities,
-            tasknode_utilities=supplemental_discord_functions,
+            openai_request_tool=openai_request_tool,
+            tasknode_utilities=tasknode_utilities,
+            user_task_parser=user_task_parser,
+            nodetools=nodetools,
             enable_debug_events=True
         )
 
         # Set up signal handlers before running discord
         def signal_handler(sig, frame):
             logger.debug("Keyboard interrupt detected")
-            if generic_pft_utilities and generic_pft_utilities.running:
+            if nodetools.running:
                 logger.info("Shutting down gracefully...")
                 try:
                     # Close the Discord client
                     if client:
                         asyncio.get_event_loop().run_until_complete(client.close())
-                    # Clean up resources
-                    generic_pft_utilities.shutdown()
+                    # Clean up transaction orchestrator tasks
+                    nodetools.stop()
                     logger.info("Shutdown complete")
                 except Exception as e:
                     logger.error(f"Error during shutdown: {e}")
@@ -3489,16 +3468,17 @@ def main():
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
         
-        discord_credential_key = "discordbot_testnet_secret" if RuntimeConfig.USE_TESTNET else "discordbot_secret"
-        client.run(cred_manager.get_credential(discord_credential_key))
+        discord_credential_key = "discordbot_testnet_secret" if nodetools.runtime_config.USE_TESTNET else "discordbot_secret"
+        client.run(nodetools.get_credential(discord_credential_key))
 
     except Exception as e:
         logger.error(f"Fatal error: {e}")
-        if generic_pft_utilities and generic_pft_utilities.running:
+        logger.error(traceback.format_exc())
+        if nodetools.running:
             logger.info("\nShutting down gracefully...")
             try:
-                # Clean up resources
-                generic_pft_utilities.shutdown()
+                # Clean up transaction orchestrator tasks
+                nodetools.stop()
                 logger.info("Shutdown complete")
             except Exception as e:
                 logger.error(f"Error during shutdown: {e}")

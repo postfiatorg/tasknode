@@ -1,11 +1,15 @@
 import pandas as pd
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
 import tasknode.task_processing.constants as node_constants
+from nodetools.configuration.constants import SystemMemoType
+from nodetools.configuration.configuration import NodeConfig
+from nodetools.protocols.credentials import CredentialManager
 from typing import Optional, Union, TYPE_CHECKING
 from loguru import logger
 import traceback
 import re
 from tasknode.task_processing.constants import TaskType, TASK_PATTERNS
+import requests
 
 if TYPE_CHECKING:
     from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
@@ -29,12 +33,14 @@ class UserTaskParser:
     def __init__(
             self,
             generic_pft_utilities: GenericPFTUtilities,
-            tasknode_utilities: 'TaskNodeUtilities',
+            node_config: NodeConfig,
+            credential_manager: CredentialManager
         ):
         """Initialize UserTaskParser with GenericPFTUtilities for core functionality"""
         if not self.__class__._initialized:
             self.generic_pft_utilities = generic_pft_utilities
-            self.tasknode_utilities = tasknode_utilities
+            self.node_config = node_config
+            self.cred_manager = credential_manager
             self.__class__._initialized = True
 
     def classify_task_string(self, string: str) -> str:
@@ -128,9 +134,27 @@ class UserTaskParser:
         )
 
         # Update state types and other fields where we have state changes
-        task_pairs.loc[state_changes.index, 'state_type'] = state_changes['task_type']
-        task_pairs['latest_state'] = state_changes['full_output']
-        task_pairs['datetime'] = state_changes['datetime']
+        # Only update states for task IDs that exist in both DataFrames
+        common_ids = state_changes.index.intersection(task_pairs.index)
+        task_pairs.loc[common_ids, 'state_type'] = state_changes.loc[common_ids, 'task_type']
+        task_pairs.loc[common_ids, 'latest_state'] = state_changes.loc[common_ids, 'full_output']
+        task_pairs.loc[common_ids, 'datetime'] = state_changes.loc[common_ids, 'datetime']
+
+        # Handle orphaned state changes (states without corresponding proposals)
+        orphaned_states = state_changes.index.difference(task_pairs.index)
+        if not orphaned_states.empty:
+            logger.warning(f"Found {len(orphaned_states)} state changes without corresponding proposals. "
+                        f"This may indicate incomplete history. Task IDs: {orphaned_states.tolist()}")
+            
+            # Create entries for orphaned states with empty proposals
+            orphaned_df = pd.DataFrame(index=orphaned_states)
+            orphaned_df['proposal'] = ''
+            orphaned_df['state_type'] = state_changes.loc[orphaned_states, 'task_type']
+            orphaned_df['latest_state'] = state_changes.loc[orphaned_states, 'full_output']
+            orphaned_df['datetime'] = state_changes.loc[orphaned_states, 'datetime']
+            
+            # Combine with main DataFrame
+            task_pairs = pd.concat([task_pairs, orphaned_df])
         
         # Fill any missing values
         task_pairs['latest_state'] = task_pairs['latest_state'].fillna('')
@@ -379,8 +403,8 @@ class UserTaskParser:
         # Get optional context elements
         if get_google_doc:
             try:
-                google_url = self.tasknode_utilities.get_latest_outgoing_context_doc_link(account_address=account_address)
-                core_element__google_doc_text = self.tasknode_utilities.get_google_doc_text(google_url)
+                google_url = self.get_latest_outgoing_context_doc_link(account_address=account_address)
+                core_element__google_doc_text = self.get_google_doc_text(google_url)
             except Exception as e:
                 logger.error(f"Failed retrieving user google doc: {e}")
                 logger.error(traceback.format_exc())
@@ -398,53 +422,53 @@ class UserTaskParser:
                 core_element__user_log_history = 'Error retrieving user memo history'
 
         core_elements = f"""
-        ***<<< ALL TASK GENERATION CONTEXT STARTS HERE >>>***
+***<<< ALL TASK GENERATION CONTEXT STARTS HERE >>>***
 
-        These are the proposed and accepted tasks that the user has. This is their
-        current work queue
-        <<PROPOSED AND ACCEPTED TASKS START HERE>>
-        {proposal_string}
-        <<PROPOSED AND ACCEPTED TASKS ENDE HERE>>
+These are the proposed and accepted tasks that the user has. This is their
+current work queue
+<<PROPOSED AND ACCEPTED TASKS START HERE>>
+{proposal_string}
+<<PROPOSED AND ACCEPTED TASKS ENDE HERE>>
 
-        These are the tasks that the user has been proposed and has refused.
-        The user has provided a refusal reason with each one. Only their most recent
-        {n_refusals_in_context} refused tasks are showing 
-        <<REFUSED TASKS START HERE >>
-        {refusal_string}
-        <<REFUSED TASKS END HERE>>
+These are the tasks that the user has been proposed and has refused.
+The user has provided a refusal reason with each one. Only their most recent
+{n_refusals_in_context} refused tasks are showing 
+<<REFUSED TASKS START HERE >>
+{refusal_string}
+<<REFUSED TASKS END HERE>>
 
-        These are the tasks that the user has for pending verification.
-        They need to submit details
-        <<VERIFICATION TASKS START HERE>>
-        {verification_string}
-        <<VERIFICATION TASKS END HERE>>
+These are the tasks that the user has for pending verification.
+They need to submit details
+<<VERIFICATION TASKS START HERE>>
+{verification_string}
+<<VERIFICATION TASKS END HERE>>
 
-        <<REWARDED TASKS START HERE >>
-        {reward_string}
-        <<REWARDED TASKS END HERE >>
-        """
+<<REWARDED TASKS START HERE >>
+{reward_string}
+<<REWARDED TASKS END HERE >>
+"""
 
         optional_elements = ''
         if get_google_doc:
             optional_elements += f"""
-            The following is the user's full planning document that they have assembled
-            to inform task generation and planning
-            <<USER PLANNING DOC STARTS HERE>>
-            {core_element__google_doc_text}
-            <<USER PLANNING DOC ENDS HERE>>
-            """
+The following is the user's full planning document that they have assembled
+to inform task generation and planning
+<<USER PLANNING DOC STARTS HERE>>
+{core_element__google_doc_text}
+<<USER PLANNING DOC ENDS HERE>>
+"""
 
         if get_historical_memos:
             optional_elements += f"""
-            The following is the users own comments regarding everything
-            <<< USER COMMENTS AND LOGS START HERE>>
-            {core_element__user_log_history}
-            <<< USER COMMENTS AND LOGS END HERE>>
-            """
+The following is the users own comments regarding everything
+<<< USER COMMENTS AND LOGS START HERE>>
+{core_element__user_log_history}
+<<< USER COMMENTS AND LOGS END HERE>>
+"""
 
         footer = f"""
-        ***<<< ALL TASK GENERATION CONTEXT ENDS HERE >>>***
-        """
+***<<< ALL TASK GENERATION CONTEXT ENDS HERE >>>***
+"""
 
         return core_elements + optional_elements + footer
     
@@ -494,3 +518,78 @@ class UserTaskParser:
             formatted_df['recent_status'] = "Status not available"
         
         return formatted_df[['initial_task_detail', 'recent_status', 'recent_date']].to_string()
+    
+    def get_latest_outgoing_context_doc_link(
+            self, 
+            account_address: str
+        ) -> Optional[str]:
+        """Get the most recent Google Doc context link sent by this wallet.
+        Handles both encrypted and unencrypted links for backwards compatibility.
+            
+        Args:
+            account_address: Account address
+            
+        Returns:
+            str or None: Most recent Google Doc link or None if not found
+        """
+        try:
+            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_address, pft_only=False)
+
+            if memo_history.empty or len(memo_history) == 0:
+                logger.debug(f"UserTaskParser.get_latest_outgoing_context_doc_link: No memo history found for {account_address}. Returning None")
+                return None
+
+            context_docs = memo_history[
+                (memo_history['memo_type'].apply(lambda x: SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value in str(x))) &
+                (memo_history['account'] == account_address) &
+                (memo_history['transaction_result'] == "tesSUCCESS")
+            ]
+            
+            if len(context_docs) > 0:
+                latest_doc = context_docs.iloc[-1]
+                
+                return self.generic_pft_utilities.process_memo_data(
+                    memo_type=latest_doc['memo_type'],
+                    memo_data=latest_doc['memo_data'],
+                    channel_address=self.node_config.node_address,
+                    channel_counterparty=account_address,
+                    memo_history=memo_history,
+                    channel_private_key=self.cred_manager.get_credential(f"{self.node_config.node_name}__v1xrpsecret")
+                )
+            else:
+                logger.debug(f"UserTaskParser.get_latest_outgoing_context_doc_link: No context doc found for {account_address}. Returning None")
+
+            return None
+            
+        except Exception as e:
+            logger.error(f"UserTaskParser.get_latest_outgoing_context_doc_link: Error getting latest context doc link: {e}")
+            return None
+
+    @staticmethod
+    def get_google_doc_text(share_link):
+        """Get the plain text content of a Google Doc.
+        
+        Args:
+            share_link: Google Doc share link
+            
+        Returns:
+            str: Plain text content of the Google Doc
+        """
+        logger.debug(f"UserTaskParser.get_google_doc_text: Getting Google Doc text for {share_link}")
+        # Extract the document ID from the share link
+        doc_id = share_link.split('/')[5]
+    
+        # Construct the Google Docs API URL
+        url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+    
+        # Send a GET request to the API URL
+        response = requests.get(url)
+    
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Return the plain text content of the document
+            return response.text
+        else:
+            # Return an error message if the request was unsuccessful
+            # DON'T CHANGE THIS STRING, IT'S USED FOR GOOGLE DOC VALIDATION
+            return f"Failed to retrieve the document. Status code: {response.status_code}"

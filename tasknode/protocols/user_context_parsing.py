@@ -22,3 +22,30 @@ class UserTaskParser(Protocol):
         n_refusals_in_context: int = node_constants.MAX_REFUSALS_IN_CONTEXT,
     ) -> str:
         ...
+
+    def get_latest_outgoing_context_doc_link(
+            self, 
+            account_address: str
+        ) -> Optional[str]:
+        """Get the most recent Google Doc context link sent by this wallet.
+        Handles both encrypted and unencrypted links for backwards compatibility.
+            
+        Args:
+            account_address: Account address
+            
+        Returns:
+            str or None: Most recent Google Doc link or None if not found
+        """
+        ...
+
+    @staticmethod
+    def get_google_doc_text(share_link):
+        """Get the plain text content of a Google Doc.
+        
+        Args:
+            share_link: Google Doc share link
+            
+        Returns:
+            str: Plain text content of the Google Doc
+        """
+        ...

@@ -701,12 +701,10 @@ class ProposalRule(ResponseRule):
     
     def get_response_generator(self, dependencies: Dependencies) -> ResponseGenerator:
         """Get response generator for proposals with all dependencies"""
-        tasknode_utilities = TaskNodeUtilities(
-            generic_pft_utilities=dependencies.generic_pft_utilities
-        )
         user_task_parser = UserTaskParser(
-            generic_pft_utilities=dependencies.generic_pft_utilities,
-            tasknode_utilities=tasknode_utilities
+            node_config=dependencies.node_config,
+            credential_manager=dependencies.credential_manager,
+            generic_pft_utilities=dependencies.generic_pft_utilities
         )
         task_generator = NewTaskGeneration(
             generic_pft_utilities=dependencies.generic_pft_utilities,
@@ -1063,7 +1061,8 @@ class RewardRule(ResponseRule):
             node_config=dependencies.node_config,
             generic_pft_utilities=dependencies.generic_pft_utilities,
             openrouter=dependencies.openrouter,
-            transaction_repository=dependencies.transaction_repository
+            transaction_repository=dependencies.transaction_repository,
+            credential_manager=dependencies.credential_manager
         )
     
 class RewardResponseGenerator(ResponseGenerator):
@@ -1078,12 +1077,15 @@ class RewardResponseGenerator(ResponseGenerator):
             node_config: NodeConfig,
             generic_pft_utilities: GenericPFTUtilities,
             openrouter: OpenRouterTool,
-            transaction_repository: TransactionRepository
+            transaction_repository: TransactionRepository,
+            credential_manager: CredentialManager
         ):
         self.node_config = node_config
         self.generic_pft_utilities = generic_pft_utilities
-        self.tasknode_utilities = TaskNodeUtilities(
-            generic_pft_utilities=self.generic_pft_utilities
+        self.user_task_parser = UserTaskParser(
+            generic_pft_utilities=self.generic_pft_utilities,
+            node_config=self.node_config,
+            credential_manager=credential_manager
         )
         self.openrouter = openrouter
         self.transaction_repository = transaction_repository
@@ -1188,11 +1190,11 @@ class RewardResponseGenerator(ResponseGenerator):
     async def _get_verification_details(self, account: str) -> str:
         """Get verification details from Google Doc"""
         try:
-            link = self.tasknode_utilities.get_latest_outgoing_context_doc_link(account)
+            link = self.user_task_parser.get_latest_outgoing_context_doc_link(account)
             if not link:
                 return "No Google Document Uploaded - please instruct user that Google Document has not been uploaded in response"
             
-            raw_text = self.tasknode_utilities.get_google_doc_text(share_link=link)
+            raw_text = self.user_task_parser.get_google_doc_text(share_link=link)
             return self._extract_verification_text(raw_text)
         except Exception as e:
             logger.error(f"Error getting Google Doc details for {account}: {e}")
@@ -1373,12 +1375,10 @@ class ODVResponseRule(ResponseRule):
     
     def get_response_generator(self, dependencies: Dependencies) -> ResponseGenerator:
         """Get response generator for ODV responses with all dependencies"""
-        tasknode_utilities = TaskNodeUtilities(
-            generic_pft_utilities=dependencies.generic_pft_utilities
-        )
         user_task_parser = UserTaskParser(
             generic_pft_utilities=dependencies.generic_pft_utilities,
-            tasknode_utilities=tasknode_utilities
+            node_config=dependencies.node_config,
+            credential_manager=dependencies.credential_manager
         )
         return ODVResponseGenerator(
             openrouter=dependencies.openrouter,
@@ -1480,7 +1480,7 @@ class ODVResponseGenerator(ResponseGenerator):
             response_memo_data = evaluation_result['odv_response']
 
             if was_encrypted:
-                channel_key, counterparty_key = self.message_encryption.get_handshake_for_address(
+                channel_key, counterparty_key = await self.message_encryption.get_handshake_for_address(
                     channel_address=destination,
                     channel_counterparty=account
                 )

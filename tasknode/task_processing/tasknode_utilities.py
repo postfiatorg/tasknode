@@ -16,15 +16,15 @@ import xrpl
 # Nodetools imports
 from nodetools.ai.openai import OpenAIRequestTool
 from nodetools.ai.openrouter import OpenRouterTool
-from nodetools.utilities.db_manager import DBConnectionManager
 import nodetools.configuration.constants as global_constants
-from nodetools.utilities.credentials import CredentialManager
-from nodetools.performance.monitor import PerformanceMonitor
 import nodetools.configuration.configuration as config
-from nodetools.sql.sql_manager import SQLManager
+from nodetools.protocols.credentials import CredentialManager
+from nodetools.protocols.db_manager import DBConnectionManager
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
 from nodetools.protocols.transaction_repository import TransactionRepository
+from nodetools.sql.sql_manager import SQLManager
 from nodetools.utilities.exceptions import *
+from nodetools.container.service_container import ServiceContainer
 
 # Tasknode imports
 from tasknode.chatbots.personas.odv import odv_system_prompt
@@ -43,29 +43,27 @@ class TaskNodeUtilities:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self,
-            generic_pft_utilities: GenericPFTUtilities
+    def __init__(
+            self,
+            openai_request_tool: OpenAIRequestTool,
+            user_task_parser: UserTaskParser,
+            nodetools: ServiceContainer
         ):
-        # TODO: Clean up dependencies
         if not self.__class__._initialized:
             # Get network configuration
-            self.network_config = config.get_network_config()
-            self.node_config = config.get_node_config()
+            self.network_config = nodetools.network_config
+            self.node_config = nodetools.node_config
             self.node_address = self.node_config.node_address
             self.remembrancer_address = self.node_config.remembrancer_address
 
             # Initialize components
-            self.cred_manager = CredentialManager()
-            self.openrouter_tool = OpenRouterTool()
-            self.openai_request_tool= OpenAIRequestTool()
-            self.generic_pft_utilities = generic_pft_utilities
-            self.db_connection_manager = DBConnectionManager()
-            self.user_task_parser = UserTaskParser(
-                generic_pft_utilities=self.generic_pft_utilities,
-                tasknode_utilities=self
-            )
-            self.transaction_repository: TransactionRepository = self.generic_pft_utilities.transaction_repository
-            self.monitor = PerformanceMonitor()
+            self.user_task_parser = user_task_parser
+            self.openai_request_tool= openai_request_tool
+            self.cred_manager = nodetools.dependencies.credential_manager
+            self.openrouter_tool = nodetools.dependencies.openrouter
+            self.generic_pft_utilities = nodetools.dependencies.generic_pft_utilities
+            self.transaction_repository = nodetools.dependencies.transaction_repository
+            self.db_connection_manager = nodetools.db_connection_manager
             self.stop_threads = False
             self.default_model = global_constants.DEFAULT_OPEN_AI_MODEL
 
@@ -73,89 +71,14 @@ class TaskNodeUtilities:
             
             self.__class__._initialized = True
 
-    def get_latest_outgoing_context_doc_link(
-            self, 
-            account_address: str
-        ) -> Optional[str]:
-        """Get the most recent Google Doc context link sent by this wallet.
-        Handles both encrypted and unencrypted links for backwards compatibility.
-            
-        Args:
-            account_address: Account address
-            
-        Returns:
-            str or None: Most recent Google Doc link or None if not found
-        """
-        try:
-            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_address, pft_only=False)
-
-            if memo_history.empty or len(memo_history) == 0:
-                logger.debug(f"TaskNodeUtilities.get_latest_outgoing_context_doc_link: No memo history found for {account_address}. Returning None")
-                return None
-
-            context_docs = memo_history[
-                (memo_history['memo_type'].apply(lambda x: global_constants.SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value in str(x))) &
-                (memo_history['account'] == account_address) &
-                (memo_history['transaction_result'] == "tesSUCCESS")
-            ]
-            
-            if len(context_docs) > 0:
-                latest_doc = context_docs.iloc[-1]
-                
-                return self.generic_pft_utilities.process_memo_data(
-                    memo_type=latest_doc['memo_type'],
-                    memo_data=latest_doc['memo_data'],
-                    channel_address=self.node_address,
-                    channel_counterparty=account_address,
-                    memo_history=memo_history,
-                    channel_private_key=self.cred_manager.get_credential(f"{self.node_config.node_name}__v1xrpsecret")
-                )
-            else:
-                logger.debug(f"TaskNodeUtilities.get_latest_outgoing_context_doc_link: No context doc found for {account_address}. Returning None")
-
-            return None
-            
-        except Exception as e:
-            logger.error(f"TaskNodeUtilities.get_latest_outgoing_context_doc_link: Error getting latest context doc link: {e}")
-            return None
-
-    @staticmethod
-    def get_google_doc_text(share_link):
-        """Get the plain text content of a Google Doc.
-        
-        Args:
-            share_link: Google Doc share link
-            
-        Returns:
-            str: Plain text content of the Google Doc
-        """
-        logger.debug(f"TaskNodeUtilities.get_google_doc_text: Getting Google Doc text for {share_link}")
-        # Extract the document ID from the share link
-        doc_id = share_link.split('/')[5]
-    
-        # Construct the Google Docs API URL
-        url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
-    
-        # Send a GET request to the API URL
-        response = requests.get(url)
-    
-        # Check if the request was successful
-        if response.status_code == 200:
-            # Return the plain text content of the document
-            return response.text
-        else:
-            # Return an error message if the request was unsuccessful
-            # DON'T CHANGE THIS STRING, IT'S USED FOR GOOGLE DOC VALIDATION
-            return f"Failed to retrieve the document. Status code: {response.status_code}"
-
-    def check_if_google_doc_is_valid(self, wallet: xrpl.wallet.Wallet, google_doc_link):
+    def check_if_google_doc_is_valid(self, google_doc_link):
         """ Checks if the google doc is valid """
 
         # Check 1: google doc is a valid url
         if not google_doc_link.startswith('https://docs.google.com/document/d/'):
             raise InvalidGoogleDocException(google_doc_link)
         
-        google_doc_text = self.get_google_doc_text(google_doc_link)
+        google_doc_text = self.user_task_parser.get_google_doc_text(google_doc_link)
 
         # Check 2: google doc exists
         if "Status code: 404" in google_doc_text:

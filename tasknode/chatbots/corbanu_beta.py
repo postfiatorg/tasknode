@@ -395,9 +395,9 @@ class CorbanuChatBot:
             memo_history = self.pft_utils.get_account_memo_history(account_address=account_address)
 
         try:
-            google_url = self.tasknode_utilities.get_latest_outgoing_context_doc_link(account_address=account_address)
+            google_url = self.user_context_parser.get_latest_outgoing_context_doc_link(account_address=account_address)
             # Retrieve google doc text and limit to 10000 characters
-            core_element__google_doc_text = self.tasknode_utilities.get_google_doc_text(google_url)[:self.GOOGLE_DOC_TEXT_CHAR_LIMIT]
+            core_element__google_doc_text = self.user_context_parser.get_google_doc_text(google_url)[:self.GOOGLE_DOC_TEXT_CHAR_LIMIT]
         except Exception as e:
             logger.error(f"Failed retrieving user google doc: {e}")
             logger.error(traceback.format_exc())
