@@ -12,6 +12,9 @@ MAX_COMMITMENT_SENTENCE_LENGTH = 950
 
 INITIATION_RITE_XRP_COST = 5
 
+# Super Users
+DISCORD_SUPER_USER_IDS = [402536023483088896, 471510026696261632, 574582345248800778]
+
 # Task types where the memo_type = task_id, requiring further disambiguation in the memo_data
 class TaskType(Enum):
     """Task-related memo types for workflow management"""

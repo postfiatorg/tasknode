@@ -166,22 +166,28 @@ class PFTTransactionModal(discord.ui.Modal, title='Send PFT'):
             memo_format=interaction.user.name
         )
 
-        # Run the blocking function in a thread pool
-        response = await self.generic_pft_utilities.send_memo(
-            wallet_seed_or_wallet=self.wallet,
-            destination=destination_address,
-            memo=memo,
-            username=interaction.user.name,
-            pft_amount=Decimal(amount)
-        )
+        try:
+            response = await self.generic_pft_utilities.send_memo(
+                wallet_seed_or_wallet=self.wallet,
+                destination=destination_address,
+                memo=memo,
+                username=interaction.user.name,
+                pft_amount=Decimal(amount)
+            )
 
-        # extract response from last memo
-        tx_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)['clean_string']
+            if not self.generic_pft_utilities.verify_transaction_response(response):
+                raise Exception(f"Failed to send PFT transaction: {response.result}")
 
-        await interaction.followup.send(
-            f'Transaction result: {tx_info}',
-            ephemeral=True
-        )
+            # extract response from last memo
+            tx_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)['clean_string']
+
+            await interaction.followup.send(f'Transaction result: {tx_info}', ephemeral=True)
+
+        except Exception as e:
+            logger.error(f"PFTTransactionModal.on_submit: Error sending memo: {e}")
+            logger.error(traceback.format_exc())
+            await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
+            return
 
 class XRPTransactionModal(discord.ui.Modal, title='XRP Transaction Details'):
     address = discord.ui.TextInput(label='Recipient Address')
@@ -226,13 +232,23 @@ class XRPTransactionModal(discord.ui.Modal, title='XRP Transaction Details'):
             # Convert destination_tag to integer if it exists
             dt = int(destination_tag) if destination_tag else None
 
-            response = await self.generic_pft_utilities.send_xrp(
-                wallet_seed_or_wallet=self.wallet,
-                amount=Decimal(amount),
-                destination=destination_address,
-                memo=memo,
-                destination_tag=dt
-            )
+            try:
+                response = await self.generic_pft_utilities.send_xrp(
+                    wallet_seed_or_wallet=self.wallet,
+                    amount=Decimal(amount),
+                    destination=destination_address,
+                    memo=memo,
+                    destination_tag=dt
+                )
+
+                if not self.generic_pft_utilities.verify_transaction_response(response):
+                    raise Exception(f"Failed to send XRP transaction: {response.result}")
+
+            except Exception as e:
+                logger.error(f"XRPTransactionModal.on_submit: Error sending XRP transaction: {e}")
+                logger.error(traceback.format_exc())
+                await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
+                return
 
             # Extract transaction information using the improved function
             transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object__standard_xrp(response)
@@ -299,13 +315,18 @@ class InitiationModal(discord.ui.Modal, title='Initiation Rite'):
             
             await message_obj.edit(content="Sending commitment and encrypted google doc link to node...")
 
-            # Run the blocking function in a thread pool
-            await self.tasknode_utilities.discord__initiation_rite(
-                user_seed=self.seed, 
-                initiation_rite=self.commitment_sentence.value, 
-                google_doc_link=self.google_doc_link.value, 
-                username=self.username
-            )
+            try:
+                await self.tasknode_utilities.discord__initiation_rite(
+                    user_seed=self.seed, 
+                    initiation_rite=self.commitment_sentence.value, 
+                    google_doc_link=self.google_doc_link.value, 
+                    username=self.username
+                )
+            except Exception as e:
+                logger.error(f"InitiationModal.on_submit: Error during initiation: {str(e)}")
+                logger.error(traceback.format_exc())
+                await message_obj.edit(content=f"An error occurred during initiation: {str(e)}")
+                return
             
             mode = "(TEST MODE)" if config.RuntimeConfig.USE_TESTNET else ""
             await message_obj.edit(

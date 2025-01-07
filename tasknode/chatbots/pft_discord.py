@@ -38,7 +38,12 @@ from nodetools.container.service_container import ServiceContainer
 
 # tasknode imports
 from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
-from tasknode.task_processing.constants import TaskType, INITIATION_RITE_XRP_COST, TASK_PATTERNS
+from tasknode.task_processing.constants import (
+    TaskType, 
+    INITIATION_RITE_XRP_COST, 
+    TASK_PATTERNS,
+    DISCORD_SUPER_USER_IDS
+)
 from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.task_processing.core_business_logic import TaskManagementRules
 from tasknode.chatbots.personas.odv import odv_system_prompt
@@ -86,7 +91,7 @@ class DeathMarchSettings:
 
 class TaskNodeDiscordBot(discord.Client):
 
-    NON_EPHEMERAL_USERS = {402536023483088896}
+    NON_EPHEMERAL_USERS = {402536023483088896, 471510026696261632}
 
     def __init__(
             self, 
@@ -110,6 +115,7 @@ class TaskNodeDiscordBot(discord.Client):
         self.openrouter_tool = nodetools.dependencies.openrouter
         self.generic_pft_utilities = nodetools.dependencies.generic_pft_utilities
         self.transaction_repository = nodetools.dependencies.transaction_repository
+        self.db_connection_manager = nodetools.db_connection_manager  # For Corbanu
 
         # Set network-specific attributes
         self.default_openai_model = global_constants.DEFAULT_OPEN_AI_MODEL
@@ -148,7 +154,7 @@ class TaskNodeDiscordBot(discord.Client):
             name="DiscordBotTransactionNotifier"
         )
 
-        # # Prevents duplicate commands but also makes launch slow. Disable for testing only
+        # # Prevents duplicate commands but also makes launch slow.
         # self.tree.clear_commands(guild=guild)
         # await self.tree.sync(guild=guild)
     
@@ -364,7 +370,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         @self.tree.command(name="admin_debug_full_user_context", description="Return the full user context")
         async def admin_debug_full_user_context(interaction: discord.Interaction, wallet_address: str):
             # Check if the user has permission (matches the specific ID)
-            if interaction.user.id not in global_constants.DISCORD_SUPER_USER_IDS:
+            if interaction.user.id not in DISCORD_SUPER_USER_IDS:
                 await interaction.response.send_message(
                     "You don't have permission to use this command.", 
                     ephemeral=True
@@ -392,7 +398,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         @self.tree.command(name="admin_change_ephemeral_setting", description="Change the ephemeral setting for self")
         async def admin_change_ephemeral_setting(interaction: discord.Interaction, public: bool):
             # Check if the user has permission (matches the specific ID)
-            if interaction.user.id not in global_constants.DISCORD_SUPER_USER_IDS:
+            if interaction.user.id not in DISCORD_SUPER_USER_IDS:
                 await interaction.response.send_message(
                     "You don't have permission to use this command.", 
                     ephemeral=True
@@ -893,9 +899,11 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     pft_amount=Decimal(cost)
                 )
                 if not self.generic_pft_utilities.verify_transaction_response(response):
-                    await interaction.followup.send("Transaction for Death March payment failed.", ephemeral=ephemeral_setting)
-                    return
+                    raise Exception(f"Failed to send Death March payment: {response.result}")
+
             except Exception as e:
+                logger.error(f"TaskNodeDiscordBot.pf_death_march_start: Error sending memo: {e}")
+                logger.error(traceback.format_exc())
                 await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
                 return
             
@@ -1084,7 +1092,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     openrouter=self.openrouter_tool,
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities,
-                    tasknode_utilities=self.tasknode_utilities
+                    tasknode_utilities=self.tasknode_utilities,
+                    db_connection_manager=self.db_connection_manager
                 )
 
                 # Generate a question as the Corbanu offering 
@@ -1148,7 +1157,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     openrouter=self.openrouter_tool,
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities,
-                    tasknode_utilities=self.tasknode_utilities
+                    tasknode_utilities=self.tasknode_utilities,
+                    db_connection_manager=self.db_connection_manager
                 )
 
                 scoring = await corbanu.generate_user_question_scoring_output(
@@ -1203,21 +1213,26 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 pft_amount=Decimal(0)
 
                 # Send Q&A from user wallet to remembrancer
-                response = await self.generic_pft_utilities.send_memo(
-                    wallet_seed_or_wallet=wallet,
-                    username="Corbanu",  # This is memo_format
-                    destination=self.remembrancer,
-                    memo=full_message,
-                    chunk=True,
-                    compress=True,
-                    encrypt=encrypt,
-                    pft_amount=pft_amount,
-                    disable_pft_check=True
-                )
+                try:
+                    response = await self.generic_pft_utilities.send_memo(
+                        wallet_seed_or_wallet=wallet,
+                        username="Corbanu",  # This is memo_format
+                        destination=self.remembrancer,
+                        memo=full_message,
+                        chunk=True,
+                        compress=True,
+                        encrypt=encrypt,
+                        pft_amount=pft_amount,
+                        disable_pft_check=True
+                    )
 
-                # Verify that the large message was successfully sent
-                if not self.generic_pft_utilities.verify_transaction_response(response):
-                    await message_obj.edit(content="Failed to send Q&A message to remembrancer.")
+                    if not self.generic_pft_utilities.verify_transaction_response(response):
+                        raise Exception(f"Failed to send Q&A message to remembrancer: {response.result}")
+
+                except Exception as e:
+                    logger.error(f"TaskNodeDiscordBot.corbanu_reply: Error sending memo: {e}")
+                    logger.error(traceback.format_exc())
+                    await message_obj.edit(content=f"An error occurred while sending the Q&A message: {str(e)}")
                     return
 
                 last_response = response[-1] if isinstance(response, list) else response
@@ -1252,19 +1267,25 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
                 logger.debug(f"TaskNodeDiscordBot.corbanu_reply: Sending reward of {reward_value} PFT to {wallet.classic_address}")
                 
-                reward_tx = await self.generic_pft_utilities.send_memo(
-                    wallet_seed_or_wallet=foundation_wallet,
-                    destination=wallet.classic_address,
-                    memo=short_reward_message,
-                    username="Corbanu",
-                    chunk=False,
-                    compress=False,
-                    encrypt=False,
-                    pft_amount=Decimal(reward_value)
-                )
+                try:
+                    reward_tx = await self.generic_pft_utilities.send_memo(
+                        wallet_seed_or_wallet=foundation_wallet,
+                        destination=wallet.classic_address,
+                        memo=short_reward_message,
+                        username="Corbanu",
+                        chunk=False,
+                        compress=False,
+                        encrypt=False,
+                        pft_amount=Decimal(reward_value)
+                    )
 
-                if not self.generic_pft_utilities.verify_transaction_response(reward_tx):
-                    await interaction.followup.send("Failed to send reward transaction.", ephemeral=True)
+                    if not self.generic_pft_utilities.verify_transaction_response(reward_tx):
+                        raise Exception(f"Failed to send reward transaction: {reward_tx.result}")
+
+                except Exception as e:
+                    logger.error(f"TaskNodeDiscordBot.corbanu_reply: Error sending reward memo: {e}")
+                    logger.error(traceback.format_exc())
+                    await message_obj.edit(content=f"An error occurred while sending the reward: {str(e)}")
                     return
 
                 # Confirm reward sent
@@ -1330,7 +1351,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     openrouter=self.openrouter_tool,
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities,
-                    tasknode_utilities=self.tasknode_utilities
+                    tasknode_utilities=self.tasknode_utilities,
+                    db_connection_manager=self.db_connection_manager
                 )
 
                 # Get Corbanu's response asynchronously
@@ -1381,21 +1403,26 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 pft_amount = Decimal(0)
 
                 # Send summarized message from user's wallet to remembrancer
-                send_response = await self.generic_pft_utilities.send_memo(
-                    wallet_seed_or_wallet=wallet,
-                    username=user_name,
-                    destination=self.remembrancer,
-                    memo=summarized_message,
-                    chunk=True,
-                    compress=True,
-                    encrypt=encrypt,
-                    pft_amount=pft_amount,
-                    disable_pft_check=True
-                )
-
-                # Verify transaction
-                if not self.generic_pft_utilities.verify_transaction_response(send_response):
-                    await message_obj.edit(content="Failed to send the summarized Q&A record to remembrancer.")
+                try:
+                    send_response = await self.generic_pft_utilities.send_memo(
+                        wallet_seed_or_wallet=wallet,
+                        username=user_name,
+                        destination=self.remembrancer,
+                        memo=summarized_message,
+                        chunk=True,
+                        compress=True,
+                        encrypt=encrypt,
+                        pft_amount=pft_amount,
+                        disable_pft_check=True
+                    )
+                    
+                    if not self.generic_pft_utilities.verify_transaction_response(send_response):
+                        raise Exception(f"Failed to send summarized Q&A record: {send_response.result}")
+        
+                except Exception as e:
+                    logger.error(f"TaskNodeDiscordBot.corbanu_request: Error sending memo: {e}")
+                    logger.error(traceback.format_exc())
+                    await message_obj.edit(content=f"An error occurred while sending the summarized Q&A record: {str(e)}")
                     return
 
                 last_response = send_response[-1] if isinstance(send_response, list) else send_response
@@ -1987,15 +2014,26 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     
                     await message_obj.edit(content=f"Handshake verified. Proceeding to send message {message}...")
 
-                response = await self.generic_pft_utilities.send_memo(
-                    wallet_seed_or_wallet=wallet,
-                    username=user_name,
-                    destination=self.remembrancer,
-                    memo=message,
-                    chunk=True,
-                    compress=True,
-                    encrypt=encrypt
-                )
+                try:
+                    response = await self.generic_pft_utilities.send_memo(
+                        wallet_seed_or_wallet=wallet,
+                        username=user_name,
+                        destination=self.remembrancer,
+                        memo=message,
+                        chunk=True,
+                        compress=True,
+                        encrypt=encrypt
+                    )
+
+                    if not self.generic_pft_utilities.verify_transaction_response(response):
+                        raise Exception(f"Failed to send message to remembrancer: {response.result}")
+
+                except Exception as e:
+                    logger.error(f"TaskNodeDiscordBot.pf_remembrancer: Error sending memo: {e}")
+                    logger.error(traceback.format_exc())
+                    await message_obj.edit(content=f"An error occurred while sending the message: {str(e)}")
+                    return
+
                 response = response[-1] if isinstance(response, list) else response
 
                 transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(
@@ -2080,7 +2118,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         )
         async def pf_leaderboard(interaction: discord.Interaction):
             # Check if the user has permission (matches the specific ID)
-            if interaction.user.id not in global_constants.DISCORD_SUPER_USER_IDS:
+            if interaction.user.id not in DISCORD_SUPER_USER_IDS:
                 await interaction.response.send_message(
                     "You don't have permission to use this command.", 
                     ephemeral=True
@@ -3328,9 +3366,9 @@ My specific question/request is: {user_query}"""
         
         async_run_map = top_score_frame['api_args'].head(25).to_dict()
         async_run_map__2 = top_score_frame['api_args'].head(25).to_dict()
-        async_output_df1= self.openrouter.create_writable_df_for_async_chat_completion(arg_async_map=async_run_map)
+        async_output_df1= self.openrouter_tool.create_writable_df_for_async_chat_completion(arg_async_map=async_run_map)
         time.sleep(15)
-        async_output_df2= self.openrouter.create_writable_df_for_async_chat_completion(arg_async_map=async_run_map__2)
+        async_output_df2= self.openrouter_tool.create_writable_df_for_async_chat_completion(arg_async_map=async_run_map__2)
         
         
         def extract_scores(text_data):

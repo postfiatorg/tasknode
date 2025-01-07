@@ -105,7 +105,7 @@ class TaskNodeUtilities:
         """
         logger.debug(f"TaskNodeUtilities.handle_google_doc: Handling google doc for {username} ({wallet.classic_address})")
         try:
-            await self.check_if_google_doc_is_valid(wallet, google_doc_link)
+            await self.check_if_google_doc_is_valid(google_doc_link)
         except Exception as e:
             logger.error(f"TaskNodeUtilities.handle_google_doc: Error validating Google Doc: {e}")
             raise
@@ -137,18 +137,24 @@ class TaskNodeUtilities:
             )
             logger.debug(f"TaskNodeUtilities.send_google_doc: Sending Google Doc link transaction from {wallet.classic_address} to node {self.node_address}: {google_doc_link}")
             
-            response = await self.generic_pft_utilities.send_memo(
-                wallet_seed_or_wallet=wallet,
-                username=username,
-                memo=google_doc_memo,
-                destination=self.node_address,
-                encrypt=True  # Google Doc link is always encrypted
-            )
+            try:
+                response = await self.generic_pft_utilities.send_memo(
+                    wallet_seed_or_wallet=wallet,
+                    username=username,
+                    memo=google_doc_memo,
+                    destination=self.node_address,
+                    encrypt=True  # Google Doc link is always encrypted
+                )
 
-            if not self.generic_pft_utilities.verify_transaction_response(response):
-                raise Exception(f"TaskNodeUtilities.send_google_doc: Failed to send Google Doc link: {response}")
-
-            return response  # Return last response for compatibility with existing code
+                if not self.generic_pft_utilities.verify_transaction_response(response):
+                    raise Exception(f"TaskNodeUtilities.send_google_doc: Failed to send Google Doc link: {response.result}")
+                
+                return response
+                    
+            except Exception as e:
+                logger.error(f"TaskNodeUtilities.send_google_doc: Error sending Google Doc link: {e}")
+                logger.error(traceback.format_exc())
+                raise
 
         except Exception as e:
             raise Exception(f"TaskNodeUtilities.send_google_doc: Error sending Google Doc: {str(e)}")
@@ -201,16 +207,22 @@ class TaskNodeUtilities:
         )
         logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Sending initiation rite transaction from {wallet.classic_address} to node {self.node_address}")
         
-        response = await self.generic_pft_utilities.send_xrp(
-            wallet_seed_or_wallet=wallet,
-            amount=INITIATION_RITE_XRP_COST,
-            destination=self.node_address,
-            memo=initiation_memo,
-            destination_tag=None
-        )
+        try:
+            response = await self.generic_pft_utilities.send_xrp(
+                wallet_seed_or_wallet=wallet,
+                amount=INITIATION_RITE_XRP_COST,
+                destination=self.node_address,
+                memo=initiation_memo,
+                destination_tag=None
+            )
 
-        if not self.generic_pft_utilities.verify_transaction_response(response):
-            raise Exception("Initiation rite failed to send")
+            if not self.generic_pft_utilities.verify_transaction_response(response):
+                raise Exception("Initiation rite failed to send")
+            
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.handle_initiation_rite: Error sending initiation rite: {e}")
+            logger.error(traceback.format_exc())
+            raise
 
     async def discord__initiation_rite(
             self, 
@@ -292,19 +304,25 @@ class TaskNodeUtilities:
             memo_format=memo_format
         )
 
-        response = await self.generic_pft_utilities.send_memo(
-            wallet_seed_or_wallet=user_wallet,
-            destination=self.node_address,
-            memo=xmemo_to_send,
-            username=user_name
-        )
+        try:
+            response = await self.generic_pft_utilities.send_memo(
+                wallet_seed_or_wallet=user_wallet,
+                destination=self.node_address,
+                memo=xmemo_to_send,
+                username=user_name
+            )
 
-        if not self.generic_pft_utilities.verify_transaction_response(response):
-            logger.error(f"PostFiatTaskGenerationSystem.discord__send_postfiat_request: Failed to send PF request to node from {user_wallet.address}")
+            if not self.generic_pft_utilities.verify_transaction_response(response):
+                raise Exception(f"TaskNodeUtilities.discord__send_postfiat_request: Failed to send PF request: {response.result}")
+        
+            return response
+        
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.discord__send_postfiat_request: Error sending PF request: {e}")
+            logger.error(traceback.format_exc())
+            raise
 
-        return response
-
-    async def discord__task_acceptance(self, user_seed, user_name, task_id_to_accept, acceptance_string):
+    async def discord__task_acceptance(self, user_seed, user_name, task_id_to_accept, acceptance_string) -> str:
         """Accept a proposed task via Discord.
         
         Args:
@@ -326,15 +344,21 @@ class TaskNodeUtilities:
             memo_type=task_id_to_accept
         )
         
-        response = await self.generic_pft_utilities.send_memo(
-            wallet_seed_or_wallet=wallet,
-            destination=self.node_address,
-            memo=acceptance_memo,
-            username=user_name
-        )
+        try:
+            response = await self.generic_pft_utilities.send_memo(
+                wallet_seed_or_wallet=wallet,
+                destination=self.node_address,
+                memo=acceptance_memo,
+                username=user_name
+            )
 
-        if not self.generic_pft_utilities.verify_transaction_response(response):
-            logger.error(f"PostFiatTaskGenerationSystem.discord__task_acceptance: Failed to send acceptance memo to node from {wallet.address}")
+            if not self.generic_pft_utilities.verify_transaction_response(response):
+                raise Exception(f"TaskNodeUtilities.discord__task_acceptance: Failed to send acceptance memo: {response.result}")
+        
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.discord__task_acceptance: Error sending acceptance memo: {e}")
+            logger.error(traceback.format_exc())
+            return f"Error sending acceptance memo: {e}"
 
         # Extract transaction info from last response
         transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)
@@ -342,7 +366,7 @@ class TaskNodeUtilities:
 
         return output_string
 
-    async def discord__task_refusal(self, user_seed, user_name, task_id_to_refuse, refusal_string):
+    async def discord__task_refusal(self, user_seed, user_name, task_id_to_refuse, refusal_string) -> str:
         """Refuse a proposed task via Discord.
         
         Args:
@@ -364,15 +388,21 @@ class TaskNodeUtilities:
             memo_type=task_id_to_refuse
         )
 
-        response = await self.generic_pft_utilities.send_memo(
-            wallet_seed_or_wallet=wallet,
-            destination=self.node_address,
-            memo=refusal_memo,
-            username=user_name
-        )
+        try:
+            response = await self.generic_pft_utilities.send_memo(
+                wallet_seed_or_wallet=wallet,
+                destination=self.node_address,
+                memo=refusal_memo,
+                username=user_name
+            )
 
-        if not self.generic_pft_utilities.verify_transaction_response(response):
-            logger.error(f"PostFiatTaskGenerationSystem.discord__task_refusal: Failed to send refusal memo to node from {wallet.address}")
+            if not self.generic_pft_utilities.verify_transaction_response(response):
+                raise Exception(f"TaskNodeUtilities.discord__task_refusal: Failed to send refusal memo: {response.result}")
+            
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.discord__task_refusal: Error sending refusal memo: {e}")
+            logger.error(traceback.format_exc())
+            return f"Error sending refusal memo: {e}"
 
         # Extract transaction info from last response
         transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)
@@ -380,7 +410,7 @@ class TaskNodeUtilities:
 
         return output_string
 
-    async def discord__initial_submission(self, user_seed, user_name, task_id_to_accept, initial_completion_string):
+    async def discord__initial_submission(self, user_seed, user_name, task_id_to_accept, initial_completion_string) -> str:
         """Submit initial task completion via Discord interface.
         
         Args:
@@ -404,15 +434,21 @@ class TaskNodeUtilities:
         )
 
         # Send completion memo transaction
-        response = await self.generic_pft_utilities.send_memo(
-            wallet_seed_or_wallet=wallet,
-            destination=self.node_address,
-            memo=completion_memo,
-            username=user_name
-        )
+        try:
+            response = await self.generic_pft_utilities.send_memo(
+                wallet_seed_or_wallet=wallet,
+                destination=self.node_address,
+                memo=completion_memo,
+                username=user_name
+            )
 
-        if not self.generic_pft_utilities.verify_transaction_response(response):
-            logger.error(f"PostFiatTaskManagement.discord__initial_submission: Failed to send completion memo to node from {wallet.address}")
+            if not self.generic_pft_utilities.verify_transaction_response(response):
+                raise Exception(f"TaskNodeUtilities.discord__initial_submission: Failed to send completion memo: {response.result}")
+
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.discord__initial_submission: Error sending completion memo: {e}")
+            logger.error(traceback.format_exc())
+            return f"Error sending completion memo: {e}"
 
         # Extract and return transaction info from last response
         transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)
@@ -444,15 +480,21 @@ class TaskNodeUtilities:
         )
 
         # Send verification response memo transaction
-        response = await self.generic_pft_utilities.send_memo(
-            wallet_seed_or_wallet=wallet,
-            destination=self.node_address,
-            memo=completion_memo,
-            username=user_name
-        )
+        try:
+            response = await self.generic_pft_utilities.send_memo(
+                wallet_seed_or_wallet=wallet,
+                destination=self.node_address,
+                memo=completion_memo,
+                username=user_name
+            )
 
-        if not self.generic_pft_utilities.verify_transaction_response(response):
-            logger.error(f"PostFiatTaskManagement.discord__final_submission: Failed to send verification memo to node from {wallet.address}")
+            if not self.generic_pft_utilities.verify_transaction_response(response):
+                raise Exception(f"TaskNodeUtilities.discord__final_submission: Failed to send verification memo: {response.result}")
+
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.discord__final_submission: Error sending verification memo: {e}")
+            logger.error(traceback.format_exc())
+            return f"Error sending verification memo: {e}"
 
         # Extract and return transaction info from last response
         transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)

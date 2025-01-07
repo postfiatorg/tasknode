@@ -46,13 +46,13 @@ class CorbanuChatBot:
             user_context_parser: UserTaskParser,
             pft_utils: GenericPFTUtilities,
             tasknode_utilities: TaskNodeUtilities,
-            db_connection_manager: DBConnectionManager = None
+            db_connection_manager: DBConnectionManager
     ):
         # Initialize tools
         self.openrouter = openrouter
         self.pft_utils = pft_utils
         self.user_context_parser = user_context_parser
-        self.db_connection_manager = db_connection_manager or DBConnectionManager()
+        self.db_connection_manager = db_connection_manager
         self.tasknode_utilities = tasknode_utilities
         self.account_address = account_address
 
@@ -424,7 +424,8 @@ class CorbanuChatBot:
         try:
             google_url = await self.user_context_parser.get_latest_outgoing_context_doc_link(account_address=account_address)
             # Retrieve google doc text and limit to 10000 characters
-            core_element__google_doc_text = await self.user_context_parser.get_google_doc_text(google_url)[:self.GOOGLE_DOC_TEXT_CHAR_LIMIT]
+            core_element__google_doc_text = await self.user_context_parser.get_google_doc_text(google_url)
+            core_element__google_doc_text = core_element__google_doc_text[:self.GOOGLE_DOC_TEXT_CHAR_LIMIT]
         except Exception as e:
             logger.error(f"Failed retrieving user google doc: {e}")
             logger.error(traceback.format_exc())
@@ -441,17 +442,17 @@ class CorbanuChatBot:
             core_element__user_log_history = 'Error retrieving user memo history'
 
         corbanu_context_string = f"""
-        ***<<< ALL CORBANU QUESTION GENERATION CONTEXT STARTS HERE >>>***
-        The following is the user's full planning document that they have assembled
-        to inform Post Fiat Task Management System for task generation and planning
-        <<USER PLANNING DOC STARTS HERE>>
-        {core_element__google_doc_text}
-        <<USER PLANNING DOC ENDS HERE>>
-        The following is the users last {n_memos_in_context} interactions with Corbanu
-        <<< USER CORBANU INTERACTIONS START HERE>>
-        {core_element__user_log_history}
-        <<< USER CORBANU INTERACTIONS END HERE>>
-        ***<<< ALL CORBANU QUESTION GENERATION CONTEXT ENDS HERE >>>***
+***<<< ALL CORBANU QUESTION GENERATION CONTEXT STARTS HERE >>>***
+The following is the user's full planning document that they have assembled
+to inform Post Fiat Task Management System for task generation and planning
+<<USER PLANNING DOC STARTS HERE>>
+{core_element__google_doc_text}
+<<USER PLANNING DOC ENDS HERE>>
+The following is the users last {n_memos_in_context} interactions with Corbanu
+<<< USER CORBANU INTERACTIONS START HERE>>
+{core_element__user_log_history}
+<<< USER CORBANU INTERACTIONS END HERE>>
+***<<< ALL CORBANU QUESTION GENERATION CONTEXT ENDS HERE >>>***
         """
 
         return corbanu_context_string

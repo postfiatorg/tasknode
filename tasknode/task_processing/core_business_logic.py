@@ -143,6 +143,13 @@ ODV_RESPONSE_PATTERN = MemoPattern(
     memo_type=TASK_RESPONSE_ID_PATTERN  # this is the only way to pattern match ODV responses at this time
 )
 
+# Misc Patterns
+CORBANU_REWARD_PATTERN = MemoPattern(
+    memo_format="Corbanu",
+    memo_type=TASK_ID_PATTERN,
+    memo_data="Corbanu Reward"
+)
+
 ##########################################################################
 ####################### BUSINESS LOGIC PROVIDER ##########################
 ##########################################################################
@@ -172,7 +179,8 @@ class TaskManagementRules(BusinessLogicProvider):
             "verification_response": VerificationResponseRule(),
             "reward": RewardRule(),
             "odv_request": ODVRequestRule(),
-            "odv_response": ODVResponseRule()
+            "odv_response": ODVResponseRule(),
+            "corbanu_reward": CorbanuRewardRule()
         }
 
         # Add initiation rite patterns to graph
@@ -275,6 +283,14 @@ class TaskManagementRules(BusinessLogicProvider):
             pattern_id="odv_response",
             memo_pattern=ODV_RESPONSE_PATTERN,
             transaction_type=InteractionType.RESPONSE,
+        )
+
+        # Add corbanu reward pattern to graph
+        graph.add_pattern(
+            pattern_id="corbanu_reward",
+            memo_pattern=CORBANU_REWARD_PATTERN,
+            transaction_type=InteractionType.STANDALONE,
+            notify=True
         )
 
         return cls(
@@ -1523,3 +1539,15 @@ class ODVResponseGenerator(ResponseGenerator):
 
         except Exception as e:
             raise Exception(f"Failed to construct ODV response: {e}")
+
+############################################################################
+########################### Corbanu Reward #################################
+############################################################################
+
+class CorbanuRewardRule(StandaloneRule):
+    """
+    Pure business logic for handling corbanu rewards
+    Currently, this rule is a placeholder and does not perform any validation.
+    """
+    async def validate(self, *args, **kwargs) -> bool:
+        return True
