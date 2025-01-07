@@ -18,19 +18,39 @@ class ODVFocusAnalyzer:
         # Initialize tools
         self.openrouter = openrouter
         self.pft_utils = pft_utils
+        self.user_context_parser = user_context_parser
+        self.account_address = account_address
 
         # Initialize model
         self.model = "openai/o1"
         
-        # Get user context once
-        memo_history = self.pft_utils.get_account_memo_history(account_address=account_address)
-        self.user_context = user_context_parser.get_full_user_context_string(
+        # These will be initialized in create()
+        self.user_context = None
+        self.conversation = []
+
+    @classmethod
+    async def create(
+            cls,
+            account_address: str,
+            openrouter: OpenRouterTool,
+            user_context_parser: UserTaskParser,
+            pft_utils: GenericPFTUtilities
+    ):
+        instance = cls(
+            account_address=account_address,
+            openrouter=openrouter,
+            user_context_parser=user_context_parser,
+            pft_utils=pft_utils
+        )
+        
+        # Initialize async components
+        memo_history = await instance.pft_utils.get_account_memo_history(account_address=account_address)
+        instance.user_context = await instance.user_context_parser.get_full_user_context_string(
             account_address=account_address,
             memo_history=memo_history
         )
         
-        # Initialize conversation history
-        self.conversation = []
+        return instance
 
     def get_est_time(self) -> str:
         """Get current time in EST timezone"""

@@ -54,26 +54,53 @@ class CorbanuChatBot:
         self.user_context_parser = user_context_parser
         self.db_connection_manager = db_connection_manager or DBConnectionManager()
         self.tasknode_utilities = tasknode_utilities
+        self.account_address = account_address
 
         # Initialize model
         self.model = "openai/o1-preview"
-
         self.GOOGLE_DOC_TEXT_CHAR_LIMIT = 10000
         
-        # Get user context once
-        memo_history = self.pft_utils.get_account_memo_history(account_address=account_address)
-        self.user_context = self.get_corbanu_context(
-            account_address=account_address,
-            memo_history=memo_history
-        )
-
-        # Initialize market data
-        self.angron_map = self._generate_most_recent_angron_map()
-        self.fulgrim_context = self._load_fulgrim_context()
-        self.last_context_refresh = time.time()
+        # These will be initialized in create()
+        self.user_context = None 
+        self.angron_map = None
+        self.fulgrim_context = None
 
         self.MAX_PER_OFFERING_REWARD_VALUE = 3000
         self.MAX_DAILY_REWARD_VALUE = 9000
+
+    @classmethod
+    async def create(
+        cls,
+        account_address: str,
+        openrouter: OpenRouterTool,
+        user_context_parser: UserTaskParser,
+        pft_utils: GenericPFTUtilities,
+        tasknode_utilities: TaskNodeUtilities,
+        db_connection_manager: DBConnectionManager = None
+    ):
+        instance = cls(
+            account_address=account_address,
+            openrouter=openrouter,
+            user_context_parser=user_context_parser,
+            pft_utils=pft_utils,
+            tasknode_utilities=tasknode_utilities,
+            db_connection_manager=db_connection_manager
+        )
+
+        # Initialize async components
+        memo_history = await instance.pft_utils.get_account_memo_history(account_address=account_address)
+        instance.user_context = await instance.get_corbanu_context(
+            account_address=account_address,
+            memo_history=memo_history
+        )
+        
+        # Initialize market data
+        # TODO: Make this async
+        instance.angron_map = instance._generate_most_recent_angron_map()
+        instance.fulgrim_context = instance._load_fulgrim_context()
+        instance.last_context_refresh = time.time()
+        
+        return instance
 
     def _refresh_contexts_if_needed(self, refresh_interval=300):
         # Refresh contexts if older than refresh_interval seconds
@@ -342,7 +369,7 @@ class CorbanuChatBot:
             # Fallback to a simple truncation if something goes wrong
             return text[:max_length]
         
-    def check_daily_reward_limit(self, account_address: str) -> Decimal:
+    async def check_daily_reward_limit(self, account_address: str) -> Decimal:
         """
         Check how much reward capacity remains for the user within the daily limit.
         
@@ -354,7 +381,7 @@ class CorbanuChatBot:
         """
         try:            
             # Get last 24 hours of memos
-            memo_history = self.pft_utils.get_account_memo_history(account_address=account_address)
+            memo_history = await self.pft_utils.get_account_memo_history(account_address=account_address)
 
             # Calculate 24 hours ago timestamp in UTC
             utc_now = datetime.now(timezone.utc)
@@ -384,7 +411,7 @@ class CorbanuChatBot:
             logger.error(f"Error checking daily reward limit: {str(e)}")
             return Decimal(0)  # Return 0 on error to prevent rewards
         
-    def get_corbanu_context(
+    async def get_corbanu_context(
             self,
             account_address: str,
             memo_history: Optional[pd.DataFrame] = None,
@@ -392,19 +419,19 @@ class CorbanuChatBot:
     ) -> str:
         """Get Corbanu context for a user"""
         if memo_history is None:
-            memo_history = self.pft_utils.get_account_memo_history(account_address=account_address)
+            memo_history = await self.pft_utils.get_account_memo_history(account_address=account_address)
 
         try:
-            google_url = self.user_context_parser.get_latest_outgoing_context_doc_link(account_address=account_address)
+            google_url = await self.user_context_parser.get_latest_outgoing_context_doc_link(account_address=account_address)
             # Retrieve google doc text and limit to 10000 characters
-            core_element__google_doc_text = self.user_context_parser.get_google_doc_text(google_url)[:self.GOOGLE_DOC_TEXT_CHAR_LIMIT]
+            core_element__google_doc_text = await self.user_context_parser.get_google_doc_text(google_url)[:self.GOOGLE_DOC_TEXT_CHAR_LIMIT]
         except Exception as e:
             logger.error(f"Failed retrieving user google doc: {e}")
             logger.error(traceback.format_exc())
             core_element__google_doc_text = 'Error retrieving google doc'
 
         try:
-            core_element__user_log_history = self.get_recent_corbanu_interactions(
+            core_element__user_log_history = await self.get_recent_corbanu_interactions(
                 account_address=account_address,
                 num_messages=n_memos_in_context
             )
@@ -429,7 +456,7 @@ class CorbanuChatBot:
 
         return corbanu_context_string
 
-    def get_recent_corbanu_interactions(
+    async def get_recent_corbanu_interactions(
             self,
             account_address: str,
             num_messages: int = 10
@@ -437,7 +464,7 @@ class CorbanuChatBot:
         """Get recent Corbanu interactions for a user"""
         try:
             # Get all messages and select relevant columns
-            messages_df = self.pft_utils.get_all_account_compressed_messages_for_remembrancer(
+            messages_df = await self.pft_utils.get_all_account_compressed_messages_for_remembrancer(
                 account_address=account_address,
             )
             if messages_df.empty:

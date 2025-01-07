@@ -129,7 +129,7 @@ class NewTaskGeneration:
         except Exception:
             return "NO OUTPUT"
 
-    def process_task_map_to_proposed_pf(self, task_map, model="anthropic/claude-3.5-sonnet:beta", get_google_doc=True, get_historical_memos=True):
+    async def process_task_map_to_proposed_pf(self, task_map, model="anthropic/claude-3.5-sonnet:beta", get_google_doc=True, get_historical_memos=True):
         """
         Process a task map to generate proposed PF tasks with rewards.
         
@@ -147,7 +147,7 @@ class NewTaskGeneration:
             pd.DataFrame: Processed DataFrame with proposed PF tasks and rewards
         """
         # Run batch task generation
-        output_df = self.run_batch_task_generation(
+        output_df = await self.run_batch_task_generation(
             task_map=task_map,
             model=model,
             get_google_doc=get_google_doc,
@@ -199,7 +199,7 @@ class NewTaskGeneration:
             return None, None
         return parts[0], parts[1]
 
-    def run_batch_task_generation(
+    async def run_batch_task_generation(
             self,
             task_map: dict,
             model: Optional[str] = DEFAULT_OPENROUTER_MODEL,
@@ -233,7 +233,7 @@ class NewTaskGeneration:
             job_hash = f'{task_key}___{uuid.uuid4()}'
             
             # Get API args for this account
-            api_args = self.construct_task_generation_api_args(
+            api_args = await self.construct_task_generation_api_args(
                 user_account_address=account_id,
                 task_request=task_request,
                 model=model,
@@ -252,7 +252,7 @@ class NewTaskGeneration:
         
         return results_df
 
-    def construct_task_generation_api_args(
+    async def construct_task_generation_api_args(
             self,
             user_account_address: str,
             task_request: str,
@@ -274,7 +274,7 @@ class NewTaskGeneration:
             dict: Formatted API arguments for task generation
         """
         # Get full user context
-        user_context = self.user_task_parser.get_full_user_context_string(
+        user_context = await self.user_task_parser.get_full_user_context_string(
             account_address=user_account_address,
             get_google_doc=get_google_doc,
             get_historical_memos=get_historical_memos

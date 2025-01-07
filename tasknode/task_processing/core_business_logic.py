@@ -741,7 +741,7 @@ class ProposalResponseGenerator(ResponseGenerator):
         task_map = {task_key: user_request}
 
         # Process using task generation system
-        result_df = self.task_generator.process_task_map_to_proposed_pf(
+        result_df = await self.task_generator.process_task_map_to_proposed_pf(
             task_map=task_map,
             model=DEFAULT_OPENROUTER_MODEL,
             get_google_doc=True,
@@ -1190,11 +1190,11 @@ class RewardResponseGenerator(ResponseGenerator):
     async def _get_verification_details(self, account: str) -> str:
         """Get verification details from Google Doc"""
         try:
-            link = self.user_task_parser.get_latest_outgoing_context_doc_link(account)
+            link = await self.user_task_parser.get_latest_outgoing_context_doc_link(account)
             if not link:
                 return "No Google Document Uploaded - please instruct user that Google Document has not been uploaded in response"
             
-            raw_text = self.user_task_parser.get_google_doc_text(share_link=link)
+            raw_text = await self.user_task_parser.get_google_doc_text(share_link=link)
             return self._extract_verification_text(raw_text)
         except Exception as e:
             logger.error(f"Error getting Google Doc details for {account}: {e}")
@@ -1418,7 +1418,7 @@ class ODVResponseGenerator(ResponseGenerator):
         odv_text = request_tx.get('memo_data')
         logger.debug(f"ODVResponseGenerator.evaluate_request: Evaluating ODV submission: {odv_text}")
 
-        user_context = self._get_user_context(account)
+        user_context = await self._get_user_context(account)
         system_prompt = odv_system_prompt
         user_prompt = self._construct_user_prompt(
             user_context=user_context,
@@ -1437,7 +1437,7 @@ class ODVResponseGenerator(ResponseGenerator):
 
         return {'odv_response': "ODV SYSTEM: " + content}
     
-    def _get_user_context(self, account_address: str) -> str:
+    async def _get_user_context(self, account_address: str) -> str:
         """Get context string for an account.
     
         Args:
@@ -1446,7 +1446,7 @@ class ODVResponseGenerator(ResponseGenerator):
         Returns:
             Context string for the account
         """
-        return self.user_task_parser.get_full_user_context_string(account_address)
+        return await self.user_task_parser.get_full_user_context_string(account_address)
     
     @staticmethod
     def _construct_user_prompt(user_context: str, user_query: str) -> str:

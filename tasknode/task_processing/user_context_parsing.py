@@ -162,7 +162,7 @@ class UserTaskParser:
 
         return task_pairs
 
-    def get_proposals_by_state(
+    async def get_proposals_by_state(
             self, 
             account: Union[str, pd.DataFrame], 
             state_type: TaskType
@@ -170,7 +170,7 @@ class UserTaskParser:
         """Get proposals filtered by their state."""
         # Handle input type
         if isinstance(account, str):
-            account_memo_detail_df = self.generic_pft_utilities.get_account_memo_history(account_address=account)
+            account_memo_detail_df = await self.generic_pft_utilities.get_account_memo_history(account_address=account)
         else:
             account_memo_detail_df = account
 
@@ -207,39 +207,39 @@ class UserTaskParser:
 
         return filtered_proposals
     
-    def get_pending_proposals(self, account: Union[str, pd.DataFrame]):
+    async def get_pending_proposals(self, account: Union[str, pd.DataFrame]):
         """Get proposals that have not yet been accepted or refused."""
-        return self.get_proposals_by_state(account, state_type=TaskType.PROPOSAL)
+        return await self.get_proposals_by_state(account, state_type=TaskType.PROPOSAL)
 
-    def get_accepted_proposals(self, account: Union[str, pd.DataFrame]):
+    async def get_accepted_proposals(self, account: Union[str, pd.DataFrame]):
         """Get accepted proposals"""
-        proposals = self.get_proposals_by_state(account, state_type=TaskType.ACCEPTANCE)
+        proposals = await self.get_proposals_by_state(account, state_type=TaskType.ACCEPTANCE)
         if not proposals.empty:
             proposals.rename(columns={'latest_state': self.STATE_COLUMN_MAP[TaskType.ACCEPTANCE]}, inplace=True)
         return proposals
     
-    def get_verification_proposals(self, account: Union[str, pd.DataFrame]):
+    async def get_verification_proposals(self, account: Union[str, pd.DataFrame]):
         """Get verification proposals"""
-        proposals = self.get_proposals_by_state(account, state_type=TaskType.VERIFICATION_PROMPT)
+        proposals = await self.get_proposals_by_state(account, state_type=TaskType.VERIFICATION_PROMPT)
         if not proposals.empty:
             proposals.rename(columns={'latest_state': self.STATE_COLUMN_MAP[TaskType.VERIFICATION_PROMPT]}, inplace=True)
         return proposals
 
-    def get_rewarded_proposals(self, account: Union[str, pd.DataFrame]):
+    async def get_rewarded_proposals(self, account: Union[str, pd.DataFrame]):
         """Get rewarded proposals"""
-        proposals = self.get_proposals_by_state(account, state_type=TaskType.REWARD)
+        proposals = await self.get_proposals_by_state(account, state_type=TaskType.REWARD)
         if not proposals.empty:
             proposals.rename(columns={'latest_state': self.STATE_COLUMN_MAP[TaskType.REWARD]}, inplace=True)
         return proposals
 
-    def get_refused_proposals(self, account: Union[str, pd.DataFrame]):
+    async def get_refused_proposals(self, account: Union[str, pd.DataFrame]):
         """Get refused proposals"""
-        proposals = self.get_proposals_by_state(account, state_type=TaskType.REFUSAL)
+        proposals = await self.get_proposals_by_state(account, state_type=TaskType.REFUSAL)
         if not proposals.empty:
             proposals.rename(columns={'latest_state': self.STATE_COLUMN_MAP[TaskType.REFUSAL]}, inplace=True)
         return proposals
     
-    def get_refuseable_proposals(self, account: Union[str, pd.DataFrame]):
+    async def get_refuseable_proposals(self, account: Union[str, pd.DataFrame]):
         """Get all proposals that are in a valid state to be refused.
         
         This includes:
@@ -258,9 +258,9 @@ class UserTaskParser:
             Indexed by task_id.
         """
         # Get all proposals in refuseable states
-        pending = self.get_proposals_by_state(account, state_type=TaskType.PROPOSAL)
-        accepted = self.get_proposals_by_state(account, state_type=TaskType.ACCEPTANCE)
-        verification = self.get_proposals_by_state(account, state_type=TaskType.VERIFICATION_PROMPT)
+        pending = await self.get_proposals_by_state(account, state_type=TaskType.PROPOSAL)
+        accepted = await self.get_proposals_by_state(account, state_type=TaskType.ACCEPTANCE)
+        verification = await self.get_proposals_by_state(account, state_type=TaskType.VERIFICATION_PROMPT)
 
         if pending.empty and accepted.empty and verification.empty:
             return pd.DataFrame()
@@ -274,7 +274,7 @@ class UserTaskParser:
         
         return all_proposals.drop_duplicates()
 
-    def get_task_statistics(self, account_address):
+    async def get_task_statistics(self, account_address):
         """
         Get statistics about user's tasks.
         
@@ -288,13 +288,13 @@ class UserTaskParser:
                 - pending_tasks: Number of pending tasks
                 - acceptance_rate: Percentage of tasks accepted
         """
-        account_memo_detail_df = self.generic_pft_utilities.get_account_memo_history(account_address)
+        account_memo_detail_df = await self.generic_pft_utilities.get_account_memo_history(account_address)
 
-        pending_proposals = self.get_pending_proposals(account_memo_detail_df)
-        accepted_proposals = self.get_accepted_proposals(account_memo_detail_df)
-        refused_proposals = self.get_refused_proposals(account_memo_detail_df)
-        verification_proposals = self.get_verification_proposals(account_memo_detail_df)
-        rewarded_proposals = self.get_rewarded_proposals(account_memo_detail_df)
+        pending_proposals = await self.get_pending_proposals(account_memo_detail_df)
+        accepted_proposals = await self.get_accepted_proposals(account_memo_detail_df)
+        refused_proposals = await self.get_refused_proposals(account_memo_detail_df)
+        verification_proposals = await self.get_verification_proposals(account_memo_detail_df)
+        rewarded_proposals = await self.get_rewarded_proposals(account_memo_detail_df)
 
         # Calculate total accepted tasks
         total_accepted = len(accepted_proposals) + len(verification_proposals) + len(rewarded_proposals)
@@ -318,7 +318,7 @@ class UserTaskParser:
             'completion_rate': completion_rate
         }
 
-    def get_full_user_context_string(
+    async def get_full_user_context_string(
         self,
         account_address: str,
         memo_history: Optional[pd.DataFrame] = None,
@@ -342,12 +342,12 @@ class UserTaskParser:
         """
         # Use provided memo_history or fetch if not provided
         if memo_history is None:
-            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_address)
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=account_address)
 
         # Handle proposals section (pending + accepted)
         try:
-            pending_proposals = self.get_pending_proposals(memo_history)
-            accepted_proposals = self.get_accepted_proposals(memo_history)
+            pending_proposals = await self.get_pending_proposals(memo_history)
+            accepted_proposals = await self.get_accepted_proposals(memo_history)
 
             # Combine and limit
             all_proposals = pd.concat([pending_proposals, accepted_proposals]).tail(
@@ -366,7 +366,8 @@ class UserTaskParser:
 
         # Handle refusals
         try:
-            refused_proposals = self.get_refused_proposals(memo_history).tail(n_refusals_in_context)
+            refused_proposals = await self.get_refused_proposals(memo_history)
+            refused_proposals = refused_proposals.tail(n_refusals_in_context)
             if refused_proposals.empty:
                 refusal_string = "No refused proposals found."
             else:
@@ -378,7 +379,8 @@ class UserTaskParser:
             
         # Handle verifications
         try:
-            verification_proposals = self.get_verification_proposals(memo_history).tail(n_verification_in_context)
+            verification_proposals = await self.get_verification_proposals(memo_history)
+            verification_proposals = verification_proposals.tail(n_verification_in_context)
             if verification_proposals.empty:
                 verification_string = "No tasks pending verification."
             else:
@@ -390,7 +392,8 @@ class UserTaskParser:
 
         # Handle rewards
         try:
-            rewarded_proposals = self.get_rewarded_proposals(memo_history).tail(n_rewards_in_context)
+            rewarded_proposals = await self.get_rewarded_proposals(memo_history)
+            rewarded_proposals = rewarded_proposals.tail(n_rewards_in_context)
             if rewarded_proposals.empty:
                 reward_string = "No rewarded tasks found."
             else:
@@ -403,8 +406,8 @@ class UserTaskParser:
         # Get optional context elements
         if get_google_doc:
             try:
-                google_url = self.get_latest_outgoing_context_doc_link(account_address=account_address)
-                core_element__google_doc_text = self.get_google_doc_text(google_url)
+                google_url = await self.get_latest_outgoing_context_doc_link(account_address=account_address)
+                core_element__google_doc_text = await self.get_google_doc_text(google_url)
             except Exception as e:
                 logger.error(f"Failed retrieving user google doc: {e}")
                 logger.error(traceback.format_exc())
@@ -412,7 +415,7 @@ class UserTaskParser:
 
         if get_historical_memos:
             try:
-                core_element__user_log_history = self.generic_pft_utilities.get_recent_user_memos(
+                core_element__user_log_history = await self.generic_pft_utilities.get_recent_user_memos(
                     account_address=account_address,
                     num_messages=n_memos_in_context
                 )
@@ -519,7 +522,7 @@ The following is the users own comments regarding everything
         
         return formatted_df[['initial_task_detail', 'recent_status', 'recent_date']].to_string()
     
-    def get_latest_outgoing_context_doc_link(
+    async def get_latest_outgoing_context_doc_link(
             self, 
             account_address: str
         ) -> Optional[str]:
@@ -533,7 +536,7 @@ The following is the users own comments regarding everything
             str or None: Most recent Google Doc link or None if not found
         """
         try:
-            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_address, pft_only=False)
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=account_address, pft_only=False)
 
             if memo_history.empty or len(memo_history) == 0:
                 logger.debug(f"UserTaskParser.get_latest_outgoing_context_doc_link: No memo history found for {account_address}. Returning None")
@@ -548,7 +551,7 @@ The following is the users own comments regarding everything
             if len(context_docs) > 0:
                 latest_doc = context_docs.iloc[-1]
                 
-                return self.generic_pft_utilities.process_memo_data(
+                return await self.generic_pft_utilities.process_memo_data(
                     memo_type=latest_doc['memo_type'],
                     memo_data=latest_doc['memo_data'],
                     channel_address=self.node_config.node_address,
@@ -566,7 +569,7 @@ The following is the users own comments regarding everything
             return None
 
     @staticmethod
-    def get_google_doc_text(share_link):
+    async def get_google_doc_text(share_link):
         """Get the plain text content of a Google Doc.
         
         Args:

@@ -16,19 +16,40 @@ class ODVContextDocImprover:
         # Initialize tools
         self.openrouter = openrouter
         self.pft_utils = pft_utils
+        self.user_context_parser = user_context_parser
+        self.account_address = account_address
 
         # Initialize model
         self.model = "openai/o1-preview"
+
+        # These will be initialized in create()
+        self.user_context = None
+        self.conversation = None
+
+    @classmethod
+    async def create(
+        cls,
+        account_address: str,
+        openrouter: OpenRouterTool,
+        user_context_parser: UserTaskParser,
+        pft_utils: GenericPFTUtilities
+    ):
+        instance = cls(
+            account_address=account_address,
+            openrouter=openrouter,
+            user_context_parser=user_context_parser,
+            pft_utils=pft_utils
+        )
         
-        # Get user context once
-        memo_history = self.pft_utils.get_account_memo_history(account_address=account_address)
-        self.user_context = user_context_parser.get_full_user_context_string(
+        # Initialize async components
+        memo_history = await instance.pft_utils.get_account_memo_history(account_address=account_address)
+        instance.user_context = await instance.user_context_parser.get_full_user_context_string(
             account_address=account_address,
             memo_history=memo_history
         )
         
         # Initialize conversation with system prompt embedded in first user message
-        self.conversation = [{
+        instance.conversation = [{
             "role": "user",
             "content": f"""<<SYSTEM GUIDELINES START HERE>>
             {odv_system_prompt}
@@ -54,11 +75,13 @@ class ODVContextDocImprover:
             - Once the user says it’s enough, offer to end the interaction.
 
             User Context:
-            {self.user_context}
+            {instance.user_context}
             <<SYSTEM GUIDELINES END HERE>>
 
             Please begin by analyzing the user's current context document and propose the first improvement along with a question asking if they agree to proceed."""
         }]
+
+        return instance
 
     def get_response(self, user_message: str) -> str:
         """Synchronous version of get_response - uses the event loop"""

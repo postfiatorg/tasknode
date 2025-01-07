@@ -4,11 +4,11 @@ import pandas as pd
 
 class UserTaskParser(Protocol):
 
-    def get_task_statistics(self, account_address: str) -> dict:
+    async def get_task_statistics(self, account_address: str) -> dict:
         """Get statistics about user's tasks"""
         ...
 
-    def get_full_user_context_string(
+    async def get_full_user_context_string(
         self,
         account_address: str,
         memo_history: Optional[pd.DataFrame] = None,
@@ -23,7 +23,7 @@ class UserTaskParser(Protocol):
     ) -> str:
         ...
 
-    def get_latest_outgoing_context_doc_link(
+    async def get_latest_outgoing_context_doc_link(
             self, 
             account_address: str
         ) -> Optional[str]:
@@ -39,7 +39,7 @@ class UserTaskParser(Protocol):
         ...
 
     @staticmethod
-    def get_google_doc_text(share_link):
+    async def get_google_doc_text(share_link):
         """Get the plain text content of a Google Doc.
         
         Args:

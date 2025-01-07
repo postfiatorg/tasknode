@@ -145,9 +145,9 @@ class TaskNodeDiscordBot(discord.Client):
             name="DiscordBotTransactionChecker"
         )
 
-        # Prevents duplicate commands but also makes launch slow. Disable for testing only
-        self.tree.clear_commands(guild=guild)
-        await self.tree.sync(guild=guild)
+        # # Prevents duplicate commands but also makes launch slow. Disable for testing only
+        # self.tree.clear_commands(guild=guild)
+        # await self.tree.sync(guild=guild)
     
         @self.event
         async def on_guild_available(guild: discord.Guild):
@@ -294,7 +294,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 account_info = await self.generate_basic_balance_info_string(address=wallet.address)
                 
                 # Get recent messages
-                incoming_messages, outgoing_messages = self.generic_pft_utilities.get_recent_messages(wallet_address)
+                incoming_messages, outgoing_messages = await self.generic_pft_utilities.get_recent_messages(wallet_address)
 
                 # Split long strings if they exceed Discord's limit
                 def truncate_field(content, max_length=1024):
@@ -369,7 +369,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
             try:
                 await interaction.response.defer(ephemeral=True)
-                full_user_context = self.user_task_parser.get_full_user_context_string(
+                full_user_context = await self.user_task_parser.get_full_user_context_string(
                     account_address=wallet_address,
                     n_memos_in_context=20
                 )
@@ -597,7 +597,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             try:
-                odv_planner = ODVSprintPlannerO1(
+                odv_planner = await ODVSprintPlannerO1.create(
                     account_address=wallet.classic_address,
                     openrouter=self.openrouter,
                     user_context_parser=self.user_task_parser,
@@ -976,7 +976,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
             try:
                 # Initialize the ODVContextDocImprover
-                doc_improver = ODVContextDocImprover(
+                doc_improver = await ODVContextDocImprover.create(
                     account_address=wallet.classic_address,
                     openrouter=self.openrouter,
                     user_context_parser=self.user_task_parser,
@@ -1076,7 +1076,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             try:
                 # Initialize the CorbanuChatBot instance
                 logger.debug(f"TaskNodeDiscordBot.corbanu_offering: {interaction.user.name} has requested a Corbanu offering. Initializing CorbanuChatBot instance.")
-                corbanu = CorbanuChatBot(
+                corbanu = await CorbanuChatBot.create(
                     account_address=wallet.classic_address,
                     openrouter=self.openrouter,
                     user_context_parser=self.user_task_parser,
@@ -1140,7 +1140,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 question = self.user_questions[user_id]
                 logger.debug(f"TaskNodeDiscordBot.corbanu_reply: Received user answer for {interaction.user.name}.\nQuestion:\n{question}\nAnswer: \n{answer}")
                 
-                corbanu = CorbanuChatBot(
+                corbanu = await CorbanuChatBot.create(
                     account_address=wallet.classic_address,
                     openrouter=self.openrouter,
                     user_context_parser=self.user_task_parser,
@@ -1241,7 +1241,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 short_reward_message = "Corbanu Reward"
 
                 # Check daily reward limit
-                remaining_daily_limit = corbanu.check_daily_reward_limit(account_address=wallet.classic_address)
+                remaining_daily_limit = await corbanu.check_daily_reward_limit(account_address=wallet.classic_address)
                 reward_value = min(reward_value, remaining_daily_limit)
 
                 # Check per-offering reward limit
@@ -1322,7 +1322,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 self.conversations[user_id].append({"role": "user", "content": message})
 
                 # Create CorbanuChatBot instance
-                corbanu = CorbanuChatBot(
+                corbanu = await CorbanuChatBot.create(
                     account_address=wallet.classic_address,
                     openrouter=self.openrouter,
                     user_context_parser=self.user_task_parser,
@@ -1444,7 +1444,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
             try:
                 # Get the unformatted output message
-                output_message = self.create_full_outstanding_pft_string(account_address=wallet.address)
+                output_message = await self.create_full_outstanding_pft_string(account_address=wallet.address)
                 
                 # Format the message using the formatting function
                 formatted_chunks = self.format_tasks_for_discord(output_message)
@@ -1535,10 +1535,10 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             # Fetch proposal acceptance pairs
-            memo_history = await self.generic_pft_utilities.get_account_memo_history_async(account_address=wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
 
             # Get pending proposals
-            pending_tasks = self.user_task_parser.get_pending_proposals(account=memo_history)
+            pending_tasks = await self.user_task_parser.get_pending_proposals(account=memo_history)
 
             # Return if proposal acceptance pairs are empty
             if pending_tasks.empty:
@@ -1630,10 +1630,10 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
             
             # Fetch account history
-            memo_history = await self.generic_pft_utilities.get_account_memo_history_async(account_address=wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
 
             # Get refuseable proposals
-            refuseable_tasks = self.user_task_parser.get_refuseable_proposals(account=memo_history)
+            refuseable_tasks = await self.user_task_parser.get_refuseable_proposals(account=memo_history)
 
             # Return if proposal refusal pairs are empty
             if refuseable_tasks.empty:
@@ -1725,10 +1725,10 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             # Fetch account history
-            memo_history = await self.generic_pft_utilities.get_account_memo_history_async(wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
 
             # Fetch accepted tasks
-            accepted_tasks = self.user_task_parser.get_accepted_proposals(account=memo_history)
+            accepted_tasks = await self.user_task_parser.get_accepted_proposals(account=memo_history)
 
             # Return if no accepted tasks
             if accepted_tasks.empty:
@@ -1818,10 +1818,10 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             # Fetch account history
-            memo_history = await self.generic_pft_utilities.get_account_memo_history_async(wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
 
             # Fetch verification tasks
-            verification_tasks = self.user_task_parser.get_verification_proposals(account=memo_history)
+            verification_tasks = await self.user_task_parser.get_verification_proposals(account=memo_history)
             
             # If there are no tasks in the verification queue, notify the user
             if verification_tasks.empty:
@@ -1913,7 +1913,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             try:
-                memo_history = await self.generic_pft_utilities.get_account_memo_history_async(wallet.address).copy().sort_values('datetime')
+                memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address).copy().sort_values('datetime')
 
                 # Return immediately if memo history is empty
                 if memo_history.empty:
@@ -2037,7 +2037,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
             try:
                 # Call the charting function
-                self.tasknode_utilities.output_pft_KPI_graph_for_address(user_wallet=wallet.address)
+                await self.tasknode_utilities.output_pft_KPI_graph_for_address(user_wallet=wallet.address)
                 
                 # Create the file object from the saved image
                 chart_file = discord.File(f'pft_rewards__{wallet.address}.png', filename='pft_chart.png')
@@ -2088,7 +2088,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             
             try:
                 # Generate and format the leaderboard
-                leaderboard_df = self.output_postfiat_foundation_node_leaderboard_df()
+                leaderboard_df = await self.output_postfiat_foundation_node_leaderboard_df()
                 self.format_and_write_leaderboard()
                 
                 embed = discord.Embed(
@@ -2421,7 +2421,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         break
 
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-                    analyzer = ODVFocusAnalyzer(
+                    analyzer = await ODVFocusAnalyzer.create(
                         account_address=user_wallet.classic_address,
                         openrouter=self.openrouter,
                         user_context_parser=self.user_task_parser,
@@ -2474,7 +2474,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                             logger.debug(f"TaskNodeDiscordBot.death_march_reminder: Spawning wallet to fetch info for {target_user_id}")
                             user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                             user_address = user_wallet.classic_address
-                            tactical_string = self.tasknode_utilities.get_o1_coaching_string_for_account(user_address)
+                            tactical_string = await self.tasknode_utilities.get_o1_coaching_string_for_account(user_address)
                             
                             # Send the message to the channel
                             await self.send_long_message_to_channel(channel, f"<@{target_user_id}> Death March Update:\n{tactical_string}")
@@ -2529,8 +2529,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 try:
                     logger.debug(f"TaskNodeDiscordBot.tactics: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-                    memo_history = await self.generic_pft_utilities.get_account_memo_history_async(user_wallet.classic_address)
-                    full_user_context = self.user_task_parser.get_full_user_context_string(user_wallet.classic_address, memo_history=memo_history)
+                    memo_history = await self.generic_pft_utilities.get_account_memo_history(user_wallet.classic_address)
+                    full_user_context = await self.user_task_parser.get_full_user_context_string(user_wallet.classic_address, memo_history=memo_history)
                     
                     openai_request_tool = OpenAIRequestTool()
                     
@@ -2588,8 +2588,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                             return
 
                     # Get user's full context
-                    memo_history = await self.generic_pft_utilities.get_account_memo_history_async(account_address=wallet_address)
-                    full_context = self.user_task_parser.get_full_user_context_string(account_address=wallet_address, memo_history=memo_history)
+                    memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address)
+                    full_context = await self.user_task_parser.get_full_user_context_string(account_address=wallet_address, memo_history=memo_history)
                     
                     # Get chat history
                     chat_history = []
@@ -2664,7 +2664,7 @@ My specific question/request is: {user_query}"""
                     logger.debug(f"TaskNodeDiscordBot.blackprint: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
-                    tactical_string = self.tasknode_utilities.generate_coaching_string_for_account(user_address)
+                    tactical_string = await self.tasknode_utilities.generate_coaching_string_for_account(user_address)
                     
                     await self.send_long_message(message, tactical_string)
             
@@ -2685,7 +2685,7 @@ My specific question/request is: {user_query}"""
                 user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                 
                 # Create the analyzer inline
-                analyzer = ODVFocusAnalyzer(
+                analyzer = await ODVFocusAnalyzer.create(
                     account_address=user_wallet.classic_address,
                     openrouter=self.openrouter,
                     user_context_parser=self.user_task_parser,
@@ -2709,7 +2709,7 @@ My specific question/request is: {user_query}"""
                     logger.debug(f"TaskNodeDiscordBot.redpill: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
-                    tactical_string = self.tasknode_utilities.o1_redpill(user_address)
+                    tactical_string = await self.tasknode_utilities.o1_redpill(user_address)
                     
                     await self.send_long_message(message, tactical_string)
             
@@ -2727,7 +2727,7 @@ My specific question/request is: {user_query}"""
                     logger.debug(f"TaskNodeDiscordBot.docrewrite: Spawning wallet to fetch info for {message.author.name}")
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     user_address = user_wallet.classic_address
-                    tactical_string = self.tasknode_utilities.generate_document_rewrite_instructions(user_address)
+                    tactical_string = await self.tasknode_utilities.generate_document_rewrite_instructions(user_address)
                     
                     await self.send_long_message(message, tactical_string)
             
@@ -2759,7 +2759,7 @@ My specific question/request is: {user_query}"""
             account_info.pft_balance = 0
 
         try:
-            memo_history = await self.generic_pft_utilities.get_account_memo_history_async(account_address=address)
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=address)
 
             if not memo_history.empty:
 
@@ -2781,7 +2781,7 @@ My specific question/request is: {user_query}"""
 
             # Get google doc link
             if owns_wallet:
-                account_info.google_doc_link = self.user_task_parser.get_latest_outgoing_context_doc_link(address)
+                account_info.google_doc_link = await self.user_task_parser.get_latest_outgoing_context_doc_link(address)
 
         except Exception as e:
             logger.error(f"Error generating account info for {address}: {e}")
@@ -2960,19 +2960,19 @@ My specific question/request is: {user_query}"""
             formatted_output += "-" * 50 + "\n"
         return formatted_output
     
-    def create_full_outstanding_pft_string(self, account_address):
+    async def create_full_outstanding_pft_string(self, account_address):
         """ 
         This takes in an account address and outputs the current state of its outstanding tasks.
         Returns empty string for accounts with no PFT-related transactions.
         """ 
-        memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=account_address, pft_only=True)
+        memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=account_address, pft_only=True)
         if memo_history.empty:
             return ""
         
         memo_history.sort_values('datetime', inplace=True)
-        pending_proposals = self.user_task_parser.get_pending_proposals(account=memo_history)
-        accepted_proposals = self.user_task_parser.get_accepted_proposals(account=memo_history)
-        verification_proposals = self.user_task_parser.get_verification_proposals(account=memo_history)
+        pending_proposals = await self.user_task_parser.get_pending_proposals(account=memo_history)
+        accepted_proposals = await self.user_task_parser.get_accepted_proposals(account=memo_history)
+        verification_proposals = await self.user_task_parser.get_verification_proposals(account=memo_history)
 
         pending_string = self.format_pending_tasks(pending_proposals)
         accepted_string = self.format_accepted_tasks(accepted_proposals)
@@ -3202,7 +3202,7 @@ My specific question/request is: {user_query}"""
             
             return formatted_df
         
-    def output_postfiat_foundation_node_leaderboard_df(self):
+    async def output_postfiat_foundation_node_leaderboard_df(self):
         """ This generates the full Post Fiat Foundation Leaderboard """ 
         all_accounts = self.get_all_account_pft_memo_data()
         # Get the mode (most frequent) memo_format for each account
@@ -3241,8 +3241,8 @@ My specific question/request is: {user_query}"""
         top_score_frame['account_name']=account_name_map
         user_account_map = {}
         for x in list(top_score_frame.index):
-            memo_history = self.generic_pft_utilities.get_account_memo_history(account_address=x)
-            user_account_string = self.user_task_parser.get_full_user_context_string(account_address=x, memo_history=memo_history)
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=x)
+            user_account_string = await self.user_task_parser.get_full_user_context_string(account_address=x, memo_history=memo_history)
             logger.debug(x)
             user_account_map[x]= user_account_string
         agency_system_prompt = """ You are the Post Fiat Agency Score calculator.
