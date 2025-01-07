@@ -12,8 +12,11 @@ print("Found packages:", packages)
 setup(
     name="tasknode",
     version="0.1.0",
-    description="Post Fiat Foundation Task Node",
+    description="Post Fiat Task Node",
     author="Alex Good",
+    author_email="alex@agti.net",
+    maintainer="Skelectric",
+    maintainer_email="skelectric@postfiat.org",
     packages=packages,
     install_requires=[
         "nodetools @ git+https://github.com/postfiatorg/nodetools.git@async#egg=nodetools",

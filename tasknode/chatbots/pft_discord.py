@@ -7,7 +7,7 @@ import traceback
 import getpass
 import pytz
 import sys
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 import signal
 import re
 from decimal import Decimal
@@ -131,6 +131,8 @@ class TaskNodeDiscordBot(discord.Client):
         self.verification_tasks_cache = {}
         self.cache_timeout = 300  # seconds
 
+        self.notification_queue: asyncio.Queue = nodetools.notification_queue
+
     def is_special_user_non_ephemeral(self, interaction: discord.Interaction) -> bool:
         """Return False if the user is not in the NON_EPHEMERAL_USERS set, else True."""
         output = not (interaction.user.id in self.NON_EPHEMERAL_USERS)
@@ -140,9 +142,10 @@ class TaskNodeDiscordBot(discord.Client):
         """Sets up the slash commands for the bot and initiates background tasks."""
         guild_id = self.node_config.discord_guild_id
         guild = Object(id=guild_id)
+        
         self.bg_task = self.loop.create_task(
-            self.transaction_checker(),
-            name="DiscordBotTransactionChecker"
+            self.transaction_notifier(),
+            name="DiscordBotTransactionNotifier"
         )
 
         # # Prevents duplicate commands but also makes launch slow. Disable for testing only
@@ -599,7 +602,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             try:
                 odv_planner = await ODVSprintPlannerO1.create(
                     account_address=wallet.classic_address,
-                    openrouter=self.openrouter,
+                    openrouter=self.openrouter_tool,
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities
                 )
@@ -978,7 +981,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 # Initialize the ODVContextDocImprover
                 doc_improver = await ODVContextDocImprover.create(
                     account_address=wallet.classic_address,
-                    openrouter=self.openrouter,
+                    openrouter=self.openrouter_tool,
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities
                 )
@@ -1078,7 +1081,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 logger.debug(f"TaskNodeDiscordBot.corbanu_offering: {interaction.user.name} has requested a Corbanu offering. Initializing CorbanuChatBot instance.")
                 corbanu = await CorbanuChatBot.create(
                     account_address=wallet.classic_address,
-                    openrouter=self.openrouter,
+                    openrouter=self.openrouter_tool,
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities,
                     tasknode_utilities=self.tasknode_utilities
@@ -1142,7 +1145,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 
                 corbanu = await CorbanuChatBot.create(
                     account_address=wallet.classic_address,
-                    openrouter=self.openrouter,
+                    openrouter=self.openrouter_tool,
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities,
                     tasknode_utilities=self.tasknode_utilities
@@ -1324,7 +1327,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 # Create CorbanuChatBot instance
                 corbanu = await CorbanuChatBot.create(
                     account_address=wallet.classic_address,
-                    openrouter=self.openrouter,
+                    openrouter=self.openrouter_tool,
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities,
                     tasknode_utilities=self.tasknode_utilities
@@ -1535,7 +1538,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             # Fetch proposal acceptance pairs
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address)
 
             # Get pending proposals
             pending_tasks = await self.user_task_parser.get_pending_proposals(account=memo_history)
@@ -1630,7 +1633,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
             
             # Fetch account history
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address)
 
             # Get refuseable proposals
             refuseable_tasks = await self.user_task_parser.get_refuseable_proposals(account=memo_history)
@@ -1725,7 +1728,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             # Fetch account history
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address)
 
             # Fetch accepted tasks
             accepted_tasks = await self.user_task_parser.get_accepted_proposals(account=memo_history)
@@ -1818,7 +1821,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             # Fetch account history
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address).copy()
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address)
 
             # Fetch verification tasks
             verification_tasks = await self.user_task_parser.get_verification_proposals(account=memo_history)
@@ -1913,7 +1916,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             try:
-                memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address).copy().sort_values('datetime')
+                memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address)
+                memo_history = memo_history.sort_values('datetime')
 
                 # Return immediately if memo history is empty
                 if memo_history.empty:
@@ -2360,31 +2364,41 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             mention_author=True
         )
 
-    async def check_and_notify_new_transactions(self):
-        CHANNEL_ID = self.node_config.discord_activity_channel_id
-        channel = self.get_channel(CHANNEL_ID)
-        
+    async def transaction_notifier(self):
+        await self.wait_until_ready()
+        channel = self.get_channel(self.node_config.discord_activity_channel_id)
+
         if not channel:
-            logger.error(f"TaskNodeDiscordBot.check_and_notify_new_transactions: ERROR: Channel with ID {CHANNEL_ID} not found.")
+            logger.error(
+                f"TaskNodeDiscordBot.transaction_notifier: Channel with ID "
+                f"{self.node_config.discord_activity_channel_id} not found"
+            )
             return
 
-        # Call the function to get new messages and update the database
-        messages_to_send = self.tasknode_utilities.sync_and_format_new_transactions()
-
-        # DEBUGGING
-        len_messages_to_send = len(messages_to_send)
-        if len_messages_to_send > 0:
-            logger.debug(f"TaskNodeDiscordBot.check_and_notify_new_transactions: Sending {len_messages_to_send} messages to the Discord channel") 
-
-        # Send each new message to the Discord channel
-        for message in messages_to_send:
-            await channel.send(message)
-
-    async def transaction_checker(self):
-        await self.wait_until_ready()
         while not self.is_closed():
-            await self.check_and_notify_new_transactions()
-            await asyncio.sleep(15)  # Check every 15 seconds
+            try:
+                result = await self.notification_queue.get()
+                message = self.format_notification(result)
+                await channel.send(message)
+            except Exception as e:
+                logger.error(f"Error processing notification: {str(e)}")
+                logger.error(traceback.format_exc())
+            
+            await asyncio.sleep(0.5)  # Prevent spam
+
+    def format_notification(self, tx: Dict[str, Any]) -> str:
+        """Format the reviewing result for Discord"""
+        url = self.network_config.explorer_tx_url_mask.format(hash=tx['hash'])
+        
+        return (
+            f"Date: {tx['datetime']}\n"
+            f"Account: `{tx['account']}`\n"
+            f"Memo Format: `{tx['memo_format']}`\n"
+            f"Memo Type: `{tx['memo_type']}`\n"
+            f"Memo Data: `{tx['memo_data']}`\n"
+            f"PFT: {tx.get('pft_absolute_amount', 0)}\n"
+            f"URL: {url}"
+        )
 
     async def death_march_checker_for_user(self, user_id: int):
         """Individual death march checker for a single user."""
@@ -2423,7 +2437,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                     analyzer = await ODVFocusAnalyzer.create(
                         account_address=user_wallet.classic_address,
-                        openrouter=self.openrouter,
+                        openrouter=self.openrouter_tool,
                         user_context_parser=self.user_task_parser,
                         pft_utils=self.generic_pft_utilities
                     )
@@ -2687,7 +2701,7 @@ My specific question/request is: {user_query}"""
                 # Create the analyzer inline
                 analyzer = await ODVFocusAnalyzer.create(
                     account_address=user_wallet.classic_address,
-                    openrouter=self.openrouter,
+                    openrouter=self.openrouter_tool,
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities
                 )
@@ -3408,7 +3422,8 @@ def main():
         # Initialize NodeTools services
         nodetools = ServiceContainer.initialize(
             business_logic=business_logic,
-            performance_monitor=monitor
+            performance_monitor=monitor,
+            notifications=True  # Enable notification queue for Discord tx activity tracking
         )
 
         # Initialize TaskNode-specific services

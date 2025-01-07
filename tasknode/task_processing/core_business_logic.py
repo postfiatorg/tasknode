@@ -180,12 +180,14 @@ class TaskManagementRules(BusinessLogicProvider):
             pattern_id="initiation_rite",
             memo_pattern=INITIATION_RITE_PATTERN,
             transaction_type=InteractionType.REQUEST,
-            valid_responses={INITIATION_REWARD_PATTERN}
+            valid_responses={INITIATION_REWARD_PATTERN},
+            notify=True
         )
         graph.add_pattern(
             pattern_id="initiation_reward",
             memo_pattern=INITIATION_REWARD_PATTERN,
             transaction_type=InteractionType.RESPONSE,
+            notify=True
         )
 
         # Add google doc link patterns to graph
@@ -193,6 +195,7 @@ class TaskManagementRules(BusinessLogicProvider):
             pattern_id="google_doc_link",
             memo_pattern=GOOGLE_DOC_LINK_PATTERN,
             transaction_type=InteractionType.STANDALONE,
+            notify=True
         )
 
         # Add handshake patterns to graph
@@ -200,7 +203,7 @@ class TaskManagementRules(BusinessLogicProvider):
             pattern_id="handshake_request",
             memo_pattern=HANDSHAKE_PATTERN,
             transaction_type=InteractionType.REQUEST,
-            valid_responses={HANDSHAKE_PATTERN}
+            valid_responses={HANDSHAKE_PATTERN},
         )
         graph.add_pattern(
             pattern_id="handshake_response",
@@ -213,44 +216,52 @@ class TaskManagementRules(BusinessLogicProvider):
             pattern_id="request_post_fiat",
             memo_pattern=REQUEST_POST_FIAT_PATTERN,
             transaction_type=InteractionType.REQUEST,
-            valid_responses={PROPOSAL_PATTERN}
+            valid_responses={PROPOSAL_PATTERN},
+            notify=True
         )
         graph.add_pattern(
             pattern_id="proposal",
             memo_pattern=PROPOSAL_PATTERN,
             transaction_type=InteractionType.RESPONSE,
+            notify=True
         )
         graph.add_pattern(
             pattern_id="acceptance",
             memo_pattern=ACCEPTANCE_PATTERN,
             transaction_type=InteractionType.STANDALONE,
+            notify=True
         )
         graph.add_pattern(
             pattern_id="refusal",
             memo_pattern=REFUSAL_PATTERN,
             transaction_type=InteractionType.STANDALONE,
+            notify=True
         )
         graph.add_pattern(
             pattern_id="task_output",
             memo_pattern=TASK_OUTPUT_PATTERN,
             transaction_type=InteractionType.REQUEST,
-            valid_responses={VERIFICATION_PROMPT_PATTERN}
+            valid_responses={VERIFICATION_PROMPT_PATTERN},
+            notify=True
         )
         graph.add_pattern(
             pattern_id="verification_prompt",
             memo_pattern=VERIFICATION_PROMPT_PATTERN,
-            transaction_type=InteractionType.RESPONSE
+            transaction_type=InteractionType.RESPONSE,
+            notify=True
         )
         graph.add_pattern(
             pattern_id="verification_response",
             memo_pattern=VERIFICATION_RESPONSE_PATTERN,
             transaction_type=InteractionType.REQUEST,
-            valid_responses={REWARD_PATTERN}
+            valid_responses={REWARD_PATTERN},
+            notify=True
         )
         graph.add_pattern(
             pattern_id="reward",
             memo_pattern=REWARD_PATTERN,
-            transaction_type=InteractionType.RESPONSE
+            transaction_type=InteractionType.RESPONSE,
+            notify=True
         )
 
         # Add ODV patterns to graph
