@@ -6,13 +6,24 @@ repo: https://github.com/postfiatorg/tasknode.git
 branch: dev
 
 # postgres
-postgres_user: tasknode
-postgres_db: tasknode
 postgres_host: localhost
 postgres_port: 5432
+postgres_user: postfiat
+postgres_db: postfiat_db
+postgres_db_testnet: postfiat_db_testnet
 #postgres_password: vault.yml
-#discord_bot_token: vault.yml
-#discord_guild_id: vault.yml
+#postgres_password_testnet: vault.yml
+postgres_conn_string: postgres://{{ postgres_user }}:{{ postgres_password }}@{{ postgres_host }}:{{ postgres_port }}/{{ postgres_db }}
+postgres_conn_string_testnet: postgres://{{ postgres_user }}:{{ postgres_password_testnet }}@{{ postgres_host }}:{{ postgres_port }}/{{ postgres_db_testnet }}
+
+# discord
+#discord_bot_secret_testnet: vault.yml
+#discord_bot_secret_mainnet: vault.yml
+
+# wallets
+#task_node_wallet: vault.yml
+#remembrancer_wallet: vault.yml
+#remembrancer_wallet_testnet: vault.yml
 
 # Application Configuration
 use_testnet: false
