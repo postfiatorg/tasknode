@@ -1,18 +1,29 @@
 ---
 - name: Install Python packages
-  apt:
+  dnf:
     name:
-      - python3
-      - python3-pip
-      - python3-dev
-      - python3-venv
+      - python3.12
+      - python3.12-pip 
     state: present
 
-- name: Upgrade pip
-  pip:
+- name: Set Python 3.12 as default alternative
+  alternatives:
+    name: python
+    path: /usr/bin/python3.12
+    link: /usr/bin/python
+
+- name: Set pip 3.12 as default alternative  
+  alternatives:
     name: pip
-    state: latest
-    executable: pip3
+    path: /usr/bin/pip3.12
+    link: /usr/bin/pip
+
+- name: Install psycopg2 and virtualenv via pip
+  pip:
+    name: 
+      - psycopg2-binary
+      - virtualenv
+    executable: /usr/bin/pip3.12
 
 - name: Create project directory
   file:
@@ -24,6 +35,6 @@
 
 - name: Create Python virtual environment
   command:
-    cmd: python3 -m venv {{ app_dir }}/venv
-    creates: {{ app_dir }}/venv
+    cmd: python3 -m venv "{{ app_dir }}/venv"
+    creates: "{{ app_dir }}/venv"
   become_user: "{{ app_user }}"

@@ -1,22 +1,29 @@
 ---
+- name: Remove existing TaskNode directory
+  file:
+    path: "{{ app_dir }}"
+    state: absent
+  become: yes
+
 - name: Clone TaskNode repository
   git:
-    repo: "https://github.com/postfiatorg/tasknode.git"
-    dest: {{ app_dir }}/app
-    version: main # TODO: variable
+    repo: "{{ repo }}"
+    dest: "{{ app_dir }}"
+    version: "{{ branch }}"
   become_user: "{{ app_user }}"
 
-- name: Install project dependencies
+- name: Install project as package
   pip:
-    requirements: {{ app_dir }}/app/requirements.txt
-    virtualenv: {{ app_dir }}/venv
+    name: "{{ app_dir }}"
+    virtualenv: "{{ app_dir }}/venv"
     virtualenv_python: python3
+    editable: true
   become_user: "{{ app_user }}"
 
 - name: Create environment file
   template:
     src: env.j2
-    dest: {{ app_dir }}/.env
+    dest: "{{ app_dir }}/.env"
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
     mode: '0600'

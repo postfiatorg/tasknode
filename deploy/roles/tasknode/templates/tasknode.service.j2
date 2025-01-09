@@ -6,7 +6,7 @@ After=network.target postgresql.service
 Type=simple
 User={{ app_user }}
 Group={{ app_group }}
-WorkingDirectory={{ app_dir }}/app
+WorkingDirectory={{ app_dir }}
 Environment=PATH={{ app_dir }}/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile={{ app_dir }}/.env
 ExecStart={{ app_dir }}/venv/bin/python -m tasknode.chatbots.pft_discord

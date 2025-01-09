@@ -1,17 +1,40 @@
 ---
 - name: Install PostgreSQL
-  apt:
+  dnf:
     name:
-      - postgresql
-      - postgresql-contrib
-      - libpq-dev
+      - postgresql16
+      - postgresql16-server
     state: present
+
+- name: Check if PostgreSQL data directory exists
+  stat:
+    path: /var/lib/pgsql/data
+  register: stat_result
+
+- name: Check if PostgreSQL data directory is initialized
+  find:
+    paths: /var/lib/pgsql/data
+    recurse: yes
+    file_type: any
+  register: data_dir_contents
+  when: stat_result.stat.exists
+
+- name: Initialize PostgreSQL database if not present
+  command:
+    cmd: postgresql-setup --initdb
+  become: yes
+  when: >
+    not ansible_check_mode and
+    (not stat_result.stat.exists or
+    data_dir_contents.matched|default(0) == 0)
+  register: initdb_result
 
 - name: Ensure PostgreSQL is running
   service:
     name: postgresql
     state: started
     enabled: yes
+  become: yes
 
 - name: Create PostgreSQL user
   postgresql_user:
@@ -40,18 +63,20 @@
 
 - name: Allow secure connection for the application user
   postgresql_pg_hba:
-    dest: /etc/postgresql/*/main/pg_hba.conf
+    dest: /var/lib/pgsql/data/pg_hba.conf
     contype: host
     databases: all
     method: scram-sha-256
     users: "{{ postgres_user }}"
     source: 0.0.0.0/0
     create: true
+  become: yes
+  become_user: postgres
   notify: restart postgresql
 
 - name: Configure PostgreSQL to listen on all addresses
   lineinfile:
-    path: /etc/postgresql/*/main/postgresql.conf
+    path: /var/lib/pgsql/data/postgresql.conf
     regexp: "^#?listen_addresses"
     line: "listen_addresses = '*'"
   notify: restart postgresql 

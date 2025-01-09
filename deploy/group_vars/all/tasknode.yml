@@ -1,7 +1,11 @@
 ---
-ansible_python_interpreter=/usr/bin/env python3
-ansible_user=ec2-user
+ansible_user: ec2-user
 
+# app deployment
+repo: https://github.com/postfiatorg/tasknode.git
+branch: dev
+
+# postgres
 postgres_user: tasknode
 postgres_db: tasknode
 postgres_host: localhost
@@ -17,4 +21,4 @@ log_level: INFO
 # System Configuration
 app_user: ec2-user
 app_group: ec2-user
-app_dir: /opt/tasknode 
+app_dir: /opt/tasknode/app
