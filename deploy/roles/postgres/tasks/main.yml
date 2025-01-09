@@ -44,9 +44,18 @@
   become: yes
   become_user: postgres
 
-- name: Create PostgreSQL database
+- name: Create PostgreSQL mainnet database
   postgresql_db:
     name: "{{ postgres_db }}"
+    owner: "{{ postgres_user }}"
+    encoding: UTF-8
+    template: template0
+  become: yes
+  become_user: postgres
+
+- name: Create PostgreSQL testnet database
+  postgresql_db:
+    name: "{{ postgres_db_testnet }}"
     owner: "{{ postgres_user }}"
     encoding: UTF-8
     template: template0
