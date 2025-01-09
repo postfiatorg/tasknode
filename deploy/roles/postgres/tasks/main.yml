@@ -1,0 +1,57 @@
+---
+- name: Install PostgreSQL
+  apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+      - libpq-dev
+    state: present
+
+- name: Ensure PostgreSQL is running
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Create PostgreSQL user
+  postgresql_user:
+    name: "{{ postgres_user }}"
+    password: "{{ postgres_password }}"
+    role_attr_flags: CREATEDB,NOSUPERUSER
+  become: yes
+  become_user: postgres
+
+- name: Create PostgreSQL database
+  postgresql_db:
+    name: "{{ postgres_db }}"
+    owner: "{{ postgres_user }}"
+    encoding: UTF-8
+    template: template0
+  become: yes
+  become_user: postgres
+
+- name: Configure PostgreSQL password encryption
+  postgresql_set:
+    name: password_encryption
+    value: scram-sha-256
+  become: yes
+  become_user: postgres
+  notify: restart postgresql
+
+- name: Allow secure connection for the application user
+  postgresql_pg_hba:
+    dest: /etc/postgresql/*/main/pg_hba.conf
+    contype: host
+    databases: all
+    method: scram-sha-256
+    users: "{{ postgres_user }}"
+    source: 0.0.0.0/0
+    create: true
+  notify: restart postgresql
+
+- name: Configure PostgreSQL to listen on all addresses
+  lineinfile:
+    path: /etc/postgresql/*/main/postgresql.conf
+    regexp: "^#?listen_addresses"
+    line: "listen_addresses = '*'"
+  notify: restart postgresql 

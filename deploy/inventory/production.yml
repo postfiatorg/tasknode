@@ -1,0 +1,10 @@
+---
+all:
+  children:
+    tasknode:
+      hosts:
+        task-node-1:
+          ansible_host: ec2-3-14-1-201.us-east-2.compute.amazonaws.com
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_user: ec2-user 

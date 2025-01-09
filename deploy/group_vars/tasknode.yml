@@ -1,0 +1,20 @@
+---
+ansible_python_interpreter=/usr/bin/env python3
+ansible_user=ec2-user
+
+postgres_user: tasknode
+postgres_db: tasknode
+postgres_host: localhost
+postgres_port: 5432
+#postgres_password: vault.yml
+#discord_bot_token: vault.yml
+#discord_guild_id: vault.yml
+
+# Application Configuration
+use_testnet: false
+log_level: INFO
+
+# System Configuration
+app_user: ec2-user
+app_group: ec2-user
+app_dir: /opt/tasknode 
