@@ -3,11 +3,11 @@ ansible_user: ec2-user
 
 # app deployment
 repo: https://github.com/postfiatorg/tasknode.git
-branch: dev
+branch: john/ansible-deployment
 network: mainnet
 
 # postgres
-postgres_host: localhost
+postgres_host: task-node-db-dev-instance-1.ctuy80uk08cm.us-east-2.rds.amazonaws.com
 postgres_port: 5432
 postgres_user: postfiat
 postgres_db: postfiat_db
