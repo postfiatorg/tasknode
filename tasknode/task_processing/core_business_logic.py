@@ -37,9 +37,13 @@ from typing import Dict, Any, Optional
 import re
 from decimal import Decimal
 import traceback
+from datetime import datetime
+import random
+import string
 
 # Third-party imports
 from loguru import logger
+from xrpl.models import Memo
 
 # NodeTools imports
 from nodetools.utilities.exceptions import HandshakeRequiredException
@@ -80,9 +84,10 @@ from tasknode.prompts.rewards_manager import (
     reward_user_prompt
 )
 from tasknode.task_processing.task_creation import NewTaskGeneration
-from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
 
-REQUIRE_AUTHORIZATION = True  # Disable for testing only
+REQUIRE_AUTHORIZATION = False  # Disable for testing only
+LEGACY_MEMO_CONSTRUCTION = True  # Set to false when standardized memo processing is ready
+BASE_PFT_COST = 1
 
 ##############################################################################
 ############################## MEMO PATTERNS #################################
@@ -319,6 +324,38 @@ def regex_to_sql_pattern(pattern: re.Pattern) -> str:
         return f'%{clean_text}%'
     
     return f'%{pattern_str}%'
+
+def generate_custom_id():
+    """ Generate a unique memo_type """
+    letters = ''.join(random.choices(string.ascii_uppercase, k=2))
+    numbers = ''.join(random.choices(string.digits, k=2))
+    second_part = letters + numbers
+    date_string = datetime.now().strftime("%Y-%m-%d %H:%M")
+    output= date_string+'__'+second_part
+    output = output.replace(' ',"_")
+    return output
+
+def derive_response_memo_type(request_memo_type: str, response_memo_type: str) -> str:
+    """
+    Derives a unique response memo_type from a request memo_type.
+    Example: "2024-01-15_14:30__ABC1" -> "2024-01-15_14:30__ABC1_PROPOSAL"
+    
+    Args:
+        request_memo_type: Original memo_type from request
+        response_type: Type of response (e.g., "PROPOSAL", "RESULT")
+        
+    Returns:
+        Unique memo_type for the response
+        
+    Raises:
+        ValueError: If task_id cannot be extracted from request_memo_type
+    """
+    task_id_match = TASK_ID_PATTERN.search(request_memo_type)
+    if not task_id_match:
+        raise ValueError(f"Could not extract task_id from memo_type: {request_memo_type}")
+        
+    task_id = task_id_match.group(1)
+    return f"{task_id}_{response_memo_type}"
 
 ##########################################################################
 ###################### INITIATION RITES AND REWARDS ######################
@@ -680,6 +717,7 @@ class RequestPostFiatRule(RequestRule):
         Must:
         1. Be addressed to the node address
         2. Be a verified address associated with an active Discord user
+        3. Request includes 1 PFT
         """
         if tx.get('destination') != dependencies.node_config.node_address:
             return False
@@ -691,6 +729,10 @@ class RequestPostFiatRule(RequestRule):
             if not is_authorized:
                 # logger.debug(f"RequestPostFiatRule.validate: Address {tx.get('account')} is not authorized")
                 return False
+        
+        # Check if user is sending BASE_PFT_COST PFT
+        if tx.get('pft_absolute_amount', 0) < BASE_PFT_COST:
+            return False
 
         return True
     
@@ -789,23 +831,41 @@ class ProposalResponseGenerator(ResponseGenerator):
             evaluation_result: Dict[str, Any]
         ) -> ResponseParameters:
         """Construct the proposal response parameters"""
-        try:
-            memo = self.generic_pft_utilities.construct_memo(
-                memo_data=evaluation_result['pf_proposal_string'],
-                memo_format=self.node_config.node_name,
-                memo_type=request_tx['memo_type']
-            )
 
-            return ResponseParameters(
-                source=self.node_config.node_name,
-                memo=memo,
-                destination=request_tx['account'],
-                pft_amount=Decimal(1)
-            )
+        if LEGACY_MEMO_CONSTRUCTION:
+            try:
+                memo = Memo(
+                    memo_data=evaluation_result['pf_proposal_string'],
+                    memo_format=self.node_config.node_name,
+                    memo_type=request_tx['memo_type']
+                )
 
-        except Exception as e:
-            raise Exception(f"Failed to construct proposal response: {e}")  
-    
+                return ResponseParameters.construct_legacy_memo(
+                    source=self.node_config.node_name,
+                    destination=request_tx['account'],
+                    memo=memo
+                )
+
+            except Exception as e:
+                raise Exception(f"Failed to construct proposal response: {e}")  
+            
+        else:
+            try:
+                # Must be a unique memo_type, different from the request memo_type
+                response_memo_type = derive_response_memo_type(
+                    request_memo_type=request_tx['memo_type'],
+                    response_memo_type="PROPOSAL"
+                )
+
+                return ResponseParameters.construct_standardized_memo(
+                    source=self.node_config.node_name,
+                    destination=request_tx['account'],
+                    memo_data=evaluation_result['pf_proposal_string'],
+                    memo_type=response_memo_type
+                )
+            except Exception as e:
+                raise Exception(f"Failed to construct proposal response: {e}")
+
 class AcceptanceRule(StandaloneRule):
     """
     Pure business logic for handling acceptances
@@ -840,6 +900,7 @@ class TaskOutputRule(RequestRule):
         Must:
         1. Be addressed to the node address
         2. Be a verified address associated with an active Discord user
+        3. Request includes 1 PFT
         """
         if tx.get('destination') != dependencies.node_config.node_address:
             return False
@@ -852,6 +913,10 @@ class TaskOutputRule(RequestRule):
                 # logger.debug(f"TaskOutputRule.validate: Address {tx.get('account')} is not authorized")
                 return False
             
+        # Check if user is sending BASE_PFT_COST PFT
+        if tx.get('pft_absolute_amount', 0) < BASE_PFT_COST:
+            return False
+        
         return True
     
     async def find_response(
@@ -1007,8 +1072,7 @@ class VerificationPromptGenerator(ResponseGenerator):
             return ResponseParameters(
                 source=self.node_config.node_name,
                 memo=memo,
-                destination=request_tx['account'],
-                pft_amount=1  # Fixed amount for verification prompts
+                destination=request_tx['account']
             )
 
         except Exception as e:
@@ -1036,6 +1100,7 @@ class VerificationResponseRule(RequestRule):
         Must:
         1. Be addressed to the node address
         2. Be a verified address associated with an active Discord user
+        3. Request includes 1 PFT
         """
         if tx.get('destination') != dependencies.node_config.node_address:
             return False
@@ -1047,6 +1112,10 @@ class VerificationResponseRule(RequestRule):
             if not is_authorized:
                 # logger.debug(f"VerificationResponseRule.validate: Address {tx.get('account')} is not authorized")
                 return False
+            
+        # Check if user is sending BASE_PFT_COST PFT
+        if tx.get('pft_absolute_amount', 0) < BASE_PFT_COST:
+            return False
             
         return True
     
@@ -1344,6 +1413,7 @@ class ODVRequestRule(RequestRule):
         1. Request is sent to remembrancer address
         2. User has minimum required PFT balance (2000)
         3. User is an authorized address associated with an active Discord user
+        4. Request includes 1 PFT
         """
         try:
             # Check destination is remembrancer
@@ -1364,6 +1434,10 @@ class ODVRequestRule(RequestRule):
                     # logger.debug(f"ODVRequestRule.validate: Address {tx.get('account')} is not authorized")
                     return False
             
+            # Check if user is sending BASE_PFT_COST PFT
+            if tx.get('pft_absolute_amount', 0) < BASE_PFT_COST:
+                return False
+
             return True
         except Exception as e:
             logger.error(f"Error validating ODV request: {e}")
@@ -1533,8 +1607,7 @@ class ODVResponseGenerator(ResponseGenerator):
             return ResponseParameters(
                 source=self.node_config.remembrancer_name,
                 memo=memo,
-                destination=request_tx['account'],
-                pft_amount=None  # Assuming no PFT transfer for ODV responses
+                destination=request_tx['account']
             )
 
         except Exception as e:
