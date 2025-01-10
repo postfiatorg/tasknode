@@ -69,7 +69,9 @@ from nodetools.models.models import (
     InteractionType,
     ResponseGenerator,
     ResponseParameters,
-    Dependencies
+    Dependencies,
+    ValidationResult,
+    MemoTransaction
 )
 
 # Task node imports
@@ -381,9 +383,9 @@ class InitiationRiteRule(RequestRule):
     
     async def validate(
             self, 
-            tx: Dict[str, Any],
+            tx: MemoTransaction,
             dependencies: Dependencies
-        ) -> bool:
+        ) -> ValidationResult:
         """
         Validate business rules for an initiation rite.
         Pattern matching is handled by TransactionGraph.
@@ -392,18 +394,21 @@ class InitiationRiteRule(RequestRule):
         2. Be sent to the node address
         3. Be a verified address associated with an active Discord user
         """
-        if tx.get('destination') != dependencies.node_config.node_address:
-            return False
+        if tx.destination != dependencies.node_config.node_address:
+            return ValidationResult(valid=False, notes="Destination is not the node address")
         
         if REQUIRE_AUTHORIZATION:
             is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.get('account')
+                tx.account
             )
             if not is_authorized:
-                # logger.debug(f"InitiationRiteRule.validate: Address {tx.get('account')} is not authorized")
-                return False
+                # logger.debug(f"InitiationRiteRule.validate: Address {tx.account} is not authorized")
+                return ValidationResult(valid=False, notes="Address is not authorized")
 
-        return self.is_valid_initiation_rite(tx.get('memo_data', ''))
+        if not self.is_valid_initiation_rite(tx.memo_data):
+            return ValidationResult(valid=False, notes="Invalid initiation rite")
+        
+        return ValidationResult(valid=True)
     
     def _should_require_after_request(self) -> bool:
         """Determine if responses must come after requests based on runtime config"""
@@ -411,7 +416,7 @@ class InitiationRiteRule(RequestRule):
     
     async def find_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
         ) -> Optional[ResponseQuery]:
         """
         Get query information for finding an initiation rite response.
@@ -433,9 +438,9 @@ class InitiationRiteRule(RequestRule):
 
         params = {
             # Attempt to retrieve account and destination from top level of tx or tx_json_parsed
-            'account': request_tx['account'],
-            'destination': request_tx['destination'],
-            'request_time': request_tx['close_time_iso'],
+            'account': request_tx.account,
+            'destination': request_tx.destination,
+            'request_time': request_tx.datetime,
             'response_memo_type': SystemMemoType.INITIATION_REWARD.value,
             'require_after_request': self._should_require_after_request()
         }
@@ -445,8 +450,8 @@ class InitiationRiteRule(RequestRule):
 class InitiationRewardRule(ResponseRule):
     """Pure business logic for handling initiation rewards"""
 
-    async def validate(self, *args, **kwargs) -> bool:
-        return True
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)
     
     def get_response_generator(self, dependencies: Dependencies) -> ResponseGenerator:
         """Get response generator for initiation rewards with all dependencies"""
@@ -474,7 +479,7 @@ class InitiationRewardGenerator(ResponseGenerator):
     
     async def evaluate_request(self, request_tx: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate initiation rite and determine reward"""
-        rite_text = request_tx.get('memo_data')
+        rite_text = request_tx.memo_data
         logger.debug(f"InitiationRewardGenerator.evaluate_request: Evaluating initiation rite: {rite_text}")
 
         # Use single chat completion
@@ -500,7 +505,7 @@ class InitiationRewardGenerator(ResponseGenerator):
     
     async def construct_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
             evaluation_result: Dict[str, Any]
         ) -> Dict[str, Any]:
         """Construct reward memo and parameters"""
@@ -515,7 +520,7 @@ class InitiationRewardGenerator(ResponseGenerator):
             return ResponseParameters(
                 source=self.node_config.node_name,  # indicate which node to send reward from
                 memo=memo,
-                destination=request_tx['account'],
+                destination=request_tx.account,
                 pft_amount=evaluation_result['reward']
             )
 
@@ -531,8 +536,8 @@ class GoogleDocLinkRule(StandaloneRule):
     Pure business logic for handling google doc links
     Currently, this rule is a placeholder and does not perform any validation.
     """
-    async def validate(self, *args, **kwargs) -> bool:
-        return True
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)
     
 ##########################################################################
 ########################## HANDSHAKE RULES ###############################
@@ -543,9 +548,9 @@ class HandshakeRequestRule(RequestRule):
 
     async def validate(
             self, 
-            tx: Dict[str, Any],
+            tx: MemoTransaction,
             dependencies: Dependencies
-        ) -> bool:
+        ) -> ValidationResult:
         """
         Validate business rules for a handshake request.
         Pattern matching is handled by TransactionGraph.
@@ -554,35 +559,35 @@ class HandshakeRequestRule(RequestRule):
         2. Be a valid ECDH public key
         3. Be a verified address associated with an active Discord user
         """
-        if tx.get('destination') not in dependencies.node_config.auto_handshake_addresses:
-            return False
+        if tx.destination not in dependencies.node_config.auto_handshake_addresses:
+            return ValidationResult(valid=False, notes="Destination is not in auto-handshake addresses")
         
         if REQUIRE_AUTHORIZATION:
             is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.get('account')
+                tx.account
             )
             if not is_authorized:
-                # logger.debug(f"HandshakeRequestRule.validate: Address {tx.get('account')} is not authorized")
-                return False
+                # logger.debug(f"HandshakeRequestRule.validate: Address {tx.account} is not authorized")
+                return ValidationResult(valid=False, notes="Address is not authorized")
         
         try:
             # Determine which secret type to use based on receiving address
             secret_type = SecretType.NODE if tx['destination'] == dependencies.node_config.node_address else SecretType.REMEMBRANCER
             
             # Try to derive shared secret - this will fail if the public key is invalid
-            received_key = tx.get('memo_data', '')
+            received_key = tx.memo_data
             dependencies.credential_manager.get_shared_secret(
                 received_key=received_key,
                 secret_type=secret_type
             )
-            return True
+            return ValidationResult(valid=True)
 
         except Exception as e:
-            return False
+            return ValidationResult(valid=False, notes="Invalid ECDH public key")
 
     async def find_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
         ) -> Optional[ResponseQuery]:
         """
         Get query information for finding a handshake response.
@@ -604,9 +609,9 @@ class HandshakeRequestRule(RequestRule):
 
         params = {
             # Attempt to retrieve account and destination from top level of tx or tx_json_parsed
-            'account': request_tx['account'],
-            'destination': request_tx['destination'],
-            'request_time': request_tx['close_time_iso'],
+            'account': request_tx.account,
+            'destination': request_tx.destination,
+            'request_time': request_tx.datetime,
             'response_memo_type': SystemMemoType.HANDSHAKE.value
         }
             
@@ -615,8 +620,8 @@ class HandshakeRequestRule(RequestRule):
 class HandshakeResponseRule(ResponseRule):
     """Pure business logic for handling handshake responses"""
 
-    async def validate(self, *args, **kwargs) -> bool:
-        return True
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)
     
     def get_response_generator(self, dependencies: Dependencies) -> ResponseGenerator:
         """Get response generator for handshake response with all dependencies"""
@@ -655,10 +660,10 @@ class HandshakeResponseGenerator(ResponseGenerator):
             case SecretType.REMEMBRANCER:
                 return self.node_config.remembrancer_name
 
-    async def evaluate_request(self, request_tx: Dict[str, Any]) -> Dict[str, Any]:
+    async def evaluate_request(self, request_tx: MemoTransaction) -> Dict[str, Any]:
         """Evaluate handshake request and determine response parameters"""
-        destination_address = request_tx['account']
-        request_destination = request_tx['destination']  # The node address that received the request
+        destination_address = request_tx.account
+        request_destination = request_tx.destination  # The node address that received the request
 
         # Determine SecretType for ECDH key retrieval
         secret_type = self._determine_secret_type(request_destination)
@@ -675,7 +680,7 @@ class HandshakeResponseGenerator(ResponseGenerator):
     
     async def construct_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
             evaluation_result: Dict[str, Any]
         ) -> Dict[str, Any]:
         """Construct handshake response parameters"""
@@ -708,9 +713,9 @@ class RequestPostFiatRule(RequestRule):
 
     async def validate(
             self, 
-            tx: Dict[str, Any],
+            tx: MemoTransaction,
             dependencies: Dependencies
-        ) -> bool:
+        ) -> ValidationResult:
         """
         Validate business rules for a post-fiat request.
         Pattern matching is handled by TransactionGraph.
@@ -719,26 +724,26 @@ class RequestPostFiatRule(RequestRule):
         2. Be a verified address associated with an active Discord user
         3. Request includes 1 PFT
         """
-        if tx.get('destination') != dependencies.node_config.node_address:
-            return False
+        if tx.destination != dependencies.node_config.node_address:
+            return ValidationResult(valid=False, notes="Destination is not the node address")
         
         if REQUIRE_AUTHORIZATION:
             is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.get('account')
+                tx.account
             )
             if not is_authorized:
-                # logger.debug(f"RequestPostFiatRule.validate: Address {tx.get('account')} is not authorized")
-                return False
+                # logger.debug(f"RequestPostFiatRule.validate: Address {tx.account} is not authorized")
+                return ValidationResult(valid=False, notes="Address is not authorized")
         
         # Check if user is sending BASE_PFT_COST PFT
-        if tx.get('pft_absolute_amount', 0) < BASE_PFT_COST:
-            return False
+        if tx.pft_amount < BASE_PFT_COST:
+            return ValidationResult(valid=False, notes="PFT amount is less than BASE_PFT_COST")
 
-        return True
+        return ValidationResult(valid=True)
     
     async def find_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
         ) -> Optional[ResponseQuery]:
         """Get query information for finding a proposal response."""
         query = """
@@ -753,10 +758,10 @@ class RequestPostFiatRule(RequestRule):
         """
         
         params = {
-            'account': request_tx['account'],
-            'destination': request_tx['destination'],
-            'request_time': request_tx['close_time_iso'],
-            'response_memo_type': request_tx['memo_type'],
+            'account': request_tx.account,
+            'destination': request_tx.destination,
+            'request_time': request_tx.datetime,
+            'response_memo_type': request_tx.memo_type,
             'response_memo_data': regex_to_sql_pattern(PROPOSAL_PATTERN.memo_data)
         }
             
@@ -765,8 +770,8 @@ class RequestPostFiatRule(RequestRule):
 class ProposalRule(ResponseRule):
     """Pure business logic for handling proposals"""
 
-    async def validate(self, *args, **kwargs) -> bool:
-        return True
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)
     
     def get_response_generator(self, dependencies: Dependencies) -> ResponseGenerator:
         """Get response generator for proposals with all dependencies"""
@@ -799,11 +804,11 @@ class ProposalResponseGenerator(ResponseGenerator):
         self.generic_pft_utilities = generic_pft_utilities
         self.task_generator = task_generator
 
-    async def evaluate_request(self, request_tx: Dict[str, Any]) -> Dict[str, Any]:
+    async def evaluate_request(self, request_tx: MemoTransaction) -> Dict[str, Any]:
         """Evaluate the proposal request and get response parameters"""
-        account_id = request_tx['account']
-        task_id = request_tx['memo_type']
-        user_request = request_tx['memo_data'].replace(TaskType.REQUEST_POST_FIAT.value, '').strip()
+        account_id = request_tx.account
+        task_id = request_tx.memo_type
+        user_request = request_tx.memo_data.replace(TaskType.REQUEST_POST_FIAT.value, '').strip()
         
         # Create single-item task map
         task_key = self.task_generator.create_task_key(account_id, task_id)
@@ -827,7 +832,7 @@ class ProposalResponseGenerator(ResponseGenerator):
 
     async def construct_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
             evaluation_result: Dict[str, Any]
         ) -> ResponseParameters:
         """Construct the proposal response parameters"""
@@ -837,12 +842,12 @@ class ProposalResponseGenerator(ResponseGenerator):
                 memo = Memo(
                     memo_data=evaluation_result['pf_proposal_string'],
                     memo_format=self.node_config.node_name,
-                    memo_type=request_tx['memo_type']
+                    memo_type=request_tx.memo_type
                 )
 
                 return ResponseParameters.construct_legacy_memo(
                     source=self.node_config.node_name,
-                    destination=request_tx['account'],
+                    destination=request_tx.account,
                     memo=memo
                 )
 
@@ -853,13 +858,13 @@ class ProposalResponseGenerator(ResponseGenerator):
             try:
                 # Must be a unique memo_type, different from the request memo_type
                 response_memo_type = derive_response_memo_type(
-                    request_memo_type=request_tx['memo_type'],
+                    request_memo_type=request_tx.memo_type,
                     response_memo_type="PROPOSAL"
                 )
 
                 return ResponseParameters.construct_standardized_memo(
                     source=self.node_config.node_name,
-                    destination=request_tx['account'],
+                    destination=request_tx.account,
                     memo_data=evaluation_result['pf_proposal_string'],
                     memo_type=response_memo_type
                 )
@@ -871,16 +876,16 @@ class AcceptanceRule(StandaloneRule):
     Pure business logic for handling acceptances
     Currently, this rule is a placeholder and does not perform any validation.
     """
-    async def validate(self, *args, **kwargs) -> bool:
-        return True
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)
     
 class RefusalRule(StandaloneRule):
     """
     Pure business logic for handling refusals
     Currently, this rule is a placeholder and does not perform any validation.
     """
-    async def validate(self, *args, **kwargs) -> bool:
-        return True
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)
     
 ##############################################################################
 ########################## INITIAL VERIFICATION ##############################
@@ -891,9 +896,9 @@ class TaskOutputRule(RequestRule):
 
     async def validate(
             self, 
-            tx: Dict[str, Any],
+            tx: MemoTransaction,
             dependencies: Dependencies
-        ) -> bool:
+        ) -> ValidationResult:
         """
         Validate business rules for a task output.
         Pattern matching is handled by TransactionGraph.
@@ -902,26 +907,26 @@ class TaskOutputRule(RequestRule):
         2. Be a verified address associated with an active Discord user
         3. Request includes 1 PFT
         """
-        if tx.get('destination') != dependencies.node_config.node_address:
-            return False
+        if tx.destination != dependencies.node_config.node_address:
+            return ValidationResult(valid=False, notes="Destination is not the node address")
         
         if REQUIRE_AUTHORIZATION:
             is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.get('account')
+                tx.account
             )
             if not is_authorized:
-                # logger.debug(f"TaskOutputRule.validate: Address {tx.get('account')} is not authorized")
-                return False
+                # logger.debug(f"TaskOutputRule.validate: Address {tx.account} is not authorized")
+                return ValidationResult(valid=False, notes="Address is not authorized")
             
         # Check if user is sending BASE_PFT_COST PFT
-        if tx.get('pft_absolute_amount', 0) < BASE_PFT_COST:
-            return False
+        if tx.pft_amount < BASE_PFT_COST:
+            return ValidationResult(valid=False, notes="PFT amount is less than BASE_PFT_COST")
         
-        return True
+        return ValidationResult(valid=True)
     
     async def find_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
         ) -> Optional[ResponseQuery]:
         """Get query information for finding a verification prompt response."""
         query = """
@@ -936,10 +941,10 @@ class TaskOutputRule(RequestRule):
         """
         
         params = {
-            'account': request_tx['account'],
-            'destination': request_tx['destination'],
-            'request_time': request_tx['close_time_iso'],
-            'response_memo_type': request_tx['memo_type'],
+            'account': request_tx.account,
+            'destination': request_tx.destination,
+            'request_time': request_tx.datetime,
+            'response_memo_type': request_tx.memo_type,
             'response_memo_data': regex_to_sql_pattern(VERIFICATION_PROMPT_PATTERN.memo_data)
         }
             
@@ -948,8 +953,8 @@ class TaskOutputRule(RequestRule):
 class VerificationPromptRule(ResponseRule):
     """Pure business logic for handling verification prompts"""
 
-    async def validate(self, *args, **kwargs) -> bool:
-        return True
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)
     
     def get_response_generator(self, dependencies: Dependencies) -> ResponseGenerator:
         """Get response generator for verification prompts with all dependencies"""
@@ -1051,7 +1056,7 @@ class VerificationPromptGenerator(ResponseGenerator):
 
     async def construct_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
             evaluation_result: Dict[str, Any]
         ) -> ResponseParameters:
         """Construct verification prompt response"""
@@ -1066,13 +1071,13 @@ class VerificationPromptGenerator(ResponseGenerator):
             memo = self.generic_pft_utilities.construct_memo(
                 memo_data=verification_string,
                 memo_format=self.node_config.node_name,
-                memo_type=request_tx['memo_type']
+                memo_type=request_tx.memo_type
             )
 
             return ResponseParameters(
                 source=self.node_config.node_name,
                 memo=memo,
-                destination=request_tx['account']
+                destination=request_tx.account
             )
 
         except Exception as e:
@@ -1091,9 +1096,9 @@ class VerificationResponseRule(RequestRule):
 
     async def validate(
             self,
-            tx: Dict[str, Any],
+            tx: MemoTransaction,
             dependencies: Dependencies
-        ) -> bool:
+        ) -> ValidationResult:
         """
         Validate business rules for a verification response.
         Pattern matching is handled by TransactionGraph.
@@ -1102,26 +1107,26 @@ class VerificationResponseRule(RequestRule):
         2. Be a verified address associated with an active Discord user
         3. Request includes 1 PFT
         """
-        if tx.get('destination') != dependencies.node_config.node_address:
-            return False
+        if tx.destination != dependencies.node_config.node_address:
+            return ValidationResult(valid=False, notes="Destination is not the node address")
         
         if REQUIRE_AUTHORIZATION:
             is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.get('account')
+                tx.account
             )
             if not is_authorized:
-                # logger.debug(f"VerificationResponseRule.validate: Address {tx.get('account')} is not authorized")
-                return False
+                # logger.debug(f"VerificationResponseRule.validate: Address {tx.account} is not authorized")
+                return ValidationResult(valid=False, notes="Address is not authorized")
             
         # Check if user is sending BASE_PFT_COST PFT
-        if tx.get('pft_absolute_amount', 0) < BASE_PFT_COST:
-            return False
+        if tx.pft_amount < BASE_PFT_COST:
+            return ValidationResult(valid=False, notes="PFT amount is less than BASE_PFT_COST")
             
-        return True
+        return ValidationResult(valid=True)
     
     async def find_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
         ) -> Optional[ResponseQuery]:
         """Get query information for finding a verification prompt response."""
         query = """
@@ -1136,10 +1141,10 @@ class VerificationResponseRule(RequestRule):
         """
         
         params = {
-            'account': request_tx['account'],
-            'destination': request_tx['destination'],
-            'request_time': request_tx['close_time_iso'],
-            'response_memo_type': request_tx['memo_type'],
+            'account': request_tx.account,
+            'destination': request_tx.destination,
+            'request_time': request_tx.datetime,
+            'response_memo_type': request_tx.memo_type,
             'response_memo_data': regex_to_sql_pattern(REWARD_PATTERN.memo_data)
         }
             
@@ -1148,8 +1153,8 @@ class VerificationResponseRule(RequestRule):
 class RewardRule(ResponseRule):
     """Pure business logic for handling rewards"""
 
-    async def validate(self, *args, **kwargs) -> bool:
-        return True
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)
 
     def get_response_generator(self, dependencies: Dependencies) -> ResponseGenerator:
         """Get response generator for rewards with all dependencies"""
@@ -1186,7 +1191,7 @@ class RewardResponseGenerator(ResponseGenerator):
         self.openrouter = openrouter
         self.transaction_repository = transaction_repository
 
-    async def _get_task_context(self, request_tx: Dict[str, Any]) -> Dict[str, str]:
+    async def _get_task_context(self, request_tx: MemoTransaction) -> Dict[str, str]:
         """
         Retrieve all necessary context for reward generation, including:
         - Original task proposal
@@ -1194,7 +1199,7 @@ class RewardResponseGenerator(ResponseGenerator):
         - Reward history
         - Proposed reward from original task
         """
-        memo_type = request_tx['memo_type']
+        memo_type = request_tx.memo_type
 
         # Get original task proposal
         proposal_query = """
@@ -1229,7 +1234,7 @@ class RewardResponseGenerator(ResponseGenerator):
         prompt_params = {
             'memo_type': memo_type,
             'prompt_pattern': regex_to_sql_pattern(VERIFICATION_PROMPT_PATTERN.memo_data),
-            'destination': request_tx['account']
+            'destination': request_tx.account
         }
         prompt_results = await self.transaction_repository.execute_query(prompt_query, prompt_params)
         if not prompt_results:
@@ -1237,26 +1242,26 @@ class RewardResponseGenerator(ResponseGenerator):
         verification_prompt = prompt_results[0]['memo_data']
 
         # Get recent rewards history
-        # TODO: Consider querying off of transaction_memos table instead of decoded_memos view
-        rewards_query = f"""
-            SELECT memo_data, pft_absolute_amount
-            FROM decoded_memos 
+        rewards_query = """
+            SELECT memo_data, pft_amount
+            FROM transaction_memos 
             WHERE account = $1
             AND transaction_result = 'tesSUCCESS'
             AND memo_data LIKE $2
-            AND datetime >= NOW() - INTERVAL '{self.REWARD_PROCESSING_WINDOW} days'
+            AND datetime >= NOW() - INTERVAL '$3 days'
             ORDER BY datetime DESC;
         """
-        rewards_params = {
-            'account': request_tx['account'],
-            'reward_pattern': regex_to_sql_pattern(REWARD_PATTERN.memo_data)
-        }
+        rewards_params = [
+            request_tx.account,
+            regex_to_sql_pattern(REWARD_PATTERN.memo_data),
+            self.REWARD_PROCESSING_WINDOW
+        ]
         rewards_results = await self.transaction_repository.execute_query(rewards_query, rewards_params)
         
         # Format reward history
         reward_history = []
         for reward in rewards_results:
-            reward_amount = abs(Decimal(reward['pft_absolute_amount']))
+            reward_amount = abs(Decimal(reward['pft_amount']))
             reward_history.append(f"{reward['memo_data']} REWARD {reward_amount}")
         reward_history_str = "\n".join(reward_history)
         
@@ -1266,7 +1271,7 @@ class RewardResponseGenerator(ResponseGenerator):
         return {
             'initial_task': initial_task,
             'verification_prompt': verification_prompt,
-            'verification_response': request_tx['memo_data'],  # Current request is the verification response
+            'verification_response': request_tx.memo_data,  # Current request is the verification response
             'reward_history': reward_history_str,
             'proposed_reward': proposed_reward
         }
@@ -1321,9 +1326,9 @@ class RewardResponseGenerator(ResponseGenerator):
             logger.error(f"Error extracting summary judgment: {e}")
             return 'Summary Judgment'
 
-    async def evaluate_request(self, request_tx: Dict[str, Any]) -> Dict[str, Any]:
+    async def evaluate_request(self, request_tx: MemoTransaction) -> Dict[str, Any]:
         """Evaluate verification response and determine reward"""
-        account = request_tx['account']
+        account = request_tx.account
 
         # Get all necessary context
         context = await self._get_task_context(request_tx)
@@ -1369,7 +1374,7 @@ class RewardResponseGenerator(ResponseGenerator):
 
     async def construct_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
             evaluation_result: Dict[str, Any]
         ) -> ResponseParameters:
         """Construct reward response parameters"""
@@ -1382,13 +1387,13 @@ class RewardResponseGenerator(ResponseGenerator):
             memo = self.generic_pft_utilities.construct_memo(
                 memo_data=reward_string,
                 memo_format=self.node_config.node_name,
-                memo_type=request_tx['memo_type']
+                memo_type=request_tx.memo_type
             )
 
             return ResponseParameters(
                 source=self.node_config.node_name,
                 memo=memo,
-                destination=request_tx['account'],
+                destination=request_tx.account,
                 pft_amount=evaluation_result['reward_amount']
             )
 
@@ -1405,9 +1410,9 @@ class ODVRequestRule(RequestRule):
 
     async def validate(
             self,
-            tx: Dict[str, Any],
+            tx: MemoTransaction,
             dependencies: Dependencies
-        ) -> bool:
+        ) -> ValidationResult:
         """
         Validates that:
         1. Request is sent to remembrancer address
@@ -1417,36 +1422,36 @@ class ODVRequestRule(RequestRule):
         """
         try:
             # Check destination is remembrancer
-            if tx['destination'] != dependencies.node_config.remembrancer_address:
-                return False
+            if tx.destination != dependencies.node_config.remembrancer_address:
+                return ValidationResult(valid=False, notes="Destination is not the remembrancer address")
             
             # Check user's PFT balance
-            balance = dependencies.generic_pft_utilities.get_pft_balance(tx['account'])
+            balance = dependencies.generic_pft_utilities.get_pft_balance(tx.account)
             if balance < 2000:
-                return False
+                return ValidationResult(valid=False, notes="PFT balance is less than 2000")
             
             # Check if user is an authorized address associated with an active Discord user
             if REQUIRE_AUTHORIZATION:
                 is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                    tx.get('account')
+                    tx.account
                 )
                 if not is_authorized:
-                    # logger.debug(f"ODVRequestRule.validate: Address {tx.get('account')} is not authorized")
-                    return False
+                    # logger.debug(f"ODVRequestRule.validate: Address {tx.account} is not authorized")
+                    return ValidationResult(valid=False, notes="Address is not authorized")
             
             # Check if user is sending BASE_PFT_COST PFT
-            if tx.get('pft_absolute_amount', 0) < BASE_PFT_COST:
-                return False
+            if tx.pft_amount < BASE_PFT_COST:
+                return ValidationResult(valid=False, notes="PFT amount is less than BASE_PFT_COST")
 
-            return True
+            return ValidationResult(valid=True)
         except Exception as e:
-            logger.error(f"Error validating ODV request: {e}")
+            logger.error(f"Error validating ODV request for {tx.hash}: {e}")
             logger.error(traceback.format_exc())
-            return False
+            return ValidationResult(valid=False, notes="Error validating ODV request")
         
     async def find_response(
         self,
-        request_tx: Dict[str, Any],
+        request_tx: MemoTransaction,
     ) -> ResponseQuery:
         """Get query information for finding an ODV response."""
         query = """
@@ -1460,10 +1465,10 @@ class ODVRequestRule(RequestRule):
         """
         
         params = {
-            'account': request_tx['account'],
-            'destination': request_tx['destination'],
-            'request_time': request_tx['close_time_iso'],
-            'response_memo_type': f"{request_tx['memo_type']}_response"
+            'account': request_tx.account,
+            'destination': request_tx.destination,
+            'request_time': request_tx.datetime,
+            'response_memo_type': f"{request_tx.memo_type}_response"
         }
             
         return ResponseQuery(query=query, params=params)
@@ -1471,8 +1476,8 @@ class ODVRequestRule(RequestRule):
 class ODVResponseRule(ResponseRule):
     """Pure business logic for handling ODV responses"""
 
-    async def validate(self, *args, **kwargs) -> bool:
-        return True
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)
     
     def get_response_generator(self, dependencies: Dependencies) -> ResponseGenerator:
         """Get response generator for ODV responses with all dependencies"""
@@ -1512,11 +1517,11 @@ class ODVResponseGenerator(ResponseGenerator):
         self.message_encryption = message_encryption
         self.credential_manager = credential_manager
 
-    async def evaluate_request(self, request_tx: Dict[str, Any]) -> Dict[str, Any]:
+    async def evaluate_request(self, request_tx: MemoTransaction) -> Dict[str, Any]:
         """Evaluate ODV submission"""
-        account = request_tx['account']
+        account = request_tx.account
         model = "openai/o1-preview-2024-09-12"
-        odv_text = request_tx.get('memo_data')
+        odv_text = request_tx.memo_data
         logger.debug(f"ODVResponseGenerator.evaluate_request: Evaluating ODV submission: {odv_text}")
 
         user_context = await self._get_user_context(account)
@@ -1569,14 +1574,14 @@ class ODVResponseGenerator(ResponseGenerator):
 
     async def construct_response(
             self,
-            request_tx: Dict[str, Any],
+            request_tx: MemoTransaction,
             evaluation_result: Dict[str, Any]
         ) -> ResponseParameters:
         """Construct ODV response parameters"""
         try:
-            account = request_tx['account']
-            destination = request_tx['destination']
-            memo_data = request_tx['memo_data']
+            account = request_tx.account
+            destination = request_tx.destination
+            memo_data = request_tx.memo_data
             was_encrypted = '[Decrypted]' in memo_data
             response_memo_data = evaluation_result['odv_response']
 
@@ -1600,14 +1605,14 @@ class ODVResponseGenerator(ResponseGenerator):
             # Construct response memo
             memo = self.generic_pft_utilities.construct_memo(
                 memo_data=response_memo_data,
-                memo_type=f"{request_tx.get('memo_type')}_response",  # Uses request memo_type + _response
+                memo_type=f"{request_tx.memo_type}_response",  # Uses request memo_type + _response
                 memo_format="odv"
             )
 
             return ResponseParameters(
                 source=self.node_config.remembrancer_name,
                 memo=memo,
-                destination=request_tx['account']
+                destination=request_tx.account
             )
 
         except Exception as e:
@@ -1622,5 +1627,5 @@ class CorbanuRewardRule(StandaloneRule):
     Pure business logic for handling corbanu rewards
     Currently, this rule is a placeholder and does not perform any validation.
     """
-    async def validate(self, *args, **kwargs) -> bool:
-        return True
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)

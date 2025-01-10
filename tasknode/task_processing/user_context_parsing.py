@@ -569,7 +569,7 @@ The following is the users own comments regarding everything
             return None
 
     @staticmethod
-    async def get_google_doc_text(share_link):
+    async def get_google_doc_text(share_link: str) -> str:
         """Get the plain text content of a Google Doc.
         
         Args:
@@ -577,13 +577,15 @@ The following is the users own comments regarding everything
             
         Returns:
             str: Plain text content of the Google Doc
-        """
-        logger.debug(f"UserTaskParser.get_google_doc_text: Getting Google Doc text for {share_link}")
-        # Extract the document ID from the share link
-        doc_id = share_link.split('/')[5]
-    
+        """ 
+        # Extract doc ID using regex
+        doc_id_match = re.search(r'docs\.google\.com/document/d/([a-zA-Z0-9_-]+)', str(share_link))
+        if not doc_id_match:
+            logger.error(f"UserTaskParser.get_google_doc_text: Could not extract doc ID from link: {share_link}")
+            return "Failed to retrieve the document. Invalid Google Doc link."
+        
         # Construct the Google Docs API URL
-        url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+        url = f"https://docs.google.com/document/d/{doc_id_match.group(1)}/export?format=txt"
     
         # Send a GET request to the API URL
         response = requests.get(url)

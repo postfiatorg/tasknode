@@ -2434,7 +2434,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             f"Memo Format: `{tx['memo_format']}`\n"
             f"Memo Type: `{tx['memo_type']}`\n"
             f"Memo Data: `{tx['memo_data']}`\n"
-            f"PFT: {tx.get('pft_absolute_amount', 0)}\n"
+            f"PFT: {tx.get('pft_amount', 0)}\n"
             f"URL: {url}"
         )
 
