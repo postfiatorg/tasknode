@@ -24,7 +24,6 @@ SessionLocal = sessionmaker(
     bind=engine
 )
 
-# Base class for declarative models
 Base = declarative_base()
 
 # Session dependency (commonly used in FastAPI)

@@ -26,5 +26,5 @@ class PostfiatTxCache(Base):
 
     __table_args__ = (
         Index('idx_account_destination', 'account', 'destination'),
-        Index('idx_close_time_iso', 'close_time_iso', postgresql_desc=True),
+        Index('idx_close_time_iso', 'close_time_iso', postgresql_ops={'close_time_iso': 'DESC'}),
     )
