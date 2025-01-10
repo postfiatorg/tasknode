@@ -4,19 +4,23 @@ ansible_user: ec2-user
 # app deployment
 repo: https://github.com/postfiatorg/tasknode.git
 branch: dev
+network: mainnet
 
 # postgres
 postgres_host: localhost
 postgres_port: 5432
 postgres_user: postfiat
 postgres_db: postfiat_db
-postgres_db_testnet: postfiat_db_testnet
 #postgres_password: vault.yml
-#postgres_password_testnet: vault.yml
 postgres_conn_string: postgres://{{ postgres_user }}:{{ postgres_password }}@{{ postgres_host }}:{{ postgres_port }}/{{ postgres_db }}
-postgres_conn_string_testnet: postgres://{{ postgres_user }}:{{ postgres_password_testnet }}@{{ postgres_host }}:{{ postgres_port }}/{{ postgres_db_testnet }}
+postgres_master_user: postgres
+#postgres_master_password: vault.yml
 
 # discord
+discord_server_id: 1061800464045310053
+discord_activity_channel_mainnet: 1239280089699450920
+discord_activity_channel_testnet: 1327048598969516093
+discord_activity_channel_id: "{{ discord_activity_channel_mainnet if network == 'mainnet' else discord_activity_channel_testnet }}"
 #discord_bot_secret_testnet: vault.yml
 #discord_bot_secret_mainnet: vault.yml
 
@@ -26,7 +30,6 @@ postgres_conn_string_testnet: postgres://{{ postgres_user }}:{{ postgres_passwor
 #remembrancer_wallet_testnet: vault.yml
 
 # Application Configuration
-use_testnet: false
 log_level: INFO
 
 # System Configuration
