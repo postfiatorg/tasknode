@@ -92,7 +92,7 @@ class DeathMarchSettings:
 
 class TaskNodeDiscordBot(discord.Client):
 
-    NON_EPHEMERAL_USERS = {402536023483088896, 471510026696261632}
+    NON_EPHEMERAL_USERS = {402536023483088896}
 
     def __init__(
             self, 
@@ -144,6 +144,83 @@ class TaskNodeDiscordBot(discord.Client):
         """Return False if the user is not in the NON_EPHEMERAL_USERS set, else True."""
         output = not (interaction.user.id in self.NON_EPHEMERAL_USERS)
         return output
+
+    async def check_user_seed(self, interaction: Interaction, deferred: bool = False) -> tuple[bool, str | None]:
+        """
+        Check if user has stored a seed and return it.
+        Args:
+            interaction: The Discord interaction
+            deferred: Whether the interaction response has been deferred
+        Returns: (success, seed) where seed is None if not found
+        """
+        user_id = interaction.user.id
+        if user_id not in self.user_seeds:
+            message = "You must store a seed using /store_seed before initiating a transaction."
+            if deferred:
+                await interaction.followup.send(message, ephemeral=True)
+            else:
+                await interaction.response.send_message(message, ephemeral=True)
+            return False, None
+        return True, self.user_seeds[user_id]
+
+    async def check_user_initiation_rite(self, interaction: Interaction, wallet: Wallet, deferred: bool = False) -> bool:
+        """
+        Check if user has completed the initiation rite.
+        Args:
+            interaction: The Discord interaction
+            wallet: The user's wallet
+            deferred: Whether the interaction response has been deferred
+        Returns: True if user has completed initiation rite, False otherwise
+        """
+        if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
+            message = "You must perform the initiation rite first. Run /pf_initiate to do so."
+            if deferred:
+                await interaction.followup.send(message, ephemeral=True)
+            else:
+                await interaction.response.send_message(message, ephemeral=True)
+            return False
+        return True
+        
+    async def check_user_flag_status(
+        self, 
+        interaction: Interaction, 
+        action: str,
+        deferred: bool = False
+    ) -> bool:
+        """
+        Check if user has active flags.
+        Args:
+            interaction: The Discord interaction
+            action: Description of the action being attempted
+            deferred: Whether the interaction response has been deferred
+            Returns: True if user is not flagged, False if they are flagged
+        """
+        flag_status = await self.transaction_repository.check_if_user_is_flagged(
+            auth_source='discord',
+            auth_source_user_id=str(interaction.user.id)
+        )
+        
+        if flag_status:
+            cooldown_seconds, flag_type = flag_status
+            hours = cooldown_seconds // 3600
+            minutes = (cooldown_seconds % 3600) // 60
+            
+            time_msg = []
+            if hours > 0:
+                time_msg.append(f"{hours} hour{'s' if hours != 1 else ''}")
+            if minutes > 0:
+                time_msg.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+            
+            time_remaining = " and ".join(time_msg)
+            message = f"You cannot {action} while you have an active {flag_type} flag. Please try again in {time_remaining}."
+            
+            if deferred:
+                await interaction.followup.send(message, ephemeral=True)
+            else:
+                await interaction.response.send_message(message, ephemeral=True)
+            return False
+            
+        return True
 
     async def setup_hook(self):
         """Sets up the slash commands for the bot and initiates background tasks."""
@@ -210,24 +287,16 @@ class TaskNodeDiscordBot(discord.Client):
 
         @self.tree.command(name="pf_show_seed", description="Show your stored seed")
         async def pf_show_seed(interaction: discord.Interaction):
-            user_id = interaction.user.id
+            has_seed, seed = await self.check_user_seed(interaction)
+            if not has_seed:
+                return
             
-            # Check if the user has a stored seed
-            if user_id in self.user_seeds:
-                seed = self.user_seeds[user_id]
-                
-                # Create and send an ephemeral message with the seed
-                await interaction.response.send_message(
-                    f"Your stored seed is: {seed}\n"
-                    "This message will be deleted in 30 seconds for security reasons.",
-                    ephemeral=True,
-                    delete_after=30
-                )
-            else:
-                await interaction.response.send_message(
-                    "No seed found for your account. Use /pf_store_seed to store a seed first.",
-                    ephemeral=True
-                )
+            await interaction.followup.send(
+                f"Your stored seed is: {seed}\n"
+                "This message will be deleted in 30 seconds for security reasons.",
+                ephemeral=True,
+                delete_after=30
+            )
 
         @self.tree.command(name="pf_guide", description="Show a guide of all available commands")
         async def pf_guide(interaction: discord.Interaction):
@@ -281,21 +350,14 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="pf_my_wallet", description="Show your wallet information")
         async def pf_my_wallet(interaction: discord.Interaction):
-            user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-            
-            # Defer the response to avoid timeout
             await interaction.response.defer(ephemeral=ephemeral_setting)
             
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "No seed found for your account. Use /pf_store_seed to store a seed first.",
-                    ephemeral=True
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
             try:
-                seed = self.user_seeds[user_id]
                 logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_my_wallet: Spawning wallet to fetch info for {interaction.user.name}")
                 wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
                 wallet_address = wallet.classic_address
@@ -419,19 +481,31 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 ephemeral=True
             )
 
-        @self.tree.command(name="pf_send", description="Open a transaction form")
-        async def pf_send(interaction: Interaction):
-            user_id = interaction.user.id
-
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
+        @self.tree.command(name="admin_clear_flags", description="Clear all flags for a user")
+        async def admin_clear_flags(interaction: discord.Interaction, address: str):
+            # Check if the user has permission (matches the specific ID)
+            if interaction.user.id not in DISCORD_SUPER_USER_IDS:
                 await interaction.response.send_message(
-                    "You must store a seed using /store_seed before initiating a transaction.", 
+                    "You don't have permission to use this command.", 
                     ephemeral=True
                 )
                 return
+    
+            await interaction.response.defer(ephemeral=True)
+            
+            await self.transaction_repository.clear_address_flags(address)
+            
+            await interaction.followup.send(
+                f"Successfully cleared all flags for addresses associated with {address}",
+                ephemeral=True
+            )
 
-            seed = self.user_seeds[user_id]
+        @self.tree.command(name="pf_send", description="Open a transaction form")
+        async def pf_send(interaction: Interaction):
+            has_seed, seed = await self.check_user_seed(interaction)
+            if not has_seed:
+                return
+
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Pass the user's wallet to the modal
@@ -443,17 +517,11 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             )
 
         @self.tree.command(name="xrp_send", description="Send XRP to a destination address")
-        async def xrp_send(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.response.send_message(
-                    "You must store a seed using /pf_store_seed before initiating a transaction.", ephemeral=True
-                )
+        async def xrp_send(interaction: discord.Interaction):            
+            has_seed, seed = await self.check_user_seed(interaction)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
             # Pass the user's wallet to the modal
@@ -471,23 +539,17 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="pf_initiate", description="Initiate your commitment")
         async def pf_initiate(interaction: discord.Interaction):
-            user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /store_seed before initiating.", 
-                    ephemeral=ephemeral_setting
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
             try:
                 # Spawn the user's wallet
                 logger.debug(f"TaskNodeDiscordBot.pf_initiate: Spawning wallet to initiate for {interaction.user.name}")
                 username = interaction.user.name
-                seed = self.user_seeds[user_id]
                 wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
                 if not (RuntimeConfig.USE_TESTNET and RuntimeConfig.ENABLE_REINITIATIONS):
@@ -529,30 +591,19 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="pf_update_link", description="Update your Google Doc link")
         async def pf_update_link(interaction: discord.Interaction):
-            user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed first.",
-                    ephemeral=ephemeral_setting
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
             
             try:
                 logger.debug(f"TaskNodeDiscordBot.pf_update_link: Spawning wallet for {interaction.user.name} to update google doc link")
-                seed = self.user_seeds[user_id]
                 username = interaction.user.name
                 wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
-                # Check initiation status
-                if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                    await interaction.followup.send(
-                        "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                        ephemeral=ephemeral_setting
-                    )
+                if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                     return
 
                 # Create a button to trigger the modal
@@ -585,25 +636,16 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="odv_sprint", description="Start an ODV sprint planning session")
         async def odv_sprint(interaction: discord.Interaction):
-            user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed before starting an ODV sprint planning session.", 
-                    ephemeral=True
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=True
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             try:
@@ -613,7 +655,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities
                 )
-                self.sprint_planners[user_id] = odv_planner
+                self.sprint_planners[interaction.user.id] = odv_planner
                 logger.debug(f"TaskNodeDiscordBot.odv_sprint: Initialized ODV sprint planner for {interaction.user.name}")
 
                 # Potentially long operation
@@ -718,14 +760,11 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     SelectOption(label="3 hours", value="180"),
                     SelectOption(label="4 hours", value="240")
                 ]
-            user_id = interaction.user.id
-            # 1. Check user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.response.send_message(
-                    "You must store a seed using /pf_store_seed first.", 
-                    ephemeral=True
-                )
+
+            has_seed, _ = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
+
             # Create the Select menus
             timezone_select = Select(
                 custom_id="timezone",
@@ -832,26 +871,17 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # 1. Check user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed first.", 
-                    ephemeral=True
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
-            seed = self.user_seeds[user_id]
+
             user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
             user_address = user_wallet.classic_address
 
-            # 2. Check initiation
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=user_address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first ( /pf_initiate ).", 
-                    ephemeral=True
-                )
+            if not await self.check_user_initiation_rite(interaction, user_wallet, deferred=True):
                 return
             
-            # 3. Check user has configured death march settings
+            # Check user has configured death march settings
             if user_id not in self.user_deathmarch_settings:
                 await interaction.followup.send(
                     "You must set your death march configuration using /pf_configure_deathmarch first.", 
@@ -859,7 +889,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 )
                 return
             
-            # 4. Check if user is already in a death march
+            # Check if user is already in a death march
             if user_id in self.user_deathmarch_settings and self.user_deathmarch_settings[user_id].session_end is not None:
                 await interaction.followup.send(
                     "You are already in an active death march. Use /pf_death_march_end to end it first.", 
@@ -870,7 +900,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             # Calculate cost per check-in for 
             settings = self.user_deathmarch_settings[user_id]
             checks_per_day, cost = self._calculate_death_march_costs(settings, days, DEATH_MARCH_COST_PER_CHECKIN)
-            # 5. Check user PFT balance
+            
+            # Check user PFT balance
             try:
                 user_pft_balance = self.generic_pft_utilities.get_pft_balance(user_address)
             except:
@@ -886,7 +917,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 )
                 return
             
-            # 7. Update death march settings
+            # Update death march settings
             session_start = datetime.now(timezone.utc)
             session_end = session_start + timedelta(days=days)
             
@@ -917,14 +948,17 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         async def pf_death_march_end(interaction: discord.Interaction):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
+
             # Check if user has settings and an active session
             if (user_id in self.user_deathmarch_settings and 
                     self.user_deathmarch_settings[user_id].session_end is not None):
+                
                 # Cancel the death march task
                 if user_id in self.death_march_tasks:
                     self.death_march_tasks[user_id].cancel()
                     del self.death_march_tasks[user_id]
                 settings = self.user_deathmarch_settings[user_id]
+
                 # Clear session data but keep configuration
                 settings.session_start = None
                 settings.session_end = None
@@ -943,27 +977,16 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="odv_context_doc", description="Start an ODV context document improvement session")
         async def odv_context_doc(interaction: discord.Interaction):
-            user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed before starting an ODV context document improvement session.", 
-                    ephemeral=True
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=True
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             try:
@@ -979,7 +1002,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 if not hasattr(self, 'doc_improvers'):
                     self.doc_improvers = {}
 
-                self.doc_improvers[user_id] = doc_improver
+                self.doc_improvers[interaction.user.id] = doc_improver
                 logger.debug(f"TaskNodeDiscordBot.odv_context_doc: Initialized ODV context document improver for {interaction.user.name}")
 
                 # Potentially long operation: getting the initial suggestion
@@ -1038,23 +1061,13 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed before using this command.",
-                    ephemeral=True
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=True
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
             
             # Return the existing question if the user has one
@@ -1074,7 +1087,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities,
                     tasknode_utilities=self.tasknode_utilities,
-                    db_connection_manager=self.db_connection_manager
+                    db_connection_manager=self.db_connection_manager,
+                    transaction_repository=self.transaction_repository
                 )
 
                 # Generate a question as the Corbanu offering 
@@ -1104,22 +1118,13 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed before using this command.",
-                    ephemeral=True
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            # Check initiation
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.",
-                    ephemeral=True
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             if user_id not in self.user_questions:
@@ -1139,7 +1144,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities,
                     tasknode_utilities=self.tasknode_utilities,
-                    db_connection_manager=self.db_connection_manager
+                    db_connection_manager=self.db_connection_manager,
+                    transaction_repository=self.transaction_repository
                 )
 
                 scoring = await corbanu.generate_user_question_scoring_output(
@@ -1300,23 +1306,13 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed before using this command.",
-                    ephemeral=True
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.classic_address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=True
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             try:
@@ -1333,7 +1329,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     user_context_parser=self.user_task_parser,
                     pft_utils=self.generic_pft_utilities,
                     tasknode_utilities=self.tasknode_utilities,
-                    db_connection_manager=self.db_connection_manager
+                    db_connection_manager=self.db_connection_manager,
+                    transaction_repository=self.transaction_repository
                 )
 
                 # Get Corbanu's response asynchronously
@@ -1379,8 +1376,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     
                     await message_obj.edit(content="Handshake verified. Proceeding to send memo...")
 
-                # No PFT here, just sending the message
-                # NOTE: This means we won't see this memo if we filter by PFT
+
                 pft_amount = Decimal(0)
 
                 # Send summarized message from user's wallet to remembrancer
@@ -1433,24 +1429,14 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
             
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed before viewing outstanding tasks.", 
-                    ephemeral=True
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_outstanding: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=True
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             try:
@@ -1477,36 +1463,26 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="pf_request_task", description="Request a Post Fiat task")
         async def pf_task_slash(interaction: discord.Interaction, task_request: str):
-            user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # Check if the user has stored a seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed before generating a task.", 
-                    ephemeral=True
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            # Get the user's seed and other necessary information
-            seed = self.user_seeds[user_id]
-            user_name = interaction.user.name
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
             
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=True
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
+                return
+            
+            if not await self.check_user_flag_status(interaction, action="request tasks", deferred=True):
                 return
             
             try:
                 # Send the Post Fiat request
                 response = await self.tasknode_utilities.discord__send_postfiat_request(
                     user_request=task_request,
-                    user_name=user_name,
+                    user_name=interaction.user.name,
                     user_wallet=wallet
                 )
                 
@@ -1528,21 +1504,13 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            if user_id not in self.user_seeds:
-                await interaction.followup.send("You must store a seed using /store_seed before accepting tasks.", ephemeral=ephemeral_setting)
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
-
-            logger.debug(f"TaskNodeDiscordBot.pf_accept_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=ephemeral_setting
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             # Fetch proposal acceptance pairs
@@ -1615,29 +1583,18 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="pf_refuse", description="Refuse tasks")
         async def pf_refuse_menu(interaction: discord.Interaction):
-            # Fetch the user's seed
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /store_seed before refusing tasks.", 
-                    ephemeral=ephemeral_setting
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
-
-            seed = self.user_seeds[user_id]
 
             logger.debug(f"TaskNodeDiscordBot.pf_refuse_menu: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=ephemeral_setting
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
             
             # Fetch account history
@@ -1714,25 +1671,14 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /store_seed before submitting a task for verification.", 
-                    ephemeral=ephemeral_setting
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
-
-            seed = self.user_seeds[user_id]
 
             logger.debug(f"TaskNodeDiscordBot.pf_initial_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=ephemeral_setting
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             # Fetch account history
@@ -1808,24 +1754,14 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /store_seed before submitting final verification.", 
-                    ephemeral=ephemeral_setting
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             logger.debug(f"TaskNodeDiscordBot.pf_final_verification: Spawning wallet to fetch tasks for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=ephemeral_setting
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             # Fetch account history
@@ -1899,28 +1835,17 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="pf_rewards", description="Show your recent Post Fiat rewards")
         async def pf_rewards(interaction: discord.Interaction):
-            user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed before viewing rewards.",
-                    ephemeral=ephemeral_setting
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             logger.debug(f"TaskNodeDiscordBot.pf_rewards: Spawning wallet to fetch rewards for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=ephemeral_setting
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             try:
@@ -1948,29 +1873,18 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="pf_log", description="Send a long message to the remembrancer wallet")
         async def pf_remembrancer(interaction: discord.Interaction, message: str, encrypt: bool = False):
-            user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
             
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed before using this command.",
-                    ephemeral=ephemeral_setting
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             user_name = interaction.user.name
             logger.debug(f"TaskNodeDiscordBot.pf_remembrancer: Spawning wallet to send message to remembrancer for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=ephemeral_setting
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             try:
@@ -2034,28 +1948,17 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         
         @self.tree.command(name="pf_chart", description="Generate a chart of your PFT rewards and metrics")
         async def pf_chart(interaction: discord.Interaction):
-            user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
 
-            # Check if the user has a stored seed
-            if user_id not in self.user_seeds:
-                await interaction.followup.send(
-                    "You must store a seed using /pf_store_seed before generating a chart.", 
-                    ephemeral=ephemeral_setting
-                )
+            has_seed, seed = await self.check_user_seed(interaction, deferred=True)
+            if not has_seed:
                 return
 
-            seed = self.user_seeds[user_id]
             logger.debug(f"TaskNodeDiscordBot.setup_hook.pf_chart: Spawning wallet to generate chart for {interaction.user.name}")
             wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed)
 
-            # Check initiation status
-            if not await self.tasknode_utilities.has_initiation_rite(wallet_address=wallet.address):
-                await interaction.followup.send(
-                    "You must perform the initiation rite first. Run /pf_initiate to do so.", 
-                    ephemeral=ephemeral_setting
-                )
+            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
             try:

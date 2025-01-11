@@ -16,6 +16,7 @@ import pandas as pd
 from nodetools.utilities.db_manager import DBConnectionManager
 from nodetools.protocols.openrouter import OpenRouterTool
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
+from nodetools.protocols.transaction_repository import TransactionRepository
 from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
 
 # tasknode imports
@@ -46,7 +47,8 @@ class CorbanuChatBot:
             user_context_parser: UserTaskParser,
             pft_utils: GenericPFTUtilities,
             tasknode_utilities: TaskNodeUtilities,
-            db_connection_manager: DBConnectionManager
+            db_connection_manager: DBConnectionManager,
+            transaction_repository: TransactionRepository
     ):
         # Initialize tools
         self.openrouter = openrouter
@@ -55,6 +57,7 @@ class CorbanuChatBot:
         self.db_connection_manager = db_connection_manager
         self.tasknode_utilities = tasknode_utilities
         self.account_address = account_address
+        self.transaction_repository = transaction_repository
 
         # Initialize model
         self.model = "openai/o1-preview"
@@ -372,6 +375,7 @@ class CorbanuChatBot:
     async def check_daily_reward_limit(self, account_address: str) -> Decimal:
         """
         Check how much reward capacity remains for the user within the daily limit.
+        Considers all addresses associated with the same auth_source_user_id.
         
         Args:
             user_wallet_address: The user's wallet address
@@ -379,22 +383,28 @@ class CorbanuChatBot:
         Returns:
             Decimal: Remaining reward capacity (0 if limit exceeded)
         """
-        try:            
-            # Get last 24 hours of memos
-            memo_history = await self.pft_utils.get_account_memo_history(account_address=account_address)
+        try: 
+            # First, get all addresses associated with this user
+            associated_addresses = await self.transaction_repository.get_associated_addresses(account_address)
+
+            # Get last 24 hours of memos for all associated addresses
+            all_memo_history = pd.DataFrame()
+            for address in associated_addresses:
+                memo_history = await self.pft_utils.get_account_memo_history(account_address=address)
+                all_memo_history = pd.concat([all_memo_history, memo_history])
 
             # Calculate 24 hours ago timestamp in UTC
             utc_now = datetime.now(timezone.utc)
             cutoff_time = utc_now - timedelta(hours=24)
 
             # Ensure datetime column is timezone-aware before comparison
-            memo_history['datetime'] = pd.to_datetime(memo_history['datetime']).dt.tz_localize('UTC')
+            all_memo_history['datetime'] = pd.to_datetime(all_memo_history['datetime']).dt.tz_localize('UTC')
 
             # Filter for Corbanu rewards sent to this user in the last 24 hours
-            corbanu_rewards = memo_history[
-                (memo_history['destination'] == account_address) & 
-                (memo_history['memo_data'].str.contains('Corbanu Reward', na=False)) &
-                (memo_history['datetime'] >= cutoff_time)
+            corbanu_rewards = all_memo_history[
+                (all_memo_history['destination'].isin(associated_addresses)) & 
+                (all_memo_history['memo_data'].str.contains('Corbanu Reward', na=False)) &
+                (all_memo_history['datetime'] >= cutoff_time)
             ]
 
             # Sum rewards in last 24 hours
@@ -402,7 +412,7 @@ class CorbanuChatBot:
 
             remaining_limit = max(Decimal(self.MAX_DAILY_REWARD_VALUE) - total_recent_rewards, Decimal(0))
                     
-            logger.debug(f"Corbanu rewards in last 24h for {account_address}: {total_recent_rewards} PFT")
+            logger.debug(f"Corbanu rewards in last 24h for user associated with {account_address}: {total_recent_rewards} PFT")
             logger.debug(f"Remaining daily reward limit: {remaining_limit} PFT")
             
             return remaining_limit
