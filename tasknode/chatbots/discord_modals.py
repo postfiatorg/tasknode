@@ -12,6 +12,7 @@ import nodetools.configuration.configuration as config
 from tasknode.task_processing.constants import MAX_COMMITMENT_SENTENCE_LENGTH
 import traceback
 import re
+
 if TYPE_CHECKING:
     from tasknode.chatbots.pft_discord import TaskNodeDiscordBot
 
@@ -185,19 +186,12 @@ class PFTTransactionModal(discord.ui.Modal, title='Send PFT'):
         amount = self.amount.value
         message = self.message.value
 
-        # construct memo
-        memo = self.generic_pft_utilities.construct_memo(
-            memo_data=message, 
-            memo_type='PFT_SEND', 
-            memo_format=interaction.user.name
-        )
-
         try:
             response = await self.generic_pft_utilities.send_memo(
                 wallet_seed_or_wallet=self.wallet,
                 destination=destination_address,
-                memo=memo,
-                username=interaction.user.name,
+                memo_type='PFT_SEND',
+                memo_data=message,
                 pft_amount=Decimal(amount)
             )
 

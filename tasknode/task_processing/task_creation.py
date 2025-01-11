@@ -5,7 +5,6 @@ from tasknode.prompts.task_generation import (
     task_generation_one_shot_system_prompt
 )
 from tasknode.task_processing.user_context_parsing import UserTaskParser
-from tasknode.task_processing.constants import TaskType
 import uuid
 import re
 from loguru import logger
@@ -161,7 +160,7 @@ class NewTaskGeneration:
         
         # Set proposal strings, reward amounts, PFT amounts
         REWARD_AMOUNT = 900  # TODO: Make this dynamic
-        output_df['pf_proposal_string'] = TaskType.PROPOSAL.value + output_df['content'].apply(
+        output_df['pf_proposal_string'] = output_df['content'].apply(
             lambda x: self.extract_final_output(x)
         ) + ' .. ' + str(REWARD_AMOUNT)
         output_df['reward'] = REWARD_AMOUNT

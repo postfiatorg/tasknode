@@ -37,9 +37,7 @@ from typing import Dict, Any, Optional
 import re
 from decimal import Decimal
 import traceback
-from datetime import datetime
-import random
-import string
+from enum import Enum
 
 # Third-party imports
 from loguru import logger
@@ -68,14 +66,14 @@ from nodetools.models.models import (
     StandaloneRule,
     InteractionType,
     ResponseGenerator,
-    ResponseParameters,
+    MemoConstructionParameters,
     Dependencies,
     ValidationResult,
     MemoTransaction
 )
+from nodetools.models.memo_processor import generate_custom_id
 
 # Task node imports
-from tasknode.task_processing.constants import TaskType, MessageType
 from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.chatbots.personas.odv import odv_system_prompt
 from tasknode.prompts.initiation_rite import phase_4__system, phase_4__user
@@ -88,72 +86,73 @@ from tasknode.prompts.rewards_manager import (
 from tasknode.task_processing.task_creation import NewTaskGeneration
 
 REQUIRE_AUTHORIZATION = False  # Disable for testing only
-LEGACY_MEMO_CONSTRUCTION = True  # Set to false when standardized memo processing is ready
 BASE_PFT_COST = 1
 
 ##############################################################################
-############################## MEMO PATTERNS #################################
+############################ LEGACY MEMO PATTERNS ############################
 ##############################################################################
 
-TASK_ID_PATTERN = re.compile(r'(\d{4}-\d{2}-\d{2}_\d{2}:\d{2}(?:__[A-Z0-9]{4})?)')
+UNIQUE_ID_PATTERN_V1 = re.compile(r'(\d{4}-\d{2}-\d{2}_\d{2}:\d{2}(?:__[A-Z0-9]{4})?)')
 
 # System memo patterns
-INITIATION_RITE_PATTERN = MemoPattern(memo_type=SystemMemoType.INITIATION_RITE.value)
-INITIATION_REWARD_PATTERN = MemoPattern(memo_type=SystemMemoType.INITIATION_REWARD.value)
-HANDSHAKE_PATTERN = MemoPattern(memo_type=SystemMemoType.HANDSHAKE.value)
-GOOGLE_DOC_LINK_PATTERN = MemoPattern(memo_type=SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value)
-
-# Define task memo patterns
-REQUEST_POST_FIAT_PATTERN = MemoPattern(
-    memo_type=TASK_ID_PATTERN,
-    memo_data=re.compile(f'.*{re.escape(TaskType.REQUEST_POST_FIAT.value)}.*')
+INITIATION_RITE_PATTERN = MemoPattern(
+    memo_type=re.compile(f"{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.INITIATION_RITE.value}")
 )
-PROPOSAL_PATTERN = MemoPattern(
-    memo_type=TASK_ID_PATTERN,
-    # rstrip() removes trailing space from enum value, \s? makes space optional
-    # This handles historical data where trailing spaces were inconsistent
-    memo_data=re.compile(f'.*{re.escape(TaskType.PROPOSAL.value.rstrip())}\\s?.*')
+INITIATION_REWARD_PATTERN = MemoPattern(
+    memo_type=re.compile(f"{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.INITIATION_REWARD.value}")
 )
-ACCEPTANCE_PATTERN = MemoPattern(
-    memo_type=TASK_ID_PATTERN,
-    memo_data=re.compile(f'.*{re.escape(TaskType.ACCEPTANCE.value)}.*')
+HANDSHAKE_PATTERN = MemoPattern(
+    memo_type=re.compile(f"{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.HANDSHAKE.value}")
 )
-REFUSAL_PATTERN = MemoPattern(
-    memo_type=TASK_ID_PATTERN,
-    memo_data=re.compile(f'.*{re.escape(TaskType.REFUSAL.value)}.*')
-)
-TASK_OUTPUT_PATTERN = MemoPattern(
-    memo_type=TASK_ID_PATTERN,
-    memo_data=re.compile(f'.*{re.escape(TaskType.TASK_OUTPUT.value)}.*')
-)
-VERIFICATION_PROMPT_PATTERN = MemoPattern(
-    memo_type=TASK_ID_PATTERN,
-    memo_data=re.compile(f'.*{re.escape(TaskType.VERIFICATION_PROMPT.value)}.*')
-)
-VERIFICATION_RESPONSE_PATTERN = MemoPattern(
-    memo_type=TASK_ID_PATTERN,
-    memo_data=re.compile(f'.*{re.escape(TaskType.VERIFICATION_RESPONSE.value)}.*')
-)
-REWARD_PATTERN = MemoPattern(
-    memo_type=TASK_ID_PATTERN,
-    memo_data=re.compile(f'.*{re.escape(TaskType.REWARD.value)}.*')
+GOOGLE_DOC_LINK_PATTERN = MemoPattern(
+    memo_type=re.compile(f"{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value}")
 )
 
-# Message patterns
-TASK_RESPONSE_ID_PATTERN = re.compile(r'(\d{4}-\d{2}-\d{2}_\d{2}:\d{2}(?:__[A-Z0-9]{4})?_response)')
+class TaskType(Enum):
+    TASK_REQUEST = "TASK_REQUEST"
+    PROPOSAL = "PROPOSAL"
+    ACCEPTANCE = "ACCEPTANCE"
+    REFUSAL = "REFUSAL"
+    TASK_COMPLETION = "TASK_COMPLETION"
+    VERIFICATION_PROMPT = "VERIFICATION_PROMPT"
+    VERIFICATION_RESPONSE = "VERIFICATION_RESPONSE"
+    REWARD = "REWARD"
 
-ODV_REQUEST_PATTERN = MemoPattern(
-    memo_type=TASK_ID_PATTERN,
-    memo_data=re.compile(f'.*{re.escape(MessageType.ODV_REQUEST.value)}.*')
-)
-ODV_RESPONSE_PATTERN = MemoPattern(
-    memo_type=TASK_RESPONSE_ID_PATTERN  # this is the only way to pattern match ODV responses at this time
-)
+# Request patterns
+REQUEST_POST_FIAT_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.TASK_REQUEST}'))
+
+# Proposal patterns
+PROPOSAL_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.PROPOSAL}'))
+
+# Acceptance patterns
+ACCEPTANCE_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.ACCEPTANCE}'))
+
+# Refusal patterns
+REFUSAL_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.REFUSAL}'))
+
+# Task completion patterns
+TASK_COMPLETION_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.TASK_COMPLETION}'))
+
+# Verification patterns
+VERIFICATION_PROMPT_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.VERIFICATION_PROMPT}'))
+
+# Verification response patterns
+VERIFICATION_RESPONSE_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.VERIFICATION_RESPONSE}'))
+
+# Reward patterns
+REWARD_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.REWARD}'))
+
+# ODV message patterns
+ODV_REQUEST = "ODV_REQUEST"
+ODV_REQUEST_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{ODV_REQUEST}'))
+
+ODV_RESPONSE = "ODV_RESPONSE"
+ODV_RESPONSE_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{ODV_RESPONSE}'))
 
 # Misc Patterns
 CORBANU_REWARD_PATTERN = MemoPattern(
     memo_format="Corbanu",
-    memo_type=TASK_ID_PATTERN,
+    memo_type=UNIQUE_ID_PATTERN_V1,
     memo_data="Corbanu Reward"
 )
 
@@ -226,7 +225,7 @@ class TaskManagementRules(BusinessLogicProvider):
             transaction_type=InteractionType.RESPONSE,
         )
 
-        # Add patterns to graph
+        # Add request post fiat patterns to graph
         graph.add_pattern(
             pattern_id="request_post_fiat",
             memo_pattern=REQUEST_POST_FIAT_PATTERN,
@@ -234,37 +233,49 @@ class TaskManagementRules(BusinessLogicProvider):
             valid_responses={PROPOSAL_PATTERN},
             notify=True
         )
+
+        # Add proposal patterns to graph
         graph.add_pattern(
             pattern_id="proposal",
             memo_pattern=PROPOSAL_PATTERN,
             transaction_type=InteractionType.RESPONSE,
             notify=True
         )
+
+        # Add acceptance patterns to graph
         graph.add_pattern(
             pattern_id="acceptance",
             memo_pattern=ACCEPTANCE_PATTERN,
             transaction_type=InteractionType.STANDALONE,
             notify=True
         )
+
+        # Add refusal patterns to graph
         graph.add_pattern(
             pattern_id="refusal",
             memo_pattern=REFUSAL_PATTERN,
             transaction_type=InteractionType.STANDALONE,
             notify=True
         )
+
+        # Add task completion patterns to graph
         graph.add_pattern(
             pattern_id="task_output",
-            memo_pattern=TASK_OUTPUT_PATTERN,
+            memo_pattern=TASK_COMPLETION_PATTERN,
             transaction_type=InteractionType.REQUEST,
             valid_responses={VERIFICATION_PROMPT_PATTERN},
             notify=True
         )
+
+        # Add verification patterns to graph
         graph.add_pattern(
             pattern_id="verification_prompt",
             memo_pattern=VERIFICATION_PROMPT_PATTERN,
             transaction_type=InteractionType.RESPONSE,
             notify=True
         )
+
+        # Add verification response patterns to graph
         graph.add_pattern(
             pattern_id="verification_response",
             memo_pattern=VERIFICATION_RESPONSE_PATTERN,
@@ -272,6 +283,8 @@ class TaskManagementRules(BusinessLogicProvider):
             valid_responses={REWARD_PATTERN},
             notify=True
         )
+
+        # Add reward patterns to graph
         graph.add_pattern(
             pattern_id="reward",
             memo_pattern=REWARD_PATTERN,
@@ -279,13 +292,15 @@ class TaskManagementRules(BusinessLogicProvider):
             notify=True
         )
 
-        # Add ODV patterns to graph
+        # Add ODV request patterns to graph
         graph.add_pattern(
             pattern_id="odv_request",
             memo_pattern=ODV_REQUEST_PATTERN,
             transaction_type=InteractionType.REQUEST,
             valid_responses={ODV_RESPONSE_PATTERN}
         )
+
+        # Add ODV response patterns to graphs
         graph.add_pattern(
             pattern_id="odv_response",
             memo_pattern=ODV_RESPONSE_PATTERN,
@@ -309,12 +324,11 @@ class TaskManagementRules(BusinessLogicProvider):
 ########################## HELPER FUNCTIONS ##############################
 ##########################################################################
 
-def is_valid_task_id(memo_type: str) -> bool:
-    """Check if a memo type is a valid task ID"""
-    return bool(TASK_ID_PATTERN.match(memo_type)) if memo_type else False
-
 def regex_to_sql_pattern(pattern: re.Pattern) -> str:
-    """Convert a regex pattern to SQL LIKE pattern"""
+    """
+    Convert a regex pattern to SQL LIKE pattern
+    WARNING: This is a very limited version of the regex pattern
+    """
     pattern_str = pattern.pattern
     
     # First remove the optional whitespace pattern completely
@@ -326,16 +340,6 @@ def regex_to_sql_pattern(pattern: re.Pattern) -> str:
         return f'%{clean_text}%'
     
     return f'%{pattern_str}%'
-
-def generate_custom_id():
-    """ Generate a unique memo_type """
-    letters = ''.join(random.choices(string.ascii_uppercase, k=2))
-    numbers = ''.join(random.choices(string.digits, k=2))
-    second_part = letters + numbers
-    date_string = datetime.now().strftime("%Y-%m-%d %H:%M")
-    output= date_string+'__'+second_part
-    output = output.replace(' ',"_")
-    return output
 
 def derive_response_memo_type(request_memo_type: str, response_memo_type: str) -> str:
     """
@@ -352,12 +356,12 @@ def derive_response_memo_type(request_memo_type: str, response_memo_type: str) -
     Raises:
         ValueError: If task_id cannot be extracted from request_memo_type
     """
-    task_id_match = TASK_ID_PATTERN.search(request_memo_type)
+    task_id_match = UNIQUE_ID_PATTERN_V1.search(request_memo_type)
     if not task_id_match:
         raise ValueError(f"Could not extract task_id from memo_type: {request_memo_type}")
         
     task_id = task_id_match.group(1)
-    return f"{task_id}_{response_memo_type}"
+    return f"{task_id}__{response_memo_type}"
 
 ##########################################################################
 ###################### INITIATION RITES AND REWARDS ######################
@@ -435,11 +439,10 @@ class InitiationRiteRule(RequestRule):
         """
 
         params = {
-            # Attempt to retrieve account and destination from top level of tx or tx_json_parsed
             'account': request_tx.account,
             'destination': request_tx.destination,
             'request_time': request_tx.datetime,
-            'response_memo_type': SystemMemoType.INITIATION_REWARD.value,
+            'response_memo_type': f'%{SystemMemoType.INITIATION_REWARD.value}',
             'require_after_request': self._should_require_after_request()
         }
             
@@ -508,16 +511,11 @@ class InitiationRewardGenerator(ResponseGenerator):
         ) -> Dict[str, Any]:
         """Construct reward memo and parameters"""
         try:
-            # Construct reward memo
-            memo = self.generic_pft_utilities.construct_memo(
-                memo_data=evaluation_result['justification'],
-                memo_type=SystemMemoType.INITIATION_REWARD.value,
-                memo_format=self.node_config.node_name
-            )
 
-            return ResponseParameters(
+            return MemoConstructionParameters.construct_standardized_memo(
                 source=self.node_config.node_name,  # indicate which node to send reward from
-                memo=memo,
+                memo_data=evaluation_result['justification'],
+                memo_type=generate_custom_id() + "__" +SystemMemoType.INITIATION_REWARD.value,
                 destination=request_tx.account,
                 pft_amount=evaluation_result['reward']
             )
@@ -604,11 +602,10 @@ class HandshakeRequestRule(RequestRule):
         """
 
         params = {
-            # Attempt to retrieve account and destination from top level of tx or tx_json_parsed
             'account': request_tx.account,
             'destination': request_tx.destination,
             'request_time': request_tx.datetime,
-            'response_memo_type': SystemMemoType.HANDSHAKE.value
+            'response_memo_type': f'%{SystemMemoType.HANDSHAKE.value}'
         }
             
         return ResponseQuery(query=query, params=params)
@@ -684,15 +681,10 @@ class HandshakeResponseGenerator(ResponseGenerator):
             # Get the appropriate source name
             source_name = self._get_source_name(evaluation_result['secret_type'])
 
-            # Construct handshake memo
-            memo = self.generic_pft_utilities.construct_handshake_memo(
-                user=evaluation_result['destination'],
-                ecdh_public_key=evaluation_result['ecdh_key']
-            )
-
-            return ResponseParameters(
+            return MemoConstructionParameters.construct_standardized_memo(
                 source=source_name,
-                memo=memo,
+                memo_data=evaluation_result['ecdh_key'],
+                memo_type=generate_custom_id() + "__" + SystemMemoType.HANDSHAKE.value,
                 destination=evaluation_result['destination'],
                 pft_amount=None  # No PFT amount for handshake responses
             )
@@ -739,27 +731,34 @@ class RequestPostFiatRule(RequestRule):
             self,
             request_tx: MemoTransaction,
         ) -> Optional[ResponseQuery]:
-        """Get query information for finding a proposal response."""
+        """Get query information for finding a response to a task request, which is a proposal."""
         query = """
             SELECT * FROM find_transaction_response(
                 request_account := %(account)s,
                 request_destination := %(destination)s,
                 request_time := %(request_time)s,
                 response_memo_type := %(response_memo_type)s,
-                response_memo_data := %(response_memo_data)s,
                 require_after_request := TRUE
             );
         """
+
+        response_memo_type = derive_response_memo_type(
+            request_memo_type=request_tx.memo_type,
+            response_memo_type=TaskType.PROPOSAL.value
+        )
         
         params = {
             'account': request_tx.account,
             'destination': request_tx.destination,
             'request_time': request_tx.datetime,
-            'response_memo_type': request_tx.memo_type,
-            'response_memo_data': regex_to_sql_pattern(PROPOSAL_PATTERN.memo_data)
+            'response_memo_type': response_memo_type
         }
             
         return ResponseQuery(query=query, params=params)
+    
+############################################################################
+########################## TASK PROPOSALS ##################################
+############################################################################
     
 class ProposalRule(ResponseRule):
     """Pure business logic for handling proposals"""
@@ -802,7 +801,7 @@ class ProposalResponseGenerator(ResponseGenerator):
         """Evaluate the proposal request and get response parameters"""
         account_id = request_tx.account
         task_id = request_tx.memo_type
-        user_request = request_tx.memo_data.replace(TaskType.REQUEST_POST_FIAT.value, '').strip()
+        user_request = request_tx.memo_data
         
         # Create single-item task map
         task_key = self.task_generator.create_task_key(account_id, task_id)
@@ -827,43 +826,28 @@ class ProposalResponseGenerator(ResponseGenerator):
     async def construct_response(
             self,
             request_tx: MemoTransaction,
-            evaluation_result: Dict[str, Any]
-        ) -> ResponseParameters:
+            evaluation_result: Dict[str, Any],
+        ) -> MemoConstructionParameters:
         """Construct the proposal response parameters"""
+        try:
+            # Must be a unique memo_type, different from the request memo_type
+            response_memo_type = derive_response_memo_type(
+                request_memo_type=request_tx.memo_type,
+                response_memo_type=TaskType.PROPOSAL.value
+            )
 
-        if LEGACY_MEMO_CONSTRUCTION:
-            try:
-                memo = Memo(
-                    memo_data=evaluation_result['pf_proposal_string'],
-                    memo_format=self.node_config.node_name,
-                    memo_type=request_tx.memo_type
-                )
-
-                return ResponseParameters.construct_legacy_memo(
-                    source=self.node_config.node_name,
-                    destination=request_tx.account,
-                    memo=memo
-                )
-
-            except Exception as e:
-                raise Exception(f"Failed to construct proposal response: {e}")  
-            
-        else:
-            try:
-                # Must be a unique memo_type, different from the request memo_type
-                response_memo_type = derive_response_memo_type(
-                    request_memo_type=request_tx.memo_type,
-                    response_memo_type="PROPOSAL"
-                )
-
-                return ResponseParameters.construct_standardized_memo(
-                    source=self.node_config.node_name,
-                    destination=request_tx.account,
-                    memo_data=evaluation_result['pf_proposal_string'],
-                    memo_type=response_memo_type
-                )
-            except Exception as e:
-                raise Exception(f"Failed to construct proposal response: {e}")
+            return MemoConstructionParameters.construct_standardized_memo(
+                source=self.node_config.node_name,
+                destination=request_tx.account,
+                memo_data=evaluation_result['pf_proposal_string'],
+                memo_type=response_memo_type
+            )
+        except Exception as e:
+            raise Exception(f"Failed to construct proposal response: {e}")
+        
+############################################################################
+#################### TASK ACCEPTANCE AND REFUSAL ###########################
+############################################################################
 
 class AcceptanceRule(StandaloneRule):
     """
@@ -880,9 +864,9 @@ class RefusalRule(StandaloneRule):
     """
     async def validate(self, *args, **kwargs) -> ValidationResult:
         return ValidationResult(valid=True)
-    
+
 ##############################################################################
-########################## INITIAL VERIFICATION ##############################
+############################# TASK COMPLETION ################################
 ##############################################################################
 
 class TaskOutputRule(RequestRule):
@@ -920,27 +904,34 @@ class TaskOutputRule(RequestRule):
             self,
             request_tx: MemoTransaction,
         ) -> Optional[ResponseQuery]:
-        """Get query information for finding a verification prompt response."""
+        """Get query information for finding a response to a task output, which is a verification prompt."""
         query = """
             SELECT * FROM find_transaction_response(
                 request_account := %(account)s,
                 request_destination := %(destination)s,
                 request_time := %(request_time)s,
                 response_memo_type := %(response_memo_type)s,
-                response_memo_data := %(response_memo_data)s,
                 require_after_request := TRUE
             );
         """
-        
+
+        response_memo_type = derive_response_memo_type(
+            request_memo_type=request_tx.memo_type,
+            response_memo_type=TaskType.VERIFICATION_PROMPT.value
+        )
+
         params = {
             'account': request_tx.account,
             'destination': request_tx.destination,
             'request_time': request_tx.datetime,
-            'response_memo_type': request_tx.memo_type,
-            'response_memo_data': regex_to_sql_pattern(VERIFICATION_PROMPT_PATTERN.memo_data)
+            'response_memo_type': response_memo_type
         }
             
         return ResponseQuery(query=query, params=params)
+    
+############################################################################
+########################## VERIFICATION PROMPTS ############################
+############################################################################
     
 class VerificationPromptRule(ResponseRule):
     """Pure business logic for handling verification prompts"""
@@ -956,7 +947,7 @@ class VerificationPromptRule(ResponseRule):
             generic_pft_utilities=dependencies.generic_pft_utilities,
             transaction_repository=dependencies.transaction_repository
         )
-    
+
 class VerificationPromptGenerator(ResponseGenerator):
     """Generates verification prompts for completed tasks"""
     
@@ -975,19 +966,15 @@ class VerificationPromptGenerator(ResponseGenerator):
     async def _get_original_task_description(self, memo_type: str) -> str:
         """Retrieve original proposal from transaction history"""
         query = """
-            SELECT memo_data 
-            FROM decoded_memos 
+            SELECT memo_data
+            FROM transaction_memos 
             WHERE memo_type = %(memo_type)s
             AND transaction_result = 'tesSUCCESS'
-            AND memo_data LIKE %(proposal_pattern)s
             ORDER BY datetime DESC
             LIMIT 1;
         """
-        
-        params = {
-            'memo_type': memo_type,
-            'proposal_pattern': regex_to_sql_pattern(PROPOSAL_PATTERN.memo_data)
-        }
+
+        params = {'memo_type': memo_type}
 
         results = await self.transaction_repository.execute_query(query, params)
         
@@ -1050,34 +1037,28 @@ class VerificationPromptGenerator(ResponseGenerator):
             self,
             request_tx: MemoTransaction,
             evaluation_result: Dict[str, Any]
-        ) -> ResponseParameters:
+        ) -> MemoConstructionParameters:
         """Construct verification prompt response"""
         try:
-            # Format verification prompt
-            verification_string = (
-                TaskType.VERIFICATION_PROMPT.value + 
-                evaluation_result['verification_question']
-            )
-            
-            # Construct memo
-            memo = self.generic_pft_utilities.construct_memo(
-                memo_data=verification_string,
-                memo_format=self.node_config.node_name,
-                memo_type=request_tx.memo_type
+            # Must be a unique memo_type, different from the request memo_type
+            response_memo_type = derive_response_memo_type(
+                request_memo_type=request_tx.memo_type,
+                response_memo_type=TaskType.VERIFICATION_PROMPT.value
             )
 
-            return ResponseParameters(
+            return MemoConstructionParameters.construct_standardized_memo(
                 source=self.node_config.node_name,
-                memo=memo,
-                destination=request_tx.account
+                destination=request_tx.account,
+                memo_data=evaluation_result['verification_question'],
+                memo_type=response_memo_type
             )
 
         except Exception as e:
             raise Exception(f"Failed to construct verification prompt: {e}")
 
-############################################################################
-########################## FINAL VERIFICATION ##############################
-############################################################################
+##############################################################################
+########################## VERIFICATION RESPONSES ############################
+##############################################################################
 
 class VerificationResponseRule(RequestRule):
     """
@@ -1118,28 +1099,35 @@ class VerificationResponseRule(RequestRule):
             self,
             request_tx: MemoTransaction,
         ) -> Optional[ResponseQuery]:
-        """Get query information for finding a verification prompt response."""
+        """Get query information for finding a response to a verification response, which is a reward."""
         query = """
             SELECT * FROM find_transaction_response(
                 request_account := %(account)s,
                 request_destination := %(destination)s,
                 request_time := %(request_time)s,
                 response_memo_type := %(response_memo_type)s,
-                response_memo_data := %(response_memo_data)s,
                 require_after_request := TRUE
             );
         """
+
+        response_memo_type = derive_response_memo_type(
+            request_memo_type=request_tx.memo_type,
+            response_memo_type=TaskType.REWARD.value
+        )
         
         params = {
             'account': request_tx.account,
             'destination': request_tx.destination,
             'request_time': request_tx.datetime,
-            'response_memo_type': request_tx.memo_type,
-            'response_memo_data': regex_to_sql_pattern(REWARD_PATTERN.memo_data)
+            'response_memo_type': response_memo_type
         }
             
         return ResponseQuery(query=query, params=params)
     
+##############################################################################
+################################# REWARDS ####################################
+##############################################################################
+
 class RewardRule(ResponseRule):
     """Pure business logic for handling rewards"""
 
@@ -1161,7 +1149,7 @@ class RewardResponseGenerator(ResponseGenerator):
 
     MIN_REWARD_AMOUNT = 1
     MAX_REWARD_AMOUNT = 1200
-    REWARD_PROCESSING_WINDOW = 35 
+    REWARD_EVALUATION_WINDOW = 35 
     
     def __init__(
             self,
@@ -1194,17 +1182,13 @@ class RewardResponseGenerator(ResponseGenerator):
         # Get original task proposal
         proposal_query = """
             SELECT memo_data 
-            FROM decoded_memos 
+            FROM transaction_memos 
             WHERE memo_type = %(memo_type)s
             AND transaction_result = 'tesSUCCESS'
-            AND memo_data LIKE %(proposal_pattern)s
             ORDER BY datetime DESC
             LIMIT 1;
         """
-        proposal_params = {
-            'memo_type': memo_type,
-            'proposal_pattern': regex_to_sql_pattern(PROPOSAL_PATTERN.memo_data)
-        }
+        proposal_params = {'memo_type': regex_to_sql_pattern(PROPOSAL_PATTERN.memo_type)}
         proposal_results = await self.transaction_repository.execute_query(proposal_query, proposal_params)
         if not proposal_results:
             raise ValueError(f"No original proposal found for memo_type: {memo_type}")
@@ -1213,17 +1197,15 @@ class RewardResponseGenerator(ResponseGenerator):
         # Get verification prompt
         prompt_query = """
             SELECT memo_data 
-            FROM decoded_memos 
+            FROM transaction_memos 
             WHERE memo_type = %(memo_type)s
             AND transaction_result = 'tesSUCCESS'
-            AND memo_data LIKE %(prompt_pattern)s
             AND destination = %(destination)s
             ORDER BY datetime DESC
             LIMIT 1;
         """
         prompt_params = {
-            'memo_type': memo_type,
-            'prompt_pattern': regex_to_sql_pattern(VERIFICATION_PROMPT_PATTERN.memo_data),
+            'memo_type': regex_to_sql_pattern(VERIFICATION_PROMPT_PATTERN.memo_type),
             'destination': request_tx.account
         }
         prompt_results = await self.transaction_repository.execute_query(prompt_query, prompt_params)
@@ -1236,15 +1218,15 @@ class RewardResponseGenerator(ResponseGenerator):
             SELECT memo_data, pft_amount
             FROM transaction_memos 
             WHERE account = $1
+            AND memo_type = $2
             AND transaction_result = 'tesSUCCESS'
-            AND memo_data LIKE $2
             AND datetime >= NOW() - INTERVAL '$3 days'
             ORDER BY datetime DESC;
         """
         rewards_params = [
             request_tx.account,
-            regex_to_sql_pattern(REWARD_PATTERN.memo_data),
-            self.REWARD_PROCESSING_WINDOW
+            regex_to_sql_pattern(REWARD_PATTERN.memo_type),
+            self.REWARD_EVALUATION_WINDOW
         ]
         rewards_results = await self.transaction_repository.execute_query(rewards_query, rewards_params)
         
@@ -1366,35 +1348,31 @@ class RewardResponseGenerator(ResponseGenerator):
             self,
             request_tx: MemoTransaction,
             evaluation_result: Dict[str, Any]
-        ) -> ResponseParameters:
+        ) -> MemoConstructionParameters:
         """Construct reward response parameters"""
         try:
-            reward_string = (
-                TaskType.REWARD.value + 
-                evaluation_result['summary']
-            )
-
-            # Check for flags in the reward string and apply them
-            if 'RED FLAG' in reward_string:
+            # Check for flags in the reward string and apply them against the account
+            if 'RED FLAG' in evaluation_result['summary']:
                 await self.transaction_repository.flag_address(
                     address=request_tx.account,
                     flag_type='RED'
                 )
-            elif 'YELLOW FLAG' in reward_string:
+            elif 'YELLOW FLAG' in evaluation_result['summary']:
                 await self.transaction_repository.flag_address(
                     address=request_tx.account,
                     flag_type='YELLOW'
                 )
 
-            memo = self.generic_pft_utilities.construct_memo(
-                memo_data=reward_string,
-                memo_format=self.node_config.node_name,
-                memo_type=request_tx.memo_type
+            # Must be a unique memo_type, different from the request memo_type
+            response_memo_type = derive_response_memo_type(
+                request_memo_type=request_tx.memo_type,
+                response_memo_type=TaskType.REWARD.value
             )
 
-            return ResponseParameters(
+            return MemoConstructionParameters.construct_standardized_memo(
                 source=self.node_config.node_name,
-                memo=memo,
+                memo_data=evaluation_result['summary'],
+                memo_type=response_memo_type,
                 destination=request_tx.account,
                 pft_amount=evaluation_result['reward_amount']
             )
@@ -1458,16 +1436,23 @@ class ODVRequestRule(RequestRule):
                 request_account := %(account)s,
                 request_destination := %(destination)s,
                 request_time := %(request_time)s,
-                response_memo_type := %(response_memo_type)s,
+                response_memo_type := %(response_memo_type_odv)s,
                 require_after_request := TRUE
-            );
+            )
+            ORDER BY datetime ASC
+            LIMIT 1;
         """
+
+        response_memo_type = derive_response_memo_type(
+            request_memo_type=request_tx.memo_type,
+            response_memo_type=ODV_RESPONSE
+        )
         
         params = {
             'account': request_tx.account,
             'destination': request_tx.destination,
             'request_time': request_tx.datetime,
-            'response_memo_type': f"{request_tx.memo_type}_response"
+            'response_memo_type_odv': response_memo_type
         }
             
         return ResponseQuery(query=query, params=params)
@@ -1575,7 +1560,7 @@ class ODVResponseGenerator(ResponseGenerator):
             self,
             request_tx: MemoTransaction,
             evaluation_result: Dict[str, Any]
-        ) -> ResponseParameters:
+        ) -> MemoConstructionParameters:
         """Construct ODV response parameters"""
         try:
             account = request_tx.account
@@ -1601,17 +1586,19 @@ class ODVResponseGenerator(ResponseGenerator):
                     shared_secret=shared_secret
                 )
 
-            # Construct response memo
-            memo = self.generic_pft_utilities.construct_memo(
-                memo_data=response_memo_data,
-                memo_type=f"{request_tx.memo_type}_response",  # Uses request memo_type + _response
-                memo_format="odv"
+            # Must be a unique memo_type, different from the request memo_type
+            response_memo_type = derive_response_memo_type(
+                request_memo_type=request_tx.memo_type,
+                response_memo_type=ODV_RESPONSE
             )
 
-            return ResponseParameters(
+            return MemoConstructionParameters.construct_standardized_memo(
                 source=self.node_config.remembrancer_name,
-                memo=memo,
-                destination=request_tx.account
+                destination=request_tx.account,
+                memo_data=response_memo_data,
+                memo_type=response_memo_type,
+                should_encrypt=was_encrypted,
+                should_compress=True
             )
 
         except Exception as e:

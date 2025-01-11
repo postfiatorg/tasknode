@@ -25,14 +25,21 @@ from nodetools.protocols.transaction_repository import TransactionRepository
 from nodetools.sql.sql_manager import SQLManager
 from nodetools.utilities.exceptions import *
 from nodetools.container.service_container import ServiceContainer
+from nodetools.models.memo_processor import generate_custom_id
 
 # Tasknode imports
 from tasknode.chatbots.personas.odv import odv_system_prompt
 from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.task_processing.task_creation import NewTaskGeneration
-from tasknode.task_processing.constants import TaskType
 from tasknode.task_processing.constants import INITIATION_RITE_XRP_COST
 from tasknode.task_processing.exceptions import *
+from tasknode.task_processing.core_business_logic import (
+    TASK_REQUEST,
+    ACCEPTANCE,
+    REFUSAL,
+    TASK_COMPLETION,
+    VERIFICATION_RESPONSE
+)
 
 class TaskNodeUtilities:
     _instance = None
@@ -111,13 +118,6 @@ class TaskNodeUtilities:
             raise
         
         return await self.send_google_doc(wallet, google_doc_link, username)
-    
-    def construct_google_doc_context_memo(self, user, google_doc_link):               
-        return self.generic_pft_utilities.construct_memo(
-            memo_format=user, 
-            memo_type=global_constants.SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value, 
-            memo_data=google_doc_link
-        ) 
 
     async def send_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str, username: str) -> dict:
         """Send Google Doc context link to the node.
@@ -131,17 +131,13 @@ class TaskNodeUtilities:
             dict: Transaction status
         """
         try:
-            google_doc_memo = self.construct_google_doc_context_memo(
-                user=username,
-                google_doc_link=google_doc_link
-            )
             logger.debug(f"TaskNodeUtilities.send_google_doc: Sending Google Doc link transaction from {wallet.classic_address} to node {self.node_address}: {google_doc_link}")
             
             try:
                 response = await self.generic_pft_utilities.send_memo(
                     wallet_seed_or_wallet=wallet,
-                    username=username,
-                    memo=google_doc_memo,
+                    memo_data=google_doc_link,
+                    memo_type=generate_custom_id() + "__" + global_constants.SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value,
                     destination=self.node_address,
                     encrypt=True  # Google Doc link is always encrypted
                 )
@@ -174,7 +170,7 @@ class TaskNodeUtilities:
         try: 
             memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address, pft_only=False)
             successful_initiations = memo_history[
-                (memo_history['memo_type'] == global_constants.SystemMemoType.INITIATION_RITE.value) & 
+                (memo_history['memo_type'].str.contains(global_constants.SystemMemoType.INITIATION_RITE.value)) & 
                 (memo_history['transaction_result'] == "tesSUCCESS")
             ]
             return len(successful_initiations) > 0
@@ -200,19 +196,13 @@ class TaskNodeUtilities:
         """
         logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Handling initiation rite for {username} ({wallet.classic_address})")
 
-        initiation_memo = self.generic_pft_utilities.construct_memo(
-            memo_data=initiation_rite, 
-            memo_type=global_constants.SystemMemoType.INITIATION_RITE.value, 
-            memo_format=username
-        )
-        logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Sending initiation rite transaction from {wallet.classic_address} to node {self.node_address}")
-        
         try:
             response = await self.generic_pft_utilities.send_xrp(
                 wallet_seed_or_wallet=wallet,
                 amount=INITIATION_RITE_XRP_COST,
                 destination=self.node_address,
-                memo=initiation_memo,
+                memo_data=initiation_rite,
+                memo_type=generate_custom_id() + "__" + global_constants.SystemMemoType.INITIATION_RITE.value,
                 destination_tag=None
             )
 
@@ -289,27 +279,18 @@ class TaskNodeUtilities:
             dict: Transaction response object containing:
         """
         task_id = self.generic_pft_utilities.generate_custom_id()
-        full_memo_string = TaskType.REQUEST_POST_FIAT.value + user_request
-        memo_type = task_id
-        memo_format = user_name
 
         logger.debug(
             f"PostFiatTaskGenerationSystem.discord__send_postfiat_request: "
             f"User {user_name} ({user_wallet.address}) has requested task {task_id}: {user_request}"
         )
 
-        xmemo_to_send = self.generic_pft_utilities.construct_memo(
-            memo_data=full_memo_string, 
-            memo_type=memo_type,
-            memo_format=memo_format
-        )
-
         try:
             response = await self.generic_pft_utilities.send_memo(
                 wallet_seed_or_wallet=user_wallet,
                 destination=self.node_address,
-                memo=xmemo_to_send,
-                username=user_name
+                memo_data=user_request,
+                memo_type=task_id + "__" + TASK_REQUEST
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -334,22 +315,15 @@ class TaskNodeUtilities:
         Returns:
             str: Transaction result or error message
         """
-        # Initialize wallet 
         logger.debug(f'PostFiatTaskGenerationSystem.discord__task_acceptance: Spawning wallet for user {user_name} to accept task {task_id_to_accept}')
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
-
-        acceptance_memo = self.generic_pft_utilities.construct_memo(
-            memo_data=TaskType.ACCEPTANCE.value + acceptance_string, 
-            memo_format=user_name, 
-            memo_type=task_id_to_accept
-        )
         
         try:
             response = await self.generic_pft_utilities.send_memo(
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
-                memo=acceptance_memo,
-                username=user_name
+                memo_data=acceptance_string,
+                memo_type=task_id_to_accept + "__" + ACCEPTANCE
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -360,7 +334,6 @@ class TaskNodeUtilities:
             logger.error(traceback.format_exc())
             return f"Error sending acceptance memo: {e}"
 
-        # Extract transaction info from last response
         transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)
         output_string = transaction_info['clean_string']
 
@@ -378,22 +351,15 @@ class TaskNodeUtilities:
         Returns:
             str: Transaction result or error message
         """
-        # Initialize wallet
         logger.debug(f'PostFiatTaskGenerationSystem.discord__task_refusal: Spawning wallet for user {user_name} to refuse task {task_id_to_refuse}')
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
-
-        refusal_memo= self.generic_pft_utilities.construct_memo(
-            memo_data=TaskType.REFUSAL.value + refusal_string, 
-            memo_format=user_name, 
-            memo_type=task_id_to_refuse
-        )
 
         try:
             response = await self.generic_pft_utilities.send_memo(
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
-                memo=refusal_memo,
-                username=user_name
+                memo_data=refusal_string,
+                memo_type=task_id_to_refuse + "__" + REFUSAL
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -426,20 +392,12 @@ class TaskNodeUtilities:
         logger.debug(f'PostFiatTaskManagement.discord__initial_submission: Spawning wallet for user {user_name} to submit initial completion for task {task_id_to_accept}')
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
 
-        # Format completion memo
-        completion_memo= self.generic_pft_utilities.construct_memo(
-            memo_data=TaskType.TASK_OUTPUT.value + initial_completion_string, 
-            memo_format=user_name, 
-            memo_type=task_id_to_accept
-        )
-
-        # Send completion memo transaction
         try:
             response = await self.generic_pft_utilities.send_memo(
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
-                memo=completion_memo,
-                username=user_name
+                memo_data=initial_completion_string,
+                memo_type=task_id_to_accept + "__" + TASK_COMPLETION
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -472,20 +430,12 @@ class TaskNodeUtilities:
         logger.debug(f'PostFiatTaskManagement.discord__final_submission: Spawning wallet for user {user_name} to submit final verification for task {task_id_to_submit}')
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
 
-        # Format verification response memo
-        completion_memo = self.generic_pft_utilities.construct_memo(
-            memo_data=TaskType.VERIFICATION_RESPONSE.value + justification_string, 
-            memo_format=user_name, 
-            memo_type=task_id_to_submit
-        )
-
-        # Send verification response memo transaction
         try:
             response = await self.generic_pft_utilities.send_memo(
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
-                memo=completion_memo,
-                username=user_name
+                memo_data=justification_string,
+                memo_type=task_id_to_submit + "__" + VERIFICATION_RESPONSE
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):

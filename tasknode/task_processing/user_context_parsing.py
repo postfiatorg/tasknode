@@ -1,5 +1,6 @@
 import pandas as pd
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
+from tasknode.task_processing.core_business_logic import UNIQUE_ID_PATTERN_V1, TaskType
 import tasknode.task_processing.constants as node_constants
 from nodetools.configuration.constants import SystemMemoType
 from nodetools.configuration.configuration import NodeConfig
@@ -8,22 +9,11 @@ from typing import Optional, Union, TYPE_CHECKING
 from loguru import logger
 import traceback
 import re
-from tasknode.task_processing.constants import TaskType, TASK_PATTERNS
 import requests
-
-if TYPE_CHECKING:
-    from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
 
 class UserTaskParser:
     _instance = None
     _initialized = False
-
-    STATE_COLUMN_MAP = {
-        TaskType.ACCEPTANCE: 'acceptance',
-        TaskType.REFUSAL: 'refusal',
-        TaskType.VERIFICATION_PROMPT: 'verification',
-        TaskType.REWARD: 'reward'
-    }
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -43,36 +33,63 @@ class UserTaskParser:
             self.cred_manager = credential_manager
             self.__class__._initialized = True
 
-    def classify_task_string(self, string: str) -> str:
-        """Classifies a task string using TaskType enum patterns.
+    def classify_task(self, memo_type: str) -> str:
+        """Classifies a memo type string by extracting its suffix and matching against TASK_PATTERNS.
         
         Args:
-            string: The string to classify
+            memo_type: String like "2024-03-20_14:30__TASK_REQUEST" or 
+                      "2024-03-20_14:30__PROPOSAL"
             
         Returns:
-            str: The name of the task type or 'UNKNOWN'
+            str: The matching task type or 'UNKNOWN'
         """
 
-        for task_type, patterns in TASK_PATTERNS.items():
-            if any(pattern in string for pattern in patterns):
-                return task_type.name
-
-        return 'UNKNOWN'
+        try:
+            # Extract unique ID and suffix
+            match = UNIQUE_ID_PATTERN_V1.match(memo_type)
+            if not match:
+                return 'UNKNOWN'
+            
+            # Get the suffix after the unique ID and underscore
+            unique_id_end = match.end()
+            if len(memo_type) <= unique_id_end or memo_type[unique_id_end] != '__':
+                return 'UNKNOWN'
+                
+            suffix = memo_type[unique_id_end + 1:]
+            
+            # Check if suffix matches any TaskType enum value
+            try:
+                task_type = TaskType(suffix)
+                return task_type.value
+            except ValueError:
+                return 'UNKNOWN'
+            
+        except Exception:
+            return 'UNKNOWN'
 
     @staticmethod
     def is_valid_id(memo_type: str) -> bool:
-        """Check if memo_type contains a valid task ID in format YYYY-MM-DD_HH:MM or YYYY-MM-DD_HH:MM__XXXX.
+        """Check if memo_type contains a valid task ID followed by an underscore and suffix.
+        
+        Valid formats:
+        - YYYY-MM-DD_HH:MM_suffix
+        - YYYY-MM-DD_HH:MM__XXXX_suffix
         
         Args:
             memo_type: The memo_type string to check for task ID pattern
             
         Returns:
-            bool: True if the memo_type contains a valid task ID pattern
+            bool: True if the memo_type contains a valid task ID pattern with suffix
         """
         if not memo_type:
             return False
-        task_id_pattern = re.compile(r'(\d{4}-\d{2}-\d{2}_\d{2}:\d{2}(?:__[A-Z0-9]{4})?)')
-        return bool(re.search(task_id_pattern, str(memo_type)))
+        
+        match = UNIQUE_ID_PATTERN_V1.match(memo_type)
+        if not match:
+            return False
+        
+        unique_id_end = match.end()
+        return len(memo_type) > unique_id_end and memo_type[unique_id_end] == '__'
     
     def filter_tasks(self, account_memo_detail_df):
         """Filter account transaction history to only include tasks"""
@@ -88,7 +105,7 @@ class UserTaskParser:
         if simplified_task_frame.empty:
             return pd.DataFrame()
 
-        simplified_task_frame['task_type'] = simplified_task_frame['memo_data'].apply(self.classify_task_string)
+        simplified_task_frame['task_type'] = simplified_task_frame['memo_type'].apply(self.classify_task)
 
         return simplified_task_frame
 
@@ -110,17 +127,15 @@ class UserTaskParser:
 
         # Get proposals
         proposals = task_frame[
-            task_frame['task_type']==TaskType.PROPOSAL.name
+            task_frame['task_id'].str.contains(TaskType.PROPOSAL.value)
         ].groupby('task_id').first()['full_output']
 
         # Get latest state changes
         state_changes = task_frame[
-            (task_frame['task_type'].isin([
-                TaskType.ACCEPTANCE.name,
-                TaskType.REFUSAL.name,
-                TaskType.VERIFICATION_PROMPT.name,
-                TaskType.REWARD.name
-            ]))
+            (task_frame['task_id'].str.contains(TaskType.ACCEPTANCE.value) |
+             task_frame['task_id'].str.contains(TaskType.REFUSAL.value) |
+             task_frame['task_id'].str.contains(TaskType.VERIFICATION_PROMPT.value) |
+             task_frame['task_id'].str.contains(TaskType.REWARD.value))
         ].groupby('task_id').last()[['full_output','task_type', 'datetime']]
 
         # Start with all proposals
@@ -128,10 +143,7 @@ class UserTaskParser:
 
         # For each task id, if there's no state change, it's in PROPOSAL state
         all_task_ids = task_pairs.index
-        task_pairs['state_type'] = pd.Series(
-            TaskType.PROPOSAL.name, 
-            index=all_task_ids
-        )
+        task_pairs['state_type'] = pd.Series(TaskType.PROPOSAL.value, index=all_task_ids)
 
         # Update state types and other fields where we have state changes
         # Only update states for task IDs that exist in both DataFrames
@@ -183,7 +195,7 @@ class UserTaskParser:
         if state_type == TaskType.PROPOSAL:
             # Handle pending proposals
             filtered_proposals = task_pairs[
-                task_pairs['state_type'] == TaskType.PROPOSAL.name
+                task_pairs['state_type'] == TaskType.PROPOSAL.value
             ][['proposal']]
 
             filtered_proposals['proposal'] = filtered_proposals['proposal'].apply(
@@ -194,7 +206,7 @@ class UserTaskParser:
         
         # Filter to requested state
         filtered_proposals = task_pairs[
-            task_pairs['state_type'] == state_type.name
+            task_pairs['state_type'] == state_type.value
         ][['proposal', 'latest_state']].copy()
         
         # Clean up text content

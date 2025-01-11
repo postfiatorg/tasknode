@@ -39,14 +39,18 @@ from nodetools.container.service_container import ServiceContainer
 # tasknode imports
 from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
 from tasknode.task_processing.constants import (
-    TaskType, 
     INITIATION_RITE_XRP_COST, 
-    TASK_PATTERNS,
     DISCORD_SUPER_USER_IDS,
     DEATH_MARCH_COST_PER_CHECKIN
 )
 from tasknode.task_processing.user_context_parsing import UserTaskParser
-from tasknode.task_processing.core_business_logic import TaskManagementRules
+from tasknode.task_processing.core_business_logic import (
+    TaskManagementRules,
+    TASK_REQUEST,
+    PROPOSAL,
+    VERIFICATION_PROMPT,
+    REWARD
+)
 from tasknode.chatbots.personas.odv import odv_system_prompt
 from tasknode.chatbots.odv_sprint_planner import ODVSprintPlannerO1
 from tasknode.chatbots.odv_context_doc_improvement import ODVContextDocImprover
@@ -1203,9 +1207,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 try:
                     response = await self.generic_pft_utilities.send_memo(
                         wallet_seed_or_wallet=wallet,
-                        username="Corbanu",  # This is memo_format
                         destination=self.remembrancer,
-                        memo=full_message,
+                        memo_data=full_message,
                         chunk=True,
                         compress=True,
                         encrypt=encrypt,
@@ -1258,8 +1261,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     reward_tx = await self.generic_pft_utilities.send_memo(
                         wallet_seed_or_wallet=foundation_wallet,
                         destination=wallet.classic_address,
-                        memo=short_reward_message,
-                        username="Corbanu",
+                        memo_data=short_reward_message,
                         chunk=False,
                         compress=False,
                         encrypt=False,
@@ -1383,9 +1385,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 try:
                     send_response = await self.generic_pft_utilities.send_memo(
                         wallet_seed_or_wallet=wallet,
-                        username=user_name,
                         destination=self.remembrancer,
-                        memo=summarized_message,
+                        memo_data=summarized_message,
                         chunk=True,
                         compress=True,
                         encrypt=encrypt,
@@ -1912,9 +1913,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 try:
                     response = await self.generic_pft_utilities.send_memo(
                         wallet_seed_or_wallet=wallet,
-                        username=user_name,
                         destination=self.remembrancer,
-                        memo=message,
+                        memo_data=message,
                         chunk=True,
                         compress=True,
                         encrypt=encrypt
@@ -2394,8 +2394,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                             response = await self.generic_pft_utilities.send_memo(
                                 wallet_seed_or_wallet=user_wallet,
                                 destination=self.node_config.remembrancer_address,
-                                memo=memo_data,
-                                username=str(user_id),
+                                memo_data=memo_data,
                                 chunk=False,
                                 compress=False,
                                 encrypt=False,
@@ -3004,12 +3003,11 @@ My specific question/request is: {user_query}"""
 
         # Get original requests and proposals
         task_requests = all_account_info[
-            all_account_info['memo_data'].apply(lambda x: TaskType.REQUEST_POST_FIAT.value in x)
+            all_account_info['memo_type'].apply(lambda x: TASK_REQUEST in x)
         ].groupby('memo_type').first()['memo_data']
 
-        proposal_patterns = TASK_PATTERNS[TaskType.PROPOSAL]
         task_proposals = all_account_info[
-            all_account_info['memo_data'].apply(lambda x: any(pattern in str(x) for pattern in proposal_patterns))
+            all_account_info['memo_type'].apply(lambda x: PROPOSAL in x)
         ].groupby('memo_type').first()['memo_data']
 
         # Map requests and proposals to rewards
@@ -3068,7 +3066,7 @@ My specific question/request is: {user_query}"""
             reward_str += f"Request: {row['request']}\n"
             reward_str += f"Proposal: {row['proposal']}\n"
             reward_str += f"Reward: {row['directional_pft']} PFT\n"
-            reward_str += f"Response: {row['memo_data'].replace(TaskType.REWARD.value, '')}\n"
+            reward_str += f"Response: {row['memo_data']}\n"
             reward_str += "-" * 50  # Separator
             formatted_rewards.append(reward_str)
         
@@ -3187,7 +3185,7 @@ My specific question/request is: {user_query}"""
         account_name_map = account_modes.groupby('account').first()['memo_format']
         past_month_transactions = all_accounts[all_accounts['datetime']>datetime.now()-datetime.timedelta(30)]
         node_transactions = past_month_transactions[past_month_transactions['account']==self.generic_pft_utilities.node_address].copy()
-        rewards_only=node_transactions[node_transactions['memo_data'].apply(lambda x: TaskType.REWARD.value in str(x))].copy()
+        rewards_only=node_transactions[node_transactions['memo_type'].apply(lambda x: REWARD in x)].copy()
         rewards_only['count']=1
         rewards_only['PFT']=rewards_only['tx_json'].apply(lambda x: x['DeliverMax']['value']).astype(float)
         account_to_yellow_flag__count = rewards_only[rewards_only['memo_data'].apply(lambda x: 'YELLOW FLAG' in x)][['count','destination']].groupby('destination').sum()['count']
