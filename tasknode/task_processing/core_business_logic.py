@@ -398,9 +398,7 @@ class InitiationRiteRule(RequestRule):
             return ValidationResult(valid=False, notes="Destination is not the node address")
         
         if REQUIRE_AUTHORIZATION:
-            is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.account
-            )
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(tx.account)
             if not is_authorized:
                 # logger.debug(f"InitiationRiteRule.validate: Address {tx.account} is not authorized")
                 return ValidationResult(valid=False, notes="Address is not authorized")
@@ -563,9 +561,7 @@ class HandshakeRequestRule(RequestRule):
             return ValidationResult(valid=False, notes="Destination is not in auto-handshake addresses")
         
         if REQUIRE_AUTHORIZATION:
-            is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.account
-            )
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(tx.account)
             if not is_authorized:
                 # logger.debug(f"HandshakeRequestRule.validate: Address {tx.account} is not authorized")
                 return ValidationResult(valid=False, notes="Address is not authorized")
@@ -728,9 +724,7 @@ class RequestPostFiatRule(RequestRule):
             return ValidationResult(valid=False, notes="Destination is not the node address")
         
         if REQUIRE_AUTHORIZATION:
-            is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.account
-            )
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(tx.account)
             if not is_authorized:
                 # logger.debug(f"RequestPostFiatRule.validate: Address {tx.account} is not authorized")
                 return ValidationResult(valid=False, notes="Address is not authorized")
@@ -911,9 +905,7 @@ class TaskOutputRule(RequestRule):
             return ValidationResult(valid=False, notes="Destination is not the node address")
         
         if REQUIRE_AUTHORIZATION:
-            is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.account
-            )
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(tx.account)
             if not is_authorized:
                 # logger.debug(f"TaskOutputRule.validate: Address {tx.account} is not authorized")
                 return ValidationResult(valid=False, notes="Address is not authorized")
@@ -1111,9 +1103,7 @@ class VerificationResponseRule(RequestRule):
             return ValidationResult(valid=False, notes="Destination is not the node address")
         
         if REQUIRE_AUTHORIZATION:
-            is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                tx.account
-            )
+            is_authorized = await dependencies.transaction_repository.is_address_authorized(tx.account)
             if not is_authorized:
                 # logger.debug(f"VerificationResponseRule.validate: Address {tx.account} is not authorized")
                 return ValidationResult(valid=False, notes="Address is not authorized")
@@ -1384,6 +1374,18 @@ class RewardResponseGenerator(ResponseGenerator):
                 evaluation_result['summary']
             )
 
+            # Check for flags in the reward string and apply them
+            if 'RED FLAG' in reward_string:
+                await self.transaction_repository.flag_address(
+                    address=request_tx.account,
+                    flag_type='RED'
+                )
+            elif 'YELLOW FLAG' in reward_string:
+                await self.transaction_repository.flag_address(
+                    address=request_tx.account,
+                    flag_type='YELLOW'
+                )
+
             memo = self.generic_pft_utilities.construct_memo(
                 memo_data=reward_string,
                 memo_format=self.node_config.node_name,
@@ -1399,7 +1401,6 @@ class RewardResponseGenerator(ResponseGenerator):
 
         except Exception as e:
             raise Exception(f"Failed to construct reward response: {e}")
-
 
 ############################################################################
 ################################# ODV ######################################
@@ -1432,9 +1433,7 @@ class ODVRequestRule(RequestRule):
             
             # Check if user is an authorized address associated with an active Discord user
             if REQUIRE_AUTHORIZATION:
-                is_authorized = await dependencies.transaction_repository.is_address_authorized(
-                    tx.account
-                )
+                is_authorized = await dependencies.transaction_repository.is_address_authorized(tx.account)
                 if not is_authorized:
                     # logger.debug(f"ODVRequestRule.validate: Address {tx.account} is not authorized")
                     return ValidationResult(valid=False, notes="Address is not authorized")
