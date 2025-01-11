@@ -42,7 +42,8 @@ from tasknode.task_processing.constants import (
     TaskType, 
     INITIATION_RITE_XRP_COST, 
     TASK_PATTERNS,
-    DISCORD_SUPER_USER_IDS
+    DISCORD_SUPER_USER_IDS,
+    DEATH_MARCH_COST_PER_CHECKIN
 )
 from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.task_processing.core_business_logic import TaskManagementRules
@@ -866,9 +867,9 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 )
                 return
             
-            # Calculate cost based on check-in frequency
+            # Calculate cost per check-in for 
             settings = self.user_deathmarch_settings[user_id]
-            checks_per_day, cost = self._calculate_death_march_costs(settings, days)
+            checks_per_day, cost = self._calculate_death_march_costs(settings, days, DEATH_MARCH_COST_PER_CHECKIN)
             # 5. Check user PFT balance
             try:
                 user_pft_balance = self.generic_pft_utilities.get_pft_balance(user_address)
@@ -884,28 +885,6 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     ephemeral=ephemeral_setting
                 )
                 return
-            # 6. Process payment
-            memo_data = f"DEATH_MARCH Payment: {days} days, {checks_per_day} checks/day"
-            
-            try:
-                response = await self.generic_pft_utilities.send_memo(
-                    wallet_seed_or_wallet=user_wallet,
-                    destination=self.node_config.remembrancer_address,  # Or wherever you want the PFT to go
-                    memo=memo_data,
-                    username=interaction.user.name,
-                    chunk=False,
-                    compress=False,
-                    encrypt=False,
-                    pft_amount=Decimal(cost)
-                )
-                if not self.generic_pft_utilities.verify_transaction_response(response):
-                    raise Exception(f"Failed to send Death March payment: {response.result}")
-
-            except Exception as e:
-                logger.error(f"TaskNodeDiscordBot.pf_death_march_start: Error sending memo: {e}")
-                logger.error(traceback.format_exc())
-                await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
-                return
             
             # 7. Update death march settings
             session_start = datetime.now(timezone.utc)
@@ -915,12 +894,14 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             settings.session_start = session_start
             settings.session_end = session_end
             settings.last_checkin = None
+
             # Create a new task for this user's death march
             task = self.loop.create_task(
                 self.death_march_checker_for_user(user_id),
                 name=f"death_march_{user_id}"
             )
             self.death_march_tasks[user_id] = task
+
             await interaction.followup.send(
                 f"Death March started for {days} day(s).\n"
                 f"• Cost: {cost} PFT ({checks_per_day} check-ins per day)\n"
@@ -928,11 +909,11 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 f"({settings.timezone})\n"
                 f"• Check-in interval: Every {settings.check_interval} minutes\n"
                 f"• Session ends: {session_end} UTC\n\n"
-                "Use /pf_death_march_end to stop it sooner (no refunds).",
+                "Use /pf_death_march_end to stop it at any time.",
                 ephemeral=ephemeral_setting
             )
 
-        @self.tree.command(name="pf_death_march_end", description="End your Death March session early (no refunds).")
+        @self.tree.command(name="pf_death_march_end", description="End your Death March session early.")
         async def pf_death_march_end(interaction: discord.Interaction):
             user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
@@ -2473,6 +2454,22 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         break
 
                     user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+
+                    # Check user has enough PFT for this check-in
+                    try:
+                        user_pft_balance = await self.generic_pft_utilities.fetch_pft_balance(user_wallet.classic_address)
+                        if user_pft_balance < DEATH_MARCH_COST_PER_CHECKIN:
+                            channel = self.get_channel(settings.channel_id)
+                            if channel:
+                                await channel.send(
+                                    f"<@{user_id}> Death March ended due to insufficient PFT balance.\n"
+                                    f"Required: {DEATH_MARCH_COST_PER_CHECKIN} PFT, Available: {user_pft_balance} PFT"
+                                )
+                            break
+                    except Exception as e:
+                        logger.error(f"Failed to check PFT balance: {e}")
+                        continue
+
                     analyzer = await ODVFocusAnalyzer.create(
                         account_address=user_wallet.classic_address,
                         openrouter=self.openrouter_tool,
@@ -2487,11 +2484,31 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         mention_string = f"<@{user_id}>"
                         await channel.send(f"{mention_string} **Death March Check-In**\n{focus_text}")
                         settings.last_checkin = now_utc
+
+                        # Process payment for this check-in
+                        try:
+                            memo_data = f"DEATH_MARCH Check-in Payment"
+                            response = await self.generic_pft_utilities.send_memo(
+                                wallet_seed_or_wallet=user_wallet,
+                                destination=self.node_config.remembrancer_address,
+                                memo=memo_data,
+                                username=str(user_id),
+                                chunk=False,
+                                compress=False,
+                                encrypt=False,
+                                pft_amount=Decimal(DEATH_MARCH_COST_PER_CHECKIN)
+                            )
+                            if not self.generic_pft_utilities.verify_transaction_response(response):
+                                raise Exception(f"Failed to send Death March check-in payment: {response.result}")
+                        except Exception as e:
+                            logger.error(f"Failed to process payment: {e}")
+                            continue
                     else:
                         logger.warning(
                             f"death_march_checker: Channel {settings.channel_id} not found for user_id={user_id}."
                         )
                         break
+
                 except Exception as e:
                     logger.error(
                         f"death_march_checker: Error processing user_id={user_id}: {str(e)}"
@@ -3411,7 +3428,7 @@ My specific question/request is: {user_query}"""
         final_leaderboard.index.name = 'Foundation Node Leaderboard as of '+datetime.now().strftime('%Y-%m-%d')
         return final_leaderboard
     
-    def _calculate_death_march_costs(self, settings: DeathMarchSettings, days: int = 1) -> tuple[int, int]:
+    def _calculate_death_march_costs(self, settings: DeathMarchSettings, days: int, cost_per_checkin: int) -> tuple[int, int]:
         """Calculate death march check-ins and costs.
         
         Args:
@@ -3425,7 +3442,7 @@ My specific question/request is: {user_query}"""
         end_dt = datetime.combine(datetime.today(), settings.end_time)
         daily_duration = (end_dt - start_dt).total_seconds() / 60  # duration in minutes
         checks_per_day = int(daily_duration / settings.check_interval)
-        total_cost = checks_per_day * days * 30  # 30 PFT per check-in
+        total_cost = checks_per_day * days * cost_per_checkin
         
         return checks_per_day, total_cost
 
