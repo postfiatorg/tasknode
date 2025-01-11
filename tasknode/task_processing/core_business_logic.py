@@ -1310,6 +1310,18 @@ class RewardResponseGenerator(ResponseGenerator):
                 evaluation_result['summary']
             )
 
+            # Check for flags in the reward string and apply them
+            if 'RED FLAG' in reward_string:
+                await self.transaction_repository.flag_address(
+                    address=request_tx.account,
+                    flag_type='RED'
+                )
+            elif 'YELLOW FLAG' in reward_string:
+                await self.transaction_repository.flag_address(
+                    address=request_tx.account,
+                    flag_type='YELLOW'
+                )
+
             memo = self.generic_pft_utilities.construct_memo(
                 memo_data=reward_string,
                 memo_format=self.node_config.node_name,
@@ -1325,7 +1337,6 @@ class RewardResponseGenerator(ResponseGenerator):
 
         except Exception as e:
             raise Exception(f"Failed to construct reward response: {e}")
-
 
 ############################################################################
 ################################# ODV ######################################
