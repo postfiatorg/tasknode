@@ -7,13 +7,14 @@ import traceback
 import getpass
 import pytz
 import sys
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union, List
 import signal
 import re
 from decimal import Decimal
 
 # third party imports
 from xrpl.wallet import Wallet
+from xrpl.models import Response
 import discord
 from discord import Object, Interaction, SelectOption, app_commands
 from discord.ui import View, Select, Button
@@ -44,13 +45,8 @@ from tasknode.task_processing.constants import (
     DEATH_MARCH_COST_PER_CHECKIN
 )
 from tasknode.task_processing.user_context_parsing import UserTaskParser
-from tasknode.task_processing.core_business_logic import (
-    TaskManagementRules,
-    TASK_REQUEST,
-    PROPOSAL,
-    VERIFICATION_PROMPT,
-    REWARD
-)
+from tasknode.task_processing.core_business_logic import TaskManagementRules
+from tasknode.task_processing.constants import TaskType
 from tasknode.chatbots.personas.odv import odv_system_prompt
 from tasknode.chatbots.odv_sprint_planner import ODVSprintPlannerO1
 from tasknode.chatbots.odv_context_doc_improvement import ODVContextDocImprover
@@ -225,6 +221,32 @@ class TaskNodeDiscordBot(discord.Client):
             return False
             
         return True
+    
+    async def display_transaction_results(
+            self, 
+            interaction: discord.Interaction, 
+            response: Union[str, Response, List[Response]],
+            prefix: str = '',
+            ephemeral: bool = True,
+            message_edit: Optional[discord.Message] = None,
+            message_char_limit: Optional[int] = None
+        ) -> None:
+        """Send transaction results to the user. Assumes that the response was deferred."""
+
+        async def extract_and_send(interaction, response, ephemeral) -> None:
+            if isinstance(response, str):
+                string_to_send = response
+            else:
+                tx_info = self.generic_pft_utilities.extract_transaction_info(response)
+                string_to_send = f"{prefix} {tx_info['clean_string']}"
+                string_to_send = f"{string_to_send[:message_char_limit]}..." if message_char_limit else string_to_send
+            await self._send_long_message(interaction, string_to_send, ephemeral=ephemeral, message_edit=message_edit)
+
+        if isinstance(response, list):
+            for r in response:
+                await extract_and_send(interaction, r, ephemeral=ephemeral)
+        else:
+            await extract_and_send(interaction, response, ephemeral=ephemeral)
 
     async def setup_hook(self):
         """Sets up the slash commands for the bot and initiates background tasks."""
@@ -236,9 +258,9 @@ class TaskNodeDiscordBot(discord.Client):
             name="DiscordBotTransactionNotifier"
         )
 
-        # # Prevents duplicate commands but also makes launch slow.
-        # self.tree.clear_commands(guild=guild)
-        # await self.tree.sync(guild=guild)
+        # Prevents duplicate commands but also makes launch slow.
+        self.tree.clear_commands(guild=guild)
+        await self.tree.sync(guild=guild)
     
         @self.event
         async def on_guild_available(guild: discord.Guild):
@@ -1224,20 +1246,12 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     logger.error(traceback.format_exc())
                     await message_obj.edit(content=f"An error occurred while sending the Q&A message: {str(e)}")
                     return
-
-                last_response = response[-1] if isinstance(response, list) else response
-                if pft_amount > 0:
-                    transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(
-                        response=last_response
-                    )
-                else:
-                    transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object__standard_xrp(
-                        response=last_response
-                    )
-                clean_string = transaction_info['clean_string']
-
-                await message_obj.edit(
-                    content=f"Q&A message sent to remembrancer successfully. Last chunk details:\n{clean_string}"
+                
+                await self.display_transaction_results(
+                    interaction=interaction,
+                    response=response,
+                    ephemeral=ephemeral_setting,
+                    prefix="Q&A sent to remembrancer:"
                 )
 
                 # Now send the reward from the node to the user
@@ -1277,16 +1291,11 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     await message_obj.edit(content=f"An error occurred while sending the reward: {str(e)}")
                     return
 
-                # Confirm reward sent
-                reward_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(
-                    reward_tx
-                )
-                reward_clean_string = "Reward transaction sent successfully:\n" + reward_info['clean_string']
-
-                await self.send_long_interaction_response(
+                await self.display_transaction_results(
                     interaction=interaction,
-                    message=reward_clean_string,
-                    ephemeral=ephemeral_setting
+                    response=reward_tx,
+                    ephemeral=ephemeral_setting,
+                    prefix="Reward sent to user:"
                 )
 
                 # Clear stored question
@@ -1403,16 +1412,11 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     await message_obj.edit(content=f"An error occurred while sending the summarized Q&A record: {str(e)}")
                     return
 
-                last_response = send_response[-1] if isinstance(send_response, list) else send_response
-                # TODO: Refactor these two methods into a single method
-                if pft_amount > 0:
-                    transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(last_response)
-                else:
-                    transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object__standard_xrp(last_response)
-                clean_string = transaction_info['clean_string']
-
-                await message_obj.edit(
-                    content=f"Summarized Q&A record sent to remembrancer successfully. Last chunk details:\n{clean_string}"
+                await self.display_transaction_results(
+                    interaction=interaction,
+                    response=send_response,
+                    ephemeral=ephemeral_setting,
+                    prefix="Summarized Q&A record sent to remembrancer:"
                 )
 
             except Exception as e:
@@ -1487,12 +1491,12 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     user_wallet=wallet
                 )
                 
-                # Extract transaction information
-                transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response=response)
-                clean_string = transaction_info['clean_string']
-                
-                # Send the response
-                await interaction.followup.send(f"Task Requested with Details: {clean_string}", ephemeral=ephemeral_setting)
+                await self.display_transaction_results(
+                    interaction=interaction,
+                    response=response,
+                    ephemeral=ephemeral_setting,
+                    prefix="Task Requested:"
+                )
             except Exception as e:
                 logger.error(f"TaskNodeDiscordBot.pf_task_slash: Error during task request: {str(e)}")
                 logger.error(traceback.format_exc())
@@ -1931,14 +1935,15 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
                 response = response[-1] if isinstance(response, list) else response
 
-                transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(
-                    response=response
-                )
-                clean_string = transaction_info['clean_string']
-
                 mode = "Encrypted message" if encrypt else "Message"
-                await message_obj.edit(
-                    content=f"Post Fiat Log: {message[:100]}...\n{mode} sent to remembrancer successfully. Last chunk details:\n{clean_string[:100]}..."
+
+                await self.display_transaction_results(
+                    interaction=interaction,
+                    response=response,
+                    ephemeral=ephemeral_setting,
+                    prefix=f"{mode} sent to remembrancer:",
+                    message_obj=message_obj,
+                    message_char_limit=100
                 )
 
             except Exception as e:
@@ -2043,10 +2048,12 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 )
 
         # Sync the commands
-        await self.tree.sync(guild=guild)
+        await self.tree.sync()
+        # await self.tree.sync(guild=guild)
         logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced")
 
-        commands = await self.tree.fetch_commands(guild=guild)
+        commands = await self.tree.fetch_commands()
+        # commands = await self.tree.fetch_commands(guild=guild)
         logger.debug(f"Registered commands: {[cmd.name for cmd in commands]}")
 
     async def _ensure_handshake(
@@ -2190,6 +2197,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         *,
         channel: Optional[discord.abc.GuildChannel] = None,
         message: Optional[discord.Message] = None,
+        message_edit: Optional[discord.Message] = None,
         interaction: Optional[discord.Interaction] = None,
         code_block: bool = False,
         ephemeral: bool = True,
@@ -2202,6 +2210,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             content: The message content to send
             channel: Discord channel to send to (optional)
             message: Original message to reply to (optional) 
+            message_edit: Message to edit (optional)
             interaction: Discord interaction to respond to (optional)
             code_block: Whether to wrap chunks in code blocks
             ephemeral: Whether interaction responses should be ephemeral
@@ -2229,6 +2238,9 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     # For message replies
                     sent = await message.reply(formatted_chunk, mention_author=mention_author)
                     sent_messages.append(sent)
+                elif message_edit:
+                    # For message edits
+                    await message_edit.edit(content=formatted_chunk)
                 else:
                     raise ValueError("Must provide either channel, message, or interaction")
                     
@@ -3003,11 +3015,11 @@ My specific question/request is: {user_query}"""
 
         # Get original requests and proposals
         task_requests = all_account_info[
-            all_account_info['memo_type'].apply(lambda x: TASK_REQUEST in x)
+            all_account_info['memo_type'].apply(lambda x: TaskType.TASK_REQUEST.value in x)
         ].groupby('memo_type').first()['memo_data']
 
         task_proposals = all_account_info[
-            all_account_info['memo_type'].apply(lambda x: PROPOSAL in x)
+            all_account_info['memo_type'].apply(lambda x: TaskType.PROPOSAL.value in x)
         ].groupby('memo_type').first()['memo_data']
 
         # Map requests and proposals to rewards
@@ -3185,7 +3197,7 @@ My specific question/request is: {user_query}"""
         account_name_map = account_modes.groupby('account').first()['memo_format']
         past_month_transactions = all_accounts[all_accounts['datetime']>datetime.now()-datetime.timedelta(30)]
         node_transactions = past_month_transactions[past_month_transactions['account']==self.generic_pft_utilities.node_address].copy()
-        rewards_only=node_transactions[node_transactions['memo_type'].apply(lambda x: REWARD in x)].copy()
+        rewards_only=node_transactions[node_transactions['memo_type'].apply(lambda x: TaskType.REWARD.value in x)].copy()
         rewards_only['count']=1
         rewards_only['PFT']=rewards_only['tx_json'].apply(lambda x: x['DeliverMax']['value']).astype(float)
         account_to_yellow_flag__count = rewards_only[rewards_only['memo_data'].apply(lambda x: 'YELLOW FLAG' in x)][['count','destination']].groupby('destination').sum()['count']

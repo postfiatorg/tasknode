@@ -84,6 +84,7 @@ from tasknode.prompts.rewards_manager import (
     reward_user_prompt
 )
 from tasknode.task_processing.task_creation import NewTaskGeneration
+from tasknode.task_processing.constants import UNIQUE_ID_PATTERN_V1, TaskType
 
 REQUIRE_AUTHORIZATION = False  # Disable for testing only
 BASE_PFT_COST = 1
@@ -91,8 +92,6 @@ BASE_PFT_COST = 1
 ##############################################################################
 ############################ LEGACY MEMO PATTERNS ############################
 ##############################################################################
-
-UNIQUE_ID_PATTERN_V1 = re.compile(r'(\d{4}-\d{2}-\d{2}_\d{2}:\d{2}(?:__[A-Z0-9]{4})?)')
 
 # System memo patterns
 INITIATION_RITE_PATTERN = MemoPattern(
@@ -107,16 +106,6 @@ HANDSHAKE_PATTERN = MemoPattern(
 GOOGLE_DOC_LINK_PATTERN = MemoPattern(
     memo_type=re.compile(f"{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value}")
 )
-
-class TaskType(Enum):
-    TASK_REQUEST = "TASK_REQUEST"
-    PROPOSAL = "PROPOSAL"
-    ACCEPTANCE = "ACCEPTANCE"
-    REFUSAL = "REFUSAL"
-    TASK_COMPLETION = "TASK_COMPLETION"
-    VERIFICATION_PROMPT = "VERIFICATION_PROMPT"
-    VERIFICATION_RESPONSE = "VERIFICATION_RESPONSE"
-    REWARD = "REWARD"
 
 # Request patterns
 REQUEST_POST_FIAT_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.TASK_REQUEST}'))

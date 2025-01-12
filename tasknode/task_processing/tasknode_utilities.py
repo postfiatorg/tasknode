@@ -1,7 +1,7 @@
 # Standard imports
 import datetime
 import pytz
-from typing import Optional
+from typing import Optional, Union, List
 import requests
 import traceback
 
@@ -12,6 +12,7 @@ from matplotlib.dates import DateFormatter
 import matplotlib.ticker as ticker
 from loguru import logger
 import xrpl
+from xrpl.models import Response
 
 # Nodetools imports
 from nodetools.ai.openai import OpenAIRequestTool
@@ -33,13 +34,7 @@ from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.task_processing.task_creation import NewTaskGeneration
 from tasknode.task_processing.constants import INITIATION_RITE_XRP_COST
 from tasknode.task_processing.exceptions import *
-from tasknode.task_processing.core_business_logic import (
-    TASK_REQUEST,
-    ACCEPTANCE,
-    REFUSAL,
-    TASK_COMPLETION,
-    VERIFICATION_RESPONSE
-)
+from tasknode.task_processing.constants import TaskType
 
 class TaskNodeUtilities:
     _instance = None
@@ -220,7 +215,7 @@ class TaskNodeUtilities:
             initiation_rite: str, 
             google_doc_link: str, 
             username: str
-        ) -> str:
+        ):
         """
         Process an initiation rite for a new user. Will raise exceptions if there are any issues.
         Immediately initiates handshake protocol with the node to enable encrypted memo communication.
@@ -290,7 +285,7 @@ class TaskNodeUtilities:
                 wallet_seed_or_wallet=user_wallet,
                 destination=self.node_address,
                 memo_data=user_request,
-                memo_type=task_id + "__" + TASK_REQUEST
+                memo_type=task_id + "__" + TaskType.TASK_REQUEST.value
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -303,7 +298,13 @@ class TaskNodeUtilities:
             logger.error(traceback.format_exc())
             raise
 
-    async def discord__task_acceptance(self, user_seed, user_name, task_id_to_accept, acceptance_string) -> str:
+    async def discord__task_acceptance(
+            self, 
+            user_seed: str, 
+            user_name: str, 
+            task_id_to_accept: str, 
+            acceptance_string: str
+        ) -> Union[str, Response, List[Response]]:
         """Accept a proposed task via Discord.
         
         Args:
@@ -313,7 +314,7 @@ class TaskNodeUtilities:
             acceptance_string (str): Acceptance reason/message
             
         Returns:
-            str: Transaction result or error message
+            Union[str, Response, List[Response]]: Transaction result or error message
         """
         logger.debug(f'PostFiatTaskGenerationSystem.discord__task_acceptance: Spawning wallet for user {user_name} to accept task {task_id_to_accept}')
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
@@ -323,7 +324,7 @@ class TaskNodeUtilities:
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
                 memo_data=acceptance_string,
-                memo_type=task_id_to_accept + "__" + ACCEPTANCE
+                memo_type=task_id_to_accept + "__" + TaskType.ACCEPTANCE.value
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -334,12 +335,15 @@ class TaskNodeUtilities:
             logger.error(traceback.format_exc())
             return f"Error sending acceptance memo: {e}"
 
-        transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)
-        output_string = transaction_info['clean_string']
+        return response
 
-        return output_string
-
-    async def discord__task_refusal(self, user_seed, user_name, task_id_to_refuse, refusal_string) -> str:
+    async def discord__task_refusal(
+            self, 
+            user_seed: str, 
+            user_name: str, 
+            task_id_to_refuse: str, 
+            refusal_string: str
+        ) -> Union[str, Response, List[Response]]:
         """Refuse a proposed task via Discord.
         
         Args:
@@ -349,7 +353,7 @@ class TaskNodeUtilities:
             refusal_string (str): Refusal reason/message
             
         Returns:
-            str: Transaction result or error message
+            Union[str, Response, List[Response]]: Transaction result or error message
         """
         logger.debug(f'PostFiatTaskGenerationSystem.discord__task_refusal: Spawning wallet for user {user_name} to refuse task {task_id_to_refuse}')
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
@@ -359,7 +363,7 @@ class TaskNodeUtilities:
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
                 memo_data=refusal_string,
-                memo_type=task_id_to_refuse + "__" + REFUSAL
+                memo_type=task_id_to_refuse + "__" + TaskType.REFUSAL.value
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -370,13 +374,15 @@ class TaskNodeUtilities:
             logger.error(traceback.format_exc())
             return f"Error sending refusal memo: {e}"
 
-        # Extract transaction info from last response
-        transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)
-        output_string = transaction_info['clean_string']
+        return response
 
-        return output_string
-
-    async def discord__initial_submission(self, user_seed, user_name, task_id_to_accept, initial_completion_string) -> str:
+    async def discord__initial_submission(
+            self, 
+            user_seed: str, 
+            user_name: str, 
+            task_id_to_accept: str, 
+            initial_completion_string: str
+        ) -> Union[str, Response, List[Response]]:
         """Submit initial task completion via Discord interface.
         
         Args:
@@ -386,7 +392,7 @@ class TaskNodeUtilities:
             initial_completion_string (str): User's completion justification/evidence
             
         Returns:
-            str: Transaction result string or error message if submission fails
+            Union[str, Response, List[Response]]: Transaction result or error message if submission fails
         """
         # Initialize user wallet
         logger.debug(f'PostFiatTaskManagement.discord__initial_submission: Spawning wallet for user {user_name} to submit initial completion for task {task_id_to_accept}')
@@ -397,7 +403,7 @@ class TaskNodeUtilities:
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
                 memo_data=initial_completion_string,
-                memo_type=task_id_to_accept + "__" + TASK_COMPLETION
+                memo_type=task_id_to_accept + "__" + TaskType.TASK_COMPLETION.value
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -408,13 +414,15 @@ class TaskNodeUtilities:
             logger.error(traceback.format_exc())
             return f"Error sending completion memo: {e}"
 
-        # Extract and return transaction info from last response
-        transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)
-        output_string = transaction_info['clean_string']
+        return response
 
-        return output_string
-
-    async def discord__final_submission(self, user_seed, user_name, task_id_to_submit, justification_string):
+    async def discord__final_submission(
+            self, 
+            user_seed: str, 
+            user_name: str, 
+            task_id_to_submit: str, 
+            justification_string: str
+        ) -> Union[str, Response, List[Response]]:
         """Submit final verification response for a task via Discord interface.
         
         Args:
@@ -435,7 +443,7 @@ class TaskNodeUtilities:
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
                 memo_data=justification_string,
-                memo_type=task_id_to_submit + "__" + VERIFICATION_RESPONSE
+                memo_type=task_id_to_submit + "__" + TaskType.VERIFICATION_RESPONSE.value
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -446,11 +454,9 @@ class TaskNodeUtilities:
             logger.error(traceback.format_exc())
             return f"Error sending verification memo: {e}"
 
-        # Extract and return transaction info from last response
-        transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)
-        output_string = transaction_info['clean_string']
-
-        return output_string
+        return response
+    
+    # TODO: Rewrite everything below this point
 
     async def generate_coaching_string_for_account(self, account_to_work = 'r3UHe45BzAVB3ENd21X9LeQngr4ofRJo5n'):
         

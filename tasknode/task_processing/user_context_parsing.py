@@ -1,6 +1,6 @@
 import pandas as pd
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
-from tasknode.task_processing.core_business_logic import UNIQUE_ID_PATTERN_V1, TaskType
+from tasknode.task_processing.constants import UNIQUE_ID_PATTERN_V1, TaskType
 import tasknode.task_processing.constants as node_constants
 from nodetools.configuration.constants import SystemMemoType
 from nodetools.configuration.configuration import NodeConfig

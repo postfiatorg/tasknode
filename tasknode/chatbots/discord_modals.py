@@ -167,10 +167,12 @@ class PFTTransactionModal(discord.ui.Modal, title='Send PFT'):
 
     def __init__(
             self, 
+            client: 'TaskNodeDiscordBot',
             wallet: Wallet,
             generic_pft_utilities: GenericPFTUtilities
         ):
         super().__init__(title='Send PFT')
+        self.client = client
         self.wallet = wallet
         self.generic_pft_utilities = generic_pft_utilities
 
@@ -197,11 +199,8 @@ class PFTTransactionModal(discord.ui.Modal, title='Send PFT'):
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
                 raise Exception(f"Failed to send PFT transaction: {response.result}")
-
-            # extract response from last memo
-            tx_info = self.generic_pft_utilities.extract_transaction_info_from_response_object(response)['clean_string']
-
-            await interaction.followup.send(f'Transaction result: {tx_info}', ephemeral=True)
+            
+            await self.client.display_transaction_results(interaction, response)
 
         except Exception as e:
             logger.error(f"PFTTransactionModal.on_submit: Error sending memo: {e}")
@@ -226,10 +225,12 @@ class XRPTransactionModal(discord.ui.Modal, title='XRP Transaction Details'):
 
     def __init__(
             self, 
+            client: 'TaskNodeDiscordBot',
             wallet: Wallet,
             generic_pft_utilities: GenericPFTUtilities
         ):
         super().__init__(title="Send XRP")
+        self.client = client
         self.wallet = wallet
         self.generic_pft_utilities = generic_pft_utilities
 
@@ -276,23 +277,13 @@ class XRPTransactionModal(discord.ui.Modal, title='XRP Transaction Details'):
                 return
 
             # Extract transaction information using the improved function
-            transaction_info = self.generic_pft_utilities.extract_transaction_info_from_response_object__standard_xrp(response)
+            await self.client.display_transaction_results(interaction, response)
             
-            # Create an embed for better formatting
-            embed = discord.Embed(title="XRP Transaction Sent", color=0x00ff00)
-            embed.add_field(name="Details", value=transaction_info['clean_string'], inline=False)
-            
-            # Add additional fields if available
-            if dt:
-                embed.add_field(name="Destination Tag", value=str(dt), inline=False)
-            if 'hash' in transaction_info:
-                embed.add_field(name="Transaction Hash", value=transaction_info['hash'], inline=False)
-            if 'xrpl_explorer_url' in transaction_info:
-                embed.add_field(name="Explorer Link", value=transaction_info['xrpl_explorer_url'], inline=False)
-            
-            await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as e:
+            logger.error(f"XRPTransactionModal.on_submit: Error sending XRP transaction: {e}")
+            logger.error(traceback.format_exc())
             await interaction.followup.send(f"An error occurred: {str(e)}", ephemeral=True)
+            return
 
 class InitiationModal(discord.ui.Modal, title='Initiation Rite'):
 
@@ -503,15 +494,14 @@ class RefusalModal(Modal):
         
         refusal_string = self.refusal_string.value
         
-        output_string = await self.tasknode_utilities.discord__task_refusal(
+        response = await self.tasknode_utilities.discord__task_refusal(
             user_seed=self.seed,
             user_name=self.user_name,
             task_id_to_refuse=self.task_id,
             refusal_string=refusal_string
         )
         
-        # Send a follow-up message with the result
-        await interaction.followup.send(output_string, ephemeral=self.ephemeral_setting)
+        await self.client.display_transaction_results(interaction, response, ephemeral=self.ephemeral_setting)
 
 class CompletionModal(Modal):
     def __init__(
@@ -520,6 +510,7 @@ class CompletionModal(Modal):
             task_text: str, 
             seed: str, 
             user_name: str,
+            client: 'TaskNodeDiscordBot',
             tasknode_utilities: 'TaskNodeUtilities',
             ephemeral_setting: bool = True
         ):
@@ -527,6 +518,7 @@ class CompletionModal(Modal):
         self.task_id = task_id
         self.seed = seed
         self.user_name = user_name
+        self.client = client
         self.tasknode_utilities = tasknode_utilities
         self.ephemeral_setting = ephemeral_setting
         
@@ -552,15 +544,14 @@ class CompletionModal(Modal):
 
         completion_string = self.completion_justification.value
         
-        output_string = await self.tasknode_utilities.discord__initial_submission(
+        response = await self.tasknode_utilities.discord__initial_submission(
             user_seed=self.seed,
             user_name=self.user_name,
             task_id_to_accept=self.task_id,
             initial_completion_string=completion_string
         )
         
-        # Send a follow-up message with the result
-        await interaction.followup.send(output_string, ephemeral=self.ephemeral_setting)
+        await self.client.display_transaction_results(interaction, response, ephemeral=self.ephemeral_setting)
 
 class VerificationModal(Modal):
     def __init__(
@@ -569,6 +560,7 @@ class VerificationModal(Modal):
             task_text: str, 
             seed: str, 
             user_name: str,
+            client: 'TaskNodeDiscordBot',
             tasknode_utilities: 'TaskNodeUtilities',
             ephemeral_setting: bool = True
         ):
@@ -576,6 +568,7 @@ class VerificationModal(Modal):
         self.task_id = task_id
         self.seed = seed
         self.user_name = user_name
+        self.client = client
         self.tasknode_utilities = tasknode_utilities
         self.ephemeral_setting = ephemeral_setting
         
@@ -601,12 +594,11 @@ class VerificationModal(Modal):
         
         justification_string = self.verification_justification.value
         
-        output_string = await self.tasknode_utilities.discord__final_submission(
+        response = await self.tasknode_utilities.discord__final_submission(
             user_seed=self.seed,
             user_name=self.user_name,
             task_id_to_submit=self.task_id,
             justification_string=justification_string
         )
         
-        # Send a follow-up message with the result
-        await interaction.followup.send(output_string, ephemeral=self.ephemeral_setting)
+        await self.client.display_transaction_results(interaction, response, ephemeral=self.ephemeral_setting)
