@@ -2,8 +2,8 @@
 import datetime
 import pytz
 from typing import Optional, Union, List
-import requests
 import traceback
+from decimal import Decimal
 
 # Third party imports
 import pandas as pd
@@ -273,7 +273,7 @@ class TaskNodeUtilities:
         Returns:
             dict: Transaction response object containing:
         """
-        task_id = self.generic_pft_utilities.generate_custom_id()
+        task_id = generate_custom_id()
 
         logger.debug(
             f"PostFiatTaskGenerationSystem.discord__send_postfiat_request: "
@@ -285,7 +285,8 @@ class TaskNodeUtilities:
                 wallet_seed_or_wallet=user_wallet,
                 destination=self.node_address,
                 memo_data=user_request,
-                memo_type=task_id + "__" + TaskType.TASK_REQUEST.value
+                memo_type=task_id + "__" + TaskType.TASK_REQUEST.value,
+                pft_amount=Decimal(1)
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -324,7 +325,8 @@ class TaskNodeUtilities:
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
                 memo_data=acceptance_string,
-                memo_type=task_id_to_accept + "__" + TaskType.ACCEPTANCE.value
+                memo_type=task_id_to_accept + "__" + TaskType.ACCEPTANCE.value,
+                pft_amount=Decimal(1)
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -363,7 +365,8 @@ class TaskNodeUtilities:
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
                 memo_data=refusal_string,
-                memo_type=task_id_to_refuse + "__" + TaskType.REFUSAL.value
+                memo_type=task_id_to_refuse + "__" + TaskType.REFUSAL.value,
+                pft_amount=Decimal(1)
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -403,7 +406,8 @@ class TaskNodeUtilities:
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
                 memo_data=initial_completion_string,
-                memo_type=task_id_to_accept + "__" + TaskType.TASK_COMPLETION.value
+                memo_type=task_id_to_accept + "__" + TaskType.TASK_COMPLETION.value,
+                pft_amount=Decimal(1)
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):
@@ -443,7 +447,8 @@ class TaskNodeUtilities:
                 wallet_seed_or_wallet=wallet,
                 destination=self.node_address,
                 memo_data=justification_string,
-                memo_type=task_id_to_submit + "__" + TaskType.VERIFICATION_RESPONSE.value
+                memo_type=task_id_to_submit + "__" + TaskType.VERIFICATION_RESPONSE.value,
+                pft_amount=Decimal(1)
             )
 
             if not self.generic_pft_utilities.verify_transaction_response(response):

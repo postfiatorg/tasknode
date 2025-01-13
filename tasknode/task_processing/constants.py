@@ -19,9 +19,6 @@ DEATH_MARCH_COST_PER_CHECKIN = 30  # 30 PFT per check-in
 # Super Users
 DISCORD_SUPER_USER_IDS = [402536023483088896, 471510026696261632, 574582345248800778]
 
-# Unique ID pattern for memo types
-UNIQUE_ID_PATTERN_V1 = re.compile(r'(\d{4}-\d{2}-\d{2}_\d{2}:\d{2}(?:__[A-Z0-9]{4})?)')
-
 class TaskType(Enum):
     TASK_REQUEST = "TASK_REQUEST"
     PROPOSAL = "PROPOSAL"

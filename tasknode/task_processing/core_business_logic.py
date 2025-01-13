@@ -72,6 +72,7 @@ from nodetools.models.models import (
     MemoTransaction
 )
 from nodetools.models.memo_processor import generate_custom_id
+from nodetools.configuration.constants import UNIQUE_ID_PATTERN_V1
 
 # Task node imports
 from tasknode.task_processing.user_context_parsing import UserTaskParser
@@ -84,59 +85,63 @@ from tasknode.prompts.rewards_manager import (
     reward_user_prompt
 )
 from tasknode.task_processing.task_creation import NewTaskGeneration
-from tasknode.task_processing.constants import UNIQUE_ID_PATTERN_V1, TaskType
+from tasknode.task_processing.constants import TaskType
 
 REQUIRE_AUTHORIZATION = False  # Disable for testing only
 BASE_PFT_COST = 1
 
 ##############################################################################
-############################ LEGACY MEMO PATTERNS ############################
+############################### MEMO PATTERNS ###############################
 ##############################################################################
 
 # System memo patterns
 INITIATION_RITE_PATTERN = MemoPattern(
-    memo_type=re.compile(f"{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.INITIATION_RITE.value}")
+    memo_type=re.compile(f"^{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.INITIATION_RITE.value}$")
 )
 INITIATION_REWARD_PATTERN = MemoPattern(
-    memo_type=re.compile(f"{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.INITIATION_REWARD.value}")
+    memo_type=re.compile(f"^{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.INITIATION_REWARD.value}$")
 )
 HANDSHAKE_PATTERN = MemoPattern(
-    memo_type=re.compile(f"{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.HANDSHAKE.value}")
+    memo_type=re.compile(f"^{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.HANDSHAKE.value}$")
 )
+HANDSHAKE_RESPONSE_PATTERN = MemoPattern(
+    memo_type=re.compile(f"^{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.HANDSHAKE_RESPONSE.value}$")
+)
+
 GOOGLE_DOC_LINK_PATTERN = MemoPattern(
-    memo_type=re.compile(f"{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value}")
+    memo_type=re.compile(f"^{UNIQUE_ID_PATTERN_V1.pattern}__{SystemMemoType.GOOGLE_DOC_CONTEXT_LINK.value}$")
 )
 
 # Request patterns
-REQUEST_POST_FIAT_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.TASK_REQUEST}'))
+REQUEST_POST_FIAT_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.TASK_REQUEST.value}$'))
 
 # Proposal patterns
-PROPOSAL_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.PROPOSAL}'))
+PROPOSAL_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.PROPOSAL.value}$'))
 
 # Acceptance patterns
-ACCEPTANCE_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.ACCEPTANCE}'))
+ACCEPTANCE_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.ACCEPTANCE.value}$'))
 
 # Refusal patterns
-REFUSAL_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.REFUSAL}'))
+REFUSAL_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.REFUSAL.value}$'))
 
 # Task completion patterns
-TASK_COMPLETION_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.TASK_COMPLETION}'))
+TASK_COMPLETION_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.TASK_COMPLETION.value}$'))
 
 # Verification patterns
-VERIFICATION_PROMPT_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.VERIFICATION_PROMPT}'))
+VERIFICATION_PROMPT_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.VERIFICATION_PROMPT.value}$'))
 
 # Verification response patterns
-VERIFICATION_RESPONSE_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.VERIFICATION_RESPONSE}'))
+VERIFICATION_RESPONSE_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.VERIFICATION_RESPONSE.value}$'))
 
 # Reward patterns
-REWARD_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.REWARD}'))
+REWARD_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.REWARD.value}$'))
 
 # ODV message patterns
 ODV_REQUEST = "ODV_REQUEST"
-ODV_REQUEST_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{ODV_REQUEST}'))
+ODV_REQUEST_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{ODV_REQUEST}$'))
 
 ODV_RESPONSE = "ODV_RESPONSE"
-ODV_RESPONSE_PATTERN = MemoPattern(memo_type=re.compile(f'{UNIQUE_ID_PATTERN_V1.pattern}__{ODV_RESPONSE}'))
+ODV_RESPONSE_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{ODV_RESPONSE}$'))
 
 # Misc Patterns
 CORBANU_REWARD_PATTERN = MemoPattern(
@@ -206,11 +211,11 @@ class TaskManagementRules(BusinessLogicProvider):
             pattern_id="handshake_request",
             memo_pattern=HANDSHAKE_PATTERN,
             transaction_type=InteractionType.REQUEST,
-            valid_responses={HANDSHAKE_PATTERN},
+            valid_responses={HANDSHAKE_RESPONSE_PATTERN},
         )
         graph.add_pattern(
             pattern_id="handshake_response",
-            memo_pattern=HANDSHAKE_PATTERN,
+            memo_pattern=HANDSHAKE_RESPONSE_PATTERN,
             transaction_type=InteractionType.RESPONSE,
         )
 
@@ -332,12 +337,12 @@ def regex_to_sql_pattern(pattern: re.Pattern) -> str:
 
 def derive_response_memo_type(request_memo_type: str, response_memo_type: str) -> str:
     """
-    Derives a unique response memo_type from a request memo_type.
-    Example: "2024-01-15_14:30__ABC1" -> "2024-01-15_14:30__ABC1_PROPOSAL"
+    Derives a response memo_type from a request memo_type.
+    Example: "v1.0.2025-01-13_06:53__QQ74__TASK_REQUEST" -> "v1.0.2025-01-13_06:53__QQ74__PROPOSAL"
     
     Args:
         request_memo_type: Original memo_type from request
-        response_type: Type of response (e.g., "PROPOSAL", "RESULT")
+        response_type: Type of response (e.g., "PROPOSAL", "VERIFICATION_PROMPT")
         
     Returns:
         Unique memo_type for the response
@@ -540,7 +545,7 @@ class HandshakeRequestRule(RequestRule):
         Validate business rules for a handshake request.
         Pattern matching is handled by TransactionGraph.
         Must:
-        1. Be sent an address in the node's auto-handshake addresses
+        1. Be sent to an address in the node's auto-handshake addresses
         2. Be a valid ECDH public key
         3. Be a verified address associated with an active Discord user
         """
@@ -577,7 +582,7 @@ class HandshakeRequestRule(RequestRule):
         The response must be:
         1. Sent to the same account
         2. Sent from the account that received the handshake request
-        3. Have HANDSHAKE memo type
+        3. Have HANDSHAKE_RESPONSE in the memo_type
         4. Successful transaction (handled by find_transaction_response)
         """
         query = """
@@ -594,7 +599,7 @@ class HandshakeRequestRule(RequestRule):
             'account': request_tx.account,
             'destination': request_tx.destination,
             'request_time': request_tx.datetime,
-            'response_memo_type': f'%{SystemMemoType.HANDSHAKE.value}'
+            'response_memo_type': f'%{SystemMemoType.HANDSHAKE_RESPONSE.value}'
         }
             
         return ResponseQuery(query=query, params=params)
@@ -673,7 +678,7 @@ class HandshakeResponseGenerator(ResponseGenerator):
             return MemoConstructionParameters.construct_standardized_memo(
                 source=source_name,
                 memo_data=evaluation_result['ecdh_key'],
-                memo_type=generate_custom_id() + "__" + SystemMemoType.HANDSHAKE.value,
+                memo_type=generate_custom_id() + "__" + SystemMemoType.HANDSHAKE_RESPONSE.value,
                 destination=evaluation_result['destination'],
                 pft_amount=None  # No PFT amount for handshake responses
             )
@@ -1570,7 +1575,7 @@ class ODVResponseGenerator(ResponseGenerator):
                     received_key=counterparty_key,
                     secret_type=SecretType.REMEMBRANCER
                 )
-                response_memo_data = MessageEncryption.prepare_encrypted_message(
+                response_memo_data = MessageEncryption.encrypt_message(
                     message=response_memo_data,
                     shared_secret=shared_secret
                 )

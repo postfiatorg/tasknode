@@ -1,8 +1,8 @@
 import pandas as pd
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
-from tasknode.task_processing.constants import UNIQUE_ID_PATTERN_V1, TaskType
+from tasknode.task_processing.constants import TaskType
 import tasknode.task_processing.constants as node_constants
-from nodetools.configuration.constants import SystemMemoType
+from nodetools.configuration.constants import SystemMemoType, UNIQUE_ID_PATTERN_V1
 from nodetools.configuration.configuration import NodeConfig
 from nodetools.protocols.credentials import CredentialManager
 from typing import Optional, Union, TYPE_CHECKING
@@ -37,8 +37,8 @@ class UserTaskParser:
         """Classifies a memo type string by extracting its suffix and matching against TASK_PATTERNS.
         
         Args:
-            memo_type: String like "2024-03-20_14:30__TASK_REQUEST" or 
-                      "2024-03-20_14:30__PROPOSAL"
+            memo_type: String like "v1.0.2024-03-20_14:30__ABCD__TASK_REQUEST" or 
+                      "v1.0.2024-03-20_14:30__EFGH__PROPOSAL"
             
         Returns:
             str: The matching task type or 'UNKNOWN'

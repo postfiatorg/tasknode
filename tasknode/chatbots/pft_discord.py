@@ -233,18 +233,24 @@ class TaskNodeDiscordBot(discord.Client):
         ) -> None:
         """Send transaction results to the user. Assumes that the response was deferred."""
 
-        async def extract_and_send(interaction, response, ephemeral) -> None:
+        async def extract_and_send(interaction, response, ephemeral, idx: Optional[int] = None) -> None:
             if isinstance(response, str):
                 string_to_send = response
             else:
                 tx_info = self.generic_pft_utilities.extract_transaction_info(response)
-                string_to_send = f"{prefix} {tx_info['clean_string']}"
+                chunk_label = f"Chunk {idx+1}" if idx else ""
+                string_to_send = f"{chunk_label}: {prefix} {tx_info['clean_string']}"
                 string_to_send = f"{string_to_send[:message_char_limit]}..." if message_char_limit else string_to_send
-            await self._send_long_message(interaction, string_to_send, ephemeral=ephemeral, message_edit=message_edit)
+            await self._send_long_message(
+                content=string_to_send, 
+                interaction=interaction, 
+                ephemeral=ephemeral, 
+                message_edit=message_edit
+            )
 
         if isinstance(response, list):
-            for r in response:
-                await extract_and_send(interaction, r, ephemeral=ephemeral)
+            for idx, r in enumerate(response):
+                await extract_and_send(interaction, r, ephemeral=ephemeral, idx=idx)
         else:
             await extract_and_send(interaction, response, ephemeral=ephemeral)
 
@@ -317,7 +323,7 @@ class TaskNodeDiscordBot(discord.Client):
             if not has_seed:
                 return
             
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 f"Your stored seed is: {seed}\n"
                 "This message will be deleted in 30 seconds for security reasons.",
                 ephemeral=True,
@@ -1231,7 +1237,6 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         wallet_seed_or_wallet=wallet,
                         destination=self.remembrancer,
                         memo_data=full_message,
-                        chunk=True,
                         compress=True,
                         encrypt=encrypt,
                         pft_amount=pft_amount,
@@ -1276,7 +1281,6 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         wallet_seed_or_wallet=foundation_wallet,
                         destination=wallet.classic_address,
                         memo_data=short_reward_message,
-                        chunk=False,
                         compress=False,
                         encrypt=False,
                         pft_amount=Decimal(reward_value)
@@ -1396,7 +1400,6 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         wallet_seed_or_wallet=wallet,
                         destination=self.remembrancer,
                         memo_data=summarized_message,
-                        chunk=True,
                         compress=True,
                         encrypt=encrypt,
                         pft_amount=pft_amount,
@@ -1912,14 +1915,13 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     if not handshake_success:
                         return
                     
-                    await message_obj.edit(content=f"Handshake verified. Proceeding to send message {message}...")
+                    await message_obj.edit(content=f"Handshake verified. Proceeding to send message {message[:100]}...")
 
                 try:
                     response = await self.generic_pft_utilities.send_memo(
                         wallet_seed_or_wallet=wallet,
                         destination=self.remembrancer,
                         memo_data=message,
-                        chunk=True,
                         compress=True,
                         encrypt=encrypt
                     )
@@ -1933,8 +1935,6 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     await message_obj.edit(content=f"An error occurred while sending the message: {str(e)}")
                     return
 
-                response = response[-1] if isinstance(response, list) else response
-
                 mode = "Encrypted message" if encrypt else "Message"
 
                 await self.display_transaction_results(
@@ -1942,8 +1942,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     response=response,
                     ephemeral=ephemeral_setting,
                     prefix=f"{mode} sent to remembrancer:",
-                    message_obj=message_obj,
-                    message_char_limit=100
+                    message_edit=message_obj,
+                    message_char_limit=1900
                 )
 
             except Exception as e:
@@ -2407,7 +2407,6 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                                 wallet_seed_or_wallet=user_wallet,
                                 destination=self.node_config.remembrancer_address,
                                 memo_data=memo_data,
-                                chunk=False,
                                 compress=False,
                                 encrypt=False,
                                 pft_amount=Decimal(DEATH_MARCH_COST_PER_CHECKIN)
