@@ -3,9 +3,9 @@ network: testnet
 discord_server_id: 1061800464045310053
 discord_activity_channel_id: 1327048598969516093
 postgres_db: postfiat_db_testnet
-discord_bot_token: {{ discord_bot_token_testnet }}
-task_node_wallet: {{ task_node_wallet_testnet }}
-remembrancer_wallet: {{ remembrancer_wallet_testnet }}
-postgres_password: {{ postgres_password_testnet }}
-postgres_master_password: {{ postgres_master_password_testnet }}
-encryption_password: {{ encryption_password_testnet }}
+discord_bot_token: "{{ discord_bot_token_testnet }}"
+task_node_wallet: "{{ task_node_wallet_testnet }}"
+remembrancer_wallet: "{{ remembrancer_wallet_testnet }}"
+postgres_password: "{{ postgres_password_testnet }}"
+postgres_master_password: "{{ postgres_master_password_testnet }}"
+encryption_password: "{{ encryption_password_testnet }}"

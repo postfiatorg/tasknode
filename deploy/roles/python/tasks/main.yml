@@ -33,8 +33,13 @@
     group: "{{ app_group }}"
     mode: '0755'
 
+- name: Remove existing Python virtual environment
+  file:
+    path: "{{ app_dir }}/venv"
+    state: absent
+  become_user: "{{ app_user }}"
+
 - name: Create Python virtual environment
   command:
     cmd: python3 -m venv "{{ app_dir }}/venv"
-    creates: "{{ app_dir }}/venv"
   become_user: "{{ app_user }}"

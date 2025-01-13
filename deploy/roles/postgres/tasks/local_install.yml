@@ -8,14 +8,15 @@
     state: present
 
 - name: Initialize PostgreSQL database
-  command: postgresql-16-setup initdb
+  command: postgresql-setup --initdb
+  become: yes
   args:
     creates: /var/lib/pgsql/16/data/postgresql.conf
 
-- name: Start and enable PostgreSQL service
-  systemd:
-    name: postgresql-16
-    state: started 
+- name: Ensure PostgreSQL is running
+  service:
+    name: postgresql
+    state: started
     enabled: yes
 
 - name: Create PostgreSQL user
@@ -25,6 +26,8 @@
     role_attr_flags: CREATEDB,NOSUPERUSER
   become: yes
   become_user: postgres
+  vars:
+    ansible_python_interpreter: /usr/bin/python
 
 - name: Create PostgreSQL database
   postgresql_db:
@@ -34,3 +37,5 @@
     template: template0
   become: yes
   become_user: postgres
+  vars:
+    ansible_python_interpreter: /usr/bin/python

@@ -3,6 +3,6 @@
   command: "{{ app_dir }}/venv/bin/nodetools init-db --create-db"
   environment:
     AUTO: "1"
-    ENCRYPTION_PASSWORD: {{ encryption_password }}
+    ENCRYPTION_PASSWORD: "{{ encryption_password }}"
   become: yes
   become_user: "{{ app_user }}"
