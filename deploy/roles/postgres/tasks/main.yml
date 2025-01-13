@@ -1,0 +1,20 @@
+---
+- name: Import PostgreSQL installation tasks
+  import_tasks: local_install.yml
+
+- name: Create PostgreSQL user
+  postgresql_user:
+    name: "{{ postgres_user }}"
+    password: "{{ postgres_password }}"
+    role_attr_flags: CREATEDB,NOSUPERUSER
+  become: yes
+  become_user: postgres
+
+- name: Create PostgreSQL database
+  postgresql_db:
+    name: "{{ postgres_db }}"
+    owner: "{{ postgres_user }}"
+    encoding: UTF-8
+    template: template0
+  become: yes
+  become_user: postgres

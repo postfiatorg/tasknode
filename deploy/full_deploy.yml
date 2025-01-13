@@ -1,0 +1,18 @@
+---
+- name: Deploy Task Node
+  hosts: task-node-with-db
+  become: yes
+  vars_files:
+    - group_vars/all/common.yml
+    - "group_vars/all/{{ network }}.yml"
+  
+  pre_tasks:
+    - name: Update dnf cache
+      dnf:
+        update_cache: yes
+
+  roles:
+    - common
+    - python
+    - postgres
+    - tasknode 

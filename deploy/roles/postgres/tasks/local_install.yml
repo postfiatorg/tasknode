@@ -1,0 +1,36 @@
+---
+- name: Install PostgreSQL 16 packages
+  dnf:
+    name:
+      - postgresql16
+      - postgresql16-contrib
+      - postgresql16-server
+    state: present
+
+- name: Initialize PostgreSQL database
+  command: postgresql-16-setup initdb
+  args:
+    creates: /var/lib/pgsql/16/data/postgresql.conf
+
+- name: Start and enable PostgreSQL service
+  systemd:
+    name: postgresql-16
+    state: started 
+    enabled: yes
+
+- name: Create PostgreSQL user
+  postgresql_user:
+    name: "{{ postgres_user }}"
+    password: "{{ postgres_password }}"
+    role_attr_flags: CREATEDB,NOSUPERUSER
+  become: yes
+  become_user: postgres
+
+- name: Create PostgreSQL database
+  postgresql_db:
+    name: "{{ postgres_db }}"
+    owner: "{{ postgres_user }}"
+    encoding: UTF-8
+    template: template0
+  become: yes
+  become_user: postgres
