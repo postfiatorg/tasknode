@@ -84,8 +84,9 @@ from tasknode.prompts.rewards_manager import (
     reward_system_prompt,
     reward_user_prompt
 )
+from tasknode.task_processing.tasknode_utilities import InitiationRitePayload
 from tasknode.task_processing.task_creation import NewTaskGeneration
-from tasknode.task_processing.constants import TaskType
+from tasknode.task_processing.constants import TaskType, MessageType
 
 REQUIRE_AUTHORIZATION = False  # Disable for testing only
 BASE_PFT_COST = 1
@@ -136,12 +137,12 @@ VERIFICATION_RESPONSE_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_P
 # Reward patterns
 REWARD_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{TaskType.REWARD.value}$'))
 
-# ODV message patterns
-ODV_REQUEST = "ODV_REQUEST"
-ODV_REQUEST_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{ODV_REQUEST}$'))
+# Generic message patterns
+GENERIC_MEMO_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{MessageType.MEMO.value}$'))
 
-ODV_RESPONSE = "ODV_RESPONSE"
-ODV_RESPONSE_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{ODV_RESPONSE}$'))
+# ODV message patterns
+ODV_REQUEST_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{MessageType.ODV_REQUEST.value}$'))
+ODV_RESPONSE_PATTERN = MemoPattern(memo_type=re.compile(f'^{UNIQUE_ID_PATTERN_V1.pattern}__{MessageType.ODV_RESPONSE.value}$'))
 
 # Misc Patterns
 CORBANU_REWARD_PATTERN = MemoPattern(
@@ -178,6 +179,7 @@ class TaskManagementRules(BusinessLogicProvider):
             "verification_prompt": VerificationPromptRule(),
             "verification_response": VerificationResponseRule(),
             "reward": RewardRule(),
+            "generic_memo": GenericMemoRule(),
             "odv_request": ODVRequestRule(),
             "odv_response": ODVResponseRule(),
             "corbanu_reward": CorbanuRewardRule()
@@ -286,6 +288,13 @@ class TaskManagementRules(BusinessLogicProvider):
             notify=True
         )
 
+        # Add generic memo patterns to graph
+        graph.add_pattern(
+            pattern_id="generic_memo",
+            memo_pattern=GENERIC_MEMO_PATTERN,
+            transaction_type=InteractionType.STANDALONE
+        )
+
         # Add ODV request patterns to graph
         graph.add_pattern(
             pattern_id="odv_request",
@@ -365,8 +374,16 @@ class InitiationRiteRule(RequestRule):
     """Pure business logic for handling initiation rites"""
 
     @staticmethod
-    def is_valid_initiation_rite(rite_text: str) -> bool:
+    def is_valid_initiation_rite(payload: str) -> bool:
         """Validate if the initiation rite meets basic requirements"""
+
+        try:
+            initiation_rite_payload = InitiationRitePayload.from_json(payload)
+            rite_text = initiation_rite_payload.commitment
+        except Exception as e:
+            logger.error(f"InitiationRiteRule.is_valid_initiation_rite: Error parsing initiation rite payload: {e}")
+            return False
+        
         if not rite_text or not isinstance(rite_text, str):
             return False
         
@@ -474,7 +491,8 @@ class InitiationRewardGenerator(ResponseGenerator):
     
     async def evaluate_request(self, request_tx: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate initiation rite and determine reward"""
-        rite_text = request_tx.memo_data
+        initiation_rite_payload = InitiationRitePayload.from_json(request_tx.memo_data)
+        rite_text = initiation_rite_payload.commitment
         logger.debug(f"InitiationRewardGenerator.evaluate_request: Evaluating initiation rite: {rite_text}")
 
         # Use single chat completion
@@ -1373,6 +1391,18 @@ class RewardResponseGenerator(ResponseGenerator):
 
         except Exception as e:
             raise Exception(f"Failed to construct reward response: {e}")
+        
+############################################################################
+################################# Memos ####################################
+############################################################################
+
+class GenericMemoRule(StandaloneRule):
+    """
+    Pure business logic for handling memos
+    Currently, this rule is a placeholder and does not perform any validation.
+    """
+    async def validate(self, *args, **kwargs) -> ValidationResult:
+        return ValidationResult(valid=True)
 
 ############################################################################
 ################################# ODV ######################################
@@ -1439,7 +1469,7 @@ class ODVRequestRule(RequestRule):
 
         response_memo_type = derive_response_memo_type(
             request_memo_type=request_tx.memo_type,
-            response_memo_type=ODV_RESPONSE
+            response_memo_type=MessageType.ODV_RESPONSE.value
         )
         
         params = {
@@ -1583,7 +1613,7 @@ class ODVResponseGenerator(ResponseGenerator):
             # Must be a unique memo_type, different from the request memo_type
             response_memo_type = derive_response_memo_type(
                 request_memo_type=request_tx.memo_type,
-                response_memo_type=ODV_RESPONSE
+                response_memo_type=MessageType.ODV_RESPONSE.value
             )
 
             return MemoConstructionParameters.construct_standardized_memo(

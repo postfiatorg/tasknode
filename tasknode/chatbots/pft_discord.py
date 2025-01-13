@@ -36,13 +36,15 @@ from nodetools.utilities.generic_pft_utilities import GenericPFTUtilities
 from nodetools.utilities.transaction_repository import TransactionRepository
 from nodetools.performance.monitor import PerformanceMonitor
 from nodetools.container.service_container import ServiceContainer
+from nodetools.models.memo_processor import generate_custom_id
 
 # tasknode imports
 from tasknode.task_processing.tasknode_utilities import TaskNodeUtilities
 from tasknode.task_processing.constants import (
     INITIATION_RITE_XRP_COST, 
     DISCORD_SUPER_USER_IDS,
-    DEATH_MARCH_COST_PER_CHECKIN
+    DEATH_MARCH_COST_PER_CHECKIN,
+    MessageType
 )
 from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.task_processing.core_business_logic import TaskManagementRules
@@ -221,7 +223,7 @@ class TaskNodeDiscordBot(discord.Client):
             return False
             
         return True
-    
+        
     async def display_transaction_results(
             self, 
             interaction: discord.Interaction, 
@@ -238,8 +240,8 @@ class TaskNodeDiscordBot(discord.Client):
                 string_to_send = response
             else:
                 tx_info = self.generic_pft_utilities.extract_transaction_info(response)
-                chunk_label = f"Chunk {idx+1}" if idx else ""
-                string_to_send = f"{chunk_label}: {prefix} {tx_info['clean_string']}"
+                chunk_label = f"Chunk {idx+1}: " if idx else ""
+                string_to_send = f"{chunk_label}{prefix} {tx_info['clean_string']}"
                 string_to_send = f"{string_to_send[:message_char_limit]}..." if message_char_limit else string_to_send
             await self._send_long_message(
                 content=string_to_send, 
@@ -1521,11 +1523,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
-            # Fetch proposal acceptance pairs
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address)
-
             # Get pending proposals
-            pending_tasks = await self.user_task_parser.get_pending_proposals(account=memo_history)
+            pending_tasks = await self.user_task_parser.get_pending_proposals(account=wallet.address)
 
             # Return if proposal acceptance pairs are empty
             if pending_tasks.empty:
@@ -1561,6 +1560,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         task_text=task_text,
                         seed=seed,
                         user_name=interaction.user.name,
+                        client=self,
                         tasknode_utilities=self.tasknode_utilities,
                         ephemeral_setting=ephemeral_setting
                     )
@@ -1604,12 +1604,9 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
             if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
-            
-            # Fetch account history
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet.address)
 
             # Get refuseable proposals
-            refuseable_tasks = await self.user_task_parser.get_refuseable_proposals(account=memo_history)
+            refuseable_tasks = await self.user_task_parser.get_refuseable_proposals(account=wallet.address)
 
             # Return if proposal refusal pairs are empty
             if refuseable_tasks.empty:
@@ -1645,6 +1642,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         task_text=task_text,
                         seed=seed,
                         user_name=interaction.user.name,
+                        client=self,
                         tasknode_utilities=self.tasknode_utilities,
                         ephemeral_setting=ephemeral_setting
                     )
@@ -1689,11 +1687,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
-            # Fetch account history
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address)
-
             # Fetch accepted tasks
-            accepted_tasks = await self.user_task_parser.get_accepted_proposals(account=memo_history)
+            accepted_tasks = await self.user_task_parser.get_accepted_proposals(account=wallet.address)
 
             # Return if no accepted tasks
             if accepted_tasks.empty:
@@ -1729,6 +1724,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         task_text=task_text,
                         seed=seed,
                         user_name=interaction.user.name,
+                        client=self,
                         tasknode_utilities=self.tasknode_utilities,
                         ephemeral_setting=ephemeral_setting
                     )
@@ -1772,11 +1768,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
-            # Fetch account history
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address)
-
             # Fetch verification tasks
-            verification_tasks = await self.user_task_parser.get_verification_proposals(account=memo_history)
+            verification_tasks = await self.user_task_parser.get_verification_proposals(account=wallet.address)
             
             # If there are no tasks in the verification queue, notify the user
             if verification_tasks.empty:
@@ -1813,6 +1806,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         task_text=task_text,
                         seed=seed,
                         user_name=interaction.user.name,
+                        client=self,
                         tasknode_utilities=self.tasknode_utilities,
                         ephemeral_setting=ephemeral_setting
                     )
@@ -1922,6 +1916,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                         wallet_seed_or_wallet=wallet,
                         destination=self.remembrancer,
                         memo_data=message,
+                        memo_type=generate_custom_id() + "__" + MessageType.MEMO.value,
                         compress=True,
                         encrypt=encrypt
                     )
@@ -2312,7 +2307,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         while not self.is_closed():
             try:
                 result = await self.notification_queue.get()
-                message = self.format_notification(result)
+                message = await self.format_notification(result)
                 await channel.send(message)
             except Exception as e:
                 logger.error(f"Error processing notification: {str(e)}")
@@ -2320,13 +2315,17 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             
             await asyncio.sleep(0.5)  # Prevent spam
 
-    def format_notification(self, tx: Dict[str, Any]) -> str:
+    async def format_notification(self, tx: Dict[str, Any]) -> str:
         """Format the reviewing result for Discord"""
         url = self.network_config.explorer_tx_url_mask.format(hash=tx['hash'])
+
+        username = await self.tasknode_utilities.get_username_from_transaction(tx)
         
         return (
             f"Date: {tx['datetime']}\n"
             f"Account: `{tx['account']}`\n"
+            f"Destination: `{tx['destination']}`\n"
+            f"Username: `{username}`\n"
             f"Memo Format: `{tx['memo_format']}`\n"
             f"Memo Type: `{tx['memo_type']}`\n"
             f"Memo Data: `{tx['memo_data']}`\n"
@@ -2749,9 +2748,9 @@ My specific question/request is: {user_query}"""
                 account_info.transaction_count = len(memo_history)
 
                 # Likely username
-                outgoing_memo_format = list(memo_history[memo_history['direction']=='OUTGOING']['memo_format'].mode())
-                if len(outgoing_memo_format) > 0:
-                    account_info.username = outgoing_memo_format[0]
+                initiation_rite_username = await self.tasknode_utilities.get_initiation_rite_username(address)
+                if initiation_rite_username:
+                    account_info.username = initiation_rite_username
                 else:
                     account_info.username = "Unknown"
 
@@ -2774,7 +2773,7 @@ My specific question/request is: {user_query}"""
     def _format_account_info(self, info: AccountInfo) -> str:
         """Format AccountInfo into readable string."""
         output = f"""ACCOUNT INFO for {info.address}
-                    LIKELY ALIAS:     {info.username}
+                    INITIATED USERNAME:     {info.username}
                     XRP BALANCE:      {info.xrp_balance}
                     PFT BALANCE:      {info.pft_balance}
                     NUM PFT MEMO TX:  {info.transaction_count}
@@ -2815,16 +2814,6 @@ My specific question/request is: {user_query}"""
                 
             current_chunk.append(content)
             current_chunk_size += content_size
-
-        def format_task_id(task_id: str) -> tuple[str, str]:
-            """Format task ID and extract date"""
-            try:
-                datetime_str = task_id.split('__')[0]
-                date_obj = datetime.strptime(datetime_str, '%Y-%m-%d_%H:%M')
-                formatted_date = date_obj.strftime('%d %b %Y %H:%M')
-                return task_id, formatted_date
-            except (ValueError, IndexError):
-                return task_id, task_id
         
         # Process input text line by line
         task_data = {}
@@ -2844,15 +2833,11 @@ My specific question/request is: {user_query}"""
             # Process task information
             if line.startswith("Task ID: "):
                 task_id = line.replace("Task ID: ", "").strip()
-                task_data = {"id": task_id}
-                task_id, formatted_date = format_task_id(task_id)
                 add_to_chunks(f"\u001b[1;36m📌 Task {task_id}\u001b[0m")
-                add_to_chunks(f"\u001b[0;37mDate: {formatted_date}\u001b[0m")
                 continue
 
             if line.startswith("Proposal: "):
                 proposal = line.replace("Proposal: ", "").strip()
-                proposal = proposal.replace("PROPOSED PF ___", "").strip()
                 priority_match = re.search(r'\.\. (\d+)$', proposal)
                 if priority_match:
                     priority = priority_match.group(1)
@@ -2947,14 +2932,9 @@ My specific question/request is: {user_query}"""
         This takes in an account address and outputs the current state of its outstanding tasks.
         Returns empty string for accounts with no PFT-related transactions.
         """ 
-        memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=account_address, pft_only=True)
-        if memo_history.empty:
-            return ""
-        
-        memo_history.sort_values('datetime', inplace=True)
-        pending_proposals = await self.user_task_parser.get_pending_proposals(account=memo_history)
-        accepted_proposals = await self.user_task_parser.get_accepted_proposals(account=memo_history)
-        verification_proposals = await self.user_task_parser.get_verification_proposals(account=memo_history)
+        pending_proposals = await self.user_task_parser.get_pending_proposals(account=account_address)
+        accepted_proposals = await self.user_task_parser.get_accepted_proposals(account=account_address)
+        verification_proposals = await self.user_task_parser.get_verification_proposals(account=account_address)
 
         pending_string = self.format_pending_tasks(pending_proposals)
         accepted_string = self.format_accepted_tasks(accepted_proposals)

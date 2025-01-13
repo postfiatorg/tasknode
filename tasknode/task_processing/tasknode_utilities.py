@@ -1,9 +1,11 @@
 # Standard imports
 import datetime
 import pytz
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Dict, Any
 import traceback
 from decimal import Decimal
+from dataclasses import dataclass
+import json
 
 # Third party imports
 import pandas as pd
@@ -22,11 +24,12 @@ import nodetools.configuration.configuration as config
 from nodetools.protocols.credentials import CredentialManager
 from nodetools.protocols.db_manager import DBConnectionManager
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
+from nodetools.protocols.encryption import MessageEncryption
 from nodetools.protocols.transaction_repository import TransactionRepository
 from nodetools.sql.sql_manager import SQLManager
 from nodetools.utilities.exceptions import *
 from nodetools.container.service_container import ServiceContainer
-from nodetools.models.memo_processor import generate_custom_id
+from nodetools.models.memo_processor import generate_custom_id, MemoProcessor
 
 # Tasknode imports
 from tasknode.chatbots.personas.odv import odv_system_prompt
@@ -35,6 +38,27 @@ from tasknode.task_processing.task_creation import NewTaskGeneration
 from tasknode.task_processing.constants import INITIATION_RITE_XRP_COST
 from tasknode.task_processing.exceptions import *
 from tasknode.task_processing.constants import TaskType
+
+@dataclass
+class InitiationRitePayload:
+    """Structured payload for initiation rite memos"""
+    username: str
+    commitment: str
+    version: str = "1.0"
+
+    def to_json(self) -> str:
+        """Convert payload to JSON string"""
+        return json.dumps(self.__dict__)
+
+    @classmethod
+    def from_json(cls, json_str: str) -> 'InitiationRitePayload':
+        """Create payload from JSON string"""
+        try:
+            data = json.loads(json_str)
+            return cls(**data)
+        except Exception as e:
+            logger.error(f"Error parsing initiation rite payload: {e}")
+            raise ValueError("Invalid initiation rite payload format")
 
 class TaskNodeUtilities:
     _instance = None
@@ -64,6 +88,7 @@ class TaskNodeUtilities:
             self.cred_manager = nodetools.dependencies.credential_manager
             self.openrouter_tool = nodetools.dependencies.openrouter
             self.generic_pft_utilities = nodetools.dependencies.generic_pft_utilities
+            self.message_encryption: MessageEncryption = self.generic_pft_utilities.message_encryption
             self.transaction_repository = nodetools.dependencies.transaction_repository
             self.db_connection_manager = nodetools.db_connection_manager
             self.stop_threads = False
@@ -90,14 +115,13 @@ class TaskNodeUtilities:
         if "Status code: 401" in google_doc_text:
             raise GoogleDocIsNotSharedException(google_doc_link)
 
-    async def handle_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str, username: str):
+    async def handle_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str):
         """
         Validate and process Google Doc submission.
         
         Args:
             wallet: XRPL wallet object
             google_doc_link: Link to the Google Doc
-            username: Discord username
             
         Returns:
             dict: Status of Google Doc operation with keys:
@@ -105,22 +129,20 @@ class TaskNodeUtilities:
                 - message (str): Description of what happened
                 - tx_hash (str, optional): Transaction hash if doc was sent
         """
-        logger.debug(f"TaskNodeUtilities.handle_google_doc: Handling google doc for {username} ({wallet.classic_address})")
         try:
             await self.check_if_google_doc_is_valid(google_doc_link)
         except Exception as e:
             logger.error(f"TaskNodeUtilities.handle_google_doc: Error validating Google Doc: {e}")
             raise
         
-        return await self.send_google_doc(wallet, google_doc_link, username)
+        return await self.send_google_doc(wallet, google_doc_link)
 
-    async def send_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str, username: str) -> dict:
+    async def send_google_doc(self, wallet: xrpl.wallet.Wallet, google_doc_link: str) -> dict:
         """Send Google Doc context link to the node.
         
         Args:
             wallet: XRPL wallet object
             google_doc_link: Google Doc URL
-            username: Discord username
             
         Returns:
             dict: Transaction status
@@ -163,15 +185,102 @@ class TaskNodeUtilities:
             Exception: If there is an error checking for the initiation rite
         """        
         try: 
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address, pft_only=False)
-            successful_initiations = memo_history[
-                (memo_history['memo_type'].str.contains(global_constants.SystemMemoType.INITIATION_RITE.value)) & 
-                (memo_history['transaction_result'] == "tesSUCCESS")
-            ]
-            return len(successful_initiations) > 0
+            initiation_rite = await self.get_initiation_rite(wallet_address)
+            return initiation_rite is not None
         except Exception as e:
             logger.error(f"TaskNodeUtilities.has_initiation_rite: Error checking if user {wallet_address} has a successful initiation rite: {e}")
             return False
+        
+    async def get_initiation_rite(self, wallet_address: str) -> Optional[InitiationRitePayload]:
+        """Get the initiation rite payloud for a wallet if it exists.
+
+        Args: 
+            wallet_address: XRPL wallet address
+
+        Returns:
+            Optional[InitiationRitePayload]: Initiation rite payload or None if it does not exist
+        """
+        try:
+            memo_history = await self.generic_pft_utilities.get_account_memo_history(
+                account_address=wallet_address,
+                memo_type_filter='%' + global_constants.SystemMemoType.INITIATION_RITE.value
+            )
+
+            if memo_history.empty or len(memo_history) == 0:
+                return None
+            
+            memo_group = await self.generic_pft_utilities.get_latest_valid_memo_groups(memo_history=memo_history)
+            if not memo_group:
+                return None
+            
+            result = await MemoProcessor.parse_group(
+                group=memo_group,
+                node_config=self.node_config,
+                credential_manager=self.cred_manager,
+                message_encryption=self.message_encryption
+            )
+
+            if not result:
+                return None
+            
+            try:
+                return InitiationRitePayload.from_json(result)
+            except Exception as e:
+                logger.error(f"TaskNodeUtilities.get_initiation_rite: Error parsing initiation rite payload: {e}")
+                return None
+
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.get_initiation_rite: Error getting initiation rite for {wallet_address}: {e}")
+            logger.error(traceback.format_exc())
+            return None
+        
+    async def get_initiation_rite_username(self, wallet_address: str) -> Optional[str]:
+        """Get the username associated with a wallet's initiation rite.
+        
+        Args:
+            wallet_address: XRPL wallet address
+            
+        Returns:
+            Optional[str]: The username if found, None otherwise
+        """
+        try:
+            initiation_rite = await self.get_initiation_rite(wallet_address)
+            return initiation_rite.username if initiation_rite else None
+        except Exception as e:
+            logger.error(f"TaskNodeUtilities.get_initiation_rite_username: Error getting username for {wallet_address}: {e}")
+            return None
+        
+    async def get_username_from_transaction(
+        self,
+        tx: Dict[str, Any]
+    ) -> Optional[str]:
+        """Get username for a transaction participant, checking both account and destination.
+        Determines which address is the user based on node addresses from config.
+        
+        Args:
+            tx: Transaction dictionary containing 'account' and 'destination'
+            
+        Returns:
+            Optional[str]: Username if found, None otherwise
+        """
+        node_addresses = {self.node_config.node_address}
+        if self.node_config.remembrancer_address:
+            node_addresses.add(self.node_config.remembrancer_address)
+            
+        # Determine which address is the user's
+        if tx['account'] in node_addresses:
+            user_address = tx['destination']
+        elif tx['destination'] in node_addresses:
+            user_address = tx['account']
+        else:
+            # If neither address is a node, try both addresses
+            for address in [tx['account'], tx['destination']]:
+                username = await self.get_initiation_rite_username(address)
+                if username:
+                    return username
+            return None
+            
+        return await self.get_initiation_rite_username(user_address)
     
     async def handle_initiation_rite(
             self, 
@@ -192,11 +301,13 @@ class TaskNodeUtilities:
         logger.debug(f"TaskNodeUtilities.handle_initiation_rite: Handling initiation rite for {username} ({wallet.classic_address})")
 
         try:
+            payload = InitiationRitePayload(username=username, commitment=initiation_rite)
+
             response = await self.generic_pft_utilities.send_xrp(
                 wallet_seed_or_wallet=wallet,
                 amount=INITIATION_RITE_XRP_COST,
                 destination=self.node_address,
-                memo_data=initiation_rite,
+                memo_data=payload.to_json(),
                 memo_type=generate_custom_id() + "__" + global_constants.SystemMemoType.INITIATION_RITE.value,
                 destination_tag=None
             )
@@ -243,19 +354,19 @@ class TaskNodeUtilities:
         if not balance_status[0]:
             raise InsufficientXrpBalanceException(wallet.classic_address)
         
-        # Handle Google Doc
-        await self.handle_google_doc(wallet, google_doc_link, username)
-        
         # Handle PFT trustline
         await self.generic_pft_utilities.handle_trust_line(wallet, username)
         
         # Handle initiation rite
         await self.handle_initiation_rite(wallet, initiation_rite, username)
+
+        # Handle Google Doc
+        await self.handle_google_doc(wallet, google_doc_link)
     
-    async def discord__update_google_doc_link(self, user_seed: str, google_doc_link: str, username: str):
+    async def discord__update_google_doc_link(self, user_seed: str, google_doc_link: str):
         """Update the user's Google Doc link."""
         wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=user_seed)
-        return await self.handle_google_doc(wallet, google_doc_link, username)
+        return await self.handle_google_doc(wallet, google_doc_link)
 
     async def discord__send_postfiat_request(self, user_request, user_name, user_wallet: xrpl.wallet.Wallet):
         """Send a PostFiat task request via Discord.

@@ -413,6 +413,7 @@ class AcceptanceModal(Modal):
             task_text: str, 
             seed: str, 
             user_name: str,
+            client: 'TaskNodeDiscordBot',
             tasknode_utilities: 'TaskNodeUtilities',
             ephemeral_setting: bool = True
         ):
@@ -420,6 +421,7 @@ class AcceptanceModal(Modal):
         self.task_id = task_id
         self.seed = seed
         self.user_name = user_name
+        self.client = client
         self.tasknode_utilities = tasknode_utilities
         self.ephemeral_setting = ephemeral_setting
 
@@ -445,15 +447,14 @@ class AcceptanceModal(Modal):
 
         acceptance_string = self.acceptance_string.value
         
-        output_string = await self.tasknode_utilities.discord__task_acceptance(
+        response = await self.tasknode_utilities.discord__task_acceptance(
             user_seed=self.seed,
             user_name=self.user_name,
             task_id_to_accept=self.task_id,
             acceptance_string=acceptance_string
         )
         
-        # Send a follow-up message with the result
-        await interaction.followup.send(output_string, ephemeral=self.ephemeral_setting)
+        await self.client.display_transaction_results(interaction, response, ephemeral=self.ephemeral_setting)
 
 class RefusalModal(Modal):
     def __init__(
@@ -462,6 +463,7 @@ class RefusalModal(Modal):
             task_text: str, 
             seed: str, 
             user_name: str,
+            client: 'TaskNodeDiscordBot',
             tasknode_utilities: 'TaskNodeUtilities',
             ephemeral_setting: bool = True
         ):
@@ -469,6 +471,7 @@ class RefusalModal(Modal):
         self.task_id = task_id
         self.seed = seed
         self.user_name = user_name
+        self.client = client
         self.tasknode_utilities = tasknode_utilities
         self.ephemeral_setting = ephemeral_setting
         
