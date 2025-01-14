@@ -43,13 +43,6 @@ class VerifyAddressModal(discord.ui.Modal, title='Verify XRP Address'):
                     ephemeral=True
                 )
                 return
-            
-            # Check if user has active flags
-            if not await self.client.check_user_flag_status(
-                interaction=interaction,
-                action="verify new addresses"
-            ):
-                return
 
             # Store authorization in database
             await self.client.transaction_repository.authorize_address(
@@ -102,13 +95,6 @@ class WalletInfoModal(discord.ui.Modal, title='New XRP Wallet'):
         logger.debug(f"WalletInfoModal.on_submit: Storing seed for user {interaction.user.name} (ID: {user_id})")
         self.client.user_seeds[user_id] = self.seed.value
 
-        # Check if user has active flags
-        if not await self.client.check_user_flag_status(
-            interaction=interaction,
-            action="create a new wallet"
-        ):
-            return
-
         # Automatically authorize the address
         await self.client.transaction_repository.authorize_address(
             address=self.address.value,
@@ -141,13 +127,6 @@ class SeedModal(discord.ui.Modal, title='Store Your Seed'):
             return
         
         self.client.user_seeds[user_id] = self.seed.value.strip()  # Store the seed
-
-        # Check if user has active flags
-        if not await self.client.check_user_flag_status(
-            interaction=interaction,
-            action="store a new seed"
-        ):
-            return
 
         # Automatically authorize the address
         await self.client.transaction_repository.authorize_address(

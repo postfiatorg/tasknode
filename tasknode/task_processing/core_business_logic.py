@@ -327,23 +327,6 @@ class TaskManagementRules(BusinessLogicProvider):
 ########################## HELPER FUNCTIONS ##############################
 ##########################################################################
 
-def regex_to_sql_pattern(pattern: re.Pattern) -> str:
-    """
-    Convert a regex pattern to SQL LIKE pattern
-    WARNING: This is a very limited version of the regex pattern
-    """
-    pattern_str = pattern.pattern
-    
-    # First remove the optional whitespace pattern completely
-    pattern_str = re.sub(r'\\s\?', '', pattern_str)
-    
-    # Then extract the core content between .* markers
-    if match := re.match(r'\.\*(.*?)\.\*', pattern_str):
-        clean_text = match.group(1).replace('\\', '')
-        return f'%{clean_text}%'
-    
-    return f'%{pattern_str}%'
-
 def derive_response_memo_type(request_memo_type: str, response_memo_type: str) -> str:
     """
     Derives a response memo_type from a request memo_type.
@@ -1195,12 +1178,19 @@ class RewardResponseGenerator(ResponseGenerator):
         proposal_query = """
             SELECT memo_data 
             FROM transaction_memos 
-            WHERE memo_type = %(memo_type)s
+            WHERE memo_type like %(memo_type)s
             AND transaction_result = 'tesSUCCESS'
             ORDER BY datetime DESC
             LIMIT 1;
         """
-        proposal_params = {'memo_type': regex_to_sql_pattern(PROPOSAL_PATTERN.memo_type)}
+
+        proposal_memo_type = derive_response_memo_type(
+            request_memo_type=memo_type,
+            response_memo_type=TaskType.PROPOSAL.value
+        )
+
+        proposal_params = {'memo_type': proposal_memo_type}
+
         proposal_results = await self.transaction_repository.execute_query(proposal_query, proposal_params)
         if not proposal_results:
             raise ValueError(f"No original proposal found for memo_type: {memo_type}")
@@ -1210,14 +1200,20 @@ class RewardResponseGenerator(ResponseGenerator):
         prompt_query = """
             SELECT memo_data 
             FROM transaction_memos 
-            WHERE memo_type = %(memo_type)s
+            WHERE memo_type LIKE %(memo_type)s
             AND transaction_result = 'tesSUCCESS'
             AND destination = %(destination)s
             ORDER BY datetime DESC
             LIMIT 1;
         """
+
+        verification_memo_type = derive_response_memo_type(
+            request_memo_type=memo_type,
+            response_memo_type=TaskType.VERIFICATION_PROMPT.value
+        )
+
         prompt_params = {
-            'memo_type': regex_to_sql_pattern(VERIFICATION_PROMPT_PATTERN.memo_type),
+            'memo_type': verification_memo_type,
             'destination': request_tx.account
         }
         prompt_results = await self.transaction_repository.execute_query(prompt_query, prompt_params)
@@ -1226,20 +1222,23 @@ class RewardResponseGenerator(ResponseGenerator):
         verification_prompt = prompt_results[0]['memo_data']
 
         # Get recent rewards history
-        rewards_query = """
+        rewards_query = f"""
             SELECT memo_data, pft_amount
             FROM transaction_memos 
             WHERE account = $1
             AND memo_type = $2
             AND transaction_result = 'tesSUCCESS'
-            AND datetime >= NOW() - INTERVAL '$3 days'
+            AND datetime >= NOW() - INTERVAL '{self.REWARD_EVALUATION_WINDOW} days'
             ORDER BY datetime DESC;
         """
-        rewards_params = [
-            request_tx.account,
-            regex_to_sql_pattern(REWARD_PATTERN.memo_type),
-            self.REWARD_EVALUATION_WINDOW
-        ]
+
+        reward_memo_type = derive_response_memo_type(
+            request_memo_type=memo_type,
+            response_memo_type=TaskType.REWARD.value
+        )
+
+        rewards_params = [request_tx.account, reward_memo_type]
+        
         rewards_results = await self.transaction_repository.execute_query(rewards_query, rewards_params)
         
         # Format reward history

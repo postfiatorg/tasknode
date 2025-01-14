@@ -260,25 +260,22 @@ class UserTaskParser:
             Indexed by task_id.
         """
         try:
-            # Get all tasks for the account
-            tasks = await self.get_task_state_pairs(account)
-            if not tasks: 
+            # Get all refuseable proposals
+            pending = await self.get_pending_proposals(account)
+            accepted = await self.get_accepted_proposals(account)
+            verification = await self.get_verification_proposals(account)
+            
+            if pending.empty and accepted.empty and verification.empty:
                 return pd.DataFrame()
             
-            # Filter for refuseable states
-            refuseable_states = {TaskType.PROPOSAL, TaskType.ACCEPTANCE, TaskType.VERIFICATION_PROMPT}
-            refuseable_tasks = [task for task in tasks if task.current_state in refuseable_states]
-
-            if not refuseable_tasks:
-                return pd.DataFrame()
+            # Keep only the proposal column from each DataFrame
+            proposals = pd.concat([
+                pending[['proposal']],
+                accepted[['proposal']],
+                verification[['proposal']]
+            ])
             
-            # Create DataFrame with just proposal text
-            df = pd.DataFrame([
-                {'proposal': task.proposal}
-                for task in refuseable_tasks
-            ], index=[task.task_id for task in refuseable_tasks])
-            
-            return df.drop_duplicates()
+            return proposals.drop_duplicates()
 
         except Exception as e:
             logger.error(f"Error getting refusable proposals for {account}: {e}")
@@ -413,7 +410,6 @@ class UserTaskParser:
     async def get_full_user_context_string(
         self,
         account_address: str,
-        memo_history: Optional[pd.DataFrame] = None,
         get_google_doc: bool = True,
         get_historical_memos: bool = True,
         n_memos_in_context: int = MAX_CHUNK_MESSAGES_IN_CONTEXT,
@@ -432,14 +428,11 @@ class UserTaskParser:
             get_historical_memos: Whether to fetch historical memos
             n_task_context_history: Number of historical items to include
         """
-        # Use provided memo_history or fetch if not provided
-        if memo_history is None:
-            memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=account_address)
 
         # Handle proposals section (pending + accepted)
         try:
-            pending_proposals = await self.get_pending_proposals(memo_history)
-            accepted_proposals = await self.get_accepted_proposals(memo_history)
+            pending_proposals = await self.get_pending_proposals(account_address)
+            accepted_proposals = await self.get_accepted_proposals(account_address)
 
             # Combine and limit
             all_proposals = pd.concat([pending_proposals, accepted_proposals]).tail(
@@ -458,7 +451,7 @@ class UserTaskParser:
 
         # Handle refusals
         try:
-            refused_proposals = await self.get_refused_proposals(memo_history)
+            refused_proposals = await self.get_refused_proposals(account_address)
             refused_proposals = refused_proposals.tail(n_refusals_in_context)
             if refused_proposals.empty:
                 refusal_string = "No refused proposals found."
@@ -471,7 +464,7 @@ class UserTaskParser:
             
         # Handle verifications
         try:
-            verification_proposals = await self.get_verification_proposals(memo_history)
+            verification_proposals = await self.get_verification_proposals(account_address)
             verification_proposals = verification_proposals.tail(n_verification_in_context)
             if verification_proposals.empty:
                 verification_string = "No tasks pending verification."
@@ -484,7 +477,7 @@ class UserTaskParser:
 
         # Handle rewards
         try:
-            rewarded_proposals = await self.get_rewarded_proposals(memo_history)
+            rewarded_proposals = await self.get_rewarded_proposals(account_address)
             rewarded_proposals = rewarded_proposals.tail(n_rewards_in_context)
             if rewarded_proposals.empty:
                 reward_string = "No rewarded tasks found."
@@ -524,7 +517,7 @@ These are the proposed and accepted tasks that the user has. This is their
 current work queue
 <<PROPOSED AND ACCEPTED TASKS START HERE>>
 {proposal_string}
-<<PROPOSED AND ACCEPTED TASKS ENDE HERE>>
+<<PROPOSED AND ACCEPTED TASKS END HERE>>
 
 These are the tasks that the user has been proposed and has refused.
 The user has provided a refusal reason with each one. Only their most recent
@@ -579,41 +572,40 @@ The following is the users own comments regarding everything
             state_type: TaskType enum indicating the state to format for
             
         Returns:
-            Formatted string representation with columns:
-                - initial_task_detail: Original proposal
-                - recent_status: State-specific text or status
-                - recent_date: From datetime if available, otherwise from task_id
+            JSON-formatted string containing tasks with their details
         """
         if task_df.empty:
-            return f"No {state_type.name.lower()} tasks found."
-
-        formatted_df = pd.DataFrame(index=task_df.index)
-        formatted_df['initial_task_detail'] = task_df['proposal']
-
-        # Use actual datetime if available, otherwise extract from task_id
-        if 'datetime' in task_df.columns:
-            formatted_df['recent_date'] = task_df['datetime'].dt.strftime('%Y-%m-%d')
-        else:
-            formatted_df['recent_date'] = task_df.index.map(
-                lambda x: x.split('_')[0] if '_' in x else ''
-            )
+            return json.dumps({"tasks": []})
 
         # Map state types to their column names and expected status text
         state_column_map = {
-            TaskType.PROPOSAL: ('acceptance', lambda x: x if pd.notna(x) and str(x).strip() else "Pending response"),
-            TaskType.ACCEPTANCE: ('acceptance', lambda x: x),
-            TaskType.REFUSAL: ('refusal', lambda x: x),
-            TaskType.VERIFICATION_PROMPT: ('verification', lambda x: x),
-            TaskType.REWARD: ('reward', lambda x: x)
+            TaskType.PROPOSAL: ('acceptance', lambda x: "Pending response" if not pd.notna(x) else x),
+            TaskType.ACCEPTANCE: ('acceptance', lambda x: f"Accepted: {x}"),
+            TaskType.REFUSAL: ('refusal', lambda x: f"Refused: {x}"),
+            TaskType.VERIFICATION_PROMPT: ('verification', lambda x: f"User submitted for verification: {x}"),
+            TaskType.REWARD: ('reward', lambda x: f"Rewarded: {x}")
         }
         
         column_name, status_formatter = state_column_map[state_type]
-        if column_name in task_df.columns:
-            formatted_df['recent_status'] = task_df[column_name].apply(status_formatter)
-        else:
-            formatted_df['recent_status'] = "Status not available"
+
+        # Build list of task dictionaries
+        tasks = []
+        for task_id, row in task_df.iterrows():
+            # For proposals without a status column, default to "Pending response"
+            status = (
+                "Pending response" 
+                if state_type == TaskType.PROPOSAL and column_name not in row 
+                else status_formatter(row.get(column_name, None))
+            )
+    
+            task = {
+                "task_id": task_id,
+                "proposal": row['proposal'],
+                "status": status
+            }
+            tasks.append(task)
         
-        return formatted_df[['initial_task_detail', 'recent_status', 'recent_date']].to_string()
+        return json.dumps({"tasks": tasks})
     
     async def get_latest_outgoing_context_doc_link(
             self, 

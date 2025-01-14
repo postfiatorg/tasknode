@@ -302,12 +302,26 @@ class TaskNodeDiscordBot(discord.Client):
 
         @self.tree.command(name="pf_verify", description="Verify an XRP address for use with Post-Fiat features")
         async def pf_verify(interaction: Interaction):
+            # Check if user has active flags
+            if not await self.check_user_flag_status(
+                interaction=interaction,
+                action="verify new addresses"
+            ):
+                return
+
             # Create and send the verification modal
             modal = VerifyAddressModal(client=interaction.client)
             await interaction.response.send_modal(modal)
 
         @self.tree.command(name="pf_new_wallet", description="Generate a new XRP wallet")
         async def pf_new_wallet(interaction: Interaction):
+            # Check if user has active flags
+            if not await self.check_user_flag_status(
+                interaction=interaction,
+                action="create a new wallet"
+            ):
+                return
+
             # Generate the wallet
             new_wallet = Wallet.create()
 
@@ -568,6 +582,13 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
         @self.tree.command(name="pf_store_seed", description="Store a seed")
         async def store_seed(interaction: discord.Interaction):
+            # Check if user has active flags
+            if not await self.check_user_flag_status(
+                interaction=interaction,
+                action="store a new seed"
+            ):
+                return
+
             await interaction.response.send_modal(SeedModal(client=self))
             logger.debug(f"TaskNodeDiscordBot.store_seed: Seed storage command executed by {interaction.user.name}")
 
@@ -1783,7 +1804,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             options = [
                 SelectOption(
                     label=task_id, 
-                    description=str(verification_tasks.loc[task_id, 'verification'])[:100], 
+                    description=str(verification_tasks.loc[task_id, 'verification_prompt'])[:100], 
                     value=task_id
                 )
                 for task_id in verification_tasks.index
@@ -1796,7 +1817,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             async def select_callback(interaction: discord.Interaction):
                 selected_task_id = select.values[0]
                 cached_tasks = self.verification_tasks_cache[user_id]                
-                task_text = str(cached_tasks.loc[selected_task_id, 'verification'])
+                task_text = str(cached_tasks.loc[selected_task_id, 'verification_prompt'])
                 self.verification_tasks_cache.pop(user_id, None)
 
                 # Open the modal to get the verification justification with the task text pre-populated
@@ -2318,9 +2339,31 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
     async def format_notification(self, tx: Dict[str, Any]) -> str:
         """Format the reviewing result for Discord"""
         url = self.network_config.explorer_tx_url_mask.format(hash=tx['hash'])
-
         username = await self.tasknode_utilities.get_username_from_transaction(tx)
+
+        MAX_MESSAGE_LENGTH = 2000
         
+        # Create the base message without memo data
+        base_message = (
+            f"Date: {tx['datetime']}\n"
+            f"Account: `{tx['account']}`\n"
+            f"Destination: `{tx['destination']}`\n"
+            f"Username: `{username}`\n"
+            f"Memo Format: `{tx['memo_format']}`\n"
+            f"Memo Type: `{tx['memo_type']}`\n"
+            f"PFT: {tx.get('pft_amount', 0)}\n"
+            f"URL: {url}"
+        )
+        
+        # Calculate remaining space for memo data (2000 - base message - memo line prefix)
+        memo_prefix = "Memo Data: `"
+        memo_suffix = "`...\n"
+        available_space = MAX_MESSAGE_LENGTH - len(base_message) - len(memo_prefix) - len(memo_suffix)
+        
+        # Truncate memo data only if necessary
+        memo_data = tx['memo_data'][:available_space] if len(tx['memo_data']) > available_space else tx['memo_data']
+        
+        # Insert memo data between base message components
         return (
             f"Date: {tx['datetime']}\n"
             f"Account: `{tx['account']}`\n"
@@ -2328,7 +2371,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             f"Username: `{username}`\n"
             f"Memo Format: `{tx['memo_format']}`\n"
             f"Memo Type: `{tx['memo_type']}`\n"
-            f"Memo Data: `{tx['memo_data']}`\n"
+            f"Memo Data: `{memo_data}`\n"
             f"PFT: {tx.get('pft_amount', 0)}\n"
             f"URL: {url}"
         )
@@ -2923,7 +2966,7 @@ My specific question/request is: {user_query}"""
         for idx, row in verification_proposals_df.iterrows():
             formatted_output += f"Task ID: {idx}\n"
             formatted_output += f"Proposal: {row['proposal']}\n"
-            formatted_output += f"Verification Prompt: {row['verification']}\n"
+            formatted_output += f"Verification Prompt: {row['verification_prompt']}\n"
             formatted_output += "-" * 50 + "\n"
         return formatted_output
     

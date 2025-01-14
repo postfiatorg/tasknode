@@ -909,7 +909,7 @@ _________________________________
     async def output_pft_KPI_graph_for_address(self,user_wallet = 'r3UHe45BzAVB3ENd21X9LeQngr4ofRJo5n'):
         
         memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=user_wallet)
-        full_pft_history= memo_history[memo_history['memo_data'].apply(lambda x: 'REWARD' in x)][['datetime','pft_amount']].set_index('datetime').resample('H').sum()#.rolling(24).mean().plot()
+        full_pft_history= memo_history[memo_history['memo_data'].apply(lambda x: 'REWARD' in x)][['datetime','pft_amount']].set_index('datetime').resample('h').sum()#.rolling(24).mean().plot()
         
         hourly_append = pd.DataFrame(pd.date_range(list(full_pft_history.tail(1).index)[0], datetime.datetime.now(),freq='H'))
         hourly_append.columns=['datetime']
