@@ -37,11 +37,8 @@
     group: "{{ app_group }}"
     mode: '0600'
 
-- name: Run local setup node tasks
+- name: Create node configs (setup-node)
   import_tasks: setup_node.yml
-
-- name: Run local postgres installation tasks
-  import_tasks: init_db.yml
 
 - name: Create systemd service file
   template:

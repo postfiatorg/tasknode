@@ -1,0 +1,7 @@
+---
+- name: Execute database initialization script
+  postgresql_query:
+    db: "{{ postgres_db }}"
+    query: "{{ lookup('template', 'templates/init_db.sql.j2') }}"
+  become: yes
+  become_user: "{{ postgres_master_user }}"

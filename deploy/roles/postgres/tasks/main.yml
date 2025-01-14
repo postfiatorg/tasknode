@@ -1,3 +1,6 @@
 ---
 - name: Import PostgreSQL installation tasks
   import_tasks: local_install.yml
+
+- name: Run local postgres installation tasks
+  import_tasks: init_db.yml
