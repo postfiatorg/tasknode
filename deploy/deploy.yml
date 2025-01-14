@@ -13,6 +13,8 @@
 
   roles:
     - common
-    - python
-    - postgres
+    - role: python
+      when: full_deploy | default(false) | bool
+    - role: postgres
+      when: full_deploy | default(false) | bool
     - tasknode 
