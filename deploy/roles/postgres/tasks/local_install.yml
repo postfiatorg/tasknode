@@ -11,7 +11,20 @@
   command: postgresql-setup --initdb
   become: yes
   args:
-    creates: /var/lib/pgsql/16/data/postgresql.conf
+    creates: /var/lib/pgsql/data/postgresql.conf
+
+- name: Configure pg_hba.conf to allow password authentication
+  copy:
+    dest: /var/lib/pgsql/data/pg_hba.conf
+    content: |
+      # TYPE  DATABASE        USER            ADDRESS                 METHOD
+      local   all            all                                     peer
+      host    all            all             127.0.0.1/32            md5
+      host    all            all             ::1/128                 md5
+    owner: postgres
+    group: postgres
+    mode: '0600'
+  notify: restart postgresql
 
 - name: Ensure PostgreSQL is running
   service:
@@ -19,15 +32,13 @@
     state: started
     enabled: yes
 
-- name: Create PostgreSQL user
+- name: Create postfiat user
   postgresql_user:
     name: "{{ postgres_user }}"
     password: "{{ postgres_password }}"
     role_attr_flags: CREATEDB,NOSUPERUSER
   become: yes
   become_user: postgres
-  vars:
-    ansible_python_interpreter: /usr/bin/python
 
 - name: Create PostgreSQL database
   postgresql_db:
@@ -37,5 +48,3 @@
     template: template0
   become: yes
   become_user: postgres
-  vars:
-    ansible_python_interpreter: /usr/bin/python

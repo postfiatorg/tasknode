@@ -3,43 +3,7 @@
   dnf:
     name:
       - python3.12
-      - python3.12-pip 
+      - python3.12-pip
+      - python3-psycopg2
+      - python3-virtualenv
     state: present
-
-- name: Set Python 3.12 as default alternative
-  alternatives:
-    name: python
-    path: /usr/bin/python3.12
-    link: /usr/bin/python
-
-- name: Set pip 3.12 as default alternative  
-  alternatives:
-    name: pip
-    path: /usr/bin/pip3.12
-    link: /usr/bin/pip
-
-- name: Install psycopg2 and virtualenv via pip
-  pip:
-    name: 
-      - psycopg2-binary
-      - virtualenv
-    executable: /usr/bin/pip3.12
-
-- name: Create project directory
-  file:
-    path: "{{ app_dir }}"
-    state: directory
-    owner: "{{ app_user }}"
-    group: "{{ app_group }}"
-    mode: '0755'
-
-- name: Remove existing Python virtual environment
-  file:
-    path: "{{ app_dir }}/venv"
-    state: absent
-  become_user: "{{ app_user }}"
-
-- name: Create Python virtual environment
-  command:
-    cmd: python3 -m venv "{{ app_dir }}/venv"
-  become_user: "{{ app_user }}"

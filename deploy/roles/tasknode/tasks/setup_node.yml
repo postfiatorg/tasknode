@@ -1,10 +1,10 @@
 ---
 - name: Run nodetools setup-node in auto mode
-  command: "{{ app_dir }}/venv/bin/nodetools setup-node"
+  command: "{{ app_dir }}/.venv/bin/nodetools setup-node"
   environment:
     AUTO: "1"
     NETWORK: "{{ network }}"
-    NODE_NAME: task_node
+    NODE_NAME: tasknode
     PFT_XRP_WALLET: "{{ task_node_wallet }}"
     PG_CONN_STRING: "{{ postgres_conn_string }}"
     OPENROUTER_API_KEY: "{{ openrouter_api_key }}"

@@ -5,6 +5,14 @@
     state: absent
   become: yes
 
+- name: Create project directory
+  file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0755'
+
 - name: Clone TaskNode repository
   git:
     repo: "{{ repo }}"
@@ -12,12 +20,13 @@
     version: "{{ branch }}"
   become_user: "{{ app_user }}"
 
+- name: Create Python virtual environment
+  command:
+    cmd: python3.12 -m venv "{{ app_dir }}/.venv"
+  become_user: "{{ app_user }}"
+
 - name: Install project as package
-  pip:
-    name: "{{ app_dir }}"
-    virtualenv: "{{ app_dir }}/venv"
-    virtualenv_python: python3
-    editable: true
+  command: "{{ app_dir }}/.venv/bin/python -m pip install -e {{ app_dir }}"
   become_user: "{{ app_user }}"
 
 - name: Create environment file
@@ -47,5 +56,7 @@
   systemd:
     name: tasknode
     enabled: yes
-    state: started
+    state: restarted
     daemon_reload: yes
+  tags:
+    - force_restart

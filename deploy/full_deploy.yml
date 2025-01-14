@@ -1,6 +1,6 @@
 ---
 - name: Deploy Task Node
-  hosts: task-node-with-db
+  hosts: task-node-with-db-3
   become: yes
   vars_files:
     - group_vars/all/common.yml
