@@ -303,10 +303,7 @@ class TaskNodeDiscordBot(discord.Client):
         @self.tree.command(name="pf_verify", description="Verify an XRP address for use with Post-Fiat features")
         async def pf_verify(interaction: Interaction):
             # Check if user has active flags
-            if not await self.check_user_flag_status(
-                interaction=interaction,
-                action="verify new addresses"
-            ):
+            if not await self.check_user_flag_status(interaction=interaction, action="verify new addresses"):
                 return
 
             # Create and send the verification modal
@@ -316,10 +313,7 @@ class TaskNodeDiscordBot(discord.Client):
         @self.tree.command(name="pf_new_wallet", description="Generate a new XRP wallet")
         async def pf_new_wallet(interaction: Interaction):
             # Check if user has active flags
-            if not await self.check_user_flag_status(
-                interaction=interaction,
-                action="create a new wallet"
-            ):
+            if not await self.check_user_flag_status(interaction=interaction, action="create a new wallet"):
                 return
 
             # Generate the wallet
@@ -583,10 +577,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         @self.tree.command(name="pf_store_seed", description="Store a seed")
         async def store_seed(interaction: discord.Interaction):
             # Check if user has active flags
-            if not await self.check_user_flag_status(
-                interaction=interaction,
-                action="store a new seed"
-            ):
+            if not await self.check_user_flag_status(interaction=interaction, action="store a new seed"):
                 return
 
             await interaction.response.send_modal(SeedModal(client=self))
@@ -1544,8 +1535,11 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
 
+            if not await self.check_user_flag_status(interaction, action="accept tasks", deferred=True):
+                return
+
             # Get pending proposals
-            pending_tasks = await self.user_task_parser.get_pending_proposals(account=wallet.address)
+            pending_tasks = await self.user_task_parser.get_pending_tasks(account=wallet.address)
 
             # Return if proposal acceptance pairs are empty
             if pending_tasks.empty:
@@ -1625,9 +1619,12 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
             if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
+            
+            if not await self.check_user_flag_status(interaction, action="refuse tasks", deferred=True):
+                return
 
             # Get refuseable proposals
-            refuseable_tasks = await self.user_task_parser.get_refuseable_proposals(account=wallet.address)
+            refuseable_tasks = await self.user_task_parser.get_refuseable_tasks(account=wallet.address)
 
             # Return if proposal refusal pairs are empty
             if refuseable_tasks.empty:
@@ -1707,9 +1704,12 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
             if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
+            
+            if not await self.check_user_flag_status(interaction, action="submit tasks for initial verification", deferred=True):
+                return
 
             # Fetch accepted tasks
-            accepted_tasks = await self.user_task_parser.get_accepted_proposals(account=wallet.address)
+            accepted_tasks = await self.user_task_parser.get_accepted_tasks(account=wallet.address)
 
             # Return if no accepted tasks
             if accepted_tasks.empty:
@@ -1788,9 +1788,12 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
 
             if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
                 return
+            
+            if not await self.check_user_flag_status(interaction, action="submit tasks for final verification", deferred=True):
+                return
 
             # Fetch verification tasks
-            verification_tasks = await self.user_task_parser.get_verification_proposals(account=wallet.address)
+            verification_tasks = await self.user_task_parser.get_verification_tasks(account=wallet.address)
             
             # If there are no tasks in the verification queue, notify the user
             if verification_tasks.empty:
@@ -1872,20 +1875,12 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 return
 
             try:
-                memo_history = await self.generic_pft_utilities.get_account_memo_history(wallet.address)
-                memo_history = memo_history.sort_values('datetime')
 
-                # Return immediately if memo history is empty
-                if memo_history.empty:
-                    await interaction.followup.send("You have no rewards to show.", ephemeral=ephemeral_setting)
-                    return
-
-                reward_summary_map = self.get_reward_data(all_account_info=memo_history)
-                recent_rewards = self.format_reward_summary(reward_summary_map['reward_summaries'].tail(10))
+                recent_rewarded_tasks = await self.user_task_parser.get_rewarded_tasks(account=wallet.address, limit=10)
 
                 await self.send_long_interaction_response(
                     interaction=interaction,
-                    message=recent_rewards,
+                    message=self.format_reward_summary(recent_rewarded_tasks),
                     ephemeral=ephemeral_setting
                 )
 
@@ -2975,9 +2970,9 @@ My specific question/request is: {user_query}"""
         This takes in an account address and outputs the current state of its outstanding tasks.
         Returns empty string for accounts with no PFT-related transactions.
         """ 
-        pending_proposals = await self.user_task_parser.get_pending_proposals(account=account_address)
-        accepted_proposals = await self.user_task_parser.get_accepted_proposals(account=account_address)
-        verification_proposals = await self.user_task_parser.get_verification_proposals(account=account_address)
+        pending_proposals = await self.user_task_parser.get_pending_tasks(account=account_address)
+        accepted_proposals = await self.user_task_parser.get_accepted_tasks(account=account_address)
+        verification_proposals = await self.user_task_parser.get_verification_tasks(account=account_address)
 
         pending_string = self.format_pending_tasks(pending_proposals)
         accepted_string = self.format_accepted_tasks(accepted_proposals)
@@ -3088,24 +3083,37 @@ My specific question/request is: {user_query}"""
         }
 
     @staticmethod
-    def format_reward_summary(reward_summary_df):
-        """
-        Convert reward summary dataframe into a human-readable string.
-        :param reward_summary_df: DataFrame containing reward summary information
-        :return: Formatted string representation of the rewards
-        """
-        formatted_rewards = []
-        for _, row in reward_summary_df.iterrows():
-            reward_str = f"Date: {row['datetime']}\n"
-            reward_str += f"Request: {row['request']}\n"
-            reward_str += f"Proposal: {row['proposal']}\n"
-            reward_str += f"Reward: {row['directional_pft']} PFT\n"
-            reward_str += f"Response: {row['memo_data']}\n"
-            reward_str += "-" * 50  # Separator
-            formatted_rewards.append(reward_str)
+    def format_reward_summary(reward_df: pd.DataFrame) -> str:
+        """Convert reward DataFrame into a human-readable string.
         
-        output_string = "REWARD SUMMARY\n\n" + "\n".join(formatted_rewards)
-        return output_string
+        Expected DataFrame columns:
+        - proposal: The original proposal text
+        - task_request: The initial task request
+        - reward: The reward message
+        - pft_amount: The amount of PFT awarded
+        
+        Args:
+            reward_df: DataFrame from get_rewarded_tasks containing reward information
+            
+        Returns:
+            Formatted string representation of the rewards
+        """
+        if reward_df.empty:
+            return "REWARD SUMMARY\n\nNo rewards found."
+            
+        formatted_rewards = []
+        for task_id, row in reward_df.iterrows():
+            reward_str = [
+                f"Task ID: {task_id}",
+                f"Request: {row['task_request']}",
+                f"Proposal: {row['proposal']}",
+                f"Reward: {row['pft_amount']} PFT",
+                f"Response: {row['reward']}",
+                "─" * 50  # Unicode separator for consistency
+            ]
+            formatted_rewards.append("\n".join(reward_str))
+        
+        return "REWARD SUMMARY\n\n" + "\n\n".join(formatted_rewards)
         
     def get_all_transactions_for_active_wallets(self):
         """Get all transactions for active post fiat wallets (balance <= -2000)"""

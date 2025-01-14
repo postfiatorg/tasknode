@@ -1142,7 +1142,7 @@ class RewardRule(ResponseRule):
 class RewardResponseGenerator(ResponseGenerator):
     """Generates reward responses for completed verifications"""
 
-    MIN_REWARD_AMOUNT = 1
+    MIN_REWARD_AMOUNT = 0
     MAX_REWARD_AMOUNT = 1200
     REWARD_EVALUATION_WINDOW = 35 
     
@@ -1238,7 +1238,7 @@ class RewardResponseGenerator(ResponseGenerator):
         )
 
         rewards_params = [request_tx.account, reward_memo_type]
-        
+
         rewards_results = await self.transaction_repository.execute_query(rewards_query, rewards_params)
         
         # Format reward history

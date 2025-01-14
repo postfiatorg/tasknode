@@ -24,45 +24,126 @@ import json
 import requests
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
 @dataclass
 class Task:
-    """Represents a task and its current state in the task lifecycle."""
+    """Represents a task and its complete lifecycle state.
+    
+    Each field corresponds to a specific TaskType and contains the message content
+    for that state, if it exists. The task progresses through these states in order,
+    though some states may be skipped (e.g., a task might be refused instead of accepted).
+    """
     task_id: str
+    task_request: str
+    request_datetime: datetime
+
     proposal: Optional[str] = None
-    current_state: TaskType = TaskType.PROPOSAL
-    state_message: Optional[str] = None
-    state_datetime: Optional[datetime] = None
+    proposal_datetime: Optional[datetime] = None
+    acceptance: Optional[str] = None
+    acceptance_datetime: Optional[datetime] = None
+    refusal: Optional[str] = None
+    refusal_datetime: Optional[datetime] = None
+    task_completion: Optional[str] = None
+    task_completion_datetime: Optional[datetime] = None
+    verification_prompt: Optional[str] = None
+    verification_prompt_datetime: Optional[datetime] = None
+    verification_response: Optional[str] = None
+    verification_response_datetime: Optional[datetime] = None
+    reward: Optional[str] = None
+    reward_datetime: Optional[datetime] = None
+    pft_amount: Decimal = Decimal(0)
 
+    @property
+    def current_state(self) -> TaskType:
+        """Determine the current state of the task based on which fields are populated"""
+        if self.reward:
+            return TaskType.REWARD
+        if self.verification_response:
+            return TaskType.VERIFICATION_RESPONSE
+        if self.verification_prompt:
+            return TaskType.VERIFICATION_PROMPT
+        if self.task_completion:
+            return TaskType.TASK_COMPLETION
+        if self.refusal:
+            return TaskType.REFUSAL
+        if self.acceptance:
+            return TaskType.ACCEPTANCE
+        if self.proposal:
+            return TaskType.PROPOSAL
+        return TaskType.TASK_REQUEST
+    
     @classmethod
-    async def from_memo_groups(cls, proposal_group: MemoGroup, state_groups: Union[MemoGroup, List[MemoGroup]] = None) -> 'Task':
-        """Create a Task from a proposal MemoGroup and optional state change MemoGroups"""
-        # Extract task_id from the proposal group's memo_type
-        task_id = cls.extract_task_id(proposal_group.group_id)
-
-        # Process proposal content
-        proposal = await MemoProcessor.parse_group(proposal_group)
+    async def from_memo_groups(cls, memo_groups: List[MemoGroup]) -> 'Task':
+        """Create a Task from a list of MemoGroups.
         
-        task = cls(task_id=task_id, proposal=proposal)
-
-        # Process state changes if any exist
-        if state_groups:
-
-            if not isinstance(state_groups, list):
-                state_groups = [state_groups]
+        Args:
+            memo_groups: List of MemoGroups related to this task
             
-            # Sort by datetime to get the latest state
-            latest_state = sorted(
-                state_groups,
-                key=lambda g: g.memos[0].datetime,
-                reverse=True
-            )[0]
+        Returns:
+            Task: Constructed task object
+            
+        Raises:
+            ValueError: If no TASK_REQUEST is found in the memo groups
+        """
+        sorted_groups = sorted(memo_groups, key=lambda g: g.memos[0].datetime, reverse=True)
 
-            state_content = await MemoProcessor.parse_group(latest_state)
-            if state_content:
-                task.current_state = TaskType(latest_state.group_id.split('__')[-1])
-                task.state_message = state_content
-                task.state_datetime = latest_state.memos[0].datetime
+        request_group = next(
+            (g for g in sorted_groups if g.group_id.endswith(TaskType.TASK_REQUEST.value)),
+            None
+        )
+        if not request_group:
+            raise ValueError("No TASK_REQUEST found in memo groups")
+        
+        task_id = cls.extract_task_id(request_group.group_id)
+        request = await MemoProcessor.parse_group(request_group)
+        if not request:
+            raise ValueError(f"Could not parse request from group {request_group.group_id}")
+        
+        # Initialize task with required fields
+        task = cls(
+            task_id=task_id,
+            task_request=request,
+            request_datetime=request_group.memos[0].datetime
+        )
+
+        # Process all other groups
+        for group in sorted_groups:
+            if group == request_group:
+                continue
+
+            content = await MemoProcessor.parse_group(group)
+            if not content:
+                continue
+
+            # Get state type from memo_type suffix
+            state_type = TaskType(group.group_id.split('__')[-1])
+            datetime = group.memos[0].datetime
+
+            # Set the appropriate field based on state type
+            match state_type:
+                case TaskType.PROPOSAL:
+                    task.proposal = content
+                    task.proposal_datetime = datetime
+                case TaskType.ACCEPTANCE:
+                    task.acceptance = content
+                    task.acceptance_datetime = datetime
+                case TaskType.REFUSAL:
+                    task.refusal = content
+                    task.refusal_datetime = datetime
+                case TaskType.TASK_COMPLETION:
+                    task.task_completion = content
+                    task.completion_datetime = datetime
+                case TaskType.VERIFICATION_PROMPT:
+                    task.verification_prompt = content
+                    task.verification_prompt_datetime = datetime
+                case TaskType.VERIFICATION_RESPONSE:
+                    task.verification_response = content
+                    task.verification_response_datetime = datetime
+                case TaskType.REWARD:
+                    task.reward = content
+                    task.reward_response_datetime = datetime
+                    task.pft_amount = group.pft_amount
 
         return task
     
@@ -97,63 +178,70 @@ class UserTaskParser:
             self.cred_manager = credential_manager
             self.__class__._initialized = True
 
-    async def get_task_state_pairs(self, account_address: str):
+    async def get_tasks(self, account_address: str) -> List[Task]:
         """Get all tasks and their current states for an account.
         
         Args:
             account_address: XRPL account address
             
         Returns:
-            List[Task]: List of tasks with their current states
+            List[Task]: List of tasks with their complete state history
         """
         try:
-            # First get all proposals
-            proposal_history = await self.generic_pft_utilities.get_account_memo_history(
+            # First get all task requests
+            request_history = await self.generic_pft_utilities.get_account_memo_history(
                 account_address=account_address,
-                memo_type_filter=f'v{UNIQUE_ID_VERSION}.%__{TaskType.PROPOSAL.value}'
+                memo_type_filter=f'v{UNIQUE_ID_VERSION}.%__{TaskType.TASK_REQUEST.value}'
             )
 
-            if proposal_history.empty:
+            if request_history.empty:
                 return []
-            
-            # Get proposal MemoGroups
-            proposal_groups = await self.generic_pft_utilities.get_latest_valid_memo_groups(
-                memo_history=proposal_history,
-                num_groups=0  # Get all groups
-            )
-
-            if not proposal_groups:
-                return []
-            
-            if not isinstance(proposal_groups, list):
-                proposal_groups = [proposal_groups]
             
             tasks = []
-            for proposal_group in proposal_groups:
-
+            # Get all task requests as MemoGroups
+            request_groups = await self.generic_pft_utilities.get_latest_valid_memo_groups(
+                memo_history=request_history,
+                num_groups=0  # Get all groups
+            )
+ 
+            if not request_groups:
+                return []
+            
+            if not isinstance(request_groups, list):
+                request_groups = [request_groups]
+            
+            tasks = []
+            for request_group in request_groups:
                 try:
-                    task_id = Task.extract_task_id(proposal_group.group_id)
+                    task_id = Task.extract_task_id(request_group.group_id)
 
                     # Get all state changes for this task
-                    state_history = await self.generic_pft_utilities.get_account_memo_history(
+                    task_history = await self.generic_pft_utilities.get_account_memo_history(
                         account_address=account_address,
                         memo_type_filter=f'{task_id}__%'  # Match any state change for this task
                     )
 
-                    if not state_history.empty:
-                        state_groups = await self.generic_pft_utilities.get_latest_valid_memo_groups(
-                            memo_history=state_history,
-                            num_groups=0  # Get all groups
-                        )
+                    if task_history.empty:
+                        continue
 
-                    else:
-                        state_groups = None
-
-                    task = await Task.from_memo_groups(proposal_group, state_groups)
+                    # Get all memo groups for this task
+                    memo_groups = await self.generic_pft_utilities.get_latest_valid_memo_groups(
+                        memo_history=task_history,
+                        num_groups=0  # Get all groups
+                    )
+                    
+                    if not memo_groups:
+                        continue
+                        
+                    if not isinstance(memo_groups, list):
+                        memo_groups = [memo_groups]
+                    
+                    # Create task from all its memo groups
+                    task = await Task.from_memo_groups(memo_groups)
                     tasks.append(task)
-
+                    
                 except Exception as e:
-                    logger.warning(f"Error processing task from proposal group {proposal_group.group_id}: {e}")
+                    logger.warning(f"Error processing task from request {request_group.group_id}: {e}")
                     continue
 
             return tasks
@@ -166,53 +254,76 @@ class UserTaskParser:
     async def get_proposals_by_state(
             self, 
             account_address: str, 
-            state_type: TaskType
-        ):
+            state_type: TaskType,
+            limit: Optional[int] = None
+        ) -> pd.DataFrame:
         """Get proposals filtered by their state.
         
         Args:
             account_address: XRPL account address
             state_type: TaskType enum value to filter by
+            limit: Optional int limiting number of tasks to return.
             
         Returns:
             DataFrame with columns based on state_type:
                 - For PROPOSAL: ['proposal']
+                - For REWARD: ['proposal', 'task_request', 'reward', 'pft_amount']
                 - For others: ['proposal', state_type.value.lower()]
             Indexed by task_id
         """
         try:
             # Get all tasks for the account
-            tasks = await self.get_task_state_pairs(account_address)
-
+            tasks = await self.get_tasks(account_address)
             if not tasks:
                 return pd.DataFrame()
 
-            # Filter tasks by state
-            filtered_tasks = [task for task in tasks if task.current_state == state_type]
+            # Filter tasks by state and sort by datetime descending
+            filtered_tasks = sorted(
+                [task for task in tasks if task.current_state == state_type],
+                key=lambda t: getattr(t, f"{state_type.value.lower()}_datetime") or datetime.min,
+                reverse=True
+            )
+
+            # Apply limit if specified
+            if limit is not None and limit > 0:
+                filtered_tasks = filtered_tasks[:limit]
 
             if not filtered_tasks:
                 return pd.DataFrame()
             
-            if state_type == TaskType.PROPOSAL:
-                # For pending proposals, we only need the proposal text
-                df = pd.DataFrame([
-                    {
-                        'proposal': task.proposal
-                    }
-                    for task in filtered_tasks
-                    if task.proposal  # Filter out None proposals
-                ], index=[task.task_id for task in filtered_tasks if task.proposal])
+            match state_type:
+                case TaskType.PROPOSAL:
+                    # For pending proposals, we only need the proposal text
+                    df = pd.DataFrame([
+                        {'proposal': task.proposal}
+                        for task in filtered_tasks
+                        if task.proposal  # Filter out None proposals
+                    ], index=[task.task_id for task in filtered_tasks if task.proposal])
 
-            else:
-                # For other states, include both proposal and state message
-                df = pd.DataFrame([
-                    {
-                        'proposal': task.proposal,
-                        state_type.value.lower(): task.state_message
-                    }
-                    for task in filtered_tasks
-                    if task.proposal and task.state_message  # Filter out None values
-                ], index=[task.task_id for task in filtered_tasks if task.proposal and task.state_message])
+                case TaskType.REWARD:
+                    # For rewards, include original request, reward message, and PFT amount
+                    df = pd.DataFrame([
+                        {
+                            'proposal': task.proposal,
+                            'task_request': task.task_request,
+                            'reward': task.reward,
+                            'pft_amount': task.pft_amount
+                        }
+                        for task in filtered_tasks
+                        if task.proposal and task.reward  # Filter out None values
+                    ], index=[task.task_id for task in filtered_tasks if task.proposal])
+
+                case _:
+                    # For other states, include both proposal and state message
+                    state_field = state_type.value.lower()
+                    df = pd.DataFrame([
+                        {
+                            'proposal': task.proposal,
+                            state_field: getattr(task, state_field)  # Get the corresponding field from Task
+                        }
+                        for task in filtered_tasks
+                        if task.proposal and getattr(task, state_field)  # Filter out None values
+                    ], index=[task.task_id for task in filtered_tasks if task.proposal])
 
             return df
 
@@ -221,35 +332,35 @@ class UserTaskParser:
             logger.error(traceback.format_exc())
             return pd.DataFrame()
 
-    async def get_pending_proposals(self, account: str):
-        """Get proposals that have not yet been accepted or refused."""
+    async def get_pending_tasks(self, account: str):
+        """Get tasks that have not yet been accepted or refused."""
         return await self.get_proposals_by_state(account, state_type=TaskType.PROPOSAL)
 
-    async def get_accepted_proposals(self, account: str):
-        """Get accepted proposals"""
+    async def get_accepted_tasks(self, account: str):
+        """Get tasks that have been accepted"""
         return await self.get_proposals_by_state(account, state_type=TaskType.ACCEPTANCE)
     
-    async def get_verification_proposals(self, account: str):
-        """Get verification proposals"""
+    async def get_verification_tasks(self, account: str):
+        """Get tasks that are pending verification"""
         return await self.get_proposals_by_state(account, state_type=TaskType.VERIFICATION_PROMPT)
 
-    async def get_rewarded_proposals(self, account: str):
-        """Get rewarded proposals"""
-        return await self.get_proposals_by_state(account, state_type=TaskType.REWARD)
+    async def get_rewarded_tasks(self, account: str, limit: Optional[int] = None):
+        """Get tasks that have been rewarded"""
+        return await self.get_proposals_by_state(account, state_type=TaskType.REWARD, limit=limit)
 
-    async def get_refused_proposals(self, account: str):
-        """Get refused proposals"""
+    async def get_refused_tasks(self, account: str):
+        """Get tasks that have been refused"""
         return await self.get_proposals_by_state(account, state_type=TaskType.REFUSAL)
     
-    async def get_refuseable_proposals(self, account: str):
-        """Get all proposals that are in a valid state to be refused.
+    async def get_refuseable_tasks(self, account: str):
+        """Get all tasks that are in a valid state to be refused.
         
         This includes:
-        - Pending proposals
-        - Accepted proposals
-        - Verification proposals
+        - Pending tasks
+        - Accepted tasks
+        - Verification tasks
         
-        Does not include proposals that have already been refused or rewarded.
+        Does not include tasks that have already been refused or rewarded.
         
         Args:
             account: Either an XRPL account address string or a DataFrame containing memo history.
@@ -261,9 +372,9 @@ class UserTaskParser:
         """
         try:
             # Get all refuseable proposals
-            pending = await self.get_pending_proposals(account)
-            accepted = await self.get_accepted_proposals(account)
-            verification = await self.get_verification_proposals(account)
+            pending = await self.get_pending_tasks(account)
+            accepted = await self.get_accepted_tasks(account)
+            verification = await self.get_verification_tasks(account)
             
             if pending.empty and accepted.empty and verification.empty:
                 return pd.DataFrame()
@@ -282,6 +393,8 @@ class UserTaskParser:
             logger.error(traceback.format_exc())
             return pd.DataFrame()
 
+    # TODO: Not currently used
+    # TODO: Update to calculate enhanced stats that include average time to accept, average time to verify, etc.
     async def get_task_statistics(self, account_address):
         """
         Get statistics about user's tasks.
@@ -298,11 +411,11 @@ class UserTaskParser:
         """
         account_memo_detail_df = await self.generic_pft_utilities.get_account_memo_history(account_address)
 
-        pending_proposals = await self.get_pending_proposals(account_memo_detail_df)
-        accepted_proposals = await self.get_accepted_proposals(account_memo_detail_df)
-        refused_proposals = await self.get_refused_proposals(account_memo_detail_df)
-        verification_proposals = await self.get_verification_proposals(account_memo_detail_df)
-        rewarded_proposals = await self.get_rewarded_proposals(account_memo_detail_df)
+        pending_proposals = await self.get_pending_tasks(account_memo_detail_df)
+        accepted_proposals = await self.get_accepted_tasks(account_memo_detail_df)
+        refused_proposals = await self.get_refused_tasks(account_memo_detail_df)
+        verification_proposals = await self.get_verification_tasks(account_memo_detail_df)
+        rewarded_proposals = await self.get_rewarded_tasks(account_memo_detail_df)
 
         # Calculate total accepted tasks
         total_accepted = len(accepted_proposals) + len(verification_proposals) + len(rewarded_proposals)
@@ -431,8 +544,8 @@ class UserTaskParser:
 
         # Handle proposals section (pending + accepted)
         try:
-            pending_proposals = await self.get_pending_proposals(account_address)
-            accepted_proposals = await self.get_accepted_proposals(account_address)
+            pending_proposals = await self.get_pending_tasks(account_address)
+            accepted_proposals = await self.get_accepted_tasks(account_address)
 
             # Combine and limit
             all_proposals = pd.concat([pending_proposals, accepted_proposals]).tail(
@@ -451,7 +564,7 @@ class UserTaskParser:
 
         # Handle refusals
         try:
-            refused_proposals = await self.get_refused_proposals(account_address)
+            refused_proposals = await self.get_refused_tasks(account_address)
             refused_proposals = refused_proposals.tail(n_refusals_in_context)
             if refused_proposals.empty:
                 refusal_string = "No refused proposals found."
@@ -464,7 +577,7 @@ class UserTaskParser:
             
         # Handle verifications
         try:
-            verification_proposals = await self.get_verification_proposals(account_address)
+            verification_proposals = await self.get_verification_tasks(account_address)
             verification_proposals = verification_proposals.tail(n_verification_in_context)
             if verification_proposals.empty:
                 verification_string = "No tasks pending verification."
@@ -477,7 +590,7 @@ class UserTaskParser:
 
         # Handle rewards
         try:
-            rewarded_proposals = await self.get_rewarded_proposals(account_address)
+            rewarded_proposals = await self.get_rewarded_tasks(account_address)
             rewarded_proposals = rewarded_proposals.tail(n_rewards_in_context)
             if rewarded_proposals.empty:
                 reward_string = "No rewarded tasks found."
