@@ -1,6 +1,6 @@
 ---
 - name: Deploy Task Node
-  hosts: task-node-with-db-3
+  hosts: task-node-with-db-4
   become: yes
   vars_files:
     - group_vars/all/common.yml
@@ -12,7 +12,8 @@
         update_cache: yes
 
   roles:
-    - common
+    - role: common
+      when: full_deploy | default(false) | bool
     - role: python
       when: full_deploy | default(false) | bool
     - role: postgres
