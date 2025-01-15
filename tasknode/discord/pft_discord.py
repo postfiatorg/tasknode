@@ -42,9 +42,6 @@ from tasknode.task_processing.user_context_parsing import UserTaskParser
 from tasknode.task_processing.core_business_logic import TaskManagementRules
 from tasknode.task_processing.constants import TaskType
 from tasknode.chatbots.personas.odv import odv_system_prompt
-from tasknode.chatbots.odv_sprint_planner import ODVSprintPlannerO1
-from tasknode.chatbots.odv_context_doc_improvement import ODVContextDocImprover
-from tasknode.chatbots.corbanu_beta import CorbanuChatBot
 from tasknode.chatbots.odv_focus_analyzer import ODVFocusAnalyzer
 from tasknode.discord.discord_modals import (
     VerifyAddressModal,
@@ -110,7 +107,6 @@ class TaskNodeDiscordBot(discord.Client):
         self.openrouter_tool = nodetools.dependencies.openrouter
         self.generic_pft_utilities = nodetools.dependencies.generic_pft_utilities
         self.transaction_repository = nodetools.dependencies.transaction_repository
-        self.db_connection_manager = nodetools.db_connection_manager  # For Corbanu
 
         self.wallet_seed_manager = WalletSeedManager(
             credential_manager=nodetools.dependencies.credential_manager,
@@ -269,11 +265,6 @@ class TaskNodeDiscordBot(discord.Client):
         # Prevents duplicate commands but also makes launch slow.
         self.tree.clear_commands(guild=guild)
         await self.tree.sync(guild=guild)
-    
-        @self.event
-        async def on_guild_available(guild: discord.Guild):
-            """Log when a guild becomes available."""
-            logger.info(f"Guild {guild.name} (ID: {guild.id}) is available")
 
         @self.event
         async def on_member_remove(user: discord.User):
@@ -291,11 +282,6 @@ class TaskNodeDiscordBot(discord.Client):
                     f"Error deauthorizing addresses for banned user {user.name} (ID: {user.id}): {e}"
                 )
                 logger.error(traceback.format_exc())
-
-        # @self.event
-        # async def on_socket_raw_receive(msg):
-        #     """Debug log for raw events."""
-        #     logger.debug(f"Raw Socket Event: {msg}")
 
         @self.tree.command(name="pf_verify", description="Verify an XRP address for use with Post-Fiat features")
         async def pf_verify(interaction: Interaction):
@@ -757,80 +743,6 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 logger.error(traceback.format_exc())
                 await interaction.followup.send(f"An error occurred during update: {str(e)}", ephemeral=True)
 
-        @self.tree.command(name="odv_sprint", description="Start an ODV sprint planning session")
-        async def odv_sprint(interaction: discord.Interaction):
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-            await interaction.response.defer(ephemeral=ephemeral_setting)
-
-            seed = await self.check_user_seed(interaction, deferred=True)
-            if not seed:
-                return
-
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-
-            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
-                return
-
-            try:
-                odv_planner = await ODVSprintPlannerO1.create(
-                    account_address=wallet.classic_address,
-                    openrouter=self.openrouter_tool,
-                    user_context_parser=self.user_task_parser,
-                    pft_utils=self.generic_pft_utilities
-                )
-                self.sprint_planners[interaction.user.id] = odv_planner
-                logger.debug(f"TaskNodeDiscordBot.odv_sprint: Initialized ODV sprint planner for {interaction.user.name}")
-
-                # Potentially long operation
-                logger.debug(f"TaskNodeDiscordBot.odv_sprint: Getting initial response for {interaction.user.name}")
-                initial_response = await odv_planner.get_response_async("Please provide your context analysis.")
-
-                # Use the helper function to send the possibly long response
-                logger.debug(f"TaskNodeDiscordBot.odv_sprint: Sending initial response for {interaction.user.name}")
-                await self.send_long_interaction_response(
-                    interaction, 
-                    f"**ODV Sprint Planning Initialized**\n\n{initial_response}", 
-                    ephemeral=ephemeral_setting
-                )
-            except Exception as e:
-                logger.error(f"TaskNodeDiscordBot.odv_sprint: An error occurred: {str(e)}")
-                logger.error(traceback.format_exc())
-                await interaction.followup.send(
-                    f"An error occurred while initializing the ODV sprint planning session: {str(e)}", 
-                    ephemeral=True
-                )
-
-        @self.tree.command(name="odv_sprint_reply", description="Continue the ODV sprint planning session")
-        @app_commands.describe(message="Your next input to ODV")
-        async def odv_sprint_reply(interaction: discord.Interaction, message: str):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-
-            if user_id not in self.sprint_planners:
-                await interaction.response.send_message(
-                    "No active ODV sprint planning session. Start one with /odv_sprint.", 
-                    ephemeral=ephemeral_setting
-                )
-                return
-
-            odv_planner: ODVSprintPlannerO1 = self.sprint_planners[user_id]
-            logger.debug(f"TaskNodeDiscordBot.odv_sprint_reply: Continuing ODV sprint planning session for {interaction.user.name}")
-            await interaction.response.defer(ephemeral=ephemeral_setting)
-
-            try:
-                # Now using async version
-                logger.debug(f"TaskNodeDiscordBot.odv_sprint_reply: Getting response for {interaction.user.name}")
-                response = await odv_planner.get_response_async(message)
-                logger.debug(f"TaskNodeDiscordBot.odv_sprint_reply: Response received for {interaction.user.name}")
-                await self.send_long_interaction_response(interaction, response, ephemeral=ephemeral_setting)
-            except Exception as e:
-                logger.error(f"TaskNodeDiscordBot.odv_sprint_reply: An error occurred: {str(e)}")
-                logger.error(traceback.format_exc())
-                await interaction.followup.send(
-                    f"An error occurred: {str(e)}", 
-                    ephemeral=True
-                )
-
         @self.tree.command(name="pf_configure_deathmarch", description="Configure your death march")
         async def pf_configure_deathmarch(interaction: discord.Interaction):
             # Common timezone options
@@ -1098,433 +1010,8 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                     ephemeral=ephemeral_setting
                 )
 
-        @self.tree.command(name="odv_context_doc", description="Start an ODV context document improvement session")
-        async def odv_context_doc(interaction: discord.Interaction):
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-            await interaction.response.defer(ephemeral=ephemeral_setting)
-
-            seed = await self.check_user_seed(interaction, deferred=True)
-            if not seed:
-                return
-
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-
-            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
-                return
-
-            try:
-                # Initialize the ODVContextDocImprover
-                doc_improver = await ODVContextDocImprover.create(
-                    account_address=wallet.classic_address,
-                    openrouter=self.openrouter_tool,
-                    user_context_parser=self.user_task_parser,
-                    pft_utils=self.generic_pft_utilities
-                )
-
-                # Ensure you have a dictionary to store doc improvers per user
-                if not hasattr(self, 'doc_improvers'):
-                    self.doc_improvers = {}
-
-                self.doc_improvers[interaction.user.id] = doc_improver
-                logger.debug(f"TaskNodeDiscordBot.odv_context_doc: Initialized ODV context document improver for {interaction.user.name}")
-
-                # Potentially long operation: getting the initial suggestion
-                logger.debug(f"TaskNodeDiscordBot.odv_context_doc: Getting initial response for {interaction.user.name}")
-                initial_response = await doc_improver.get_response_async("Please provide your first improvement suggestion.")
-                logger.debug(f"TaskNodeDiscordBot.odv_context_doc: Sending initial response for {interaction.user.name}")
-
-                # Use the helper function to send the possibly long response
-                await self.send_long_interaction_response(
-                    interaction, 
-                    f"**ODV Context Document Improvement Initialized**\n\n{initial_response}", 
-                    ephemeral=ephemeral_setting
-                )
-            except Exception as e:
-                logger.error(f"TaskNodeDiscordBot.odv_context_doc: An error occurred: {str(e)}")
-                logger.error(traceback.format_exc())
-                await interaction.followup.send(
-                    f"An error occurred while initializing the ODV context document improvement session: {str(e)}", 
-                    ephemeral=True
-                )
-
-        @self.tree.command(name="odv_context_doc_reply", description="Continue the ODV context document improvement session")
-        @app_commands.describe(message="Your next input to ODV")
-        async def odv_context_doc_reply(interaction: discord.Interaction, message: str):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-
-            # Check if we have a doc improver session in progress
-            if not hasattr(self, 'doc_improvers') or user_id not in self.doc_improvers:
-                await interaction.response.send_message(
-                    "No active ODV context document improvement session. Start one with /odv_context_doc.", 
-                    ephemeral=True
-                )
-                return
-
-            doc_improver: ODVContextDocImprover = self.doc_improvers[user_id]
-            logger.debug(f"TaskNodeDiscordBot.odv_context_doc_reply: Continuing ODV context document improvement session for {interaction.user.name}")
-            await interaction.response.defer(ephemeral=ephemeral_setting)
-
-            try:
-                logger.debug(f"TaskNodeDiscordBot.odv_context_doc_reply: Getting response for {interaction.user.name}")
-                response = await doc_improver.get_response_async(message)
-                logger.debug(f"TaskNodeDiscordBot.odv_context_doc_reply: Response received for {interaction.user.name}")
-                await self.send_long_interaction_response(interaction, response, ephemeral=ephemeral_setting)
-            except Exception as e:
-                logger.error(f"TaskNodeDiscordBot.odv_context_doc_reply: An error occurred: {str(e)}")
-                logger.error(traceback.format_exc())
-                await interaction.followup.send(
-                    f"An error occurred: {str(e)}", 
-                    ephemeral=True
-                )
-
-        @self.tree.command(name="corbanu_offering", description="Generate a Corbanu offering")
-        async def corbanu_offering(interaction: discord.Interaction):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-            await interaction.response.defer(ephemeral=ephemeral_setting)
-
-            seed = await self.check_user_seed(interaction, deferred=True)
-            if not seed:
-                return
-
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-
-            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
-                return
-            
-            # Return the existing question if the user has one
-            if user_id in self.user_questions:
-                await interaction.followup.send(
-                    f"Corbanu Offering:\n\n{self.user_questions[user_id]}",
-                    ephemeral=ephemeral_setting
-                )
-                return
-
-            try:
-                # Initialize the CorbanuChatBot instance
-                logger.debug(f"TaskNodeDiscordBot.corbanu_offering: {interaction.user.name} has requested a Corbanu offering. Initializing CorbanuChatBot instance.")
-                corbanu = await CorbanuChatBot.create(
-                    account_address=wallet.classic_address,
-                    openrouter=self.openrouter_tool,
-                    user_context_parser=self.user_task_parser,
-                    pft_utils=self.generic_pft_utilities,
-                    tasknode_utilities=self.tasknode_utilities,
-                    db_connection_manager=self.db_connection_manager,
-                    transaction_repository=self.transaction_repository
-                )
-
-                # Generate a question as the Corbanu offering 
-                question = await corbanu.generate_question()
-                logger.debug(f"TaskNodeDiscordBot.corbanu_offering: Question generated for {interaction.user.name}: {question}")
-
-                # Store the question so we can use it in /corbanu_reply
-                self.user_questions[user_id] = question
-
-                await interaction.followup.send(
-                    f"Corbanu Offering:\n\n{question}",
-                    ephemeral=ephemeral_setting
-                )
-
-            except Exception as e:
-                logger.error(f"Error in corbanu_offering: {str(e)}")
-                logger.error(traceback.format_exc())
-                await interaction.followup.send(
-                    f"An error occurred while generating Corbanu offering: {str(e)}", 
-                    ephemeral=True
-                )
-
-        @self.tree.command(name="corbanu_reply", description="Reply to the last Corbanu offering")
-        @app_commands.describe(answer="Your answer to the last Corbanu question")
-        async def corbanu_reply(interaction: discord.Interaction, answer: str):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-            await interaction.response.defer(ephemeral=ephemeral_setting)
-
-            seed = await self.check_user_seed(interaction, deferred=True)
-            if not seed:
-                return
-
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-
-            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
-                return
-
-            if user_id not in self.user_questions:
-                await interaction.followup.send(
-                    "No Corbanu question found. Please use /corbanu_offering first.",
-                    ephemeral=ephemeral_setting
-                )
-                return
-
-            try:
-                question = self.user_questions[user_id]
-                logger.debug(f"TaskNodeDiscordBot.corbanu_reply: Received user answer for {interaction.user.name}.\nQuestion:\n{question}\nAnswer: \n{answer}")
-                
-                corbanu = await CorbanuChatBot.create(
-                    account_address=wallet.classic_address,
-                    openrouter=self.openrouter_tool,
-                    user_context_parser=self.user_task_parser,
-                    pft_utils=self.generic_pft_utilities,
-                    tasknode_utilities=self.tasknode_utilities,
-                    db_connection_manager=self.db_connection_manager,
-                    transaction_repository=self.transaction_repository
-                )
-
-                scoring = await corbanu.generate_user_question_scoring_output(
-                    original_question=question,
-                    user_answer=answer,
-                    account_address=wallet.classic_address
-                )
-
-                reward_value = scoring.get('reward_value', 0)
-                reward_description = scoring.get('reward_description', 'No description')
-
-                full_message = ("**Corbanu Summary**\n"
-                                "CORBANU_OFFERING\n"
-                                f"Q: {question}\n\n"
-                                f"A: {answer}\n\n"
-                                f"Reward: {reward_value} PFT\n"
-                                f"{reward_description}")
-                
-                await self.send_long_interaction_response(
-                    interaction=interaction,
-                    message=full_message,
-                    ephemeral=ephemeral_setting
-                )
-
-                # Now the user will send the Q&A to the remembrancer
-                # Similar to pf_log, we need to ensure a handshake if encrypt=True
-                encrypt = True  # We assume we always encrypt the Q&A to the remembrancer.
-                user_name = interaction.user.name
-                message_obj = await interaction.followup.send(
-                    "Preparing to send Q&A to the remembrancer...",
-                    ephemeral=ephemeral_setting,
-                    wait=True
-                )
-
-                handshake_success, user_key, counterparty_key, message_obj = await self._ensure_handshake(
-                    interaction=interaction,
-                    seed=seed,
-                    counterparty=self.remembrancer,
-                    username=user_name,
-                    command_name="corbanu_reply",
-                    message_obj=message_obj
-                )
-                if not handshake_success:
-                    logger.error(f"TaskNodeDiscordBot.corbanu_reply: Handshake failed for {interaction.user.name}.")
-                    await message_obj.edit(content="Handshake failed. Aborting operation.")
-                    return
-                
-                await message_obj.edit(content="Handshake verified. Proceeding to send memo...")
-
-                # No PFT here, just sending the message
-                # NOTE: This means we won't see this memo if we filter by PFT
-                pft_amount=Decimal(0)
-
-                # Send Q&A from user wallet to remembrancer
-                try:
-                    response = await self.generic_pft_utilities.send_memo(
-                        wallet_seed_or_wallet=wallet,
-                        destination=self.remembrancer,
-                        memo_data=full_message,
-                        compress=True,
-                        encrypt=encrypt,
-                        pft_amount=pft_amount,
-                        disable_pft_check=True
-                    )
-
-                    if not self.generic_pft_utilities.verify_transaction_response(response):
-                        raise Exception(f"Failed to send Q&A message to remembrancer: {response.result}")
-
-                except Exception as e:
-                    logger.error(f"TaskNodeDiscordBot.corbanu_reply: Error sending memo: {e}")
-                    logger.error(traceback.format_exc())
-                    await message_obj.edit(content=f"An error occurred while sending the Q&A message: {str(e)}")
-                    return
-                
-                await self.display_transaction_results(
-                    interaction=interaction,
-                    response=response,
-                    ephemeral=ephemeral_setting,
-                    prefix="Q&A sent to remembrancer:"
-                )
-
-                # Now send the reward from the node to the user
-                foundation_seed = self.generic_pft_utilities.credential_manager.get_credential(
-                    f"{self.node_config.node_name}__v1xrpsecret"
-                )
-                foundation_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(foundation_seed)
-
-                short_reward_message = "Corbanu Reward"
-
-                # Check daily reward limit
-                remaining_daily_limit = await corbanu.check_daily_reward_limit(account_address=wallet.classic_address)
-                reward_value = min(reward_value, remaining_daily_limit)
-
-                # Check per-offering reward limit
-                reward_value = min(reward_value, corbanu.MAX_PER_OFFERING_REWARD_VALUE)
-
-                logger.debug(f"TaskNodeDiscordBot.corbanu_reply: Sending reward of {reward_value} PFT to {wallet.classic_address}")
-                
-                try:
-                    reward_tx = await self.generic_pft_utilities.send_memo(
-                        wallet_seed_or_wallet=foundation_wallet,
-                        destination=wallet.classic_address,
-                        memo_data=short_reward_message,
-                        compress=False,
-                        encrypt=False,
-                        pft_amount=Decimal(reward_value)
-                    )
-
-                    if not self.generic_pft_utilities.verify_transaction_response(reward_tx):
-                        raise Exception(f"Failed to send reward transaction: {reward_tx.result}")
-
-                except Exception as e:
-                    logger.error(f"TaskNodeDiscordBot.corbanu_reply: Error sending reward memo: {e}")
-                    logger.error(traceback.format_exc())
-                    await message_obj.edit(content=f"An error occurred while sending the reward: {str(e)}")
-                    return
-
-                await self.display_transaction_results(
-                    interaction=interaction,
-                    response=reward_tx,
-                    ephemeral=ephemeral_setting,
-                    prefix="Reward sent to user:"
-                )
-
-                # Clear stored question
-                del self.user_questions[user_id]
-
-            except Exception as e:
-                logger.error(f"Error in corbanu_reply: {str(e)}")
-                logger.error(traceback.format_exc())
-                await self.send_long_interaction_response(
-                    interaction=interaction,
-                    message=f"An error occurred while processing your reply: {str(e)}",
-                    ephemeral=True
-                )
-
-        @self.tree.command(name="corbanu_request", description="Send a request to Corbanu and get a response from Angron or Fulgrim")
-        @app_commands.describe(message="Your message to Corbanu")
-        async def corbanu_request(interaction: discord.Interaction, message: str):
-            user_id = interaction.user.id
-            ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
-            await interaction.response.defer(ephemeral=ephemeral_setting)
-
-            seed = await self.check_user_seed(interaction, deferred=True)
-            if not seed:
-                return
-
-            wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-
-            if not await self.check_user_initiation_rite(interaction, wallet, deferred=True):
-                return
-
-            try:
-                # Add the user message to their conversation history
-                if user_id not in self.conversations:
-                    self.conversations[user_id] = []
-
-                self.conversations[user_id].append({"role": "user", "content": message})
-
-                # Create CorbanuChatBot instance
-                corbanu = await CorbanuChatBot.create(
-                    account_address=wallet.classic_address,
-                    openrouter=self.openrouter_tool,
-                    user_context_parser=self.user_task_parser,
-                    pft_utils=self.generic_pft_utilities,
-                    tasknode_utilities=self.tasknode_utilities,
-                    db_connection_manager=self.db_connection_manager,
-                    transaction_repository=self.transaction_repository
-                )
-
-                # Get Corbanu's response asynchronously
-                response = await corbanu.get_response_async(message)
-
-                await self.send_long_interaction_response(
-                    interaction=interaction,
-                    message=response,
-                    ephemeral=ephemeral_setting
-                )
-
-                # Append Corbanu's response to conversation history
-                self.conversations[user_id].append({"role": "assistant", "content": response})
-
-                # Combine USER MESSAGE + CORBANU RESPONSE
-                combined_message = f"USER MESSAGE:\n{message}\n\nCORBANU RESPONSE:\n{response}"
-
-                # Summarize the combined message before sending to remembrancer
-                summarized_message = await corbanu.summarize_text(combined_message, max_length=900)
-
-                encrypt = True
-                user_name = interaction.user.name
-
-                # Notify user we're sending to remembrancer
-                message_obj = await interaction.followup.send(
-                    "Sending the Q&A record (summarized) to the remembrancer...",
-                    ephemeral=ephemeral_setting,
-                    wait=True
-                )
-
-                # Ensure handshake
-                if encrypt:
-                    handshake_success, user_key, counterparty_key, message_obj = await self._ensure_handshake(
-                        interaction=interaction,
-                        seed=seed,
-                        counterparty=self.remembrancer,
-                        username=user_name,
-                        command_name="corbanu_request",
-                        message_obj=message_obj
-                    )
-                    if not handshake_success:
-                        return
-                    
-                    await message_obj.edit(content="Handshake verified. Proceeding to send memo...")
-
-
-                pft_amount = Decimal(0)
-
-                # Send summarized message from user's wallet to remembrancer
-                try:
-                    send_response = await self.generic_pft_utilities.send_memo(
-                        wallet_seed_or_wallet=wallet,
-                        destination=self.remembrancer,
-                        memo_data=summarized_message,
-                        compress=True,
-                        encrypt=encrypt,
-                        pft_amount=pft_amount,
-                        disable_pft_check=True
-                    )
-                    
-                    if not self.generic_pft_utilities.verify_transaction_response(send_response):
-                        raise Exception(f"Failed to send summarized Q&A record: {send_response.result}")
-        
-                except Exception as e:
-                    logger.error(f"TaskNodeDiscordBot.corbanu_request: Error sending memo: {e}")
-                    logger.error(traceback.format_exc())
-                    await message_obj.edit(content=f"An error occurred while sending the summarized Q&A record: {str(e)}")
-                    return
-
-                await self.display_transaction_results(
-                    interaction=interaction,
-                    response=send_response,
-                    ephemeral=ephemeral_setting,
-                    prefix="Summarized Q&A record sent to remembrancer:"
-                )
-
-            except Exception as e:
-                logger.error(f"Error in corbanu_request: {str(e)}")
-                logger.error(traceback.format_exc())
-                await self.send_long_interaction_response(
-                    interaction=interaction,
-                    message=f"An error occurred: {str(e)}",
-                    ephemeral=True
-                )
-
         @self.tree.command(name="pf_outstanding", description="Show your outstanding tasks and verification tasks")
         async def pf_outstanding(interaction: discord.Interaction):
-            user_id = interaction.user.id
             ephemeral_setting = self.is_special_user_non_ephemeral(interaction)
             await interaction.response.defer(ephemeral=ephemeral_setting)
             
@@ -2136,12 +1623,11 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
                 )
 
         # Sync the commands
-        # await self.tree.sync()
-        await self.tree.sync(guild=guild)
-        logger.debug(f"TaskNodeDiscordBot.setup_hook: Slash commands synced")
-
-        # commands = await self.tree.fetch_commands()
-        commands = await self.tree.fetch_commands(guild=guild)
+        # NOTE: Discord's API is weird. Sometimes syncing globally is faster than syncing to a specific guild.
+        await self.tree.sync()
+        # await self.tree.sync(guild=guild)
+        commands = await self.tree.fetch_commands()
+        # commands = await self.tree.fetch_commands(guild=guild)
         logger.debug(f"Registered commands: {[cmd.name for cmd in commands]}")
 
     async def _ensure_handshake(
@@ -2151,7 +1637,7 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         counterparty: str,
         username: str,
         command_name: str,
-        message_obj: discord.Message = None
+        message_obj: Optional[discord.Message] = None
     ) -> tuple[bool, Optional[str], Optional[str]]:
         """
         Ensures handshake protocol is established between wallet and counterparty
@@ -2579,90 +2065,92 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
             await self.send_long_message(message, gpt_response)
 
         if message.content.startswith('!tactics'):
-            if user_id in self.user_seeds:
-                seed = self.user_seeds[user_id]
+            seed = await self.check_user_seed(user_id)
+            if not seed:
+                await message.reply("You must store a seed using /pf_store_seed before using !tactics.", mention_author=True)
+                return
                 
-                try:
-                    logger.debug(f"TaskNodeDiscordBot.tactics: Spawning wallet to fetch info for {message.author.name}")
-                    user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-                    memo_history = await self.generic_pft_utilities.get_account_memo_history(user_wallet.classic_address)
-                    full_user_context = await self.user_task_parser.get_full_user_context_string(user_wallet.classic_address, memo_history=memo_history)
-                    
-                    openai_request_tool = OpenAIRequestTool()
-                    
-                    user_prompt = f"""You are ODV Tactician module.
-                    The User has the following transaction context as well as strategic context
-                    they have uploaded here
-                    <FULL USER CONTEXT STARTS HERE>
-                    {full_user_context}
-                    <FULL USER CONTEXT ENDS HERE>
-                    Your job is to read through this and to interogate the future AI as to the best, very short-term use of the user's time.
-                    You are to condense this short term use of the user's time down to a couple paragraphs at most and provide it
-                    to the user
-                    """
-                    
-                    api_args = {
-                        "model": global_constants.DEFAULT_OPEN_AI_MODEL,
-                        "messages": [
-                            {"role": "system", "content": odv_system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ]
-                    }
-                    
-                    writable_df = openai_request_tool.create_writable_df_for_chat_completion(api_args=api_args)
-                    tactical_string = writable_df['choices__message__content'][0]
-                    
-                    await self.send_long_message(message, tactical_string)
-            
-                except Exception as e:
-                    error_message = f"An error occurred while generating tactical advice: {str(e)}"
-                    await message.reply(error_message, mention_author=True)
-            else:
-                await message.reply("You must store a seed using /pf_store_seed before getting tactical advice.", mention_author=True)
+            try:
+                logger.debug(f"TaskNodeDiscordBot.tactics: Spawning wallet to fetch info for {message.author.name}")
+                user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+                memo_history = await self.generic_pft_utilities.get_account_memo_history(user_wallet.classic_address)
+                full_user_context = await self.user_task_parser.get_full_user_context_string(user_wallet.classic_address, memo_history=memo_history)
+                
+                openai_request_tool = OpenAIRequestTool()
+                
+                user_prompt = f"""You are ODV Tactician module.
+                The User has the following transaction context as well as strategic context
+                they have uploaded here
+                <FULL USER CONTEXT STARTS HERE>
+                {full_user_context}
+                <FULL USER CONTEXT ENDS HERE>
+                Your job is to read through this and to interogate the future AI as to the best, very short-term use of the user's time.
+                You are to condense this short term use of the user's time down to a couple paragraphs at most and provide it
+                to the user
+                """
+                
+                api_args = {
+                    "model": global_constants.DEFAULT_OPEN_AI_MODEL,
+                    "messages": [
+                        {"role": "system", "content": odv_system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ]
+                }
+                
+                writable_df = openai_request_tool.create_writable_df_for_chat_completion(api_args=api_args)
+                tactical_string = writable_df['choices__message__content'][0]
+                
+                await self.send_long_message(message, tactical_string)
+        
+            except Exception as e:
+                error_message = f"An error occurred while generating tactical advice: {str(e)}"
+                await message.reply(error_message, mention_author=True)
 
 # Add this in the on_message handler section of your Discord bot
 
         if message.content.startswith('!coach'):
-            if user_id in self.user_seeds:
-                seed = self.user_seeds[user_id]
+            seed = await self.check_user_seed(user_id)
+            if not seed:
+                await message.reply("You must store a seed using /pf_store_seed before using !coach.", mention_author=True)
+                return
                 
-                try:
-                    # Get user's wallet address
-                    logger.debug(f"TaskNodeDiscordBot.coach: Spawning wallet to fetch info for {message.author.name}")
-                    user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-                    wallet_address = user_wallet.classic_address
+            try:
+                # Get user's wallet address
+                logger.debug(f"TaskNodeDiscordBot.coach: Spawning wallet to fetch info for {message.author.name}")
+                user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+                wallet_address = user_wallet.classic_address
 
-                    # Check PFT balance
-                    pft_balance = await self.generic_pft_utilities.fetch_pft_balance(wallet_address)
-                    logger.debug(f"TaskNodeDiscordBot.coach: PFT balance for {message.author.name} is {pft_balance}")
-                    if not (RuntimeConfig.USE_TESTNET and RuntimeConfig.DISABLE_PFT_REQUIREMENTS):
-                        if pft_balance < 25000:
-                            await message.reply(
-                                f"You need at least 25,000 PFT to use the coach command. Your current balance is {pft_balance:,.2f} PFT.", 
-                                mention_author=True
-                            )
-                            return
+                # Check PFT balance
+                pft_balance = await self.generic_pft_utilities.fetch_pft_balance(wallet_address)
+                logger.debug(f"TaskNodeDiscordBot.coach: PFT balance for {message.author.name} is {pft_balance}")
+                if not (RuntimeConfig.USE_TESTNET and RuntimeConfig.DISABLE_PFT_REQUIREMENTS):
+                    if pft_balance < 25000:
+                        await message.reply(
+                            f"You need at least 25,000 PFT to use the coach command. Your current balance is {pft_balance:,.2f} PFT.", 
+                            mention_author=True
+                        )
+                        return
 
-                    # Get user's full context
-                    memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address)
-                    full_context = await self.user_task_parser.get_full_user_context_string(account_address=wallet_address, memo_history=memo_history)
-                    
-                    # Get chat history
-                    chat_history = []
-                    if user_id in self.conversations:
-                        chat_history = [
-                            f"{msg['role'].upper()}: {msg['content']}"
-                            for msg in self.conversations[user_id][-10:]  # Get last 10 messages
-                        ]
-                    formatted_chat = "\n".join(chat_history)
+                # Get user's full context
+                memo_history = await self.generic_pft_utilities.get_account_memo_history(account_address=wallet_address)
+                full_context = await self.user_task_parser.get_full_user_context_string(account_address=wallet_address, memo_history=memo_history)
+                
+                # Get chat history
+                chat_history = []
+                if user_id in self.conversations:
+                    chat_history = [
+                        f"{msg['role'].upper()}: {msg['content']}"
+                        for msg in self.conversations[user_id][-10:]  # Get last 10 messages
+                    ]
+                formatted_chat = "\n".join(chat_history)
 
-                    # Get the user's specific question/request
-                    user_query = message.content.replace('!coach', '').strip()
-                    if not user_query:
-                        user_query = "Please provide coaching based on my current context and history."
+                # Get the user's specific question/request
+                user_query = message.content.replace('!coach', '').strip()
+                if not user_query:
+                    user_query = "Please provide coaching based on my current context and history."
 
-                    # Create the user prompt
-                    user_prompt = f"""Based on the following context about me, please provide coaching and guidance.
+                # Create the user prompt
+                user_prompt = f"""Based on the following context about me, please provide coaching and guidance.
 Rules of engagement:
 1. Take the role of a Tony Robbins Type highly paid executive coach while also fulfilling the ODV mandate
 2. The goal is to deliver a high NLP score to the user, or to neurolinguistically program them to be likely to fulfill the mandate
@@ -2679,65 +2167,62 @@ RECENT CHAT HISTORY:
 
 My specific question/request is: {user_query}"""
 
-                    # Add reaction to show processing
-                    await message.add_reaction('⏳')
+                # Add reaction to show processing
+                await message.add_reaction('⏳')
 
-                    # Make the API call using o1_preview_simulated_request
-                    response = await self.openai_request_tool.o1_preview_simulated_request_async(
-                        system_prompt=odv_system_prompt,
-                        user_prompt=user_prompt
-                    )
-                    
-                    # Extract content from response
-                    content = response.choices[0].message.content
-                    
-                    # Store the response in conversation history
-                    self.conversations[user_id].append({
-                        "role": 'assistant',
-                        "content": content
-                    })
-                    
-                    # Remove the processing reaction
-                    await message.remove_reaction('⏳', self.user)
-                    
-                    # Send the response
-                    await self.send_long_message(message, content)
-                    
-                except Exception as e:
-                    await message.remove_reaction('⏳', self.user)
-                    logger.error(f"TaskNodeDiscordBot.coach: An error occurred while processing your request: {str(e)}")
-                    logger.error(traceback.format_exc())
-                    error_msg = f"An error occurred while processing your request: {str(e)}"
-                    await message.reply(error_msg, mention_author=True)
-            else:
-                await message.reply("You must store a seed using !store_seed before using the coach.", mention_author=True)
+                # Make the API call using o1_preview_simulated_request
+                response = await self.openai_request_tool.o1_preview_simulated_request_async(
+                    system_prompt=odv_system_prompt,
+                    user_prompt=user_prompt
+                )
+                
+                # Extract content from response
+                content = response.choices[0].message.content
+                
+                # Store the response in conversation history
+                self.conversations[user_id].append({
+                    "role": 'assistant',
+                    "content": content
+                })
+                
+                # Remove the processing reaction
+                await message.remove_reaction('⏳', self.user)
+                
+                # Send the response
+                await self.send_long_message(message, content)
+                
+            except Exception as e:
+                await message.remove_reaction('⏳', self.user)
+                logger.error(f"TaskNodeDiscordBot.coach: An error occurred while processing your request: {str(e)}")
+                logger.error(traceback.format_exc())
+                error_msg = f"An error occurred while processing your request: {str(e)}"
+                await message.reply(error_msg, mention_author=True)
 
         if message.content.startswith('!blackprint'):
-            if user_id in self.user_seeds:
-                seed = self.user_seeds[user_id]
+            seed = await self.check_user_seed(user_id)
+            if not seed:
+                await message.reply("You must store a seed using /pf_store_seed before using !blackprint.", mention_author=True)
+                return
                 
-                try:
-                    logger.debug(f"TaskNodeDiscordBot.blackprint: Spawning wallet to fetch info for {message.author.name}")
-                    user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-                    user_address = user_wallet.classic_address
-                    tactical_string = await self.tasknode_utilities.generate_coaching_string_for_account(user_address)
-                    
-                    await self.send_long_message(message, tactical_string)
-            
-                except Exception as e:
-                    error_message = f"An error occurred while generating tactical advice: {str(e)}"
-                    await message.reply(error_message, mention_author=True)
-            else:
-                await message.reply("You must store a seed using /pf_store_seed before getting tactical advice.", mention_author=True)
+            try:
+                logger.debug(f"TaskNodeDiscordBot.blackprint: Spawning wallet to fetch info for {message.author.name}")
+                user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+                user_address = user_wallet.classic_address
+                tactical_string = await self.tasknode_utilities.generate_coaching_string_for_account(user_address)
+                
+                await self.send_long_message(message, tactical_string)
+        
+            except Exception as e:
+                error_message = f"An error occurred while generating tactical advice: {str(e)}"
+                await message.reply(error_message, mention_author=True)
 
         if message.content.startswith('!deathmarch'):
-            user_id = message.author.id
-            if user_id not in self.user_seeds:
-                await message.reply("You must store a seed using /pf_store_seed first.", mention_author=True)
+            seed = await self.check_user_seed(user_id)
+            if not seed:
+                await message.reply("You must store a seed using /pf_store_seed before using !deathmarch.", mention_author=True)
                 return
 
             try:
-                seed = self.user_seeds[user_id]
                 user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
                 
                 # Create the analyzer inline
@@ -2758,40 +2243,40 @@ My specific question/request is: {user_query}"""
                 await message.reply(f"An error occurred: {str(e)}", mention_author=True)
     
         if message.content.startswith('!redpill'):
-            if user_id in self.user_seeds:
-                seed = self.user_seeds[user_id]
+            seed = await self.check_user_seed(user_id)
+            if not seed:
+                await message.reply("You must store a seed using /pf_store_seed before using !redpill.", mention_author=True)
+                return
                 
-                try:
-                    logger.debug(f"TaskNodeDiscordBot.redpill: Spawning wallet to fetch info for {message.author.name}")
-                    user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-                    user_address = user_wallet.classic_address
-                    tactical_string = await self.tasknode_utilities.o1_redpill(user_address)
-                    
-                    await self.send_long_message(message, tactical_string)
-            
-                except Exception as e:
-                    error_message = f"An error occurred while generating tactical advice: {str(e)}"
-                    await message.reply(error_message, mention_author=True)
-            else:
-                await message.reply("You must store a seed using /pf_store_seed before getting tactical advice.", mention_author=True)
+            try:
+                logger.debug(f"TaskNodeDiscordBot.redpill: Spawning wallet to fetch info for {message.author.name}")
+                user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+                user_address = user_wallet.classic_address
+                tactical_string = await self.tasknode_utilities.o1_redpill(user_address)
+                
+                await self.send_long_message(message, tactical_string)
+        
+            except Exception as e:
+                error_message = f"An error occurred while generating tactical advice: {str(e)}"
+                await message.reply(error_message, mention_author=True)
 
         if message.content.startswith('!docrewrite'):
-            if user_id in self.user_seeds:
-                seed = self.user_seeds[user_id]
+            seed = await self.check_user_seed(user_id)
+            if not seed:
+                await message.reply("You must store a seed using /pf_store_seed before using !docrewrite.", mention_author=True)
+                return
                 
-                try:
-                    logger.debug(f"TaskNodeDiscordBot.docrewrite: Spawning wallet to fetch info for {message.author.name}")
-                    user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
-                    user_address = user_wallet.classic_address
-                    tactical_string = await self.tasknode_utilities.generate_document_rewrite_instructions(user_address)
-                    
-                    await self.send_long_message(message, tactical_string)
-            
-                except Exception as e:
-                    error_message = f"An error occurred while generating tactical advice: {str(e)}"
-                    await message.reply(error_message, mention_author=True)
-            else:
-                await message.reply("You must store a seed using /pf_store_seed before getting tactical advice.", mention_author=True)
+            try:
+                logger.debug(f"TaskNodeDiscordBot.docrewrite: Spawning wallet to fetch info for {message.author.name}")
+                user_wallet = self.generic_pft_utilities.spawn_wallet_from_seed(seed=seed)
+                user_address = user_wallet.classic_address
+                tactical_string = await self.tasknode_utilities.generate_document_rewrite_instructions(user_address)
+                
+                await self.send_long_message(message, tactical_string)
+        
+            except Exception as e:
+                error_message = f"An error occurred while generating tactical advice: {str(e)}"
+                await message.reply(error_message, mention_author=True)
 
     async def generate_basic_balance_info_string(self, address: str, owns_wallet: bool = True) -> str:
         """Generate account information summary including balances and stats.
@@ -2891,7 +2376,6 @@ My specific question/request is: {user_query}"""
             current_chunk_size += content_size
         
         # Process input text line by line
-        task_data = {}
         for line in sections:
             line = line.strip()
             if not line:
@@ -3439,7 +2923,6 @@ class AccountInfo:
 
 def main():
 
-    # Configure logger
     configure_logger(
         log_to_file=True,
         output_directory=Path.cwd() / "nodetools",
@@ -3448,8 +2931,7 @@ def main():
     )
 
     try:
-        # Initialize performance monitor
-        monitor = PerformanceMonitor(time_window=60)
+        # monitor = PerformanceMonitor(time_window=60)
 
         # Initialize business logic
         business_logic = TaskManagementRules.create()
@@ -3457,7 +2939,7 @@ def main():
         # Initialize NodeTools services
         nodetools = ServiceContainer.initialize(
             business_logic=business_logic,
-            performance_monitor=monitor,
+            # performance_monitor=monitor,
             notifications=True  # Enable notification queue for Discord tx activity tracking
         )
 
@@ -3476,10 +2958,8 @@ def main():
             user_task_parser=user_task_parser,
             nodetools=nodetools
         )
-        logger.info("All TaskNode services initialized")
 
         # Start the Transaction Orchestrator
-        logger.info("Starting async components...")
         nodetools.start()
 
         # Initialize and run the discord bot
