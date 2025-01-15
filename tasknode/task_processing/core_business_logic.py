@@ -1313,12 +1313,12 @@ class RewardResponseGenerator(ResponseGenerator):
             # Check for flags in the reward string and apply them
             if 'RED FLAG' in reward_string:
                 await self.transaction_repository.flag_address(
-                    address=request_tx.account,
+                    address=request_tx['account'],
                     flag_type='RED'
                 )
             elif 'YELLOW FLAG' in reward_string:
                 await self.transaction_repository.flag_address(
-                    address=request_tx.account,
+                    address=request_tx['account'],
                     flag_type='YELLOW'
                 )
 

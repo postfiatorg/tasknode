@@ -31,7 +31,7 @@ async def check_user_flag_status(
     """
     flag_status = await transaction_repository.check_if_user_is_flagged(
         auth_source='discord',
-        auth_source_user_id=user_id
+        auth_source_user_id=str(user_id)
     )
     
     if flag_status:
