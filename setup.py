@@ -36,10 +36,17 @@ setup(
         'PyNaCl',
         'loguru'
     ],
+    include_package_data=True, 
+    package_data={
+        'tasknode': [
+            'sql/*/*.sql',      # Include all .sql files in sql/ subdirectories
+            'sql/*.sql',        # Include .sql files directly in sql/
+        ],
+    },
     python_requires=">=3.11",  # Adjust version as needed,
     entry_points={
         'console_scripts': [
-            'tasknode=tasknode.chatbots.pft_discord:main',
+            'tasknode=tasknode.discord.pft_discord:main',
         ],
     },
 )

@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS idx_wallet_seeds_user_id ON user_wallet_seeds(discord_user_id);

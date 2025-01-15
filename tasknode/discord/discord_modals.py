@@ -14,7 +14,7 @@ import traceback
 import re
 
 if TYPE_CHECKING:
-    from tasknode.chatbots.pft_discord import TaskNodeDiscordBot
+    from tasknode.discord.pft_discord import TaskNodeDiscordBot
 
 class VerifyAddressModal(discord.ui.Modal, title='Verify XRP Address'):
     def __init__(self, client: 'TaskNodeDiscordBot'):
@@ -87,13 +87,27 @@ class WalletInfoModal(discord.ui.Modal, title='New XRP Wallet'):
             style=discord.TextStyle.short,
             required=True
         )
+        self.wallet_label = discord.ui.TextInput(
+            label='Wallet Label',
+            style=discord.TextStyle.short,
+            required=False
+        )
         self.add_item(self.address)
         self.add_item(self.seed)
+        self.add_item(self.wallet_label)
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = interaction.user.id
         logger.debug(f"WalletInfoModal.on_submit: Storing seed for user {interaction.user.name} (ID: {user_id})")
-        self.client.user_seeds[user_id] = self.seed.value
+
+        success, message = await self.client.wallet_seed_manager.store_wallet_seed(
+            interaction.user.id,
+            self.seed.value.strip(),
+            self.wallet_label.value.strip()
+        )
+        if not success:
+            await interaction.response.send_message(message, ephemeral=True)
+            return
 
         # Automatically authorize the address
         await self.client.transaction_repository.authorize_address(
@@ -110,7 +124,8 @@ class WalletInfoModal(discord.ui.Modal, title='New XRP Wallet'):
         )
 
 class SeedModal(discord.ui.Modal, title='Store Your Seed'):
-    seed = discord.ui.TextInput(label='Seed', style=discord.TextStyle.long)
+    seed = discord.ui.TextInput(label='Seed', style=discord.TextStyle.short)
+    wallet_label = discord.ui.TextInput(label='Wallet Label', style=discord.TextStyle.short, required=False)
 
     def __init__(self, client: 'TaskNodeDiscordBot'):
         super().__init__()
@@ -126,7 +141,14 @@ class SeedModal(discord.ui.Modal, title='Store Your Seed'):
             await interaction.response.send_message(f"An error occurred while storing your seed: {str(e)}", ephemeral=True)
             return
         
-        self.client.user_seeds[user_id] = self.seed.value.strip()  # Store the seed
+        success, message = await self.client.wallet_seed_manager.store_wallet_seed(
+            interaction.user.id,
+            self.seed.value.strip(),
+            self.wallet_label.value.strip()
+        )
+        if not success:
+            await interaction.response.send_message(message, ephemeral=True)
+            return
 
         # Automatically authorize the address
         await self.client.transaction_repository.authorize_address(
