@@ -19,7 +19,7 @@ setup(
     maintainer_email="skelectric@postfiat.org",
     packages=packages,
     install_requires=[
-        "nodetools @ git+https://github.com/postfiatorg/nodetools.git@async#egg=nodetools",
+        "nodetools @ git+https://github.com/postfiatorg/nodetools.git@main#egg=nodetools",
         # "nodetools @ file:///home/ubuntu/development/nodetools",
         'numpy',
         'pandas',
