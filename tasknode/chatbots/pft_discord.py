@@ -3521,7 +3521,7 @@ def main():
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
         
-        discord_credential_key = "discordbot_testnet_secret" if nodetools.runtime_config.USE_TESTNET else "discordbot_secret"
+        discord_credential_key = "discordbot_testnet_secret" if RuntimeConfig.USE_TESTNET else "discordbot_secret"
         client.run(nodetools.get_credential(discord_credential_key))
 
     except Exception as e:

@@ -2,9 +2,10 @@ import discord
 from discord.ui import Modal, TextInput
 from tasknode.protocols.tasknode_utilities import TaskNodeUtilities
 from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
+from nodetools.protocols.transaction_repository import TransactionRepository
 from decimal import Decimal
 from xrpl.wallet import Wallet
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from loguru import logger
 import nodetools.configuration.constants as global_constants
 import nodetools.configuration.configuration as config
@@ -13,6 +14,42 @@ import traceback
 import re
 if TYPE_CHECKING:
     from tasknode.chatbots.pft_discord import TaskNodeDiscordBot
+
+async def check_user_flag_status(
+        transaction_repository: TransactionRepository,
+        user_id: str,
+        action: str,
+    ) -> Optional[str]:
+    """Check if a user has active flags and return a formatted message if they do.
+    
+    Args:
+        user_id: Discord user ID
+        
+    Returns:
+        Optional[str]: If flagged, returns formatted message with flag type and time remaining.
+                        If not flagged, returns None.
+    """
+    flag_status = await transaction_repository.check_if_user_is_flagged(
+        auth_source='discord',
+        auth_source_user_id=str(user_id)
+    )
+    
+    if flag_status:
+        cooldown_seconds, flag_type = flag_status
+        hours = cooldown_seconds // 3600
+        minutes = (cooldown_seconds % 3600) // 60
+        
+        time_msg = []
+        if hours > 0:
+            time_msg.append(f"{hours} hour{'s' if hours != 1 else ''}")
+        if minutes > 0:
+            time_msg.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+        
+        time_remaining = " and ".join(time_msg)
+        
+        return f"You cannot {action} while you have an active {flag_type} flag. Please try again in {time_remaining}."
+        
+    return None 
 
 class VerifyAddressModal(discord.ui.Modal, title='Verify XRP Address'):
     def __init__(self, client: 'TaskNodeDiscordBot'):
@@ -38,6 +75,19 @@ class VerifyAddressModal(discord.ui.Modal, title='Verify XRP Address'):
             if not re.match('^r[1-9A-HJ-NP-Za-km-z]{25,34}$', address):
                 await interaction.response.send_message(
                     "Invalid XRP address format. Please try again.",
+                    ephemeral=True
+                )
+                return
+            
+            # Check if user has active flags
+            flag_message = await check_user_flag_status(
+                transaction_repository=self.client.transaction_repository,
+                user_id=user_id,
+                action="verify new addresses"
+            )
+            if flag_message:
+                await interaction.response.send_message(
+                    flag_message,
                     ephemeral=True
                 )
                 return
@@ -93,6 +143,19 @@ class WalletInfoModal(discord.ui.Modal, title='New XRP Wallet'):
         logger.debug(f"WalletInfoModal.on_submit: Storing seed for user {interaction.user.name} (ID: {user_id})")
         self.client.user_seeds[user_id] = self.seed.value
 
+        # Check if user has active flags
+        flag_message = await check_user_flag_status(
+            transaction_repository=self.client.transaction_repository,
+            user_id=user_id,
+            action="create a new wallet"
+        )
+        if flag_message:
+            await interaction.response.send_message(
+                flag_message,
+                ephemeral=True
+            )
+            return
+
         # Automatically authorize the address
         await self.client.transaction_repository.authorize_address(
             address=self.address.value,
@@ -125,6 +188,19 @@ class SeedModal(discord.ui.Modal, title='Store Your Seed'):
             return
         
         self.client.user_seeds[user_id] = self.seed.value.strip()  # Store the seed
+
+        # Check if user has active flags
+        flag_message = await check_user_flag_status(
+            transaction_repository=self.client.transaction_repository,
+            user_id=user_id,
+            action="store a new seed"
+        )
+        if flag_message:
+            await interaction.response.send_message(
+                flag_message,
+                ephemeral=True
+            )
+            return
 
         # Automatically authorize the address
         await self.client.transaction_repository.authorize_address(
