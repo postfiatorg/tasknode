@@ -5,6 +5,7 @@ from nodetools.protocols.generic_pft_utilities import GenericPFTUtilities
 from nodetools.protocols.transaction_repository import TransactionRepository
 from decimal import Decimal
 from xrpl.wallet import Wallet
+from xrpl.core.keypairs import is_valid_message
 from typing import TYPE_CHECKING, Optional
 from loguru import logger
 import nodetools.configuration.constants as global_constants
@@ -64,7 +65,22 @@ class VerifyAddressModal(discord.ui.Modal, title='Verify XRP Address'):
             min_length=25,
             max_length=35
         )
+        self.public_key = discord.ui.TextInput(
+            label='Public Key',
+            placeholder='Your public key in hex format',
+            style=discord.TextStyle.short,
+            required=True
+        )
+        self.signature = discord.ui.TextInput(
+            label='Signature',
+            placeholder='Signature of your Discord username',
+            style=discord.TextStyle.paragraph,
+            required=True
+        )
+        
         self.add_item(self.address)
+        self.add_item(self.public_key)
+        self.add_item(self.signature)
 
     async def on_submit(self, interaction: discord.Interaction):
         address = self.address.value.strip()
@@ -75,6 +91,22 @@ class VerifyAddressModal(discord.ui.Modal, title='Verify XRP Address'):
             if not re.match('^r[1-9A-HJ-NP-Za-km-z]{25,34}$', address):
                 await interaction.response.send_message(
                     "Invalid XRP address format. Please try again.",
+                    ephemeral=True
+                )
+                return
+            
+            username_bytes = str(interaction.user.name).encode()
+            signature_bytes = bytes.fromhex(self.signature.value.strip())
+            public_key = self.public_key.value.strip()
+
+            # Verify signature
+            if not is_valid_message(
+                message=username_bytes,
+                signature=signature_bytes,
+                public_key=public_key
+            ):
+                await interaction.response.send_message(
+                    "Invalid signature. Please ensure you've signed your username correctly.",
                     ephemeral=True
                 )
                 return
@@ -106,6 +138,7 @@ class VerifyAddressModal(discord.ui.Modal, title='Verify XRP Address'):
 
         except Exception as e:
             logger.error(f"Error verifying address: {e}")
+            logger.error(traceback.format_exc())
             await interaction.response.send_message(
                 "An error occurred while verifying your address. Please try again later.",
                 ephemeral=True

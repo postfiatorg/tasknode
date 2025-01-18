@@ -246,6 +246,7 @@ class TaskNodeDiscordBot(discord.Client):
 2. /pf_store_seed: Securely store your wallet seed.
 3. /pf_initiate: Initiate your commitment to the Post Fiat system, get access to PFT and initial grant
 4. /pf_update_link: Update your Google Doc link
+5. /pf_verify: Verify an XRP address for use with Post Fiat features from the local client
 
 ### Task Request
 1. /pf_request_task: Request a new Post Fiat task.
