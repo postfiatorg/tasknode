@@ -18,4 +18,9 @@
       when: full_deploy | default(false) | bool
     - role: postgres
       when: full_deploy | default(false) | bool
-    - tasknode 
+    - role: tasknode
+      when: full_deploy | default(false) | bool
+    - role: tasknode
+      when: not full_deploy | default(false) | bool
+      tasks:
+        - import_tasks: roles/tasknode/tasks/install_code.yml

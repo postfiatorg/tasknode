@@ -1,7 +1,18 @@
 ---
-- name: Execute database initialization script
+- name: Execute local database initialization script
   postgresql_query:
     db: "{{ postgres_db }}"
     query: "{{ lookup('template', 'templates/init_db.sql.j2') }}"
   become: yes
   become_user: "{{ postgres_master_user }}"
+  when: postgres_host == 'localhost'
+
+- name: Execute remote database initialization script
+  postgresql_query:
+    db: "{{ postgres_db }}"
+    query: "{{ lookup('template', 'templates/init_db.sql.j2') }}"
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_master_user }}"
+    login_password: "{{ postgres_master_password }}"
+  no_log: true
+  when: postgres_host != 'localhost'

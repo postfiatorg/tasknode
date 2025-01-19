@@ -2,4 +2,4 @@
 - name: restart tasknode
   systemd:
     name: tasknode
-    state: restarted 
+    state: restarted
