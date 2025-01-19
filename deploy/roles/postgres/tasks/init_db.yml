@@ -14,5 +14,5 @@
     login_host: "{{ postgres_host }}"
     login_user: "{{ postgres_master_user }}"
     login_password: "{{ postgres_master_password }}"
-  no_log: true
+  #no_log: true
   when: postgres_host != 'localhost'

@@ -1,9 +1,15 @@
 ---
+- name: Install PostgreSQL 16 packages
+  dnf:
+    name:
+      - postgresql16
+      - postgresql16-contrib
+    state: present
+
 - name: Create postfiat user
   postgresql_user:
     name: "{{ postgres_user }}"
     password: "{{ postgres_password }}"
-    role_attr_flags: CREATEDB,NOSUPERUSER
     login_host: "{{ postgres_host }}"
     login_user: "{{ postgres_master_user }}"
     login_password: "{{ postgres_master_password }}"
