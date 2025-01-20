@@ -2259,9 +2259,6 @@ but we recommend funding with a bit more to cover ongoing transaction fees.
         logger.debug('TaskNodeDiscordBot.on_ready: Connected to the following guilds:')
         for guild in self.guilds:
             logger.debug(f'- {guild.name} (ID: {guild.id})')
-            logger.debug(f"Guild {guild.name} channels:")
-            for channel in guild.channels:
-                logger.debug(f"- {channel.name} (ID: {channel.id})")
 
     async def _split_message_into_chunks(self, content: str, max_chunk_size: int = 1900) -> list[str]:
         """Split a message into chunks that fit within Discord's message limit.
