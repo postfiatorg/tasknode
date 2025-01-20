@@ -19,7 +19,7 @@ setup(
     maintainer_email="skelectric@postfiat.org",
     packages=packages,
     install_requires=[
-        "nodetools @ git+https://github.com/postfiatorg/nodetools.git",
+        "nodetools @ git+https://github.com/postfiatorg/nodetools.git@async#egg=nodetools",
         # "nodetools @ file:///home/ubuntu/development/nodetools",
         'numpy',
         'pandas',
@@ -28,14 +28,30 @@ setup(
         'xrpl-py',
         'requests',
         'toml',
-        'nest_asyncio','brotli','sec-cik-mapper','psycopg2-binary','quandl','schedule','openai','lxml',
-        'gspread_dataframe','gspread','oauth2client','discord','anthropic',
+        'nest_asyncio',
+        'brotli',
+        'sec-cik-mapper',
+        'psycopg2-binary',
+        'quandl',
+        'schedule',
+        'openai',
+        'lxml',
+        'gspread_dataframe',
+        'gspread',
+        'oauth2client',
+        'discord',
+        'anthropic',
         'bs4',
         'plotly',
         'matplotlib',
         'PyNaCl',
         'loguru'
     ],
+    extras_require={
+        'dev': [
+            'alembic',
+        ],
+    },
     python_requires=">=3.11",  # Adjust version as needed,
     entry_points={
         'console_scripts': [
