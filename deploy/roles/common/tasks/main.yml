@@ -1,0 +1,17 @@
+---
+- name: Validate network
+  assert:
+    that:
+      - network in ['mainnet', 'testnet']
+    fail_msg: "network variable must be set to either 'mainnet' or 'testnet'"
+    success_msg: "network variable is valid"
+
+- name: Install basic packages
+  dnf:
+    name:
+      - git
+    state: present
+
+- name: Set timezone
+  timezone:
+    name: UTC

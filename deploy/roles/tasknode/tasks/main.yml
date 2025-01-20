@@ -1,0 +1,3 @@
+---
+- name: Install code
+  import_tasks: install_code.yml

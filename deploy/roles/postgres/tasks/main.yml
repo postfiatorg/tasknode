@@ -1,0 +1,12 @@
+---
+- name: Run local postgres installation tasks
+  import_tasks: local_install.yml
+  when: postgres_host == 'localhost'
+
+- name: Run remote postgres installation tasks
+  import_tasks: remote_install.yml
+  when: postgres_host != 'localhost'
+
+# TODO: replace with proper database migration system
+#- name: Run postgres initialization tasks
+#  import_tasks: init_db.yml

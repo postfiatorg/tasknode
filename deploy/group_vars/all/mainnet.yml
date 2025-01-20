@@ -1,0 +1,11 @@
+---
+network: mainnet
+discord_server_id: 1061800464045310053
+discord_activity_channel_id: 1239280089699450920
+postgres_db: postfiat_db
+discord_bot_token: "{{ discord_bot_token_mainnet }}"
+task_node_wallet: "{{ task_node_wallet_mainnet }}"
+remembrancer_wallet: "{{ remembrancer_wallet_mainnet }}"
+postgres_password: "{{ postgres_password_mainnet }}"
+postgres_master_password: "{{ postgres_master_password_mainnet }}"
+encryption_password: "{{ encryption_password_mainnet }}"

@@ -1,0 +1,9 @@
+---
+- name: Install Python packages
+  dnf:
+    name:
+      - python3.12
+      - python3.12-pip
+      - python3-psycopg2
+      - python3-virtualenv
+    state: present

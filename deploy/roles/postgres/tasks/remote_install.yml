@@ -1,0 +1,28 @@
+---
+- name: Install PostgreSQL 16 packages
+  dnf:
+    name:
+      - postgresql16
+      - postgresql16-contrib
+    state: present
+
+- name: Create postfiat user
+  postgresql_user:
+    name: "{{ postgres_user }}"
+    password: "{{ postgres_password }}"
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_master_user }}"
+    login_password: "{{ postgres_master_password }}"
+    db: postgres
+  no_log: true
+
+- name: Create PostgreSQL database
+  postgresql_db:
+    name: "{{ postgres_db }}"
+    owner: "{{ postgres_user }}"
+    encoding: UTF-8
+    template: template0
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_master_user }}"
+    login_password: "{{ postgres_master_password }}"
+  no_log: true

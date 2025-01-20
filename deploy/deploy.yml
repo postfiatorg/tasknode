@@ -1,0 +1,24 @@
+---
+- name: Deploy Task Node
+  hosts: mainnet
+  become: yes
+  pre_tasks:
+    - name: Set network based on inventory group
+      set_fact:
+        network: "{{ group_names | select('match', '^(mainnet|testnet)$') | first }}"
+
+    - name: Update dnf cache
+      dnf:
+        update_cache: yes
+
+  vars_files:
+    - "group_vars/all/{{ network }}.yml"
+  
+  roles:
+    - role: common
+      when: full_deploy | default(false) | bool
+    - role: python
+      when: full_deploy | default(false) | bool
+    - role: postgres
+      when: full_deploy | default(false) | bool
+    - role: tasknode

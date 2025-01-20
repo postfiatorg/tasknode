@@ -1,0 +1,19 @@
+---
+- name: Run nodetools setup-node in auto mode
+  command: "{{ app_dir }}/.venv/bin/nodetools setup-node"
+  environment:
+    AUTO: "1"
+    NETWORK: "{{ network }}"
+    NODE_NAME: tasknode
+    PFT_XRP_WALLET: "{{ task_node_wallet }}"
+    PG_CONN_STRING: "{{ postgres_conn_string }}"
+    OPENROUTER_API_KEY: "{{ openrouter_api_key }}"
+    OPENAI_API_KEY: "{{ openai_api_key }}"
+    ANTHROPIC_API_KEY: "{{ anthropic_api_key }}"
+    REMEMBRANCER_WALLET: "{{ remembrancer_wallet }}"
+    DISCORD_BOT_TOKEN: "{{ discord_bot_token }}"
+    ENCRYPTION_PASSWORD: "{{ encryption_password }}"
+    DISCORD_GUILD_ID: "{{ discord_server_id }}"
+    DISCORD_ACTIVITY_CHANNEL_ID: "{{ discord_activity_channel_id }}"
+  become: yes
+  become_user: "{{ app_user }}"
