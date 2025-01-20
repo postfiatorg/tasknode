@@ -25,13 +25,23 @@
   import_tasks: setup_node.yml
   when: full_deploy | default(false) | bool
 
+- name: Create tasknode config directory
+  file:
+    path: "/etc/tasknode"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: yes
+
 - name: Create environment file
   template:
     src: env.j2
-    dest: "{{ app_dir }}/.env"
-    owner: "{{ app_user }}"
-    group: "{{ app_group }}"
+    dest: "/etc/tasknode/.env"
+    owner: root
+    group: root
     mode: '0600'
+  become: yes
 
 - name: Create systemd service file
   template:

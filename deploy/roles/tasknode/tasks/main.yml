@@ -1,3 +1,8 @@
 ---
-- name: Install code
-  import_tasks: install_code.yml
+- name: Install code only
+  import_tasks: install_code_only.yml
+  when: code_only | default(false) | bool
+
+- name: Full installation
+  import_tasks: install_full.yml
+  when: not (code_only | default(false) | bool)
