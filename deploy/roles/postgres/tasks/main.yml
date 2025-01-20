@@ -7,5 +7,6 @@
   import_tasks: remote_install.yml
   when: postgres_host != 'localhost'
 
+# TODO: replace with proper database migration system
 #- name: Run postgres initialization tasks
 #  import_tasks: init_db.yml

@@ -1,6 +1,7 @@
 ---
-- name: Install code
-  import_tasks: install_code.yml
-
 - name: Create node configs (setup-node)
   import_tasks: setup_node.yml
+#  when: full_deploy | default(false) | bool
+
+- name: Install code
+  import_tasks: install_code.yml
