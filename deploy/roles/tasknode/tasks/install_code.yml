@@ -21,6 +21,10 @@
   command: "{{ app_dir }}/.venv/bin/python -m pip install -e {{ app_dir }}"
   become_user: "{{ app_user }}"
 
+- name: Create node configs (setup-node)
+  import_tasks: setup_node.yml
+  when: full_deploy | default(false) | bool
+
 - name: Create environment file
   template:
     src: env.j2
