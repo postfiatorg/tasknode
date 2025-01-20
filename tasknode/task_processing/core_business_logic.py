@@ -1338,7 +1338,6 @@ class RewardResponseGenerator(ResponseGenerator):
         except Exception as e:
             raise Exception(f"Failed to construct reward response: {e}")
 
-
 ############################################################################
 ################################# ODV ######################################
 ############################################################################
