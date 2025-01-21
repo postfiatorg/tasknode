@@ -1,6 +1,6 @@
 ---
 - name: Deploy Task Node
-  hosts: mainnet
+  hosts: testnet
   become: yes
   pre_tasks:
     - name: Set network based on inventory group

@@ -4,7 +4,7 @@
   environment:
     AUTO: "1"
     NETWORK: "{{ network }}"
-    NODE_NAME: tasknode
+    NODE_NAME: postfiatfoundation
     PFT_XRP_WALLET: "{{ task_node_wallet }}"
     PG_CONN_STRING: "{{ postgres_conn_string }}"
     OPENROUTER_API_KEY: "{{ openrouter_api_key }}"

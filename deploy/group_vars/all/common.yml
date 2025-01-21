@@ -9,7 +9,7 @@ branch: main
 postgres_host: localhost
 postgres_port: 5432
 postgres_user: postfiat
-postgres_conn_string: postgres://{{ postgres_user }}:{{ postgres_password }}@{{ postgres_host }}:{{ postgres_port }}/{{ postgres_db }}
+postgres_conn_string: postgresql://{{ postgres_user }}:{{ postgres_password }}@{{ postgres_host }}:{{ postgres_port }}/{{ postgres_db }}
 postgres_master_user: postgres
 
 # System Configuration

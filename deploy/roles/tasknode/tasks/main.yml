@@ -22,7 +22,7 @@
   become_user: "{{ app_user }}"
 
 - name: Run database migrations
-  command: alembic upgrade head
+  command: "{{ app_dir }}/.venv/bin/alembic upgrade head"
   args:
     chdir: "{{ app_dir }}/migrations"
   environment:
