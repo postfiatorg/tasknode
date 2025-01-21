@@ -1,8 +1,45 @@
 ---
-- name: Install code only
-  import_tasks: install_code_only.yml
-  when: code_only | default(false) | bool
+- name: Remove existing TaskNode directory
+  file:
+    path: "{{ app_dir }}"
+    state: absent
+  become: yes
 
-- name: Full installation
-  import_tasks: install_full.yml
+- name: Clone TaskNode repository
+  git:
+    repo: "{{ repo }}"
+    dest: "{{ app_dir }}"
+    version: "{{ branch }}"
+  become_user: "{{ app_user }}"
+
+- name: Create Python virtual environment
+  command:
+    cmd: python3.12 -m venv "{{ app_dir }}/.venv"
+  become_user: "{{ app_user }}"
+
+- name: Install project as package
+  command: "{{ app_dir }}/.venv/bin/python -m pip install -e {{ app_dir }}"
+  become_user: "{{ app_user }}"
+
+- name: Run database migrations
+  command: alembic upgrade head
+  args:
+    chdir: "{{ app_dir }}/migrations"
+  environment:
+    DATABASE_URL: "{{ postgres_connection_string }}"
+  become: yes
+  become_user: "{{ app_user }}"
+  when: run_migrations | default(false) | bool
+  tags:
+    - migrations
+
+- name: Install configs
+  include_tasks: install_full.yml
   when: not (code_only | default(false) | bool)
+
+- name: Restart TaskNode service
+  systemd:
+    name: tasknode
+    state: restarted
+  tags:
+    - force_restart
