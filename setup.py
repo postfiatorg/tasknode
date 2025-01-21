@@ -45,13 +45,9 @@ setup(
         'plotly',
         'matplotlib',
         'PyNaCl',
-        'loguru'
+        'loguru',
+        'alembic',
     ],
-    extras_require={
-        'dev': [
-            'alembic',
-        ],
-    },
     python_requires=">=3.11",  # Adjust version as needed,
     entry_points={
         'console_scripts': [
