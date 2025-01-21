@@ -3,7 +3,7 @@ ansible_user: ec2-user
 
 # app deployment
 repo: https://github.com/postfiatorg/tasknode.git
-branch: john/basic-aws-deploy
+branch: main
 
 # postgres common settings
 postgres_host: localhost
