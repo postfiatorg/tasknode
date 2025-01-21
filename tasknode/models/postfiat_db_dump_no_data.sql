@@ -1,0 +1,476 @@
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 16.6 (Ubuntu 16.6-0ubuntu0.24.04.1)
+-- Dumped by pg_dump version 16.6 (Ubuntu 16.6-0ubuntu0.24.04.1)
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: decode_hex_memo(text); Type: FUNCTION; Schema: public; Owner: postfiat
+--
+
+CREATE FUNCTION public.decode_hex_memo(memo_text text) RETURNS text
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RETURN CASE 
+        WHEN memo_text IS NULL THEN ''
+        WHEN POSITION('\x' in memo_text) = 1 THEN 
+            convert_from(decode(substring(memo_text from 3), 'hex'), 'UTF8')
+        ELSE 
+            convert_from(decode(memo_text, 'hex'), 'UTF8')
+    END;
+END;
+$$;
+
+
+ALTER FUNCTION public.decode_hex_memo(memo_text text) OWNER TO postfiat;
+
+--
+-- Name: find_transaction_response(text, text, text, text, text, text, boolean); Type: FUNCTION; Schema: public; Owner: postfiat
+--
+
+CREATE FUNCTION public.find_transaction_response(request_account text, request_destination text, request_time text, response_memo_type text, response_memo_format text DEFAULT NULL::text, response_memo_data text DEFAULT NULL::text, require_after_request boolean DEFAULT true) RETURNS TABLE(hash character varying, account character varying, destination character varying, memo_type text, memo_format text, memo_data text, transaction_result character varying, close_time_iso timestamp without time zone)
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        d.hash::VARCHAR(255),
+        (d.tx_json_parsed->>'Account')::VARCHAR(255) as account,
+        (d.tx_json_parsed->>'Destination')::VARCHAR(255) as destination,
+        d.memo_type,
+        d.memo_format,
+        d.memo_data,
+        d.transaction_result::VARCHAR(255),
+        d.close_time_iso::timestamp
+    FROM decoded_memos d
+    WHERE 
+        d.tx_json_parsed->>'Destination' = request_account
+        AND d.transaction_result = 'tesSUCCESS'
+        AND (
+            NOT require_after_request 
+            OR d.close_time_iso::timestamp > request_time::timestamp
+        )
+        AND d.memo_type = response_memo_type
+        AND (response_memo_format IS NULL OR d.memo_format = response_memo_format)
+        AND (response_memo_data IS NULL OR d.memo_data LIKE response_memo_data)
+    ORDER BY d.close_time_iso ASC
+    LIMIT 1;
+END;
+$$;
+
+
+ALTER FUNCTION public.find_transaction_response(request_account text, request_destination text, request_time text, response_memo_type text, response_memo_format text, response_memo_data text, require_after_request boolean) OWNER TO postfiat;
+
+--
+-- Name: process_tx_memos(); Type: FUNCTION; Schema: public; Owner: postfiat
+--
+
+CREATE FUNCTION public.process_tx_memos() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    -- Only process if there are memos
+    IF (NEW.tx_json::jsonb->'Memos') IS NOT NULL THEN
+        INSERT INTO transaction_memos (
+            hash,
+            account,
+            destination,
+            pft_amount,
+            xrp_fee,
+            memo_format,
+            memo_type,
+            memo_data,
+            datetime,
+            transaction_result
+        ) VALUES (
+            NEW.hash,
+            (NEW.tx_json::jsonb->>'Account'),
+            (NEW.tx_json::jsonb->>'Destination'),
+            NULLIF((NEW.meta::jsonb->'delivered_amount'->>'value')::NUMERIC, 0),
+            NULLIF((NEW.tx_json::jsonb->>'Fee')::NUMERIC, 0) / 1000000,
+            decode_hex_memo((NEW.tx_json::jsonb->'Memos'->0->'Memo'->>'MemoFormat')),
+            decode_hex_memo((NEW.tx_json::jsonb->'Memos'->0->'Memo'->>'MemoType')),
+            decode_hex_memo((NEW.tx_json::jsonb->'Memos'->0->'Memo'->>'MemoData')),
+            (NEW.close_time_iso::timestamp),
+            (NEW.meta::jsonb->>'TransactionResult')
+        )
+        ON CONFLICT (hash) 
+        DO UPDATE SET
+            account = EXCLUDED.account,
+            destination = EXCLUDED.destination,
+            pft_amount = EXCLUDED.pft_amount,
+            xrp_fee = EXCLUDED.xrp_fee,
+            memo_format = EXCLUDED.memo_format,
+            memo_type = EXCLUDED.memo_type,
+            memo_data = EXCLUDED.memo_data,
+            datetime = EXCLUDED.datetime,
+            transaction_result = EXCLUDED.transaction_result;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.process_tx_memos() OWNER TO postfiat;
+
+--
+-- Name: update_pft_holders(); Type: FUNCTION; Schema: public; Owner: postfiat
+--
+
+CREATE FUNCTION public.update_pft_holders() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    meta_parsed JSONB;
+    current_balance NUMERIC;
+BEGIN
+    -- Skip if transaction wasn't successful
+    IF NEW.transaction_result != 'tesSUCCESS' THEN
+        RETURN NEW;
+    END IF;
+
+    -- Process sender's balance
+    IF NEW.account IS NOT NULL AND NEW.pft_amount IS NOT NULL THEN
+        -- Get current balance or default to 0
+        SELECT balance INTO current_balance
+        FROM pft_holders
+        WHERE account = NEW.account;
+
+        IF current_balance IS NULL THEN
+            current_balance := 0;
+        END IF;
+
+        -- Update sender's balance (subtract amount sent)
+        INSERT INTO pft_holders (account, balance, last_updated, last_tx_hash)
+        VALUES (
+            NEW.account,
+            current_balance - NEW.pft_amount,
+            NEW.datetime,
+            NEW.hash
+        )
+        ON CONFLICT (account) DO UPDATE
+        SET 
+            balance = EXCLUDED.balance,
+            last_updated = EXCLUDED.last_updated,
+            last_tx_hash = EXCLUDED.last_tx_hash;
+    END IF;
+
+    -- Process recipient's balance
+    IF NEW.destination IS NOT NULL AND NEW.pft_amount IS NOT NULL THEN
+        -- Get current balance or default to 0
+        SELECT balance INTO current_balance
+        FROM pft_holders
+        WHERE account = NEW.destination;
+
+        IF current_balance IS NULL THEN
+            current_balance := 0;
+        END IF;
+
+        -- Update recipient's balance (add amount received)
+        INSERT INTO pft_holders (account, balance, last_updated, last_tx_hash)
+        VALUES (
+            NEW.destination,
+            current_balance + NEW.pft_amount,
+            NEW.datetime,
+            NEW.hash
+        )
+        ON CONFLICT (account) DO UPDATE
+        SET 
+            balance = EXCLUDED.balance,
+            last_updated = EXCLUDED.last_updated,
+            last_tx_hash = EXCLUDED.last_tx_hash;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.update_pft_holders() OWNER TO postfiat;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: authorized_addresses; Type: TABLE; Schema: public; Owner: postfiat
+--
+
+CREATE TABLE public.authorized_addresses (
+    address character varying(255) NOT NULL,
+    authorized_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    is_authorized boolean DEFAULT true,
+    deauthorized_at timestamp with time zone,
+    auth_source character varying(50),
+    auth_source_user_id character varying(50),
+    flag_type character varying(10),
+    flag_expires_at timestamp with time zone,
+    CONSTRAINT valid_flag_type CHECK ((((flag_type)::text = ANY ((ARRAY['YELLOW'::character varying, 'RED'::character varying])::text[])) OR (flag_type IS NULL))),
+    CONSTRAINT valid_xrp_address CHECK (((address)::text ~ '^r[1-9A-HJ-NP-Za-km-z]{25,34}$'::text))
+);
+
+
+ALTER TABLE public.authorized_addresses OWNER TO postfiat;
+
+--
+-- Name: postfiat_tx_cache; Type: TABLE; Schema: public; Owner: postfiat
+--
+
+CREATE TABLE public.postfiat_tx_cache (
+    hash character varying(255) NOT NULL,
+    ledger_index bigint,
+    close_time_iso character varying(255),
+    meta text,
+    tx_json text,
+    validated boolean
+);
+
+
+ALTER TABLE public.postfiat_tx_cache OWNER TO postfiat;
+
+--
+-- Name: transaction_memos; Type: TABLE; Schema: public; Owner: postfiat
+--
+
+CREATE TABLE public.transaction_memos (
+    hash character varying(255) NOT NULL,
+    account character varying(255),
+    destination character varying(255),
+    pft_amount numeric,
+    xrp_fee numeric,
+    memo_format text DEFAULT ''::text,
+    memo_type text DEFAULT ''::text,
+    memo_data text DEFAULT ''::text,
+    datetime timestamp without time zone,
+    transaction_result character varying(50)
+);
+
+
+ALTER TABLE public.transaction_memos OWNER TO postfiat;
+
+--
+-- Name: decoded_memos; Type: VIEW; Schema: public; Owner: postfiat
+--
+
+CREATE VIEW public.decoded_memos AS
+ WITH parsed_json AS (
+         SELECT ptc.hash,
+            ptc.ledger_index,
+            ptc.close_time_iso,
+            ptc.meta,
+            ptc.tx_json,
+            ptc.validated,
+            (ptc.tx_json)::jsonb AS tx_json_parsed,
+            (ptc.meta)::jsonb AS meta_parsed
+           FROM public.postfiat_tx_cache ptc
+        )
+ SELECT p.hash,
+    p.ledger_index,
+    p.close_time_iso,
+    p.meta,
+    p.tx_json,
+    p.validated,
+    p.tx_json_parsed,
+    p.meta_parsed,
+    (p.tx_json_parsed ->> 'Account'::text) AS account,
+    (p.tx_json_parsed ->> 'Destination'::text) AS destination,
+    (p.tx_json_parsed ->> 'Fee'::text) AS fee,
+    ((p.tx_json_parsed ->> 'Flags'::text))::double precision AS flags,
+    ((p.tx_json_parsed ->> 'LastLedgerSequence'::text))::bigint AS lastledgersequence,
+    ((p.tx_json_parsed ->> 'Sequence'::text))::bigint AS sequence,
+    (p.tx_json_parsed ->> 'TransactionType'::text) AS transactiontype,
+    tm.memo_format,
+    tm.memo_type,
+    tm.memo_data,
+    (p.meta_parsed ->> 'TransactionResult'::text) AS transaction_result,
+    ((p.tx_json_parsed -> 'Memos'::text) IS NOT NULL) AS has_memos,
+    (p.close_time_iso)::timestamp without time zone AS datetime,
+    COALESCE((((p.meta_parsed -> 'delivered_amount'::text) ->> 'value'::text))::double precision, (0)::double precision) AS pft_absolute_amount,
+    ((p.close_time_iso)::timestamp without time zone)::date AS simple_date,
+    (((p.tx_json_parsed -> 'Memos'::text) -> 0) -> 'Memo'::text) AS main_memo_data
+   FROM (parsed_json p
+     LEFT JOIN public.transaction_memos tm ON (((p.hash)::text = (tm.hash)::text)));
+
+
+ALTER VIEW public.decoded_memos OWNER TO postfiat;
+
+--
+-- Name: transaction_processing_results; Type: TABLE; Schema: public; Owner: postfiat
+--
+
+CREATE TABLE public.transaction_processing_results (
+    hash character varying(255) NOT NULL,
+    processed boolean NOT NULL,
+    rule_name character varying(255),
+    response_tx_hash character varying(255),
+    notes text,
+    reviewed_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.transaction_processing_results OWNER TO postfiat;
+
+--
+-- Name: enriched_transaction_results; Type: VIEW; Schema: public; Owner: postfiat
+--
+
+CREATE VIEW public.enriched_transaction_results AS
+ SELECT r.hash,
+    r.processed,
+    r.rule_name,
+    r.response_tx_hash,
+    r.notes,
+    r.reviewed_at,
+    m.account,
+    m.destination,
+    m.pft_amount,
+    m.xrp_fee,
+    m.memo_format,
+    m.memo_type,
+    m.memo_data,
+    m.datetime,
+    m.transaction_result
+   FROM (public.transaction_processing_results r
+     LEFT JOIN public.transaction_memos m ON (((r.hash)::text = (m.hash)::text)));
+
+
+ALTER VIEW public.enriched_transaction_results OWNER TO postfiat;
+
+--
+-- Name: pft_holders; Type: TABLE; Schema: public; Owner: postfiat
+--
+
+CREATE TABLE public.pft_holders (
+    account character varying(255) NOT NULL,
+    balance numeric DEFAULT 0 NOT NULL,
+    last_updated timestamp without time zone NOT NULL,
+    last_tx_hash character varying(255)
+);
+
+
+ALTER TABLE public.pft_holders OWNER TO postfiat;
+
+
+--
+-- Name: authorized_addresses authorized_addresses_pkey; Type: CONSTRAINT; Schema: public; Owner: postfiat
+--
+
+ALTER TABLE ONLY public.authorized_addresses
+    ADD CONSTRAINT authorized_addresses_pkey PRIMARY KEY (address);
+
+
+--
+-- Name: pft_holders pft_holders_pkey; Type: CONSTRAINT; Schema: public; Owner: postfiat
+--
+
+ALTER TABLE ONLY public.pft_holders
+    ADD CONSTRAINT pft_holders_pkey PRIMARY KEY (account);
+
+
+--
+-- Name: postfiat_tx_cache postfiat_tx_cache_pkey; Type: CONSTRAINT; Schema: public; Owner: postfiat
+--
+
+ALTER TABLE ONLY public.postfiat_tx_cache
+    ADD CONSTRAINT postfiat_tx_cache_pkey PRIMARY KEY (hash);
+
+
+--
+-- Name: transaction_memos transaction_memos_pkey; Type: CONSTRAINT; Schema: public; Owner: postfiat
+--
+
+ALTER TABLE ONLY public.transaction_memos
+    ADD CONSTRAINT transaction_memos_pkey PRIMARY KEY (hash);
+
+
+--
+-- Name: transaction_processing_results transaction_processing_results_pkey; Type: CONSTRAINT; Schema: public; Owner: postfiat
+--
+
+ALTER TABLE ONLY public.transaction_processing_results
+    ADD CONSTRAINT transaction_processing_results_pkey PRIMARY KEY (hash);
+
+
+--
+-- Name: idx_account_destination; Type: INDEX; Schema: public; Owner: postfiat
+--
+
+CREATE INDEX idx_account_destination ON public.transaction_memos USING btree (account, destination);
+
+
+--
+-- Name: idx_authorized_addresses_source; Type: INDEX; Schema: public; Owner: postfiat
+--
+
+CREATE INDEX idx_authorized_addresses_source ON public.authorized_addresses USING btree (auth_source, auth_source_user_id);
+
+
+--
+-- Name: idx_close_time_iso; Type: INDEX; Schema: public; Owner: postfiat
+--
+
+CREATE INDEX idx_close_time_iso ON public.postfiat_tx_cache USING btree (close_time_iso DESC);
+
+
+--
+-- Name: idx_memo_fields; Type: INDEX; Schema: public; Owner: postfiat
+--
+
+CREATE INDEX idx_memo_fields ON public.transaction_memos USING btree (memo_type, memo_format, memo_data);
+
+
+--
+-- Name: idx_pft_holders_balance; Type: INDEX; Schema: public; Owner: postfiat
+--
+
+CREATE INDEX idx_pft_holders_balance ON public.pft_holders USING btree (balance);
+
+
+--
+-- Name: postfiat_tx_cache process_tx_memos_trigger; Type: TRIGGER; Schema: public; Owner: postfiat
+--
+
+CREATE TRIGGER process_tx_memos_trigger AFTER INSERT OR UPDATE ON public.postfiat_tx_cache FOR EACH ROW EXECUTE FUNCTION public.process_tx_memos();
+
+
+--
+-- Name: transaction_memos update_pft_holders_trigger; Type: TRIGGER; Schema: public; Owner: postfiat
+--
+
+CREATE TRIGGER update_pft_holders_trigger AFTER INSERT ON public.transaction_memos FOR EACH ROW EXECUTE FUNCTION public.update_pft_holders();
+
+
+--
+-- Name: transaction_memos transaction_memos_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postfiat
+--
+
+ALTER TABLE ONLY public.transaction_memos
+    ADD CONSTRAINT transaction_memos_hash_fkey FOREIGN KEY (hash) REFERENCES public.postfiat_tx_cache(hash) ON DELETE CASCADE;
+
+
+--
+-- Name: transaction_processing_results transaction_processing_results_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postfiat
+--
+
+ALTER TABLE ONLY public.transaction_processing_results
+    ADD CONSTRAINT transaction_processing_results_hash_fkey FOREIGN KEY (hash) REFERENCES public.postfiat_tx_cache(hash);
+
+
+--
+-- PostgreSQL database dump complete
+--
+
