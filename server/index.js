@@ -4,7 +4,14 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
-import { authCallback, authProviders, authStart, readiness } from "./product-contracts.js";
+import {
+  authCallback,
+  authProviders,
+  authStart,
+  readiness,
+  walletActionStart,
+  walletActions,
+} from "./product-contracts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -93,7 +100,7 @@ async function serveStatic(url, res) {
   createReadStream(filePath).pipe(res);
 }
 
-function routeApi(url, res) {
+function routeApi(req, url, res) {
   const state = appState();
   const parts = url.pathname.split("/").filter(Boolean);
 
@@ -139,6 +146,22 @@ function routeApi(url, res) {
     return true;
   }
 
+  if (url.pathname === "/api/wallet/actions") {
+    json(res, 200, { actions: walletActions() });
+    return true;
+  }
+
+  if (
+    url.pathname === "/api/wallet/link/start" ||
+    url.pathname === "/api/wallet/unlock/start" ||
+    url.pathname === "/api/wallet/delink" ||
+    url.pathname === "/api/wallet/relink/start"
+  ) {
+    const result = walletActionStart(url.pathname, req.method);
+    json(res, result.status, result.body);
+    return true;
+  }
+
   if (url.pathname === "/api/context") {
     json(res, 200, state.context);
     return true;
@@ -176,7 +199,7 @@ const server = createServer((req, res) => {
     return;
   }
 
-  if (routeApi(url, res)) return;
+  if (routeApi(req, url, res)) return;
 
   serveStatic(url, res).catch((error) => {
     json(res, 500, { ok: false, error: error?.message || "internal_error" });

@@ -2,6 +2,19 @@ function hasAll(keys) {
   return keys.every((key) => Boolean(process.env[key]));
 }
 
+function actionResponse({ status, error, action, message, actionRequired }) {
+  return {
+    status,
+    body: {
+      ok: false,
+      error,
+      action,
+      message,
+      actionRequired,
+    },
+  };
+}
+
 function provider({ id, label, kind, requiredEnv, note }) {
   const configured = hasAll(requiredEnv);
   const startPath = `/api/auth/start/${id}`;
@@ -19,6 +32,22 @@ function provider({ id, label, kind, requiredEnv, note }) {
     actionRequired: configured
       ? "Implement callback handling, account merge rules, and launch review before enabling this provider"
       : `Configure ${requiredEnv.join(", ")}`,
+    note,
+  };
+}
+
+function walletAction({ id, label, path, requiredEnv = [], note, actionRequired }) {
+  const configured = hasAll(requiredEnv);
+
+  return {
+    id,
+    label,
+    path,
+    method: "POST",
+    configured,
+    enabled: false,
+    status: configured ? "disabled" : "missing_config",
+    actionRequired: configured ? actionRequired : `Configure ${requiredEnv.join(", ")}`,
     note,
   };
 }
@@ -58,6 +87,95 @@ export function authProviders() {
         "Email should be account fallback, but no transactional email provider has been selected for Task Node Official yet.",
     }),
   ];
+}
+
+export function walletActions() {
+  return [
+    walletAction({
+      id: "link_start",
+      label: "Link seed wallet",
+      path: "/api/wallet/link/start",
+      requiredEnv: ["PFTL_RPC_URL", "PFTL_RPC_API_KEY"],
+      note:
+        "Begins the preferred seed-based PFTL wallet path after local seed storage is implemented.",
+      actionRequired:
+        "Implement encrypted local seed storage, backup warnings, and one-wallet-per-account checks before enabling wallet link.",
+    }),
+    walletAction({
+      id: "unlock_start",
+      label: "Unlock wallet action",
+      path: "/api/wallet/unlock/start",
+      requiredEnv: ["PFTL_RPC_URL", "PFTL_RPC_API_KEY"],
+      note:
+        "Unlocks only wallet-bound actions such as sending PFT, signing verifications, or inking context manifests.",
+      actionRequired:
+        "Implement unlock transaction boundaries and signing confirmation screens before enabling wallet unlock.",
+    }),
+    walletAction({
+      id: "delink",
+      label: "Delink wallet",
+      path: "/api/wallet/delink",
+      note:
+        "Required for production-safe onboarding tests and account recovery without corrupting identity history.",
+      actionRequired:
+        "Define balance ownership, audit logging, recovery warnings, and test-only guardrails before enabling delink.",
+    }),
+    walletAction({
+      id: "relink_start",
+      label: "Relink wallet",
+      path: "/api/wallet/relink/start",
+      requiredEnv: ["PFTL_RPC_URL", "PFTL_RPC_API_KEY"],
+      note:
+        "Allows repeated wallet onboarding tests after a safe delink path exists.",
+      actionRequired:
+        "Implement relink ownership verification and wallet history reconciliation before enabling relink.",
+    }),
+  ];
+}
+
+export function walletActionByPath(pathname) {
+  return walletActions().find((action) => action.path === pathname) || null;
+}
+
+export function walletActionStart(pathname, method) {
+  const action = walletActionByPath(pathname);
+
+  if (!action) {
+    return actionResponse({
+      status: 404,
+      error: "unknown_wallet_action",
+      action: pathname,
+      message: "Unknown wallet action.",
+    });
+  }
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "wallet_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Call the wallet action with the declared method.",
+    });
+  }
+
+  if (!action.configured) {
+    return actionResponse({
+      status: 409,
+      error: "wallet_action_not_configured",
+      action: action.id,
+      message: `${action.label} is not configured for this environment.`,
+      actionRequired: action.actionRequired,
+    });
+  }
+
+  return actionResponse({
+    status: 503,
+    error: "wallet_action_disabled",
+    action: action.id,
+    message: `${action.label} is configured but disabled until the wallet custody boundary is implemented.`,
+    actionRequired: action.actionRequired,
+  });
 }
 
 export function authProviderById(providerId) {
@@ -149,6 +267,7 @@ export function readiness() {
       pftlRpcConfigured: hasAll(["PFTL_RPC_URL"]),
       pftlRpcAuthConfigured: hasAll(["PFTL_RPC_API_KEY"]),
       seedStorageReady: false,
+      lifecycleActionsReady: false,
       blockers: [
         "Encrypted local seed storage design is not implemented",
         "Wallet delink and relink runbook is not implemented",

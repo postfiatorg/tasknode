@@ -233,6 +233,31 @@ function TaskCard({ task }) {
 }
 
 function WalletView({ wallet, usage }) {
+  const [message, setMessage] = useState("");
+  const [pendingAction, setPendingAction] = useState("");
+  const actions = wallet?.actions || [];
+  const linkAction = actions.find((action) => action.id === "link_start");
+
+  async function startWalletAction(action) {
+    if (!action) return;
+
+    setPendingAction(action.id);
+    setMessage("");
+
+    try {
+      const result = await requestJson(action.path, { method: action.method || "POST" });
+      setMessage(
+        result.body?.message ||
+          result.body?.actionRequired ||
+          `${action.label} returned HTTP ${result.status}.`
+      );
+    } catch (error) {
+      setMessage(error?.message || `${action.label} is unavailable.`);
+    } finally {
+      setPendingAction("");
+    }
+  }
+
   return (
     <div className="view-surface">
       <section className="summary-band">
@@ -253,7 +278,9 @@ function WalletView({ wallet, usage }) {
       <section className="section-block">
         <div className="section-heading">
           <h2>PFT wallet</h2>
-          <button type="button">Link seed wallet</button>
+          <button type="button" onClick={() => startWalletAction(linkAction)}>
+            Link seed wallet
+          </button>
         </div>
         <div className="split-panel">
           <div>
@@ -273,6 +300,32 @@ function WalletView({ wallet, usage }) {
             </ul>
           </div>
         </div>
+      </section>
+
+      <section className="section-block">
+        <div className="section-heading">
+          <h2>Wallet lifecycle</h2>
+        </div>
+        <div className="action-grid">
+          {actions.map((action) => (
+            <button
+              key={action.id}
+              className="action-button"
+              type="button"
+              onClick={() => startWalletAction(action)}
+            >
+              <span>{action.label}</span>
+              <small>
+                {pendingAction === action.id
+                  ? "Checking"
+                  : action.configured
+                    ? "Config ready"
+                    : "Needs config"}
+              </small>
+            </button>
+          ))}
+        </div>
+        {message && <div className="inline-message">{message}</div>}
       </section>
 
       <section className="section-block">

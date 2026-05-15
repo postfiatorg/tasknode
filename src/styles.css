@@ -426,6 +426,43 @@ h1 {
   color: #4d4a44;
 }
 
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.action-button {
+  display: grid;
+  gap: 4px;
+  min-height: 62px;
+  padding: 10px 12px;
+  border: 1px solid #dedbd4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #222222;
+  text-align: left;
+}
+
+.action-button:hover {
+  border-color: #111111;
+}
+
+.action-button small {
+  color: #77746d;
+  font-size: 12px;
+}
+
+.inline-message {
+  padding: 10px 12px;
+  border: 1px solid #e5e2dc;
+  border-radius: 8px;
+  background: #fbfaf7;
+  color: #4d4a44;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .placeholder {
   max-width: 760px;
   margin: 56px auto;
@@ -574,7 +611,8 @@ h1 {
   .mode-strip,
   .summary-band,
   .item-list,
-  .split-panel {
+  .split-panel,
+  .action-grid {
     grid-template-columns: 1fr;
   }
 

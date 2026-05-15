@@ -9,6 +9,15 @@ async function check(path, predicate) {
   console.log(`${path} ok`);
 }
 
+async function checkRequest(path, options, predicate) {
+  const response = await fetch(`${baseUrl}${path}`, options);
+  const text = await response.text();
+  if (!predicate(response, text)) {
+    throw new Error(`${path} failed: HTTP ${response.status}`);
+  }
+  console.log(`${path} ok`);
+}
+
 await check("/health", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
@@ -42,6 +51,30 @@ await check("/api/tasks", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
   return body.personalRequestEnabled === true && body.networkRequestEnabled === false;
+});
+
+await check("/api/wallet/actions", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return (
+    Array.isArray(body.actions) &&
+    body.actions.some((action) => action.id === "link_start") &&
+    body.actions.some((action) => action.id === "delink") &&
+    body.actions.every((action) => action.enabled === false)
+  );
+});
+
+await checkRequest("/api/wallet/link/start", { method: "POST" }, (response, text) => {
+  const body = JSON.parse(text);
+  return (
+    [409, 503].includes(response.status) &&
+    ["wallet_action_not_configured", "wallet_action_disabled"].includes(body.error)
+  );
+});
+
+await checkRequest("/api/wallet/delink", { method: "POST" }, (response, text) => {
+  const body = JSON.parse(text);
+  return response.status === 503 && body.error === "wallet_action_disabled";
 });
 
 await check("/api/auth/providers", (response, text) => {

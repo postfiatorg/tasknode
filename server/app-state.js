@@ -1,4 +1,4 @@
-import { authProviders, readiness } from "./product-contracts.js";
+import { authProviders, readiness, walletActions } from "./product-contracts.js";
 
 export function appState() {
   const providers = authProviders();
@@ -96,6 +96,12 @@ export function appState() {
     wallet: {
       pftBalanceDrops: 0,
       chatCreditUsd: 0,
+      lifecycle: {
+        oneWalletPerAccount: true,
+        delinkForTestingRequired: true,
+        relinkRequiresOwnershipProof: true,
+        localSeedStorageReady: runtimeReadiness.wallet.seedStorageReady,
+      },
       pftWallet: {
         status: "not_linked",
         custody: "local_seed_required",
@@ -107,6 +113,7 @@ export function appState() {
           "Ink context manifests to PFTL pointers",
         ],
       },
+      actions: walletActions(),
       fundingRails: [
         {
           label: "USDC or USDT deposit address",
