@@ -2,36 +2,295 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowUp,
+  ArrowDownLeft,
+  ArrowDownToLine,
+  ArrowUpRight,
+  Activity,
+  AlertTriangle,
   BookOpen,
+  Bot,
   ChevronRight,
+  Check,
+  Copy,
+  CreditCard,
+  Database,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  FileText,
+  Flag,
   Flame,
+  HelpCircle,
+  LifeBuoy,
   Lightbulb,
   ListPlus,
   ListTodo,
+  Lock,
+  LogOut,
+  MessageSquare,
   MoreHorizontal,
+  Network,
   PanelLeft,
   Paperclip,
   PenLine,
+  Pencil,
   Plus,
+  RefreshCw,
   Search,
+  Send,
+  Settings as SettingsIcon,
+  Share,
+  Shield,
+  Sparkle,
   Sparkles,
   SquarePen,
   Store,
+  Trophy,
+  User as UserIcon,
+  UserCheck,
   Wand2,
   Wallet,
+  X,
 } from "lucide-react";
 import { fetchAppState, fetchRuntimeConfig, requestJson } from "./api";
 import "./styles.css";
 
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
 
+const PALETTE = {
+  bg: "#faf9f6",
+  sidebar: "#f4f3ee",
+  border: "#e8e6df",
+  hover: "rgba(0, 0, 0, 0.05)",
+  active: "rgba(0, 0, 0, 0.08)",
+  text: "#0d0d0d",
+  mute: "#6b6b66",
+  brand: "#10a37f",
+};
+
+const MOCK_TASKS = {
+  outstanding: [
+    {
+      id: "221bb8e5",
+      fullId: "221bb8e5-5a64-44f6-a4fc-712841e01ee7",
+      title: "Ship A 90 Percent Task Node Surface Cut",
+      kind: "Personal",
+      status: "Proposed",
+      due: "Due May 17 @ 1:27 PM",
+      fullDue: "Sun, May 17 at 1:27 PM",
+      ago: "4m ago",
+      pft: 3600,
+      description:
+        'Implement a temporary founder-controlled "simple mode" for Task Node that hides or disables the majority of nonessential product surfaces and leaves only the core path a user should take next. Scope this as an aggressive product triage patch, not a redesign: reduce visible navigation/actions, remove confusing secondary flows from the default view, and make one primary task/request path obvious.',
+      steps: [
+        "Inventory the current default Task Node entry surface and mark every visible nav item, button, module, or flow as keep, hide, or defer.",
+        "Implement a simple-mode flag or equivalent product gate that makes the default user view expose only the minimum viable task/request path and one support or recovery path.",
+        "Replace ambiguous or multi-action empty states with one clear primary call to action and remove competing CTAs from the first screen.",
+        "Run the app locally or in staging and verify that the default surface area is visibly reduced by roughly 90% without breaking the primary path.",
+      ],
+      verification: {
+        title: "Submit a screenshot",
+        body:
+          "Submit one screenshot of the updated Task Node default user view with simple mode active. The screenshot must visibly show a dramatically reduced interface with one dominant primary action and no broad navigation/menu sprawl.",
+      },
+    },
+    {
+      id: "e808cfe2",
+      fullId: "e808cfe2-9a11-4d27-bc04-3a5f9b18d2c1",
+      title: "Make The 8-K Extractor Emit Cited Rows",
+      kind: "Personal",
+      status: "Accepted",
+      due: "Due May 16 @ 5:09 PM",
+      fullDue: "Sat, May 16 at 5:09 PM",
+      ago: "2h ago",
+      pft: 3000,
+      description:
+        "Update the 8-K extraction pipeline so that every emitted row includes an explicit citation pointing back to the source document and offset. The goal is to make downstream verification trivially possible without re-reading the filing.",
+      steps: [
+        "Extend the extractor schema with a citation field that carries the filing URL, page or section reference, and a character offset range.",
+        "Modify the extraction step to populate the citation from the source span used to produce each row.",
+        "Backfill or invalidate any cached rows that lack citations so downstream consumers can rely on the new contract.",
+        "Add an end-to-end test that fails if any emitted row is missing a citation.",
+      ],
+      verification: {
+        title: "Submit a CSV sample",
+        body:
+          "Submit a CSV of at least 20 extracted rows from a real 8-K filing showing the new citation column populated for every row. The verifier will spot-check a handful against the source filing.",
+      },
+    },
+  ],
+  verification: [],
+  refused: 62,
+  rewarded: 92,
+};
+
+const ACTIVITY_GROUPS = [
+  {
+    group: "Today",
+    items: [
+      { kind: "in", title: "Daily airdrop", party: "Task Verifier", amount: 8400, time: "11:15 AM" },
+      {
+        kind: "in",
+        title: "Task reward",
+        sub: "Ship A 90 Percent Task Node Surface Cut",
+        party: "Task Verifier",
+        amount: 3600,
+        time: "10:42 AM",
+      },
+      { kind: "out", title: "Verification fee", party: "Task Verifier", amount: 0, time: "11:15 AM" },
+      { kind: "out", title: "Verification fee", party: "Task Verifier", amount: 0, time: "11:03 AM" },
+    ],
+  },
+  {
+    group: "Yesterday",
+    items: [
+      { kind: "in", title: "Daily airdrop", party: "Task Verifier", amount: 6200, time: "9:18 AM" },
+      {
+        kind: "in",
+        title: "Task reward",
+        sub: "Verify 8-K extractor output",
+        party: "Task Verifier",
+        amount: 3000,
+        time: "5:09 PM",
+      },
+    ],
+  },
+  {
+    group: "May 13",
+    items: [
+      { kind: "in", title: "Daily airdrop", party: "Task Verifier", amount: 7800, time: "9:24 AM" },
+      {
+        kind: "in",
+        title: "Task reward",
+        sub: "Wire post-fiat heartbeat composer",
+        party: "Task Verifier",
+        amount: 5400,
+        time: "2:18 PM",
+      },
+    ],
+  },
+];
+
+const CONTEXT_SOURCES = [
+  {
+    key: "gdocs",
+    icon: FileText,
+    name: "Google Docs",
+    desc: "Pull in research notes, drafts, and reference docs from Drive.",
+    accent: "#1A73E8",
+    status: "available",
+  },
+  {
+    key: "notion",
+    icon: BookOpen,
+    name: "Notion",
+    desc: "Bring workspaces, databases, and meeting notes into context.",
+    accent: "#0D0D0D",
+    status: "available",
+  },
+  {
+    key: "pft",
+    icon: Database,
+    name: "Internal PFT Context",
+    desc: "On-chain history, verifier feedback, and your task corpus.",
+    accent: "#10A37F",
+    status: "connected",
+  },
+];
+
+const PFT_GENERATION = [
+  1800, 2200, 1900, 2400, 2100, 1700, 2600, 2300, 1850, 2900, 2100, 1950, 2400, 2800,
+  2200, 2050, 2700, 1900, 2300, 2500, 2100, 2400, 2200, 2800, 36000, 3200, 2400, 2200,
+];
+
+const PFT_BREAKDOWN = [
+  { label: "Personal", value: "42,900" },
+  { label: "Network", value: "52,555.4" },
+  { label: "Alpha", value: "10,000" },
+];
+
+const NFTS = [
+  {
+    id: "1",
+    title: "Network Reliability Engineer",
+    date: "May 13, 2026",
+    gradient: "linear-gradient(135deg, #bbf7d0, #10b981)",
+  },
+  {
+    id: "2",
+    title: "NFT 2026-05-12",
+    date: "May 12, 2026",
+    gradient: "linear-gradient(135deg, #d6d3d1, #44403c)",
+  },
+  {
+    id: "3",
+    title: "Alpha Brief Analyst",
+    date: "May 7, 2026",
+    gradient: "linear-gradient(135deg, #fde68a, #d97706)",
+  },
+  {
+    id: "4",
+    title: "Alpha Brief Analyst",
+    date: "May 7, 2026",
+    gradient: "linear-gradient(135deg, #bae6fd, #0284c7)",
+  },
+];
+
+const CONNECTIONS = [
+  {
+    handle: "rDVKRN...tyjB",
+    match: 95,
+    summary:
+      "Strong synergy between your deterministic reward composers and their deterministic task-generation parser and verification policy fixes.",
+    tags: ["Task-generation parser", "Verification policy", "DB-backed constraints"],
+  },
+  {
+    handle: "rDep8S...EQKu",
+    match: 88,
+    summary:
+      "Direct alignment in building deterministic Python reducers and handling task-generation logic with regression-style scoring.",
+    tags: ["Python reducers", "Dependency-light validators", "Prompt escaping"],
+  },
+  {
+    handle: "rGu432...Dcw9",
+    match: 85,
+    summary:
+      "Overlap in deterministic tools and verification workflows with CLI-first JSON scoring and auditable triage.",
+    tags: ["CLI JSON scoring", "Triage packet design", "Sim engineering"],
+  },
+];
+
+const PAYMENT_METHODS = [
+  { k: "xrp", name: "XRP", chain: "XRP Ledger", accent: "#0d0d0d", letter: "X", connected: true, address: "rPo8Gk...HxNx" },
+  { k: "eth", name: "Ether", chain: "Ethereum", accent: "#627eea", letter: "E", connected: false },
+  { k: "btc", name: "Bitcoin", chain: "Bitcoin mainnet", accent: "#f7931a", letter: "B", connected: false },
+  { k: "usdt", name: "USDT", chain: "Ethereum", accent: "#26a17b", letter: "T", connected: false },
+  { k: "usdc", name: "USDC", chain: "Ethereum", accent: "#2775ca", letter: "$", connected: false },
+];
+
+const SETTINGS_PAGES = [
+  { key: "general", label: "General", icon: SettingsIcon },
+  { key: "security", label: "Security", icon: Shield },
+  { key: "data", label: "Data controls", icon: Database },
+  { key: "billing", label: "Billing", icon: CreditCard },
+];
+
 function App() {
   const [view, setView] = useState("chat");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [theme, setTheme] = useState("auto");
+  const [profileTab, setProfileTab] = useState("private");
+  const [profilePublic, setProfilePublic] = useState(true);
+  const [selectedTask, setSelectedTask] = useState(null);
   const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
   const [appState, setAppState] = useState(null);
   const [loadError, setLoadError] = useState("");
+  const profileRef = useRef(null);
+  const moreRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -50,6 +309,34 @@ function App() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    function closeMenus(event) {
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setProfileMenuOpen(false);
+      }
+      if (moreRef.current && !moreRef.current.contains(event.target)) {
+        setMoreMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeMenus);
+    return () => document.removeEventListener("mousedown", closeMenus);
+  }, []);
+
+  useEffect(() => {
+    if (!settingsOpen && !selectedTask) return undefined;
+
+    function closeModal(event) {
+      if (event.key === "Escape") {
+        setSettingsOpen(false);
+        setSelectedTask(null);
+      }
+    }
+
+    document.addEventListener("keydown", closeModal);
+    return () => document.removeEventListener("keydown", closeModal);
+  }, [settingsOpen, selectedTask]);
 
   const recents = appState?.chat?.recents || [];
   const pftBalance = formatDrops(appState?.wallet?.pftBalanceDrops || 0);
@@ -78,7 +365,11 @@ function App() {
             active={view === "chat"}
             icon={SquarePen}
             label="New chat"
-            onClick={() => setView("chat")}
+            onClick={() => {
+              setView("chat");
+              setMoreMenuOpen(false);
+              setProfileMenuOpen(false);
+            }}
             sidebarOpen={sidebarOpen}
           />
           <SidebarButton icon={Search} label="Search chats" sidebarOpen={sidebarOpen} />
@@ -104,7 +395,30 @@ function App() {
             onClick={() => setView("context")}
             sidebarOpen={sidebarOpen}
           />
-          <SidebarButton icon={MoreHorizontal} label="More" sidebarOpen={sidebarOpen} />
+          <div className="sidebar-menu-anchor" ref={moreRef}>
+            <SidebarButton
+              active={moreMenuOpen}
+              icon={MoreHorizontal}
+              label="More"
+              onClick={() => setMoreMenuOpen((open) => !open)}
+              sidebarOpen={sidebarOpen}
+            />
+            {moreMenuOpen && sidebarOpen && (
+              <div className="sidebar-popout">
+                <ToolMenuRow icon={Flame} label="Motivation" />
+                <ToolMenuRow icon={Lightbulb} label="Brainstorming" />
+                <ToolMenuRow icon={Wand2} label="Context Refine" />
+                <ToolMenuRow icon={PenLine} label="Context Rewrite" />
+                <div className="menu-divider" />
+                <ToolMenuRow icon={Bot} label="Agents" />
+                <ToolMenuRow
+                  icon={MessageSquare}
+                  label="Messages"
+                  trailing={<span className="menu-count">1</span>}
+                />
+              </div>
+            )}
+          </div>
         </nav>
 
         {sidebarOpen && (
@@ -129,7 +443,12 @@ function App() {
               <ChevronRight size={14} strokeWidth={1.75} />
             </button>
           )}
-          <button className="profile-button" onClick={() => setLoginOpen(true)}>
+          <div className="profile-anchor" ref={profileRef}>
+          <button
+            className="profile-button"
+            onClick={() => setProfileMenuOpen((open) => !open)}
+            type="button"
+          >
             <span className="profile-avatar">{profileInitials}</span>
             {sidebarOpen && (
               <>
@@ -141,6 +460,51 @@ function App() {
               </>
             )}
           </button>
+          {profileMenuOpen && sidebarOpen && (
+            <div className="profile-menu">
+              <button
+                className="profile-menu-header"
+                onClick={() => {
+                  setLoginOpen(true);
+                  setProfileMenuOpen(false);
+                }}
+                type="button"
+              >
+                <span className="profile-avatar">{profileInitials}</span>
+                <span className="profile-copy">
+                  <strong>{profileName}</strong>
+                  <small>{profileSubtext}</small>
+                </span>
+                <ChevronRight size={16} strokeWidth={1.75} />
+              </button>
+              <div className="menu-divider" />
+              <ToolMenuRow
+                icon={Network}
+                label="Directory"
+                trailing={<span className="menu-count">#16</span>}
+              />
+              <ToolMenuRow
+                icon={SettingsIcon}
+                label="Settings"
+                onClick={() => {
+                  setSettingsOpen(true);
+                  setProfileMenuOpen(false);
+                }}
+              />
+              <ToolMenuRow
+                icon={UserIcon}
+                label="Profile"
+                onClick={() => {
+                  setView("profile");
+                  setProfileMenuOpen(false);
+                }}
+              />
+              <ToolMenuRow icon={LifeBuoy} label="Help" trailing={<ChevronRight size={14} />} />
+              <div className="menu-divider" />
+              <ToolMenuRow icon={LogOut} label="Log out" />
+            </div>
+          )}
+          </div>
         </div>
       </aside>
 
@@ -156,7 +520,17 @@ function App() {
               <SquarePen size={18} strokeWidth={1.75} />
             </button>
           </div>
-          {view !== "chat" && <h1>{titleForView(view)}</h1>}
+          {view === "chat" && appState?.chat?.seedMessages?.length > 0 && (
+            <div className="thread-actions">
+              <button type="button">
+                <Share size={14} strokeWidth={1.75} />
+                Share
+              </button>
+              <button type="button" aria-label="More thread actions">
+                <MoreHorizontal size={18} strokeWidth={1.75} />
+              </button>
+            </div>
+          )}
         </header>
 
         {loadError && <StatusBanner tone="error">{loadError}</StatusBanner>}
@@ -165,15 +539,33 @@ function App() {
         {view === "chat" && (
           <ChatSurface chat={appState?.chat} onNavigate={setView} usage={appState?.usage} />
         )}
-        {view === "tasks" && <TasksView tasks={appState?.tasks} />}
+        {view === "tasks" && <TasksView onSelectTask={setSelectedTask} />}
         {view === "wallet" && (
           <WalletView wallet={appState?.wallet} usage={appState?.usage} />
         )}
         {view === "context" && <ContextView context={appState?.context} />}
+        {view === "profile" && (
+          <ProfileView
+            profilePublic={profilePublic}
+            profileTab={profileTab}
+            setProfilePublic={setProfilePublic}
+            setProfileTab={setProfileTab}
+          />
+        )}
       </section>
 
       {loginOpen && (
         <LoginDialog session={session} onClose={() => setLoginOpen(false)} />
+      )}
+      {settingsOpen && (
+        <SettingsModal
+          onClose={() => setSettingsOpen(false)}
+          setTheme={setTheme}
+          theme={theme}
+        />
+      )}
+      {selectedTask && (
+        <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />
       )}
     </main>
   );
@@ -466,67 +858,101 @@ function profileAvatarText(session) {
     .join("");
 }
 
-function TasksView({ tasks }) {
-  const outstanding = tasks?.outstanding || [];
-  const routed = tasks?.routed || [];
+function TasksView({ onSelectTask }) {
+  const [tasksTab, setTasksTab] = useState("outstanding");
+  const tabs = [
+    { key: "outstanding", label: "Outstanding", count: MOCK_TASKS.outstanding.length },
+    { key: "verification", label: "Verification", count: MOCK_TASKS.verification.length },
+    { key: "refused", label: "Refused", count: MOCK_TASKS.refused },
+    { key: "rewarded", label: "Rewarded", count: MOCK_TASKS.rewarded },
+  ];
 
   return (
-    <div className="view-surface">
-      <section className="summary-band">
-        <div>
-          <span className="label">Personal requests</span>
-          <strong>{tasks?.personalRequestEnabled ? "Enabled" : "Disabled"}</strong>
+    <div className="route-scroll">
+      <div className="tasks-view">
+        <div className="route-heading">
+          <div>
+            <h1>Tasks</h1>
+            <p>Work proposed, accepted, and verified across the network.</p>
+          </div>
+          <button className="dark-pill" type="button">
+            <Plus size={16} strokeWidth={2} />
+            Request task
+          </button>
         </div>
-        <div>
-          <span className="label">Network requests</span>
-          <strong>{tasks?.networkRequestEnabled ? "Enabled" : "Receive only"}</strong>
-        </div>
-        <div>
-          <span className="label">Reward cap</span>
-          <strong>{tasks?.dailyRewardCap || 8} per day</strong>
-        </div>
-      </section>
 
-      <section className="section-block">
-        <div className="section-heading">
-          <h2>Outstanding</h2>
-          <button type="button">Request personal task</button>
+        <div className="tab-row">
+          {tabs.map((tab) => {
+            const active = tasksTab === tab.key;
+            return (
+              <button
+                className={active ? "active" : ""}
+                key={tab.key}
+                onClick={() => setTasksTab(tab.key)}
+                type="button"
+              >
+                {tab.label}
+                <span>{tab.count}</span>
+              </button>
+            );
+          })}
         </div>
-        <div className="item-list">
-          {outstanding.map((task) => (
-            <TaskCard key={task.id} task={task} />
-          ))}
-        </div>
-      </section>
 
-      <section className="section-block">
-        <div className="section-heading">
-          <h2>Routed work</h2>
-        </div>
-        <div className="item-list">
-          {routed.map((task) => (
-            <TaskCard key={task.id} task={task} />
-          ))}
-        </div>
-      </section>
+        {tasksTab === "outstanding" && (
+          <div className="task-list">
+            {MOCK_TASKS.outstanding.map((task) => (
+              <TaskRow key={task.id} onClick={() => onSelectTask(task)} task={task} />
+            ))}
+          </div>
+        )}
+        {tasksTab === "verification" && (
+          <EmptyState
+            icon={Trophy}
+            title="Nothing awaiting verification"
+            desc="When a verifier picks up your submission it will appear here."
+          />
+        )}
+        {tasksTab === "refused" && (
+          <EmptyState
+            icon={MoreHorizontal}
+            title="62 refused tasks"
+            desc="Historical refusals are summarized rather than expanded by default."
+          />
+        )}
+        {tasksTab === "rewarded" && (
+          <EmptyState
+            icon={Trophy}
+            title="92 rewarded tasks"
+            desc="Open the wallet to see the resulting PFT transfers."
+          />
+        )}
+      </div>
     </div>
   );
 }
 
-function TaskCard({ task }) {
+function TaskRow({ onClick, task }) {
   return (
-    <article className="item-card">
-      <div className="item-card-top">
-        <span className="pill">{task.kind}</span>
-        <span className="muted">{task.status}</span>
+    <button className="task-row" onClick={onClick} type="button">
+      <div className="task-row-main">
+        <div className="task-title">{task.title}</div>
+        <div className="task-meta">
+          <span>{task.kind}</span>
+          <StatusPill status={task.status} />
+          <span>.</span>
+          <span>{task.due}</span>
+          <span>.</span>
+          <span>{task.ago}</span>
+        </div>
+        <div className="task-id">
+          <span>ID: {task.id}...</span>
+          <ArrowUpRight size={11} strokeWidth={1.75} />
+        </div>
       </div>
-      <h3>{task.title}</h3>
-      <p>{task.summary}</p>
-      <div className="item-meta">
-        {task.pft ? <span>{formatDrops(task.pft)} PFT</span> : null}
-        {task.due ? <span>{task.due}</span> : null}
+      <div className="task-reward">
+        {task.pft.toLocaleString()} <span>PFT</span>
       </div>
-    </article>
+    </button>
   );
 }
 
@@ -535,6 +961,7 @@ function WalletView({ wallet, usage }) {
   const [pendingAction, setPendingAction] = useState("");
   const actions = wallet?.actions || [];
   const linkAction = actions.find((action) => action.id === "link_start");
+  const pftBalance = formatDrops(wallet?.pftBalanceDrops || 0);
 
   async function startWalletAction(action) {
     if (!action) return;
@@ -557,181 +984,769 @@ function WalletView({ wallet, usage }) {
   }
 
   return (
-    <div className="view-surface">
-      <section className="summary-band">
-        <div>
-          <span className="label">PFT balance</span>
-          <strong>{formatDrops(wallet?.pftBalanceDrops || 0)}</strong>
-        </div>
-        <div>
-          <span className="label">Chat credit</span>
-          <strong>{formatUsd(wallet?.chatCreditUsd || 0)}</strong>
-        </div>
-        <div>
-          <span className="label">Billing</span>
-          <strong>{usage?.billingModel === "usage_based" ? "Usage based" : "Unknown"}</strong>
-        </div>
-      </section>
-
-      <section className="section-block">
-        <div className="section-heading">
-          <h2>PFT wallet</h2>
-          <button type="button" onClick={() => startWalletAction(linkAction)}>
-            Link seed wallet
+    <div className="route-scroll">
+      <div className="wallet-view">
+        <section className="wallet-hero">
+          <div className="eyebrow">Available balance</div>
+          <div className="wallet-balance">
+            <span>{pftBalance}</span>
+            <small>PFT</small>
+          </div>
+          <div className="wallet-delta">
+            <strong>+8,400 PFT</strong>
+            <span>received in the last 24h</span>
+          </div>
+          <button className="address-chip" type="button">
+            <span>rPo8GkCA9YMKzu...JHxNx</span>
+            <Copy size={11} strokeWidth={1.75} />
           </button>
-        </div>
-        <div className="split-panel">
-          <div>
-            <span className="label">Status</span>
-            <strong>{wallet?.pftWallet?.status || "not_linked"}</strong>
-            <p>
-              PFTL wallet actions stay separate from normal account login. The
-              seed-based path is the preferred core PFT wallet flow.
-            </p>
-          </div>
-          <div>
-            <span className="label">Requires unlock</span>
-            <ul>
-              {(wallet?.pftWallet?.signingRequiredFor || []).map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <section className="section-block">
-        <div className="section-heading">
-          <h2>Wallet lifecycle</h2>
-        </div>
-        <div className="action-grid">
-          {actions.map((action) => (
+          <div className="wallet-actions">
             <button
-              key={action.id}
-              className="action-button"
+              className="dark-pill"
+              onClick={() => startWalletAction(linkAction)}
               type="button"
-              onClick={() => startWalletAction(action)}
             >
+              <Send size={15} strokeWidth={2} />
+              Send
+            </button>
+            <button className="light-pill" type="button">
+              <ArrowDownToLine size={15} strokeWidth={2} />
+              Receive
+            </button>
+          </div>
+          <div className="wallet-flow">
+            <span><strong>+47,200</strong> in this week</span>
+            <span className="dot">.</span>
+            <span><strong>-3,840</strong> out</span>
+            <span className="dot">.</span>
+            <span><strong>12</strong> transactions</span>
+          </div>
+        </section>
+
+        {message && <div className="inline-message">{message}</div>}
+
+        <ProfileCard
+          subtitle="Your latest transactions"
+          title="Activity"
+          trailing={<button className="link-button" type="button">View all</button>}
+        >
+          <div className="activity-groups">
+            {ACTIVITY_GROUPS.map((group) => (
+              <div key={group.group}>
+                <div className="activity-group-label">{group.group}</div>
+                <div>
+                  {group.items.map((tx, index) => (
+                    <ActivityRow key={`${group.group}-${index}`} tx={tx} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </ProfileCard>
+
+        <div className="wallet-config-strip">
+          {actions.map((action) => (
+            <button key={action.id} onClick={() => startWalletAction(action)} type="button">
               <span>{action.label}</span>
-              <small>
-                {pendingAction === action.id
-                  ? "Checking"
-                  : action.configured
-                    ? "Config ready"
-                    : "Needs config"}
-              </small>
+              <small>{pendingAction === action.id ? "Checking" : action.configured ? "Config ready" : "Needs config"}</small>
             </button>
           ))}
         </div>
-        {message && <div className="inline-message">{message}</div>}
+        <div className="wallet-usage-note">
+          Chat credit {formatUsd(wallet?.chatCreditUsd || 0)}. Billing is{" "}
+          {usage?.billingModel === "usage_based" ? "usage based" : "not ready"}.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivityRow({ tx }) {
+  const isIn = tx.kind === "in";
+
+  return (
+    <div className="activity-row">
+      <div className={isIn ? "activity-icon in" : "activity-icon out"}>
+        {isIn ? <ArrowDownLeft size={15} strokeWidth={2} /> : <ArrowUpRight size={15} strokeWidth={2} />}
+      </div>
+      <div className="activity-copy">
+        <strong>{tx.title}</strong>
+        <small>
+          {isIn ? "From " : "To "}
+          <span>{tx.party}</span>
+          {tx.sub ? ` . ${tx.sub}` : ""}
+        </small>
+      </div>
+      <div className={isIn ? "activity-amount in" : "activity-amount"}>
+        {isIn ? "+" : "-"}
+        {tx.amount.toLocaleString(undefined, {
+          minimumFractionDigits: tx.amount === 0 ? 2 : 0,
+        })}{" "}
+        PFT
+        <small>{tx.time}</small>
+      </div>
+    </div>
+  );
+}
+
+function ContextView() {
+  const [contextSource, setContextSource] = useState("pft");
+
+  return (
+    <div className="route-scroll">
+      <div className="context-view">
+        <div className="route-heading compact">
+          <div>
+            <h1>Context</h1>
+            <p>Choose where the assistant draws context from. You can connect more than one source.</p>
+          </div>
+        </div>
+
+        <div className="context-source-list">
+          {CONTEXT_SOURCES.map((source) => {
+            const Icon = source.icon;
+            const active = contextSource === source.key;
+            return (
+              <button
+                className={active ? "context-source active" : "context-source"}
+                key={source.key}
+                onClick={() => setContextSource(source.key)}
+                type="button"
+              >
+                <span className="context-source-icon" style={{ background: `${source.accent}14`, color: source.accent }}>
+                  <Icon size={20} strokeWidth={1.75} />
+                </span>
+                <span className="context-source-copy">
+                  <span>
+                    <strong>{source.name}</strong>
+                    {source.status === "connected" && <em>Connected</em>}
+                  </span>
+                  <small>{source.desc}</small>
+                </span>
+                <span className="radio-mark">{active && <span />}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="context-note">
+          The active context source feeds the assistant alongside your prompt.
+          Internal PFT Context is always available on Task Node; external
+          connectors require authorization.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileView({ profilePublic, profileTab, setProfilePublic, setProfileTab }) {
+  return (
+    <div className="route-scroll">
+      <div className="profile-view">
+        <div className="profile-tabs-bar">
+          <div className="segmented">
+            {[
+              { key: "private", label: "Private" },
+              { key: "public", label: "Public" },
+            ].map((tab) => (
+              <button
+                className={profileTab === tab.key ? "active" : ""}
+                key={tab.key}
+                onClick={() => setProfileTab(tab.key)}
+                type="button"
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <button
+            className={profilePublic ? "visibility-pill public" : "visibility-pill"}
+            onClick={() => setProfilePublic((value) => !value)}
+            type="button"
+          >
+            {profilePublic ? <Eye size={13} /> : <EyeOff size={13} />}
+            {profilePublic ? "Profile public" : "Profile hidden"}
+          </button>
+        </div>
+
+        {profileTab === "private" ? <PrivateProfile /> : <PublicProfile />}
+      </div>
+    </div>
+  );
+}
+
+function PrivateProfile() {
+  return (
+    <div className="profile-stack">
+      <ProfileCard title="Profile Studio" subtitle="Generate the picture that represents you across the network">
+        <div className="profile-studio">
+          <div className="profile-art" />
+          <div>
+            <div className="eyebrow">Current picture</div>
+            <h3>Network Verification Engineer</h3>
+            <p>Today's gift NFT . minted May 13, 2026</p>
+            <div className="button-row">
+              <PillButton icon={RefreshCw}>Regenerate</PillButton>
+              <PillButton dark icon={Sparkle}>Mint as NFT</PillButton>
+            </div>
+          </div>
+        </div>
+      </ProfileCard>
+
+      <ProfileCard title="Today's airdrop" subtitle="Daily feedback on what the network would currently pay you">
+        <div className="airdrop-line">
+          <span>8,400</span>
+          <small>PFT</small>
+          <em>Core 84 / 100</em>
+        </div>
+        <p className="soft-copy">
+          Today's payout reflects high retained value from recent core-network
+          shipping, balanced by still-limited proof of wider adoption impact.
+        </p>
+        <div className="mini-note-grid">
+          <MiniNote title="Raised today" body="Shipping core network fixes and automation around rewards and NFT generation." />
+          <MiniNote title="Kept it lower" body="The main limiter is recent product stabilization rather than measured network growth." />
+          <MiniNote title="To improve" body="Tie shipped fixes to visible user adoption and repeatable network growth loops." />
+        </div>
+      </ProfileCard>
+
+      <ProfileCard title="PFT generation" subtitle="Last 28 days">
+        <Sparkline values={PFT_GENERATION} />
+        <div className="pft-breakdown">
+          {PFT_BREAKDOWN.map((item) => (
+            <div key={item.label}>
+              <small>{item.label}</small>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
+      </ProfileCard>
+
+      <NftGallery />
+
+      <ProfileCard title="Recommended connections" subtitle="Members who may be valuable collaborators">
+        <div className="connection-list">
+          {CONNECTIONS.map((connection) => (
+            <ConnectionRow connection={connection} key={connection.handle} />
+          ))}
+        </div>
+      </ProfileCard>
+    </div>
+  );
+}
+
+function PublicProfile() {
+  return (
+    <div className="profile-stack">
+      <section className="public-wallet-card">
+        <div className="public-wallet-header">
+          <div className="profile-art small" />
+          <div>
+            <div className="eyebrow">Wallet</div>
+            <div className="mono-line">rPo8GkCA9YMKzuJGTHbj11kdVfPq5JHxNx</div>
+            <p>Last active 18 minutes ago</p>
+          </div>
+        </div>
+        <div className="public-stats">
+          <PublicStat label="Total rewards paid" value="552,308" unit="PFT" />
+          <PublicStat label="Sybil score" value="88" pill="Low risk" />
+          <PublicStat label="Alignment score" value="86" pill="Active contributor" />
+        </div>
       </section>
 
-      <section className="section-block">
-        <div className="section-heading">
-          <h2>Funding rails</h2>
+      <ProfileCard
+        title="About me"
+        trailing={<button className="link-button icon-link" type="button"><Pencil size={11} /> Edit</button>}
+      >
+        <p className="soft-copy italic">Not specified yet.</p>
+      </ProfileCard>
+
+      <NftGallery />
+
+      <ProfileCard title="Post Fiat alignment" subtitle="Network contribution this month">
+        <div className="alignment-grid">
+          <div>
+            <small>Rewards earned</small>
+            <strong>41,046.79 <span>PFT</span></strong>
+          </div>
+          <div>
+            <small>Tasks completed</small>
+            <strong>5</strong>
+          </div>
         </div>
-        <div className="item-list">
-          {(wallet?.fundingRails || []).map((rail) => (
-            <article className="item-card" key={rail.label}>
-              <div className="item-card-top">
-                <span className="pill">{rail.status}</span>
-              </div>
-              <h3>{rail.label}</h3>
-              <p>{rail.note}</p>
-            </article>
-          ))}
+      </ProfileCard>
+
+      <ProfileCard title="Sybil score" subtitle="System assessment of account authenticity">
+        <div className="sybil-card">
+          <SybilRing value={88} />
+          <div>
+            <span className="green-pill">Low risk</span>
+            <p>
+              This account shows strong signals of authentic activity based on
+              linked accounts, behavior patterns, and network topology.
+            </p>
+          </div>
+        </div>
+        <div className="sybil-signals">
+          <SybilSignal icon={UserCheck} label="Real accounts linked" hint="Verified external identities" value="3 / 4" />
+          <SybilSignal icon={AlertTriangle} label="Attempted gaming" hint="Manipulation detection signals" tone="warn" value="7 flagged" />
+          <SybilSignal icon={Activity} label="Network graph" hint="Interaction topology" value="28 connections . Organic" />
+        </div>
+      </ProfileCard>
+    </div>
+  );
+}
+
+function StatusPill({ status }) {
+  const tone = {
+    Proposed: { background: "#fef3c7", color: "#92400e" },
+    Accepted: { background: "#dcfce7", color: "#166534" },
+  }[status] || { background: "#e5e5e0", color: "#0d0d0d" };
+
+  return (
+    <span className="status-pill" style={tone}>
+      {status}
+    </span>
+  );
+}
+
+function EmptyState({ icon: Icon, title, desc }) {
+  return (
+    <div className="empty-state">
+      <span>
+        <Icon size={18} strokeWidth={1.75} />
+      </span>
+      <strong>{title}</strong>
+      <p>{desc}</p>
+    </div>
+  );
+}
+
+function ProfileCard({ children, subtitle, title, trailing }) {
+  return (
+    <section className="profile-card">
+      <div className="profile-card-heading">
+        <div>
+          <h3>{title}</h3>
+          {subtitle && <p>{subtitle}</p>}
+        </div>
+        {trailing}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function PillButton({ children, dark, icon: Icon }) {
+  return (
+    <button className={dark ? "pill-button dark" : "pill-button"} type="button">
+      {Icon && <Icon size={13} strokeWidth={1.75} />}
+      {children}
+    </button>
+  );
+}
+
+function MiniNote({ body, title }) {
+  return (
+    <div className="mini-note">
+      <strong>{title}</strong>
+      <p>{body}</p>
+    </div>
+  );
+}
+
+function Sparkline({ values }) {
+  const width = 720;
+  const height = 180;
+  const max = Math.max(...values);
+  const points = values
+    .map((value, index) => {
+      const x = (index / (values.length - 1)) * width;
+      const y = height - (value / max) * (height - 20) - 10;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+
+  return (
+    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="PFT generation chart">
+      <polyline fill="none" points={points} stroke="#0d0d0d" strokeLinecap="round" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function NftGallery() {
+  return (
+    <ProfileCard title="NFT Gallery" subtitle={`${NFTS.length} minted`} trailing={<button className="link-button" type="button">View all</button>}>
+      <div className="nft-grid">
+        {NFTS.map((nft) => (
+          <div className="nft-item" key={nft.id}>
+            <span style={{ background: nft.gradient }} />
+            <strong>{nft.title}</strong>
+            <small>{nft.date}</small>
+          </div>
+        ))}
+      </div>
+    </ProfileCard>
+  );
+}
+
+function ConnectionRow({ connection }) {
+  return (
+    <div className="connection-row">
+      <div className="connection-top">
+        <div>
+          <span className="connection-avatar" />
+          <strong>{connection.handle}</strong>
+        </div>
+        <span className="match-pill">Match {connection.match}%</span>
+      </div>
+      <p>{connection.summary}</p>
+      <div className="tag-row">
+        {connection.tags.map((tag) => (
+          <span key={tag}>{tag}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PublicStat({ label, pill, unit, value }) {
+  return (
+    <div className="public-stat">
+      <small>{label}</small>
+      <strong>
+        {value}
+        {unit && <span>{unit}</span>}
+        {pill && <em>{pill}</em>}
+      </strong>
+    </div>
+  );
+}
+
+function SybilRing({ value }) {
+  const radius = 28;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (value / 100) * circumference;
+
+  return (
+    <div className="sybil-ring">
+      <svg height="72" viewBox="0 0 72 72" width="72">
+        <circle cx="36" cy="36" fill="none" r={radius} stroke="#e8e6df" strokeWidth="6" />
+        <circle
+          cx="36"
+          cy="36"
+          fill="none"
+          r={radius}
+          stroke="#16a34a"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          strokeWidth="6"
+          transform="rotate(-90 36 36)"
+        />
+      </svg>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+function SybilSignal({ hint, icon: Icon, label, tone = "ok", value }) {
+  return (
+    <div className="sybil-signal">
+      <span>
+        <Icon size={14} strokeWidth={1.75} />
+      </span>
+      <div>
+        <strong>{label}</strong>
+        <small>{hint}</small>
+      </div>
+      <em className={tone}>{value}</em>
+    </div>
+  );
+}
+
+function SettingsModal({ onClose, setTheme, theme }) {
+  const [page, setPage] = useState("general");
+  const activePage = SETTINGS_PAGES.find((item) => item.key === page) || SETTINGS_PAGES[0];
+
+  return (
+    <div className="modal-backdrop" onClick={onClose} role="presentation">
+      <section className="settings-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <aside className="settings-rail">
+          <button className="settings-close" onClick={onClose} type="button" aria-label="Close settings">
+            <X size={18} strokeWidth={1.75} />
+          </button>
+          <nav>
+            {SETTINGS_PAGES.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  className={page === item.key ? "active" : ""}
+                  key={item.key}
+                  onClick={() => setPage(item.key)}
+                  type="button"
+                >
+                  <Icon size={16} strokeWidth={1.75} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+        <div className="settings-content">
+          <header>
+            <h2 id="settings-title">{activePage.label}</h2>
+          </header>
+          <div className="settings-page">
+            {page === "general" && <GeneralSettings setTheme={setTheme} theme={theme} />}
+            {page === "security" && <SecuritySettings />}
+            {page === "data" && <DataSettings />}
+            {page === "billing" && <BillingSettings />}
+          </div>
         </div>
       </section>
     </div>
   );
 }
 
-function ContextView({ context }) {
-  const [message, setMessage] = useState("");
-  const [pendingAction, setPendingAction] = useState("");
-  const actions = context?.actions || [];
-  const importAction = actions.find((action) => action.id === "import_shared_url");
-
-  async function startContextAction(action) {
-    if (!action) return;
-
-    setPendingAction(action.id);
-    setMessage("");
-
-    try {
-      const result = await requestJson(action.path, { method: action.method || "POST" });
-      setMessage(
-        result.body?.message ||
-          result.body?.actionRequired ||
-          `${action.label} returned HTTP ${result.status}.`
-      );
-    } catch (error) {
-      setMessage(error?.message || `${action.label} is unavailable.`);
-    } finally {
-      setPendingAction("");
-    }
-  }
-
+function GeneralSettings({ setTheme, theme }) {
   return (
-    <div className="view-surface">
-      <section className="summary-band single">
+    <>
+      <MfaCallout />
+      <SettingsLine label="Appearance" right={<CycleButton onClick={() => setTheme(nextTheme(theme))} value={themeLabel(theme)} />} />
+      <SettingsLine label="Contrast" right={<StaticButton value="System" />} />
+      <SettingsLine label="Accent color" right={<StaticButton value="Black" />} />
+      <SettingsLine label="Language" right={<StaticButton value="Auto-detect" />} />
+    </>
+  );
+}
+
+function SecuritySettings() {
+  return (
+    <>
+      <MfaCallout />
+      <SettingsLine desc="Write down or store your recovery phrase securely." label="Backup recovery phrase" right={<SmallPill>Reveal</SmallPill>} />
+      <SettingsLine desc="Sign in with an existing recovery phrase." label="Restore wallet" right={<SmallPill>Restore</SmallPill>} />
+      <SettingsLine desc="2 devices currently signed in." label="Active sessions" right={<SmallPill>Manage</SmallPill>} />
+      <SettingsLine desc="Send a security or product report." label="Report issue" right={<SmallPill>Report</SmallPill>} />
+    </>
+  );
+}
+
+function DataSettings() {
+  return (
+    <>
+      <SettingsLine desc="Allow your content to be used to improve Task Node." label="Improve the model for everyone" right={<ToggleSwitch initial />} />
+      <SettingsLine desc="Manage links you've shared from chats." label="Shared links" right={<SmallPill>Manage</SmallPill>} />
+      <SettingsLine desc="Receive a copy of your conversations and PFT history." label="Export data" right={<SmallPill>Export</SmallPill>} />
+      <SettingsLine desc="How Task Node handles your data." label="Privacy Policy" right={<SmallPill>View <ExternalLink size={11} /></SmallPill>} />
+      <SettingsLine danger desc="Permanently remove your account and all associated data." label="Delete account" right={<SmallPill danger>Delete</SmallPill>} />
+    </>
+  );
+}
+
+function BillingSettings() {
+  return (
+    <div className="billing-settings">
+      <section>
         <div>
-          <span className="label">Manifest policy</span>
-          <strong>{context?.manifestPolicy || "Loading"}</strong>
+          <small>Account balance</small>
+          <strong>851,718 <span>PFT</span></strong>
+          <p>Earned through verified network contribution.</p>
         </div>
+        <button className="dark-pill" type="button">Top up</button>
       </section>
+      <div>
+        <div className="billing-heading">
+          <h3>Payment methods</h3>
+          <button type="button">+ Add wallet</button>
+        </div>
+        <p>Connect a wallet to top up your Task Node account or pay for premium features. All transactions settle on-chain.</p>
+        <div className="payment-methods">
+          {PAYMENT_METHODS.map((method) => (
+            <CryptoMethodRow key={method.k} method={method} />
+          ))}
+        </div>
+      </div>
+      <div>
+        <h3>Billing history</h3>
+        <div className="empty-billing">
+          <strong>No payments yet</strong>
+          <p>Top-ups and premium feature charges will appear here.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      <section className="section-block">
-        <div className="section-heading">
-          <h2>Sources</h2>
-          <button type="button" onClick={() => startContextAction(importAction)}>
-            Import context
+function MfaCallout() {
+  return (
+    <section className="mfa-callout">
+      <span>
+        <Shield size={16} strokeWidth={1.75} />
+        <i><Lock size={8} strokeWidth={2.5} /></i>
+      </span>
+      <strong>Secure your account</strong>
+      <p>Add multi-factor authentication (MFA), like a hardware key or authenticator app, to help protect your account when signing in.</p>
+      <button type="button">Set up MFA</button>
+    </section>
+  );
+}
+
+function SettingsLine({ danger, desc, label, right }) {
+  return (
+    <div className={danger ? "settings-line danger" : "settings-line"}>
+      <div>
+        <strong>{label}</strong>
+        {desc && <p>{desc}</p>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function StaticButton({ value }) {
+  return (
+    <button className="static-button" type="button">
+      {value}
+      <ChevronRight size={13} strokeWidth={1.75} />
+    </button>
+  );
+}
+
+function CycleButton({ onClick, value }) {
+  return (
+    <button className="static-button" onClick={onClick} type="button">
+      {value}
+      <ChevronRight size={13} strokeWidth={1.75} />
+    </button>
+  );
+}
+
+function SmallPill({ children, danger }) {
+  return (
+    <button className={danger ? "small-pill danger" : "small-pill"} type="button">
+      {children}
+    </button>
+  );
+}
+
+function ToggleSwitch({ initial }) {
+  const [on, setOn] = useState(Boolean(initial));
+  return (
+    <button className={on ? "toggle-switch on" : "toggle-switch"} onClick={() => setOn((value) => !value)} type="button" aria-pressed={on}>
+      <span />
+    </button>
+  );
+}
+
+function CryptoMethodRow({ method }) {
+  return (
+    <div className="crypto-method">
+      <span style={{ background: method.accent }}>{method.letter}</span>
+      <div>
+        <strong>{method.name}</strong>
+        <small>
+          {method.chain}
+          {method.connected && method.address ? ` . ${method.address}` : ""}
+        </small>
+      </div>
+      {method.connected ? <em>Connected</em> : <button type="button">Connect</button>}
+    </div>
+  );
+}
+
+function TaskDetailModal({ onClose, task }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose} role="presentation">
+      <section className="task-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="task-title">
+        <header>
+          <div>
+            <Flag size={12} strokeWidth={1.75} />
+            {task.kind}
+          </div>
+          <button onClick={onClose} type="button">
+            <X size={14} strokeWidth={1.75} />
+            Close
           </button>
-        </div>
-        <div className="item-list">
-          {(context?.sources || []).map((source) => (
-            <article className="item-card" key={source.label}>
-              <div className="item-card-top">
-                <span className="pill">{source.status}</span>
-              </div>
-              <h3>{source.label}</h3>
-              <p>{source.note}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="section-block">
-        <div className="section-heading">
-          <h2>Context actions</h2>
-        </div>
-        <div className="action-grid">
-          {actions.map((action) => (
-            <button
-              key={action.id}
-              className="action-button"
-              type="button"
-              onClick={() => startContextAction(action)}
-            >
-              <span>{action.label}</span>
+        </header>
+        <div className="task-modal-body">
+          <h2 id="task-title">{task.title}</h2>
+          <a>
+            Task ID: {task.fullId}
+            <ExternalLink size={11} strokeWidth={1.75} />
+          </a>
+          <div className="task-modal-stats">
+            <div>
+              <small>Status</small>
+              <StatusPill status={task.status} />
+            </div>
+            <div>
               <small>
-                {pendingAction === action.id
-                  ? "Checking"
-                  : action.configured
-                    ? "Config ready"
-                    : "Needs config"}
+                Deadline
+                <HelpCircle size={11} strokeWidth={1.75} />
               </small>
-            </button>
-          ))}
+              <span>{task.fullDue}</span>
+            </div>
+          </div>
+          <TaskSection title="Description">
+            <p>{task.description}</p>
+          </TaskSection>
+          <TaskSection title="Steps">
+            <ol>
+              {task.steps.map((step, index) => (
+                <li key={step}>
+                  <span>{index + 1}</span>
+                  <p>{step}</p>
+                </li>
+              ))}
+            </ol>
+          </TaskSection>
+          <TaskSection title="Verification">
+            <strong>{task.verification.title}</strong>
+            <p>{task.verification.body}</p>
+          </TaskSection>
+          <TaskSection last title="Reward">
+            <div className="modal-reward">
+              {task.pft.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              <span>PFT</span>
+            </div>
+          </TaskSection>
         </div>
-        {message && <div className="inline-message">{message}</div>}
+        <footer>
+          <button className="dark-pill" type="button">Submit evidence</button>
+          <button className="light-pill" type="button">Discuss</button>
+          <button className="danger-text" type="button">Cancel task</button>
+        </footer>
       </section>
     </div>
   );
+}
+
+function TaskSection({ children, last, title }) {
+  return (
+    <section className={last ? "task-section last" : "task-section"}>
+      <h3>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function nextTheme(theme) {
+  if (theme === "auto") return "light";
+  if (theme === "light") return "dark";
+  return "auto";
+}
+
+function themeLabel(theme) {
+  if (theme === "auto") return "System";
+  return theme[0].toUpperCase() + theme.slice(1);
 }
 
 function LoginDialog({ session, onClose }) {
-  const providers = session?.accountLinks || [];
+  const providers = (session?.accountLinks || []).filter((provider) =>
+    ["telegram", "discord", "x"].includes(provider.id)
+  );
   const [message, setMessage] = useState("");
   const [pendingProvider, setPendingProvider] = useState("");
 
@@ -757,10 +1772,10 @@ function LoginDialog({ session, onClose }) {
     <div className="dialog-backdrop" role="presentation">
       <section className="login-dialog" role="dialog" aria-modal="true" aria-labelledby="login-title">
         <button className="dialog-close" onClick={onClose} aria-label="Close">
-          x
+          <X size={18} strokeWidth={2} />
         </button>
         <h2 id="login-title">Log in or sign up</h2>
-        <p>You get account history first. PFT wallet unlock only appears when a wallet action needs it.</p>
+        <p>You'll get smarter responses and can upload files, images, and more.</p>
         {providers.map((provider) => (
           <button
             key={provider.id}
@@ -768,14 +1783,9 @@ function LoginDialog({ session, onClose }) {
             type="button"
             onClick={() => startProvider(provider)}
           >
+            <ProviderIcon id={provider.id} />
             <span>Continue with {provider.label}</span>
-            <small>
-              {pendingProvider === provider.id
-                ? "Checking"
-                : provider.configured
-                  ? "Config ready"
-                  : "Needs config"}
-            </small>
+            {pendingProvider === provider.id && <small>Checking</small>}
           </button>
         ))}
         {message && <div className="dialog-message">{message}</div>}
@@ -791,6 +1801,12 @@ function LoginDialog({ session, onClose }) {
       </section>
     </div>
   );
+}
+
+function ProviderIcon({ id }) {
+  if (id === "telegram") return <span className="provider-icon telegram">T</span>;
+  if (id === "discord") return <span className="provider-icon discord">D</span>;
+  return <span className="provider-icon x-provider">X</span>;
 }
 
 function StatusBanner({ children, tone = "default" }) {
