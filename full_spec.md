@@ -47,7 +47,7 @@ The existing `pftasks` system is a real deployed app with API, frontend, worker,
 Postgres, PFTL, IPFS/Pinata, LLM providers, Langfuse, PostHog, Discord, profile,
 tasks, network board, healthboard, and reward flows. It is not a blank slate.
 
-The new product spec asks for a sharp simplification:
+The current product spec asks for a sharp simplification:
 
 - Replace wallet-first authentication with account-first authentication.
 - Keep wallet auth only for wallet-bound actions.
@@ -55,7 +55,8 @@ The new product spec asks for a sharp simplification:
 - Track chat spend per query.
 - Keep prompts open source except private NFT/profile-picture prompts.
 - Make the chat surface feel like ChatGPT, not like a bespoke crypto dashboard.
-- Support personal tasks in the app; route network and alpha work separately.
+- Let users request personal tasks only, while still receiving routed network and
+  alpha tasks inside the app.
 - Consolidate Telegram and Discord chat access.
 - Use Nostr for messaging-style portability instead of using PFT as a messaging
   layer.
@@ -65,6 +66,34 @@ The new product spec asks for a sharp simplification:
 The main open issue is not whether the system can be built. It is where the new
 clean product boundary should be drawn against the large existing `pftasks`
 surface.
+
+## Current Product Decisions
+
+These decisions supersede older PFTasks docs unless explicitly reopened:
+
+- The newest product spec and direct product clarifications are the source of
+  truth. Older PFTasks docs are implementation references and migration context,
+  not competing product authority.
+- Follow `jsx_mock.jsx`. When the mock is incomplete, copy the current ChatGPT
+  app pattern instead of inventing a new UX pattern.
+- `login.jsx` is product input for account login, account linking, and wallet
+  onboarding surfaces.
+- Users can receive network and alpha tasks in the app. They cannot request
+  network or alpha tasks through the normal task request path.
+- Usage is billing-based, not quota-based. A user who pays more should be able
+  to use more. Technical guardrails should protect users and infrastructure from
+  fraud, runaway spend, provider failure, and broken jobs, not impose arbitrary
+  product caps on paying users.
+- Do not require maintaining a MetaMask PFTL Snap for the core PFT wallet path.
+  Prefer the existing seed-based PFTL wallet/login flow if it can be made
+  secure, professional, and understandable.
+- External funding should support familiar crypto rails such as USDC or USDT via
+  MetaMask, Phantom, deposit addresses, a processor, or per-user deposit
+  accounts. The research criterion is user safety and operational security, not
+  ideological purity.
+- Seed storage is a first-class security design problem. Local encrypted seed
+  storage, backup, recovery, delinking, relinking, and repeated test onboarding
+  must be designed deliberately.
 
 ## Product Principles
 
@@ -80,24 +109,28 @@ surface.
    PFT sending, PFT verification signatures, and PFTL pointer manifests require
    wallet authentication. Normal navigation and chat should not.
 
-4. The codebase must be smaller than PFTasks.
+4. UX is borrowed deliberately.
+   The product should copy the proven ChatGPT interaction model and the provided
+   JSX mock. Novel UX is a liability unless there is a concrete reason.
+
+5. The codebase must be smaller than PFTasks.
    Delete, defer, or isolate legacy features unless they directly support the
    new product loop.
 
-5. Postgres-first does not mean Postgres-naive.
+6. Postgres-first does not mean Postgres-naive.
    Use Postgres as the system of record, but design for query budgets,
-   connection pooling, read/write separation, idempotent jobs, rate-limited
-   backfills, and schema discipline from day one.
+   connection pooling, read/write separation, idempotent jobs, paced backfills,
+   and schema discipline from day one.
 
-6. Private means designed, not promised.
+7. Private means designed, not promised.
    Private chat, private prompts, private context, and pseudonymous profiles all
    need explicit data boundaries and security reviews.
 
-7. Provider choice is a product feature.
+8. Provider choice is a product feature.
    Private Instant, Private Thinking, Frontier Instant, and Frontier Thinking
    should be routed by policy, cost, latency, privacy mode, and model health.
 
-8. Everything important should be explainable to a new engineer or an LLM.
+9. Everything important should be explainable to a new engineer or an LLM.
    Architecture maps, prompt contracts, data models, deploy runbooks, and
    security boundaries are part of the product.
 
@@ -125,9 +158,12 @@ Required principles:
   No idle transactions, no unbounded admin queries, no long-running user-facing
   reads.
 
-- Rate-limit expensive endpoints.
+- Meter expensive endpoints and protect users from runaway spend.
   Chat, context import, verification, reward calculation, document fetch, and
-  URL evidence checks all need product-level and infrastructure-level limits.
+  URL evidence checks should be usage-based. They need pricing, spend
+  visibility, confirmation for expensive actions, idempotency, cancellation,
+  circuit breakers, and fraud/abuse controls. They should not have arbitrary
+  caps that block legitimate paid usage.
 
 - Cache with stampede protection.
   Cache common read models, but use lease/lock behavior so cache misses do not
@@ -140,7 +176,7 @@ Required principles:
 
 - Treat schema changes as production events.
   Migrations need timeouts, backwards compatibility, safe deploy order, and
-  rate-limited backfills.
+  paced backfills.
 
 - Keep queue jobs idempotent.
   Reward payouts, verification, document imports, message sync, and chain index
@@ -150,20 +186,22 @@ Required principles:
   Healthboard should track slow queries, queue lag, LLM errors, provider
   saturation, chain index lag, cache hit rate, and external integration health.
 
-## Known Product and Architecture Conflicts
+## Known Product and Architecture Decision Gates
 
 These are not blockers. They are decision gates.
 
-1. PFTL-only vs multi-crypto funding.
-   The old `pftasks` guidance says PFTL-only and MetaMask deprecated. The new
-   product spec asks for crypto top-up through MetaMask, Phantom, or another
-   trustless wallet path. Research must decide whether non-PFT top-ups are
-   handled by a payment processor, a deposit address flow, or deferred.
+1. PFTL wallet path vs external crypto funding rails.
+   PFT wallet operations should use the seed-based PFTL wallet flow rather than
+   require ongoing MetaMask Snap maintenance. Chat balance funding can still
+   accept USDC, USDT, or similar assets through MetaMask, Phantom, deposit
+   addresses, a payment processor, or per-user deposit accounts. Research must
+   choose the safest, least error-prone funding flow.
 
-2. Server-side seed cache vs non-custodial browser wallet.
-   The new spec prefers keeping the current server-side seed cache for PFTL
-   Snap-style wallet operations. Older backend scope prefers browser wallet key
-   custody. This is a core security and liability decision.
+2. Local seed storage and delinking.
+   The preferred direction is local seed-based wallet/login behavior, but it
+   needs a professional storage design: encryption, backup, recovery, device
+   migration, local wipe, production delink/relink for testability, and clear
+   rules for balances attached to seed-derived addresses.
 
 3. Open-source prompts vs Langfuse runtime prompt system.
    The new spec prefers open prompts and less Langfuse complexity. Current
@@ -173,9 +211,10 @@ These are not blockers. They are decision gates.
    The new spec wants Nostr integration. The older lean backend scope explicitly
    de-scoped Nostr. Research must determine the smallest useful Nostr role.
 
-5. Personal tasks only vs existing network/alpha task machinery.
-   The new app should support personal task requests only, while network and
-   alpha tasks become routed by a director/network board surface.
+5. Personal task requests vs routed network/alpha tasks.
+   The app should allow users to request personal tasks only. Network and alpha
+   tasks still appear in the app when routed to the user by the director/network
+   board system.
 
 6. Eight reward cap vs older four-task/day guidance.
    The new spec says users should be capped at eight task rewards per day. Older
@@ -204,12 +243,12 @@ These are not blockers. They are decision gates.
 
 | ID | Area | Status | Output |
 | --- | --- | --- | --- |
-| R00 | Source-of-truth consolidation | Discovery | Final product source map and contradiction log |
+| R00 | Source-of-truth versioning | Discovery | Product decision log and superseded-assumption map |
 | R01 | Existing PFTasks inventory and deletion line | Discovery | Keep/delete/defer matrix |
-| R02 | UX parity with ChatGPT-style mock | Discovery | Screen inventory and component map |
+| R02 | UX parity with ChatGPT-style mock | Discovery | Screen inventory, ChatGPT references, and component map |
 | R03 | Auth and account model | Not started | Account, session, provider, and wallet-link spec |
-| R04 | Wallet custody and transaction signing | Not started | PFTL wallet architecture decision |
-| R05 | Crypto funding and spend ledger | Not started | Billing ledger and top-up architecture |
+| R04 | Wallet custody and transaction signing | Not started | Seed storage and PFTL wallet architecture decision |
+| R05 | Crypto funding and spend ledger | Not started | Usage-based billing ledger and top-up architecture |
 | R06 | Message storage and chat history | Discovery | Scalable chat schema and retention model |
 | R07 | Model routing and provider policy | Not started | Provider router, privacy, cost, and fallback spec |
 | R08 | Prompt architecture | Discovery | Open prompt repo strategy and private prompt exception |
@@ -231,7 +270,7 @@ These are not blockers. They are decision gates.
 | R24 | Postgres reliability and scale | Discovery | DB operating model and query guardrails |
 | R25 | Schema migration and backfill discipline | Discovery | Migration rules and rollout checklist |
 | R26 | Security, privacy, and secrets | Discovery | Threat model, secret inventory, and custody review |
-| R27 | Abuse, sybil, limits, and policy | Discovery | Abuse controls and enforcement policy |
+| R27 | Abuse, sybil, usage, and policy | Discovery | Abuse controls and enforcement policy |
 | R28 | Observability and healthboard | Discovery | Service, queue, provider, and DB health spec |
 | R29 | Fly deployment and environments | Discovery | Dev/prod deploy topology and secret map |
 | R30 | Test strategy | Discovery | Unit, integration, e2e, load, and security test plan |
@@ -242,14 +281,18 @@ These are not blockers. They are decision gates.
 
 ## Feature Research Briefs
 
-### R00: Source-of-Truth Consolidation
+### R00: Source-of-Truth Versioning
 
 Research questions:
 
-- Which documents are normative: `product_spec.md`, old PFTasks vision docs,
-  backend scope, UX mock, or current deployed behavior?
-- Which old non-negotiables are still binding?
-- Which conflicts require founder/product decision before implementation?
+- How do we keep the newest product spec and direct founder clarifications as
+  the living source of truth?
+- Which old PFTasks docs are useful as implementation references but explicitly
+  non-normative?
+- How do we record product decisions so old assumptions do not re-enter the
+  build through copied code?
+- Which remaining decision gates require founder/product decision before
+  implementation?
 
 Sources:
 
@@ -261,13 +304,13 @@ Sources:
 
 Deliverable:
 
-- A contradiction log with one recommended decision per conflict.
+- A source-of-truth log with dated product decisions and superseded assumptions.
 - A stable "build against this" spec version.
 
 Acceptance criteria:
 
-- No engineer has to infer whether old PFTasks behavior or new Task Node GPT
-  behavior wins.
+- No engineer has to infer whether an older PFTasks assumption overrides the
+  latest Task Node GPT decision. It does not unless explicitly reinstated.
 
 ### R01: Existing PFTasks Inventory and Deletion Line
 
@@ -304,6 +347,9 @@ Research questions:
 - Which mock surfaces need real data on day one?
 - Which should be static, hidden, or staged?
 - How should mobile, keyboard, accessibility, loading, and error states work?
+- Where the mock is incomplete, what does the current ChatGPT app do?
+- What exact login, account-linking, wallet-onboarding, and wallet-delink UX is
+  implied by `login.jsx` and the existing seed-based wallet flow?
 
 Sources:
 
@@ -314,12 +360,15 @@ Sources:
 
 Deliverable:
 
-- Screen-by-screen product requirements and component map.
+- Screen-by-screen product requirements, ChatGPT reference behavior notes, and
+  component map.
 
 Acceptance criteria:
 
 - The first deployed app feels like the mock and does not expose legacy
   navigation sprawl.
+- Engineers copy proven ChatGPT interaction patterns instead of inventing new
+  product primitives.
 
 ### R03: Auth and Account Model
 
@@ -331,6 +380,9 @@ Research questions:
 - What is the canonical user identity when multiple providers are linked?
 - How does account deletion or provider unlinking affect wallet history?
 - What is the session model for web, Telegram, and Discord?
+- What production-safe delink/relink function is needed so wallet onboarding can
+  be repeatedly tested without corrupting balances or identity history?
+- How does a user "get PFT the same way as before" in the new account-first UX?
 
 Sources:
 
@@ -342,8 +394,8 @@ Sources:
 
 Deliverable:
 
-- Account model, provider linking rules, session rules, and wallet-link
-  constraints.
+- Account model, provider linking rules, session rules, wallet-link constraints,
+  and production delink/relink operations.
 
 Acceptance criteria:
 
@@ -354,12 +406,17 @@ Acceptance criteria:
 
 Research questions:
 
-- Should Task Node keep server-side seed cache behavior, move to browser wallet,
-  revive a Snap path, or support multiple signing modes?
+- How exactly did the old seed-based login and wallet flow store, encrypt,
+  recover, and use seeds?
+- Can that flow be made the default PFTL wallet path without maintaining the
+  PFTL MetaMask Snap?
 - What exactly is an "unlock transaction" in the new architecture?
 - Which operations require wallet unlock?
-- How are seeds encrypted, rotated, backed up, and audited?
+- How are locally stored seeds encrypted, rotated, backed up, migrated across
+  devices, wiped, delinked, relinked, and audited?
 - Can the product support one wallet per login without losing legacy data?
+- What user warnings and confirmations prevent a user from losing access to a
+  seed-derived address with a real balance?
 
 Sources:
 
@@ -371,24 +428,29 @@ Sources:
 
 Deliverable:
 
-- Custody decision memo and transaction signing boundary diagram.
+- Seed storage decision memo, transaction signing boundary diagram, and
+  delink/recovery runbook.
 
 Acceptance criteria:
 
-- Users understand when they are signing. The system is auditable and does not
-  create avoidable custody risk.
+- Users understand when they are signing and how to preserve access to balances.
+  The system is auditable and does not create avoidable custody risk.
 
 ### R05: Crypto Funding and Spend Ledger
 
 Research questions:
 
 - Which currencies and chains are accepted for top-up at launch?
-- Is top-up handled by direct wallet connect, deposit address, third-party
-  processor, or manual admin credit?
+- Is top-up handled by direct wallet connect, per-user deposit address, per-user
+  USDC/USDT account, third-party processor, or manual admin credit?
+- Is MetaMask/Phantom used only for external funding rails while PFT wallet
+  actions stay on the seed-based PFTL path?
 - How is per-query spend computed and displayed?
 - How are failed, retried, streamed, or cancelled LLM calls billed?
 - How do task rewards credit chat balances?
 - What ledger tables make credits, debits, refunds, and rewards auditable?
+- What user-facing spend controls prevent accidental runaway charges without
+  imposing arbitrary product usage caps on paying users?
 
 Sources:
 
@@ -400,10 +462,13 @@ Sources:
 Deliverable:
 
 - Credit ledger and billing policy spec.
+  The policy must be usage-based, not quota-based.
 
 Acceptance criteria:
 
 - Every balance shown in the UI can be reconciled from ledger entries.
+- Paying users are not blocked by arbitrary caps; they are protected by clear
+  pricing, confirmations, and fraud controls.
 
 ### R06: Message Storage and Chat History
 
@@ -666,8 +731,9 @@ Deliverable:
 
 Acceptance criteria:
 
-- Users no longer request network/alpha tasks through the normal personal task
-  path.
+- Users can receive, view, accept/refuse, complete, and be rewarded for routed
+  network/alpha tasks in the app, but they cannot request them through the normal
+  personal task request path.
 
 ### R16: Alpha Task and Alpha Privacy Model
 
@@ -828,7 +894,8 @@ Research questions:
 
 - What NFT/profile-picture generation remains in scope?
 - How are private prompts deployed and audited without entering git?
-- Why are users not charged for NFT generation, and what abuse limits apply?
+- Why are users not charged for NFT generation, and what fraud/spend controls
+  apply?
 - Where are generated images stored?
 - How are ownership, offers, and profile display linked?
 
@@ -906,7 +973,7 @@ Research questions:
 - Which schema changes are required for account-first auth, billing, messages,
   and context documents?
 - Which migrations can lock large tables?
-- Which backfills need rate limits and resumability?
+- Which backfills need pacing and resumability?
 - How are migration scripts tested against snapshots?
 
 Sources:
@@ -952,13 +1019,15 @@ Acceptance criteria:
 - The repo can become open source without leaking operational secrets or
   revealing private prompt material.
 
-### R27: Abuse, Sybil, Limits, and Policy
+### R27: Abuse, Sybil, Usage, and Policy
 
 Research questions:
 
 - What abuse paths exist for free chat, paid chat, task rewards, NFT generation,
   context import, URL verification, and bot integrations?
-- What limits are deterministic vs model-judged?
+- Which controls are spend controls, fraud controls, provider/infrastructure
+  circuit breakers, or reward-farming controls?
+- How do we avoid arbitrary product usage caps for legitimate paying users?
 - How is the eight-reward cap enforced?
 - What user-facing message appears when a cap is hit?
 - Which sybil signals are invisible, appealable, or review-only?
@@ -971,12 +1040,12 @@ Sources:
 
 Deliverable:
 
-- Abuse policy and enforcement architecture.
+- Usage, abuse, sybil, and enforcement architecture.
 
 Acceptance criteria:
 
-- The system discourages farming without punishing legitimate power users by
-  accident.
+- The system discourages farming and accidental runaway spend without punishing
+  legitimate high-usage paying users by accident.
 
 ### R28: Observability and Healthboard
 
@@ -1306,7 +1375,7 @@ Exit criteria:
 
 ## Immediate Next Research Steps
 
-1. Produce the source-of-truth contradiction log.
+1. Produce the source-of-truth decision log.
 2. Inventory PFTasks feature surfaces into keep/delete/defer.
 3. Decide wallet custody and funding architecture before implementing billing.
 4. Draft the chat/message schema with Postgres query budgets.
