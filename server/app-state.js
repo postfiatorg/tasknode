@@ -36,14 +36,7 @@ export function appState() {
       ],
       defaultMode: enabledMode?.label || "Private Instant",
       modes,
-      seedMessages: [
-        {
-          role: "assistant",
-          body:
-            "Task Node dev is live. The next product boundary is account-first execution: chat, tasks, wallet, context, and usage state come from the app server before legacy PFTasks code is wired in.",
-        },
-        ...getChatMessages("dev"),
-      ],
+      seedMessages: getChatMessages("dev"),
     },
     tasks: {
       personalRequestEnabled: true,

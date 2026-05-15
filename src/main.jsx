@@ -1,5 +1,19 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import {
+  ArrowUp,
+  BookOpen,
+  ChevronRight,
+  ListTodo,
+  MoreHorizontal,
+  PanelLeft,
+  Plus,
+  Search,
+  Sparkles,
+  SquarePen,
+  Store,
+  Wallet,
+} from "lucide-react";
 import { fetchAppState, fetchRuntimeConfig, requestJson } from "./api";
 import "./styles.css";
 
@@ -7,19 +21,11 @@ const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
 
 function App() {
   const [view, setView] = useState("chat");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loginOpen, setLoginOpen] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
   const [appState, setAppState] = useState(null);
   const [loadError, setLoadError] = useState("");
-  const navItems = useMemo(
-    () => [
-      ["chat", "Chat"],
-      ["tasks", "Tasks"],
-      ["wallet", "Wallet"],
-      ["context", "Context"],
-    ],
-    []
-  );
 
   useEffect(() => {
     let active = true;
@@ -44,54 +50,104 @@ function App() {
   const session = appState?.session;
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
       <aside className="sidebar" aria-label="Primary">
-        <button className="new-chat" onClick={() => setView("chat")}>
-          <span aria-hidden="true">+</span>
-          New chat
-        </button>
+        <div className="sidebar-header">
+          {sidebarOpen ? <span className="sidebar-title">Task Node</span> : <BrandDot />}
+          <button
+            className="icon-button"
+            onClick={() => setSidebarOpen((open) => !open)}
+            title={sidebarOpen ? "Collapse sidebar" : "Open sidebar"}
+            type="button"
+          >
+            <PanelLeft size={18} strokeWidth={1.75} />
+          </button>
+        </div>
 
         <nav className="nav-list">
-          {navItems.map(([key, label]) => (
-            <button
-              key={key}
-              className={view === key ? "active" : ""}
-              onClick={() => setView(key)}
-            >
-              {label}
-            </button>
-          ))}
+          <SidebarButton
+            active={view === "chat"}
+            icon={SquarePen}
+            label="New chat"
+            onClick={() => setView("chat")}
+            sidebarOpen={sidebarOpen}
+          />
+          <SidebarButton icon={Search} label="Search chats" sidebarOpen={sidebarOpen} />
+          <SidebarButton
+            active={view === "tasks"}
+            badge={appState?.tasks?.outstanding?.length}
+            icon={ListTodo}
+            label="Tasks"
+            onClick={() => setView("tasks")}
+            sidebarOpen={sidebarOpen}
+          />
+          <SidebarButton
+            active={view === "wallet"}
+            icon={Wallet}
+            label="Wallet"
+            onClick={() => setView("wallet")}
+            sidebarOpen={sidebarOpen}
+          />
+          <SidebarButton
+            active={view === "context"}
+            icon={BookOpen}
+            label="Context"
+            onClick={() => setView("context")}
+            sidebarOpen={sidebarOpen}
+          />
+          <SidebarButton icon={MoreHorizontal} label="More" sidebarOpen={sidebarOpen} />
         </nav>
 
-        <section className="recents" aria-label="Recent chats">
-          <div className="section-label">Recent</div>
-          {recents.length > 0 ? (
-            recents.map((item) => <button key={item}>{item}</button>)
-          ) : (
-            <div className="sidebar-note">No chats yet</div>
-          )}
-        </section>
+        {sidebarOpen && (
+          <section className="recents" aria-label="Recent chats">
+            <div className="section-label">Recents</div>
+            {recents.length > 0 ? (
+              recents.map((item) => <button key={item}>{item}</button>)
+            ) : (
+              <div className="sidebar-note">No chats yet</div>
+            )}
+          </section>
+        )}
 
         <div className="sidebar-footer">
-          <div className="balance-pill">
-            <span>PFT</span>
-            <strong>{pftBalance}</strong>
-          </div>
+          {sidebarOpen && (
+            <button className="balance-pill" onClick={() => setView("wallet")} type="button">
+              <span className="balance-left">
+                <Wallet size={14} strokeWidth={1.75} />
+                <strong>{pftBalance}</strong>
+                <span>PFT</span>
+              </span>
+              <ChevronRight size={14} strokeWidth={1.75} />
+            </button>
+          )}
           <button className="profile-button" onClick={() => setLoginOpen(true)}>
-            {session?.displayName || "Log in or sign up"}
+            <span className="profile-avatar">AG</span>
+            {sidebarOpen && (
+              <>
+                <span className="profile-copy">
+                  <strong>{session?.displayName || "Alex Good"}</strong>
+                  <small>{session?.status === "signed_out" ? "Log in or sign up" : "Pro"}</small>
+                </span>
+                <Store size={14} strokeWidth={1.75} />
+              </>
+            )}
           </button>
         </div>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
-          <div>
-            <div className="eyebrow">Task Node</div>
-            <h1>{titleForView(view)}</h1>
+          <div className="topbar-left">
+            {!sidebarOpen && (
+              <button className="icon-button" onClick={() => setSidebarOpen(true)} type="button">
+                <PanelLeft size={18} strokeWidth={1.75} />
+              </button>
+            )}
+            <button className="icon-button" onClick={() => setView("chat")} type="button">
+              <SquarePen size={18} strokeWidth={1.75} />
+            </button>
           </div>
-          <button className="login-button" onClick={() => setLoginOpen(true)}>
-            Log in
-          </button>
+          {view !== "chat" && <h1>{titleForView(view)}</h1>}
         </header>
 
         {loadError && <StatusBanner tone="error">{loadError}</StatusBanner>}
@@ -127,6 +183,7 @@ function ChatSurface({ config, chat, usage }) {
   const defaultMode = chat?.defaultMode || "Private Instant";
   const [turns, setTurns] = useState(messages);
   const [selectedMode, setSelectedMode] = useState(defaultMode);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
   const [estimate, setEstimate] = useState(null);
@@ -182,35 +239,91 @@ function ChatSurface({ config, chat, usage }) {
     }
   }
 
-  return (
-    <div className="chat-surface">
-      <div className="message-list" aria-live="polite">
-        {turns.map((message, index) => (
-          <article
-            className={message.role === "user" ? "user-message" : "assistant-message"}
-            key={message.id || `${message.role}-${index}`}
-          >
-            <div className="avatar">{message.role === "user" ? "You" : "TN"}</div>
-            <div>
-              <p>{message.body}</p>
-            </div>
-          </article>
-        ))}
-
-        <section className="mode-strip" aria-label="Model modes">
-          {modes.map((mode) => (
-            <button
-              key={mode.label}
-              className={mode.label === selectedMode ? "active" : ""}
-              type="button"
-              onClick={() => setSelectedMode(mode.label)}
-            >
-              <span>{mode.label}</span>
-              <small>{getModeHint(mode)}</small>
-            </button>
-          ))}
-        </section>
+  const composer = (
+    <form className="composer" onSubmit={submitMessage}>
+      <button className="composer-icon" type="button" aria-label="Add">
+        <Plus size={20} strokeWidth={1.75} />
+      </button>
+      <input
+        aria-label="Ask anything"
+        onChange={(event) => setInput(event.target.value)}
+        placeholder="Ask anything"
+        value={input}
+      />
+      <div className="model-picker">
+        <button
+          className="model-button"
+          onClick={() => setModelMenuOpen((open) => !open)}
+          type="button"
+        >
+          {formatModeLabel(selectedMode)}
+          <ChevronRight size={14} strokeWidth={1.75} />
+        </button>
+        {modelMenuOpen && (
+          <div className="model-menu">
+            <ModelGroup label="Private" />
+            {modes
+              .filter((mode) => mode.label.startsWith("Private"))
+              .map((mode) => (
+                <ModelOption
+                  key={mode.label}
+                  mode={mode}
+                  selected={mode.label === selectedMode}
+                  onClick={() => {
+                    setSelectedMode(mode.label);
+                    setModelMenuOpen(false);
+                  }}
+                />
+              ))}
+            <div className="menu-divider" />
+            <ModelGroup label="Frontier" />
+            {modes
+              .filter((mode) => mode.label.startsWith("Frontier"))
+              .map((mode) => (
+                <ModelOption
+                  key={mode.label}
+                  mode={mode}
+                  selected={mode.label === selectedMode}
+                  onClick={() => {
+                    setSelectedMode(mode.label);
+                    setModelMenuOpen(false);
+                  }}
+                />
+              ))}
+          </div>
+        )}
       </div>
+      <button className="send-button" disabled={!input.trim() || sending} type="submit" aria-label="Send">
+        <ArrowUp size={18} strokeWidth={2.25} />
+      </button>
+    </form>
+  );
+
+  return (
+    <div className={turns.length === 0 ? "chat-surface empty" : "chat-surface"}>
+      {turns.length === 0 ? (
+        <div className="chat-empty">
+          <h1>What are you working on?</h1>
+          {composer}
+        </div>
+      ) : (
+        <>
+          <div className="message-list" aria-live="polite">
+            {turns.map((message, index) =>
+              message.role === "user" ? (
+                <article className="user-message" key={message.id || `user-${index}`}>
+                  <div>{message.body}</div>
+                </article>
+              ) : (
+                <article className="assistant-message" key={message.id || `assistant-${index}`}>
+                  {message.body}
+                </article>
+              )
+            )}
+          </div>
+          <div className="composer-dock">{composer}</div>
+        </>
+      )}
 
       {(sendMessage || estimate) && (
         <div className="chat-contract-message">
@@ -221,27 +334,12 @@ function ChatSurface({ config, chat, usage }) {
           )}
           {actualUsage && (
             <span>
-              Billed {formatUsd(actualUsage.costUsd)} from {actualUsage.totalTokens} tokens.
+              Billed {formatUsageUsd(actualUsage.costUsd)} from {actualUsage.totalTokens} tokens.
             </span>
           )}
           {sendMessage && <span>{sendMessage}</span>}
         </div>
       )}
-
-      <form className="composer" onSubmit={submitMessage}>
-        <button type="button" aria-label="Attach file">
-          +
-        </button>
-        <input
-          aria-label="Message Task Node"
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Message Task Node"
-          value={input}
-        />
-        <button type="submit" aria-label="Send message">
-          {sending ? "..." : "Send"}
-        </button>
-      </form>
       <div className="build-line">
         {config.environment || "development"} - {config.buildId || "dev"}
       </div>
@@ -249,10 +347,39 @@ function ChatSurface({ config, chat, usage }) {
   );
 }
 
-function getModeHint(mode) {
-  if (mode.enabled) return `${mode.latency} - ready`;
-  if (mode.configured) return `${mode.latency} - disabled`;
-  return `${mode.latency} - needs config`;
+function SidebarButton({ active, badge, icon: Icon, label, onClick, sidebarOpen }) {
+  return (
+    <button className={active ? "active" : ""} onClick={onClick} type="button">
+      <Icon size={18} strokeWidth={1.75} />
+      {sidebarOpen && <span>{label}</span>}
+      {sidebarOpen && badge ? <small>{badge}</small> : null}
+    </button>
+  );
+}
+
+function BrandDot() {
+  return (
+    <span className="brand-dot">
+      <Sparkles size={14} strokeWidth={2} />
+    </span>
+  );
+}
+
+function ModelGroup({ label }) {
+  return <div className="model-group">{label}</div>;
+}
+
+function ModelOption({ mode, onClick, selected }) {
+  return (
+    <button className={selected ? "selected" : ""} onClick={onClick} type="button">
+      <span>{formatModeLabel(mode.label)}</span>
+      <small>{mode.enabled ? "Ready" : mode.configured ? "Disabled" : "Needs config"}</small>
+    </button>
+  );
+}
+
+function formatModeLabel(label) {
+  return label.replace("Private ", "Private - ").replace("Frontier ", "Frontier - ");
 }
 
 function TasksView({ tasks }) {
@@ -596,6 +723,12 @@ function formatUsd(value) {
     currency: "USD",
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatUsageUsd(value) {
+  const numeric = Number(value || 0);
+  if (numeric > 0 && numeric < 0.01) return "<$0.01";
+  return formatUsd(numeric);
 }
 
 createRoot(document.getElementById("root")).render(<App />);

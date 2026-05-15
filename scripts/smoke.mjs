@@ -1,5 +1,6 @@
 const baseUrl = process.env.SMOKE_BASE_URL || "http://127.0.0.1:8080";
 let readyChatMode = process.env.SMOKE_CHAT_MODE || "Private Instant";
+const smokeConversationId = process.env.SMOKE_CONVERSATION_ID || `smoke-${Date.now()}`;
 
 async function check(path, predicate) {
   const response = await fetch(`${baseUrl}${path}`);
@@ -116,6 +117,7 @@ if (process.env.SMOKE_CHAT_EXECUTION === "1") {
       body: JSON.stringify({
         message: "Reply with one short sentence confirming Task Node chat is online.",
         mode: readyChatMode,
+        conversationId: smokeConversationId,
       }),
     },
     (response, text) => {
