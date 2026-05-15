@@ -1,20 +1,21 @@
+import { authProviders, readiness } from "./product-contracts.js";
+
 export function appState() {
+  const providers = authProviders();
+  const runtimeReadiness = readiness();
+
   return {
     generatedAt: new Date().toISOString(),
     session: {
       status: "signed_out",
       displayName: null,
       primaryProvider: null,
-      accountLinks: [
-        { provider: "Telegram", status: "available" },
-        { provider: "Discord", status: "available" },
-        { provider: "X", status: "available" },
-        { provider: "Email", status: "available" },
-      ],
+      accountLinks: providers,
       walletLink: {
         status: "not_linked",
         mode: "seed_based_pftl",
         canDelinkForTesting: true,
+        seedStorageReady: runtimeReadiness.wallet.seedStorageReady,
       },
     },
     chat: {
@@ -98,6 +99,8 @@ export function appState() {
       pftWallet: {
         status: "not_linked",
         custody: "local_seed_required",
+        pftlRpcConfigured: runtimeReadiness.wallet.pftlRpcConfigured,
+        seedStorageReady: runtimeReadiness.wallet.seedStorageReady,
         signingRequiredFor: [
           "Send PFT",
           "Sign PFT verifications",

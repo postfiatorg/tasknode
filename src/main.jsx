@@ -328,6 +328,7 @@ function ContextView({ context }) {
 
 function LoginDialog({ session, onClose }) {
   const providers = session?.accountLinks || [];
+  const [message, setMessage] = useState("");
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -338,13 +339,26 @@ function LoginDialog({ session, onClose }) {
         <h2 id="login-title">Log in or sign up</h2>
         <p>You get account history first. PFT wallet unlock only appears when a wallet action needs it.</p>
         {providers.map((provider) => (
-          <button key={provider.provider} type="button">
-            Continue with {provider.provider}
+          <button
+            key={provider.id}
+            className="provider-row"
+            type="button"
+            onClick={() => setMessage(provider.actionRequired)}
+          >
+            <span>Continue with {provider.label}</span>
+            <small>{provider.configured ? "Config ready" : "Needs config"}</small>
           </button>
         ))}
+        {message && <div className="dialog-message">{message}</div>}
         <div className="divider">OR</div>
         <input type="email" placeholder="Email address" aria-label="Email address" />
-        <button className="continue-button" type="button">Continue</button>
+        <button
+          className="continue-button"
+          type="button"
+          onClick={() => setMessage("Email login needs a transactional email provider and magic-link callback.")}
+        >
+          Continue
+        </button>
       </section>
     </div>
   );

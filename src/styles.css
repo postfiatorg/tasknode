@@ -503,6 +503,29 @@ h1 {
   color: #ffffff;
 }
 
+.login-dialog .provider-row {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+}
+
+.provider-row small {
+  color: #77746d;
+  font-size: 12px;
+}
+
+.dialog-message {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5e2dc;
+  border-radius: 8px;
+  background: #fbfaf7;
+  color: #4d4a44;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .divider {
   display: flex;
   align-items: center;

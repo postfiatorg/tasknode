@@ -44,6 +44,26 @@ await check("/api/tasks", (response, text) => {
   return body.personalRequestEnabled === true && body.networkRequestEnabled === false;
 });
 
+await check("/api/auth/providers", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return (
+    Array.isArray(body.providers) &&
+    body.providers.some((provider) => provider.id === "telegram") &&
+    body.providers.every((provider) => provider.enabled === false)
+  );
+});
+
+await check("/api/readiness", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return (
+    body.auth?.launchReady === false &&
+    body.wallet?.seedStorageReady === false &&
+    body.billing?.model === "usage_based"
+  );
+});
+
 await check("/", (response, text) => {
   return response.ok && text.includes("Task Node");
 });

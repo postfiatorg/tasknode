@@ -18,6 +18,10 @@ minimal deployable dev app:
   chat modes, tasks, wallet, usage billing, and context sources. It is fixture
   backed for now so real PFTasks/PFTL integrations can replace it behind a
   stable boundary.
+- `/api/auth/providers` and `/api/readiness` expose non-secret integration
+  readiness. Auth providers can be configured without being enabled; login
+  remains disabled until start routes, callbacks, account merge rules, and
+  wallet custody boundaries are implemented.
 
 Dev URL: https://tasknodeofficial-dev.fly.dev
 

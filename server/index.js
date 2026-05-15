@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
+import { authProviders, readiness } from "./product-contracts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -102,6 +103,16 @@ function routeApi(url, res) {
 
   if (url.pathname === "/api/session") {
     json(res, 200, state.session);
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/providers") {
+    json(res, 200, { providers: authProviders() });
+    return true;
+  }
+
+  if (url.pathname === "/api/readiness") {
+    json(res, 200, readiness());
     return true;
   }
 
