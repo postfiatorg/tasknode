@@ -8,3 +8,5 @@ secrets.json
 secrets.*.json
 *.secret
 *.secrets
+node_modules/
+dist/

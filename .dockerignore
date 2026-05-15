@@ -1,0 +1,8 @@
+.git
+node_modules
+dist
+.env
+.env.*
+*.env
+*.local
+chatgpt_postgres_spec.md

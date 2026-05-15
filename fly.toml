@@ -1,0 +1,47 @@
+app = "tasknodeofficial-dev"
+primary_region = "ewr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+  TASKNODE_ENV = "development"
+  TASKNODE_APP_NAME = "tasknodeofficial-dev"
+  TASKNODE_PUBLIC_URL = "https://tasknodeofficial-dev.fly.dev"
+  VITE_SITE_ORIGIN = "https://tasknodeofficial-dev.fly.dev"
+  VITE_BUILD_ID = "dev"
+  VITE_DEBUG_MODE = "true"
+  VITE_PFTL_EXPLORER_URL = "https://explorer.testnet.postfiat.org"
+  VITE_PFTL_WSS_URL = "wss://ws.testnet.postfiat.org"
+  VITE_ANALYTICS_ENABLED = "true"
+  VITE_ANALYTICS_DEBUG = "true"
+  VITE_POSTHOG_HOST = "https://traffic.postfiat.org"
+  VITE_POSTHOG_UI_HOST = "https://us.posthog.com"
+  VITE_POSTHOG_REPLAY_ENABLED = "false"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 50
+    soft_limit = 40
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

@@ -1,0 +1,123 @@
+import { createReadStream, existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, "..");
+const distDir = path.join(rootDir, "dist");
+const port = Number(process.env.PORT || 8080);
+const buildId = process.env.VITE_BUILD_ID || process.env.BUILD_ID || "dev";
+const environment = process.env.TASKNODE_ENV || process.env.NODE_ENV || "development";
+
+const contentTypes = new Map([
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".css", "text/css; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".svg", "image/svg+xml"],
+  [".ico", "image/x-icon"],
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".webp", "image/webp"],
+  [".woff2", "font/woff2"],
+]);
+
+function json(res, status, body) {
+  const text = JSON.stringify(body);
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  res.end(text);
+}
+
+function runtimeConfig() {
+  return {
+    appName: "tasknodeofficial",
+    buildId,
+    environment,
+    siteOrigin: process.env.VITE_SITE_ORIGIN || process.env.TASKNODE_PUBLIC_URL || "",
+    pftlExplorerUrl: process.env.VITE_PFTL_EXPLORER_URL || process.env.PFTL_EXPLORER_URL || "",
+    pftlWssUrl: process.env.VITE_PFTL_WSS_URL || "",
+    analyticsEnabled: process.env.VITE_ANALYTICS_ENABLED !== "false",
+    posthogHost: process.env.VITE_POSTHOG_HOST || process.env.POSTHOG_UI_HOST || "",
+    posthogKeyPresent: Boolean(process.env.POSTHOG_KEY || process.env.VITE_POSTHOG_KEY),
+  };
+}
+
+function runtimeConfigScript(res) {
+  const script = `window.__TASKNODE_CONFIG__ = ${JSON.stringify(runtimeConfig())};\n`;
+  res.writeHead(200, {
+    "content-type": "text/javascript; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  res.end(script);
+}
+
+function isInsideDist(filePath) {
+  const relative = path.relative(distDir, filePath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+async function serveStatic(req, res) {
+  const requestPath = new URL(req.url, "http://tasknode.local").pathname;
+  const decoded = decodeURIComponent(requestPath);
+  const relative = decoded === "/" ? "/index.html" : decoded;
+  const filePath = path.normalize(path.join(distDir, relative));
+
+  if (!isInsideDist(filePath) || !existsSync(filePath)) {
+    const fallback = path.join(distDir, "index.html");
+    if (!existsSync(fallback)) {
+      json(res, 404, { ok: false, error: "build_not_found" });
+      return;
+    }
+    const html = await readFile(fallback);
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    res.end(html);
+    return;
+  }
+
+  const ext = path.extname(filePath);
+  res.writeHead(200, {
+    "content-type": contentTypes.get(ext) || "application/octet-stream",
+    "cache-control": ext === ".html" ? "no-store" : "public, max-age=31536000, immutable",
+  });
+  createReadStream(filePath).pipe(res);
+}
+
+const server = createServer((req, res) => {
+  if (req.url === "/health" || req.url === "/api/health") {
+    json(res, 200, {
+      ok: true,
+      service: "tasknodeofficial",
+      environment,
+      buildId,
+      uptimeSeconds: Math.round(process.uptime()),
+    });
+    return;
+  }
+
+  if (req.url === "/runtime-config.js") {
+    runtimeConfigScript(res);
+    return;
+  }
+
+  if (req.url === "/runtime-config.json") {
+    json(res, 200, runtimeConfig());
+    return;
+  }
+
+  serveStatic(req, res).catch((error) => {
+    json(res, 500, { ok: false, error: error?.message || "internal_error" });
+  });
+});
+
+server.listen(port, "0.0.0.0", () => {
+  console.log(`tasknodeofficial listening on :${port}`);
+});

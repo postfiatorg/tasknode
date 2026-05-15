@@ -6,11 +6,39 @@ crypto-funded usage.
 
 ## Current Status
 
-This repository is initialized with early product/interface artifacts:
+This repository is initialized with early product/interface artifacts and a
+minimal deployable dev app:
 
 - `product_spec.md` contains the initial product direction and migration notes.
 - `jsx_mock.jsx` contains a React mock for a ChatGPT-style Task Node interface with Tasks, Wallet, Context, Profile, Settings, and PFT balance surfaces.
 - `login.jsx` contains a standalone login/sign-up modal mock with Telegram, Discord, X, and email entry options.
+- `src/` and `server/` contain the first thin React shell and Node static server.
+- `fly.toml` deploys the dev app to `tasknodeofficial-dev` on Fly.io.
+
+Dev URL: https://tasknodeofficial-dev.fly.dev
+
+## Development
+
+Install and run locally:
+
+```bash
+npm ci
+npm run build
+PORT=8080 npm start
+SMOKE_BASE_URL=http://127.0.0.1:8080 npm run smoke
+```
+
+Deploy the dev app:
+
+```bash
+fly deploy -a tasknodeofficial-dev -c fly.toml --remote-only
+SMOKE_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run smoke
+```
+
+The project npm policy disables lifecycle scripts, audit, funding prompts, and
+high-concurrency registry fetches by default. That keeps the current dependency
+surface small and reduces npm supply-chain exposure while this app is still
+being bootstrapped.
 
 ## Product Direction
 
