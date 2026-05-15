@@ -108,6 +108,38 @@ await checkRequest("/api/wallet/delink", { method: "POST" }, (response, text) =>
   return response.status === 503 && body.error === "wallet_action_disabled";
 });
 
+await check("/api/context/actions", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return (
+    Array.isArray(body.actions) &&
+    body.actions.some((action) => action.id === "import_shared_url") &&
+    body.actions.some((action) => action.id === "ink_manifest") &&
+    body.actions.every((action) => action.enabled === false)
+  );
+});
+
+await checkRequest("/api/context/import/start", { method: "POST" }, (response, text) => {
+  const body = JSON.parse(text);
+  return (
+    [409, 503].includes(response.status) &&
+    ["context_action_not_configured", "context_action_disabled"].includes(body.error)
+  );
+});
+
+await checkRequest("/api/context/edit/save", { method: "POST" }, (response, text) => {
+  const body = JSON.parse(text);
+  return response.status === 503 && body.error === "context_action_disabled";
+});
+
+await checkRequest("/api/context/manifest/ink", { method: "POST" }, (response, text) => {
+  const body = JSON.parse(text);
+  return (
+    [409, 503].includes(response.status) &&
+    ["context_action_not_configured", "context_action_disabled"].includes(body.error)
+  );
+});
+
 await check("/api/auth/providers", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
@@ -138,6 +170,8 @@ await check("/api/readiness", (response, text) => {
   return (
     body.auth?.launchReady === false &&
     body.wallet?.seedStorageReady === false &&
+    body.context?.importReady === false &&
+    body.context?.manifestInkReady === false &&
     body.billing?.model === "usage_based" &&
     body.billing?.chatEstimateReady === true &&
     body.billing?.chatExecutionReady === false

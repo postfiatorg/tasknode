@@ -33,6 +33,10 @@ minimal deployable dev app:
   contract. Estimates work now; execution returns a structured disabled response
   until ledger-backed debits, model routing, prompt versioning, and fallback
   policy are implemented.
+- `/api/context/actions` exposes disabled-by-default context actions for shared
+  URL import, native edit save, and explicit PFTL manifest ink. This keeps
+  context useful before wallet setup while making portability a deliberate
+  wallet-bound action.
 
 Dev URL: https://tasknodeofficial-dev.fly.dev
 

@@ -10,6 +10,8 @@ import {
   authStart,
   chatEstimate,
   chatSend,
+  contextActionStart,
+  contextActions,
   readiness,
   walletActionStart,
   walletActions,
@@ -204,6 +206,21 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/context") {
     json(res, 200, state.context);
+    return true;
+  }
+
+  if (url.pathname === "/api/context/actions") {
+    json(res, 200, { actions: contextActions() });
+    return true;
+  }
+
+  if (
+    url.pathname === "/api/context/import/start" ||
+    url.pathname === "/api/context/edit/save" ||
+    url.pathname === "/api/context/manifest/ink"
+  ) {
+    const result = contextActionStart(url.pathname, req.method);
+    json(res, result.status, result.body);
     return true;
   }
 

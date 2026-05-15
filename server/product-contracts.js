@@ -52,6 +52,22 @@ function walletAction({ id, label, path, requiredEnv = [], note, actionRequired 
   };
 }
 
+function contextAction({ id, label, path, requiredEnv = [], note, actionRequired }) {
+  const configured = hasAll(requiredEnv);
+
+  return {
+    id,
+    label,
+    path,
+    method: "POST",
+    configured,
+    enabled: false,
+    status: configured ? "disabled" : "missing_config",
+    actionRequired: configured ? actionRequired : `Configure ${requiredEnv.join(", ")}`,
+    note,
+  };
+}
+
 const chatModePrices = {
   "Private Instant": {
     inputUsdPerMillion: 0.8,
@@ -213,6 +229,85 @@ export function walletActions() {
   ];
 }
 
+export function contextActions() {
+  return [
+    contextAction({
+      id: "import_shared_url",
+      label: "Import shared URL",
+      path: "/api/context/import/start",
+      requiredEnv: ["IPFS_API_URL"],
+      note:
+        "Imports Google Docs, Notion, Gist, or other shared document URLs into a cacheable context record.",
+      actionRequired:
+        "Implement URL evidence checks, document fetch adapters, cache storage, and user confirmation before enabling context import.",
+    }),
+    contextAction({
+      id: "save_edit",
+      label: "Save context edit",
+      path: "/api/context/edit/save",
+      note:
+        "Saves native context edits without inking a PFTL transaction by default.",
+      actionRequired:
+        "Implement context document schema, edit history, permissions, and conflict handling before enabling context edits.",
+    }),
+    contextAction({
+      id: "ink_manifest",
+      label: "Ink PFTL manifest",
+      path: "/api/context/manifest/ink",
+      requiredEnv: ["PFTL_RPC_URL", "PFTL_RPC_API_KEY"],
+      note:
+        "Explicitly writes a portable context manifest pointer to PFTL after wallet unlock.",
+      actionRequired:
+        "Implement manifest schema, wallet unlock confirmation, pointer transaction creation, and index verification before enabling manifest ink.",
+    }),
+  ];
+}
+
+export function contextActionByPath(pathname) {
+  return contextActions().find((action) => action.path === pathname) || null;
+}
+
+export function contextActionStart(pathname, method) {
+  const action = contextActionByPath(pathname);
+
+  if (!action) {
+    return actionResponse({
+      status: 404,
+      error: "unknown_context_action",
+      action: pathname,
+      message: "Unknown context action.",
+    });
+  }
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "context_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Call the context action with the declared method.",
+    });
+  }
+
+  if (!action.configured) {
+    return actionResponse({
+      status: 409,
+      error: "context_action_not_configured",
+      action: action.id,
+      message: `${action.label} is not configured for this environment.`,
+      actionRequired: action.actionRequired,
+    });
+  }
+
+  return actionResponse({
+    status: 503,
+    error: "context_action_disabled",
+    action: action.id,
+    message: `${action.label} is configured but disabled until the context document boundary is implemented.`,
+    actionRequired: action.actionRequired,
+  });
+}
+
 export function walletActionByPath(pathname) {
   return walletActions().find((action) => action.path === pathname) || null;
 }
@@ -352,6 +447,16 @@ export function readiness() {
         "Encrypted local seed storage design is not implemented",
         "Wallet delink and relink runbook is not implemented",
         "Unlock transaction boundary is not implemented",
+      ],
+    },
+    context: {
+      importReady: false,
+      editReady: false,
+      manifestInkReady: false,
+      blockers: [
+        "Context document schema and permissions are not implemented",
+        "Shared URL fetch and cache adapters are not implemented",
+        "PFTL manifest pointer creation is not implemented",
       ],
     },
     billing: {

@@ -1,4 +1,9 @@
-import { authProviders, readiness, walletActions } from "./product-contracts.js";
+import {
+  authProviders,
+  contextActions,
+  readiness,
+  walletActions,
+} from "./product-contracts.js";
 
 export function appState() {
   const providers = authProviders();
@@ -147,6 +152,10 @@ export function appState() {
       ],
     },
     context: {
+      actions: contextActions(),
+      importReady: runtimeReadiness.context.importReady,
+      editReady: runtimeReadiness.context.editReady,
+      manifestInkReady: runtimeReadiness.context.manifestInkReady,
       sources: [
         {
           label: "PFT Context",

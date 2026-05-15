@@ -403,6 +403,31 @@ function WalletView({ wallet, usage }) {
 }
 
 function ContextView({ context }) {
+  const [message, setMessage] = useState("");
+  const [pendingAction, setPendingAction] = useState("");
+  const actions = context?.actions || [];
+  const importAction = actions.find((action) => action.id === "import_shared_url");
+
+  async function startContextAction(action) {
+    if (!action) return;
+
+    setPendingAction(action.id);
+    setMessage("");
+
+    try {
+      const result = await requestJson(action.path, { method: action.method || "POST" });
+      setMessage(
+        result.body?.message ||
+          result.body?.actionRequired ||
+          `${action.label} returned HTTP ${result.status}.`
+      );
+    } catch (error) {
+      setMessage(error?.message || `${action.label} is unavailable.`);
+    } finally {
+      setPendingAction("");
+    }
+  }
+
   return (
     <div className="view-surface">
       <section className="summary-band single">
@@ -415,7 +440,9 @@ function ContextView({ context }) {
       <section className="section-block">
         <div className="section-heading">
           <h2>Sources</h2>
-          <button type="button">Import context</button>
+          <button type="button" onClick={() => startContextAction(importAction)}>
+            Import context
+          </button>
         </div>
         <div className="item-list">
           {(context?.sources || []).map((source) => (
@@ -428,6 +455,32 @@ function ContextView({ context }) {
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="section-block">
+        <div className="section-heading">
+          <h2>Context actions</h2>
+        </div>
+        <div className="action-grid">
+          {actions.map((action) => (
+            <button
+              key={action.id}
+              className="action-button"
+              type="button"
+              onClick={() => startContextAction(action)}
+            >
+              <span>{action.label}</span>
+              <small>
+                {pendingAction === action.id
+                  ? "Checking"
+                  : action.configured
+                    ? "Config ready"
+                    : "Needs config"}
+              </small>
+            </button>
+          ))}
+        </div>
+        {message && <div className="inline-message">{message}</div>}
       </section>
     </div>
   );
