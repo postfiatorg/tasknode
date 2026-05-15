@@ -177,7 +177,7 @@ function titleForView(view) {
   return "What are we executing?";
 }
 
-function ChatSurface({ config, chat, usage }) {
+function ChatSurface({ chat, usage }) {
   const modes = chat?.modes || [];
   const messages = chat?.seedMessages || [];
   const defaultMode = chat?.defaultMode || "Private Instant";
@@ -340,9 +340,6 @@ function ChatSurface({ config, chat, usage }) {
           {sendMessage && <span>{sendMessage}</span>}
         </div>
       )}
-      <div className="build-line">
-        {config.environment || "development"} - {config.buildId || "dev"}
-      </div>
     </div>
   );
 }

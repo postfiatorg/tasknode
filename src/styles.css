@@ -875,6 +875,11 @@ h1 {
     display: none;
   }
 
+  .composer {
+    width: calc(100vw - 64px);
+    max-width: 326px;
+  }
+
   .assistant-message,
   .user-message {
     grid-template-columns: 32px minmax(0, 1fr);
