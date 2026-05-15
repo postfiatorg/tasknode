@@ -98,7 +98,7 @@ function App() {
         {!appState && !loadError && <StatusBanner>Loading product state</StatusBanner>}
 
         {view === "chat" && (
-          <ChatSurface config={runtimeConfig} chat={appState?.chat} />
+          <ChatSurface config={runtimeConfig} chat={appState?.chat} usage={appState?.usage} />
         )}
         {view === "tasks" && <TasksView tasks={appState?.tasks} />}
         {view === "wallet" && (
@@ -121,10 +121,47 @@ function titleForView(view) {
   return "What are we executing?";
 }
 
-function ChatSurface({ config, chat }) {
+function ChatSurface({ config, chat, usage }) {
   const modes = chat?.modes || [];
   const messages = chat?.seedMessages || [];
   const defaultMode = chat?.defaultMode || "Private Instant";
+  const [selectedMode, setSelectedMode] = useState(defaultMode);
+  const [input, setInput] = useState("");
+  const [sendMessage, setSendMessage] = useState("");
+  const [estimate, setEstimate] = useState(null);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    setSelectedMode(defaultMode);
+  }, [defaultMode]);
+
+  async function submitMessage(event) {
+    event.preventDefault();
+    const message = input.trim();
+    if (!message) return;
+
+    setSending(true);
+    setSendMessage("");
+    setEstimate(null);
+
+    try {
+      const result = await requestJson(usage?.chatSendPath || "/api/chat/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message, mode: selectedMode }),
+      });
+      setEstimate(result.body?.estimate || null);
+      setSendMessage(
+        result.body?.message ||
+          result.body?.actionRequired ||
+          `Chat returned HTTP ${result.status}.`
+      );
+    } catch (error) {
+      setSendMessage(error?.message || "Chat execution is unavailable.");
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
     <div className="chat-surface">
@@ -142,8 +179,9 @@ function ChatSurface({ config, chat }) {
           {modes.map((mode) => (
             <button
               key={mode.label}
-              className={mode.label === defaultMode ? "active" : ""}
+              className={mode.label === selectedMode ? "active" : ""}
               type="button"
+              onClick={() => setSelectedMode(mode.label)}
             >
               <span>{mode.label}</span>
               <small>{mode.latency}</small>
@@ -152,13 +190,29 @@ function ChatSurface({ config, chat }) {
         </section>
       </div>
 
-      <form className="composer" onSubmit={(event) => event.preventDefault()}>
+      {(sendMessage || estimate) && (
+        <div className="chat-contract-message">
+          {estimate && (
+            <span>
+              Estimated {formatUsd(estimate.estimatedUsd)} before execution.
+            </span>
+          )}
+          {sendMessage && <span>{sendMessage}</span>}
+        </div>
+      )}
+
+      <form className="composer" onSubmit={submitMessage}>
         <button type="button" aria-label="Attach file">
           +
         </button>
-        <input aria-label="Message Task Node" placeholder="Message Task Node" />
+        <input
+          aria-label="Message Task Node"
+          onChange={(event) => setInput(event.target.value)}
+          placeholder="Message Task Node"
+          value={input}
+        />
         <button type="submit" aria-label="Send message">
-          Send
+          {sending ? "..." : "Send"}
         </button>
       </form>
       <div className="build-line">

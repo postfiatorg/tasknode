@@ -29,6 +29,10 @@ minimal deployable dev app:
   link, unlock, delink, and relink. The action endpoints are present so seed
   storage, unlock, and production delink/relink behavior can be tested behind a
   stable boundary before custody is enabled.
+- `/api/chat/estimate` and `/api/chat/send` define the usage-based chat
+  contract. Estimates work now; execution returns a structured disabled response
+  until ledger-backed debits, model routing, prompt versioning, and fallback
+  policy are implemented.
 
 Dev URL: https://tasknodeofficial-dev.fly.dev
 

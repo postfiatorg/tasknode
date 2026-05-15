@@ -136,6 +136,10 @@ export function appState() {
       billingModel: "usage_based",
       currentSpendUsd: 0,
       currentPeriod: "Dev session",
+      estimatePath: "/api/chat/estimate",
+      chatSendPath: "/api/chat/send",
+      chatEstimateReady: runtimeReadiness.billing.chatEstimateReady,
+      chatExecutionReady: runtimeReadiness.billing.chatExecutionReady,
       controls: [
         "Show estimated cost before expensive actions",
         "Confirm large context imports and deep reasoning calls",

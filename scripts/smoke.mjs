@@ -53,6 +53,37 @@ await check("/api/tasks", (response, text) => {
   return body.personalRequestEnabled === true && body.networkRequestEnabled === false;
 });
 
+await checkRequest(
+  "/api/chat/estimate",
+  {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message: "Estimate this execution", mode: "Private Instant" }),
+  },
+  (response, text) => {
+    if (!response.ok) return false;
+    const body = JSON.parse(text);
+    return body.billingModel === "usage_based" && body.estimatedUsd > 0;
+  }
+);
+
+await checkRequest(
+  "/api/chat/send",
+  {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message: "Try disabled chat execution", mode: "Private Instant" }),
+  },
+  (response, text) => {
+    const body = JSON.parse(text);
+    return (
+      response.status === 503 &&
+      body.error === "chat_execution_disabled" &&
+      body.estimate?.billingModel === "usage_based"
+    );
+  }
+);
+
 await check("/api/wallet/actions", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
@@ -107,7 +138,9 @@ await check("/api/readiness", (response, text) => {
   return (
     body.auth?.launchReady === false &&
     body.wallet?.seedStorageReady === false &&
-    body.billing?.model === "usage_based"
+    body.billing?.model === "usage_based" &&
+    body.billing?.chatEstimateReady === true &&
+    body.billing?.chatExecutionReady === false
   );
 });
 

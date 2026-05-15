@@ -164,7 +164,7 @@ h1 {
 
 .chat-surface {
   display: grid;
-  grid-template-rows: 1fr auto auto;
+  grid-template-rows: 1fr auto auto auto;
   flex: 1;
   min-height: 0;
 }
@@ -278,6 +278,20 @@ h1 {
 .mode-strip small {
   color: #77746d;
   font-size: 12px;
+}
+
+.chat-contract-message {
+  display: grid;
+  gap: 5px;
+  width: min(760px, calc(100% - 32px));
+  margin: 0 auto 10px;
+  padding: 10px 12px;
+  border: 1px solid #e5e2dc;
+  border-radius: 8px;
+  background: #fbfaf7;
+  color: #4d4a44;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .view-surface {

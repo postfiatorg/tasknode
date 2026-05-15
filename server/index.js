@@ -8,6 +8,8 @@ import {
   authCallback,
   authProviders,
   authStart,
+  chatEstimate,
+  chatSend,
   readiness,
   walletActionStart,
   walletActions,
@@ -41,6 +43,31 @@ function json(res, status, body) {
     "cache-control": "no-store",
   });
   res.end(text);
+}
+
+async function readJson(req, maxBytes = 16384) {
+  const chunks = [];
+  let total = 0;
+
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > maxBytes) {
+      const error = new Error("request_too_large");
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+
+  if (chunks.length === 0) return {};
+
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch (error) {
+    const parseError = new Error("invalid_json");
+    parseError.status = 400;
+    throw parseError;
+  }
 }
 
 function runtimeConfig() {
@@ -100,7 +127,7 @@ async function serveStatic(url, res) {
   createReadStream(filePath).pipe(res);
 }
 
-function routeApi(req, url, res) {
+async function routeApi(req, url, res) {
   const state = appState();
   const parts = url.pathname.split("/").filter(Boolean);
 
@@ -138,6 +165,19 @@ function routeApi(req, url, res) {
 
   if (url.pathname === "/api/tasks") {
     json(res, 200, state.tasks);
+    return true;
+  }
+
+  if (url.pathname === "/api/chat/estimate") {
+    const payload = req.method === "POST" ? await readJson(req) : {};
+    json(res, 200, chatEstimate(payload));
+    return true;
+  }
+
+  if (url.pathname === "/api/chat/send") {
+    const payload = req.method === "POST" ? await readJson(req) : {};
+    const result = chatSend(payload, req.method);
+    json(res, result.status, result.body);
     return true;
   }
 
@@ -199,11 +239,20 @@ const server = createServer((req, res) => {
     return;
   }
 
-  if (routeApi(req, url, res)) return;
+  routeApi(req, url, res)
+    .then((handled) => {
+      if (handled) return;
 
-  serveStatic(url, res).catch((error) => {
-    json(res, 500, { ok: false, error: error?.message || "internal_error" });
-  });
+      serveStatic(url, res).catch((error) => {
+        json(res, 500, { ok: false, error: error?.message || "internal_error" });
+      });
+    })
+    .catch((error) => {
+      json(res, error?.status || 500, {
+        ok: false,
+        error: error?.message || "internal_error",
+      });
+    });
 });
 
 server.listen(port, "0.0.0.0", () => {

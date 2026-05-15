@@ -52,6 +52,86 @@ function walletAction({ id, label, path, requiredEnv = [], note, actionRequired 
   };
 }
 
+const chatModePrices = {
+  "Private Instant": {
+    inputUsdPerMillion: 0.8,
+    outputUsdPerMillion: 1.6,
+    requiresConfiguredProvider: "openrouter",
+  },
+  "Private Thinking": {
+    inputUsdPerMillion: 2.5,
+    outputUsdPerMillion: 8,
+    requiresConfiguredProvider: "openrouter",
+  },
+  "Frontier Instant": {
+    inputUsdPerMillion: 1.25,
+    outputUsdPerMillion: 10,
+    requiresConfiguredProvider: "openai",
+  },
+  "Frontier Thinking": {
+    inputUsdPerMillion: 5,
+    outputUsdPerMillion: 30,
+    requiresConfiguredProvider: "openai",
+  },
+};
+
+function chatPayload(payload) {
+  const message = typeof payload?.message === "string" ? payload.message.trim() : "";
+  const mode = typeof payload?.mode === "string" ? payload.mode : "Private Instant";
+  return { message, mode };
+}
+
+export function chatEstimate(payload) {
+  const { message, mode } = chatPayload(payload);
+  const pricing = chatModePrices[mode] || chatModePrices["Private Instant"];
+  const inputTokens = Math.max(1, Math.ceil(message.length / 4));
+  const estimatedOutputTokens = mode.includes("Thinking") ? 1800 : 700;
+  const estimatedUsd =
+    (inputTokens * pricing.inputUsdPerMillion) / 1_000_000 +
+    (estimatedOutputTokens * pricing.outputUsdPerMillion) / 1_000_000;
+
+  return {
+    ok: true,
+    mode: chatModePrices[mode] ? mode : "Private Instant",
+    inputTokens,
+    estimatedOutputTokens,
+    estimatedUsd: Number(Math.max(0.0001, estimatedUsd).toFixed(6)),
+    currency: "USD",
+    billingModel: "usage_based",
+    requiresConfirmation: estimatedUsd >= 0.05,
+    policy:
+      "This is an estimate only. Final billing must come from ledger-backed provider usage once chat execution is enabled.",
+  };
+}
+
+export function chatSend(payload, method) {
+  if (method !== "POST") {
+    return actionResponse({
+      status: 405,
+      error: "chat_send_method_not_allowed",
+      action: "chat_send",
+      message: "Chat send requires POST.",
+      actionRequired: "Send chat payloads with POST.",
+    });
+  }
+
+  const estimate = chatEstimate(payload);
+
+  return {
+    status: 503,
+    body: {
+      ok: false,
+      error: "chat_execution_disabled",
+      action: "chat_send",
+      message:
+        "Chat execution is disabled until the usage ledger, model router, prompt registry, and provider fallback policy are implemented.",
+      actionRequired:
+        "Implement ledger-backed debits, model routing, prompt versioning, and cancellation/refund behavior before enabling chat execution.",
+      estimate,
+    },
+  };
+}
+
 export function authProviders() {
   return [
     provider({
@@ -277,10 +357,12 @@ export function readiness() {
     billing: {
       model: "usage_based",
       ledgerReady: false,
+      chatEstimateReady: true,
+      chatExecutionReady: false,
       blockers: [
         "Ledger tables are not implemented",
         "Top-up rail decision is not made",
-        "Per-query cost estimate contract is not implemented",
+        "Model router and provider fallback policy are not implemented",
       ],
     },
     llm: {
