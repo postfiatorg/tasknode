@@ -1,17 +1,23 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowUp,
   BookOpen,
   ChevronRight,
+  Flame,
+  Lightbulb,
+  ListPlus,
   ListTodo,
   MoreHorizontal,
   PanelLeft,
+  Paperclip,
+  PenLine,
   Plus,
   Search,
   Sparkles,
   SquarePen,
   Store,
+  Wand2,
   Wallet,
 } from "lucide-react";
 import { fetchAppState, fetchRuntimeConfig, requestJson } from "./api";
@@ -48,6 +54,9 @@ function App() {
   const recents = appState?.chat?.recents || [];
   const pftBalance = formatDrops(appState?.wallet?.pftBalanceDrops || 0);
   const session = appState?.session;
+  const profileName = profileDisplayName(session);
+  const profileInitials = profileAvatarText(session);
+  const profileSubtext = session?.status === "signed_out" ? "Account" : "Pro";
 
   return (
     <main className={`app-shell ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
@@ -121,12 +130,12 @@ function App() {
             </button>
           )}
           <button className="profile-button" onClick={() => setLoginOpen(true)}>
-            <span className="profile-avatar">AG</span>
+            <span className="profile-avatar">{profileInitials}</span>
             {sidebarOpen && (
               <>
                 <span className="profile-copy">
-                  <strong>{session?.displayName || "Alex Good"}</strong>
-                  <small>{session?.status === "signed_out" ? "Log in or sign up" : "Pro"}</small>
+                  <strong>{profileName}</strong>
+                  <small>{profileSubtext}</small>
                 </span>
                 <Store size={14} strokeWidth={1.75} />
               </>
@@ -154,7 +163,7 @@ function App() {
         {!appState && !loadError && <StatusBanner>Loading product state</StatusBanner>}
 
         {view === "chat" && (
-          <ChatSurface config={runtimeConfig} chat={appState?.chat} usage={appState?.usage} />
+          <ChatSurface chat={appState?.chat} onNavigate={setView} usage={appState?.usage} />
         )}
         {view === "tasks" && <TasksView tasks={appState?.tasks} />}
         {view === "wallet" && (
@@ -177,18 +186,21 @@ function titleForView(view) {
   return "What are we executing?";
 }
 
-function ChatSurface({ chat, usage }) {
+function ChatSurface({ chat, onNavigate, usage }) {
   const modes = chat?.modes || [];
   const messages = chat?.seedMessages || [];
   const defaultMode = chat?.defaultMode || "Private Instant";
   const [turns, setTurns] = useState(messages);
   const [selectedMode, setSelectedMode] = useState(defaultMode);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
   const [estimate, setEstimate] = useState(null);
   const [actualUsage, setActualUsage] = useState(null);
   const [sending, setSending] = useState(false);
+  const plusRef = useRef(null);
+  const modelRef = useRef(null);
 
   useEffect(() => {
     setSelectedMode(defaultMode);
@@ -197,6 +209,20 @@ function ChatSurface({ chat, usage }) {
   useEffect(() => {
     setTurns(messages);
   }, [messages]);
+
+  useEffect(() => {
+    function closeMenus(event) {
+      if (plusRef.current && !plusRef.current.contains(event.target)) {
+        setPlusMenuOpen(false);
+      }
+      if (modelRef.current && !modelRef.current.contains(event.target)) {
+        setModelMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeMenus);
+    return () => document.removeEventListener("mousedown", closeMenus);
+  }, []);
 
   async function submitMessage(event) {
     event.preventDefault();
@@ -241,19 +267,55 @@ function ChatSurface({ chat, usage }) {
 
   const composer = (
     <form className="composer" onSubmit={submitMessage}>
-      <button className="composer-icon" type="button" aria-label="Add">
-        <Plus size={20} strokeWidth={1.75} />
-      </button>
+      <div className="plus-picker" ref={plusRef}>
+        <button
+          className="composer-icon"
+          onClick={() => {
+            setModelMenuOpen(false);
+            setPlusMenuOpen((open) => !open);
+          }}
+          type="button"
+          aria-label="Add"
+        >
+          <Plus size={20} strokeWidth={1.75} />
+        </button>
+        {plusMenuOpen && (
+          <div className="plus-menu">
+            <ToolMenuRow icon={Paperclip} label="Upload photos & files" />
+            <div className="menu-divider" />
+            <ToolMenuRow icon={Flame} label="Motivation" />
+            <ToolMenuRow icon={Lightbulb} label="Brainstorming" />
+            <ToolMenuRow icon={Wand2} label="Context Refine" />
+            <ToolMenuRow icon={PenLine} label="Context Rewrite" />
+            <ToolMenuRow
+              icon={ListPlus}
+              label="Request a task"
+              onClick={() => {
+                setPlusMenuOpen(false);
+                onNavigate?.("tasks");
+              }}
+            />
+            <ToolMenuRow
+              icon={MoreHorizontal}
+              label="More"
+              trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+            />
+          </div>
+        )}
+      </div>
       <input
         aria-label="Ask anything"
         onChange={(event) => setInput(event.target.value)}
         placeholder="Ask anything"
         value={input}
       />
-      <div className="model-picker">
+      <div className="model-picker" ref={modelRef}>
         <button
           className="model-button"
-          onClick={() => setModelMenuOpen((open) => !open)}
+          onClick={() => {
+            setPlusMenuOpen(false);
+            setModelMenuOpen((open) => !open);
+          }}
           type="button"
         >
           {formatModeLabel(selectedMode)}
@@ -375,8 +437,33 @@ function ModelOption({ mode, onClick, selected }) {
   );
 }
 
+function ToolMenuRow({ icon: Icon, label, onClick, trailing }) {
+  return (
+    <button className="tool-menu-row" onClick={onClick} type="button">
+      <Icon size={16} strokeWidth={1.75} />
+      <span>{label}</span>
+      {trailing}
+    </button>
+  );
+}
+
 function formatModeLabel(label) {
   return label.replace("Private ", "Private - ").replace("Frontier ", "Frontier - ");
+}
+
+function profileDisplayName(session) {
+  if (session?.displayName) return session.displayName;
+  return "Log in or sign up";
+}
+
+function profileAvatarText(session) {
+  if (!session?.displayName) return "TN";
+  return session.displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }
 
 function TasksView({ tasks }) {

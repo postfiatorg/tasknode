@@ -413,6 +413,10 @@ h1 {
   position: relative;
 }
 
+.plus-picker {
+  position: relative;
+}
+
 .composer .model-button {
   gap: 4px;
   width: auto;
@@ -425,18 +429,28 @@ h1 {
   transform: rotate(90deg);
 }
 
-.model-menu {
+.model-menu,
+.plus-menu {
   position: absolute;
-  right: 0;
   bottom: 46px;
   z-index: 40;
-  width: 240px;
   overflow: hidden;
   padding: 6px 0;
   border: 1px solid #e8e6df;
   border-radius: 16px;
   background: #ffffff;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.model-menu {
+  right: 0;
+  width: 240px;
+}
+
+.plus-menu {
+  left: 0;
+  width: 260px;
+  padding: 8px 0;
 }
 
 .model-group {
@@ -466,6 +480,29 @@ h1 {
 .model-menu small {
   color: #6b6b66;
   font-size: 11px;
+}
+
+.tool-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #0d0d0d;
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.tool-menu-row:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.tool-menu-row span {
+  flex: 1;
 }
 
 .menu-divider {
