@@ -125,15 +125,21 @@ function ChatSurface({ config, chat, usage }) {
   const modes = chat?.modes || [];
   const messages = chat?.seedMessages || [];
   const defaultMode = chat?.defaultMode || "Private Instant";
+  const [turns, setTurns] = useState(messages);
   const [selectedMode, setSelectedMode] = useState(defaultMode);
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
   const [estimate, setEstimate] = useState(null);
+  const [actualUsage, setActualUsage] = useState(null);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
     setSelectedMode(defaultMode);
   }, [defaultMode]);
+
+  useEffect(() => {
+    setTurns(messages);
+  }, [messages]);
 
   async function submitMessage(event) {
     event.preventDefault();
@@ -143,6 +149,7 @@ function ChatSurface({ config, chat, usage }) {
     setSending(true);
     setSendMessage("");
     setEstimate(null);
+    setActualUsage(null);
 
     try {
       const result = await requestJson(usage?.chatSendPath || "/api/chat/send", {
@@ -151,11 +158,23 @@ function ChatSurface({ config, chat, usage }) {
         body: JSON.stringify({ message, mode: selectedMode }),
       });
       setEstimate(result.body?.estimate || null);
-      setSendMessage(
-        result.body?.message ||
-          result.body?.actionRequired ||
-          `Chat returned HTTP ${result.status}.`
-      );
+      setActualUsage(result.body?.usage || null);
+
+      if (result.ok && result.body?.assistant) {
+        setTurns((current) => [
+          ...current,
+          result.body.user || { role: "user", body: message },
+          result.body.assistant,
+        ]);
+        setInput("");
+        setSendMessage(result.body.message || "Chat response generated.");
+      } else {
+        setSendMessage(
+          result.body?.message ||
+            result.body?.actionRequired ||
+            `Chat returned HTTP ${result.status}.`
+        );
+      }
     } catch (error) {
       setSendMessage(error?.message || "Chat execution is unavailable.");
     } finally {
@@ -166,9 +185,12 @@ function ChatSurface({ config, chat, usage }) {
   return (
     <div className="chat-surface">
       <div className="message-list" aria-live="polite">
-        {messages.map((message, index) => (
-          <article className="assistant-message" key={`${message.role}-${index}`}>
-            <div className="avatar">TN</div>
+        {turns.map((message, index) => (
+          <article
+            className={message.role === "user" ? "user-message" : "assistant-message"}
+            key={message.id || `${message.role}-${index}`}
+          >
+            <div className="avatar">{message.role === "user" ? "You" : "TN"}</div>
             <div>
               <p>{message.body}</p>
             </div>
@@ -184,7 +206,7 @@ function ChatSurface({ config, chat, usage }) {
               onClick={() => setSelectedMode(mode.label)}
             >
               <span>{mode.label}</span>
-              <small>{mode.latency}</small>
+              <small>{getModeHint(mode)}</small>
             </button>
           ))}
         </section>
@@ -195,6 +217,11 @@ function ChatSurface({ config, chat, usage }) {
           {estimate && (
             <span>
               Estimated {formatUsd(estimate.estimatedUsd)} before execution.
+            </span>
+          )}
+          {actualUsage && (
+            <span>
+              Billed {formatUsd(actualUsage.costUsd)} from {actualUsage.totalTokens} tokens.
             </span>
           )}
           {sendMessage && <span>{sendMessage}</span>}
@@ -220,6 +247,12 @@ function ChatSurface({ config, chat, usage }) {
       </div>
     </div>
   );
+}
+
+function getModeHint(mode) {
+  if (mode.enabled) return `${mode.latency} - ready`;
+  if (mode.configured) return `${mode.latency} - disabled`;
+  return `${mode.latency} - needs config`;
 }
 
 function TasksView({ tasks }) {

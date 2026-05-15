@@ -1,4 +1,5 @@
 const baseUrl = process.env.SMOKE_BASE_URL || "http://127.0.0.1:8080";
+let readyChatMode = process.env.SMOKE_CHAT_MODE || "Private Instant";
 
 async function check(path, predicate) {
   const response = await fetch(`${baseUrl}${path}`);
@@ -67,22 +68,62 @@ await checkRequest(
   }
 );
 
+await check("/api/chat/modes", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  const readyMode = body.modes?.find((mode) => mode.enabled);
+  if (readyMode && !process.env.SMOKE_CHAT_MODE) readyChatMode = readyMode.label;
+  return (
+    Array.isArray(body.modes) &&
+    body.modes.some((mode) => mode.label === "Private Instant") &&
+    body.modes.some((mode) => mode.label === "Frontier Instant")
+  );
+});
+
+await check("/api/chat/history", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return Array.isArray(body.messages);
+});
+
 await checkRequest(
   "/api/chat/send",
   {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message: "Try disabled chat execution", mode: "Private Instant" }),
+    body: JSON.stringify({
+      message: "Dry run chat execution",
+      mode: readyChatMode,
+      dryRun: true,
+    }),
   },
   (response, text) => {
     const body = JSON.parse(text);
     return (
-      response.status === 503 &&
-      body.error === "chat_execution_disabled" &&
+      response.ok &&
+      body.dryRun === true &&
       body.estimate?.billingModel === "usage_based"
     );
   }
 );
+
+if (process.env.SMOKE_CHAT_EXECUTION === "1") {
+  await checkRequest(
+    "/api/chat/send",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        message: "Reply with one short sentence confirming Task Node chat is online.",
+        mode: readyChatMode,
+      }),
+    },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.ok && body.ok === true && body.assistant?.body && body.usage?.billingModel === "usage_based";
+    }
+  );
+}
 
 await check("/api/wallet/actions", (response, text) => {
   if (!response.ok) return false;
@@ -174,7 +215,7 @@ await check("/api/readiness", (response, text) => {
     body.context?.manifestInkReady === false &&
     body.billing?.model === "usage_based" &&
     body.billing?.chatEstimateReady === true &&
-    body.billing?.chatExecutionReady === false
+    typeof body.billing?.chatExecutionReady === "boolean"
   );
 });
 

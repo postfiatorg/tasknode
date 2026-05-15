@@ -30,9 +30,13 @@ minimal deployable dev app:
   storage, unlock, and production delink/relink behavior can be tested behind a
   stable boundary before custody is enabled.
 - `/api/chat/estimate` and `/api/chat/send` define the usage-based chat
-  contract. Estimates work now; execution returns a structured disabled response
-  until ledger-backed debits, model routing, prompt versioning, and fallback
-  policy are implemented.
+  contract. Estimates are cost-free. Send supports a cost-free dry run for
+  smoke tests and real provider execution when OpenAI credentials are configured.
+  OpenRouter routes remain configured-but-disabled until explicitly enabled and
+  verified.
+- `/api/chat/modes` and `/api/chat/history` expose model-route readiness and
+  the current dev conversation. Chat turns and usage debits are stored in an
+  append-only local runtime store until Postgres account/session tables land.
 - `/api/context/actions` exposes disabled-by-default context actions for shared
   URL import, native edit save, and explicit PFTL manifest ink. This keeps
   context useful before wallet setup while making portability a deliberate

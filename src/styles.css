@@ -174,13 +174,27 @@ h1 {
   padding: 32px 24px;
 }
 
-.assistant-message {
+.assistant-message,
+.user-message {
   display: grid;
   grid-template-columns: 34px minmax(0, 680px);
   gap: 14px;
   max-width: 760px;
   margin: 0 auto;
   line-height: 1.55;
+}
+
+.user-message {
+  margin-top: 18px;
+}
+
+.user-message .avatar {
+  background: #ecebe7;
+  color: #111111;
+}
+
+.user-message p {
+  font-weight: 500;
 }
 
 .avatar {
@@ -618,7 +632,8 @@ h1 {
     padding: 24px 16px;
   }
 
-  .assistant-message {
+  .assistant-message,
+  .user-message {
     grid-template-columns: 32px minmax(0, 1fr);
   }
 

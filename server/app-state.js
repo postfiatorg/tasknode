@@ -1,13 +1,18 @@
 import {
   authProviders,
+  chatModes,
   contextActions,
   readiness,
   walletActions,
 } from "./product-contracts.js";
+import { getChatMessages, usageSummary } from "./runtime-store.js";
 
 export function appState() {
   const providers = authProviders();
   const runtimeReadiness = readiness();
+  const modes = chatModes();
+  const enabledMode = modes.find((mode) => mode.enabled);
+  const usage = usageSummary();
 
   return {
     generatedAt: new Date().toISOString(),
@@ -29,35 +34,15 @@ export function appState() {
         "Review seed wallet flow",
         "Draft usage ledger",
       ],
-      defaultMode: "Private Instant",
-      modes: [
-        {
-          label: "Private Instant",
-          privacy: "Zero-data-retention provider route",
-          latency: "Fast",
-        },
-        {
-          label: "Private Thinking",
-          privacy: "Zero-data-retention reasoning route",
-          latency: "Deep",
-        },
-        {
-          label: "Frontier Instant",
-          privacy: "Frontier provider route",
-          latency: "Fast",
-        },
-        {
-          label: "Frontier Thinking",
-          privacy: "Frontier provider reasoning route",
-          latency: "Deep",
-        },
-      ],
+      defaultMode: enabledMode?.label || "Private Instant",
+      modes,
       seedMessages: [
         {
           role: "assistant",
           body:
             "Task Node dev is live. The next product boundary is account-first execution: chat, tasks, wallet, context, and usage state come from the app server before legacy PFTasks code is wired in.",
         },
+        ...getChatMessages("dev"),
       ],
     },
     tasks: {
@@ -139,12 +124,15 @@ export function appState() {
     },
     usage: {
       billingModel: "usage_based",
-      currentSpendUsd: 0,
+      currentSpendUsd: usage.currentSpendUsd,
       currentPeriod: "Dev session",
       estimatePath: "/api/chat/estimate",
       chatSendPath: "/api/chat/send",
       chatEstimateReady: runtimeReadiness.billing.chatEstimateReady,
       chatExecutionReady: runtimeReadiness.billing.chatExecutionReady,
+      ledgerReady: runtimeReadiness.billing.ledgerReady,
+      durableLedgerReady: runtimeReadiness.billing.durableLedgerReady,
+      ledgerEntryCount: usage.ledgerEntryCount,
       controls: [
         "Show estimated cost before expensive actions",
         "Confirm large context imports and deep reasoning calls",

@@ -9,6 +9,7 @@ import {
   authProviders,
   authStart,
   chatEstimate,
+  chatModes,
   chatSend,
   contextActionStart,
   contextActions,
@@ -16,6 +17,7 @@ import {
   walletActionStart,
   walletActions,
 } from "./product-contracts.js";
+import { getChatMessages } from "./runtime-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -176,9 +178,19 @@ async function routeApi(req, url, res) {
     return true;
   }
 
+  if (url.pathname === "/api/chat/modes") {
+    json(res, 200, { modes: chatModes() });
+    return true;
+  }
+
+  if (url.pathname === "/api/chat/history") {
+    json(res, 200, { messages: getChatMessages("dev") });
+    return true;
+  }
+
   if (url.pathname === "/api/chat/send") {
     const payload = req.method === "POST" ? await readJson(req) : {};
-    const result = chatSend(payload, req.method);
+    const result = await chatSend(payload, req.method);
     json(res, result.status, result.body);
     return true;
   }
