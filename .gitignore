@@ -1,0 +1,10 @@
+.env
+.env.*
+*.env
+*.env.local
+*.env.dev
+*.env.production
+secrets.json
+secrets.*.json
+*.secret
+*.secrets
