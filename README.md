@@ -14,6 +14,10 @@ minimal deployable dev app:
 - `login.jsx` contains a standalone login/sign-up modal mock with Telegram, Discord, X, and email entry options.
 - `src/` and `server/` contain the first thin React shell and Node static server.
 - `fly.toml` deploys the dev app to `tasknodeofficial-dev` on Fly.io.
+- `/api/app-state` is the first server-owned product contract for session,
+  chat modes, tasks, wallet, usage billing, and context sources. It is fixture
+  backed for now so real PFTasks/PFTL integrations can replace it behind a
+  stable boundary.
 
 Dev URL: https://tasknodeofficial-dev.fly.dev
 

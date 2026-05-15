@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { appState } from "./app-state.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -62,8 +63,8 @@ function isInsideDist(filePath) {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-async function serveStatic(req, res) {
-  const requestPath = new URL(req.url, "http://tasknode.local").pathname;
+async function serveStatic(url, res) {
+  const requestPath = url.pathname;
   const decoded = decodeURIComponent(requestPath);
   const relative = decoded === "/" ? "/index.html" : decoded;
   const filePath = path.normalize(path.join(distDir, relative));
@@ -91,8 +92,46 @@ async function serveStatic(req, res) {
   createReadStream(filePath).pipe(res);
 }
 
+function routeApi(url, res) {
+  const state = appState();
+
+  if (url.pathname === "/api/app-state") {
+    json(res, 200, state);
+    return true;
+  }
+
+  if (url.pathname === "/api/session") {
+    json(res, 200, state.session);
+    return true;
+  }
+
+  if (url.pathname === "/api/tasks") {
+    json(res, 200, state.tasks);
+    return true;
+  }
+
+  if (url.pathname === "/api/wallet") {
+    json(res, 200, state.wallet);
+    return true;
+  }
+
+  if (url.pathname === "/api/context") {
+    json(res, 200, state.context);
+    return true;
+  }
+
+  if (url.pathname === "/api/usage") {
+    json(res, 200, state.usage);
+    return true;
+  }
+
+  return false;
+}
+
 const server = createServer((req, res) => {
-  if (req.url === "/health" || req.url === "/api/health") {
+  const url = new URL(req.url, "http://tasknode.local");
+
+  if (url.pathname === "/health" || url.pathname === "/api/health") {
     json(res, 200, {
       ok: true,
       service: "tasknodeofficial",
@@ -103,17 +142,19 @@ const server = createServer((req, res) => {
     return;
   }
 
-  if (req.url === "/runtime-config.js") {
+  if (url.pathname === "/runtime-config.js") {
     runtimeConfigScript(res);
     return;
   }
 
-  if (req.url === "/runtime-config.json") {
+  if (url.pathname === "/runtime-config.json") {
     json(res, 200, runtimeConfig());
     return;
   }
 
-  serveStatic(req, res).catch((error) => {
+  if (routeApi(url, res)) return;
+
+  serveStatic(url, res).catch((error) => {
     json(res, 500, { ok: false, error: error?.message || "internal_error" });
   });
 });

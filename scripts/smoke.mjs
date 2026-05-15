@@ -25,6 +25,25 @@ await check("/runtime-config.json", (response, text) => {
   return body.appName === "tasknodeofficial";
 });
 
+await check("/api/app-state", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return (
+    body.session?.status === "signed_out" &&
+    body.tasks?.personalRequestEnabled === true &&
+    body.tasks?.networkRequestEnabled === false &&
+    body.wallet?.pftWallet?.status === "not_linked" &&
+    body.usage?.billingModel === "usage_based" &&
+    Array.isArray(body.context?.sources)
+  );
+});
+
+await check("/api/tasks", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return body.personalRequestEnabled === true && body.networkRequestEnabled === false;
+});
+
 await check("/", (response, text) => {
   return response.ok && text.includes("Task Node");
 });

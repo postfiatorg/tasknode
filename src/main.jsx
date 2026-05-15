@@ -1,19 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { fetchAppState, fetchRuntimeConfig } from "./api";
 import "./styles.css";
 
-const initialConfig = window.__TASKNODE_CONFIG__ || {};
-
-const recents = [
-  "Ship Task Node dev baseline",
-  "Review seed wallet flow",
-  "Draft usage ledger",
-];
+const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
 
 function App() {
   const [view, setView] = useState("chat");
   const [loginOpen, setLoginOpen] = useState(false);
-  const [runtimeConfig, setRuntimeConfig] = useState(initialConfig);
+  const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
+  const [appState, setAppState] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const navItems = useMemo(
     () => [
       ["chat", "Chat"],
@@ -26,17 +23,25 @@ function App() {
 
   useEffect(() => {
     let active = true;
-    fetch("/runtime-config.json", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((body) => {
-        if (active && body) setRuntimeConfig(body);
+
+    Promise.all([fetchRuntimeConfig(), fetchAppState()])
+      .then(([config, state]) => {
+        if (!active) return;
+        setRuntimeConfig(config);
+        setAppState(state);
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (active) setLoadError(error?.message || "Failed to load app state");
+      });
 
     return () => {
       active = false;
     };
   }, []);
+
+  const recents = appState?.chat?.recents || [];
+  const pftBalance = formatDrops(appState?.wallet?.pftBalanceDrops || 0);
+  const session = appState?.session;
 
   return (
     <main className="app-shell">
@@ -60,18 +65,20 @@ function App() {
 
         <section className="recents" aria-label="Recent chats">
           <div className="section-label">Recent</div>
-          {recents.map((item) => (
-            <button key={item}>{item}</button>
-          ))}
+          {recents.length > 0 ? (
+            recents.map((item) => <button key={item}>{item}</button>)
+          ) : (
+            <div className="sidebar-note">No chats yet</div>
+          )}
         </section>
 
         <div className="sidebar-footer">
           <div className="balance-pill">
             <span>PFT</span>
-            <strong>0</strong>
+            <strong>{pftBalance}</strong>
           </div>
           <button className="profile-button" onClick={() => setLoginOpen(true)}>
-            Log in or sign up
+            {session?.displayName || "Log in or sign up"}
           </button>
         </div>
       </aside>
@@ -87,13 +94,22 @@ function App() {
           </button>
         </header>
 
-        {view === "chat" && <ChatSurface config={runtimeConfig} />}
-        {view === "tasks" && <Placeholder title="Tasks" body="Personal tasks will be requested here. Routed network and alpha tasks will arrive here when assigned." />}
-        {view === "wallet" && <Placeholder title="Wallet" body="Seed-based PFTL wallet status, external funding rails, and usage ledger will live here." />}
-        {view === "context" && <Placeholder title="Context" body="Context documents, imports, edits, and optional PFTL pointer manifests will live here." />}
+        {loadError && <StatusBanner tone="error">{loadError}</StatusBanner>}
+        {!appState && !loadError && <StatusBanner>Loading product state</StatusBanner>}
+
+        {view === "chat" && (
+          <ChatSurface config={runtimeConfig} chat={appState?.chat} />
+        )}
+        {view === "tasks" && <TasksView tasks={appState?.tasks} />}
+        {view === "wallet" && (
+          <WalletView wallet={appState?.wallet} usage={appState?.usage} />
+        )}
+        {view === "context" && <ContextView context={appState?.context} />}
       </section>
 
-      {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}
+      {loginOpen && (
+        <LoginDialog session={session} onClose={() => setLoginOpen(false)} />
+      )}
     </main>
   );
 }
@@ -105,20 +121,37 @@ function titleForView(view) {
   return "What are we executing?";
 }
 
-function ChatSurface({ config }) {
+function ChatSurface({ config, chat }) {
+  const modes = chat?.modes || [];
+  const messages = chat?.seedMessages || [];
+  const defaultMode = chat?.defaultMode || "Private Instant";
+
   return (
     <div className="chat-surface">
       <div className="message-list" aria-live="polite">
-        <article className="assistant-message">
-          <div className="avatar">TN</div>
-          <div>
-            <p>
-              Task Node dev baseline is running. Next up: wire login, runtime
-              config, and the seed-wallet onboarding path.
-            </p>
-          </div>
-        </article>
+        {messages.map((message, index) => (
+          <article className="assistant-message" key={`${message.role}-${index}`}>
+            <div className="avatar">TN</div>
+            <div>
+              <p>{message.body}</p>
+            </div>
+          </article>
+        ))}
+
+        <section className="mode-strip" aria-label="Model modes">
+          {modes.map((mode) => (
+            <button
+              key={mode.label}
+              className={mode.label === defaultMode ? "active" : ""}
+              type="button"
+            >
+              <span>{mode.label}</span>
+              <small>{mode.latency}</small>
+            </button>
+          ))}
+        </section>
       </div>
+
       <form className="composer" onSubmit={(event) => event.preventDefault()}>
         <button type="button" aria-label="Attach file">
           +
@@ -135,16 +168,167 @@ function ChatSurface({ config }) {
   );
 }
 
-function Placeholder({ title, body }) {
+function TasksView({ tasks }) {
+  const outstanding = tasks?.outstanding || [];
+  const routed = tasks?.routed || [];
+
   return (
-    <div className="placeholder">
-      <h2>{title}</h2>
-      <p>{body}</p>
+    <div className="view-surface">
+      <section className="summary-band">
+        <div>
+          <span className="label">Personal requests</span>
+          <strong>{tasks?.personalRequestEnabled ? "Enabled" : "Disabled"}</strong>
+        </div>
+        <div>
+          <span className="label">Network requests</span>
+          <strong>{tasks?.networkRequestEnabled ? "Enabled" : "Receive only"}</strong>
+        </div>
+        <div>
+          <span className="label">Reward cap</span>
+          <strong>{tasks?.dailyRewardCap || 8} per day</strong>
+        </div>
+      </section>
+
+      <section className="section-block">
+        <div className="section-heading">
+          <h2>Outstanding</h2>
+          <button type="button">Request personal task</button>
+        </div>
+        <div className="item-list">
+          {outstanding.map((task) => (
+            <TaskCard key={task.id} task={task} />
+          ))}
+        </div>
+      </section>
+
+      <section className="section-block">
+        <div className="section-heading">
+          <h2>Routed work</h2>
+        </div>
+        <div className="item-list">
+          {routed.map((task) => (
+            <TaskCard key={task.id} task={task} />
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
 
-function LoginDialog({ onClose }) {
+function TaskCard({ task }) {
+  return (
+    <article className="item-card">
+      <div className="item-card-top">
+        <span className="pill">{task.kind}</span>
+        <span className="muted">{task.status}</span>
+      </div>
+      <h3>{task.title}</h3>
+      <p>{task.summary}</p>
+      <div className="item-meta">
+        {task.pft ? <span>{formatDrops(task.pft)} PFT</span> : null}
+        {task.due ? <span>{task.due}</span> : null}
+      </div>
+    </article>
+  );
+}
+
+function WalletView({ wallet, usage }) {
+  return (
+    <div className="view-surface">
+      <section className="summary-band">
+        <div>
+          <span className="label">PFT balance</span>
+          <strong>{formatDrops(wallet?.pftBalanceDrops || 0)}</strong>
+        </div>
+        <div>
+          <span className="label">Chat credit</span>
+          <strong>{formatUsd(wallet?.chatCreditUsd || 0)}</strong>
+        </div>
+        <div>
+          <span className="label">Billing</span>
+          <strong>{usage?.billingModel === "usage_based" ? "Usage based" : "Unknown"}</strong>
+        </div>
+      </section>
+
+      <section className="section-block">
+        <div className="section-heading">
+          <h2>PFT wallet</h2>
+          <button type="button">Link seed wallet</button>
+        </div>
+        <div className="split-panel">
+          <div>
+            <span className="label">Status</span>
+            <strong>{wallet?.pftWallet?.status || "not_linked"}</strong>
+            <p>
+              PFTL wallet actions stay separate from normal account login. The
+              seed-based path is the preferred core PFT wallet flow.
+            </p>
+          </div>
+          <div>
+            <span className="label">Requires unlock</span>
+            <ul>
+              {(wallet?.pftWallet?.signingRequiredFor || []).map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section className="section-block">
+        <div className="section-heading">
+          <h2>Funding rails</h2>
+        </div>
+        <div className="item-list">
+          {(wallet?.fundingRails || []).map((rail) => (
+            <article className="item-card" key={rail.label}>
+              <div className="item-card-top">
+                <span className="pill">{rail.status}</span>
+              </div>
+              <h3>{rail.label}</h3>
+              <p>{rail.note}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ContextView({ context }) {
+  return (
+    <div className="view-surface">
+      <section className="summary-band single">
+        <div>
+          <span className="label">Manifest policy</span>
+          <strong>{context?.manifestPolicy || "Loading"}</strong>
+        </div>
+      </section>
+
+      <section className="section-block">
+        <div className="section-heading">
+          <h2>Sources</h2>
+          <button type="button">Import context</button>
+        </div>
+        <div className="item-list">
+          {(context?.sources || []).map((source) => (
+            <article className="item-card" key={source.label}>
+              <div className="item-card-top">
+                <span className="pill">{source.status}</span>
+              </div>
+              <h3>{source.label}</h3>
+              <p>{source.note}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function LoginDialog({ session, onClose }) {
+  const providers = session?.accountLinks || [];
+
   return (
     <div className="dialog-backdrop" role="presentation">
       <section className="login-dialog" role="dialog" aria-modal="true" aria-labelledby="login-title">
@@ -152,16 +336,34 @@ function LoginDialog({ onClose }) {
           x
         </button>
         <h2 id="login-title">Log in or sign up</h2>
-        <p>Continue with an account, then link PFT when wallet actions are needed.</p>
-        <button>Continue with Telegram</button>
-        <button>Continue with Discord</button>
-        <button>Continue with X</button>
+        <p>You get account history first. PFT wallet unlock only appears when a wallet action needs it.</p>
+        {providers.map((provider) => (
+          <button key={provider.provider} type="button">
+            Continue with {provider.provider}
+          </button>
+        ))}
         <div className="divider">OR</div>
         <input type="email" placeholder="Email address" aria-label="Email address" />
-        <button className="continue-button">Continue</button>
+        <button className="continue-button" type="button">Continue</button>
       </section>
     </div>
   );
+}
+
+function StatusBanner({ children, tone = "default" }) {
+  return <div className={`status-banner ${tone}`}>{children}</div>;
+}
+
+function formatDrops(value) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
+}
+
+function formatUsd(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 createRoot(document.getElementById("root")).render(<App />);
