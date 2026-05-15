@@ -1,9 +1,15 @@
+export async function requestJson(path, options = {}) {
+  const response = await fetch(path, { cache: "no-store", ...options });
+  const body = await response.json().catch(() => null);
+  return { ok: response.ok, status: response.status, body };
+}
+
 export async function fetchJson(path) {
-  const response = await fetch(path, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`${path} failed with HTTP ${response.status}`);
+  const { ok, status, body } = await requestJson(path);
+  if (!ok) {
+    throw new Error(`${path} failed with HTTP ${status}`);
   }
-  return response.json();
+  return body;
 }
 
 export function fetchRuntimeConfig() {

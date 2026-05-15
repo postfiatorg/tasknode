@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
-import { authProviders, readiness } from "./product-contracts.js";
+import { authCallback, authProviders, authStart, readiness } from "./product-contracts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -95,6 +95,7 @@ async function serveStatic(url, res) {
 
 function routeApi(url, res) {
   const state = appState();
+  const parts = url.pathname.split("/").filter(Boolean);
 
   if (url.pathname === "/api/app-state") {
     json(res, 200, state);
@@ -108,6 +109,18 @@ function routeApi(url, res) {
 
   if (url.pathname === "/api/auth/providers") {
     json(res, 200, { providers: authProviders() });
+    return true;
+  }
+
+  if (parts[0] === "api" && parts[1] === "auth" && parts[2] === "start" && parts[3]) {
+    const result = authStart(parts[3]);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (parts[0] === "api" && parts[1] === "auth" && parts[2] === "callback" && parts[3]) {
+    const result = authCallback(parts[3]);
+    json(res, result.status, result.body);
     return true;
   }
 

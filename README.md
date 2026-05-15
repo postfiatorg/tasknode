@@ -22,6 +22,9 @@ minimal deployable dev app:
   readiness. Auth providers can be configured without being enabled; login
   remains disabled until start routes, callbacks, account merge rules, and
   wallet custody boundaries are implemented.
+- `/api/auth/start/:provider` and `/api/auth/callback/:provider` are present as
+  contract endpoints. They return structured disabled or unimplemented responses
+  until provider-specific auth flows are reviewed and enabled.
 
 Dev URL: https://tasknodeofficial-dev.fly.dev
 

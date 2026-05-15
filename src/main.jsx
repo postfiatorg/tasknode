@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { fetchAppState, fetchRuntimeConfig } from "./api";
+import { fetchAppState, fetchRuntimeConfig, requestJson } from "./api";
 import "./styles.css";
 
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
@@ -329,6 +329,25 @@ function ContextView({ context }) {
 function LoginDialog({ session, onClose }) {
   const providers = session?.accountLinks || [];
   const [message, setMessage] = useState("");
+  const [pendingProvider, setPendingProvider] = useState("");
+
+  async function startProvider(provider) {
+    setPendingProvider(provider.id);
+    setMessage("");
+
+    try {
+      const result = await requestJson(provider.startPath);
+      setMessage(
+        result.body?.message ||
+          result.body?.actionRequired ||
+          `${provider.label} login returned HTTP ${result.status}.`
+      );
+    } catch (error) {
+      setMessage(error?.message || `${provider.label} login is unavailable.`);
+    } finally {
+      setPendingProvider("");
+    }
+  }
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -343,10 +362,16 @@ function LoginDialog({ session, onClose }) {
             key={provider.id}
             className="provider-row"
             type="button"
-            onClick={() => setMessage(provider.actionRequired)}
+            onClick={() => startProvider(provider)}
           >
             <span>Continue with {provider.label}</span>
-            <small>{provider.configured ? "Config ready" : "Needs config"}</small>
+            <small>
+              {pendingProvider === provider.id
+                ? "Checking"
+                : provider.configured
+                  ? "Config ready"
+                  : "Needs config"}
+            </small>
           </button>
         ))}
         {message && <div className="dialog-message">{message}</div>}

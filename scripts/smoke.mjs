@@ -50,8 +50,22 @@ await check("/api/auth/providers", (response, text) => {
   return (
     Array.isArray(body.providers) &&
     body.providers.some((provider) => provider.id === "telegram") &&
+    body.providers.every((provider) => provider.startPath && provider.callbackPath) &&
     body.providers.every((provider) => provider.enabled === false)
   );
+});
+
+await check("/api/auth/start/telegram", (response, text) => {
+  const body = JSON.parse(text);
+  return (
+    [409, 503].includes(response.status) &&
+    ["auth_provider_not_configured", "auth_provider_disabled"].includes(body.error)
+  );
+});
+
+await check("/api/auth/callback/telegram", (response, text) => {
+  const body = JSON.parse(text);
+  return response.status === 501 && body.error === "auth_callback_not_implemented";
 });
 
 await check("/api/readiness", (response, text) => {

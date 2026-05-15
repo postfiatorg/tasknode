@@ -4,6 +4,9 @@ function hasAll(keys) {
 
 function provider({ id, label, kind, requiredEnv, note }) {
   const configured = hasAll(requiredEnv);
+  const startPath = `/api/auth/start/${id}`;
+  const callbackPath = `/api/auth/callback/${id}`;
+
   return {
     id,
     label,
@@ -11,8 +14,10 @@ function provider({ id, label, kind, requiredEnv, note }) {
     configured,
     enabled: false,
     status: configured ? "configured" : "missing_config",
+    startPath,
+    callbackPath,
     actionRequired: configured
-      ? "Implement auth start and callback handling"
+      ? "Implement callback handling, account merge rules, and launch review before enabling this provider"
       : `Configure ${requiredEnv.join(", ")}`,
     note,
   };
@@ -55,6 +60,78 @@ export function authProviders() {
   ];
 }
 
+export function authProviderById(providerId) {
+  return authProviders().find((providerItem) => providerItem.id === providerId) || null;
+}
+
+export function authStart(providerId) {
+  const providerItem = authProviderById(providerId);
+
+  if (!providerItem) {
+    return {
+      status: 404,
+      body: {
+        ok: false,
+        error: "unknown_auth_provider",
+        provider: providerId,
+        message: "Unknown auth provider.",
+      },
+    };
+  }
+
+  if (!providerItem.configured) {
+    return {
+      status: 409,
+      body: {
+        ok: false,
+        error: "auth_provider_not_configured",
+        provider: providerItem.id,
+        message: `${providerItem.label} is not configured for this environment.`,
+        actionRequired: providerItem.actionRequired,
+      },
+    };
+  }
+
+  return {
+    status: 503,
+    body: {
+      ok: false,
+      error: "auth_provider_disabled",
+      provider: providerItem.id,
+      message: `${providerItem.label} auth is configured but disabled until callback handling and account merge rules are implemented.`,
+      actionRequired: providerItem.actionRequired,
+    },
+  };
+}
+
+export function authCallback(providerId) {
+  const providerItem = authProviderById(providerId);
+
+  if (!providerItem) {
+    return {
+      status: 404,
+      body: {
+        ok: false,
+        error: "unknown_auth_provider",
+        provider: providerId,
+        message: "Unknown auth provider.",
+      },
+    };
+  }
+
+  return {
+    status: 501,
+    body: {
+      ok: false,
+      error: "auth_callback_not_implemented",
+      provider: providerItem.id,
+      message: `${providerItem.label} callback handling is not implemented yet.`,
+      actionRequired:
+        "Implement callback verification, account merge rules, and session issuance before enabling login.",
+    },
+  };
+}
+
 export function readiness() {
   const providers = authProviders();
   return {
@@ -63,7 +140,7 @@ export function readiness() {
       configuredProviders: providers.filter((item) => item.configured).map((item) => item.id),
       launchReady: false,
       blockers: [
-        "Auth start routes are not implemented",
+        "Auth start routes are contract-only and disabled",
         "OAuth and bot callback handlers are not implemented",
         "Canonical account merge rules are not implemented",
       ],
