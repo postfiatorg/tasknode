@@ -53,6 +53,7 @@ npm ci
 npm run build
 PORT=8080 npm start
 SMOKE_BASE_URL=http://127.0.0.1:8080 npm run smoke
+FRAME_BASE_URL=http://127.0.0.1:8080 npm run frame-smoke
 ```
 
 Deploy the dev app:
@@ -60,6 +61,7 @@ Deploy the dev app:
 ```bash
 fly deploy -a tasknodeofficial-dev -c fly.toml --remote-only
 SMOKE_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run smoke
+FRAME_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run frame-smoke
 ```
 
 The project npm policy disables lifecycle scripts, audit, funding prompts, and
