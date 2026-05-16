@@ -103,6 +103,7 @@ async function main() {
 
     await clickButton("Billing", "document.querySelector('.settings-rail')");
     await assertText(["Payment methods", "XRP", "Ether", "Bitcoin", "USDT", "USDC", "Billing history"]);
+    await assertLedgerRowsIfLedgerExists();
     await capture("12-settings-billing");
     await clickSelector(".settings-close");
 
@@ -201,6 +202,20 @@ async function clickSelector(selector) {
 async function assertSelector(selector) {
   const exists = await evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
   if (!exists) throw new Error(`Missing selector: ${selector}`);
+}
+
+async function assertLedgerRowsIfLedgerExists() {
+  const result = await evaluate(`fetch('/api/usage/ledger')
+    .then((response) => response.json())
+    .then((ledger) => ({
+      entries: Array.isArray(ledger.entries) ? ledger.entries.length : 0,
+      rows: document.querySelectorAll('.ledger-row').length,
+    }))
+    .catch(() => ({ entries: 0, rows: 0 }))`);
+
+  if (result.entries > 0 && result.rows === 0) {
+    throw new Error("Ledger entries exist but billing rows are not visible.");
+  }
 }
 
 async function setInput(selector, value) {

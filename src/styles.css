@@ -2431,6 +2431,80 @@ h1 {
   font-size: 13px;
 }
 
+.billing-ledger {
+  overflow: hidden;
+  margin-top: 8px;
+  border: 1px solid #e8e6df;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.ledger-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-top: 1px solid #e8e6df;
+}
+
+.ledger-row:first-child {
+  border-top: 0;
+}
+
+.ledger-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #6b6b66;
+}
+
+.ledger-dot.credit {
+  background: #16a34a;
+}
+
+.ledger-dot.debit {
+  background: #0d0d0d;
+}
+
+.ledger-row div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.ledger-row strong {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.ledger-row small {
+  overflow: hidden;
+  color: #6b6b66;
+  font-size: 11.5px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.ledger-row em {
+  color: #0d0d0d;
+  font-size: 12.5px;
+  font-style: normal;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-row em.credit {
+  color: #16a34a;
+}
+
+.ledger-row em.debit {
+  color: #0d0d0d;
+}
+
 .task-modal {
   display: flex;
   width: min(640px, 100%);

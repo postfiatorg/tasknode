@@ -1568,13 +1568,40 @@ function DataSettings() {
 }
 
 function BillingSettings() {
+  const [ledger, setLedger] = useState(null);
+  const [ledgerError, setLedgerError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    requestJson("/api/usage/ledger")
+      .then((result) => {
+        if (!active) return;
+        if (result.ok) {
+          setLedger(result.body);
+          setLedgerError("");
+        } else {
+          setLedgerError(result.body?.message || `Billing history returned HTTP ${result.status}.`);
+        }
+      })
+      .catch((error) => {
+        if (active) setLedgerError(error?.message || "Billing history is unavailable.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const entries = ledger?.entries || [];
+
   return (
     <div className="billing-settings">
       <section>
         <div>
           <small>Account balance</small>
-          <strong>851,718 <span>PFT</span></strong>
-          <p>Earned through verified network contribution.</p>
+          <strong>{formatUsd(ledger?.availableCreditUsd || 0)} <span>credit</span></strong>
+          <p>{formatUsd(ledger?.currentCreditUsd || 0)} credited - {formatUsageUsd(ledger?.currentSpendUsd || 0)} spent</p>
         </div>
         <button className="dark-pill" type="button">Top up</button>
       </section>
@@ -1592,13 +1619,59 @@ function BillingSettings() {
       </div>
       <div>
         <h3>Billing history</h3>
-        <div className="empty-billing">
-          <strong>No payments yet</strong>
-          <p>Top-ups and premium feature charges will appear here.</p>
-        </div>
+        {ledgerError && <div className="inline-message">{ledgerError}</div>}
+        {!ledgerError && entries.length > 0 ? (
+          <div className="billing-ledger">
+            {entries.map((entry) => (
+              <LedgerEntryRow entry={entry} key={entry.id} />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-billing">
+            <strong>No payments yet</strong>
+            <p>Top-ups and premium feature charges will appear here.</p>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+function LedgerEntryRow({ entry }) {
+  const credit = ["account_credit", "reward_credit", "refund_credit"].includes(entry.kind);
+  const amount = Number(entry.amountUsd || 0);
+  const timestamp = entry.createdAt ? new Date(entry.createdAt) : null;
+  const dateLabel =
+    timestamp && !Number.isNaN(timestamp.valueOf())
+      ? timestamp.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })
+      : "Pending";
+
+  return (
+    <div className="ledger-row">
+      <span className={credit ? "ledger-dot credit" : "ledger-dot debit"} />
+      <div>
+        <strong>{ledgerTitle(entry)}</strong>
+        <small>{ledgerMeta(entry, dateLabel)}</small>
+      </div>
+      <em className={credit ? "credit" : "debit"}>
+        {credit ? "+" : "-"}
+        {formatUsageUsd(amount)}
+      </em>
+    </div>
+  );
+}
+
+function ledgerTitle(entry) {
+  if (entry.kind === "chat_debit") return "Chat response";
+  if (entry.kind === "reward_credit") return "Task reward credit";
+  if (entry.kind === "refund_credit") return "Refund";
+  return "Account credit";
+}
+
+function ledgerMeta(entry, dateLabel) {
+  if (entry.provider && entry.model) return `${entry.provider} - ${entry.model} - ${dateLabel}`;
+  if (entry.source) return `${entry.source.replace(/_/g, " ")} - ${dateLabel}`;
+  return dateLabel;
 }
 
 function MfaCallout() {

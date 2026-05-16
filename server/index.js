@@ -282,7 +282,10 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/chat/send") {
     const payload = req.method === "POST" ? await readJson(req) : {};
     const conversationId = conversationIdForSession(session, payload?.conversationId || "");
-    const result = await chatSend({ ...payload, conversationId }, req.method);
+    const result = await chatSend(
+      { ...payload, accountId: session?.accountId || "", conversationId },
+      req.method
+    );
     json(res, result.status, result.body);
     return true;
   }
@@ -359,6 +362,7 @@ async function routeApi(req, url, res) {
         ? conversationIdForSession(session)
         : "";
     json(res, 200, usageLedger({
+      accountId: session?.accountId || "",
       conversationId,
       limit: url.searchParams.get("limit") || 50,
     }));

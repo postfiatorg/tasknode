@@ -106,6 +106,7 @@ function usageAction({ id, label, path, requiredEnv = [], enabled = false, statu
 }
 
 function chatPayload(payload) {
+  const accountId = typeof payload?.accountId === "string" ? payload.accountId.trim().slice(0, 160) : "";
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
   const mode = typeof payload?.mode === "string" ? payload.mode : "Private Instant";
   const conversationId =
@@ -113,7 +114,7 @@ function chatPayload(payload) {
       ? payload.conversationId.trim().slice(0, 160)
       : "dev";
   const dryRun = payload?.dryRun === true;
-  return { message, mode: normalizedChatMode(mode), conversationId, dryRun };
+  return { accountId, message, mode: normalizedChatMode(mode), conversationId, dryRun };
 }
 
 export function chatEstimate(payload) {
@@ -155,7 +156,7 @@ export async function chatSend(payload, method) {
     });
   }
 
-  const { message, mode, conversationId, dryRun } = chatPayload(payload);
+  const { accountId, message, mode, conversationId, dryRun } = chatPayload(payload);
   const estimate = chatEstimate(payload);
 
   if (!message) {
@@ -202,7 +203,7 @@ export async function chatSend(payload, method) {
   }
 
   try {
-    const result = await executeChat({ mode, message, conversationId });
+    const result = await executeChat({ accountId, mode, message, conversationId });
     return {
       status: 200,
       body: {
@@ -602,7 +603,7 @@ export function usageAdminCredit(payload, method, authorizationHeader = "") {
     note,
     createdBy: "admin",
   });
-  const summary = usageSummary();
+  const summary = usageSummary({ accountId });
 
   return {
     status: 200,

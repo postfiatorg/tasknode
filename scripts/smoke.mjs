@@ -134,7 +134,12 @@ if (devAuth.response.status === 200) {
     { headers: { cookie } },
     (response, text) => {
       const body = JSON.parse(text);
-      return response.ok && body.conversationId === signedInConversationId && Array.isArray(body.entries);
+      return (
+        response.ok &&
+        body.accountId === devAuthBody.session.accountId &&
+        body.conversationId === signedInConversationId &&
+        Array.isArray(body.entries)
+      );
     }
   );
 
@@ -196,6 +201,7 @@ await check("/api/usage/ledger", (response, text) => {
   return (
     body.billingModel === "usage_based" &&
     body.currency === "USD" &&
+    body.accountId === null &&
     typeof body.currentSpendUsd === "number" &&
     typeof body.currentCreditUsd === "number" &&
     typeof body.availableCreditUsd === "number" &&

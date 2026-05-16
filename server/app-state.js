@@ -43,8 +43,8 @@ export function appState(session = null) {
   const runtimeReadiness = readiness();
   const modes = chatModes();
   const enabledMode = modes.find((mode) => mode.enabled);
-  const usage = usageSummary();
   const conversationId = conversationIdForSession(session);
+  const usage = usageSummary({ accountId: session?.accountId, conversationId });
 
   return {
     generatedAt: new Date().toISOString(),

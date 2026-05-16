@@ -298,7 +298,7 @@ async function executeOpenRouter({ mode, model, message, conversationId }) {
   };
 }
 
-export async function executeChat({ mode, message, conversationId = "dev" }) {
+export async function executeChat({ accountId = "", mode, message, conversationId = "dev" }) {
   const normalizedMode = normalizedChatMode(mode);
   const status = chatExecutionStatus(normalizedMode);
 
@@ -322,6 +322,7 @@ export async function executeChat({ mode, message, conversationId = "dev" }) {
   }
 
   const persisted = appendChatTurn({
+    accountId,
     conversationId,
     mode: normalizedMode,
     provider: result.provider,

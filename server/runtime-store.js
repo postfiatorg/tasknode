@@ -164,6 +164,7 @@ export function destroySession(sessionId) {
 }
 
 export function appendChatTurn({
+  accountId = "",
   conversationId = "dev",
   mode,
   provider,
@@ -202,6 +203,7 @@ export function appendChatTurn({
     state.ledgerEntries.push({
       id: ledgerId,
       kind: "chat_debit",
+      accountId,
       conversationId,
       provider,
       model,
@@ -250,12 +252,22 @@ export function appendUsageCredit({
   return entry;
 }
 
-export function usageSummary() {
-  const currentSpendUsd = state.ledgerEntries.reduce((total, entry) => {
+function ledgerEntriesForScope({ accountId, conversationId } = {}) {
+  return state.ledgerEntries.filter((entry) => {
+    if (accountId && entry.accountId === accountId) return true;
+    if (conversationId && entry.conversationId === conversationId) return true;
+    if (!accountId && !conversationId) return true;
+    return false;
+  });
+}
+
+export function usageSummary(scope = {}) {
+  const entries = ledgerEntriesForScope(scope);
+  const currentSpendUsd = entries.reduce((total, entry) => {
     if (entry.kind !== "chat_debit") return total;
     return total + Number(entry.amountUsd || 0);
   }, 0);
-  const currentCreditUsd = state.ledgerEntries.reduce((total, entry) => {
+  const currentCreditUsd = entries.reduce((total, entry) => {
     if (!["account_credit", "reward_credit", "refund_credit"].includes(entry.kind)) return total;
     return total + Number(entry.amountUsd || 0);
   }, 0);
@@ -265,24 +277,22 @@ export function usageSummary() {
     currentSpendUsd: Number(currentSpendUsd.toFixed(6)),
     currentCreditUsd: Number(currentCreditUsd.toFixed(6)),
     availableCreditUsd: Number(availableCreditUsd.toFixed(6)),
-    ledgerEntryCount: state.ledgerEntries.length,
+    ledgerEntryCount: entries.length,
     storePath,
     durable: !storePath.startsWith("/tmp/"),
   };
 }
 
-export function usageLedger({ conversationId, limit = 50 } = {}) {
+export function usageLedger({ accountId, conversationId, limit = 50 } = {}) {
   const normalizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
-  const filteredEntries = state.ledgerEntries.filter((entry) => {
-    if (!conversationId) return true;
-    return entry.conversationId === conversationId;
-  });
+  const filteredEntries = ledgerEntriesForScope({ accountId, conversationId });
   const entries = filteredEntries.slice(-normalizedLimit).reverse();
-  const summary = usageSummary();
+  const summary = usageSummary({ accountId, conversationId });
 
   return {
     billingModel: "usage_based",
     currency: "USD",
+    accountId: accountId || null,
     conversationId: conversationId || null,
     currentSpendUsd: summary.currentSpendUsd,
     currentCreditUsd: summary.currentCreditUsd,
