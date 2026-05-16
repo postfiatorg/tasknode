@@ -47,6 +47,24 @@ function conversationMessages(conversationId) {
   return state.conversations[conversationId];
 }
 
+function safeId(value, fallback) {
+  const normalized =
+    typeof value === "string"
+      ? value.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "")
+      : "";
+  return (normalized || fallback).slice(0, 80);
+}
+
+export function conversationIdForSession(session = null, requestedId = "") {
+  const requested = safeId(requestedId, "default");
+  if (!session?.accountId) {
+    return requestedId ? requested : "dev";
+  }
+
+  const accountId = safeId(session.accountId, "account");
+  return `account_${accountId}_${requested}`.slice(0, 160);
+}
+
 export function getChatMessages(conversationId = "dev") {
   return conversationMessages(conversationId).slice(-30);
 }
@@ -265,6 +283,7 @@ export function usageLedger({ conversationId, limit = 50 } = {}) {
   return {
     billingModel: "usage_based",
     currency: "USD",
+    conversationId: conversationId || null,
     currentSpendUsd: summary.currentSpendUsd,
     currentCreditUsd: summary.currentCreditUsd,
     availableCreditUsd: summary.availableCreditUsd,

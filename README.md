@@ -39,8 +39,9 @@ minimal deployable dev app:
   OpenRouter routes remain configured-but-disabled until explicitly enabled and
   verified.
 - `/api/chat/modes` and `/api/chat/history` expose model-route readiness and
-  the current dev conversation. Chat turns and usage debits are stored in an
-  append-only local runtime store until Postgres account/session tables land.
+  the current session-scoped conversation. Chat turns and usage debits are
+  stored in an append-only local runtime store until Postgres account/session
+  tables land.
 - `/api/usage/ledger` exposes the current append-only usage ledger so chat
   spend can be audited before durable Postgres ledger tables land.
 - `/api/usage/actions`, `/api/usage/top-up/start`, and

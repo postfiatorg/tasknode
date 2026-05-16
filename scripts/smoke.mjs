@@ -71,6 +71,7 @@ const devAuth = await rawRequest("/api/auth/dev/start", {
   body: JSON.stringify({ email: "dev-smoke@tasknode.local" }),
 });
 const devAuthBody = JSON.parse(devAuth.text);
+let signedInConversationId = "";
 
 if (devAuth.response.status === 200) {
   const cookie = devAuth.response.headers.get("set-cookie")?.split(";")[0] || "";
@@ -93,7 +94,47 @@ if (devAuth.response.status === 200) {
     { headers: { cookie } },
     (response, text) => {
       const body = JSON.parse(text);
-      return response.ok && body.session?.status === "signed_in";
+      signedInConversationId = body.chat?.conversationId || "";
+      return (
+        response.ok &&
+        body.session?.status === "signed_in" &&
+        signedInConversationId.startsWith("account_")
+      );
+    }
+  );
+
+  await checkRequest(
+    "/api/chat/history",
+    { headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.ok && body.conversationId === signedInConversationId && Array.isArray(body.messages);
+    }
+  );
+
+  await checkRequest(
+    "/api/chat/send",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        message: "Dry run account scoped chat",
+        mode: "Private Instant",
+        dryRun: true,
+      }),
+    },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.ok && body.dryRun === true && body.conversationId === signedInConversationId;
+    }
+  );
+
+  await checkRequest(
+    "/api/usage/ledger",
+    { headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.ok && body.conversationId === signedInConversationId && Array.isArray(body.entries);
     }
   );
 

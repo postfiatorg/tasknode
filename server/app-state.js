@@ -7,7 +7,7 @@ import {
   usageActions,
   walletActions,
 } from "./product-contracts.js";
-import { getChatMessages, usageSummary } from "./runtime-store.js";
+import { conversationIdForSession, getChatMessages, usageSummary } from "./runtime-store.js";
 
 function sessionState(session, providers, runtimeReadiness) {
   const base = {
@@ -44,11 +44,14 @@ export function appState(session = null) {
   const modes = chatModes();
   const enabledMode = modes.find((mode) => mode.enabled);
   const usage = usageSummary();
+  const conversationId = conversationIdForSession(session);
 
   return {
     generatedAt: new Date().toISOString(),
     session: sessionState(session, providers, runtimeReadiness),
     chat: {
+      conversationId,
+      historyPath: "/api/chat/history",
       recents: [
         "Ship Task Node dev baseline",
         "Review seed wallet flow",
@@ -56,7 +59,7 @@ export function appState(session = null) {
       ],
       defaultMode: enabledMode?.label || "Private Instant",
       modes,
-      seedMessages: getChatMessages("dev"),
+      seedMessages: getChatMessages(conversationId),
     },
     tasks: {
       personalRequestEnabled: true,

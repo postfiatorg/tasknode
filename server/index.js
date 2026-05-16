@@ -22,6 +22,7 @@ import {
   walletActions,
 } from "./product-contracts.js";
 import {
+  conversationIdForSession,
   destroySession,
   getChatMessages,
   getSession,
@@ -270,13 +271,18 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/chat/history") {
-    json(res, 200, { messages: getChatMessages("dev") });
+    const conversationId = conversationIdForSession(
+      session,
+      url.searchParams.get("conversationId") || ""
+    );
+    json(res, 200, { conversationId, messages: getChatMessages(conversationId) });
     return true;
   }
 
   if (url.pathname === "/api/chat/send") {
     const payload = req.method === "POST" ? await readJson(req) : {};
-    const result = await chatSend(payload, req.method);
+    const conversationId = conversationIdForSession(session, payload?.conversationId || "");
+    const result = await chatSend({ ...payload, conversationId }, req.method);
     json(res, result.status, result.body);
     return true;
   }
@@ -346,8 +352,14 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/usage/ledger") {
+    const requestedConversationId = url.searchParams.get("conversationId") || "";
+    const conversationId = requestedConversationId
+      ? conversationIdForSession(session, requestedConversationId)
+      : session
+        ? conversationIdForSession(session)
+        : "";
     json(res, 200, usageLedger({
-      conversationId: url.searchParams.get("conversationId") || "",
+      conversationId,
       limit: url.searchParams.get("limit") || 50,
     }));
     return true;

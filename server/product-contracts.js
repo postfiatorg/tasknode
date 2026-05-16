@@ -110,7 +110,7 @@ function chatPayload(payload) {
   const mode = typeof payload?.mode === "string" ? payload.mode : "Private Instant";
   const conversationId =
     typeof payload?.conversationId === "string" && payload.conversationId.trim()
-      ? payload.conversationId.trim().slice(0, 80)
+      ? payload.conversationId.trim().slice(0, 160)
       : "dev";
   const dryRun = payload?.dryRun === true;
   return { message, mode: normalizedChatMode(mode), conversationId, dryRun };
@@ -175,6 +175,7 @@ export async function chatSend(payload, method) {
         ok: true,
         dryRun: true,
         action: "chat_send",
+        conversationId,
         message: estimate.executionReady
           ? "Chat execution is configured. Dry run skipped the provider call."
           : "Chat execution is not configured for this mode. Dry run skipped the provider call.",
