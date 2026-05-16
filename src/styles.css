@@ -73,8 +73,13 @@ button {
   padding: 10px 12px 8px;
 }
 
-.sidebar-title {
+.sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   min-width: 0;
+  min-height: 34px;
+  padding: 0 8px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -85,8 +90,21 @@ button {
   text-align: left;
 }
 
-.sidebar-title:hover {
+.sidebar-brand:hover {
   background: rgba(0, 0, 0, 0.05);
+}
+
+.post-fiat-logo {
+  display: block;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  overflow: visible;
+}
+
+.sidebar-brand .post-fiat-logo {
+  width: 22px;
+  height: 22px;
 }
 
 .icon-button {
@@ -241,8 +259,13 @@ button {
   border-radius: 10px;
 }
 
-.app-shell.sidebar-collapsed .sidebar-title {
+.app-shell.sidebar-collapsed .sidebar-brand {
   display: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar-toggle .post-fiat-logo {
+  width: 24px;
+  height: 24px;
 }
 
 .app-shell.sidebar-collapsed .nav-list {

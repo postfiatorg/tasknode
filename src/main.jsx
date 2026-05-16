@@ -555,11 +555,12 @@ function App() {
         <div className="sidebar-header">
           {sidebarOpen && (
             <button
-              className="sidebar-title"
+              className="sidebar-brand"
               onClick={() => navigateToView("chat")}
               type="button"
             >
-              Task Node
+              <PostFiatLogo />
+              <span>Task Node</span>
             </button>
           )}
           <button
@@ -569,7 +570,11 @@ function App() {
             onClick={toggleSidebar}
             type="button"
           >
-            <PanelLeft size={18} strokeWidth={1.75} />
+            {sidebarOpen ? (
+              <PanelLeft size={18} strokeWidth={1.75} />
+            ) : (
+              <PostFiatLogo />
+            )}
           </button>
         </div>
 
@@ -1951,6 +1956,34 @@ function SidebarButton({ active, badge, icon: Icon, label, onClick, sidebarOpen 
       {sidebarOpen && badge ? <small>{badge}</small> : null}
       {!sidebarOpen && badge ? <small className="rail-badge">{badge}</small> : null}
     </button>
+  );
+}
+
+function PostFiatLogo() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="post-fiat-logo"
+      fill="none"
+      viewBox="0 0 200 200"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M40 40 160 160m0-120L40 160"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="20"
+      />
+      <line
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="20"
+        x1="40"
+        x2="160"
+        y1="160"
+        y2="160"
+      />
+    </svg>
   );
 }
 
