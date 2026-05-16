@@ -154,6 +154,8 @@ task browsing, profile settings, or billing views.
   `/api/wallet/link/start`.
 - `wallet_signature_invalid`: keep the user in the wallet modal, tell them to
   confirm the recovery phrase, and do not log the phrase or derived private key.
+- `wallet_delink_confirmation_mismatch`: refresh `/api/app-state` and require
+  the user to confirm the current linked wallet before retrying.
 - `LOCAL_STORAGE_UNAVAILABLE` or `WEB_CRYPTO_UNAVAILABLE`: wallet proof may
   succeed, but the app must explain that the encrypted vault could not be saved
   on this device.

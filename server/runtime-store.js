@@ -1204,7 +1204,8 @@ export function consumeWalletChallenge({ accountId = "", challengeId = "", purpo
   delete state.walletChallenges[id];
   saveState();
 
-  if (challenge.accountId !== normalizedAccountId || challenge.purpose !== purpose) {
+  const allowedPurposes = Array.isArray(purpose) ? purpose : [purpose];
+  if (challenge.accountId !== normalizedAccountId || !allowedPurposes.includes(challenge.purpose)) {
     return { ok: false, status: 400, error: "wallet_challenge_mismatch" };
   }
 
@@ -1215,37 +1216,127 @@ export function consumeWalletChallenge({ accountId = "", challengeId = "", purpo
   return { ok: true, challenge };
 }
 
+function activeWalletAccountForAddress(address = "", exceptAccountId = "") {
+  const normalizedAddress = String(address || "").trim();
+  const normalizedExceptAccountId = exceptAccountId ? safeId(exceptAccountId, "account") : "";
+  if (!normalizedAddress) return null;
+
+  return Object.entries(state.accountWallets || {}).find(([accountId, wallet]) => {
+    if (!wallet || wallet.status !== "linked") return false;
+    if (normalizedExceptAccountId && accountId === normalizedExceptAccountId) return false;
+    return String(wallet.address || "").trim() === normalizedAddress;
+  }) || null;
+}
+
 export function linkWalletToAccount({
   accountId = "",
   address = "",
   publicKey = "",
   challengeId = "",
   signature = "",
+  proofPurpose = "wallet_link",
 } = {}) {
   if (!accountId) {
     return { ok: false, status: 401, error: "wallet_login_required" };
   }
 
   const normalizedAccountId = safeId(accountId, "account");
+  const normalizedAddress = String(address || "").trim();
+  const existingOwner = activeWalletAccountForAddress(normalizedAddress, normalizedAccountId);
+  if (existingOwner) {
+    return { ok: false, status: 409, error: "wallet_already_linked_to_account" };
+  }
+
   const now = new Date().toISOString();
+  const previousWallet = state.accountWallets[normalizedAccountId] || null;
   const wallet = {
     accountId: normalizedAccountId,
     status: "linked",
-    address: String(address || "").trim(),
+    address: normalizedAddress,
     publicKey: String(publicKey || "").trim(),
     custody: "local_seed_required",
-    linkedAt: now,
+    linkedAt: previousWallet?.linkedAt || now,
+    relinkedAt: previousWallet ? now : undefined,
     updatedAt: now,
     proof: {
       challengeId,
+      purpose: proofPurpose,
       signatureHash: stableId(signature, "sig"),
     },
   };
 
   state.accountWallets[normalizedAccountId] = wallet;
+  state.authEvents.push({
+    id: randomUUID(),
+    accountId: normalizedAccountId,
+    eventType: previousWallet ? "wallet_relinked" : "wallet_linked",
+    provider: "wallet",
+    email: null,
+    decision: "accepted",
+    metadata: {
+      walletAddress: wallet.address,
+      previousWalletAddress: previousWallet?.address || null,
+      proofPurpose,
+      challengeId,
+      signatureHash: wallet.proof.signatureHash,
+    },
+    createdAt: now,
+  });
+  if (state.authEvents.length > 1000) {
+    state.authEvents = state.authEvents.slice(-1000);
+  }
   saveState();
 
   return { ok: true, wallet };
+}
+
+export function delinkWalletFromAccount({
+  accountId = "",
+  reason = "user_requested",
+  actorSessionId = "",
+} = {}) {
+  if (!accountId) {
+    return { ok: false, status: 401, error: "wallet_login_required" };
+  }
+
+  const normalizedAccountId = safeId(accountId, "account");
+  const wallet = state.accountWallets[normalizedAccountId];
+  if (!wallet || wallet.status !== "linked" || !wallet.address) {
+    return { ok: false, status: 409, error: "wallet_not_linked" };
+  }
+
+  const now = new Date().toISOString();
+  const previousWallet = {
+    ...wallet,
+    status: "delinked",
+    delinkedAt: now,
+    updatedAt: now,
+  };
+
+  delete state.accountWallets[normalizedAccountId];
+  state.authEvents.push({
+    id: randomUUID(),
+    accountId: normalizedAccountId,
+    eventType: "wallet_delinked",
+    provider: "wallet",
+    email: null,
+    decision: "accepted",
+    metadata: {
+      walletAddress: wallet.address,
+      publicKey: wallet.publicKey || null,
+      custody: wallet.custody || "local_seed_required",
+      linkedAt: wallet.linkedAt || null,
+      reason: String(reason || "user_requested").slice(0, 120),
+      actorSessionId: actorSessionId || null,
+    },
+    createdAt: now,
+  });
+  if (state.authEvents.length > 1000) {
+    state.authEvents = state.authEvents.slice(-1000);
+  }
+  saveState();
+
+  return { ok: true, wallet: previousWallet };
 }
 
 export function getLinkedWallet({ accountId = "" } = {}) {

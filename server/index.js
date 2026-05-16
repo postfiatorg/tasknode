@@ -575,7 +575,8 @@ async function routeApi(req, url, res) {
     url.pathname === "/api/wallet/delink" ||
     url.pathname === "/api/wallet/relink/start"
   ) {
-    const result = walletActionStart(url.pathname, req.method);
+    const payload = req.method === "POST" ? await readJson(req, 8192) : {};
+    const result = walletActionStart(url.pathname, req.method, session, payload);
     json(res, result.status, result.body);
     return true;
   }

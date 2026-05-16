@@ -18,6 +18,7 @@ import {
   createDevSession,
   createEmailChallenge,
   createOAuthState,
+  delinkWalletFromAccount,
   findAccountByEmail,
   getEmailChallenge,
   getOrCreateEmailAccount,
@@ -747,20 +748,21 @@ export function walletActions() {
       id: "delink",
       label: "Delink wallet",
       path: "/api/wallet/delink",
+      enabled: true,
       note:
-        "Required for production-safe onboarding tests and account recovery without corrupting identity history.",
+        "Detaches the active wallet from this app account without touching chain history or server-side audit history.",
       actionRequired:
-        "Define balance ownership, audit logging, recovery warnings, and test-only guardrails before enabling delink.",
+        "Confirm delink in the wallet tab. The browser should also clear the local encrypted vault.",
     }),
     walletAction({
       id: "relink_start",
       label: "Relink wallet",
       path: "/api/wallet/relink/start",
-      requiredEnv: ["PFTL_RPC_URL", "PFTL_RPC_API_KEY"],
+      enabled: true,
       note:
-        "Allows repeated wallet onboarding tests after a safe delink path exists.",
+        "Starts a fresh wallet ownership proof for linking a wallet after delink or replacing the current proof.",
       actionRequired:
-        "Implement relink ownership verification and wallet history reconciliation before enabling relink.",
+        "Enter the recovery phrase locally and sign a fresh relink challenge.",
     }),
   ];
 }
@@ -1278,7 +1280,7 @@ export function walletLinkVerify(payload, method, session = null) {
   const challengeResult = consumeWalletChallenge({
     accountId: session.accountId,
     challengeId: payload?.challengeId,
-    purpose: "wallet_link",
+    purpose: ["wallet_link", "wallet_relink"],
   });
 
   if (!challengeResult.ok) {
@@ -1317,7 +1319,24 @@ export function walletLinkVerify(payload, method, session = null) {
     publicKey,
     challengeId: challengeResult.challenge.id,
     signature,
+    proofPurpose: challengeResult.challenge.purpose,
   });
+
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 400,
+      error: result.error || "wallet_link_failed",
+      action: "wallet_link_verify",
+      message:
+        result.error === "wallet_already_linked_to_account"
+          ? "That wallet is already linked to a different account."
+          : "Wallet link could not be saved.",
+      actionRequired:
+        result.error === "wallet_already_linked_to_account"
+          ? "Sign in with the account that owns this wallet, or resolve the account conflict before relinking."
+          : "Start wallet linking again and sign a fresh challenge.",
+    });
+  }
 
   return {
     status: 200,
@@ -1330,7 +1349,145 @@ export function walletLinkVerify(payload, method, session = null) {
   };
 }
 
-export function walletActionStart(pathname, method) {
+export function walletRelinkStart(method, session = null) {
+  const action = walletActionByPath("/api/wallet/relink/start");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "wallet_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Start wallet relinking with POST.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "wallet_login_required",
+      action: action.id,
+      message: "Sign in before relinking a seed wallet.",
+      actionRequired: "Use an account login, then prove control of the wallet.",
+    });
+  }
+
+  const result = createWalletChallenge({
+    accountId: session.accountId,
+    purpose: "wallet_relink",
+  });
+
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 400,
+      error: result.error || "wallet_challenge_failed",
+      action: action.id,
+      message: "Wallet relink challenge could not be created.",
+      actionRequired: "Sign in and try wallet relinking again.",
+    });
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: "wallet_relink_start",
+      message: "Sign this challenge locally to relink your wallet.",
+      challenge: {
+        id: result.challenge.id,
+        purpose: result.challenge.purpose,
+        message: result.challenge.message,
+        expiresAt: result.challenge.expiresAt,
+      },
+      verifyPath: "/api/wallet/link/verify",
+    },
+  };
+}
+
+export function walletDelink(payload, method, session = null) {
+  const action = walletActionByPath("/api/wallet/delink");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "wallet_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Delink wallet with POST.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "wallet_login_required",
+      action: action.id,
+      message: "Sign in before delinking a wallet.",
+      actionRequired: "Use an account login, then delink the wallet from the wallet tab.",
+    });
+  }
+
+  const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+  if (linkedWallet.status !== "linked" || !linkedWallet.address) {
+    return actionResponse({
+      status: 409,
+      error: "wallet_not_linked",
+      action: action.id,
+      message: "No active wallet is linked to this account.",
+      actionRequired: "Link a wallet before attempting to delink.",
+    });
+  }
+
+  const confirmAddress = String(payload?.confirmAddress || "").trim();
+  if (confirmAddress && confirmAddress !== linkedWallet.address) {
+    return actionResponse({
+      status: 400,
+      error: "wallet_delink_confirmation_mismatch",
+      action: action.id,
+      message: "Wallet delink confirmation did not match the linked wallet.",
+      actionRequired: "Refresh the wallet tab and confirm the current linked wallet.",
+    });
+  }
+
+  const result = delinkWalletFromAccount({
+    accountId: session.accountId,
+    actorSessionId: session.id,
+    reason: payload?.reason || "user_requested",
+  });
+
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 400,
+      error: result.error || "wallet_delink_failed",
+      action: action.id,
+      message: "Wallet could not be delinked.",
+      actionRequired: "Refresh the wallet tab and try again.",
+    });
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: "wallet_delink",
+      message: "Wallet delinked. Local vault data should be cleared from this browser.",
+      wallet: {
+        status: "delinked",
+        address: result.wallet.address,
+        delinkedAt: result.wallet.delinkedAt,
+      },
+    },
+  };
+}
+
+export function walletActionStart(pathname, method, session = null, payload = {}) {
+  if (pathname === "/api/wallet/relink/start") {
+    return walletRelinkStart(method, session);
+  }
+  if (pathname === "/api/wallet/delink") {
+    return walletDelink(payload, method, session);
+  }
+
   const action = walletActionByPath(pathname);
 
   if (!action) {
@@ -2057,9 +2214,8 @@ export function readiness() {
       seedStorageReady: true,
       lifecycleActionsReady: false,
       blockers: [
-        "Wallet delink and relink runbook is not implemented",
         "PFTL transaction signing boundary is not implemented",
-        "Encrypted CID hydration boundary is not implemented",
+        "Wallet-bound payout and manifest signing confirmation screens are not implemented",
       ],
     },
     context: {

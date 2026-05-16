@@ -118,8 +118,10 @@ Wallet actions:
 - `POST /api/wallet/link/start`
 - `POST /api/wallet/link/verify`
 - `POST /api/wallet/unlock/start`
-- `POST /api/wallet/delink`
-- `POST /api/wallet/relink/start`
+- `POST /api/wallet/delink` detaches the active account wallet, records an
+  audit event, and relies on the browser to clear the local encrypted vault.
+- `POST /api/wallet/relink/start` starts a fresh wallet proof challenge with
+  `wallet_relink` purpose and reuses `/api/wallet/link/verify`.
 
 Wallet balance reads:
 

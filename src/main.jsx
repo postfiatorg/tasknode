@@ -2301,9 +2301,14 @@ function WalletView({
   const [message, setMessage] = useState("");
   const [pendingAction, setPendingAction] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
+  const [walletProofAction, setWalletProofAction] = useState(null);
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const [delinkOpen, setDelinkOpen] = useState(false);
   const actions = wallet?.actions || [];
   const linkAction = actions.find((action) => action.id === "link_start");
+  const relinkAction = actions.find((action) => action.id === "relink_start");
+  const delinkAction = actions.find((action) => action.id === "delink");
+  const secondaryWalletActions = actions.filter((action) => ["delink", "relink_start"].includes(action.id));
   const linkedWallet = wallet?.pftWallet || {};
   const walletLinked = linkedWallet.status === "linked";
   const vaultAvailable = Boolean(walletVault?.available && walletVault?.address === linkedWallet.address);
@@ -2343,6 +2348,7 @@ function WalletView({
     }
     if (requireSignedInForWalletLink()) {
       setMessage("");
+      setWalletProofAction(linkAction);
       setLinkOpen(true);
     }
   }
@@ -2356,6 +2362,7 @@ function WalletView({
       if (!requireSignedInForWalletLink()) return;
       setMessage("");
       if (!walletLinked || !vaultAvailable) {
+        setWalletProofAction(linkAction);
         setLinkOpen(true);
       } else if (vaultUnlocked) {
         onWalletVaultLock?.();
@@ -2363,6 +2370,23 @@ function WalletView({
       } else {
         setUnlockOpen(true);
       }
+      return;
+    }
+    if (action.id === "relink_start") {
+      if (!requireSignedInForWalletLink()) return;
+      setMessage("");
+      setWalletProofAction(action);
+      setLinkOpen(true);
+      return;
+    }
+    if (action.id === "delink") {
+      if (!requireSignedInForWalletLink()) return;
+      if (!walletLinked) {
+        setMessage("No active wallet is linked to this account.");
+        return;
+      }
+      setMessage("");
+      setDelinkOpen(true);
       return;
     }
     if (action.id === "unlock_start" && walletLinked && vaultAvailable && !vaultUnlocked) {
@@ -2475,10 +2499,25 @@ function WalletView({
             <span>Local seed vault</span>
             <small>{vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : "Not saved"}</small>
           </button>
-          {actions.map((action) => (
-            <button key={action.id} onClick={() => startWalletAction(action)} type="button">
+          {secondaryWalletActions.map((action) => (
+            <button
+              disabled={pendingAction === action.id || (action.id === "delink" && !walletLinked)}
+              key={action.id}
+              onClick={() => startWalletAction(action)}
+              type="button"
+            >
               <span>{action.label}</span>
-              <small>{pendingAction === action.id ? "Checking" : action.enabled ? "Ready" : action.configured ? "Config ready" : "Needs config"}</small>
+              <small>
+                {pendingAction === action.id
+                  ? "Working"
+                  : action.id === "delink" && !walletLinked
+                    ? "No wallet"
+                    : action.enabled
+                      ? "Ready"
+                      : action.configured
+                        ? "Config ready"
+                        : "Needs config"}
+              </small>
             </button>
           ))}
         </div>
@@ -2489,11 +2528,25 @@ function WalletView({
       </div>
       {linkOpen && (
         <WalletLinkModal
-          action={linkAction}
+          action={walletProofAction || linkAction}
           onAppStateChange={onAppStateChange}
           onWalletVaultChange={onWalletVaultChange}
           onWalletVaultUnlocked={onWalletVaultUnlocked}
-          onClose={() => setLinkOpen(false)}
+          onClose={() => {
+            setLinkOpen(false);
+            setWalletProofAction(null);
+          }}
+          session={session}
+        />
+      )}
+      {delinkOpen && (
+        <WalletDelinkModal
+          action={delinkAction}
+          linkedWallet={linkedWallet}
+          onAppStateChange={onAppStateChange}
+          onClose={() => setDelinkOpen(false)}
+          onWalletVaultChange={onWalletVaultChange}
+          onWalletVaultLock={onWalletVaultLock}
           session={session}
         />
       )}
@@ -2521,6 +2574,7 @@ function WalletLinkModal({
   onClose,
   session,
 }) {
+  const isRelink = action?.id === "relink_start";
   const [walletCore, setWalletCore] = useState(null);
   const [mnemonic, setMnemonic] = useState("");
   const [vaultPassword, setVaultPassword] = useState("");
@@ -2656,7 +2710,7 @@ function WalletLinkModal({
       setMnemonic("");
       setVaultPassword("");
       setVaultPasswordConfirm("");
-      setMessage("Wallet linked.");
+      setMessage(isRelink ? "Wallet relinked." : "Wallet linked.");
       await onAppStateChange?.();
       onClose();
     } catch (error) {
@@ -2670,8 +2724,12 @@ function WalletLinkModal({
       <div className="wallet-link-modal" role="dialog" aria-modal="true" aria-label="Link seed wallet">
         <header>
           <div>
-            <h2>Link Seed Wallet</h2>
-            <p>Validate and sign locally. Your recovery phrase is never sent to Task Node.</p>
+            <h2>{isRelink ? "Relink Seed Wallet" : "Link Seed Wallet"}</h2>
+            <p>
+              {isRelink
+                ? "Prove wallet ownership again. The recovery phrase stays in this browser."
+                : "Validate and sign locally. Your recovery phrase is never sent to Task Node."}
+            </p>
           </div>
           <button className="icon-button" onClick={onClose} type="button" aria-label="Close wallet link">
             <X size={18} strokeWidth={1.75} />
@@ -2747,7 +2805,100 @@ function WalletLinkModal({
             Cancel
           </button>
           <button className="dark-pill" disabled={linking} onClick={linkWallet} type="button">
-            {linking ? "Linking" : "Link wallet"}
+            {linking ? (isRelink ? "Relinking" : "Linking") : isRelink ? "Relink wallet" : "Link wallet"}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function WalletDelinkModal({
+  action,
+  linkedWallet,
+  onAppStateChange,
+  onClose,
+  onWalletVaultChange,
+  onWalletVaultLock,
+  session,
+}) {
+  const [message, setMessage] = useState("");
+  const [delinking, setDelinking] = useState(false);
+
+  async function delinkWallet() {
+    if (delinking) return;
+    if (!session?.accountId) {
+      setMessage("Sign in before delinking a wallet.");
+      return;
+    }
+    if (!linkedWallet?.address) {
+      setMessage("No active wallet is linked to this account.");
+      return;
+    }
+
+    setDelinking(true);
+    setMessage("");
+    try {
+      const result = await requestJson(action?.path || "/api/wallet/delink", {
+        method: action?.method || "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          confirmAddress: linkedWallet.address,
+          reason: "user_requested",
+        }),
+      });
+
+      if (!result.ok) {
+        setMessage(result.body?.message || result.body?.actionRequired || "Wallet could not be delinked.");
+        setDelinking(false);
+        return;
+      }
+
+      onWalletVaultLock?.();
+      try {
+        const walletCore = await import("./wallet-core");
+        walletCore.removeLocalWalletVault({ accountId: session.accountId });
+      } catch {
+        // Server delink succeeded. A local vault cleanup failure should not
+        // restore server wallet ownership.
+      }
+      await onWalletVaultChange?.();
+      await onAppStateChange?.();
+      onClose();
+    } catch (error) {
+      setMessage(error?.message || "Wallet delink failed.");
+      setDelinking(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div className="wallet-link-modal" role="dialog" aria-modal="true" aria-label="Delink wallet">
+        <header>
+          <div>
+            <h2>Delink Wallet</h2>
+            <p>Detach this wallet from the app account. Chain history and PFT balance are untouched.</p>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button" aria-label="Close wallet delink">
+            <X size={18} strokeWidth={1.75} />
+          </button>
+        </header>
+        <div className="wallet-proof-summary single">
+          <span>
+            <strong>{shortWalletAddress(linkedWallet?.address)}</strong>
+            Linked wallet
+          </span>
+        </div>
+        <div className="wallet-link-warning">
+          Delinking clears the active server wallet link for this account and removes the encrypted local vault from this browser. Relinking requires a fresh signed wallet proof.
+        </div>
+        {message && <div className="inline-message">{message}</div>}
+        <footer>
+          <button className="light-pill" disabled={delinking} onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="dark-pill" disabled={delinking} onClick={delinkWallet} type="button">
+            {delinking ? "Delinking" : "Delink wallet"}
           </button>
         </footer>
       </div>

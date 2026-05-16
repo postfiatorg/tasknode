@@ -187,8 +187,10 @@ Current behavior:
 - latest imported encrypted context CID hydration is browser-only after local
   wallet unlock; the server only fetches encrypted JSON for imported pointer
   CIDs;
-- PFTL transaction signing, durable decrypted-context summaries, delink, and
-  relink remain disabled;
+- wallet delink/relink are enabled for account wallet proof testing and clear
+  the browser-local encrypted vault on delink;
+- PFTL transaction signing and durable decrypted-context summaries remain
+  disabled;
 - OpenAI chat can execute and stream when configured;
 - OpenRouter execution and streaming routes exist but should be explicitly
   verified before enabling;
