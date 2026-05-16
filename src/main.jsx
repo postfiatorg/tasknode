@@ -1895,10 +1895,13 @@ function markdownToBlocks(input) {
   const text = String(input || "").trim();
   if (!text) return [{ type: "p", inline: [{ text: "" }] }];
 
-  const normalized = text
+  let normalized = text
     .replace(/\r\n/g, "\n")
     .replace(/([^\n])\s+(\d+\.\s+\*\*)/g, "$1\n$2")
     .replace(/([^\n])\s+(\d+\.\s+[A-Z])/g, "$1\n$2");
+  if (looksLikeMarkdownTable(normalized)) {
+    normalized = normalizeCompactMarkdownTables(normalized);
+  }
   const lines = normalized.split("\n");
   const blocks = [];
   let paragraph = [];
@@ -1925,11 +1928,38 @@ function markdownToBlocks(input) {
     list.items.push(parseInline(rawItem.trim()));
   }
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
     const raw = line.trim();
     if (!raw) {
       flushParagraph();
       flushList();
+      continue;
+    }
+
+    const nextRaw = (lines[lineIndex + 1] || "").trim();
+    if (isMarkdownTableRow(raw) && isMarkdownTableSeparatorRow(nextRaw)) {
+      const headers = splitMarkdownTableRow(raw);
+      const alignments = splitMarkdownTableRow(nextRaw).map(tableColumnAlignment);
+      const rows = [];
+
+      lineIndex += 2;
+      while (lineIndex < lines.length) {
+        const rowRaw = lines[lineIndex].trim();
+        if (!isMarkdownTableRow(rowRaw) || isMarkdownTableSeparatorRow(rowRaw)) break;
+        rows.push(normalizeTableCells(splitMarkdownTableRow(rowRaw), headers.length));
+        lineIndex += 1;
+      }
+      lineIndex -= 1;
+
+      flushParagraph();
+      flushList();
+      blocks.push({
+        type: "table",
+        headers: headers.map((cell) => parseInline(cell)),
+        alignments: normalizeTableCells(alignments, headers.length, "left"),
+        rows: rows.map((row) => row.map((cell) => parseInline(cell))),
+      });
       continue;
     }
 
@@ -1967,6 +1997,55 @@ function markdownToBlocks(input) {
   flushParagraph();
   flushList();
   return blocks.length > 0 ? blocks : [{ type: "p", inline: [{ text }] }];
+}
+
+function looksLikeMarkdownTable(input) {
+  return /\|\s*:?-{3,}:?\s*\|/.test(String(input || ""));
+}
+
+function normalizeCompactMarkdownTables(input) {
+  return String(input || "")
+    .split("\n")
+    .map((line) => {
+      const parts = line.split(/\|\s+\|/);
+      if (parts.length < 3) return line;
+
+      const rows = parts.map((part, index) => {
+        if (index === 0) return `${part}|`;
+        if (index === parts.length - 1) return `|${part}`;
+        return `|${part}|`;
+      });
+      return isMarkdownTableRow(rows[0]) && isMarkdownTableSeparatorRow(rows[1])
+        ? rows.join("\n")
+        : line;
+    })
+    .join("\n");
+}
+
+function isMarkdownTableRow(line) {
+  const raw = String(line || "").trim();
+  return raw.startsWith("|") && raw.endsWith("|") && splitMarkdownTableRow(raw).length >= 2;
+}
+
+function isMarkdownTableSeparatorRow(line) {
+  if (!isMarkdownTableRow(line)) return false;
+  return splitMarkdownTableRow(line).every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")));
+}
+
+function splitMarkdownTableRow(line) {
+  const raw = String(line || "").trim().replace(/^\|/, "").replace(/\|$/, "");
+  return raw.split("|").map((cell) => cell.trim());
+}
+
+function tableColumnAlignment(cell) {
+  const value = String(cell || "").trim();
+  if (value.startsWith(":") && value.endsWith(":")) return "center";
+  if (value.endsWith(":")) return "right";
+  return "left";
+}
+
+function normalizeTableCells(cells, count, fallback = "") {
+  return Array.from({ length: Math.max(0, count) }, (_, index) => cells[index] || fallback);
 }
 
 function parseInline(input) {
@@ -2067,6 +2146,11 @@ function plainTextFromBlocks(blocks) {
         return (block.items || [])
           .map((item) => inlineToText(Array.isArray(item) ? item : [{ text: item }]))
           .join("\n");
+      }
+      if (block.type === "table") {
+        const header = (block.headers || []).map(inlineToText).join(" | ");
+        const rows = (block.rows || []).map((row) => row.map(inlineToText).join(" | "));
+        return [header, ...rows].filter(Boolean).join("\n");
       }
       return inlineToText(block.inline || [{ text: block.text || "" }]);
     })
@@ -2316,6 +2400,40 @@ function BlockRenderer({ block }) {
             </li>
           ))}
         </ol>
+      );
+    case "table":
+      return (
+        <div className="assistant-table-wrap">
+          <table className="assistant-table">
+            <thead>
+              <tr>
+                {(block.headers || []).map((cell, index) => (
+                  <th
+                    className={`align-${block.alignments?.[index] || "left"}`}
+                    key={index}
+                    scope="col"
+                  >
+                    <Inline parts={cell} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(block.rows || []).map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {row.map((cell, cellIndex) => (
+                    <td
+                      className={`align-${block.alignments?.[cellIndex] || "left"}`}
+                      key={cellIndex}
+                    >
+                      <Inline parts={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       );
     case "hr":
       return <hr />;
