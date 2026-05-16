@@ -6,7 +6,6 @@ const providerTimeoutMs = Number(process.env.CHAT_PROVIDER_TIMEOUT_MS || 45000);
 const maxChatAttachments = 4;
 const maxAttachmentDataUrlBytes = 6 * 1024 * 1024;
 const webSearchUsdPerCall = 0.01;
-const openRouterWebSearchUsdPerCall = 0.005;
 
 export const chatModePrices = {
   "Private Instant": {
@@ -218,34 +217,6 @@ function openAiTools({ message }) {
   ];
 }
 
-function truthyEnv(name) {
-  return process.env[name] === "true" || process.env[name] === "1";
-}
-
-function optionalPositiveIntegerEnv(name, fallback) {
-  const value = Number.parseInt(process.env[name] || "", 10);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
-function openRouterWebSearchEnabled() {
-  return truthyEnv("OPENROUTER_WEB_SEARCH_ENABLED") || truthyEnv("TASKNODE_ENABLE_OPENROUTER_WEB_SEARCH");
-}
-
-function openRouterTools({ message }) {
-  if (!openRouterWebSearchEnabled() || !shouldUseWebSearch(message)) return [];
-
-  return [
-    {
-      type: "openrouter:web_search",
-      parameters: {
-        max_results: optionalPositiveIntegerEnv("OPENROUTER_WEB_SEARCH_MAX_RESULTS", 5),
-        max_total_results: optionalPositiveIntegerEnv("OPENROUTER_WEB_SEARCH_MAX_TOTAL_RESULTS", 10),
-        search_context_size: process.env.OPENROUTER_WEB_SEARCH_CONTEXT_SIZE || "low",
-      },
-    },
-  ];
-}
-
 function openRouterProviderPreferences({ requireParameters = false } = {}) {
   const provider = {
     zdr: true,
@@ -343,7 +314,6 @@ export function openRouterChatRequest({
 }) {
   const config = chatModeConfig(mode);
   const normalizedAttachments = normalizeChatAttachments(attachments);
-  const tools = openRouterTools({ message });
 
   return {
     model,
@@ -363,7 +333,6 @@ export function openRouterChatRequest({
       : undefined,
     max_tokens: config.maxOutputTokens,
     plugins: openRouterPlugins(normalizedAttachments),
-    tools: tools.length > 0 ? tools : undefined,
     stream: stream || undefined,
     stream_options: stream
       ? {
@@ -607,15 +576,14 @@ function openRouterUsage(body, mode) {
   const outputTokens = Number(usage.completion_tokens || usage.output_tokens || 0);
   const providerCost = Number(usage.cost || 0);
   const webSearchCalls = Number(usage.server_tool_use?.web_search_requests || 0);
-  const toolCostUsd = Number((providerCost ? 0 : webSearchCalls * openRouterWebSearchUsdPerCall).toFixed(6));
   return {
     inputTokens,
     outputTokens,
     totalTokens: Number(usage.total_tokens || inputTokens + outputTokens),
     webSearchCalls,
-    toolCostUsd,
+    toolCostUsd: 0,
     costUsd: Number(
-      (providerCost || actualChatCost(mode, { inputTokens, outputTokens }) + toolCostUsd).toFixed(6)
+      (providerCost || actualChatCost(mode, { inputTokens, outputTokens })).toFixed(6)
     ),
   };
 }

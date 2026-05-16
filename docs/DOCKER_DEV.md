@@ -45,9 +45,8 @@ for low-latency private text. Private Thinking defaults to
 provider parameter routing.
 Image, PDF, and text attachments are mapped into OpenRouter chat-completion
 content parts; PDF parsing uses `OPENROUTER_PDF_ENGINE` or `cloudflare-ai` by
-default. OpenRouter web search is intentionally separate and remains off unless
-`OPENROUTER_WEB_SEARCH_ENABLED=true` or
-`TASKNODE_ENABLE_OPENROUTER_WEB_SEARCH=true`.
+default. OpenRouter web search is not enabled for Private modes; web-backed
+answers route through Frontier modes only.
 
 Useful local endpoints:
 

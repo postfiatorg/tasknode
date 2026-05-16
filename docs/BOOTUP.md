@@ -166,7 +166,6 @@ Common env names:
 - `OPENAI_API_KEY`
 - `OPENROUTER_API_KEY`
 - `OPENROUTER_CHAT_ENABLED`
-- `OPENROUTER_WEB_SEARCH_ENABLED`
 - `TASKNODE_ADMIN_CREDIT_TOKEN`
 - `TASKNODE_INITIAL_PROVIDER_CREDIT_USD`
 - `POSTHOG_KEY`
@@ -199,8 +198,8 @@ Current behavior:
   private requests enforce ZDR/data-collection-deny provider preferences and
   map image/PDF/text attachments into OpenRouter chat content. Private Instant
   defaults to `deepseek/deepseek-v4-flash`; Private Thinking defaults to
-  `deepseek/deepseek-v4-pro` with high reasoning. OpenRouter web search is a
-  separate opt-in because it invokes an external server tool;
+  `deepseek/deepseek-v4-pro` with high reasoning. OpenRouter web search is not
+  enabled for Private modes;
 - native context documents can be viewed by anyone and saved by signed-in
   accounts without wallet unlock;
 - indexed PFTasks context/task rows can be imported as sanitized pointer

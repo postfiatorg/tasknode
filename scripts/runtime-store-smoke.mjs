@@ -168,22 +168,15 @@ try {
     throw new Error(`Private Thinking must use OpenRouter high reasoning with strict provider routing: ${JSON.stringify(openRouterThinkingRequest)}`);
   }
 
-  const oldOpenRouterWebSearchEnabled = process.env.OPENROUTER_WEB_SEARCH_ENABLED;
-  process.env.OPENROUTER_WEB_SEARCH_ENABLED = "true";
   const openRouterSearchRequest = openRouterChatRequest({
     mode: "Private Instant",
     model: "openrouter/auto",
     message: "Can you search what is going on today?",
     conversationId: "runtime-smoke-openrouter-search-contract",
   });
-  if (oldOpenRouterWebSearchEnabled === undefined) {
-    delete process.env.OPENROUTER_WEB_SEARCH_ENABLED;
-  } else {
-    process.env.OPENROUTER_WEB_SEARCH_ENABLED = oldOpenRouterWebSearchEnabled;
-  }
 
-  if (openRouterSearchRequest.tools?.[0]?.type !== "openrouter:web_search") {
-    throw new Error(`OpenRouter web search should be available behind the explicit env gate: ${JSON.stringify(openRouterSearchRequest)}`);
+  if (openRouterSearchRequest.tools) {
+    throw new Error(`Private OpenRouter requests must not carry web search tools: ${JSON.stringify(openRouterSearchRequest)}`);
   }
 
   const first = appendUsageCredit({
