@@ -22,20 +22,24 @@ is intentionally not live yet.
    pointer-native lifecycle, wallet provisioning, cache strategy, and
    portability target for Codex/CLI clients.
 
-5. `DEPLOYMENT.md`
+5. `PFTL_LIVE_TASK_REPLAY_WALKTHROUGH.md`
+   Human-readable walkthrough of the successful live PFTL/IPFS task lifecycle
+   replay from request through reward.
+
+6. `DEPLOYMENT.md`
    Local Docker dev, local production Docker, and Fly release deployment paths.
 
-6. `../full_spec.md`
+7. `../full_spec.md`
    Product/architecture source of truth and active burndown.
 
-7. `../auth_account_spec.md`
+8. `../auth_account_spec.md`
    Auth, provider linking, wallet claim, email login, and delink/relink design.
 
-8. `AUTH_WALLET_BOUNDARY.md`
+9. `AUTH_WALLET_BOUNDARY.md`
    Concrete implementation guardrails for wallet auth UX, session refresh,
    wallet proof, local vault state, and regression coverage.
 
-9. `../whip_context.md`
+10. `../whip_context.md`
    Automation handoff instructions and whip shutdown guardrails.
 
 ## Source Of Truth Rules
