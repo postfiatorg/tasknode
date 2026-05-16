@@ -15,6 +15,8 @@ const defaultState = {
   sessions: {},
   accounts: {},
   accountEmails: {},
+  accountIdentities: {},
+  oauthStates: {},
   emailChallenges: {},
   authEvents: [],
 };
@@ -42,6 +44,14 @@ function loadState() {
       accountEmails:
         parsed.accountEmails && typeof parsed.accountEmails === "object" && !Array.isArray(parsed.accountEmails)
           ? parsed.accountEmails
+          : {},
+      accountIdentities:
+        parsed.accountIdentities && typeof parsed.accountIdentities === "object" && !Array.isArray(parsed.accountIdentities)
+          ? parsed.accountIdentities
+          : {},
+      oauthStates:
+        parsed.oauthStates && typeof parsed.oauthStates === "object" && !Array.isArray(parsed.oauthStates)
+          ? parsed.oauthStates
           : {},
       emailChallenges:
         parsed.emailChallenges && typeof parsed.emailChallenges === "object" && !Array.isArray(parsed.emailChallenges)
@@ -75,6 +85,10 @@ function safeId(value, fallback) {
 function stableId(value, prefix) {
   const digest = createHash("sha256").update(String(value || "")).digest("hex").slice(0, 24);
   return `${prefix}_${digest}`;
+}
+
+function identityKey(provider, providerUserId) {
+  return `${String(provider || "").toLowerCase()}:${String(providerUserId || "").trim()}`;
 }
 
 export function conversationIdForSession(session = null, requestedId = "") {
@@ -137,6 +151,20 @@ function pruneExpiredEmailChallenges() {
   if (changed) saveState();
 }
 
+function pruneExpiredOAuthStates() {
+  const now = Date.now();
+  let changed = false;
+
+  for (const [stateId, stateRow] of Object.entries(state.oauthStates)) {
+    if (!stateRow?.expiresAt || Date.parse(stateRow.expiresAt) <= now) {
+      delete state.oauthStates[stateId];
+      changed = true;
+    }
+  }
+
+  if (changed) saveState();
+}
+
 function displayNameFromEmail(email) {
   const localPart = email.split("@")[0] || "dev";
   const words = localPart
@@ -177,12 +205,53 @@ function linkedEmailProvider({ maskedEmail, verified = true } = {}) {
   };
 }
 
+function providerLabel(provider) {
+  if (provider === "github") return "GitHub";
+  if (provider === "x") return "X";
+  if (provider === "discord") return "Discord";
+  if (provider === "telegram") return "Telegram";
+  return "Provider";
+}
+
+function linkedProvider({
+  provider,
+  providerUserId,
+  username,
+  profileUrl,
+  email,
+  emailVerified = false,
+}) {
+  return {
+    id: provider,
+    label: providerLabel(provider),
+    kind: "oauth",
+    status: "linked",
+    providerUserId,
+    username: username || null,
+    profileUrl: profileUrl || null,
+    email: email || null,
+    emailVerified: Boolean(emailVerified),
+  };
+}
+
+function mergeLinkedProvider(account, providerPayload) {
+  const existing = Array.isArray(account.linkedProviders) ? account.linkedProviders : [];
+  account.linkedProviders = existing
+    .filter((item) => item?.id !== providerPayload.id)
+    .concat(providerPayload);
+}
+
 export function getAccount(accountId) {
   return accountPayload(state.accounts[accountId] || null);
 }
 
 export function findAccountByEmail(canonicalEmail) {
   const accountId = state.accountEmails[String(canonicalEmail || "")];
+  return accountPayload(accountId ? state.accounts[accountId] : null);
+}
+
+export function findAccountByIdentity(provider, providerUserId) {
+  const accountId = state.accountIdentities[identityKey(provider, providerUserId)];
   return accountPayload(accountId ? state.accounts[accountId] : null);
 }
 
@@ -220,6 +289,81 @@ export function getOrCreateEmailAccount({ email, canonicalEmail, maskedEmail }) 
 
   state.accounts[accountId] = account;
   state.accountEmails[canonical] = accountId;
+  saveState();
+
+  return accountPayload(account);
+}
+
+export function getOrCreateProviderAccount({
+  provider,
+  providerUserId,
+  username = "",
+  displayName = "",
+  profileUrl = "",
+  emailInfo = null,
+}) {
+  const normalizedProvider = String(provider || "").trim().toLowerCase();
+  const normalizedProviderUserId = String(providerUserId || "").trim();
+  if (!normalizedProvider || !normalizedProviderUserId) return null;
+
+  const key = identityKey(normalizedProvider, normalizedProviderUserId);
+  const now = new Date().toISOString();
+  const email = emailInfo?.email || "";
+  const emailVerified = emailInfo?.verified === true;
+  const emailCanonical = emailVerified ? String(email).trim().toLowerCase() : "";
+  const providerPayload = linkedProvider({
+    provider: normalizedProvider,
+    providerUserId: normalizedProviderUserId,
+    username,
+    profileUrl,
+    email,
+    emailVerified,
+  });
+
+  let accountId = state.accountIdentities[key];
+  if (!accountId && emailCanonical) {
+    accountId = state.accountEmails[emailCanonical] || "";
+  }
+
+  if (!accountId) {
+    accountId = stableId(key, "acct_oauth");
+  }
+
+  let account = state.accounts[accountId];
+  if (!account) {
+    account = {
+      id: accountId,
+      status: "active",
+      displayName: displayName || username || providerLabel(normalizedProvider),
+      primaryProvider: normalizedProvider,
+      assurance: "medium",
+      linkedProviders: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  mergeLinkedProvider(account, providerPayload);
+  account.status = account.status || "active";
+  account.displayName = account.displayName || displayName || username || providerLabel(normalizedProvider);
+  account.primaryProvider = account.primaryProvider || normalizedProvider;
+  account.assurance = account.assurance === "high" ? "high" : "medium";
+  account.updatedAt = now;
+  account.lastProviderLoginAt = now;
+
+  if (emailCanonical && (!account.primaryEmailCanonical || account.primaryEmailCanonical === emailCanonical)) {
+    account.primaryEmailOriginal = email;
+    account.primaryEmailCanonical = emailCanonical;
+    account.primaryEmailVerified = true;
+    account.emailProvider = normalizedProvider;
+    account.emailLastSeenAt = now;
+    if (!state.accountEmails[emailCanonical] || state.accountEmails[emailCanonical] === accountId) {
+      state.accountEmails[emailCanonical] = accountId;
+    }
+  }
+
+  state.accounts[accountId] = account;
+  state.accountIdentities[key] = accountId;
   saveState();
 
   return accountPayload(account);
@@ -290,6 +434,44 @@ export function createDevSession({ email = "dev@tasknode.local" } = {}) {
     sessionId,
     session: sessionPayload(session),
   };
+}
+
+export function createOAuthState({
+  provider,
+  redirectPath = "/",
+  redirectUri = "",
+  expiresInSeconds = 600,
+} = {}) {
+  pruneExpiredOAuthStates();
+
+  const stateId = randomUUID();
+  const now = new Date();
+  const stateRow = {
+    id: stateId,
+    provider: String(provider || "").trim().toLowerCase(),
+    redirectPath: String(redirectPath || "/").startsWith("/") ? String(redirectPath || "/") : "/",
+    redirectUri,
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
+  };
+
+  state.oauthStates[stateId] = stateRow;
+  saveState();
+
+  return stateRow;
+}
+
+export function consumeOAuthState({ provider, stateId }) {
+  pruneExpiredOAuthStates();
+
+  const row = state.oauthStates[String(stateId || "")];
+  if (!row || row.provider !== String(provider || "").trim().toLowerCase()) {
+    return null;
+  }
+
+  delete state.oauthStates[row.id];
+  saveState();
+  return row;
 }
 
 function hashEquals(left, right) {

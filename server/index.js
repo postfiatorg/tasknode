@@ -158,6 +158,51 @@ function expiredSessionCookie(req) {
   return `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
 }
 
+function oauthStateCookieName(provider) {
+  return `tasknode_oauth_state_${String(provider || "").replace(/[^a-z0-9_-]/gi, "_").toLowerCase()}`;
+}
+
+function oauthStateCookie(req, provider, value, maxAgeSeconds = 600) {
+  const secure = secureCookie(req) ? "; Secure" : "";
+  return `${oauthStateCookieName(provider)}=${encodeURIComponent(value)}; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=${maxAgeSeconds}${secure}`;
+}
+
+function expiredOAuthStateCookie(req, provider) {
+  const secure = secureCookie(req) ? "; Secure" : "";
+  return `${oauthStateCookieName(provider)}=; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=0${secure}`;
+}
+
+function requestOrigin(req) {
+  const forwardedHost = req.headers["x-forwarded-host"];
+  const host = forwardedHost || req.headers.host;
+  const proto = req.headers["x-forwarded-proto"] || (secureCookie(req) ? "https" : "http");
+  if (!host) return "";
+  return `${proto}://${host}`;
+}
+
+function responseHeadersForAuthResult(req, result) {
+  const headers = {};
+  const cookies = [];
+
+  if (result.sessionId) cookies.push(sessionCookie(req, result.sessionId));
+  if (result.oauthState?.provider && result.oauthState?.value) {
+    cookies.push(oauthStateCookie(
+      req,
+      result.oauthState.provider,
+      result.oauthState.value,
+      result.oauthState.maxAgeSeconds || 600
+    ));
+  }
+  if (result.clearOAuthState?.provider) {
+    cookies.push(expiredOAuthStateCookie(req, result.clearOAuthState.provider));
+  }
+  if (cookies.length === 1) headers["set-cookie"] = cookies[0];
+  if (cookies.length > 1) headers["set-cookie"] = cookies;
+  if (result.redirectLocation) headers.location = result.redirectLocation;
+
+  return headers;
+}
+
 function isInsideDist(filePath) {
   const relative = path.relative(distDir, filePath);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -264,14 +309,66 @@ async function routeApi(req, url, res) {
   }
 
   if (parts[0] === "api" && parts[1] === "auth" && parts[2] === "start" && parts[3]) {
-    const result = authStart(parts[3]);
-    json(res, result.status, result.body);
+    const result = authStart(parts[3], {
+      origin: requestOrigin(req),
+      redirectPath: url.searchParams.get("redirect") || "/",
+    });
+    json(res, result.status, result.body, responseHeadersForAuthResult(req, result));
     return true;
   }
 
   if (parts[0] === "api" && parts[1] === "auth" && parts[2] === "callback" && parts[3]) {
-    const result = authCallback(parts[3]);
-    json(res, result.status, result.body);
+    const providerId = parts[3];
+    const result = await authCallback(
+      providerId,
+      Object.fromEntries(url.searchParams.entries()),
+      {
+        origin: requestOrigin(req),
+        oauthState: cookieValue(req, oauthStateCookieName(providerId)),
+      }
+    );
+    const headers = responseHeadersForAuthResult(req, result);
+    if (result.status >= 300 && result.status < 400 && result.redirectLocation) {
+      res.writeHead(result.status, {
+        "cache-control": "no-store",
+        ...headers,
+      });
+      res.end("");
+    } else {
+      json(res, result.status, result.body, headers);
+    }
+    return true;
+  }
+
+  if (parts[0] === "api" && parts[1] === "auth" && parts[3] === "start") {
+    const result = authStart(parts[2], {
+      origin: requestOrigin(req),
+      redirectPath: url.searchParams.get("redirect") || "/",
+    });
+    json(res, result.status, result.body, responseHeadersForAuthResult(req, result));
+    return true;
+  }
+
+  if (parts[0] === "api" && parts[1] === "auth" && parts[3] === "callback") {
+    const providerId = parts[2];
+    const result = await authCallback(
+      providerId,
+      Object.fromEntries(url.searchParams.entries()),
+      {
+        origin: requestOrigin(req),
+        oauthState: cookieValue(req, oauthStateCookieName(providerId)),
+      }
+    );
+    const headers = responseHeadersForAuthResult(req, result);
+    if (result.status >= 300 && result.status < 400 && result.redirectLocation) {
+      res.writeHead(result.status, {
+        "cache-control": "no-store",
+        ...headers,
+      });
+      res.end("");
+    } else {
+      json(res, result.status, result.body, headers);
+    }
     return true;
   }
 

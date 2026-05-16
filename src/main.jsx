@@ -1858,6 +1858,10 @@ function LoginDialog({ session, onClose, onSessionChange }) {
 
     try {
       const result = await requestJson(provider.startPath);
+      if (result.ok && result.body?.redirectUrl) {
+        window.location.assign(result.body.redirectUrl);
+        return;
+      }
       setMessage(
         result.body?.message ||
           result.body?.actionRequired ||

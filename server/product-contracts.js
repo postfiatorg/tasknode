@@ -11,12 +11,15 @@ import {
 import {
   appendUsageCredit,
   consumeEmailChallenge,
+  consumeOAuthState,
   createAccountSession,
   createDevSession,
   createEmailChallenge,
+  createOAuthState,
   findAccountByEmail,
   getEmailChallenge,
   getOrCreateEmailAccount,
+  getOrCreateProviderAccount,
   recordAuthEvent,
   usageSummary,
 } from "./runtime-store.js";
@@ -221,7 +224,7 @@ function actionResponse({ status, error, action, message, actionRequired }) {
   };
 }
 
-function provider({ id, label, kind, requiredEnv, note }) {
+function provider({ id, label, kind, requiredEnv, note, enabled = false, status, actionRequired }) {
   const configured = hasAll(requiredEnv);
   const startPath = `/api/auth/start/${id}`;
   const callbackPath = `/api/auth/callback/${id}`;
@@ -231,15 +234,139 @@ function provider({ id, label, kind, requiredEnv, note }) {
     label,
     kind,
     configured,
-    enabled: false,
-    status: configured ? "configured" : "missing_config",
+    enabled: configured && enabled,
+    status: status || (configured ? (enabled ? "ready" : "configured") : "missing_config"),
     startPath,
     callbackPath,
     actionRequired: configured
-      ? "Implement callback handling, account merge rules, and launch review before enabling this provider"
+      ? (actionRequired || "Implement callback handling, account merge rules, and launch review before enabling this provider")
       : `Configure ${requiredEnv.join(", ")}`,
     note,
   };
+}
+
+function publicOrigin(requestMeta = {}) {
+  const explicit = process.env.TASKNODE_PUBLIC_URL || process.env.VITE_SITE_ORIGIN || "";
+  if (explicit) {
+    try {
+      return new URL(explicit).origin;
+    } catch {}
+  }
+
+  if (requestMeta.origin) {
+    try {
+      return new URL(requestMeta.origin).origin;
+    } catch {}
+  }
+
+  return "";
+}
+
+function githubRedirectUri(requestMeta = {}) {
+  const origin = publicOrigin(requestMeta);
+  if (!origin) return "";
+  return new URL("/api/auth/callback/github", origin).toString();
+}
+
+function safeRedirectPath(value) {
+  const raw = String(value || "/").trim();
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
+  return raw.slice(0, 200);
+}
+
+function selectGithubEmail(emails) {
+  if (!Array.isArray(emails) || emails.length === 0) return null;
+  const sorted = [...emails]
+    .filter((item) => item?.email)
+    .sort((left, right) => {
+      const leftScore = (left.verified ? 2 : 0) + (left.primary ? 1 : 0);
+      const rightScore = (right.verified ? 2 : 0) + (right.primary ? 1 : 0);
+      return rightScore - leftScore;
+    });
+  const best = sorted[0];
+  if (!best?.email) return null;
+  return {
+    email: best.email,
+    verified: best.verified === true,
+    primary: best.primary === true,
+  };
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const body = await response.json().catch(() => null);
+    return { response, body };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchGithubToken({ code, state, redirectUri }) {
+  const { response, body } = await fetchJsonWithTimeout(
+    "https://github.com/login/oauth/access_token",
+    {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: process.env.GITHUB_CLIENT_ID,
+        client_secret: process.env.GITHUB_CLIENT_SECRET,
+        code,
+        state,
+        redirect_uri: redirectUri,
+      }),
+    }
+  );
+
+  if (!response.ok || body?.error || !body?.access_token) {
+    const error = new Error(body?.error_description || "GitHub token exchange failed.");
+    error.status = 502;
+    throw error;
+  }
+
+  return body.access_token;
+}
+
+async function fetchGithubUser(accessToken) {
+  const { response, body } = await fetchJsonWithTimeout(
+    "https://api.github.com/user",
+    {
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${accessToken}`,
+        "user-agent": "tasknodeofficial",
+      },
+    }
+  );
+
+  if (!response.ok || !body?.id) {
+    const error = new Error("GitHub user fetch failed.");
+    error.status = 502;
+    throw error;
+  }
+
+  return body;
+}
+
+async function fetchGithubEmails(accessToken) {
+  const { response, body } = await fetchJsonWithTimeout(
+    "https://api.github.com/user/emails",
+    {
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${accessToken}`,
+        "user-agent": "tasknodeofficial",
+      },
+    }
+  );
+
+  if (!response.ok || !Array.isArray(body)) return [];
+  return body;
 }
 
 function emailProvider() {
@@ -500,9 +627,12 @@ export function authProviders() {
       id: "github",
       label: "GitHub",
       kind: "oauth",
-      requiredEnv: ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "GITHUB_REDIRECT_URI"],
+      requiredEnv: ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"],
+      enabled: true,
+      actionRequired:
+        "Configure the GitHub OAuth App callback URL to /api/auth/callback/github for this Task Node deployment.",
       note:
-        "Required for legacy PFTasks account continuity. OAuth callback wiring is not active yet.",
+        "Required for legacy PFTasks account continuity. Exact GitHub identity resumes the same Task Node account.",
     }),
     emailProvider(),
   ];
@@ -834,7 +964,7 @@ export function authProviderById(providerId) {
   return authProviders().find((providerItem) => providerItem.id === providerId) || null;
 }
 
-export function authStart(providerId) {
+export function authStart(providerId, requestMeta = {}) {
   const providerItem = authProviderById(providerId);
 
   if (!providerItem) {
@@ -862,6 +992,50 @@ export function authStart(providerId) {
     };
   }
 
+  if (providerItem.id === "github") {
+    const redirectUri = githubRedirectUri(requestMeta);
+    if (!redirectUri) {
+      return actionResponse({
+        status: 409,
+        error: "auth_redirect_origin_missing",
+        action: "github_auth_start",
+        message: "GitHub login needs a public Task Node origin.",
+        actionRequired:
+          "Configure TASKNODE_PUBLIC_URL or call the start route from the deployed app origin.",
+      });
+    }
+
+    const stateRow = createOAuthState({
+      provider: "github",
+      redirectPath: safeRedirectPath(requestMeta.redirectPath),
+      redirectUri,
+      expiresInSeconds: 600,
+    });
+    const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
+    authorizeUrl.searchParams.set("client_id", process.env.GITHUB_CLIENT_ID);
+    authorizeUrl.searchParams.set("redirect_uri", redirectUri);
+    authorizeUrl.searchParams.set("scope", "user:email");
+    authorizeUrl.searchParams.set("state", stateRow.id);
+    authorizeUrl.searchParams.set("allow_signup", "true");
+
+    return {
+      status: 200,
+      oauthState: {
+        provider: "github",
+        value: stateRow.id,
+        maxAgeSeconds: 600,
+      },
+      body: {
+        ok: true,
+        action: "github_auth_start",
+        provider: "github",
+        redirectUrl: authorizeUrl.toString(),
+        redirectUri,
+        expiresAt: stateRow.expiresAt,
+      },
+    };
+  }
+
   return {
     status: 503,
     body: {
@@ -874,7 +1048,7 @@ export function authStart(providerId) {
   };
 }
 
-export function authCallback(providerId) {
+export async function authCallback(providerId, query = {}, requestMeta = {}) {
   const providerItem = authProviderById(providerId);
 
   if (!providerItem) {
@@ -887,6 +1061,107 @@ export function authCallback(providerId) {
         message: "Unknown auth provider.",
       },
     };
+  }
+
+  if (providerItem.id === "github") {
+    const code = String(query?.code || "").trim();
+    const stateId = String(query?.state || "").trim();
+    const callbackCookieState = String(requestMeta.oauthState || "").trim();
+
+    if (query?.error) {
+      return actionResponse({
+        status: 400,
+        error: "github_auth_denied",
+        action: "github_auth_callback",
+        message: String(query.error_description || query.error || "GitHub authorization failed."),
+        actionRequired: "Start GitHub login again if you intended to authorize Task Node.",
+      });
+    }
+
+    if (!code || !stateId || !callbackCookieState || stateId !== callbackCookieState) {
+      return actionResponse({
+        status: 400,
+        error: "oauth_state_invalid",
+        action: "github_auth_callback",
+        message: "GitHub login state is invalid or expired.",
+        actionRequired: "Start GitHub login again from the Task Node login modal.",
+      });
+    }
+
+    const stateRow = consumeOAuthState({ provider: "github", stateId });
+    if (!stateRow) {
+      return actionResponse({
+        status: 400,
+        error: "oauth_state_invalid",
+        action: "github_auth_callback",
+        message: "GitHub login state is invalid or expired.",
+        actionRequired: "Start GitHub login again from the Task Node login modal.",
+      });
+    }
+
+    try {
+      const accessToken = await fetchGithubToken({
+        code,
+        state: stateId,
+        redirectUri: stateRow.redirectUri,
+      });
+      const [profile, emails] = await Promise.all([
+        fetchGithubUser(accessToken),
+        fetchGithubEmails(accessToken),
+      ]);
+      const emailInfo = selectGithubEmail(emails);
+      const account = getOrCreateProviderAccount({
+        provider: "github",
+        providerUserId: String(profile.id),
+        username: profile.login || "",
+        displayName: profile.name || profile.login || "GitHub",
+        profileUrl: profile.html_url || "",
+        emailInfo,
+      });
+      const created = createAccountSession(account, { provider: "github", assurance: "medium" });
+
+      recordAuthEvent({
+        accountId: account.id,
+        eventType: "github_oauth_verified",
+        provider: "github",
+        email: emailInfo?.email ? maskEmail(emailInfo.email) : "",
+        decision: "session_issued",
+        metadata: {
+          username: profile.login || "",
+          providerUserId: String(profile.id),
+          emailVerified: emailInfo?.verified === true,
+        },
+      });
+
+      return {
+        status: 302,
+        sessionId: created.sessionId,
+        clearOAuthState: {
+          provider: "github",
+        },
+        redirectLocation: safeRedirectPath(stateRow.redirectPath || "/"),
+        body: {
+          ok: true,
+          action: "github_auth_callback",
+          message: "Signed in with GitHub.",
+          session: created.session,
+        },
+      };
+    } catch (error) {
+      recordAuthEvent({
+        eventType: "github_oauth_failed",
+        provider: "github",
+        decision: error?.message || "github_callback_failed",
+      });
+      return actionResponse({
+        status: error?.status || 502,
+        error: "github_callback_failed",
+        action: "github_auth_callback",
+        message: "GitHub login could not be completed.",
+        actionRequired:
+          error?.message || "Check GitHub OAuth app callback configuration and retry.",
+      });
+    }
   }
 
   return {
@@ -1162,8 +1437,7 @@ export function readiness() {
       emailDeliveryMode: emailStatus.mode,
       launchReady: false,
       blockers: [
-        "External auth start routes are contract-only and disabled",
-        "OAuth and bot callback handlers are not implemented",
+        "Telegram, Discord, X, and bot callback handlers are not implemented",
         "Canonical account merge rules are not implemented",
         ...(emailStatus.enabled ? [] : [emailStatus.actionRequired]),
       ],

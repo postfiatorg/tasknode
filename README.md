@@ -19,17 +19,18 @@ minimal deployable dev app:
   backed for now so real PFTasks/PFTL integrations can replace it behind a
   stable boundary.
 - `/api/auth/providers` and `/api/readiness` expose non-secret integration
-  readiness. Email code login is implemented as the first low-assurance account
-  path; OAuth providers remain disabled until callbacks, account merge rules,
-  and wallet custody boundaries are implemented.
+  readiness. Email code login and GitHub OAuth are implemented as the first
+  account paths; Telegram, Discord, and X remain disabled until callbacks,
+  account merge rules, and wallet custody boundaries are implemented.
 - `/api/auth/email/start` and `/api/auth/email/verify` implement one-time email
   code login. Codes are hashed server-side, expire quickly, are single-use, and
   issue httpOnly cookie sessions after verification. Local/dev environments can
   use development delivery for smoke testing; production should configure
   `TASKNODE_AUTH_SECRET` and a transactional email provider.
 - `/api/auth/start/:provider` and `/api/auth/callback/:provider` are present as
-  contract endpoints. They return structured disabled or unimplemented responses
-  until provider-specific auth flows are reviewed and enabled.
+  contract endpoints. GitHub starts a real OAuth flow when configured. Other
+  providers return structured disabled or unimplemented responses until their
+  callbacks are reviewed and enabled.
 - `/api/auth/dev/start`, `/api/auth/logout`, and `/api/session` provide the
   first cookie-backed account session boundary for development environments.
   This is not a production auth provider; it exists so the account-first app can
