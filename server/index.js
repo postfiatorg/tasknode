@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
+import { fetchPftBalance } from "./pftl-balance.js";
 import {
   authCallback,
   authDevStart,
@@ -34,6 +35,7 @@ import {
   conversationIdForSession,
   destroySession,
   getChatMessages,
+  getLinkedWallet,
   getSession,
   listChatConversations,
   sessionCookieName,
@@ -519,6 +521,33 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/wallet") {
     json(res, 200, state.wallet);
+    return true;
+  }
+
+  if (url.pathname === "/api/wallet/balance") {
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "wallet_login_required",
+        message: "Sign in before reading a linked wallet balance.",
+      });
+      return true;
+    }
+
+    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    if (linkedWallet.status !== "linked" || !linkedWallet.address) {
+      json(res, 409, {
+        ok: false,
+        error: "wallet_not_linked",
+        message: "Link a PFT wallet before reading a balance.",
+      });
+      return true;
+    }
+
+    const result = await fetchPftBalance(linkedWallet.address, {
+      force: url.searchParams.get("force") === "1",
+    });
+    json(res, result.status || (result.ok ? 200 : 502), result);
     return true;
   }
 

@@ -66,6 +66,37 @@ stored in server state, printed, logged, or committed.
   but they must not claim a legacy wallet without wallet proof.
 - Provider/wallet identity conflicts never auto-merge.
 
+## Balance Read Boundary
+
+PFT balance reads are account-scoped, not seed-scoped.
+
+- The browser may request `GET /api/wallet/balance`, but the server only reads
+  the wallet already linked to the current signed-in account.
+- Balance reads do not require wallet unlock, do not use the encrypted local
+  seed vault, and must never request mnemonic, private key, or wallet password
+  material.
+- The canonical read is PFTL native `account_info` with
+  `ledger_index: "validated"` against the linked classic address. PFTL uses the
+  native balance field in drops; do not read PFT through trust lines or
+  transaction-history arithmetic.
+- Prefer WSS endpoints for the hot path (`PFTL_WSS_URL`, then
+  `PFTL_WSS_URL_FALLBACKS`). Use JSON-RPC (`PFTL_RPC_URL`, then
+  `PFTL_RPC_URL_FALLBACKS`) only as fallback/provenance.
+- The server should reuse healthy WSS clients instead of opening a new socket
+  for every balance read.
+- Internal or API-keyed endpoints may use `PFTL_RPC_API_KEY`; never expose that
+  key to the browser. Public fallback hosts are acceptable for degraded reads.
+- Local balance nodes may use self-signed WSS certificates. Permit that only in
+  server-side configuration with `PFTL_WSS_REJECT_UNAUTHORIZED=false`; never put
+  this behind a browser-exposed `VITE_*` variable.
+- The local machine node is appropriate for current balance reads even if it has
+  limited ledger history. Do not reuse that current-balance path for historical
+  context, transaction, or archive pulls.
+- The UI must show a checking/error state while the live read is unresolved. Do
+  not initialize a linked wallet to a fake zero balance.
+- Cache validated balance reads briefly, currently 15 seconds, so the app can
+  poll without hammering the rapid balance node.
+
 ## Client State Hazards
 
 The most common jank source is stale client auth state after a cookie changes.
@@ -120,6 +151,9 @@ Every wallet/auth change should preserve these tests:
 - local vault lock/unlock works after a reload;
 - API smoke covers signed-in `/api/wallet/link/start` and
   `/api/wallet/link/verify`;
+- linked wallet balances are read through `GET /api/wallet/balance` and remain
+  in checking/error state instead of falling back to a fake zero when PFTL is
+  unavailable;
 - frame smoke captures the signed-out login redirect and the signed-in link
   flow.
 

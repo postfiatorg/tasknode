@@ -32,6 +32,10 @@ Behavior:
   `tasknodeofficial_dev_data`.
 - dev auth is enabled.
 - cookies are localhost cookies, not Fly HTTPS cookies.
+- wallet balance reads use the same rapid PFTL host PFTasks uses on this
+  machine by default: `wss://178.156.143.199:6005` first with local
+  self-signed TLS allowed, then `http://178.156.143.199:5005` fallback. This is
+  a current-balance path, not a historical ledger/archive pull path.
 
 Local GitHub OAuth:
 
@@ -56,6 +60,7 @@ Verify:
 ```bash
 curl -s http://localhost:8080/health
 SMOKE_BASE_URL=http://127.0.0.1:5174 npm run smoke
+npm run wallet-balance-smoke
 ```
 
 Logs:

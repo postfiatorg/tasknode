@@ -258,6 +258,7 @@ const EMPTY_WALLET_VAULT_STATUS = {
   publicKey: null,
   lastUnlockedAt: null,
 };
+const WALLET_BALANCE_REFRESH_MS = 15000;
 
 function viewFromLocation() {
   if (typeof window === "undefined") return "chat";
@@ -350,7 +351,7 @@ function App() {
 
   const recentChats = buildRecentChats(appState?.chat?.recents || []);
   const activeChatId = activeChat?.conversationId || activeChat?.id || "";
-  const pftBalance = formatDrops(appState?.wallet?.pftBalanceDrops || 0);
+  const pftBalance = formatPftBalance(appState?.wallet);
   const chatCredit = formatUsd(appState?.usage?.availableCreditUsd || 0);
   const session = appState?.session;
   const signedIn = isSignedInSession(session);
@@ -358,6 +359,10 @@ function App() {
   const profileInitials = profileAvatarText(session);
   const profileSubtext = profileSessionText(session);
   const walletAccountId = signedIn ? session?.accountId || "" : "";
+  const linkedWalletAddress =
+    signedIn && appState?.wallet?.pftWallet?.status === "linked"
+      ? appState.wallet.pftWallet.address || ""
+      : "";
 
   const lockWalletVault = useCallback(() => {
     walletSecretRef.current = null;
@@ -519,6 +524,35 @@ function App() {
   useEffect(() => {
     refreshWalletVaultStatus({ preserveUnlock: true });
   }, [refreshWalletVaultStatus]);
+
+  useEffect(() => {
+    if (!signedIn || !linkedWalletAddress) return undefined;
+
+    let active = true;
+
+    async function refreshWalletBalance({ force = false } = {}) {
+      setAppState((current) => markWalletBalanceChecking(current, linkedWalletAddress));
+
+      try {
+        const result = await requestJson(`/api/wallet/balance${force ? "?force=1" : ""}`);
+        if (!active) return;
+        setAppState((current) => applyWalletBalanceResult(current, linkedWalletAddress, result));
+      } catch (error) {
+        if (!active) return;
+        setAppState((current) =>
+          applyWalletBalanceError(current, linkedWalletAddress, error?.message || "Balance read failed.")
+        );
+      }
+    }
+
+    refreshWalletBalance({ force: true });
+    const timer = window.setInterval(() => refreshWalletBalance(), WALLET_BALANCE_REFRESH_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [signedIn, linkedWalletAddress]);
 
   async function refreshAppState() {
     try {
@@ -2201,7 +2235,7 @@ function WalletView({
   const vaultAvailable = Boolean(walletVault?.available && walletVault?.address === linkedWallet.address);
   const vaultUnlocked = Boolean(vaultAvailable && walletVault?.unlocked);
   const signedIn = isSignedInSession(session);
-  const pftBalance = formatDrops(wallet?.pftBalanceDrops || 0);
+  const pftBalance = formatPftBalance(wallet);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -2316,11 +2350,22 @@ function WalletView({
             </button>
           </div>
           <div className="wallet-flow">
-            <span><strong>+47,200</strong> in this week</span>
-            <span className="dot">.</span>
-            <span><strong>-3,840</strong> out</span>
-            <span className="dot">.</span>
-            <span><strong>12</strong> transactions</span>
+            <span>
+              <strong>{walletBalanceSourceLabel(wallet)}</strong>{" "}
+              {walletLinked ? "validated balance" : "balance unavailable"}
+            </span>
+            {walletLinked && wallet?.pftBalanceEndpointHost && (
+              <>
+                <span className="dot">.</span>
+                <span>{wallet.pftBalanceEndpointHost}</span>
+              </>
+            )}
+            {walletLinked && wallet?.pftBalanceError && (
+              <>
+                <span className="dot">.</span>
+                <span>{wallet.pftBalanceError}</span>
+              </>
+            )}
           </div>
         </section>
 
@@ -4083,8 +4128,84 @@ function StatusBanner({ children, tone = "default" }) {
   return <div className={`status-banner ${tone}`}>{children}</div>;
 }
 
+function sameLinkedWallet(current, address) {
+  return current?.wallet?.pftWallet?.status === "linked" && current.wallet.pftWallet.address === address;
+}
+
+function markWalletBalanceChecking(current, address) {
+  if (!sameLinkedWallet(current, address)) return current;
+
+  return {
+    ...current,
+    wallet: {
+      ...current.wallet,
+      pftBalanceStatus: current.wallet.pftBalanceDrops == null ? "checking" : current.wallet.pftBalanceStatus,
+      pftBalanceError: "",
+    },
+  };
+}
+
+function applyWalletBalanceResult(current, address, result) {
+  if (!sameLinkedWallet(current, address)) return current;
+
+  if (!result?.ok || !result.body?.ok) {
+    return applyWalletBalanceError(
+      current,
+      address,
+      result?.body?.message || result?.body?.error || "Balance read failed."
+    );
+  }
+
+  return {
+    ...current,
+    wallet: {
+      ...current.wallet,
+      pftBalanceDrops: result.body.balanceDrops,
+      pftBalanceStatus: "ready",
+      pftBalanceSource: result.body.source || "",
+      pftBalanceFetchedAt: result.body.fetchedAt || new Date().toISOString(),
+      pftBalanceEndpointHost: result.body.endpointHost || "",
+      pftBalanceAccountExists: result.body.accountExists !== false,
+      pftBalanceError: "",
+    },
+  };
+}
+
+function applyWalletBalanceError(current, address, message) {
+  if (!sameLinkedWallet(current, address)) return current;
+
+  return {
+    ...current,
+    wallet: {
+      ...current.wallet,
+      pftBalanceStatus: "error",
+      pftBalanceError: message,
+    },
+  };
+}
+
+function formatPftBalance(wallet) {
+  const drops = wallet?.pftBalanceDrops;
+  if (drops === null || drops === undefined || drops === "") {
+    if (wallet?.pftBalanceStatus === "error") return "Unavailable";
+    if (wallet?.pftBalanceStatus === "checking") return "Checking";
+    return "0";
+  }
+
+  return formatDrops(drops);
+}
+
+function walletBalanceSourceLabel(wallet) {
+  if (wallet?.pftBalanceStatus === "checking") return "Checking";
+  if (wallet?.pftBalanceStatus === "error") return "Unavailable";
+  if (wallet?.pftBalanceSource === "pftl_wss") return "Live WSS";
+  if (wallet?.pftBalanceSource === "pftl_rpc") return "RPC fallback";
+  return "PFTL";
+}
+
 function formatDrops(value) {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
+  const numeric = Number(value || 0) / 1_000_000;
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(numeric);
 }
 
 function formatUsd(value) {

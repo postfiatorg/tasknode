@@ -36,6 +36,30 @@ http://localhost:5174/api/app-state
 http://localhost:8080/health
 ```
 
+## Local PFTL Balance Reads
+
+`docker-compose.dev.yml` points wallet balance reads at the same rapid PFTL host
+PFTasks uses on this machine:
+
+```text
+PFTL_WSS_URL=wss://178.156.143.199:6005
+PFTL_WSS_REJECT_UNAUTHORIZED=false
+PFTL_RPC_URL=http://178.156.143.199:5005
+```
+
+The balance endpoint uses WSS first, then falls back to JSON-RPC:
+
+```text
+http://localhost:5174/api/wallet/balance
+```
+
+The endpoint requires a signed-in session with a linked wallet, so a plain curl
+without cookies should return `wallet_login_required`.
+
+Use this local node for current balances only. It intentionally has less ledger
+history than the canonical public Post Fiat endpoints, so historical transaction
+or context pulls should keep their archive/index-first path.
+
 ## Edit Loop
 
 - Frontend edits in `src/` hot reload through Vite.

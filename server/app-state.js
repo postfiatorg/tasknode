@@ -56,6 +56,7 @@ export function appState(session = null) {
   const conversationId = conversationIdForSession(session);
   const usage = usageSummary({ accountId: session?.accountId, conversationId });
   const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
+  const walletLinked = linkedWallet.status === "linked" && Boolean(linkedWallet.address);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -108,7 +109,11 @@ export function appState(session = null) {
       ],
     },
     wallet: {
-      pftBalanceDrops: 0,
+      pftBalanceDrops: walletLinked ? null : 0,
+      pftBalanceStatus: walletLinked ? "checking" : "not_linked",
+      pftBalanceSource: null,
+      pftBalanceFetchedAt: null,
+      pftBalancePath: "/api/wallet/balance",
       lifecycle: {
         oneWalletPerAccount: true,
         delinkForTestingRequired: true,

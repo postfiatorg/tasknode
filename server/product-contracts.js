@@ -37,6 +37,10 @@ function hasAll(keys) {
   return keys.every((key) => Boolean(process.env[key]));
 }
 
+function hasAny(keys) {
+  return keys.some((key) => Boolean(process.env[key]));
+}
+
 function currentEnvironment() {
   return process.env.TASKNODE_ENV || process.env.NODE_ENV || "development";
 }
@@ -1909,8 +1913,16 @@ export function readiness() {
       ],
     },
     wallet: {
-      pftlRpcConfigured: hasAll(["PFTL_RPC_URL"]),
+      pftlRpcConfigured: hasAny(["PFTL_RPC_URL", "PFTL_RPC_URL_FALLBACKS"]),
+      pftlWssConfigured: hasAny(["PFTL_WSS_URL", "VITE_PFTL_WSS_URL", "PFTL_WSS_URL_FALLBACKS"]),
       pftlRpcAuthConfigured: hasAll(["PFTL_RPC_API_KEY"]),
+      balanceReadReady: hasAny([
+        "PFTL_WSS_URL",
+        "VITE_PFTL_WSS_URL",
+        "PFTL_WSS_URL_FALLBACKS",
+        "PFTL_RPC_URL",
+        "PFTL_RPC_URL_FALLBACKS",
+      ]),
       challengeProofReady: true,
       seedStorageReady: true,
       lifecycleActionsReady: false,
