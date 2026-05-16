@@ -109,7 +109,7 @@ async function main() {
 
     await clickSelector(".profile-button");
     await clickSelector(".profile-menu-header");
-    await assertText(["Log in or sign up", "Continue with Telegram", "Continue with Discord", "Continue with X"]);
+    await assertText(["Log in or sign up", "Continue with Telegram", "Continue with Discord", "Continue with X", "Continue with GitHub"]);
     await assertSelector('input[placeholder="Email address"]');
     await capture("13-login");
 

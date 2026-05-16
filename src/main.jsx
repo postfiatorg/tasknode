@@ -20,6 +20,7 @@ import {
   FileText,
   Flag,
   Flame,
+  Github,
   HelpCircle,
   LifeBuoy,
   Lightbulb,
@@ -1840,7 +1841,7 @@ function themeLabel(theme) {
 
 function LoginDialog({ session, onClose, onSessionChange }) {
   const providers = (session?.accountLinks || []).filter((provider) =>
-    ["telegram", "discord", "x"].includes(provider.id)
+    ["telegram", "discord", "x", "github"].includes(provider.id)
   );
   const emailProvider = (session?.accountLinks || []).find((provider) => provider.id === "email");
   const devAuth = session?.devAuth;
@@ -2071,6 +2072,7 @@ function LoginDialog({ session, onClose, onSessionChange }) {
 }
 
 function ProviderIcon({ id }) {
+  if (id === "github") return <Github size={20} strokeWidth={1.9} />;
   if (id === "telegram") return <span className="provider-icon telegram">T</span>;
   if (id === "discord") return <span className="provider-icon discord">D</span>;
   return <span className="provider-icon x-provider">X</span>;

@@ -496,6 +496,14 @@ export function authProviders() {
       note:
         "Useful for pseudonymous identity and public profile continuity. OAuth callback wiring is not active yet.",
     }),
+    provider({
+      id: "github",
+      label: "GitHub",
+      kind: "oauth",
+      requiredEnv: ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "GITHUB_REDIRECT_URI"],
+      note:
+        "Required for legacy PFTasks account continuity. OAuth callback wiring is not active yet.",
+    }),
     emailProvider(),
   ];
 }

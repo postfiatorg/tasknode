@@ -11,7 +11,7 @@ minimal deployable dev app:
 
 - `product_spec.md` contains the initial product direction and migration notes.
 - `jsx_mock.jsx` contains a React mock for a ChatGPT-style Task Node interface with Tasks, Wallet, Context, Profile, Settings, and PFT balance surfaces.
-- `login.jsx` contains a standalone login/sign-up modal mock with Telegram, Discord, X, and email entry options.
+- `login.jsx` contains a standalone login/sign-up modal mock with Telegram, Discord, X, GitHub, and email entry options.
 - `src/` and `server/` contain the first thin React shell and Node static server.
 - `fly.toml` deploys the dev app to `tasknodeofficial-dev` on Fly.io.
 - `/api/app-state` is the first server-owned product contract for session,

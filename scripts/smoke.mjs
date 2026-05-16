@@ -446,6 +446,7 @@ await check("/api/auth/providers", (response, text) => {
   return (
     Array.isArray(body.providers) &&
     body.providers.some((provider) => provider.id === "telegram") &&
+    body.providers.some((provider) => provider.id === "github") &&
     body.providers.some((provider) => provider.id === "email" && provider.startPath === "/api/auth/email/start" && provider.verifyPath === "/api/auth/email/verify") &&
     nonEmailProviders.every((provider) => provider.startPath && provider.callbackPath) &&
     nonEmailProviders.every((provider) => provider.enabled === false)
@@ -453,6 +454,14 @@ await check("/api/auth/providers", (response, text) => {
 });
 
 await check("/api/auth/start/telegram", (response, text) => {
+  const body = JSON.parse(text);
+  return (
+    [409, 503].includes(response.status) &&
+    ["auth_provider_not_configured", "auth_provider_disabled"].includes(body.error)
+  );
+});
+
+await check("/api/auth/start/github", (response, text) => {
   const body = JSON.parse(text);
   return (
     [409, 503].includes(response.status) &&

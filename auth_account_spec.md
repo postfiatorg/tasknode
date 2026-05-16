@@ -61,14 +61,13 @@ External primary security references:
 ## Product Decisions
 
 1. `login.jsx` is the canonical primary login surface.
-   The visible first-class options are Telegram, Discord, X, and email, in that
-   order. The modal should keep the ChatGPT-style email-first continuation flow.
+   The visible first-class options are Telegram, Discord, X, GitHub, and email,
+   in that order. The modal should keep the ChatGPT-style email continuation
+   flow.
 
-2. GitHub remains a legacy account-claim path.
-   PFTasks has real GitHub-linked users. Because `login.jsx` does not show a
-   GitHub button, GitHub should not be added to the primary modal without a
-   product mock change. It should be available through a legacy recovery/claim
-   path until the migration is complete.
+2. GitHub is a first-class login provider.
+   PFTasks has real GitHub-linked users. GitHub must remain visible in the
+   primary modal so legacy users do not have to discover a hidden recovery path.
 
 3. Provider logins are access and continuity signals, not punitive gates.
    Legacy sybil checks and provider metrics should inform trust, rewards,
@@ -151,19 +150,17 @@ The primary modal mirrors `login.jsx`:
 1. Telegram button
 2. Discord button
 3. X button
-4. OR divider
-5. Email address input
-6. Continue button
+4. GitHub button
+5. OR divider
+6. Email address input
+7. Continue button
 
 Expected behavior:
 
-- Clicking Telegram, Discord, or X starts provider auth if configured.
+- Clicking Telegram, Discord, X, or GitHub starts provider auth if configured.
 - Provider callbacks either resume an account, create an account, or enter a
   claim/conflict step.
 - The email field starts the email-code flow.
-- GitHub is not visible in the primary modal. It exists behind account recovery
-  copy such as "Recover a legacy GitHub account" on a secondary recovery route,
-  not in the first modal unless the product mock changes.
 - After sign-in, the app returns to the same chat frame and server-owned account
   state refreshes.
 
@@ -237,8 +234,8 @@ Launch order:
 2. Discord auth, because it supports chat continuity and bot consolidation.
 3. X auth, because it is canonical in `login.jsx` and important for legacy
    PFTasks users.
-4. Legacy GitHub claim route, because old PFTasks users may depend on it even
-   though it is not a primary visible provider.
+4. GitHub auth, because old PFTasks users may depend on it for account
+   continuity.
 
 ## Wallet Claim Direction
 
@@ -339,8 +336,8 @@ Migration tables/views:
    Create the minimal schema above, sessions, and append-only claim events.
 
 3. Implement provider auth starts/callbacks.
-   Start with Telegram/Discord/X visible paths. Keep GitHub as secondary legacy
-   recovery until the migration no longer needs it.
+   Start with Telegram/Discord/X/GitHub visible paths, matching the primary
+   login modal.
 
 4. Implement email-code login.
    It creates/resumes low-assurance accounts. It does not claim legacy wallet
@@ -366,8 +363,8 @@ Migration tables/views:
 - A new user can create an account with email and chat without a PFT wallet.
 - A legacy X user can sign in and recover their legacy account.
 - A legacy Telegram/Discord user can sign in if the provider identity exists.
-- A legacy GitHub-only user has a recovery/claim path even though GitHub is not
-  in the primary modal.
+- A legacy GitHub-only user can start account recovery from the primary login
+  modal.
 - A user with a 24-word recovery phrase can prove wallet ownership without
   sending the mnemonic to the server.
 - Email-only login cannot accidentally steal a wallet-linked legacy account.
@@ -386,7 +383,7 @@ Migration tables/views:
 - Provider exact match resumes the same account.
 - Wallet challenge proof claims the matching legacy wallet account.
 - Provider/wallet mismatch enters conflict state.
-- GitHub legacy claim is available outside the primary login modal.
+- GitHub login is visible in the primary login modal.
 - Last-login-method unlink is blocked.
 - Delink is blocked during pending payout or wallet action.
 - Local wallet restore never posts mnemonic/private key to the API.
@@ -399,7 +396,8 @@ Migration tables/views:
 - Should passkeys/WebAuthn be added immediately after email login or deferred
   until after provider/wallet migration?
 - What is the exact support process for claim conflicts?
-- What date cuts over GitHub from "legacy claim" to "support-only claim"?
+- What date, if any, cuts over GitHub from first-class login to support-only
+  claim?
 - Which legacy emails are trustworthy enough to import as verified?
 - What account deletion policy preserves wallet/payment audit history while
   honoring deletion requests?
