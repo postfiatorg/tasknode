@@ -17,20 +17,25 @@ is intentionally not live yet.
 3. `DOCKER_DEV.md`
    Local Docker dev loop for rapid iteration without Fly deploys.
 
-4. `DEPLOYMENT.md`
+4. `PFTL_TASK_ENGINE_SPEC.md`
+   Proposed on-chain-first task engine, PFTasks deprecation rationale,
+   pointer-native lifecycle, wallet provisioning, cache strategy, and
+   portability target for Codex/CLI clients.
+
+5. `DEPLOYMENT.md`
    Local Docker dev, local production Docker, and Fly release deployment paths.
 
-5. `../full_spec.md`
+6. `../full_spec.md`
    Product/architecture source of truth and active burndown.
 
-6. `../auth_account_spec.md`
+7. `../auth_account_spec.md`
    Auth, provider linking, wallet claim, email login, and delink/relink design.
 
-7. `AUTH_WALLET_BOUNDARY.md`
+8. `AUTH_WALLET_BOUNDARY.md`
    Concrete implementation guardrails for wallet auth UX, session refresh,
    wallet proof, local vault state, and regression coverage.
 
-8. `../whip_context.md`
+9. `../whip_context.md`
    Automation handoff instructions and whip shutdown guardrails.
 
 ## Source Of Truth Rules
