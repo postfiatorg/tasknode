@@ -35,11 +35,13 @@ import {
 import { executeChatStream } from "./chat-router.js";
 import {
   conversationIdForSession,
+  deleteChatConversation,
   destroySession,
   getChatMessages,
   getLinkedWallet,
   getSession,
   listChatConversations,
+  renameChatConversation,
   sessionCookieName,
   sessionTtlSeconds,
   usageLedger,
@@ -421,6 +423,37 @@ async function routeApi(req, url, res) {
         limit: url.searchParams.get("limit") || 30,
       }),
     });
+    return true;
+  }
+
+  if (url.pathname === "/api/chat/conversation") {
+    if (req.method !== "PATCH" && req.method !== "DELETE") {
+      json(res, 405, {
+        ok: false,
+        error: "chat_conversation_method_not_allowed",
+        message: "Chat conversation updates require PATCH or DELETE.",
+      });
+      return true;
+    }
+
+    const payload = await readJson(req);
+    const conversationId = conversationIdForSession(
+      session,
+      payload?.conversationId || payload?.id || ""
+    );
+    const action =
+      req.method === "PATCH"
+        ? renameChatConversation({
+            accountId: session?.accountId || "",
+            conversationId,
+            title: payload?.title || "",
+          })
+        : deleteChatConversation({
+            accountId: session?.accountId || "",
+            conversationId,
+          });
+
+    json(res, action.ok ? 200 : action.status || 400, action);
     return true;
   }
 

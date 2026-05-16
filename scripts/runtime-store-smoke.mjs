@@ -18,11 +18,14 @@ try {
   const {
     appendUsageCredit,
     appendChatTurn,
+    deleteChatConversation,
     delinkWalletFromAccount,
     getContextDocument,
     getContextHistory,
     getLinkedWallet,
     linkWalletToAccount,
+    listChatConversations,
+    renameChatConversation,
     saveContextDocument,
     saveIndexedContextHistory,
     usageSummary,
@@ -150,6 +153,45 @@ try {
     throw new Error(
       `Usage debit did not affect available balance: ${JSON.stringify({ persistedChat, debitedSummary })}`
     );
+  }
+
+  appendChatTurn({
+    accountId: "acct_runtime_smoke",
+    conversationId: "account_acct_runtime_smoke_mutation",
+    mode: "Frontier Instant",
+    provider: "openai",
+    model: "chat-latest",
+    responseId: "runtime-smoke-mutation",
+    userMessage: "Rename this chat.",
+    assistantMessage: "Ready.",
+    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
+  });
+
+  const renamedChat = renameChatConversation({
+    accountId: "acct_runtime_smoke",
+    conversationId: "account_acct_runtime_smoke_mutation",
+    title: "Renamed runtime smoke chat",
+  });
+  const renamedList = listChatConversations({ accountId: "acct_runtime_smoke" });
+
+  if (
+    !renamedChat.ok ||
+    !renamedList.some((chat) => chat.conversationId === "account_acct_runtime_smoke_mutation" && chat.title === "Renamed runtime smoke chat")
+  ) {
+    throw new Error(`Chat rename did not persist: ${JSON.stringify({ renamedChat, renamedList })}`);
+  }
+
+  const deletedChat = deleteChatConversation({
+    accountId: "acct_runtime_smoke",
+    conversationId: "account_acct_runtime_smoke_mutation",
+  });
+  const deletedList = listChatConversations({ accountId: "acct_runtime_smoke" });
+
+  if (
+    !deletedChat.ok ||
+    deletedList.some((chat) => chat.conversationId === "account_acct_runtime_smoke_mutation")
+  ) {
+    throw new Error(`Chat delete did not remove the conversation: ${JSON.stringify({ deletedChat, deletedList })}`);
   }
 
   const savedContext = saveContextDocument({

@@ -105,6 +105,10 @@ function chatTitleFromPrompt(prompt) {
   return title || "New chat";
 }
 
+function chatTitleFromUserInput(title) {
+  return String(title || "").trim().replace(/\s+/g, " ").slice(0, 80);
+}
+
 function messagePreview(message) {
   return String(message?.body || message?.text || message?.content || "")
     .trim()
@@ -221,6 +225,74 @@ export function listChatConversations({ accountId = "", limit = 30 } = {}) {
     lastMessagePreview: meta.lastMessagePreview,
     messageCount: meta.messageCount,
   }));
+}
+
+function chatConversationMutationTarget({ accountId = "", conversationId = "" } = {}) {
+  const id = String(conversationId || "").trim();
+  if (!id || !state.conversations[id]) {
+    return { ok: false, status: 404, error: "chat_conversation_not_found" };
+  }
+
+  const normalizedAccountId = accountId ? safeId(accountId, "account") : "";
+  const accountPrefix = normalizedAccountId ? `account_${normalizedAccountId}_` : "";
+  const meta = ensureConversationMeta(
+    id,
+    normalizedAccountId && id.startsWith(accountPrefix) ? normalizedAccountId : ""
+  );
+  const ownerAccountId = meta.accountId || inferAccountIdFromConversationId(id) || "";
+
+  if (normalizedAccountId) {
+    if (ownerAccountId !== normalizedAccountId) {
+      return { ok: false, status: 404, error: "chat_conversation_not_found" };
+    }
+  } else if (ownerAccountId || id.startsWith("account_")) {
+    return { ok: false, status: 404, error: "chat_conversation_not_found" };
+  }
+
+  return { ok: true, id, meta };
+}
+
+export function renameChatConversation({ accountId = "", conversationId = "", title = "" } = {}) {
+  const target = chatConversationMutationTarget({ accountId, conversationId });
+  if (!target.ok) return target;
+
+  const normalizedTitle = chatTitleFromUserInput(title);
+  if (!normalizedTitle) {
+    return { ok: false, status: 400, error: "chat_title_required" };
+  }
+
+  const now = new Date().toISOString();
+  state.conversationMeta[target.id] = {
+    ...target.meta,
+    title: normalizedTitle,
+    updatedAt: now,
+  };
+  saveState();
+
+  return {
+    ok: true,
+    conversation: {
+      id: target.id,
+      conversationId: target.id,
+      title: normalizedTitle,
+      updatedAt: now,
+    },
+  };
+}
+
+export function deleteChatConversation({ accountId = "", conversationId = "" } = {}) {
+  const target = chatConversationMutationTarget({ accountId, conversationId });
+  if (!target.ok) return target;
+
+  delete state.conversations[target.id];
+  delete state.conversationMeta[target.id];
+  saveState();
+
+  return {
+    ok: true,
+    conversationId: target.id,
+    deleted: true,
+  };
 }
 
 function sessionPayload(session) {

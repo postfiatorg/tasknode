@@ -56,6 +56,7 @@ import {
   SquarePen,
   Store,
   Table,
+  Trash2,
   Trophy,
   Unlock,
   Unlink,
@@ -306,12 +307,16 @@ function App() {
   const [chatResetKey, setChatResetKey] = useState(0);
   const [chatSelectionKey, setChatSelectionKey] = useState(0);
   const [chatShareRequestKey, setChatShareRequestKey] = useState(0);
+  const [chatActionMenu, setChatActionMenu] = useState(null);
+  const [chatRenameTarget, setChatRenameTarget] = useState(null);
+  const [chatDeleteTarget, setChatDeleteTarget] = useState(null);
   const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
   const [appState, setAppState] = useState(null);
   const [walletVaultStatus, setWalletVaultStatus] = useState(EMPTY_WALLET_VAULT_STATUS);
   const [loadError, setLoadError] = useState("");
   const profileRef = useRef(null);
   const moreRef = useRef(null);
+  const chatActionRef = useRef(null);
   const walletSecretRef = useRef(null);
 
   useEffect(() => {
@@ -339,6 +344,9 @@ function App() {
       }
       if (moreRef.current && !moreRef.current.contains(event.target)) {
         setMoreMenuOpen(false);
+      }
+      if (chatActionRef.current && !chatActionRef.current.contains(event.target)) {
+        setChatActionMenu(null);
       }
     }
 
@@ -491,6 +499,7 @@ function App() {
   const navigateToView = useCallback((nextView, options = {}) => {
     const normalizedView = APP_VIEWS.has(nextView) ? nextView : "chat";
     setView(normalizedView);
+    setChatActionMenu(null);
     setMoreMenuOpen(false);
     setProfileMenuOpen(false);
     setSettingsOpen(false);
@@ -501,6 +510,7 @@ function App() {
 
   const startNewChat = useCallback(() => {
     setActiveChat(null);
+    setChatActionMenu(null);
     setChatResetKey((key) => key + 1);
     navigateToView("chat");
   }, [navigateToView]);
@@ -508,6 +518,7 @@ function App() {
   const openRecentChat = useCallback(
     (chat) => {
       setActiveChat(chat);
+      setChatActionMenu(null);
       setChatSelectionKey((key) => key + 1);
       navigateToView("chat");
     },
@@ -588,9 +599,55 @@ function App() {
     setProfileMenuOpen(false);
   }
 
+  async function renameRecentChat(chat, title) {
+    const conversationId = chat?.conversationId || chat?.id || "";
+    const result = await requestJson("/api/chat/conversation", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ conversationId, title }),
+    });
+
+    if (!result.ok || !result.body?.ok) {
+      throw new Error(result.body?.error || result.body?.message || "Could not rename this chat.");
+    }
+
+    const nextTitle = result.body.conversation?.title || title;
+    setActiveChat((current) =>
+      current && (current.conversationId || current.id) === conversationId
+        ? { ...current, title: nextTitle }
+        : current
+    );
+    setChatRenameTarget(null);
+    setChatActionMenu(null);
+    await refreshAppState();
+  }
+
+  async function deleteRecentChat(chat) {
+    const conversationId = chat?.conversationId || chat?.id || "";
+    const result = await requestJson("/api/chat/conversation", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ conversationId }),
+    });
+
+    if (!result.ok || !result.body?.ok) {
+      throw new Error(result.body?.error || result.body?.message || "Could not delete this chat.");
+    }
+
+    if (activeChatId === conversationId) {
+      setActiveChat(null);
+      setChatResetKey((key) => key + 1);
+      navigateToView("chat");
+    }
+    setChatDeleteTarget(null);
+    setChatActionMenu(null);
+    await refreshAppState();
+  }
+
   function toggleSidebar() {
     setSidebarOpen((open) => {
       if (open) {
+        setChatActionMenu(null);
         setMoreMenuOpen(false);
         setProfileMenuOpen(false);
       }
@@ -701,18 +758,51 @@ function App() {
           <section className="recents" aria-label="Recent chats">
             <div className="section-label">Recents</div>
             {recentChats.length > 0 ? (
-              recentChats.map((item) => (
-                <button
-                  className={activeChatId === (item.conversationId || item.id) ? "active" : ""}
-                  key={item.id}
-                  onClick={() => openRecentChat(item)}
-                  title={item.title}
-                  type="button"
-                >
-                  <span>{item.title}</span>
-                  {item.unread && <i aria-hidden="true" />}
-                </button>
-              ))
+              recentChats.map((item) => {
+                const itemId = item.conversationId || item.id;
+                const menuOpen = chatActionMenu?.id === item.id;
+                return (
+                  <div
+                    className={activeChatId === itemId ? "recent-chat-row active" : "recent-chat-row"}
+                    key={item.id}
+                    ref={menuOpen ? chatActionRef : null}
+                  >
+                    <button
+                      className="recent-chat-open"
+                      onClick={() => openRecentChat(item)}
+                      title={item.title}
+                      type="button"
+                    >
+                      <span>{item.title}</span>
+                      {item.unread && <i aria-hidden="true" />}
+                    </button>
+                    <button
+                      aria-label={`Chat actions for ${item.title}`}
+                      className="recent-chat-more"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setChatActionMenu(menuOpen ? null : item);
+                      }}
+                      title="Chat actions"
+                      type="button"
+                    >
+                      <MoreHorizontal size={16} strokeWidth={1.75} />
+                    </button>
+                    {menuOpen && (
+                      <ChatItemActionMenu
+                        onDelete={() => {
+                          setChatDeleteTarget(item);
+                          setChatActionMenu(null);
+                        }}
+                        onRename={() => {
+                          setChatRenameTarget(item);
+                          setChatActionMenu(null);
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })
             ) : (
               <div className="sidebar-note">No chats yet</div>
             )}
@@ -905,6 +995,20 @@ function App() {
       )}
       {selectedTask && (
         <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />
+      )}
+      {chatRenameTarget && (
+        <RenameChatModal
+          chat={chatRenameTarget}
+          onClose={() => setChatRenameTarget(null)}
+          onSave={(title) => renameRecentChat(chatRenameTarget, title)}
+        />
+      )}
+      {chatDeleteTarget && (
+        <DeleteChatModal
+          chat={chatDeleteTarget}
+          onClose={() => setChatDeleteTarget(null)}
+          onDelete={() => deleteRecentChat(chatDeleteTarget)}
+        />
       )}
     </main>
   );
@@ -1477,6 +1581,142 @@ function buildRecentChats(serverRecents) {
   }
 
   return rows;
+}
+
+function ChatItemActionMenu({ onRename, onDelete }) {
+  return (
+    <div className="chat-action-menu" role="menu">
+      <button
+        aria-disabled="true"
+        className="chat-action-menu-item is-muted"
+        onClick={(event) => event.preventDefault()}
+        role="menuitem"
+        type="button"
+      >
+        <Share size={17} strokeWidth={1.75} />
+        <span>Share</span>
+        <small>Coming soon</small>
+      </button>
+      <button className="chat-action-menu-item" onClick={onRename} role="menuitem" type="button">
+        <Pencil size={17} strokeWidth={1.75} />
+        <span>Rename</span>
+      </button>
+      <div className="chat-action-menu-divider" />
+      <button className="chat-action-menu-item danger" onClick={onDelete} role="menuitem" type="button">
+        <Trash2 size={17} strokeWidth={1.75} />
+        <span>Delete</span>
+      </button>
+    </div>
+  );
+}
+
+function RenameChatModal({ chat, onClose, onSave }) {
+  const [title, setTitle] = useState(chat?.title || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submitRename(event) {
+    event.preventDefault();
+    const nextTitle = title.trim().replace(/\s+/g, " ");
+    if (!nextTitle) {
+      setError("Name the chat before saving.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    try {
+      await onSave(nextTitle);
+    } catch (saveError) {
+      setError(saveError?.message || "Could not rename this chat.");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop chat-edit-backdrop" onClick={onClose} role="presentation">
+      <form
+        aria-labelledby="rename-chat-title"
+        aria-modal="true"
+        className="chat-edit-modal"
+        onClick={(event) => event.stopPropagation()}
+        onSubmit={submitRename}
+        role="dialog"
+      >
+        <header>
+          <h2 id="rename-chat-title">Rename chat</h2>
+          <button aria-label="Close rename" className="chat-edit-close" onClick={onClose} type="button">
+            <X size={18} strokeWidth={1.75} />
+          </button>
+        </header>
+        <input
+          aria-label="Chat name"
+          autoFocus
+          maxLength={80}
+          onChange={(event) => setTitle(event.target.value)}
+          value={title}
+        />
+        {error && <p className="chat-edit-error">{error}</p>}
+        <footer>
+          <button className="ghost-button" disabled={saving} onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="solid-button" disabled={saving} type="submit">
+            <Check size={16} strokeWidth={2} />
+            Save
+          </button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
+function DeleteChatModal({ chat, onClose, onDelete }) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submitDelete() {
+    setDeleting(true);
+    setError("");
+    try {
+      await onDelete();
+    } catch (deleteError) {
+      setError(deleteError?.message || "Could not delete this chat.");
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop chat-edit-backdrop" onClick={onClose} role="presentation">
+      <section
+        aria-labelledby="delete-chat-title"
+        aria-modal="true"
+        className="chat-edit-modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header>
+          <h2 id="delete-chat-title">Delete chat?</h2>
+          <button aria-label="Close delete" className="chat-edit-close" onClick={onClose} type="button">
+            <X size={18} strokeWidth={1.75} />
+          </button>
+        </header>
+        <p className="chat-delete-copy">
+          This removes <strong>{chat?.title || "this chat"}</strong> from your chat history.
+        </p>
+        {error && <p className="chat-edit-error">{error}</p>}
+        <footer>
+          <button className="ghost-button" disabled={deleting} onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="danger-button" disabled={deleting} onClick={submitDelete} type="button">
+            <Trash2 size={16} strokeWidth={2} />
+            Delete
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
 }
 
 function newClientConversationId() {

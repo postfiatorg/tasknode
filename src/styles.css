@@ -54,7 +54,8 @@ button {
 }
 
 .nav-list button,
-.recents button,
+.recent-chat-open,
+.recent-chat-more,
 .profile-button {
   width: 100%;
   min-height: 34px;
@@ -138,7 +139,7 @@ button {
 }
 
 .nav-list button,
-.recents button {
+.recent-chat-open {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -149,7 +150,7 @@ button {
 }
 
 .nav-list button span,
-.recents button span {
+.recent-chat-open span {
   display: block;
   flex: 1 1 auto;
   min-width: 0;
@@ -209,23 +210,111 @@ button {
 
 .nav-list button:hover,
 .nav-list button.active,
-.recents button:hover,
-.recents button.active,
+.recent-chat-row:hover,
+.recent-chat-row.active,
 .profile-button:hover {
   background: rgba(0, 0, 0, 0.05);
 }
 
-.recents button {
-  justify-content: flex-start;
+.recent-chat-row {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  border-radius: 8px;
 }
 
-.recents button i {
+.recent-chat-open {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  background: transparent;
+}
+
+.recent-chat-more {
+  display: inline-flex;
+  justify-content: center;
+  flex: 0 0 30px;
+  width: 30px;
+  min-height: 30px;
+  margin: 2px 3px 2px 0;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.recent-chat-row:hover .recent-chat-more,
+.recent-chat-row.active .recent-chat-more,
+.recent-chat-row:focus-within .recent-chat-more {
+  opacity: 1;
+}
+
+.recent-chat-more:hover {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.recent-chat-open i {
   flex: 0 0 auto;
   margin-left: auto;
   width: 6px;
   height: 6px;
   border-radius: 999px;
   background: #2563eb;
+}
+
+.chat-action-menu {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 30;
+  width: 228px;
+  padding: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.14);
+}
+
+.chat-action-menu .chat-action-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #0d0d0d;
+  font-size: 14px;
+  text-align: left;
+}
+
+.chat-action-menu .chat-action-menu-item:hover {
+  background: #f4f3ee;
+}
+
+.chat-action-menu .chat-action-menu-item.is-muted {
+  color: #6b6b66;
+}
+
+.chat-action-menu .chat-action-menu-item.is-muted:hover {
+  background: transparent;
+}
+
+.chat-action-menu .chat-action-menu-item.danger {
+  color: #dc2626;
+}
+
+.chat-action-menu .chat-action-menu-item small {
+  margin-left: auto;
+  color: #8b8b84;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.chat-action-menu-divider {
+  height: 1px;
+  margin: 5px 4px;
+  background: #e8e6df;
 }
 
 .section-label {
@@ -4694,6 +4783,125 @@ h1 {
 
 .share-modal-close:hover {
   background: rgba(0, 0, 0, 0.05);
+}
+
+.chat-edit-backdrop {
+  z-index: 85;
+}
+
+.chat-edit-modal {
+  display: flex;
+  width: min(420px, 100%);
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+}
+
+.chat-edit-modal header,
+.chat-edit-modal footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat-edit-modal h2 {
+  margin: 0;
+  color: #0d0d0d;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.chat-edit-close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #0d0d0d;
+}
+
+.chat-edit-close:hover {
+  background: #f4f3ee;
+}
+
+.chat-edit-modal input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #d8d5ca;
+  border-radius: 10px;
+  outline: none;
+  color: #0d0d0d;
+  font-size: 15px;
+}
+
+.chat-edit-modal input:focus {
+  border-color: #0d0d0d;
+}
+
+.chat-delete-copy,
+.chat-edit-error {
+  margin: 0;
+  color: #6b6b66;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.chat-delete-copy strong {
+  color: #0d0d0d;
+  font-weight: 600;
+}
+
+.chat-edit-error {
+  color: #dc2626;
+}
+
+.ghost-button,
+.solid-button,
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ghost-button {
+  background: transparent;
+  color: #0d0d0d;
+}
+
+.ghost-button:hover {
+  background: #f4f3ee;
+}
+
+.solid-button {
+  background: #0d0d0d;
+  color: #ffffff;
+}
+
+.danger-button {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.ghost-button:disabled,
+.solid-button:disabled,
+.danger-button:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .wallet-link-modal {
