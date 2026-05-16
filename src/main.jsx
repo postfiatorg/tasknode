@@ -2158,6 +2158,8 @@ function ProfileAvatar({ initials, signedIn }) {
 
 function TasksView({ onSelectTask }) {
   const [tasksTab, setTasksTab] = useState("outstanding");
+  const outstandingCount = MOCK_TASKS.outstanding.length;
+  const totalPft = MOCK_TASKS.outstanding.reduce((sum, task) => sum + task.pft, 0);
   const tabs = [
     { key: "outstanding", label: "Outstanding", count: MOCK_TASKS.outstanding.length },
     { key: "verification", label: "Verification", count: MOCK_TASKS.verification.length },
@@ -2167,19 +2169,23 @@ function TasksView({ onSelectTask }) {
 
   return (
     <div className="route-scroll">
-      <div className="tasks-view">
-        <div className="route-heading">
+      <div className="tasks-view tasks-copy-surface">
+        <div className="tasks-copy-header">
           <div>
             <h1>Tasks</h1>
-            <p>Work proposed, accepted, and verified across the network.</p>
+            <p>
+              <strong>{outstandingCount} outstanding</strong>
+              <span aria-hidden="true">.</span>
+              <span className="task-in-flight">{totalPft.toLocaleString()} PFT in flight</span>
+            </p>
           </div>
-          <button className="dark-pill" type="button">
+          <button className="dark-pill task-request-button" type="button">
             <Plus size={16} strokeWidth={2} />
             Request task
           </button>
         </div>
 
-        <div className="tab-row">
+        <div className="tab-row tasks-copy-tabs">
           {tabs.map((tab) => {
             const active = tasksTab === tab.key;
             return (
@@ -2197,9 +2203,14 @@ function TasksView({ onSelectTask }) {
         </div>
 
         {tasksTab === "outstanding" && (
-          <div className="task-list">
-            {MOCK_TASKS.outstanding.map((task) => (
-              <TaskRow key={task.id} onClick={() => onSelectTask(task)} task={task} />
+          <div className="task-list task-entry-list">
+            {MOCK_TASKS.outstanding.map((task, index) => (
+              <TaskRow
+                isFirst={index === 0}
+                key={task.id}
+                onClick={() => onSelectTask(task)}
+                task={task}
+              />
             ))}
           </div>
         )}
@@ -2229,27 +2240,34 @@ function TasksView({ onSelectTask }) {
   );
 }
 
-function TaskRow({ onClick, task }) {
+function TaskDot() {
+  return <span className="task-dot" aria-hidden="true" />;
+}
+
+function TaskRow({ isFirst, onClick, task }) {
   return (
-    <button className="task-row" onClick={onClick} type="button">
-      <div className="task-row-main">
-        <div className="task-title">{task.title}</div>
-        <div className="task-meta">
-          <span>{task.kind}</span>
-          <StatusPill status={task.status} />
-          <span>.</span>
-          <span>{task.due}</span>
-          <span>.</span>
+    <button className={`task-row task-entry${isFirst ? " is-first" : ""}`} onClick={onClick} type="button">
+      <span className="task-entry-signal">
+        <TaskStatusGlyph status={task.status} />
+      </span>
+      <span className="task-entry-main">
+        <span className="task-title">{task.title}</span>
+        <span className="task-meta">
+          <strong>{task.kind}</strong>
+          <TaskDot />
+          <span className="task-status-text" style={{ color: taskStatusColor(task.status) }}>
+            {task.status}
+          </span>
+          <TaskDot />
+          <span>{task.fullDue}</span>
+          <TaskDot />
           <span>{task.ago}</span>
-        </div>
-        <div className="task-id">
-          <span>ID: {task.id}...</span>
-          <ArrowUpRight size={11} strokeWidth={1.75} />
-        </div>
-      </div>
-      <div className="task-reward">
-        {task.pft.toLocaleString()} <span>PFT</span>
-      </div>
+        </span>
+      </span>
+      <span className="task-reward">
+        <strong>{task.pft.toLocaleString()}</strong>
+        <span>PFT</span>
+      </span>
     </button>
   );
 }
