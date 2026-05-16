@@ -7,17 +7,27 @@ import {
   usageActions,
   walletActions,
 } from "./product-contracts.js";
-import { conversationIdForSession, getChatMessages, usageSummary } from "./runtime-store.js";
+import {
+  conversationIdForSession,
+  getContextDocument,
+  getContextHistory,
+  getChatMessages,
+  getLinkedWallet,
+  listChatConversations,
+  usageSummary,
+} from "./runtime-store.js";
 
-function sessionState(session, providers, runtimeReadiness) {
+function sessionState(session, providers, runtimeReadiness, linkedWallet) {
   const base = {
     accountLinks: providers,
     devAuth: devAuthStatus(),
     walletLink: {
-      status: "not_linked",
+      status: linkedWallet?.status || "not_linked",
+      address: linkedWallet?.address || null,
       mode: "seed_based_pftl",
       canDelinkForTesting: true,
       seedStorageReady: runtimeReadiness.wallet.seedStorageReady,
+      challengeProofReady: runtimeReadiness.wallet.challengeProofReady,
     },
   };
 
@@ -45,18 +55,16 @@ export function appState(session = null) {
   const enabledMode = modes.find((mode) => mode.enabled);
   const conversationId = conversationIdForSession(session);
   const usage = usageSummary({ accountId: session?.accountId, conversationId });
+  const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
 
   return {
     generatedAt: new Date().toISOString(),
-    session: sessionState(session, providers, runtimeReadiness),
+    session: sessionState(session, providers, runtimeReadiness, linkedWallet),
     chat: {
       conversationId,
+      conversationsPath: "/api/chat/conversations",
       historyPath: "/api/chat/history",
-      recents: [
-        "Ship Task Node dev baseline",
-        "Review seed wallet flow",
-        "Draft usage ledger",
-      ],
+      recents: listChatConversations({ accountId: session?.accountId || "" }),
       defaultMode: enabledMode?.label || "Private Instant",
       modes,
       seedMessages: getChatMessages(conversationId),
@@ -108,10 +116,10 @@ export function appState(session = null) {
         localSeedStorageReady: runtimeReadiness.wallet.seedStorageReady,
       },
       pftWallet: {
-        status: "not_linked",
-        custody: "local_seed_required",
+        ...linkedWallet,
         pftlRpcConfigured: runtimeReadiness.wallet.pftlRpcConfigured,
         seedStorageReady: runtimeReadiness.wallet.seedStorageReady,
+        challengeProofReady: runtimeReadiness.wallet.challengeProofReady,
         signingRequiredFor: [
           "Send PFT",
           "Sign PFT verifications",
@@ -146,6 +154,7 @@ export function appState(session = null) {
       currentPeriod: "Dev session",
       estimatePath: "/api/chat/estimate",
       chatSendPath: "/api/chat/send",
+      chatStreamPath: "/api/chat/stream",
       actionsPath: "/api/usage/actions",
       fundingActions: usageActions(),
       chatEstimateReady: runtimeReadiness.billing.chatEstimateReady,
@@ -162,15 +171,21 @@ export function appState(session = null) {
     },
     context: {
       actions: contextActions(),
+      document: getContextDocument({ accountId: session?.accountId || "" }),
+      history: getContextHistory({ accountId: session?.accountId || "" }),
+      savePath: "/api/context/edit/save",
+      historyImportPath: "/api/context/history/indexed",
       importReady: runtimeReadiness.context.importReady,
       editReady: runtimeReadiness.context.editReady,
+      indexedHistoryReady: runtimeReadiness.context.indexedHistoryReady,
+      encryptedCidHydrationReady: runtimeReadiness.context.encryptedCidHydrationReady,
       manifestInkReady: runtimeReadiness.context.manifestInkReady,
       sources: [
         {
           label: "PFT Context",
-          status: "supported later",
+          status: runtimeReadiness.context.indexedHistoryReady ? "indexed bridge ready" : "supported later",
           note:
-            "Existing PFDocs/PFT pointer behavior should be preserved for portable manifests.",
+            "PFTasks indexed rows can be normalized into PFDocs-compatible pointer metadata before live RPC fallback.",
         },
         {
           label: "Google Docs share link",

@@ -162,6 +162,99 @@ async function fetchJson(url, options) {
   }
 }
 
+async function fetchEventStream(url, options = {}, { signal } = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
+
+  function abortFromParent() {
+    controller.abort();
+  }
+
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    signal.addEventListener("abort", abortFromParent, { once: true });
+  }
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      let body = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        body = null;
+      }
+      const error = new Error("provider_request_failed");
+      error.status = response.status;
+      error.providerMessage =
+        body?.error?.message || body?.message || text || `Provider returned HTTP ${response.status}`;
+      throw error;
+    }
+
+    if (!response.body) {
+      const error = new Error("provider_stream_unavailable");
+      error.status = 502;
+      throw error;
+    }
+
+    return response.body;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error(signal?.aborted ? "client_aborted" : "provider_timeout");
+      timeoutError.status = signal?.aborted ? 499 : 504;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", abortFromParent);
+  }
+}
+
+function parseSseBlock(block) {
+  const lines = String(block || "").split(/\r?\n/);
+  let event = "message";
+  const data = [];
+
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("event:")) {
+      event = line.slice("event:".length).trim() || "message";
+    } else if (line.startsWith("data:")) {
+      data.push(line.slice("data:".length).trimStart());
+    }
+  }
+
+  return { event, data: data.join("\n") };
+}
+
+async function readEventStream(stream, onEvent) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split(/\n\n|\r\n\r\n/);
+    buffer = blocks.pop() || "";
+
+    for (const block of blocks) {
+      const parsed = parseSseBlock(block);
+      if (parsed.data) await onEvent(parsed);
+    }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    const parsed = parseSseBlock(buffer);
+    if (parsed.data) await onEvent(parsed);
+  }
+}
+
 function outputTextFromOpenAi(body) {
   if (typeof body?.output_text === "string" && body.output_text.trim()) {
     return body.output_text.trim();
@@ -217,6 +310,19 @@ function openRouterUsage(body, mode) {
   };
 }
 
+function fallbackUsage({ mode, message, text }) {
+  const inputTokens = Math.max(1, Math.ceil(String(message || "").length / 4));
+  const outputTokens = Math.max(1, Math.ceil(String(text || "").length / 4));
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    costUsd: actualChatCost(mode, { inputTokens, outputTokens }),
+    estimated: true,
+  };
+}
+
 async function executeOpenAi({ mode, model, message, conversationId }) {
   const config = chatModeConfig(mode);
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
@@ -247,6 +353,87 @@ async function executeOpenAi({ mode, model, message, conversationId }) {
     responseId: body?.id || null,
     text,
     usage: openAiUsage(body, mode),
+  };
+}
+
+async function streamOpenAi({ mode, model, message, conversationId, onDelta, signal }) {
+  const config = chatModeConfig(mode);
+  const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
+  const stream = await fetchEventStream(
+    `${baseUrl}/responses`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "content-type": "application/json",
+        accept: "text/event-stream",
+      },
+      body: JSON.stringify({
+        model,
+        instructions: taskNodeInstructions(),
+        input: recentTranscript(conversationId, message),
+        max_output_tokens: config.maxOutputTokens,
+        reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
+        stream: true,
+        store: false,
+        metadata: {
+          app: "tasknodeofficial",
+          mode,
+        },
+      }),
+    },
+    { signal }
+  );
+
+  let text = "";
+  let completedResponse = null;
+  let responseId = null;
+  let responseModel = model;
+
+  await readEventStream(stream, async ({ data }) => {
+    if (!data || data === "[DONE]") return;
+    const event = JSON.parse(data);
+
+    if (event.type === "response.created" || event.type === "response.in_progress") {
+      responseId = event.response?.id || responseId;
+      responseModel = event.response?.model || responseModel;
+      return;
+    }
+
+    if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
+      text += event.delta;
+      await onDelta?.(event.delta);
+      return;
+    }
+
+    if (event.type === "response.output_text.done" && typeof event.text === "string") {
+      text = event.text;
+      return;
+    }
+
+    if (event.type === "response.completed") {
+      completedResponse = event.response || null;
+      responseId = completedResponse?.id || responseId;
+      responseModel = completedResponse?.model || responseModel;
+      return;
+    }
+
+    if (event.type === "response.failed" || event.type === "error") {
+      const error = new Error(event.error?.message || "provider_stream_failed");
+      error.status = 502;
+      throw error;
+    }
+  });
+
+  const finalText = outputTextFromOpenAi(completedResponse) || text.trim();
+  return {
+    provider: "openai",
+    model: responseModel,
+    responseId,
+    text: finalText,
+    usage: completedResponse?.usage
+      ? openAiUsage(completedResponse, mode)
+      : fallbackUsage({ mode, message, text: finalText }),
   };
 }
 
@@ -298,6 +485,85 @@ async function executeOpenRouter({ mode, model, message, conversationId }) {
   };
 }
 
+async function streamOpenRouter({ mode, model, message, conversationId, onDelta, signal }) {
+  const config = chatModeConfig(mode);
+  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
+  const referer =
+    process.env.OPENROUTER_REFERER ||
+    process.env.TASKNODE_PUBLIC_URL ||
+    process.env.VITE_SITE_ORIGIN ||
+    "https://tasknodeofficial-dev.fly.dev";
+  const title = process.env.OPENROUTER_TITLE || "Task Node Official";
+  const history = getChatMessages(conversationId)
+    .slice(-12)
+    .map((item) => ({
+      role: item.role === "assistant" ? "assistant" : "user",
+      content: item.body,
+    }));
+  const stream = await fetchEventStream(
+    `${baseUrl}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.OPENROUTER_API_KEY || process.env.OPENROUTER}`,
+        "content-type": "application/json",
+        accept: "text/event-stream",
+        "http-referer": referer,
+        "x-title": title,
+        "x-openrouter-title": title,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: taskNodeInstructions() },
+          ...history,
+          { role: "user", content: message },
+        ],
+        max_tokens: config.maxOutputTokens,
+        stream: true,
+        stream_options: {
+          include_usage: true,
+        },
+      }),
+    },
+    { signal }
+  );
+
+  let text = "";
+  let responseId = null;
+  let responseModel = model;
+  let usage = null;
+
+  await readEventStream(stream, async ({ data }) => {
+    if (!data || data === "[DONE]") return;
+    const chunk = JSON.parse(data);
+    responseId = chunk.id || responseId;
+    responseModel = chunk.model || responseModel;
+    if (chunk.usage) usage = openRouterUsage(chunk, mode);
+
+    const delta = chunk.choices?.[0]?.delta?.content;
+    if (typeof delta === "string" && delta) {
+      text += delta;
+      await onDelta?.(delta);
+    }
+
+    if (chunk.error) {
+      const error = new Error(chunk.error?.message || "provider_stream_failed");
+      error.status = chunk.error?.code || 502;
+      throw error;
+    }
+  });
+
+  const finalText = text.trim();
+  return {
+    provider: "openrouter",
+    model: responseModel,
+    responseId,
+    text: finalText,
+    usage: usage || fallbackUsage({ mode, message, text: finalText }),
+  };
+}
+
 export async function executeChat({ accountId = "", mode, message, conversationId = "dev" }) {
   const normalizedMode = normalizedChatMode(mode);
   const status = chatExecutionStatus(normalizedMode);
@@ -313,6 +579,68 @@ export async function executeChat({ accountId = "", mode, message, conversationI
     status.provider === "openai"
       ? await executeOpenAi({ mode: normalizedMode, model: status.model, message, conversationId })
       : await executeOpenRouter({ mode: normalizedMode, model: status.model, message, conversationId });
+
+  if (!result.text) {
+    const error = new Error("chat_provider_empty_response");
+    error.status = 502;
+    error.provider = status.provider;
+    throw error;
+  }
+
+  const persisted = appendChatTurn({
+    accountId,
+    conversationId,
+    mode: normalizedMode,
+    provider: result.provider,
+    model: result.model,
+    responseId: result.responseId,
+    userMessage: message,
+    assistantMessage: result.text,
+    usage: result.usage,
+  });
+
+  return {
+    ...result,
+    ...persisted,
+  };
+}
+
+export async function executeChatStream({
+  accountId = "",
+  mode,
+  message,
+  conversationId = "dev",
+  onDelta,
+  signal,
+}) {
+  const normalizedMode = normalizedChatMode(mode);
+  const status = chatExecutionStatus(normalizedMode);
+
+  if (!status.enabled) {
+    const error = new Error(status.configured ? "chat_provider_disabled" : "chat_provider_not_configured");
+    error.status = status.configured ? 503 : 409;
+    error.provider = status.provider;
+    throw error;
+  }
+
+  const result =
+    status.provider === "openai"
+      ? await streamOpenAi({
+          mode: normalizedMode,
+          model: status.model,
+          message,
+          conversationId,
+          onDelta,
+          signal,
+        })
+      : await streamOpenRouter({
+          mode: normalizedMode,
+          model: status.model,
+          message,
+          conversationId,
+          onDelta,
+          signal,
+        });
 
   if (!result.text) {
     const error = new Error("chat_provider_empty_response");

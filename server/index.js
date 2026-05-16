@@ -14,20 +14,28 @@ import {
   chatEstimate,
   chatModes,
   chatSend,
+  chatStreamStart,
   contextActionStart,
   contextActions,
+  contextEditSave,
+  contextIndexedHistoryImport,
+  contextHistoryIpfsFetch,
   readiness,
   usageActionStart,
   usageActions,
   usageAdminCredit,
   walletActionStart,
   walletActions,
+  walletLinkStart,
+  walletLinkVerify,
 } from "./product-contracts.js";
+import { executeChatStream } from "./chat-router.js";
 import {
   conversationIdForSession,
   destroySession,
   getChatMessages,
   getSession,
+  listChatConversations,
   sessionCookieName,
   sessionTtlSeconds,
   usageLedger,
@@ -62,6 +70,13 @@ function json(res, status, body, headers = {}) {
     ...headers,
   });
   res.end(text);
+}
+
+function writeSse(res, event, data) {
+  if (res.destroyed || res.writableEnded) return false;
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+  return true;
 }
 
 async function readJson(req, maxBytes = 16384) {
@@ -395,12 +410,99 @@ async function routeApi(req, url, res) {
     return true;
   }
 
+  if (url.pathname === "/api/chat/conversations") {
+    json(res, 200, {
+      conversations: listChatConversations({
+        accountId: session?.accountId || "",
+        limit: url.searchParams.get("limit") || 30,
+      }),
+    });
+    return true;
+  }
+
   if (url.pathname === "/api/chat/history") {
     const conversationId = conversationIdForSession(
       session,
       url.searchParams.get("conversationId") || ""
     );
     json(res, 200, { conversationId, messages: getChatMessages(conversationId) });
+    return true;
+  }
+
+  if (url.pathname === "/api/chat/stream") {
+    const payload = req.method === "POST" ? await readJson(req) : {};
+    const conversationId = conversationIdForSession(session, payload?.conversationId || "");
+    const started = chatStreamStart(
+      { ...payload, accountId: session?.accountId || "", conversationId },
+      req.method
+    );
+
+    if (!started.stream) {
+      json(res, started.status, started.body);
+      return true;
+    }
+
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-store, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    });
+    writeSse(res, "meta", started.body);
+
+    const controller = new AbortController();
+    res.on("close", () => {
+      if (!res.writableEnded) controller.abort();
+    });
+
+    try {
+      const result = await executeChatStream({
+        ...started.chat,
+        signal: controller.signal,
+        onDelta: (delta) => writeSse(res, "delta", { delta }),
+      });
+
+      writeSse(res, "done", {
+        ok: true,
+        action: "chat_stream",
+        message: "Chat response generated.",
+        conversationId,
+        mode: started.chat.mode,
+        provider: result.provider,
+        model: result.model,
+        responseId: result.responseId,
+        user: result.user,
+        assistant: result.assistant,
+        estimate: started.estimate,
+        usage: {
+          billingModel: "usage_based",
+          currency: "USD",
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          totalTokens: result.usage.totalTokens,
+          costUsd: result.usage.costUsd,
+          estimated: result.usage.estimated === true,
+        },
+        ledgerEntry: result.ledgerEntry,
+      });
+    } catch (error) {
+      if (error?.status !== 499) {
+        writeSse(res, "error", {
+          ok: false,
+          error: error?.message || "chat_provider_error",
+          action: "chat_stream",
+          message:
+            error?.status === 504
+              ? "The chat provider timed out before returning a response."
+              : "The chat provider could not complete this response.",
+          actionRequired:
+            "Retry with a shorter prompt, choose another configured mode, or check provider health.",
+          estimate: started.estimate,
+        });
+      }
+    } finally {
+      if (!res.destroyed && !res.writableEnded) res.end();
+    }
     return true;
   }
 
@@ -425,8 +527,20 @@ async function routeApi(req, url, res) {
     return true;
   }
 
+  if (url.pathname === "/api/wallet/link/start") {
+    const result = walletLinkStart(req.method, session);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/wallet/link/verify") {
+    const payload = req.method === "POST" ? await readJson(req, 8192) : {};
+    const result = walletLinkVerify(payload, req.method, session);
+    json(res, result.status, result.body);
+    return true;
+  }
+
   if (
-    url.pathname === "/api/wallet/link/start" ||
     url.pathname === "/api/wallet/unlock/start" ||
     url.pathname === "/api/wallet/delink" ||
     url.pathname === "/api/wallet/relink/start"
@@ -441,6 +555,18 @@ async function routeApi(req, url, res) {
     return true;
   }
 
+  if (url.pathname === "/api/context/history") {
+    json(res, 200, state.context.history);
+    return true;
+  }
+
+  if (url.pathname.startsWith("/api/context/history/ipfs/")) {
+    const cid = decodeURIComponent(url.pathname.slice("/api/context/history/ipfs/".length));
+    const result = await contextHistoryIpfsFetch({ cid }, req.method, session);
+    json(res, result.status, result.body);
+    return true;
+  }
+
   if (url.pathname === "/api/context/actions") {
     json(res, 200, { actions: contextActions() });
     return true;
@@ -448,10 +574,23 @@ async function routeApi(req, url, res) {
 
   if (
     url.pathname === "/api/context/import/start" ||
-    url.pathname === "/api/context/edit/save" ||
     url.pathname === "/api/context/manifest/ink"
   ) {
     const result = contextActionStart(url.pathname, req.method);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/context/edit/save") {
+    const payload = req.method === "POST" ? await readJson(req, 65536) : {};
+    const result = contextEditSave(payload, req.method, session);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/context/history/indexed") {
+    const payload = req.method === "POST" ? await readJson(req, 262144) : {};
+    const result = contextIndexedHistoryImport(payload, req.method, session);
     json(res, result.status, result.body);
     return true;
   }

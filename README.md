@@ -9,6 +9,11 @@ crypto-funded usage.
 This repository is initialized with early product/interface artifacts and a
 minimal deployable dev app:
 
+- `docs/README.md` is the engineering landing page for new contributors.
+- `docs/BOOTUP.md` explains local setup, smoke tests, Fly deploy, env/secrets,
+  runtime persistence, and common failure checks.
+- `docs/CURRENT_SYSTEM.md` maps the current app, API contracts, enabled
+  surfaces, disabled surfaces, and near-term build path.
 - `product_spec.md` contains the initial product direction and migration notes.
 - `jsx_mock.jsx` contains a React mock for a ChatGPT-style Task Node interface with Tasks, Wallet, Context, Profile, Settings, and PFT balance surfaces.
 - `login.jsx` contains a standalone login/sign-up modal mock with Telegram, Discord, X, GitHub, and email entry options.
@@ -38,22 +43,30 @@ minimal deployable dev app:
   be exercised before OAuth and bot callbacks are enabled.
 - Settings > Security exposes the first connected-accounts surface for provider
   status and account-link actions.
-- `/api/wallet/actions` exposes disabled-by-default wallet lifecycle actions:
-  link, unlock, delink, and relink. The action endpoints are present so seed
-  storage, unlock, and production delink/relink behavior can be tested behind a
-  stable boundary before custody is enabled.
-- `/api/chat/estimate` and `/api/chat/send` define the usage-based chat
-  contract. Estimates are cost-free. Send supports a cost-free dry run for
-  smoke tests and real provider execution when OpenAI credentials are configured.
+- `/api/wallet/link/start` and `/api/wallet/link/verify` implement the first
+  seed-wallet proof boundary. The browser validates a 24-word BIP39 recovery
+  phrase, derives the XRPL address with the PFDocs path, signs a server
+  challenge locally, and sends only address, public key, and signature to the
+  server. The browser can now save an encrypted local seed vault with WebCrypto
+  AES-GCM/PBKDF2 and unlock it for the current session. The unlocked vault can
+  decrypt imported historical context CIDs in the browser. PFTL transaction
+  signing, delink, and relink remain disabled until their custody rules are
+  implemented.
+- `/api/chat/estimate`, `/api/chat/send`, and `/api/chat/stream` define the
+  usage-based chat contract. Estimates are cost-free. Send supports a cost-free
+  dry run for smoke tests, while stream renders assistant deltas over SSE and
+  persists the completed response plus usage after provider completion.
   OpenRouter routes remain configured-but-disabled until explicitly enabled and
   verified.
-- `/api/chat/modes` and `/api/chat/history` expose model-route readiness and
-  the current session-scoped conversation. Chat turns and usage debits are
-  stored in an append-only local runtime store until Postgres account/session
-  tables land.
+- `/api/chat/modes`, `/api/chat/conversations`, and `/api/chat/history` expose
+  model-route readiness, server-owned recents, and per-thread history. Chat
+  turns and usage debits are stored in an append-only local runtime store until
+  Postgres account/session tables land.
 - The chat shell keeps usage accounting visible without crowding the thread:
   PFT and USD chat credit sit together in the sidebar balance area, while
-  per-response billing feedback is a compact composer note.
+  per-response billing feedback is a compact composer note. The response
+  toolbar exposes only backed behavior today: copy response and copy the visible
+  transcript.
 - `/api/usage/ledger` exposes the current append-only usage ledger so chat
   spend and account credits can be audited before durable Postgres ledger
   tables land. The Billing settings surface reads this ledger directly.
@@ -61,12 +74,30 @@ minimal deployable dev app:
   `/api/usage/credit/admin` define the first usage-credit contract. Crypto
   top-up is still disabled while the safest rail is selected; admin credit is
   enabled only when `TASKNODE_ADMIN_CREDIT_TOKEN` is configured.
-- `/api/context/actions` exposes disabled-by-default context actions for shared
-  URL import, native edit save, and explicit PFTL manifest ink. This keeps
-  context useful before wallet setup while making portability a deliberate
-  wallet-bound action.
+- Eligible provider login can grant an idempotent initial chat credit through
+  the same usage ledger. Email-only login is excluded.
+- `/api/context` and `/api/context/edit/save` expose the first native
+  account-scoped context document. Everyone can view the default context shape;
+  signed-in users can save edits without wallet unlock.
+- `/api/context/history` and `/api/context/history/indexed` expose the first
+  PFDocs-compatible history bridge. Signed-in accounts can import indexed
+  PFTasks context/task rows as sanitized pointer metadata. `/api/context/history/ipfs/:cid`
+  fetches encrypted JSON only for imported pointer CIDs, and the browser
+  decrypts the latest context payload with the locally unlocked seed vault.
+  Shared URL imports and explicit PFTL manifest ink remain disabled until their
+  trust and wallet boundaries are implemented.
 
 Dev URL: https://tasknodeofficial-dev.fly.dev
+
+## New Engineer Start Here
+
+Read these in order:
+
+1. `docs/BOOTUP.md`
+2. `docs/CURRENT_SYSTEM.md`
+3. `full_spec.md`
+4. `auth_account_spec.md`
+5. `whip_context.md`
 
 ## Development
 
@@ -75,6 +106,7 @@ Install and run locally:
 ```bash
 npm ci
 npm run build
+npm run runtime-smoke
 PORT=8080 npm start
 SMOKE_BASE_URL=http://127.0.0.1:8080 npm run smoke
 FRAME_BASE_URL=http://127.0.0.1:8080 npm run frame-smoke
@@ -111,9 +143,10 @@ Core requirements from the initial spec:
 - Task completion should top up user chat balances.
 - The app supports personal task requests; network and alpha tasks move to a
   routed network task board rather than user-requested flows.
-- Context documents should support share-link based sources, including Google
-  Docs and a researched Notion integration path, while preserving cacheable PFT
-  context portability.
+- Context documents start as native account-scoped documents. Share-link based
+  sources such as Google Docs and a researched Notion path are deferred until
+  the trust, cache, and confirmation boundaries are designed, while cacheable
+  PFT context portability remains a later explicit manifest flow.
 - Telegram and Discord chat surfaces should consolidate into this app with clear
   account linkage and bot integration documentation.
 - Nostr should be used for messaging-style integration instead of treating PFT as
@@ -129,7 +162,8 @@ The current mock keeps Task Node close to ChatGPT while exposing:
 
 - `Tasks` for personal execution work.
 - `Wallet` for PFT balance, transfers, and activity.
-- `Context` for internal PFT context plus external document sources.
+- `Context` for a native account document first, then historical PFT context and
+  explicit external sources after their trust boundaries are implemented.
 - `Profile` for private and pseudonymous public identity surfaces.
 - Settings for security, billing, model/data controls, and connected wallets.
 
@@ -139,5 +173,6 @@ The current mock keeps Task Node close to ChatGPT while exposing:
   boundaries.
 - Define the scalable message storage architecture.
 - Decide whether the network board is refactored or eliminated.
-- Complete the Notion document integration research.
+- Complete PFDocs/PFTasks context hydration and later Notion/document import
+  research.
 - Convert `product_spec.md` into execution milestones and acceptance criteria.

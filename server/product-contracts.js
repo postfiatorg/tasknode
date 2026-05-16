@@ -10,8 +10,10 @@ import {
 } from "./chat-router.js";
 import {
   appendUsageCredit,
+  consumeWalletChallenge,
   consumeEmailChallenge,
   consumeOAuthState,
+  createWalletChallenge,
   createAccountSession,
   createDevSession,
   createEmailChallenge,
@@ -21,9 +23,15 @@ import {
   getOrCreateEmailAccount,
   getOrCreateProviderAccount,
   linkProviderToAccount,
+  linkWalletToAccount,
   recordAuthEvent,
+  getContextHistory,
+  saveContextDocument,
+  saveIndexedContextHistory,
   usageSummary,
 } from "./runtime-store.js";
+import { fetchContextIpfsJson, normalizeContextCid } from "./context-ipfs.js";
+import { verifyWalletSignature } from "./wallet-proof.js";
 
 function hasAll(keys) {
   return keys.every((key) => Boolean(process.env[key]));
@@ -390,7 +398,7 @@ function emailProvider() {
   };
 }
 
-function walletAction({ id, label, path, requiredEnv = [], note, actionRequired }) {
+function walletAction({ id, label, path, requiredEnv = [], enabled = false, status, note, actionRequired }) {
   const configured = hasAll(requiredEnv);
 
   return {
@@ -399,24 +407,24 @@ function walletAction({ id, label, path, requiredEnv = [], note, actionRequired 
     path,
     method: "POST",
     configured,
-    enabled: false,
-    status: configured ? "disabled" : "missing_config",
+    enabled: configured && enabled,
+    status: status || (configured ? (enabled ? "ready" : "disabled") : "missing_config"),
     actionRequired: configured ? actionRequired : `Configure ${requiredEnv.join(", ")}`,
     note,
   };
 }
 
-function contextAction({ id, label, path, requiredEnv = [], note, actionRequired }) {
+function contextAction({ id, label, path, method = "POST", requiredEnv = [], enabled = false, status, note, actionRequired }) {
   const configured = hasAll(requiredEnv);
 
   return {
     id,
     label,
     path,
-    method: "POST",
+    method,
     configured,
-    enabled: false,
-    status: configured ? "disabled" : "missing_config",
+    enabled: configured && enabled,
+    status: status || (configured ? (enabled ? "ready" : "disabled") : "missing_config"),
     actionRequired: configured ? actionRequired : `Configure ${requiredEnv.join(", ")}`,
     note,
   };
@@ -450,6 +458,91 @@ function chatPayload(payload) {
   return { accountId, message, mode: normalizedChatMode(mode), conversationId, dryRun };
 }
 
+function chatExecutionPreflight(payload, method, action = "chat_send") {
+  const chat = chatPayload(payload);
+  const estimate = chatEstimate(payload);
+
+  if (method !== "POST") {
+    return {
+      ok: false,
+      status: 405,
+      body: {
+        ok: false,
+        error: `${action}_method_not_allowed`,
+        action,
+        message: action === "chat_stream" ? "Chat stream requires POST." : "Chat send requires POST.",
+        actionRequired: "Send chat payloads with POST.",
+      },
+      chat,
+      estimate,
+    };
+  }
+
+  if (!chat.message) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        ok: false,
+        error: "chat_message_required",
+        action,
+        message: action === "chat_stream"
+          ? "Chat stream requires a non-empty message."
+          : "Chat send requires a non-empty message.",
+        actionRequired: "Send a message before requesting chat execution.",
+      },
+      chat,
+      estimate,
+    };
+  }
+
+  if (chat.dryRun) {
+    return {
+      ok: false,
+      status: 200,
+      body: {
+        ok: true,
+        dryRun: true,
+        action,
+        conversationId: chat.conversationId,
+        message: estimate.executionReady
+          ? "Chat execution is configured. Dry run skipped the provider call."
+          : "Chat execution is not configured for this mode. Dry run skipped the provider call.",
+        estimate,
+      },
+      chat,
+      estimate,
+    };
+  }
+
+  if (!estimate.executionReady) {
+    const configured = estimate.providerConfigured;
+    return {
+      ok: false,
+      status: configured ? 503 : 409,
+      body: {
+        ok: false,
+        error: configured ? "chat_provider_disabled" : "chat_provider_not_configured",
+        action,
+        message: `${chat.mode} is not enabled for chat execution in this environment.`,
+        actionRequired: configured
+          ? `Enable and verify the ${estimate.provider} route for this mode or choose a ready mode.`
+          : `Configure the ${estimate.provider} provider for this mode or choose a ready mode.`,
+        estimate,
+      },
+      chat,
+      estimate,
+    };
+  }
+
+  return {
+    ok: true,
+    status: 200,
+    chat,
+    estimate,
+  };
+}
+
 export function chatEstimate(payload) {
   const { message, mode } = chatPayload(payload);
   const inputTokens = Math.max(1, Math.ceil(message.length / 4));
@@ -479,61 +572,10 @@ export function chatEstimate(payload) {
 }
 
 export async function chatSend(payload, method) {
-  if (method !== "POST") {
-    return actionResponse({
-      status: 405,
-      error: "chat_send_method_not_allowed",
-      action: "chat_send",
-      message: "Chat send requires POST.",
-      actionRequired: "Send chat payloads with POST.",
-    });
-  }
-
-  const { accountId, message, mode, conversationId, dryRun } = chatPayload(payload);
-  const estimate = chatEstimate(payload);
-
-  if (!message) {
-    return actionResponse({
-      status: 400,
-      error: "chat_message_required",
-      action: "chat_send",
-      message: "Chat send requires a non-empty message.",
-      actionRequired: "Send a message before requesting chat execution.",
-    });
-  }
-
-  if (dryRun) {
-    return {
-      status: 200,
-      body: {
-        ok: true,
-        dryRun: true,
-        action: "chat_send",
-        conversationId,
-        message: estimate.executionReady
-          ? "Chat execution is configured. Dry run skipped the provider call."
-          : "Chat execution is not configured for this mode. Dry run skipped the provider call.",
-        estimate,
-      },
-    };
-  }
-
-  if (!estimate.executionReady) {
-    const configured = estimate.providerConfigured;
-    return {
-      status: configured ? 503 : 409,
-      body: {
-        ok: false,
-        error: configured ? "chat_provider_disabled" : "chat_provider_not_configured",
-        action: "chat_send",
-        message: `${mode} is not enabled for chat execution in this environment.`,
-        actionRequired: configured
-          ? `Enable and verify the ${estimate.provider} route for this mode or choose a ready mode.`
-          : `Configure the ${estimate.provider} provider for this mode or choose a ready mode.`,
-        estimate,
-      },
-    };
-  }
+  const preflight = chatExecutionPreflight(payload, method, "chat_send");
+  const { accountId, message, mode, conversationId } = preflight.chat;
+  const { estimate } = preflight;
+  if (!preflight.ok) return { status: preflight.status, body: preflight.body };
 
   try {
     const result = await executeChat({ accountId, mode, message, conversationId });
@@ -580,6 +622,27 @@ export async function chatSend(payload, method) {
       },
     };
   }
+}
+
+export function chatStreamStart(payload, method) {
+  const preflight = chatExecutionPreflight(payload, method, "chat_stream");
+  if (!preflight.ok) return { status: preflight.status, body: preflight.body };
+
+  return {
+    status: 200,
+    stream: true,
+    chat: preflight.chat,
+    estimate: preflight.estimate,
+    body: {
+      ok: true,
+      action: "chat_stream",
+      conversationId: preflight.chat.conversationId,
+      mode: preflight.chat.mode,
+      provider: preflight.estimate.provider,
+      model: preflight.estimate.model,
+      estimate: preflight.estimate,
+    },
+  };
 }
 
 export function chatModes() {
@@ -658,11 +721,11 @@ export function walletActions() {
       id: "link_start",
       label: "Link seed wallet",
       path: "/api/wallet/link/start",
-      requiredEnv: ["PFTL_RPC_URL", "PFTL_RPC_API_KEY"],
+      enabled: true,
       note:
-        "Begins the preferred seed-based PFTL wallet path after local seed storage is implemented.",
+        "Starts a browser-only seed wallet proof. The seed phrase never leaves the device.",
       actionRequired:
-        "Implement encrypted local seed storage, backup warnings, and one-wallet-per-account checks before enabling wallet link.",
+        "Enter a 24-word recovery phrase locally, derive the XRPL address in the browser, and sign the server challenge.",
     }),
     walletAction({
       id: "unlock_start",
@@ -712,10 +775,32 @@ export function contextActions() {
       id: "save_edit",
       label: "Save context edit",
       path: "/api/context/edit/save",
+      enabled: true,
       note:
         "Saves native context edits without inking a PFTL transaction by default.",
       actionRequired:
-        "Implement context document schema, edit history, permissions, and conflict handling before enabling context edits.",
+        "Sign in with an account, edit the native context document, and save it without wallet unlock.",
+    }),
+    contextAction({
+      id: "hydrate_indexed_history",
+      label: "Import indexed PFTasks history",
+      path: "/api/context/history/indexed",
+      enabled: true,
+      note:
+        "Normalizes PFTasks indexed context/task rows into PFDocs-compatible pointer metadata without fetching or decrypting CID plaintext.",
+      actionRequired:
+        "Sign in with an account and import indexed PFTasks snapshot rows. Wallet unlock is required later for encrypted CID hydration.",
+    }),
+    contextAction({
+      id: "fetch_history_cid",
+      label: "Fetch historical CID",
+      path: "/api/context/history/ipfs/:cid",
+      method: "GET",
+      enabled: true,
+      note:
+        "Fetches encrypted JSON only for CIDs already present in the signed-in account's imported PFTasks history.",
+      actionRequired:
+        "Unlock the local seed vault in the browser before decrypting fetched CID content.",
     }),
     contextAction({
       id: "ink_manifest",
@@ -797,13 +882,318 @@ export function contextActionStart(pathname, method) {
     status: 503,
     error: "context_action_disabled",
     action: action.id,
-    message: `${action.label} is configured but disabled until the context document boundary is implemented.`,
+    message: `${action.label} is configured but disabled until its trust boundary is implemented.`,
     actionRequired: action.actionRequired,
   });
 }
 
+export function contextEditSave(payload, method, session = null) {
+  const action = contextActionByPath("/api/context/edit/save");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "context_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Save context edits with POST.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "context_login_required",
+      action: action.id,
+      message: "Sign in before saving context.",
+      actionRequired: "Use an account login, then save the native context document.",
+    });
+  }
+
+  const result = saveContextDocument({
+    accountId: session.accountId,
+    title: payload?.title,
+    body: payload?.body,
+  });
+
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 400,
+      error: result.error || "context_save_failed",
+      action: action.id,
+      message: "Context could not be saved.",
+      actionRequired: "Check the context payload and try again.",
+    });
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: action.id,
+      message: "Context saved.",
+      document: result.document,
+    },
+  };
+}
+
+export function contextIndexedHistoryImport(payload, method, session = null) {
+  const action = contextActionByPath("/api/context/history/indexed");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "context_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Import indexed context history with POST.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "context_login_required",
+      action: action.id,
+      message: "Sign in before importing context history.",
+      actionRequired: "Use an account login, then import indexed PFTasks snapshot rows.",
+    });
+  }
+
+  const result = saveIndexedContextHistory({
+    accountId: session.accountId,
+    snapshot: payload?.snapshot || payload || {},
+  });
+
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 400,
+      error: result.error || "context_history_import_failed",
+      action: action.id,
+      message: "Context history could not be imported.",
+      actionRequired: "Check the indexed PFTasks snapshot shape and try again.",
+    });
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: action.id,
+      message: "Indexed context history imported.",
+      history: result.history,
+    },
+  };
+}
+
+function contextHistoryCids(history) {
+  const cids = new Set();
+  const add = (value) => {
+    const cid = normalizeContextCid(value);
+    if (cid) cids.add(cid);
+  };
+
+  add(history?.latestContextPointer?.cid);
+  for (const pointer of Array.isArray(history?.contextUpdates) ? history.contextUpdates : []) {
+    add(pointer?.cid);
+  }
+  for (const pointer of Array.isArray(history?.taskEvents) ? history.taskEvents : []) {
+    add(pointer?.cid);
+  }
+  return cids;
+}
+
+export async function contextHistoryIpfsFetch({ cid } = {}, method, session = null) {
+  const action = contextActionByPath("/api/context/history/ipfs/:cid");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "context_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Fetch historical CIDs with GET.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "context_login_required",
+      action: action.id,
+      message: "Sign in before fetching historical context.",
+      actionRequired: "Use an account login, then fetch imported history CIDs.",
+    });
+  }
+
+  const normalizedCid = normalizeContextCid(cid);
+  const history = getContextHistory({ accountId: session.accountId });
+  if (!contextHistoryCids(history).has(normalizedCid)) {
+    return actionResponse({
+      status: 404,
+      error: "context_cid_not_imported",
+      action: action.id,
+      message: "CID is not part of this account's imported context history.",
+      actionRequired: "Import indexed PFTasks history before hydrating its encrypted CIDs.",
+    });
+  }
+
+  const result = await fetchContextIpfsJson({ cid: normalizedCid });
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 502,
+      error: result.error || "context_ipfs_fetch_failed",
+      action: action.id,
+      message: result.message || "Context CID could not be fetched.",
+      actionRequired: "Check the CID gateway configuration and try again.",
+    });
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: action.id,
+      cid: result.cid,
+      gateway: result.gateway,
+      payload: result.payload,
+    },
+  };
+}
+
 export function walletActionByPath(pathname) {
   return walletActions().find((action) => action.path === pathname) || null;
+}
+
+export function walletLinkStart(method, session = null) {
+  const action = walletActionByPath("/api/wallet/link/start");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "wallet_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Start wallet linking with POST.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "wallet_login_required",
+      action: action.id,
+      message: "Sign in before linking a seed wallet.",
+      actionRequired: "Use an account login, then link the local seed wallet.",
+    });
+  }
+
+  const result = createWalletChallenge({
+    accountId: session.accountId,
+    purpose: "wallet_link",
+  });
+
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 400,
+      error: result.error || "wallet_challenge_failed",
+      action: action.id,
+      message: "Wallet link challenge could not be created.",
+      actionRequired: "Sign in and try wallet linking again.",
+    });
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: "wallet_link_start",
+      message: "Sign this challenge locally to link your wallet.",
+      challenge: {
+        id: result.challenge.id,
+        purpose: result.challenge.purpose,
+        message: result.challenge.message,
+        expiresAt: result.challenge.expiresAt,
+      },
+      verifyPath: "/api/wallet/link/verify",
+    },
+  };
+}
+
+export function walletLinkVerify(payload, method, session = null) {
+  if (method !== "POST") {
+    return actionResponse({
+      status: 405,
+      error: "wallet_action_method_not_allowed",
+      action: "wallet_link_verify",
+      message: "Wallet link verification requires POST.",
+      actionRequired: "Verify wallet linking with POST.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "wallet_login_required",
+      action: "wallet_link_verify",
+      message: "Sign in before verifying a seed wallet.",
+      actionRequired: "Use an account login, then verify the local wallet proof.",
+    });
+  }
+
+  const challengeResult = consumeWalletChallenge({
+    accountId: session.accountId,
+    challengeId: payload?.challengeId,
+    purpose: "wallet_link",
+  });
+
+  if (!challengeResult.ok) {
+    return actionResponse({
+      status: challengeResult.status || 400,
+      error: challengeResult.error || "wallet_challenge_invalid",
+      action: "wallet_link_verify",
+      message: "Wallet link challenge is invalid or expired.",
+      actionRequired: "Start wallet linking again and sign the fresh challenge.",
+    });
+  }
+
+  const address = String(payload?.address || "").trim();
+  const publicKey = String(payload?.publicKey || "").trim();
+  const signature = String(payload?.signature || "").trim();
+  const verified = verifyWalletSignature({
+    message: challengeResult.challenge.message,
+    signature,
+    publicKey,
+    address,
+  });
+
+  if (!verified) {
+    return actionResponse({
+      status: 400,
+      error: "wallet_signature_invalid",
+      action: "wallet_link_verify",
+      message: "Wallet signature did not verify.",
+      actionRequired: "Confirm the recovery phrase and sign the latest challenge again.",
+    });
+  }
+
+  const result = linkWalletToAccount({
+    accountId: session.accountId,
+    address,
+    publicKey,
+    challengeId: challengeResult.challenge.id,
+    signature,
+  });
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: "wallet_link_verify",
+      message: "Seed wallet linked.",
+      wallet: result.wallet,
+    },
+  };
 }
 
 export function walletActionStart(pathname, method) {
@@ -959,6 +1349,31 @@ export function usageAdminCredit(payload, method, authorizationHeader = "") {
       },
     },
   };
+}
+
+const initialProviderCreditProviders = new Set(["github", "x", "telegram", "discord"]);
+
+function initialProviderCreditUsd() {
+  const amount = Number(process.env.TASKNODE_INITIAL_PROVIDER_CREDIT_USD || 5);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Number(Math.min(amount, 100).toFixed(2));
+}
+
+function grantInitialProviderCredit(account, provider) {
+  const normalizedProvider = String(provider || "").trim().toLowerCase();
+  if (!account?.id || !initialProviderCreditProviders.has(normalizedProvider)) return null;
+
+  const amountUsd = initialProviderCreditUsd();
+  if (amountUsd <= 0) return null;
+
+  return appendUsageCredit({
+    accountId: account.id,
+    amountUsd,
+    source: "initial_provider_credit",
+    note: `Initial Task Node chat credit for ${normalizedProvider} account login.`,
+    createdBy: "system",
+    uniqueKey: `initial_provider_credit:${account.id}`,
+  });
 }
 
 export function authProviderById(providerId) {
@@ -1160,6 +1575,7 @@ export async function authCallback(providerId, query = {}, requestMeta = {}) {
         profileUrl: profile.html_url || "",
         emailInfo,
       });
+      const initialCredit = grantInitialProviderCredit(account, "github");
       const created = createAccountSession(account, { provider: "github", assurance: "medium" });
 
       recordAuthEvent({
@@ -1172,6 +1588,8 @@ export async function authCallback(providerId, query = {}, requestMeta = {}) {
           username: profile.login || "",
           providerUserId: String(profile.id),
           emailVerified: emailInfo?.verified === true,
+          initialCreditUsd: initialCredit?.idempotentReplay ? 0 : Number(initialCredit?.amountUsd || 0),
+          initialCreditIdempotentReplay: Boolean(initialCredit?.idempotentReplay),
         },
       });
 
@@ -1187,6 +1605,12 @@ export async function authCallback(providerId, query = {}, requestMeta = {}) {
           action: "github_auth_callback",
           message: stateRow.linkAccountId ? "GitHub linked." : "Signed in with GitHub.",
           session: created.session,
+          initialCredit: initialCredit
+            ? {
+                amountUsd: Number(initialCredit.amountUsd || 0),
+                alreadyRecorded: Boolean(initialCredit.idempotentReplay),
+              }
+            : null,
         },
       };
     } catch (error) {
@@ -1487,20 +1911,23 @@ export function readiness() {
     wallet: {
       pftlRpcConfigured: hasAll(["PFTL_RPC_URL"]),
       pftlRpcAuthConfigured: hasAll(["PFTL_RPC_API_KEY"]),
-      seedStorageReady: false,
+      challengeProofReady: true,
+      seedStorageReady: true,
       lifecycleActionsReady: false,
       blockers: [
-        "Encrypted local seed storage design is not implemented",
         "Wallet delink and relink runbook is not implemented",
-        "Unlock transaction boundary is not implemented",
+        "PFTL transaction signing boundary is not implemented",
+        "Encrypted CID hydration boundary is not implemented",
       ],
     },
     context: {
       importReady: false,
-      editReady: false,
+      editReady: true,
+      indexedHistoryReady: true,
+      encryptedCidHydrationReady: true,
       manifestInkReady: false,
       blockers: [
-        "Context document schema and permissions are not implemented",
+        "Historical context plaintext is local-session only and not yet summarized into durable chat context",
         "Shared URL fetch and cache adapters are not implemented",
         "PFTL manifest pointer creation is not implemented",
       ],

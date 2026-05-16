@@ -19,7 +19,6 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
-  FileText,
   Flag,
   Flame,
   Github,
@@ -30,9 +29,6 @@ import {
   ListTodo,
   Lock,
   LogOut,
-  Link2,
-  Linkedin,
-  MessageCircle,
   MessageSquare,
   MoreHorizontal,
   Network,
@@ -58,7 +54,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { fetchAppState, fetchRuntimeConfig, requestJson } from "./api";
+import { fetchAppState, fetchRuntimeConfig, requestEventStream, requestJson } from "./api";
 import "./styles.css";
 
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
@@ -72,156 +68,6 @@ const PALETTE = {
   text: "#0d0d0d",
   mute: "#6b6b66",
   brand: "#10a37f",
-};
-
-const RECENT_CHAT_MOCKS = [
-  { id: "building", title: "Building Discussion" },
-  { id: "greeting", title: "Greeting exchange", unread: true },
-  { id: "sj-brainstorm", title: "Steve Jobs Brainstorming Principles", unread: true },
-  { id: "sj-motivation", title: "Steve Jobs Motivation Principles" },
-  { id: "sj-essence", title: "Steve Jobs Essence" },
-  { id: "sj-speech", title: "Steve Jobs Speech Guide" },
-  { id: "sj-iphone", title: "Steve Jobs iPhone Launch" },
-  { id: "sj-ipod", title: "Steve Jobs iPod Strategy" },
-  { id: "sj-biz-1", title: "Steve Jobs Business Principles" },
-  { id: "sj-biz-2", title: "Steve Jobs Business Insights" },
-  { id: "caucasian", title: "Caucasian Quant Trader" },
-  { id: "hamburger", title: "Hamburger Affordability Comparison" },
-  { id: "logitcoin", title: "Logitcoin Research Packet" },
-];
-
-const SAMPLE_THREAD = [
-  { role: "user", text: "hi" },
-  {
-    role: "assistant",
-    blocks: [{ type: "p", inline: [{ text: "Hey - what are we building today?" }] }],
-  },
-  { role: "user", text: "not sure what do you think i should build" },
-  {
-    role: "assistant",
-    thinking: { state: "stopped", duration: "7s" },
-    blocks: [
-      {
-        type: "p",
-        inline: [
-          { text: "You should build something that feels " },
-          { italic: "slightly illegal from the future" },
-          { text: "." },
-        ],
-      },
-      {
-        type: "p",
-        inline: [
-          {
-            text:
-              "Not another wrapper. Not another dashboard. Something where the first reaction is:",
-          },
-        ],
-      },
-      { type: "quote", inline: [{ text: "Wait... are people allowed to do that?" }] },
-      {
-        type: "p",
-        inline: [
-          {
-            text:
-              "You are already circling the right territory with Logitcoin: turning AI inference itself into a consensus primitive is exactly the kind of different-game thinking that matters.",
-          },
-        ],
-      },
-      { type: "hr" },
-      { type: "h2", inline: [{ text: "1. The AI Native Operating System Layer" }] },
-      { type: "p", inline: [{ text: "Everyone is building AI apps." }] },
-      { type: "p", inline: [{ text: "Almost nobody is building:" }] },
-      {
-        type: "ul",
-        items: [
-          [{ text: "deterministic identity for agents" }],
-          [{ text: "persistent memory" }],
-          [{ text: "economic coordination" }],
-          [{ text: "verifiable cognition" }],
-          [{ text: "long-lived autonomous workflows" }],
-          [{ text: "agent-to-agent markets" }],
-          [{ text: "runtime governance" }],
-        ],
-      },
-      {
-        type: "p",
-        inline: [
-          {
-            text:
-              "The teams who win this layer set the rules for the next decade. The useful version is not merely a dashboard; it is a new category vocabulary.",
-          },
-        ],
-      },
-      { type: "hr" },
-      {
-        type: "p",
-        inline: [
-          { text: "If I were ranking the strongest directions, I would start here:" },
-        ],
-      },
-      {
-        type: "ol",
-        items: [
-          [{ text: "AI infrastructure with cryptographic, consensus, and verification properties" }],
-          [{ text: "Taste, cognition, and strategic-intelligence tooling" }],
-          [{ text: "Autonomous agent coordination systems" }],
-          [{ text: "New economic primitives around inference and cognition" }],
-          [{ text: "Tools that teach people how legendary operators think" }],
-        ],
-      },
-      { type: "p", inline: [{ text: "The key is: do not build something merely useful." }] },
-      {
-        type: "p",
-        inline: [{ text: "Build something that creates a new category vocabulary." }],
-      },
-    ],
-  },
-];
-
-const SAMPLE_ACTIVITY = {
-  duration: "7s",
-  thinking: [
-    { kind: "primary", label: "Personalizing" },
-    { kind: "dot", label: "Tracking your projects" },
-    { kind: "dot", label: "Identifying your interests" },
-    { kind: "dot", label: "Exploring your goals" },
-    { kind: "dot", label: "Matching key domains" },
-  ],
-  memory: [
-    {
-      title: "Steve Jobs Motivation Principles",
-      preview:
-        "Today - step into the role of Steve Jobs and teach the operator mindset with plain English examples.",
-    },
-    {
-      title: "Steve Jobs Essence",
-      preview:
-        "Today - give the essence of Steve Jobs in ten pages or less: taste, focus, craft, and consequence.",
-    },
-    {
-      title: "Steve Jobs Business Principles",
-      preview:
-        "Today - summarize the business lessons in detail, with emphasis on product quality and category creation.",
-    },
-    {
-      title: "Logitcoin Research Packet",
-      preview:
-        "May 10, 2026 - Logitcoin Qwen proof-of-logits external research packet and implementation notes.",
-    },
-    {
-      title: "OpenAI Jobs Brainstorm",
-      preview:
-        "Jobs repeatedly frames technology as a human amplifier and builds the frame before revealing the product.",
-    },
-    {
-      title: "Steve Jobs Style Guide",
-      preview:
-        "Imitate the reasoning pattern, not the catchphrases: product judgment, human consequence, and proof.",
-    },
-  ],
-  memoryMore: 5,
-  files: [{ name: "Pasted text.txt", type: "TXT" }],
 };
 
 const MOCK_TASKS = {
@@ -327,33 +173,6 @@ const ACTIVITY_GROUPS = [
   },
 ];
 
-const CONTEXT_SOURCES = [
-  {
-    key: "gdocs",
-    icon: FileText,
-    name: "Google Docs",
-    desc: "Pull in research notes, drafts, and reference docs from Drive.",
-    accent: "#1A73E8",
-    status: "available",
-  },
-  {
-    key: "notion",
-    icon: BookOpen,
-    name: "Notion",
-    desc: "Bring workspaces, databases, and meeting notes into context.",
-    accent: "#0D0D0D",
-    status: "available",
-  },
-  {
-    key: "pft",
-    icon: Database,
-    name: "Internal PFT Context",
-    desc: "On-chain history, verifier feedback, and your task corpus.",
-    accent: "#10A37F",
-    status: "connected",
-  },
-];
-
 const PFT_GENERATION = [
   1800, 2200, 1900, 2400, 2100, 1700, 2600, 2300, 1850, 2900, 2100, 1950, 2400, 2800,
   2200, 2050, 2700, 1900, 2300, 2500, 2100, 2400, 2200, 2800, 36000, 3200, 2400, 2200,
@@ -432,6 +251,14 @@ const SETTINGS_PAGES = [
 ];
 
 const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "profile"]);
+const EMPTY_WALLET_VAULT_STATUS = {
+  available: false,
+  unlocked: false,
+  accountId: null,
+  address: null,
+  publicKey: null,
+  lastUnlockedAt: null,
+};
 
 function viewFromLocation() {
   if (typeof window === "undefined") return "chat";
@@ -470,9 +297,11 @@ function App() {
   const [chatShareRequestKey, setChatShareRequestKey] = useState(0);
   const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
   const [appState, setAppState] = useState(null);
+  const [walletVaultStatus, setWalletVaultStatus] = useState(EMPTY_WALLET_VAULT_STATUS);
   const [loadError, setLoadError] = useState("");
   const profileRef = useRef(null);
   const moreRef = useRef(null);
+  const walletSecretRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -521,6 +350,7 @@ function App() {
   }, [settingsOpen, selectedTask]);
 
   const recentChats = buildRecentChats(appState?.chat?.recents || []);
+  const activeChatId = activeChat?.conversationId || activeChat?.id || "";
   const pftBalance = formatDrops(appState?.wallet?.pftBalanceDrops || 0);
   const chatCredit = formatUsd(appState?.usage?.availableCreditUsd || 0);
   const session = appState?.session;
@@ -528,6 +358,118 @@ function App() {
   const profileName = profileDisplayName(session);
   const profileInitials = profileAvatarText(session);
   const profileSubtext = profileSessionText(session);
+  const walletAccountId = signedIn ? session?.accountId || "" : "";
+
+  const lockWalletVault = useCallback(() => {
+    walletSecretRef.current = null;
+    setWalletVaultStatus((current) => ({
+      ...current,
+      unlocked: false,
+      lastUnlockedAt: null,
+    }));
+  }, []);
+
+  const refreshWalletVaultStatus = useCallback(
+    async ({ preserveUnlock = false } = {}) => {
+      if (!walletAccountId) {
+        walletSecretRef.current = null;
+        setWalletVaultStatus(EMPTY_WALLET_VAULT_STATUS);
+        return EMPTY_WALLET_VAULT_STATUS;
+      }
+
+      try {
+        const walletCore = await import("./wallet-core");
+        const nextStatus = walletCore.localWalletVaultStatus({ accountId: walletAccountId });
+        setWalletVaultStatus((current) => {
+          const keepUnlocked =
+            preserveUnlock &&
+            Boolean(current.unlocked) &&
+            current.accountId === walletAccountId &&
+            current.address === nextStatus.address &&
+            walletSecretRef.current?.accountId === walletAccountId &&
+            walletSecretRef.current?.address === nextStatus.address;
+
+          if (!keepUnlocked) {
+            walletSecretRef.current = null;
+          }
+
+          return {
+            ...nextStatus,
+            unlocked: keepUnlocked,
+            lastUnlockedAt: keepUnlocked ? current.lastUnlockedAt : null,
+          };
+        });
+        return nextStatus;
+      } catch {
+        walletSecretRef.current = null;
+        setWalletVaultStatus({
+          ...EMPTY_WALLET_VAULT_STATUS,
+          accountId: walletAccountId,
+        });
+        return null;
+      }
+    },
+    [walletAccountId]
+  );
+
+  const handleWalletVaultUnlocked = useCallback(
+    (unlock) => {
+      if (!walletAccountId || !unlock?.mnemonic || !unlock?.address) return;
+      walletSecretRef.current = {
+        accountId: walletAccountId,
+        address: unlock.address,
+        publicKey: unlock.publicKey || null,
+        derivationPath: unlock.derivationPath || null,
+        mnemonic: unlock.mnemonic,
+        unlockedAt: unlock.unlockedAt || new Date().toISOString(),
+      };
+      setWalletVaultStatus((current) => ({
+        ...current,
+        available: true,
+        accountId: walletAccountId,
+        address: unlock.address,
+        publicKey: unlock.publicKey || current.publicKey || null,
+        derivationPath: unlock.derivationPath || current.derivationPath || null,
+        unlocked: true,
+        lastUnlockedAt: unlock.unlockedAt || new Date().toISOString(),
+      }));
+    },
+    [walletAccountId]
+  );
+
+  const hydrateContextPointer = useCallback(
+    async (pointer) => {
+      const secret = walletSecretRef.current;
+      if (!walletAccountId || !secret?.mnemonic || secret.accountId !== walletAccountId) {
+        throw new Error("Unlock the local seed vault first.");
+      }
+      const cid = String(pointer?.cid || "").trim();
+      if (!cid) {
+        throw new Error("No context CID is selected.");
+      }
+
+      const fetched = await requestJson(`/api/context/history/ipfs/${encodeURIComponent(cid)}`);
+      if (!fetched.ok || !fetched.body?.payload) {
+        throw new Error(fetched.body?.message || "Context CID could not be fetched.");
+      }
+
+      const walletCore = await import("./wallet-core");
+      const hydrated = await walletCore.hydrateTaskNodeFetchedPayload({
+        payload: fetched.body.payload,
+        mnemonic: secret.mnemonic,
+      });
+      const extracted = extractHydratedContext(hydrated.payload, hydrated.plaintext);
+      return {
+        ...extracted,
+        cid,
+        pointer,
+        decrypted: hydrated.decrypted,
+        gateway: fetched.body.gateway || "",
+        fetchedAt: new Date().toISOString(),
+      };
+    },
+    [walletAccountId]
+  );
 
   const navigateToView = useCallback((nextView, options = {}) => {
     const normalizedView = APP_VIEWS.has(nextView) ? nextView : "chat";
@@ -575,6 +517,10 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    refreshWalletVaultStatus({ preserveUnlock: true });
+  }, [refreshWalletVaultStatus]);
+
   async function refreshAppState() {
     try {
       const state = await fetchAppState();
@@ -588,6 +534,7 @@ function App() {
   }
 
   async function logOut() {
+    lockWalletVault();
     await requestJson("/api/auth/logout", { method: "POST" });
     await refreshAppState();
     setProfileMenuOpen(false);
@@ -688,7 +635,7 @@ function App() {
             {recentChats.length > 0 ? (
               recentChats.map((item) => (
                 <button
-                  className={activeChat?.id === item.id ? "active" : ""}
+                  className={activeChatId === (item.conversationId || item.id) ? "active" : ""}
                   key={item.id}
                   onClick={() => openRecentChat(item)}
                   type="button"
@@ -818,9 +765,6 @@ function App() {
                 <Share size={14} strokeWidth={1.75} />
                 Share
               </button>
-              <button type="button" aria-label="More thread actions">
-                <MoreHorizontal size={18} strokeWidth={1.75} />
-              </button>
             </div>
           )}
         </header>
@@ -843,9 +787,24 @@ function App() {
         )}
         {view === "tasks" && <TasksView onSelectTask={setSelectedTask} />}
         {view === "wallet" && (
-          <WalletView wallet={appState?.wallet} usage={appState?.usage} />
+          <WalletView
+            onAppStateChange={refreshAppState}
+            onWalletVaultChange={() => refreshWalletVaultStatus({ preserveUnlock: true })}
+            onWalletVaultLock={lockWalletVault}
+            onWalletVaultUnlocked={handleWalletVaultUnlocked}
+            session={appState?.session}
+            wallet={appState?.wallet}
+            walletVault={walletVaultStatus}
+            usage={appState?.usage}
+          />
         )}
-        {view === "context" && <ContextView context={appState?.context} />}
+        {view === "context" && (
+          <ContextView
+            context={appState?.context}
+            onHydrateContext={hydrateContextPointer}
+            walletVault={walletVaultStatus}
+          />
+        )}
         {view === "profile" && (
           <ProfileView
             profilePublic={profilePublic}
@@ -908,10 +867,10 @@ function ChatSurface({
   const [actualUsage, setActualUsage] = useState(null);
   const [statusTone, setStatusTone] = useState("muted");
   const [sending, setSending] = useState(false);
+  const [draftConversationId, setDraftConversationId] = useState(() => newClientConversationId());
   const [editingMsg, setEditingMsg] = useState(null);
   const [editDraft, setEditDraft] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
   const plusRef = useRef(null);
   const modelRef = useRef(null);
   const inputRef = useRef(null);
@@ -939,33 +898,55 @@ function ChatSurface({
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
+    setDraftConversationId(newClientConversationId());
     setEditingMsg(null);
     setShareOpen(false);
-    setActivityOpen(false);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [chatResetKey]);
 
   useEffect(() => {
-    if (!activeChat || activeChat.source === "live") return;
+    if (!activeChat || activeChat.source === "live") return undefined;
     clearedChatRef.current = false;
+    setSendMessage("");
+    setActualUsage(null);
+    setStatusTone("muted");
 
-    if (activeChat.id === "building") {
-      setTurns(SAMPLE_THREAD);
-      return;
+    if (activeChat.source !== "server") {
+      setTurns(createRecentPlaceholderThread(activeChat.title));
+      return undefined;
     }
 
-    if (activeChat.source === "server") {
-      const hydrated = normalizeChatMessages(messages);
-      setTurns(
-        hydrated.length > 0
-          ? hydrated
-          : createRecentPlaceholderThread(activeChat.title)
-      );
-      return;
-    }
+    let cancelled = false;
+    const conversationId = activeChat.conversationId || activeChat.id;
+    const historyPath = chat?.historyPath || "/api/chat/history";
+    setTurns([]);
 
-    setTurns(createRecentPlaceholderThread(activeChat.title));
-  }, [activeChat, chatSelectionKey, messages]);
+    requestJson(`${historyPath}?conversationId=${encodeURIComponent(conversationId)}`)
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) {
+          throw new Error(result.body?.message || `History returned HTTP ${result.status}.`);
+        }
+        const hydrated = normalizeChatMessages(result.body?.messages || []);
+        setTurns(hydrated);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setStatusTone("error");
+        setSendMessage(error?.message || "Could not load this conversation.");
+        setTurns([
+          createErrorAssistantTurn(
+            `history-error-${Date.now()}`,
+            "Could not load this conversation.",
+            Date.now()
+          ),
+        ]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChat, chatSelectionKey, chat?.historyPath]);
 
   useEffect(() => {
     if (shareSeenRef.current === chatShareRequestKey) return;
@@ -974,18 +955,17 @@ function ChatSurface({
   }, [chatShareRequestKey, turns.length]);
 
   useEffect(() => {
-    if (!shareOpen && !activityOpen) return undefined;
+    if (!shareOpen) return undefined;
 
     function closeOverlay(event) {
       if (event.key === "Escape") {
         setShareOpen(false);
-        setActivityOpen(false);
       }
     }
 
     document.addEventListener("keydown", closeOverlay);
     return () => document.removeEventListener("keydown", closeOverlay);
-  }, [activityOpen, shareOpen]);
+  }, [shareOpen]);
 
   useEffect(() => {
     function closeMenus(event) {
@@ -1015,6 +995,7 @@ function ChatSurface({
 
     clearedChatRef.current = false;
     const startedAt = Date.now();
+    const requestedConversationId = activeChat?.conversationId || activeChat?.id || draftConversationId;
     const pendingId = `assistant-pending-${startedAt}`;
     setSending(true);
     setSendMessage("");
@@ -1028,21 +1009,40 @@ function ChatSurface({
     ]);
     if (!activeChat) {
       onActiveChatChange?.({
-        id: "current",
+        id: requestedConversationId,
+        conversationId: requestedConversationId,
         source: "live",
         title: chatTitleFromPrompt(message),
       });
     }
 
     try {
-      const result = await requestJson(usage?.chatSendPath || "/api/chat/send", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message, mode: selectedMode }),
-      });
+      const chatPayload = { message, mode: selectedMode, conversationId: requestedConversationId };
+      const result = usage?.chatStreamPath
+        ? await requestEventStream(
+            usage.chatStreamPath,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(chatPayload),
+            },
+            ({ event, body }) => {
+              if (event === "delta" && body?.delta) {
+                setTurns((current) =>
+                  appendAssistantDelta(current, pendingId, body.delta, startedAt)
+                );
+              }
+            }
+          )
+        : await requestJson(usage?.chatSendPath || "/api/chat/send", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(chatPayload),
+          });
       setActualUsage(result.body?.usage || null);
 
       if (result.ok && result.body?.assistant) {
+        const settledConversationId = result.body?.conversationId || requestedConversationId;
         const assistantTurn = normalizeChatMessage(
           {
             ...result.body.assistant,
@@ -1056,6 +1056,13 @@ function ChatSurface({
         setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
         setSendMessage(result.body.message || "Chat response generated.");
         setStatusTone("muted");
+        setDraftConversationId(settledConversationId);
+        onActiveChatChange?.({
+          id: settledConversationId,
+          conversationId: settledConversationId,
+          source: "live",
+          title: activeChat?.title || chatTitleFromPrompt(message),
+        });
         await onChatSettled?.();
       } else {
         const failureMessage =
@@ -1249,7 +1256,6 @@ function ChatSurface({
                 <AssistantMessage
                   key={message.id || `assistant-${index}`}
                   message={message}
-                  onOpenActivity={() => setActivityOpen(true)}
                   onShare={() => setShareOpen(true)}
                 />
               );
@@ -1278,9 +1284,6 @@ function ChatSurface({
           title={chatTitle}
         />
       )}
-      {activityOpen && (
-        <ActivityPanel data={SAMPLE_ACTIVITY} onClose={() => setActivityOpen(false)} />
-      )}
     </div>
   );
 }
@@ -1304,23 +1307,40 @@ function buildRecentChats(serverRecents) {
   const rows = [];
   const seen = new Set();
 
-  for (const title of serverRecents) {
-    if (!title || seen.has(title)) continue;
-    seen.add(title);
+  for (const [index, item] of (serverRecents || []).entries()) {
+    const recent =
+      typeof item === "string"
+        ? { title: item }
+        : item && typeof item === "object"
+          ? item
+          : null;
+    if (!recent) continue;
+
+    const conversationId = String(recent.conversationId || recent.id || "").trim();
+    const title = String(recent.title || recent.lastMessagePreview || "New chat").trim();
+    const key = conversationId || title;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
     rows.push({
-      id: `server-${slugify(title) || rows.length}`,
+      id: conversationId || `server-${slugify(title) || index}`,
+      conversationId: conversationId || "",
       source: "server",
       title,
+      lastMessagePreview: recent.lastMessagePreview || "",
+      messageCount: recent.messageCount || 0,
+      updatedAt: recent.updatedAt || recent.lastMessageAt || "",
     });
   }
 
-  for (const chat of RECENT_CHAT_MOCKS) {
-    if (seen.has(chat.title)) continue;
-    seen.add(chat.title);
-    rows.push({ ...chat, source: "mock" });
-  }
-
   return rows;
+}
+
+function newClientConversationId() {
+  const entropy =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID().slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  return `chat_${Date.now().toString(36)}_${entropy}`;
 }
 
 function normalizeChatMessages(messages) {
@@ -1391,6 +1411,23 @@ function createErrorAssistantTurn(id, message, startedAt) {
 
 function replaceTurnById(turns, id, replacement) {
   return turns.map((turn) => (turn.id === id ? replacement : turn));
+}
+
+function appendAssistantDelta(turns, id, delta, startedAt) {
+  return turns.map((turn) => {
+    if (turn.id !== id) return turn;
+    const text = `${turn.text || plainTextFromBlocks(turn.blocks)}${delta}`;
+    return {
+      ...turn,
+      pending: true,
+      text,
+      thinking: turn.thinking || {
+        state: "running",
+        startedAt,
+      },
+      blocks: markdownToBlocks(text),
+    };
+  });
 }
 
 function formatElapsedSeconds(ms) {
@@ -1517,7 +1554,7 @@ function createRecentPlaceholderThread(title) {
           inline: [
             {
               text:
-                "This chat frame is wired. Conversation-specific history will hydrate here when the app server exposes per-thread loading.",
+                "This chat row could not be hydrated from the app server.",
             },
           ],
         },
@@ -1534,6 +1571,22 @@ function chatTitleFromPrompt(prompt) {
 function titleFromTurns(turns) {
   const firstUser = turns.find((turn) => turn.role === "user" && turn.text);
   return chatTitleFromPrompt(firstUser?.text || "Untitled chat");
+}
+
+function transcriptTextFromThread(thread, title = "Untitled chat") {
+  const rows = [title || "Untitled chat"];
+
+  for (const message of thread || []) {
+    if (message.role === "user") {
+      rows.push(`User: ${message.text || ""}`.trim());
+      continue;
+    }
+
+    const text = plainTextFromBlocks(message.blocks || []);
+    if (text) rows.push(`Task Node: ${text}`);
+  }
+
+  return rows.filter(Boolean).join("\n\n");
 }
 
 function slugify(value) {
@@ -1564,9 +1617,33 @@ function inlineToText(parts) {
     .join("");
 }
 
-function copyText(text) {
+async function copyText(text) {
+  const value = String(text || "");
+  if (!value) return false;
+
   if (navigator?.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).catch(() => {});
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Fall back to a temporary textarea for browsers that block Clipboard API.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    textarea.remove();
   }
 }
 
@@ -1605,14 +1682,19 @@ function UserMessage({
     <article className="user-message">
       <div className="user-bubble">{text}</div>
       <div className="user-message-tools">
-        <ToolbarButton icon={Copy} label="Copy message" onClick={() => copyText(text)} />
+        <ToolbarButton
+          doneLabel="Copied"
+          icon={Copy}
+          label="Copy message"
+          onClick={() => copyText(text)}
+        />
         <ToolbarButton icon={Pencil} label="Edit" onClick={onStartEdit} />
       </div>
     </article>
   );
 }
 
-function AssistantMessage({ message, onOpenActivity, onShare }) {
+function AssistantMessage({ message, onShare }) {
   const [thinkingOpen, setThinkingOpen] = useState(false);
   const body = plainTextFromBlocks(message.blocks);
   const hasThinking = Boolean(message.thinking);
@@ -1661,7 +1743,6 @@ function AssistantMessage({ message, onOpenActivity, onShare }) {
       {showToolbar && (
         <MessageToolbar
           onCopy={() => copyText(body)}
-          onOpenSources={onOpenActivity}
           onShare={onShare}
         />
       )}
@@ -1753,44 +1834,54 @@ function Inline({ parts }) {
   );
 }
 
-function MessageToolbar({ onCopy, onOpenSources, onShare }) {
+function MessageToolbar({ onCopy, onShare }) {
   return (
     <div className="message-toolbar">
-      <ToolbarButton icon={Copy} label="Copy response" onClick={onCopy} />
+      <ToolbarButton doneLabel="Copied" icon={Copy} label="Copy response" onClick={onCopy} />
       <ToolbarButton icon={ArrowUp} label="Share" onClick={onShare} />
-      <ToolbarButton icon={RefreshCw} label="Regenerate" />
-      <ToolbarButton icon={MoreHorizontal} label="More" />
-      <span className="toolbar-divider" />
-      <button className="sources-button" onClick={onOpenSources} type="button">
-        <BookOpen size={14} strokeWidth={1.75} />
-        Sources
-      </button>
     </div>
   );
 }
 
-function ToolbarButton({ icon: Icon, label, onClick }) {
+function ToolbarButton({ doneLabel = "", icon: Icon, label, onClick }) {
   const [hover, setHover] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function handleClick() {
+    const result = await onClick?.();
+    if (!doneLabel || result === false) return;
+    setDone(true);
+    window.setTimeout(() => setDone(false), 1200);
+  }
 
   return (
     <span className="toolbar-button-wrap">
       <button
-        aria-label={label}
+        aria-label={done ? doneLabel : label}
         className="toolbar-button"
-        onClick={onClick}
+        onClick={handleClick}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         type="button"
       >
         <Icon size={14} strokeWidth={1.75} />
       </button>
-      {hover && <span className="toolbar-tip">{label}</span>}
+      {(hover || done) && <span className="toolbar-tip">{done ? doneLabel : label}</span>}
     </span>
   );
 }
 
 function ShareModal({ onClose, thread, title }) {
+  const [copied, setCopied] = useState(false);
   const previewThread = (thread || []).slice(0, 4);
+  const transcript = transcriptTextFromThread(thread, title);
+
+  async function copyTranscript() {
+    const ok = await copyText(transcript);
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
 
   return (
     <div className="modal-backdrop share-backdrop" onClick={onClose} role="presentation">
@@ -1831,109 +1922,14 @@ function ShareModal({ onClose, thread, title }) {
           </div>
         </div>
         <div className="share-targets">
-          <ShareTarget icon={Link2} label="Copy link" />
-          <ShareTarget label="X" symbol="X" />
-          <ShareTarget icon={Linkedin} label="LinkedIn" />
-          <ShareTarget label="Reddit" symbol="R" />
+          <button className="share-target" onClick={copyTranscript} type="button">
+            <span><Copy size={20} strokeWidth={1.75} /></span>
+            {copied ? "Copied" : "Copy transcript"}
+          </button>
         </div>
-        <p>Memory sources won't be shared with viewers.</p>
+        <p>Only visible messages are included.</p>
       </section>
     </div>
-  );
-}
-
-function ShareTarget({ icon: Icon, label, symbol }) {
-  return (
-    <button className="share-target" type="button">
-      <span>{Icon ? <Icon size={20} strokeWidth={1.75} /> : symbol}</span>
-      {label}
-    </button>
-  );
-}
-
-function ActivityPanel({ data, onClose }) {
-  const [showMoreMemory, setShowMoreMemory] = useState(false);
-  const memoryRows = showMoreMemory ? data.memory : data.memory.slice(0, 4);
-
-  return (
-    <aside className="activity-panel" aria-label="Activity">
-      <header>
-        <div>
-          <h3>Activity</h3>
-          <span>{data.duration}</span>
-        </div>
-        <button
-          aria-label="Close activity"
-          className="activity-panel-close"
-          onClick={onClose}
-          type="button"
-        >
-          <X size={16} strokeWidth={1.75} />
-        </button>
-      </header>
-      <div className="activity-panel-body">
-        <section>
-          <h4>Thinking</h4>
-          <div className="thinking-list">
-            {data.thinking.map((step, index) => (
-              <div className="thinking-step" key={`${step.label}-${index}`}>
-                <span>
-                  {step.kind === "primary" ? (
-                    <BookOpen size={14} strokeWidth={1.75} />
-                  ) : (
-                    <i />
-                  )}
-                </span>
-                {step.label}
-              </div>
-            ))}
-          </div>
-        </section>
-        <section>
-          <h4>
-            Memory <span>{data.memory.length + (data.memoryMore || 0)}</span>
-          </h4>
-          <div className="memory-list">
-            {memoryRows.map((memory, index) => (
-              <div className="memory-item" key={`${memory.title}-${index}`}>
-                <small>
-                  <MessageCircle size={12} strokeWidth={1.75} />
-                  Past chat
-                </small>
-                <strong>{memory.title}</strong>
-                <p>{memory.preview}</p>
-              </div>
-            ))}
-            {!showMoreMemory && data.memoryMore > 0 && (
-              <button onClick={() => setShowMoreMemory(true)} type="button">
-                {data.memoryMore} more
-                <ChevronDown size={12} strokeWidth={1.75} />
-              </button>
-            )}
-          </div>
-        </section>
-        {data.files?.length > 0 && (
-          <section>
-            <h4>
-              Files <span>{data.files.length}</span>
-            </h4>
-            <div className="activity-file-list">
-              {data.files.map((file) => (
-                <div className="activity-file" key={file.name}>
-                  <span>
-                    <FileText size={15} strokeWidth={1.75} />
-                  </span>
-                  <div>
-                    <small>{file.type}</small>
-                    <strong>{file.name}</strong>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-      </div>
-    </aside>
   );
 }
 
@@ -2131,15 +2127,60 @@ function TaskRow({ onClick, task }) {
   );
 }
 
-function WalletView({ wallet, usage }) {
+function shortWalletAddress(address) {
+  const text = String(address || "");
+  if (text.length <= 16) return text;
+  return `${text.slice(0, 8)}...${text.slice(-6)}`;
+}
+
+function normalizeSeedInput(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function seedWordCount(value) {
+  const normalized = normalizeSeedInput(value);
+  return normalized ? normalized.split(" ").length : 0;
+}
+
+function WalletView({
+  onAppStateChange,
+  onWalletVaultChange,
+  onWalletVaultLock,
+  onWalletVaultUnlocked,
+  session,
+  wallet,
+  walletVault,
+  usage,
+}) {
   const [message, setMessage] = useState("");
   const [pendingAction, setPendingAction] = useState("");
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [unlockOpen, setUnlockOpen] = useState(false);
   const actions = wallet?.actions || [];
   const linkAction = actions.find((action) => action.id === "link_start");
+  const linkedWallet = wallet?.pftWallet || {};
+  const walletLinked = linkedWallet.status === "linked";
+  const vaultAvailable = Boolean(walletVault?.available && walletVault?.address === linkedWallet.address);
+  const vaultUnlocked = Boolean(vaultAvailable && walletVault?.unlocked);
   const pftBalance = formatDrops(wallet?.pftBalanceDrops || 0);
 
   async function startWalletAction(action) {
     if (!action) return;
+    if (action.id === "link_start") {
+      if (!walletLinked || !vaultAvailable) {
+        setLinkOpen(true);
+      } else if (vaultUnlocked) {
+        onWalletVaultLock?.();
+        setMessage("Vault locked.");
+      } else {
+        setUnlockOpen(true);
+      }
+      return;
+    }
+    if (action.id === "unlock_start" && walletLinked && vaultAvailable && !vaultUnlocked) {
+      setUnlockOpen(true);
+      return;
+    }
 
     setPendingAction(action.id);
     setMessage("");
@@ -2168,11 +2209,19 @@ function WalletView({ wallet, usage }) {
             <small>PFT</small>
           </div>
           <div className="wallet-delta">
-            <strong>+8,400 PFT</strong>
-            <span>received in the last 24h</span>
+            <strong>{walletLinked ? "Seed wallet linked" : "Seed wallet not linked"}</strong>
+            <span>
+              {!walletLinked
+                ? "Link a 24-word recovery phrase without sending it to the server."
+                : vaultUnlocked
+                  ? "Encrypted vault unlocked for this browser session."
+                  : vaultAvailable
+                    ? "Encrypted seed vault saved on this device."
+                    : "Ownership proof is linked. Save an encrypted local vault before wallet actions."}
+            </span>
           </div>
           <button className="address-chip" type="button">
-            <span>rPo8GkCA9YMKzu...JHxNx</span>
+            <span>{walletLinked ? shortWalletAddress(linkedWallet.address) : "No wallet linked"}</span>
             <Copy size={11} strokeWidth={1.75} />
           </button>
           <div className="wallet-actions">
@@ -2181,8 +2230,8 @@ function WalletView({ wallet, usage }) {
               onClick={() => startWalletAction(linkAction)}
               type="button"
             >
-              <Send size={15} strokeWidth={2} />
-              Send
+              {vaultUnlocked ? <Lock size={15} strokeWidth={2} /> : walletLinked ? <Check size={15} strokeWidth={2} /> : <Wallet size={15} strokeWidth={2} />}
+              {!walletLinked || !vaultAvailable ? "Link wallet" : vaultUnlocked ? "Lock" : "Unlock"}
             </button>
             <button className="light-pill" type="button">
               <ArrowDownToLine size={15} strokeWidth={2} />
@@ -2220,10 +2269,14 @@ function WalletView({ wallet, usage }) {
         </ProfileCard>
 
         <div className="wallet-config-strip">
+          <button onClick={() => (vaultUnlocked ? onWalletVaultLock?.() : vaultAvailable ? setUnlockOpen(true) : setLinkOpen(true))} type="button">
+            <span>Local seed vault</span>
+            <small>{vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : "Not saved"}</small>
+          </button>
           {actions.map((action) => (
             <button key={action.id} onClick={() => startWalletAction(action)} type="button">
               <span>{action.label}</span>
-              <small>{pendingAction === action.id ? "Checking" : action.configured ? "Config ready" : "Needs config"}</small>
+              <small>{pendingAction === action.id ? "Checking" : action.enabled ? "Ready" : action.configured ? "Config ready" : "Needs config"}</small>
             </button>
           ))}
         </div>
@@ -2231,6 +2284,365 @@ function WalletView({ wallet, usage }) {
           Chat credit {formatUsd(wallet?.chatCreditUsd || 0)}. Billing is{" "}
           {usage?.billingModel === "usage_based" ? "usage based" : "not ready"}.
         </div>
+      </div>
+      {linkOpen && (
+        <WalletLinkModal
+          action={linkAction}
+          onAppStateChange={onAppStateChange}
+          onWalletVaultChange={onWalletVaultChange}
+          onWalletVaultUnlocked={onWalletVaultUnlocked}
+          onClose={() => setLinkOpen(false)}
+          session={session}
+        />
+      )}
+      {unlockOpen && (
+        <WalletUnlockModal
+          linkedWallet={linkedWallet}
+          onClose={() => setUnlockOpen(false)}
+          onWalletVaultChange={onWalletVaultChange}
+          onWalletVaultUnlocked={(unlock) => {
+            setMessage("");
+            onWalletVaultUnlocked?.(unlock);
+          }}
+          session={session}
+        />
+      )}
+    </div>
+  );
+}
+
+function WalletLinkModal({
+  action,
+  onAppStateChange,
+  onWalletVaultChange,
+  onWalletVaultUnlocked,
+  onClose,
+  session,
+}) {
+  const [walletCore, setWalletCore] = useState(null);
+  const [mnemonic, setMnemonic] = useState("");
+  const [vaultPassword, setVaultPassword] = useState("");
+  const [vaultPasswordConfirm, setVaultPasswordConfirm] = useState("");
+  const [message, setMessage] = useState("");
+  const [linking, setLinking] = useState(false);
+  const normalized = walletCore?.normalizeMnemonic?.(mnemonic) || normalizeSeedInput(mnemonic);
+  const wordCount = walletCore?.mnemonicWordCount?.(mnemonic) || seedWordCount(mnemonic);
+  const valid = walletCore?.isValidTaskNodeMnemonic?.(mnemonic) || false;
+  const passwordReady = vaultPassword.length >= 10;
+  const passwordsMatch = vaultPassword && vaultPassword === vaultPasswordConfirm;
+  let walletSummary = null;
+
+  useEffect(() => {
+    let active = true;
+    import("./wallet-core")
+      .then((module) => {
+        if (active) setWalletCore(module);
+      })
+      .catch(() => {
+        if (active) setMessage("Wallet tools could not be loaded.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (valid) {
+    try {
+      walletSummary = walletCore.deriveWalletSummary(normalized);
+    } catch {
+      walletSummary = null;
+    }
+  }
+
+  async function linkWallet() {
+    if (!session || session.status !== "signed_in") {
+      setMessage("Sign in before linking a seed wallet.");
+      return;
+    }
+
+    if (!valid || !walletSummary) {
+      setMessage("Enter a valid 24-word recovery phrase.");
+      return;
+    }
+    if (!passwordReady || !passwordsMatch) {
+      setMessage("Set a wallet password of at least 10 characters.");
+      return;
+    }
+
+    setLinking(true);
+    setMessage("");
+
+    try {
+      if (!walletCore) {
+        setMessage("Wallet tools are still loading.");
+        setLinking(false);
+        return;
+      }
+
+      const start = await requestJson(action?.path || "/api/wallet/link/start", {
+        method: action?.method || "POST",
+      });
+      if (!start.ok || !start.body?.challenge?.message) {
+        setMessage(start.body?.message || start.body?.actionRequired || "Wallet link could not start.");
+        setLinking(false);
+        return;
+      }
+
+      const proof = walletCore.signWalletChallenge(normalized, start.body.challenge.message);
+      const verify = await requestJson(start.body.verifyPath || "/api/wallet/link/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          challengeId: start.body.challenge.id,
+          address: proof.address,
+          publicKey: proof.publicKey,
+          signature: proof.signature,
+        }),
+      });
+
+      if (!verify.ok) {
+        setMessage(verify.body?.message || verify.body?.actionRequired || "Wallet proof did not verify.");
+        setLinking(false);
+        return;
+      }
+
+      let unlockedAt = new Date().toISOString();
+      try {
+        await walletCore.saveEncryptedMnemonicVault({
+          accountId: session.accountId,
+          mnemonic: normalized,
+          password: vaultPassword,
+        });
+        await onWalletVaultChange?.();
+        onWalletVaultUnlocked?.({
+          ...walletSummary,
+          accountId: session.accountId,
+          mnemonic: normalized,
+          unlockedAt,
+        });
+      } catch {
+        await onAppStateChange?.();
+        setMessage("Wallet linked, but the encrypted vault could not be saved on this device.");
+        setLinking(false);
+        return;
+      }
+
+      setMnemonic("");
+      setVaultPassword("");
+      setVaultPasswordConfirm("");
+      setMessage("Wallet linked.");
+      await onAppStateChange?.();
+      onClose();
+    } catch (error) {
+      setMessage(error?.message || "Wallet link failed.");
+      setLinking(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div className="wallet-link-modal" role="dialog" aria-modal="true" aria-label="Link seed wallet">
+        <header>
+          <div>
+            <h2>Link Seed Wallet</h2>
+            <p>Validate and sign locally. Your recovery phrase is never sent to Task Node.</p>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button" aria-label="Close wallet link">
+            <X size={18} strokeWidth={1.75} />
+          </button>
+        </header>
+        <label className="wallet-seed-field">
+          <span>24-word recovery phrase</span>
+          <textarea
+            autoCapitalize="none"
+            autoComplete="off"
+            autoCorrect="off"
+            onChange={(event) => {
+              setMnemonic(event.target.value);
+              setMessage("");
+            }}
+            placeholder="word one word two ..."
+            spellCheck={false}
+            value={mnemonic}
+          />
+        </label>
+        <div className="wallet-password-grid">
+          <label className="wallet-seed-field compact">
+            <span>Wallet password</span>
+            <input
+              aria-label="Wallet password"
+              autoComplete="new-password"
+              onChange={(event) => {
+                setVaultPassword(event.target.value);
+                setMessage("");
+              }}
+              type="password"
+              value={vaultPassword}
+            />
+          </label>
+          <label className="wallet-seed-field compact">
+            <span>Confirm password</span>
+            <input
+              aria-label="Confirm wallet password"
+              autoComplete="new-password"
+              onChange={(event) => {
+                setVaultPasswordConfirm(event.target.value);
+                setMessage("");
+              }}
+              type="password"
+              value={vaultPasswordConfirm}
+            />
+          </label>
+        </div>
+        <div className="wallet-proof-summary">
+          <span>
+            <strong>{wordCount}/24</strong>
+            Words
+          </span>
+          <span>
+            <strong>{valid ? "Valid" : "Pending"}</strong>
+            Mnemonic
+          </span>
+          <span>
+            <strong>{walletSummary?.address ? shortWalletAddress(walletSummary.address) : "Not derived"}</strong>
+            Address
+          </span>
+          <span>
+            <strong>{passwordReady && passwordsMatch ? "Ready" : "Locked"}</strong>
+            Local vault
+          </span>
+        </div>
+        <div className="wallet-link-warning">
+          The encrypted vault is saved only in this browser. Task Node never receives the phrase or password.
+        </div>
+        {message && <div className="inline-message">{message}</div>}
+        <footer>
+          <button className="light-pill" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="dark-pill" disabled={!walletCore || !valid || !passwordReady || !passwordsMatch || linking} onClick={linkWallet} type="button">
+            {linking ? "Linking" : "Link wallet"}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function WalletUnlockModal({
+  linkedWallet,
+  onClose,
+  onWalletVaultChange,
+  onWalletVaultUnlocked,
+  session,
+}) {
+  const [walletCore, setWalletCore] = useState(null);
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+  const [forgetting, setForgetting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    import("./wallet-core")
+      .then((module) => {
+        if (active) setWalletCore(module);
+      })
+      .catch(() => {
+        if (active) setMessage("Wallet tools could not be loaded.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function unlockVault() {
+    if (!walletCore || unlocking) return;
+    if (!session?.accountId) {
+      setMessage("Sign in before unlocking a wallet.");
+      return;
+    }
+
+    setUnlocking(true);
+    setMessage("");
+    try {
+      const unlocked = await walletCore.unlockEncryptedMnemonicVault({
+        accountId: session.accountId,
+        password,
+        expectedAddress: linkedWallet?.address || "",
+      });
+      onWalletVaultUnlocked?.(unlocked);
+      setPassword("");
+      onClose();
+    } catch {
+      setMessage("Wallet password did not unlock this vault.");
+      setUnlocking(false);
+    }
+  }
+
+  async function forgetVault() {
+    if (!walletCore || forgetting || !session?.accountId) return;
+    setForgetting(true);
+    setMessage("");
+    try {
+      walletCore.removeLocalWalletVault({ accountId: session.accountId });
+      await onWalletVaultChange?.();
+      onClose();
+    } catch {
+      setMessage("Local vault could not be removed.");
+      setForgetting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div className="wallet-link-modal" role="dialog" aria-modal="true" aria-label="Unlock seed wallet">
+        <header>
+          <div>
+            <h2>Unlock Seed Wallet</h2>
+            <p>Decrypt the local vault for this browser session.</p>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button" aria-label="Close wallet unlock">
+            <X size={18} strokeWidth={1.75} />
+          </button>
+        </header>
+        <div className="wallet-proof-summary single">
+          <span>
+            <strong>{shortWalletAddress(linkedWallet?.address)}</strong>
+            Linked wallet
+          </span>
+        </div>
+        <label className="wallet-seed-field compact">
+          <span>Wallet password</span>
+          <input
+            aria-label="Wallet unlock password"
+            autoComplete="current-password"
+            autoFocus
+            onChange={(event) => {
+              setPassword(event.target.value);
+              setMessage("");
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") unlockVault();
+            }}
+            type="password"
+            value={password}
+          />
+        </label>
+        <div className="wallet-link-warning">
+          Unlocking keeps the decrypted phrase in memory only. Lock the vault or log out to clear it.
+        </div>
+        {message && <div className="inline-message">{message}</div>}
+        <footer>
+          <button className="light-pill" disabled={forgetting} onClick={forgetVault} type="button">
+            {forgetting ? "Forgetting" : "Forget local vault"}
+          </button>
+          <button className="dark-pill" disabled={!walletCore || !password || unlocking} onClick={unlockVault} type="button">
+            {unlocking ? "Unlocking" : "Unlock"}
+          </button>
+        </footer>
       </div>
     </div>
   );
@@ -2264,50 +2676,284 @@ function ActivityRow({ tx }) {
   );
 }
 
-function ContextView() {
-  const [contextSource, setContextSource] = useState("pft");
+function pickContextText(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value.map((entry) => pickContextText(entry)).filter(Boolean).join("\n\n");
+  }
+  if (typeof value !== "object") return "";
+
+  const directFields = [
+    "body",
+    "content",
+    "context",
+    "contextDocument",
+    "context_doc",
+    "markdown",
+    "text",
+    "plaintext",
+  ];
+  for (const field of directFields) {
+    const text = pickContextText(value[field]);
+    if (text) return text;
+  }
+
+  return "";
+}
+
+function pickContextTitle(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "Historical PFT Context";
+  const title = value.title || value.name || value.contextTitle || value.context_title;
+  return String(title || "Historical PFT Context").trim().slice(0, 120) || "Historical PFT Context";
+}
+
+function extractHydratedContext(payload, plaintext) {
+  const parsedPlaintext = (() => {
+    if (typeof plaintext !== "string") return null;
+    try {
+      return JSON.parse(plaintext);
+    } catch {
+      return null;
+    }
+  })();
+  const source = parsedPlaintext || payload;
+  const text = (pickContextText(source) || (typeof plaintext === "string" ? plaintext : "")).trim();
+  return {
+    title: pickContextTitle(source),
+    text: text.slice(0, 50000),
+    rawPayload: source,
+  };
+}
+
+function formatContextTimestamp(value) {
+  if (!value) return "Not saved yet";
+
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return "Not saved yet";
+  }
+}
+
+function ContextView({ context, onHydrateContext, walletVault }) {
+  const initialDocument = context?.document || {};
+  const savePath = context?.savePath || initialDocument.savePath || "/api/context/edit/save";
+  const history = context?.history || {};
+  const [documentState, setDocumentState] = useState(initialDocument);
+  const [title, setTitle] = useState(initialDocument.title || "Task Node Context");
+  const [body, setBody] = useState(initialDocument.body || "");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [hydratedContext, setHydratedContext] = useState(null);
+  const [hydrating, setHydrating] = useState(false);
+  const [hydrateMessage, setHydrateMessage] = useState("");
+
+  useEffect(() => {
+    const nextDocument = context?.document || {};
+    setDocumentState(nextDocument);
+    setTitle(nextDocument.title || "Task Node Context");
+    setBody(nextDocument.body || "");
+    setSaveMessage("");
+  }, [context?.document?.id, context?.document?.revision, context?.document?.updatedAt]);
+
+  useEffect(() => {
+    setHydratedContext(null);
+    setHydrateMessage("");
+  }, [history?.revision, history?.latestContextPointer?.cid]);
+
+  const canEdit = Boolean(documentState.canEdit);
+  const dirty = title !== (documentState.title || "Task Node Context") || body !== (documentState.body || "");
+  const lastSaved = formatContextTimestamp(documentState.updatedAt);
+  const latestContextPointer = history.latestContextPointer || null;
+  const canHydrateLatest = Boolean(latestContextPointer?.cid && walletVault?.unlocked);
+
+  const saveContext = async () => {
+    if (!canEdit || saving) return;
+
+    setSaving(true);
+    setSaveMessage("");
+
+    let result;
+    try {
+      result = await requestJson(savePath, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title, body }),
+      });
+    } catch {
+      setSaveMessage("Context could not be saved.");
+      setSaving(false);
+      return;
+    }
+
+    if (!result.ok || !result.body?.document) {
+      setSaveMessage(result.body?.message || "Context could not be saved.");
+      setSaving(false);
+      return;
+    }
+
+    setDocumentState(result.body.document);
+    setTitle(result.body.document.title || "Task Node Context");
+    setBody(result.body.document.body || "");
+    setSaveMessage("Saved");
+    setSaving(false);
+  };
+
+  const hydrateLatestContext = async () => {
+    if (!latestContextPointer?.cid || hydrating) return;
+    if (!walletVault?.unlocked) {
+      setHydrateMessage("Unlock the local seed vault first.");
+      return;
+    }
+
+    setHydrating(true);
+    setHydrateMessage("");
+    try {
+      const result = await onHydrateContext?.(latestContextPointer);
+      if (!result?.text) {
+        setHydrateMessage("Context CID was fetched, but no readable context text was found.");
+        setHydratedContext(null);
+      } else {
+        setHydratedContext(result);
+        setHydrateMessage(result.decrypted ? "Context decrypted." : "Context fetched.");
+      }
+    } catch (error) {
+      setHydrateMessage(error?.message || "Context could not be hydrated.");
+      setHydratedContext(null);
+    } finally {
+      setHydrating(false);
+    }
+  };
+
+  const applyHydratedContext = () => {
+    if (!hydratedContext?.text) return;
+    setTitle(hydratedContext.title || "Historical PFT Context");
+    setBody(hydratedContext.text);
+    setSaveMessage("Hydrated draft not saved");
+  };
 
   return (
     <div className="route-scroll">
       <div className="context-view">
-        <div className="route-heading compact">
+        <div className="route-heading context-heading">
           <div>
             <h1>Context</h1>
-            <p>Choose where the assistant draws context from. You can connect more than one source.</p>
+            <p>Keep the working instructions and preferences the assistant should remember.</p>
+          </div>
+          <div className="context-meta">
+            <span>Revision {documentState.revision || 0}</span>
+            <span>{lastSaved}</span>
           </div>
         </div>
 
-        <div className="context-source-list">
-          {CONTEXT_SOURCES.map((source) => {
-            const Icon = source.icon;
-            const active = contextSource === source.key;
-            return (
+        <section className="context-document" aria-label="Context document">
+          <label className="context-field">
+            <span>Title</span>
+            <input
+              className="context-title-input"
+              maxLength={120}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Task Node Context"
+              value={title}
+            />
+          </label>
+          <label className="context-field">
+            <span>Context document</span>
+            <textarea
+              className="context-body-input"
+              maxLength={50000}
+              onChange={(event) => setBody(event.target.value)}
+              placeholder="Add stable preferences, active projects, constraints, and working notes."
+              value={body}
+            />
+          </label>
+          <div className="context-actions">
+            <div className="context-save-status" role="status">
+              {!canEdit ? "Sign in to save context." : saveMessage || (dirty ? "Unsaved changes" : "All changes saved")}
+            </div>
+            <button
+              className="dark-pill"
+              disabled={!canEdit || !dirty || saving}
+              onClick={saveContext}
+              type="button"
+            >
+              {saving ? "Saving" : "Save"}
+            </button>
+          </div>
+        </section>
+
+        <section className="context-history" aria-label="Historical PFT context">
+          <div>
+            <h2>Historical PFT Context</h2>
+            <p>
+              {history.pointerCount
+                ? `${history.pointerCount} indexed pointer${history.pointerCount === 1 ? "" : "s"} imported.`
+                : history.canHydrate
+                  ? "No indexed PFTasks history imported yet."
+                  : "Sign in to import indexed PFTasks history."}
+            </p>
+          </div>
+          <div className="context-history-grid">
+            <span>
+              <strong>{history.contextUpdateCount || 0}</strong>
+              Context updates
+            </span>
+            <span>
+              <strong>{history.taskEventCount || 0}</strong>
+              Task events
+            </span>
+            <span>
+              <strong>{history.latestContextPointer?.cid ? "Ready" : "Pending"}</strong>
+              Latest pointer
+            </span>
+          </div>
+          {history.latestContextPointer?.cid && (
+            <div className="context-pointer-row">
+              <span>{history.latestContextPointer.cid}</span>
+              <small>{formatContextTimestamp(history.latestContextPointer.createdAt)}</small>
+            </div>
+          )}
+          {latestContextPointer?.cid && (
+            <div className="context-hydration-actions">
               <button
-                className={active ? "context-source active" : "context-source"}
-                key={source.key}
-                onClick={() => setContextSource(source.key)}
+                className="dark-pill"
+                disabled={!canHydrateLatest || hydrating}
+                onClick={hydrateLatestContext}
                 type="button"
               >
-                <span className="context-source-icon" style={{ background: `${source.accent}14`, color: source.accent }}>
-                  <Icon size={20} strokeWidth={1.75} />
-                </span>
-                <span className="context-source-copy">
-                  <span>
-                    <strong>{source.name}</strong>
-                    {source.status === "connected" && <em>Connected</em>}
-                  </span>
-                  <small>{source.desc}</small>
-                </span>
-                <span className="radio-mark">{active && <span />}</span>
+                {hydrating ? "Hydrating" : "Hydrate latest"}
               </button>
-            );
-          })}
-        </div>
+              <span>{walletVault?.unlocked ? "Local vault unlocked" : "Unlock wallet first"}</span>
+            </div>
+          )}
+          {hydrateMessage && <div className="inline-message">{hydrateMessage}</div>}
+          {hydratedContext?.text && (
+            <div className="context-hydrated-preview">
+              <div>
+                <strong>{hydratedContext.title}</strong>
+                <small>{hydratedContext.decrypted ? "Decrypted locally" : "Fetched"}</small>
+              </div>
+              <pre>{hydratedContext.text}</pre>
+              <button className="light-pill" disabled={!canEdit} onClick={applyHydratedContext} type="button">
+                Use as draft
+              </button>
+            </div>
+          )}
+          <div className="context-note context-history-note">
+            Indexed PFTasks rows are normalized before live RPC fallback. Encrypted CID plaintext is decrypted only after wallet unlock.
+            {" "}
+            {walletVault?.unlocked ? "Your seed vault is unlocked for this session." : "Encrypted history stays pointer-only until the local vault is unlocked."}
+          </div>
+        </section>
 
         <div className="context-note">
-          The active context source feeds the assistant alongside your prompt.
-          Internal PFT Context is always available on Task Node; external
-          connectors require authorization.
+          Context saves to your Task Node account first. Wallet signing is only for optional portable PFTL manifests.
         </div>
       </div>
     </div>

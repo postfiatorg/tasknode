@@ -7,13 +7,19 @@
     "dev": "vite --host 0.0.0.0 --port 5174",
     "build": "vite build",
     "start": "node server/index.js",
+    "runtime-smoke": "node scripts/runtime-store-smoke.mjs",
     "smoke": "node scripts/smoke.mjs",
     "frame-smoke": "node scripts/frame-smoke.mjs"
   },
   "dependencies": {
+    "@scure/bip39": "^2.2.0",
+    "libsodium": "^0.8.4",
+    "libsodium-wrappers": "^0.8.4",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "ripple-keypairs": "^2.0.0",
+    "xrpl": "^4.6.0"
   },
   "devDependencies": {
     "vite": "^7.2.4"

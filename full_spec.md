@@ -35,6 +35,14 @@ The target product is a world-class ChatGPT-style execution app:
 - `pftasks/milestones/backend_scope/tasknode_backend_scope.md`.
 - `pftasks/milestones/define_user_flows/technical_spec.md`.
 - `pftasks` Fly configs, package manifests, and `.env.example` files.
+- `pftdocs/README.postfiat.md`.
+- `pftdocs/docs/postfiat/ARCHITECTURE.md`.
+- `pftdocs/docs/postfiat/DATA_CONTRACTS.md`.
+- `pftdocs/docs/postfiat/SECURITY_MODEL.md`.
+- `pftdocs/docs/postfiat/AGENT_HANDOFF.md`.
+- `pftdocs/src/postfiat/wallet-core.mjs`.
+- `pftdocs/lib/http-worker.js`.
+- `tasknodedocs/DATABASE_ARCHITECTURE.md`.
 
 Note: local and Fly secrets are an input to deployment research, but secret
 values should never be copied into this repo, this spec, tickets, logs, or LLM
@@ -94,6 +102,20 @@ These decisions supersede older PFTasks docs unless explicitly reopened:
 - Seed storage is a first-class security design problem. Local encrypted seed
   storage, backup, recovery, delinking, relinking, and repeated test onboarding
   must be designed deliberately.
+- For Task Node history and context hydration, do not assume live PFTL RPC
+  `account_tx` history is complete. PFDocs explicitly records that the current
+  configured testnet RPC can return zero `account_tx` rows for active
+  high-history wallets. Prefer indexed PFTasks snapshots for the first product
+  integration, and use live RPC as a fallback/provenance path until archive
+  history is proven.
+- The MVP context surface is native Task Node context editing and saving. Google
+  Docs and Notion imports are deferred unless reopened by product decision.
+- The old PFTasks context editor is not a UX target. It is a data/workflow
+  reference only. The new context surface should fit the Task Node Official
+  ChatGPT-style app shell and can use product/design discretion because no
+  canonical JSX mock exists for this surface yet.
+- IPFS/PFTL publication is explicit durable export/inking, not the default save
+  path for a normal editable context document.
 
 ## Product Principles
 
@@ -231,6 +253,49 @@ These are not blockers. They are decision gates.
    written as if it may become open source, which affects secret handling,
    licensing, prompt visibility, and dependency choices.
 
+## PFDocs RPC, Wallet, and Context Findings
+
+PFDocs is not just visual inspiration. It contains product constraints and
+implementation traps that should shape Task Node Official.
+
+Key findings:
+
+- PFDocs has the current Task Node style wallet primitives: 24-word BIP39/XRPL
+  derivation, canonical wallet signing messages, local encrypted vault helpers,
+  session-only wallet material, PFT payment transaction construction, and Task
+  Node history loading.
+- PFDocs decodes `pf.ptr` memo type with `v4` memo format and pointer fields for
+  CID, target, kind, schema, task id, thread id, context id, and flags. Context
+  and task history should normalize to this event shape instead of inventing a
+  new local slug format.
+- PFDocs supports two history paths:
+  indexed PFTasks snapshots and live PFTL `account_tx` scans. The indexed path
+  normalizes `context_revisions`, `task_events`, and `task_submissions`, then
+  hydrates/decrypts IPFS CIDs with the unlocked wallet mnemonic. The live path
+  scans account transactions, extracts `pf.ptr` events, and hydrates the same
+  way.
+- The live RPC path has a known trap: the configured testnet RPC can return zero
+  `account_tx` rows for active high-history wallets. Task Node Official must not
+  depend on live RPC scans as the only way to recover historical task/context
+  slugs.
+- The production shape should be an index-first read model:
+  PFTasks/PFTL-derived rows feed a Task Node history snapshot, the app hydrates
+  from that snapshot, and RPC/archive WSS scanning is fallback/provenance until
+  an indexer or archive node is proven reliable.
+- Normal context saves should be account-scoped and server-side. Wallet unlock
+  is only required to decrypt historical wallet-bound context payloads or to
+  explicitly ink/export a PFTL manifest.
+- Decrypted task/context plaintext is sensitive. Do not create broad plaintext
+  caches, logs, traces, or provider payloads. Only selected context should enter
+  chat prompts, and retention should be an explicit product boundary.
+
+Implementation implication:
+
+For the MVP, implement a native account context document with normal save
+semantics, plus a PFDocs-compatible hydration adapter for historical wallet
+context. Treat slugs as locators and decoded pointer/provenance/hash data as the
+trust boundary.
+
 ## Research Status Legend
 
 - Not started: no meaningful investigation yet.
@@ -247,14 +312,14 @@ These are not blockers. They are decision gates.
 | R01 | Existing PFTasks inventory and deletion line | Discovery | Keep/delete/defer matrix |
 | R02 | UX parity with ChatGPT-style mock | Discovery | Screen inventory, ChatGPT references, and component map |
 | R03 | Auth and account model | Spec ready | `auth_account_spec.md` |
-| R04 | Wallet custody and transaction signing | Not started | Seed storage and PFTL wallet architecture decision |
+| R04 | Wallet custody and transaction signing | Discovery | Browser seed proof, encrypted local vault, and latest CID decrypt are live; PFTL signing and delink/relink remain |
 | R05 | Crypto funding and spend ledger | Not started | Usage-based billing ledger and top-up architecture |
-| R06 | Message storage and chat history | Discovery | Scalable chat schema and retention model |
+| R06 | Message storage and chat history | Discovery | JSON runtime store is wired; scalable chat schema and retention model still required |
 | R07 | Model routing and provider policy | Not started | Provider router, privacy, cost, and fallback spec |
 | R08 | Prompt architecture | Discovery | Open prompt repo strategy and private prompt exception |
 | R09 | Jobs-style default assistant behavior | Not started | System prompt contract and safety/product review |
-| R10 | Context document system | Discovery | Google Docs, Notion, PFT context, cache, and edit spec |
-| R11 | PFTL pointer portability | Discovery | v4 pointer usage and manifest lifecycle |
+| R10 | Context document system | Discovery | Native account context save/load, indexed pointer import, and latest encrypted CID hydration are live; durable cache and manifest spec remain |
+| R11 | PFTL pointer portability | Decision needed | v4 pointer usage, indexed snapshot fallback, and manifest lifecycle |
 | R12 | Personal task generation | Discovery | Request, generation, accept/refuse, history contract |
 | R13 | Task evidence and verification | Discovery | Evidence type matrix and verification workers |
 | R14 | Rewards, payouts, and daily caps | Discovery | Reward cap, payout job, and balance top-up spec |
@@ -278,6 +343,80 @@ These are not blockers. They are decision gates.
 | R32 | Open-source readiness | Not started | License, secret, prompt, and dependency audit |
 | R33 | Migration from PFTasks | Discovery | Data, feature, and traffic migration plan |
 | R34 | Product analytics and KPIs | Discovery | Event taxonomy and dashboard requirements |
+
+## Overnight MVP Burndown
+
+This is the execution sequence for the current product push. It should stay
+small and spine-first.
+
+### P0: Production Chat
+
+- Done: replace fake chat state with server-owned JSON-runtime conversations,
+  messages, and recents.
+- Done: render user messages optimistically before the model response returns.
+- Done: add streaming provider adapters for OpenAI and OpenRouter.
+- Done: persist assistant output and usage only after successful completion.
+- Done: remove unbacked chat toolbar controls and fake source/activity panels;
+  copy and transcript export are backed by clipboard behavior.
+- Show chat credit/spend near the PFT/account balance in the app shell.
+
+### P0: Account Credit
+
+- Done: make the initial usage balance grant idempotent with a unique ledger
+  key so relinking, retries, or callback replay cannot double-credit an
+  account.
+- Done: grant the initial usage balance from the GitHub callback/link path.
+- Do not grant the initial balance for email-only accounts.
+- Wire the same grant into X, Telegram, and Discord when their callback
+  verification paths exist.
+
+### P1: Seed Login
+
+- Done: reconstruct the first 24-word seed wallet proof flow using the current
+  PFDocs wallet primitives.
+- Done: validate the mnemonic and derive the XRPL wallet in the browser.
+- Done: never send seed phrase or private key material to the server.
+- Done: use server challenge signing to prove wallet ownership and link the
+  wallet address to the account.
+- Done: implement encrypted local seed vault persistence with browser
+  WebCrypto AES-GCM/PBKDF2 before treating the wallet as restored across
+  sessions.
+- Done: add wallet unlock/lock UX for the local browser vault. Decrypted seed
+  material stays in memory only and is cleared on lock/logout.
+- Done: use wallet unlock to decrypt the latest imported encrypted context CID
+  in the browser without server-side plaintext storage.
+- Implement PFTL signing confirmation boundaries.
+- Use the local `ga_seed_user.txt` only for manual dev testing; never print,
+  log, commit, or fixture-test the real seed.
+
+### P1: Context
+
+- Done: build native account-scoped context save/load first.
+- Done: replace the placeholder connector picker with a native context editor
+  that saves without wallet unlock.
+- Done: import historical PFTasks context/task rows from indexed snapshots as
+  PFDocs-compatible pointer metadata before attempting live RPC scans.
+- Done: hydrate the latest encrypted historical context CID only after local
+  wallet unlock. The server fetches encrypted JSON only for CIDs already present
+  in the account's imported pointer metadata.
+- Add durable local summaries/caches for selected decrypted history only after
+  the retention and chat-context boundary is explicit.
+- Use live PFTL `account_tx` only as fallback/provenance until archive history
+  is proven.
+- Keep PFTL manifest inking explicit and wallet-gated.
+- Do not copy the old context editor UI. Build a cleaner context experience that
+  feels native to this app: quiet, editorial, easy to scan, easy to revise, and
+  consistent with the ChatGPT-style shell.
+
+### Operational Guardrail: Whip
+
+- The whip is an execution accelerator, not a product authority.
+- If the whip blocks progress, targets the wrong tmux pane, repeats stale work,
+  expands scope beyond this spec, or risks damaging the repo, pause it before
+  continuing implementation.
+- The canonical shutdown instructions live in `whip_context.md`.
+- After pausing the whip, report the reason and continue only from a narrow,
+  explicit manual next step.
 
 ## Feature Research Briefs
 
@@ -582,11 +721,16 @@ Research questions:
 
 - What is the canonical context document format?
 - How are values, strategies, tactics, history, and preferences represented?
-- How are Google Docs share links imported without Google login?
-- What Notion integration path is viable for shared documents?
-- Can context docs be edited natively and saved without a PFT transaction?
+- How should the native context editor mirror the original Task Node context
+  surface without bringing over unnecessary CryptPad/Notion/Google complexity?
+- How are context docs edited natively and saved to the account without a PFT
+  transaction?
+- How does a wallet-linked user hydrate historical PFTasks context revisions
+  from indexed snapshots and encrypted IPFS CIDs?
+- When does a user explicitly unlock a wallet to decrypt historical context?
 - When does a user explicitly ink a PFT transaction for a context manifest?
-- What is cached for portability?
+- What is cached locally, what is stored on the app server, and what remains
+  pointer-only?
 
 Sources:
 
@@ -594,6 +738,9 @@ Sources:
 - `pftasks/api/src/services/context_service.js`.
 - Existing context editor frontend files.
 - PFDocs PFT pointer/cache behavior.
+- `pftdocs/src/postfiat/wallet-core.mjs`.
+- `pftdocs/docs/postfiat/DATA_CONTRACTS.md`.
+- `pftdocs/docs/postfiat/AGENT_HANDOFF.md`.
 
 Deliverable:
 
@@ -610,8 +757,12 @@ Research questions:
 
 - Which v4 pointer types are required for context, submissions, and manifests?
 - What remains on-chain vs in Postgres vs IPFS?
-- How do we avoid spamming the Post Fiat RPC?
-- How are pointer transactions indexed, cached, and verified?
+- How do we avoid spamming the Post Fiat RPC and avoid depending on incomplete
+  `account_tx` history?
+- What indexed PFTasks snapshot fields are required for hydration?
+- How are pointer transactions indexed, cached, verified, and tied back to
+  content hashes/provenance?
+- What is the archive WSS/Clio/indexer path if live RPC history is incomplete?
 
 Sources:
 
@@ -619,6 +770,9 @@ Sources:
 - `pftasks/api/src/routes/pointers.js`.
 - `pftasks/api/src/services/tx_sync_service.js`.
 - `pftasks/worker` tx sync jobs.
+- `pftdocs/src/postfiat/wallet-core.mjs`.
+- `pftdocs/lib/http-worker.js`.
+- `tasknodedocs/DATABASE_ARCHITECTURE.md`.
 
 Deliverable:
 
@@ -1284,10 +1438,12 @@ commitment.
 
 Outputs:
 
-- Native context editor.
-- Google Docs share-link importer.
-- Notion research decision.
-- Context cache.
+- Done: native context editor.
+- Done: account-scoped context save/load.
+- Done: PFDocs-compatible indexed PFTasks pointer metadata import.
+- Encrypted CID hydration after wallet unlock.
+- Optional wallet unlock for decrypting historical context CIDs.
+- Context cache with explicit plaintext retention rules.
 - Optional PFTL pointer manifest flow.
 
 Exit criteria:
@@ -1376,16 +1532,15 @@ Exit criteria:
 
 ## Immediate Next Research Steps
 
-1. Produce the source-of-truth decision log.
-2. Inventory PFTasks feature surfaces into keep/delete/defer.
-3. Decide wallet custody and funding architecture before implementing billing.
-4. Draft the chat/message schema with Postgres query budgets.
-5. Draft the account and provider linking model.
-6. Define the MVP surface from the mock.
-7. Inventory Fly and local secret names without recording values.
-8. Draft the deployment topology for `tasknodeofficial`.
-9. Turn this research burndown into implementation milestones only after the
-   major decision gates are closed.
+1. Convert the overnight MVP burndown into implementation tickets.
+2. Move chat conversation/message storage from JSON runtime to the durable data
+   model once that store is selected.
+3. Wire idempotent initial provider credit into X, Telegram, and Discord after
+   their callback verification paths exist.
+4. Add durable local summaries/caches for selected decrypted PFTasks/PFDocs
+   history and wire explicit chat-context selection.
+5. Verify Fly dev persistence and secrets before testing user history or usage
+   balance flows.
 
 ## Non-Goals For The First Implementation Pass
 

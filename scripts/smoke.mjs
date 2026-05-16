@@ -1,6 +1,43 @@
+import {
+  decryptTaskNodePayload,
+  deriveTaskNodePublicKey,
+  encryptTaskNodePayloadForTests,
+  hydrateTaskNodeFetchedPayload,
+  signWalletChallenge,
+} from "../src/wallet-core.js";
+
 const baseUrl = process.env.SMOKE_BASE_URL || "http://127.0.0.1:8080";
 let readyChatMode = process.env.SMOKE_CHAT_MODE || "Private Instant";
 const smokeConversationId = process.env.SMOKE_CONVERSATION_ID || `smoke-${Date.now()}`;
+const smokeMnemonic =
+  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+const smokeContextCid = "bafybeigdyrztm3j5qwerasdfzxcvqwerasdfctx";
+const smokeEvidenceCid = "bafybeigdyrztm3j5qwerasdfzxcvqwerasdfevd";
+const smokeOtherCid = "bafybeigdyrztm3j5qwerasdfzxcvqwerasdfoth";
+
+const taskNodePublicKey = await deriveTaskNodePublicKey(smokeMnemonic);
+const encryptedSmokePayload = await encryptTaskNodePayloadForTests({
+  plaintext: JSON.stringify({
+    title: "Encrypted Smoke Context",
+    body: "SMOKE ENCRYPTED CONTEXT PAYLOAD",
+  }),
+  recipientPublicKeys: [taskNodePublicKey],
+});
+const decryptedSmokePayload = await decryptTaskNodePayload({
+  blob: encryptedSmokePayload,
+  mnemonic: smokeMnemonic,
+});
+const hydratedSmokePayload = await hydrateTaskNodeFetchedPayload({
+  payload: encryptedSmokePayload,
+  mnemonic: smokeMnemonic,
+});
+if (
+  !decryptedSmokePayload.includes("SMOKE ENCRYPTED CONTEXT PAYLOAD") ||
+  hydratedSmokePayload.decrypted !== true ||
+  hydratedSmokePayload.payload?.body !== "SMOKE ENCRYPTED CONTEXT PAYLOAD"
+) {
+  throw new Error("Task Node encrypted payload crypto smoke failed.");
+}
 
 async function rawRequest(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, options);
@@ -51,7 +88,8 @@ await check("/api/app-state", (response, text) => {
     body.usage?.billingModel === "usage_based" &&
     typeof body.usage?.availableCreditUsd === "number" &&
     Array.isArray(body.usage?.fundingActions) &&
-    Array.isArray(body.context?.sources)
+    Array.isArray(body.context?.sources) &&
+    body.context?.history?.canHydrate === false
   );
 });
 
@@ -199,7 +237,10 @@ if (devAuth.response.status === 200) {
       return (
         response.ok &&
         body.session?.status === "signed_in" &&
-        signedInConversationId.startsWith("account_")
+        signedInConversationId.startsWith("account_") &&
+        body.usage?.chatStreamPath === "/api/chat/stream" &&
+        body.context?.document?.canEdit === true &&
+        body.context?.savePath === "/api/context/edit/save"
       );
     }
   );
@@ -223,12 +264,77 @@ if (devAuth.response.status === 200) {
     }
   );
 
+  let walletChallenge = null;
+  await checkRequest(
+    "/api/wallet/link/start",
+    { method: "POST", headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      walletChallenge = body.challenge || null;
+      return (
+        response.ok &&
+        body.ok === true &&
+        body.action === "wallet_link_start" &&
+        body.verifyPath === "/api/wallet/link/verify" &&
+        walletChallenge?.message?.includes("Post Fiat Task Node wallet proof")
+      );
+    }
+  );
+
+  const walletProof = signWalletChallenge(smokeMnemonic, walletChallenge.message);
+  await checkRequest(
+    "/api/wallet/link/verify",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        challengeId: walletChallenge.id,
+        address: walletProof.address,
+        publicKey: walletProof.publicKey,
+        signature: walletProof.signature,
+      }),
+    },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return (
+        response.ok &&
+        body.ok === true &&
+        body.wallet?.status === "linked" &&
+        body.wallet?.address === walletProof.address &&
+        !text.includes(smokeMnemonic)
+      );
+    }
+  );
+
+  await checkRequest(
+    "/api/app-state",
+    { headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return (
+        response.ok &&
+        body.wallet?.pftWallet?.status === "linked" &&
+        body.wallet?.pftWallet?.address === walletProof.address &&
+        body.session?.walletLink?.status === "linked"
+      );
+    }
+  );
+
   await checkRequest(
     "/api/chat/history",
     { headers: { cookie } },
     (response, text) => {
       const body = JSON.parse(text);
       return response.ok && body.conversationId === signedInConversationId && Array.isArray(body.messages);
+    }
+  );
+
+  await checkRequest(
+    "/api/chat/conversations",
+    { headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.ok && Array.isArray(body.conversations);
     }
   );
 
@@ -246,6 +352,139 @@ if (devAuth.response.status === 200) {
     (response, text) => {
       const body = JSON.parse(text);
       return response.ok && body.dryRun === true && body.conversationId === signedInConversationId;
+    }
+  );
+
+  await checkRequest(
+    "/api/chat/stream",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        message: "Dry run account scoped streaming chat",
+        mode: "Private Instant",
+        dryRun: true,
+      }),
+    },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.ok && body.dryRun === true && body.conversationId === signedInConversationId;
+    }
+  );
+
+  await checkRequest(
+    "/api/context/edit/save",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        title: "Smoke Context",
+        body: "# Smoke Context\n\nThis context belongs to the signed-in smoke account.",
+      }),
+    },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return (
+        response.ok &&
+        body.ok === true &&
+        body.action === "save_edit" &&
+        body.document?.title === "Smoke Context" &&
+        body.document?.revision >= 1 &&
+        body.document?.canEdit === true
+      );
+    }
+  );
+
+  await checkRequest(
+    "/api/app-state",
+    { headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return (
+        response.ok &&
+        body.context?.document?.title === "Smoke Context" &&
+        body.context?.document?.body?.includes("signed-in smoke account") &&
+        body.context?.document?.canEdit === true
+      );
+    }
+  );
+
+  await checkRequest(
+    "/api/context/history/indexed",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        snapshot: {
+          walletAddress: "rSmokeWalletAddress",
+          contextRevisions: [
+            {
+              id: "ctx-smoke-1",
+              cid: `ipfs://${smokeContextCid}`,
+              tx_hash: "SMOKE_CONTEXT_TX",
+              created_at: "2026-05-16T00:00:00.000Z",
+              word_count: 120,
+            },
+          ],
+          tasks: [
+            {
+              id: "task-smoke-1",
+              title: "Smoke private task title",
+              status: "rewarded",
+              verification_type: "text",
+            },
+          ],
+          taskEvents: [
+            {
+              id: "event-smoke-1",
+              task_id: "task-smoke-1",
+              event_type: "submission_recorded",
+              event_payload: JSON.stringify({
+                artifact_cid: `ipfs://${smokeEvidenceCid}`,
+                encrypted_cid: `ipfs://${smokeEvidenceCid}`,
+                response_text: "SMOKE PRIVATE PAYLOAD MUST NOT LEAK",
+              }),
+              created_at: "2026-05-16T00:01:00.000Z",
+            },
+          ],
+        },
+      }),
+    },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return (
+        response.ok &&
+        body.ok === true &&
+        body.action === "hydrate_indexed_history" &&
+        body.history?.contextUpdateCount === 1 &&
+        body.history?.taskEventCount === 1 &&
+        body.history?.latestContextPointer?.cid === smokeContextCid &&
+        text.includes(smokeEvidenceCid) &&
+        !text.includes("SMOKE PRIVATE PAYLOAD MUST NOT LEAK")
+      );
+    }
+  );
+
+  await checkRequest(
+    "/api/context/history",
+    { headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return (
+        response.ok &&
+        body.canHydrate === true &&
+        body.pointerCount === 2 &&
+        body.hydration?.requiresWalletUnlock === true
+      );
+    }
+  );
+
+  await checkRequest(
+    `/api/context/history/ipfs/${smokeOtherCid}`,
+    { headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.status === 404 && body.error === "context_cid_not_imported";
     }
   );
 
@@ -313,6 +552,12 @@ await check("/api/chat/history", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
   return Array.isArray(body.messages);
+});
+
+await check("/api/chat/conversations", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return Array.isArray(body.conversations);
 });
 
 await check("/api/usage/ledger", (response, text) => {
@@ -383,6 +628,27 @@ await checkRequest(
   }
 );
 
+await checkRequest(
+  "/api/chat/stream",
+  {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      message: "Dry run streaming chat execution",
+      mode: readyChatMode,
+      dryRun: true,
+    }),
+  },
+  (response, text) => {
+    const body = JSON.parse(text);
+    return (
+      response.ok &&
+      body.dryRun === true &&
+      body.estimate?.billingModel === "usage_based"
+    );
+  }
+);
+
 if (process.env.SMOKE_CHAT_EXECUTION === "1") {
   await checkRequest(
     "/api/chat/send",
@@ -400,25 +666,37 @@ if (process.env.SMOKE_CHAT_EXECUTION === "1") {
       return response.ok && body.ok === true && body.assistant?.body && body.usage?.billingModel === "usage_based";
     }
   );
+
+  await check("/api/chat/conversations", (response, text) => {
+    if (!response.ok) return false;
+    const body = JSON.parse(text);
+    return body.conversations?.some((conversation) => (
+      conversation.conversationId === smokeConversationId &&
+      conversation.title &&
+      conversation.messageCount >= 2
+    ));
+  });
 }
 
 await check("/api/wallet/actions", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
+  const linkAction = body.actions?.find((action) => action.id === "link_start");
+  const unlockAction = body.actions?.find((action) => action.id === "unlock_start");
+  const delinkAction = body.actions?.find((action) => action.id === "delink");
+  const relinkAction = body.actions?.find((action) => action.id === "relink_start");
   return (
     Array.isArray(body.actions) &&
-    body.actions.some((action) => action.id === "link_start") &&
-    body.actions.some((action) => action.id === "delink") &&
-    body.actions.every((action) => action.enabled === false)
+    linkAction?.enabled === true &&
+    unlockAction?.enabled === false &&
+    delinkAction?.enabled === false &&
+    relinkAction?.enabled === false
   );
 });
 
 await checkRequest("/api/wallet/link/start", { method: "POST" }, (response, text) => {
   const body = JSON.parse(text);
-  return (
-    [409, 503].includes(response.status) &&
-    ["wallet_action_not_configured", "wallet_action_disabled"].includes(body.error)
-  );
+  return response.status === 401 && body.error === "wallet_login_required";
 });
 
 await checkRequest("/api/wallet/delink", { method: "POST" }, (response, text) => {
@@ -429,11 +707,18 @@ await checkRequest("/api/wallet/delink", { method: "POST" }, (response, text) =>
 await check("/api/context/actions", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
+  const saveAction = body.actions?.find((action) => action.id === "save_edit");
+  const historyAction = body.actions?.find((action) => action.id === "hydrate_indexed_history");
+  const cidFetchAction = body.actions?.find((action) => action.id === "fetch_history_cid");
+  const importAction = body.actions?.find((action) => action.id === "import_shared_url");
+  const inkAction = body.actions?.find((action) => action.id === "ink_manifest");
   return (
     Array.isArray(body.actions) &&
-    body.actions.some((action) => action.id === "import_shared_url") &&
-    body.actions.some((action) => action.id === "ink_manifest") &&
-    body.actions.every((action) => action.enabled === false)
+    saveAction?.enabled === true &&
+    historyAction?.enabled === true &&
+    cidFetchAction?.enabled === true &&
+    importAction?.enabled === false &&
+    inkAction?.enabled === false
   );
 });
 
@@ -447,7 +732,17 @@ await checkRequest("/api/context/import/start", { method: "POST" }, (response, t
 
 await checkRequest("/api/context/edit/save", { method: "POST" }, (response, text) => {
   const body = JSON.parse(text);
-  return response.status === 503 && body.error === "context_action_disabled";
+  return response.status === 401 && body.error === "context_login_required";
+});
+
+await checkRequest("/api/context/history/indexed", { method: "POST" }, (response, text) => {
+  const body = JSON.parse(text);
+  return response.status === 401 && body.error === "context_login_required";
+});
+
+await checkRequest(`/api/context/history/ipfs/${smokeContextCid}`, { method: "GET" }, (response, text) => {
+  const body = JSON.parse(text);
+  return response.status === 401 && body.error === "context_login_required";
 });
 
 await checkRequest("/api/context/manifest/ink", { method: "POST" }, (response, text) => {
@@ -514,8 +809,11 @@ await check("/api/readiness", (response, text) => {
   const body = JSON.parse(text);
   return (
     body.auth?.launchReady === false &&
-    body.wallet?.seedStorageReady === false &&
+    body.wallet?.seedStorageReady === true &&
+    body.wallet?.challengeProofReady === true &&
     body.context?.importReady === false &&
+    body.context?.indexedHistoryReady === true &&
+    body.context?.encryptedCidHydrationReady === true &&
     body.context?.manifestInkReady === false &&
     body.billing?.model === "usage_based" &&
     body.billing?.chatEstimateReady === true &&

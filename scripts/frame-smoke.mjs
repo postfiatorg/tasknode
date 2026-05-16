@@ -12,6 +12,11 @@ const screenshotDir =
   process.env.FRAME_SCREENSHOT_DIR === "0"
     ? ""
     : process.env.FRAME_SCREENSHOT_DIR || "/tmp/tasknodeofficial-frame-smoke";
+const frameEmail = `frame-smoke-${randomBytes(4).toString("hex")}@tasknode.local`;
+const testMnemonic =
+  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+const testVaultPassword = "frame-smoke-vault-pass";
+const frameContextCid = "bafybeigdyrztm3j5framecontextpointeraaaa";
 
 let cdp;
 
@@ -68,54 +73,79 @@ async function main() {
     await capture("03-sidebar-more");
     await clickNav("More");
 
-    await clickButton("Building Discussion", "document.querySelector('.recents')");
-    await assertText(["Stopped thinking", "Sources", "AI Native Operating System Layer"]);
-    await assertSelector(".message-toolbar");
-    await capture("03a-chat-thread-rich");
-
-    await clickButton("Sources", "document.querySelector('.message-toolbar')");
-    await assertText(["Activity", "Thinking", "Memory", "Files", "Past chat"]);
-    await capture("03b-activity-panel");
-    await clickSelector(".activity-panel-close");
-
-    await clickButton("Share", "document.querySelector('.thread-actions')");
-    await assertText(["Copy link", "LinkedIn", "Reddit", "Memory sources"]);
-    await capture("03c-share-modal");
-    await clickSelector(".share-modal-close");
-
-    await clickNav("New chat");
-    await assertSelector('input[aria-label="Ask anything"]');
-    await assertLocationHash("");
-
     await evaluate(`(() => {
       window.__tasknodeOriginalFetch = window.fetch.bind(window);
       window.fetch = (input, init) => {
         const url = typeof input === 'string' ? input : input?.url || '';
-        if (String(url).includes('/api/chat/send')) {
-          return new Promise((resolve) => {
-            setTimeout(() => {
-              resolve(new Response(JSON.stringify({
+        if (String(url).includes('/api/chat/stream')) {
+          const encoder = new TextEncoder();
+          return Promise.resolve(new Response(new ReadableStream({
+            start(controller) {
+              const send = (event, body) => controller.enqueue(encoder.encode(
+                'event: ' + event + '\\n' + 'data: ' + JSON.stringify(body) + '\\n\\n'
+              ));
+              send('meta', {
                 ok: true,
-                action: 'chat_send',
-                message: 'Chat response generated.',
-                assistant: {
-                  role: 'assistant',
-                  body: 'Optimistic response received.'
-                },
-                usage: {
-                  billingModel: 'usage_based',
-                  currency: 'USD',
-                  inputTokens: 4,
-                  outputTokens: 4,
-                  totalTokens: 8,
-                  costUsd: 0.001
-                }
-              }), {
-                status: 200,
-                headers: { 'content-type': 'application/json' }
-              }));
-            }, 1200);
-          });
+                action: 'chat_stream',
+                conversationId: 'frame-smoke',
+                mode: 'Frontier Instant',
+                provider: 'openai',
+                model: 'frame-smoke-model'
+              });
+              setTimeout(() => send('delta', { delta: 'Optimistic ' }), 350);
+              setTimeout(() => send('delta', { delta: 'response received.' }), 700);
+              setTimeout(() => {
+                send('done', {
+                  ok: true,
+                  action: 'chat_stream',
+                  conversationId: 'frame-smoke',
+                  mode: 'Frontier Instant',
+                  provider: 'openai',
+                  model: 'frame-smoke-model',
+                  responseId: 'frame-smoke-response',
+                  message: 'Chat response generated.',
+                  assistant: {
+                    role: 'assistant',
+                    body: 'Optimistic response received.'
+                  },
+                  usage: {
+                    billingModel: 'usage_based',
+                    currency: 'USD',
+                    inputTokens: 4,
+                    outputTokens: 4,
+                    totalTokens: 8,
+                    costUsd: 0.001
+                  }
+                });
+                controller.close();
+              }, 1200);
+            }
+          }), {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' }
+          }));
+        }
+        if (String(url).includes('/api/chat/send')) {
+          return Promise.resolve(new Response(JSON.stringify({
+            ok: true,
+            action: 'chat_send',
+            message: 'Chat response generated.',
+            assistant: {
+              role: 'assistant',
+              body: 'Optimistic response received.'
+            },
+            usage: {
+              billingModel: 'usage_based',
+              currency: 'USD',
+              inputTokens: 4,
+              outputTokens: 4,
+              totalTokens: 8,
+              costUsd: 0.001
+            }
+          }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' }
+          }));
         }
         return window.__tasknodeOriginalFetch(input, init);
       };
@@ -129,8 +159,32 @@ async function main() {
     await assertText(["Reading context", "Drafting response"]);
     await capture("03d-optimistic-thinking");
     await waitForText("Optimistic response received.");
-    await assertText(["Thought for", "Sources"]);
+    await waitForText("Thought for");
+    await assertText(["Thought for"]);
     await capture("03e-optimistic-response");
+
+    await evaluate(`(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (text) => {
+            window.__tasknodeCopiedText = text;
+            return true;
+          }
+        }
+      });
+      return true;
+    })()`);
+    await clickSelector('button[aria-label="Copy response"]');
+    await waitForText("Copied");
+
+    await clickButton("Share", "document.querySelector('.thread-actions')");
+    await assertText(["Copy transcript", "Only visible messages are included"]);
+    await capture("03g-share-modal");
+    await clickButton("Copy transcript", "document.querySelector('.share-modal')");
+    await waitForText("Copied");
+    await clickSelector(".share-modal-close");
+
     await evaluate(`(() => {
       if (window.__tasknodeOriginalFetch) {
         window.fetch = window.__tasknodeOriginalFetch;
@@ -154,12 +208,19 @@ async function main() {
     await clickSelector(".task-modal header button");
 
     await clickNav("Wallet");
-    await assertText(["Available balance", "PFT", "Send", "Receive", "Activity", "Daily airdrop", "Task reward"]);
+    await assertText(["Available balance", "PFT", "Link wallet", "Receive", "Activity", "Daily airdrop", "Task reward"]);
     await assertLocationHash("#wallet");
     await capture("06-wallet");
 
     await clickNav("Context");
-    await assertText(["Google Docs", "Notion", "Internal PFT Context", "Connected"]);
+    await assertText([
+      "Context",
+      "Keep the working instructions",
+      "Context document",
+      "Sign in to save context.",
+      "Historical PFT Context",
+      "Sign in to import indexed PFTasks history.",
+    ]);
     await assertLocationHash("#context");
     await capture("07-context");
 
@@ -171,7 +232,11 @@ async function main() {
     await evaluate("history.back(); true");
     await sleep(250);
     await assertLocationHash("#context");
-    await assertText(["Google Docs", "Notion", "Internal PFT Context", "Connected"]);
+    await assertText([
+      "Context document",
+      "Wallet signing is only for optional portable PFTL manifests.",
+      "Encrypted history stays pointer-only until the local vault is unlocked.",
+    ]);
 
     await clickNav("New chat");
     await assertSelector('input[aria-label="Ask anything"]');
@@ -218,8 +283,9 @@ async function main() {
         emailEnabled: session.accountLinks?.find((provider) => provider.id === 'email')?.enabled === true,
       }))
       .catch(() => ({ devAuthEnabled: false, emailEnabled: false }))`);
+    let signedIn = false;
     if (loginSessionContract.emailEnabled) {
-      await setInput('input[placeholder="Email address"]', "frame-smoke@tasknode.local");
+      await setInput('input[placeholder="Email address"]', frameEmail);
       await clickSelector(".continue-button");
       await assertSelector('input[aria-label="Sign-in code"]');
       const code = await evaluate(`document.querySelector('.dev-code-note strong')?.textContent?.trim() || ''`);
@@ -228,16 +294,108 @@ async function main() {
         await clickSelector(".continue-button");
         await waitForText("Frame Smoke");
         await waitForText("Signed in");
+        signedIn = true;
         await capture("16-login-session");
       } else {
         await capture("16-login-code");
       }
     } else if (loginSessionContract.devAuthEnabled) {
-      await setInput('input[placeholder="Email address"]', "frame-smoke@tasknode.local");
+      await setInput('input[placeholder="Email address"]', frameEmail);
       await clickSelector(".continue-button");
       await waitForText("Frame Smoke");
       await waitForText("Signed in");
+      signedIn = true;
       await capture("16-login-session");
+    }
+
+    if (signedIn) {
+      await clickNav("Wallet");
+      await clickButton("Link wallet");
+      await assertText(["Link Seed Wallet", "24-word recovery phrase", "Words", "Mnemonic", "Address"]);
+      await setInput(".wallet-seed-field textarea", testMnemonic);
+      await setInput('input[aria-label="Wallet password"]', testVaultPassword);
+      await setInput('input[aria-label="Confirm wallet password"]', testVaultPassword);
+      await waitForText("Valid");
+      await clickButton("Link wallet", "document.querySelector('.wallet-link-modal')");
+      await waitForText("Seed wallet linked");
+      await waitForText("Encrypted vault unlocked");
+      await capture("17-wallet-linked");
+
+      await clickButton("Lock", "document.querySelector('.wallet-actions')");
+      await waitForText("Vault locked");
+      await clickButton("Unlock", "document.querySelector('.wallet-actions')");
+      await assertText(["Unlock Seed Wallet", "Linked wallet"]);
+      await setInput('input[aria-label="Wallet unlock password"]', testVaultPassword);
+      await clickButton("Unlock", "document.querySelector('.wallet-link-modal')");
+      await waitForText("Encrypted vault unlocked");
+      await capture("18-wallet-unlocked");
+
+      await evaluate(`fetch('/api/context/history/indexed', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          snapshot: {
+            walletAddress: 'rKxpJQ6h9Z2Vr9L8BzixbJgALx1TUQeC',
+            contextRevisions: [{
+              id: 'frame-context-1',
+              cid: ${JSON.stringify(frameContextCid)},
+              created_at: '2026-05-16T00:00:00.000Z',
+              word_count: 32
+            }]
+          }
+        })
+      }).then((response) => {
+        if (!response.ok) throw new Error('frame context import failed');
+        return true;
+      })`);
+      await evaluate("location.reload(); true");
+      await waitForText("Task Node");
+      await waitForText("Frame Smoke");
+      await clickNav("Wallet");
+      await clickButton("Unlock", "document.querySelector('.wallet-actions')");
+      await assertText(["Unlock Seed Wallet", "Linked wallet"]);
+      await setInput('input[aria-label="Wallet unlock password"]', testVaultPassword);
+      await clickButton("Unlock", "document.querySelector('.wallet-link-modal')");
+      await waitForText("Encrypted vault unlocked");
+      await evaluate(`(() => {
+        const originalFetch = window.fetch.bind(window);
+        window.__tasknodeContextFetch = originalFetch;
+        window.fetch = (input, init) => {
+          const url = typeof input === 'string' ? input : input?.url || '';
+          if (String(url).includes('/api/context/history/ipfs/')) {
+            return Promise.resolve(new Response(JSON.stringify({
+              ok: true,
+              action: 'fetch_history_cid',
+              cid: ${JSON.stringify(frameContextCid)},
+              gateway: 'frame-smoke',
+              payload: {
+                title: 'Frame Hydrated Context',
+                body: 'Frame hydrated context body from imported history.'
+              }
+            }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' }
+            }));
+          }
+          return originalFetch(input, init);
+        };
+        return true;
+      })()`);
+      await clickNav("Context");
+      await assertText(["Historical PFT Context", "Hydrate latest", "Local vault unlocked"]);
+      await clickButton("Hydrate latest", "document.querySelector('.context-history')");
+      await waitForText("Context fetched");
+      await assertText(["Frame Hydrated Context", "Frame hydrated context body from imported history."]);
+      await clickButton("Use as draft", "document.querySelector('.context-hydrated-preview')");
+      await waitForText("Hydrated draft not saved");
+      await capture("19-context-hydrated");
+      await evaluate(`(() => {
+        if (window.__tasknodeContextFetch) {
+          window.fetch = window.__tasknodeContextFetch;
+          delete window.__tasknodeContextFetch;
+        }
+        return true;
+      })()`);
     }
 
     console.log(`frame smoke ok: ${baseUrl}`);
@@ -352,7 +510,8 @@ async function setInput(selector, value) {
   await evaluate(`(() => {
     const input = document.querySelector(${JSON.stringify(selector)});
     if (!input) throw new Error('input not found: ${selector}');
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
     setter.call(input, ${JSON.stringify(value)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
     return true;

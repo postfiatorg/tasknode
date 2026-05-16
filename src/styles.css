@@ -1960,64 +1960,107 @@ h1 {
   background: #f4f3ee;
 }
 
-.context-source-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 24px;
-}
-
-.context-source {
-  display: flex;
+.context-heading {
   align-items: center;
-  gap: 16px;
-  width: 100%;
-  padding: 16px;
-  border: 1.5px solid #e8e6df;
-  border-radius: 16px;
-  background: #ffffff;
-  text-align: left;
 }
 
-.context-source.active {
+.context-meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.context-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #e8e6df;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.context-document {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #e8e6df;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.context-field {
+  display: grid;
+  gap: 8px;
+}
+
+.context-field span {
+  color: #6b6b66;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.context-title-input,
+.context-body-input {
+  width: 100%;
+  border: 1px solid #e8e6df;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0d0d0d;
+  font: inherit;
+  outline: none;
+}
+
+.context-title-input:focus,
+.context-body-input:focus {
   border-color: #0d0d0d;
   box-shadow: 0 0 0 3px rgba(13, 13, 13, 0.06);
 }
 
-.context-source-icon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+.context-title-input {
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
-.context-source-copy {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 3px;
+.context-body-input {
+  min-height: clamp(220px, 32vh, 280px);
+  padding: 14px;
+  resize: vertical;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
-.context-source-copy > span {
+.context-actions {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.context-source-copy strong {
-  color: #0d0d0d;
-  font-size: 14.5px;
+.context-actions .dark-pill:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
-.context-source-copy small {
+.context-save-status {
   color: #6b6b66;
   font-size: 12.5px;
-  line-height: 1.45;
 }
 
-.context-source-copy em,
 .green-pill,
 .crypto-method em {
   display: inline-flex;
@@ -2032,37 +2075,174 @@ h1 {
   font-weight: 600;
 }
 
-.radio-mark {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-  border: 1.5px solid #c9c4b3;
-  border-radius: 999px;
-}
-
-.context-source.active .radio-mark {
-  border-color: #0d0d0d;
-  background: #0d0d0d;
-}
-
-.radio-mark span {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #ffffff;
-}
-
 .context-note {
   margin-top: 24px;
   padding: 14px 16px;
   border: 1px solid #e8e6df;
-  border-radius: 16px;
+  border-radius: 12px;
   background: #f4f3ee;
   color: #6b6b66;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.context-history {
+  display: grid;
+  gap: 14px;
+  margin-top: 24px;
+  padding: 18px;
+  border: 1px solid #e8e6df;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.context-history h2 {
+  margin: 0;
+  color: #0d0d0d;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.context-history p {
+  margin: 4px 0 0;
+  color: #6b6b66;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.context-history-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.context-history-grid span {
+  display: grid;
+  gap: 3px;
+  min-height: 62px;
+  padding: 10px 12px;
+  border: 1px solid #e8e6df;
+  border-radius: 10px;
+  background: #faf9f6;
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.context-history-grid strong {
+  color: #0d0d0d;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.context-pointer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e8e6df;
+  border-radius: 10px;
+  background: #faf9f6;
+  color: #0d0d0d;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-size: 12px;
+}
+
+.context-pointer-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-pointer-row small {
+  flex: 0 0 auto;
+  color: #6b6b66;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.context-hydration-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.context-hydration-actions .dark-pill:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.context-hydration-actions span {
+  color: #6b6b66;
+  font-size: 12.5px;
+}
+
+.context-hydrated-preview {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #d7eee5;
+  border-radius: 12px;
+  background: #f2fbf7;
+}
+
+.context-hydrated-preview > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.context-hydrated-preview strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #0d0d0d;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-hydrated-preview small {
+  flex: 0 0 auto;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.context-hydrated-preview pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #0d0d0d;
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.context-hydrated-preview .light-pill {
+  justify-self: start;
+}
+
+.context-history-note {
+  margin-top: 0;
 }
 
 .profile-tabs-bar {
@@ -2587,6 +2767,135 @@ h1 {
 
 .share-modal-close:hover {
   background: rgba(0, 0, 0, 0.05);
+}
+
+.wallet-link-modal {
+  display: grid;
+  gap: 16px;
+  width: min(640px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+}
+
+.wallet-link-modal header,
+.wallet-link-modal footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.wallet-link-modal footer {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.wallet-link-modal h2 {
+  margin: 0;
+  color: #0d0d0d;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.wallet-link-modal p {
+  margin: 4px 0 0;
+  color: #6b6b66;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.wallet-seed-field {
+  display: grid;
+  gap: 8px;
+}
+
+.wallet-seed-field.compact {
+  gap: 7px;
+}
+
+.wallet-seed-field span {
+  color: #6b6b66;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wallet-password-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wallet-seed-field input,
+.wallet-seed-field textarea {
+  padding: 12px;
+  border: 1px solid #e8e6df;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0d0d0d;
+  font: inherit;
+  line-height: 1.5;
+  outline: none;
+}
+
+.wallet-seed-field input {
+  min-height: 44px;
+}
+
+.wallet-seed-field textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.wallet-seed-field input:focus,
+.wallet-seed-field textarea:focus {
+  border-color: #0d0d0d;
+  box-shadow: 0 0 0 3px rgba(13, 13, 13, 0.06);
+}
+
+.wallet-proof-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.wallet-proof-summary.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.wallet-proof-summary span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid #e8e6df;
+  border-radius: 10px;
+  background: #faf9f6;
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.wallet-proof-summary strong {
+  overflow: hidden;
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet-link-warning {
+  padding: 12px;
+  border: 1px solid #f5d0a0;
+  border-radius: 12px;
+  background: #fff7ed;
+  color: #7c2d12;
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
 .share-preview {
@@ -3680,6 +3989,9 @@ h1 {
   .item-list,
   .split-panel,
   .action-grid,
+    .context-history-grid,
+    .wallet-password-grid,
+    .wallet-proof-summary,
   .wallet-config-strip,
   .mini-note-grid,
   .nft-grid,

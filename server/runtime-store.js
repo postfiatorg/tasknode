@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
+import { normalizeIndexedContextHistory } from "./context-history.js";
 
 const defaultStorePath = path.join("/tmp", "tasknodeofficial-runtime-store.json");
 export const sessionCookieName = "tasknode_session";
@@ -11,11 +12,16 @@ const defaultState = {
   conversations: {
     dev: [],
   },
+  conversationMeta: {},
   ledgerEntries: [],
   sessions: {},
   accounts: {},
   accountEmails: {},
   accountIdentities: {},
+  accountWallets: {},
+  walletChallenges: {},
+  contextDocuments: {},
+  contextHistorySnapshots: {},
   oauthStates: {},
   emailChallenges: {},
   authEvents: [],
@@ -32,6 +38,10 @@ function loadState() {
       ...structuredClone(defaultState),
       ...parsed,
       conversations: parsed.conversations || structuredClone(defaultState.conversations),
+      conversationMeta:
+        parsed.conversationMeta && typeof parsed.conversationMeta === "object" && !Array.isArray(parsed.conversationMeta)
+          ? parsed.conversationMeta
+          : {},
       ledgerEntries: Array.isArray(parsed.ledgerEntries) ? parsed.ledgerEntries : [],
       sessions:
         parsed.sessions && typeof parsed.sessions === "object" && !Array.isArray(parsed.sessions)
@@ -48,6 +58,22 @@ function loadState() {
       accountIdentities:
         parsed.accountIdentities && typeof parsed.accountIdentities === "object" && !Array.isArray(parsed.accountIdentities)
           ? parsed.accountIdentities
+          : {},
+      accountWallets:
+        parsed.accountWallets && typeof parsed.accountWallets === "object" && !Array.isArray(parsed.accountWallets)
+          ? parsed.accountWallets
+          : {},
+      walletChallenges:
+        parsed.walletChallenges && typeof parsed.walletChallenges === "object" && !Array.isArray(parsed.walletChallenges)
+          ? parsed.walletChallenges
+          : {},
+      contextDocuments:
+        parsed.contextDocuments && typeof parsed.contextDocuments === "object" && !Array.isArray(parsed.contextDocuments)
+          ? parsed.contextDocuments
+          : {},
+      contextHistorySnapshots:
+        parsed.contextHistorySnapshots && typeof parsed.contextHistorySnapshots === "object" && !Array.isArray(parsed.contextHistorySnapshots)
+          ? parsed.contextHistorySnapshots
           : {},
       oauthStates:
         parsed.oauthStates && typeof parsed.oauthStates === "object" && !Array.isArray(parsed.oauthStates)
@@ -74,6 +100,52 @@ function conversationMessages(conversationId) {
   return state.conversations[conversationId];
 }
 
+function chatTitleFromPrompt(prompt) {
+  const title = String(prompt || "").trim().replace(/\s+/g, " ").slice(0, 64);
+  return title || "New chat";
+}
+
+function messagePreview(message) {
+  return String(message?.body || message?.text || message?.content || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 140);
+}
+
+function inferAccountIdFromConversationId(conversationId) {
+  const text = String(conversationId || "");
+  if (!text.startsWith("account_")) return "";
+
+  const scopedId = text.slice("account_".length);
+  return Object.keys(state.accounts || {})
+    .sort((left, right) => right.length - left.length)
+    .find((accountId) => scopedId.startsWith(`${safeId(accountId, "account")}_`)) || "";
+}
+
+function ensureConversationMeta(conversationId, accountId = "") {
+  const messages = conversationMessages(conversationId);
+  const existing = state.conversationMeta[conversationId] || {};
+  const firstUser = messages.find((message) => message?.role === "user");
+  const lastMessage = messages[messages.length - 1] || null;
+  const createdAt = existing.createdAt || firstUser?.createdAt || lastMessage?.createdAt || new Date().toISOString();
+  const updatedAt = existing.updatedAt || lastMessage?.createdAt || createdAt;
+  const inferredAccountId = accountId || existing.accountId || inferAccountIdFromConversationId(conversationId);
+
+  state.conversationMeta[conversationId] = {
+    id: conversationId,
+    conversationId,
+    accountId: inferredAccountId,
+    title: existing.title || chatTitleFromPrompt(firstUser?.body || ""),
+    createdAt,
+    updatedAt,
+    lastMessageAt: existing.lastMessageAt || lastMessage?.createdAt || updatedAt,
+    lastMessagePreview: existing.lastMessagePreview || messagePreview(lastMessage),
+    messageCount: messages.length,
+  };
+
+  return state.conversationMeta[conversationId];
+}
+
 function safeId(value, fallback) {
   const normalized =
     typeof value === "string"
@@ -92,17 +164,57 @@ function identityKey(provider, providerUserId) {
 }
 
 export function conversationIdForSession(session = null, requestedId = "") {
+  const hasRequestedId = typeof requestedId === "string" && requestedId.trim().length > 0;
   const requested = safeId(requestedId, "default");
   if (!session?.accountId) {
-    return requestedId ? requested : "dev";
+    return hasRequestedId ? requested : "dev";
   }
 
   const accountId = safeId(session.accountId, "account");
+  const accountPrefix = `account_${accountId}_`;
+  if (hasRequestedId && requested.startsWith(accountPrefix)) {
+    return requested.slice(0, 160);
+  }
+
   return `account_${accountId}_${requested}`.slice(0, 160);
 }
 
 export function getChatMessages(conversationId = "dev") {
   return conversationMessages(conversationId).slice(-30);
+}
+
+export function listChatConversations({ accountId = "", limit = 30 } = {}) {
+  const normalizedAccountId = accountId ? safeId(accountId, "account") : "";
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
+  const rows = Object.keys(state.conversations)
+    .map((conversationId) => ensureConversationMeta(
+      conversationId,
+      normalizedAccountId && conversationId.startsWith(`account_${normalizedAccountId}_`)
+        ? normalizedAccountId
+        : ""
+    ))
+    .filter((meta) => {
+      if (!meta.messageCount) return false;
+      if (normalizedAccountId) return meta.accountId === normalizedAccountId;
+      return !meta.accountId && !String(meta.conversationId || "").startsWith("account_");
+    })
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.updatedAt || left.lastMessageAt || "") || 0;
+      const rightTime = Date.parse(right.updatedAt || right.lastMessageAt || "") || 0;
+      return rightTime - leftTime;
+    })
+    .slice(0, normalizedLimit);
+
+  return rows.map((meta) => ({
+    id: meta.id,
+    conversationId: meta.conversationId,
+    title: meta.title,
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
+    lastMessageAt: meta.lastMessageAt,
+    lastMessagePreview: meta.lastMessagePreview,
+    messageCount: meta.messageCount,
+  }));
 }
 
 function sessionPayload(session) {
@@ -730,9 +842,9 @@ export function appendChatTurn({
 }) {
   const now = new Date().toISOString();
   const messages = conversationMessages(conversationId);
-  const userId = `msg_${now.replace(/[^0-9]/g, "")}_user`;
-  const assistantId = `msg_${now.replace(/[^0-9]/g, "")}_assistant`;
-  const ledgerId = `ledger_${now.replace(/[^0-9]/g, "")}`;
+  const userId = `msg_${randomUUID()}_user`;
+  const assistantId = `msg_${randomUUID()}_assistant`;
+  const ledgerId = `ledger_${randomUUID()}`;
 
   messages.push({
     id: userId,
@@ -751,6 +863,20 @@ export function appendChatTurn({
     model,
     responseId,
   });
+
+  const existingMeta = ensureConversationMeta(conversationId, accountId);
+  state.conversationMeta[conversationId] = {
+    ...existingMeta,
+    accountId,
+    title:
+      existingMeta.title && existingMeta.title !== "New chat"
+        ? existingMeta.title
+        : chatTitleFromPrompt(userMessage),
+    updatedAt: now,
+    lastMessageAt: now,
+    lastMessagePreview: messagePreview(assistantMessage) || messagePreview(userMessage),
+    messageCount: messages.length,
+  };
 
   const costUsd = Number(usage?.costUsd || 0);
   if (costUsd > 0) {
@@ -786,9 +912,18 @@ export function appendUsageCredit({
   source = "admin_credit",
   note = "",
   createdBy = "system",
+  uniqueKey = "",
 }) {
   const now = new Date().toISOString();
-  const ledgerId = `ledger_${now.replace(/[^0-9]/g, "")}_credit`;
+  const normalizedUniqueKey = typeof uniqueKey === "string" ? uniqueKey.trim().slice(0, 180) : "";
+  if (normalizedUniqueKey) {
+    const existing = state.ledgerEntries.find((entry) => (
+      entry.kind === "account_credit" && entry.uniqueKey === normalizedUniqueKey
+    ));
+    if (existing) return { ...existing, idempotentReplay: true };
+  }
+
+  const ledgerId = `ledger_${randomUUID()}_credit`;
   const entry = {
     id: ledgerId,
     kind: "account_credit",
@@ -799,6 +934,7 @@ export function appendUsageCredit({
     createdBy,
     createdAt: now,
   };
+  if (normalizedUniqueKey) entry.uniqueKey = normalizedUniqueKey;
 
   state.ledgerEntries.push(entry);
   saveState();
@@ -854,5 +990,287 @@ export function usageLedger({ accountId, conversationId, limit = 50 } = {}) {
     ledgerEntryCount: filteredEntries.length,
     durable: summary.durable,
     entries,
+  };
+}
+
+function defaultContextBody() {
+  return [
+    "# Task Node Context",
+    "",
+    "## Current Focus",
+    "",
+    "## Preferences",
+    "",
+    "## Active Projects",
+    "",
+    "## Notes",
+  ].join("\n");
+}
+
+export function getContextDocument({ accountId = "" } = {}) {
+  const normalizedAccountId = safeId(accountId, "account");
+  const canEdit = Boolean(accountId);
+  const key = canEdit ? normalizedAccountId : "signed_out";
+  const existing = state.contextDocuments[key];
+
+  if (existing) {
+    return {
+      ...existing,
+      canEdit,
+      savePath: "/api/context/edit/save",
+    };
+  }
+
+  const now = new Date().toISOString();
+  return {
+    id: `ctx_${key}`,
+    accountId: canEdit ? normalizedAccountId : null,
+    title: "Task Node Context",
+    body: defaultContextBody(),
+    revision: 0,
+    createdAt: now,
+    updatedAt: now,
+    canEdit,
+    savePath: "/api/context/edit/save",
+  };
+}
+
+export function saveContextDocument({ accountId = "", title = "", body = "" } = {}) {
+  if (!accountId) {
+    return { ok: false, status: 401, error: "context_login_required" };
+  }
+
+  const normalizedAccountId = safeId(accountId, "account");
+  const existing = state.contextDocuments[normalizedAccountId];
+  const now = new Date().toISOString();
+  const document = {
+    id: existing?.id || `ctx_${normalizedAccountId}`,
+    accountId: normalizedAccountId,
+    title: String(title || "Task Node Context").trim().replace(/\s+/g, " ").slice(0, 120) || "Task Node Context",
+    body: String(body || "").slice(0, 50000),
+    revision: Number(existing?.revision || 0) + 1,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+
+  state.contextDocuments[normalizedAccountId] = document;
+  saveState();
+
+  return {
+    ok: true,
+    document: {
+      ...document,
+      canEdit: true,
+      savePath: "/api/context/edit/save",
+    },
+  };
+}
+
+function emptyContextHistory({ accountId = "", canHydrate = false } = {}) {
+  return {
+    id: `ctx_history_${canHydrate ? safeId(accountId, "account") : "signed_out"}`,
+    accountId: canHydrate ? safeId(accountId, "account") : null,
+    source: "pftasks_indexed_snapshot",
+    revision: 0,
+    importedAt: null,
+    walletAddress: null,
+    pointerCount: 0,
+    contextUpdateCount: 0,
+    taskEventCount: 0,
+    latestContextPointer: null,
+    contextUpdates: [],
+    taskEvents: [],
+    hydration: {
+      plaintextHydrated: false,
+      requiresWalletUnlock: true,
+      ipfsFetchReady: true,
+      fetchPath: "/api/context/history/ipfs/:cid",
+      note:
+        "Historical PFT context has not been imported yet. Indexed PFTasks rows are the preferred source before live RPC.",
+    },
+    canHydrate,
+    importPath: "/api/context/history/indexed",
+  };
+}
+
+export function getContextHistory({ accountId = "" } = {}) {
+  const canHydrate = Boolean(accountId);
+  const normalizedAccountId = canHydrate ? safeId(accountId, "account") : "";
+  const existing = canHydrate ? state.contextHistorySnapshots[normalizedAccountId] : null;
+
+  if (existing) {
+    return {
+      ...existing,
+      canHydrate,
+      importPath: "/api/context/history/indexed",
+    };
+  }
+
+  return emptyContextHistory({ accountId: normalizedAccountId, canHydrate });
+}
+
+export function saveIndexedContextHistory({ accountId = "", snapshot = {} } = {}) {
+  if (!accountId) {
+    return { ok: false, status: 401, error: "context_login_required" };
+  }
+
+  const normalizedAccountId = safeId(accountId, "account");
+  const existing = state.contextHistorySnapshots[normalizedAccountId];
+  const normalized = normalizeIndexedContextHistory(snapshot);
+  const now = new Date().toISOString();
+  const document = {
+    id: existing?.id || `ctx_history_${normalizedAccountId}`,
+    accountId: normalizedAccountId,
+    source: normalized.source,
+    revision: Number(existing?.revision || 0) + 1,
+    importedAt: now,
+    normalizedAt: normalized.normalizedAt,
+    walletAddress: normalized.walletAddress,
+    pointerCount: normalized.pointerCount,
+    contextUpdateCount: normalized.contextUpdateCount,
+    taskEventCount: normalized.taskEventCount,
+    latestContextPointer: normalized.latestContextPointer,
+    contextUpdates: normalized.contextUpdates.slice(0, 50),
+    taskEvents: normalized.taskEvents.slice(0, 200),
+    hydration: normalized.hydration,
+  };
+
+  state.contextHistorySnapshots[normalizedAccountId] = document;
+  saveState();
+
+  return {
+    ok: true,
+    history: {
+      ...document,
+      canHydrate: true,
+      importPath: "/api/context/history/indexed",
+    },
+  };
+}
+
+function walletChallengeMessage({ accountId, challengeId, purpose, issuedAt, expiresAt }) {
+  return [
+    "Post Fiat Task Node wallet proof",
+    `Purpose: ${purpose}`,
+    `Account: ${accountId}`,
+    `Challenge: ${challengeId}`,
+    `Issued: ${issuedAt}`,
+    `Expires: ${expiresAt}`,
+  ].join("\n");
+}
+
+export function createWalletChallenge({ accountId = "", purpose = "wallet_link" } = {}) {
+  if (!accountId) {
+    return { ok: false, status: 401, error: "wallet_login_required" };
+  }
+
+  const normalizedAccountId = safeId(accountId, "account");
+  const challengeId = randomUUID();
+  const issuedAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const challenge = {
+    id: challengeId,
+    accountId: normalizedAccountId,
+    purpose,
+    issuedAt,
+    expiresAt,
+    message: walletChallengeMessage({
+      accountId: normalizedAccountId,
+      challengeId,
+      purpose,
+      issuedAt,
+      expiresAt,
+    }),
+  };
+
+  state.walletChallenges[challengeId] = challenge;
+  saveState();
+
+  return { ok: true, challenge };
+}
+
+export function consumeWalletChallenge({ accountId = "", challengeId = "", purpose = "wallet_link" } = {}) {
+  const normalizedAccountId = safeId(accountId, "account");
+  const id = String(challengeId || "");
+  const challenge = state.walletChallenges[id];
+
+  if (!challenge) {
+    return { ok: false, status: 400, error: "wallet_challenge_invalid" };
+  }
+
+  delete state.walletChallenges[id];
+  saveState();
+
+  if (challenge.accountId !== normalizedAccountId || challenge.purpose !== purpose) {
+    return { ok: false, status: 400, error: "wallet_challenge_mismatch" };
+  }
+
+  if ((Date.parse(challenge.expiresAt || "") || 0) <= Date.now()) {
+    return { ok: false, status: 400, error: "wallet_challenge_expired" };
+  }
+
+  return { ok: true, challenge };
+}
+
+export function linkWalletToAccount({
+  accountId = "",
+  address = "",
+  publicKey = "",
+  challengeId = "",
+  signature = "",
+} = {}) {
+  if (!accountId) {
+    return { ok: false, status: 401, error: "wallet_login_required" };
+  }
+
+  const normalizedAccountId = safeId(accountId, "account");
+  const now = new Date().toISOString();
+  const wallet = {
+    accountId: normalizedAccountId,
+    status: "linked",
+    address: String(address || "").trim(),
+    publicKey: String(publicKey || "").trim(),
+    custody: "local_seed_required",
+    linkedAt: now,
+    updatedAt: now,
+    proof: {
+      challengeId,
+      signatureHash: stableId(signature, "sig"),
+    },
+  };
+
+  state.accountWallets[normalizedAccountId] = wallet;
+  saveState();
+
+  return { ok: true, wallet };
+}
+
+export function getLinkedWallet({ accountId = "" } = {}) {
+  if (!accountId) {
+    return {
+      status: "not_linked",
+      address: null,
+      publicKey: null,
+      custody: "local_seed_required",
+    };
+  }
+
+  const wallet = state.accountWallets[safeId(accountId, "account")];
+  if (!wallet) {
+    return {
+      status: "not_linked",
+      address: null,
+      publicKey: null,
+      custody: "local_seed_required",
+    };
+  }
+
+  return {
+    status: wallet.status || "linked",
+    address: wallet.address,
+    publicKey: wallet.publicKey,
+    custody: wallet.custody || "local_seed_required",
+    linkedAt: wallet.linkedAt,
+    updatedAt: wallet.updatedAt,
   };
 }
