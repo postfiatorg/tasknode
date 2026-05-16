@@ -144,11 +144,11 @@ Context actions:
 - `GET /api/context/history/ipfs/:cid`
 - `POST /api/context/manifest/ink`
 
-Historical context restore uses a dedicated full-history PFTL RPC path. The
-server scans the linked wallet's `account_tx` history for `pf.ptr` / `v4`
-`CONTENT_KIND.CONTEXT` pointers and stores CID metadata only. Encrypted CID
-payloads are fetched by allow-listed CID and decrypted in the browser after
-local vault unlock.
+Historical context restore uses a dedicated full-history PFTL archive WSS path,
+with JSON-RPC fallback. The server scans the linked wallet's `account_tx`
+history for `pf.ptr` / `v4` `CONTENT_KIND.CONTEXT` pointers and stores CID
+metadata only. Encrypted CID payloads are fetched by allow-listed CID and
+decrypted in the browser after local vault unlock.
 
 Usage/billing:
 

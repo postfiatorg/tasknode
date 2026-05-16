@@ -107,8 +107,8 @@ seed-scoped until decryption.
 - The browser must not submit an arbitrary wallet address for history restore.
   Changing the restore subject requires relinking or proving a different
   wallet.
-- The server uses full-history PFTL `account_tx` to discover `pf.ptr` / `v4`
-  `CONTENT_KIND.CONTEXT` CIDs and stores pointer metadata only.
+- The server uses full-history PFTL archive WSS `account_tx` to discover
+  `pf.ptr` / `v4` `CONTENT_KIND.CONTEXT` CIDs and stores pointer metadata only.
 - The rapid local balance node is not a valid historical restore source unless
   it is explicitly replaced with a full-history endpoint.
 - `GET /api/context/history/ipfs/:cid` may fetch encrypted JSON only for CIDs

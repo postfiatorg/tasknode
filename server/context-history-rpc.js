@@ -1,4 +1,4 @@
-import { isValidClassicAddress } from "xrpl";
+import { Client, isValidClassicAddress } from "xrpl";
 
 const CONTENT_KIND = Object.freeze({
   UNSPECIFIED: 0,
@@ -24,7 +24,8 @@ const KIND_LABELS = Object.freeze(Object.keys(CONTENT_KIND).reduce((acc, key) =>
 const POINTER_MEMO_TYPE = "pf.ptr";
 const POINTER_MEMO_FORMAT = "v4";
 const RIPPLE_EPOCH_OFFSET = 946684800;
-const DEFAULT_HISTORY_RPC_URL = "https://rpc.testnet.postfiat.org";
+const DEFAULT_HISTORY_WSS_URL = "wss://ws-archive.testnet.postfiat.org";
+const DEFAULT_HISTORY_RPC_URL = "https://rpc.testnet.postfiat.org:5006/";
 const DEFAULT_ACCOUNT_TX_LIMIT = 200;
 const DEFAULT_MAX_PAGES = 8;
 const DEFAULT_TIMEOUT_MS = 12000;
@@ -60,6 +61,18 @@ function endpointHost(value) {
     return new URL(value).host;
   } catch {
     return "configured-endpoint";
+  }
+}
+
+function normalizeWssUrl(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:") url.protocol = "ws:";
+    if (url.protocol === "https:") url.protocol = "wss:";
+    return url.toString();
+  } catch {
+    return String(value || "").trim();
   }
 }
 
@@ -363,11 +376,17 @@ export function contextEventsToIndexedSnapshot({ walletAddress, contextEvents } 
 }
 
 export function historyRpcConfig(env = process.env) {
+  const hasWssOverride = Object.prototype.hasOwnProperty.call(env, "PFTL_HISTORY_WSS_URL");
+  const primaryWssUrl = hasWssOverride
+    ? normalizeText(env.PFTL_HISTORY_WSS_URL)
+    : DEFAULT_HISTORY_WSS_URL;
   const explicitPrimary = normalizeText(env.PFTL_HISTORY_RPC_URL);
   const primaryUrl = explicitPrimary || DEFAULT_HISTORY_RPC_URL;
+  const wssFallbackUrls = splitUrls(env.PFTL_HISTORY_WSS_URL_FALLBACKS);
   const fallbackUrls = splitUrls(env.PFTL_HISTORY_RPC_URL_FALLBACKS);
   return {
-    urls: uniqueUrls([primaryUrl, ...fallbackUrls]),
+    wssUrls: uniqueUrls([primaryWssUrl, ...wssFallbackUrls].map(normalizeWssUrl)),
+    rpcUrls: uniqueUrls([primaryUrl, ...fallbackUrls]),
     apiKey: normalizeText(env.PFTL_HISTORY_RPC_API_KEY),
     timeoutMs: clampInteger(env.PFTL_HISTORY_RPC_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, 1000, 60000),
     accountTxLimit: clampInteger(
@@ -377,8 +396,40 @@ export function historyRpcConfig(env = process.env) {
       400
     ),
     maxPages: clampInteger(env.PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES, DEFAULT_MAX_PAGES, 1, 30),
-    defaultedPrimary: !explicitPrimary,
+    defaultedWssPrimary: !hasWssOverride,
+    defaultedRpcPrimary: !explicitPrimary,
   };
+}
+
+async function fetchAccountTxWss({ url, params, timeoutMs }) {
+  const client = new Client(url, { connectionTimeout: timeoutMs });
+  let timer;
+
+  try {
+    await client.connect();
+    const request = { command: "account_tx", ...params };
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error("history_wss_request_timeout");
+        error.code = "history_wss_request_timeout";
+        reject(error);
+      }, timeoutMs);
+    });
+    const response = await Promise.race([client.request(request), timeout]);
+    if (response?.result?.error || response?.result?.status === "error") {
+      const error = new Error(response.result.error_message || response.result.error || "history_wss_error");
+      error.code = response.result.error || response.result.error_code || "history_wss_error";
+      throw error;
+    }
+    return response?.result || response || {};
+  } finally {
+    clearTimeout(timer);
+    try {
+      if (client.isConnected()) await client.disconnect();
+    } catch {
+      // Disconnect failures are non-fatal after account_tx has resolved.
+    }
+  }
 }
 
 async function fetchJsonRpc({
@@ -437,7 +488,7 @@ async function callHistoryRpc({ config, method, params, fetchImpl }) {
   let lastError = null;
   const attempts = [];
 
-  for (const [index, url] of config.urls.entries()) {
+  for (const [index, url] of config.rpcUrls.entries()) {
     try {
       const result = await fetchJsonRpc({
         url,
@@ -458,6 +509,61 @@ async function callHistoryRpc({ config, method, params, fetchImpl }) {
   }
 
   const error = lastError || new Error("history_rpc_unavailable");
+  error.attempts = attempts;
+  throw error;
+}
+
+async function requestHistoryAccountTx({ config, params, fetchImpl }) {
+  let lastError = null;
+  const attempts = [];
+
+  for (const url of config.wssUrls) {
+    try {
+      const result = await fetchAccountTxWss({
+        url,
+        params,
+        timeoutMs: config.timeoutMs,
+      });
+      return { result, attempts };
+    } catch (error) {
+      lastError = error;
+      attempts.push({
+        source: "pftl_history_wss",
+        endpointHost: endpointHost(url),
+        error: safeErrorCode(error),
+      });
+    }
+  }
+
+  try {
+    const response = await callHistoryRpc({
+      config,
+      method: "account_tx",
+      params: [params],
+      fetchImpl,
+    });
+    return {
+      result: response.result,
+      attempts: attempts.concat(
+        response.attempts.map((attempt) => ({
+          source: "pftl_history_rpc",
+          ...attempt,
+        }))
+      ),
+    };
+  } catch (error) {
+    lastError = error;
+    attempts.push(...(
+      Array.isArray(error.attempts)
+        ? error.attempts.map((attempt) => ({
+          source: "pftl_history_rpc",
+          ...attempt,
+        }))
+        : []
+    ));
+  }
+
+  const error = lastError || new Error("history_account_tx_unavailable");
   error.attempts = attempts;
   throw error;
 }
@@ -487,17 +593,17 @@ export async function fetchHistoricalAccountTransactions({
   for (let pageIndex = 0; pageIndex < pageMax; pageIndex += 1) {
     const params = {
       account,
-      ledger_index_min: -1,
+      ledger_index_min: 0,
       ledger_index_max: -1,
+      binary: false,
       limit: pageLimit,
       forward: false,
     };
     if (marker) params.marker = marker;
 
-    const response = await callHistoryRpc({
+    const response = await requestHistoryAccountTx({
       config,
-      method: "account_tx",
-      params: [params],
+      params,
       fetchImpl,
     });
     attempts.push(...response.attempts);

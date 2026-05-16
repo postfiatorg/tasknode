@@ -331,8 +331,8 @@ If historical PFT context does not appear:
   `/api/context/history/rpc/import`;
 - confirm the account has a linked wallet; the RPC import never accepts an
   arbitrary wallet address from the browser;
-- confirm `PFTL_HISTORY_RPC_URL` points at a full-history PFTL RPC, not the
-  machine-local rapid balance node;
+- confirm `PFTL_HISTORY_WSS_URL` points at a full-history PFTL archive WSS, not
+  the machine-local rapid balance node;
 - run `npm run context-history-rpc-smoke` if pointer decoding or account_tx
   mapping looks suspect;
 - remember this bridge imports pointer metadata only. Decrypted CID plaintext

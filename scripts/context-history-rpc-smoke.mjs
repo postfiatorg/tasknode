@@ -133,6 +133,7 @@ const fakeFetch = async (url, options) => {
 const discovery = await discoverContextHistoryFromRpc({
   walletAddress,
   env: {
+    PFTL_HISTORY_WSS_URL: "",
     PFTL_HISTORY_RPC_URL: "https://archive.example/rpc",
     PFTL_HISTORY_RPC_API_KEY: "history-secret",
     PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES: "1",
@@ -147,8 +148,10 @@ assert.equal(discovery.snapshot.contextRevisions[0].source, "pftl_history_rpc.ac
 assert.equal(discovery.snapshot.contextRevisions[0].cid, "bafycontextcid");
 
 const defaultConfig = historyRpcConfig({});
-assert.deepEqual(defaultConfig.urls, ["https://rpc.testnet.postfiat.org"]);
-assert.equal(defaultConfig.defaultedPrimary, true);
+assert.deepEqual(defaultConfig.wssUrls, ["wss://ws-archive.testnet.postfiat.org/"]);
+assert.deepEqual(defaultConfig.rpcUrls, ["https://rpc.testnet.postfiat.org:5006/"]);
+assert.equal(defaultConfig.defaultedWssPrimary, true);
+assert.equal(defaultConfig.defaultedRpcPrimary, true);
 assert.equal(defaultConfig.apiKey, "");
 
 await assert.rejects(
@@ -159,7 +162,7 @@ await assert.rejects(
 await assert.rejects(
   () => discoverContextHistoryFromRpc({
     walletAddress,
-    env: { PFTL_HISTORY_RPC_URL: "https://archive.example/rpc" },
+    env: { PFTL_HISTORY_WSS_URL: "", PFTL_HISTORY_RPC_URL: "https://archive.example/rpc" },
     fetchImpl: async () => new Response(JSON.stringify({
       jsonrpc: "2.0",
       id: 1,

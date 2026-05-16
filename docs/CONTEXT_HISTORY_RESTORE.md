@@ -34,7 +34,9 @@ and plaintext context browser-local.
 Historical restore is intentionally separate from the rapid balance path.
 
 ```text
-PFTL_HISTORY_RPC_URL=https://rpc.testnet.postfiat.org
+PFTL_HISTORY_WSS_URL=wss://ws-archive.testnet.postfiat.org
+PFTL_HISTORY_WSS_URL_FALLBACKS=
+PFTL_HISTORY_RPC_URL=https://rpc.testnet.postfiat.org:5006/
 PFTL_HISTORY_RPC_URL_FALLBACKS=
 PFTL_HISTORY_RPC_API_KEY=
 PFTL_HISTORY_RPC_TIMEOUT_MS=12000
@@ -42,11 +44,12 @@ PFTL_HISTORY_ACCOUNT_TX_LIMIT=200
 PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES=8
 ```
 
-If `PFTL_HISTORY_RPC_URL` is unset, the server defaults to the canonical public
-testnet RPC. Local Docker may still use the machine-local rapid node for
-current balance reads, but historical context restore should use the full
-history endpoint. If the history endpoint requires auth, set
-`PFTL_HISTORY_RPC_API_KEY`; the balance RPC key is not reused automatically.
+If `PFTL_HISTORY_WSS_URL` is unset, the server defaults to the canonical
+archive WSS endpoint and uses JSON-RPC only as fallback. Local Docker may still
+use the machine-local rapid node for current balance reads, but historical
+context restore should use the full-history archive endpoint. If the fallback
+RPC endpoint requires auth, set `PFTL_HISTORY_RPC_API_KEY`; the balance RPC key
+is not reused automatically.
 
 ## Pointer Contract
 

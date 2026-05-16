@@ -61,10 +61,11 @@ history than the canonical public Post Fiat endpoints, so historical transaction
 or context pulls should keep their archive/index-first path.
 
 Historical context restore is configured separately and defaults to the
-canonical full-history public RPC:
+canonical full-history archive WSS endpoint:
 
 ```text
-PFTL_HISTORY_RPC_URL=https://rpc.testnet.postfiat.org
+PFTL_HISTORY_WSS_URL=wss://ws-archive.testnet.postfiat.org
+PFTL_HISTORY_RPC_URL=https://rpc.testnet.postfiat.org:5006/
 PFTL_HISTORY_ACCOUNT_TX_LIMIT=200
 PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES=8
 ```

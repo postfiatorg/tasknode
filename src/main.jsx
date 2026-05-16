@@ -3007,7 +3007,7 @@ function buildContextVersions(documentState = {}, history = {}) {
     current: true,
   });
 
-  (history.contextUpdates || []).slice(0, 20).forEach((pointer, index) => {
+  (history.contextUpdates || []).forEach((pointer, index) => {
     versions.push({
       key: pointer.cid || `pointer-${index}`,
       type: "pointer",
