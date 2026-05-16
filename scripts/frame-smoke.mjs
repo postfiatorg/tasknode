@@ -129,6 +129,7 @@ async function main() {
         await setInput('input[aria-label="Sign-in code"]', code);
         await clickSelector(".continue-button");
         await waitForText("Frame Smoke");
+        await waitForText("Signed in");
         await capture("14-login-session");
       } else {
         await capture("14-login-code");
@@ -137,6 +138,7 @@ async function main() {
       await setInput('input[placeholder="Email address"]', "frame-smoke@tasknode.local");
       await clickSelector(".continue-button");
       await waitForText("Frame Smoke");
+      await waitForText("Signed in");
       await capture("14-login-session");
     }
 

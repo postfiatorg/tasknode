@@ -342,9 +342,10 @@ function App() {
   const recents = appState?.chat?.recents || [];
   const pftBalance = formatDrops(appState?.wallet?.pftBalanceDrops || 0);
   const session = appState?.session;
+  const signedIn = isSignedInSession(session);
   const profileName = profileDisplayName(session);
   const profileInitials = profileAvatarText(session);
-  const profileSubtext = session?.status === "signed_out" ? "Account" : "Pro";
+  const profileSubtext = profileSessionText(session);
 
   async function refreshAppState() {
     try {
@@ -465,17 +466,22 @@ function App() {
           <div className="profile-anchor" ref={profileRef}>
           <button
             className="profile-button"
+            aria-label={signedIn ? `${profileName}, ${profileSubtext}` : "Log in or sign up"}
             onClick={() => setProfileMenuOpen((open) => !open)}
             type="button"
           >
-            <span className="profile-avatar">{profileInitials}</span>
+            <ProfileAvatar initials={profileInitials} signedIn={signedIn} />
             {sidebarOpen && (
               <>
                 <span className="profile-copy">
                   <strong>{profileName}</strong>
                   <small>{profileSubtext}</small>
                 </span>
-                <Store size={14} strokeWidth={1.75} />
+                {signedIn ? (
+                  <Check className="profile-state-icon" size={14} strokeWidth={2} />
+                ) : (
+                  <Store size={14} strokeWidth={1.75} />
+                )}
               </>
             )}
           </button>
@@ -484,18 +490,28 @@ function App() {
               <button
                 className="profile-menu-header"
                 onClick={() => {
-                  setLoginOpen(true);
+                  if (signedIn) {
+                    setView("profile");
+                  } else {
+                    setLoginOpen(true);
+                  }
                   setProfileMenuOpen(false);
                 }}
                 type="button"
               >
-                <span className="profile-avatar">{profileInitials}</span>
+                <ProfileAvatar initials={profileInitials} signedIn={signedIn} />
                 <span className="profile-copy">
                   <strong>{profileName}</strong>
                   <small>{profileSubtext}</small>
                 </span>
                 <ChevronRight size={16} strokeWidth={1.75} />
               </button>
+              {signedIn && (
+                <div className="profile-session-state">
+                  <Check size={13} strokeWidth={2} />
+                  <span>Signed in</span>
+                </div>
+              )}
               <div className="menu-divider" />
               <ToolMenuRow
                 icon={Network}
@@ -866,6 +882,10 @@ function formatModeLabel(label) {
   return label.replace("Private ", "Private - ").replace("Frontier ", "Frontier - ");
 }
 
+function isSignedInSession(session) {
+  return session?.status === "signed_in";
+}
+
 function profileDisplayName(session) {
   if (session?.displayName) return session.displayName;
   return "Log in or sign up";
@@ -879,6 +899,38 @@ function profileAvatarText(session) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+}
+
+function profileSessionText(session) {
+  if (!isSignedInSession(session)) return "Account";
+  const provider = sessionProviderLabel(session);
+  return provider ? `Signed in with ${provider}` : "Signed in";
+}
+
+function sessionProviderLabel(session) {
+  const providerId = session?.primaryProvider;
+  const linked = (session?.linkedProviders || []).find((item) => item?.id === providerId);
+  if (linked?.label) return linked.label;
+  if (providerId === "github") return "GitHub";
+  if (providerId === "email") return "Email";
+  if (providerId === "dev") return "Dev";
+  if (providerId === "x") return "X";
+  if (providerId === "telegram") return "Telegram";
+  if (providerId === "discord") return "Discord";
+  return "";
+}
+
+function ProfileAvatar({ initials, signedIn }) {
+  return (
+    <span className={`profile-avatar ${signedIn ? "signed-in" : "signed-out"}`}>
+      {initials}
+      {signedIn && (
+        <span className="profile-check" aria-hidden="true">
+          <Check size={9} strokeWidth={2.5} />
+        </span>
+      )}
+    </span>
+  );
 }
 
 function TasksView({ onSelectTask }) {

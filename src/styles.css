@@ -233,6 +233,7 @@ button {
 }
 
 .profile-avatar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -244,6 +245,28 @@ button {
   color: #ffffff;
   font-size: 11px;
   font-weight: 700;
+}
+
+.profile-avatar.signed-out {
+  background: #0d0d0d;
+}
+
+.profile-check {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #f4f3ee;
+  border-radius: 999px;
+  background: #10a37f;
+  color: #ffffff;
+}
+
+.profile-state-icon {
+  color: #10a37f;
 }
 
 .profile-copy {
@@ -300,6 +323,20 @@ button {
 .profile-menu-header svg {
   margin-left: auto;
   color: #6b6b66;
+}
+
+.profile-session-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 12px 8px;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .menu-count {
