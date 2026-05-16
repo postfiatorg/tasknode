@@ -54,6 +54,7 @@ show live mainnet deposit addresses, configure:
 
 ```text
 ETH_DEPOSIT_XPUB=<receive xpub for m/44'/60'/0'/0>
+ETH_DEPOSIT_START_INDEX=1
 ETH_DEPOSIT_RPC_URL=https://...
 ETH_DEPOSIT_BALANCE_BLOCK_TAG=safe
 ```

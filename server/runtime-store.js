@@ -20,6 +20,7 @@ const defaultState = {
   accountIdentities: {},
   accountWallets: {},
   ethereumDepositAccounts: {},
+  ethereumDepositRetiredAccounts: [],
   ethereumDepositAddressIndex: {},
   ethereumDepositCursor: 0,
   walletChallenges: {},
@@ -70,6 +71,9 @@ function loadState() {
         parsed.ethereumDepositAccounts && typeof parsed.ethereumDepositAccounts === "object" && !Array.isArray(parsed.ethereumDepositAccounts)
           ? parsed.ethereumDepositAccounts
           : {},
+      ethereumDepositRetiredAccounts: Array.isArray(parsed.ethereumDepositRetiredAccounts)
+        ? parsed.ethereumDepositRetiredAccounts
+        : [],
       ethereumDepositAddressIndex:
         parsed.ethereumDepositAddressIndex && typeof parsed.ethereumDepositAddressIndex === "object" && !Array.isArray(parsed.ethereumDepositAddressIndex)
           ? parsed.ethereumDepositAddressIndex
@@ -1054,6 +1058,7 @@ export function getOrCreateEthereumDepositAccount({
   chainId = 1,
   network = "Ethereum mainnet",
   custody = "tasknode_deposit_only",
+  startIndex = 1,
 } = {}) {
   const normalizedAccountId = typeof accountId === "string" ? accountId.trim().slice(0, 160) : "";
   if (!normalizedAccountId) {
@@ -1063,15 +1068,28 @@ export function getOrCreateEthereumDepositAccount({
     return { ok: false, status: 409, error: "deposit_deriver_unavailable" };
   }
 
+  const normalizedStartIndex = Math.max(0, Number(startIndex) || 0);
   const existing = state.ethereumDepositAccounts[normalizedAccountId];
-  if (existing?.address) {
+  const existingIndex = Number(existing?.derivationIndex);
+  if (existing?.address && existingIndex >= normalizedStartIndex) {
     return { ok: true, account: structuredClone(existing), created: false };
   }
 
   const now = new Date().toISOString();
-  const startIndex = Math.max(0, Number(state.ethereumDepositCursor || 0));
+  if (existing?.address) {
+    state.ethereumDepositRetiredAccounts.push({
+      ...existing,
+      status: "retired_reserved_index",
+      retiredAt: now,
+      retireReason: `derivation_index_below_start:${normalizedStartIndex}`,
+    });
+    delete state.ethereumDepositAddressIndex[String(existing.address || "").toLowerCase()];
+    delete state.ethereumDepositAccounts[normalizedAccountId];
+  }
+
+  const allocationStartIndex = Math.max(normalizedStartIndex, Number(state.ethereumDepositCursor || 0));
   for (let offset = 0; offset < 1000; offset += 1) {
-    const derivationIndex = startIndex + offset;
+    const derivationIndex = allocationStartIndex + offset;
     let derived = null;
     try {
       derived = deriveAddress(derivationIndex);

@@ -46,6 +46,13 @@ The web app server can allocate receive addresses from the xpub without holding
 private keys. Sweep keys must live outside the web app, in a separate operator
 process or signer.
 
+Index `0` is reserved for operator funding and should never be assigned as a
+user deposit address. User deposit allocation starts at index `1` by default:
+
+```text
+ETH_DEPOSIT_START_INDEX=1
+```
+
 To create a fresh deposit wallet locally, run this outside the shared server
 environment:
 

@@ -23,6 +23,7 @@ try {
   );
   process.env.ETH_DEPOSIT_XPUB = depositReceiveNode.neuter().extendedKey;
   process.env.ETH_DEPOSIT_ETH_USD_PRICE = "2000";
+  process.env.ETH_DEPOSIT_START_INDEX = "1";
 
   const {
     actualChatCost,
@@ -223,7 +224,7 @@ try {
   }
 
   const topUp = usageTopUpStart({}, "POST", { accountId: "acct_eth_smoke" });
-  const expectedDepositAddress = depositReceiveNode.neuter().deriveChild(0).address;
+  const expectedDepositAddress = depositReceiveNode.neuter().deriveChild(1).address;
   const topUpSymbols = (topUp.body?.depositAccount?.assets || []).map((asset) => asset.symbol);
   if (
     topUp.status !== 200 ||

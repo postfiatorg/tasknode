@@ -5,6 +5,7 @@ import { HDNodeWallet, Mnemonic, Wallet, getAddress } from "ethers";
 
 const defaultConfigPath = ".env.eth-deposit-xpub";
 const defaultReceivePath = "m/44'/60'/0'/0";
+const defaultIndex = 1;
 
 function usage() {
   return [
@@ -25,7 +26,7 @@ function usage() {
     "",
     "Options:",
     "  --config <path>    Xpub env file. Default: .env.eth-deposit-xpub",
-    "  --index <number>   Deposit child index to verify for private keys. Default: 0",
+    "  --index <number>   Deposit child index to verify. Default: 1",
     "  --help             Show this help",
   ].join("\n");
 }
@@ -33,7 +34,7 @@ function usage() {
 function parseArgs(argv) {
   const options = {
     configPath: defaultConfigPath,
-    index: 0,
+    index: defaultIndex,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -80,6 +81,7 @@ function parseEnvFile(filePath) {
     path: resolved,
     xpub: values.ETH_DEPOSIT_XPUB,
     receivePath: values.ETH_DEPOSIT_RECEIVE_PATH || defaultReceivePath,
+    startIndex: Number(values.ETH_DEPOSIT_START_INDEX || defaultIndex),
     firstAddress: values.ETH_DEPOSIT_FIRST_ADDRESS || "",
   };
 }

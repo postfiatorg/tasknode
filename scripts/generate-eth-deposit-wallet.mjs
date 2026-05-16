@@ -5,6 +5,7 @@ import { HDNodeWallet, Mnemonic, randomBytes } from "ethers";
 
 const defaultOutPath = ".env.eth-deposit-xpub";
 const defaultReceivePath = "m/44'/60'/0'/0";
+const defaultDepositStartIndex = 1;
 
 function usage() {
   return [
@@ -62,6 +63,7 @@ function writeXpubFile({ outPath, force, receivePath, xpub, firstAddress }) {
     "# This file does not contain the mnemonic, xprv, or private keys.",
     `ETH_DEPOSIT_XPUB=${xpub}`,
     `ETH_DEPOSIT_RECEIVE_PATH=${receivePath}`,
+    `ETH_DEPOSIT_START_INDEX=${defaultDepositStartIndex}`,
     "ETH_DEPOSIT_RPC_URL=https://ethereum.publicnode.com",
     "ETH_DEPOSIT_BALANCE_BLOCK_TAG=safe",
     `# ETH_DEPOSIT_FIRST_ADDRESS=${firstAddress}`,
@@ -81,7 +83,8 @@ function main() {
 
   const mnemonic = Mnemonic.fromEntropy(randomBytes(32));
   const receiveNode = HDNodeWallet.fromMnemonic(mnemonic, defaultReceivePath);
-  const firstDepositWallet = receiveNode.deriveChild(0);
+  const operatorWallet = receiveNode.deriveChild(0);
+  const firstDepositWallet = receiveNode.deriveChild(defaultDepositStartIndex);
   const xpub = receiveNode.neuter().extendedKey;
   const writtenPath = writeXpubFile({
     outPath: options.outPath,
@@ -99,11 +102,13 @@ function main() {
   console.log(`Mnemonic: ${mnemonic.phrase}`);
   console.log(`Receive xprv (${defaultReceivePath}): ${receiveNode.extendedKey}`);
   console.log("");
-  console.log("The receive xprv can derive every per-user deposit private key.");
-  console.log("The child private key below is only for deposit index 0; it is not a full backup by itself.");
+  console.log("The receive xprv can derive every operator and per-user deposit private key.");
+  console.log("Index 0 is reserved for operator funding. App user deposit addresses start at index 1.");
   console.log("");
-  console.log(`Deposit index 0 address: ${firstDepositWallet.address}`);
-  console.log(`Deposit index 0 private key: ${firstDepositWallet.privateKey}`);
+  console.log(`Reserved operator index 0 address: ${operatorWallet.address}`);
+  console.log(`Reserved operator index 0 private key: ${operatorWallet.privateKey}`);
+  console.log(`First user deposit index ${defaultDepositStartIndex} address: ${firstDepositWallet.address}`);
+  console.log(`First user deposit index ${defaultDepositStartIndex} private key: ${firstDepositWallet.privateKey}`);
   console.log("");
   console.log("SAFE APP CONFIG WRITTEN");
   console.log("");

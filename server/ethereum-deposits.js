@@ -17,6 +17,7 @@ import {
 const defaultEthereumRpcUrl = "https://ethereum.publicnode.com";
 const ethereumMainnetChainId = 1;
 const defaultReceivePath = "m/44'/60'/0'/0";
+const defaultDepositStartIndex = 1;
 const balanceBlockTag = process.env.ETH_DEPOSIT_BALANCE_BLOCK_TAG || "safe";
 const pendingBalanceBlockTag = process.env.ETH_DEPOSIT_PENDING_BLOCK_TAG || "latest";
 const balanceOfSelector = keccakId("balanceOf(address)").slice(0, 10);
@@ -60,6 +61,11 @@ function receivePathPrefix() {
   return String(process.env.ETH_DEPOSIT_RECEIVE_PATH || defaultReceivePath).trim();
 }
 
+function depositStartIndex() {
+  const value = Number(process.env.ETH_DEPOSIT_START_INDEX || defaultDepositStartIndex);
+  return Number.isSafeInteger(value) && value >= 0 ? value : defaultDepositStartIndex;
+}
+
 export function ethereumDepositConfigStatus() {
   const xpub = ethereumDepositXpub();
   const rpcUrl = ethereumRpcUrl();
@@ -71,6 +77,7 @@ export function ethereumDepositConfigStatus() {
     network: "Ethereum mainnet",
     rpcConfigured: Boolean(rpcUrl),
     blockTag: balanceBlockTag,
+    depositStartIndex: depositStartIndex(),
     supportedAssets: ethereumDepositAssets,
     actionRequired: xpub
       ? "Use /api/usage/top-up/start to allocate the account deposit address."
@@ -109,6 +116,7 @@ export function getOrCreateEthereumTopUpAccount({ accountId = "" } = {}) {
     assets: ethereumDepositAssets.map(({ symbol }) => symbol),
     chainId: ethereumMainnetChainId,
     network: "Ethereum mainnet",
+    startIndex: depositStartIndex(),
   });
 
   if (!result.ok) return result;
