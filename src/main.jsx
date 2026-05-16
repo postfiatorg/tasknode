@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowDownLeft,
   ArrowDownToLine,
+  ArrowRight,
   ArrowUpRight,
   Activity,
   AlertTriangle,
@@ -4677,10 +4678,29 @@ function CryptoMethodRow({ method }) {
 }
 
 function TaskDetailModal({ onClose, task }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    const onKey = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
   return (
-    <div className="modal-backdrop task-detail-backdrop" onClick={onClose} role="presentation">
+    <div className="task-modal-layer">
+      <div
+        className={`task-modal-wash${mounted ? " is-mounted" : ""}`}
+        onClick={onClose}
+        role="presentation"
+      />
       <section
-        className="task-modal"
+        className={`task-modal${mounted ? " is-mounted" : ""}`}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -4747,7 +4767,7 @@ function TaskDetailModal({ onClose, task }) {
             <button className="light-pill" type="button">Discuss</button>
             <button className="dark-pill" type="button">
               Submit evidence
-              <ArrowUpRight size={14} strokeWidth={2} />
+              <ArrowRight size={14} strokeWidth={2} />
             </button>
           </div>
         </footer>
@@ -4757,16 +4777,23 @@ function TaskDetailModal({ onClose, task }) {
 }
 
 function TaskStatusGlyph({ status }) {
+  if (status === "Refused") {
+    return (
+      <svg className="task-status-x" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+        <path d="M2 2 L9 9 M9 2 L2 9" strokeLinecap="round" />
+      </svg>
+    );
+  }
   return <span className={`task-status-glyph is-${String(status || "unknown").toLowerCase()}`} aria-hidden="true" />;
 }
 
 function taskStatusColor(status) {
   return {
-    Proposed: "#8a5b0a",
-    Accepted: "#047857",
-    Refused: "#7c2d12",
+    Proposed: "#7a5a1f",
+    Accepted: "#4a5934",
+    Refused: "#7c3c2e",
     Rewarded: "#6e5223",
-  }[status] || "#44443f";
+  }[status] || "#3d3d38";
 }
 
 function TaskSection({ children, last, title }) {

@@ -4913,33 +4913,43 @@ h1 {
   color: #0d0d0d;
 }
 
-.task-detail-backdrop {
-  align-items: stretch;
-  justify-content: flex-end;
-  padding: 0;
+.task-modal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+}
+
+.task-modal-wash {
+  position: absolute;
+  inset: 0;
   background: rgba(13, 13, 13, 0.28);
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+
+.task-modal-wash.is-mounted {
+  opacity: 1;
 }
 
 .task-modal {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
-  width: min(600px, 100%);
+  width: 100%;
+  max-width: 600px;
   height: 100%;
   overflow: hidden;
   flex-direction: column;
   border-left: 1px solid #e8e6df;
   background: #ffffff;
   box-shadow: -24px 0 48px -24px rgba(13, 13, 13, 0.18), -8px 0 16px -8px rgba(13, 13, 13, 0.08);
-  animation: task-modal-enter 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  transform: translateX(100%);
+  transition: transform 280ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-@keyframes task-modal-enter {
-  from {
-    transform: translateX(28px);
-  }
-
-  to {
-    transform: translateX(0);
-  }
+.task-modal.is-mounted {
+  transform: translateX(0);
 }
 
 .task-modal-header,
@@ -4960,22 +4970,23 @@ h1 {
 .task-modal-close {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   border: 0;
   background: transparent;
   color: #6b6b66;
   font-size: 10.5px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: uppercase;
 }
 
 .task-modal-close {
+  gap: 6px;
   min-height: 28px;
-  padding: 0 10px;
+  padding: 4px 10px;
   border-radius: 999px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   text-transform: none;
 }
 
@@ -4994,7 +5005,7 @@ h1 {
   margin: 0;
   color: #0d0d0d;
   font-size: 22px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -5003,7 +5014,7 @@ h1 {
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  margin-top: 10px;
+  margin-top: 12px;
   overflow: hidden;
   color: #6b6b66;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -5015,7 +5026,7 @@ h1 {
 .task-modal-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 34px;
+  gap: 40px;
   margin-top: 28px;
 }
 
@@ -5049,33 +5060,30 @@ h1 {
 }
 
 .task-status-glyph {
-  width: 10px;
-  height: 10px;
-  border: 1px solid #c9c7bd;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid #6b6b66;
   border-radius: 999px;
-  background: #ffffff;
+  background: transparent;
 }
 
 .task-status-glyph.is-proposed {
-  border-color: #d6a93f;
-  background: #fef3c7;
-  box-shadow: 0 0 0 3px rgba(214, 169, 63, 0.13);
+  border-color: #a08a55;
 }
 
 .task-status-glyph.is-accepted {
-  border-color: #047857;
-  background: #047857;
-  box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.12);
-}
-
-.task-status-glyph.is-refused {
-  border-color: #7c2d12;
-  background: #7c2d12;
+  border-color: #4a5934;
+  background: #4a5934;
 }
 
 .task-status-glyph.is-rewarded {
   border-color: #6e5223;
-  background: #f0eadc;
+  background: #6e5223;
+}
+
+.task-status-x path {
+  stroke: #a87263;
+  stroke-width: 1.5;
 }
 
 .task-modal-reward {
@@ -5083,7 +5091,7 @@ h1 {
   align-items: baseline;
   gap: 6px;
   font-size: 18px !important;
-  font-weight: 650;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -5102,8 +5110,8 @@ h1 {
 }
 
 .task-section {
-  margin-top: 22px;
-  padding-bottom: 22px;
+  margin-top: 20px;
+  padding-bottom: 20px;
   border-bottom: 1px solid #e8e6df;
 }
 
@@ -5116,7 +5124,7 @@ h1 {
   margin: 0 0 8px;
   color: #6b6b66;
   font-size: 10.5px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -5124,13 +5132,13 @@ h1 {
 .task-section p {
   margin: 0;
   color: #0d0d0d;
-  font-size: 13.5px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.625;
 }
 
 .task-section ol {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -5155,8 +5163,25 @@ h1 {
   font-weight: 700;
 }
 
+.task-section li p {
+  padding-top: 2px;
+}
+
+.task-section strong {
+  display: block;
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.task-section strong + p {
+  margin-top: 6px;
+}
+
 .task-modal-footer {
   justify-content: space-between;
+  gap: 12px;
+  padding: 20px 32px;
   border-top: 1px solid #e8e6df;
 }
 
@@ -5168,21 +5193,22 @@ h1 {
 
 .task-modal-actions .dark-pill,
 .task-modal-actions .light-pill {
-  min-height: 34px;
-  padding: 0 18px;
+  min-height: 36px;
+  padding: 0 20px;
 }
 
 .danger-text {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: #b42318;
-  font-size: 13.5px;
+  color: #7c2d12;
+  padding: 6px 10px;
+  font-size: 12.5px;
   font-weight: 500;
 }
 
 .danger-text:hover {
-  background: rgba(180, 35, 24, 0.06);
+  background: rgba(124, 45, 18, 0.06);
 }
 
 @media (max-width: 760px) {
