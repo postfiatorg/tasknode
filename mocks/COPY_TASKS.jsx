@@ -477,6 +477,162 @@ const CONTEXT_SOURCES = [
   },
 ];
 
+// ---------- Messages data ----------
+//
+// Each conversation has a wallet handle as identity. The avatar is procedurally
+// generated from the handle (gradient + glyph), so it acts as an NFT-style pfp
+// without requiring real image assets.
+
+const CONVERSATIONS = [
+  {
+    id: "subs",
+    handle: "SUBS",
+    label: "Hive Herald",
+    isBot: true,
+    unread: 19,
+    preview: "THE HIVE HERALD — 2026-05-15 — Drop counts, top tasks, and verifier latency",
+    time: "Yesterday",
+  },
+  {
+    id: "rsS2Y6",
+    handle: "rsS2Y6...aXRZ",
+    fullHandle: "rsS2Y6CK9dz9dVFjJvRyD2gBdoLPqjaXRZ",
+    label: "zoz",
+    preview: "zoz here. Hope my network contributions are helpful.",
+    time: "Apr 7",
+    unread: 1,
+  },
+  {
+    id: "rfLJ4Z",
+    handle: "rfLJ4Z...mMqo",
+    fullHandle: "rfLJ4ZqHt8DnYUd6Wp1k3MzVqB8fmrfXmMqo",
+    preview: "You: Amazing — great to hear it.",
+    time: "Mar 9",
+  },
+  {
+    id: "r9oHNN",
+    handle: "r9oHNN...Sa32",
+    fullHandle: "r9oHNNbgFq8XJYTwK4tDvLP1yzGmNxSa32",
+    preview: "Hey Alex — sorry, was in transit on Saturday.",
+    time: "Mar 9",
+  },
+  {
+    id: "rKPoW9",
+    handle: "rKPoW9...iXp3",
+    fullHandle: "rKPoW9dRzNc8hLpQ4mYTb2VfXjHsDniXp3",
+    preview: "Damn — was traveling today but will catch the next one.",
+    time: "Mar 8",
+  },
+  {
+    id: "r4WS8f",
+    handle: "r4WS8f...gMZH",
+    fullHandle: "r4WS8fJqHntPYU3kRzWmCxVbTpMfNcgMZH",
+    preview: "Thank you, will be there.",
+    time: "Mar 8",
+  },
+  {
+    id: "rGu432",
+    handle: "rGu432...Dcw9",
+    fullHandle: "rGu432pHnLkRzVxYBmTcWqDfMjNsCvDcw9",
+    preview: "Sounds good — I'll try to make it.",
+    time: "Mar 8",
+  },
+  {
+    id: "rsZ8Si",
+    handle: "rsZ8Si...spqq",
+    fullHandle: "rsZ8SiHnKpQrVxYBmTcWqDfMjNsCvLZspqq",
+    preview: "Thank you!",
+    time: "Mar 8",
+  },
+  {
+    id: "rDxG2E",
+    handle: "rDxG2E...oxuR",
+    fullHandle: "rDxG2EnPkQrVxYBmTcWqDfMjNsCvLZHxoxuR",
+    preview: "You: note this is 1 pm est Post Fiat",
+    time: "Mar 7",
+  },
+];
+
+const MESSAGE_THREADS = {
+  subs: [
+    {
+      id: "s1",
+      from: "other",
+      text: "THE HIVE HERALD — 2026-05-15\n\nDaily digest: 1,420 drops sent, 92 tasks rewarded, median verifier latency 14m.",
+      drop: 0,
+      time: "Yesterday, 6:00 AM",
+    },
+    {
+      id: "s2",
+      from: "other",
+      text: "Top task today: Ship A 90 Percent Task Node Surface Cut (3,600 PFT)",
+      drop: 0,
+      time: "Yesterday, 6:00 AM",
+    },
+  ],
+  rsS2Y6: [
+    {
+      id: "m1",
+      from: "other",
+      text: "Hi there Mr good",
+      drop: 1,
+      time: "Apr 7, 1:40 AM",
+    },
+    {
+      id: "m2",
+      from: "other",
+      text: "Appreciate the task node! Exceptional product that has the potential to improve ppls lives.",
+      drop: 1,
+      time: "Apr 7, 1:42 AM",
+    },
+    {
+      id: "m3",
+      from: "other",
+      text: "zoz here. Hope my network contributions are helpful.",
+      drop: 1,
+      time: "Apr 7, 1:42 AM",
+    },
+    {
+      id: "m4",
+      from: "me",
+      text: "Thanks zoz — your verifier latency last week was the best in the cohort. Keep it up.",
+      drop: 1,
+      time: "Apr 7, 9:18 AM",
+      read: true,
+    },
+  ],
+  rfLJ4Z: [
+    {
+      id: "x1",
+      from: "other",
+      text: "Just hit 50k PFT in lifetime rewards. Couldn't have done it without the contributor pool.",
+      drop: 1,
+      time: "Mar 9, 10:02 AM",
+    },
+    {
+      id: "x2",
+      from: "me",
+      text: "Amazing — great to hear it.",
+      drop: 1,
+      time: "Mar 9, 10:11 AM",
+      read: true,
+    },
+  ],
+};
+
+// Warm gradient pairs used as procedural NFT avatar fills. Tuned to harmonize
+// with the cream/stone palette rather than fight it like bright iMessage hues.
+const AVATAR_GRADIENTS = [
+  ["#e8a89a", "#c87166"], // coral
+  ["#b5b88a", "#7d8a5e"], // sage
+  ["#c89bb0", "#8e5f7a"], // mauve
+  ["#d6b889", "#a78256"], // honey
+  ["#9caf9c", "#647c70"], // slate-sage
+  ["#b8a8c4", "#8170a0"], // lavender
+  ["#d4a48f", "#a36856"], // terracotta
+  ["#a5c0bc", "#647e7a"], // soft teal
+];
+
 // ChatGPT-inspired palette. Warm off-white that shifts very slightly between
 // sidebar and main surface, with stone neutrals for borders and hovers.
 const PALETTE = {
@@ -512,6 +668,9 @@ export default function ChatGPTTaskNode() {
   const [input, setInput] = useState("");
   const [tasksTab, setTasksTab] = useState("outstanding");
   const [thread, setThread] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState("rsS2Y6");
+  const [messageDraft, setMessageDraft] = useState("");
+  const [convoSearch, setConvoSearch] = useState("");
 
   const inputRef = useRef(null);
   const profileRef = useRef(null);
@@ -750,6 +909,17 @@ export default function ChatGPTTaskNode() {
           onClick={() => setView("wallet")}
         />
         <SidebarBtn
+          icon={MessageSquare}
+          label="Messages"
+          active={view === "messages"}
+          onClick={() => setView("messages")}
+          badge={
+            sidebarOpen
+              ? CONVERSATIONS.reduce((s, c) => s + (c.unread || 0), 0)
+              : null
+          }
+        />
+        <SidebarBtn
           icon={BookOpen}
           label="Context"
           active={view === "context"}
@@ -781,18 +951,6 @@ export default function ChatGPTTaskNode() {
                 style={{ background: PALETTE.border }}
               />
               <MenuRow icon={Bot} label="Agents" />
-              <MenuRow
-                icon={MessageSquare}
-                label="Messages"
-                trailing={
-                  <span
-                    className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-                    style={{ background: "#0d0d0d", color: "white" }}
-                  >
-                    1
-                  </span>
-                }
-              />
             </div>
           )}
         </div>
@@ -2264,6 +2422,325 @@ export default function ChatGPTTaskNode() {
     </div>
   );
 
+  // ---------- Messages view ----------
+  //
+  // Two-pane layout: 320px conversation list on the left, thread flex on the
+  // right. iMessage in skeleton, Task Node in palette and identity model.
+
+  const activeConvo =
+    CONVERSATIONS.find((c) => c.id === selectedConversation) || CONVERSATIONS[0];
+  const activeMessages = MESSAGE_THREADS[activeConvo?.id] || [];
+  const filteredConvos = convoSearch.trim()
+    ? CONVERSATIONS.filter((c) =>
+        (c.label || c.handle)
+          .toLowerCase()
+          .includes(convoSearch.trim().toLowerCase()),
+      )
+    : CONVERSATIONS;
+  const totalUnread = CONVERSATIONS.reduce(
+    (s, c) => s + (c.unread || 0),
+    0,
+  );
+
+  const MessagesView = (
+    <div className="flex h-full w-full">
+      {/* ---- Conversation list ---- */}
+      <div
+        className="flex h-full w-[320px] shrink-0 flex-col"
+        style={{
+          background: PALETTE.sidebar,
+          borderRight: `1px solid ${PALETTE.border}`,
+        }}
+      >
+        <div className="px-5 pt-7 pb-3">
+          <div className="flex items-center justify-between">
+            <h1
+              className="text-[22px] font-semibold"
+              style={{
+                color: PALETTE.text,
+                letterSpacing: "-0.018em",
+              }}
+            >
+              Messages
+            </h1>
+            <button
+              className="flex h-8 w-8 items-center justify-center rounded-full transition-colors"
+              style={{
+                background: "transparent",
+                color: PALETTE.text,
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = PALETTE.hover)
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+              title="New message"
+            >
+              <SquarePen size={16} strokeWidth={1.75} />
+            </button>
+          </div>
+          <div
+            className="mt-1 flex items-center gap-1.5 text-[11.5px]"
+            style={{ color: PALETTE.mute }}
+          >
+            <Lock size={10} strokeWidth={1.75} />
+            End-to-end encrypted · {totalUnread} unread
+          </div>
+        </div>
+
+        <div className="px-4 pb-2">
+          <div
+            className="flex items-center gap-2 rounded-full px-3 py-1.5"
+            style={{
+              background: "rgba(13,13,13,0.04)",
+            }}
+          >
+            <Search size={13} strokeWidth={1.75} style={{ color: PALETTE.mute }} />
+            <input
+              value={convoSearch}
+              onChange={(e) => setConvoSearch(e.target.value)}
+              placeholder="Search"
+              className="w-full bg-transparent text-[13px] outline-none"
+              style={{ color: PALETTE.text }}
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-2 py-1">
+          {filteredConvos.map((c) => {
+            const active = c.id === activeConvo?.id;
+            return (
+              <button
+                key={c.id}
+                onClick={() => setSelectedConversation(c.id)}
+                className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors"
+                style={{
+                  background: active ? "rgba(13,13,13,0.06)" : "transparent",
+                }}
+                onMouseEnter={(e) => {
+                  if (!active)
+                    e.currentTarget.style.background = "rgba(13,13,13,0.03)";
+                }}
+                onMouseLeave={(e) => {
+                  if (!active)
+                    e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <NFTAvatar
+                  seed={c.handle}
+                  size={40}
+                  isBot={c.isBot}
+                  palette={PALETTE}
+                />
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span
+                      className="truncate text-[13.5px] font-semibold"
+                      style={{
+                        color: PALETTE.text,
+                        letterSpacing: "-0.005em",
+                      }}
+                    >
+                      {c.label || c.handle}
+                    </span>
+                    <span
+                      className="shrink-0 text-[11.5px]"
+                      style={{ color: PALETTE.mute }}
+                    >
+                      {c.time}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <p
+                      className="line-clamp-1 flex-1 text-[12.5px] leading-snug"
+                      style={{
+                        color: c.unread ? PALETTE.text : PALETTE.mute,
+                        fontWeight: c.unread ? 500 : 400,
+                      }}
+                    >
+                      {c.preview}
+                    </p>
+                    {c.unread > 0 && (
+                      <span
+                        className="shrink-0 rounded-full text-[10px] font-semibold tabular-nums"
+                        style={{
+                          background: "#0d0d0d",
+                          color: "white",
+                          padding: "1px 6px",
+                          minWidth: 18,
+                          textAlign: "center",
+                        }}
+                      >
+                        {c.unread}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ---- Thread ---- */}
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        {activeConvo && (
+          <>
+            {/* Header */}
+            <div
+              className="flex shrink-0 items-center justify-between px-7 py-4"
+              style={{ borderBottom: `1px solid ${PALETTE.border}` }}
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <NFTAvatar
+                  seed={activeConvo.handle}
+                  size={36}
+                  isBot={activeConvo.isBot}
+                  palette={PALETTE}
+                />
+                <div className="min-w-0">
+                  <div
+                    className="text-[15px] font-semibold"
+                    style={{
+                      color: PALETTE.text,
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    {activeConvo.label || activeConvo.handle}
+                  </div>
+                  {activeConvo.fullHandle && (
+                    <div
+                      className="truncate font-mono text-[11.5px] tabular-nums"
+                      style={{ color: PALETTE.mute }}
+                    >
+                      {activeConvo.fullHandle}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  className="flex h-8 w-8 items-center justify-center rounded-full transition-colors"
+                  style={{ color: PALETTE.text }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = PALETTE.hover)
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "transparent")
+                  }
+                  title="Send PFT"
+                >
+                  <ArrowUpRight size={16} strokeWidth={1.75} />
+                </button>
+                <button
+                  className="flex h-8 w-8 items-center justify-center rounded-full transition-colors"
+                  style={{ color: PALETTE.text }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = PALETTE.hover)
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "transparent")
+                  }
+                  title="Info"
+                >
+                  <MoreHorizontal size={16} strokeWidth={1.75} />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-7 py-6">
+              <div className="mx-auto flex max-w-[680px] flex-col gap-1.5">
+                {activeMessages.length > 0 && (
+                  <ThreadDateSeparator
+                    label={activeMessages[0].time.split(",")[0]}
+                    palette={PALETTE}
+                  />
+                )}
+                {activeMessages.map((m, i) => {
+                  const prev = activeMessages[i - 1];
+                  const next = activeMessages[i + 1];
+                  const sameAsPrev = prev && prev.from === m.from;
+                  const sameAsNext = next && next.from === m.from;
+                  return (
+                    <MessageBubble
+                      key={m.id}
+                      message={m}
+                      groupedTop={sameAsPrev}
+                      groupedBottom={sameAsNext}
+                      isLast={i === activeMessages.length - 1}
+                      palette={PALETTE}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Input */}
+            <div
+              className="shrink-0 px-7 py-4"
+              style={{ borderTop: `1px solid ${PALETTE.border}` }}
+            >
+              <div className="mx-auto max-w-[680px]">
+                <div
+                  className="flex items-center gap-2 rounded-2xl bg-white px-3 py-2"
+                  style={{ border: `1px solid ${PALETTE.border}` }}
+                >
+                  <button
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors"
+                    style={{ color: PALETTE.mute }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = PALETTE.hover)
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
+                    title="Attach"
+                  >
+                    <Plus size={16} strokeWidth={1.75} />
+                  </button>
+                  <input
+                    value={messageDraft}
+                    onChange={(e) => setMessageDraft(e.target.value)}
+                    placeholder="Message"
+                    className="min-w-0 flex-1 bg-transparent px-1 py-1.5 text-[14px] outline-none"
+                    style={{ color: PALETTE.text }}
+                  />
+                  <div
+                    className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                    style={{
+                      background: "rgba(13,13,13,0.04)",
+                      color: PALETTE.mute,
+                    }}
+                    title="Default tip per message"
+                  >
+                    1 drop
+                  </div>
+                  <button
+                    disabled={!messageDraft.trim()}
+                    onClick={() => setMessageDraft("")}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-opacity"
+                    style={{
+                      background: messageDraft.trim()
+                        ? "#0d0d0d"
+                        : "rgba(13,13,13,0.08)",
+                      color: messageDraft.trim() ? "white" : PALETTE.mute,
+                      opacity: messageDraft.trim() ? 1 : 0.7,
+                    }}
+                    title="Send"
+                  >
+                    <ArrowUp size={15} strokeWidth={2.25} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
   // ---------- top bar ----------
 
   const TopBar = (
@@ -2373,6 +2850,9 @@ export default function ChatGPTTaskNode() {
           )}
           {view === "profile" && (
             <div className="w-full flex-1 overflow-y-auto">{ProfileView}</div>
+          )}
+          {view === "messages" && (
+            <div className="flex w-full flex-1 overflow-hidden">{MessagesView}</div>
           )}
         </div>
       </main>
@@ -2565,6 +3045,191 @@ function RefinedEmptyState({ icon: Icon, title, desc, palette }) {
       >
         {desc}
       </div>
+    </div>
+  );
+}
+
+// ---------- Messages primitives ----------
+
+// Deterministic small hash for use as an avatar seed.
+function avatarHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h << 5) - h + s.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h);
+}
+
+// Procedural NFT-style avatar: warm gradient background plus one of four
+// abstract white glyphs at low opacity, both derived from the handle.
+function NFTAvatar({ seed, size = 40, isBot = false, palette }) {
+  if (isBot) {
+    return (
+      <div
+        className="flex shrink-0 items-center justify-center rounded-full"
+        style={{
+          width: size,
+          height: size,
+          background: "#0d0d0d",
+          color: "white",
+        }}
+      >
+        <Bot size={size * 0.45} strokeWidth={1.75} />
+      </div>
+    );
+  }
+  const h = avatarHash(seed);
+  const [c1, c2] = AVATAR_GRADIENTS[h % AVATAR_GRADIENTS.length];
+  const glyph = h % 4;
+  const angle = (h % 4) * 45;
+  return (
+    <div
+      className="relative shrink-0 overflow-hidden rounded-full"
+      style={{
+        width: size,
+        height: size,
+        background: `linear-gradient(${135 + angle}deg, ${c1}, ${c2})`,
+      }}
+    >
+      <svg
+        viewBox="0 0 40 40"
+        className="absolute inset-0 h-full w-full"
+        aria-hidden="true"
+      >
+        {glyph === 0 && (
+          // concentric ring
+          <>
+            <circle
+              cx="20"
+              cy="20"
+              r="11"
+              fill="none"
+              stroke="white"
+              strokeOpacity="0.35"
+              strokeWidth="1.5"
+            />
+            <circle cx="20" cy="20" r="3" fill="white" fillOpacity="0.5" />
+          </>
+        )}
+        {glyph === 1 && (
+          // rotated square diamond
+          <rect
+            x="11"
+            y="11"
+            width="18"
+            height="18"
+            transform="rotate(45 20 20)"
+            fill="none"
+            stroke="white"
+            strokeOpacity="0.4"
+            strokeWidth="1.5"
+          />
+        )}
+        {glyph === 2 && (
+          // three-dot triad
+          <>
+            <circle cx="14" cy="24" r="2.5" fill="white" fillOpacity="0.45" />
+            <circle cx="26" cy="24" r="2.5" fill="white" fillOpacity="0.45" />
+            <circle cx="20" cy="14" r="2.5" fill="white" fillOpacity="0.45" />
+          </>
+        )}
+        {glyph === 3 && (
+          // diagonal bar
+          <>
+            <rect
+              x="6"
+              y="18"
+              width="28"
+              height="4"
+              fill="white"
+              fillOpacity="0.35"
+              transform="rotate(-30 20 20)"
+            />
+            <circle cx="20" cy="20" r="3" fill="white" fillOpacity="0.55" />
+          </>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+function ThreadDateSeparator({ label, palette }) {
+  return (
+    <div className="my-3 flex items-center justify-center">
+      <span
+        className="text-[11px] font-medium uppercase"
+        style={{
+          color: palette.mute,
+          letterSpacing: "0.12em",
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function MessageBubble({
+  message,
+  groupedTop,
+  groupedBottom,
+  isLast,
+  palette,
+}) {
+  const isMe = message.from === "me";
+  // Radius asymmetry so consecutive bubbles in a group stitch together
+  const radius = isMe
+    ? {
+        borderTopLeftRadius: 18,
+        borderBottomLeftRadius: 18,
+        borderTopRightRadius: groupedTop ? 6 : 18,
+        borderBottomRightRadius: groupedBottom ? 6 : 18,
+      }
+    : {
+        borderTopRightRadius: 18,
+        borderBottomRightRadius: 18,
+        borderTopLeftRadius: groupedTop ? 6 : 18,
+        borderBottomLeftRadius: groupedBottom ? 6 : 18,
+      };
+  return (
+    <div
+      className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
+      style={{ marginTop: groupedTop ? 2 : 6 }}
+    >
+      <div
+        className="max-w-[78%] px-4 py-2.5 text-[14.5px] leading-relaxed"
+        style={{
+          background: isMe ? "#0d0d0d" : "white",
+          color: isMe ? "white" : palette.text,
+          border: isMe ? "none" : `1px solid ${palette.border}`,
+          letterSpacing: "-0.005em",
+          whiteSpace: "pre-wrap",
+          ...radius,
+        }}
+      >
+        {message.text}
+      </div>
+      {!groupedBottom && (
+        <div
+          className="mt-1 flex items-center gap-1.5 px-1 text-[11px]"
+          style={{ color: palette.mute }}
+        >
+          {message.drop > 0 && (
+            <>
+              <span>{message.drop} drop</span>
+              <span style={{ opacity: 0.5 }}>·</span>
+            </>
+          )}
+          <span>{message.time.split(", ").slice(-1)[0]}</span>
+          {isMe && isLast && message.read && (
+            <>
+              <span style={{ opacity: 0.5 }}>·</span>
+              <span style={{ color: palette.mute }}>Read</span>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
