@@ -16,6 +16,7 @@
     "wallet-balance-smoke": "node scripts/wallet-balance-smoke.mjs",
     "wallet-transactions-smoke": "node scripts/wallet-transactions-smoke.mjs",
     "eth-deposit-wallet": "node scripts/generate-eth-deposit-wallet.mjs",
+    "eth-deposit-verify": "node scripts/verify-eth-deposit-wallet.mjs",
     "smoke": "node scripts/smoke.mjs",
     "frame-smoke": "node scripts/frame-smoke.mjs"
   },

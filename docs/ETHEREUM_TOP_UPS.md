@@ -58,6 +58,21 @@ them down. It writes only xpub env lines to `.env.eth-deposit-xpub`. Do not
 commit that file, and do not paste the mnemonic, receive xprv, or child private
 keys into chat.
 
+To confirm that the mnemonic, receive xprv, or a child private key matches the
+configured xpub, run:
+
+```text
+npm run eth-deposit-verify
+```
+
+The verifier reads `.env.eth-deposit-xpub`, hides terminal input, and reports
+whether the supplied custody material derives the configured deposit address.
+For a child private key other than deposit index 0:
+
+```text
+npm run eth-deposit-verify -- --index 12
+```
+
 ## Sync
 
 The sync endpoint reads safe-chain balances and credits only positive balance
