@@ -1,0 +1,15 @@
+[project]
+name = "tasknode-pftl-reference"
+version = "0.1.0"
+description = "PFTL-native Task Node reference client and replay harness"
+requires-python = ">=3.11"
+dependencies = [
+  "xrpl-py",
+  "requests",
+  "PyNaCl",
+  "base58",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
