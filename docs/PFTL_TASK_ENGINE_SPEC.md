@@ -299,6 +299,117 @@ wallet may have a companion encryption key if the reward service needs direct
 decrypt access, but the payout wallet does not need plaintext simply to send a
 reward transaction.
 
+## Task Request Bundle
+
+The task request bundle is a first-class protocol object. It should not be a
+React state blob, chat database row, or prompt-only construction. Any client
+that can produce the same bundle should be able to request or generate a task
+without the Task Node Official UX.
+
+The bundle captures the evidence used to generate a task:
+
+- the explicit user request, if one exists;
+- recent chat messages;
+- relevant historical chat excerpts or summaries;
+- context document references;
+- optional context summaries;
+- wallet and policy metadata;
+- source client metadata.
+
+The bundle should be content-addressed, encrypted, and referenced by task
+request and task offer events.
+
+Recommended schema:
+
+```json
+{
+  "schema": "pf.task.request_bundle.v1",
+  "bundle_id": "bundle_...",
+  "subject_wallet": "r...",
+  "created_at": "ISO-8601",
+  "client": {
+    "name": "tasknodeofficial|codex|python|cli",
+    "version": "semver",
+    "session_id": "optional"
+  },
+  "request": {
+    "request_id": "req_...",
+    "request_text": "user request or null for system-issued task",
+    "requested_task_kind": "personal|network|alpha|system",
+    "source": "user_chat|system_allocation|agent|scheduler"
+  },
+  "recent_chat": {
+    "messages": [
+      {
+        "id": "msg_...",
+        "role": "user|assistant|system|tool",
+        "content": "bounded message content",
+        "created_at": "ISO-8601",
+        "digest": "sha256:..."
+      }
+    ],
+    "summary": "bounded recent-chat summary",
+    "window": {
+      "started_at": "ISO-8601",
+      "ended_at": "ISO-8601"
+    }
+  },
+  "relevant_history": {
+    "strategy": "semantic_retrieval|recency|manual|none",
+    "items": [
+      {
+        "kind": "chat_summary|task_summary|context_excerpt|reward_summary",
+        "cid": "baf... or null",
+        "digest": "sha256:...",
+        "summary": "bounded relevant item summary",
+        "score": 0.82
+      }
+    ]
+  },
+  "context": {
+    "primary_context_doc": {
+      "context_id": "ctx_...",
+      "cid": "baf...",
+      "digest": "sha256:...",
+      "summary": "bounded context summary",
+      "revision": "optional"
+    },
+    "additional_refs": [
+      {
+        "kind": "profile|portfolio|network_context|hive_context",
+        "cid": "baf...",
+        "digest": "sha256:...",
+        "summary": "bounded summary"
+      }
+    ]
+  },
+  "policy": {
+    "task_policy_version": "task-policy-v1",
+    "reward_policy_version": "reward-policy-v1",
+    "generation_policy_version": "taskgen-policy-v1"
+  },
+  "wallet": {
+    "subject_wallet": "r...",
+    "allocation_wallet": "r... or null",
+    "authority_hint": "r... or null"
+  }
+}
+```
+
+Rules:
+
+- The full bundle is encrypted and uploaded to IPFS.
+- Task request events may point to the bundle CID.
+- Task offer events must carry the request bundle CID or digest when the offer
+  was generated from a bundle.
+- The task-generation prompt consumes the bundle or a deterministic projection
+  of the bundle.
+- UX-specific chat IDs may be included as metadata, but they are not canonical.
+- Context documents remain their own IPFS objects. The bundle references them
+  by CID and digest rather than copying the full context document by default.
+- Portable clients may create bundles directly from local chat logs, local
+  context files, or Codex transcripts.
+
 Recommended payload schemas:
 
 ### `pf.task.request.v1`
@@ -312,21 +423,11 @@ User asks for a task against a context block. Optional for system-issued tasks.
   "schema": "pf.task.request.v1",
   "request_id": "req_...",
   "subject_wallet": "r...",
-  "context": {
-    "context_id": "ctx_...",
-    "context_cid": "baf...",
-    "context_digest": "sha256:..."
-  },
-  "chat_packet": {
-    "chat_packet_id": "chat_...",
-    "chat_cid": "baf... or null",
-    "chat_digest": "sha256:...",
-    "summary": "short task-generation conversation summary",
-    "message_count": 12,
-    "window": {
-      "started_at": "ISO-8601",
-      "ended_at": "ISO-8601"
-    }
+  "request_bundle": {
+    "bundle_id": "bundle_...",
+    "cid": "baf...",
+    "digest": "sha256:...",
+    "summary": "short task-generation bundle summary"
   },
   "request_text": "user-visible task request",
   "requested_task_kind": "personal|network|alpha|system",
@@ -382,6 +483,8 @@ System issues a proposed task.
     "model": "chat-latest",
     "prompt_version": "taskgen-minimal-v1",
     "prompt_digest": "sha256:...",
+    "request_bundle_cid": "baf... or null",
+    "request_bundle_digest": "sha256:...",
     "input_packet_digest": "sha256:...",
     "latency_ms": 1200
   }
@@ -390,8 +493,8 @@ System issues a proposed task.
 
 The task offer must include enough generation metadata to audit which prompt,
 model, and input packet produced the task without requiring the UI database.
-The full chat packet can remain encrypted in IPFS; the offer can carry only
-hashes, summaries, and CIDs needed for replay.
+The full task request bundle remains encrypted in IPFS; the offer can carry
+only hashes, summaries, and CIDs needed for replay.
 
 ### `pf.task.update.v1`
 
@@ -673,7 +776,8 @@ The canonical simulation scenario:
 1. Create or load a user wallet.
 2. Create or load a task authority wallet.
 3. Create or load a per-user allocation/reward wallet.
-4. Build a context packet and chat packet.
+4. Build a portable task request bundle from context, recent chat, and
+   relevant history.
 5. Generate a task offer using the minimal task-generation prompt.
 6. Encrypt the task content for the user, Task Node service, and optional
    reward/verification service recipient.
@@ -694,11 +798,20 @@ flows into the UX.
 PFTasks has a large prompt surface. The pointer-native engine should scope task
 generation down to a small, testable contract.
 
+Task generation consumes a task request bundle. The model-facing input may be a
+bounded deterministic projection of the encrypted bundle so prompt size stays
+controlled, but the bundle CID/digest remains the portable source object.
+
 Recommended task-generation input packet:
 
 ```json
 {
   "schema": "pf.taskgen.input.v1",
+  "request_bundle": {
+    "bundle_id": "bundle_...",
+    "cid": "baf...",
+    "digest": "sha256:..."
+  },
   "request": {
     "request_text": "user request or null for system-issued task",
     "requested_task_kind": "personal|network|alpha|system"
@@ -709,8 +822,8 @@ Recommended task-generation input packet:
     "summary": "bounded context summary"
   },
   "chat": {
-    "chat_packet_cid": "baf... or null",
-    "chat_digest": "sha256:...",
+    "recent_chat_summary": "bounded recent-chat summary",
+    "relevant_history_summary": "bounded relevant-history summary",
     "recent_messages": [
       {
         "role": "user|assistant|system",
@@ -763,8 +876,8 @@ Model policy:
 - Benchmark the same input packets against `gpt-5.5` high reasoning for quality
   and latency deltas.
 - Store model name, reasoning mode, prompt version, prompt digest, input packet
-  digest, output digest, latency, and parse result in the encrypted task offer
-  metadata.
+  digest, request bundle CID/digest, output digest, latency, and parse result
+  in the encrypted task offer metadata.
 - Keep the prompt minimal. The generation prompt should transform a structured
   input packet into a structured output packet, not carry the whole PFTasks
   historical prompt surface forward.
