@@ -28,6 +28,8 @@ Current product rules:
 .
 ├── README.md                  # root project overview and quick commands
 ├── docs/                      # bootup and engineering docs
+│   └── AUTH_WALLET_BOUNDARY.md
+│                              # wallet/auth implementation guardrail
 ├── full_spec.md               # current product/architecture source of truth
 ├── product_spec.md            # raw initial product brief
 ├── auth_account_spec.md       # auth/account/wallet-claim design
@@ -145,6 +147,9 @@ Usage/billing:
 - GitHub OAuth start/callback when configured.
 - Dev auth outside production.
 - Cookie-backed sessions.
+- Auth/wallet boundary guardrails: signed-out wallet linking routes to login,
+  wallet proof links a wallet to an account session, and local vault unlock is
+  not treated as app login.
 - Session/account read model.
 - Browser-only 24-word seed wallet proof for account linking. The app validates
   and signs locally; the server receives only address, public key, and

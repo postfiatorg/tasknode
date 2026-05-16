@@ -20,7 +20,11 @@ is intentionally not live yet.
 4. `../auth_account_spec.md`
    Auth, provider linking, wallet claim, email login, and delink/relink design.
 
-5. `../whip_context.md`
+5. `AUTH_WALLET_BOUNDARY.md`
+   Concrete implementation guardrails for wallet auth UX, session refresh,
+   wallet proof, local vault state, and regression coverage.
+
+6. `../whip_context.md`
    Automation handoff instructions and whip shutdown guardrails.
 
 ## Source Of Truth Rules
@@ -43,5 +47,5 @@ These docs are intentionally a first spine, not a completed handbook.
   PFTasks hydration models.
 - `DEPLOYMENT.md`: Fly environments, secrets, rollback, logs, persistence, and
   smoke-test runbook.
-- `SECURITY.md`: seed handling, OAuth, email login, provider keys, retention,
-  logging, and supply-chain policy.
+- `SECURITY.md`: broader seed handling, OAuth, email login, provider keys,
+  retention, logging, and supply-chain policy.

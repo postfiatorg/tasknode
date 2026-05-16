@@ -274,7 +274,11 @@ If login behaves strangely:
 
 If seed wallet linking fails:
 
+- read `docs/AUTH_WALLET_BOUNDARY.md` before changing wallet/auth behavior;
 - confirm the user is signed in before calling `/api/wallet/link/start`;
+- if the user is signed out, the UI should route to login before showing a
+  seed phrase modal;
+- refresh `/api/app-state` after login before starting wallet proof;
 - use a 24-word BIP39 recovery phrase;
 - set and confirm the local wallet password before submitting the link modal;
 - check `/api/wallet/actions` and confirm `link_start` is enabled;
