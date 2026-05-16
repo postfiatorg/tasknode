@@ -14,17 +14,20 @@ is intentionally not live yet.
    Current repo layout, runtime surfaces, API contracts, enabled features,
    disabled features, and the near-term build path.
 
-3. `../full_spec.md`
+3. `DOCKER_DEV.md`
+   Local Docker dev loop for rapid iteration without Fly deploys.
+
+4. `../full_spec.md`
    Product/architecture source of truth and active burndown.
 
-4. `../auth_account_spec.md`
+5. `../auth_account_spec.md`
    Auth, provider linking, wallet claim, email login, and delink/relink design.
 
-5. `AUTH_WALLET_BOUNDARY.md`
+6. `AUTH_WALLET_BOUNDARY.md`
    Concrete implementation guardrails for wallet auth UX, session refresh,
    wallet proof, local vault state, and regression coverage.
 
-6. `../whip_context.md`
+7. `../whip_context.md`
    Automation handoff instructions and whip shutdown guardrails.
 
 ## Source Of Truth Rules
