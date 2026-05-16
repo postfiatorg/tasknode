@@ -175,6 +175,7 @@ Usage/billing:
 - `GET /api/usage/actions`
 - `GET /api/usage/ledger`
 - `POST /api/usage/top-up/start`
+- `POST /api/usage/top-up/sync`
 - `POST /api/usage/credit/admin`
 
 ## Enabled Today
@@ -211,6 +212,9 @@ Usage/billing:
   thinking, constrain private requests to known ZDR provider allowlists, and do
   not enable OpenRouter web search.
 - Usage ledger and admin credit when configured.
+- Account-scoped Ethereum mainnet top-up addresses when `ETH_DEPOSIT_XPUB` is
+  configured. The rail accepts ETH, USDC, and USDT without MetaMask signatures,
+  and credits positive safe-balance deltas through `/api/usage/top-up/sync`.
 - Idempotent initial provider credit ledger contract for eligible registrar
   accounts.
 - Runtime, API, and frame-smoke coverage.
@@ -223,7 +227,7 @@ Usage/billing:
 - X login.
 - PFTL transaction signing.
 - Wallet delink/relink behavior.
-- Crypto top-up.
+- Production sweep service for Ethereum deposit addresses.
 - Context import.
 - PFTL manifest ink.
 - OpenRouter production route verification against selected ZDR endpoints and

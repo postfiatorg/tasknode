@@ -1000,6 +1000,12 @@ h1 {
   }
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .assistant-body {
   max-width: 100%;
 }
@@ -4992,6 +4998,125 @@ h1 {
   line-height: 1.45;
 }
 
+.eth-topup-modal {
+  width: min(620px, 100%);
+}
+
+.eth-topup-loading,
+.eth-topup-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  color: #5f5f5a;
+  font-size: 13px;
+}
+
+.eth-topup-loading svg {
+  animation: spin 900ms linear infinite;
+}
+
+.eth-topup-address {
+  display: grid;
+  gap: 8px;
+}
+
+.eth-topup-address > span {
+  color: #6b6b66;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.eth-topup-address button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 13px;
+  border: 1px solid #e2dfd5;
+  border-radius: 12px;
+  background: #fbfaf7;
+  color: #0d0d0d;
+  text-align: left;
+}
+
+.eth-topup-address strong {
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eth-topup-address svg {
+  flex: 0 0 auto;
+}
+
+.eth-topup-assets {
+  display: grid;
+  gap: 8px;
+}
+
+.eth-topup-asset {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #ece9df;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.eth-topup-asset > span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: #f4f3ee;
+  color: #0d0d0d;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.eth-topup-asset div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.eth-topup-asset strong,
+.eth-topup-asset small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eth-topup-asset strong {
+  color: #0d0d0d;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.eth-topup-asset small,
+.eth-topup-asset em {
+  color: #6b6b66;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.eth-topup-asset em {
+  justify-self: end;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 .wallet-seed-field {
   display: grid;
   gap: 8px;
@@ -6323,6 +6448,15 @@ h1 {
 
   .wallet-management-grid {
     grid-template-columns: 1fr;
+  }
+
+  .eth-topup-asset {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .eth-topup-asset em {
+    grid-column: 2 / 3;
+    justify-self: start;
   }
 
   .wallet-tx-row {

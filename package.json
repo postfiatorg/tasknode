@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@scure/bip39": "^2.2.0",
+    "ethers": "^6.16.0",
     "libsodium": "^0.8.4",
     "libsodium-wrappers": "^0.8.4",
     "lucide-react": "^0.562.0",

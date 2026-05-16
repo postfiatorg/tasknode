@@ -33,17 +33,21 @@ is intentionally not live yet.
 7. `DEPLOYMENT.md`
    Local Docker dev, local production Docker, and Fly release deployment paths.
 
-8. `../full_spec.md`
+8. `ETHEREUM_TOP_UPS.md`
+   Account-scoped Ethereum mainnet deposit addresses for ETH, USDC, and USDT
+   top-ups, including custody boundaries and sync behavior.
+
+9. `../full_spec.md`
    Product/architecture source of truth and active burndown.
 
-9. `../auth_account_spec.md`
+10. `../auth_account_spec.md`
    Auth, provider linking, wallet claim, email login, and delink/relink design.
 
-10. `AUTH_WALLET_BOUNDARY.md`
+11. `AUTH_WALLET_BOUNDARY.md`
    Concrete implementation guardrails for wallet auth UX, session refresh,
    wallet proof, local vault state, and regression coverage.
 
-11. `../whip_context.md`
+12. `../whip_context.md`
    Automation handoff instructions and whip shutdown guardrails.
 
 ## Source Of Truth Rules

@@ -216,11 +216,9 @@ const CONNECTIONS = [
 ];
 
 const PAYMENT_METHODS = [
-  { k: "xrp", name: "XRP", chain: "XRP Ledger", accent: "#0d0d0d", letter: "X", connected: true, address: "rPo8Gk...HxNx" },
-  { k: "eth", name: "Ether", chain: "Ethereum", accent: "#627eea", letter: "E", connected: false },
-  { k: "btc", name: "Bitcoin", chain: "Bitcoin mainnet", accent: "#f7931a", letter: "B", connected: false },
-  { k: "usdt", name: "USDT", chain: "Ethereum", accent: "#26a17b", letter: "T", connected: false },
-  { k: "usdc", name: "USDC", chain: "Ethereum", accent: "#2775ca", letter: "$", connected: false },
+  { k: "eth", name: "Ether", chain: "Ethereum mainnet", accent: "#627eea", letter: "E" },
+  { k: "usdt", name: "USDT", chain: "Ethereum ERC-20", accent: "#26a17b", letter: "T" },
+  { k: "usdc", name: "USDC", chain: "Ethereum ERC-20", accent: "#2775ca", letter: "$" },
 ];
 
 const SETTINGS_PAGES = [
@@ -2848,6 +2846,12 @@ function WalletView({
   const [walletProofAction, setWalletProofAction] = useState(null);
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [delinkOpen, setDelinkOpen] = useState(false);
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const [topUpState, setTopUpState] = useState({
+    status: wallet?.ethereumDeposit ? "ready" : "idle",
+    data: wallet?.ethereumDeposit ? { depositAccount: wallet.ethereumDeposit } : null,
+    message: "",
+  });
   const [txFeed, setTxFeed] = useState({
     status: "idle",
     transactions: [],
@@ -2860,6 +2864,8 @@ function WalletView({
   const linkAction = actions.find((action) => action.id === "link_start");
   const relinkAction = actions.find((action) => action.id === "relink_start");
   const delinkAction = actions.find((action) => action.id === "delink");
+  const fundingActions = usage?.fundingActions || [];
+  const topUpAction = fundingActions.find((action) => action.id === "top_up_start");
   const linkedWallet = wallet?.pftWallet || {};
   const walletLinked = linkedWallet.status === "linked";
   const vaultAvailable = Boolean(walletVault?.available && walletVault?.address === linkedWallet.address);
@@ -2892,6 +2898,18 @@ function WalletView({
     );
   }, [signedIn]);
 
+  useEffect(() => {
+    if (!wallet?.ethereumDeposit) return;
+    setTopUpState((current) => ({
+      ...current,
+      status: current.status === "loading" ? current.status : "ready",
+      data: {
+        ...(current.data || {}),
+        depositAccount: wallet.ethereumDeposit,
+      },
+    }));
+  }, [wallet?.ethereumDeposit]);
+
   function requireSignedInForWalletLink() {
     if (signedIn) return true;
     if (!session?.status) {
@@ -2916,6 +2934,74 @@ function WalletView({
       setMessage("");
       setWalletProofAction(linkAction);
       setLinkOpen(true);
+    }
+  }
+
+  async function openTopUpFlow() {
+    if (!signedIn) {
+      setMessage("Sign in before topping up.");
+      onLoginRequired?.();
+      return;
+    }
+
+    setTopUpOpen(true);
+    setTopUpState((current) => ({
+      ...current,
+      status: current.data?.depositAccount ? "ready" : "loading",
+      message: "",
+    }));
+
+    try {
+      const result = await requestJson(topUpAction?.path || "/api/usage/top-up/start", {
+        method: topUpAction?.method || "POST",
+      });
+      if (!result.ok || !result.body?.ok) {
+        throw new Error(result.body?.message || result.body?.actionRequired || "Top-up is unavailable.");
+      }
+      setTopUpState({
+        status: "ready",
+        data: result.body,
+        message: result.body.message || "",
+      });
+      await onAppStateChange?.();
+    } catch (error) {
+      setTopUpState({
+        status: "error",
+        data: null,
+        message: error?.message || "Top-up is unavailable.",
+      });
+    }
+  }
+
+  async function refreshTopUpDeposits() {
+    const syncPath = topUpState.data?.syncPath || "/api/usage/top-up/sync";
+    setTopUpState((current) => ({
+      ...current,
+      status: "syncing",
+      message: "",
+    }));
+
+    try {
+      const result = await requestJson(syncPath, { method: "POST" });
+      if (!result.ok || !result.body?.ok) {
+        throw new Error(result.body?.message || result.body?.actionRequired || "Deposit refresh failed.");
+      }
+      setTopUpState((current) => ({
+        status: "ready",
+        data: {
+          ...(current.data || {}),
+          ...result.body,
+          depositAccount: result.body.depositAccount || current.data?.depositAccount,
+        },
+        message: result.body.message || "",
+      }));
+      await onAppStateChange?.();
+    } catch (error) {
+      setTopUpState((current) => ({
+        ...current,
+        status: "ready",
+        message: error?.message || "Deposit refresh failed.",
+      }));
     }
   }
 
@@ -3166,7 +3252,12 @@ function WalletView({
             Chat credit <strong>{formatCreditUsd(wallet?.chatCreditUsd || 0)}</strong>. Billing is{" "}
             {usage?.billingModel === "usage_based" ? "usage-based" : "not ready"}.
           </span>
-          <button className="wallet-mini-action" disabled type="button">
+          <button
+            className="wallet-mini-action"
+            disabled={!signedIn || topUpState.status === "loading" || topUpState.status === "syncing"}
+            onClick={openTopUpFlow}
+            type="button"
+          >
             <Plus size={13} strokeWidth={2} />
             Top up
           </button>
@@ -3275,6 +3366,13 @@ function WalletView({
           session={session}
         />
       )}
+      {topUpOpen && (
+        <EthereumTopUpModal
+          onClose={() => setTopUpOpen(false)}
+          onRefresh={refreshTopUpDeposits}
+          state={topUpState}
+        />
+      )}
     </div>
   );
 }
@@ -3295,6 +3393,123 @@ function WalletManagementCard({ active = false, disabled = false, icon: Icon, la
       <ChevronRight size={16} strokeWidth={1.8} />
     </button>
   );
+}
+
+function EthereumTopUpModal({ onClose, onRefresh, state }) {
+  const [copied, setCopied] = useState(false);
+  const deposit = state?.data?.depositAccount || null;
+  const assets = deposit?.assets || [];
+  const busy = state?.status === "loading" || state?.status === "syncing";
+  const error = state?.status === "error";
+
+  async function copyDepositAddress() {
+    if (!deposit?.address) return;
+    try {
+      await navigator.clipboard?.writeText(deposit.address);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop chat-edit-backdrop" onClick={onClose} role="presentation">
+      <div
+        aria-label="Top up account"
+        aria-modal="true"
+        className="wallet-link-modal eth-topup-modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header>
+          <div>
+            <h2>Top up</h2>
+            <p>Send ETH, USDC, or USDT on Ethereum mainnet to your account deposit address.</p>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button" aria-label="Close top up">
+            <X size={16} strokeWidth={2} />
+          </button>
+        </header>
+
+        {busy && !deposit && (
+          <div className="eth-topup-loading">
+            <RefreshCw size={16} strokeWidth={2} />
+            Preparing deposit address
+          </div>
+        )}
+
+        {error && (
+          <div className="wallet-link-warning">
+            {state?.message || "Top-up is unavailable."}
+          </div>
+        )}
+
+        {deposit && (
+          <>
+            <div className="eth-topup-address">
+              <span>Ethereum mainnet address</span>
+              <button onClick={copyDepositAddress} type="button">
+                <strong>{deposit.address}</strong>
+                {copied ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.8} />}
+              </button>
+            </div>
+
+            <div className="eth-topup-assets" aria-label="Supported top-up assets">
+              {assets.map((asset) => (
+                <div className="eth-topup-asset" key={asset.symbol}>
+                  <span>{asset.symbol}</span>
+                  <div>
+                    <strong>{asset.label || asset.symbol}</strong>
+                    <small>
+                      {asset.kind === "native"
+                        ? "Native ETH"
+                        : shortEthereumAddress(asset.contractAddress)}
+                    </small>
+                  </div>
+                  <em>{formatDepositObservedBalance(deposit, asset.symbol)}</em>
+                </div>
+              ))}
+            </div>
+
+            <div className="wallet-link-warning">
+              This address is controlled by Task Node for account funding. It is not a user wallet,
+              withdrawals are not available, and wrong-chain deposits may not be recoverable.
+            </div>
+
+            {state?.message && <div className="eth-topup-status">{state.message}</div>}
+          </>
+        )}
+
+        <footer>
+          <button className="ghost-button" onClick={onClose} type="button">
+            Done
+          </button>
+          <button className="solid-button" disabled={!deposit || busy} onClick={onRefresh} type="button">
+            {state?.status === "syncing" ? "Refreshing" : "Refresh deposits"}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function shortEthereumAddress(address = "") {
+  const text = String(address || "").trim();
+  if (!text) return "";
+  if (text.length <= 16) return text;
+  return `${text.slice(0, 8)}...${text.slice(-6)}`;
+}
+
+function formatDepositObservedBalance(deposit, symbol) {
+  const balance = deposit?.observedBalances?.[symbol];
+  if (!balance?.amount) return "Not seen";
+  const amount = Number(balance.amount);
+  if (!Number.isFinite(amount)) return balance.amount;
+  const options = symbol === "ETH"
+    ? { maximumFractionDigits: 8 }
+    : { minimumFractionDigits: 2, maximumFractionDigits: 6 };
+  return `${amount.toLocaleString(undefined, options)} ${symbol}`;
 }
 
 function WalletFeedEmpty({ body, title }) {
@@ -5436,8 +5651,10 @@ function DataSettings() {
 function BillingSettings() {
   const [ledger, setLedger] = useState(null);
   const [ledgerError, setLedgerError] = useState("");
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const [topUpState, setTopUpState] = useState({ status: "idle", data: null, message: "" });
 
-  useEffect(() => {
+  const loadLedger = useCallback(() => {
     let active = true;
 
     requestJson("/api/usage/ledger")
@@ -5459,6 +5676,54 @@ function BillingSettings() {
     };
   }, []);
 
+  useEffect(() => loadLedger(), [loadLedger]);
+
+  async function openBillingTopUp() {
+    setTopUpOpen(true);
+    setTopUpState((current) => ({
+      ...current,
+      status: current.data?.depositAccount ? "ready" : "loading",
+      message: "",
+    }));
+
+    try {
+      const result = await requestJson("/api/usage/top-up/start", { method: "POST" });
+      if (!result.ok || !result.body?.ok) {
+        throw new Error(result.body?.message || result.body?.actionRequired || "Top-up is unavailable.");
+      }
+      setTopUpState({ status: "ready", data: result.body, message: result.body.message || "" });
+    } catch (error) {
+      setTopUpState({ status: "error", data: null, message: error?.message || "Top-up is unavailable." });
+    }
+  }
+
+  async function refreshBillingTopUp() {
+    setTopUpState((current) => ({ ...current, status: "syncing", message: "" }));
+
+    try {
+      const result = await requestJson("/api/usage/top-up/sync", { method: "POST" });
+      if (!result.ok || !result.body?.ok) {
+        throw new Error(result.body?.message || result.body?.actionRequired || "Deposit refresh failed.");
+      }
+      setTopUpState((current) => ({
+        status: "ready",
+        data: {
+          ...(current.data || {}),
+          ...result.body,
+          depositAccount: result.body.depositAccount || current.data?.depositAccount,
+        },
+        message: result.body.message || "",
+      }));
+      loadLedger();
+    } catch (error) {
+      setTopUpState((current) => ({
+        ...current,
+        status: "ready",
+        message: error?.message || "Deposit refresh failed.",
+      }));
+    }
+  }
+
   const entries = ledger?.entries || [];
 
   return (
@@ -5469,17 +5734,17 @@ function BillingSettings() {
           <strong>{formatCreditUsd(ledger?.availableCreditUsd || 0)} <span>credit</span></strong>
           <p>{formatCreditUsd(ledger?.currentCreditUsd || 0)} credited - {formatUsageUsd(ledger?.currentSpendUsd || 0)} spent</p>
         </div>
-        <button className="dark-pill" type="button">Top up</button>
+        <button className="dark-pill" onClick={openBillingTopUp} type="button">Top up</button>
       </section>
       <div>
         <div className="billing-heading">
           <h3>Payment methods</h3>
-          <button type="button">+ Add wallet</button>
+          <button onClick={openBillingTopUp} type="button">Top up</button>
         </div>
-        <p>Connect a wallet to top up your Task Node account or pay for premium features. All transactions settle on-chain.</p>
+        <p>Send ETH, USDT, or USDC to your account deposit address. No wallet connection or signature is required.</p>
         <div className="payment-methods">
           {PAYMENT_METHODS.map((method) => (
-            <CryptoMethodRow key={method.k} method={method} />
+            <CryptoMethodRow key={method.k} method={method} onTopUp={openBillingTopUp} />
           ))}
         </div>
       </div>
@@ -5499,6 +5764,13 @@ function BillingSettings() {
           </div>
         )}
       </div>
+      {topUpOpen && (
+        <EthereumTopUpModal
+          onClose={() => setTopUpOpen(false)}
+          onRefresh={refreshBillingTopUp}
+          state={topUpState}
+        />
+      )}
     </div>
   );
 }
@@ -5601,7 +5873,7 @@ function ToggleSwitch({ initial }) {
   );
 }
 
-function CryptoMethodRow({ method }) {
+function CryptoMethodRow({ method, onTopUp }) {
   return (
     <div className="crypto-method">
       <span style={{ background: method.accent }}>{method.letter}</span>
@@ -5609,10 +5881,9 @@ function CryptoMethodRow({ method }) {
         <strong>{method.name}</strong>
         <small>
           {method.chain}
-          {method.connected && method.address ? ` . ${method.address}` : ""}
         </small>
       </div>
-      {method.connected ? <em>Connected</em> : <button type="button">Connect</button>}
+      <button onClick={onTopUp} type="button">Use</button>
     </div>
   );
 }

@@ -49,6 +49,19 @@ content parts; PDF parsing uses `OPENROUTER_PDF_ENGINE` or `cloudflare-ai` by
 default. OpenRouter web search is not enabled for Private modes; web-backed
 answers route through Frontier modes only.
 
+Ethereum top-up uses account-scoped deposit addresses, not wallet-connect. To
+show live mainnet deposit addresses, configure:
+
+```text
+ETH_DEPOSIT_XPUB=<receive xpub for m/44'/60'/0'/0>
+ETH_DEPOSIT_RPC_URL=https://...
+ETH_DEPOSIT_BALANCE_BLOCK_TAG=safe
+```
+
+The rail accepts ETH, USDC, and USDT on Ethereum mainnet. See
+`docs/ETHEREUM_TOP_UPS.md` before pointing the app at a production custody
+wallet.
+
 Useful local endpoints:
 
 ```text

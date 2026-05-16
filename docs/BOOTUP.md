@@ -167,6 +167,10 @@ Common env names:
 - `OPENROUTER_API_KEY`
 - `TASKNODE_ADMIN_CREDIT_TOKEN`
 - `TASKNODE_INITIAL_PROVIDER_CREDIT_USD`
+- `ETH_DEPOSIT_XPUB`
+- `ETH_DEPOSIT_RPC_URL`
+- `ETH_DEPOSIT_BALANCE_BLOCK_TAG`
+- `ETH_DEPOSIT_ETH_USD_PRICE`
 - `POSTHOG_KEY`
 - `VITE_POSTHOG_KEY`
 - `TELEGRAM_AUTH_BOT_TOKEN`
@@ -207,7 +211,9 @@ Current behavior:
   metadata; the latest encrypted context CID can be decrypted locally after
   wallet unlock;
 - admin credit requires `TASKNODE_ADMIN_CREDIT_TOKEN`;
-- crypto top-up remains disabled while funding rails are selected.
+- Ethereum top-up is account-scoped and enabled when `ETH_DEPOSIT_XPUB` is
+  configured; it accepts ETH, USDC, and USDT on Ethereum mainnet and never
+  asks the user to connect or sign with MetaMask.
 
 ## Deployment Paths
 

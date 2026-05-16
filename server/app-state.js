@@ -7,11 +7,13 @@ import {
   usageActions,
   walletActions,
 } from "./product-contracts.js";
+import { ethereumDepositConfigStatus, publicDepositAccount } from "./ethereum-deposits.js";
 import {
   conversationIdForSession,
   getContextDocument,
   getContextHistory,
   getChatMessages,
+  getEthereumDepositAccount,
   getLinkedWallet,
   listChatConversations,
   usageSummary,
@@ -58,6 +60,8 @@ export function appState(session = null) {
   const conversationId = conversationIdForSession(session);
   const usage = usageSummary({ accountId: session?.accountId, conversationId });
   const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
+  const ethDepositStatus = ethereumDepositConfigStatus();
+  const ethDepositAccount = getEthereumDepositAccount({ accountId: session?.accountId || "" });
   const walletLinked = linkedWallet.status === "linked" && Boolean(linkedWallet.address);
 
   return {
@@ -138,21 +142,13 @@ export function appState(session = null) {
       chatCreditUsd: usage.availableCreditUsd,
       fundingRails: [
         {
-          label: "USDC or USDT deposit address",
-          status: "research",
-          note: "Candidate safest top-up path if per-user addresses can be operated cleanly.",
-        },
-        {
-          label: "MetaMask funding",
-          status: "research",
-          note: "Funding rail only; not the core PFTL wallet path.",
-        },
-        {
-          label: "Phantom funding",
-          status: "research",
-          note: "Funding rail only; chain and settlement flow still need a decision.",
+          label: "Ethereum mainnet deposit address",
+          status: ethDepositStatus.status,
+          note:
+            "Account-scoped custodial receive address for ETH, USDC, and USDT. No wallet-connect or user withdrawal surface.",
         },
       ],
+      ethereumDeposit: publicDepositAccount(ethDepositAccount),
     },
     usage: {
       billingModel: "usage_based",
@@ -165,6 +161,7 @@ export function appState(session = null) {
       chatStreamPath: "/api/chat/stream",
       actionsPath: "/api/usage/actions",
       fundingActions: usageActions(),
+      ethereumDeposit: publicDepositAccount(ethDepositAccount),
       chatEstimateReady: runtimeReadiness.billing.chatEstimateReady,
       chatExecutionReady: runtimeReadiness.billing.chatExecutionReady,
       adminCreditReady: runtimeReadiness.billing.adminCreditReady,

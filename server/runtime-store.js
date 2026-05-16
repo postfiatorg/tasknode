@@ -19,6 +19,9 @@ const defaultState = {
   accountEmails: {},
   accountIdentities: {},
   accountWallets: {},
+  ethereumDepositAccounts: {},
+  ethereumDepositAddressIndex: {},
+  ethereumDepositCursor: 0,
   walletChallenges: {},
   contextDocuments: {},
   contextHistorySnapshots: {},
@@ -63,6 +66,17 @@ function loadState() {
         parsed.accountWallets && typeof parsed.accountWallets === "object" && !Array.isArray(parsed.accountWallets)
           ? parsed.accountWallets
           : {},
+      ethereumDepositAccounts:
+        parsed.ethereumDepositAccounts && typeof parsed.ethereumDepositAccounts === "object" && !Array.isArray(parsed.ethereumDepositAccounts)
+          ? parsed.ethereumDepositAccounts
+          : {},
+      ethereumDepositAddressIndex:
+        parsed.ethereumDepositAddressIndex && typeof parsed.ethereumDepositAddressIndex === "object" && !Array.isArray(parsed.ethereumDepositAddressIndex)
+          ? parsed.ethereumDepositAddressIndex
+          : {},
+      ethereumDepositCursor: Number.isSafeInteger(parsed.ethereumDepositCursor)
+        ? parsed.ethereumDepositCursor
+        : 0,
       walletChallenges:
         parsed.walletChallenges && typeof parsed.walletChallenges === "object" && !Array.isArray(parsed.walletChallenges)
           ? parsed.walletChallenges
@@ -993,6 +1007,7 @@ export function appendUsageCredit({
   note = "",
   createdBy = "system",
   uniqueKey = "",
+  metadata = {},
 }) {
   const now = new Date().toISOString();
   const normalizedUniqueKey = typeof uniqueKey === "string" ? uniqueKey.trim().slice(0, 180) : "";
@@ -1015,11 +1030,123 @@ export function appendUsageCredit({
     createdAt: now,
   };
   if (normalizedUniqueKey) entry.uniqueKey = normalizedUniqueKey;
+  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+    entry.metadata = metadata;
+  }
 
   state.ledgerEntries.push(entry);
   saveState();
 
   return entry;
+}
+
+export function getEthereumDepositAccount({ accountId = "" } = {}) {
+  const normalizedAccountId = typeof accountId === "string" ? accountId.trim().slice(0, 160) : "";
+  if (!normalizedAccountId) return null;
+  const account = state.ethereumDepositAccounts[normalizedAccountId] || null;
+  return account ? structuredClone(account) : null;
+}
+
+export function getOrCreateEthereumDepositAccount({
+  accountId = "",
+  deriveAddress,
+  assets = [],
+  chainId = 1,
+  network = "Ethereum mainnet",
+  custody = "tasknode_deposit_only",
+} = {}) {
+  const normalizedAccountId = typeof accountId === "string" ? accountId.trim().slice(0, 160) : "";
+  if (!normalizedAccountId) {
+    return { ok: false, status: 401, error: "deposit_login_required" };
+  }
+  if (typeof deriveAddress !== "function") {
+    return { ok: false, status: 409, error: "deposit_deriver_unavailable" };
+  }
+
+  const existing = state.ethereumDepositAccounts[normalizedAccountId];
+  if (existing?.address) {
+    return { ok: true, account: structuredClone(existing), created: false };
+  }
+
+  const now = new Date().toISOString();
+  const startIndex = Math.max(0, Number(state.ethereumDepositCursor || 0));
+  for (let offset = 0; offset < 1000; offset += 1) {
+    const derivationIndex = startIndex + offset;
+    let derived = null;
+    try {
+      derived = deriveAddress(derivationIndex);
+    } catch {
+      return { ok: false, status: 409, error: "deposit_address_derivation_failed" };
+    }
+    const address = String(derived?.address || "").trim();
+    const addressKey = address.toLowerCase();
+    if (!address || state.ethereumDepositAddressIndex[addressKey]) continue;
+
+    const account = {
+      id: `ethdep_${randomUUID()}`,
+      accountId: normalizedAccountId,
+      chainId,
+      network,
+      address,
+      addressKey,
+      derivationIndex,
+      derivationPath: derived?.derivationPath || "",
+      assets,
+      status: "active",
+      custody,
+      withdrawalsEnabled: false,
+      sweepStatus: "deferred",
+      observedBalances: {},
+      creditedBalances: {},
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    state.ethereumDepositAccounts[normalizedAccountId] = account;
+    state.ethereumDepositAddressIndex[addressKey] = normalizedAccountId;
+    state.ethereumDepositCursor = derivationIndex + 1;
+    saveState();
+    return { ok: true, account: structuredClone(account), created: true };
+  }
+
+  return { ok: false, status: 500, error: "deposit_address_allocation_failed" };
+}
+
+export function updateEthereumDepositSync({
+  accountId = "",
+  observedBalances = {},
+  creditedBalances = {},
+  syncStatus = "ready",
+  syncError = "",
+  blockTag = "",
+  creditedEntries = [],
+} = {}) {
+  const normalizedAccountId = typeof accountId === "string" ? accountId.trim().slice(0, 160) : "";
+  const existing = normalizedAccountId ? state.ethereumDepositAccounts[normalizedAccountId] : null;
+  if (!existing) return null;
+
+  const now = new Date().toISOString();
+  const next = {
+    ...existing,
+    observedBalances: {
+      ...(existing.observedBalances || {}),
+      ...observedBalances,
+    },
+    creditedBalances: {
+      ...(existing.creditedBalances || {}),
+      ...creditedBalances,
+    },
+    lastSyncAt: now,
+    lastSyncStatus: syncStatus,
+    lastSyncError: syncError || "",
+    lastSyncBlockTag: blockTag || existing.lastSyncBlockTag || "",
+    lastCreditedLedgerIds: creditedEntries.map((entry) => entry.id).filter(Boolean),
+    updatedAt: now,
+  };
+
+  state.ethereumDepositAccounts[normalizedAccountId] = next;
+  saveState();
+  return structuredClone(next);
 }
 
 function ledgerEntriesForScope({ accountId, conversationId } = {}) {

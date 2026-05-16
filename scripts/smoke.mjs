@@ -588,7 +588,7 @@ await check("/api/usage/actions", (response, text) => {
 
 await checkRequest("/api/usage/top-up/start", { method: "POST" }, (response, text) => {
   const body = JSON.parse(text);
-  return response.status === 503 && body.error === "usage_action_disabled";
+  return response.status === 401 && body.error === "usage_top_up_login_required";
 });
 
 await checkRequest(

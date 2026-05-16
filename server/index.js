@@ -24,9 +24,10 @@ import {
   contextIndexedHistoryImport,
   contextHistoryIpfsFetch,
   readiness,
-  usageActionStart,
   usageActions,
   usageAdminCredit,
+  usageTopUpStart,
+  usageTopUpSync,
   walletActionStart,
   walletActions,
   walletLinkStart,
@@ -709,7 +710,15 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/usage/top-up/start") {
-    const result = usageActionStart(url.pathname, req.method);
+    const payload = req.method === "POST" ? await readJson(req, 4096) : {};
+    const result = usageTopUpStart(payload, req.method, session);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/usage/top-up/sync") {
+    const payload = req.method === "POST" ? await readJson(req, 4096) : {};
+    const result = await usageTopUpSync(payload, req.method, session);
     json(res, result.status, result.body);
     return true;
   }

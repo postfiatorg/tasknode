@@ -34,6 +34,11 @@ import {
 } from "./runtime-store.js";
 import { fetchContextIpfsJson, normalizeContextCid } from "./context-ipfs.js";
 import { discoverContextHistoryFromRpc } from "./context-history-rpc.js";
+import {
+  ethereumDepositConfigStatus,
+  getOrCreateEthereumTopUpAccount,
+  syncEthereumTopUpAccount,
+} from "./ethereum-deposits.js";
 import { verifyWalletSignature } from "./wallet-proof.js";
 
 function hasAll(keys) {
@@ -838,17 +843,30 @@ export function contextActions() {
 }
 
 export function usageActions() {
+  const ethDeposits = ethereumDepositConfigStatus();
+
   return [
     usageAction({
       id: "top_up_start",
-      label: "Top up with crypto",
+      label: "Top up with ETH, USDC, or USDT",
       path: "/api/usage/top-up/start",
-      enabled: false,
-      status: "research",
+      enabled: ethDeposits.enabled,
+      status: ethDeposits.status,
       note:
-        "Placeholder for crypto top-up rails such as USDC or USDT deposit addresses, MetaMask, or Phantom.",
-      actionRequired:
-        "Choose the safest funding rail and settlement/reconciliation model before enabling user top-ups.",
+        "Allocates one account-scoped Ethereum mainnet deposit address. This is a custodial top-up rail, not a wallet-connect flow.",
+      actionRequired: ethDeposits.actionRequired,
+    }),
+    usageAction({
+      id: "top_up_sync",
+      label: "Refresh Ethereum deposits",
+      path: "/api/usage/top-up/sync",
+      enabled: ethDeposits.enabled && ethDeposits.rpcConfigured,
+      status: ethDeposits.enabled && ethDeposits.rpcConfigured ? "ready" : ethDeposits.status,
+      note:
+        "Reads the account deposit address on Ethereum mainnet and credits safe ETH, USDC, and USDT balance increases.",
+      actionRequired: ethDeposits.rpcConfigured
+        ? ethDeposits.actionRequired
+        : "Configure ETH_DEPOSIT_RPC_URL or ETHEREUM_RPC_URL for deposit balance sync.",
     }),
     usageAction({
       id: "admin_credit",
@@ -1622,6 +1640,105 @@ export function usageActionStart(pathname, method) {
   });
 }
 
+export function usageTopUpStart(payload, method, session = null) {
+  const action = usageActionByPath("/api/usage/top-up/start");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "usage_top_up_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Start top-up with POST.",
+    });
+  }
+
+  const accountId = session?.accountId || "";
+  if (!accountId) {
+    return actionResponse({
+      status: 401,
+      error: "usage_top_up_login_required",
+      action: action.id,
+      message: "Sign in before creating a deposit address.",
+      actionRequired: "Use a sign-in identity first. Deposit addresses are bound to app accounts, not PFT wallet links.",
+    });
+  }
+
+  const result = getOrCreateEthereumTopUpAccount({ accountId });
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 409,
+      error: result.error || "usage_top_up_unavailable",
+      action: action.id,
+      message: "Ethereum deposit addresses are not configured for this environment.",
+      actionRequired: result.config?.actionRequired || action.actionRequired,
+    });
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: action.id,
+      message: result.created ? "Ethereum deposit address created." : "Ethereum deposit address ready.",
+      depositAccount: result.depositAccount,
+      network: result.config.network,
+      chainId: result.config.chainId,
+      blockTag: result.config.blockTag,
+      syncPath: "/api/usage/top-up/sync",
+      instructions: [
+        "Send only ETH, USDC, or USDT on Ethereum mainnet to this address.",
+        "Deposits credit Task Node chat balance after safe-chain balance sync.",
+        "This is a custodial top-up address controlled by Task Node. Users cannot withdraw from it.",
+      ],
+    },
+  };
+}
+
+export async function usageTopUpSync(payload, method, session = null) {
+  const action = usageActionByPath("/api/usage/top-up/sync");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "usage_top_up_sync_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Refresh top-ups with POST.",
+    });
+  }
+
+  const accountId = session?.accountId || "";
+  if (!accountId) {
+    return actionResponse({
+      status: 401,
+      error: "usage_top_up_login_required",
+      action: action.id,
+      message: "Sign in before refreshing deposits.",
+      actionRequired: "Use a sign-in identity first. Deposit balances are account-scoped.",
+    });
+  }
+
+  const result = await syncEthereumTopUpAccount({ accountId });
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 502,
+      error: result.error || "usage_top_up_sync_failed",
+      action: action.id,
+      message: result.message || "Ethereum deposit sync failed.",
+      actionRequired:
+        result.error === "eth_deposit_not_configured"
+          ? "Configure ETH_DEPOSIT_XPUB before syncing deposits."
+          : "Check Ethereum RPC health and retry.",
+    });
+  }
+
+  return {
+    status: 200,
+    body: result,
+  };
+}
+
 export function usageAdminCredit(payload, method, authorizationHeader = "") {
   const action = usageActionByPath("/api/usage/credit/admin");
 
@@ -2244,6 +2361,7 @@ export function readiness() {
   const ledger = usageSummary();
   const chatExecutionReady = anyChatProviderEnabled();
   const emailStatus = emailDeliveryStatus();
+  const ethDeposits = ethereumDepositConfigStatus();
   return {
     generatedAt: new Date().toISOString(),
     auth: {
@@ -2295,13 +2413,20 @@ export function readiness() {
       ledgerReady: true,
       durableLedgerReady: ledger.durable,
       adminCreditReady: hasAll(["TASKNODE_ADMIN_CREDIT_TOKEN"]),
+      ethereumDepositReady: ethDeposits.enabled,
+      ethereumDepositSyncReady: ethDeposits.enabled && ethDeposits.rpcConfigured,
       chatEstimateReady: true,
       chatExecutionReady,
       blockers: [
         "Durable Postgres ledger tables are not implemented",
-        "Top-up rail decision is not made",
+        ethDeposits.enabled
+          ? ""
+          : "ETH_DEPOSIT_XPUB is not configured for live Ethereum deposit addresses",
+        ethDeposits.rpcConfigured
+          ? ""
+          : "ETH_DEPOSIT_RPC_URL is not configured for deposit balance sync",
         "Provider fallback policy is not implemented",
-      ],
+      ].filter(Boolean),
     },
     llm: {
       openaiConfigured: hasAll(["OPENAI_API_KEY"]),

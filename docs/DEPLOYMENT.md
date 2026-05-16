@@ -39,6 +39,10 @@ Behavior:
 - historical context restore uses `PFTL_HISTORY_WSS_URL`, defaulting to
   `wss://ws-archive.testnet.postfiat.org`, so context CID discovery does not
   depend on the rapid balance node's ledger depth. JSON-RPC is fallback only.
+- Ethereum top-up uses an account-scoped receive address. Configure
+  `ETH_DEPOSIT_XPUB` before showing live addresses, and configure
+  `ETH_DEPOSIT_RPC_URL` for balance sync. The rail accepts ETH, USDC, and USDT
+  on Ethereum mainnet only; see `docs/ETHEREUM_TOP_UPS.md`.
 
 Local GitHub OAuth:
 

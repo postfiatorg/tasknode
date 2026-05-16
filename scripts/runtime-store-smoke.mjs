@@ -15,6 +15,15 @@ delete process.env.OPENROUTER_CHAT_ENABLED;
 delete process.env.TASKNODE_ENABLE_OPENROUTER_CHAT;
 
 try {
+  const { HDNodeWallet } = await import("ethers");
+  const depositReceiveNode = HDNodeWallet.fromPhrase(
+    "test test test test test test test test test test test junk",
+    undefined,
+    "m/44'/60'/0'/0"
+  );
+  process.env.ETH_DEPOSIT_XPUB = depositReceiveNode.neuter().extendedKey;
+  process.env.ETH_DEPOSIT_ETH_USD_PRICE = "2000";
+
   const {
     actualChatCost,
     chatExecutionStatus,
@@ -30,6 +39,7 @@ try {
     delinkWalletFromAccount,
     getContextDocument,
     getContextHistory,
+    getEthereumDepositAccount,
     getLinkedWallet,
     linkWalletToAccount,
     listChatConversations,
@@ -38,6 +48,11 @@ try {
     saveIndexedContextHistory,
     usageSummary,
   } = await import("../server/runtime-store.js");
+  const {
+    usageActions,
+    usageTopUpStart,
+    usageTopUpSync,
+  } = await import("../server/product-contracts.js");
   const { appState } = await import("../server/app-state.js");
 
   if (modelForMode("Frontier Instant") !== "chat-latest") {
@@ -195,6 +210,65 @@ try {
 
   if (openRouterSearchRequest.tools) {
     throw new Error(`Private OpenRouter requests must not carry web search tools: ${JSON.stringify(openRouterSearchRequest)}`);
+  }
+
+  const topUpAction = usageActions().find((action) => action.id === "top_up_start");
+  if (topUpAction?.enabled !== true) {
+    throw new Error(`Ethereum top-up action should be enabled with an xpub: ${JSON.stringify(topUpAction)}`);
+  }
+
+  const noLoginTopUp = usageTopUpStart({}, "POST", null);
+  if (noLoginTopUp.status !== 401 || noLoginTopUp.body?.error !== "usage_top_up_login_required") {
+    throw new Error(`Ethereum top-up should require account login: ${JSON.stringify(noLoginTopUp)}`);
+  }
+
+  const topUp = usageTopUpStart({}, "POST", { accountId: "acct_eth_smoke" });
+  const expectedDepositAddress = depositReceiveNode.neuter().deriveChild(0).address;
+  const topUpSymbols = (topUp.body?.depositAccount?.assets || []).map((asset) => asset.symbol);
+  if (
+    topUp.status !== 200 ||
+    topUp.body?.depositAccount?.address !== expectedDepositAddress ||
+    topUp.body?.depositAccount?.withdrawalsEnabled !== false ||
+    ["ETH", "USDC", "USDT"].every((symbol) => topUpSymbols.includes(symbol)) !== true
+  ) {
+    throw new Error(`Ethereum top-up address allocation failed: ${JSON.stringify(topUp)}`);
+  }
+
+  const replayTopUp = usageTopUpStart({}, "POST", { accountId: "acct_eth_smoke" });
+  const storedDeposit = getEthereumDepositAccount({ accountId: "acct_eth_smoke" });
+  if (
+    replayTopUp.body?.depositAccount?.address !== topUp.body.depositAccount.address ||
+    storedDeposit?.address !== topUp.body.depositAccount.address
+  ) {
+    throw new Error("Ethereum top-up address was not stable for the account.");
+  }
+
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options = {}) => {
+    const payload = JSON.parse(options.body || "{}");
+    if (payload.method === "eth_getBalance") {
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: "0x0" }), { status: 200 });
+    }
+    if (payload.method === "eth_call") {
+      const target = String(payload.params?.[0]?.to || "").toLowerCase();
+      const usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
+      const result = target === usdc ? "0xbc4b20" : "0x0";
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result }), { status: 200 });
+    }
+    return originalFetch(url, options);
+  };
+  let syncedTopUp = null;
+  try {
+    syncedTopUp = await usageTopUpSync({}, "POST", { accountId: "acct_eth_smoke" });
+  } finally {
+    global.fetch = originalFetch;
+  }
+  if (
+    syncedTopUp.status !== 200 ||
+    syncedTopUp.body?.creditedEntries?.[0]?.amountUsd !== 12.34 ||
+    syncedTopUp.body?.usage?.availableCreditUsd !== 12.34
+  ) {
+    throw new Error(`Ethereum top-up sync did not credit USDC delta: ${JSON.stringify(syncedTopUp)}`);
   }
 
   const first = appendUsageCredit({
