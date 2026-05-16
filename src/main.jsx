@@ -3123,6 +3123,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const [tableHover, setTableHover] = useState({ rows: 0, cols: 0 });
   const [hydratedContext, setHydratedContext] = useState(null);
+  const [hydratedPreviewByCid, setHydratedPreviewByCid] = useState({});
   const [restoringVersionKey, setRestoringVersionKey] = useState("");
   const [hydrateMessage, setHydrateMessage] = useState("");
   const [discoveringHistory, setDiscoveringHistory] = useState(false);
@@ -3406,7 +3407,17 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
         setHydrateMessage("Context CID was fetched, but no readable context text was found.");
         setHydratedContext(null);
       } else {
-        setHydratedContext({ ...result, cid: result.cid || cid });
+        const nextHydratedContext = { ...result, cid: result.cid || cid };
+        setHydratedContext(nextHydratedContext);
+        setHydratedPreviewByCid((current) => ({
+          ...current,
+          [cid]: {
+            title: nextHydratedContext.title,
+            text: nextHydratedContext.text,
+            decrypted: nextHydratedContext.decrypted,
+            fetchedAt: nextHydratedContext.fetchedAt,
+          },
+        }));
         setHydrateMessage(result.decrypted ? "Historical context decrypted." : "Historical context fetched.");
         setVersionsOpen(true);
       }
@@ -3447,11 +3458,28 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     setTitle(hydratedContext.title || "Historical PFT Context");
     if (editorRef.current) editorRef.current.innerHTML = contextTextToHtml(hydratedContext.text);
     setHydratedContext(null);
-    setHydrateMessage("Historical version loaded into the editor.");
+    setHydrateMessage("Historical version loaded into the editor. It will autosave as the current context document.");
     setVersionsOpen(true);
     setSaveMessage("Historical version loaded");
     setDirty(true);
   }, [hydratedContext]);
+
+  const closeHydratedPreview = useCallback(() => {
+    setHydratedContext(null);
+    setHydrateMessage("");
+    setVersionsOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydratedContext?.text) return undefined;
+
+    function handleHydratedPreviewKeyDown(event) {
+      if (event.key === "Escape") closeHydratedPreview();
+    }
+
+    document.addEventListener("keydown", handleHydratedPreviewKeyDown);
+    return () => document.removeEventListener("keydown", handleHydratedPreviewKeyDown);
+  }, [closeHydratedPreview, hydratedContext?.text]);
 
   const copyEditorText = async () => {
     const text = editorRef.current?.innerText?.trim() || "";
@@ -3712,11 +3740,14 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
               </div>
             </header>
             {discoverMessage && <div className="ctx-discover-message">{discoverMessage}</div>}
+            {hydrateMessage && !hydratedContext?.text && <div className="ctx-discover-message">{hydrateMessage}</div>}
             <ol className="ctx-versions-list">
               {versions.map((version, index) => {
                 const isCidCopied = copiedCid === version.cid;
+                const cachedPreview = version.cid ? hydratedPreviewByCid[version.cid] : null;
                 const isPreviewing = Boolean(hydratedContext?.cid && version.cid && hydratedContext.cid === version.cid);
                 const isRestoring = restoringVersionKey === version.key;
+                const previewText = cachedPreview?.text || version.preview;
                 return (
                   <li className={`ctx-version${version.current ? " is-current" : ""}${isPreviewing ? " is-previewing" : ""}`} key={version.key}>
                     <div className="ctx-version-marker" aria-hidden="true">
@@ -3742,11 +3773,11 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
                             onClick={() => restoreVersion(version)}
                             type="button"
                           >
-                            {isRestoring ? "Restoring" : isPreviewing ? "Previewing" : "Restore"}
+                            {isRestoring ? "Loading preview" : isPreviewing ? "Previewing" : "Restore"}
                           </button>
                         )}
                       </div>
-                      {version.preview && <p className="ctx-version-preview">{version.preview}</p>}
+                      {previewText && <p className="ctx-version-preview">{previewText}</p>}
                       {version.cid && (
                         <div className="ctx-version-foot">
                           <code className="ctx-version-cid" title={version.cid}>
@@ -3771,46 +3802,64 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
           </section>
         )}
 
-        {(hydrateMessage || hydratedContext?.text) && (
-          <section className="ctx-hydration-panel" aria-label="Hydrated historical context">
-            {hydrateMessage && <div className="inline-message">{hydrateMessage}</div>}
-            {hydratedContext?.text && (
-              <>
-                <div className="ctx-hydration-title">
-                  <span className="ctx-hydration-heading">
-                    <strong>{hydratedContext.title}</strong>
-                    {hydratedContext.cid && <code>{truncateCid(hydratedContext.cid)}</code>}
-                  </span>
-                  <small>{hydratedContext.decrypted ? "Decrypted locally" : "Fetched"}</small>
-                </div>
-                <pre>{hydratedContext.text}</pre>
-                <div className="ctx-hydration-actions">
-                  <button className="light-pill" disabled={!canEdit} onClick={applyHydratedContext} type="button">
-                    Use as draft
-                  </button>
-                  <button
-                    className="ctx-version-restore"
-                    onClick={() => {
-                      setHydratedContext(null);
-                      setHydrateMessage("");
-                      setVersionsOpen(true);
-                    }}
-                    type="button"
-                  >
-                    Keep browsing
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
-        )}
-
         {!canEdit && (
           <div className="context-note">
             Sign in to edit and save the native context document.
           </div>
         )}
       </div>
+
+      {hydratedContext?.text && (
+        <div
+          className="ctx-restore-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeHydratedPreview();
+          }}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="ctx-restore-title"
+            aria-modal="true"
+            className="ctx-restore-dialog"
+            role="dialog"
+          >
+            <header className="ctx-restore-head">
+              <div className="ctx-restore-heading">
+                <span>Historical context preview</span>
+                <strong id="ctx-restore-title">{hydratedContext.title}</strong>
+                {hydratedContext.cid && <code>{truncateCid(hydratedContext.cid)}</code>}
+              </div>
+              <div className="ctx-restore-actions">
+                <button className="dark-pill" disabled={!canEdit} onClick={applyHydratedContext} type="button">
+                  Use as draft
+                </button>
+                <button
+                  aria-label="Close historical context preview"
+                  className="icon-button"
+                  onClick={closeHydratedPreview}
+                  type="button"
+                >
+                  <X size={18} strokeWidth={1.8} />
+                </button>
+              </div>
+            </header>
+            <div className="ctx-restore-warning">
+              <AlertTriangle size={15} strokeWidth={2} />
+              <span>
+                Use as draft replaces the editor contents with this historical version. The editor autosaves it as the current context document.
+              </span>
+            </div>
+            {hydrateMessage && <div className="ctx-restore-state">{hydrateMessage}</div>}
+            <pre className="ctx-restore-preview">{hydratedContext.text}</pre>
+            <footer className="ctx-restore-foot">
+              <span>{hydratedContext.decrypted ? "Decrypted locally from your unlocked vault." : "Fetched historical context."}</span>
+              <button className="ctx-version-restore" onClick={closeHydratedPreview} type="button">
+                Keep browsing versions
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

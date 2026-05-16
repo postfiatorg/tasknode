@@ -220,11 +220,12 @@ async function main() {
     await clickNav("Context");
     await assertText([
       "Context",
-      "Keep the working instructions",
       "Context document",
-      "Sign in to save context.",
-      "Historical PFT Context",
-      "Sign in to import indexed PFTasks history.",
+      "Task Node Context",
+      "Current Focus",
+      "Preferences",
+      "Sign in to save context",
+      "Versions",
     ]);
     await assertLocationHash("#context");
     await capture("07-context");
@@ -239,8 +240,10 @@ async function main() {
     await assertLocationHash("#context");
     await assertText([
       "Context document",
-      "Wallet signing is only for optional portable PFTL manifests.",
-      "Encrypted history stays pointer-only until the local vault is unlocked.",
+      "Task Node Context",
+      "Current Focus",
+      "Preferences",
+      "Versions",
     ]);
 
     await clickNav("New chat");
@@ -393,12 +396,15 @@ async function main() {
         return true;
       })()`);
       await clickNav("Context");
-      await assertText(["Historical PFT Context", "Hydrate latest", "Local vault unlocked"]);
-      await clickButton("Hydrate latest", "document.querySelector('.context-history')");
-      await waitForText("Context fetched");
+      await assertText(["Task Node Context", "Versions"]);
+      await clickButton("Versions");
+      await assertText(["Revision history", "Unlocked", "Restore"]);
+      await clickButton("Restore", "document.querySelector('.ctx-versions')");
+      await capture("19-context-preview-open");
+      await waitForText("Frame Hydrated Context");
       await assertText(["Frame Hydrated Context", "Frame hydrated context body from imported history."]);
-      await clickButton("Use as draft", "document.querySelector('.context-hydrated-preview')");
-      await waitForText("Hydrated draft not saved");
+      await clickButton("Use as draft", "document.querySelector('.ctx-restore-dialog')");
+      await waitForText("Historical version loaded");
       await capture("19-context-hydrated");
       await evaluate(`(() => {
         if (window.__tasknodeContextFetch) {

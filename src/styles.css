@@ -2947,8 +2947,7 @@ h1 {
   visibility: visible;
 }
 
-.ctx-versions,
-.ctx-hydration-panel {
+.ctx-versions {
   margin-top: 12px;
   overflow: hidden;
   border: 1px solid var(--ctx-border);
@@ -3197,7 +3196,7 @@ h1 {
   margin: 0;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 3;
   color: var(--ctx-ink-2);
   font-size: 13px;
   line-height: 1.5;
@@ -3245,44 +3244,82 @@ h1 {
   cursor: pointer;
 }
 
-.ctx-hydration-panel {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border-color: #d7eee5;
-  background: #f2fbf7;
+.ctx-editor ::selection {
+  background: rgba(13, 13, 13, 0.1);
 }
 
-.ctx-hydration-title {
+.ctx-restore-overlay {
+  --ctx-border: #e8e6df;
+  --ctx-ink: #0d0d0d;
+  --ctx-ink-2: #44443f;
+  --ctx-ink-3: #6b6b66;
+  --ctx-surface: #ffffff;
+  --ctx-surface-2: #faf9f6;
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: 64px 20px 28px;
+  overflow: auto;
+  background: rgba(13, 13, 13, 0.28);
+}
+
+.ctx-restore-dialog {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  display: grid;
+  width: min(920px, 100%);
+  max-height: calc(100vh - 92px);
+  overflow: hidden;
+  border: 1px solid rgba(13, 13, 13, 0.12);
+  border-radius: 14px;
+  background: var(--ctx-surface);
+  box-shadow: 0 24px 70px rgba(13, 13, 13, 0.22);
+}
+
+.ctx-restore-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--ctx-border);
+  background: var(--ctx-surface-2);
 }
 
-.ctx-hydration-heading {
+.ctx-restore-heading {
   display: grid;
   min-width: 0;
   gap: 4px;
 }
 
-.ctx-hydration-title strong {
+.ctx-restore-heading > span {
+  color: var(--ctx-ink-3);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ctx-restore-heading strong {
   min-width: 0;
   overflow: hidden;
   color: var(--ctx-ink);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ctx-hydration-title code {
+.ctx-restore-heading code {
   width: fit-content;
   max-width: 100%;
   overflow: hidden;
   padding: 2px 7px;
   border-radius: 6px;
-  background: rgba(4, 120, 87, 0.08);
+  background: var(--ctx-surface);
   color: var(--ctx-ink-3);
   font-family:
     ui-monospace,
@@ -3298,17 +3335,54 @@ h1 {
   white-space: nowrap;
 }
 
-.ctx-hydration-title small {
+.ctx-restore-actions {
+  display: flex;
   flex: 0 0 auto;
-  color: var(--ctx-ok);
-  font-size: 12px;
-  font-weight: 600;
+  align-items: center;
+  gap: 8px;
 }
 
-.ctx-hydration-panel pre {
-  max-height: 220px;
-  margin: 0;
+.ctx-restore-actions .dark-pill {
+  min-height: 34px;
+}
+
+.ctx-restore-actions .icon-button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--ctx-border);
+  background: var(--ctx-surface);
+}
+
+.ctx-restore-warning,
+.ctx-restore-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px 18px 0;
+  padding: 10px 12px;
+  border: 1px solid #eadfbd;
+  border-radius: 9px;
+  background: #fff9e8;
+  color: #624007;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.ctx-restore-state {
+  border-color: #d7eee5;
+  background: #f2fbf7;
+  color: var(--ctx-ink-2);
+}
+
+.ctx-restore-preview {
+  min-height: 260px;
+  max-height: min(52vh, 560px);
+  margin: 14px 18px;
   overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--ctx-border);
+  border-radius: 10px;
+  background: #ffffff;
   color: var(--ctx-ink);
   font-family:
     ui-monospace,
@@ -3320,27 +3394,21 @@ h1 {
     "Courier New",
     monospace;
   font-size: 12.5px;
-  line-height: 1.55;
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
-.ctx-hydration-panel .light-pill {
-  justify-self: start;
-}
-
-.ctx-hydration-actions {
+.ctx-restore-foot {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 18px 16px;
 }
 
-.ctx-hydration-actions .ctx-version-restore,
-.ctx-hydration-actions .light-pill {
-  min-height: 32px;
-}
-
-.ctx-editor ::selection {
-  background: rgba(13, 13, 13, 0.1);
+.ctx-restore-foot span {
+  color: var(--ctx-ink-3);
+  font-size: 12px;
 }
 
 .profile-tabs-bar {
@@ -5130,6 +5198,37 @@ h1 {
 
   .ctx-version-cid {
     max-width: 160px;
+  }
+
+  .ctx-restore-overlay {
+    align-items: stretch;
+    padding: 12px;
+  }
+
+  .ctx-restore-dialog {
+    max-height: calc(100vh - 24px);
+  }
+
+  .ctx-restore-head,
+  .ctx-restore-foot {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ctx-restore-actions {
+    justify-content: space-between;
+  }
+
+  .ctx-restore-warning,
+  .ctx-restore-state,
+  .ctx-restore-preview {
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+
+  .ctx-restore-preview {
+    min-height: 220px;
+    max-height: 45vh;
   }
 
   .route-heading,
