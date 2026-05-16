@@ -58,11 +58,10 @@ export function chatProviderConfigured(provider) {
 function chatProviderEnabled(provider) {
   if (provider === "openai") return hasOpenAi();
   if (provider === "openrouter") {
-    return (
-      hasOpenRouter() &&
-      (process.env.OPENROUTER_CHAT_ENABLED === "true" ||
-        process.env.TASKNODE_ENABLE_OPENROUTER_CHAT === "true")
-    );
+    const explicitlyDisabled =
+      process.env.OPENROUTER_CHAT_ENABLED === "false" ||
+      process.env.TASKNODE_ENABLE_OPENROUTER_CHAT === "false";
+    return hasOpenRouter() && !explicitlyDisabled;
   }
   return false;
 }

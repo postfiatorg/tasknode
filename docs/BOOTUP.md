@@ -165,7 +165,6 @@ Common env names:
 - `GITHUB_REDIRECT_URI`
 - `OPENAI_API_KEY`
 - `OPENROUTER_API_KEY`
-- `OPENROUTER_CHAT_ENABLED`
 - `TASKNODE_ADMIN_CREDIT_TOKEN`
 - `TASKNODE_INITIAL_PROVIDER_CREDIT_USD`
 - `POSTHOG_KEY`
@@ -193,9 +192,10 @@ Current behavior:
 - PFTL transaction signing and durable decrypted-context summaries remain
   disabled;
 - OpenAI chat can execute and stream when configured;
-- OpenRouter execution and streaming routes exist and are gated by
-  `OPENROUTER_CHAT_ENABLED=true` or `TASKNODE_ENABLE_OPENROUTER_CHAT=true`;
-  private requests enforce ZDR/data-collection-deny provider preferences and
+- OpenRouter execution and streaming routes are enabled when
+  `OPENROUTER_API_KEY` is configured; set `OPENROUTER_CHAT_ENABLED=false` as a
+  kill switch if needed. Private requests enforce ZDR/data-collection-deny
+  provider preferences and
   map image/PDF/text attachments into OpenRouter chat content. Private Instant
   defaults to `deepseek/deepseek-v4-flash`; Private Thinking defaults to
   `deepseek/deepseek-v4-pro` with high reasoning. OpenRouter web search is not

@@ -9,11 +9,15 @@ delete process.env.CHAT_MODEL_FRONTIER_THINKING;
 delete process.env.CHAT_MODEL_PRIVATE_INSTANT;
 delete process.env.CHAT_MODEL_PRIVATE_THINKING;
 process.env.OPENAI_MODEL = "generic-openai-smoke-model";
+process.env.OPENROUTER_API_KEY = "runtime-smoke-openrouter-key";
 delete process.env.OPENROUTER_MODEL;
+delete process.env.OPENROUTER_CHAT_ENABLED;
+delete process.env.TASKNODE_ENABLE_OPENROUTER_CHAT;
 
 try {
   const {
     actualChatCost,
+    chatExecutionStatus,
     modelForMode,
     openAiResponseRequest,
     openRouterChatRequest,
@@ -51,6 +55,16 @@ try {
   if (modelForMode("Private Thinking") !== "deepseek/deepseek-v4-pro") {
     throw new Error("Private Thinking must default to pinned OpenRouter DeepSeek V4 Pro.");
   }
+
+  if (!chatExecutionStatus("Private Instant").enabled) {
+    throw new Error("Private Instant should be enabled when an OpenRouter key is configured.");
+  }
+
+  process.env.OPENROUTER_CHAT_ENABLED = "false";
+  if (chatExecutionStatus("Private Instant").enabled) {
+    throw new Error("Private Instant should respect the explicit OpenRouter kill switch.");
+  }
+  delete process.env.OPENROUTER_CHAT_ENABLED;
 
   if (actualChatCost("Frontier Instant", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 35) {
     throw new Error("Frontier Instant chat-latest pricing drifted from the configured OpenAI token rates.");

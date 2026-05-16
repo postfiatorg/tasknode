@@ -62,8 +62,8 @@ minimal deployable dev app:
   dry run for smoke tests, while stream renders assistant deltas over SSE and
   persists the completed response plus usage after provider completion.
   Frontier Instant uses the direct OpenAI API with `chat-latest` by default.
-  OpenRouter routes remain configured-but-disabled until explicitly enabled and
-  verified.
+  Private routes use OpenRouter when `OPENROUTER_API_KEY` is configured, and
+  can be disabled with `OPENROUTER_CHAT_ENABLED=false` if needed.
 - `/api/chat/modes`, `/api/chat/conversations`, and `/api/chat/history` expose
   model-route readiness, server-owned recents, and per-thread history. Chat
   turns and usage debits are stored in an append-only local runtime store until

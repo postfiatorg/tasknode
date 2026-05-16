@@ -35,9 +35,9 @@ the first OpenAI route and defaults to `chat-latest` through the direct OpenAI
 API, not OpenRouter. Frontier Thinking uses direct OpenAI `gpt-5.5` with high
 reasoning.
 
-Private Instant and Private Thinking use OpenRouter only when
-`OPENROUTER_API_KEY` is present and `OPENROUTER_CHAT_ENABLED=true` or
-`TASKNODE_ENABLE_OPENROUTER_CHAT=true`. OpenRouter requests are built with
+Private Instant and Private Thinking use OpenRouter when `OPENROUTER_API_KEY`
+is present. Set `OPENROUTER_CHAT_ENABLED=false` as a kill switch if needed.
+OpenRouter requests are built with
 `provider.zdr=true` and `provider.data_collection="deny"`. Private Instant
 defaults to `deepseek/deepseek-v4-flash`, the ranked ZDR-backed DeepSeek route
 for low-latency private text. Private Thinking defaults to

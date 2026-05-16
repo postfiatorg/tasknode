@@ -205,10 +205,10 @@ Usage/billing:
   metadata. The app stores CIDs/provenance/counts, not decrypted context or
   evidence plaintext, and the import is scoped to the active linked wallet.
 - OpenAI execution and streaming when configured.
-- OpenRouter execution and streaming when explicitly enabled. Private routes
-  enforce OpenRouter ZDR/data-collection-deny provider preferences, support
+- OpenRouter execution and streaming when configured. Private routes enforce
+  OpenRouter ZDR/data-collection-deny provider preferences, support
   image/PDF/text attachments, use pinned ZDR-listed defaults for instant and
-  thinking, and keep OpenRouter web search behind a separate opt-in env gate.
+  thinking, and do not enable OpenRouter web search.
 - Usage ledger and admin credit when configured.
 - Idempotent initial provider credit ledger contract for eligible registrar
   accounts.
