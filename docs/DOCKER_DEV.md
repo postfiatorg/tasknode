@@ -40,8 +40,9 @@ Private Instant and Private Thinking use OpenRouter only when
 `TASKNODE_ENABLE_OPENROUTER_CHAT=true`. OpenRouter requests are built with
 `provider.zdr=true` and `provider.data_collection="deny"`. Private Instant
 defaults to `qwen/qwen3-vl-8b-instruct` so image uploads are not left to
-unpredictable router selection. Private Thinking defaults to `qwen/qwen3-32b`
-and adds `reasoning.effort="high"` with strict provider parameter routing.
+unpredictable router selection. Private Thinking defaults to
+`deepseek/deepseek-v4-pro` and adds `reasoning.effort="high"` with strict
+provider parameter routing.
 Image, PDF, and text attachments are mapped into OpenRouter chat-completion
 content parts; PDF parsing uses `OPENROUTER_PDF_ENGINE` or `cloudflare-ai` by
 default. OpenRouter web search is intentionally separate and remains off unless

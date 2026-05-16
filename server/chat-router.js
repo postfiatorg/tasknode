@@ -17,10 +17,10 @@ export const chatModePrices = {
     maxOutputTokens: 700,
   },
   "Private Thinking": {
-    inputUsdPerMillion: 2.5,
-    outputUsdPerMillion: 8,
+    inputUsdPerMillion: 1.74,
+    outputUsdPerMillion: 3.48,
     provider: "openrouter",
-    defaultModel: "qwen/qwen3-32b",
+    defaultModel: "deepseek/deepseek-v4-pro",
     maxOutputTokens: 4096,
     reasoningEffort: "high",
   },

@@ -48,8 +48,8 @@ try {
     throw new Error("Private Instant must default to a pinned OpenRouter ZDR multimodal model.");
   }
 
-  if (modelForMode("Private Thinking") !== "qwen/qwen3-32b") {
-    throw new Error("Private Thinking must default to a pinned OpenRouter ZDR reasoning model.");
+  if (modelForMode("Private Thinking") !== "deepseek/deepseek-v4-pro") {
+    throw new Error("Private Thinking must default to pinned OpenRouter DeepSeek V4 Pro.");
   }
 
   if (actualChatCost("Frontier Instant", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 35) {

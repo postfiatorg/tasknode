@@ -199,8 +199,8 @@ Current behavior:
   private requests enforce ZDR/data-collection-deny provider preferences and
   map image/PDF/text attachments into OpenRouter chat content. Private Instant
   defaults to `qwen/qwen3-vl-8b-instruct`; Private Thinking defaults to
-  `qwen/qwen3-32b` with high reasoning. OpenRouter web search is a separate
-  opt-in because it invokes an external server tool;
+  `deepseek/deepseek-v4-pro` with high reasoning. OpenRouter web search is a
+  separate opt-in because it invokes an external server tool;
 - native context documents can be viewed by anyone and saved by signed-in
   accounts without wallet unlock;
 - indexed PFTasks context/task rows can be imported as sanitized pointer
