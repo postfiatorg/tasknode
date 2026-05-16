@@ -246,7 +246,7 @@ These are not blockers. They are decision gates.
 | R00 | Source-of-truth versioning | Discovery | Product decision log and superseded-assumption map |
 | R01 | Existing PFTasks inventory and deletion line | Discovery | Keep/delete/defer matrix |
 | R02 | UX parity with ChatGPT-style mock | Discovery | Screen inventory, ChatGPT references, and component map |
-| R03 | Auth and account model | Not started | Account, session, provider, and wallet-link spec |
+| R03 | Auth and account model | Spec ready | `auth_account_spec.md` |
 | R04 | Wallet custody and transaction signing | Not started | Seed storage and PFTL wallet architecture decision |
 | R05 | Crypto funding and spend ledger | Not started | Usage-based billing ledger and top-up architecture |
 | R06 | Message storage and chat history | Discovery | Scalable chat schema and retention model |
@@ -391,6 +391,7 @@ Sources:
 - `pftasks/api/src/routes/account.js`.
 - `pftasks/api/src/lib/providers.js`.
 - Existing auth tests in `pftasks/api/src/routes/__tests__`.
+- `tasknodeofficial/auth_account_spec.md`.
 
 Deliverable:
 
