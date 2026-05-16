@@ -28,7 +28,8 @@ Wallet linking must follow this sequence:
 3. After login succeeds, refresh `/api/app-state`; do not trust stale React
    session props.
 4. Call `POST /api/wallet/link/start` with the account session cookie.
-5. Derive the XRPL/PFT wallet and sign the server challenge in the browser.
+5. Derive the PFTL wallet address using the XRPL-compatible Post Fiat
+   derivation path and sign the server challenge in the browser.
 6. Call `POST /api/wallet/link/verify` with challenge id, address, public key,
    and signature only.
 7. Only after server verification, save the encrypted local seed vault in the
@@ -76,9 +77,10 @@ PFT balance reads are account-scoped, not seed-scoped.
   seed vault, and must never request mnemonic, private key, or wallet password
   material.
 - The canonical read is PFTL native `account_info` with
-  `ledger_index: "validated"` against the linked classic address. PFTL uses the
-  native balance field in drops; do not read PFT through trust lines or
-  transaction-history arithmetic.
+  `ledger_index: "validated"` against the linked classic address. PFTL is not
+  XRP mainnet/testnet; it only shares XRPL-compatible account and RPC shapes.
+  PFT uses the native balance field in drops; do not read PFT through trust
+  lines or transaction-history arithmetic.
 - Prefer WSS endpoints for the hot path (`PFTL_WSS_URL`, then
   `PFTL_WSS_URL_FALLBACKS`). Use JSON-RPC (`PFTL_RPC_URL`, then
   `PFTL_RPC_URL_FALLBACKS`) only as fallback/provenance.

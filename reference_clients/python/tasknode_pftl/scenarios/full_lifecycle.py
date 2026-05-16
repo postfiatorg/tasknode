@@ -573,7 +573,7 @@ def run_full_lifecycle(args: argparse.Namespace) -> dict[str, Any]:
             "name": config.network_name,
             "rpc_url": config.rpc_url,
             "archive_wss_url": config.archive_wss_url,
-            "note": "PFTL is an XRPL-compatible L1; xrpl-py is used only as the PFTL wire library.",
+            "note": "PFTL is its own Post Fiat L1; xrpl-py is used only as the PFTL wire library.",
         },
         "task_id": task_id,
         "wallets": public_wallets(wallets),

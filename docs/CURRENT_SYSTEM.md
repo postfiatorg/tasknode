@@ -125,13 +125,15 @@ Wallet balance reads:
 
 - `GET /api/wallet/balance` requires the account session cookie and reads only
   the wallet already linked to that account.
-- The server reads PFTL native drops with `account_info` on the validated ledger,
-  using WSS first and JSON-RPC fallback.
+- The server reads PFTL native drops with `account_info` on the validated
+  ledger, using WSS first and JSON-RPC fallback. PFTL is the Post Fiat L1;
+  XRPL-compatible client libraries are only the transport/signing
+  compatibility layer.
 - Local Docker defaults to the same rapid PFTL host PFTasks uses on this
   machine: `wss://178.156.143.199:6005` with local self-signed TLS allowed and
-  `http://178.156.143.199:5005`, with public testnet fallbacks. This node is
-  for current balance reads, not historical pulls. Fly uses the public testnet
-  hosts unless environment or secrets override them.
+  `http://178.156.143.199:5005`, with public PFTL testnet fallbacks. This node
+  is for current balance reads, not historical pulls. Fly uses the public PFTL
+  testnet hosts unless environment or secrets override them.
 
 Context actions:
 

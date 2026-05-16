@@ -178,9 +178,10 @@ Current behavior:
 - email code login can use development delivery outside production;
 - GitHub OAuth is enabled when configured;
 - Telegram, Discord, and X are visible contract surfaces but not fully enabled;
-- seed-wallet account linking uses browser-only 24-word BIP39 validation,
-  PFDocs XRPL derivation, and server challenge signing; the recovery phrase and
-  private key never leave the browser;
+- seed-wallet account linking uses browser-only 24-word BIP39 validation, PFTL
+  wallet derivation using XRPL-compatible Post Fiat primitives, and server
+  challenge signing; the recovery phrase and private key never leave the
+  browser;
 - encrypted seed vault persistence is browser-only and uses WebCrypto AES-GCM
   with PBKDF2; unlock state is in-memory and cleared on lock/logout;
 - latest imported encrypted context CID hydration is browser-only after local

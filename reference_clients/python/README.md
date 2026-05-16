@@ -4,13 +4,15 @@ This directory is a protocol harness for Task Node. It intentionally lives
 outside the React app so task issuance, submission, verification, reward, and
 replay can be exercised without waiting on UX.
 
-PFTL is its own L1. It is XRPL-compatible at the transaction/RPC layer, so this
-reference client uses the Python `xrpl` package as a wire library. It must not
-be pointed at XRP mainnet or XRP testnet.
+PFTL is its own Post Fiat L1, not XRP. It is XRPL-compatible at the
+transaction/RPC layer because PFTL is an XRPL fork, so this reference client
+uses the Python `xrpl` package as a wire library. All network, balance, and
+reward semantics in this harness are PFT/PFTL semantics. It must not be pointed
+at XRP mainnet or XRP testnet.
 
 ## What The Full Lifecycle Scenario Does
 
-`tasknode_pftl.scenarios.full_lifecycle` performs a live testnet run:
+`tasknode_pftl.scenarios.full_lifecycle` performs a live PFTL testnet run:
 
 1. creates a user wallet, Task Node authority wallet, and allocation/reward
    wallet;
@@ -24,8 +26,8 @@ be pointed at XRP mainnet or XRP testnet.
    reduces the event stream into canonical task state.
 
 Run artifacts are written under `reference_clients/python/runs/`, which is
-gitignored because it contains generated testnet wallet seeds and encryption
-private keys.
+gitignored because it contains generated PFTL testnet wallet seeds and
+encryption private keys.
 
 ## Configuration
 
@@ -89,4 +91,3 @@ python3 -m tasknode_pftl.scenarios.full_lifecycle \
 
 The scenario prints addresses, balances, CIDs, tx hashes, and the final replay
 projection. It does not print seeds.
-

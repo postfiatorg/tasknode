@@ -47,13 +47,16 @@ minimal deployable dev app:
   status and account-link actions.
 - `/api/wallet/link/start` and `/api/wallet/link/verify` implement the first
   seed-wallet proof boundary. The browser validates a 24-word BIP39 recovery
-  phrase, derives the XRPL address with the PFDocs path, signs a server
-  challenge locally, and sends only address, public key, and signature to the
-  server. The browser can now save an encrypted local seed vault with WebCrypto
-  AES-GCM/PBKDF2 and unlock it for the current session. The unlocked vault can
-  decrypt imported historical context CIDs in the browser. PFTL transaction
-  signing, delink, and relink remain disabled until their custody rules are
-  implemented.
+  phrase, derives the PFTL classic address using the XRPL-compatible PFDocs
+  path, signs a server challenge locally, and sends only address, public key,
+  and signature to the server. The browser can now save an encrypted local seed
+  vault with WebCrypto AES-GCM/PBKDF2 and unlock it for the current session.
+  The unlocked vault can decrypt imported historical context CIDs in the
+  browser. PFTL transaction signing, delink, and relink remain disabled until
+  their custody rules are implemented.
+- PFTL is its own Post Fiat L1. The app may use XRPL-compatible libraries and
+  classic-address primitives because PFTL is an XRPL fork, but PFT balances and
+  transactions are not XRP mainnet/testnet balances or transactions.
 - `/api/chat/estimate`, `/api/chat/send`, and `/api/chat/stream` define the
   usage-based chat contract. Estimates are cost-free. Send supports a cost-free
   dry run for smoke tests, while stream renders assistant deltas over SSE and
