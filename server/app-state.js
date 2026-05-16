@@ -190,7 +190,7 @@ export function appState(session = null) {
           label: "PFT Context",
           status: runtimeReadiness.context.indexedHistoryReady ? "indexed bridge ready" : "supported later",
           note:
-            "PFTasks indexed rows can be normalized into PFDocs-compatible pointer metadata before live RPC fallback.",
+            "PFTasks indexed rows can be normalized into PFDocs-compatible pointer metadata before any chain fallback.",
         },
         {
           label: "Google Docs share link",

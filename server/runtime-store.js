@@ -1086,7 +1086,7 @@ function emptyContextHistory({ accountId = "", canHydrate = false } = {}) {
       ipfsFetchReady: true,
       fetchPath: "/api/context/history/ipfs/:cid",
       note:
-        "Historical PFT context has not been imported yet. Indexed PFTasks rows are the preferred source before live RPC.",
+        "Historical PFT context has not been imported yet. Indexed PFTasks rows are the preferred source.",
     },
     canHydrate,
     importPath: "/api/context/history/indexed",

@@ -2351,15 +2351,8 @@ function WalletView({
           </div>
           <div className="wallet-flow">
             <span>
-              <strong>{walletBalanceSourceLabel(wallet)}</strong>{" "}
-              {walletLinked ? "validated balance" : "balance unavailable"}
+              <strong>{walletBalanceStatusLabel(wallet)}</strong>
             </span>
-            {walletLinked && wallet?.pftBalanceEndpointHost && (
-              <>
-                <span className="dot">.</span>
-                <span>{wallet.pftBalanceEndpointHost}</span>
-              </>
-            )}
             {walletLinked && wallet?.pftBalanceError && (
               <>
                 <span className="dot">.</span>
@@ -3091,7 +3084,7 @@ function ContextView({ context, onHydrateContext, walletVault }) {
             </div>
           )}
           <div className="context-note context-history-note">
-            Indexed PFTasks rows are normalized before live RPC fallback. Encrypted CID plaintext is decrypted only after wallet unlock.
+            Indexed PFTasks rows are normalized first. Encrypted CID plaintext is decrypted only after wallet unlock.
             {" "}
             {walletVault?.unlocked ? "Your seed vault is unlocked for this session." : "Encrypted history stays pointer-only until the local vault is unlocked."}
           </div>
@@ -4164,7 +4157,6 @@ function applyWalletBalanceResult(current, address, result) {
       pftBalanceStatus: "ready",
       pftBalanceSource: result.body.source || "",
       pftBalanceFetchedAt: result.body.fetchedAt || new Date().toISOString(),
-      pftBalanceEndpointHost: result.body.endpointHost || "",
       pftBalanceAccountExists: result.body.accountExists !== false,
       pftBalanceError: "",
     },
@@ -4195,12 +4187,11 @@ function formatPftBalance(wallet) {
   return formatDrops(drops);
 }
 
-function walletBalanceSourceLabel(wallet) {
-  if (wallet?.pftBalanceStatus === "checking") return "Checking";
-  if (wallet?.pftBalanceStatus === "error") return "Unavailable";
-  if (wallet?.pftBalanceSource === "pftl_wss") return "Live WSS";
-  if (wallet?.pftBalanceSource === "pftl_rpc") return "RPC fallback";
-  return "PFTL";
+function walletBalanceStatusLabel(wallet) {
+  if (wallet?.pftBalanceStatus === "checking") return "Checking balance";
+  if (wallet?.pftBalanceStatus === "error") return "Balance unavailable";
+  if (wallet?.pftBalanceStatus === "ready") return "Current balance";
+  return "Balance unavailable";
 }
 
 function formatDrops(value) {

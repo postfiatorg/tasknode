@@ -400,7 +400,7 @@ export function createPftBalanceService({
         ok: false,
         status: 503,
         error: "pft_balance_not_configured",
-        message: "Configure PFTL_WSS_URL or PFTL_RPC_URL before reading wallet balances.",
+        message: "Balance service is not configured for this environment.",
       };
     }
 
