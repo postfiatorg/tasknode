@@ -17,7 +17,7 @@ import {
   walletActionStart,
   walletActions,
 } from "./product-contracts.js";
-import { getChatMessages } from "./runtime-store.js";
+import { getChatMessages, usageLedger } from "./runtime-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -238,6 +238,14 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/usage") {
     json(res, 200, state.usage);
+    return true;
+  }
+
+  if (url.pathname === "/api/usage/ledger") {
+    json(res, 200, usageLedger({
+      conversationId: url.searchParams.get("conversationId") || "",
+      limit: url.searchParams.get("limit") || 50,
+    }));
     return true;
   }
 

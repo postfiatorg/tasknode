@@ -87,6 +87,19 @@ await check("/api/chat/history", (response, text) => {
   return Array.isArray(body.messages);
 });
 
+await check("/api/usage/ledger", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return (
+    body.billingModel === "usage_based" &&
+    body.currency === "USD" &&
+    typeof body.currentSpendUsd === "number" &&
+    typeof body.ledgerEntryCount === "number" &&
+    typeof body.durable === "boolean" &&
+    Array.isArray(body.entries)
+  );
+});
+
 await checkRequest(
   "/api/chat/send",
   {

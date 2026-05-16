@@ -37,6 +37,8 @@ minimal deployable dev app:
 - `/api/chat/modes` and `/api/chat/history` expose model-route readiness and
   the current dev conversation. Chat turns and usage debits are stored in an
   append-only local runtime store until Postgres account/session tables land.
+- `/api/usage/ledger` exposes the current append-only usage ledger so chat
+  spend can be audited before durable Postgres ledger tables land.
 - `/api/context/actions` exposes disabled-by-default context actions for shared
   URL import, native edit save, and explicit PFTL manifest ink. This keeps
   context useful before wallet setup while making portability a deliberate

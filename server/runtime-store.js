@@ -117,3 +117,22 @@ export function usageSummary() {
     durable: !storePath.startsWith("/tmp/"),
   };
 }
+
+export function usageLedger({ conversationId, limit = 50 } = {}) {
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const filteredEntries = state.ledgerEntries.filter((entry) => {
+    if (!conversationId) return true;
+    return entry.conversationId === conversationId;
+  });
+  const entries = filteredEntries.slice(-normalizedLimit).reverse();
+  const summary = usageSummary();
+
+  return {
+    billingModel: "usage_based",
+    currency: "USD",
+    currentSpendUsd: summary.currentSpendUsd,
+    ledgerEntryCount: filteredEntries.length,
+    durable: summary.durable,
+    entries,
+  };
+}
