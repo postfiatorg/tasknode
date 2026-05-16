@@ -1389,12 +1389,16 @@ export function walletLinkVerify(payload, method, session = null) {
     });
   }
 
+  const reclaimedWalletCount = Number(result.reclaimedWalletCount || 0);
   return {
     status: 200,
     body: {
       ok: true,
       action: "wallet_link_verify",
-      message: "Seed wallet linked.",
+      message: reclaimedWalletCount
+        ? "Seed wallet linked. Prior stale links for this wallet were detached."
+        : "Seed wallet linked.",
+      reclaimedWalletCount,
       wallet: result.wallet,
     },
   };

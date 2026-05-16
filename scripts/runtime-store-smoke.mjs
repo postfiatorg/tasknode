@@ -11,6 +11,7 @@ try {
     delinkWalletFromAccount,
     getContextDocument,
     getContextHistory,
+    getLinkedWallet,
     linkWalletToAccount,
     saveContextDocument,
     saveIndexedContextHistory,
@@ -165,6 +166,38 @@ try {
 
   if (!linkedOther.ok || otherLinkedState.context.history.pointerCount !== 0) {
     throw new Error(`Different linked wallet saw old history: ${JSON.stringify(otherLinkedState.context.history)}`);
+  }
+
+  const reclaimAddress = "rReclaimSmokeWallet";
+  const firstOwner = linkWalletToAccount({
+    accountId: "acct_reclaim_owner_a",
+    address: reclaimAddress,
+    publicKey: "smoke-reclaim-public-key",
+    challengeId: "smoke-reclaim-challenge-a",
+    signature: "smoke-reclaim-signature-a",
+  });
+  const reclaimed = linkWalletToAccount({
+    accountId: "acct_reclaim_owner_b",
+    address: reclaimAddress,
+    publicKey: "smoke-reclaim-public-key",
+    challengeId: "smoke-reclaim-challenge-b",
+    signature: "smoke-reclaim-signature-b",
+    proofPurpose: "wallet_relink",
+  });
+  const firstOwnerWallet = getLinkedWallet({ accountId: "acct_reclaim_owner_a" });
+  const secondOwnerWallet = getLinkedWallet({ accountId: "acct_reclaim_owner_b" });
+
+  if (
+    !firstOwner.ok ||
+    !reclaimed.ok ||
+    reclaimed.reclaimedWalletCount !== 1 ||
+    firstOwnerWallet.status !== "not_linked" ||
+    secondOwnerWallet.status !== "linked" ||
+    secondOwnerWallet.address !== reclaimAddress
+  ) {
+    throw new Error(
+      `Wallet reclaim boundary failed: ${JSON.stringify({ firstOwner, reclaimed, firstOwnerWallet, secondOwnerWallet })}`
+    );
   }
 
   if (!history.latestContextPointer?.cid || history.latestContextPointer.cid !== "bafyContextSmoke") {

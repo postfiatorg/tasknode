@@ -123,6 +123,10 @@ Wallet actions:
   audit event, and relies on the browser to clear the local encrypted vault.
 - `POST /api/wallet/relink/start` starts a fresh wallet proof challenge with
   `wallet_relink` purpose and reuses `/api/wallet/link/verify`.
+- A fresh valid wallet signature is authoritative for wallet ownership. If the
+  same wallet is still marked linked on stale local accounts, successful
+  link/relink detaches those stale links with audit events instead of blocking
+  the current proof.
 
 Wallet balance reads:
 

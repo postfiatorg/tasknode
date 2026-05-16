@@ -1277,16 +1277,16 @@ export function consumeWalletChallenge({ accountId = "", challengeId = "", purpo
   return { ok: true, challenge };
 }
 
-function activeWalletAccountForAddress(address = "", exceptAccountId = "") {
+function activeWalletAccountsForAddress(address = "", exceptAccountId = "") {
   const normalizedAddress = String(address || "").trim();
   const normalizedExceptAccountId = exceptAccountId ? safeId(exceptAccountId, "account") : "";
-  if (!normalizedAddress) return null;
+  if (!normalizedAddress) return [];
 
-  return Object.entries(state.accountWallets || {}).find(([accountId, wallet]) => {
+  return Object.entries(state.accountWallets || {}).filter(([accountId, wallet]) => {
     if (!wallet || wallet.status !== "linked") return false;
     if (normalizedExceptAccountId && accountId === normalizedExceptAccountId) return false;
     return String(wallet.address || "").trim() === normalizedAddress;
-  }) || null;
+  });
 }
 
 export function linkWalletToAccount({
@@ -1303,12 +1303,33 @@ export function linkWalletToAccount({
 
   const normalizedAccountId = safeId(accountId, "account");
   const normalizedAddress = String(address || "").trim();
-  const existingOwner = activeWalletAccountForAddress(normalizedAddress, normalizedAccountId);
-  if (existingOwner) {
-    return { ok: false, status: 409, error: "wallet_already_linked_to_account" };
+  if (!normalizedAddress) {
+    return { ok: false, status: 400, error: "wallet_address_required" };
+  }
+  const now = new Date().toISOString();
+  const reclaimedOwners = activeWalletAccountsForAddress(normalizedAddress, normalizedAccountId);
+  for (const [ownerAccountId, ownerWallet] of reclaimedOwners) {
+    delete state.accountWallets[ownerAccountId];
+    state.authEvents.push({
+      id: randomUUID(),
+      accountId: ownerAccountId,
+      eventType: "wallet_reclaimed_from_account",
+      provider: "wallet",
+      email: null,
+      decision: "superseded",
+      metadata: {
+        walletAddress: ownerWallet.address,
+        publicKey: ownerWallet.publicKey || null,
+        custody: ownerWallet.custody || "local_seed_required",
+        linkedAt: ownerWallet.linkedAt || null,
+        reclaimedByAccountId: normalizedAccountId,
+        proofPurpose,
+        challengeId,
+      },
+      createdAt: now,
+    });
   }
 
-  const now = new Date().toISOString();
   const previousWallet = state.accountWallets[normalizedAccountId] || null;
   const wallet = {
     accountId: normalizedAccountId,
@@ -1340,6 +1361,7 @@ export function linkWalletToAccount({
       proofPurpose,
       challengeId,
       signatureHash: wallet.proof.signatureHash,
+      reclaimedWalletCount: reclaimedOwners.length,
     },
     createdAt: now,
   });
@@ -1348,7 +1370,7 @@ export function linkWalletToAccount({
   }
   saveState();
 
-  return { ok: true, wallet };
+  return { ok: true, wallet, reclaimedWalletCount: reclaimedOwners.length };
 }
 
 export function delinkWalletFromAccount({

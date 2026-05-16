@@ -2901,7 +2901,7 @@ function WalletLinkModal({
       setMnemonic("");
       setVaultPassword("");
       setVaultPasswordConfirm("");
-      setMessage(isRelink ? "Wallet relinked." : "Wallet linked.");
+      setMessage(verify.body?.message || (isRelink ? "Wallet relinked." : "Wallet linked."));
       await onAppStateChange?.();
       onClose();
     } catch (error) {
