@@ -177,7 +177,10 @@ export function appState(session = null) {
     context: {
       actions: contextActions(),
       document: getContextDocument({ accountId: session?.accountId || "" }),
-      history: getContextHistory({ accountId: session?.accountId || "" }),
+      history: getContextHistory({
+        accountId: session?.accountId || "",
+        walletAddress: walletLinked ? linkedWallet.address : "",
+      }),
       savePath: "/api/context/edit/save",
       historyImportPath: "/api/context/history/indexed",
       historyRpcImportPath: "/api/context/history/rpc/import",

@@ -3335,10 +3335,16 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     setHydratedContext(null);
     setHydrateMessage("");
     setRestoringVersionKey("");
-  }, [history?.revision, history?.latestContextPointer?.cid]);
+    setHydratedPreviewByCid({});
+    setDiscoverMessage("");
+  }, [history?.revision, history?.latestContextPointer?.cid, linkedWalletAddress]);
 
   const canEdit = Boolean(documentState.canEdit);
-  const versions = buildContextVersions(documentState, history);
+  const activeWalletAddress = String(linkedWalletAddress || "").trim();
+  const historyWalletAddress = String(history?.walletAddress || "").trim();
+  const walletHistoryActive = Boolean(activeWalletAddress && historyWalletAddress && historyWalletAddress === activeWalletAddress);
+  const visibleHistory = walletHistoryActive ? history : {};
+  const versions = buildContextVersions(documentState, visibleHistory);
   const historyPreviewTargets = versions
     .filter((version) => version.pointer?.cid)
     .map((version) => ({
@@ -3355,11 +3361,21 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     history?.rpcImportPath ||
     rpcHistoryAction?.path ||
     "/api/context/history/rpc/import";
-  const canDiscoverHistory = Boolean(history?.canHydrate && (rpcHistoryAction?.enabled ?? context?.historyRpcReady ?? true));
+  const canDiscoverHistory = Boolean(
+    activeWalletAddress &&
+    history?.canHydrate &&
+    (rpcHistoryAction?.enabled ?? context?.historyRpcReady ?? true)
+  );
   const vaultDisplay = walletVaultDisplayState(walletVault, linkedWalletAddress);
   const restoringAnyVersion = Boolean(restoringVersionKey);
   const previewedHistoryCount = historyPreviewTargets.filter((version) => hydratedPreviewByCid[version.cid]?.text).length;
   const historyPreviewTotal = historyPreviewTargets.length;
+  const historyPointerCount = walletHistoryActive ? Number(history?.pointerCount || 0) : 0;
+  const historySubtitle = !activeWalletAddress
+    ? "Current account context is available without a wallet. Wallet history appears after linking."
+    : historyPointerCount
+      ? `${historyPointerCount} wallet historical pointer${historyPointerCount === 1 ? "" : "s"} available.`
+      : "No historical PFT pointers imported for the linked wallet yet.";
 
   const recomputeDirty = useCallback(() => {
     const currentHtml = editorRef.current?.innerHTML || "";
@@ -3707,6 +3723,10 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
 
   const discoverHistoricalContext = async () => {
     if (discoveringHistory) return;
+    if (!activeWalletAddress) {
+      setDiscoverMessage("Link a wallet before finding wallet-owned PFT history.");
+      return;
+    }
     if (!history?.canHydrate) {
       setDiscoverMessage("Sign in before finding historical context.");
       return;
@@ -3991,34 +4011,39 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
             <header className="ctx-versions-head">
               <div>
                 <span className="ctx-versions-title">Revision history</span>
-                <span className="ctx-versions-sub">
-                  {history.pointerCount
-                    ? `${history.pointerCount} indexed historical pointer${history.pointerCount === 1 ? "" : "s"} available.`
-                    : "No historical PFT pointers imported yet."}
-                </span>
+                <span className="ctx-versions-sub">{historySubtitle}</span>
               </div>
               <div className="ctx-versions-actions">
-                <span className={`ctx-vault-state is-${vaultDisplay.tone}`} title={vaultDisplay.detail}>
-                  {vaultDisplay.tone === "unlocked" ? <Unlock size={12} strokeWidth={2} /> : <Lock size={12} strokeWidth={2} />}
-                  {vaultDisplay.label}
-                </span>
-                {historyPreviewTotal > 0 && (
-                  <span className={`ctx-preview-state${previewHydration.active ? " is-active" : ""}`}>
-                    {previewHydration.active
-                      ? `Loading previews ${previewHydration.loaded}/${previewHydration.total}`
-                      : walletVault?.unlocked
-                        ? `${previewedHistoryCount}/${historyPreviewTotal} previews`
-                        : "Unlock for previews"}
+                {activeWalletAddress && historyPreviewTotal > 0 && (
+                  <>
+                    <span className={`ctx-vault-state is-${vaultDisplay.tone}`} title={vaultDisplay.detail}>
+                      {vaultDisplay.tone === "unlocked" ? <Unlock size={12} strokeWidth={2} /> : <Lock size={12} strokeWidth={2} />}
+                      {vaultDisplay.label}
+                    </span>
+                    <span className={`ctx-preview-state${previewHydration.active ? " is-active" : ""}`}>
+                      {previewHydration.active
+                        ? `Loading previews ${previewHydration.loaded}/${previewHydration.total}`
+                        : walletVault?.unlocked
+                          ? `${previewedHistoryCount}/${historyPreviewTotal} previews`
+                          : "Unlock for previews"}
+                    </span>
+                  </>
+                )}
+                {activeWalletAddress && (
+                  <button
+                    className="ctx-version-restore"
+                    disabled={!canDiscoverHistory || discoveringHistory}
+                    onClick={discoverHistoricalContext}
+                    type="button"
+                  >
+                    {discoveringHistory ? "Finding" : "Find PFT history"}
+                  </button>
+                )}
+                {!activeWalletAddress && (
+                  <span className="ctx-preview-state">
+                    Account context only
                   </span>
                 )}
-                <button
-                  className="ctx-version-restore"
-                  disabled={!canDiscoverHistory || discoveringHistory}
-                  onClick={discoverHistoricalContext}
-                  type="button"
-                >
-                  {discoveringHistory ? "Finding" : "Find PFT history"}
-                </button>
                 <span className="ctx-versions-count">{versions.length} versions</span>
               </div>
             </header>

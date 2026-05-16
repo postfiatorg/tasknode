@@ -159,6 +159,12 @@ function stableId(value, prefix) {
   return `${prefix}_${digest}`;
 }
 
+function contextHistorySnapshotKey({ accountId = "", walletAddress = "" } = {}) {
+  const accountKey = safeId(accountId, "account");
+  const walletKey = safeId(walletAddress, "wallet");
+  return `${accountKey}:${walletKey}`;
+}
+
 function identityKey(provider, providerUserId) {
   return `${String(provider || "").toLowerCase()}:${String(providerUserId || "").trim()}`;
 }
@@ -1066,14 +1072,20 @@ export function saveContextDocument({ accountId = "", title = "", body = "" } = 
   };
 }
 
-function emptyContextHistory({ accountId = "", canHydrate = false } = {}) {
+function emptyContextHistory({ accountId = "", walletAddress = "", canHydrate = false } = {}) {
+  const normalizedAccountId = accountId ? safeId(accountId, "account") : null;
+  const normalizedWalletAddress = walletAddress ? String(walletAddress).trim() : null;
   return {
-    id: `ctx_history_${canHydrate ? safeId(accountId, "account") : "signed_out"}`,
-    accountId: canHydrate ? safeId(accountId, "account") : null,
+    id: `ctx_history_${
+      normalizedAccountId && normalizedWalletAddress
+        ? contextHistorySnapshotKey({ accountId: normalizedAccountId, walletAddress: normalizedWalletAddress })
+        : normalizedAccountId || "signed_out"
+    }`,
+    accountId: normalizedAccountId,
     source: "pftasks_indexed_snapshot",
     revision: 0,
     importedAt: null,
-    walletAddress: null,
+    walletAddress: normalizedWalletAddress,
     pointerCount: 0,
     contextUpdateCount: 0,
     taskEventCount: 0,
@@ -1088,27 +1100,60 @@ function emptyContextHistory({ accountId = "", canHydrate = false } = {}) {
       note:
         "Historical PFT context has not been imported yet. Discover encrypted context CIDs from full-history PFTL RPC, then decrypt locally after wallet unlock.",
     },
-    canHydrate,
+    canHydrate: Boolean(canHydrate && normalizedWalletAddress),
     importPath: "/api/context/history/indexed",
     rpcImportPath: "/api/context/history/rpc/import",
   };
 }
 
-export function getContextHistory({ accountId = "" } = {}) {
-  const canHydrate = Boolean(accountId);
-  const normalizedAccountId = canHydrate ? safeId(accountId, "account") : "";
-  const existing = canHydrate ? state.contextHistorySnapshots[normalizedAccountId] : null;
+export function getContextHistory({ accountId = "", walletAddress = "" } = {}) {
+  const hasAccount = Boolean(accountId);
+  const normalizedAccountId = hasAccount ? safeId(accountId, "account") : "";
+  const normalizedWalletAddress = walletAddress ? String(walletAddress).trim() : "";
+  const snapshotKey =
+    hasAccount && normalizedWalletAddress
+      ? contextHistorySnapshotKey({ accountId: normalizedAccountId, walletAddress: normalizedWalletAddress })
+      : "";
+  const existing = snapshotKey ? state.contextHistorySnapshots[snapshotKey] : null;
 
   if (existing) {
     return {
       ...existing,
-      canHydrate,
+      walletAddress: existing.walletAddress || normalizedWalletAddress,
+      canHydrate: true,
       importPath: "/api/context/history/indexed",
       rpcImportPath: "/api/context/history/rpc/import",
     };
   }
 
-  return emptyContextHistory({ accountId: normalizedAccountId, canHydrate });
+  const legacyExisting = hasAccount ? state.contextHistorySnapshots[normalizedAccountId] : null;
+  if (
+    legacyExisting &&
+    normalizedWalletAddress &&
+    legacyExisting.walletAddress === normalizedWalletAddress
+  ) {
+    const migrated = {
+      ...legacyExisting,
+      id: legacyExisting.id || `ctx_history_${snapshotKey}`,
+      accountId: normalizedAccountId,
+      walletAddress: normalizedWalletAddress,
+    };
+    state.contextHistorySnapshots[snapshotKey] = migrated;
+    delete state.contextHistorySnapshots[normalizedAccountId];
+    saveState();
+    return {
+      ...migrated,
+      canHydrate: true,
+      importPath: "/api/context/history/indexed",
+      rpcImportPath: "/api/context/history/rpc/import",
+    };
+  }
+
+  return emptyContextHistory({
+    accountId: normalizedAccountId,
+    walletAddress: normalizedWalletAddress,
+    canHydrate: hasAccount && Boolean(normalizedWalletAddress),
+  });
 }
 
 export function saveIndexedContextHistory({ accountId = "", snapshot = {} } = {}) {
@@ -1117,17 +1162,30 @@ export function saveIndexedContextHistory({ accountId = "", snapshot = {} } = {}
   }
 
   const normalizedAccountId = safeId(accountId, "account");
-  const existing = state.contextHistorySnapshots[normalizedAccountId];
   const normalized = normalizeIndexedContextHistory(snapshot);
+  const normalizedWalletAddress = normalized.walletAddress ? String(normalized.walletAddress).trim() : "";
+  if (!normalizedWalletAddress) {
+    return {
+      ok: false,
+      status: 409,
+      error: "context_history_wallet_required",
+    };
+  }
+
+  const snapshotKey = contextHistorySnapshotKey({
+    accountId: normalizedAccountId,
+    walletAddress: normalizedWalletAddress,
+  });
+  const existing = state.contextHistorySnapshots[snapshotKey];
   const now = new Date().toISOString();
   const document = {
-    id: existing?.id || `ctx_history_${normalizedAccountId}`,
+    id: existing?.id || `ctx_history_${snapshotKey}`,
     accountId: normalizedAccountId,
     source: normalized.source,
     revision: Number(existing?.revision || 0) + 1,
     importedAt: now,
     normalizedAt: normalized.normalizedAt,
-    walletAddress: normalized.walletAddress,
+    walletAddress: normalizedWalletAddress,
     pointerCount: normalized.pointerCount,
     contextUpdateCount: normalized.contextUpdateCount,
     taskEventCount: normalized.taskEventCount,
@@ -1137,7 +1195,10 @@ export function saveIndexedContextHistory({ accountId = "", snapshot = {} } = {}
     hydration: normalized.hydration,
   };
 
-  state.contextHistorySnapshots[normalizedAccountId] = document;
+  state.contextHistorySnapshots[snapshotKey] = document;
+  if (state.contextHistorySnapshots[normalizedAccountId]?.walletAddress === normalizedWalletAddress) {
+    delete state.contextHistorySnapshots[normalizedAccountId];
+  }
   saveState();
 
   return {

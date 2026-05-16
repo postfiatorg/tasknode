@@ -978,9 +978,45 @@ export function contextIndexedHistoryImport(payload, method, session = null) {
     });
   }
 
+  const wallet = getLinkedWallet({ accountId: session.accountId });
+  if (wallet.status !== "linked" || !wallet.address) {
+    return actionResponse({
+      status: 409,
+      error: "context_wallet_required",
+      action: action.id,
+      message: "Link a seed wallet before importing indexed PFT context history.",
+      actionRequired:
+        "Link the wallet that owns the indexed context pointers, then import the snapshot again.",
+    });
+  }
+
+  const snapshot = payload?.snapshot || payload || {};
+  const snapshotWalletAddress =
+    snapshot?.walletAddress ||
+    snapshot?.wallet_address ||
+    snapshot?.indexedData?.walletAddress ||
+    snapshot?.indexedData?.wallet_address ||
+    snapshot?.indexedData?.wallet?.walletAddress ||
+    snapshot?.indexedData?.wallet?.wallet_address ||
+    snapshot?.indexedData?.wallet?.address ||
+    "";
+  if (snapshotWalletAddress && String(snapshotWalletAddress).trim() !== wallet.address) {
+    return actionResponse({
+      status: 409,
+      error: "context_history_wallet_mismatch",
+      action: action.id,
+      message: "Indexed context history belongs to a different wallet.",
+      actionRequired:
+        "Relink the wallet that owns this history, or import a snapshot for the current linked wallet.",
+    });
+  }
+
   const result = saveIndexedContextHistory({
     accountId: session.accountId,
-    snapshot: payload?.snapshot || payload || {},
+    snapshot: {
+      ...snapshot,
+      walletAddress: wallet.address,
+    },
   });
 
   if (!result.ok) {
@@ -1076,12 +1112,12 @@ export async function contextHistoryRpcImport(payload, method, session = null) {
         action: action.id,
         message: "No historical PFT context pointers were found for the linked wallet.",
         discovery: summary,
-        history: getContextHistory({ accountId: session.accountId }),
+        history: getContextHistory({ accountId: session.accountId, walletAddress: wallet.address }),
       },
     };
   }
 
-  const existingHistory = getContextHistory({ accountId: session.accountId });
+  const existingHistory = getContextHistory({ accountId: session.accountId, walletAddress: wallet.address });
   const mergedSnapshot = {
     ...discovery.snapshot,
     contextRevisions: [
@@ -1097,7 +1133,10 @@ export async function contextHistoryRpcImport(payload, method, session = null) {
 
   const result = saveIndexedContextHistory({
     accountId: session.accountId,
-    snapshot: mergedSnapshot,
+    snapshot: {
+      ...mergedSnapshot,
+      walletAddress: wallet.address,
+    },
   });
 
   if (!result.ok) {
@@ -1163,7 +1202,19 @@ export async function contextHistoryIpfsFetch({ cid } = {}, method, session = nu
   }
 
   const normalizedCid = normalizeContextCid(cid);
-  const history = getContextHistory({ accountId: session.accountId });
+  const wallet = getLinkedWallet({ accountId: session.accountId });
+  if (wallet.status !== "linked" || !wallet.address) {
+    return actionResponse({
+      status: 409,
+      error: "context_wallet_required",
+      action: action.id,
+      message: "Link the wallet that owns this historical context before fetching the CID.",
+      actionRequired:
+        "Relink and unlock the wallet that owns the imported history, then load the preview again.",
+    });
+  }
+
+  const history = getContextHistory({ accountId: session.accountId, walletAddress: wallet.address });
   if (!contextHistoryCids(history).has(normalizedCid)) {
     return actionResponse({
       status: 404,

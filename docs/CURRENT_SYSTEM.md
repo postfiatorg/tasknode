@@ -152,7 +152,10 @@ Historical context restore uses a dedicated full-history PFTL archive WSS path,
 with JSON-RPC fallback. The server scans the linked wallet's `account_tx`
 history for `pf.ptr` / `v4` `CONTENT_KIND.CONTEXT` pointers and stores CID
 metadata only. Encrypted CID payloads are fetched by allow-listed CID and
-decrypted in the browser after local vault unlock.
+decrypted in the browser after local vault unlock. Native current context is
+account-scoped; imported PFT historical pointers are cached by account plus
+wallet address and are hidden when no wallet is linked or a different wallet is
+linked.
 
 Usage/billing:
 
@@ -187,7 +190,7 @@ Usage/billing:
   require wallet unlock.
 - PFDocs-compatible indexed PFTasks history import as sanitized pointer
   metadata. The app stores CIDs/provenance/counts, not decrypted context or
-  evidence plaintext.
+  evidence plaintext, and the import is scoped to the active linked wallet.
 - OpenAI execution and streaming when configured.
 - OpenRouter execution and streaming when explicitly enabled.
 - Usage ledger and admin credit when configured.
