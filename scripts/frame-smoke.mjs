@@ -79,44 +79,61 @@ async function main() {
 
     await clickNav("Wallet");
     await assertText(["Available balance", "PFT", "Send", "Receive", "Activity", "Daily airdrop", "Task reward"]);
+    await assertLocationHash("#wallet");
     await capture("06-wallet");
 
     await clickNav("Context");
     await assertText(["Google Docs", "Notion", "Internal PFT Context", "Connected"]);
+    await assertLocationHash("#context");
     await capture("07-context");
+
+    await clickNav("New chat");
+    await assertSelector('input[aria-label="Ask anything"]');
+    await assertLocationHash("");
+    await capture("08-home-return");
+
+    await evaluate("history.back(); true");
+    await sleep(250);
+    await assertLocationHash("#context");
+    await assertText(["Google Docs", "Notion", "Internal PFT Context", "Connected"]);
+
+    await clickNav("New chat");
+    await assertSelector('input[aria-label="Ask anything"]');
+    await assertLocationHash("");
 
     await clickSelector(".profile-button");
     await assertText(["Directory", "Settings", "Profile", "Help", "Log out"]);
-    await capture("08-profile-menu");
+    await capture("09-profile-menu");
 
     await clickButton("Profile", "document.querySelector('.profile-menu')");
     await assertText(["Private", "Public", "Profile Studio", "Today's airdrop", "PFT generation"]);
-    await capture("09-profile-private");
+    await assertLocationHash("#profile");
+    await capture("10-profile-private");
 
     await clickButton("Public");
     await assertText(["Wallet", "Total rewards paid", "Sybil score", "NFT Gallery", "Post Fiat alignment"]);
-    await capture("10-profile-public");
+    await capture("11-profile-public");
 
     await clickSelector(".profile-button");
     await clickButton("Settings", "document.querySelector('.profile-menu')");
     await assertText(["General", "Security", "Data controls", "Billing", "Secure your account", "Appearance"]);
-    await capture("11-settings-general");
+    await capture("12-settings-general");
 
     await clickButton("Security", "document.querySelector('.settings-rail')");
     await assertText(["Connected accounts", "GitHub", "Backup recovery phrase", "Restore wallet"]);
-    await capture("12-settings-security");
+    await capture("13-settings-security");
 
     await clickButton("Billing", "document.querySelector('.settings-rail')");
     await assertText(["Payment methods", "XRP", "Ether", "Bitcoin", "USDT", "USDC", "Billing history"]);
     await assertLedgerRowsIfLedgerExists();
-    await capture("13-settings-billing");
+    await capture("14-settings-billing");
     await clickSelector(".settings-close");
 
     await clickSelector(".profile-button");
     await clickSelector(".profile-menu-header");
     await assertText(["Log in or sign up", "Continue with Telegram", "Continue with Discord", "Continue with X", "Continue with GitHub"]);
     await assertSelector('input[placeholder="Email address"]');
-    await capture("14-login");
+    await capture("15-login");
 
     const loginSessionContract = await evaluate(`fetch('/api/session')
       .then((response) => response.json())
@@ -135,16 +152,16 @@ async function main() {
         await clickSelector(".continue-button");
         await waitForText("Frame Smoke");
         await waitForText("Signed in");
-        await capture("15-login-session");
+        await capture("16-login-session");
       } else {
-        await capture("15-login-code");
+        await capture("16-login-code");
       }
     } else if (loginSessionContract.devAuthEnabled) {
       await setInput('input[placeholder="Email address"]', "frame-smoke@tasknode.local");
       await clickSelector(".continue-button");
       await waitForText("Frame Smoke");
       await waitForText("Signed in");
-      await capture("15-login-session");
+      await capture("16-login-session");
     }
 
     console.log(`frame smoke ok: ${baseUrl}`);
@@ -225,6 +242,13 @@ async function clickSelector(selector) {
 async function assertSelector(selector) {
   const exists = await evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
   if (!exists) throw new Error(`Missing selector: ${selector}`);
+}
+
+async function assertLocationHash(expectedHash) {
+  const actualHash = await evaluate("window.location.hash");
+  if (actualHash !== expectedHash) {
+    throw new Error(`Expected location hash ${expectedHash || "(empty)"}, got ${actualHash || "(empty)"}.`);
+  }
 }
 
 async function assertLedgerRowsIfLedgerExists() {

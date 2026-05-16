@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowUp,
@@ -276,8 +276,30 @@ const SETTINGS_PAGES = [
   { key: "billing", label: "Billing", icon: CreditCard },
 ];
 
+const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "profile"]);
+
+function viewFromLocation() {
+  if (typeof window === "undefined") return "chat";
+  const hashView = window.location.hash.replace(/^#\/?/, "").trim().toLowerCase();
+  return APP_VIEWS.has(hashView) ? hashView : "chat";
+}
+
+function writeViewLocation(nextView, { replace = false } = {}) {
+  if (typeof window === "undefined") return;
+  const normalizedView = APP_VIEWS.has(nextView) ? nextView : "chat";
+  const url = new URL(window.location.href);
+  url.hash = normalizedView === "chat" ? "" : normalizedView;
+
+  const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const nextPath = `${url.pathname}${url.search}${url.hash}`;
+  if (currentPath === nextPath) return;
+
+  const method = replace ? "replaceState" : "pushState";
+  window.history[method]({ tasknodeView: normalizedView }, "", nextPath);
+}
+
 function App() {
-  const [view, setView] = useState("chat");
+  const [view, setView] = useState(() => viewFromLocation());
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loginOpen, setLoginOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -347,6 +369,37 @@ function App() {
   const profileInitials = profileAvatarText(session);
   const profileSubtext = profileSessionText(session);
 
+  const navigateToView = useCallback((nextView, options = {}) => {
+    const normalizedView = APP_VIEWS.has(nextView) ? nextView : "chat";
+    setView(normalizedView);
+    setMoreMenuOpen(false);
+    setProfileMenuOpen(false);
+    setSettingsOpen(false);
+    setSelectedTask(null);
+    setLoginOpen(false);
+    writeViewLocation(normalizedView, { replace: options.replace === true });
+  }, []);
+
+  useEffect(() => {
+    writeViewLocation(viewFromLocation(), { replace: true });
+
+    function syncViewFromLocation() {
+      setView(viewFromLocation());
+      setMoreMenuOpen(false);
+      setProfileMenuOpen(false);
+      setSettingsOpen(false);
+      setSelectedTask(null);
+      setLoginOpen(false);
+    }
+
+    window.addEventListener("popstate", syncViewFromLocation);
+    window.addEventListener("hashchange", syncViewFromLocation);
+    return () => {
+      window.removeEventListener("popstate", syncViewFromLocation);
+      window.removeEventListener("hashchange", syncViewFromLocation);
+    };
+  }, []);
+
   async function refreshAppState() {
     try {
       const state = await fetchAppState();
@@ -369,7 +422,24 @@ function App() {
     <main className={`app-shell ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
       <aside className="sidebar" aria-label="Primary">
         <div className="sidebar-header">
-          {sidebarOpen ? <span className="sidebar-title">Task Node</span> : <BrandDot />}
+          {sidebarOpen ? (
+            <button
+              className="sidebar-title"
+              onClick={() => navigateToView("chat")}
+              type="button"
+            >
+              Task Node
+            </button>
+          ) : (
+            <button
+              className="brand-button"
+              onClick={() => navigateToView("chat")}
+              title="Home"
+              type="button"
+            >
+              <BrandDot />
+            </button>
+          )}
           <button
             className="icon-button"
             onClick={() => setSidebarOpen((open) => !open)}
@@ -385,11 +455,7 @@ function App() {
             active={view === "chat"}
             icon={SquarePen}
             label="New chat"
-            onClick={() => {
-              setView("chat");
-              setMoreMenuOpen(false);
-              setProfileMenuOpen(false);
-            }}
+            onClick={() => navigateToView("chat")}
             sidebarOpen={sidebarOpen}
           />
           <SidebarButton icon={Search} label="Search chats" sidebarOpen={sidebarOpen} />
@@ -398,21 +464,21 @@ function App() {
             badge={appState?.tasks?.outstanding?.length}
             icon={ListTodo}
             label="Tasks"
-            onClick={() => setView("tasks")}
+            onClick={() => navigateToView("tasks")}
             sidebarOpen={sidebarOpen}
           />
           <SidebarButton
             active={view === "wallet"}
             icon={Wallet}
             label="Wallet"
-            onClick={() => setView("wallet")}
+            onClick={() => navigateToView("wallet")}
             sidebarOpen={sidebarOpen}
           />
           <SidebarButton
             active={view === "context"}
             icon={BookOpen}
             label="Context"
-            onClick={() => setView("context")}
+            onClick={() => navigateToView("context")}
             sidebarOpen={sidebarOpen}
           />
           <div className="sidebar-menu-anchor" ref={moreRef}>
@@ -454,7 +520,7 @@ function App() {
 
         <div className="sidebar-footer">
           {sidebarOpen && (
-            <button className="balance-pill" onClick={() => setView("wallet")} type="button">
+            <button className="balance-pill" onClick={() => navigateToView("wallet")} type="button">
               <span className="balance-left">
                 <Wallet size={14} strokeWidth={1.75} />
                 <strong>{pftBalance}</strong>
@@ -491,7 +557,7 @@ function App() {
                 className="profile-menu-header"
                 onClick={() => {
                   if (signedIn) {
-                    setView("profile");
+                    navigateToView("profile");
                   } else {
                     setLoginOpen(true);
                   }
@@ -530,8 +596,7 @@ function App() {
                 icon={UserIcon}
                 label="Profile"
                 onClick={() => {
-                  setView("profile");
-                  setProfileMenuOpen(false);
+                  navigateToView("profile");
                 }}
               />
               <ToolMenuRow icon={LifeBuoy} label="Help" trailing={<ChevronRight size={14} />} />
@@ -551,7 +616,7 @@ function App() {
                 <PanelLeft size={18} strokeWidth={1.75} />
               </button>
             )}
-            <button className="icon-button" onClick={() => setView("chat")} type="button">
+            <button className="icon-button" onClick={() => navigateToView("chat")} title="New chat" type="button">
               <SquarePen size={18} strokeWidth={1.75} />
             </button>
           </div>
@@ -572,7 +637,7 @@ function App() {
         {!appState && !loadError && <StatusBanner>Loading product state</StatusBanner>}
 
         {view === "chat" && (
-          <ChatSurface chat={appState?.chat} onNavigate={setView} usage={appState?.usage} />
+          <ChatSurface chat={appState?.chat} onNavigate={navigateToView} usage={appState?.usage} />
         )}
         {view === "tasks" && <TasksView onSelectTask={setSelectedTask} />}
         {view === "wallet" && (
