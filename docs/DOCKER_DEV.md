@@ -3,6 +3,9 @@
 Use this path for fast local iteration. It does not replace the production
 Dockerfile or Fly deploy path.
 
+For the full deployment matrix, including local production Docker and Fly, read
+`DEPLOYMENT.md`.
+
 ## Start
 
 ```bash
@@ -63,7 +66,7 @@ docker compose -f docker-compose.dev.yml down -v
 
 ## Release Path
 
-Keep using the existing production path for deployable releases:
+Keep using the production path for deployable releases:
 
 ```bash
 npm run build

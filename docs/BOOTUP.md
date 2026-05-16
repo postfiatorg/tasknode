@@ -32,6 +32,20 @@ install flags.
 
 ## Local Setup
 
+For Docker-first local development, use:
+
+```sh
+npm run docker:dev -- -d
+```
+
+Open:
+
+```text
+http://127.0.0.1:5174
+```
+
+See `docs/DEPLOYMENT.md` for the full Docker/Fly deployment matrix.
+
 From the repo root:
 
 ```sh
@@ -184,6 +198,17 @@ Current behavior:
   wallet unlock;
 - admin credit requires `TASKNODE_ADMIN_CREDIT_TOKEN`;
 - crypto top-up remains disabled while funding rails are selected.
+
+## Deployment Paths
+
+See `docs/DEPLOYMENT.md` for the current deployment guide.
+
+Summary:
+
+- local Docker dev: `http://localhost:5174`, hot reload, no Fly deploy;
+- local production Docker: `http://localhost:8080`, same Dockerfile as Fly;
+- Fly dev release: `https://tasknodeofficial-dev.fly.dev`, remote release
+  candidate testing.
 
 ## Fly Dev
 

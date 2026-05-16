@@ -17,17 +17,20 @@ is intentionally not live yet.
 3. `DOCKER_DEV.md`
    Local Docker dev loop for rapid iteration without Fly deploys.
 
-4. `../full_spec.md`
+4. `DEPLOYMENT.md`
+   Local Docker dev, local production Docker, and Fly release deployment paths.
+
+5. `../full_spec.md`
    Product/architecture source of truth and active burndown.
 
-5. `../auth_account_spec.md`
+6. `../auth_account_spec.md`
    Auth, provider linking, wallet claim, email login, and delink/relink design.
 
-6. `AUTH_WALLET_BOUNDARY.md`
+7. `AUTH_WALLET_BOUNDARY.md`
    Concrete implementation guardrails for wallet auth UX, session refresh,
    wallet proof, local vault state, and regression coverage.
 
-7. `../whip_context.md`
+8. `../whip_context.md`
    Automation handoff instructions and whip shutdown guardrails.
 
 ## Source Of Truth Rules
@@ -48,7 +51,5 @@ These docs are intentionally a first spine, not a completed handbook.
 - `API_CONTRACTS.md`: endpoint-by-endpoint request/response contracts.
 - `DATA_MODEL.md`: account, conversation, usage ledger, context, wallet, and
   PFTasks hydration models.
-- `DEPLOYMENT.md`: Fly environments, secrets, rollback, logs, persistence, and
-  smoke-test runbook.
 - `SECURITY.md`: broader seed handling, OAuth, email login, provider keys,
   retention, logging, and supply-chain policy.

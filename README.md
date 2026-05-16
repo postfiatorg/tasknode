@@ -12,6 +12,8 @@ minimal deployable dev app:
 - `docs/README.md` is the engineering landing page for new contributors.
 - `docs/BOOTUP.md` explains local setup, smoke tests, Fly deploy, env/secrets,
   runtime persistence, and common failure checks.
+- `docs/DEPLOYMENT.md` clearly separates local Docker dev, local production
+  Docker, and Fly release deployments.
 - `docs/CURRENT_SYSTEM.md` maps the current app, API contracts, enabled
   surfaces, disabled surfaces, and near-term build path.
 - `product_spec.md` contains the initial product direction and migration notes.
@@ -95,11 +97,25 @@ Read these in order:
 
 1. `docs/BOOTUP.md`
 2. `docs/CURRENT_SYSTEM.md`
-3. `full_spec.md`
-4. `auth_account_spec.md`
-5. `whip_context.md`
+3. `docs/DOCKER_DEV.md`
+4. `docs/DEPLOYMENT.md`
+5. `full_spec.md`
+6. `auth_account_spec.md`
+7. `whip_context.md`
 
 ## Development
+
+Fast local Docker dev:
+
+```bash
+npm run docker:dev -- -d
+```
+
+Open:
+
+```text
+http://localhost:5174
+```
 
 Install and run locally:
 
