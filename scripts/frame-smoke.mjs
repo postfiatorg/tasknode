@@ -45,7 +45,8 @@ async function main() {
     await cdp.send("Page.enable");
     await waitForText("Task Node");
 
-    await assertText(["Task Node", "New chat", "Tasks", "Wallet", "Context", "What are you working on?"]);
+    await assertText(["Task Node", "New chat", "Tasks", "Wallet", "Context"]);
+    await assertSelector('input[aria-label="Ask anything"]');
     await capture("01-chat");
 
     await clickSelector('button[aria-label="Add"]');
@@ -101,17 +102,21 @@ async function main() {
     await assertText(["General", "Security", "Data controls", "Billing", "Secure your account", "Appearance"]);
     await capture("11-settings-general");
 
+    await clickButton("Security", "document.querySelector('.settings-rail')");
+    await assertText(["Connected accounts", "GitHub", "Backup recovery phrase", "Restore wallet"]);
+    await capture("12-settings-security");
+
     await clickButton("Billing", "document.querySelector('.settings-rail')");
     await assertText(["Payment methods", "XRP", "Ether", "Bitcoin", "USDT", "USDC", "Billing history"]);
     await assertLedgerRowsIfLedgerExists();
-    await capture("12-settings-billing");
+    await capture("13-settings-billing");
     await clickSelector(".settings-close");
 
     await clickSelector(".profile-button");
     await clickSelector(".profile-menu-header");
     await assertText(["Log in or sign up", "Continue with Telegram", "Continue with Discord", "Continue with X", "Continue with GitHub"]);
     await assertSelector('input[placeholder="Email address"]');
-    await capture("13-login");
+    await capture("14-login");
 
     const loginSessionContract = await evaluate(`fetch('/api/session')
       .then((response) => response.json())
@@ -130,16 +135,16 @@ async function main() {
         await clickSelector(".continue-button");
         await waitForText("Frame Smoke");
         await waitForText("Signed in");
-        await capture("14-login-session");
+        await capture("15-login-session");
       } else {
-        await capture("14-login-code");
+        await capture("15-login-code");
       }
     } else if (loginSessionContract.devAuthEnabled) {
       await setInput('input[placeholder="Email address"]', "frame-smoke@tasknode.local");
       await clickSelector(".continue-button");
       await waitForText("Frame Smoke");
       await waitForText("Signed in");
-      await capture("14-login-session");
+      await capture("15-login-session");
     }
 
     console.log(`frame smoke ok: ${baseUrl}`);

@@ -20,6 +20,7 @@ import {
   getEmailChallenge,
   getOrCreateEmailAccount,
   getOrCreateProviderAccount,
+  linkProviderToAccount,
   recordAuthEvent,
   usageSummary,
 } from "./runtime-store.js";
@@ -1009,8 +1010,10 @@ export function authStart(providerId, requestMeta = {}) {
       provider: "github",
       redirectPath: safeRedirectPath(requestMeta.redirectPath),
       redirectUri,
+      linkAccountId: requestMeta.session?.accountId || "",
       expiresInSeconds: 600,
     });
+    const linkingAccount = Boolean(requestMeta.session?.accountId);
     const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
     authorizeUrl.searchParams.set("client_id", process.env.GITHUB_CLIENT_ID);
     authorizeUrl.searchParams.set("redirect_uri", redirectUri);
@@ -1027,8 +1030,9 @@ export function authStart(providerId, requestMeta = {}) {
       },
       body: {
         ok: true,
-        action: "github_auth_start",
+        action: linkingAccount ? "github_account_link_start" : "github_auth_start",
         provider: "github",
+        mode: linkingAccount ? "account_link" : "sign_in",
         redirectUrl: authorizeUrl.toString(),
         redirectUri,
         expiresAt: stateRow.expiresAt,
@@ -1110,7 +1114,45 @@ export async function authCallback(providerId, query = {}, requestMeta = {}) {
         fetchGithubEmails(accessToken),
       ]);
       const emailInfo = selectGithubEmail(emails);
-      const account = getOrCreateProviderAccount({
+      const linkedResult = stateRow.linkAccountId
+        ? linkProviderToAccount({
+            accountId: stateRow.linkAccountId,
+            provider: "github",
+            providerUserId: String(profile.id),
+            username: profile.login || "",
+            displayName: profile.name || profile.login || "GitHub",
+            profileUrl: profile.html_url || "",
+            emailInfo,
+          })
+        : null;
+
+      if (linkedResult && !linkedResult.ok) {
+        const conflict = linkedResult.error === "provider_identity_conflict" || linkedResult.error === "provider_email_conflict";
+        recordAuthEvent({
+          accountId: stateRow.linkAccountId,
+          eventType: "github_oauth_link_failed",
+          provider: "github",
+          email: emailInfo?.email ? maskEmail(emailInfo.email) : "",
+          decision: linkedResult.error,
+          metadata: {
+            username: profile.login || "",
+            providerUserId: String(profile.id),
+          },
+        });
+        return actionResponse({
+          status: conflict ? 409 : 400,
+          error: linkedResult.error,
+          action: "github_account_link",
+          message: conflict
+            ? "That GitHub identity is already linked to another Task Node account."
+            : "GitHub could not be linked to this Task Node account.",
+          actionRequired: conflict
+            ? "Sign in with the existing linked account or contact support before attempting an account merge."
+            : "Start GitHub linking again from Settings.",
+        });
+      }
+
+      const account = linkedResult?.account || getOrCreateProviderAccount({
         provider: "github",
         providerUserId: String(profile.id),
         username: profile.login || "",
@@ -1122,7 +1164,7 @@ export async function authCallback(providerId, query = {}, requestMeta = {}) {
 
       recordAuthEvent({
         accountId: account.id,
-        eventType: "github_oauth_verified",
+        eventType: stateRow.linkAccountId ? "github_oauth_linked" : "github_oauth_verified",
         provider: "github",
         email: emailInfo?.email ? maskEmail(emailInfo.email) : "",
         decision: "session_issued",
@@ -1143,7 +1185,7 @@ export async function authCallback(providerId, query = {}, requestMeta = {}) {
         body: {
           ok: true,
           action: "github_auth_callback",
-          message: "Signed in with GitHub.",
+          message: stateRow.linkAccountId ? "GitHub linked." : "Signed in with GitHub.",
           session: created.session,
         },
       };

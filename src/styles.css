@@ -2291,6 +2291,97 @@ h1 {
   font-weight: 500;
 }
 
+.connected-accounts {
+  margin-bottom: 20px;
+  border-top: 1px solid #e8e6df;
+}
+
+.connected-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+
+.connected-heading strong {
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.connected-heading span {
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.connected-account-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  border-top: 1px solid #e8e6df;
+}
+
+.connected-provider-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+}
+
+.connected-provider-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.connected-account-row div {
+  display: grid;
+  min-width: 0;
+  margin-right: auto;
+  gap: 2px;
+}
+
+.connected-account-row strong {
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.connected-account-row small {
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.connected-account-row button,
+.connected-account-row em {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.connected-account-row button {
+  border: 1px solid #e8e6df;
+  background: #ffffff;
+  color: #0d0d0d;
+}
+
+.connected-account-row button:disabled {
+  color: #9a9a93;
+  cursor: default;
+}
+
+.connected-account-row em {
+  background: #ecfdf5;
+  color: #047857;
+}
+
 .settings-line {
   display: flex;
   align-items: center;

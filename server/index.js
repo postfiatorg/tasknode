@@ -312,6 +312,7 @@ async function routeApi(req, url, res) {
     const result = authStart(parts[3], {
       origin: requestOrigin(req),
       redirectPath: url.searchParams.get("redirect") || "/",
+      session,
     });
     json(res, result.status, result.body, responseHeadersForAuthResult(req, result));
     return true;
@@ -344,6 +345,7 @@ async function routeApi(req, url, res) {
     const result = authStart(parts[2], {
       origin: requestOrigin(req),
       redirectPath: url.searchParams.get("redirect") || "/",
+      session,
     });
     json(res, result.status, result.body, responseHeadersForAuthResult(req, result));
     return true;

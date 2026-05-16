@@ -205,6 +205,25 @@ if (devAuth.response.status === 200) {
   );
 
   await checkRequest(
+    "/api/auth/start/github",
+    { headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      if (response.ok) {
+        return (
+          body.ok === true &&
+          body.provider === "github" &&
+          body.mode === "account_link" &&
+          body.action === "github_account_link_start" &&
+          body.redirectUrl?.startsWith("https://github.com/login/oauth/authorize") &&
+          Boolean(response.headers.get("set-cookie"))
+        );
+      }
+      return response.status === 409 && body.error === "auth_provider_not_configured";
+    }
+  );
+
+  await checkRequest(
     "/api/chat/history",
     { headers: { cookie } },
     (response, text) => {

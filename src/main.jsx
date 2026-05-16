@@ -599,6 +599,7 @@ function App() {
       {settingsOpen && (
         <SettingsModal
           onClose={() => setSettingsOpen(false)}
+          session={session}
           setTheme={setTheme}
           theme={theme}
         />
@@ -1540,7 +1541,7 @@ function SybilSignal({ hint, icon: Icon, label, tone = "ok", value }) {
   );
 }
 
-function SettingsModal({ onClose, setTheme, theme }) {
+function SettingsModal({ onClose, session, setTheme, theme }) {
   const [page, setPage] = useState("general");
   const activePage = SETTINGS_PAGES.find((item) => item.key === page) || SETTINGS_PAGES[0];
 
@@ -1574,7 +1575,7 @@ function SettingsModal({ onClose, setTheme, theme }) {
           </header>
           <div className="settings-page">
             {page === "general" && <GeneralSettings setTheme={setTheme} theme={theme} />}
-            {page === "security" && <SecuritySettings />}
+            {page === "security" && <SecuritySettings session={session} />}
             {page === "data" && <DataSettings />}
             {page === "billing" && <BillingSettings />}
           </div>
@@ -1596,16 +1597,115 @@ function GeneralSettings({ setTheme, theme }) {
   );
 }
 
-function SecuritySettings() {
+function SecuritySettings({ session }) {
+  const signedIn = isSignedInSession(session);
+  const linkedProviders = session?.linkedProviders || [];
+  const providers = (session?.accountLinks || []).filter((provider) =>
+    ["github", "telegram", "discord", "x"].includes(provider.id)
+  );
+  const linkedProviderCount = linkedProviders.filter((item) =>
+    providers.some((provider) => provider.id === item?.id)
+  ).length;
+  const [message, setMessage] = useState("");
+  const [pendingProvider, setPendingProvider] = useState("");
+
+  async function startProviderLink(provider) {
+    if (!signedIn) {
+      setMessage("Sign in before linking accounts.");
+      return;
+    }
+
+    setPendingProvider(provider.id);
+    setMessage("");
+
+    try {
+      const result = await requestJson(`${provider.startPath}?redirect=/`);
+      if (result.ok && result.body?.redirectUrl) {
+        window.location.assign(result.body.redirectUrl);
+        return;
+      }
+      setMessage(
+        result.body?.message ||
+          result.body?.actionRequired ||
+          `${provider.label} returned HTTP ${result.status}.`
+      );
+    } catch (error) {
+      setMessage(error?.message || `${provider.label} is unavailable.`);
+    } finally {
+      setPendingProvider("");
+    }
+  }
+
   return (
     <>
       <MfaCallout />
+      {providers.length > 0 && (
+        <section className="connected-accounts">
+          <div className="connected-heading">
+            <strong>Connected accounts</strong>
+            <span>{linkedProviderCount} linked</span>
+          </div>
+          {providers.map((provider) => (
+            <ConnectedAccountRow
+              key={provider.id}
+              linkedProviders={linkedProviders}
+              onLink={startProviderLink}
+              pending={pendingProvider === provider.id}
+              provider={provider}
+              signedIn={signedIn}
+            />
+          ))}
+          {message && <div className="inline-message">{message}</div>}
+        </section>
+      )}
       <SettingsLine desc="Write down or store your recovery phrase securely." label="Backup recovery phrase" right={<SmallPill>Reveal</SmallPill>} />
       <SettingsLine desc="Sign in with an existing recovery phrase." label="Restore wallet" right={<SmallPill>Restore</SmallPill>} />
       <SettingsLine desc="2 devices currently signed in." label="Active sessions" right={<SmallPill>Manage</SmallPill>} />
       <SettingsLine desc="Send a security or product report." label="Report issue" right={<SmallPill>Report</SmallPill>} />
     </>
   );
+}
+
+function ConnectedAccountRow({ linkedProviders, onLink, pending, provider, signedIn }) {
+  const linkedProvider = linkedProviders.find((item) => item?.id === provider.id);
+  const linked = Boolean(linkedProvider);
+  const status = linked
+    ? linkedAccountStatus(linkedProvider)
+    : provider.enabled
+      ? "Available"
+      : provider.configured
+        ? "Disabled"
+        : "Needs config";
+
+  return (
+    <div className="connected-account-row">
+      <span className="connected-provider-icon">
+        <ProviderIcon id={provider.id} />
+      </span>
+      <div>
+        <strong>{provider.label}</strong>
+        <small>{status}</small>
+      </div>
+      {linked ? (
+        <em>Linked</em>
+      ) : (
+        <button
+          disabled={!signedIn || !provider.enabled || pending}
+          onClick={() => onLink(provider)}
+          type="button"
+        >
+          {pending ? "Checking" : "Connect"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function linkedAccountStatus(provider) {
+  if (provider.username) return `@${provider.username}`;
+  if (provider.maskedEmail) return provider.maskedEmail;
+  if (provider.email) return provider.email;
+  return "Linked";
 }
 
 function DataSettings() {

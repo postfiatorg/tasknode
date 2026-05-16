@@ -28,13 +28,16 @@ minimal deployable dev app:
   use development delivery for smoke testing; production should configure
   `TASKNODE_AUTH_SECRET` and a transactional email provider.
 - `/api/auth/start/:provider` and `/api/auth/callback/:provider` are present as
-  contract endpoints. GitHub starts a real OAuth flow when configured. Other
-  providers return structured disabled or unimplemented responses until their
-  callbacks are reviewed and enabled.
+  contract endpoints. GitHub starts a real OAuth flow when configured and links
+  to the current signed-in account when launched from an existing session.
+  Other providers return structured disabled or unimplemented responses until
+  their callbacks are reviewed and enabled.
 - `/api/auth/dev/start`, `/api/auth/logout`, and `/api/session` provide the
   first cookie-backed account session boundary for development environments.
   This is not a production auth provider; it exists so the account-first app can
   be exercised before OAuth and bot callbacks are enabled.
+- Settings > Security exposes the first connected-accounts surface for provider
+  status and account-link actions.
 - `/api/wallet/actions` exposes disabled-by-default wallet lifecycle actions:
   link, unlock, delink, and relink. The action endpoints are present so seed
   storage, unlock, and production delink/relink behavior can be tested behind a

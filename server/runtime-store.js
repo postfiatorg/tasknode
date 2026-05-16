@@ -234,6 +234,15 @@ function linkedProvider({
   };
 }
 
+function devProvider() {
+  return {
+    id: "dev",
+    label: "Dev session",
+    kind: "development",
+    status: "linked",
+  };
+}
+
 function mergeLinkedProvider(account, providerPayload) {
   const existing = Array.isArray(account.linkedProviders) ? account.linkedProviders : [];
   account.linkedProviders = existing
@@ -369,6 +378,78 @@ export function getOrCreateProviderAccount({
   return accountPayload(account);
 }
 
+export function linkProviderToAccount({
+  accountId,
+  provider,
+  providerUserId,
+  username = "",
+  displayName = "",
+  profileUrl = "",
+  emailInfo = null,
+}) {
+  const targetAccountId = String(accountId || "").trim();
+  const normalizedProvider = String(provider || "").trim().toLowerCase();
+  const normalizedProviderUserId = String(providerUserId || "").trim();
+  if (!targetAccountId || !normalizedProvider || !normalizedProviderUserId) {
+    return { ok: false, error: "provider_link_invalid" };
+  }
+
+  const account = state.accounts[targetAccountId];
+  if (!account) {
+    return { ok: false, error: "account_not_found" };
+  }
+
+  const key = identityKey(normalizedProvider, normalizedProviderUserId);
+  const existingIdentityAccountId = state.accountIdentities[key];
+  if (existingIdentityAccountId && existingIdentityAccountId !== targetAccountId) {
+    return { ok: false, error: "provider_identity_conflict" };
+  }
+
+  const now = new Date().toISOString();
+  const email = emailInfo?.email || "";
+  const emailVerified = emailInfo?.verified === true;
+  const emailCanonical = emailVerified ? String(email).trim().toLowerCase() : "";
+  if (emailCanonical) {
+    const existingEmailAccountId = state.accountEmails[emailCanonical];
+    if (existingEmailAccountId && existingEmailAccountId !== targetAccountId) {
+      return { ok: false, error: "provider_email_conflict" };
+    }
+  }
+
+  mergeLinkedProvider(
+    account,
+    linkedProvider({
+      provider: normalizedProvider,
+      providerUserId: normalizedProviderUserId,
+      username,
+      profileUrl,
+      email,
+      emailVerified,
+    })
+  );
+  account.status = account.status || "active";
+  account.displayName = account.displayName || displayName || username || providerLabel(normalizedProvider);
+  account.primaryProvider = account.primaryProvider || normalizedProvider;
+  account.assurance = account.assurance === "high" ? "high" : "medium";
+  account.updatedAt = now;
+  account.lastProviderLinkAt = now;
+
+  if (emailCanonical && (!account.primaryEmailCanonical || account.primaryEmailCanonical === emailCanonical)) {
+    account.primaryEmailOriginal = email;
+    account.primaryEmailCanonical = emailCanonical;
+    account.primaryEmailVerified = true;
+    account.emailProvider = normalizedProvider;
+    account.emailLastSeenAt = now;
+    state.accountEmails[emailCanonical] = targetAccountId;
+  }
+
+  state.accounts[targetAccountId] = account;
+  state.accountIdentities[key] = targetAccountId;
+  saveState();
+
+  return { ok: true, account: accountPayload(account) };
+}
+
 export function createAccountSession(account, { provider = "email", assurance = "low" } = {}) {
   pruneExpiredSessions();
 
@@ -409,20 +490,27 @@ export function createDevSession({ email = "dev@tasknode.local" } = {}) {
       ? email.trim().toLowerCase().slice(0, 160)
       : "dev@tasknode.local";
   const now = new Date();
+  const accountId = `acct_dev_${normalizedEmail.replace(/[^a-z0-9]+/g, "_").slice(0, 48)}`;
+  const account = state.accounts[accountId] || {
+    id: accountId,
+    status: "active",
+    displayName: displayNameFromEmail(normalizedEmail),
+    primaryProvider: "dev",
+    assurance: "low",
+    linkedProviders: [],
+    createdAt: now.toISOString(),
+  };
+  mergeLinkedProvider(account, devProvider());
+  account.updatedAt = now.toISOString();
+  state.accounts[accountId] = account;
+
   const sessionId = randomUUID();
   const session = {
     id: sessionId,
-    accountId: `acct_dev_${normalizedEmail.replace(/[^a-z0-9]+/g, "_").slice(0, 48)}`,
-    displayName: displayNameFromEmail(normalizedEmail),
+    accountId,
+    displayName: account.displayName,
     primaryProvider: "dev",
-    linkedProviders: [
-      {
-        id: "dev",
-        label: "Dev session",
-        kind: "development",
-        status: "linked",
-      },
-    ],
+    linkedProviders: account.linkedProviders || [devProvider()],
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + sessionTtlSeconds * 1000).toISOString(),
   };
@@ -440,6 +528,7 @@ export function createOAuthState({
   provider,
   redirectPath = "/",
   redirectUri = "",
+  linkAccountId = "",
   expiresInSeconds = 600,
 } = {}) {
   pruneExpiredOAuthStates();
@@ -451,6 +540,7 @@ export function createOAuthState({
     provider: String(provider || "").trim().toLowerCase(),
     redirectPath: String(redirectPath || "/").startsWith("/") ? String(redirectPath || "/") : "/",
     redirectUri,
+    linkAccountId: String(linkAccountId || "").trim(),
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
   };
