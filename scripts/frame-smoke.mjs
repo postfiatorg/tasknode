@@ -318,9 +318,15 @@ async function main() {
       await clickButton("Link wallet");
       await assertText(["Link Seed Wallet", "24-word recovery phrase", "Words", "Mnemonic", "Address"]);
       await setInput(".wallet-seed-field textarea", testMnemonic);
+      await setInput('input[aria-label="Wallet password"]', "123456789");
+      await setInput('input[aria-label="Confirm wallet password"]', "123456789");
+      await waitForText("10+ chars");
+      await clickButton("Link wallet", "document.querySelector('.wallet-link-modal')");
+      await waitForText("Set a wallet password of at least 10 characters.");
       await setInput('input[aria-label="Wallet password"]', testVaultPassword);
       await setInput('input[aria-label="Confirm wallet password"]', testVaultPassword);
       await waitForText("Valid");
+      await waitForText("Ready");
       await clickButton("Link wallet", "document.querySelector('.wallet-link-modal')");
       await waitForText("Seed wallet linked");
       await waitForText("Encrypted vault unlocked");

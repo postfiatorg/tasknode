@@ -42,6 +42,9 @@ stored in server state, printed, logged, or committed.
 - A signed-out `Link wallet` click opens login, not the wallet modal.
 - A loading or missing wallet action contract shows a loading/disabled state,
   not a silent no-op.
+- Wallet submit validation must say what is blocking progress. Do not hide
+  password length, mismatch, loading, or mnemonic errors behind a disabled
+  button or a generic `Locked` state.
 - A `401 wallet_login_required` response is an auth-routing failure. Refresh
   session state, then route to login if still signed out.
 - After login or successful wallet link, clear stale auth warnings such as
@@ -108,6 +111,8 @@ Every wallet/auth change should preserve these tests:
 
 - signed-out wallet link opens login and does not show the seed modal;
 - signed-in wallet link starts a server challenge;
+- short or mismatched wallet passwords produce visible validation feedback and
+  do not look like a broken button;
 - browser signs and verifies the wallet challenge without sending seed/private
   key material;
 - successful link refreshes app state and shows `Seed wallet linked`;

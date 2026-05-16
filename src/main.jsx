@@ -2406,7 +2406,16 @@ function WalletLinkModal({
   const wordCount = walletCore?.mnemonicWordCount?.(mnemonic) || seedWordCount(mnemonic);
   const valid = walletCore?.isValidTaskNodeMnemonic?.(mnemonic) || false;
   const passwordReady = vaultPassword.length >= 10;
-  const passwordsMatch = vaultPassword && vaultPassword === vaultPasswordConfirm;
+  const passwordsMatch = Boolean(vaultPassword) && vaultPassword === vaultPasswordConfirm;
+  const vaultStatus = !vaultPassword
+    ? "Required"
+    : !passwordReady
+      ? "10+ chars"
+      : !vaultPasswordConfirm
+        ? "Confirm"
+        : !passwordsMatch
+          ? "Mismatch"
+          : "Ready";
   let walletSummary = null;
 
   useEffect(() => {
@@ -2439,6 +2448,11 @@ function WalletLinkModal({
   }
 
   async function linkWallet() {
+    if (!walletCore) {
+      setMessage("Wallet tools are still loading.");
+      return;
+    }
+
     const activeSession = await resolveSignedInSession();
     if (!activeSession) {
       setMessage("Sign in before linking a seed wallet.");
@@ -2449,8 +2463,16 @@ function WalletLinkModal({
       setMessage("Enter a valid 24-word recovery phrase.");
       return;
     }
-    if (!passwordReady || !passwordsMatch) {
+    if (!passwordReady) {
       setMessage("Set a wallet password of at least 10 characters.");
+      return;
+    }
+    if (!vaultPasswordConfirm) {
+      setMessage("Confirm the wallet password.");
+      return;
+    }
+    if (!passwordsMatch) {
+      setMessage("Wallet passwords do not match.");
       return;
     }
 
@@ -2458,12 +2480,6 @@ function WalletLinkModal({
     setMessage("");
 
     try {
-      if (!walletCore) {
-        setMessage("Wallet tools are still loading.");
-        setLinking(false);
-        return;
-      }
-
       const start = await requestJson(action?.path || "/api/wallet/link/start", {
         method: action?.method || "POST",
       });
@@ -2593,7 +2609,7 @@ function WalletLinkModal({
             Address
           </span>
           <span>
-            <strong>{passwordReady && passwordsMatch ? "Ready" : "Locked"}</strong>
+            <strong>{vaultStatus}</strong>
             Local vault
           </span>
         </div>
@@ -2605,7 +2621,7 @@ function WalletLinkModal({
           <button className="light-pill" onClick={onClose} type="button">
             Cancel
           </button>
-          <button className="dark-pill" disabled={!walletCore || !valid || !passwordReady || !passwordsMatch || linking} onClick={linkWallet} type="button">
+          <button className="dark-pill" disabled={linking} onClick={linkWallet} type="button">
             {linking ? "Linking" : "Link wallet"}
           </button>
         </footer>
