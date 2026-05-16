@@ -44,7 +44,6 @@ import {
   Share,
   Shield,
   Sparkle,
-  Sparkles,
   SquarePen,
   Store,
   Trophy,
@@ -540,11 +539,21 @@ function App() {
     setProfileMenuOpen(false);
   }
 
+  function toggleSidebar() {
+    setSidebarOpen((open) => {
+      if (open) {
+        setMoreMenuOpen(false);
+        setProfileMenuOpen(false);
+      }
+      return !open;
+    });
+  }
+
   return (
     <main className={`app-shell ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
       <aside className="sidebar" aria-label="Primary">
         <div className="sidebar-header">
-          {sidebarOpen ? (
+          {sidebarOpen && (
             <button
               className="sidebar-title"
               onClick={() => navigateToView("chat")}
@@ -552,20 +561,12 @@ function App() {
             >
               Task Node
             </button>
-          ) : (
-            <button
-              className="brand-button"
-              onClick={() => navigateToView("chat")}
-              title="Home"
-              type="button"
-            >
-              <BrandDot />
-            </button>
           )}
           <button
-            className="icon-button"
-            onClick={() => setSidebarOpen((open) => !open)}
-            title={sidebarOpen ? "Collapse sidebar" : "Open sidebar"}
+            aria-label={sidebarOpen ? "Collapse sidebar" : "Open sidebar"}
+            className="icon-button sidebar-toggle"
+            data-tooltip={sidebarOpen ? "Collapse sidebar" : "Open sidebar"}
+            onClick={toggleSidebar}
             type="button"
           >
             <PanelLeft size={18} strokeWidth={1.75} />
@@ -608,7 +609,13 @@ function App() {
               active={moreMenuOpen}
               icon={MoreHorizontal}
               label="More"
-              onClick={() => setMoreMenuOpen((open) => !open)}
+              onClick={() => {
+                if (!sidebarOpen) {
+                  setSidebarOpen(true);
+                  return;
+                }
+                setMoreMenuOpen((open) => !open);
+              }}
               sidebarOpen={sidebarOpen}
             />
             {moreMenuOpen && sidebarOpen && (
@@ -668,93 +675,90 @@ function App() {
               <ChevronRight size={14} strokeWidth={1.75} />
             </button>
           )}
-          <div className="profile-anchor" ref={profileRef}>
-          <button
-            className="profile-button"
-            aria-label={signedIn ? `${profileName}, ${profileSubtext}` : "Log in or sign up"}
-            onClick={() => setProfileMenuOpen((open) => !open)}
-            type="button"
-          >
-            <ProfileAvatar initials={profileInitials} signedIn={signedIn} />
-            {sidebarOpen && (
-              <>
-                <span className="profile-copy">
-                  <strong>{profileName}</strong>
-                  <small>{profileSubtext}</small>
-                </span>
-                {signedIn ? (
-                  <Check className="profile-state-icon" size={14} strokeWidth={2} />
-                ) : (
-                  <Store size={14} strokeWidth={1.75} />
-                )}
-              </>
-            )}
-          </button>
-          {profileMenuOpen && sidebarOpen && (
-            <div className="profile-menu">
+          {sidebarOpen && (
+            <div className="profile-anchor" ref={profileRef}>
               <button
-                className="profile-menu-header"
+                className="profile-button"
+                aria-label={signedIn ? `${profileName}, ${profileSubtext}` : "Log in or sign up"}
                 onClick={() => {
-                  if (signedIn) {
-                    navigateToView("profile");
-                  } else {
-                    setLoginOpen(true);
-                  }
-                  setProfileMenuOpen(false);
+                  setProfileMenuOpen((open) => !open);
                 }}
                 type="button"
               >
                 <ProfileAvatar initials={profileInitials} signedIn={signedIn} />
-                <span className="profile-copy">
-                  <strong>{profileName}</strong>
-                  <small>{profileSubtext}</small>
-                </span>
-                <ChevronRight size={16} strokeWidth={1.75} />
+                <>
+                  <span className="profile-copy">
+                    <strong>{profileName}</strong>
+                    <small>{profileSubtext}</small>
+                  </span>
+                  {signedIn ? (
+                    <Check className="profile-state-icon" size={14} strokeWidth={2} />
+                  ) : (
+                    <Store size={14} strokeWidth={1.75} />
+                  )}
+                </>
               </button>
-              {signedIn && (
-                <div className="profile-session-state">
-                  <Check size={13} strokeWidth={2} />
-                  <span>Signed in</span>
+              {profileMenuOpen && (
+                <div className="profile-menu">
+                  <button
+                    className="profile-menu-header"
+                    onClick={() => {
+                      if (signedIn) {
+                        navigateToView("profile");
+                      } else {
+                        setLoginOpen(true);
+                      }
+                      setProfileMenuOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <ProfileAvatar initials={profileInitials} signedIn={signedIn} />
+                    <span className="profile-copy">
+                      <strong>{profileName}</strong>
+                      <small>{profileSubtext}</small>
+                    </span>
+                    <ChevronRight size={16} strokeWidth={1.75} />
+                  </button>
+                  {signedIn && (
+                    <div className="profile-session-state">
+                      <Check size={13} strokeWidth={2} />
+                      <span>Signed in</span>
+                    </div>
+                  )}
+                  <div className="menu-divider" />
+                  <ToolMenuRow
+                    icon={Network}
+                    label="Directory"
+                    trailing={<span className="menu-count">#16</span>}
+                  />
+                  <ToolMenuRow
+                    icon={SettingsIcon}
+                    label="Settings"
+                    onClick={() => {
+                      setSettingsOpen(true);
+                      setProfileMenuOpen(false);
+                    }}
+                  />
+                  <ToolMenuRow
+                    icon={UserIcon}
+                    label="Profile"
+                    onClick={() => {
+                      navigateToView("profile");
+                    }}
+                  />
+                  <ToolMenuRow icon={LifeBuoy} label="Help" trailing={<ChevronRight size={14} />} />
+                  <div className="menu-divider" />
+                  <ToolMenuRow icon={LogOut} label="Log out" onClick={logOut} />
                 </div>
               )}
-              <div className="menu-divider" />
-              <ToolMenuRow
-                icon={Network}
-                label="Directory"
-                trailing={<span className="menu-count">#16</span>}
-              />
-              <ToolMenuRow
-                icon={SettingsIcon}
-                label="Settings"
-                onClick={() => {
-                  setSettingsOpen(true);
-                  setProfileMenuOpen(false);
-                }}
-              />
-              <ToolMenuRow
-                icon={UserIcon}
-                label="Profile"
-                onClick={() => {
-                  navigateToView("profile");
-                }}
-              />
-              <ToolMenuRow icon={LifeBuoy} label="Help" trailing={<ChevronRight size={14} />} />
-              <div className="menu-divider" />
-              <ToolMenuRow icon={LogOut} label="Log out" onClick={logOut} />
             </div>
           )}
-          </div>
         </div>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
           <div className="topbar-left">
-            {!sidebarOpen && (
-              <button className="icon-button" onClick={() => setSidebarOpen(true)} type="button">
-                <PanelLeft size={18} strokeWidth={1.75} />
-              </button>
-            )}
             <button className="icon-button" onClick={startNewChat} title="New chat" type="button">
               <SquarePen size={18} strokeWidth={1.75} />
             </button>
@@ -1935,19 +1939,18 @@ function ShareModal({ onClose, thread, title }) {
 
 function SidebarButton({ active, badge, icon: Icon, label, onClick, sidebarOpen }) {
   return (
-    <button className={active ? "active" : ""} onClick={onClick} type="button">
+    <button
+      aria-label={label}
+      className={active ? "active" : ""}
+      data-tooltip={sidebarOpen ? undefined : label}
+      onClick={onClick}
+      type="button"
+    >
       <Icon size={18} strokeWidth={1.75} />
       {sidebarOpen && <span>{label}</span>}
       {sidebarOpen && badge ? <small>{badge}</small> : null}
+      {!sidebarOpen && badge ? <small className="rail-badge">{badge}</small> : null}
     </button>
-  );
-}
-
-function BrandDot() {
-  return (
-    <span className="brand-dot">
-      <Sparkles size={14} strokeWidth={2} />
-    </span>
   );
 }
 
