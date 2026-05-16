@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
 import { fetchPftBalance } from "./pftl-balance.js";
+import { fetchWalletTransactions } from "./pftl-transactions.js";
 import {
   authCallback,
   authDevStart,
@@ -547,6 +548,35 @@ async function routeApi(req, url, res) {
 
     const result = await fetchPftBalance(linkedWallet.address, {
       force: url.searchParams.get("force") === "1",
+    });
+    json(res, result.status || (result.ok ? 200 : 502), result);
+    return true;
+  }
+
+  if (url.pathname === "/api/wallet/transactions") {
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "wallet_login_required",
+        message: "Sign in before reading linked wallet transactions.",
+      });
+      return true;
+    }
+
+    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    if (linkedWallet.status !== "linked" || !linkedWallet.address) {
+      json(res, 409, {
+        ok: false,
+        error: "wallet_not_linked",
+        message: "Link a PFT wallet before reading transactions.",
+      });
+      return true;
+    }
+
+    const result = await fetchWalletTransactions(linkedWallet.address, {
+      force: url.searchParams.get("force") === "1",
+      limit: url.searchParams.get("limit"),
+      maxPages: url.searchParams.get("maxPages"),
     });
     json(res, result.status || (result.ok ? 200 : 502), result);
     return true;

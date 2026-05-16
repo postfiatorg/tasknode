@@ -100,6 +100,7 @@ Product state:
 - `GET /api/tasks`
 - `GET /api/wallet`
 - `GET /api/wallet/balance`
+- `GET /api/wallet/transactions`
 - `GET /api/context`
 - `GET /api/usage`
 
@@ -136,6 +137,11 @@ Wallet balance reads:
   `http://178.156.143.199:5005`, with public PFTL testnet fallbacks. This node
   is for current balance reads, not historical pulls. Fly uses the public PFTL
   testnet hosts unless environment or secrets override them.
+- `GET /api/wallet/transactions` requires the same account session and linked
+  wallet boundary. It scans full-history PFTL `account_tx`, normalizes native
+  payment rows involving the linked wallet, labels recognized `pf.ptr/v4`
+  pointer kinds such as task rewards and task submissions, and returns bounded
+  cached rows for the wallet activity feed.
 
 Context actions:
 

@@ -114,6 +114,7 @@ export function appState(session = null) {
       pftBalanceSource: null,
       pftBalanceFetchedAt: null,
       pftBalancePath: "/api/wallet/balance",
+      pftTransactionsPath: "/api/wallet/transactions",
       lifecycle: {
         oneWalletPerAccount: true,
         delinkForTestingRequired: true,

@@ -18,6 +18,7 @@ import {
   Copy,
   CreditCard,
   Database,
+  Download,
   ExternalLink,
   Eye,
   EyeOff,
@@ -29,6 +30,7 @@ import {
   Italic,
   LifeBuoy,
   Lightbulb,
+  Link2,
   List,
   ListOrdered,
   ListPlus,
@@ -49,12 +51,14 @@ import {
   Settings as SettingsIcon,
   Share,
   Shield,
+  ShieldCheck,
   Sparkle,
   SquarePen,
   Store,
   Table,
   Trophy,
   Unlock,
+  Unlink,
   User as UserIcon,
   UserCheck,
   Wand2,
@@ -132,53 +136,6 @@ const MOCK_TASKS = {
   refused: 62,
   rewarded: 92,
 };
-
-const ACTIVITY_GROUPS = [
-  {
-    group: "Today",
-    items: [
-      { kind: "in", title: "Daily airdrop", party: "Task Verifier", amount: 8400, time: "11:15 AM" },
-      {
-        kind: "in",
-        title: "Task reward",
-        sub: "Ship A 90 Percent Task Node Surface Cut",
-        party: "Task Verifier",
-        amount: 3600,
-        time: "10:42 AM",
-      },
-      { kind: "out", title: "Verification fee", party: "Task Verifier", amount: 0, time: "11:15 AM" },
-      { kind: "out", title: "Verification fee", party: "Task Verifier", amount: 0, time: "11:03 AM" },
-    ],
-  },
-  {
-    group: "Yesterday",
-    items: [
-      { kind: "in", title: "Daily airdrop", party: "Task Verifier", amount: 6200, time: "9:18 AM" },
-      {
-        kind: "in",
-        title: "Task reward",
-        sub: "Verify 8-K extractor output",
-        party: "Task Verifier",
-        amount: 3000,
-        time: "5:09 PM",
-      },
-    ],
-  },
-  {
-    group: "May 13",
-    items: [
-      { kind: "in", title: "Daily airdrop", party: "Task Verifier", amount: 7800, time: "9:24 AM" },
-      {
-        kind: "in",
-        title: "Task reward",
-        sub: "Wire post-fiat heartbeat composer",
-        party: "Task Verifier",
-        amount: 5400,
-        time: "2:18 PM",
-      },
-    ],
-  },
-];
 
 const PFT_GENERATION = [
   1800, 2200, 1900, 2400, 2100, 1700, 2600, 2300, 1850, 2900, 2100, 1950, 2400, 2800,
@@ -267,6 +224,7 @@ const EMPTY_WALLET_VAULT_STATUS = {
   lastUnlockedAt: null,
 };
 const WALLET_BALANCE_REFRESH_MS = 15000;
+const WALLET_TX_REFRESH_MS = 60000;
 
 function walletVaultDisplayState(walletVault = {}, linkedWalletAddress = "") {
   const hasLinkedWallet = Boolean(String(linkedWalletAddress || walletVault?.address || "").trim());
@@ -2300,15 +2258,25 @@ function WalletView({
 }) {
   const [message, setMessage] = useState("");
   const [pendingAction, setPendingAction] = useState("");
+  const [copiedAddress, setCopiedAddress] = useState(false);
+  const [hideBalance, setHideBalance] = useState(false);
+  const [hoveredTx, setHoveredTx] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
   const [walletProofAction, setWalletProofAction] = useState(null);
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [delinkOpen, setDelinkOpen] = useState(false);
+  const [txFeed, setTxFeed] = useState({
+    status: "idle",
+    transactions: [],
+    message: "",
+    fetchedAt: null,
+    scannedTransactions: 0,
+    complete: true,
+  });
   const actions = wallet?.actions || [];
   const linkAction = actions.find((action) => action.id === "link_start");
   const relinkAction = actions.find((action) => action.id === "relink_start");
   const delinkAction = actions.find((action) => action.id === "delink");
-  const secondaryWalletActions = actions.filter((action) => ["delink", "relink_start"].includes(action.id));
   const linkedWallet = wallet?.pftWallet || {};
   const walletLinked = linkedWallet.status === "linked";
   const vaultAvailable = Boolean(walletVault?.available && walletVault?.address === linkedWallet.address);
@@ -2316,8 +2284,23 @@ function WalletView({
   const vaultDisplay = walletVaultDisplayState(walletVault, linkedWallet.address);
   const signedIn = isSignedInSession(session);
   const pftBalance = formatPftBalance(wallet);
-  const balanceStatusLabel = walletBalanceStatusLabel(wallet);
+  const balanceStatusLabel = walletLinked ? walletBalanceStatusLabel(wallet) : "";
   const balanceError = walletLinked && wallet?.pftBalanceError;
+  const txGroups = groupWalletTransactions(txFeed.transactions);
+  const txLoading = txFeed.status === "loading";
+  const txRefreshing = txFeed.status === "refreshing";
+  const txError = txFeed.status === "error";
+  const networkLabel = !walletLinked
+    ? "No wallet"
+    : wallet?.pftBalanceStatus === "error" || txError
+      ? "Network issue"
+      : wallet?.pftBalanceStatus === "checking"
+        ? "Checking"
+        : "Network live";
+  const networkTone = networkLabel === "Network live" ? "live" : networkLabel === "Network issue" ? "error" : "muted";
+  const walletAddressLabel = walletLinked ? shortWalletAddress(linkedWallet.address) : "No wallet linked";
+  const vaultStatusLabel = vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : walletLinked ? "Not saved" : "Seed not linked";
+  const primaryActionLabel = !walletLinked || !vaultAvailable ? "Link wallet" : vaultUnlocked ? "Lock" : "Unlock";
 
   useEffect(() => {
     if (!signedIn) return;
@@ -2411,120 +2394,267 @@ function WalletView({
     }
   }
 
+  const refreshWalletTransactions = useCallback(async ({ force = false } = {}) => {
+    if (!signedIn || !walletLinked || !linkedWallet.address) {
+      setTxFeed({
+        status: walletLinked ? "idle" : "not_linked",
+        transactions: [],
+        message: "",
+        fetchedAt: null,
+        scannedTransactions: 0,
+        complete: true,
+      });
+      return;
+    }
+
+    const path = wallet?.pftTransactionsPath || "/api/wallet/transactions";
+    setTxFeed((current) => ({
+      ...current,
+      status: current.transactions.length ? "refreshing" : "loading",
+      message: "",
+    }));
+
+    try {
+      const query = `limit=50${force ? "&force=1" : ""}`;
+      const result = await requestJson(`${path}?${query}`);
+      if (!result.ok || !result.body?.ok) {
+        throw new Error(result.body?.message || result.body?.error || "Transaction feed unavailable.");
+      }
+      setTxFeed({
+        status: "ready",
+        transactions: Array.isArray(result.body.transactions) ? result.body.transactions : [],
+        message: "",
+        fetchedAt: result.body.fetchedAt || new Date().toISOString(),
+        scannedTransactions: Number(result.body.scannedTransactions || 0),
+        complete: result.body.complete !== false,
+      });
+    } catch (error) {
+      setTxFeed((current) => ({
+        ...current,
+        status: "error",
+        message: error?.message || "Transaction feed unavailable.",
+      }));
+    }
+  }, [linkedWallet.address, signedIn, wallet?.pftTransactionsPath, walletLinked]);
+
+  useEffect(() => {
+    if (!signedIn || !walletLinked || !linkedWallet.address) {
+      setTxFeed({
+        status: walletLinked ? "idle" : "not_linked",
+        transactions: [],
+        message: "",
+        fetchedAt: null,
+        scannedTransactions: 0,
+        complete: true,
+      });
+      return undefined;
+    }
+
+    refreshWalletTransactions({ force: true });
+    const timer = window.setInterval(() => refreshWalletTransactions(), WALLET_TX_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [linkedWallet.address, refreshWalletTransactions, signedIn, walletLinked]);
+
+  async function copyWalletAddress() {
+    if (!walletLinked || !linkedWallet.address) return;
+    try {
+      await navigator.clipboard?.writeText(linkedWallet.address);
+      setCopiedAddress(true);
+      window.setTimeout(() => setCopiedAddress(false), 1400);
+    } catch {
+      setMessage("Address copy failed.");
+    }
+  }
+
   return (
     <div className="route-scroll">
-      <div className="wallet-view">
-        <section className="wallet-hero">
-          <div className="eyebrow">Available balance</div>
-          <div className="wallet-balance">
-            <span>{pftBalance}</span>
-            <small>PFT</small>
+      <div className="wallet-view wallet-redesign">
+        <header className="wallet-page-head">
+          <div>
+            <div className="wallet-page-kicker">Task Node</div>
+            <h1>Wallet</h1>
           </div>
-          <div className="wallet-delta">
-            <strong>{walletLinked ? "Seed wallet linked" : "Seed wallet not linked"}</strong>
-            <span>
-              {!walletLinked
-                ? "Link a 24-word recovery phrase without sending it to the server."
-                : vaultUnlocked
-                  ? "Encrypted vault unlocked for this browser session."
-                  : vaultAvailable
-                    ? "Encrypted seed vault saved on this device."
-                    : "Ownership proof is linked. Save an encrypted local vault before wallet actions."}
-            </span>
-          </div>
-          <div className="wallet-identity-row">
-            <button className="address-chip" type="button">
-              <span>{walletLinked ? shortWalletAddress(linkedWallet.address) : "No wallet linked"}</span>
-              <Copy size={11} strokeWidth={1.75} />
-            </button>
-            <span className={`wallet-vault-chip is-${vaultDisplay.tone}`} title={vaultDisplay.detail}>
-              {vaultDisplay.tone === "unlocked" ? <Unlock size={13} strokeWidth={2} /> : <Lock size={13} strokeWidth={2} />}
-              {vaultDisplay.label}
-            </span>
-          </div>
-          <div className="wallet-actions">
-            <button
-              className="dark-pill"
-              onClick={() => startWalletAction(linkAction)}
-              type="button"
-            >
-              {vaultUnlocked ? <Lock size={15} strokeWidth={2} /> : walletLinked ? <Check size={15} strokeWidth={2} /> : <Wallet size={15} strokeWidth={2} />}
-              {!walletLinked || !vaultAvailable ? "Link wallet" : vaultUnlocked ? "Lock" : "Unlock"}
-            </button>
-            <button className="light-pill" type="button">
-              <ArrowDownToLine size={15} strokeWidth={2} />
-              Receive
-            </button>
-          </div>
-          {(balanceStatusLabel || balanceError) && (
-            <div className="wallet-flow">
-              {balanceStatusLabel && (
-                <span>
-                  <strong>{balanceStatusLabel}</strong>
-                </span>
-              )}
-              {balanceError && (
-                <>
-                  {balanceStatusLabel && <span className="dot">.</span>}
-                  <span>{wallet.pftBalanceError}</span>
-                </>
-              )}
+          <button
+            className="wallet-hide-button"
+            onClick={() => setHideBalance((value) => !value)}
+            type="button"
+          >
+            {hideBalance ? <Eye size={14} strokeWidth={1.8} /> : <EyeOff size={14} strokeWidth={1.8} />}
+            {hideBalance ? "Show" : "Hide"} balance
+          </button>
+        </header>
+
+        <section className="wallet-balance-card">
+          <div className="wallet-balance-inner">
+            <div className="wallet-balance-top">
+              <span>Available balance</span>
+              <span className={`wallet-network-state is-${networkTone}`}>
+                <span aria-hidden="true" />
+                {networkLabel}
+              </span>
             </div>
-          )}
+
+            <div className="wallet-balance-display">
+              <strong>{hideBalance ? "••••" : pftBalance}</strong>
+              <span>PFT</span>
+            </div>
+
+            <div className="wallet-identity-row">
+              <button
+                className="address-chip wallet-address-chip"
+                disabled={!walletLinked}
+                onClick={copyWalletAddress}
+                type="button"
+              >
+                <span className={walletLinked ? "wallet-address-dot is-linked" : "wallet-address-dot"} />
+                <span>{walletAddressLabel}</span>
+                {copiedAddress ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.8} />}
+              </button>
+              <span className={`wallet-vault-chip is-${vaultDisplay.tone}`} title={vaultDisplay.detail}>
+                <ShieldCheck size={14} strokeWidth={1.8} />
+                {vaultStatusLabel}
+              </span>
+            </div>
+
+            <p className="wallet-balance-note">
+              {walletLinked
+                ? vaultUnlocked
+                  ? "Encrypted vault unlocked for this browser session. Your seed never leaves this device."
+                  : vaultAvailable
+                    ? "Encrypted seed vault saved locally. Unlock before wallet-bound signing actions."
+                    : "Ownership proof is linked. Save an encrypted local vault before wallet-bound actions."
+                : "Link a 24-word recovery phrase locally. Your seed never leaves your device."}
+            </p>
+
+            <div className="wallet-actions">
+              <button className="wallet-primary-action" onClick={() => startWalletAction(linkAction)} type="button">
+                {vaultUnlocked ? <Lock size={16} strokeWidth={2} /> : walletLinked && vaultAvailable ? <Unlock size={16} strokeWidth={2} /> : <Link2 size={16} strokeWidth={2} />}
+                {primaryActionLabel}
+              </button>
+              <button
+                className="wallet-secondary-action"
+                disabled={!walletLinked}
+                onClick={copyWalletAddress}
+                type="button"
+              >
+                <Download size={16} strokeWidth={2} />
+                Receive
+              </button>
+              <button className="wallet-secondary-action" disabled type="button">
+                <Send size={16} strokeWidth={2} />
+                Send
+              </button>
+            </div>
+          </div>
         </section>
 
-        {message && <div className="inline-message">{message}</div>}
-
-        <ProfileCard
-          subtitle="Your latest transactions"
-          title="Activity"
-          trailing={<button className="link-button" type="button">View all</button>}
-        >
-          <div className="activity-groups">
-            {ACTIVITY_GROUPS.map((group) => (
-              <div key={group.group}>
-                <div className="activity-group-label">{group.group}</div>
-                <div>
-                  {group.items.map((tx, index) => (
-                    <ActivityRow key={`${group.group}-${index}`} tx={tx} />
-                  ))}
-                </div>
-              </div>
-            ))}
+        {(balanceStatusLabel || balanceError || message) && (
+          <div className="wallet-inline-status" role="status">
+            {message || [balanceStatusLabel, balanceError].filter(Boolean).join(" · ")}
           </div>
-        </ProfileCard>
+        )}
 
-        <div className="wallet-config-strip">
-          <button onClick={openVaultControl} type="button">
-            <span>Local seed vault</span>
-            <small>{vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : "Not saved"}</small>
+        <section className="wallet-management-grid" aria-label="Wallet management">
+          <WalletManagementCard
+            icon={ShieldCheck}
+            label="Local seed vault"
+            onClick={openVaultControl}
+            status={vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : "Not saved"}
+          />
+          <WalletManagementCard
+            disabled={!walletLinked || pendingAction === "delink"}
+            icon={Unlink}
+            label="Delink wallet"
+            onClick={() => startWalletAction(delinkAction)}
+            status={pendingAction === "delink" ? "Working" : walletLinked ? "Ready" : "No wallet"}
+          />
+          <WalletManagementCard
+            active={walletLinked}
+            disabled={pendingAction === "relink_start"}
+            icon={Link2}
+            label="Relink wallet"
+            onClick={() => startWalletAction(relinkAction)}
+            status={pendingAction === "relink_start" ? "Working" : signedIn ? "Ready" : "Sign in"}
+          />
+        </section>
+
+        <div className="wallet-usage-note wallet-credit-note">
+          <span>
+            Chat credit <strong>{formatUsd(wallet?.chatCreditUsd || 0)}</strong>. Billing is{" "}
+            {usage?.billingModel === "usage_based" ? "usage-based" : "not ready"}.
+          </span>
+          <button className="wallet-mini-action" disabled type="button">
+            <Plus size={13} strokeWidth={2} />
+            Top up
           </button>
-          {secondaryWalletActions.map((action) => (
+        </div>
+
+        <section className="wallet-activity-section">
+          <header className="wallet-activity-head">
+            <div>
+              <span>Activity</span>
+              <h2>Your latest transactions</h2>
+            </div>
             <button
-              disabled={pendingAction === action.id || (action.id === "delink" && !walletLinked)}
-              key={action.id}
-              onClick={() => startWalletAction(action)}
+              className="wallet-link-action"
+              disabled={!walletLinked || txLoading || txRefreshing}
+              onClick={() => refreshWalletTransactions({ force: true })}
               type="button"
             >
-              <span>{action.label}</span>
-              <small>
-                {pendingAction === action.id
-                  ? "Working"
-                  : action.id === "delink" && !walletLinked
-                    ? "No wallet"
-                    : action.enabled
-                      ? "Ready"
-                      : action.configured
-                        ? "Config ready"
-                        : "Needs config"}
-              </small>
+              {txRefreshing ? "Refreshing" : "Refresh"} <ChevronRight size={14} strokeWidth={1.8} />
             </button>
-          ))}
-        </div>
-        <div className="wallet-usage-note">
-          Chat credit {formatUsd(wallet?.chatCreditUsd || 0)}. Billing is{" "}
-          {usage?.billingModel === "usage_based" ? "usage based" : "not ready"}.
-        </div>
+          </header>
+
+          <div className="wallet-activity-card">
+            {!walletLinked && (
+              <WalletFeedEmpty
+                title="No wallet linked"
+                body="Link a wallet to read PFTL account history."
+              />
+            )}
+            {walletLinked && txLoading && (
+              <WalletFeedEmpty title="Loading transaction history" body="Reading PFTL account transactions." />
+            )}
+            {walletLinked && txError && (
+              <WalletFeedEmpty title="Transaction feed unavailable" body={txFeed.message || "Try refreshing again."} />
+            )}
+            {walletLinked && !txLoading && !txError && txGroups.length === 0 && (
+              <WalletFeedEmpty title="No PFTL transactions found" body="This wallet has no readable recent PFTL payments yet." />
+            )}
+            {walletLinked && !txLoading && !txError && txGroups.map((group) => (
+              <div className="wallet-tx-group" key={group.group}>
+                <div className="wallet-tx-group-label">
+                  <span>{group.group}</span>
+                  <span aria-hidden="true" />
+                </div>
+                <ul>
+                  {group.items.map((tx, index) => (
+                    <WalletTransactionRow
+                      hovered={hoveredTx === tx.id}
+                      key={tx.id || `${group.group}-${index}`}
+                      onHover={setHoveredTx}
+                      tx={tx}
+                    />
+                  ))}
+                </ul>
+              </div>
+            ))}
+            {walletLinked && !txLoading && !txError && txGroups.length > 0 && (
+              <footer className="wallet-activity-foot">
+                <span>
+                  Showing {txFeed.transactions.length} of {txFeed.scannedTransactions || txFeed.transactions.length} scanned transactions
+                </span>
+                <button
+                  disabled={txRefreshing}
+                  onClick={() => refreshWalletTransactions({ force: true })}
+                  type="button"
+                >
+                  {txRefreshing ? "Refreshing" : "Load latest"} <ChevronRight size={14} strokeWidth={1.8} />
+                </button>
+              </footer>
+            )}
+          </div>
+        </section>
       </div>
       {linkOpen && (
         <WalletLinkModal
@@ -2563,6 +2693,67 @@ function WalletView({
         />
       )}
     </div>
+  );
+}
+
+function WalletManagementCard({ active = false, disabled = false, icon: Icon, label, onClick, status }) {
+  return (
+    <button
+      className={`wallet-management-card${active ? " is-active" : ""}`}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <span>
+        {Icon && <Icon size={16} strokeWidth={1.8} />}
+        {label}
+      </span>
+      <small>{status}</small>
+      <ChevronRight size={16} strokeWidth={1.8} />
+    </button>
+  );
+}
+
+function WalletFeedEmpty({ body, title }) {
+  return (
+    <div className="wallet-feed-empty">
+      <strong>{title}</strong>
+      <p>{body}</p>
+    </div>
+  );
+}
+
+function WalletTransactionRow({ hovered = false, onHover, tx }) {
+  const isIn = tx.type === "in";
+  const isSelf = tx.type === "self";
+  const note = tx.note ? truncateWalletNote(tx.note) : "";
+
+  return (
+    <li
+      className={`wallet-tx-row${hovered ? " is-hovered" : ""}`}
+      onMouseEnter={() => onHover?.(tx.id)}
+      onMouseLeave={() => onHover?.("")}
+    >
+      <div className={`wallet-tx-icon${isIn ? " is-in" : ""}${isSelf ? " is-self" : ""}`}>
+        {isIn ? <ArrowDownLeft size={16} strokeWidth={2} /> : <ArrowUpRight size={16} strokeWidth={2} />}
+      </div>
+      <div className="wallet-tx-copy">
+        <strong>{tx.label || (isIn ? "Received PFT" : "Sent PFT")}</strong>
+        <small>
+          {isIn ? "From" : isSelf ? "Self" : "To"} {tx.counterpartyLabel || shortWalletAddress(tx.counterparty)}
+          {note && (
+            <>
+              <span aria-hidden="true"> · </span>
+              <span>{note}</span>
+            </>
+          )}
+        </small>
+      </div>
+      <div className={`wallet-tx-amount${isIn ? " is-in" : ""}`}>
+        <strong>{formatWalletTransactionAmount(tx)} PFT</strong>
+        <small>{formatWalletTransactionTime(tx.createdAt)}</small>
+      </div>
+    </li>
   );
 }
 
@@ -3019,34 +3210,6 @@ function WalletUnlockModal({
             {unlocking ? "Unlocking" : "Unlock"}
           </button>
         </footer>
-      </div>
-    </div>
-  );
-}
-
-function ActivityRow({ tx }) {
-  const isIn = tx.kind === "in";
-
-  return (
-    <div className="activity-row">
-      <div className={isIn ? "activity-icon in" : "activity-icon out"}>
-        {isIn ? <ArrowDownLeft size={15} strokeWidth={2} /> : <ArrowUpRight size={15} strokeWidth={2} />}
-      </div>
-      <div className="activity-copy">
-        <strong>{tx.title}</strong>
-        <small>
-          {isIn ? "From " : "To "}
-          <span>{tx.party}</span>
-          {tx.sub ? ` . ${tx.sub}` : ""}
-        </small>
-      </div>
-      <div className={isIn ? "activity-amount in" : "activity-amount"}>
-        {isIn ? "+" : "-"}
-        {tx.amount.toLocaleString(undefined, {
-          minimumFractionDigits: tx.amount === 0 ? 2 : 0,
-        })}{" "}
-        PFT
-        <small>{tx.time}</small>
       </div>
     </div>
   );
@@ -5333,6 +5496,60 @@ function walletBalanceStatusLabel(wallet) {
 function formatDrops(value) {
   const numeric = Number(value || 0) / 1_000_000;
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(numeric);
+}
+
+function formatWalletTransactionAmount(tx) {
+  const drops = Number(tx?.amountDrops || 0);
+  const pft = Math.abs(drops) / 1_000_000;
+  const sign = tx?.type === "in" ? "+" : tx?.type === "out" ? "-" : "";
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: pft > 0 && pft < 0.01 ? 6 : 0,
+    maximumFractionDigits: pft > 0 && pft < 0.01 ? 6 : 2,
+  }).format(pft);
+  return `${sign}${formatted}`;
+}
+
+function formatWalletTransactionTime(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatWalletTransactionGroup(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "Unknown";
+
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startOfTxDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((startOfToday - startOfTxDay) / 86_400_000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+}
+
+function groupWalletTransactions(transactions = []) {
+  const groups = [];
+  const byLabel = new Map();
+  for (const tx of transactions) {
+    const group = formatWalletTransactionGroup(tx?.createdAt);
+    if (!byLabel.has(group)) {
+      const nextGroup = { group, items: [] };
+      byLabel.set(group, nextGroup);
+      groups.push(nextGroup);
+    }
+    byLabel.get(group).items.push(tx);
+  }
+  return groups;
+}
+
+function truncateWalletNote(value) {
+  const text = String(value || "").trim();
+  if (text.length <= 46) return text;
+  return `${text.slice(0, 22)}...${text.slice(-12)}`;
 }
 
 function formatUsd(value) {

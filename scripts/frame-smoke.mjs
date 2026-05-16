@@ -4,6 +4,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createConnection } from "node:net";
+import { generateMnemonic } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
+import { deriveWalletSummary } from "../src/wallet-core.js";
 
 const baseUrl = process.env.FRAME_BASE_URL || process.env.SMOKE_BASE_URL || "http://127.0.0.1:8080";
 const chromeBin = process.env.CHROME_BIN || "google-chrome";
@@ -13,8 +16,8 @@ const screenshotDir =
     ? ""
     : process.env.FRAME_SCREENSHOT_DIR || "/tmp/tasknodeofficial-frame-smoke";
 const frameEmail = `frame-smoke-${randomBytes(4).toString("hex")}@tasknode.local`;
-const testMnemonic =
-  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+const testMnemonic = generateMnemonic(wordlist, 256);
+const testWalletAddress = deriveWalletSummary(testMnemonic).address;
 const testVaultPassword = "frame-smoke-vault-pass";
 const frameContextCid = "bafybeigdyrztm3j5framecontextpointeraaaa";
 
@@ -208,7 +211,7 @@ async function main() {
     await clickSelector(".task-modal header button");
 
     await clickNav("Wallet");
-    await assertText(["Available balance", "PFT", "Link wallet", "Receive", "Activity", "Daily airdrop", "Task reward"]);
+    await assertText(["Available balance", "PFT", "Link wallet", "Receive", "Activity", "Your latest transactions", "No wallet linked"]);
     await assertLocationHash("#wallet");
     await capture("06-wallet");
     await clickButton("Link wallet", "document.querySelector('.wallet-actions')");
@@ -331,7 +334,6 @@ async function main() {
       await waitForText("Valid");
       await waitForText("Ready");
       await clickButton("Link wallet", "document.querySelector('.wallet-link-modal')");
-      await waitForText("Seed wallet linked");
       await waitForText("Encrypted vault unlocked");
       await capture("17-wallet-linked");
 
@@ -349,7 +351,7 @@ async function main() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           snapshot: {
-            walletAddress: 'rKxpJQ6h9Z2Vr9L8BzixbJgALx1TUQeC',
+            walletAddress: ${JSON.stringify(testWalletAddress)},
             contextRevisions: [{
               id: 'frame-context-1',
               cid: ${JSON.stringify(frameContextCid)},
@@ -455,7 +457,8 @@ async function waitForText(text) {
     if (result === true) return;
     await sleep(100);
   }
-  throw new Error(`Timed out waiting for text: ${text}`);
+  const bodyText = await evaluate("document.body?.innerText?.slice(0, 2000) || ''").catch(() => "");
+  throw new Error(`Timed out waiting for text: ${text}\nVisible text:\n${bodyText}`);
 }
 
 async function assertText(labels) {
