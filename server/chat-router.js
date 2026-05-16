@@ -5,6 +5,7 @@ const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const providerTimeoutMs = Number(process.env.CHAT_PROVIDER_TIMEOUT_MS || 45000);
 const maxChatAttachments = 4;
 const maxAttachmentDataUrlBytes = 6 * 1024 * 1024;
+const webSearchUsdPerCall = 0.01;
 
 export const chatModePrices = {
   "Private Instant": {
@@ -22,8 +23,8 @@ export const chatModePrices = {
     maxOutputTokens: 1400,
   },
   "Frontier Instant": {
-    inputUsdPerMillion: 1.25,
-    outputUsdPerMillion: 10,
+    inputUsdPerMillion: 5,
+    outputUsdPerMillion: 30,
     provider: "openai",
     defaultModel: "chat-latest",
     maxOutputTokens: 700,
@@ -175,7 +176,30 @@ export function normalizeChatAttachments(attachments) {
     .filter(Boolean);
 }
 
-function openAiTools() {
+export function shouldUseWebSearch(message = "") {
+  const text = String(message || "").toLowerCase();
+  const currentInfoSignals = [
+    "search",
+    "look up",
+    "web",
+    "internet",
+    "today",
+    "current",
+    "currently",
+    "latest",
+    "recent",
+    "right now",
+    "news",
+    "what is going on",
+    "what's going on",
+  ];
+
+  return currentInfoSignals.some((signal) => text.includes(signal));
+}
+
+function openAiTools({ message }) {
+  if (!shouldUseWebSearch(message)) return [];
+
   return [
     {
       type: "web_search",
@@ -214,6 +238,7 @@ export function openAiInput({ conversationId, message, attachments = [] }) {
 
 export function openAiResponseRequest({ mode, model, message, conversationId, attachments = [], stream = false }) {
   const config = chatModeConfig(mode);
+  const tools = openAiTools({ message });
   return {
     model,
     instructions: taskNodeInstructions(),
@@ -222,9 +247,9 @@ export function openAiResponseRequest({ mode, model, message, conversationId, at
     reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
     stream: stream || undefined,
     store: false,
-    tool_choice: "auto",
-    tools: openAiTools(),
-    max_tool_calls: 4,
+    tool_choice: tools.length > 0 ? "auto" : undefined,
+    tools,
+    max_tool_calls: tools.length > 0 ? 4 : undefined,
     metadata: {
       app: "tasknodeofficial",
       mode,
@@ -385,15 +410,24 @@ function outputTextFromOpenRouter(body) {
   return "";
 }
 
+function countOpenAiOutputItems(body, type) {
+  return (body?.output || []).filter((item) => item?.type === type).length;
+}
+
 function openAiUsage(body, mode) {
   const usage = body?.usage || {};
   const inputTokens = Number(usage.input_tokens || 0);
   const outputTokens = Number(usage.output_tokens || 0);
+  const webSearchCalls = countOpenAiOutputItems(body, "web_search_call");
+  const tokenCostUsd = actualChatCost(mode, { inputTokens, outputTokens });
+  const toolCostUsd = Number((webSearchCalls * webSearchUsdPerCall).toFixed(6));
   return {
     inputTokens,
     outputTokens,
     totalTokens: Number(usage.total_tokens || inputTokens + outputTokens),
-    costUsd: actualChatCost(mode, { inputTokens, outputTokens }),
+    webSearchCalls,
+    toolCostUsd,
+    costUsd: Number((tokenCostUsd + toolCostUsd).toFixed(6)),
   };
 }
 

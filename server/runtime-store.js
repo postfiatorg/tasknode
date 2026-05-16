@@ -899,6 +899,8 @@ export function appendChatTurn({
       inputTokens: usage?.inputTokens || 0,
       outputTokens: usage?.outputTokens || 0,
       totalTokens: usage?.totalTokens || 0,
+      webSearchCalls: usage?.webSearchCalls || 0,
+      toolCostUsd: usage?.toolCostUsd || 0,
       createdAt: now,
     });
   }

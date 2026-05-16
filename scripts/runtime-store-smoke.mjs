@@ -8,7 +8,12 @@ delete process.env.CHAT_MODEL_FRONTIER_INSTANT;
 process.env.OPENAI_MODEL = "generic-openai-smoke-model";
 
 try {
-  const { modelForMode, openAiResponseRequest } = await import("../server/chat-router.js");
+  const {
+    actualChatCost,
+    modelForMode,
+    openAiResponseRequest,
+    shouldUseWebSearch,
+  } = await import("../server/chat-router.js");
   const {
     appendUsageCredit,
     appendChatTurn,
@@ -29,6 +34,14 @@ try {
 
   if (modelForMode("Frontier Thinking") !== "generic-openai-smoke-model") {
     throw new Error("Generic OPENAI_MODEL override should still apply outside Frontier Instant.");
+  }
+
+  if (actualChatCost("Frontier Instant", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 35) {
+    throw new Error("Frontier Instant chat-latest pricing drifted from the configured OpenAI token rates.");
+  }
+
+  if (!shouldUseWebSearch("Can you search what is going on today?") || shouldUseWebSearch("Reply exactly ok.")) {
+    throw new Error("Web search routing should be explicit and should not attach tools to every Frontier request.");
   }
 
   const frontierRequest = openAiResponseRequest({
@@ -52,6 +65,17 @@ try {
     frontierRequest.input?.[0]?.content?.[1]?.type !== "input_file"
   ) {
     throw new Error(`OpenAI Responses request is missing search or attachment support: ${JSON.stringify(frontierRequest)}`);
+  }
+
+  const basicFrontierRequest = openAiResponseRequest({
+    mode: "Frontier Instant",
+    model: "chat-latest",
+    message: "Reply exactly ok.",
+    conversationId: "runtime-smoke-basic-response-contract",
+  });
+
+  if (basicFrontierRequest.tools.length !== 0 || basicFrontierRequest.tool_choice) {
+    throw new Error(`Basic OpenAI Responses requests should not carry web search tools: ${JSON.stringify(basicFrontierRequest)}`);
   }
 
   const first = appendUsageCredit({
@@ -91,16 +115,17 @@ try {
       inputTokens: 120,
       outputTokens: 30,
       totalTokens: 150,
-      costUsd: 0.00045,
+      costUsd: actualChatCost("Frontier Instant", { inputTokens: 120, outputTokens: 30 }),
     },
   });
   const debitedSummary = usageSummary({ accountId: "acct_runtime_smoke" });
+  const expectedDebit = actualChatCost("Frontier Instant", { inputTokens: 120, outputTokens: 30 });
 
   if (
     !persistedChat.ledgerEntry ||
     persistedChat.ledgerEntry.kind !== "chat_debit" ||
-    debitedSummary.currentSpendUsd !== 0.00045 ||
-    debitedSummary.availableCreditUsd !== 4.99955
+    debitedSummary.currentSpendUsd !== expectedDebit ||
+    debitedSummary.availableCreditUsd !== Number((5 - expectedDebit).toFixed(6))
   ) {
     throw new Error(
       `Usage debit did not affect available balance: ${JSON.stringify({ persistedChat, debitedSummary })}`

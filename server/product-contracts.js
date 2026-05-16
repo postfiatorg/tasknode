@@ -607,6 +607,8 @@ export async function chatSend(payload, method) {
           inputTokens: result.usage.inputTokens,
           outputTokens: result.usage.outputTokens,
           totalTokens: result.usage.totalTokens,
+          webSearchCalls: result.usage.webSearchCalls || 0,
+          toolCostUsd: result.usage.toolCostUsd || 0,
           costUsd: result.usage.costUsd,
         },
         ledgerEntry: result.ledgerEntry,

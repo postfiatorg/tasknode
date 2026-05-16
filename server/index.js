@@ -484,6 +484,8 @@ async function routeApi(req, url, res) {
           inputTokens: result.usage.inputTokens,
           outputTokens: result.usage.outputTokens,
           totalTokens: result.usage.totalTokens,
+          webSearchCalls: result.usage.webSearchCalls || 0,
+          toolCostUsd: result.usage.toolCostUsd || 0,
           costUsd: result.usage.costUsd,
           estimated: result.usage.estimated === true,
         },
