@@ -142,13 +142,18 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  overflow: hidden;
   padding: 0 10px;
   font-size: 14px;
 }
 
 .nav-list button span,
 .recents button span {
+  display: block;
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -211,11 +216,12 @@ button {
 }
 
 .recents button {
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 
 .recents button i {
   flex: 0 0 auto;
+  margin-left: auto;
   width: 6px;
   height: 6px;
   border-radius: 999px;

@@ -706,6 +706,7 @@ function App() {
                   className={activeChatId === (item.conversationId || item.id) ? "active" : ""}
                   key={item.id}
                   onClick={() => openRecentChat(item)}
+                  title={item.title}
                   type="button"
                 >
                   <span>{item.title}</span>
