@@ -7,10 +7,20 @@ import {
   executeChat,
   normalizedChatMode,
 } from "./chat-router.js";
-import { appendUsageCredit, usageSummary } from "./runtime-store.js";
+import { appendUsageCredit, createDevSession, usageSummary } from "./runtime-store.js";
 
 function hasAll(keys) {
   return keys.every((key) => Boolean(process.env[key]));
+}
+
+function currentEnvironment() {
+  return process.env.TASKNODE_ENV || process.env.NODE_ENV || "development";
+}
+
+function devAuthEnabled() {
+  if (process.env.TASKNODE_DEV_AUTH_ENABLED === "true") return true;
+  if (process.env.TASKNODE_DEV_AUTH_ENABLED === "false") return false;
+  return !["prod", "production"].includes(currentEnvironment().toLowerCase());
 }
 
 function actionResponse({ status, error, action, message, actionRequired }) {
@@ -288,6 +298,19 @@ export function authProviders() {
         "Email should be account fallback, but no transactional email provider has been selected for Task Node Official yet.",
     }),
   ];
+}
+
+export function devAuthStatus() {
+  const enabled = devAuthEnabled();
+
+  return {
+    enabled,
+    status: enabled ? "ready" : "disabled",
+    startPath: "/api/auth/dev/start",
+    logoutPath: "/api/auth/logout",
+    note:
+      "Development-only account session path for exercising the account-first product boundary before production OAuth is enabled.",
+  };
 }
 
 export function walletActions() {
@@ -671,6 +694,45 @@ export function authCallback(providerId) {
   };
 }
 
+export function authDevStart(payload, method) {
+  const status = devAuthStatus();
+
+  if (method !== "POST") {
+    return actionResponse({
+      status: 405,
+      error: "dev_auth_method_not_allowed",
+      action: "dev_auth_start",
+      message: "Dev auth requires POST.",
+      actionRequired: "Send dev auth requests with POST.",
+    });
+  }
+
+  if (!status.enabled) {
+    return actionResponse({
+      status: 503,
+      error: "dev_auth_disabled",
+      action: "dev_auth_start",
+      message: "Dev auth is disabled in this environment.",
+      actionRequired:
+        "Set TASKNODE_DEV_AUTH_ENABLED=true in a trusted development environment if dev sessions are needed.",
+    });
+  }
+
+  const email = typeof payload?.email === "string" ? payload.email : "";
+  const created = createDevSession({ email });
+
+  return {
+    status: 200,
+    sessionId: created.sessionId,
+    body: {
+      ok: true,
+      action: "dev_auth_start",
+      message: "Dev session started.",
+      session: created.session,
+    },
+  };
+}
+
 export function readiness() {
   const providers = authProviders();
   const ledger = usageSummary();
@@ -679,9 +741,10 @@ export function readiness() {
     generatedAt: new Date().toISOString(),
     auth: {
       configuredProviders: providers.filter((item) => item.configured).map((item) => item.id),
+      devSessionReady: devAuthEnabled(),
       launchReady: false,
       blockers: [
-        "Auth start routes are contract-only and disabled",
+        "External auth start routes are contract-only and disabled",
         "OAuth and bot callback handlers are not implemented",
         "Canonical account merge rules are not implemented",
       ],

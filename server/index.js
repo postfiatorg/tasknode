@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
 import {
   authCallback,
+  authDevStart,
   authProviders,
   authStart,
   chatEstimate,
@@ -20,7 +21,14 @@ import {
   walletActionStart,
   walletActions,
 } from "./product-contracts.js";
-import { getChatMessages, usageLedger } from "./runtime-store.js";
+import {
+  destroySession,
+  getChatMessages,
+  getSession,
+  sessionCookieName,
+  sessionTtlSeconds,
+  usageLedger,
+} from "./runtime-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -43,11 +51,12 @@ const contentTypes = new Map([
   [".woff2", "font/woff2"],
 ]);
 
-function json(res, status, body) {
+function json(res, status, body, headers = {}) {
   const text = JSON.stringify(body);
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
+    ...headers,
   });
   res.end(text);
 }
@@ -100,6 +109,46 @@ function runtimeConfigScript(res) {
   res.end(script);
 }
 
+function cookieValue(req, name) {
+  const cookieHeader = req.headers.cookie || "";
+  const pairs = cookieHeader.split(";").map((item) => item.trim()).filter(Boolean);
+
+  for (const pair of pairs) {
+    const index = pair.indexOf("=");
+    if (index === -1) continue;
+    const key = pair.slice(0, index);
+    if (key !== name) continue;
+    try {
+      return decodeURIComponent(pair.slice(index + 1));
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+}
+
+function currentSession(req) {
+  return getSession(cookieValue(req, sessionCookieName));
+}
+
+function secureCookie(req) {
+  return (
+    req.headers["x-forwarded-proto"] === "https" ||
+    (process.env.TASKNODE_PUBLIC_URL || process.env.VITE_SITE_ORIGIN || "").startsWith("https://")
+  );
+}
+
+function sessionCookie(req, sessionId) {
+  const secure = secureCookie(req) ? "; Secure" : "";
+  return `${sessionCookieName}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${sessionTtlSeconds}${secure}`;
+}
+
+function expiredSessionCookie(req) {
+  const secure = secureCookie(req) ? "; Secure" : "";
+  return `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
+}
+
 function isInsideDist(filePath) {
   const relative = path.relative(distDir, filePath);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -135,7 +184,8 @@ async function serveStatic(url, res) {
 }
 
 async function routeApi(req, url, res) {
-  const state = appState();
+  const session = currentSession(req);
+  const state = appState(session);
   const parts = url.pathname.split("/").filter(Boolean);
 
   if (url.pathname === "/api/app-state") {
@@ -145,6 +195,39 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/session") {
     json(res, 200, state.session);
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/dev/start") {
+    const payload = req.method === "POST" ? await readJson(req, 4096) : {};
+    const result = authDevStart(payload, req.method);
+    const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
+    json(res, result.status, result.body, headers);
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/logout") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "auth_logout_method_not_allowed",
+        message: "Logout requires POST.",
+        actionRequired: "Send logout requests with POST.",
+      });
+      return true;
+    }
+
+    destroySession(cookieValue(req, sessionCookieName));
+    json(
+      res,
+      200,
+      {
+        ok: true,
+        action: "auth_logout",
+        message: "Signed out.",
+      },
+      { "set-cookie": expiredSessionCookie(req) }
+    );
     return true;
   }
 

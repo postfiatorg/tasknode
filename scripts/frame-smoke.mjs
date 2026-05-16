@@ -112,6 +112,17 @@ async function main() {
     await assertSelector('input[placeholder="Email address"]');
     await capture("13-login");
 
+    const devAuthEnabled = await evaluate(`fetch('/api/session')
+      .then((response) => response.json())
+      .then((session) => session.devAuth?.enabled === true)
+      .catch(() => false)`);
+    if (devAuthEnabled) {
+      await setInput('input[placeholder="Email address"]', "frame-smoke@tasknode.local");
+      await clickSelector(".continue-button");
+      await waitForText("Frame Smoke");
+      await capture("14-login-session");
+    }
+
     console.log(`frame smoke ok: ${baseUrl}`);
     if (screenshotDir) console.log(`screenshots: ${screenshotDir}`);
   } finally {
@@ -190,6 +201,18 @@ async function clickSelector(selector) {
 async function assertSelector(selector) {
   const exists = await evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
   if (!exists) throw new Error(`Missing selector: ${selector}`);
+}
+
+async function setInput(selector, value) {
+  await evaluate(`(() => {
+    const input = document.querySelector(${JSON.stringify(selector)});
+    if (!input) throw new Error('input not found: ${selector}');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await sleep(250);
 }
 
 async function capture(name) {

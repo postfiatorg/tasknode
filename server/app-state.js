@@ -2,13 +2,43 @@ import {
   authProviders,
   chatModes,
   contextActions,
+  devAuthStatus,
   readiness,
   usageActions,
   walletActions,
 } from "./product-contracts.js";
 import { getChatMessages, usageSummary } from "./runtime-store.js";
 
-export function appState() {
+function sessionState(session, providers, runtimeReadiness) {
+  const base = {
+    accountLinks: providers,
+    devAuth: devAuthStatus(),
+    walletLink: {
+      status: "not_linked",
+      mode: "seed_based_pftl",
+      canDelinkForTesting: true,
+      seedStorageReady: runtimeReadiness.wallet.seedStorageReady,
+    },
+  };
+
+  if (!session) {
+    return {
+      ...base,
+      status: "signed_out",
+      displayName: null,
+      primaryProvider: null,
+      linkedProviders: [],
+    };
+  }
+
+  return {
+    ...base,
+    ...session,
+    status: "signed_in",
+  };
+}
+
+export function appState(session = null) {
   const providers = authProviders();
   const runtimeReadiness = readiness();
   const modes = chatModes();
@@ -17,18 +47,7 @@ export function appState() {
 
   return {
     generatedAt: new Date().toISOString(),
-    session: {
-      status: "signed_out",
-      displayName: null,
-      primaryProvider: null,
-      accountLinks: providers,
-      walletLink: {
-        status: "not_linked",
-        mode: "seed_based_pftl",
-        canDelinkForTesting: true,
-        seedStorageReady: runtimeReadiness.wallet.seedStorageReady,
-      },
-    },
+    session: sessionState(session, providers, runtimeReadiness),
     chat: {
       recents: [
         "Ship Task Node dev baseline",

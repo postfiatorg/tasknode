@@ -345,6 +345,24 @@ function App() {
   const profileInitials = profileAvatarText(session);
   const profileSubtext = session?.status === "signed_out" ? "Account" : "Pro";
 
+  async function refreshAppState() {
+    try {
+      const state = await fetchAppState();
+      setAppState(state);
+      setLoadError("");
+      return state;
+    } catch (error) {
+      setLoadError(error?.message || "Failed to load app state");
+      return null;
+    }
+  }
+
+  async function logOut() {
+    await requestJson("/api/auth/logout", { method: "POST" });
+    await refreshAppState();
+    setProfileMenuOpen(false);
+  }
+
   return (
     <main className={`app-shell ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
       <aside className="sidebar" aria-label="Primary">
@@ -501,7 +519,7 @@ function App() {
               />
               <ToolMenuRow icon={LifeBuoy} label="Help" trailing={<ChevronRight size={14} />} />
               <div className="menu-divider" />
-              <ToolMenuRow icon={LogOut} label="Log out" />
+              <ToolMenuRow icon={LogOut} label="Log out" onClick={logOut} />
             </div>
           )}
           </div>
@@ -555,7 +573,11 @@ function App() {
       </section>
 
       {loginOpen && (
-        <LoginDialog session={session} onClose={() => setLoginOpen(false)} />
+        <LoginDialog
+          onSessionChange={refreshAppState}
+          session={session}
+          onClose={() => setLoginOpen(false)}
+        />
       )}
       {settingsOpen && (
         <SettingsModal
@@ -1743,10 +1765,12 @@ function themeLabel(theme) {
   return theme[0].toUpperCase() + theme.slice(1);
 }
 
-function LoginDialog({ session, onClose }) {
+function LoginDialog({ session, onClose, onSessionChange }) {
   const providers = (session?.accountLinks || []).filter((provider) =>
     ["telegram", "discord", "x"].includes(provider.id)
   );
+  const devAuth = session?.devAuth;
+  const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [pendingProvider, setPendingProvider] = useState("");
 
@@ -1763,6 +1787,45 @@ function LoginDialog({ session, onClose }) {
       );
     } catch (error) {
       setMessage(error?.message || `${provider.label} login is unavailable.`);
+    } finally {
+      setPendingProvider("");
+    }
+  }
+
+  async function continueEmail() {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setMessage("Enter an email address.");
+      return;
+    }
+
+    if (!devAuth?.enabled) {
+      setMessage("Email login needs a transactional email provider and magic-link callback.");
+      return;
+    }
+
+    setPendingProvider("email");
+    setMessage("");
+
+    try {
+      const result = await requestJson(devAuth.startPath, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail }),
+      });
+
+      if (result.ok) {
+        await onSessionChange?.();
+        onClose();
+      } else {
+        setMessage(
+          result.body?.message ||
+            result.body?.actionRequired ||
+            `Email login returned HTTP ${result.status}.`
+        );
+      }
+    } catch (error) {
+      setMessage(error?.message || "Email login is unavailable.");
     } finally {
       setPendingProvider("");
     }
@@ -1790,13 +1853,19 @@ function LoginDialog({ session, onClose }) {
         ))}
         {message && <div className="dialog-message">{message}</div>}
         <div className="divider">OR</div>
-        <input type="email" placeholder="Email address" aria-label="Email address" />
+        <input
+          type="email"
+          placeholder="Email address"
+          aria-label="Email address"
+          onChange={(event) => setEmail(event.target.value)}
+          value={email}
+        />
         <button
           className="continue-button"
           type="button"
-          onClick={() => setMessage("Email login needs a transactional email provider and magic-link callback.")}
+          onClick={continueEmail}
         >
-          Continue
+          {pendingProvider === "email" ? "Checking" : "Continue"}
         </button>
       </section>
     </div>

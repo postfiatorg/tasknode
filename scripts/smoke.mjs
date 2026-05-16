@@ -2,9 +2,14 @@ const baseUrl = process.env.SMOKE_BASE_URL || "http://127.0.0.1:8080";
 let readyChatMode = process.env.SMOKE_CHAT_MODE || "Private Instant";
 const smokeConversationId = process.env.SMOKE_CONVERSATION_ID || `smoke-${Date.now()}`;
 
-async function check(path, predicate) {
-  const response = await fetch(`${baseUrl}${path}`);
+async function rawRequest(path, options = {}) {
+  const response = await fetch(`${baseUrl}${path}`, options);
   const text = await response.text();
+  return { response, text };
+}
+
+async function check(path, predicate) {
+  const { response, text } = await rawRequest(path);
   if (!predicate(response, text)) {
     throw new Error(`${path} failed: HTTP ${response.status}`);
   }
@@ -12,8 +17,7 @@ async function check(path, predicate) {
 }
 
 async function checkRequest(path, options, predicate) {
-  const response = await fetch(`${baseUrl}${path}`, options);
-  const text = await response.text();
+  const { response, text } = await rawRequest(path, options);
   if (!predicate(response, text)) {
     throw new Error(`${path} failed: HTTP ${response.status}`);
   }
@@ -50,6 +54,62 @@ await check("/api/app-state", (response, text) => {
     Array.isArray(body.context?.sources)
   );
 });
+
+await check("/api/session", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return (
+    body.status === "signed_out" &&
+    Array.isArray(body.accountLinks) &&
+    typeof body.devAuth?.enabled === "boolean"
+  );
+});
+
+const devAuth = await rawRequest("/api/auth/dev/start", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ email: "dev-smoke@tasknode.local" }),
+});
+const devAuthBody = JSON.parse(devAuth.text);
+
+if (devAuth.response.status === 200) {
+  const cookie = devAuth.response.headers.get("set-cookie")?.split(";")[0] || "";
+  if (!cookie || devAuthBody.session?.status !== "signed_in") {
+    throw new Error("/api/auth/dev/start did not issue a signed-in session");
+  }
+  console.log("/api/auth/dev/start ok");
+
+  await checkRequest(
+    "/api/session",
+    { headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.ok && body.status === "signed_in" && body.primaryProvider === "dev";
+    }
+  );
+
+  await checkRequest(
+    "/api/app-state",
+    { headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.ok && body.session?.status === "signed_in";
+    }
+  );
+
+  await checkRequest(
+    "/api/auth/logout",
+    { method: "POST", headers: { cookie } },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.ok && body.ok === true;
+    }
+  );
+} else if (devAuth.response.status === 503 && devAuthBody.error === "dev_auth_disabled") {
+  console.log("/api/auth/dev/start ok");
+} else {
+  throw new Error(`/api/auth/dev/start failed: HTTP ${devAuth.response.status}`);
+}
 
 await check("/api/tasks", (response, text) => {
   if (!response.ok) return false;

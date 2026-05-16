@@ -1,7 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 const defaultStorePath = path.join("/tmp", "tasknodeofficial-runtime-store.json");
+export const sessionCookieName = "tasknode_session";
+export const sessionTtlSeconds = 60 * 60 * 24 * 7;
 const storePath = process.env.TASKNODE_STORE_PATH || defaultStorePath;
 const defaultState = {
   version: 1,
@@ -9,6 +12,7 @@ const defaultState = {
     dev: [],
   },
   ledgerEntries: [],
+  sessions: {},
 };
 
 let state = loadState();
@@ -23,6 +27,10 @@ function loadState() {
       ...parsed,
       conversations: parsed.conversations || structuredClone(defaultState.conversations),
       ledgerEntries: Array.isArray(parsed.ledgerEntries) ? parsed.ledgerEntries : [],
+      sessions:
+        parsed.sessions && typeof parsed.sessions === "object" && !Array.isArray(parsed.sessions)
+          ? parsed.sessions
+          : {},
     };
   } catch {
     return structuredClone(defaultState);
@@ -41,6 +49,100 @@ function conversationMessages(conversationId) {
 
 export function getChatMessages(conversationId = "dev") {
   return conversationMessages(conversationId).slice(-30);
+}
+
+function sessionPayload(session) {
+  if (!session) return null;
+
+  return {
+    id: session.id,
+    accountId: session.accountId,
+    status: "signed_in",
+    displayName: session.displayName,
+    primaryProvider: session.primaryProvider,
+    linkedProviders: session.linkedProviders || [],
+    createdAt: session.createdAt,
+    expiresAt: session.expiresAt,
+  };
+}
+
+function pruneExpiredSessions() {
+  const now = Date.now();
+  let changed = false;
+
+  for (const [sessionId, session] of Object.entries(state.sessions)) {
+    if (!session?.expiresAt || Date.parse(session.expiresAt) <= now) {
+      delete state.sessions[sessionId];
+      changed = true;
+    }
+  }
+
+  if (changed) saveState();
+}
+
+function displayNameFromEmail(email) {
+  const localPart = email.split("@")[0] || "dev";
+  const words = localPart
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) return "Task Node Dev";
+  return words
+    .slice(0, 2)
+    .map((word) => `${word[0].toUpperCase()}${word.slice(1)}`)
+    .join(" ");
+}
+
+export function getSession(sessionId) {
+  if (!sessionId) return null;
+
+  pruneExpiredSessions();
+  return sessionPayload(state.sessions[sessionId] || null);
+}
+
+export function createDevSession({ email = "dev@tasknode.local" } = {}) {
+  pruneExpiredSessions();
+
+  const normalizedEmail =
+    typeof email === "string" && email.trim()
+      ? email.trim().toLowerCase().slice(0, 160)
+      : "dev@tasknode.local";
+  const now = new Date();
+  const sessionId = randomUUID();
+  const session = {
+    id: sessionId,
+    accountId: `acct_dev_${normalizedEmail.replace(/[^a-z0-9]+/g, "_").slice(0, 48)}`,
+    displayName: displayNameFromEmail(normalizedEmail),
+    primaryProvider: "dev",
+    linkedProviders: [
+      {
+        id: "dev",
+        label: "Dev session",
+        kind: "development",
+        status: "linked",
+      },
+    ],
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + sessionTtlSeconds * 1000).toISOString(),
+  };
+
+  state.sessions[sessionId] = session;
+  saveState();
+
+  return {
+    sessionId,
+    session: sessionPayload(session),
+  };
+}
+
+export function destroySession(sessionId) {
+  if (!sessionId || !state.sessions[sessionId]) return false;
+
+  delete state.sessions[sessionId];
+  saveState();
+  return true;
 }
 
 export function appendChatTurn({
