@@ -51,6 +51,9 @@ minimal deployable dev app:
   the current session-scoped conversation. Chat turns and usage debits are
   stored in an append-only local runtime store until Postgres account/session
   tables land.
+- The chat shell keeps usage accounting visible without crowding the thread:
+  PFT and USD chat credit sit together in the sidebar balance area, while
+  per-response billing feedback is a compact composer note.
 - `/api/usage/ledger` exposes the current append-only usage ledger so chat
   spend and account credits can be audited before durable Postgres ledger
   tables land. The Billing settings surface reads this ledger directly.

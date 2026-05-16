@@ -363,6 +363,7 @@ function App() {
 
   const recents = appState?.chat?.recents || [];
   const pftBalance = formatDrops(appState?.wallet?.pftBalanceDrops || 0);
+  const chatCredit = formatUsd(appState?.usage?.availableCreditUsd || 0);
   const session = appState?.session;
   const signedIn = isSignedInSession(session);
   const profileName = profileDisplayName(session);
@@ -521,10 +522,17 @@ function App() {
         <div className="sidebar-footer">
           {sidebarOpen && (
             <button className="balance-pill" onClick={() => navigateToView("wallet")} type="button">
-              <span className="balance-left">
-                <Wallet size={14} strokeWidth={1.75} />
-                <strong>{pftBalance}</strong>
-                <span>PFT</span>
+              <span className="balance-stack">
+                <span className="balance-row">
+                  <Wallet size={14} strokeWidth={1.75} />
+                  <strong>{pftBalance}</strong>
+                  <span>PFT</span>
+                </span>
+                <span className="balance-row">
+                  <CreditCard size={14} strokeWidth={1.75} />
+                  <strong>{chatCredit}</strong>
+                  <span>chat</span>
+                </span>
               </span>
               <ChevronRight size={14} strokeWidth={1.75} />
             </button>
@@ -637,7 +645,12 @@ function App() {
         {!appState && !loadError && <StatusBanner>Loading product state</StatusBanner>}
 
         {view === "chat" && (
-          <ChatSurface chat={appState?.chat} onNavigate={navigateToView} usage={appState?.usage} />
+          <ChatSurface
+            chat={appState?.chat}
+            onChatSettled={refreshAppState}
+            onNavigate={navigateToView}
+            usage={appState?.usage}
+          />
         )}
         {view === "tasks" && <TasksView onSelectTask={setSelectedTask} />}
         {view === "wallet" && (
@@ -683,7 +696,7 @@ function titleForView(view) {
   return "What are we executing?";
 }
 
-function ChatSurface({ chat, onNavigate, usage }) {
+function ChatSurface({ chat, onChatSettled, onNavigate, usage }) {
   const modes = chat?.modes || [];
   const messages = chat?.seedMessages || [];
   const defaultMode = chat?.defaultMode || "Private Instant";
@@ -693,8 +706,8 @@ function ChatSurface({ chat, onNavigate, usage }) {
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
-  const [estimate, setEstimate] = useState(null);
   const [actualUsage, setActualUsage] = useState(null);
+  const [statusTone, setStatusTone] = useState("muted");
   const [sending, setSending] = useState(false);
   const plusRef = useRef(null);
   const modelRef = useRef(null);
@@ -728,8 +741,8 @@ function ChatSurface({ chat, onNavigate, usage }) {
 
     setSending(true);
     setSendMessage("");
-    setEstimate(null);
     setActualUsage(null);
+    setStatusTone("muted");
 
     try {
       const result = await requestJson(usage?.chatSendPath || "/api/chat/send", {
@@ -737,7 +750,6 @@ function ChatSurface({ chat, onNavigate, usage }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message, mode: selectedMode }),
       });
-      setEstimate(result.body?.estimate || null);
       setActualUsage(result.body?.usage || null);
 
       if (result.ok && result.body?.assistant) {
@@ -748,114 +760,133 @@ function ChatSurface({ chat, onNavigate, usage }) {
         ]);
         setInput("");
         setSendMessage(result.body.message || "Chat response generated.");
+        setStatusTone("muted");
+        await onChatSettled?.();
       } else {
         setSendMessage(
           result.body?.message ||
             result.body?.actionRequired ||
             `Chat returned HTTP ${result.status}.`
         );
+        setStatusTone("error");
       }
     } catch (error) {
       setSendMessage(error?.message || "Chat execution is unavailable.");
+      setStatusTone("error");
     } finally {
       setSending(false);
     }
   }
 
+  const composerStatus = chatComposerStatus({
+    actualUsage,
+    message: sendMessage,
+    sending,
+    tone: statusTone,
+    turns,
+  });
+
   const composer = (
-    <form className="composer" onSubmit={submitMessage}>
-      <div className="plus-picker" ref={plusRef}>
-        <button
-          className="composer-icon"
-          onClick={() => {
-            setModelMenuOpen(false);
-            setPlusMenuOpen((open) => !open);
-          }}
-          type="button"
-          aria-label="Add"
-        >
-          <Plus size={20} strokeWidth={1.75} />
+    <div className="composer-shell">
+      <form className="composer" onSubmit={submitMessage}>
+        <div className="plus-picker" ref={plusRef}>
+          <button
+            className="composer-icon"
+            onClick={() => {
+              setModelMenuOpen(false);
+              setPlusMenuOpen((open) => !open);
+            }}
+            type="button"
+            aria-label="Add"
+          >
+            <Plus size={20} strokeWidth={1.75} />
+          </button>
+          {plusMenuOpen && (
+            <div className="plus-menu">
+              <ToolMenuRow icon={Paperclip} label="Upload photos & files" />
+              <div className="menu-divider" />
+              <ToolMenuRow icon={Flame} label="Motivation" />
+              <ToolMenuRow icon={Lightbulb} label="Brainstorming" />
+              <ToolMenuRow icon={Wand2} label="Context Refine" />
+              <ToolMenuRow icon={PenLine} label="Context Rewrite" />
+              <ToolMenuRow
+                icon={ListPlus}
+                label="Request a task"
+                onClick={() => {
+                  setPlusMenuOpen(false);
+                  onNavigate?.("tasks");
+                }}
+              />
+              <ToolMenuRow
+                icon={MoreHorizontal}
+                label="More"
+                trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+              />
+            </div>
+          )}
+        </div>
+        <input
+          aria-label="Ask anything"
+          onChange={(event) => setInput(event.target.value)}
+          placeholder="Ask anything"
+          value={input}
+        />
+        <div className="model-picker" ref={modelRef}>
+          <button
+            className="model-button"
+            onClick={() => {
+              setPlusMenuOpen(false);
+              setModelMenuOpen((open) => !open);
+            }}
+            type="button"
+          >
+            {formatModeLabel(selectedMode)}
+            <ChevronRight size={14} strokeWidth={1.75} />
+          </button>
+          {modelMenuOpen && (
+            <div className="model-menu">
+              <ModelGroup label="Private" />
+              {modes
+                .filter((mode) => mode.label.startsWith("Private"))
+                .map((mode) => (
+                  <ModelOption
+                    key={mode.label}
+                    mode={mode}
+                    selected={mode.label === selectedMode}
+                    onClick={() => {
+                      setSelectedMode(mode.label);
+                      setModelMenuOpen(false);
+                    }}
+                  />
+                ))}
+              <div className="menu-divider" />
+              <ModelGroup label="Frontier" />
+              {modes
+                .filter((mode) => mode.label.startsWith("Frontier"))
+                .map((mode) => (
+                  <ModelOption
+                    key={mode.label}
+                    mode={mode}
+                    selected={mode.label === selectedMode}
+                    onClick={() => {
+                      setSelectedMode(mode.label);
+                      setModelMenuOpen(false);
+                    }}
+                  />
+                ))}
+            </div>
+          )}
+        </div>
+        <button className="send-button" disabled={!input.trim() || sending} type="submit" aria-label="Send">
+          <ArrowUp size={18} strokeWidth={2.25} />
         </button>
-        {plusMenuOpen && (
-          <div className="plus-menu">
-            <ToolMenuRow icon={Paperclip} label="Upload photos & files" />
-            <div className="menu-divider" />
-            <ToolMenuRow icon={Flame} label="Motivation" />
-            <ToolMenuRow icon={Lightbulb} label="Brainstorming" />
-            <ToolMenuRow icon={Wand2} label="Context Refine" />
-            <ToolMenuRow icon={PenLine} label="Context Rewrite" />
-            <ToolMenuRow
-              icon={ListPlus}
-              label="Request a task"
-              onClick={() => {
-                setPlusMenuOpen(false);
-                onNavigate?.("tasks");
-              }}
-            />
-            <ToolMenuRow
-              icon={MoreHorizontal}
-              label="More"
-              trailing={<ChevronRight size={14} strokeWidth={1.75} />}
-            />
-          </div>
-        )}
-      </div>
-      <input
-        aria-label="Ask anything"
-        onChange={(event) => setInput(event.target.value)}
-        placeholder="Ask anything"
-        value={input}
-      />
-      <div className="model-picker" ref={modelRef}>
-        <button
-          className="model-button"
-          onClick={() => {
-            setPlusMenuOpen(false);
-            setModelMenuOpen((open) => !open);
-          }}
-          type="button"
-        >
-          {formatModeLabel(selectedMode)}
-          <ChevronRight size={14} strokeWidth={1.75} />
-        </button>
-        {modelMenuOpen && (
-          <div className="model-menu">
-            <ModelGroup label="Private" />
-            {modes
-              .filter((mode) => mode.label.startsWith("Private"))
-              .map((mode) => (
-                <ModelOption
-                  key={mode.label}
-                  mode={mode}
-                  selected={mode.label === selectedMode}
-                  onClick={() => {
-                    setSelectedMode(mode.label);
-                    setModelMenuOpen(false);
-                  }}
-                />
-              ))}
-            <div className="menu-divider" />
-            <ModelGroup label="Frontier" />
-            {modes
-              .filter((mode) => mode.label.startsWith("Frontier"))
-              .map((mode) => (
-                <ModelOption
-                  key={mode.label}
-                  mode={mode}
-                  selected={mode.label === selectedMode}
-                  onClick={() => {
-                    setSelectedMode(mode.label);
-                    setModelMenuOpen(false);
-                  }}
-                />
-              ))}
-          </div>
-        )}
-      </div>
-      <button className="send-button" disabled={!input.trim() || sending} type="submit" aria-label="Send">
-        <ArrowUp size={18} strokeWidth={2.25} />
-      </button>
-    </form>
+      </form>
+      {composerStatus && (
+        <div className={`chat-composer-note ${composerStatus.tone}`}>
+          {composerStatus.text}
+        </div>
+      )}
+    </div>
   );
 
   return (
@@ -884,23 +915,23 @@ function ChatSurface({ chat, onNavigate, usage }) {
         </>
       )}
 
-      {(sendMessage || estimate) && (
-        <div className="chat-contract-message">
-          {estimate && (
-            <span>
-              Estimated {formatUsd(estimate.estimatedUsd)} before execution.
-            </span>
-          )}
-          {actualUsage && (
-            <span>
-              Billed {formatUsageUsd(actualUsage.costUsd)} from {actualUsage.totalTokens} tokens.
-            </span>
-          )}
-          {sendMessage && <span>{sendMessage}</span>}
-        </div>
-      )}
     </div>
   );
+}
+
+function chatComposerStatus({ actualUsage, message, sending, tone, turns }) {
+  if (sending) return { tone: "muted", text: "Thinking..." };
+  if (actualUsage) {
+    return {
+      tone: "muted",
+      text: `Billed ${formatUsageUsd(actualUsage.costUsd)} · ${actualUsage.totalTokens} tokens`,
+    };
+  }
+  if (message && tone === "error") return { tone: "error", text: message };
+  if (turns.length > 0) {
+    return { tone: "muted", text: "Task Node can make mistakes. Check important info." };
+  }
+  return null;
 }
 
 function SidebarButton({ active, badge, icon: Icon, label, onClick, sidebarOpen }) {

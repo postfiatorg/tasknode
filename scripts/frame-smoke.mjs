@@ -47,6 +47,7 @@ async function main() {
 
     await assertText(["Task Node", "New chat", "Tasks", "Wallet", "Context"]);
     await assertSelector('input[aria-label="Ask anything"]');
+    await assertSidebarBalances();
     await capture("01-chat");
 
     await clickSelector('button[aria-label="Add"]');
@@ -248,6 +249,13 @@ async function assertLocationHash(expectedHash) {
   const actualHash = await evaluate("window.location.hash");
   if (actualHash !== expectedHash) {
     throw new Error(`Expected location hash ${expectedHash || "(empty)"}, got ${actualHash || "(empty)"}.`);
+  }
+}
+
+async function assertSidebarBalances() {
+  const rows = await evaluate(`Array.from(document.querySelectorAll('.balance-row')).map((row) => row.textContent.trim())`);
+  if (!Array.isArray(rows) || !rows.some((row) => row.includes("PFT")) || !rows.some((row) => row.includes("$") && row.toLowerCase().includes("chat"))) {
+    throw new Error(`Missing PFT/chat balance rows: ${JSON.stringify(rows)}`);
   }
 }
 
