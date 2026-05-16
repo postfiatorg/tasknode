@@ -264,6 +264,41 @@ Each event payload should include these common fields:
 }
 ```
 
+Every encrypted payload should also include a clear recipient manifest outside
+the plaintext body or in the encrypted envelope metadata:
+
+```json
+{
+  "encryption": {
+    "suite": "x25519_xchacha20poly1305",
+    "recipients": [
+      {
+        "role": "user",
+        "wallet": "r...",
+        "kid": "user x25519 key id"
+      },
+      {
+        "role": "task_node_service",
+        "wallet": "r... or service id",
+        "kid": "task node x25519 key id"
+      },
+      {
+        "role": "reward_or_verification_service",
+        "wallet": "allocation wallet or service id",
+        "kid": "service x25519 key id"
+      }
+    ]
+  }
+}
+```
+
+Do not encrypt directly "to a seed." Wallet seeds authorize signing. Payloads
+are encrypted to recipient public keys, normally X25519 keys derived, registered,
+or associated with the relevant wallet/service identity. The reward/allocation
+wallet may have a companion encryption key if the reward service needs direct
+decrypt access, but the payout wallet does not need plaintext simply to send a
+reward transaction.
+
 Recommended payload schemas:
 
 ### `pf.task.request.v1`
@@ -281,6 +316,17 @@ User asks for a task against a context block. Optional for system-issued tasks.
     "context_id": "ctx_...",
     "context_cid": "baf...",
     "context_digest": "sha256:..."
+  },
+  "chat_packet": {
+    "chat_packet_id": "chat_...",
+    "chat_cid": "baf... or null",
+    "chat_digest": "sha256:...",
+    "summary": "short task-generation conversation summary",
+    "message_count": 12,
+    "window": {
+      "started_at": "ISO-8601",
+      "ended_at": "ISO-8601"
+    }
   },
   "request_text": "user-visible task request",
   "requested_task_kind": "personal|network|alpha|system",
@@ -331,9 +377,21 @@ System issues a proposed task.
       "cid": "baf...",
       "digest": "sha256:..."
     }
-  ]
+  ],
+  "generation": {
+    "model": "chat-latest",
+    "prompt_version": "taskgen-minimal-v1",
+    "prompt_digest": "sha256:...",
+    "input_packet_digest": "sha256:...",
+    "latency_ms": 1200
+  }
 }
 ```
+
+The task offer must include enough generation metadata to audit which prompt,
+model, and input packet produced the task without requiring the UI database.
+The full chat packet can remain encrypted in IPFS; the offer can carry only
+hashes, summaries, and CIDs needed for replay.
 
 ### `pf.task.update.v1`
 
@@ -565,6 +623,208 @@ The local SQLite cache stores sync checkpoints, pointer events, decrypted
 metadata, task projections, context projections, and queued local submissions.
 Deleting it should only cost replay time.
 
+## Reference Simulation Harness
+
+Do not block protocol work on the app surface. The first real implementation
+should be a reference harness that simulates user behavior outside the web app.
+This gives us a canonical example other builders can inspect and copy.
+
+Recommended repo layout:
+
+```text
+reference_clients/
+  python/
+    README.md
+    pyproject.toml
+    tasknode_pftl/
+      __init__.py
+      config.py
+      wallets.py
+      encryption.py
+      ipfs.py
+      pointers.py
+      taskgen.py
+      reducer.py
+      sync.py
+      tx_queue.py
+      scenarios/
+        issue_task.py
+        accept_task.py
+        reject_task.py
+        submit_initial.py
+        request_verification.py
+        submit_verification.py
+        pay_reward.py
+        full_lifecycle.py
+    tests/
+      test_reducer.py
+      test_encryption_recipients.py
+      test_task_id.py
+      test_tx_queue.py
+```
+
+The harness should create or load wallets, fund test wallets, write encrypted
+payloads to IPFS, submit `pf.ptr/v4` transactions, sync the resulting wallet
+history, and rebuild task state from the reducer. It should not require the
+Task Node Official React app.
+
+The canonical simulation scenario:
+
+1. Create or load a user wallet.
+2. Create or load a task authority wallet.
+3. Create or load a per-user allocation/reward wallet.
+4. Build a context packet and chat packet.
+5. Generate a task offer using the minimal task-generation prompt.
+6. Encrypt the task content for the user, Task Node service, and optional
+   reward/verification service recipient.
+7. Upload the encrypted offer to IPFS.
+8. Submit the `TASK` pointer from the task authority wallet.
+9. Accept or reject from the user wallet.
+10. Submit initial evidence from the user wallet.
+11. Issue the follow-on verification request from the task authority wallet.
+12. Submit the verification evidence packet from the user wallet.
+13. Score and pay the reward from the allocation wallet.
+14. Replay wallet history and verify the reducer reaches `rewarded`.
+
+This harness is also where we should run latency measurements before putting
+flows into the UX.
+
+## Task Generation Contract
+
+PFTasks has a large prompt surface. The pointer-native engine should scope task
+generation down to a small, testable contract.
+
+Recommended task-generation input packet:
+
+```json
+{
+  "schema": "pf.taskgen.input.v1",
+  "request": {
+    "request_text": "user request or null for system-issued task",
+    "requested_task_kind": "personal|network|alpha|system"
+  },
+  "context": {
+    "context_cid": "baf...",
+    "context_digest": "sha256:...",
+    "summary": "bounded context summary"
+  },
+  "chat": {
+    "chat_packet_cid": "baf... or null",
+    "chat_digest": "sha256:...",
+    "recent_messages": [
+      {
+        "role": "user|assistant|system",
+        "content": "bounded content",
+        "created_at": "ISO-8601"
+      }
+    ],
+    "summary": "bounded conversation summary"
+  },
+  "wallet": {
+    "subject_wallet": "r...",
+    "allocation_wallet": "r..."
+  },
+  "policy": {
+    "task_policy_version": "task-policy-v1",
+    "reward_policy_version": "reward-policy-v1"
+  }
+}
+```
+
+Recommended task-generation output packet:
+
+```json
+{
+  "schema": "pf.taskgen.output.v1",
+  "title": "short title",
+  "description": "task body",
+  "task_kind": "personal|network|alpha|system",
+  "submission_requirement": {
+    "type": "text|url|github_commit|screenshot|file|mixed",
+    "criteria": "specific acceptance criteria"
+  },
+  "verification_policy": {
+    "followup_required": true,
+    "mode": "standard_followup"
+  },
+  "reward_offer": {
+    "amount_estimate_pft": "3200.00"
+  },
+  "deadline": {
+    "accept_by": "ISO-8601",
+    "deadline_at": "ISO-8601 or null"
+  }
+}
+```
+
+Model policy:
+
+- Default low-latency task generation should use `chat-latest`.
+- Benchmark the same input packets against `gpt-5.5` high reasoning for quality
+  and latency deltas.
+- Store model name, reasoning mode, prompt version, prompt digest, input packet
+  digest, output digest, latency, and parse result in the encrypted task offer
+  metadata.
+- Keep the prompt minimal. The generation prompt should transform a structured
+  input packet into a structured output packet, not carry the whole PFTasks
+  historical prompt surface forward.
+- If `chat-latest` produces an invalid or low-confidence packet, retry once
+  with a stricter repair prompt or route to `gpt-5.5` high reasoning.
+
+The output parser should be deterministic and schema-first. Do not let task
+generation silently fall back to free text.
+
+## PFTL Transaction Queueing
+
+PFTL transactions are synchronous from the perspective of a signing wallet. A
+single wallet cannot safely blast many independent transactions at once without
+sequence contention, unclear failure handling, and poor replay semantics.
+
+The protocol implementation should assume one serialized transaction queue per
+signing wallet:
+
+```text
+wallet_tx_queue(authority_wallet)
+  TASK offer pointers
+  TASK_UPDATE verification request pointers
+
+wallet_tx_queue(user_wallet)
+  accept/reject pointers
+  submission pointers
+  context grant pointers
+
+wallet_tx_queue(allocation_wallet)
+  reward payment pointers
+```
+
+Rules:
+
+- Only one in-flight transaction per signing wallet unless the client has a
+  proven sequence reservation strategy.
+- Every queued transaction has an idempotency key derived from event type,
+  task id, payload CID, and signing wallet.
+- The queue records prepared, submitted, confirmed, failed-retryable, and
+  failed-final states.
+- A confirmed transaction is the canonical event source. A prepared or
+  submitted transaction is only optimistic local state.
+- Different wallets may proceed concurrently. This is the practical reason to
+  use per-user allocation wallets for reward payment and potentially an
+  authority-wallet pool for high-volume task issuance.
+
+If one central task authority wallet becomes a bottleneck, split authority into
+policy-approved authority shards:
+
+```text
+task_authority_root
+  POLICY grants
+    task_authority_shard_1
+    task_authority_shard_2
+    task_authority_shard_3
+```
+
+The reducer accepts task offers from approved authority shards and rejects
+offers from unknown wallets.
+
 ## Cache And Index Strategy
 
 We should absolutely not hydrate every task from archive RPC on every page
@@ -663,6 +923,8 @@ Mitigation:
 - Mark canonical only after tx confirmation.
 - Queue signing/submission locally for Codex.
 - Use per-user allocation wallets to parallelize reward payments.
+- Serialize transactions per signing wallet and scale concurrency by adding
+  wallets, not by submitting many simultaneous transactions from one wallet.
 
 ### RPC history scans
 
@@ -701,6 +963,10 @@ Mitigation:
 - Let task authority write `TASK_OFFERED` after generation completes.
 - Separate `VERIFICATION_REQUESTED` from initial submission.
 - Use queues and honest UI states.
+- Use `chat-latest` for low-latency task generation by default.
+- Benchmark selected packets with `gpt-5.5` high reasoning and store the
+  quality/latency comparison.
+- Keep generation prompts small, schema-bound, and packet-driven.
 
 ### Reward wallet liquidity
 
@@ -808,6 +1074,15 @@ This requires discipline:
 
 Migration should be staged.
 
+### Phase 0: Reference simulation
+
+- Build the Python reference harness outside the app surface.
+- Simulate the full lifecycle with created wallets.
+- Validate encryption recipients, pointer writing, transaction serialization,
+  reducer playback, and reward payout.
+- Use this harness as the protocol reference for other clients before coupling
+  flows to Task Node Official UX.
+
 ### Phase 1: Read-model bridge
 
 In Task Node Official:
@@ -873,15 +1148,16 @@ class task-history surface.
 
 Recommended next implementation:
 
-1. Add `server/task-history.js`.
-2. Define the normalized event envelope and reducer.
-3. Add `/api/task-history` returning projected wallet-scoped task state.
-4. Add indexed PFTasks import for pending/in-flight rows.
-5. Add PFTL pointer import for `TASK`, `TASK_UPDATE`, `TASK_SUBMISSION`, and
+1. Add the Python reference harness under `reference_clients/python/`.
+2. Add `server/task-history.js`.
+3. Define the normalized event envelope and reducer.
+4. Add `/api/task-history` returning projected wallet-scoped task state.
+5. Add indexed PFTasks import for pending/in-flight rows.
+6. Add PFTL pointer import for `TASK`, `TASK_UPDATE`, `TASK_SUBMISSION`, and
    `REWARD`.
-6. Replace mock task data with the projection.
-7. Keep task UI unaware of source: PFTasks bridge, RPC replay, or cache.
-8. Add tests for reducer transitions, duplicate events, missing CIDs, reward
+7. Replace mock task data with the projection.
+8. Keep task UI unaware of source: PFTasks bridge, RPC replay, or cache.
+9. Add tests for reducer transitions, duplicate events, missing CIDs, reward
    reconstruction, expired offers, and mixed legacy/native history.
 
 ## Acceptance Criteria
@@ -891,9 +1167,16 @@ The architecture is working when:
 - A wallet can replay a rewarded historical task from PFTL pointers and IPFS.
 - A wallet can see pending/in-flight legacy tasks from the indexed bridge.
 - New task offers are written as pointer events before becoming canonical.
+- The Python reference harness can simulate request, offer, accept/reject,
+  submission, verification request, verification response, and reward without
+  using the app UI.
 - A Codex local runtime can sync tasks without the web app.
 - The web app can delete and rebuild task projections from pointer events.
 - The app does not perform full archive hydration on every page load.
+- Transactions are serialized per signing wallet, with idempotency and retry
+  state recorded.
+- Task content is encrypted to the user and Task Node service, with optional
+  reward/verification service recipient keys where needed.
 - Reward payment uses allocation wallets or an explicitly comparable wallet
   pool strategy.
 - A user-specific export can be produced without exposing unrelated users'
@@ -911,6 +1194,10 @@ The architecture is working when:
 5. What is the archive reconciliation cadence for high-history wallets?
 6. Do we need a protocol-level `TASK_VERIFICATION_REQUEST` content kind later,
    or is `TASK_UPDATE` sufficient?
+7. Does one task authority wallet handle enough throughput, or do we need
+   authority shards from the beginning?
+8. Which task categories require the allocation/reward service to decrypt task
+   content, versus only the Task Node verification service?
 
 ## Recommendation
 
@@ -926,4 +1213,3 @@ PFTL pointer events + encrypted IPFS payloads = canonical state
 database/cache/index = fast projection
 web app / Codex / CLI = clients
 ```
-
