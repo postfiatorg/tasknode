@@ -44,6 +44,23 @@ http://localhost:8080/health
 - Dev auth is enabled and cookies are plain localhost cookies, not Secure
   Fly/HTTPS cookies.
 
+## Local GitHub OAuth
+
+GitHub login needs local OAuth credentials in the API container:
+
+```bash
+GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=... npm run docker:dev -- -d
+```
+
+The local GitHub OAuth callback URL is:
+
+```text
+http://localhost:5174/api/auth/callback/github
+```
+
+Use a separate GitHub OAuth app for local development unless the existing app is
+configured for that exact callback URL.
+
 ## Logs And Shells
 
 ```bash

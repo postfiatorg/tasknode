@@ -33,6 +33,24 @@ Behavior:
 - dev auth is enabled.
 - cookies are localhost cookies, not Fly HTTPS cookies.
 
+Local GitHub OAuth:
+
+- The API container reads `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` from
+  the shell or repo-root `.env` used by Docker Compose variable substitution.
+- The OAuth callback URL for local Docker dev is:
+
+```text
+http://localhost:5174/api/auth/callback/github
+```
+
+- Use a separate GitHub OAuth app for local development unless the existing app
+  is already registered for that exact localhost callback. The Fly app callback
+  is different:
+
+```text
+https://tasknodeofficial-dev.fly.dev/api/auth/callback/github
+```
+
 Verify:
 
 ```bash

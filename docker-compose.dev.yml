@@ -16,6 +16,8 @@ services:
       VITE_ANALYTICS_ENABLED: "false"
       TASKNODE_DEV_AUTH_ENABLED: "true"
       TASKNODE_STORE_PATH: /data/runtime-store.json
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
     ports:
       - "8080:8080"
     volumes:

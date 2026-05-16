@@ -10,19 +10,19 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: apiOrigin,
-        changeOrigin: true,
+        changeOrigin: false,
       },
       "/health": {
         target: apiOrigin,
-        changeOrigin: true,
+        changeOrigin: false,
       },
       "/runtime-config.js": {
         target: apiOrigin,
-        changeOrigin: true,
+        changeOrigin: false,
       },
       "/runtime-config.json": {
         target: apiOrigin,
-        changeOrigin: true,
+        changeOrigin: false,
       },
     },
   },
