@@ -46,6 +46,18 @@ The web app server can allocate receive addresses from the xpub without holding
 private keys. Sweep keys must live outside the web app, in a separate operator
 process or signer.
 
+To create a fresh deposit wallet locally, run this outside the shared server
+environment:
+
+```text
+npm run eth-deposit-wallet
+```
+
+The script prints the mnemonic and receive xprv once so the operator can write
+them down. It writes only xpub env lines to `.env.eth-deposit-xpub`. Do not
+commit that file, and do not paste the mnemonic, receive xprv, or child private
+keys into chat.
+
 ## Sync
 
 The sync endpoint reads safe-chain balances and credits only positive balance
