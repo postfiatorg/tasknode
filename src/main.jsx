@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowUp,
+  ArrowDown,
   ArrowDownLeft,
   ArrowDownToLine,
   ArrowUpRight,
@@ -9,6 +10,7 @@ import {
   AlertTriangle,
   BookOpen,
   Bot,
+  ChevronDown,
   ChevronRight,
   Check,
   Copy,
@@ -28,6 +30,9 @@ import {
   ListTodo,
   Lock,
   LogOut,
+  Link2,
+  Linkedin,
+  MessageCircle,
   MessageSquare,
   MoreHorizontal,
   Network,
@@ -67,6 +72,156 @@ const PALETTE = {
   text: "#0d0d0d",
   mute: "#6b6b66",
   brand: "#10a37f",
+};
+
+const RECENT_CHAT_MOCKS = [
+  { id: "building", title: "Building Discussion" },
+  { id: "greeting", title: "Greeting exchange", unread: true },
+  { id: "sj-brainstorm", title: "Steve Jobs Brainstorming Principles", unread: true },
+  { id: "sj-motivation", title: "Steve Jobs Motivation Principles" },
+  { id: "sj-essence", title: "Steve Jobs Essence" },
+  { id: "sj-speech", title: "Steve Jobs Speech Guide" },
+  { id: "sj-iphone", title: "Steve Jobs iPhone Launch" },
+  { id: "sj-ipod", title: "Steve Jobs iPod Strategy" },
+  { id: "sj-biz-1", title: "Steve Jobs Business Principles" },
+  { id: "sj-biz-2", title: "Steve Jobs Business Insights" },
+  { id: "caucasian", title: "Caucasian Quant Trader" },
+  { id: "hamburger", title: "Hamburger Affordability Comparison" },
+  { id: "logitcoin", title: "Logitcoin Research Packet" },
+];
+
+const SAMPLE_THREAD = [
+  { role: "user", text: "hi" },
+  {
+    role: "assistant",
+    blocks: [{ type: "p", inline: [{ text: "Hey - what are we building today?" }] }],
+  },
+  { role: "user", text: "not sure what do you think i should build" },
+  {
+    role: "assistant",
+    thinking: { state: "stopped", duration: "7s" },
+    blocks: [
+      {
+        type: "p",
+        inline: [
+          { text: "You should build something that feels " },
+          { italic: "slightly illegal from the future" },
+          { text: "." },
+        ],
+      },
+      {
+        type: "p",
+        inline: [
+          {
+            text:
+              "Not another wrapper. Not another dashboard. Something where the first reaction is:",
+          },
+        ],
+      },
+      { type: "quote", inline: [{ text: "Wait... are people allowed to do that?" }] },
+      {
+        type: "p",
+        inline: [
+          {
+            text:
+              "You are already circling the right territory with Logitcoin: turning AI inference itself into a consensus primitive is exactly the kind of different-game thinking that matters.",
+          },
+        ],
+      },
+      { type: "hr" },
+      { type: "h2", inline: [{ text: "1. The AI Native Operating System Layer" }] },
+      { type: "p", inline: [{ text: "Everyone is building AI apps." }] },
+      { type: "p", inline: [{ text: "Almost nobody is building:" }] },
+      {
+        type: "ul",
+        items: [
+          [{ text: "deterministic identity for agents" }],
+          [{ text: "persistent memory" }],
+          [{ text: "economic coordination" }],
+          [{ text: "verifiable cognition" }],
+          [{ text: "long-lived autonomous workflows" }],
+          [{ text: "agent-to-agent markets" }],
+          [{ text: "runtime governance" }],
+        ],
+      },
+      {
+        type: "p",
+        inline: [
+          {
+            text:
+              "The teams who win this layer set the rules for the next decade. The useful version is not merely a dashboard; it is a new category vocabulary.",
+          },
+        ],
+      },
+      { type: "hr" },
+      {
+        type: "p",
+        inline: [
+          { text: "If I were ranking the strongest directions, I would start here:" },
+        ],
+      },
+      {
+        type: "ol",
+        items: [
+          [{ text: "AI infrastructure with cryptographic, consensus, and verification properties" }],
+          [{ text: "Taste, cognition, and strategic-intelligence tooling" }],
+          [{ text: "Autonomous agent coordination systems" }],
+          [{ text: "New economic primitives around inference and cognition" }],
+          [{ text: "Tools that teach people how legendary operators think" }],
+        ],
+      },
+      { type: "p", inline: [{ text: "The key is: do not build something merely useful." }] },
+      {
+        type: "p",
+        inline: [{ text: "Build something that creates a new category vocabulary." }],
+      },
+    ],
+  },
+];
+
+const SAMPLE_ACTIVITY = {
+  duration: "7s",
+  thinking: [
+    { kind: "primary", label: "Personalizing" },
+    { kind: "dot", label: "Tracking your projects" },
+    { kind: "dot", label: "Identifying your interests" },
+    { kind: "dot", label: "Exploring your goals" },
+    { kind: "dot", label: "Matching key domains" },
+  ],
+  memory: [
+    {
+      title: "Steve Jobs Motivation Principles",
+      preview:
+        "Today - step into the role of Steve Jobs and teach the operator mindset with plain English examples.",
+    },
+    {
+      title: "Steve Jobs Essence",
+      preview:
+        "Today - give the essence of Steve Jobs in ten pages or less: taste, focus, craft, and consequence.",
+    },
+    {
+      title: "Steve Jobs Business Principles",
+      preview:
+        "Today - summarize the business lessons in detail, with emphasis on product quality and category creation.",
+    },
+    {
+      title: "Logitcoin Research Packet",
+      preview:
+        "May 10, 2026 - Logitcoin Qwen proof-of-logits external research packet and implementation notes.",
+    },
+    {
+      title: "OpenAI Jobs Brainstorm",
+      preview:
+        "Jobs repeatedly frames technology as a human amplifier and builds the frame before revealing the product.",
+    },
+    {
+      title: "Steve Jobs Style Guide",
+      preview:
+        "Imitate the reasoning pattern, not the catchphrases: product judgment, human consequence, and proof.",
+    },
+  ],
+  memoryMore: 5,
+  files: [{ name: "Pasted text.txt", type: "TXT" }],
 };
 
 const MOCK_TASKS = {
@@ -309,6 +464,10 @@ function App() {
   const [profileTab, setProfileTab] = useState("private");
   const [profilePublic, setProfilePublic] = useState(true);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [activeChat, setActiveChat] = useState(null);
+  const [chatResetKey, setChatResetKey] = useState(0);
+  const [chatSelectionKey, setChatSelectionKey] = useState(0);
+  const [chatShareRequestKey, setChatShareRequestKey] = useState(0);
   const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
   const [appState, setAppState] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -361,7 +520,7 @@ function App() {
     return () => document.removeEventListener("keydown", closeModal);
   }, [settingsOpen, selectedTask]);
 
-  const recents = appState?.chat?.recents || [];
+  const recentChats = buildRecentChats(appState?.chat?.recents || []);
   const pftBalance = formatDrops(appState?.wallet?.pftBalanceDrops || 0);
   const chatCredit = formatUsd(appState?.usage?.availableCreditUsd || 0);
   const session = appState?.session;
@@ -380,6 +539,21 @@ function App() {
     setLoginOpen(false);
     writeViewLocation(normalizedView, { replace: options.replace === true });
   }, []);
+
+  const startNewChat = useCallback(() => {
+    setActiveChat(null);
+    setChatResetKey((key) => key + 1);
+    navigateToView("chat");
+  }, [navigateToView]);
+
+  const openRecentChat = useCallback(
+    (chat) => {
+      setActiveChat(chat);
+      setChatSelectionKey((key) => key + 1);
+      navigateToView("chat");
+    },
+    [navigateToView]
+  );
 
   useEffect(() => {
     writeViewLocation(viewFromLocation(), { replace: true });
@@ -453,10 +627,10 @@ function App() {
 
         <nav className="nav-list">
           <SidebarButton
-            active={view === "chat"}
+            active={view === "chat" && !activeChat}
             icon={SquarePen}
             label="New chat"
-            onClick={() => navigateToView("chat")}
+            onClick={startNewChat}
             sidebarOpen={sidebarOpen}
           />
           <SidebarButton icon={Search} label="Search chats" sidebarOpen={sidebarOpen} />
@@ -511,8 +685,18 @@ function App() {
         {sidebarOpen && (
           <section className="recents" aria-label="Recent chats">
             <div className="section-label">Recents</div>
-            {recents.length > 0 ? (
-              recents.map((item) => <button key={item}>{item}</button>)
+            {recentChats.length > 0 ? (
+              recentChats.map((item) => (
+                <button
+                  className={activeChat?.id === item.id ? "active" : ""}
+                  key={item.id}
+                  onClick={() => openRecentChat(item)}
+                  type="button"
+                >
+                  <span>{item.title}</span>
+                  {item.unread && <i aria-hidden="true" />}
+                </button>
+              ))
             ) : (
               <div className="sidebar-note">No chats yet</div>
             )}
@@ -624,13 +808,13 @@ function App() {
                 <PanelLeft size={18} strokeWidth={1.75} />
               </button>
             )}
-            <button className="icon-button" onClick={() => navigateToView("chat")} title="New chat" type="button">
+            <button className="icon-button" onClick={startNewChat} title="New chat" type="button">
               <SquarePen size={18} strokeWidth={1.75} />
             </button>
           </div>
-          {view === "chat" && appState?.chat?.seedMessages?.length > 0 && (
+          {view === "chat" && activeChat && (
             <div className="thread-actions">
-              <button type="button">
+              <button onClick={() => setChatShareRequestKey((key) => key + 1)} type="button">
                 <Share size={14} strokeWidth={1.75} />
                 Share
               </button>
@@ -646,7 +830,12 @@ function App() {
 
         {view === "chat" && (
           <ChatSurface
+            activeChat={activeChat}
+            chatResetKey={chatResetKey}
+            chatSelectionKey={chatSelectionKey}
+            chatShareRequestKey={chatShareRequestKey}
             chat={appState?.chat}
+            onActiveChatChange={setActiveChat}
             onChatSettled={refreshAppState}
             onNavigate={navigateToView}
             usage={appState?.usage}
@@ -696,11 +885,21 @@ function titleForView(view) {
   return "What are we executing?";
 }
 
-function ChatSurface({ chat, onChatSettled, onNavigate, usage }) {
+function ChatSurface({
+  activeChat,
+  chat,
+  chatResetKey,
+  chatSelectionKey,
+  chatShareRequestKey,
+  onActiveChatChange,
+  onChatSettled,
+  onNavigate,
+  usage,
+}) {
   const modes = chat?.modes || [];
   const messages = chat?.seedMessages || [];
   const defaultMode = chat?.defaultMode || "Private Instant";
-  const [turns, setTurns] = useState(messages);
+  const [turns, setTurns] = useState(() => normalizeChatMessages(messages));
   const [selectedMode, setSelectedMode] = useState(defaultMode);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
@@ -709,16 +908,84 @@ function ChatSurface({ chat, onChatSettled, onNavigate, usage }) {
   const [actualUsage, setActualUsage] = useState(null);
   const [statusTone, setStatusTone] = useState("muted");
   const [sending, setSending] = useState(false);
+  const [editingMsg, setEditingMsg] = useState(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const plusRef = useRef(null);
   const modelRef = useRef(null);
+  const inputRef = useRef(null);
+  const messageListRef = useRef(null);
+  const resetSeenRef = useRef(0);
+  const shareSeenRef = useRef(chatShareRequestKey);
+  const clearedChatRef = useRef(false);
 
   useEffect(() => {
     setSelectedMode(defaultMode);
   }, [defaultMode]);
 
   useEffect(() => {
-    setTurns(messages);
-  }, [messages]);
+    if (clearedChatRef.current) return;
+    if (activeChat?.source === "mock" || activeChat?.source === "server") return;
+    setTurns(normalizeChatMessages(messages));
+  }, [activeChat?.source, messages]);
+
+  useEffect(() => {
+    if (chatResetKey === 0 || resetSeenRef.current === chatResetKey) return;
+    resetSeenRef.current = chatResetKey;
+    clearedChatRef.current = true;
+    setTurns([]);
+    setInput("");
+    setSendMessage("");
+    setActualUsage(null);
+    setStatusTone("muted");
+    setEditingMsg(null);
+    setShareOpen(false);
+    setActivityOpen(false);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, [chatResetKey]);
+
+  useEffect(() => {
+    if (!activeChat || activeChat.source === "live") return;
+    clearedChatRef.current = false;
+
+    if (activeChat.id === "building") {
+      setTurns(SAMPLE_THREAD);
+      return;
+    }
+
+    if (activeChat.source === "server") {
+      const hydrated = normalizeChatMessages(messages);
+      setTurns(
+        hydrated.length > 0
+          ? hydrated
+          : createRecentPlaceholderThread(activeChat.title)
+      );
+      return;
+    }
+
+    setTurns(createRecentPlaceholderThread(activeChat.title));
+  }, [activeChat, chatSelectionKey, messages]);
+
+  useEffect(() => {
+    if (shareSeenRef.current === chatShareRequestKey) return;
+    shareSeenRef.current = chatShareRequestKey;
+    if (turns.length > 0) setShareOpen(true);
+  }, [chatShareRequestKey, turns.length]);
+
+  useEffect(() => {
+    if (!shareOpen && !activityOpen) return undefined;
+
+    function closeOverlay(event) {
+      if (event.key === "Escape") {
+        setShareOpen(false);
+        setActivityOpen(false);
+      }
+    }
+
+    document.addEventListener("keydown", closeOverlay);
+    return () => document.removeEventListener("keydown", closeOverlay);
+  }, [activityOpen, shareOpen]);
 
   useEffect(() => {
     function closeMenus(event) {
@@ -739,6 +1006,7 @@ function ChatSurface({ chat, onChatSettled, onNavigate, usage }) {
     const message = input.trim();
     if (!message) return;
 
+    clearedChatRef.current = false;
     setSending(true);
     setSendMessage("");
     setActualUsage(null);
@@ -755,9 +1023,16 @@ function ChatSurface({ chat, onChatSettled, onNavigate, usage }) {
       if (result.ok && result.body?.assistant) {
         setTurns((current) => [
           ...current,
-          result.body.user || { role: "user", body: message },
-          result.body.assistant,
+          normalizeChatMessage(result.body.user || { role: "user", body: message }, current.length),
+          normalizeChatMessage(result.body.assistant, current.length + 1),
         ]);
+        if (!activeChat) {
+          onActiveChatChange?.({
+            id: "current",
+            source: "live",
+            title: chatTitleFromPrompt(message),
+          });
+        }
         setInput("");
         setSendMessage(result.body.message || "Chat response generated.");
         setStatusTone("muted");
@@ -786,6 +1061,7 @@ function ChatSurface({ chat, onChatSettled, onNavigate, usage }) {
     turns,
   });
 
+  const chatTitle = activeChat?.title || titleFromTurns(turns);
   const composer = (
     <div className="composer-shell">
       <form className="composer" onSubmit={submitMessage}>
@@ -826,6 +1102,7 @@ function ChatSurface({ chat, onChatSettled, onNavigate, usage }) {
           )}
         </div>
         <input
+          ref={inputRef}
           aria-label="Ask anything"
           onChange={(event) => setInput(event.target.value)}
           placeholder="Ask anything"
@@ -845,6 +1122,10 @@ function ChatSurface({ chat, onChatSettled, onNavigate, usage }) {
           </button>
           {modelMenuOpen && (
             <div className="model-menu">
+              <div className="model-latest">
+                <span>Latest</span>
+                <span>0.1.0</span>
+              </div>
               <ModelGroup label="Private" />
               {modes
                 .filter((mode) => mode.label.startsWith("Private"))
@@ -874,6 +1155,8 @@ function ChatSurface({ chat, onChatSettled, onNavigate, usage }) {
                     }}
                   />
                 ))}
+              <div className="menu-divider" />
+              <ToolMenuRow icon={SettingsIcon} label="Configure" />
             </div>
           )}
         </div>
@@ -897,24 +1180,70 @@ function ChatSurface({ chat, onChatSettled, onNavigate, usage }) {
           {composer}
         </div>
       ) : (
-        <>
-          <div className="message-list" aria-live="polite">
-            {turns.map((message, index) =>
-              message.role === "user" ? (
-                <article className="user-message" key={message.id || `user-${index}`}>
-                  <div>{message.body}</div>
-                </article>
-              ) : (
-                <article className="assistant-message" key={message.id || `assistant-${index}`}>
-                  {message.body}
-                </article>
-              )
-            )}
-          </div>
-          <div className="composer-dock">{composer}</div>
-        </>
-      )}
+        <div className="chat-thread-shell">
+          <div className="message-list" ref={messageListRef} aria-live="polite">
+            {turns.map((message, index) => {
+              if (message.role === "user") {
+                return (
+                  <UserMessage
+                    draft={editDraft}
+                    isEditing={editingMsg === index}
+                    key={message.id || `user-${index}`}
+                    onCancelEdit={() => setEditingMsg(null)}
+                    onDraftChange={setEditDraft}
+                    onSaveEdit={() => {
+                      setTurns((current) =>
+                        current.map((row, rowIndex) =>
+                          rowIndex === index ? { ...row, text: editDraft } : row
+                        )
+                      );
+                      setEditingMsg(null);
+                    }}
+                    onStartEdit={() => {
+                      setEditingMsg(index);
+                      setEditDraft(message.text || "");
+                    }}
+                    text={message.text}
+                  />
+                );
+              }
 
+              return (
+                <AssistantMessage
+                  key={message.id || `assistant-${index}`}
+                  message={message}
+                  onOpenActivity={() => setActivityOpen(true)}
+                  onShare={() => setShareOpen(true)}
+                />
+              );
+            })}
+          </div>
+          <button
+            className="scroll-bottom-button"
+            onClick={() => {
+              messageListRef.current?.scrollTo({
+                top: messageListRef.current.scrollHeight,
+                behavior: "smooth",
+              });
+            }}
+            title="Scroll to bottom"
+            type="button"
+          >
+            <ArrowDown size={14} strokeWidth={2} />
+          </button>
+          <div className="composer-dock">{composer}</div>
+        </div>
+      )}
+      {shareOpen && (
+        <ShareModal
+          onClose={() => setShareOpen(false)}
+          thread={turns}
+          title={chatTitle}
+        />
+      )}
+      {activityOpen && (
+        <ActivityPanel data={SAMPLE_ACTIVITY} onClose={() => setActivityOpen(false)} />
+      )}
     </div>
   );
 }
@@ -932,6 +1261,549 @@ function chatComposerStatus({ actualUsage, message, sending, tone, turns }) {
     return { tone: "muted", text: "Task Node can make mistakes. Check important info." };
   }
   return null;
+}
+
+function buildRecentChats(serverRecents) {
+  const rows = [];
+  const seen = new Set();
+
+  for (const title of serverRecents) {
+    if (!title || seen.has(title)) continue;
+    seen.add(title);
+    rows.push({
+      id: `server-${slugify(title) || rows.length}`,
+      source: "server",
+      title,
+    });
+  }
+
+  for (const chat of RECENT_CHAT_MOCKS) {
+    if (seen.has(chat.title)) continue;
+    seen.add(chat.title);
+    rows.push({ ...chat, source: "mock" });
+  }
+
+  return rows;
+}
+
+function normalizeChatMessages(messages) {
+  return (messages || [])
+    .map((message, index) => normalizeChatMessage(message, index))
+    .filter(Boolean);
+}
+
+function normalizeChatMessage(message, index = 0) {
+  if (!message) return null;
+  const role = message.role === "user" ? "user" : "assistant";
+  const text = String(message.text || message.content || message.body || "");
+
+  if (role === "user") {
+    return {
+      id: message.id || `user-${index}`,
+      role,
+      text,
+    };
+  }
+
+  return {
+    id: message.id || `assistant-${index}`,
+    role,
+    thinking: message.thinking,
+    blocks: Array.isArray(message.blocks) ? message.blocks : markdownToBlocks(text),
+  };
+}
+
+function markdownToBlocks(input) {
+  const text = String(input || "").trim();
+  if (!text) return [{ type: "p", inline: [{ text: "" }] }];
+
+  const normalized = text
+    .replace(/\r\n/g, "\n")
+    .replace(/([^\n])\s+(\d+\.\s+\*\*)/g, "$1\n$2")
+    .replace(/([^\n])\s+(\d+\.\s+[A-Z])/g, "$1\n$2");
+  const lines = normalized.split("\n");
+  const blocks = [];
+  let paragraph = [];
+  let list = null;
+
+  function flushParagraph() {
+    if (paragraph.length === 0) return;
+    blocks.push({ type: "p", inline: parseInline(paragraph.join(" ").trim()) });
+    paragraph = [];
+  }
+
+  function flushList() {
+    if (!list) return;
+    blocks.push(list);
+    list = null;
+  }
+
+  function pushList(type, rawItem) {
+    flushParagraph();
+    if (!list || list.type !== type) {
+      flushList();
+      list = { type, items: [] };
+    }
+    list.items.push(parseInline(rawItem.trim()));
+  }
+
+  for (const line of lines) {
+    const raw = line.trim();
+    if (!raw) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const h2 = raw.match(/^##\s+(.+)/);
+    const h3 = raw.match(/^###\s+(.+)/);
+    const quote = raw.match(/^>\s+(.+)/);
+    const ul = raw.match(/^[-*]\s+(.+)/);
+    const ol = raw.match(/^\d+[.)]\s+(.+)/);
+
+    if (/^---+$/.test(raw)) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "hr" });
+    } else if (h3) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "h3", inline: parseInline(h3[1]) });
+    } else if (h2) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "h2", inline: parseInline(h2[1]) });
+    } else if (quote) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "quote", inline: parseInline(quote[1]) });
+    } else if (ul) {
+      pushList("ul", ul[1]);
+    } else if (ol) {
+      pushList("ol", ol[1]);
+    } else {
+      paragraph.push(raw);
+    }
+  }
+
+  flushParagraph();
+  flushList();
+  return blocks.length > 0 ? blocks : [{ type: "p", inline: [{ text }] }];
+}
+
+function parseInline(input) {
+  const text = String(input || "");
+  const parts = [];
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ text: text.slice(lastIndex, match.index) });
+    }
+
+    const token = match[0];
+    if (token.startsWith("`")) {
+      parts.push({ code: token.slice(1, -1) });
+    } else if (token.startsWith("**")) {
+      parts.push({ bold: token.slice(2, -2) });
+    } else if (token.startsWith("*")) {
+      parts.push({ italic: token.slice(1, -1) });
+    }
+    lastIndex = match.index + token.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ text: text.slice(lastIndex) });
+  }
+
+  return parts.length > 0 ? parts : [{ text }];
+}
+
+function createRecentPlaceholderThread(title) {
+  return [
+    { role: "user", text: `Open ${title}` },
+    {
+      role: "assistant",
+      blocks: [
+        {
+          type: "p",
+          inline: [
+            {
+              text:
+                "This chat frame is wired. Conversation-specific history will hydrate here when the app server exposes per-thread loading.",
+            },
+          ],
+        },
+      ],
+    },
+  ];
+}
+
+function chatTitleFromPrompt(prompt) {
+  const title = String(prompt || "").trim().replace(/\s+/g, " ").slice(0, 48);
+  return title || "New chat";
+}
+
+function titleFromTurns(turns) {
+  const firstUser = turns.find((turn) => turn.role === "user" && turn.text);
+  return chatTitleFromPrompt(firstUser?.text || "Untitled chat");
+}
+
+function slugify(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+function plainTextFromBlocks(blocks) {
+  return (blocks || [])
+    .map((block) => {
+      if (block.type === "ul" || block.type === "ol") {
+        return (block.items || [])
+          .map((item) => inlineToText(Array.isArray(item) ? item : [{ text: item }]))
+          .join("\n");
+      }
+      return inlineToText(block.inline || [{ text: block.text || "" }]);
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function inlineToText(parts) {
+  return (parts || [])
+    .map((part) => part.text || part.bold || part.italic || part.code || "")
+    .join("");
+}
+
+function copyText(text) {
+  if (navigator?.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => {});
+  }
+}
+
+function UserMessage({
+  draft,
+  isEditing,
+  onCancelEdit,
+  onDraftChange,
+  onSaveEdit,
+  onStartEdit,
+  text,
+}) {
+  if (isEditing) {
+    return (
+      <article className="user-message editing">
+        <div className="user-edit-card">
+          <textarea
+            autoFocus
+            onChange={(event) => onDraftChange(event.target.value)}
+            value={draft}
+          />
+          <div className="user-edit-actions">
+            <button onClick={onCancelEdit} type="button">
+              Cancel
+            </button>
+            <button className="dark" onClick={onSaveEdit} type="button">
+              Send
+            </button>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="user-message">
+      <div className="user-bubble">{text}</div>
+      <div className="user-message-tools">
+        <ToolbarButton icon={Copy} label="Copy message" onClick={() => copyText(text)} />
+        <ToolbarButton icon={Pencil} label="Edit" onClick={onStartEdit} />
+      </div>
+    </article>
+  );
+}
+
+function AssistantMessage({ message, onOpenActivity, onShare }) {
+  const body = plainTextFromBlocks(message.blocks);
+
+  return (
+    <article className="assistant-message">
+      {message.thinking && (
+        <button className="thinking-row" onClick={onOpenActivity} type="button">
+          {message.thinking.state === "stopped"
+            ? "Stopped thinking"
+            : `Thought for ${message.thinking.duration}`}
+          <ChevronRight size={13} strokeWidth={1.75} />
+        </button>
+      )}
+      <div className="assistant-body">
+        {(message.blocks || []).map((block, index) => (
+          <BlockRenderer block={block} key={index} />
+        ))}
+      </div>
+      <MessageToolbar
+        onCopy={() => copyText(body)}
+        onOpenSources={onOpenActivity}
+        onShare={onShare}
+      />
+    </article>
+  );
+}
+
+function BlockRenderer({ block }) {
+  if (!block) return null;
+
+  switch (block.type) {
+    case "p":
+      return (
+        <p>
+          <Inline parts={block.inline || [{ text: block.text || "" }]} />
+        </p>
+      );
+    case "h2":
+      return (
+        <h2>
+          <Inline parts={block.inline || [{ text: block.text || "" }]} />
+        </h2>
+      );
+    case "h3":
+      return (
+        <h3>
+          <Inline parts={block.inline || [{ text: block.text || "" }]} />
+        </h3>
+      );
+    case "quote":
+      return (
+        <blockquote>
+          <Inline parts={block.inline || [{ text: block.text || "" }]} />
+        </blockquote>
+      );
+    case "ul":
+      return (
+        <ul>
+          {(block.items || []).map((item, index) => (
+            <li key={index}>
+              <Inline parts={Array.isArray(item) ? item : [{ text: item }]} />
+            </li>
+          ))}
+        </ul>
+      );
+    case "ol":
+      return (
+        <ol>
+          {(block.items || []).map((item, index) => (
+            <li key={index}>
+              <Inline parts={Array.isArray(item) ? item : [{ text: item }]} />
+            </li>
+          ))}
+        </ol>
+      );
+    case "hr":
+      return <hr />;
+    default:
+      return null;
+  }
+}
+
+function Inline({ parts }) {
+  return (
+    <>
+      {(parts || []).map((part, index) => {
+        if (part.bold) return <strong key={index}>{part.bold}</strong>;
+        if (part.italic) return <em key={index}>{part.italic}</em>;
+        if (part.code) return <code key={index}>{part.code}</code>;
+        return <span key={index}>{part.text}</span>;
+      })}
+    </>
+  );
+}
+
+function MessageToolbar({ onCopy, onOpenSources, onShare }) {
+  return (
+    <div className="message-toolbar">
+      <ToolbarButton icon={Copy} label="Copy response" onClick={onCopy} />
+      <ToolbarButton icon={ArrowUp} label="Share" onClick={onShare} />
+      <ToolbarButton icon={RefreshCw} label="Regenerate" />
+      <ToolbarButton icon={MoreHorizontal} label="More" />
+      <span className="toolbar-divider" />
+      <button className="sources-button" onClick={onOpenSources} type="button">
+        <BookOpen size={14} strokeWidth={1.75} />
+        Sources
+      </button>
+    </div>
+  );
+}
+
+function ToolbarButton({ icon: Icon, label, onClick }) {
+  const [hover, setHover] = useState(false);
+
+  return (
+    <span className="toolbar-button-wrap">
+      <button
+        aria-label={label}
+        className="toolbar-button"
+        onClick={onClick}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        type="button"
+      >
+        <Icon size={14} strokeWidth={1.75} />
+      </button>
+      {hover && <span className="toolbar-tip">{label}</span>}
+    </span>
+  );
+}
+
+function ShareModal({ onClose, thread, title }) {
+  const previewThread = (thread || []).slice(0, 4);
+
+  return (
+    <div className="modal-backdrop share-backdrop" onClick={onClose} role="presentation">
+      <section
+        aria-labelledby="share-title"
+        aria-modal="true"
+        className="share-modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header>
+          <h2 id="share-title">{title || "Untitled chat"}</h2>
+          <button
+            aria-label="Close share"
+            className="share-modal-close"
+            onClick={onClose}
+            type="button"
+          >
+            <X size={18} strokeWidth={1.75} />
+          </button>
+        </header>
+        <div className="share-preview">
+          <strong>Task Node</strong>
+          <div>
+            {previewThread.map((message, index) =>
+              message.role === "user" ? (
+                <div className="share-preview-user" key={index}>
+                  <span>{message.text}</span>
+                </div>
+              ) : (
+                <div className="share-preview-assistant" key={index}>
+                  {(message.blocks || []).slice(0, 2).map((block, blockIndex) => (
+                    <BlockRenderer block={block} key={blockIndex} />
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        </div>
+        <div className="share-targets">
+          <ShareTarget icon={Link2} label="Copy link" />
+          <ShareTarget label="X" symbol="X" />
+          <ShareTarget icon={Linkedin} label="LinkedIn" />
+          <ShareTarget label="Reddit" symbol="R" />
+        </div>
+        <p>Memory sources won't be shared with viewers.</p>
+      </section>
+    </div>
+  );
+}
+
+function ShareTarget({ icon: Icon, label, symbol }) {
+  return (
+    <button className="share-target" type="button">
+      <span>{Icon ? <Icon size={20} strokeWidth={1.75} /> : symbol}</span>
+      {label}
+    </button>
+  );
+}
+
+function ActivityPanel({ data, onClose }) {
+  const [showMoreMemory, setShowMoreMemory] = useState(false);
+  const memoryRows = showMoreMemory ? data.memory : data.memory.slice(0, 4);
+
+  return (
+    <aside className="activity-panel" aria-label="Activity">
+      <header>
+        <div>
+          <h3>Activity</h3>
+          <span>{data.duration}</span>
+        </div>
+        <button
+          aria-label="Close activity"
+          className="activity-panel-close"
+          onClick={onClose}
+          type="button"
+        >
+          <X size={16} strokeWidth={1.75} />
+        </button>
+      </header>
+      <div className="activity-panel-body">
+        <section>
+          <h4>Thinking</h4>
+          <div className="thinking-list">
+            {data.thinking.map((step, index) => (
+              <div className="thinking-step" key={`${step.label}-${index}`}>
+                <span>
+                  {step.kind === "primary" ? (
+                    <BookOpen size={14} strokeWidth={1.75} />
+                  ) : (
+                    <i />
+                  )}
+                </span>
+                {step.label}
+              </div>
+            ))}
+          </div>
+        </section>
+        <section>
+          <h4>
+            Memory <span>{data.memory.length + (data.memoryMore || 0)}</span>
+          </h4>
+          <div className="memory-list">
+            {memoryRows.map((memory, index) => (
+              <div className="memory-item" key={`${memory.title}-${index}`}>
+                <small>
+                  <MessageCircle size={12} strokeWidth={1.75} />
+                  Past chat
+                </small>
+                <strong>{memory.title}</strong>
+                <p>{memory.preview}</p>
+              </div>
+            ))}
+            {!showMoreMemory && data.memoryMore > 0 && (
+              <button onClick={() => setShowMoreMemory(true)} type="button">
+                {data.memoryMore} more
+                <ChevronDown size={12} strokeWidth={1.75} />
+              </button>
+            )}
+          </div>
+        </section>
+        {data.files?.length > 0 && (
+          <section>
+            <h4>
+              Files <span>{data.files.length}</span>
+            </h4>
+            <div className="activity-file-list">
+              {data.files.map((file) => (
+                <div className="activity-file" key={file.name}>
+                  <span>
+                    <FileText size={15} strokeWidth={1.75} />
+                  </span>
+                  <div>
+                    <small>{file.type}</small>
+                    <strong>{file.name}</strong>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </aside>
+  );
 }
 
 function SidebarButton({ active, badge, icon: Icon, label, onClick, sidebarOpen }) {

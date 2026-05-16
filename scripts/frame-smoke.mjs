@@ -68,6 +68,25 @@ async function main() {
     await capture("03-sidebar-more");
     await clickNav("More");
 
+    await clickButton("Building Discussion", "document.querySelector('.recents')");
+    await assertText(["Stopped thinking", "Sources", "AI Native Operating System Layer"]);
+    await assertSelector(".message-toolbar");
+    await capture("03a-chat-thread-rich");
+
+    await clickButton("Sources", "document.querySelector('.message-toolbar')");
+    await assertText(["Activity", "Thinking", "Memory", "Files", "Past chat"]);
+    await capture("03b-activity-panel");
+    await clickSelector(".activity-panel-close");
+
+    await clickButton("Share", "document.querySelector('.thread-actions')");
+    await assertText(["Copy link", "LinkedIn", "Reddit", "Memory sources"]);
+    await capture("03c-share-modal");
+    await clickSelector(".share-modal-close");
+
+    await clickNav("New chat");
+    await assertSelector('input[aria-label="Ask anything"]');
+    await assertLocationHash("");
+
     await clickNav("Tasks");
     await assertText(["Tasks", "Outstanding", "Verification", "Refused", "Rewarded", "Request task"]);
     await assertText(["Ship A 90 Percent Task Node Surface Cut", "Make The 8-K Extractor Emit Cited Rows"]);
