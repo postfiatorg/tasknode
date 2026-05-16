@@ -1115,6 +1115,7 @@ export function getOrCreateEthereumDepositAccount({
 export function updateEthereumDepositSync({
   accountId = "",
   observedBalances = {},
+  pendingBalances = {},
   creditedBalances = {},
   syncStatus = "ready",
   syncError = "",
@@ -1131,6 +1132,10 @@ export function updateEthereumDepositSync({
     observedBalances: {
       ...(existing.observedBalances || {}),
       ...observedBalances,
+    },
+    pendingBalances: {
+      ...(existing.pendingBalances || {}),
+      ...pendingBalances,
     },
     creditedBalances: {
       ...(existing.creditedBalances || {}),

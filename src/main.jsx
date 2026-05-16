@@ -3467,7 +3467,9 @@ function EthereumTopUpModal({ onClose, onRefresh, state }) {
                         : shortEthereumAddress(asset.contractAddress)}
                     </small>
                   </div>
-                  <em>{formatDepositObservedBalance(deposit, asset.symbol)}</em>
+                  <em className={deposit?.pendingBalances?.[asset.symbol] ? "pending" : ""}>
+                    {formatDepositAssetBalance(deposit, asset.symbol)}
+                  </em>
                 </div>
               ))}
             </div>
@@ -3501,11 +3503,21 @@ function shortEthereumAddress(address = "") {
   return `${text.slice(0, 8)}...${text.slice(-6)}`;
 }
 
-function formatDepositObservedBalance(deposit, symbol) {
+function formatDepositAssetBalance(deposit, symbol) {
   const balance = deposit?.observedBalances?.[symbol];
-  if (!balance?.amount) return "Not seen";
-  const amount = Number(balance.amount);
-  if (!Number.isFinite(amount)) return balance.amount;
+  const pending = deposit?.pendingBalances?.[symbol];
+  if (balance?.amount && Number(balance.amount) > 0) {
+    return formatDepositAmount(balance.amount, symbol);
+  }
+  if (pending?.amount && Number(pending.amount) > 0) {
+    return `Pending ${formatDepositAmount(pending.amount, symbol)}`;
+  }
+  return "Not seen";
+}
+
+function formatDepositAmount(value, symbol) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return `${value} ${symbol}`;
   const options = symbol === "ETH"
     ? { maximumFractionDigits: 8 }
     : { minimumFractionDigits: 2, maximumFractionDigits: 6 };

@@ -18,6 +18,7 @@ const defaultEthereumRpcUrl = "https://ethereum.publicnode.com";
 const ethereumMainnetChainId = 1;
 const defaultReceivePath = "m/44'/60'/0'/0";
 const balanceBlockTag = process.env.ETH_DEPOSIT_BALANCE_BLOCK_TAG || "safe";
+const pendingBalanceBlockTag = process.env.ETH_DEPOSIT_PENDING_BLOCK_TAG || "latest";
 const balanceOfSelector = keccakId("balanceOf(address)").slice(0, 10);
 
 export const ethereumDepositAssets = [
@@ -134,6 +135,7 @@ export function publicDepositAccount(account) {
     withdrawalsEnabled: account.withdrawalsEnabled === true,
     sweepStatus: account.sweepStatus || "deferred",
     observedBalances: account.observedBalances || {},
+    pendingBalances: account.pendingBalances || {},
     creditedBalances: account.creditedBalances || {},
     lastSyncAt: account.lastSyncAt || null,
     lastSyncStatus: account.lastSyncStatus || "not_synced",
@@ -199,9 +201,9 @@ function rawHexToBigInt(value) {
   return BigInt(text || "0x0");
 }
 
-async function readAssetBalance(asset, address) {
+async function readAssetBalance(asset, address, blockTag = balanceBlockTag) {
   if (asset.kind === "native") {
-    const raw = rawHexToBigInt(await rpcCall("eth_getBalance", [address, balanceBlockTag]));
+    const raw = rawHexToBigInt(await rpcCall("eth_getBalance", [address, blockTag]));
     return {
       symbol: asset.symbol,
       raw,
@@ -215,7 +217,7 @@ async function readAssetBalance(asset, address) {
       to: asset.contractAddress,
       data: balanceOfCalldata(address),
     },
-    balanceBlockTag,
+    blockTag,
   ]));
   return {
     symbol: asset.symbol,
@@ -225,7 +227,7 @@ async function readAssetBalance(asset, address) {
   };
 }
 
-function formattedBalance(balance) {
+function formattedBalance(balance, blockTag = balanceBlockTag) {
   return {
     raw: balance.raw.toString(),
     amount: balance.amount,
@@ -282,6 +284,7 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
 
   const account = getEthereumDepositAccount({ accountId });
   const observedBalances = {};
+  const pendingBalances = {};
   const creditedBalances = {};
   const creditedEntries = [];
   const syncErrors = [];
@@ -289,12 +292,28 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
   try {
     for (const asset of ethereumDepositAssets) {
       let balance = null;
+      let pendingBalance = null;
       try {
-        balance = await readAssetBalance(asset, account.address);
-        observedBalances[asset.symbol] = formattedBalance(balance);
+        balance = await readAssetBalance(asset, account.address, balanceBlockTag);
+        observedBalances[asset.symbol] = formattedBalance(balance, balanceBlockTag);
       } catch (error) {
         syncErrors.push(`${asset.symbol}: ${error?.message || "balance_unavailable"}`);
         continue;
+      }
+      try {
+        pendingBalance = await readAssetBalance(asset, account.address, pendingBalanceBlockTag);
+        if (pendingBalance.raw > balance.raw) {
+          pendingBalances[asset.symbol] = {
+            ...formattedBalance(pendingBalance, pendingBalanceBlockTag),
+            blockTag: pendingBalanceBlockTag,
+            safeRaw: balance.raw.toString(),
+            safeAmount: balance.amount,
+          };
+        } else {
+          pendingBalances[asset.symbol] = null;
+        }
+      } catch {
+        pendingBalance = null;
       }
 
       const creditedRaw = BigInt(account.creditedBalances?.[asset.symbol]?.raw || "0");
@@ -323,6 +342,7 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
     const updated = updateEthereumDepositSync({
       accountId,
       observedBalances,
+      pendingBalances,
       creditedBalances,
       syncStatus: syncErrors.length > 0 ? "partial" : "ready",
       syncError: syncErrors.join("; "),
@@ -341,6 +361,7 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
       depositAccount: publicDepositAccount(updated || account),
       creditedEntries,
       syncErrors,
+      pendingBalances,
       usage: {
         billingModel: "usage_based",
         currency: "USD",
@@ -353,6 +374,7 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
     const updated = updateEthereumDepositSync({
       accountId,
       observedBalances,
+      pendingBalances,
       syncStatus: "error",
       syncError: error?.message || "ethereum_deposit_sync_failed",
       blockTag: balanceBlockTag,

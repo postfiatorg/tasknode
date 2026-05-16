@@ -5117,6 +5117,10 @@ h1 {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+.eth-topup-asset em.pending {
+  color: #8a5b0a;
+}
+
 .wallet-seed-field {
   display: grid;
   gap: 8px;
