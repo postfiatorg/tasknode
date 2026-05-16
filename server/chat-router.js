@@ -14,6 +14,7 @@ export const chatModePrices = {
     provider: "openrouter",
     defaultModel: "deepseek/deepseek-v4-flash",
     maxOutputTokens: 700,
+    providerOrder: ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"],
   },
   "Private Thinking": {
     inputUsdPerMillion: 1.74,
@@ -22,6 +23,7 @@ export const chatModePrices = {
     defaultModel: "deepseek/deepseek-v4-pro",
     maxOutputTokens: 4096,
     reasoningEffort: "high",
+    providerOrder: ["novita", "atlas-cloud", "siliconflow", "deepinfra"],
   },
   "Frontier Instant": {
     inputUsdPerMillion: 5,
@@ -216,13 +218,17 @@ function openAiTools({ message }) {
   ];
 }
 
-function openRouterProviderPreferences({ requireParameters = false } = {}) {
+function openRouterProviderPreferences({ providerOrder = [], requireParameters = false } = {}) {
   const provider = {
     zdr: true,
     data_collection: "deny",
   };
 
   if (requireParameters) provider.require_parameters = true;
+  if (providerOrder.length > 0) {
+    provider.order = providerOrder;
+    provider.only = providerOrder;
+  }
   return provider;
 }
 
@@ -322,6 +328,7 @@ export function openRouterChatRequest({
       attachments: normalizedAttachments,
     }),
     provider: openRouterProviderPreferences({
+      providerOrder: config.providerOrder || [],
       requireParameters: Boolean(config.reasoningEffort),
     }),
     reasoning: config.reasoningEffort

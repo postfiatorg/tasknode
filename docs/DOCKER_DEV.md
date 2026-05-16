@@ -42,7 +42,8 @@ OpenRouter requests are built with
 defaults to `deepseek/deepseek-v4-flash`, the ranked ZDR-backed DeepSeek route
 for low-latency private text. Private Thinking defaults to
 `deepseek/deepseek-v4-pro` and adds `reasoning.effort="high"` with strict
-provider parameter routing.
+provider parameter routing. Private OpenRouter requests are constrained to a
+known ZDR provider allowlist instead of unconstrained price routing.
 Image, PDF, and text attachments are mapped into OpenRouter chat-completion
 content parts; PDF parsing uses `OPENROUTER_PDF_ENGINE` or `cloudflare-ai` by
 default. OpenRouter web search is not enabled for Private modes; web-backed

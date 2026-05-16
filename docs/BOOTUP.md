@@ -198,8 +198,9 @@ Current behavior:
   provider preferences and
   map image/PDF/text attachments into OpenRouter chat content. Private Instant
   defaults to `deepseek/deepseek-v4-flash`; Private Thinking defaults to
-  `deepseek/deepseek-v4-pro` with high reasoning. OpenRouter web search is not
-  enabled for Private modes;
+  `deepseek/deepseek-v4-pro` with high reasoning. Private OpenRouter requests
+  are constrained to a known ZDR provider allowlist; OpenRouter web search is
+  not enabled for Private modes;
 - native context documents can be viewed by anyone and saved by signed-in
   accounts without wallet unlock;
 - indexed PFTasks context/task rows can be imported as sanitized pointer

@@ -158,6 +158,8 @@ try {
   if (
     openRouterRequest.provider?.zdr !== true ||
     openRouterRequest.provider?.data_collection !== "deny" ||
+    openRouterRequest.provider?.order?.[0] !== "parasail" ||
+    openRouterRequest.provider?.only?.includes("akashml") !== true ||
     openRouterRequest.plugins?.[0]?.pdf?.engine !== "cloudflare-ai" ||
     privateUserContent?.[1]?.type !== "image_url" ||
     privateUserContent?.[2]?.type !== "file" ||
@@ -177,6 +179,8 @@ try {
     openRouterThinkingRequest.reasoning?.effort !== "high" ||
     openRouterThinkingRequest.reasoning?.exclude !== true ||
     openRouterThinkingRequest.provider?.require_parameters !== true ||
+    openRouterThinkingRequest.provider?.order?.[0] !== "novita" ||
+    openRouterThinkingRequest.provider?.only?.includes("deepinfra") !== true ||
     openRouterThinkingRequest.max_tokens !== 4096
   ) {
     throw new Error(`Private Thinking must use OpenRouter high reasoning with strict provider routing: ${JSON.stringify(openRouterThinkingRequest)}`);

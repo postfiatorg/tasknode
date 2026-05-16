@@ -208,7 +208,8 @@ Usage/billing:
 - OpenRouter execution and streaming when configured. Private routes enforce
   OpenRouter ZDR/data-collection-deny provider preferences, support
   image/PDF/text attachments, use pinned ZDR-listed defaults for instant and
-  thinking, and do not enable OpenRouter web search.
+  thinking, constrain private requests to known ZDR provider allowlists, and do
+  not enable OpenRouter web search.
 - Usage ledger and admin credit when configured.
 - Idempotent initial provider credit ledger contract for eligible registrar
   accounts.
