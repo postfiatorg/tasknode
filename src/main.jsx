@@ -2293,6 +2293,8 @@ function WalletView({
   const vaultDisplay = walletVaultDisplayState(walletVault, linkedWallet.address);
   const signedIn = isSignedInSession(session);
   const pftBalance = formatPftBalance(wallet);
+  const balanceStatusLabel = walletBalanceStatusLabel(wallet);
+  const balanceError = walletLinked && wallet?.pftBalanceError;
 
   useEffect(() => {
     if (!signedIn) return;
@@ -2412,17 +2414,21 @@ function WalletView({
               Receive
             </button>
           </div>
-          <div className="wallet-flow">
-            <span>
-              <strong>{walletBalanceStatusLabel(wallet)}</strong>
-            </span>
-            {walletLinked && wallet?.pftBalanceError && (
-              <>
-                <span className="dot">.</span>
-                <span>{wallet.pftBalanceError}</span>
-              </>
-            )}
-          </div>
+          {(balanceStatusLabel || balanceError) && (
+            <div className="wallet-flow">
+              {balanceStatusLabel && (
+                <span>
+                  <strong>{balanceStatusLabel}</strong>
+                </span>
+              )}
+              {balanceError && (
+                <>
+                  {balanceStatusLabel && <span className="dot">.</span>}
+                  <span>{wallet.pftBalanceError}</span>
+                </>
+              )}
+            </div>
+          )}
         </section>
 
         {message && <div className="inline-message">{message}</div>}
@@ -5074,7 +5080,7 @@ function formatPftBalance(wallet) {
 function walletBalanceStatusLabel(wallet) {
   if (wallet?.pftBalanceStatus === "checking") return "Checking balance";
   if (wallet?.pftBalanceStatus === "error") return "Balance unavailable";
-  if (wallet?.pftBalanceStatus === "ready") return "Current balance";
+  if (wallet?.pftBalanceStatus === "ready") return "";
   return "Balance unavailable";
 }
 
