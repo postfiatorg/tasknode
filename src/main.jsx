@@ -1842,8 +1842,12 @@ function LoginDialog({ session, onClose, onSessionChange }) {
   const providers = (session?.accountLinks || []).filter((provider) =>
     ["telegram", "discord", "x"].includes(provider.id)
   );
+  const emailProvider = (session?.accountLinks || []).find((provider) => provider.id === "email");
   const devAuth = session?.devAuth;
   const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [emailStep, setEmailStep] = useState("email");
+  const [challenge, setChallenge] = useState(null);
   const [message, setMessage] = useState("");
   const [pendingProvider, setPendingProvider] = useState("");
 
@@ -1872,13 +1876,45 @@ function LoginDialog({ session, onClose, onSessionChange }) {
       return;
     }
 
-    if (!devAuth?.enabled) {
-      setMessage("Email login needs a transactional email provider and magic-link callback.");
+    setPendingProvider("email");
+    setMessage("");
+
+    if (emailProvider?.enabled) {
+      try {
+        const result = await requestJson(emailProvider.startPath, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: trimmedEmail }),
+        });
+
+        if (result.ok) {
+          setChallenge(result.body);
+          setEmailStep("code");
+          setCode("");
+          setMessage(result.body?.message || "Enter the sign-in code.");
+        } else {
+          setMessage(
+            result.body?.message ||
+              result.body?.actionRequired ||
+              `Email login returned HTTP ${result.status}.`
+          );
+        }
+      } catch (error) {
+        setMessage(error?.message || "Email login is unavailable.");
+      } finally {
+        setPendingProvider("");
+      }
       return;
     }
 
-    setPendingProvider("email");
-    setMessage("");
+    if (!devAuth?.enabled) {
+      setMessage(
+        emailProvider?.actionRequired ||
+          "Email login needs a transactional email provider and code callback."
+      );
+      setPendingProvider("");
+      return;
+    }
 
     try {
       const result = await requestJson(devAuth.startPath, {
@@ -1904,6 +1940,57 @@ function LoginDialog({ session, onClose, onSessionChange }) {
     }
   }
 
+  async function verifyEmailCode() {
+    const trimmedCode = code.trim().replace(/\s+/g, "");
+    if (!trimmedCode) {
+      setMessage("Enter the sign-in code.");
+      return;
+    }
+
+    if (!challenge?.challengeId || !emailProvider?.verifyPath) {
+      setMessage("Request a new sign-in code.");
+      return;
+    }
+
+    setPendingProvider("email");
+    setMessage("");
+
+    try {
+      const result = await requestJson(emailProvider.verifyPath, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          challengeId: challenge.challengeId,
+          code: trimmedCode,
+        }),
+      });
+
+      if (result.ok) {
+        await onSessionChange?.();
+        onClose();
+      } else {
+        setMessage(
+          result.body?.message ||
+            result.body?.actionRequired ||
+            `Email verification returned HTTP ${result.status}.`
+        );
+      }
+    } catch (error) {
+      setMessage(error?.message || "Email verification is unavailable.");
+    } finally {
+      setPendingProvider("");
+    }
+  }
+
+  function editEmail() {
+    setEmailStep("email");
+    setCode("");
+    setChallenge(null);
+    setMessage("");
+  }
+
+  const devCode = challenge?.delivery?.devCode || "";
+
   return (
     <div className="dialog-backdrop" role="presentation">
       <section className="login-dialog" role="dialog" aria-modal="true" aria-labelledby="login-title">
@@ -1926,20 +2013,58 @@ function LoginDialog({ session, onClose, onSessionChange }) {
         ))}
         {message && <div className="dialog-message">{message}</div>}
         <div className="divider">OR</div>
-        <input
-          type="email"
-          placeholder="Email address"
-          aria-label="Email address"
-          onChange={(event) => setEmail(event.target.value)}
-          value={email}
-        />
-        <button
-          className="continue-button"
-          type="button"
-          onClick={continueEmail}
-        >
-          {pendingProvider === "email" ? "Checking" : "Continue"}
-        </button>
+        {emailStep === "email" ? (
+          <>
+            <input
+              type="email"
+              placeholder="Email address"
+              aria-label="Email address"
+              onChange={(event) => setEmail(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") continueEmail();
+              }}
+              value={email}
+            />
+            <button
+              className="continue-button"
+              type="button"
+              onClick={continueEmail}
+            >
+              {pendingProvider === "email" ? "Checking" : "Continue"}
+            </button>
+          </>
+        ) : (
+          <div className="email-code-step">
+            <div className="email-code-target">
+              <span>{challenge?.maskedEmail || email}</span>
+              <button type="button" onClick={editEmail}>Edit</button>
+            </div>
+            {devCode && (
+              <div className="dev-code-note">
+                Development code: <strong>{devCode}</strong>
+              </div>
+            )}
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="Code"
+              aria-label="Sign-in code"
+              autoComplete="one-time-code"
+              onChange={(event) => setCode(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") verifyEmailCode();
+              }}
+              value={code}
+            />
+            <button
+              className="continue-button"
+              type="button"
+              onClick={verifyEmailCode}
+            >
+              {pendingProvider === "email" ? "Checking" : "Continue"}
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );

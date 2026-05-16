@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 
 const defaultStorePath = path.join("/tmp", "tasknodeofficial-runtime-store.json");
@@ -13,6 +13,10 @@ const defaultState = {
   },
   ledgerEntries: [],
   sessions: {},
+  accounts: {},
+  accountEmails: {},
+  emailChallenges: {},
+  authEvents: [],
 };
 
 let state = loadState();
@@ -31,6 +35,19 @@ function loadState() {
         parsed.sessions && typeof parsed.sessions === "object" && !Array.isArray(parsed.sessions)
           ? parsed.sessions
           : {},
+      accounts:
+        parsed.accounts && typeof parsed.accounts === "object" && !Array.isArray(parsed.accounts)
+          ? parsed.accounts
+          : {},
+      accountEmails:
+        parsed.accountEmails && typeof parsed.accountEmails === "object" && !Array.isArray(parsed.accountEmails)
+          ? parsed.accountEmails
+          : {},
+      emailChallenges:
+        parsed.emailChallenges && typeof parsed.emailChallenges === "object" && !Array.isArray(parsed.emailChallenges)
+          ? parsed.emailChallenges
+          : {},
+      authEvents: Array.isArray(parsed.authEvents) ? parsed.authEvents : [],
     };
   } catch {
     return structuredClone(defaultState);
@@ -53,6 +70,11 @@ function safeId(value, fallback) {
       ? value.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "")
       : "";
   return (normalized || fallback).slice(0, 80);
+}
+
+function stableId(value, prefix) {
+  const digest = createHash("sha256").update(String(value || "")).digest("hex").slice(0, 24);
+  return `${prefix}_${digest}`;
 }
 
 export function conversationIdForSession(session = null, requestedId = "") {
@@ -79,6 +101,7 @@ function sessionPayload(session) {
     displayName: session.displayName,
     primaryProvider: session.primaryProvider,
     linkedProviders: session.linkedProviders || [],
+    assurance: session.assurance || "low",
     createdAt: session.createdAt,
     expiresAt: session.expiresAt,
   };
@@ -91,6 +114,22 @@ function pruneExpiredSessions() {
   for (const [sessionId, session] of Object.entries(state.sessions)) {
     if (!session?.expiresAt || Date.parse(session.expiresAt) <= now) {
       delete state.sessions[sessionId];
+      changed = true;
+    }
+  }
+
+  if (changed) saveState();
+}
+
+function pruneExpiredEmailChallenges() {
+  const now = Date.now();
+  let changed = false;
+
+  for (const [challengeId, challenge] of Object.entries(state.emailChallenges)) {
+    const expiredLongAgo =
+      challenge?.expiresAt && Date.parse(challenge.expiresAt) <= now - (60 * 60 * 1000);
+    if (!challenge || challenge.consumedAt || challenge.replacedAt || expiredLongAgo) {
+      delete state.emailChallenges[challengeId];
       changed = true;
     }
   }
@@ -111,6 +150,104 @@ function displayNameFromEmail(email) {
     .slice(0, 2)
     .map((word) => `${word[0].toUpperCase()}${word.slice(1)}`)
     .join(" ");
+}
+
+function accountPayload(account) {
+  if (!account) return null;
+
+  return {
+    id: account.id,
+    status: account.status || "active",
+    displayName: account.displayName,
+    primaryProvider: account.primaryProvider || "email",
+    linkedProviders: account.linkedProviders || [],
+    assurance: account.assurance || "low",
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt,
+  };
+}
+
+function linkedEmailProvider({ maskedEmail, verified = true } = {}) {
+  return {
+    id: "email",
+    label: "Email",
+    kind: "email_code",
+    status: verified ? "verified" : "linked",
+    maskedEmail: maskedEmail || null,
+  };
+}
+
+export function getAccount(accountId) {
+  return accountPayload(state.accounts[accountId] || null);
+}
+
+export function findAccountByEmail(canonicalEmail) {
+  const accountId = state.accountEmails[String(canonicalEmail || "")];
+  return accountPayload(accountId ? state.accounts[accountId] : null);
+}
+
+export function getOrCreateEmailAccount({ email, canonicalEmail, maskedEmail }) {
+  const canonical = String(canonicalEmail || "").trim();
+  if (!canonical) return null;
+
+  const existingId = state.accountEmails[canonical];
+  const now = new Date().toISOString();
+  if (existingId && state.accounts[existingId]) {
+    const account = state.accounts[existingId];
+    account.updatedAt = now;
+    account.emailLastSeenAt = now;
+    account.primaryEmailOriginal = email || account.primaryEmailOriginal;
+    state.accounts[existingId] = account;
+    saveState();
+    return accountPayload(account);
+  }
+
+  const accountId = stableId(canonical, "acct_email");
+  const account = {
+    id: accountId,
+    status: "active",
+    displayName: displayNameFromEmail(canonical),
+    primaryEmailOriginal: email,
+    primaryEmailCanonical: canonical,
+    primaryEmailVerified: true,
+    primaryProvider: "email",
+    assurance: "low",
+    linkedProviders: [linkedEmailProvider({ maskedEmail })],
+    createdAt: now,
+    updatedAt: now,
+    emailLastSeenAt: now,
+  };
+
+  state.accounts[accountId] = account;
+  state.accountEmails[canonical] = accountId;
+  saveState();
+
+  return accountPayload(account);
+}
+
+export function createAccountSession(account, { provider = "email", assurance = "low" } = {}) {
+  pruneExpiredSessions();
+
+  const now = new Date();
+  const sessionId = randomUUID();
+  const session = {
+    id: sessionId,
+    accountId: account.id,
+    displayName: account.displayName,
+    primaryProvider: provider,
+    linkedProviders: account.linkedProviders || [],
+    assurance,
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + sessionTtlSeconds * 1000).toISOString(),
+  };
+
+  state.sessions[sessionId] = session;
+  saveState();
+
+  return {
+    sessionId,
+    session: sessionPayload(session),
+  };
 }
 
 export function getSession(sessionId) {
@@ -153,6 +290,151 @@ export function createDevSession({ email = "dev@tasknode.local" } = {}) {
     sessionId,
     session: sessionPayload(session),
   };
+}
+
+function hashEquals(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""), "hex");
+  const rightBuffer = Buffer.from(String(right || ""), "hex");
+  if (!leftBuffer.length || leftBuffer.length !== rightBuffer.length) return false;
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+export function createEmailChallenge({
+  id = randomUUID(),
+  email,
+  canonicalEmail,
+  maskedEmail,
+  codeHash,
+  expiresAt,
+  deliveryMode,
+  requestIp = "",
+  userAgent = "",
+}) {
+  pruneExpiredEmailChallenges();
+
+  const canonical = String(canonicalEmail || "").trim();
+  const now = new Date().toISOString();
+
+  for (const challenge of Object.values(state.emailChallenges)) {
+    if (
+      challenge?.canonicalEmail === canonical &&
+      !challenge.consumedAt &&
+      !challenge.replacedAt
+    ) {
+      challenge.replacedAt = now;
+    }
+  }
+
+  const challenge = {
+    id,
+    email,
+    canonicalEmail: canonical,
+    maskedEmail,
+    codeHash,
+    attempts: 0,
+    maxAttempts: 6,
+    deliveryMode,
+    requestIp: String(requestIp || "").slice(0, 80),
+    userAgent: String(userAgent || "").slice(0, 240),
+    createdAt: now,
+    expiresAt,
+    consumedAt: null,
+    replacedAt: null,
+  };
+
+  state.emailChallenges[id] = challenge;
+  saveState();
+
+  return {
+    id,
+    maskedEmail,
+    expiresAt,
+    deliveryMode,
+  };
+}
+
+export function getEmailChallenge(challengeId) {
+  pruneExpiredEmailChallenges();
+
+  const challenge = state.emailChallenges[String(challengeId || "")];
+  if (!challenge) return null;
+
+  return {
+    id: challenge.id,
+    canonicalEmail: challenge.canonicalEmail,
+    email: challenge.email,
+    maskedEmail: challenge.maskedEmail,
+    expiresAt: challenge.expiresAt,
+    attempts: challenge.attempts || 0,
+    maxAttempts: challenge.maxAttempts || 6,
+    consumedAt: challenge.consumedAt || null,
+    replacedAt: challenge.replacedAt || null,
+  };
+}
+
+export function consumeEmailChallenge({ challengeId, codeHash }) {
+  pruneExpiredEmailChallenges();
+
+  const challenge = state.emailChallenges[String(challengeId || "")];
+  if (!challenge) {
+    return { ok: false, error: "email_challenge_invalid" };
+  }
+
+  const now = new Date();
+  if (challenge.consumedAt || challenge.replacedAt || Date.parse(challenge.expiresAt) <= now.getTime()) {
+    return { ok: false, error: "email_challenge_invalid" };
+  }
+
+  if ((challenge.attempts || 0) >= (challenge.maxAttempts || 6)) {
+    return { ok: false, error: "email_challenge_attempts_exceeded" };
+  }
+
+  if (!hashEquals(challenge.codeHash, codeHash)) {
+    challenge.attempts = (challenge.attempts || 0) + 1;
+    saveState();
+    return { ok: false, error: "email_challenge_invalid" };
+  }
+
+  challenge.consumedAt = now.toISOString();
+  saveState();
+
+  return {
+    ok: true,
+    challenge: {
+      id: challenge.id,
+      email: challenge.email,
+      canonicalEmail: challenge.canonicalEmail,
+      maskedEmail: challenge.maskedEmail,
+      consumedAt: challenge.consumedAt,
+    },
+  };
+}
+
+export function recordAuthEvent({
+  accountId = "",
+  eventType,
+  provider = "",
+  email = "",
+  decision = "",
+  metadata = {},
+}) {
+  const event = {
+    id: randomUUID(),
+    accountId: accountId || null,
+    eventType,
+    provider,
+    email: email || null,
+    decision,
+    metadata,
+    createdAt: new Date().toISOString(),
+  };
+
+  state.authEvents.push(event);
+  if (state.authEvents.length > 1000) {
+    state.authEvents = state.authEvents.slice(-1000);
+  }
+  saveState();
+  return event;
 }
 
 export function destroySession(sessionId) {

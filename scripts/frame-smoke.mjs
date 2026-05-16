@@ -113,11 +113,27 @@ async function main() {
     await assertSelector('input[placeholder="Email address"]');
     await capture("13-login");
 
-    const devAuthEnabled = await evaluate(`fetch('/api/session')
+    const loginSessionContract = await evaluate(`fetch('/api/session')
       .then((response) => response.json())
-      .then((session) => session.devAuth?.enabled === true)
-      .catch(() => false)`);
-    if (devAuthEnabled) {
+      .then((session) => ({
+        devAuthEnabled: session.devAuth?.enabled === true,
+        emailEnabled: session.accountLinks?.find((provider) => provider.id === 'email')?.enabled === true,
+      }))
+      .catch(() => ({ devAuthEnabled: false, emailEnabled: false }))`);
+    if (loginSessionContract.emailEnabled) {
+      await setInput('input[placeholder="Email address"]', "frame-smoke@tasknode.local");
+      await clickSelector(".continue-button");
+      await assertSelector('input[aria-label="Sign-in code"]');
+      const code = await evaluate(`document.querySelector('.dev-code-note strong')?.textContent?.trim() || ''`);
+      if (code) {
+        await setInput('input[aria-label="Sign-in code"]', code);
+        await clickSelector(".continue-button");
+        await waitForText("Frame Smoke");
+        await capture("14-login-session");
+      } else {
+        await capture("14-login-code");
+      }
+    } else if (loginSessionContract.devAuthEnabled) {
       await setInput('input[placeholder="Email address"]', "frame-smoke@tasknode.local");
       await clickSelector(".continue-button");
       await waitForText("Frame Smoke");

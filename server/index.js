@@ -7,6 +7,8 @@ import { appState } from "./app-state.js";
 import {
   authCallback,
   authDevStart,
+  authEmailStart,
+  authEmailVerify,
   authProviders,
   authStart,
   chatEstimate,
@@ -140,6 +142,12 @@ function secureCookie(req) {
   );
 }
 
+function requestIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  const raw = forwarded || req.socket?.remoteAddress || "";
+  return raw.startsWith("::ffff:") ? raw.slice("::ffff:".length) : raw;
+}
+
 function sessionCookie(req, sessionId) {
   const secure = secureCookie(req) ? "; Secure" : "";
   return `${sessionCookieName}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${sessionTtlSeconds}${secure}`;
@@ -202,6 +210,24 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/auth/dev/start") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = authDevStart(payload, req.method);
+    const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
+    json(res, result.status, result.body, headers);
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/email/start") {
+    const payload = req.method === "POST" ? await readJson(req, 4096) : {};
+    const result = await authEmailStart(payload, req.method, {
+      ip: requestIp(req),
+      userAgent: req.headers["user-agent"] || "",
+    });
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/email/verify") {
+    const payload = req.method === "POST" ? await readJson(req, 4096) : {};
+    const result = authEmailVerify(payload, req.method);
     const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
     json(res, result.status, result.body, headers);
     return true;

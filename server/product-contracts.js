@@ -1,3 +1,4 @@
+import { createHmac, randomInt, randomUUID } from "node:crypto";
 import {
   actualChatCost,
   anyChatProviderEnabled,
@@ -7,7 +8,18 @@ import {
   executeChat,
   normalizedChatMode,
 } from "./chat-router.js";
-import { appendUsageCredit, createDevSession, usageSummary } from "./runtime-store.js";
+import {
+  appendUsageCredit,
+  consumeEmailChallenge,
+  createAccountSession,
+  createDevSession,
+  createEmailChallenge,
+  findAccountByEmail,
+  getEmailChallenge,
+  getOrCreateEmailAccount,
+  recordAuthEvent,
+  usageSummary,
+} from "./runtime-store.js";
 
 function hasAll(keys) {
   return keys.every((key) => Boolean(process.env[key]));
@@ -21,6 +33,179 @@ function devAuthEnabled() {
   if (process.env.TASKNODE_DEV_AUTH_ENABLED === "true") return true;
   if (process.env.TASKNODE_DEV_AUTH_ENABLED === "false") return false;
   return !["prod", "production"].includes(currentEnvironment().toLowerCase());
+}
+
+function authSecret() {
+  return (
+    process.env.TASKNODE_AUTH_SECRET ||
+    process.env.AUTH_SECRET ||
+    process.env.SESSION_SECRET ||
+    ""
+  );
+}
+
+function authSecretReady() {
+  if (authSecret()) return true;
+  return !["prod", "production"].includes(currentEnvironment().toLowerCase());
+}
+
+function authHmac(value) {
+  const secret = authSecret() || "tasknodeofficial-local-email-dev-secret";
+  return createHmac("sha256", secret).update(String(value || "")).digest("hex");
+}
+
+function emailCodeHash({ challengeId, canonicalEmail, code }) {
+  return authHmac(`email-code:${challengeId}:${canonicalEmail}:${String(code || "").trim()}`);
+}
+
+function emailDevDeliveryEnabled() {
+  if (process.env.TASKNODE_EMAIL_DEV_DELIVERY === "true") return true;
+  if (process.env.TASKNODE_EMAIL_DEV_DELIVERY === "false") return false;
+  return (
+    process.env.NODE_ENV !== "production" &&
+    !["prod", "production"].includes(currentEnvironment().toLowerCase())
+  );
+}
+
+function emailDeliveryProvider() {
+  return String(process.env.EMAIL_DELIVERY_PROVIDER || "").trim().toLowerCase();
+}
+
+function resendConfigured() {
+  const key = process.env.RESEND_API_KEY || process.env.EMAIL_PROVIDER_API_KEY;
+  return Boolean(
+    (emailDeliveryProvider() === "resend" || (!emailDeliveryProvider() && key)) &&
+      key &&
+      process.env.EMAIL_FROM
+  );
+}
+
+function emailDeliveryStatus() {
+  const devDelivery = emailDevDeliveryEnabled();
+  const resendReady = resendConfigured();
+  const configured = authSecretReady() && (devDelivery || resendReady);
+  const mode = devDelivery ? "development" : resendReady ? "resend" : "unconfigured";
+
+  return {
+    configured,
+    enabled: configured,
+    mode,
+    status: configured ? "ready" : authSecretReady() ? "missing_config" : "missing_auth_secret",
+    startPath: "/api/auth/email/start",
+    verifyPath: "/api/auth/email/verify",
+    codeTtlSeconds: emailCodeTtlSeconds(),
+    actionRequired: configured
+      ? "Request an email code, then verify it before issuing a session."
+      : authSecretReady()
+        ? "Configure TASKNODE_EMAIL_DEV_DELIVERY=true for local/dev testing or configure EMAIL_DELIVERY_PROVIDER=resend, EMAIL_FROM, and RESEND_API_KEY."
+        : "Configure TASKNODE_AUTH_SECRET before enabling production email login.",
+  };
+}
+
+function emailCodeTtlSeconds() {
+  const ttl = Number(process.env.TASKNODE_EMAIL_CODE_TTL_SECONDS || 600);
+  if (!Number.isFinite(ttl)) return 600;
+  return Math.min(Math.max(Math.floor(ttl), 120), 1800);
+}
+
+function normalizeEmailInput(value) {
+  const original = String(value || "").trim();
+  if (!original || original.length > 254 || /[\s<>()[\]\\,;:"]/.test(original)) {
+    return { ok: false, error: "email_invalid" };
+  }
+
+  const atIndex = original.lastIndexOf("@");
+  if (atIndex <= 0 || atIndex !== original.indexOf("@") || atIndex === original.length - 1) {
+    return { ok: false, error: "email_invalid" };
+  }
+
+  const local = original.slice(0, atIndex);
+  const domain = original.slice(atIndex + 1).toLowerCase();
+  if (!local || !domain || domain.length > 253 || !domain.includes(".") || domain.startsWith(".") || domain.endsWith(".")) {
+    return { ok: false, error: "email_invalid" };
+  }
+
+  if (!/^[a-z0-9.-]+$/.test(domain) || domain.includes("..")) {
+    return { ok: false, error: "email_invalid" };
+  }
+
+  return {
+    ok: true,
+    email: original,
+    canonicalEmail: `${local.toLowerCase()}@${domain}`,
+  };
+}
+
+function maskEmail(email) {
+  const normalized = normalizeEmailInput(email);
+  if (!normalized.ok) return "that email";
+
+  const [local, domain] = normalized.canonicalEmail.split("@");
+  const localMask =
+    local.length <= 1
+      ? "*"
+      : `${local.slice(0, 1)}${"*".repeat(Math.min(local.length - 1, 5))}`;
+  return `${localMask}@${domain}`;
+}
+
+function generateEmailCode() {
+  return String(randomInt(0, 100000000)).padStart(8, "0");
+}
+
+async function sendResendEmailCode({ email, code, expiresInMinutes }) {
+  const apiKey = process.env.RESEND_API_KEY || process.env.EMAIL_PROVIDER_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [email],
+        subject: "Your Task Node sign-in code",
+        text: `Your Task Node sign-in code is ${code}. It expires in ${expiresInMinutes} minutes. If you did not request this code, you can ignore this email.`,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`resend_http_${response.status}`);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function deliverEmailCode({ email, code, expiresInSeconds }) {
+  const status = emailDeliveryStatus();
+  if (!status.enabled) {
+    const error = new Error(status.actionRequired);
+    error.code = status.status;
+    throw error;
+  }
+
+  if (status.mode === "development") {
+    return { mode: "development", devCode: code };
+  }
+
+  if (status.mode === "resend") {
+    await sendResendEmailCode({
+      email,
+      code,
+      expiresInMinutes: Math.ceil(expiresInSeconds / 60),
+    });
+    return { mode: "email" };
+  }
+
+  const error = new Error("Email delivery is not configured.");
+  error.code = "email_delivery_not_configured";
+  throw error;
 }
 
 function actionResponse({ status, error, action, message, actionRequired }) {
@@ -54,6 +239,26 @@ function provider({ id, label, kind, requiredEnv, note }) {
       ? "Implement callback handling, account merge rules, and launch review before enabling this provider"
       : `Configure ${requiredEnv.join(", ")}`,
     note,
+  };
+}
+
+function emailProvider() {
+  const status = emailDeliveryStatus();
+
+  return {
+    id: "email",
+    label: "Email",
+    kind: "email_code",
+    configured: status.configured,
+    enabled: status.enabled,
+    status: status.status,
+    startPath: status.startPath,
+    verifyPath: status.verifyPath,
+    codeTtlSeconds: status.codeTtlSeconds,
+    deliveryMode: status.mode,
+    actionRequired: status.actionRequired,
+    note:
+      "Email is a low-assurance account login and recovery path. It does not claim legacy wallet ownership by itself.",
   };
 }
 
@@ -291,14 +496,7 @@ export function authProviders() {
       note:
         "Useful for pseudonymous identity and public profile continuity. OAuth callback wiring is not active yet.",
     }),
-    provider({
-      id: "email",
-      label: "Email",
-      kind: "magic_link",
-      requiredEnv: ["EMAIL_FROM", "EMAIL_PROVIDER_API_KEY"],
-      note:
-        "Email should be account fallback, but no transactional email provider has been selected for Task Node Official yet.",
-    }),
+    emailProvider(),
   ];
 }
 
@@ -696,6 +894,213 @@ export function authCallback(providerId) {
   };
 }
 
+export async function authEmailStart(payload, method, requestMeta = {}) {
+  const status = emailDeliveryStatus();
+
+  if (method !== "POST") {
+    return actionResponse({
+      status: 405,
+      error: "email_login_method_not_allowed",
+      action: "email_login_start",
+      message: "Email login requires POST.",
+      actionRequired: "Send email login requests with POST.",
+    });
+  }
+
+  if (!status.enabled) {
+    return actionResponse({
+      status: 503,
+      error: "email_login_not_configured",
+      action: "email_login_start",
+      message: "Email login is not configured in this environment.",
+      actionRequired: status.actionRequired,
+    });
+  }
+
+  const normalized = normalizeEmailInput(payload?.email);
+  if (!normalized.ok) {
+    return actionResponse({
+      status: 400,
+      error: "email_invalid",
+      action: "email_login_start",
+      message: "Enter a valid email address.",
+      actionRequired: "Use the email address that should receive the Task Node sign-in code.",
+    });
+  }
+
+  const challengeId = randomUUID();
+  const code = generateEmailCode();
+  const expiresInSeconds = status.codeTtlSeconds;
+  const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+  const maskedEmail = maskEmail(normalized.canonicalEmail);
+  const codeHash = emailCodeHash({
+    challengeId,
+    canonicalEmail: normalized.canonicalEmail,
+    code,
+  });
+
+  let delivery;
+  try {
+    delivery = await deliverEmailCode({
+      email: normalized.email,
+      code,
+      expiresInSeconds,
+    });
+  } catch (error) {
+    return actionResponse({
+      status: 502,
+      error: "email_delivery_failed",
+      action: "email_login_start",
+      message: "Task Node could not send a sign-in code right now.",
+      actionRequired:
+        error?.message || "Check transactional email provider configuration and retry.",
+    });
+  }
+
+  createEmailChallenge({
+    id: challengeId,
+    email: normalized.email,
+    canonicalEmail: normalized.canonicalEmail,
+    maskedEmail,
+    codeHash,
+    expiresAt,
+    deliveryMode: delivery.mode,
+    requestIp: requestMeta.ip,
+    userAgent: requestMeta.userAgent,
+  });
+
+  const existingAccount = findAccountByEmail(normalized.canonicalEmail);
+  recordAuthEvent({
+    accountId: existingAccount?.id || "",
+    eventType: "email_challenge_started",
+    provider: "email",
+    email: maskedEmail,
+    decision: "challenge_sent",
+    metadata: {
+      deliveryMode: delivery.mode,
+      accountKnown: Boolean(existingAccount),
+    },
+  });
+
+  const responseDelivery =
+    delivery.mode === "development"
+      ? {
+          mode: "development",
+          devCode: delivery.devCode,
+          note: "Development delivery is enabled; this code is returned only for local/dev testing.",
+        }
+      : { mode: "email" };
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: "email_login_start",
+      message:
+        "If that email address can receive Task Node mail, we sent a sign-in code.",
+      challengeId,
+      maskedEmail,
+      expiresAt,
+      expiresInSeconds,
+      delivery: responseDelivery,
+    },
+  };
+}
+
+export function authEmailVerify(payload, method) {
+  if (method !== "POST") {
+    return actionResponse({
+      status: 405,
+      error: "email_verify_method_not_allowed",
+      action: "email_login_verify",
+      message: "Email verification requires POST.",
+      actionRequired: "Send email code verification requests with POST.",
+    });
+  }
+
+  const challengeId = String(payload?.challengeId || "").trim();
+  const code = String(payload?.code || "").trim().replace(/\s+/g, "");
+  if (!challengeId || !/^[0-9A-Za-z]{6,12}$/.test(code)) {
+    return actionResponse({
+      status: 400,
+      error: "email_code_invalid",
+      action: "email_login_verify",
+      message: "Enter the sign-in code from your email.",
+      actionRequired: "Submit the current email challenge id and code.",
+    });
+  }
+
+  const challenge = getEmailChallenge(challengeId);
+  if (!challenge) {
+    recordAuthEvent({
+      eventType: "email_challenge_failed",
+      provider: "email",
+      decision: "missing_or_expired",
+    });
+    return actionResponse({
+      status: 400,
+      error: "email_code_invalid",
+      action: "email_login_verify",
+      message: "That sign-in code is invalid or expired.",
+      actionRequired: "Request a new code and try again.",
+    });
+  }
+
+  const codeHash = emailCodeHash({
+    challengeId,
+    canonicalEmail: challenge.canonicalEmail,
+    code,
+  });
+  const consumed = consumeEmailChallenge({ challengeId, codeHash });
+
+  if (!consumed.ok) {
+    recordAuthEvent({
+      eventType: "email_challenge_failed",
+      provider: "email",
+      email: challenge.maskedEmail,
+      decision: consumed.error,
+    });
+    return actionResponse({
+      status: consumed.error === "email_challenge_attempts_exceeded" ? 429 : 400,
+      error: "email_code_invalid",
+      action: "email_login_verify",
+      message: "That sign-in code is invalid or expired.",
+      actionRequired: "Check the code or request a new one.",
+    });
+  }
+
+  const account = getOrCreateEmailAccount({
+    email: consumed.challenge.email,
+    canonicalEmail: consumed.challenge.canonicalEmail,
+    maskedEmail: consumed.challenge.maskedEmail,
+  });
+  const created = createAccountSession(account, { provider: "email", assurance: "low" });
+
+  recordAuthEvent({
+    accountId: account.id,
+    eventType: "email_challenge_verified",
+    provider: "email",
+    email: consumed.challenge.maskedEmail,
+    decision: "session_issued",
+  });
+
+  return {
+    status: 200,
+    sessionId: created.sessionId,
+    body: {
+      ok: true,
+      action: "email_login_verify",
+      message: "Signed in.",
+      session: created.session,
+      account: {
+        id: account.id,
+        displayName: account.displayName,
+        assurance: account.assurance,
+      },
+    },
+  };
+}
+
 export function authDevStart(payload, method) {
   const status = devAuthStatus();
 
@@ -739,16 +1144,20 @@ export function readiness() {
   const providers = authProviders();
   const ledger = usageSummary();
   const chatExecutionReady = anyChatProviderEnabled();
+  const emailStatus = emailDeliveryStatus();
   return {
     generatedAt: new Date().toISOString(),
     auth: {
       configuredProviders: providers.filter((item) => item.configured).map((item) => item.id),
       devSessionReady: devAuthEnabled(),
+      emailLoginReady: emailStatus.enabled,
+      emailDeliveryMode: emailStatus.mode,
       launchReady: false,
       blockers: [
         "External auth start routes are contract-only and disabled",
         "OAuth and bot callback handlers are not implemented",
         "Canonical account merge rules are not implemented",
+        ...(emailStatus.enabled ? [] : [emailStatus.actionRequired]),
       ],
     },
     wallet: {

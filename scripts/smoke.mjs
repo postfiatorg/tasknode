@@ -61,9 +61,110 @@ await check("/api/session", (response, text) => {
   return (
     body.status === "signed_out" &&
     Array.isArray(body.accountLinks) &&
+    body.accountLinks.some((provider) => provider.id === "email" && provider.startPath && provider.verifyPath) &&
     typeof body.devAuth?.enabled === "boolean"
   );
 });
+
+const emailLogin = await rawRequest("/api/auth/email/start", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ email: `email-smoke-${Date.now()}@tasknode.local` }),
+});
+const emailLoginBody = JSON.parse(emailLogin.text);
+
+if (emailLogin.response.status === 200) {
+  if (
+    emailLoginBody.ok !== true ||
+    emailLoginBody.action !== "email_login_start" ||
+    !emailLoginBody.challengeId ||
+    !emailLoginBody.maskedEmail ||
+    !emailLoginBody.expiresAt
+  ) {
+    throw new Error("/api/auth/email/start did not return a challenge contract");
+  }
+  console.log("/api/auth/email/start ok");
+
+  await checkRequest(
+    "/api/auth/email/verify",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        challengeId: emailLoginBody.challengeId,
+        code: "00000000",
+      }),
+    },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.status === 400 && body.error === "email_code_invalid";
+    }
+  );
+
+  if (emailLoginBody.delivery?.devCode) {
+    let emailCookie = "";
+    await checkRequest(
+      "/api/auth/email/verify",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          challengeId: emailLoginBody.challengeId,
+          code: emailLoginBody.delivery.devCode,
+        }),
+      },
+      (response, text) => {
+        const body = JSON.parse(text);
+        emailCookie = response.headers.get("set-cookie")?.split(";")[0] || "";
+        return (
+          response.ok &&
+          Boolean(emailCookie) &&
+          body.session?.status === "signed_in" &&
+          body.session?.primaryProvider === "email" &&
+          body.session?.assurance === "low"
+        );
+      }
+    );
+
+    await checkRequest(
+      "/api/auth/email/verify",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          challengeId: emailLoginBody.challengeId,
+          code: emailLoginBody.delivery.devCode,
+        }),
+      },
+      (response, text) => {
+        const body = JSON.parse(text);
+        return response.status === 400 && body.error === "email_code_invalid";
+      }
+    );
+
+    await checkRequest(
+      "/api/session",
+      { headers: { cookie: emailCookie } },
+      (response, text) => {
+        const body = JSON.parse(text);
+        return response.ok && body.status === "signed_in" && body.primaryProvider === "email";
+      }
+    );
+
+    await checkRequest(
+      "/api/auth/logout",
+      { method: "POST", headers: { cookie: emailCookie } },
+      (response, text) => {
+        const body = JSON.parse(text);
+        return response.ok && body.ok === true;
+      }
+    );
+  }
+} else if (emailLogin.response.status === 503 && emailLoginBody.error === "email_login_not_configured") {
+  console.log("/api/auth/email/start ok");
+} else {
+  throw new Error(`/api/auth/email/start failed: HTTP ${emailLogin.response.status}`);
+}
 
 const devAuth = await rawRequest("/api/auth/dev/start", {
   method: "POST",
@@ -341,11 +442,13 @@ await checkRequest("/api/context/manifest/ink", { method: "POST" }, (response, t
 await check("/api/auth/providers", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
+  const nonEmailProviders = body.providers.filter((provider) => provider.id !== "email");
   return (
     Array.isArray(body.providers) &&
     body.providers.some((provider) => provider.id === "telegram") &&
-    body.providers.every((provider) => provider.startPath && provider.callbackPath) &&
-    body.providers.every((provider) => provider.enabled === false)
+    body.providers.some((provider) => provider.id === "email" && provider.startPath === "/api/auth/email/start" && provider.verifyPath === "/api/auth/email/verify") &&
+    nonEmailProviders.every((provider) => provider.startPath && provider.callbackPath) &&
+    nonEmailProviders.every((provider) => provider.enabled === false)
   );
 });
 
