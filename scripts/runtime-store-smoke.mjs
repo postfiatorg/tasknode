@@ -8,7 +8,7 @@ delete process.env.CHAT_MODEL_FRONTIER_INSTANT;
 process.env.OPENAI_MODEL = "generic-openai-smoke-model";
 
 try {
-  const { modelForMode } = await import("../server/chat-router.js");
+  const { modelForMode, openAiResponseRequest } = await import("../server/chat-router.js");
   const {
     appendUsageCredit,
     appendChatTurn,
@@ -29,6 +29,29 @@ try {
 
   if (modelForMode("Frontier Thinking") !== "generic-openai-smoke-model") {
     throw new Error("Generic OPENAI_MODEL override should still apply outside Frontier Instant.");
+  }
+
+  const frontierRequest = openAiResponseRequest({
+    mode: "Frontier Instant",
+    model: "chat-latest",
+    message: "Search today's public health news and read the attached note.",
+    conversationId: "runtime-smoke-response-contract",
+    attachments: [
+      {
+        name: "note.txt",
+        mimeType: "text/plain",
+        size: 12,
+        dataUrl: "data:text/plain;base64,SGVsbG8gd29ybGQ=",
+      },
+    ],
+  });
+
+  if (
+    frontierRequest.model !== "chat-latest" ||
+    frontierRequest.tools?.[0]?.type !== "web_search" ||
+    frontierRequest.input?.[0]?.content?.[1]?.type !== "input_file"
+  ) {
+    throw new Error(`OpenAI Responses request is missing search or attachment support: ${JSON.stringify(frontierRequest)}`);
   }
 
   const first = appendUsageCredit({

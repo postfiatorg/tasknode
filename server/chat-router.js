@@ -3,6 +3,8 @@ import { appendChatTurn, getChatMessages } from "./runtime-store.js";
 const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const providerTimeoutMs = Number(process.env.CHAT_PROVIDER_TIMEOUT_MS || 45000);
+const maxChatAttachments = 4;
+const maxAttachmentDataUrlBytes = 6 * 1024 * 1024;
 
 export const chatModePrices = {
   "Private Instant": {
@@ -136,6 +138,98 @@ function recentTranscript(conversationId, currentMessage) {
 
   if (!history) return currentMessage;
   return `Recent conversation:\n${history}\n\nUser: ${currentMessage}`;
+}
+
+function chatAttachmentType(mimeType = "") {
+  if (mimeType.startsWith("image/")) return "image";
+  return "file";
+}
+
+export function normalizeChatAttachments(attachments) {
+  if (!Array.isArray(attachments)) return [];
+
+  return attachments
+    .slice(0, maxChatAttachments)
+    .map((attachment) => {
+      const dataUrl = typeof attachment?.dataUrl === "string" ? attachment.dataUrl.trim() : "";
+      if (!dataUrl.startsWith("data:") || dataUrl.length > maxAttachmentDataUrlBytes) return null;
+
+      const mimeType = String(attachment?.mimeType || attachment?.type || "")
+        .trim()
+        .toLowerCase()
+        .slice(0, 120);
+      const name = String(attachment?.name || "attachment")
+        .trim()
+        .replace(/[^\w.\- ()[\]]+/g, "_")
+        .slice(0, 160) || "attachment";
+      const size = Math.max(0, Number(attachment?.size || 0));
+
+      return {
+        name,
+        mimeType,
+        size,
+        dataUrl,
+        kind: chatAttachmentType(mimeType),
+      };
+    })
+    .filter(Boolean);
+}
+
+function openAiTools() {
+  return [
+    {
+      type: "web_search",
+      search_context_size: process.env.OPENAI_WEB_SEARCH_CONTEXT_SIZE || "low",
+    },
+  ];
+}
+
+export function openAiInput({ conversationId, message, attachments = [] }) {
+  const content = [
+    {
+      type: "input_text",
+      text: recentTranscript(conversationId, message),
+    },
+  ];
+
+  for (const attachment of normalizeChatAttachments(attachments)) {
+    if (attachment.kind === "image") {
+      content.push({
+        type: "input_image",
+        image_url: attachment.dataUrl,
+        detail: "auto",
+      });
+      continue;
+    }
+
+    content.push({
+      type: "input_file",
+      filename: attachment.name,
+      file_data: attachment.dataUrl,
+    });
+  }
+
+  return [{ role: "user", content }];
+}
+
+export function openAiResponseRequest({ mode, model, message, conversationId, attachments = [], stream = false }) {
+  const config = chatModeConfig(mode);
+  return {
+    model,
+    instructions: taskNodeInstructions(),
+    input: openAiInput({ conversationId, message, attachments }),
+    max_output_tokens: config.maxOutputTokens,
+    reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
+    stream: stream || undefined,
+    store: false,
+    tool_choice: "auto",
+    tools: openAiTools(),
+    max_tool_calls: 4,
+    metadata: {
+      app: "tasknodeofficial",
+      mode,
+    },
+  };
 }
 
 async function fetchJson(url, options) {
@@ -329,8 +423,7 @@ function fallbackUsage({ mode, message, text }) {
   };
 }
 
-async function executeOpenAi({ mode, model, message, conversationId }) {
-  const config = chatModeConfig(mode);
+async function executeOpenAi({ mode, model, message, conversationId, attachments = [] }) {
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
   const body = await fetchJson(`${baseUrl}/responses`, {
     method: "POST",
@@ -338,18 +431,7 @@ async function executeOpenAi({ mode, model, message, conversationId }) {
       authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({
-      model,
-      instructions: taskNodeInstructions(),
-      input: recentTranscript(conversationId, message),
-      max_output_tokens: config.maxOutputTokens,
-      reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
-      store: false,
-      metadata: {
-        app: "tasknodeofficial",
-        mode,
-      },
-    }),
+    body: JSON.stringify(openAiResponseRequest({ mode, model, message, conversationId, attachments })),
   });
   const text = outputTextFromOpenAi(body);
 
@@ -362,8 +444,7 @@ async function executeOpenAi({ mode, model, message, conversationId }) {
   };
 }
 
-async function streamOpenAi({ mode, model, message, conversationId, onDelta, signal }) {
-  const config = chatModeConfig(mode);
+async function streamOpenAi({ mode, model, message, conversationId, attachments = [], onDelta, signal }) {
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
   const stream = await fetchEventStream(
     `${baseUrl}/responses`,
@@ -374,19 +455,14 @@ async function streamOpenAi({ mode, model, message, conversationId, onDelta, sig
         "content-type": "application/json",
         accept: "text/event-stream",
       },
-      body: JSON.stringify({
+      body: JSON.stringify(openAiResponseRequest({
+        mode,
         model,
-        instructions: taskNodeInstructions(),
-        input: recentTranscript(conversationId, message),
-        max_output_tokens: config.maxOutputTokens,
-        reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
+        message,
+        conversationId,
+        attachments,
         stream: true,
-        store: false,
-        metadata: {
-          app: "tasknodeofficial",
-          mode,
-        },
-      }),
+      })),
     },
     { signal }
   );
@@ -570,7 +646,7 @@ async function streamOpenRouter({ mode, model, message, conversationId, onDelta,
   };
 }
 
-export async function executeChat({ accountId = "", mode, message, conversationId = "dev" }) {
+export async function executeChat({ accountId = "", mode, message, conversationId = "dev", attachments = [] }) {
   const normalizedMode = normalizedChatMode(mode);
   const status = chatExecutionStatus(normalizedMode);
 
@@ -583,7 +659,7 @@ export async function executeChat({ accountId = "", mode, message, conversationI
 
   const result =
     status.provider === "openai"
-      ? await executeOpenAi({ mode: normalizedMode, model: status.model, message, conversationId })
+      ? await executeOpenAi({ mode: normalizedMode, model: status.model, message, conversationId, attachments })
       : await executeOpenRouter({ mode: normalizedMode, model: status.model, message, conversationId });
 
   if (!result.text) {
@@ -616,6 +692,7 @@ export async function executeChatStream({
   mode,
   message,
   conversationId = "dev",
+  attachments = [],
   onDelta,
   signal,
 }) {
@@ -636,6 +713,7 @@ export async function executeChatStream({
           model: status.model,
           message,
           conversationId,
+          attachments,
           onDelta,
           signal,
         })

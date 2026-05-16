@@ -434,7 +434,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/chat/stream") {
-    const payload = req.method === "POST" ? await readJson(req) : {};
+    const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
     const conversationId = conversationIdForSession(session, payload?.conversationId || "");
     const started = chatStreamStart(
       { ...payload, accountId: session?.accountId || "", conversationId },
@@ -511,7 +511,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/chat/send") {
-    const payload = req.method === "POST" ? await readJson(req) : {};
+    const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
     const conversationId = conversationIdForSession(session, payload?.conversationId || "");
     const result = await chatSend(
       { ...payload, accountId: session?.accountId || "", conversationId },

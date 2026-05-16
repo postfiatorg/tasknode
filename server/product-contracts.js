@@ -462,7 +462,8 @@ function chatPayload(payload) {
       ? payload.conversationId.trim().slice(0, 160)
       : "dev";
   const dryRun = payload?.dryRun === true;
-  return { accountId, message, mode: normalizedChatMode(mode), conversationId, dryRun };
+  const attachments = Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 4) : [];
+  return { accountId, message, mode: normalizedChatMode(mode), conversationId, dryRun, attachments };
 }
 
 function chatExecutionPreflight(payload, method, action = "chat_send") {
@@ -485,7 +486,7 @@ function chatExecutionPreflight(payload, method, action = "chat_send") {
     };
   }
 
-  if (!chat.message) {
+  if (!chat.message && chat.attachments.length === 0) {
     return {
       ok: false,
       status: 400,
@@ -580,12 +581,12 @@ export function chatEstimate(payload) {
 
 export async function chatSend(payload, method) {
   const preflight = chatExecutionPreflight(payload, method, "chat_send");
-  const { accountId, message, mode, conversationId } = preflight.chat;
+  const { accountId, message, mode, conversationId, attachments } = preflight.chat;
   const { estimate } = preflight;
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
 
   try {
-    const result = await executeChat({ accountId, mode, message, conversationId });
+    const result = await executeChat({ accountId, mode, message, conversationId, attachments });
     return {
       status: 200,
       body: {

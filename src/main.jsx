@@ -69,6 +69,21 @@ import { fetchAppState, fetchRuntimeConfig, requestEventStream, requestJson } fr
 import "./styles.css";
 
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
+const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
+const CHAT_ATTACHMENT_MAX_COUNT = 4;
+const CHAT_ATTACHMENT_ACCEPT = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/json",
+].join(",");
 
 const PALETTE = {
   bg: "#faf9f6",
@@ -924,6 +939,7 @@ function ChatSurface({
   const [actualUsage, setActualUsage] = useState(null);
   const [statusTone, setStatusTone] = useState("muted");
   const [sending, setSending] = useState(false);
+  const [attachments, setAttachments] = useState([]);
   const [draftConversationId, setDraftConversationId] = useState(() => newClientConversationId());
   const [editingMsg, setEditingMsg] = useState(null);
   const [editDraft, setEditDraft] = useState("");
@@ -931,6 +947,7 @@ function ChatSurface({
   const plusRef = useRef(null);
   const modelRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const messageListRef = useRef(null);
   const resetSeenRef = useRef(0);
   const shareSeenRef = useRef(chatShareRequestKey);
@@ -952,6 +969,7 @@ function ChatSurface({
     clearedChatRef.current = true;
     setTurns([]);
     setInput("");
+    setAttachments([]);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -1048,20 +1066,22 @@ function ChatSurface({
   async function submitMessage(event) {
     event.preventDefault();
     const message = input.trim();
-    if (!message) return;
+    if (!message && attachments.length === 0) return;
 
     clearedChatRef.current = false;
     const startedAt = Date.now();
     const requestedConversationId = activeChat?.conversationId || activeChat?.id || draftConversationId;
     const pendingId = `assistant-pending-${startedAt}`;
+    const submittedAttachments = attachments;
     setSending(true);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
     setInput("");
+    setAttachments([]);
     setTurns((current) => [
       ...current,
-      createUserTurn(message, `user-local-${startedAt}`),
+      createUserTurn(message || "Review the attached file.", `user-local-${startedAt}`, submittedAttachments),
       createPendingAssistantTurn(pendingId, startedAt),
     ]);
     if (!activeChat) {
@@ -1074,7 +1094,17 @@ function ChatSurface({
     }
 
     try {
-      const chatPayload = { message, mode: selectedMode, conversationId: requestedConversationId };
+      const chatPayload = {
+        message: message || "Please review the attached file.",
+        mode: selectedMode,
+        conversationId: requestedConversationId,
+        attachments: submittedAttachments.map(({ name, mimeType, size, dataUrl }) => ({
+          name,
+          mimeType,
+          size,
+          dataUrl,
+        })),
+      };
       const result = usage?.chatStreamPath
         ? await requestEventStream(
             usage.chatStreamPath,
@@ -1154,6 +1184,49 @@ function ChatSurface({
     }
   }
 
+  async function handleAttachmentSelection(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (files.length === 0) return;
+
+    const remainingSlots = Math.max(0, CHAT_ATTACHMENT_MAX_COUNT - attachments.length);
+    const selectedFiles = files.slice(0, remainingSlots);
+    if (selectedFiles.length === 0) {
+      setSendMessage(`Attach up to ${CHAT_ATTACHMENT_MAX_COUNT} files at a time.`);
+      setStatusTone("error");
+      return;
+    }
+
+    try {
+      const nextAttachments = [];
+      for (const file of selectedFiles) {
+        if (file.size > CHAT_ATTACHMENT_MAX_BYTES) {
+          throw new Error(`${file.name} is larger than ${formatFileSize(CHAT_ATTACHMENT_MAX_BYTES)}.`);
+        }
+        const dataUrl = await readFileAsDataUrl(file);
+        nextAttachments.push({
+          id: `att-${Date.now()}-${nextAttachments.length}-${file.name}`,
+          name: file.name || "attachment",
+          mimeType: file.type || mimeTypeFromFilename(file.name),
+          size: file.size,
+          dataUrl,
+        });
+      }
+
+      setAttachments((current) => [...current, ...nextAttachments].slice(0, CHAT_ATTACHMENT_MAX_COUNT));
+      setSendMessage("");
+      setStatusTone("muted");
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+    } catch (error) {
+      setSendMessage(error?.message || "Could not attach that file.");
+      setStatusTone("error");
+    }
+  }
+
+  function removeAttachment(id) {
+    setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+  }
+
   const composerStatus = chatComposerStatus({
     actualUsage,
     message: sendMessage,
@@ -1163,8 +1236,20 @@ function ChatSurface({
   });
 
   const chatTitle = activeChat?.title || titleFromTurns(turns);
+  const hasPromptInput = input.trim().length > 0 || attachments.length > 0;
   const composer = (
     <div className="composer-shell">
+      {attachments.length > 0 && (
+        <AttachmentTray attachments={attachments} onRemove={removeAttachment} />
+      )}
+      <input
+        ref={fileInputRef}
+        accept={CHAT_ATTACHMENT_ACCEPT}
+        className="chat-file-input"
+        multiple
+        onChange={handleAttachmentSelection}
+        type="file"
+      />
       <form className="composer" onSubmit={submitMessage}>
         <div className="plus-picker" ref={plusRef}>
           <button
@@ -1180,7 +1265,14 @@ function ChatSurface({
           </button>
           {plusMenuOpen && (
             <div className="plus-menu">
-              <ToolMenuRow icon={Paperclip} label="Upload photos & files" />
+              <ToolMenuRow
+                icon={Paperclip}
+                label="Upload photos & files"
+                onClick={() => {
+                  setPlusMenuOpen(false);
+                  fileInputRef.current?.click();
+                }}
+              />
               <div className="menu-divider" />
               <ToolMenuRow icon={Flame} label="Motivation" />
               <ToolMenuRow icon={Lightbulb} label="Brainstorming" />
@@ -1254,7 +1346,7 @@ function ChatSurface({
             </div>
           )}
         </div>
-        <button className="send-button" disabled={!input.trim() || sending} type="submit" aria-label="Send">
+        <button className="send-button" disabled={!hasPromptInput || sending} type="submit" aria-label="Send">
           <ArrowUp size={18} strokeWidth={2.25} />
         </button>
       </form>
@@ -1280,6 +1372,7 @@ function ChatSurface({
               if (message.role === "user") {
                 return (
                   <UserMessage
+                    attachments={message.attachments || []}
                     draft={editDraft}
                     isEditing={editingMsg === index}
                     key={message.id || `user-${index}`}
@@ -1409,6 +1502,7 @@ function normalizeChatMessage(message, index = 0) {
       id: message.id || `user-${index}`,
       role,
       text,
+      attachments: Array.isArray(message.attachments) ? message.attachments : [],
     };
   }
 
@@ -1420,11 +1514,12 @@ function normalizeChatMessage(message, index = 0) {
   };
 }
 
-function createUserTurn(text, id) {
+function createUserTurn(text, id, attachments = []) {
   return {
     id,
     role: "user",
     text,
+    attachments: redactAttachmentData(attachments),
   };
 }
 
@@ -1457,6 +1552,46 @@ function createErrorAssistantTurn(id, message, startedAt) {
       },
     ],
   };
+}
+
+function redactAttachmentData(attachments = []) {
+  return attachments.map(({ id, name, mimeType, size }) => ({
+    id,
+    name,
+    mimeType,
+    size,
+  }));
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Could not read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatFileSize(bytes) {
+  const numeric = Number(bytes || 0);
+  if (numeric >= 1024 * 1024) return `${(numeric / (1024 * 1024)).toFixed(1)} MB`;
+  if (numeric >= 1024) return `${Math.round(numeric / 1024)} KB`;
+  return `${Math.max(0, numeric)} B`;
+}
+
+function mimeTypeFromFilename(name = "") {
+  const filename = String(name || "").toLowerCase();
+  if (filename.endsWith(".pdf")) return "application/pdf";
+  if (filename.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (filename.endsWith(".doc")) return "application/msword";
+  if (filename.endsWith(".md")) return "text/markdown";
+  if (filename.endsWith(".csv")) return "text/csv";
+  if (filename.endsWith(".json")) return "application/json";
+  if (filename.endsWith(".png")) return "image/png";
+  if (filename.endsWith(".jpg") || filename.endsWith(".jpeg")) return "image/jpeg";
+  if (filename.endsWith(".webp")) return "image/webp";
+  if (filename.endsWith(".gif")) return "image/gif";
+  return "text/plain";
 }
 
 function replaceTurnById(turns, id, replacement) {
@@ -1566,7 +1701,7 @@ function markdownToBlocks(input) {
 function parseInline(input) {
   const text = String(input || "");
   const parts = [];
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  const pattern = /(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
   let lastIndex = 0;
   let match;
 
@@ -1576,7 +1711,14 @@ function parseInline(input) {
     }
 
     const token = match[0];
-    if (token.startsWith("`")) {
+    if (token.startsWith("[")) {
+      const linkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+      if (linkMatch) {
+        parts.push({ link: linkMatch[1], href: linkMatch[2] });
+      } else {
+        parts.push({ text: token });
+      }
+    } else if (token.startsWith("`")) {
       parts.push({ code: token.slice(1, -1) });
     } else if (token.startsWith("**")) {
       parts.push({ bold: token.slice(2, -2) });
@@ -1698,6 +1840,7 @@ async function copyText(text) {
 }
 
 function UserMessage({
+  attachments = [],
   draft,
   isEditing,
   onCancelEdit,
@@ -1730,6 +1873,7 @@ function UserMessage({
 
   return (
     <article className="user-message">
+      {attachments.length > 0 && <MessageAttachmentList attachments={attachments} />}
       <div className="user-bubble">{text}</div>
       <div className="user-message-tools">
         <ToolbarButton
@@ -1741,6 +1885,44 @@ function UserMessage({
         <ToolbarButton icon={Pencil} label="Edit" onClick={onStartEdit} />
       </div>
     </article>
+  );
+}
+
+function AttachmentTray({ attachments = [], onRemove }) {
+  if (attachments.length === 0) return null;
+
+  return (
+    <div className="attachment-tray">
+      {attachments.map((attachment) => (
+        <div className="attachment-chip" key={attachment.id || attachment.name}>
+          <Paperclip size={13} strokeWidth={1.8} />
+          <span>{attachment.name}</span>
+          <small>{formatFileSize(attachment.size)}</small>
+          <button
+            aria-label={`Remove ${attachment.name}`}
+            onClick={() => onRemove?.(attachment.id)}
+            type="button"
+          >
+            <X size={12} strokeWidth={2} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MessageAttachmentList({ attachments = [] }) {
+  if (attachments.length === 0) return null;
+
+  return (
+    <div className="message-attachment-list">
+      {attachments.map((attachment) => (
+        <span className="message-attachment-chip" key={attachment.id || attachment.name}>
+          <Paperclip size={12} strokeWidth={1.8} />
+          {attachment.name}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -1878,6 +2060,13 @@ function Inline({ parts }) {
         if (part.bold) return <strong key={index}>{part.bold}</strong>;
         if (part.italic) return <em key={index}>{part.italic}</em>;
         if (part.code) return <code key={index}>{part.code}</code>;
+        if (part.link) {
+          return (
+            <a href={part.href} key={index} rel="noreferrer" target="_blank">
+              {part.link}
+            </a>
+          );
+        }
         return <span key={index}>{part.text}</span>;
       })}
     </>
