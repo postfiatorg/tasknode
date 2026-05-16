@@ -61,6 +61,7 @@ minimal deployable dev app:
   usage-based chat contract. Estimates are cost-free. Send supports a cost-free
   dry run for smoke tests, while stream renders assistant deltas over SSE and
   persists the completed response plus usage after provider completion.
+  Frontier Instant uses the direct OpenAI API with `chat-latest` by default.
   OpenRouter routes remain configured-but-disabled until explicitly enabled and
   verified.
 - `/api/chat/modes`, `/api/chat/conversations`, and `/api/chat/history` expose
@@ -69,7 +70,8 @@ minimal deployable dev app:
   Postgres account/session tables land.
 - The chat shell keeps usage accounting visible without crowding the thread:
   PFT and USD chat credit sit together in the sidebar balance area, while
-  per-response billing feedback is a compact composer note. The response
+  sub-cent USD credit and per-response billing feedback are shown without
+  rounding active usage down to a static-looking `$5.00`. The response
   toolbar exposes only backed behavior today: copy response and copy the visible
   transcript.
 - `/api/usage/ledger` exposes the current append-only usage ledger so chat

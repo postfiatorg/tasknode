@@ -28,6 +28,12 @@ http://localhost:5174
 The Vite container serves the app and proxies API/config calls to the local Node
 API container.
 
+The API container reads `.env.tasknodeofficial-dev` when that ignored local file
+exists, then compose overrides the public app URL back to localhost. Keep
+`OPENAI_API_KEY` there or export it before starting Docker. Frontier Instant is
+the first OpenAI route and defaults to `chat-latest` through the direct OpenAI
+API, not OpenRouter.
+
 Useful local endpoints:
 
 ```text

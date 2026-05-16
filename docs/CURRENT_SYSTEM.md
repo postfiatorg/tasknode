@@ -63,7 +63,9 @@ Server:
 - `server/runtime-store.js`: JSON-backed sessions, accounts, identities, email
   challenges, OAuth state, chat messages, and usage ledger.
 - `server/chat-router.js`: chat mode config, provider readiness, cost
-  estimates, OpenAI/OpenRouter execution.
+  estimates, OpenAI/OpenRouter execution. Frontier Instant is pinned to the
+  direct OpenAI `chat-latest` route unless a mode-specific
+  `CHAT_MODEL_FRONTIER_INSTANT` override is provided.
 - `server/app-state.js`: server-owned UI read model for session, chat, tasks,
   wallet, usage, context, and readiness.
 

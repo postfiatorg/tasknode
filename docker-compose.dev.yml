@@ -4,6 +4,9 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     command: npm run dev:api
+    env_file:
+      - path: .env.tasknodeofficial-dev
+        required: false
     environment:
       PORT: "8080"
       NODE_ENV: development
@@ -35,6 +38,7 @@ services:
       PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES: ${PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES:-8}
       PFT_BALANCE_CACHE_TTL_MS: ${PFT_BALANCE_CACHE_TTL_MS:-15000}
       PFT_BALANCE_TIMEOUT_MS: ${PFT_BALANCE_TIMEOUT_MS:-8000}
+      CHAT_MODEL_FRONTIER_INSTANT: ${CHAT_MODEL_FRONTIER_INSTANT:-chat-latest}
     ports:
       - "8080:8080"
     volumes:

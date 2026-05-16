@@ -52,7 +52,9 @@ export function appState(session = null) {
   const providers = authProviders();
   const runtimeReadiness = readiness();
   const modes = chatModes();
-  const enabledMode = modes.find((mode) => mode.enabled);
+  const enabledMode =
+    modes.find((mode) => mode.label === "Frontier Instant" && mode.enabled) ||
+    modes.find((mode) => mode.enabled);
   const conversationId = conversationIdForSession(session);
   const usage = usageSummary({ accountId: session?.accountId, conversationId });
   const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });

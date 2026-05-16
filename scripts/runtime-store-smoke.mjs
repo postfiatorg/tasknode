@@ -4,10 +4,14 @@ import { join } from "node:path";
 
 const tempDir = mkdtempSync(join(tmpdir(), "tasknodeofficial-runtime-store-"));
 process.env.TASKNODE_STORE_PATH = join(tempDir, "runtime-store.json");
+delete process.env.CHAT_MODEL_FRONTIER_INSTANT;
+process.env.OPENAI_MODEL = "generic-openai-smoke-model";
 
 try {
+  const { modelForMode } = await import("../server/chat-router.js");
   const {
     appendUsageCredit,
+    appendChatTurn,
     delinkWalletFromAccount,
     getContextDocument,
     getContextHistory,
@@ -18,6 +22,15 @@ try {
     usageSummary,
   } = await import("../server/runtime-store.js");
   const { appState } = await import("../server/app-state.js");
+
+  if (modelForMode("Frontier Instant") !== "chat-latest") {
+    throw new Error("Frontier Instant must default to OpenAI chat-latest.");
+  }
+
+  if (modelForMode("Frontier Thinking") !== "generic-openai-smoke-model") {
+    throw new Error("Generic OPENAI_MODEL override should still apply outside Frontier Instant.");
+  }
+
   const first = appendUsageCredit({
     accountId: "acct_runtime_smoke",
     amountUsd: 5,
@@ -40,6 +53,35 @@ try {
 
   if (summary.currentCreditUsd !== 5 || summary.ledgerEntryCount !== 1) {
     throw new Error(`Unexpected credit summary: ${JSON.stringify(summary)}`);
+  }
+
+  const persistedChat = appendChatTurn({
+    accountId: "acct_runtime_smoke",
+    conversationId: "account_acct_runtime_smoke_default",
+    mode: "Frontier Instant",
+    provider: "openai",
+    model: "chat-latest",
+    responseId: "runtime-smoke-response",
+    userMessage: "Bill this message.",
+    assistantMessage: "Billed.",
+    usage: {
+      inputTokens: 120,
+      outputTokens: 30,
+      totalTokens: 150,
+      costUsd: 0.00045,
+    },
+  });
+  const debitedSummary = usageSummary({ accountId: "acct_runtime_smoke" });
+
+  if (
+    !persistedChat.ledgerEntry ||
+    persistedChat.ledgerEntry.kind !== "chat_debit" ||
+    debitedSummary.currentSpendUsd !== 0.00045 ||
+    debitedSummary.availableCreditUsd !== 4.99955
+  ) {
+    throw new Error(
+      `Usage debit did not affect available balance: ${JSON.stringify({ persistedChat, debitedSummary })}`
+    );
   }
 
   const savedContext = saveContextDocument({

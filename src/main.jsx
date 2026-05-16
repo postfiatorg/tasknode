@@ -348,7 +348,7 @@ function App() {
   const recentChats = buildRecentChats(appState?.chat?.recents || []);
   const activeChatId = activeChat?.conversationId || activeChat?.id || "";
   const pftBalance = formatPftBalance(appState?.wallet);
-  const chatCredit = formatUsd(appState?.usage?.availableCreditUsd || 0);
+  const chatCredit = formatCreditUsd(appState?.usage?.availableCreditUsd || 0);
   const session = appState?.session;
   const signedIn = isSignedInSession(session);
   const profileName = profileDisplayName(session);
@@ -2585,7 +2585,7 @@ function WalletView({
 
         <div className="wallet-usage-note wallet-credit-note">
           <span>
-            Chat credit <strong>{formatUsd(wallet?.chatCreditUsd || 0)}</strong>. Billing is{" "}
+            Chat credit <strong>{formatCreditUsd(wallet?.chatCreditUsd || 0)}</strong>. Billing is{" "}
             {usage?.billingModel === "usage_based" ? "usage-based" : "not ready"}.
           </span>
           <button className="wallet-mini-action" disabled type="button">
@@ -4888,8 +4888,8 @@ function BillingSettings() {
       <section>
         <div>
           <small>Account balance</small>
-          <strong>{formatUsd(ledger?.availableCreditUsd || 0)} <span>credit</span></strong>
-          <p>{formatUsd(ledger?.currentCreditUsd || 0)} credited - {formatUsageUsd(ledger?.currentSpendUsd || 0)} spent</p>
+          <strong>{formatCreditUsd(ledger?.availableCreditUsd || 0)} <span>credit</span></strong>
+          <p>{formatCreditUsd(ledger?.currentCreditUsd || 0)} credited - {formatUsageUsd(ledger?.currentSpendUsd || 0)} spent</p>
         </div>
         <button className="dark-pill" type="button">Top up</button>
       </section>
@@ -5565,9 +5565,27 @@ function formatUsd(value) {
   }).format(value);
 }
 
+function formatCreditUsd(value) {
+  const numeric = Number(value || 0);
+  const digits = Math.abs(numeric) < 10 ? 4 : 2;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(numeric);
+}
+
 function formatUsageUsd(value) {
   const numeric = Number(value || 0);
-  if (numeric > 0 && numeric < 0.01) return "<$0.01";
+  if (numeric > 0 && numeric < 0.01) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 6,
+      maximumFractionDigits: 6,
+    }).format(numeric);
+  }
   return formatUsd(numeric);
 }
 
