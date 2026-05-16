@@ -198,7 +198,7 @@ Current behavior:
   `OPENROUTER_CHAT_ENABLED=true` or `TASKNODE_ENABLE_OPENROUTER_CHAT=true`;
   private requests enforce ZDR/data-collection-deny provider preferences and
   map image/PDF/text attachments into OpenRouter chat content. Private Instant
-  defaults to `qwen/qwen3-vl-8b-instruct`; Private Thinking defaults to
+  defaults to `deepseek/deepseek-v4-flash`; Private Thinking defaults to
   `deepseek/deepseek-v4-pro` with high reasoning. OpenRouter web search is a
   separate opt-in because it invokes an external server tool;
 - native context documents can be viewed by anyone and saved by signed-in

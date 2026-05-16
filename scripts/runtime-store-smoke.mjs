@@ -44,8 +44,8 @@ try {
     throw new Error("Frontier Thinking must default to pinned OpenAI gpt-5.5.");
   }
 
-  if (modelForMode("Private Instant") !== "qwen/qwen3-vl-8b-instruct") {
-    throw new Error("Private Instant must default to a pinned OpenRouter ZDR multimodal model.");
+  if (modelForMode("Private Instant") !== "deepseek/deepseek-v4-flash") {
+    throw new Error("Private Instant must default to pinned OpenRouter DeepSeek V4 Flash.");
   }
 
   if (modelForMode("Private Thinking") !== "deepseek/deepseek-v4-pro") {

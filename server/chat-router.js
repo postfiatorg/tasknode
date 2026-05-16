@@ -10,10 +10,10 @@ const openRouterWebSearchUsdPerCall = 0.005;
 
 export const chatModePrices = {
   "Private Instant": {
-    inputUsdPerMillion: 0.8,
-    outputUsdPerMillion: 1.6,
+    inputUsdPerMillion: 0.14,
+    outputUsdPerMillion: 0.28,
     provider: "openrouter",
-    defaultModel: "qwen/qwen3-vl-8b-instruct",
+    defaultModel: "deepseek/deepseek-v4-flash",
     maxOutputTokens: 700,
   },
   "Private Thinking": {

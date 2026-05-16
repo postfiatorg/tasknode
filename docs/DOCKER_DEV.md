@@ -39,8 +39,8 @@ Private Instant and Private Thinking use OpenRouter only when
 `OPENROUTER_API_KEY` is present and `OPENROUTER_CHAT_ENABLED=true` or
 `TASKNODE_ENABLE_OPENROUTER_CHAT=true`. OpenRouter requests are built with
 `provider.zdr=true` and `provider.data_collection="deny"`. Private Instant
-defaults to `qwen/qwen3-vl-8b-instruct` so image uploads are not left to
-unpredictable router selection. Private Thinking defaults to
+defaults to `deepseek/deepseek-v4-flash`, the ranked ZDR-backed DeepSeek route
+for low-latency private text. Private Thinking defaults to
 `deepseek/deepseek-v4-pro` and adds `reasoning.effort="high"` with strict
 provider parameter routing.
 Image, PDF, and text attachments are mapped into OpenRouter chat-completion
