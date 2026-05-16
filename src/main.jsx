@@ -798,6 +798,7 @@ function App() {
         {view === "wallet" && (
           <WalletView
             onAppStateChange={refreshAppState}
+            onLoginRequired={() => setLoginOpen(true)}
             onWalletVaultChange={() => refreshWalletVaultStatus({ preserveUnlock: true })}
             onWalletVaultLock={lockWalletVault}
             onWalletVaultUnlocked={handleWalletVaultUnlocked}
@@ -2180,6 +2181,7 @@ function seedWordCount(value) {
 
 function WalletView({
   onAppStateChange,
+  onLoginRequired,
   onWalletVaultChange,
   onWalletVaultLock,
   onWalletVaultUnlocked,
@@ -2198,11 +2200,50 @@ function WalletView({
   const walletLinked = linkedWallet.status === "linked";
   const vaultAvailable = Boolean(walletVault?.available && walletVault?.address === linkedWallet.address);
   const vaultUnlocked = Boolean(vaultAvailable && walletVault?.unlocked);
+  const signedIn = isSignedInSession(session);
   const pftBalance = formatDrops(wallet?.pftBalanceDrops || 0);
 
+  useEffect(() => {
+    if (!signedIn) return;
+    setMessage((current) =>
+      current === "Sign in before linking a seed wallet." ? "" : current
+    );
+  }, [signedIn]);
+
+  function requireSignedInForWalletLink() {
+    if (signedIn) return true;
+    if (!session?.status) {
+      setMessage("Wallet actions are still loading.");
+      return false;
+    }
+    setMessage("Sign in before linking a seed wallet.");
+    onLoginRequired?.();
+    return false;
+  }
+
+  function openVaultControl() {
+    if (vaultUnlocked) {
+      onWalletVaultLock?.();
+      return;
+    }
+    if (vaultAvailable) {
+      setUnlockOpen(true);
+      return;
+    }
+    if (requireSignedInForWalletLink()) {
+      setMessage("");
+      setLinkOpen(true);
+    }
+  }
+
   async function startWalletAction(action) {
-    if (!action) return;
+    if (!action) {
+      setMessage("Wallet actions are still loading.");
+      return;
+    }
     if (action.id === "link_start") {
+      if (!requireSignedInForWalletLink()) return;
+      setMessage("");
       if (!walletLinked || !vaultAvailable) {
         setLinkOpen(true);
       } else if (vaultUnlocked) {
@@ -2305,7 +2346,7 @@ function WalletView({
         </ProfileCard>
 
         <div className="wallet-config-strip">
-          <button onClick={() => (vaultUnlocked ? onWalletVaultLock?.() : vaultAvailable ? setUnlockOpen(true) : setLinkOpen(true))} type="button">
+          <button onClick={openVaultControl} type="button">
             <span>Local seed vault</span>
             <small>{vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : "Not saved"}</small>
           </button>
@@ -2391,8 +2432,15 @@ function WalletLinkModal({
     }
   }
 
+  async function resolveSignedInSession() {
+    if (isSignedInSession(session)) return session;
+    const nextState = await onAppStateChange?.();
+    return isSignedInSession(nextState?.session) ? nextState.session : null;
+  }
+
   async function linkWallet() {
-    if (!session || session.status !== "signed_in") {
+    const activeSession = await resolveSignedInSession();
+    if (!activeSession) {
       setMessage("Sign in before linking a seed wallet.");
       return;
     }
@@ -2446,14 +2494,14 @@ function WalletLinkModal({
       let unlockedAt = new Date().toISOString();
       try {
         await walletCore.saveEncryptedMnemonicVault({
-          accountId: session.accountId,
+          accountId: activeSession.accountId,
           mnemonic: normalized,
           password: vaultPassword,
         });
         await onWalletVaultChange?.();
         onWalletVaultUnlocked?.({
           ...walletSummary,
-          accountId: session.accountId,
+          accountId: activeSession.accountId,
           mnemonic: normalized,
           unlockedAt,
         });

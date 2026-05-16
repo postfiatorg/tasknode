@@ -211,6 +211,11 @@ async function main() {
     await assertText(["Available balance", "PFT", "Link wallet", "Receive", "Activity", "Daily airdrop", "Task reward"]);
     await assertLocationHash("#wallet");
     await capture("06-wallet");
+    await clickButton("Link wallet", "document.querySelector('.wallet-actions')");
+    await assertText(["Log in or sign up", "Continue with Telegram", "Continue with Discord", "Continue with X", "Continue with GitHub"]);
+    await capture("06b-wallet-login-required");
+    await clickSelector(".dialog-close");
+    await assertText(["Available balance", "Sign in before linking a seed wallet."]);
 
     await clickNav("Context");
     await assertText([
