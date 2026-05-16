@@ -6,9 +6,17 @@ from pathlib import Path
 from typing import Iterable
 
 
+TASKNODE_REPO_ROOT = Path(__file__).resolve().parents[3]
+WORKSPACE_ROOT = TASKNODE_REPO_ROOT.parent
+
+# Later files win. PFTasks envs are legacy reference inputs; Task Node-local
+# env files and the user-provided workspace dump must be able to override them.
 DEFAULT_ENV_FILES = [
-    Path("/home/pfrpc/repos/pftasks/worker/.env"),
-    Path("/home/pfrpc/repos/pftasks/api/.env"),
+    WORKSPACE_ROOT / "pftasks/worker/.env",
+    WORKSPACE_ROOT / "pftasks/api/.env",
+    WORKSPACE_ROOT / "env_dump.txt",
+    TASKNODE_REPO_ROOT / ".env",
+    TASKNODE_REPO_ROOT / ".env.local",
 ]
 
 

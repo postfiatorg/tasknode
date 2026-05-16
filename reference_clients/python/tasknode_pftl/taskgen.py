@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import requests
@@ -15,7 +16,80 @@ MINIMAL_TASKGEN_SYSTEM = """You generate one concise Task Node task.
 Return only JSON. No markdown.
 The task must be specific, useful, and verifiable.
 Do not include unrelated PFTasks legacy fields.
+Use reward_offer.amount_estimate_pft as a decimal string from 0.50 to 5.00 unless the input packet explicitly says otherwise.
 """
+
+DEFAULT_REFERENCE_REWARD_PFT = Decimal("3.20")
+MIN_REFERENCE_REWARD_PFT = Decimal("0.50")
+MAX_REFERENCE_REWARD_PFT = Decimal("5.00")
+
+
+TASKGEN_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "taskgen_output",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "schema": {"type": "string", "enum": ["pf.taskgen.output.v1"]},
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "task_kind": {"type": "string"},
+                "submission_requirement": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["text", "url", "github_commit", "screenshot", "file", "mixed"],
+                        },
+                        "criteria": {"type": "string"},
+                    },
+                    "required": ["type", "criteria"],
+                },
+                "verification_policy": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "followup_required": {"type": "boolean"},
+                        "mode": {"type": "string"},
+                        "verification_type": {"type": "string"},
+                    },
+                    "required": ["followup_required", "mode", "verification_type"],
+                },
+                "reward_offer": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "amount_estimate_pft": {"type": "string"},
+                    },
+                    "required": ["amount_estimate_pft"],
+                },
+                "deadline": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "accept_by": {"type": "string"},
+                        "deadline_at": {"type": ["string", "null"]},
+                    },
+                    "required": ["accept_by", "deadline_at"],
+                },
+            },
+            "required": [
+                "schema",
+                "title",
+                "description",
+                "task_kind",
+                "submission_requirement",
+                "verification_policy",
+                "reward_offer",
+                "deadline",
+            ],
+        },
+    },
+}
 
 
 @dataclass
@@ -188,6 +262,16 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     return json.loads(raw)
 
 
+def _normalize_reference_reward(value: Any) -> str:
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        amount = DEFAULT_REFERENCE_REWARD_PFT
+    if amount < MIN_REFERENCE_REWARD_PFT or amount > MAX_REFERENCE_REWARD_PFT:
+        amount = DEFAULT_REFERENCE_REWARD_PFT
+    return f"{amount:.2f}"
+
+
 def _validate_taskgen_output(value: dict[str, Any]) -> dict[str, Any]:
     required = ["title", "description", "task_kind", "submission_requirement", "verification_policy", "reward_offer", "deadline"]
     missing = [key for key in required if key not in value]
@@ -206,7 +290,7 @@ def _validate_taskgen_output(value: dict[str, Any]) -> dict[str, Any]:
     policy.setdefault("verification_type", requirement["type"])
     value["verification_policy"] = policy
     reward = value.get("reward_offer") or {}
-    reward.setdefault("amount_estimate_pft", "3.20")
+    reward["amount_estimate_pft"] = _normalize_reference_reward(reward.get("amount_estimate_pft"))
     value["reward_offer"] = reward
     deadline = value.get("deadline") or {}
     deadline.setdefault("accept_by", now_iso())
@@ -221,11 +305,14 @@ def generate_task(
     *,
     model: str | None = None,
     benchmark_high_reasoning: bool = False,
+    allow_fallback: bool = False,
 ) -> TaskgenResult:
     model_name = model or config.taskgen_model
     prompt_digest = sha256_hex(MINIMAL_TASKGEN_SYSTEM)
     input_digest = sha256_hex(task_input)
     if not config.openai_api_key:
+        if not allow_fallback:
+            raise RuntimeError("OPENAI_API_KEY is required for task generation")
         return _fallback_task(task_input, reason="missing_openai_api_key")
 
     user_prompt = (
@@ -247,8 +334,7 @@ def generate_task(
                     {"role": "system", "content": MINIMAL_TASKGEN_SYSTEM},
                     {"role": "user", "content": user_prompt},
                 ],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.2,
+                "response_format": TASKGEN_RESPONSE_FORMAT,
             },
             timeout=45,
         )
@@ -272,6 +358,8 @@ def generate_task(
             metadata["benchmark"] = benchmark_taskgen(config, task_input)
         return TaskgenResult(output=output, metadata=metadata)
     except Exception as exc:
+        if not allow_fallback:
+            raise RuntimeError(f"OpenAI task generation failed: {type(exc).__name__}: {exc}") from exc
         return _fallback_task(task_input, reason=f"{type(exc).__name__}: {exc}")
 
 
@@ -290,8 +378,7 @@ def benchmark_taskgen(config: PftlConfig, task_input: dict[str, Any]) -> dict[st
                     {"role": "system", "content": MINIMAL_TASKGEN_SYSTEM},
                     {"role": "user", "content": canonical_json(task_input)},
                 ],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.1,
+                "response_format": TASKGEN_RESPONSE_FORMAT,
             },
             timeout=90,
         )
@@ -331,4 +418,3 @@ def build_verification_request(task_offer: dict[str, Any], initial_submission: d
             "initial_submission": initial_submission,
         }),
     }
-

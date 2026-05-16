@@ -45,19 +45,20 @@ PFTL_RPC_URL or PFTL_WSS_URL
 FAUCET_SEED
 PINATA_API_KEY
 PINATA_API_SECRET
+OPENAI_API_KEY
 ```
 
 Optional:
 
 ```text
-OPENAI_API_KEY
 OPENAI_BASE_URL
 TASKNODE_ENCRYPTION_PUBKEY
 ```
 
-If `OPENAI_API_KEY` is present, task generation uses `chat-latest` by default.
-If it is missing or the model call fails, the harness uses a deterministic
-minimal fallback and marks the generation metadata accordingly.
+Task generation uses `chat-latest` by default and fails closed if OpenAI auth or
+model execution fails. For local protocol-only smoke tests, pass
+`--allow-taskgen-fallback` to use the deterministic fallback generator
+explicitly.
 
 ## Commands
 
@@ -87,6 +88,13 @@ Run with the high-reasoning benchmark path:
 ```bash
 python3 -m tasknode_pftl.scenarios.full_lifecycle \
   --benchmark-high-reasoning
+```
+
+Run a protocol-only smoke test without OpenAI task generation:
+
+```bash
+python3 -m tasknode_pftl.scenarios.full_lifecycle \
+  --allow-taskgen-fallback
 ```
 
 The scenario prints addresses, balances, CIDs, tx hashes, and the final replay

@@ -245,6 +245,7 @@ def run_full_lifecycle(args: argparse.Namespace) -> dict[str, Any]:
         config,
         task_input,
         benchmark_high_reasoning=args.benchmark_high_reasoning,
+        allow_fallback=args.allow_taskgen_fallback,
     )
 
     offer_core = {
@@ -628,6 +629,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fund-pft", type=float, default=25.0)
     parser.add_argument("--reward-pft", type=float, default=3.2)
     parser.add_argument("--benchmark-high-reasoning", action="store_true")
+    parser.add_argument(
+        "--allow-taskgen-fallback",
+        action="store_true",
+        help="Permit deterministic local task generation if OpenAI is missing or fails. Off by default.",
+    )
     return parser.parse_args()
 
 

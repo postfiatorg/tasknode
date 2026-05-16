@@ -1,10 +1,10 @@
 # PFTL Live Task Replay Walkthrough
 
-This document is the plain-English walkthrough of the successful live reference
-run:
+This document is the plain-English walkthrough of the successful OpenAI-backed
+live reference run:
 
 ```text
-reference_clients/python/runs/live_replay_20260516T182226Z/receipt_public.json
+reference_clients/python/runs/live_openai_20260516T184718Z/receipt_public.json
 ```
 
 The private receipt for the same run contains generated test wallet seeds and
@@ -21,22 +21,39 @@ layer.
 Network: pftl-testnet
 RPC: http://178.156.143.199:5005
 Archive WSS: wss://ws-archive.testnet.postfiat.org
-Run ID: live_replay_20260516T182226Z
-Task ID: task_eb13467eded73c507027ab2d656b26a6
+Run ID: live_openai_20260516T184718Z
+Task ID: task_e7f4ee392de6ad6d5c5587864ddd6738
 Final replay state: rewarded
 ```
+
+## OpenAI Task Generation
+
+This run used the working OpenAI project key from `env_dump.txt`, ending
+`NSgA`, without printing or committing the key.
+
+```text
+Model: chat-latest
+OpenAI response ID: chatcmpl-DgEKwnG6o1k3x5r5F17vBdpOQfeZ8
+Parse status: ok
+Taskgen latency: 6091 ms
+Prompt version: taskgen-minimal-v1
+```
+
+The harness now fails closed if OpenAI task generation is missing or invalid.
+The deterministic fallback is available only when the operator explicitly
+passes `--allow-taskgen-fallback`.
 
 ## Actors
 
 ```text
 User wallet:
-rN6FwECi8cYpUc9JpHvSHGNsCmvRoWuGEW
+rKeq2crCjxToxChtNX9L8gVUYdRDhjn5Ca
 
 Task Node authority wallet:
-rK51qkgHhSiBANBSdZea64hLVyKm2zUajQ
+rhxCXgJiS5A61Yz1uEvZLRN3HY1zZpAc6v
 
 Allocation / reward wallet:
-rGtAH2vHQh8Bk3jmrgHbHCczabQiLMB47w
+rL8AVz8ZrUyuh9VKhjdJN9MaxFnZrk1FcS
 ```
 
 ## Balance Movement
@@ -50,12 +67,12 @@ Task Node authority: 25.000000 PFT
 Allocation / reward: 25.000000 PFT
 
 After:
-User: 28.199958 PFT
+User: 29.499958 PFT
 Task Node authority: 24.999982 PFT
-Allocation / reward: 21.799990 PFT
+Allocation / reward: 20.499990 PFT
 ```
 
-The user received a 3.20 PFT reward. The remaining differences are network
+The user received a 4.50 PFT reward. The remaining differences are network
 fees and the 1-drop pointer payments used to anchor lifecycle events.
 
 ## Payload CIDs
@@ -65,37 +82,37 @@ payloads using `pf.ptr/v4` memo pointers.
 
 ```text
 Context document:
-Qmamvaz5Eak7DToXd6An2F2ew7wuBCdKbCEV4ZrK8AvhL2
+QmRxK7sG53vuuZ6ZUfKJa3hdpwPp3SzMQnxmShad1XDze9
 
 Portable task request bundle:
-QmXs6kBxZTUBJgyzdD5SeJSShjYVUGoHS9EQvbpGCb9EiP
+QmYUx1ck1twEzzWURqvpeN6TrKHQQaKStYpfySVJrQLPow
 
 Request event:
-QmRz1PR4VVHjoVwZ6FF2sjJBWmAqaQnK2ukjPQoffVrS9i
+QmV8sbB4DiQFSYfeR6x4E4zu4p4ix1RioTfvunryswovL6
 
 Offer:
-QmVAedwEHtJmfyYg2xa9T1J7mLu4D6iQaLuSattRNj4DhL
+QmVfx53KWRwG9fuwNMTMNZNSprcJ6q4emjgmsLzd7b57Mn
 
 Accepted:
-QmVYpZX3kEbMjR9FAuiezSTpQoYp1Uu4bqVkNaFWPZZK9f
+QmVH9wuYxbEVY1QjgYK7RiLR8vQ8FeGzDYJasdUuDpWfvt
 
 Initial evidence:
-QmdLXSFEjqwfWjYxbqMEZxvvU9LuR19TFQVNQv2eRNnuya
+Qmd2cUgcyBGtzuH4T1rvaXFwSyKWNGpoKfAquc3XPHDG2A
 
 Initial submission:
-QmXR2wWCjg1mRLjisbfgvZ9cytBxxwtHZp4QbtbL3G6bia
+QmYBh4R1CKwdmUCv8pgsmuwEtHvb99KGhNwZtPLuPoj7WB
 
 Verification request:
-QmZTjgmAKcBEjNTBT1RkNCgfR4xVcNZy74UWKtUdfJCsZL
+QmWWNvYHFdbr8YbGbE6W1eKwyM13DChAC5SG54NfRRhMco
 
 Verification evidence:
-QmSn9ysjnbCDyfc3b2W5DFCra84eujoEuSuUJvx4E1S1to
+QmTh2CD9SccJriuxVFSzuHVYMq2UQ37T4kuUsRgkAtiyER
 
 Verification response:
-QmfNVadxCN3vwbJBZDUgEhocuNt5fZ55zUf6yMZehHE2H9
+QmSPmxjpAwQA8ZxkM14vPaK2b3uKPYvqoxrcWhxDftcsmC
 
 Reward:
-QmXJaVt3V9v2xtek7C2RQaNx2h2Shs7SQyys29NfxS6uLB
+QmVYtGNKTzcJvrrbBtCANgBkTUCnXsK1ByB8LxHF2nS1Bx
 ```
 
 ## Specific Task Content
@@ -142,46 +159,49 @@ Issue a task to validate the PFTL-native Task Node lifecycle with encrypted
 evidence and replay.
 ```
 
-Generated task offer:
+OpenAI-generated task offer:
 
 ```text
 Title:
-Replay the PFTL task lifecycle
+Validate replayable PFTL Task Node lifecycle with encrypted evidence
 
 Description:
-Run the reference Task Node harness end to end, confirm every lifecycle pointer
-is written to PFTL, and provide the replay projection showing the task reaches
-rewarded state.
+Create and run a minimal Python harness that simulates a full PFTL Task Node
+lifecycle using pf.ptr/v4 pointer events and encrypted IPFS payload references
+as canonical state. Demonstrate replayability by reconstructing task state from
+the event stream without using a database. Submit the harness source and a
+short execution log showing lifecycle replay and evidence validation.
 
 Task kind:
 system
 
 Reward offer:
-3.20 PFT
+4.50 PFT
 ```
 
 Submission requirement:
 
 ```text
 Type:
-text
+mixed
 
 Criteria:
-Submit a concise evidence packet with the run id, pointer transaction hashes,
-IPFS CIDs, and final replay status.
+Provide a GitHub repository URL or file archive containing the Python harness,
+plus a text log or screenshot demonstrating successful lifecycle replay from
+pointer events and encrypted evidence references.
 ```
 
 Verification policy:
 
 ```text
 Mode:
-standard_followup
+manual
 
 Verification type:
-text
+artifact_review
 
 Follow-up required:
-true
+false
 ```
 
 Verification ask:
@@ -226,13 +246,13 @@ configured faucet wallet.
 
 ```text
 User funding tx:
-EC3960C5170583231858BD996DB42E21A7C52A0AD984001719C3F14709433C5C
+802BCB94082186BBFA8BB7B7C515F4E1930D3E74509B567D38FAB9A2FE1CB95E
 
 Task Node authority funding tx:
-F8BC83CB684A08CF9ACA2D0D2894F46C404C6B805C5059221AB78096E602C66B
+AA8FEA6EB4A7089855B2FB7125312A5BC029C2F48BAF8A19DB46D299A0C254C0
 
 Allocation / reward funding tx:
-518F45BE788A26277C3BD0A278907BEE7CAED5790DA912DFE0E81E8B02948034
+646F15A58C7B9AD7A66E7E43EF05DA2C3DA01730726BE449D2F2F2D97502503D
 ```
 
 ## Step 1: Build The Request Inputs
@@ -251,28 +271,10 @@ The request bundle CID became the portable input packet for the task lifecycle.
 
 ```text
 Context document CID:
-Qmamvaz5Eak7DToXd6An2F2ew7wuBCdKbCEV4ZrK8AvhL2
+QmRxK7sG53vuuZ6ZUfKJa3hdpwPp3SzMQnxmShad1XDze9
 
 Request bundle CID:
-QmXs6kBxZTUBJgyzdD5SeJSShjYVUGoHS9EQvbpGCb9EiP
-```
-
-Task generation attempted the configured OpenAI path, but the API key was not
-accepted in this environment. The harness therefore used its deterministic
-fallback task generator. That is acceptable for the protocol replay because
-the point of this run was the PFTL/IPFS lifecycle, not model quality.
-
-```text
-Task title:
-Replay the PFTL task lifecycle
-
-Task description:
-Run the reference Task Node harness end to end, confirm every lifecycle pointer
-is written to PFTL, and provide the replay projection showing the task reaches
-rewarded state.
-
-Offered reward:
-3.20 PFT
+QmYUx1ck1twEzzWURqvpeN6TrKHQQaKStYpfySVJrQLPow
 ```
 
 ## Step 2: User Requests A Task
@@ -282,23 +284,12 @@ The payment carried a `pf.ptr/v4` memo pointing at the encrypted task request
 event.
 
 ```text
-Schema:
-pf.task.request.v1
-
-Sender:
-rN6FwECi8cYpUc9JpHvSHGNsCmvRoWuGEW
-
-Destination:
-rK51qkgHhSiBANBSdZea64hLVyKm2zUajQ
-
-Pointer CID:
-QmRz1PR4VVHjoVwZ6FF2sjJBWmAqaQnK2ukjPQoffVrS9i
-
-Ledger index:
-2844644
-
-Transaction hash:
-8071DABD1CDD76E437583792DB69F77831CEFCEDA80F94FDAFEF8725F7ED5BCF
+Schema: pf.task.request.v1
+Sender: rKeq2crCjxToxChtNX9L8gVUYdRDhjn5Ca
+Destination: rhxCXgJiS5A61Yz1uEvZLRN3HY1zZpAc6v
+Pointer CID: QmV8sbB4DiQFSYfeR6x4E4zu4p4ix1RioTfvunryswovL6
+Ledger index: 2845137
+Transaction hash: 3BE603040BACDBF95C4B04E1E5D0B4F658A4AC6F4137ED36A378D0A1FADA3184
 ```
 
 Human interpretation: the user asked Task Node to generate or issue a task
@@ -307,29 +298,17 @@ against the encrypted request bundle.
 ## Step 3: Task Node Offers A Task
 
 The Task Node authority wallet sent a 1-drop PFTL payment back to the user.
-The pointer payload contained the proposed task, reward offer, and task ID.
+The pointer payload contained the OpenAI-generated proposed task, reward offer,
+and task ID.
 
 ```text
-Schema:
-pf.task.offer.v1
-
-Task ID:
-task_eb13467eded73c507027ab2d656b26a6
-
-Sender:
-rK51qkgHhSiBANBSdZea64hLVyKm2zUajQ
-
-Destination:
-rN6FwECi8cYpUc9JpHvSHGNsCmvRoWuGEW
-
-Pointer CID:
-QmVAedwEHtJmfyYg2xa9T1J7mLu4D6iQaLuSattRNj4DhL
-
-Ledger index:
-2844646
-
-Transaction hash:
-DB06819FB3A33E267601B953306C798A3BA0274BBB3F94F1DF6A06C5DF44B194
+Schema: pf.task.offer.v1
+Task ID: task_e7f4ee392de6ad6d5c5587864ddd6738
+Sender: rhxCXgJiS5A61Yz1uEvZLRN3HY1zZpAc6v
+Destination: rKeq2crCjxToxChtNX9L8gVUYdRDhjn5Ca
+Pointer CID: QmVfx53KWRwG9fuwNMTMNZNSprcJ6q4emjgmsLzd7b57Mn
+Ledger index: 2845140
+Transaction hash: 1B6AFEF2B4339AB2E4FCBCCF43AE5DCFB015DB8CDDF4C862098776D8114E3C3B
 ```
 
 Human interpretation: Task Node proposed a task to the user. At this point the
@@ -341,26 +320,13 @@ The user wallet sent a 1-drop PFTL payment to the Task Node authority wallet.
 The pointer payload recorded an accepted state update.
 
 ```text
-Schema:
-pf.task.update.v1
-
-State:
-accepted
-
-Sender:
-rN6FwECi8cYpUc9JpHvSHGNsCmvRoWuGEW
-
-Destination:
-rK51qkgHhSiBANBSdZea64hLVyKm2zUajQ
-
-Pointer CID:
-QmVYpZX3kEbMjR9FAuiezSTpQoYp1Uu4bqVkNaFWPZZK9f
-
-Ledger index:
-2844648
-
-Transaction hash:
-81E4545BEEE53AD6A68982C40D28C3D99775D6E99ACC13BDB31C06D5D1A265C4
+Schema: pf.task.update.v1
+State: accepted
+Sender: rKeq2crCjxToxChtNX9L8gVUYdRDhjn5Ca
+Destination: rhxCXgJiS5A61Yz1uEvZLRN3HY1zZpAc6v
+Pointer CID: QmVH9wuYxbEVY1QjgYK7RiLR8vQ8FeGzDYJasdUuDpWfvt
+Ledger index: 2845142
+Transaction hash: 918408A1246E4ADAF0C4C4F460EB757BB616D1E92D1398D3952FD9A944B78454
 ```
 
 Human interpretation: the task moved from proposed to accepted. The task is
@@ -373,26 +339,13 @@ wallet. The pointer payload referenced the encrypted submission and encrypted
 evidence packet.
 
 ```text
-Schema:
-pf.task.submission.v1
-
-Sender:
-rN6FwECi8cYpUc9JpHvSHGNsCmvRoWuGEW
-
-Destination:
-rK51qkgHhSiBANBSdZea64hLVyKm2zUajQ
-
-Submission CID:
-QmXR2wWCjg1mRLjisbfgvZ9cytBxxwtHZp4QbtbL3G6bia
-
-Evidence CID:
-QmdLXSFEjqwfWjYxbqMEZxvvU9LuR19TFQVNQv2eRNnuya
-
-Ledger index:
-2844650
-
-Transaction hash:
-4974A0B8CE87978F5CCF89977FE888C6EE4A758B6375CADA8BA5E0008A66D615
+Schema: pf.task.submission.v1
+Sender: rKeq2crCjxToxChtNX9L8gVUYdRDhjn5Ca
+Destination: rhxCXgJiS5A61Yz1uEvZLRN3HY1zZpAc6v
+Submission CID: QmYBh4R1CKwdmUCv8pgsmuwEtHvb99KGhNwZtPLuPoj7WB
+Evidence CID: Qmd2cUgcyBGtzuH4T1rvaXFwSyKWNGpoKfAquc3XPHDG2A
+Ledger index: 2845144
+Transaction hash: 38B55812AA7BBDDB154A50C190998CC6ADC716987F8C5D236622B04496230CA9
 ```
 
 Human interpretation: the user submitted work for review. The canonical chain
@@ -405,26 +358,13 @@ The Task Node authority wallet sent a 1-drop PFTL payment back to the user.
 The pointer payload requested follow-up verification.
 
 ```text
-Schema:
-pf.task.update.v1
-
-State:
-verification_requested
-
-Sender:
-rK51qkgHhSiBANBSdZea64hLVyKm2zUajQ
-
-Destination:
-rN6FwECi8cYpUc9JpHvSHGNsCmvRoWuGEW
-
-Pointer CID:
-QmZTjgmAKcBEjNTBT1RkNCgfR4xVcNZy74UWKtUdfJCsZL
-
-Ledger index:
-2844652
-
-Transaction hash:
-887821E2E22DFE21B05B7AF0884F694C1BF9A0A2AF70A387DC6035ECB45183E9
+Schema: pf.task.update.v1
+State: verification_requested
+Sender: rhxCXgJiS5A61Yz1uEvZLRN3HY1zZpAc6v
+Destination: rKeq2crCjxToxChtNX9L8gVUYdRDhjn5Ca
+Pointer CID: QmWWNvYHFdbr8YbGbE6W1eKwyM13DChAC5SG54NfRRhMco
+Ledger index: 2845146
+Transaction hash: 80D495EE5D62D6A3C22F21B56352CCD49E55FC53D488CE0318179F22E9B2E355
 ```
 
 Human interpretation: Task Node processed the submission and asked for a
@@ -437,26 +377,13 @@ The pointer payload referenced the encrypted verification response and
 verification evidence packet.
 
 ```text
-Schema:
-pf.task.verification_response.v1
-
-Sender:
-rN6FwECi8cYpUc9JpHvSHGNsCmvRoWuGEW
-
-Destination:
-rK51qkgHhSiBANBSdZea64hLVyKm2zUajQ
-
-Verification response CID:
-QmfNVadxCN3vwbJBZDUgEhocuNt5fZ55zUf6yMZehHE2H9
-
-Verification evidence CID:
-QmSn9ysjnbCDyfc3b2W5DFCra84eujoEuSuUJvx4E1S1to
-
-Ledger index:
-2844654
-
-Transaction hash:
-5B3EB98C5B992DD13CA5EB4784F9ED382E36C71309F21C660E47975AA558D8BE
+Schema: pf.task.verification_response.v1
+Sender: rKeq2crCjxToxChtNX9L8gVUYdRDhjn5Ca
+Destination: rhxCXgJiS5A61Yz1uEvZLRN3HY1zZpAc6v
+Verification response CID: QmSPmxjpAwQA8ZxkM14vPaK2b3uKPYvqoxrcWhxDftcsmC
+Verification evidence CID: QmTh2CD9SccJriuxVFSzuHVYMq2UQ37T4kuUsRgkAtiyER
+Ledger index: 2845148
+Transaction hash: 85A31AA42038B75FD3DBAD67AC73645E9D2255399E349576498319AAA1B2D5CA
 ```
 
 Human interpretation: the user answered the verification request with the
@@ -469,29 +396,14 @@ payment carried a reward pointer payload so the reward can be replayed back
 into canonical task state.
 
 ```text
-Schema:
-pf.reward.v1
-
-Sender:
-rGtAH2vHQh8Bk3jmrgHbHCczabQiLMB47w
-
-Destination:
-rN6FwECi8cYpUc9JpHvSHGNsCmvRoWuGEW
-
-Reward amount:
-3.20 PFT
-
-Reward drops:
-3200000
-
-Pointer CID:
-QmXJaVt3V9v2xtek7C2RQaNx2h2Shs7SQyys29NfxS6uLB
-
-Ledger index:
-2844656
-
-Transaction hash:
-50A324FF81F640DA609E1546A7BE23CC1E2FEB37D9B8E612107E3E96FFE92631
+Schema: pf.reward.v1
+Sender: rL8AVz8ZrUyuh9VKhjdJN9MaxFnZrk1FcS
+Destination: rKeq2crCjxToxChtNX9L8gVUYdRDhjn5Ca
+Reward amount: 4.50 PFT
+Reward drops: 4500000
+Pointer CID: QmVYtGNKTzcJvrrbBtCANgBkTUCnXsK1ByB8LxHF2nS1Bx
+Ledger index: 2845149
+Transaction hash: 5B7A164E1392204AC5D5B7AE6B4FE5D4F85E4E35EEF29FC3BCA11671A6EDB077
 ```
 
 Human interpretation: the task is paid and should reduce to `rewarded`.
@@ -520,17 +432,17 @@ Reduced final task state:
 rewarded
 
 Actual reward:
-3.20 PFT
+4.50 PFT
 ```
 
 Final reduced projection:
 
 ```text
 Task:
-Replay the PFTL task lifecycle
+Validate replayable PFTL Task Node lifecycle with encrypted evidence
 
 Task ID:
-task_eb13467eded73c507027ab2d656b26a6
+task_e7f4ee392de6ad6d5c5587864ddd6738
 
 Kind:
 system
@@ -539,13 +451,13 @@ Status:
 rewarded
 
 Request bundle:
-QmXs6kBxZTUBJgyzdD5SeJSShjYVUGoHS9EQvbpGCb9EiP
+QmYUx1ck1twEzzWURqvpeN6TrKHQQaKStYpfySVJrQLPow
 
 Reward offer:
-3.20 PFT
+4.50 PFT
 
 Reward paid:
-3.20 PFT
+4.50 PFT
 ```
 
 ## What This Proves
@@ -562,12 +474,13 @@ other wallet-capable client can produce the same lifecycle as long as it can:
 
 ```text
 1. build the portable request bundle;
-2. encrypt payloads to the required recipients;
-3. upload payloads to IPFS;
-4. write PFTL pointer transactions in wallet nonce order;
-5. scan wallet history;
-6. hydrate and decrypt payloads;
-7. reduce events into task state.
+2. call OpenAI task generation with strict structured output;
+3. encrypt payloads to the required recipients;
+4. upload payloads to IPFS;
+5. write PFTL pointer transactions in wallet nonce order;
+6. scan wallet history;
+7. hydrate and decrypt payloads;
+8. reduce events into task state.
 ```
 
 ## How To Re-run
