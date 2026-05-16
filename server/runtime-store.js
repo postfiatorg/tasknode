@@ -104,14 +104,47 @@ export function appendChatTurn({
   };
 }
 
+export function appendUsageCredit({
+  accountId = "dev",
+  amountUsd,
+  source = "admin_credit",
+  note = "",
+  createdBy = "system",
+}) {
+  const now = new Date().toISOString();
+  const ledgerId = `ledger_${now.replace(/[^0-9]/g, "")}_credit`;
+  const entry = {
+    id: ledgerId,
+    kind: "account_credit",
+    accountId,
+    source,
+    amountUsd: Number(Number(amountUsd).toFixed(6)),
+    note,
+    createdBy,
+    createdAt: now,
+  };
+
+  state.ledgerEntries.push(entry);
+  saveState();
+
+  return entry;
+}
+
 export function usageSummary() {
   const currentSpendUsd = state.ledgerEntries.reduce((total, entry) => {
     if (entry.kind !== "chat_debit") return total;
     return total + Number(entry.amountUsd || 0);
   }, 0);
+  const currentCreditUsd = state.ledgerEntries.reduce((total, entry) => {
+    if (!["account_credit", "reward_credit", "refund_credit"].includes(entry.kind)) return total;
+    return total + Number(entry.amountUsd || 0);
+  }, 0);
+  const availableCreditUsd = Math.max(0, currentCreditUsd - currentSpendUsd);
 
   return {
     currentSpendUsd: Number(currentSpendUsd.toFixed(6)),
+    currentCreditUsd: Number(currentCreditUsd.toFixed(6)),
+    availableCreditUsd: Number(availableCreditUsd.toFixed(6)),
     ledgerEntryCount: state.ledgerEntries.length,
     storePath,
     durable: !storePath.startsWith("/tmp/"),
@@ -131,6 +164,8 @@ export function usageLedger({ conversationId, limit = 50 } = {}) {
     billingModel: "usage_based",
     currency: "USD",
     currentSpendUsd: summary.currentSpendUsd,
+    currentCreditUsd: summary.currentCreditUsd,
+    availableCreditUsd: summary.availableCreditUsd,
     ledgerEntryCount: filteredEntries.length,
     durable: summary.durable,
     entries,

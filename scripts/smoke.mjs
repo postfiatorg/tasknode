@@ -45,6 +45,8 @@ await check("/api/app-state", (response, text) => {
     body.tasks?.networkRequestEnabled === false &&
     body.wallet?.pftWallet?.status === "not_linked" &&
     body.usage?.billingModel === "usage_based" &&
+    typeof body.usage?.availableCreditUsd === "number" &&
+    Array.isArray(body.usage?.fundingActions) &&
     Array.isArray(body.context?.sources)
   );
 });
@@ -94,11 +96,44 @@ await check("/api/usage/ledger", (response, text) => {
     body.billingModel === "usage_based" &&
     body.currency === "USD" &&
     typeof body.currentSpendUsd === "number" &&
+    typeof body.currentCreditUsd === "number" &&
+    typeof body.availableCreditUsd === "number" &&
     typeof body.ledgerEntryCount === "number" &&
     typeof body.durable === "boolean" &&
     Array.isArray(body.entries)
   );
 });
+
+await check("/api/usage/actions", (response, text) => {
+  if (!response.ok) return false;
+  const body = JSON.parse(text);
+  return (
+    Array.isArray(body.actions) &&
+    body.actions.some((action) => action.id === "top_up_start") &&
+    body.actions.some((action) => action.id === "admin_credit")
+  );
+});
+
+await checkRequest("/api/usage/top-up/start", { method: "POST" }, (response, text) => {
+  const body = JSON.parse(text);
+  return response.status === 503 && body.error === "usage_action_disabled";
+});
+
+await checkRequest(
+  "/api/usage/credit/admin",
+  {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ amountUsd: 1, note: "smoke unauthorized probe" }),
+  },
+  (response, text) => {
+    const body = JSON.parse(text);
+    return (
+      [401, 409].includes(response.status) &&
+      ["usage_credit_unauthorized", "usage_credit_not_configured"].includes(body.error)
+    );
+  }
+);
 
 await checkRequest(
   "/api/chat/send",
@@ -230,6 +265,7 @@ await check("/api/readiness", (response, text) => {
     body.context?.manifestInkReady === false &&
     body.billing?.model === "usage_based" &&
     body.billing?.chatEstimateReady === true &&
+    typeof body.billing?.adminCreditReady === "boolean" &&
     typeof body.billing?.chatExecutionReady === "boolean"
   );
 });

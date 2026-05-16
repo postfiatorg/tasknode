@@ -14,6 +14,9 @@ import {
   contextActionStart,
   contextActions,
   readiness,
+  usageActionStart,
+  usageActions,
+  usageAdminCredit,
   walletActionStart,
   walletActions,
 } from "./product-contracts.js";
@@ -238,6 +241,24 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/usage") {
     json(res, 200, state.usage);
+    return true;
+  }
+
+  if (url.pathname === "/api/usage/actions") {
+    json(res, 200, { actions: usageActions() });
+    return true;
+  }
+
+  if (url.pathname === "/api/usage/top-up/start") {
+    const result = usageActionStart(url.pathname, req.method);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/usage/credit/admin") {
+    const payload = req.method === "POST" ? await readJson(req, 4096) : {};
+    const result = usageAdminCredit(payload, req.method, req.headers.authorization || "");
+    json(res, result.status, result.body);
     return true;
   }
 

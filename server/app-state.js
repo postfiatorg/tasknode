@@ -3,6 +3,7 @@ import {
   chatModes,
   contextActions,
   readiness,
+  usageActions,
   walletActions,
 } from "./product-contracts.js";
 import { getChatMessages, usageSummary } from "./runtime-store.js";
@@ -78,7 +79,6 @@ export function appState() {
     },
     wallet: {
       pftBalanceDrops: 0,
-      chatCreditUsd: 0,
       lifecycle: {
         oneWalletPerAccount: true,
         delinkForTestingRequired: true,
@@ -97,6 +97,7 @@ export function appState() {
         ],
       },
       actions: walletActions(),
+      chatCreditUsd: usage.availableCreditUsd,
       fundingRails: [
         {
           label: "USDC or USDT deposit address",
@@ -118,11 +119,16 @@ export function appState() {
     usage: {
       billingModel: "usage_based",
       currentSpendUsd: usage.currentSpendUsd,
+      currentCreditUsd: usage.currentCreditUsd,
+      availableCreditUsd: usage.availableCreditUsd,
       currentPeriod: "Dev session",
       estimatePath: "/api/chat/estimate",
       chatSendPath: "/api/chat/send",
+      actionsPath: "/api/usage/actions",
+      fundingActions: usageActions(),
       chatEstimateReady: runtimeReadiness.billing.chatEstimateReady,
       chatExecutionReady: runtimeReadiness.billing.chatExecutionReady,
+      adminCreditReady: runtimeReadiness.billing.adminCreditReady,
       ledgerReady: runtimeReadiness.billing.ledgerReady,
       durableLedgerReady: runtimeReadiness.billing.durableLedgerReady,
       ledgerEntryCount: usage.ledgerEntryCount,

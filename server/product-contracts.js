@@ -7,7 +7,7 @@ import {
   executeChat,
   normalizedChatMode,
 } from "./chat-router.js";
-import { usageSummary } from "./runtime-store.js";
+import { appendUsageCredit, usageSummary } from "./runtime-store.js";
 
 function hasAll(keys) {
   return keys.every((key) => Boolean(process.env[key]));
@@ -74,6 +74,22 @@ function contextAction({ id, label, path, requiredEnv = [], note, actionRequired
     configured,
     enabled: false,
     status: configured ? "disabled" : "missing_config",
+    actionRequired: configured ? actionRequired : `Configure ${requiredEnv.join(", ")}`,
+    note,
+  };
+}
+
+function usageAction({ id, label, path, requiredEnv = [], enabled = false, status, note, actionRequired }) {
+  const configured = hasAll(requiredEnv);
+
+  return {
+    id,
+    label,
+    path,
+    method: "POST",
+    configured,
+    enabled: configured && enabled,
+    status: status || (configured ? (enabled ? "ready" : "disabled") : "missing_config"),
     actionRequired: configured ? actionRequired : `Configure ${requiredEnv.join(", ")}`,
     note,
   };
@@ -352,6 +368,33 @@ export function contextActions() {
   ];
 }
 
+export function usageActions() {
+  return [
+    usageAction({
+      id: "top_up_start",
+      label: "Top up with crypto",
+      path: "/api/usage/top-up/start",
+      enabled: false,
+      status: "research",
+      note:
+        "Placeholder for crypto top-up rails such as USDC or USDT deposit addresses, MetaMask, or Phantom.",
+      actionRequired:
+        "Choose the safest funding rail and settlement/reconciliation model before enabling user top-ups.",
+    }),
+    usageAction({
+      id: "admin_credit",
+      label: "Admin credit",
+      path: "/api/usage/credit/admin",
+      requiredEnv: ["TASKNODE_ADMIN_CREDIT_TOKEN"],
+      enabled: true,
+      note:
+        "Operator-only bootstrap path for crediting account balances while real crypto top-up rails are not implemented.",
+      actionRequired:
+        "Configure TASKNODE_ADMIN_CREDIT_TOKEN and send an authorized server-to-server credit request.",
+    }),
+  ];
+}
+
 export function contextActionByPath(pathname) {
   return contextActions().find((action) => action.path === pathname) || null;
 }
@@ -440,6 +483,120 @@ export function walletActionStart(pathname, method) {
     message: `${action.label} is configured but disabled until the wallet custody boundary is implemented.`,
     actionRequired: action.actionRequired,
   });
+}
+
+export function usageActionByPath(pathname) {
+  return usageActions().find((action) => action.path === pathname) || null;
+}
+
+export function usageActionStart(pathname, method) {
+  const action = usageActionByPath(pathname);
+
+  if (!action) {
+    return actionResponse({
+      status: 404,
+      error: "unknown_usage_action",
+      action: pathname,
+      message: "Unknown usage action.",
+    });
+  }
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "usage_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Call the usage action with the declared method.",
+    });
+  }
+
+  return actionResponse({
+    status: 503,
+    error: "usage_action_disabled",
+    action: action.id,
+    message: `${action.label} is disabled until the funding rail is implemented.`,
+    actionRequired: action.actionRequired,
+  });
+}
+
+export function usageAdminCredit(payload, method, authorizationHeader = "") {
+  const action = usageActionByPath("/api/usage/credit/admin");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "usage_credit_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Send admin credits with POST.",
+    });
+  }
+
+  if (!action.configured) {
+    return actionResponse({
+      status: 409,
+      error: "usage_credit_not_configured",
+      action: action.id,
+      message: `${action.label} is not configured for this environment.`,
+      actionRequired: action.actionRequired,
+    });
+  }
+
+  if (authorizationHeader !== `Bearer ${process.env.TASKNODE_ADMIN_CREDIT_TOKEN}`) {
+    return actionResponse({
+      status: 401,
+      error: "usage_credit_unauthorized",
+      action: action.id,
+      message: "Admin credit requires an authorized server-to-server request.",
+      actionRequired: "Send a valid bearer token from a trusted operator environment.",
+    });
+  }
+
+  const amountUsd = Number(payload?.amountUsd);
+  if (!Number.isFinite(amountUsd) || amountUsd <= 0 || amountUsd > 10000) {
+    return actionResponse({
+      status: 400,
+      error: "usage_credit_invalid_amount",
+      action: action.id,
+      message: "Admin credit requires a positive amountUsd no larger than 10000.",
+      actionRequired: "Send a bounded USD credit amount.",
+    });
+  }
+
+  const accountId =
+    typeof payload?.accountId === "string" && payload.accountId.trim()
+      ? payload.accountId.trim().slice(0, 80)
+      : "dev";
+  const note =
+    typeof payload?.note === "string" && payload.note.trim()
+      ? payload.note.trim().slice(0, 240)
+      : "Manual admin credit";
+  const entry = appendUsageCredit({
+    accountId,
+    amountUsd,
+    note,
+    createdBy: "admin",
+  });
+  const summary = usageSummary();
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: action.id,
+      message: "Admin credit recorded.",
+      ledgerEntry: entry,
+      usage: {
+        billingModel: "usage_based",
+        currency: "USD",
+        currentSpendUsd: summary.currentSpendUsd,
+        currentCreditUsd: summary.currentCreditUsd,
+        availableCreditUsd: summary.availableCreditUsd,
+        ledgerEntryCount: summary.ledgerEntryCount,
+      },
+    },
+  };
 }
 
 export function authProviderById(providerId) {
@@ -554,6 +711,7 @@ export function readiness() {
       model: "usage_based",
       ledgerReady: true,
       durableLedgerReady: ledger.durable,
+      adminCreditReady: hasAll(["TASKNODE_ADMIN_CREDIT_TOKEN"]),
       chatEstimateReady: true,
       chatExecutionReady,
       blockers: [

@@ -39,6 +39,10 @@ minimal deployable dev app:
   append-only local runtime store until Postgres account/session tables land.
 - `/api/usage/ledger` exposes the current append-only usage ledger so chat
   spend can be audited before durable Postgres ledger tables land.
+- `/api/usage/actions`, `/api/usage/top-up/start`, and
+  `/api/usage/credit/admin` define the first usage-credit contract. Crypto
+  top-up is still disabled while the safest rail is selected; admin credit is
+  enabled only when `TASKNODE_ADMIN_CREDIT_TOKEN` is configured.
 - `/api/context/actions` exposes disabled-by-default context actions for shared
   URL import, native edit save, and explicit PFTL manifest ink. This keeps
   context useful before wallet setup while making portability a deliberate
