@@ -98,6 +98,127 @@ Reward:
 QmXJaVt3V9v2xtek7C2RQaNx2h2Shs7SQyys29NfxS6uLB
 ```
 
+## Specific Task Content
+
+This is the actual decrypted content from the live run, excluding private
+wallet seeds and encryption keys.
+
+Request context document:
+
+```text
+Build and validate a PFTL-native Task Node lifecycle. The canonical record
+should be pf.ptr/v4 pointer events with encrypted IPFS payloads. The database
+should be a cache only.
+```
+
+Request bundle summary:
+
+```text
+User wants a portable off-app Task Node lifecycle simulation for PFTL.
+```
+
+Recent chat packet:
+
+```text
+User:
+Build an end-to-end PFTL-native task flow outside the app surface.
+
+Assistant:
+I will create a reference Python harness that writes pointer events and replays
+task state.
+```
+
+Relevant history packet:
+
+```text
+Task state should be canonical from pf.ptr/v4 pointers and encrypted IPFS
+payloads; databases are cache.
+```
+
+Task request text:
+
+```text
+Issue a task to validate the PFTL-native Task Node lifecycle with encrypted
+evidence and replay.
+```
+
+Generated task offer:
+
+```text
+Title:
+Replay the PFTL task lifecycle
+
+Description:
+Run the reference Task Node harness end to end, confirm every lifecycle pointer
+is written to PFTL, and provide the replay projection showing the task reaches
+rewarded state.
+
+Task kind:
+system
+
+Reward offer:
+3.20 PFT
+```
+
+Submission requirement:
+
+```text
+Type:
+text
+
+Criteria:
+Submit a concise evidence packet with the run id, pointer transaction hashes,
+IPFS CIDs, and final replay status.
+```
+
+Verification policy:
+
+```text
+Mode:
+standard_followup
+
+Verification type:
+text
+
+Follow-up required:
+true
+```
+
+Verification ask:
+
+```text
+Confirm the run completed end to end. Include the request, offer, acceptance,
+submission, verification response, and reward transaction hashes, plus the
+replayed final status.
+```
+
+Initial user evidence:
+
+```text
+The PFTL-native lifecycle harness was run through request, offer, accept, and
+initial submission.
+```
+
+Verification evidence:
+
+```text
+Confirmed. The run produced PFTL pointer transactions for request, offer,
+acceptance, initial submission, verification request, verification response,
+and reward.
+```
+
+Verification response text:
+
+```text
+Confirmed lifecycle run and pointer set.
+```
+
+Reward summary:
+
+```text
+Reference lifecycle simulation completed and replayed.
+```
+
 ## Preflight: Wallet Funding
 
 The harness created three fresh PFTL wallets and funded each to 25 PFT from the
