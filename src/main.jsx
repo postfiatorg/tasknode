@@ -355,10 +355,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!settingsOpen && !selectedTask) return undefined;
+    if (!settingsOpen && !selectedTask && !chatActionMenu) return undefined;
 
     function closeModal(event) {
       if (event.key === "Escape") {
+        setChatActionMenu(null);
         setSettingsOpen(false);
         setSelectedTask(null);
       }
@@ -366,7 +367,7 @@ function App() {
 
     document.addEventListener("keydown", closeModal);
     return () => document.removeEventListener("keydown", closeModal);
-  }, [settingsOpen, selectedTask]);
+  }, [settingsOpen, selectedTask, chatActionMenu]);
 
   const recentChats = buildRecentChats(appState?.chat?.recents || []);
   const activeChatId = activeChat?.conversationId || activeChat?.id || "";
@@ -755,7 +756,7 @@ function App() {
         </nav>
 
         {sidebarOpen && (
-          <section className="recents" aria-label="Recent chats">
+          <section className="recents" aria-label="Recent chats" onScroll={() => setChatActionMenu(null)}>
             <div className="section-label">Recents</div>
             {recentChats.length > 0 ? (
               recentChats.map((item) => {
@@ -765,7 +766,6 @@ function App() {
                   <div
                     className={activeChatId === itemId ? "recent-chat-row active" : "recent-chat-row"}
                     key={item.id}
-                    ref={menuOpen ? chatActionRef : null}
                   >
                     <button
                       className="recent-chat-open"
@@ -781,25 +781,20 @@ function App() {
                       className="recent-chat-more"
                       onClick={(event) => {
                         event.stopPropagation();
-                        setChatActionMenu(menuOpen ? null : item);
+                        setChatActionMenu(
+                          menuOpen
+                            ? null
+                            : {
+                                ...item,
+                                menuPosition: chatActionMenuPosition(event.currentTarget),
+                              }
+                        );
                       }}
                       title="Chat actions"
                       type="button"
                     >
                       <MoreHorizontal size={16} strokeWidth={1.75} />
                     </button>
-                    {menuOpen && (
-                      <ChatItemActionMenu
-                        onDelete={() => {
-                          setChatDeleteTarget(item);
-                          setChatActionMenu(null);
-                        }}
-                        onRename={() => {
-                          setChatRenameTarget(item);
-                          setChatActionMenu(null);
-                        }}
-                      />
-                    )}
                   </div>
                 );
               })
@@ -995,6 +990,20 @@ function App() {
       )}
       {selectedTask && (
         <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />
+      )}
+      {chatActionMenu && sidebarOpen && (
+        <ChatItemActionMenu
+          menuRef={chatActionRef}
+          onDelete={() => {
+            setChatDeleteTarget(chatActionMenu);
+            setChatActionMenu(null);
+          }}
+          onRename={() => {
+            setChatRenameTarget(chatActionMenu);
+            setChatActionMenu(null);
+          }}
+          style={chatActionMenu.menuPosition}
+        />
       )}
       {chatRenameTarget && (
         <RenameChatModal
@@ -1583,9 +1592,30 @@ function buildRecentChats(serverRecents) {
   return rows;
 }
 
-function ChatItemActionMenu({ onRename, onDelete }) {
+function chatActionMenuPosition(anchor) {
+  const rect = anchor?.getBoundingClientRect?.();
+  if (!rect || typeof window === "undefined") return { left: 248, top: 96 };
+
+  const menuWidth = 228;
+  const menuHeight = 134;
+  const viewportPadding = 8;
+  const sidebarRight =
+    document.querySelector(".sidebar")?.getBoundingClientRect?.().right || rect.right;
+  const left = Math.min(
+    Math.max(viewportPadding, rect.right + 4, sidebarRight + 4),
+    window.innerWidth - menuWidth - viewportPadding
+  );
+  const top = Math.min(
+    Math.max(viewportPadding, rect.top - 8),
+    window.innerHeight - menuHeight - viewportPadding
+  );
+
+  return { left, top };
+}
+
+function ChatItemActionMenu({ menuRef, onRename, onDelete, style }) {
   return (
-    <div className="chat-action-menu" role="menu">
+    <div className="chat-action-menu" ref={menuRef} role="menu" style={style}>
       <button
         aria-disabled="true"
         className="chat-action-menu-item is-muted"
