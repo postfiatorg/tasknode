@@ -65,7 +65,8 @@ Server:
 - `server/chat-router.js`: chat mode config, provider readiness, cost
   estimates, OpenAI/OpenRouter execution. Frontier Instant is pinned to the
   direct OpenAI `chat-latest` route unless a mode-specific
-  `CHAT_MODEL_FRONTIER_INSTANT` override is provided.
+  `CHAT_MODEL_FRONTIER_INSTANT` override is provided. Frontier Thinking is
+  pinned to direct OpenAI `gpt-5.5` with `reasoning.effort` set to `high`.
 - `server/app-state.js`: server-owned UI read model for session, chat, tasks,
   wallet, usage, context, and readiness.
 

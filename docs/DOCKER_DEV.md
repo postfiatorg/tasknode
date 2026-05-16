@@ -32,7 +32,8 @@ The API container reads `.env.tasknodeofficial-dev` when that ignored local file
 exists, then compose overrides the public app URL back to localhost. Keep
 `OPENAI_API_KEY` there or export it before starting Docker. Frontier Instant is
 the first OpenAI route and defaults to `chat-latest` through the direct OpenAI
-API, not OpenRouter.
+API, not OpenRouter. Frontier Thinking uses direct OpenAI `gpt-5.5` with high
+reasoning.
 
 Useful local endpoints:
 

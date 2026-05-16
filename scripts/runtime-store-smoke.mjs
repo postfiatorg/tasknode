@@ -5,6 +5,7 @@ import { join } from "node:path";
 const tempDir = mkdtempSync(join(tmpdir(), "tasknodeofficial-runtime-store-"));
 process.env.TASKNODE_STORE_PATH = join(tempDir, "runtime-store.json");
 delete process.env.CHAT_MODEL_FRONTIER_INSTANT;
+delete process.env.CHAT_MODEL_FRONTIER_THINKING;
 process.env.OPENAI_MODEL = "generic-openai-smoke-model";
 
 try {
@@ -32,12 +33,16 @@ try {
     throw new Error("Frontier Instant must default to OpenAI chat-latest.");
   }
 
-  if (modelForMode("Frontier Thinking") !== "generic-openai-smoke-model") {
-    throw new Error("Generic OPENAI_MODEL override should still apply outside Frontier Instant.");
+  if (modelForMode("Frontier Thinking") !== "gpt-5.5") {
+    throw new Error("Frontier Thinking must default to pinned OpenAI gpt-5.5.");
   }
 
   if (actualChatCost("Frontier Instant", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 35) {
     throw new Error("Frontier Instant chat-latest pricing drifted from the configured OpenAI token rates.");
+  }
+
+  if (actualChatCost("Frontier Thinking", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 35) {
+    throw new Error("Frontier Thinking gpt-5.5 pricing drifted from the configured OpenAI token rates.");
   }
 
   if (!shouldUseWebSearch("Can you search what is going on today?") || shouldUseWebSearch("Reply exactly ok.")) {
@@ -76,6 +81,21 @@ try {
 
   if (basicFrontierRequest.tools.length !== 0 || basicFrontierRequest.tool_choice) {
     throw new Error(`Basic OpenAI Responses requests should not carry web search tools: ${JSON.stringify(basicFrontierRequest)}`);
+  }
+
+  const frontierThinkingRequest = openAiResponseRequest({
+    mode: "Frontier Thinking",
+    model: "gpt-5.5",
+    message: "Think carefully and answer.",
+    conversationId: "runtime-smoke-frontier-thinking-contract",
+  });
+
+  if (
+    frontierThinkingRequest.model !== "gpt-5.5" ||
+    frontierThinkingRequest.reasoning?.effort !== "high" ||
+    frontierThinkingRequest.max_output_tokens !== 4096
+  ) {
+    throw new Error(`Frontier Thinking must use gpt-5.5 high reasoning: ${JSON.stringify(frontierThinkingRequest)}`);
   }
 
   const first = appendUsageCredit({

@@ -35,8 +35,8 @@ export const chatModePrices = {
     outputUsdPerMillion: 30,
     provider: "openai",
     defaultModel: "gpt-5.5",
-    maxOutputTokens: 1400,
-    reasoningEffort: "medium",
+    maxOutputTokens: 4096,
+    reasoningEffort: "high",
   },
 };
 
@@ -85,7 +85,7 @@ export function modelForMode(mode) {
   const modeSpecificModel = process.env[`CHAT_MODEL_${envPrefix}`];
 
   if (modeSpecificModel) return modeSpecificModel;
-  if (normalizedMode === "Frontier Instant") {
+  if (normalizedMode === "Frontier Instant" || normalizedMode === "Frontier Thinking") {
     return config.defaultModel;
   }
 
