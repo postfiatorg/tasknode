@@ -926,7 +926,7 @@ function ChatSurface({
 
   useEffect(() => {
     if (clearedChatRef.current) return;
-    if (activeChat?.source === "mock" || activeChat?.source === "server") return;
+    if (activeChat?.source === "mock" || activeChat?.source === "server" || activeChat?.source === "live") return;
     setTurns(normalizeChatMessages(messages));
   }, [activeChat?.source, messages]);
 
@@ -1001,16 +1001,38 @@ function ChatSurface({
     return () => document.removeEventListener("mousedown", closeMenus);
   }, []);
 
+  useEffect(() => {
+    messageListRef.current?.scrollTo({
+      top: messageListRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [turns.length]);
+
   async function submitMessage(event) {
     event.preventDefault();
     const message = input.trim();
     if (!message) return;
 
     clearedChatRef.current = false;
+    const startedAt = Date.now();
+    const pendingId = `assistant-pending-${startedAt}`;
     setSending(true);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
+    setInput("");
+    setTurns((current) => [
+      ...current,
+      createUserTurn(message, `user-local-${startedAt}`),
+      createPendingAssistantTurn(pendingId, startedAt),
+    ]);
+    if (!activeChat) {
+      onActiveChatChange?.({
+        id: "current",
+        source: "live",
+        title: chatTitleFromPrompt(message),
+      });
+    }
 
     try {
       const result = await requestJson(usage?.chatSendPath || "/api/chat/send", {
@@ -1021,32 +1043,47 @@ function ChatSurface({
       setActualUsage(result.body?.usage || null);
 
       if (result.ok && result.body?.assistant) {
-        setTurns((current) => [
-          ...current,
-          normalizeChatMessage(result.body.user || { role: "user", body: message }, current.length),
-          normalizeChatMessage(result.body.assistant, current.length + 1),
-        ]);
-        if (!activeChat) {
-          onActiveChatChange?.({
-            id: "current",
-            source: "live",
-            title: chatTitleFromPrompt(message),
-          });
-        }
-        setInput("");
+        const assistantTurn = normalizeChatMessage(
+          {
+            ...result.body.assistant,
+            thinking: result.body.assistant.thinking || {
+              state: "finished",
+              duration: formatElapsedSeconds(Date.now() - startedAt),
+            },
+          },
+          pendingId
+        );
+        setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
         setSendMessage(result.body.message || "Chat response generated.");
         setStatusTone("muted");
         await onChatSettled?.();
       } else {
-        setSendMessage(
+        const failureMessage =
           result.body?.message ||
-            result.body?.actionRequired ||
-            `Chat returned HTTP ${result.status}.`
+          result.body?.actionRequired ||
+          `Chat returned HTTP ${result.status}.`;
+        setTurns((current) =>
+          replaceTurnById(
+            current,
+            pendingId,
+            createErrorAssistantTurn(pendingId, failureMessage, startedAt)
+          )
+        );
+        setSendMessage(
+          failureMessage
         );
         setStatusTone("error");
       }
     } catch (error) {
-      setSendMessage(error?.message || "Chat execution is unavailable.");
+      const failureMessage = error?.message || "Chat execution is unavailable.";
+      setTurns((current) =>
+        replaceTurnById(
+          current,
+          pendingId,
+          createErrorAssistantTurn(pendingId, failureMessage, startedAt)
+        )
+      );
+      setSendMessage(failureMessage);
       setStatusTone("error");
     } finally {
       setSending(false);
@@ -1249,7 +1286,7 @@ function ChatSurface({
 }
 
 function chatComposerStatus({ actualUsage, message, sending, tone, turns }) {
-  if (sending) return { tone: "muted", text: "Thinking..." };
+  if (sending && turns.length === 0) return { tone: "muted", text: "Thinking..." };
   if (actualUsage) {
     return {
       tone: "muted",
@@ -1311,6 +1348,54 @@ function normalizeChatMessage(message, index = 0) {
     thinking: message.thinking,
     blocks: Array.isArray(message.blocks) ? message.blocks : markdownToBlocks(text),
   };
+}
+
+function createUserTurn(text, id) {
+  return {
+    id,
+    role: "user",
+    text,
+  };
+}
+
+function createPendingAssistantTurn(id, startedAt) {
+  return {
+    id,
+    role: "assistant",
+    pending: true,
+    thinking: {
+      state: "running",
+      startedAt,
+    },
+    blocks: [],
+  };
+}
+
+function createErrorAssistantTurn(id, message, startedAt) {
+  return {
+    id,
+    role: "assistant",
+    error: true,
+    thinking: {
+      state: "stopped",
+      duration: formatElapsedSeconds(Date.now() - startedAt),
+    },
+    blocks: [
+      {
+        type: "p",
+        inline: [{ text: message || "Chat execution is unavailable." }],
+      },
+    ],
+  };
+}
+
+function replaceTurnById(turns, id, replacement) {
+  return turns.map((turn) => (turn.id === id ? replacement : turn));
+}
+
+function formatElapsedSeconds(ms) {
+  const seconds = Math.max(1, Math.round(Number(ms || 0) / 1000));
+  return `${seconds}s`;
 }
 
 function markdownToBlocks(input) {
@@ -1528,30 +1613,76 @@ function UserMessage({
 }
 
 function AssistantMessage({ message, onOpenActivity, onShare }) {
+  const [thinkingOpen, setThinkingOpen] = useState(false);
   const body = plainTextFromBlocks(message.blocks);
+  const hasThinking = Boolean(message.thinking);
+  const showToolbar = !message.pending && !message.error;
 
   return (
-    <article className="assistant-message">
-      {message.thinking && (
-        <button className="thinking-row" onClick={onOpenActivity} type="button">
-          {message.thinking.state === "stopped"
-            ? "Stopped thinking"
-            : `Thought for ${message.thinking.duration}`}
-          <ChevronRight size={13} strokeWidth={1.75} />
-        </button>
+    <article
+      className={[
+        "assistant-message",
+        message.pending ? "pending" : "",
+        message.error ? "error" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {hasThinking && (
+        <div className="thinking-toggle-wrap">
+          <button
+            className={message.pending ? "thinking-row pending" : "thinking-row"}
+            onClick={() => setThinkingOpen((open) => !open)}
+            type="button"
+          >
+            {message.pending && <span className="thinking-pulse" aria-hidden="true" />}
+            {thinkingLabel(message.thinking)}
+            {thinkingOpen ? (
+              <ChevronDown size={13} strokeWidth={1.75} />
+            ) : (
+              <ChevronRight size={13} strokeWidth={1.75} />
+            )}
+          </button>
+          {thinkingOpen && (
+            <div className="thinking-details">
+              {thinkingSteps(message).map((step) => (
+                <span key={step}>{step}</span>
+              ))}
+            </div>
+          )}
+        </div>
       )}
       <div className="assistant-body">
         {(message.blocks || []).map((block, index) => (
           <BlockRenderer block={block} key={index} />
         ))}
       </div>
-      <MessageToolbar
-        onCopy={() => copyText(body)}
-        onOpenSources={onOpenActivity}
-        onShare={onShare}
-      />
+      {message.error && <div className="assistant-error">Response failed</div>}
+      {showToolbar && (
+        <MessageToolbar
+          onCopy={() => copyText(body)}
+          onOpenSources={onOpenActivity}
+          onShare={onShare}
+        />
+      )}
     </article>
   );
+}
+
+function thinkingLabel(thinking) {
+  if (thinking?.state === "running") return "Thinking";
+  if (thinking?.state === "stopped") return "Stopped thinking";
+  return `Thought for ${thinking?.duration || "1s"}`;
+}
+
+function thinkingSteps(message) {
+  if (message.pending) {
+    return ["Reading context", "Selecting the execution route", "Drafting response"];
+  }
+  if (message.error) {
+    return ["Request started", "Provider did not complete", "Kept your message in the thread"];
+  }
+  return ["Read the prompt", "Checked available context", "Composed the response"];
 }
 
 function BlockRenderer({ block }) {

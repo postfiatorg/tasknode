@@ -87,6 +87,62 @@ async function main() {
     await assertSelector('input[aria-label="Ask anything"]');
     await assertLocationHash("");
 
+    await evaluate(`(() => {
+      window.__tasknodeOriginalFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : input?.url || '';
+        if (String(url).includes('/api/chat/send')) {
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              resolve(new Response(JSON.stringify({
+                ok: true,
+                action: 'chat_send',
+                message: 'Chat response generated.',
+                assistant: {
+                  role: 'assistant',
+                  body: 'Optimistic response received.'
+                },
+                usage: {
+                  billingModel: 'usage_based',
+                  currency: 'USD',
+                  inputTokens: 4,
+                  outputTokens: 4,
+                  totalTokens: 8,
+                  costUsd: 0.001
+                }
+              }), {
+                status: 200,
+                headers: { 'content-type': 'application/json' }
+              }));
+            }, 1200);
+          });
+        }
+        return window.__tasknodeOriginalFetch(input, init);
+      };
+      return true;
+    })()`);
+    await setInput('input[aria-label="Ask anything"]', "Optimistic pending smoke");
+    await clickSelector(".send-button");
+    await assertText(["Optimistic pending smoke", "Thinking"]);
+    await assertSelector(".assistant-message.pending");
+    await clickButton("Thinking", "document.querySelector('.assistant-message.pending')");
+    await assertText(["Reading context", "Drafting response"]);
+    await capture("03d-optimistic-thinking");
+    await waitForText("Optimistic response received.");
+    await assertText(["Thought for", "Sources"]);
+    await capture("03e-optimistic-response");
+    await evaluate(`(() => {
+      if (window.__tasknodeOriginalFetch) {
+        window.fetch = window.__tasknodeOriginalFetch;
+        delete window.__tasknodeOriginalFetch;
+      }
+      return true;
+    })()`);
+
+    await clickNav("New chat");
+    await assertSelector('input[aria-label="Ask anything"]');
+    await assertLocationHash("");
+
     await clickNav("Tasks");
     await assertText(["Tasks", "Outstanding", "Verification", "Refused", "Rewarded", "Request task"]);
     await assertText(["Ship A 90 Percent Task Node Surface Cut", "Make The 8-K Extractor Emit Cited Rows"]);

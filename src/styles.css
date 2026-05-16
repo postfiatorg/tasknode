@@ -614,6 +614,14 @@ h1 {
   line-height: 1.7;
 }
 
+.assistant-message.pending {
+  min-height: 68px;
+}
+
+.assistant-message.error .assistant-body {
+  color: #8a2d22;
+}
+
 .thinking-row {
   display: inline-flex;
   align-items: center;
@@ -630,6 +638,59 @@ h1 {
 
 .thinking-row:hover {
   background: rgba(0, 0, 0, 0.04);
+}
+
+.thinking-row.pending {
+  gap: 7px;
+  color: #0d0d0d;
+}
+
+.thinking-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #0d0d0d;
+  animation: thinkingPulse 1s ease-in-out infinite;
+}
+
+.thinking-toggle-wrap {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.thinking-details {
+  display: grid;
+  gap: 4px;
+  padding-left: 8px;
+  border-left: 2px solid #e8e6df;
+  color: #6b6b66;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.assistant-error {
+  width: max-content;
+  margin-top: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff6f4;
+  color: #8a2d22;
+  font-size: 12px;
+}
+
+@keyframes thinkingPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .assistant-body {
