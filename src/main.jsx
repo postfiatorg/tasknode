@@ -2521,8 +2521,8 @@ function formatModeLabel(label) {
 
 function modeDescription(mode = {}) {
   const label = String(mode.label || "");
-  if (label === "Private Instant") return "Fast responses";
-  if (label === "Private Thinking") return "More deliberate reasoning";
+  if (label === "Private Instant") return "ZDR. Open Source. Fast.";
+  if (label === "Private Thinking") return "ZDR. Open Source. More reasoning.";
   if (label === "Frontier Instant") return "Fast frontier model";
   if (label === "Frontier Thinking") return "Deeper frontier reasoning";
   return mode.latency || mode.privacy || "";
