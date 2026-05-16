@@ -25,7 +25,6 @@ import {
   Github,
   Heading2,
   Heading3,
-  HelpCircle,
   Italic,
   LifeBuoy,
   Lightbulb,
@@ -4679,37 +4678,51 @@ function CryptoMethodRow({ method }) {
 
 function TaskDetailModal({ onClose, task }) {
   return (
-    <div className="modal-backdrop" onClick={onClose} role="presentation">
-      <section className="task-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="task-title">
-        <header>
-          <div>
+    <div className="modal-backdrop task-detail-backdrop" onClick={onClose} role="presentation">
+      <section
+        className="task-modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-title"
+      >
+        <header className="task-modal-header">
+          <div className="task-modal-kicker">
             <Flag size={12} strokeWidth={1.75} />
             {task.kind}
           </div>
-          <button onClick={onClose} type="button">
+          <button className="task-modal-close" onClick={onClose} type="button">
             <X size={14} strokeWidth={1.75} />
             Close
           </button>
         </header>
         <div className="task-modal-body">
           <h2 id="task-title">{task.title}</h2>
-          <a>
-            Task ID: {task.fullId}
+          <a className="task-id-link">
+            {task.fullId}
             <ExternalLink size={11} strokeWidth={1.75} />
           </a>
           <div className="task-modal-stats">
             <div>
               <small>Status</small>
-              <StatusPill status={task.status} />
+              <span className="task-status-inline">
+                <TaskStatusGlyph status={task.status} />
+                <strong style={{ color: taskStatusColor(task.status) }}>{task.status}</strong>
+              </span>
             </div>
             <div>
-              <small>
-                Deadline
-                <HelpCircle size={11} strokeWidth={1.75} />
-              </small>
+              <small>Deadline</small>
               <span>{task.fullDue}</span>
             </div>
+            <div>
+              <small>Reward</small>
+              <span className="task-modal-reward">
+                {task.pft.toLocaleString()}
+                <em>PFT</em>
+              </span>
+            </div>
           </div>
+          <div className="task-modal-divider" />
           <TaskSection title="Description">
             <p>{task.description}</p>
           </TaskSection>
@@ -4723,25 +4736,37 @@ function TaskDetailModal({ onClose, task }) {
               ))}
             </ol>
           </TaskSection>
-          <TaskSection title="Verification">
+          <TaskSection last title="Verification">
             <strong>{task.verification.title}</strong>
             <p>{task.verification.body}</p>
           </TaskSection>
-          <TaskSection last title="Reward">
-            <div className="modal-reward">
-              {task.pft.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              <span>PFT</span>
-            </div>
-          </TaskSection>
         </div>
-        <footer>
-          <button className="dark-pill" type="button">Submit evidence</button>
-          <button className="light-pill" type="button">Discuss</button>
+        <footer className="task-modal-footer">
           <button className="danger-text" type="button">Cancel task</button>
+          <div className="task-modal-actions">
+            <button className="light-pill" type="button">Discuss</button>
+            <button className="dark-pill" type="button">
+              Submit evidence
+              <ArrowUpRight size={14} strokeWidth={2} />
+            </button>
+          </div>
         </footer>
       </section>
     </div>
   );
+}
+
+function TaskStatusGlyph({ status }) {
+  return <span className={`task-status-glyph is-${String(status || "unknown").toLowerCase()}`} aria-hidden="true" />;
+}
+
+function taskStatusColor(status) {
+  return {
+    Proposed: "#8a5b0a",
+    Accepted: "#047857",
+    Refused: "#7c2d12",
+    Rewarded: "#6e5223",
+  }[status] || "#44443f";
 }
 
 function TaskSection({ children, last, title }) {
