@@ -413,8 +413,9 @@ function App() {
   }, []);
 
   const refreshWalletVaultStatus = useCallback(
-    async ({ preserveUnlock = false } = {}) => {
-      if (!walletAccountId) {
+    async ({ preserveUnlock = false, accountId = "" } = {}) => {
+      const effectiveAccountId = accountId || walletAccountId;
+      if (!effectiveAccountId) {
         walletSecretRef.current = null;
         setWalletVaultStatus(EMPTY_WALLET_VAULT_STATUS);
         return EMPTY_WALLET_VAULT_STATUS;
@@ -422,14 +423,14 @@ function App() {
 
       try {
         const walletCore = await import("./wallet-core");
-        const nextStatus = walletCore.localWalletVaultStatus({ accountId: walletAccountId });
+        const nextStatus = walletCore.localWalletVaultStatus({ accountId: effectiveAccountId });
         setWalletVaultStatus((current) => {
           const keepUnlocked =
             preserveUnlock &&
             Boolean(current.unlocked) &&
-            current.accountId === walletAccountId &&
+            current.accountId === effectiveAccountId &&
             current.address === nextStatus.address &&
-            walletSecretRef.current?.accountId === walletAccountId &&
+            walletSecretRef.current?.accountId === effectiveAccountId &&
             walletSecretRef.current?.address === nextStatus.address;
 
           if (!keepUnlocked) {
@@ -447,7 +448,7 @@ function App() {
         walletSecretRef.current = null;
         setWalletVaultStatus({
           ...EMPTY_WALLET_VAULT_STATUS,
-          accountId: walletAccountId,
+          accountId: effectiveAccountId,
         });
         return null;
       }
@@ -597,6 +598,8 @@ function App() {
     try {
       const state = await fetchAppState();
       setAppState(state);
+      const nextAccountId = isSignedInSession(state?.session) ? state.session.accountId || "" : "";
+      await refreshWalletVaultStatus({ preserveUnlock: true, accountId: nextAccountId });
       setLoadError("");
       return state;
     } catch (error) {
@@ -3125,12 +3128,19 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const [hydratedContext, setHydratedContext] = useState(null);
   const [hydratedPreviewByCid, setHydratedPreviewByCid] = useState({});
   const [restoringVersionKey, setRestoringVersionKey] = useState("");
+  const [previewHydration, setPreviewHydration] = useState({
+    active: false,
+    loaded: 0,
+    total: 0,
+    error: "",
+  });
   const [hydrateMessage, setHydrateMessage] = useState("");
   const [discoveringHistory, setDiscoveringHistory] = useState(false);
   const [discoverMessage, setDiscoverMessage] = useState("");
   const editorRef = useRef(null);
   const savedRangeRef = useRef(null);
   const tableWrapRef = useRef(null);
+  const previewHydrationRunRef = useRef(0);
   const lastSavedHtmlRef = useRef(contextBodyToHtml(initialDocument.body || ""));
 
   useEffect(() => {
@@ -3154,6 +3164,15 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
 
   const canEdit = Boolean(documentState.canEdit);
   const versions = buildContextVersions(documentState, history);
+  const historyPreviewTargets = versions
+    .filter((version) => version.pointer?.cid)
+    .map((version) => ({
+      key: version.key,
+      cid: String(version.pointer.cid || "").trim(),
+      pointer: version.pointer,
+    }))
+    .filter((version) => version.cid);
+  const historyPreviewTargetKey = historyPreviewTargets.map((version) => `${version.key}:${version.cid}`).join("|");
   const manifestAction = (context?.actions || []).find((action) => action.id === "ink_manifest");
   const rpcHistoryAction = (context?.actions || []).find((action) => action.id === "hydrate_rpc_history");
   const rpcHistoryPath =
@@ -3164,6 +3183,8 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const canDiscoverHistory = Boolean(history?.canHydrate && (rpcHistoryAction?.enabled ?? context?.historyRpcReady ?? true));
   const vaultDisplay = walletVaultDisplayState(walletVault, linkedWalletAddress);
   const restoringAnyVersion = Boolean(restoringVersionKey);
+  const previewedHistoryCount = historyPreviewTargets.filter((version) => hydratedPreviewByCid[version.cid]?.text).length;
+  const historyPreviewTotal = historyPreviewTargets.length;
 
   const recomputeDirty = useCallback(() => {
     const currentHtml = editorRef.current?.innerHTML || "";
@@ -3389,6 +3410,21 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     recomputeDirty();
   };
 
+  const cacheHydratedPreview = useCallback((cid, contextResult) => {
+    const normalizedCid = String(cid || contextResult?.cid || "").trim();
+    if (!normalizedCid || !contextResult?.text) return;
+
+    setHydratedPreviewByCid((current) => ({
+      ...current,
+      [normalizedCid]: {
+        title: contextResult.title,
+        text: contextResult.text,
+        decrypted: contextResult.decrypted,
+        fetchedAt: contextResult.fetchedAt || new Date().toISOString(),
+      },
+    }));
+  }, []);
+
   const hydrateContextPointer = async (pointer, versionKey) => {
     const cid = String(pointer?.cid || "").trim();
     if (!cid || restoringAnyVersion) return false;
@@ -3409,15 +3445,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       } else {
         const nextHydratedContext = { ...result, cid: result.cid || cid };
         setHydratedContext(nextHydratedContext);
-        setHydratedPreviewByCid((current) => ({
-          ...current,
-          [cid]: {
-            title: nextHydratedContext.title,
-            text: nextHydratedContext.text,
-            decrypted: nextHydratedContext.decrypted,
-            fetchedAt: nextHydratedContext.fetchedAt,
-          },
-        }));
+        cacheHydratedPreview(cid, nextHydratedContext);
         setHydrateMessage(result.decrypted ? "Historical context decrypted." : "Historical context fetched.");
         setVersionsOpen(true);
       }
@@ -3430,6 +3458,77 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       setRestoringVersionKey("");
     }
   };
+
+  useEffect(() => {
+    if (!versionsOpen || !walletVault?.unlocked || !historyPreviewTargetKey) {
+      previewHydrationRunRef.current += 1;
+      setPreviewHydration((current) =>
+        current.active
+          ? { active: false, loaded: 0, total: 0, error: "" }
+          : current
+      );
+      return undefined;
+    }
+
+    const targets = historyPreviewTargets.filter((version) => !hydratedPreviewByCid[version.cid]?.text);
+    if (targets.length === 0) {
+      setPreviewHydration({
+        active: false,
+        loaded: historyPreviewTargets.length,
+        total: historyPreviewTargets.length,
+        error: "",
+      });
+      return undefined;
+    }
+
+    const runId = previewHydrationRunRef.current + 1;
+    previewHydrationRunRef.current = runId;
+    let cancelled = false;
+    setPreviewHydration({ active: true, loaded: 0, total: targets.length, error: "" });
+
+    async function hydratePreviewRows() {
+      let loaded = 0;
+      let firstError = "";
+
+      for (const version of targets) {
+        if (cancelled || previewHydrationRunRef.current !== runId) return;
+
+        try {
+          const result = await onHydrateContext?.(version.pointer);
+          if (result?.text) {
+            cacheHydratedPreview(version.cid, { ...result, cid: result.cid || version.cid });
+          }
+        } catch (error) {
+          firstError ||= error?.message || "Some previews could not be loaded.";
+          if (String(firstError).toLowerCase().includes("unlock")) break;
+        } finally {
+          loaded += 1;
+          if (!cancelled && previewHydrationRunRef.current === runId) {
+            setPreviewHydration({
+              active: true,
+              loaded,
+              total: targets.length,
+              error: firstError,
+            });
+          }
+        }
+      }
+
+      if (!cancelled && previewHydrationRunRef.current === runId) {
+        setPreviewHydration({
+          active: false,
+          loaded,
+          total: targets.length,
+          error: firstError,
+        });
+      }
+    }
+
+    hydratePreviewRows();
+    return () => {
+      cancelled = true;
+    };
+  }, [cacheHydratedPreview, historyPreviewTargetKey, onHydrateContext, versionsOpen, walletVault?.unlocked]);
 
   const discoverHistoricalContext = async () => {
     if (discoveringHistory) return;
@@ -3728,6 +3827,15 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
                   {vaultDisplay.tone === "unlocked" ? <Unlock size={12} strokeWidth={2} /> : <Lock size={12} strokeWidth={2} />}
                   {vaultDisplay.label}
                 </span>
+                {historyPreviewTotal > 0 && (
+                  <span className={`ctx-preview-state${previewHydration.active ? " is-active" : ""}`}>
+                    {previewHydration.active
+                      ? `Loading previews ${previewHydration.loaded}/${previewHydration.total}`
+                      : walletVault?.unlocked
+                        ? `${previewedHistoryCount}/${historyPreviewTotal} previews`
+                        : "Unlock for previews"}
+                  </span>
+                )}
                 <button
                   className="ctx-version-restore"
                   disabled={!canDiscoverHistory || discoveringHistory}
@@ -3740,6 +3848,9 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
               </div>
             </header>
             {discoverMessage && <div className="ctx-discover-message">{discoverMessage}</div>}
+            {previewHydration.error && !previewHydration.active && (
+              <div className="ctx-discover-message">{previewHydration.error}</div>
+            )}
             {hydrateMessage && !hydratedContext?.text && <div className="ctx-discover-message">{hydrateMessage}</div>}
             <ol className="ctx-versions-list">
               {versions.map((version, index) => {
@@ -3747,7 +3858,14 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
                 const cachedPreview = version.cid ? hydratedPreviewByCid[version.cid] : null;
                 const isPreviewing = Boolean(hydratedContext?.cid && version.cid && hydratedContext.cid === version.cid);
                 const isRestoring = restoringVersionKey === version.key;
-                const previewText = cachedPreview?.text || version.preview;
+                const previewText =
+                  cachedPreview?.text ||
+                  (version.type === "pointer"
+                    ? walletVault?.unlocked
+                      ? "Encrypted historical context preview is loading."
+                      : "Unlock the local seed vault to load this encrypted context preview."
+                    : version.preview);
+                const wordCount = cachedPreview?.text ? contextWordCount(cachedPreview.text) : version.words || 0;
                 return (
                   <li className={`ctx-version${version.current ? " is-current" : ""}${isPreviewing ? " is-previewing" : ""}`} key={version.key}>
                     <div className="ctx-version-marker" aria-hidden="true">
@@ -3758,7 +3876,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
                       <div className="ctx-version-top">
                         <span className="ctx-version-rev">Rev {version.rev}</span>
                         <span className="ctx-version-meta">{formatContextTimestamp(version.at)}</span>
-                        <span className="ctx-version-meta ctx-version-words">{version.words || 0} words</span>
+                        <span className="ctx-version-meta ctx-version-words">{wordCount} words</span>
                         <span className="ctx-version-spacer" />
                         {version.current ? (
                           <span className="ctx-version-current">

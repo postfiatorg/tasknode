@@ -399,6 +399,11 @@ async function main() {
       await assertText(["Task Node Context", "Versions"]);
       await clickButton("Versions");
       await assertText(["Revision history", "Unlocked", "Restore"]);
+      await waitForText("1/1 previews");
+      await assertText(["Frame hydrated context body from imported history."]);
+      await evaluate("document.querySelector('.route-scroll')?.scrollTo(0, document.querySelector('.ctx-versions')?.offsetTop || 9999); true");
+      await sleep(250);
+      await capture("18b-context-preview-list");
       await clickButton("Restore", "document.querySelector('.ctx-versions')");
       await capture("19-context-preview-open");
       await waitForText("Frame Hydrated Context");

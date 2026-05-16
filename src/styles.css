@@ -3030,6 +3030,26 @@ h1 {
   color: #8a5b0a;
 }
 
+.ctx-preview-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--ctx-border);
+  border-radius: 999px;
+  background: var(--ctx-surface);
+  color: var(--ctx-ink-3);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ctx-preview-state.is-active {
+  border-color: #d7eee5;
+  background: #f2fbf7;
+  color: var(--ctx-ok);
+}
+
 .ctx-discover-message {
   margin: 12px 20px 0;
   padding: 9px 11px;
