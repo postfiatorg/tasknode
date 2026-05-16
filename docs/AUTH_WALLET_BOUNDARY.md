@@ -97,6 +97,26 @@ PFT balance reads are account-scoped, not seed-scoped.
 - Cache validated balance reads briefly, currently 15 seconds, so the app can
   poll without hammering the rapid balance node.
 
+## Historical Context Restore Boundary
+
+Historical context restore is account-scoped and wallet-owned, but not
+seed-scoped until decryption.
+
+- `POST /api/context/history/rpc/import` requires an authenticated account
+  session and uses only the wallet already linked to that account.
+- The browser must not submit an arbitrary wallet address for history restore.
+  Changing the restore subject requires relinking or proving a different
+  wallet.
+- The server uses full-history PFTL `account_tx` to discover `pf.ptr` / `v4`
+  `CONTENT_KIND.CONTEXT` CIDs and stores pointer metadata only.
+- The rapid local balance node is not a valid historical restore source unless
+  it is explicitly replaced with a full-history endpoint.
+- `GET /api/context/history/ipfs/:cid` may fetch encrypted JSON only for CIDs
+  already imported for the signed-in account.
+- Wallet unlock is required only when the browser decrypts a selected CID.
+  Mnemonic, private key, wallet password, and decrypted context plaintext must
+  never cross the API boundary.
+
 ## Client State Hazards
 
 The most common jank source is stale client auth state after a cookie changes.

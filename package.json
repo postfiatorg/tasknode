@@ -12,6 +12,7 @@
     "build": "vite build",
     "start": "node server/index.js",
     "runtime-smoke": "node scripts/runtime-store-smoke.mjs",
+    "context-history-rpc-smoke": "node scripts/context-history-rpc-smoke.mjs",
     "wallet-balance-smoke": "node scripts/wallet-balance-smoke.mjs",
     "smoke": "node scripts/smoke.mjs",
     "frame-smoke": "node scripts/frame-smoke.mjs"

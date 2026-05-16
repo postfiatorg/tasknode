@@ -60,6 +60,19 @@ Use this local node for current balances only. It intentionally has less ledger
 history than the canonical public Post Fiat endpoints, so historical transaction
 or context pulls should keep their archive/index-first path.
 
+Historical context restore is configured separately and defaults to the
+canonical full-history public RPC:
+
+```text
+PFTL_HISTORY_RPC_URL=https://rpc.testnet.postfiat.org
+PFTL_HISTORY_ACCOUNT_TX_LIMIT=200
+PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES=8
+```
+
+Use `POST /api/context/history/rpc/import` only after signing in and linking a
+wallet. The endpoint imports encrypted context CID metadata; wallet unlock and
+browser-local decryption happen afterward.
+
 ## Edit Loop
 
 - Frontend edits in `src/` hot reload through Vite.

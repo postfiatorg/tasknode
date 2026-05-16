@@ -708,6 +708,7 @@ await check("/api/context/actions", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
   const saveAction = body.actions?.find((action) => action.id === "save_edit");
+  const rpcHistoryAction = body.actions?.find((action) => action.id === "hydrate_rpc_history");
   const historyAction = body.actions?.find((action) => action.id === "hydrate_indexed_history");
   const cidFetchAction = body.actions?.find((action) => action.id === "fetch_history_cid");
   const importAction = body.actions?.find((action) => action.id === "import_shared_url");
@@ -715,6 +716,7 @@ await check("/api/context/actions", (response, text) => {
   return (
     Array.isArray(body.actions) &&
     saveAction?.enabled === true &&
+    rpcHistoryAction?.enabled === true &&
     historyAction?.enabled === true &&
     cidFetchAction?.enabled === true &&
     importAction?.enabled === false &&
@@ -736,6 +738,11 @@ await checkRequest("/api/context/edit/save", { method: "POST" }, (response, text
 });
 
 await checkRequest("/api/context/history/indexed", { method: "POST" }, (response, text) => {
+  const body = JSON.parse(text);
+  return response.status === 401 && body.error === "context_login_required";
+});
+
+await checkRequest("/api/context/history/rpc/import", { method: "POST" }, (response, text) => {
   const body = JSON.parse(text);
   return response.status === 401 && body.error === "context_login_required";
 });

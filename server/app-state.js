@@ -180,17 +180,19 @@ export function appState(session = null) {
       history: getContextHistory({ accountId: session?.accountId || "" }),
       savePath: "/api/context/edit/save",
       historyImportPath: "/api/context/history/indexed",
+      historyRpcImportPath: "/api/context/history/rpc/import",
       importReady: runtimeReadiness.context.importReady,
       editReady: runtimeReadiness.context.editReady,
       indexedHistoryReady: runtimeReadiness.context.indexedHistoryReady,
+      historyRpcReady: runtimeReadiness.context.historyRpcReady,
       encryptedCidHydrationReady: runtimeReadiness.context.encryptedCidHydrationReady,
       manifestInkReady: runtimeReadiness.context.manifestInkReady,
       sources: [
         {
           label: "PFT Context",
-          status: runtimeReadiness.context.indexedHistoryReady ? "indexed bridge ready" : "supported later",
+          status: runtimeReadiness.context.historyRpcReady ? "historical restore ready" : "supported later",
           note:
-            "PFTasks indexed rows can be normalized into PFDocs-compatible pointer metadata before any chain fallback.",
+            "Full-history PFTL account history discovers encrypted context CIDs; indexed PFTasks rows remain a deterministic fixture/import path.",
         },
         {
           label: "Google Docs share link",

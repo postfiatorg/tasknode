@@ -150,7 +150,6 @@ function normalizeTaskMap(rows) {
 
 function pointerKey(event) {
   return [
-    event.source || "unknown",
     event.txHash || "nohash",
     event.memoIndex ?? "0",
     event.cid || "nocid",
@@ -180,12 +179,14 @@ function normalizeContextRows(rows, walletAddress) {
   return asArray(rows).map((row, index) => {
     const cid = normalizeCid(pickField(row, ["cid", "context_doc_cid", "contextDocCid"]));
     if (!cid) return null;
+    const source = normalizeText(pickField(row, ["source"])) || "pftasks.context_revisions";
+    const direction = normalizeText(pickField(row, ["direction"])) || "indexed";
     return {
       cid,
       kind: CONTENT_KIND.CONTEXT,
       kindLabel: KIND_LABELS[CONTENT_KIND.CONTEXT],
-      schema: null,
-      flags: 0,
+      schema: pickField(row, ["schema"]) || null,
+      flags: pickField(row, ["flags"]) || 0,
       taskId: null,
       threadId: null,
       contextId: normalizeText(pickField(row, ["id", "context_id", "contextId"])) || null,
@@ -193,10 +194,10 @@ function normalizeContextRows(rows, walletAddress) {
       ledgerIndex: pickField(row, ["ledger_index", "ledgerIndex"]) || null,
       memoIndex: pickField(row, ["memo_index", "memoIndex"]) ?? index,
       createdAt: normalizeDate(pickField(row, ["created_at", "createdAt", "tx_timestamp", "txTimestamp"])),
-      account: walletAddress || null,
-      destination: null,
-      direction: "indexed",
-      source: "pftasks.context_revisions",
+      account: normalizeText(pickField(row, ["account"])) || walletAddress || null,
+      destination: normalizeText(pickField(row, ["destination"])) || null,
+      direction,
+      source,
       version: pickField(row, ["context_version", "contextVersion"]) || null,
       wordCount: pickField(row, ["word_count", "wordCount"]) || null,
     };
@@ -210,7 +211,7 @@ function normalizeTaskEventRows(rows, taskMap, walletAddress) {
     const eventType = normalizeText(pickField(row, ["event_type", "eventType"])) || "task_update";
     const kind = taskEventTypeToKind(eventType);
     const task = taskMap.get(taskId) || {};
-    return {
+    const normalized = {
       cid: findCidInPayload(payload),
       kind,
       kindLabel: KIND_LABELS[kind],
@@ -225,14 +226,16 @@ function normalizeTaskEventRows(rows, taskMap, walletAddress) {
       createdAt: normalizeDate(pickField(row, ["created_at", "createdAt"])),
       account: walletAddress || null,
       destination: null,
-      direction: "indexed",
-      source: "pftasks.task_events",
+      direction: normalizeText(pickField(row, ["direction"])) || "indexed",
+      source: normalizeText(pickField(row, ["source"])) || "pftasks.task_events",
       eventId: normalizeText(pickField(row, ["id", "event_id", "eventId"])) || null,
       eventType,
       title: task.title || "",
       status: task.status || "",
-      artifactType: task.verificationType || "",
+      artifactType: normalizeText(pickField(row, ["artifact_type", "artifactType"])) || task.verificationType || "",
     };
+    normalized.cid = normalizeCid(pickField(row, ["cid", "artifact_cid", "artifactCid"])) || normalized.cid;
+    return normalized;
   });
 }
 
@@ -297,6 +300,7 @@ export function normalizeIndexedContextHistory(input = {}) {
   const taskEvents = input.taskEvents || indexedData.taskEvents || indexedData.task_events || [];
   const taskSubmissions = input.taskSubmissions || input.submissions ||
     indexedData.taskSubmissions || indexedData.task_submissions || indexedData.submissions || [];
+  const source = normalizeText(input.source || indexedData.source) || "pftasks_indexed_snapshot";
   const taskMap = normalizeTaskMap(tasks);
   const contextUpdates = dedupeEvents(normalizeContextRows(contextRevisions, walletAddress)).sort(sortDesc);
   const taskEventRows = normalizeTaskEventRows(taskEvents, taskMap, walletAddress);
@@ -305,7 +309,7 @@ export function normalizeIndexedContextHistory(input = {}) {
   const latestContextPointer = contextUpdates[0] || null;
 
   return {
-    source: "pftasks_indexed_snapshot",
+    source,
     normalizedAt: new Date().toISOString(),
     walletAddress,
     pointerCount: contextUpdates.length + normalizedTaskEvents.length,

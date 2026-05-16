@@ -327,8 +327,13 @@ If context edits do not save:
 If historical PFT context does not appear:
 
 - check `/api/context/history`;
-- confirm the user is signed in before calling `/api/context/history/indexed`;
-- confirm the imported snapshot includes `contextRevisions`, `taskEvents`, or
-  `taskSubmissions`;
-- remember this bridge imports pointer metadata only, not decrypted CID
-  plaintext.
+- confirm the user is signed in before calling
+  `/api/context/history/rpc/import`;
+- confirm the account has a linked wallet; the RPC import never accepts an
+  arbitrary wallet address from the browser;
+- confirm `PFTL_HISTORY_RPC_URL` points at a full-history PFTL RPC, not the
+  machine-local rapid balance node;
+- run `npm run context-history-rpc-smoke` if pointer decoding or account_tx
+  mapping looks suspect;
+- remember this bridge imports pointer metadata only. Decrypted CID plaintext
+  requires browser-local wallet unlock.

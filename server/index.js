@@ -19,6 +19,7 @@ import {
   contextActionStart,
   contextActions,
   contextEditSave,
+  contextHistoryRpcImport,
   contextIndexedHistoryImport,
   contextHistoryIpfsFetch,
   readiness,
@@ -620,6 +621,13 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/context/history/indexed") {
     const payload = req.method === "POST" ? await readJson(req, 262144) : {};
     const result = contextIndexedHistoryImport(payload, req.method, session);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/context/history/rpc/import") {
+    const payload = req.method === "POST" ? await readJson(req, 8192) : {};
+    const result = await contextHistoryRpcImport(payload, req.method, session);
     json(res, result.status, result.body);
     return true;
   }

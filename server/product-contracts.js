@@ -26,11 +26,13 @@ import {
   linkWalletToAccount,
   recordAuthEvent,
   getContextHistory,
+  getLinkedWallet,
   saveContextDocument,
   saveIndexedContextHistory,
   usageSummary,
 } from "./runtime-store.js";
 import { fetchContextIpfsJson, normalizeContextCid } from "./context-ipfs.js";
+import { discoverContextHistoryFromRpc } from "./context-history-rpc.js";
 import { verifyWalletSignature } from "./wallet-proof.js";
 
 function hasAll(keys) {
@@ -786,6 +788,16 @@ export function contextActions() {
         "Sign in with an account, edit the native context document, and save it without wallet unlock.",
     }),
     contextAction({
+      id: "hydrate_rpc_history",
+      label: "Find historical PFT context",
+      path: "/api/context/history/rpc/import",
+      enabled: true,
+      note:
+        "Scans full-history PFTL account_tx for pf.ptr/v4 CONTEXT memo pointers owned by the linked wallet and stores CID metadata only.",
+      actionRequired:
+        "Sign in, link the wallet, import historical CID metadata, then unlock the local seed vault before decrypting a selected CID.",
+    }),
+    contextAction({
       id: "hydrate_indexed_history",
       label: "Import indexed PFTasks history",
       path: "/api/context/history/indexed",
@@ -985,6 +997,124 @@ export function contextIndexedHistoryImport(payload, method, session = null) {
       ok: true,
       action: action.id,
       message: "Indexed context history imported.",
+      history: result.history,
+    },
+  };
+}
+
+export async function contextHistoryRpcImport(payload, method, session = null) {
+  const action = contextActionByPath("/api/context/history/rpc/import");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "context_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Import historical PFT context with POST.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "context_login_required",
+      action: action.id,
+      message: "Sign in before importing historical context.",
+      actionRequired: "Use an account login, then import historical PFT context for the linked wallet.",
+    });
+  }
+
+  const wallet = getLinkedWallet({ accountId: session.accountId });
+  if (wallet.status !== "linked" || !wallet.address) {
+    return actionResponse({
+      status: 409,
+      error: "context_wallet_required",
+      action: action.id,
+      message: "Link a seed wallet before discovering historical PFT context.",
+      actionRequired:
+        "Link the wallet that owns the historical context pointers, then run historical context discovery again.",
+    });
+  }
+
+  let discovery;
+  try {
+    discovery = await discoverContextHistoryFromRpc({
+      walletAddress: wallet.address,
+      limit: payload?.limit,
+      maxPages: payload?.maxPages,
+    });
+  } catch (error) {
+    const errorCode = String(error?.code || error?.message || "context_history_rpc_failed")
+      .replace(/[^a-zA-Z0-9_.-]+/g, "_")
+      .slice(0, 100);
+    return actionResponse({
+      status: error?.status || 502,
+      error: errorCode || "context_history_rpc_failed",
+      action: action.id,
+      message: "Historical PFT context could not be discovered from account history.",
+      actionRequired:
+        "Check the full-history PFTL RPC configuration and retry. The local rapid balance node is not sufficient for archive context discovery.",
+    });
+  }
+
+  const summary = {
+    walletAddress: discovery.walletAddress,
+    scannedTransactions: discovery.scannedTransactions,
+    accountTxPages: discovery.accountTxPages,
+    accountTxComplete: discovery.accountTxComplete,
+    contextUpdateCount: discovery.contextUpdateCount,
+  };
+
+  if (discovery.contextUpdateCount === 0) {
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        action: action.id,
+        message: "No historical PFT context pointers were found for the linked wallet.",
+        discovery: summary,
+        history: getContextHistory({ accountId: session.accountId }),
+      },
+    };
+  }
+
+  const existingHistory = getContextHistory({ accountId: session.accountId });
+  const mergedSnapshot = {
+    ...discovery.snapshot,
+    contextRevisions: [
+      ...discovery.snapshot.contextRevisions,
+      ...(
+        Array.isArray(existingHistory.contextUpdates)
+          ? existingHistory.contextUpdates
+          : []
+      ),
+    ],
+    taskEvents: Array.isArray(existingHistory.taskEvents) ? existingHistory.taskEvents : [],
+  };
+
+  const result = saveIndexedContextHistory({
+    accountId: session.accountId,
+    snapshot: mergedSnapshot,
+  });
+
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 400,
+      error: result.error || "context_history_import_failed",
+      action: action.id,
+      message: "Discovered context history could not be saved.",
+      actionRequired: "Retry historical context discovery after checking local runtime storage.",
+    });
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: action.id,
+      message: `Imported ${discovery.contextUpdateCount} historical context pointer${discovery.contextUpdateCount === 1 ? "" : "s"}.`,
+      discovery: summary,
       history: result.history,
     },
   };
@@ -1936,6 +2066,7 @@ export function readiness() {
       importReady: false,
       editReady: true,
       indexedHistoryReady: true,
+      historyRpcReady: true,
       encryptedCidHydrationReady: true,
       manifestInkReady: false,
       blockers: [

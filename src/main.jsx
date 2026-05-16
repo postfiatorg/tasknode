@@ -852,6 +852,7 @@ function App() {
         {view === "context" && (
           <ContextView
             context={appState?.context}
+            onContextChange={refreshAppState}
             onHydrateContext={hydrateContextPointer}
             walletVault={walletVaultStatus}
           />
@@ -3044,7 +3045,7 @@ function ContextToolButton({ active, children, disabled = false, onMouseDown, ti
   );
 }
 
-function ContextView({ context, onHydrateContext, walletVault }) {
+function ContextView({ context, onContextChange, onHydrateContext, walletVault }) {
   const initialDocument = context?.document || {};
   const savePath = context?.savePath || initialDocument.savePath || "/api/context/edit/save";
   const history = context?.history || {};
@@ -3072,6 +3073,8 @@ function ContextView({ context, onHydrateContext, walletVault }) {
   const [hydratedContext, setHydratedContext] = useState(null);
   const [hydrating, setHydrating] = useState(false);
   const [hydrateMessage, setHydrateMessage] = useState("");
+  const [discoveringHistory, setDiscoveringHistory] = useState(false);
+  const [discoverMessage, setDiscoverMessage] = useState("");
   const editorRef = useRef(null);
   const savedRangeRef = useRef(null);
   const tableWrapRef = useRef(null);
@@ -3098,6 +3101,13 @@ function ContextView({ context, onHydrateContext, walletVault }) {
   const canEdit = Boolean(documentState.canEdit);
   const versions = buildContextVersions(documentState, history);
   const manifestAction = (context?.actions || []).find((action) => action.id === "ink_manifest");
+  const rpcHistoryAction = (context?.actions || []).find((action) => action.id === "hydrate_rpc_history");
+  const rpcHistoryPath =
+    context?.historyRpcImportPath ||
+    history?.rpcImportPath ||
+    rpcHistoryAction?.path ||
+    "/api/context/history/rpc/import";
+  const canDiscoverHistory = Boolean(history?.canHydrate && (rpcHistoryAction?.enabled ?? context?.historyRpcReady ?? true));
 
   const recomputeDirty = useCallback(() => {
     const currentHtml = editorRef.current?.innerHTML || "";
@@ -3349,6 +3359,28 @@ function ContextView({ context, onHydrateContext, walletVault }) {
     }
   };
 
+  const discoverHistoricalContext = async () => {
+    if (discoveringHistory) return;
+    if (!history?.canHydrate) {
+      setDiscoverMessage("Sign in before finding historical context.");
+      return;
+    }
+
+    setDiscoveringHistory(true);
+    setDiscoverMessage("");
+    try {
+      const result = await requestJson(rpcHistoryPath, { method: "POST" });
+      setDiscoverMessage(result.body?.message || (result.ok ? "Historical context checked." : "Historical context could not be checked."));
+      if (result.ok) {
+        await onContextChange?.();
+      }
+    } catch (error) {
+      setDiscoverMessage(error?.message || "Historical context could not be checked.");
+    } finally {
+      setDiscoveringHistory(false);
+    }
+  };
+
   const applyHydratedContext = useCallback(() => {
     if (!hydratedContext?.text) return;
     setTitle(hydratedContext.title || "Historical PFT Context");
@@ -3594,11 +3626,22 @@ function ContextView({ context, onHydrateContext, walletVault }) {
                 <span className="ctx-versions-sub">
                   {history.pointerCount
                     ? `${history.pointerCount} indexed historical pointer${history.pointerCount === 1 ? "" : "s"} available.`
-                    : "No indexed historical pointers imported yet."}
+                    : "No historical PFT pointers imported yet."}
                 </span>
               </div>
-              <span className="ctx-versions-count">{versions.length} versions</span>
+              <div className="ctx-versions-actions">
+                <button
+                  className="ctx-version-restore"
+                  disabled={!canDiscoverHistory || discoveringHistory}
+                  onClick={discoverHistoricalContext}
+                  type="button"
+                >
+                  {discoveringHistory ? "Finding" : "Find PFT history"}
+                </button>
+                <span className="ctx-versions-count">{versions.length} versions</span>
+              </div>
             </header>
+            {discoverMessage && <div className="ctx-discover-message">{discoverMessage}</div>}
             <ol className="ctx-versions-list">
               {versions.map((version, index) => {
                 const isCidCopied = copiedCid === version.cid;

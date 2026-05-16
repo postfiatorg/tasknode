@@ -1086,10 +1086,11 @@ function emptyContextHistory({ accountId = "", canHydrate = false } = {}) {
       ipfsFetchReady: true,
       fetchPath: "/api/context/history/ipfs/:cid",
       note:
-        "Historical PFT context has not been imported yet. Indexed PFTasks rows are the preferred source.",
+        "Historical PFT context has not been imported yet. Discover encrypted context CIDs from full-history PFTL RPC, then decrypt locally after wallet unlock.",
     },
     canHydrate,
     importPath: "/api/context/history/indexed",
+    rpcImportPath: "/api/context/history/rpc/import",
   };
 }
 
@@ -1103,6 +1104,7 @@ export function getContextHistory({ accountId = "" } = {}) {
       ...existing,
       canHydrate,
       importPath: "/api/context/history/indexed",
+      rpcImportPath: "/api/context/history/rpc/import",
     };
   }
 
@@ -1144,6 +1146,7 @@ export function saveIndexedContextHistory({ accountId = "", snapshot = {} } = {}
       ...document,
       canHydrate: true,
       importPath: "/api/context/history/indexed",
+      rpcImportPath: "/api/context/history/rpc/import",
     },
   };
 }

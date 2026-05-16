@@ -2904,6 +2904,24 @@ h1 {
   white-space: nowrap;
 }
 
+.ctx-versions-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.ctx-discover-message {
+  margin: 12px 20px 0;
+  padding: 9px 11px;
+  border: 1px solid #d7eee5;
+  border-radius: 8px;
+  background: #f2fbf7;
+  color: var(--ctx-ink-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
 .ctx-versions-list {
   margin: 0;
   padding: 4px 20px 16px;
@@ -3029,6 +3047,11 @@ h1 {
   border-color: var(--ctx-border-strong);
   background: var(--ctx-surface-2);
   color: var(--ctx-ink);
+}
+
+.ctx-version-restore:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .ctx-version-preview {

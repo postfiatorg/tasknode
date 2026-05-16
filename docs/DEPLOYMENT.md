@@ -36,6 +36,9 @@ Behavior:
   machine by default: `wss://178.156.143.199:6005` first with local
   self-signed TLS allowed, then `http://178.156.143.199:5005` fallback. This is
   a current-balance path, not a historical ledger/archive pull path.
+- historical context restore uses `PFTL_HISTORY_RPC_URL`, defaulting to
+  `https://rpc.testnet.postfiat.org`, so context CID discovery does not depend
+  on the rapid balance node's ledger depth.
 
 Local GitHub OAuth:
 
@@ -61,6 +64,7 @@ Verify:
 curl -s http://localhost:8080/health
 SMOKE_BASE_URL=http://127.0.0.1:5174 npm run smoke
 npm run wallet-balance-smoke
+npm run context-history-rpc-smoke
 ```
 
 Logs:
@@ -201,3 +205,5 @@ curl http://127.0.0.1:8080/health
 - Do not treat the local Docker dev volume as production data.
 - Do not commit secrets or paste secret values into docs, prompts, commits, or
   chat logs.
+- Do not point historical context restore at a shallow current-balance RPC. Use
+  `PFTL_HISTORY_RPC_URL` for full-history `account_tx` discovery.
