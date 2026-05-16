@@ -1219,14 +1219,10 @@ function ChatSurface({
             type="button"
           >
             {formatModeLabel(selectedMode)}
-            <ChevronRight size={14} strokeWidth={1.75} />
+            <ChevronDown className={modelMenuOpen ? "is-open" : ""} size={14} strokeWidth={1.75} />
           </button>
           {modelMenuOpen && (
             <div className="model-menu">
-              <div className="model-latest">
-                <span>Latest</span>
-                <span>0.1.0</span>
-              </div>
               <ModelGroup label="Private" />
               {modes
                 .filter((mode) => mode.label.startsWith("Private"))
@@ -1241,7 +1237,6 @@ function ChatSurface({
                     }}
                   />
                 ))}
-              <div className="menu-divider" />
               <ModelGroup label="Frontier" />
               {modes
                 .filter((mode) => mode.label.startsWith("Frontier"))
@@ -1256,8 +1251,6 @@ function ChatSurface({
                     }}
                   />
                 ))}
-              <div className="menu-divider" />
-              <ToolMenuRow icon={SettingsIcon} label="Configure" />
             </div>
           )}
         </div>
@@ -2042,9 +2035,12 @@ function ModelGroup({ label }) {
 
 function ModelOption({ mode, onClick, selected }) {
   return (
-    <button className={selected ? "selected" : ""} onClick={onClick} type="button">
-      <span>{formatModeLabel(mode.label)}</span>
-      <small>{mode.enabled ? "Ready" : mode.configured ? "Disabled" : "Needs config"}</small>
+    <button className={`model-option${selected ? " selected" : ""}`} onClick={onClick} type="button">
+      <span>
+        <strong>{formatModeLabel(mode.label)}</strong>
+        <small>{modeDescription(mode)}</small>
+      </span>
+      {selected && <Check size={15} strokeWidth={2} />}
     </button>
   );
 }
@@ -2060,7 +2056,16 @@ function ToolMenuRow({ icon: Icon, label, onClick, trailing }) {
 }
 
 function formatModeLabel(label) {
-  return label.replace("Private ", "Private - ").replace("Frontier ", "Frontier - ");
+  return String(label || "").trim();
+}
+
+function modeDescription(mode = {}) {
+  const label = String(mode.label || "");
+  if (label === "Private Instant") return "Fast responses";
+  if (label === "Private Thinking") return "More deliberate reasoning";
+  if (label === "Frontier Instant") return "Fast frontier model";
+  if (label === "Frontier Thinking") return "Deeper frontier reasoning";
+  return mode.latency || mode.privacy || "";
 }
 
 function isSignedInSession(session) {
