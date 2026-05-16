@@ -6,21 +6,23 @@ const providerTimeoutMs = Number(process.env.CHAT_PROVIDER_TIMEOUT_MS || 45000);
 const maxChatAttachments = 4;
 const maxAttachmentDataUrlBytes = 6 * 1024 * 1024;
 const webSearchUsdPerCall = 0.01;
+const openRouterWebSearchUsdPerCall = 0.005;
 
 export const chatModePrices = {
   "Private Instant": {
     inputUsdPerMillion: 0.8,
     outputUsdPerMillion: 1.6,
     provider: "openrouter",
-    defaultModel: "openrouter/auto",
+    defaultModel: "qwen/qwen3-vl-8b-instruct",
     maxOutputTokens: 700,
   },
   "Private Thinking": {
     inputUsdPerMillion: 2.5,
     outputUsdPerMillion: 8,
     provider: "openrouter",
-    defaultModel: "openrouter/auto",
-    maxOutputTokens: 1400,
+    defaultModel: "qwen/qwen3-32b",
+    maxOutputTokens: 4096,
+    reasoningEffort: "high",
   },
   "Frontier Instant": {
     inputUsdPerMillion: 5,
@@ -143,6 +145,14 @@ function recentTranscript(conversationId, currentMessage) {
 
 function chatAttachmentType(mimeType = "") {
   if (mimeType.startsWith("image/")) return "image";
+  if (mimeType === "application/pdf") return "pdf";
+  if (
+    mimeType.startsWith("text/") ||
+    mimeType === "application/json" ||
+    mimeType === "application/csv"
+  ) {
+    return "text";
+  }
   return "file";
 }
 
@@ -206,6 +216,166 @@ function openAiTools({ message }) {
       search_context_size: process.env.OPENAI_WEB_SEARCH_CONTEXT_SIZE || "low",
     },
   ];
+}
+
+function truthyEnv(name) {
+  return process.env[name] === "true" || process.env[name] === "1";
+}
+
+function optionalPositiveIntegerEnv(name, fallback) {
+  const value = Number.parseInt(process.env[name] || "", 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function openRouterWebSearchEnabled() {
+  return truthyEnv("OPENROUTER_WEB_SEARCH_ENABLED") || truthyEnv("TASKNODE_ENABLE_OPENROUTER_WEB_SEARCH");
+}
+
+function openRouterTools({ message }) {
+  if (!openRouterWebSearchEnabled() || !shouldUseWebSearch(message)) return [];
+
+  return [
+    {
+      type: "openrouter:web_search",
+      parameters: {
+        max_results: optionalPositiveIntegerEnv("OPENROUTER_WEB_SEARCH_MAX_RESULTS", 5),
+        max_total_results: optionalPositiveIntegerEnv("OPENROUTER_WEB_SEARCH_MAX_TOTAL_RESULTS", 10),
+        search_context_size: process.env.OPENROUTER_WEB_SEARCH_CONTEXT_SIZE || "low",
+      },
+    },
+  ];
+}
+
+function openRouterProviderPreferences({ requireParameters = false } = {}) {
+  const provider = {
+    zdr: true,
+    data_collection: "deny",
+  };
+
+  if (requireParameters) provider.require_parameters = true;
+  return provider;
+}
+
+function decodeTextDataUrl(dataUrl) {
+  const match = /^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,(.+)$/i.exec(String(dataUrl || ""));
+  if (!match) return "";
+
+  try {
+    return Buffer.from(match[2], "base64").toString("utf8").replace(/\u0000/g, "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function openRouterAttachmentPart(attachment) {
+  if (attachment.kind === "image") {
+    return {
+      type: "image_url",
+      image_url: {
+        url: attachment.dataUrl,
+      },
+    };
+  }
+
+  if (attachment.kind === "text") {
+    const text = decodeTextDataUrl(attachment.dataUrl);
+    return {
+      type: "text",
+      text: [
+        `Attached file: ${attachment.name}`,
+        text ? text.slice(0, 40_000) : "[The attached text file could not be decoded.]",
+      ].join("\n\n"),
+    };
+  }
+
+  return {
+    type: "file",
+    file: {
+      filename: attachment.name,
+      file_data: attachment.dataUrl,
+    },
+  };
+}
+
+function openRouterPlugins(attachments = []) {
+  if (!attachments.some((attachment) => attachment.kind === "pdf")) return undefined;
+
+  return [
+    {
+      id: "file-parser",
+      pdf: {
+        engine: process.env.OPENROUTER_PDF_ENGINE || "cloudflare-ai",
+      },
+    },
+  ];
+}
+
+export function openRouterMessages({ conversationId, message, attachments = [] }) {
+  const normalizedAttachments = normalizeChatAttachments(attachments);
+  const history = getChatMessages(conversationId)
+    .slice(-12)
+    .map((item) => ({
+      role: item.role === "assistant" ? "assistant" : "user",
+      content: item.body,
+    }));
+  const userContent =
+    normalizedAttachments.length === 0
+      ? message
+      : [
+          { type: "text", text: message },
+          ...normalizedAttachments.map((attachment) => openRouterAttachmentPart(attachment)),
+        ];
+
+  return [
+    { role: "system", content: taskNodeInstructions() },
+    ...history,
+    { role: "user", content: userContent },
+  ];
+}
+
+export function openRouterChatRequest({
+  mode,
+  model,
+  message,
+  conversationId,
+  attachments = [],
+  stream = false,
+}) {
+  const config = chatModeConfig(mode);
+  const normalizedAttachments = normalizeChatAttachments(attachments);
+  const tools = openRouterTools({ message });
+
+  return {
+    model,
+    messages: openRouterMessages({
+      conversationId,
+      message,
+      attachments: normalizedAttachments,
+    }),
+    provider: openRouterProviderPreferences({
+      requireParameters: Boolean(config.reasoningEffort),
+    }),
+    reasoning: config.reasoningEffort
+      ? {
+          effort: config.reasoningEffort,
+          exclude: true,
+        }
+      : undefined,
+    max_tokens: config.maxOutputTokens,
+    plugins: openRouterPlugins(normalizedAttachments),
+    tools: tools.length > 0 ? tools : undefined,
+    stream: stream || undefined,
+    stream_options: stream
+      ? {
+          include_usage: true,
+        }
+      : undefined,
+    usage: stream
+      ? undefined
+      : {
+          include: true,
+        },
+  };
 }
 
 export function openAiInput({ conversationId, message, attachments = [] }) {
@@ -433,14 +603,20 @@ function openAiUsage(body, mode) {
 
 function openRouterUsage(body, mode) {
   const usage = body?.usage || {};
-  const inputTokens = Number(usage.prompt_tokens || 0);
-  const outputTokens = Number(usage.completion_tokens || 0);
+  const inputTokens = Number(usage.prompt_tokens || usage.input_tokens || 0);
+  const outputTokens = Number(usage.completion_tokens || usage.output_tokens || 0);
   const providerCost = Number(usage.cost || 0);
+  const webSearchCalls = Number(usage.server_tool_use?.web_search_requests || 0);
+  const toolCostUsd = Number((providerCost ? 0 : webSearchCalls * openRouterWebSearchUsdPerCall).toFixed(6));
   return {
     inputTokens,
     outputTokens,
     totalTokens: Number(usage.total_tokens || inputTokens + outputTokens),
-    costUsd: Number((providerCost || actualChatCost(mode, { inputTokens, outputTokens })).toFixed(6)),
+    webSearchCalls,
+    toolCostUsd,
+    costUsd: Number(
+      (providerCost || actualChatCost(mode, { inputTokens, outputTokens }) + toolCostUsd).toFixed(6)
+    ),
   };
 }
 
@@ -553,8 +729,7 @@ async function streamOpenAi({ mode, model, message, conversationId, attachments 
   };
 }
 
-async function executeOpenRouter({ mode, model, message, conversationId }) {
-  const config = chatModeConfig(mode);
+async function executeOpenRouter({ mode, model, message, conversationId, attachments = [] }) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -562,12 +737,6 @@ async function executeOpenRouter({ mode, model, message, conversationId }) {
     process.env.VITE_SITE_ORIGIN ||
     "https://tasknodeofficial-dev.fly.dev";
   const title = process.env.OPENROUTER_TITLE || "Task Node Official";
-  const history = getChatMessages(conversationId)
-    .slice(-12)
-    .map((item) => ({
-      role: item.role === "assistant" ? "assistant" : "user",
-      content: item.body,
-    }));
   const body = await fetchJson(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -577,18 +746,7 @@ async function executeOpenRouter({ mode, model, message, conversationId }) {
       "x-title": title,
       "x-openrouter-title": title,
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: taskNodeInstructions() },
-        ...history,
-        { role: "user", content: message },
-      ],
-      max_tokens: config.maxOutputTokens,
-      usage: {
-        include: true,
-      },
-    }),
+    body: JSON.stringify(openRouterChatRequest({ mode, model, message, conversationId, attachments })),
   });
   const text = outputTextFromOpenRouter(body);
 
@@ -601,8 +759,7 @@ async function executeOpenRouter({ mode, model, message, conversationId }) {
   };
 }
 
-async function streamOpenRouter({ mode, model, message, conversationId, onDelta, signal }) {
-  const config = chatModeConfig(mode);
+async function streamOpenRouter({ mode, model, message, conversationId, attachments = [], onDelta, signal }) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -610,12 +767,6 @@ async function streamOpenRouter({ mode, model, message, conversationId, onDelta,
     process.env.VITE_SITE_ORIGIN ||
     "https://tasknodeofficial-dev.fly.dev";
   const title = process.env.OPENROUTER_TITLE || "Task Node Official";
-  const history = getChatMessages(conversationId)
-    .slice(-12)
-    .map((item) => ({
-      role: item.role === "assistant" ? "assistant" : "user",
-      content: item.body,
-    }));
   const stream = await fetchEventStream(
     `${baseUrl}/chat/completions`,
     {
@@ -628,19 +779,14 @@ async function streamOpenRouter({ mode, model, message, conversationId, onDelta,
         "x-title": title,
         "x-openrouter-title": title,
       },
-      body: JSON.stringify({
+      body: JSON.stringify(openRouterChatRequest({
+        mode,
         model,
-        messages: [
-          { role: "system", content: taskNodeInstructions() },
-          ...history,
-          { role: "user", content: message },
-        ],
-        max_tokens: config.maxOutputTokens,
+        message,
+        conversationId,
+        attachments,
         stream: true,
-        stream_options: {
-          include_usage: true,
-        },
-      }),
+      })),
     },
     { signal }
   );
@@ -694,7 +840,13 @@ export async function executeChat({ accountId = "", mode, message, conversationI
   const result =
     status.provider === "openai"
       ? await executeOpenAi({ mode: normalizedMode, model: status.model, message, conversationId, attachments })
-      : await executeOpenRouter({ mode: normalizedMode, model: status.model, message, conversationId });
+      : await executeOpenRouter({
+          mode: normalizedMode,
+          model: status.model,
+          message,
+          conversationId,
+          attachments,
+        });
 
   if (!result.text) {
     const error = new Error("chat_provider_empty_response");
@@ -756,6 +908,7 @@ export async function executeChatStream({
           model: status.model,
           message,
           conversationId,
+          attachments,
           onDelta,
           signal,
         });

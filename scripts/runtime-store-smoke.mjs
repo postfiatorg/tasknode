@@ -6,13 +6,17 @@ const tempDir = mkdtempSync(join(tmpdir(), "tasknodeofficial-runtime-store-"));
 process.env.TASKNODE_STORE_PATH = join(tempDir, "runtime-store.json");
 delete process.env.CHAT_MODEL_FRONTIER_INSTANT;
 delete process.env.CHAT_MODEL_FRONTIER_THINKING;
+delete process.env.CHAT_MODEL_PRIVATE_INSTANT;
+delete process.env.CHAT_MODEL_PRIVATE_THINKING;
 process.env.OPENAI_MODEL = "generic-openai-smoke-model";
+delete process.env.OPENROUTER_MODEL;
 
 try {
   const {
     actualChatCost,
     modelForMode,
     openAiResponseRequest,
+    openRouterChatRequest,
     shouldUseWebSearch,
   } = await import("../server/chat-router.js");
   const {
@@ -38,6 +42,14 @@ try {
 
   if (modelForMode("Frontier Thinking") !== "gpt-5.5") {
     throw new Error("Frontier Thinking must default to pinned OpenAI gpt-5.5.");
+  }
+
+  if (modelForMode("Private Instant") !== "qwen/qwen3-vl-8b-instruct") {
+    throw new Error("Private Instant must default to a pinned OpenRouter ZDR multimodal model.");
+  }
+
+  if (modelForMode("Private Thinking") !== "qwen/qwen3-32b") {
+    throw new Error("Private Thinking must default to a pinned OpenRouter ZDR reasoning model.");
   }
 
   if (actualChatCost("Frontier Instant", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 35) {
@@ -99,6 +111,79 @@ try {
     frontierThinkingRequest.max_output_tokens !== 4096
   ) {
     throw new Error(`Frontier Thinking must use gpt-5.5 high reasoning: ${JSON.stringify(frontierThinkingRequest)}`);
+  }
+
+  const openRouterRequest = openRouterChatRequest({
+    mode: "Private Instant",
+    model: "openrouter/auto",
+    message: "Review the attached image, PDF, and note.",
+    conversationId: "runtime-smoke-openrouter-contract",
+    attachments: [
+      {
+        name: "pixel.png",
+        mimeType: "image/png",
+        size: 68,
+        dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      },
+      {
+        name: "brief.pdf",
+        mimeType: "application/pdf",
+        size: 10,
+        dataUrl: "data:application/pdf;base64,JVBERi0xLjQK",
+      },
+      {
+        name: "note.txt",
+        mimeType: "text/plain",
+        size: 11,
+        dataUrl: "data:text/plain;base64,aGVsbG8gd29ybGQ=",
+      },
+    ],
+  });
+  const privateUserContent = openRouterRequest.messages.at(-1)?.content || [];
+
+  if (
+    openRouterRequest.provider?.zdr !== true ||
+    openRouterRequest.provider?.data_collection !== "deny" ||
+    openRouterRequest.plugins?.[0]?.pdf?.engine !== "cloudflare-ai" ||
+    privateUserContent?.[1]?.type !== "image_url" ||
+    privateUserContent?.[2]?.type !== "file" ||
+    privateUserContent?.[3]?.text?.includes("hello world") !== true
+  ) {
+    throw new Error(`OpenRouter private request is missing ZDR or attachment support: ${JSON.stringify(openRouterRequest)}`);
+  }
+
+  const openRouterThinkingRequest = openRouterChatRequest({
+    mode: "Private Thinking",
+    model: "openrouter/auto",
+    message: "Think carefully and answer.",
+    conversationId: "runtime-smoke-openrouter-thinking-contract",
+  });
+
+  if (
+    openRouterThinkingRequest.reasoning?.effort !== "high" ||
+    openRouterThinkingRequest.reasoning?.exclude !== true ||
+    openRouterThinkingRequest.provider?.require_parameters !== true ||
+    openRouterThinkingRequest.max_tokens !== 4096
+  ) {
+    throw new Error(`Private Thinking must use OpenRouter high reasoning with strict provider routing: ${JSON.stringify(openRouterThinkingRequest)}`);
+  }
+
+  const oldOpenRouterWebSearchEnabled = process.env.OPENROUTER_WEB_SEARCH_ENABLED;
+  process.env.OPENROUTER_WEB_SEARCH_ENABLED = "true";
+  const openRouterSearchRequest = openRouterChatRequest({
+    mode: "Private Instant",
+    model: "openrouter/auto",
+    message: "Can you search what is going on today?",
+    conversationId: "runtime-smoke-openrouter-search-contract",
+  });
+  if (oldOpenRouterWebSearchEnabled === undefined) {
+    delete process.env.OPENROUTER_WEB_SEARCH_ENABLED;
+  } else {
+    process.env.OPENROUTER_WEB_SEARCH_ENABLED = oldOpenRouterWebSearchEnabled;
+  }
+
+  if (openRouterSearchRequest.tools?.[0]?.type !== "openrouter:web_search") {
+    throw new Error(`OpenRouter web search should be available behind the explicit env gate: ${JSON.stringify(openRouterSearchRequest)}`);
   }
 
   const first = appendUsageCredit({

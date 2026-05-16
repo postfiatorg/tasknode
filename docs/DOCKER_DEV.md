@@ -35,6 +35,19 @@ the first OpenAI route and defaults to `chat-latest` through the direct OpenAI
 API, not OpenRouter. Frontier Thinking uses direct OpenAI `gpt-5.5` with high
 reasoning.
 
+Private Instant and Private Thinking use OpenRouter only when
+`OPENROUTER_API_KEY` is present and `OPENROUTER_CHAT_ENABLED=true` or
+`TASKNODE_ENABLE_OPENROUTER_CHAT=true`. OpenRouter requests are built with
+`provider.zdr=true` and `provider.data_collection="deny"`. Private Instant
+defaults to `qwen/qwen3-vl-8b-instruct` so image uploads are not left to
+unpredictable router selection. Private Thinking defaults to `qwen/qwen3-32b`
+and adds `reasoning.effort="high"` with strict provider parameter routing.
+Image, PDF, and text attachments are mapped into OpenRouter chat-completion
+content parts; PDF parsing uses `OPENROUTER_PDF_ENGINE` or `cloudflare-ai` by
+default. OpenRouter web search is intentionally separate and remains off unless
+`OPENROUTER_WEB_SEARCH_ENABLED=true` or
+`TASKNODE_ENABLE_OPENROUTER_WEB_SEARCH=true`.
+
 Useful local endpoints:
 
 ```text

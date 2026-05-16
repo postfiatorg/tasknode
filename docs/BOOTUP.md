@@ -165,6 +165,8 @@ Common env names:
 - `GITHUB_REDIRECT_URI`
 - `OPENAI_API_KEY`
 - `OPENROUTER_API_KEY`
+- `OPENROUTER_CHAT_ENABLED`
+- `OPENROUTER_WEB_SEARCH_ENABLED`
 - `TASKNODE_ADMIN_CREDIT_TOKEN`
 - `TASKNODE_INITIAL_PROVIDER_CREDIT_USD`
 - `POSTHOG_KEY`
@@ -192,8 +194,13 @@ Current behavior:
 - PFTL transaction signing and durable decrypted-context summaries remain
   disabled;
 - OpenAI chat can execute and stream when configured;
-- OpenRouter execution and streaming routes exist but should be explicitly
-  verified before enabling;
+- OpenRouter execution and streaming routes exist and are gated by
+  `OPENROUTER_CHAT_ENABLED=true` or `TASKNODE_ENABLE_OPENROUTER_CHAT=true`;
+  private requests enforce ZDR/data-collection-deny provider preferences and
+  map image/PDF/text attachments into OpenRouter chat content. Private Instant
+  defaults to `qwen/qwen3-vl-8b-instruct`; Private Thinking defaults to
+  `qwen/qwen3-32b` with high reasoning. OpenRouter web search is a separate
+  opt-in because it invokes an external server tool;
 - native context documents can be viewed by anyone and saved by signed-in
   accounts without wallet unlock;
 - indexed PFTasks context/task rows can be imported as sanitized pointer
