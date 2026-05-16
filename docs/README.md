@@ -26,20 +26,24 @@ is intentionally not live yet.
    Human-readable walkthrough of the successful live PFTL/IPFS task lifecycle
    replay from request through reward.
 
-6. `DEPLOYMENT.md`
+6. `PFTL_VERIFICATION_EVIDENCE.md`
+   Canonical screenshot, PDF, DOCX, and public URL evidence readers for PFTL
+   verification payloads.
+
+7. `DEPLOYMENT.md`
    Local Docker dev, local production Docker, and Fly release deployment paths.
 
-7. `../full_spec.md`
+8. `../full_spec.md`
    Product/architecture source of truth and active burndown.
 
-8. `../auth_account_spec.md`
+9. `../auth_account_spec.md`
    Auth, provider linking, wallet claim, email login, and delink/relink design.
 
-9. `AUTH_WALLET_BOUNDARY.md`
+10. `AUTH_WALLET_BOUNDARY.md`
    Concrete implementation guardrails for wallet auth UX, session refresh,
    wallet proof, local vault state, and regression coverage.
 
-10. `../whip_context.md`
+11. `../whip_context.md`
    Automation handoff instructions and whip shutdown guardrails.
 
 ## Source Of Truth Rules

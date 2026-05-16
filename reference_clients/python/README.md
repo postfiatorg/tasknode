@@ -99,3 +99,30 @@ python3 -m tasknode_pftl.scenarios.full_lifecycle \
 
 The scenario prints addresses, balances, CIDs, tx hashes, and the final replay
 projection. It does not print seeds.
+
+## Verification Evidence Readers
+
+`tasknode_pftl.verification` is the canonical Python evidence adapter for
+PFTL verification payloads. It mirrors the PFTasks production verification
+surface without depending on the PFTasks database:
+
+- screenshot evidence is read with OpenAI Responses vision image input;
+- PDF evidence is extracted with `pypdf` when installed, with a conservative
+  literal-string fallback for simple PDFs;
+- DOCX evidence is extracted directly from the OOXML package with the Python
+  standard library;
+- public URL evidence is fetched as bounded text/HTML, with first-class GitHub
+  gist aggregation through the GitHub gist API.
+
+Run all four example readers:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+python3 -m tasknode_pftl.scenarios.verification_evidence_examples
+```
+
+The example writes sample inputs, `pf.task.evidence.v1` packets, a
+`pf.task.verification_response.v1` packet, and a markdown receipt under
+`reference_clients/python/runs/`. Screenshot reads require `OPENAI_API_KEY`;
+the config loader reads the same PFTasks env files and workspace `env_dump.txt`
+used by the lifecycle harness.

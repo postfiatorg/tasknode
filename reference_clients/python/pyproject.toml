@@ -8,8 +8,9 @@ dependencies = [
   "requests",
   "PyNaCl",
   "base58",
+  "Pillow",
+  "pypdf",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-

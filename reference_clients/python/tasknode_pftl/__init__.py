@@ -13,5 +13,6 @@ __all__ = [
     "pointers",
     "reducer",
     "taskgen",
+    "verification",
     "wallets",
 ]

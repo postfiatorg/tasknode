@@ -560,6 +560,34 @@ User response to the follow-on verification ask.
 }
 ```
 
+### Verification Evidence Adapters
+
+Verification evidence must be normalized before it becomes encrypted IPFS
+content. The web app, Codex runtime, and any external agent should produce the
+same payload shape so replay does not depend on a specific UX.
+
+Canonical adapter inputs:
+
+- `text`: bounded text summary supplied by the user or agent.
+- `url`: public HTTP(S) text/HTML evidence. Gists are fetched through the
+  GitHub gist API and aggregated by text file. Private collaboration URLs and
+  binary/download URLs are rejected as URL evidence.
+- `github_commit`: public GitHub commit metadata and bounded file summary.
+- `screenshot`: image evidence described by a vision model into a concise
+  verification-relevant text record. The original screenshot should be hashed
+  and may be stored as encrypted IPFS content.
+- `file`: document evidence. PDFs and DOCX files are extracted into bounded
+  text with parser provenance; binary documents should not be smuggled through
+  URL evidence.
+- `mixed`: ordered list of the above evidence records.
+
+The Python reference implementation is `tasknode_pftl.verification`; runnable
+examples live in `tasknode_pftl.scenarios.verification_evidence_examples`.
+Those examples generate screenshot, PDF, DOCX, and public gist evidence
+packets with `pf.task.evidence.v1` shape, then build a
+`pf.task.verification_response.v1` wrapper ready to encrypt, pin, and point to
+from PFTL.
+
 ### `pf.reward.v1`
 
 Content kind: `REWARD`
