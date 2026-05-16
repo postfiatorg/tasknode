@@ -54,6 +54,7 @@ import {
   Store,
   Table,
   Trophy,
+  Unlock,
   User as UserIcon,
   UserCheck,
   Wand2,
@@ -267,6 +268,36 @@ const EMPTY_WALLET_VAULT_STATUS = {
 };
 const WALLET_BALANCE_REFRESH_MS = 15000;
 
+function walletVaultDisplayState(walletVault = {}, linkedWalletAddress = "") {
+  const hasLinkedWallet = Boolean(String(linkedWalletAddress || walletVault?.address || "").trim());
+  if (walletVault?.unlocked) {
+    return {
+      tone: "unlocked",
+      label: "Unlocked",
+      detail: "Local seed vault is unlocked for this browser session.",
+    };
+  }
+  if (walletVault?.available) {
+    return {
+      tone: "locked",
+      label: "Locked",
+      detail: "Encrypted local seed vault is saved on this device.",
+    };
+  }
+  if (hasLinkedWallet) {
+    return {
+      tone: "missing",
+      label: "Vault missing",
+      detail: "Wallet ownership is linked, but no encrypted local seed vault is saved in this browser.",
+    };
+  }
+  return {
+    tone: "missing",
+    label: "No wallet",
+    detail: "Link a seed wallet before restoring encrypted historical context.",
+  };
+}
+
 function viewFromLocation() {
   if (typeof window === "undefined") return "chat";
   const hashView = window.location.hash.replace(/^#\/?/, "").trim().toLowerCase();
@@ -370,6 +401,7 @@ function App() {
     signedIn && appState?.wallet?.pftWallet?.status === "linked"
       ? appState.wallet.pftWallet.address || ""
       : "";
+  const vaultDisplay = walletVaultDisplayState(walletVaultStatus, linkedWalletAddress);
 
   const lockWalletVault = useCallback(() => {
     walletSecretRef.current = null;
@@ -642,6 +674,13 @@ function App() {
             label="Wallet"
             onClick={() => navigateToView("wallet")}
             sidebarOpen={sidebarOpen}
+            tooltip={`Wallet · ${vaultDisplay.label}`}
+            trailing={
+              <small className={`nav-vault-state is-${vaultDisplay.tone}`} title={vaultDisplay.detail}>
+                {vaultDisplay.tone === "unlocked" ? <Unlock size={10} strokeWidth={2} /> : <Lock size={10} strokeWidth={2} />}
+                {vaultDisplay.label}
+              </small>
+            }
           />
           <SidebarButton
             active={view === "context"}
@@ -716,6 +755,10 @@ function App() {
                   <CreditCard size={14} strokeWidth={1.75} />
                   <strong>{chatCredit}</strong>
                   <span>chat</span>
+                </span>
+                <span className={`balance-vault-state is-${vaultDisplay.tone}`} title={vaultDisplay.detail}>
+                  {vaultDisplay.tone === "unlocked" ? <Unlock size={11} strokeWidth={2} /> : <Lock size={11} strokeWidth={2} />}
+                  <span>{vaultDisplay.label}</span>
                 </span>
               </span>
               <ChevronRight size={14} strokeWidth={1.75} />
@@ -852,6 +895,7 @@ function App() {
         {view === "context" && (
           <ContextView
             context={appState?.context}
+            linkedWalletAddress={linkedWalletAddress}
             onContextChange={refreshAppState}
             onHydrateContext={hydrateContextPointer}
             walletVault={walletVaultStatus}
@@ -1985,17 +2029,18 @@ function ShareModal({ onClose, thread, title }) {
   );
 }
 
-function SidebarButton({ active, badge, icon: Icon, label, onClick, sidebarOpen }) {
+function SidebarButton({ active, badge, icon: Icon, label, onClick, sidebarOpen, tooltip, trailing }) {
   return (
     <button
       aria-label={label}
       className={active ? "active" : ""}
-      data-tooltip={sidebarOpen ? undefined : label}
+      data-tooltip={sidebarOpen ? undefined : tooltip || label}
       onClick={onClick}
       type="button"
     >
       <Icon size={18} strokeWidth={1.75} />
       {sidebarOpen && <span>{label}</span>}
+      {sidebarOpen && trailing}
       {sidebarOpen && badge ? <small>{badge}</small> : null}
       {!sidebarOpen && badge ? <small className="rail-badge">{badge}</small> : null}
     </button>
@@ -2242,6 +2287,7 @@ function WalletView({
   const walletLinked = linkedWallet.status === "linked";
   const vaultAvailable = Boolean(walletVault?.available && walletVault?.address === linkedWallet.address);
   const vaultUnlocked = Boolean(vaultAvailable && walletVault?.unlocked);
+  const vaultDisplay = walletVaultDisplayState(walletVault, linkedWallet.address);
   const signedIn = isSignedInSession(session);
   const pftBalance = formatPftBalance(wallet);
 
@@ -2339,10 +2385,16 @@ function WalletView({
                     : "Ownership proof is linked. Save an encrypted local vault before wallet actions."}
             </span>
           </div>
-          <button className="address-chip" type="button">
-            <span>{walletLinked ? shortWalletAddress(linkedWallet.address) : "No wallet linked"}</span>
-            <Copy size={11} strokeWidth={1.75} />
-          </button>
+          <div className="wallet-identity-row">
+            <button className="address-chip" type="button">
+              <span>{walletLinked ? shortWalletAddress(linkedWallet.address) : "No wallet linked"}</span>
+              <Copy size={11} strokeWidth={1.75} />
+            </button>
+            <span className={`wallet-vault-chip is-${vaultDisplay.tone}`} title={vaultDisplay.detail}>
+              {vaultDisplay.tone === "unlocked" ? <Unlock size={13} strokeWidth={2} /> : <Lock size={13} strokeWidth={2} />}
+              {vaultDisplay.label}
+            </span>
+          </div>
           <div className="wallet-actions">
             <button
               className="dark-pill"
@@ -3045,7 +3097,7 @@ function ContextToolButton({ active, children, disabled = false, onMouseDown, ti
   );
 }
 
-function ContextView({ context, onContextChange, onHydrateContext, walletVault }) {
+function ContextView({ context, linkedWalletAddress = "", onContextChange, onHydrateContext, walletVault }) {
   const initialDocument = context?.document || {};
   const savePath = context?.savePath || initialDocument.savePath || "/api/context/edit/save";
   const history = context?.history || {};
@@ -3071,7 +3123,7 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const [tableHover, setTableHover] = useState({ rows: 0, cols: 0 });
   const [hydratedContext, setHydratedContext] = useState(null);
-  const [hydrating, setHydrating] = useState(false);
+  const [restoringVersionKey, setRestoringVersionKey] = useState("");
   const [hydrateMessage, setHydrateMessage] = useState("");
   const [discoveringHistory, setDiscoveringHistory] = useState(false);
   const [discoverMessage, setDiscoverMessage] = useState("");
@@ -3096,6 +3148,7 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
   useEffect(() => {
     setHydratedContext(null);
     setHydrateMessage("");
+    setRestoringVersionKey("");
   }, [history?.revision, history?.latestContextPointer?.cid]);
 
   const canEdit = Boolean(documentState.canEdit);
@@ -3108,6 +3161,8 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
     rpcHistoryAction?.path ||
     "/api/context/history/rpc/import";
   const canDiscoverHistory = Boolean(history?.canHydrate && (rpcHistoryAction?.enabled ?? context?.historyRpcReady ?? true));
+  const vaultDisplay = walletVaultDisplayState(walletVault, linkedWalletAddress);
+  const restoringAnyVersion = Boolean(restoringVersionKey);
 
   const recomputeDirty = useCallback(() => {
     const currentHtml = editorRef.current?.innerHTML || "";
@@ -3333,14 +3388,17 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
     recomputeDirty();
   };
 
-  const hydrateContextPointer = async (pointer) => {
-    if (!pointer?.cid || hydrating) return;
+  const hydrateContextPointer = async (pointer, versionKey) => {
+    const cid = String(pointer?.cid || "").trim();
+    if (!cid || restoringAnyVersion) return false;
     if (!walletVault?.unlocked) {
-      setHydrateMessage("Unlock the local seed vault first.");
-      return;
+      setHydrateMessage("Unlock the local seed vault before restoring a historical version.");
+      setVersionsOpen(true);
+      return false;
     }
 
-    setHydrating(true);
+    const nextRestoringKey = versionKey || cid;
+    setRestoringVersionKey(nextRestoringKey);
     setHydrateMessage("");
     try {
       const result = await onHydrateContext?.(pointer);
@@ -3348,14 +3406,17 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
         setHydrateMessage("Context CID was fetched, but no readable context text was found.");
         setHydratedContext(null);
       } else {
-        setHydratedContext(result);
-        setHydrateMessage(result.decrypted ? "Context decrypted." : "Context fetched.");
+        setHydratedContext({ ...result, cid: result.cid || cid });
+        setHydrateMessage(result.decrypted ? "Historical context decrypted." : "Historical context fetched.");
+        setVersionsOpen(true);
       }
+      return Boolean(result?.text);
     } catch (error) {
       setHydrateMessage(error?.message || "Context could not be hydrated.");
       setHydratedContext(null);
+      return false;
     } finally {
-      setHydrating(false);
+      setRestoringVersionKey("");
     }
   };
 
@@ -3385,7 +3446,10 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
     if (!hydratedContext?.text) return;
     setTitle(hydratedContext.title || "Historical PFT Context");
     if (editorRef.current) editorRef.current.innerHTML = contextTextToHtml(hydratedContext.text);
-    setSaveMessage("Hydrated draft not saved");
+    setHydratedContext(null);
+    setHydrateMessage("Historical version loaded into the editor.");
+    setVersionsOpen(true);
+    setSaveMessage("Historical version loaded");
     setDirty(true);
   }, [hydratedContext]);
 
@@ -3415,18 +3479,20 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
   };
 
   const restoreVersion = async (version) => {
+    if (restoringAnyVersion) return;
     if (version.type === "current") {
       setTitle(savedTitle);
       if (editorRef.current) editorRef.current.innerHTML = lastSavedHtmlRef.current;
       setDirty(false);
-      setVersionsOpen(false);
+      setHydratedContext(null);
+      setHydrateMessage("");
+      setVersionsOpen(true);
       setSaveMessage("Restored current saved draft");
       return;
     }
 
     if (version.pointer) {
-      await hydrateContextPointer(version.pointer);
-      setVersionsOpen(false);
+      await hydrateContextPointer(version.pointer, version.key);
     }
   };
 
@@ -3630,6 +3696,10 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
                 </span>
               </div>
               <div className="ctx-versions-actions">
+                <span className={`ctx-vault-state is-${vaultDisplay.tone}`} title={vaultDisplay.detail}>
+                  {vaultDisplay.tone === "unlocked" ? <Unlock size={12} strokeWidth={2} /> : <Lock size={12} strokeWidth={2} />}
+                  {vaultDisplay.label}
+                </span>
                 <button
                   className="ctx-version-restore"
                   disabled={!canDiscoverHistory || discoveringHistory}
@@ -3645,8 +3715,10 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
             <ol className="ctx-versions-list">
               {versions.map((version, index) => {
                 const isCidCopied = copiedCid === version.cid;
+                const isPreviewing = Boolean(hydratedContext?.cid && version.cid && hydratedContext.cid === version.cid);
+                const isRestoring = restoringVersionKey === version.key;
                 return (
-                  <li className={`ctx-version${version.current ? " is-current" : ""}`} key={version.key}>
+                  <li className={`ctx-version${version.current ? " is-current" : ""}${isPreviewing ? " is-previewing" : ""}`} key={version.key}>
                     <div className="ctx-version-marker" aria-hidden="true">
                       <span className="ctx-version-dot" />
                       {index < versions.length - 1 && <span className="ctx-version-line" />}
@@ -3663,8 +3735,14 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
                             Current
                           </span>
                         ) : (
-                          <button className="ctx-version-restore" onClick={() => restoreVersion(version)} type="button">
-                            {hydrating ? "Hydrating" : "Restore"}
+                          <button
+                            aria-busy={isRestoring ? "true" : undefined}
+                            className={`ctx-version-restore${isRestoring ? " is-restoring" : ""}${isPreviewing ? " is-selected" : ""}`}
+                            disabled={restoringAnyVersion || isPreviewing}
+                            onClick={() => restoreVersion(version)}
+                            type="button"
+                          >
+                            {isRestoring ? "Restoring" : isPreviewing ? "Previewing" : "Restore"}
                           </button>
                         )}
                       </div>
@@ -3699,13 +3777,29 @@ function ContextView({ context, onContextChange, onHydrateContext, walletVault }
             {hydratedContext?.text && (
               <>
                 <div className="ctx-hydration-title">
-                  <strong>{hydratedContext.title}</strong>
+                  <span className="ctx-hydration-heading">
+                    <strong>{hydratedContext.title}</strong>
+                    {hydratedContext.cid && <code>{truncateCid(hydratedContext.cid)}</code>}
+                  </span>
                   <small>{hydratedContext.decrypted ? "Decrypted locally" : "Fetched"}</small>
                 </div>
                 <pre>{hydratedContext.text}</pre>
-                <button className="light-pill" disabled={!canEdit} onClick={applyHydratedContext} type="button">
-                  Use as draft
-                </button>
+                <div className="ctx-hydration-actions">
+                  <button className="light-pill" disabled={!canEdit} onClick={applyHydratedContext} type="button">
+                    Use as draft
+                  </button>
+                  <button
+                    className="ctx-version-restore"
+                    onClick={() => {
+                      setHydratedContext(null);
+                      setHydrateMessage("");
+                      setVersionsOpen(true);
+                    }}
+                    type="button"
+                  >
+                    Keep browsing
+                  </button>
+                </div>
               </>
             )}
           </section>
