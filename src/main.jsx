@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   BookOpen,
   Bot,
+  Bold,
   ChevronDown,
   ChevronRight,
   Check,
@@ -22,9 +23,14 @@ import {
   Flag,
   Flame,
   Github,
+  Heading2,
+  Heading3,
   HelpCircle,
+  Italic,
   LifeBuoy,
   Lightbulb,
+  List,
+  ListOrdered,
   ListPlus,
   ListTodo,
   Lock,
@@ -46,6 +52,7 @@ import {
   Sparkle,
   SquarePen,
   Store,
+  Table,
   Trophy,
   User as UserIcon,
   UserCheck,
@@ -2879,24 +2886,207 @@ function formatContextTimestamp(value) {
   }
 }
 
+function formatRelativeShort(value, now = Date.now()) {
+  if (!value) return "not saved";
+  const then = new Date(value).getTime();
+  if (!Number.isFinite(then)) return "not saved";
+  const diff = Math.max(0, now - then);
+  const seconds = Math.round(diff / 1000);
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+function escapeContextHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function looksLikeHtml(value) {
+  return /<\/?[a-z][\s\S]*>/i.test(String(value || ""));
+}
+
+function contextTextToHtml(value) {
+  const lines = String(value || "").replace(/\r\n/g, "\n").split("\n");
+  let html = "";
+  let listType = "";
+
+  function closeList() {
+    if (!listType) return;
+    html += `</${listType}>`;
+    listType = "";
+  }
+
+  function openList(nextType) {
+    if (listType === nextType) return;
+    closeList();
+    listType = nextType;
+    html += `<${listType}>`;
+  }
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      closeList();
+      return;
+    }
+
+    const heading = /^(#{1,3})\s+(.+)$/.exec(trimmed);
+    if (heading) {
+      closeList();
+      const level = Math.min(heading[1].length, 3);
+      html += `<h${level}>${escapeContextHtml(heading[2])}</h${level}>`;
+      return;
+    }
+
+    const unordered = /^[-*]\s+(.+)$/.exec(trimmed);
+    if (unordered) {
+      openList("ul");
+      html += `<li>${escapeContextHtml(unordered[1])}</li>`;
+      return;
+    }
+
+    const ordered = /^\d+[.)]\s+(.+)$/.exec(trimmed);
+    if (ordered) {
+      openList("ol");
+      html += `<li>${escapeContextHtml(ordered[1])}</li>`;
+      return;
+    }
+
+    closeList();
+    html += `<p>${escapeContextHtml(trimmed)}</p>`;
+  });
+
+  closeList();
+  return html || "<p><br></p>";
+}
+
+function contextBodyToHtml(value) {
+  const text = String(value || "");
+  return looksLikeHtml(text) ? text : contextTextToHtml(text);
+}
+
+function stripContextHtml(value) {
+  return String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function contextWordCount(value) {
+  const text = stripContextHtml(value);
+  return text ? text.split(/\s+/).filter(Boolean).length : 0;
+}
+
+function truncateCid(cid) {
+  const text = String(cid || "");
+  if (text.length <= 18) return text;
+  return `${text.slice(0, 10)}...${text.slice(-6)}`;
+}
+
+function buildContextVersions(documentState = {}, history = {}) {
+  const versions = [];
+  const currentHtml = contextBodyToHtml(documentState.body || "");
+  versions.push({
+    key: `current-${documentState.revision || 0}`,
+    type: "current",
+    rev: documentState.revision || 0,
+    cid: "",
+    at: documentState.updatedAt || documentState.createdAt,
+    words: contextWordCount(currentHtml),
+    preview: stripContextHtml(currentHtml).slice(0, 220),
+    current: true,
+  });
+
+  (history.contextUpdates || []).slice(0, 20).forEach((pointer, index) => {
+    versions.push({
+      key: pointer.cid || `pointer-${index}`,
+      type: "pointer",
+      rev: pointer.version || Math.max((history.contextUpdateCount || 0) - index, 1),
+      cid: pointer.cid || "",
+      at: pointer.createdAt,
+      words: Number(pointer.wordCount || 0),
+      preview: pointer.cid
+        ? `Historical context pointer ${truncateCid(pointer.cid)}`
+        : "Historical context pointer",
+      current: false,
+      pointer,
+    });
+  });
+
+  return versions;
+}
+
+function ContextToolButton({ active, children, disabled = false, onMouseDown, title }) {
+  return (
+    <button
+      aria-label={title}
+      aria-pressed={active ? "true" : "false"}
+      className={`ctx-tool-btn${active ? " is-active" : ""}`}
+      disabled={disabled}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        if (!disabled) onMouseDown?.(event);
+      }}
+      title={title}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
 function ContextView({ context, onHydrateContext, walletVault }) {
   const initialDocument = context?.document || {};
   const savePath = context?.savePath || initialDocument.savePath || "/api/context/edit/save";
   const history = context?.history || {};
   const [documentState, setDocumentState] = useState(initialDocument);
   const [title, setTitle] = useState(initialDocument.title || "Task Node Context");
-  const [body, setBody] = useState(initialDocument.body || "");
+  const [savedTitle, setSavedTitle] = useState(initialDocument.title || "Task Node Context");
+  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [copiedCid, setCopiedCid] = useState("");
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [activeFormats, setActiveFormats] = useState({
+    bold: false,
+    italic: false,
+    h2: false,
+    h3: false,
+    ul: false,
+    ol: false,
+  });
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const [tableHover, setTableHover] = useState({ rows: 0, cols: 0 });
   const [hydratedContext, setHydratedContext] = useState(null);
   const [hydrating, setHydrating] = useState(false);
   const [hydrateMessage, setHydrateMessage] = useState("");
+  const editorRef = useRef(null);
+  const savedRangeRef = useRef(null);
+  const tableWrapRef = useRef(null);
+  const lastSavedHtmlRef = useRef(contextBodyToHtml(initialDocument.body || ""));
 
   useEffect(() => {
     const nextDocument = context?.document || {};
+    const nextTitle = nextDocument.title || "Task Node Context";
+    const nextHtml = contextBodyToHtml(nextDocument.body || "");
     setDocumentState(nextDocument);
-    setTitle(nextDocument.title || "Task Node Context");
-    setBody(nextDocument.body || "");
+    setTitle(nextTitle);
+    setSavedTitle(nextTitle);
+    lastSavedHtmlRef.current = nextHtml;
+    if (editorRef.current) editorRef.current.innerHTML = nextHtml;
+    setDirty(false);
     setSaveMessage("");
   }, [context?.document?.id, context?.document?.revision, context?.document?.updatedAt]);
 
@@ -2906,16 +3096,167 @@ function ContextView({ context, onHydrateContext, walletVault }) {
   }, [history?.revision, history?.latestContextPointer?.cid]);
 
   const canEdit = Boolean(documentState.canEdit);
-  const dirty = title !== (documentState.title || "Task Node Context") || body !== (documentState.body || "");
-  const lastSaved = formatContextTimestamp(documentState.updatedAt);
-  const latestContextPointer = history.latestContextPointer || null;
-  const canHydrateLatest = Boolean(latestContextPointer?.cid && walletVault?.unlocked);
+  const versions = buildContextVersions(documentState, history);
+  const manifestAction = (context?.actions || []).find((action) => action.id === "ink_manifest");
 
-  const saveContext = async () => {
-    if (!canEdit || saving) return;
+  const recomputeDirty = useCallback(() => {
+    const currentHtml = editorRef.current?.innerHTML || "";
+    setDirty(currentHtml !== lastSavedHtmlRef.current || title !== savedTitle);
+  }, [title, savedTitle]);
+
+  useEffect(() => {
+    recomputeDirty();
+  }, [recomputeDirty]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const updateActiveFormats = useCallback(() => {
+    try {
+      const block = (document.queryCommandValue("formatBlock") || "").toLowerCase();
+      setActiveFormats({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        h2: block === "h2" || block === "<h2>",
+        h3: block === "h3" || block === "<h3>",
+        ul: document.queryCommandState("insertUnorderedList"),
+        ol: document.queryCommandState("insertOrderedList"),
+      });
+    } catch {
+      // Selection state is best-effort editor chrome.
+    }
+  }, []);
+
+  useEffect(() => {
+    function handleSelectionChange() {
+      if (document.activeElement === editorRef.current) updateActiveFormats();
+    }
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => document.removeEventListener("selectionchange", handleSelectionChange);
+  }, [updateActiveFormats]);
+
+  useEffect(() => {
+    if (!tablePickerOpen) return undefined;
+
+    function handleMouseDown(event) {
+      if (tableWrapRef.current && !tableWrapRef.current.contains(event.target)) {
+        setTablePickerOpen(false);
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") setTablePickerOpen(false);
+    }
+
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [tablePickerOpen]);
+
+  const saveSelection = useCallback(() => {
+    const selection = window.getSelection?.();
+    if (!selection || selection.rangeCount === 0 || !editorRef.current) return;
+    const range = selection.getRangeAt(0);
+    if (editorRef.current.contains(range.commonAncestorContainer)) {
+      savedRangeRef.current = range.cloneRange();
+    }
+  }, []);
+
+  const restoreSelection = useCallback(() => {
+    const range = savedRangeRef.current;
+    const selection = window.getSelection?.();
+    if (!range || !selection || !editorRef.current) return false;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  }, []);
+
+  const exec = useCallback(
+    (command, value = null) => {
+      if (!canEdit) return;
+      editorRef.current?.focus();
+      document.execCommand(command, false, value);
+      updateActiveFormats();
+      recomputeDirty();
+    },
+    [canEdit, recomputeDirty, updateActiveFormats]
+  );
+
+  const toggleHeading = useCallback(
+    (level) => {
+      if (!canEdit) return;
+      editorRef.current?.focus();
+      const block = (document.queryCommandValue("formatBlock") || "").toLowerCase();
+      const target = `h${level}`;
+      document.execCommand(
+        "formatBlock",
+        false,
+        block === target || block === `<${target}>` ? "<p>" : `<${target}>`
+      );
+      updateActiveFormats();
+      recomputeDirty();
+    },
+    [canEdit, recomputeDirty, updateActiveFormats]
+  );
+
+  const insertTable = useCallback(
+    (rows, cols) => {
+      if (!canEdit || !editorRef.current || rows < 1 || cols < 1) return;
+      editorRef.current.focus();
+      const restored = restoreSelection();
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+
+      for (let col = 0; col < cols; col += 1) {
+        const th = document.createElement("th");
+        th.innerHTML = "<br>";
+        headRow.appendChild(th);
+      }
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+      for (let row = 1; row < rows; row += 1) {
+        const tr = document.createElement("tr");
+        for (let col = 0; col < cols; col += 1) {
+          const td = document.createElement("td");
+          td.innerHTML = "<br>";
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+
+      const trailing = document.createElement("p");
+      trailing.innerHTML = "<br>";
+
+      if (restored && savedRangeRef.current) {
+        const range = savedRangeRef.current;
+        range.deleteContents();
+        range.insertNode(trailing);
+        range.insertNode(table);
+      } else {
+        editorRef.current.appendChild(table);
+        editorRef.current.appendChild(trailing);
+      }
+      recomputeDirty();
+    },
+    [canEdit, recomputeDirty, restoreSelection]
+  );
+
+  const saveContext = useCallback(async () => {
+    if (!canEdit || saving || !editorRef.current) return false;
 
     setSaving(true);
     setSaveMessage("");
+    const body = editorRef.current.innerHTML;
 
     let result;
     try {
@@ -2927,24 +3268,63 @@ function ContextView({ context, onHydrateContext, walletVault }) {
     } catch {
       setSaveMessage("Context could not be saved.");
       setSaving(false);
-      return;
+      return false;
     }
 
     if (!result.ok || !result.body?.document) {
       setSaveMessage(result.body?.message || "Context could not be saved.");
       setSaving(false);
-      return;
+      return false;
     }
 
     setDocumentState(result.body.document);
     setTitle(result.body.document.title || "Task Node Context");
-    setBody(result.body.document.body || "");
-    setSaveMessage("Saved");
+    setSavedTitle(result.body.document.title || "Task Node Context");
+    lastSavedHtmlRef.current = contextBodyToHtml(result.body.document.body || "");
+    setSaveMessage("Saved just now");
+    setDirty(false);
     setSaving(false);
+    return true;
+  }, [canEdit, savePath, saving, title]);
+
+  useEffect(() => {
+    if (!dirty || saving || !canEdit) return undefined;
+    const timeout = window.setTimeout(() => {
+      saveContext();
+    }, 900);
+    return () => window.clearTimeout(timeout);
+  }, [canEdit, dirty, saveContext, saving]);
+
+  const handleEditorInput = () => {
+    setSaveMessage("");
+    recomputeDirty();
   };
 
-  const hydrateLatestContext = async () => {
-    if (!latestContextPointer?.cid || hydrating) return;
+  const handleEditorKeyDown = (event) => {
+    const mod = event.metaKey || event.ctrlKey;
+    if (!mod) return;
+    const key = event.key.toLowerCase();
+    if (key === "b") {
+      event.preventDefault();
+      exec("bold");
+    }
+    if (key === "i") {
+      event.preventDefault();
+      exec("italic");
+    }
+  };
+
+  const handleEditorPaste = (event) => {
+    if (!canEdit) return;
+    const text = event.clipboardData?.getData("text/plain");
+    if (text === undefined || text === null) return;
+    event.preventDefault();
+    document.execCommand("insertText", false, text);
+    recomputeDirty();
+  };
+
+  const hydrateContextPointer = async (pointer) => {
+    if (!pointer?.cid || hydrating) return;
     if (!walletVault?.unlocked) {
       setHydrateMessage("Unlock the local seed vault first.");
       return;
@@ -2953,7 +3333,7 @@ function ContextView({ context, onHydrateContext, walletVault }) {
     setHydrating(true);
     setHydrateMessage("");
     try {
-      const result = await onHydrateContext?.(latestContextPointer);
+      const result = await onHydrateContext?.(pointer);
       if (!result?.text) {
         setHydrateMessage("Context CID was fetched, but no readable context text was found.");
         setHydratedContext(null);
@@ -2969,130 +3349,330 @@ function ContextView({ context, onHydrateContext, walletVault }) {
     }
   };
 
-  const applyHydratedContext = () => {
+  const applyHydratedContext = useCallback(() => {
     if (!hydratedContext?.text) return;
     setTitle(hydratedContext.title || "Historical PFT Context");
-    setBody(hydratedContext.text);
+    if (editorRef.current) editorRef.current.innerHTML = contextTextToHtml(hydratedContext.text);
     setSaveMessage("Hydrated draft not saved");
+    setDirty(true);
+  }, [hydratedContext]);
+
+  const copyEditorText = async () => {
+    const text = editorRef.current?.innerText?.trim() || "";
+    const composed = `${title}\n\n${text}`.trim();
+    if (!composed) return;
+
+    try {
+      await navigator.clipboard?.writeText(composed);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setSaveMessage("Copy failed.");
+    }
   };
+
+  const copyCid = async (cid) => {
+    if (!cid) return;
+    try {
+      await navigator.clipboard?.writeText(cid);
+      setCopiedCid(cid);
+      window.setTimeout(() => setCopiedCid((current) => (current === cid ? "" : current)), 1600);
+    } catch {
+      setSaveMessage("CID copy failed.");
+    }
+  };
+
+  const restoreVersion = async (version) => {
+    if (version.type === "current") {
+      setTitle(savedTitle);
+      if (editorRef.current) editorRef.current.innerHTML = lastSavedHtmlRef.current;
+      setDirty(false);
+      setVersionsOpen(false);
+      setSaveMessage("Restored current saved draft");
+      return;
+    }
+
+    if (version.pointer) {
+      await hydrateContextPointer(version.pointer);
+      setVersionsOpen(false);
+    }
+  };
+
+  const publishContext = async () => {
+    if (publishing) return;
+    if (dirty) {
+      const saved = await saveContext();
+      if (!saved) return;
+    }
+
+    if (!manifestAction?.enabled) {
+      setSaveMessage("Publishing is not enabled yet.");
+      return;
+    }
+
+    setPublishing(true);
+    try {
+      const result = await requestJson(manifestAction.path, { method: manifestAction.method || "POST" });
+      setSaveMessage(result.body?.message || (result.ok ? "Published" : "Publishing is unavailable."));
+    } catch (error) {
+      setSaveMessage(error?.message || "Publishing is unavailable.");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const statusText = (() => {
+    if (!canEdit) return "Sign in to save context";
+    if (publishing) return "Publishing";
+    if (saving) return "Saving";
+    if (dirty) return "Editing";
+    if (saveMessage) return saveMessage;
+    return `Saved ${formatRelativeShort(documentState.updatedAt, now)}`;
+  })();
 
   return (
     <div className="route-scroll">
-      <div className="context-view">
-        <div className="route-heading context-heading">
-          <div>
-            <h1>Context</h1>
-            <p>Keep the working instructions and preferences the assistant should remember.</p>
-          </div>
-          <div className="context-meta">
-            <span>Revision {documentState.revision || 0}</span>
-            <span>{lastSaved}</span>
-          </div>
-        </div>
-
-        <section className="context-document" aria-label="Context document">
-          <label className="context-field">
-            <span>Title</span>
-            <input
-              className="context-title-input"
-              maxLength={120}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Task Node Context"
-              value={title}
-            />
-          </label>
-          <label className="context-field">
-            <span>Context document</span>
-            <textarea
-              className="context-body-input"
-              maxLength={50000}
-              onChange={(event) => setBody(event.target.value)}
-              placeholder="Add stable preferences, active projects, constraints, and working notes."
-              value={body}
-            />
-          </label>
-          <div className="context-actions">
-            <div className="context-save-status" role="status">
-              {!canEdit ? "Sign in to save context." : saveMessage || (dirty ? "Unsaved changes" : "All changes saved")}
+      <div className="context-view context-wireframe">
+        <section className="ctx-card" aria-label="Context document">
+          <div className="ctx-toolbar" role="toolbar" aria-label="Formatting">
+            <div className="ctx-toolbar-group">
+              <ContextToolButton active={activeFormats.h2} disabled={!canEdit} onMouseDown={() => toggleHeading(2)} title="Heading">
+                <Heading2 size={16} strokeWidth={2} />
+              </ContextToolButton>
+              <ContextToolButton active={activeFormats.h3} disabled={!canEdit} onMouseDown={() => toggleHeading(3)} title="Subheading">
+                <Heading3 size={16} strokeWidth={2} />
+              </ContextToolButton>
             </div>
-            <button
-              className="dark-pill"
-              disabled={!canEdit || !dirty || saving}
-              onClick={saveContext}
-              type="button"
-            >
-              {saving ? "Saving" : "Save"}
-            </button>
-          </div>
-        </section>
-
-        <section className="context-history" aria-label="Historical PFT context">
-          <div>
-            <h2>Historical PFT Context</h2>
-            <p>
-              {history.pointerCount
-                ? `${history.pointerCount} indexed pointer${history.pointerCount === 1 ? "" : "s"} imported.`
-                : history.canHydrate
-                  ? "No indexed PFTasks history imported yet."
-                  : "Sign in to import indexed PFTasks history."}
-            </p>
-          </div>
-          <div className="context-history-grid">
-            <span>
-              <strong>{history.contextUpdateCount || 0}</strong>
-              Context updates
-            </span>
-            <span>
-              <strong>{history.taskEventCount || 0}</strong>
-              Task events
-            </span>
-            <span>
-              <strong>{history.latestContextPointer?.cid ? "Ready" : "Pending"}</strong>
-              Latest pointer
-            </span>
-          </div>
-          {history.latestContextPointer?.cid && (
-            <div className="context-pointer-row">
-              <span>{history.latestContextPointer.cid}</span>
-              <small>{formatContextTimestamp(history.latestContextPointer.createdAt)}</small>
+            <span className="ctx-toolbar-sep" />
+            <div className="ctx-toolbar-group">
+              <ContextToolButton active={activeFormats.bold} disabled={!canEdit} onMouseDown={() => exec("bold")} title="Bold">
+                <Bold size={15} strokeWidth={2.2} />
+              </ContextToolButton>
+              <ContextToolButton active={activeFormats.italic} disabled={!canEdit} onMouseDown={() => exec("italic")} title="Italic">
+                <Italic size={15} strokeWidth={2.2} />
+              </ContextToolButton>
             </div>
-          )}
-          {latestContextPointer?.cid && (
-            <div className="context-hydration-actions">
+            <span className="ctx-toolbar-sep" />
+            <div className="ctx-toolbar-group">
+              <ContextToolButton active={activeFormats.ul} disabled={!canEdit} onMouseDown={() => exec("insertUnorderedList")} title="Bulleted list">
+                <List size={15} strokeWidth={2} />
+              </ContextToolButton>
+              <ContextToolButton active={activeFormats.ol} disabled={!canEdit} onMouseDown={() => exec("insertOrderedList")} title="Numbered list">
+                <ListOrdered size={15} strokeWidth={2} />
+              </ContextToolButton>
+            </div>
+            <span className="ctx-toolbar-sep" />
+            <div className="ctx-toolbar-group ctx-table-wrap" ref={tableWrapRef}>
               <button
-                className="dark-pill"
-                disabled={!canHydrateLatest || hydrating}
-                onClick={hydrateLatestContext}
+                aria-expanded={tablePickerOpen ? "true" : "false"}
+                aria-haspopup="dialog"
+                aria-label="Insert table"
+                className={`ctx-tool-btn ctx-tool-combo${tablePickerOpen ? " is-active" : ""}`}
+                disabled={!canEdit}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  if (!canEdit) return;
+                  if (!tablePickerOpen) saveSelection();
+                  setTablePickerOpen((open) => !open);
+                  setTableHover({ rows: 0, cols: 0 });
+                }}
+                title="Insert table"
                 type="button"
               >
-                {hydrating ? "Hydrating" : "Hydrate latest"}
+                <Table size={15} strokeWidth={2} />
+                <ChevronDown size={12} strokeWidth={2} />
               </button>
-              <span>{walletVault?.unlocked ? "Local vault unlocked" : "Unlock wallet first"}</span>
+              {tablePickerOpen && (
+                <div className="ctx-table-picker" role="dialog" aria-label="Insert table">
+                  <div className="ctx-table-grid" onMouseLeave={() => setTableHover({ rows: 0, cols: 0 })}>
+                    {Array.from({ length: 8 }).map((_, rowIndex) => (
+                      <div className="ctx-table-row" key={rowIndex}>
+                        {Array.from({ length: 8 }).map((__, colIndex) => {
+                          const active = rowIndex < tableHover.rows && colIndex < tableHover.cols;
+                          return (
+                            <button
+                              aria-label={`Insert ${rowIndex + 1} by ${colIndex + 1} table`}
+                              className={`ctx-table-cell${active ? " is-active" : ""}`}
+                              key={colIndex}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                insertTable(rowIndex + 1, colIndex + 1);
+                                setTablePickerOpen(false);
+                              }}
+                              onMouseEnter={() => setTableHover({ rows: rowIndex + 1, cols: colIndex + 1 })}
+                              type="button"
+                            />
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="ctx-table-readout">
+                    {tableHover.rows > 0 ? `${tableHover.rows} x ${tableHover.cols}` : "Insert table"}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-          {hydrateMessage && <div className="inline-message">{hydrateMessage}</div>}
-          {hydratedContext?.text && (
-            <div className="context-hydrated-preview">
-              <div>
-                <strong>{hydratedContext.title}</strong>
-                <small>{hydratedContext.decrypted ? "Decrypted locally" : "Fetched"}</small>
-              </div>
-              <pre>{hydratedContext.text}</pre>
-              <button className="light-pill" disabled={!canEdit} onClick={applyHydratedContext} type="button">
-                Use as draft
-              </button>
-            </div>
-          )}
-          <div className="context-note context-history-note">
-            Indexed PFTasks rows are normalized first. Encrypted CID plaintext is decrypted only after wallet unlock.
-            {" "}
-            {walletVault?.unlocked ? "Your seed vault is unlocked for this session." : "Encrypted history stays pointer-only until the local vault is unlocked."}
+            <div className="ctx-toolbar-spacer" />
+            <button className="ctx-tool-text" onClick={copyEditorText} type="button">
+              {copied ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.9} />}
+              <span>{copied ? "Copied" : "Copy"}</span>
+            </button>
           </div>
+
+          <div className="ctx-writing-surface">
+            <input
+              aria-label="Document title"
+              className="ctx-title-input"
+              disabled={!canEdit}
+              maxLength={120}
+              onChange={(event) => {
+                setTitle(event.target.value);
+                setSaveMessage("");
+              }}
+              placeholder="Untitled context"
+              value={title}
+            />
+            <div
+              aria-disabled={!canEdit}
+              aria-label="Context document body"
+              aria-multiline="true"
+              className="ctx-editor"
+              contentEditable={canEdit}
+              data-placeholder="Add stable preferences, active projects, constraints, and working notes."
+              onClick={updateActiveFormats}
+              onFocus={updateActiveFormats}
+              onInput={handleEditorInput}
+              onKeyDown={handleEditorKeyDown}
+              onKeyUp={updateActiveFormats}
+              onPaste={handleEditorPaste}
+              ref={editorRef}
+              role="textbox"
+              spellCheck
+              suppressContentEditableWarning
+            />
+          </div>
+
+          <footer className="ctx-card-foot">
+            <span className={`ctx-status${dirty ? " is-dirty" : ""}${saving || publishing ? " is-saving" : ""}`} role="status">
+              <span className="ctx-status-dot" aria-hidden="true" />
+              {statusText}
+            </span>
+            <div className="ctx-foot-actions">
+              <button
+                aria-expanded={versionsOpen ? "true" : "false"}
+                className={`ctx-ghost${versionsOpen ? " is-active" : ""}`}
+                onClick={() => setVersionsOpen((open) => !open)}
+                type="button"
+              >
+                Versions
+                <span className="ctx-ghost-count">{versions.length}</span>
+              </button>
+              <span className="ctx-tip">
+                <button
+                  className="ctx-ghost ctx-ghost-accent"
+                  disabled={publishing}
+                  onClick={publishContext}
+                  type="button"
+                >
+                  <ArrowUp size={13} strokeWidth={2} />
+                  {publishing ? "Publishing" : "Publish to PFT"}
+                </button>
+                <span className="ctx-tip-card" role="tooltip">
+                  Portable publishing will write an immutable context pointer when manifest signing is enabled.
+                </span>
+              </span>
+            </div>
+          </footer>
         </section>
 
-        <div className="context-note">
-          Context saves to your Task Node account first. Wallet signing is only for optional portable PFTL manifests.
-        </div>
+        {versionsOpen && (
+          <section className="ctx-versions" aria-label="Context versions">
+            <header className="ctx-versions-head">
+              <div>
+                <span className="ctx-versions-title">Revision history</span>
+                <span className="ctx-versions-sub">
+                  {history.pointerCount
+                    ? `${history.pointerCount} indexed historical pointer${history.pointerCount === 1 ? "" : "s"} available.`
+                    : "No indexed historical pointers imported yet."}
+                </span>
+              </div>
+              <span className="ctx-versions-count">{versions.length} versions</span>
+            </header>
+            <ol className="ctx-versions-list">
+              {versions.map((version, index) => {
+                const isCidCopied = copiedCid === version.cid;
+                return (
+                  <li className={`ctx-version${version.current ? " is-current" : ""}`} key={version.key}>
+                    <div className="ctx-version-marker" aria-hidden="true">
+                      <span className="ctx-version-dot" />
+                      {index < versions.length - 1 && <span className="ctx-version-line" />}
+                    </div>
+                    <div className="ctx-version-body">
+                      <div className="ctx-version-top">
+                        <span className="ctx-version-rev">Rev {version.rev}</span>
+                        <span className="ctx-version-meta">{formatContextTimestamp(version.at)}</span>
+                        <span className="ctx-version-meta ctx-version-words">{version.words || 0} words</span>
+                        <span className="ctx-version-spacer" />
+                        {version.current ? (
+                          <span className="ctx-version-current">
+                            <span className="ctx-version-current-dot" aria-hidden="true" />
+                            Current
+                          </span>
+                        ) : (
+                          <button className="ctx-version-restore" onClick={() => restoreVersion(version)} type="button">
+                            {hydrating ? "Hydrating" : "Restore"}
+                          </button>
+                        )}
+                      </div>
+                      {version.preview && <p className="ctx-version-preview">{version.preview}</p>}
+                      {version.cid && (
+                        <div className="ctx-version-foot">
+                          <code className="ctx-version-cid" title={version.cid}>
+                            {truncateCid(version.cid)}
+                          </code>
+                          <button
+                            aria-label={isCidCopied ? "Copied CID" : "Copy CID"}
+                            className="ctx-version-copy"
+                            onClick={() => copyCid(version.cid)}
+                            title={isCidCopied ? "Copied" : "Copy CID"}
+                            type="button"
+                          >
+                            {isCidCopied ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.8} />}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        )}
+
+        {(hydrateMessage || hydratedContext?.text) && (
+          <section className="ctx-hydration-panel" aria-label="Hydrated historical context">
+            {hydrateMessage && <div className="inline-message">{hydrateMessage}</div>}
+            {hydratedContext?.text && (
+              <>
+                <div className="ctx-hydration-title">
+                  <strong>{hydratedContext.title}</strong>
+                  <small>{hydratedContext.decrypted ? "Decrypted locally" : "Fetched"}</small>
+                </div>
+                <pre>{hydratedContext.text}</pre>
+                <button className="light-pill" disabled={!canEdit} onClick={applyHydratedContext} type="button">
+                  Use as draft
+                </button>
+              </>
+            )}
+          </section>
+        )}
+
+        {!canEdit && (
+          <div className="context-note">
+            Sign in to edit and save the native context document.
+          </div>
+        )}
       </div>
     </div>
   );
