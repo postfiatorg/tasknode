@@ -1,0 +1,244 @@
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import WebSocket from "ws";
+
+const defaultPort = Number(process.env.ROUTE_SMOKE_PORT || 5194);
+const baseUrl = process.env.ROUTE_SMOKE_BASE_URL || `http://127.0.0.1:${defaultPort}`;
+const chromeBin = process.env.CHROME_BIN || "google-chrome";
+const chromePort = Number(process.env.ROUTE_SMOKE_CHROME_PORT || 9331);
+const startServer = process.env.ROUTE_SMOKE_USE_EXISTING !== "1";
+
+const routes = [
+  { hash: "", labels: ["Task Node", "New chat"] },
+  { hash: "#wallet", labels: ["Available balance", "PFT", "Activity"] },
+  { hash: "#context", labels: ["Context document", "Versions"] },
+  { hash: "#tasks", labels: ["Tasks"] },
+];
+
+let server;
+let chrome;
+let cdp;
+
+async function main() {
+  const userDataDir = mkdtempSync(join(tmpdir(), "tasknodeofficial-route-smoke-"));
+  const serverOutput = [];
+
+  try {
+    if (startServer) {
+      server = spawn(
+        "./node_modules/.bin/vite",
+        ["--host", "127.0.0.1", "--port", String(defaultPort), "--strictPort"],
+        {
+          detached: true,
+          env: { ...process.env, VITE_DEV_PORT: String(defaultPort) },
+          stdio: ["ignore", "pipe", "pipe"],
+        }
+      );
+      server.killProcessGroup = true;
+      collectOutput(server.stdout, serverOutput);
+      collectOutput(server.stderr, serverOutput);
+    }
+
+    await waitForHttp(baseUrl, 20000, serverOutput);
+
+    chrome = spawn(
+      chromeBin,
+      [
+        "--headless=new",
+        "--no-sandbox",
+        "--disable-gpu",
+        "--window-size=1280,900",
+        `--user-data-dir=${userDataDir}`,
+        `--remote-debugging-port=${chromePort}`,
+        "about:blank",
+      ],
+      { stdio: ["ignore", "ignore", "ignore"] }
+    );
+
+    const page = await waitForPage();
+    cdp = new CdpClient(page.webSocketDebuggerUrl);
+    await cdp.connect();
+    await cdp.send("Runtime.enable");
+    await cdp.send("Page.enable");
+
+    const runtimeExceptions = [];
+    cdp.on("Runtime.exceptionThrown", (event) => {
+      const details = event?.exceptionDetails;
+      runtimeExceptions.push(details?.exception?.description || details?.text || "Unknown runtime exception");
+    });
+
+    for (const route of routes) {
+      runtimeExceptions.length = 0;
+      const url = `${baseUrl}/${route.hash}`;
+      await cdp.send("Page.navigate", { url });
+      await waitForRootText();
+      await sleep(400);
+
+      if (runtimeExceptions.length > 0) {
+        throw new Error(`Runtime exception on ${route.hash || "/"}:\n${runtimeExceptions.join("\n")}`);
+      }
+
+      const visibleText = String(await evaluate("document.body?.innerText || ''"));
+      const missing = route.labels.filter((label) => !visibleText.toLowerCase().includes(label.toLowerCase()));
+      if (missing.length > 0) {
+        throw new Error(
+          `Route ${route.hash || "/"} rendered without expected text: ${missing.join(", ")}\nVisible text:\n${visibleText.slice(0, 1200)}`
+        );
+      }
+    }
+
+    console.log(`route smoke ok: ${routes.map((route) => route.hash || "/").join(", ")}`);
+  } finally {
+    cdp?.close();
+    await stopProcess(chrome);
+    await stopProcess(server);
+    try {
+      rmSync(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 150 });
+    } catch (error) {
+      console.warn(`route smoke cleanup warning: ${error.message}`);
+    }
+  }
+}
+
+function collectOutput(stream, output) {
+  stream.on("data", (chunk) => {
+    output.push(String(chunk));
+    while (output.join("").length > 4000) output.shift();
+  });
+}
+
+async function stopProcess(child) {
+  if (!child || child.exitCode !== null) return;
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  signalProcess(child, "SIGTERM");
+  const stopped = await Promise.race([exited.then(() => true), sleep(1200).then(() => false)]);
+  if (stopped || child.exitCode !== null) return;
+  signalProcess(child, "SIGKILL");
+  await Promise.race([exited, sleep(1000)]);
+}
+
+function signalProcess(child, signal) {
+  try {
+    if (child.killProcessGroup) process.kill(-child.pid, signal);
+    else child.kill(signal);
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error;
+  }
+}
+
+async function waitForHttp(url, timeoutMs, serverOutput) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch {}
+    if (server?.exitCode !== null) {
+      throw new Error(`Vite exited before route smoke could start.\n${serverOutput.join("")}`);
+    }
+    await sleep(150);
+  }
+  throw new Error(`Timed out waiting for ${url}.\n${serverOutput.join("")}`);
+}
+
+async function waitForPage() {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${chromePort}/json/list`);
+      if (response.ok) {
+        const pages = await response.json();
+        const page = pages.find((entry) => entry.type === "page");
+        if (page) return page;
+      }
+    } catch {}
+    await sleep(100);
+  }
+  throw new Error("No debuggable Chrome page found.");
+}
+
+async function waitForRootText() {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const rootText = String(await evaluate("document.querySelector('#root')?.textContent?.trim() || ''"));
+    if (rootText.length > 0) return rootText;
+    await sleep(100);
+  }
+  throw new Error("React root stayed blank.");
+}
+
+async function evaluate(expression) {
+  const result = await cdp.send("Runtime.evaluate", {
+    expression,
+    returnByValue: true,
+    awaitPromise: true,
+  });
+  if (result.exceptionDetails) {
+    const exception = result.exceptionDetails.exception?.description || result.exceptionDetails.text;
+    throw new Error(exception);
+  }
+  return result.result?.value;
+}
+
+class CdpClient {
+  constructor(url) {
+    this.url = url;
+    this.nextId = 1;
+    this.pending = new Map();
+    this.handlers = new Map();
+  }
+
+  connect() {
+    return new Promise((resolve, reject) => {
+      this.socket = new WebSocket(this.url);
+      this.socket.once("open", resolve);
+      this.socket.once("error", reject);
+      this.socket.on("message", (payload) => this.handleMessage(payload));
+    });
+  }
+
+  on(method, handler) {
+    const handlers = this.handlers.get(method) || [];
+    handlers.push(handler);
+    this.handlers.set(method, handlers);
+  }
+
+  send(method, params = {}) {
+    const id = this.nextId;
+    this.nextId += 1;
+    this.socket.send(JSON.stringify({ id, method, params }));
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      setTimeout(() => {
+        if (!this.pending.has(id)) return;
+        this.pending.delete(id);
+        reject(new Error(`CDP command timed out: ${method}`));
+      }, 10000);
+    });
+  }
+
+  handleMessage(payload) {
+    const message = JSON.parse(String(payload));
+    if (message.id) {
+      const pending = this.pending.get(message.id);
+      if (!pending) return;
+      this.pending.delete(message.id);
+      if (message.error) pending.reject(new Error(message.error.message));
+      else pending.resolve(message.result || {});
+      return;
+    }
+
+    const handlers = this.handlers.get(message.method) || [];
+    for (const handler of handlers) handler(message.params);
+  }
+
+  close() {
+    this.socket?.close();
+  }
+}
+
+main().catch((error) => {
+  console.error(error.stack || error.message);
+  process.exit(1);
+});
