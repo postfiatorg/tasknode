@@ -48,6 +48,7 @@ function memorySystemPrompt() {
   return [
     "You create compact private memory records from one Task Node chat exchange.",
     "Return only valid JSON with keys user_request_summary, system_response_summary, and memory_text.",
+    "Return raw JSON only: no markdown fence, no prose before or after the JSON object.",
     "user_request_summary must be 2-3 sentences summarizing what the user asked or implied.",
     "system_response_summary must be 2-3 sentences summarizing what the assistant answered or committed to.",
     "memory_text must preserve durable facts, preferences, goals, constraints, decisions, and follow-ups useful for future work.",
@@ -58,9 +59,10 @@ function memorySystemPrompt() {
 function deepMemorySystemPrompt() {
   return [
     "You create account-level deep memory from exactly 36 compact Task Node memory records.",
-    "Return only valid JSON with keys user_request_summary, system_response_summary, and memory_text.",
-    "user_request_summary must be up to 5 newline-separated bullet points using '- ', each 1-2 sentences.",
-    "system_response_summary must be up to 5 newline-separated bullet points using '- ', each 1-2 sentences.",
+    "Return raw JSON only: no markdown fence, no prose before or after the JSON object.",
+    "Return keys user_request_summary_bullets, system_response_summary_bullets, and memory_text.",
+    "user_request_summary_bullets must be an array of up to 5 strings, each 1-2 sentences.",
+    "system_response_summary_bullets must be an array of up to 5 strings, each 1-2 sentences.",
     "memory_text must be exactly 3 sentences summarizing what the user is exploring and how the system responded.",
     "Do not include secrets, seed phrases, private keys, access tokens, API keys, or passwords.",
   ].join("\n");
@@ -82,19 +84,63 @@ function compactSourceText(value = "", maxLength = 16000) {
   return `${text.slice(0, Math.floor(maxLength * 0.65))}\n\n[...middle truncated...]\n\n${text.slice(-Math.floor(maxLength * 0.35))}`;
 }
 
+function compactDeepMemoryEntry(entry, index) {
+  return {
+    block_position: index + 1,
+    chat_title: compactSourceText(entry.conversationTitle, 90),
+    user_request_summary: compactSourceText(entry.userRequestSummary, 420),
+    system_response_summary: compactSourceText(entry.systemResponseSummary, 420),
+    memory_text: compactSourceText(entry.memoryText, 420),
+  };
+}
+
+function stripMarkdownFence(text = "") {
+  return String(text || "")
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function bulletText(value, { maxItems = 5 } = {}) {
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, maxItems)
+      .map((item) => String(item || "").trim().replace(/^[-*]\s+/, ""))
+      .filter(Boolean)
+      .map((item) => `- ${item}`)
+      .join("\n");
+  }
+  return String(value || "").trim();
+}
+
+function parsedSummaryObject(parsed) {
+  return {
+    userRequestSummary: bulletText(
+      parsed.user_request_summary_bullets ||
+        parsed.user_request_bullets ||
+        parsed.user_requests ||
+        parsed.user_request_summary
+    ),
+    systemResponseSummary: bulletText(
+      parsed.system_response_summary_bullets ||
+        parsed.system_response_bullets ||
+        parsed.system_responses ||
+        parsed.system_response_summary
+    ),
+    memoryText: String(parsed.memory_text || parsed.memory || "").trim(),
+  };
+}
+
 function parseSummaryJson(text = "") {
-  const raw = String(text || "").trim();
+  const raw = stripMarkdownFence(text);
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) {
     throw new Error("memory_summary_invalid_json");
   }
   const parsed = JSON.parse(raw.slice(start, end + 1));
-  return {
-    userRequestSummary: String(parsed.user_request_summary || "").trim(),
-    systemResponseSummary: String(parsed.system_response_summary || "").trim(),
-    memoryText: String(parsed.memory_text || "").trim(),
-  };
+  return parsedSummaryObject(parsed);
 }
 
 function openRouterUsage(body = {}) {
@@ -184,14 +230,7 @@ async function fetchDeepMemorySummary(source) {
   const order = providerOrder();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
-  const memorySummaries = source.entries.map((entry, index) => ({
-    block_position: index + 1,
-    chat_title: entry.conversationTitle,
-    user_request_summary: entry.userRequestSummary,
-    system_response_summary: entry.systemResponseSummary,
-    memory_text: entry.memoryText,
-    created_at: entry.createdAt,
-  }));
+  const memorySummaries = source.entries.map(compactDeepMemoryEntry);
   let response;
   try {
     response = await fetch(`${baseUrl}/chat/completions`, {
@@ -223,8 +262,12 @@ async function fetchDeepMemorySummary(source) {
           order: order.length > 0 ? order : defaultProviderOrder,
           only: order.length > 0 ? order : defaultProviderOrder,
         },
+        reasoning: {
+          effort: "low",
+          exclude: true,
+        },
         temperature: 0.1,
-        max_tokens: 900,
+        max_tokens: 3500,
         usage: { include: true },
       }),
     });
