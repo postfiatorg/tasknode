@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { requestJson } from "../../api";
 import { formatCreditUsd, formatUsageUsd } from "../../formatters";
-import { EthereumTopUpModal, useEthereumTopUpSync } from "../wallet/WalletView";
+import { EthereumTopUpModal, useEthereumTopUpSync } from "./ethereum-top-up";
 
 const PAYMENT_METHODS = [
   { k: "eth", name: "Ether", chain: "Ethereum mainnet", accent: "#627eea", letter: "E" },

@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 
-const maxLines = Number(process.env.TASKNODE_MAX_FILE_LINES || 5000);
+const config = JSON.parse(readFileSync(new URL("../quality/file-size-limits.json", import.meta.url), "utf8"));
+
 const ignoredPathPrefixes = [
   "dist/",
   "node_modules/",
@@ -26,17 +28,65 @@ function lineCount(file) {
   return text.split(/\r?\n/).length - (text.endsWith("\n") ? 1 : 0);
 }
 
-const violations = trackedFiles()
-  .map((file) => ({ file, lines: lineCount(file) }))
-  .filter((entry) => entry.lines > maxLines)
-  .sort((left, right) => right.lines - left.lines);
+function baseRuleForFile(file) {
+  const prefixRule = (config.prefixes || []).find((rule) => file.startsWith(rule.prefix));
+  if (prefixRule) return prefixRule;
+
+  const extensionRule = config.extensions?.[path.extname(file)];
+  if (extensionRule) return extensionRule;
+
+  return config.defaults || { maxLines: 1200 };
+}
+
+function exceptionForFile(file) {
+  return config.exceptions?.[file] || null;
+}
+
+function validateException(file, exception) {
+  const missingFields = ["owner", "removeBy", "reason"].filter((field) => !String(exception[field] || "").trim());
+  if (missingFields.length === 0) return null;
+  return {
+    file,
+    message: `file-size exception is missing ${missingFields.join(", ")}`,
+  };
+}
+
+const violations = [];
+const activeExceptions = [];
+
+for (const file of trackedFiles()) {
+  const baseRule = baseRuleForFile(file);
+  const exception = exceptionForFile(file);
+  const exceptionProblem = exception ? validateException(file, exception) : null;
+
+  if (exceptionProblem) {
+    violations.push(exceptionProblem);
+    continue;
+  }
+
+  const rule = exception || baseRule;
+  const lines = lineCount(file);
+
+  if (exception) {
+    activeExceptions.push({ file, lines, maxLines: rule.maxLines, baseMaxLines: baseRule.maxLines });
+  }
+
+  if (lines > Number(rule.maxLines || 0)) {
+    violations.push({
+      file,
+      message: `${lines} lines exceeds ${rule.maxLines}`,
+    });
+  }
+}
 
 if (violations.length > 0) {
-  console.error(`Files over ${maxLines} lines are not allowed:`);
+  console.error("file size check failed:");
   for (const entry of violations) {
-    console.error(`  ${entry.lines.toString().padStart(5)} ${entry.file}`);
+    console.error(`  ${entry.file}: ${entry.message}`);
   }
   process.exit(1);
 }
 
-console.log(`file size check ok: no repository file over ${maxLines} lines`);
+console.log(
+  `file size check ok: ${activeExceptions.length} active exceptions, no file over its configured limit`,
+);

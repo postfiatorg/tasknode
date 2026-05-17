@@ -205,7 +205,9 @@ export async function sendPftInitiationGift({
     } finally {
       try {
         if (client.isConnected()) await client.disconnect();
-      } catch {}
+      } catch {
+        // Keep the faucet submit error as the actionable failure.
+      }
     }
   }
 

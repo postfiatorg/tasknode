@@ -573,7 +573,9 @@ async function fetchJson(url, timeoutMs = 5000) {
     try {
       const response = await fetch(url);
       if (response.ok) return await response.json();
-    } catch {}
+    } catch {
+      // Retry until the local server is ready.
+    }
     await sleep(100);
   }
   throw new Error(`Timed out fetching ${url}`);

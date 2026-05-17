@@ -62,7 +62,7 @@ export function decodeTextDataUrl(dataUrl) {
     const decoded = metadata.includes(";base64")
       ? Buffer.from(body, "base64").toString("utf8")
       : decodeURIComponent(body);
-    return decoded.replace(/\u0000/g, "").trim();
+    return decoded.split("\u0000").join("").trim();
   } catch {
     return "";
   }

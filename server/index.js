@@ -53,6 +53,7 @@ import {
 } from "./repositories/chat-billing.js";
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
+import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -235,6 +236,34 @@ function enforceRateLimit(req, res, { route, session = null, extra = "", limit, 
   return true;
 }
 
+function enforceRoutePolicy(req, url, res, session) {
+  const policy = routePolicyForPath(url.pathname);
+  if (!policy) return false;
+
+  if (!policy.methods.includes(req.method)) {
+    json(res, 405, {
+      ok: false,
+      error: `${policy.id}_method_not_allowed`,
+      route: policy.id,
+      allowedMethods: policy.methods,
+      message: `${policy.id} accepts ${policy.methods.join(" or ")} requests.`,
+    }, { allow: policy.methods.join(", ") });
+    return true;
+  }
+
+  if (policy.rateLimit) {
+    return enforceRateLimit(req, res, {
+      route: policy.id,
+      session,
+      extra: routePolicyRateLimitExtra(policy, url.pathname),
+      limit: policy.rateLimit.limit,
+      windowMs: policy.rateLimit.windowMs,
+    });
+  }
+
+  return false;
+}
+
 function sessionCookie(req, sessionId) {
   const secure = secureCookie(req) ? "; Secure" : "";
   return `${sessionCookieName}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${sessionTtlSeconds}${secure}`;
@@ -382,6 +411,7 @@ async function routeApi(req, url, res) {
     return statePromise;
   };
   const parts = url.pathname.split("/").filter(Boolean);
+  if (enforceRoutePolicy(req, url, res, session)) return true;
 
   if (url.pathname === "/api/app-state") {
     json(res, 200, await getState());
@@ -395,7 +425,6 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/auth/dev/start") {
-    if (enforceRateLimit(req, res, { route: "auth_dev_start", session, limit: 10, windowMs: 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = authDevStart(payload, req.method);
     const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
@@ -404,7 +433,6 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/auth/email/start") {
-    if (enforceRateLimit(req, res, { route: "auth_email_start", session, limit: 5, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = await authEmailStart(payload, req.method, {
       ip: requestIp(req),
@@ -415,7 +443,6 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/auth/email/verify") {
-    if (enforceRateLimit(req, res, { route: "auth_email_verify", session, limit: 20, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = authEmailVerify(payload, req.method);
     const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
@@ -594,7 +621,6 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/chat/stream") {
-    if (enforceRateLimit(req, res, { route: "chat_stream", session, limit: 30, windowMs: 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
     const conversationId = conversationIdForSession(session, payload?.conversationId || "");
     const started = await chatStreamStart(
@@ -675,7 +701,6 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/chat/send") {
-    if (enforceRateLimit(req, res, { route: "chat_send", session, limit: 60, windowMs: 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
     const conversationId = conversationIdForSession(session, payload?.conversationId || "");
     const result = await chatSend(
@@ -754,14 +779,12 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/wallet/link/start") {
-    if (enforceRateLimit(req, res, { route: "wallet_link_start", session, limit: 20, windowMs: 10 * 60_000 })) return true;
     const result = walletLinkStart(req.method, session);
     json(res, result.status, result.body);
     return true;
   }
 
   if (url.pathname === "/api/wallet/link/verify") {
-    if (enforceRateLimit(req, res, { route: "wallet_link_verify", session, limit: 30, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 8192) : {};
     const result = await walletLinkVerify(payload, req.method, session);
     json(res, result.status, result.body);
@@ -775,7 +798,6 @@ async function routeApi(req, url, res) {
     url.pathname === "/api/wallet/delink" ||
     url.pathname === "/api/wallet/relink/start"
   ) {
-    if (enforceRateLimit(req, res, { route: "wallet_action", session, extra: url.pathname, limit: 20, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 8192) : {};
     const result = await walletActionStart(url.pathname, req.method, session, payload);
     json(res, result.status, result.body);
@@ -830,7 +852,6 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/context/history/rpc/import") {
-    if (enforceRateLimit(req, res, { route: "context_history_rpc_import", session, limit: 5, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 8192) : {};
     const result = await contextHistoryRpcImport(payload, req.method, session);
     json(res, result.status, result.body);
@@ -863,7 +884,6 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/usage/credit/admin") {
-    if (enforceRateLimit(req, res, { route: "usage_admin_credit", session, limit: 20, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = await usageAdminCredit(payload, req.method, req.headers.authorization || "");
     json(res, result.status, result.body);

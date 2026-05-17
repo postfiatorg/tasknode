@@ -416,7 +416,7 @@ if (devAuth.response.status === 200) {
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({
         snapshot: {
-          walletAddress: "rSmokeWalletAddress",
+          walletAddress: walletProof.address,
           contextRevisions: [
             {
               id: "ctx-smoke-1",
@@ -621,8 +621,8 @@ await checkRequest(
   (response, text) => {
     const body = JSON.parse(text);
     return (
-      response.ok &&
-      body.dryRun === true &&
+      response.status === 401 &&
+      body.error === "chat_login_required" &&
       body.estimate?.billingModel === "usage_based"
     );
   }
@@ -642,8 +642,8 @@ await checkRequest(
   (response, text) => {
     const body = JSON.parse(text);
     return (
-      response.ok &&
-      body.dryRun === true &&
+      response.status === 401 &&
+      body.error === "chat_login_required" &&
       body.estimate?.billingModel === "usage_based"
     );
   }
@@ -681,16 +681,18 @@ if (process.env.SMOKE_CHAT_EXECUTION === "1") {
 await check("/api/wallet/actions", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
+  const createAction = body.actions?.find((action) => action.id === "create_start");
   const linkAction = body.actions?.find((action) => action.id === "link_start");
   const unlockAction = body.actions?.find((action) => action.id === "unlock_start");
   const delinkAction = body.actions?.find((action) => action.id === "delink");
   const relinkAction = body.actions?.find((action) => action.id === "relink_start");
   return (
     Array.isArray(body.actions) &&
+    createAction?.enabled === true &&
     linkAction?.enabled === true &&
     unlockAction?.enabled === false &&
-    delinkAction?.enabled === false &&
-    relinkAction?.enabled === false
+    delinkAction?.enabled === true &&
+    relinkAction?.enabled === true
   );
 });
 
@@ -701,7 +703,7 @@ await checkRequest("/api/wallet/link/start", { method: "POST" }, (response, text
 
 await checkRequest("/api/wallet/delink", { method: "POST" }, (response, text) => {
   const body = JSON.parse(text);
-  return response.status === 503 && body.error === "wallet_action_disabled";
+  return response.status === 401 && body.error === "wallet_login_required";
 });
 
 await check("/api/context/actions", (response, text) => {

@@ -85,7 +85,9 @@ export async function transaction(work) {
   } catch (error) {
     try {
       await client.query("ROLLBACK");
-    } catch {}
+    } catch {
+      // Preserve the original transaction failure.
+    }
     lastError = error?.message || "database_transaction_failed";
     throw error;
   } finally {

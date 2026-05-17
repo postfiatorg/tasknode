@@ -140,7 +140,9 @@ async function waitForHttp(url, timeoutMs, serverOutput) {
     try {
       const response = await fetch(url);
       if (response.ok) return;
-    } catch {}
+    } catch {
+      // Retry until Vite starts accepting HTTP connections.
+    }
     if (server?.exitCode !== null) {
       throw new Error(`Vite exited before route smoke could start.\n${serverOutput.join("")}`);
     }
@@ -158,7 +160,9 @@ async function waitForPage() {
         const page = pages.find((entry) => entry.type === "page");
         if (page) return page;
       }
-    } catch {}
+    } catch {
+      // Retry until Chrome exposes the debugging endpoint.
+    }
     await sleep(100);
   }
   throw new Error("No debuggable Chrome page found.");

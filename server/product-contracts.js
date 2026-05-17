@@ -292,13 +292,17 @@ function publicOrigin(requestMeta = {}) {
   if (explicit) {
     try {
       return new URL(explicit).origin;
-    } catch {}
+    } catch {
+      // Fall through to request metadata when configured origin is invalid.
+    }
   }
 
   if (requestMeta.origin) {
     try {
       return new URL(requestMeta.origin).origin;
-    } catch {}
+    } catch {
+      // Public origin is optional; callers handle an empty value.
+    }
   }
 
   return "";
