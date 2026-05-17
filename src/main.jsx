@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  FileText,
   Flag,
   Flame,
   Github,
@@ -79,6 +80,8 @@ import "./features/context/context.css";
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
 const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
 const CHAT_ATTACHMENT_MAX_COUNT = 4;
+const CHAT_PASTE_ATTACHMENT_THRESHOLD = 200;
+const CHAT_COMPOSER_MAX_HEIGHT = 220;
 const CHAT_ATTACHMENT_ACCEPT = [
   "image/png",
   "image/jpeg",
@@ -1113,6 +1116,13 @@ function ChatSurface({
   }, [chatShareRequestKey, turns.length]);
 
   useEffect(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, CHAT_COMPOSER_MAX_HEIGHT)}px`;
+  }, [input]);
+
+  useEffect(() => {
     if (!shareOpen) return undefined;
 
     function closeOverlay(event) {
@@ -1148,6 +1158,7 @@ function ChatSurface({
 
   async function submitMessage(event) {
     event.preventDefault();
+    if (sending) return;
     const message = input.trim();
     if (!message && attachments.length === 0) return;
 
@@ -1156,6 +1167,7 @@ function ChatSurface({
     const requestedConversationId = activeChat?.conversationId || activeChat?.id || draftConversationId;
     const pendingId = `assistant-pending-${startedAt}`;
     const submittedAttachments = attachments;
+    const fallbackPrompt = promptForAttachments(submittedAttachments);
     setSending(true);
     setSendMessage("");
     setActualUsage(null);
@@ -1164,7 +1176,7 @@ function ChatSurface({
     setAttachments([]);
     setTurns((current) => [
       ...current,
-      createUserTurn(message || "Review the attached file.", `user-local-${startedAt}`, submittedAttachments),
+      createUserTurn(message || fallbackPrompt, `user-local-${startedAt}`, submittedAttachments),
       createPendingAssistantTurn(pendingId, startedAt),
     ]);
     if (!activeChat) {
@@ -1178,7 +1190,7 @@ function ChatSurface({
 
     try {
       const chatPayload = {
-        message: message || "Please review the attached file.",
+        message: message || fallbackPrompt,
         mode: selectedMode,
         conversationId: requestedConversationId,
         attachments: submittedAttachments.map(({ name, mimeType, size, dataUrl }) => ({
@@ -1310,6 +1322,28 @@ function ChatSurface({
     setAttachments((current) => current.filter((attachment) => attachment.id !== id));
   }
 
+  function handleComposerPaste(event) {
+    const pasted = event.clipboardData?.getData("text/plain") || "";
+    if (pasted.length <= CHAT_PASTE_ATTACHMENT_THRESHOLD) return;
+
+    const pastedSize = byteSize(pasted);
+    if (pastedSize > CHAT_ATTACHMENT_MAX_BYTES || attachments.length >= CHAT_ATTACHMENT_MAX_COUNT) return;
+
+    event.preventDefault();
+    const attachment = createPastedTextAttachment(pasted, pastedSize);
+    setAttachments((current) => [...current, attachment].slice(0, CHAT_ATTACHMENT_MAX_COUNT));
+    setSendMessage("");
+    setStatusTone("muted");
+  }
+
+  function showAttachmentInTextField(attachment) {
+    const text = textFromAttachment(attachment);
+    if (!text) return;
+    setAttachments((current) => current.filter((item) => item.id !== attachment.id));
+    setInput((current) => (current ? `${current}\n${text}` : text));
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
   const composerStatus = chatComposerStatus({
     actualUsage,
     message: sendMessage,
@@ -1320,11 +1354,9 @@ function ChatSurface({
 
   const chatTitle = activeChat?.title || titleFromTurns(turns);
   const hasPromptInput = input.trim().length > 0 || attachments.length > 0;
+  const composerExpanded = input.length > 0;
   const composer = (
     <div className="composer-shell">
-      {attachments.length > 0 && (
-        <AttachmentTray attachments={attachments} onRemove={removeAttachment} />
-      )}
       <input
         ref={fileInputRef}
         accept={CHAT_ATTACHMENT_ACCEPT}
@@ -1334,104 +1366,125 @@ function ChatSurface({
         type="file"
       />
       <form className="composer" onSubmit={submitMessage}>
-        <div className="plus-picker" ref={plusRef}>
-          <button
-            className="composer-icon"
-            onClick={() => {
-              setModelMenuOpen(false);
-              setPlusMenuOpen((open) => !open);
+        {attachments.length > 0 && (
+          <AttachmentTray
+            attachments={attachments}
+            onRemove={removeAttachment}
+            onShowInText={showAttachmentInTextField}
+          />
+        )}
+        <div className={composerExpanded ? "composer-grid is-expanded" : "composer-grid is-compact"}>
+          <div className="plus-picker composer-plus" ref={plusRef}>
+            <button
+              className="composer-icon"
+              onClick={() => {
+                setModelMenuOpen(false);
+                setPlusMenuOpen((open) => !open);
+              }}
+              type="button"
+              aria-label="Add"
+            >
+              <Plus size={20} strokeWidth={1.75} />
+            </button>
+            {plusMenuOpen && (
+              <div className="plus-menu">
+                <ToolMenuRow
+                  icon={Paperclip}
+                  label="Upload photos & files"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    fileInputRef.current?.click();
+                  }}
+                />
+                <div className="menu-divider" />
+                <ToolMenuRow icon={Flame} label="Motivation" />
+                <ToolMenuRow icon={Lightbulb} label="Brainstorming" />
+                <ToolMenuRow icon={Wand2} label="Context Refine" />
+                <ToolMenuRow icon={PenLine} label="Context Rewrite" />
+                <ToolMenuRow
+                  icon={ListPlus}
+                  label="Request a task"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    onNavigate?.("tasks");
+                  }}
+                />
+                <ToolMenuRow
+                  icon={MoreHorizontal}
+                  label="More"
+                  trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+                />
+              </div>
+            )}
+          </div>
+          <textarea
+            ref={inputRef}
+            aria-label="Ask anything"
+            className="composer-input"
+            onChange={(event) => setInput(event.target.value)}
+            onPaste={handleComposerPaste}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent?.isComposing) {
+                event.preventDefault();
+                submitMessage(event);
+              }
             }}
-            type="button"
-            aria-label="Add"
-          >
-            <Plus size={20} strokeWidth={1.75} />
-          </button>
-          {plusMenuOpen && (
-            <div className="plus-menu">
-              <ToolMenuRow
-                icon={Paperclip}
-                label="Upload photos & files"
+            placeholder={composerExpanded ? "" : "Ask anything"}
+            rows={1}
+            style={{ maxHeight: CHAT_COMPOSER_MAX_HEIGHT }}
+            value={input}
+          />
+          <div className="composer-tools">
+            <div className="model-picker" ref={modelRef}>
+              <button
+                className="model-button"
                 onClick={() => {
                   setPlusMenuOpen(false);
-                  fileInputRef.current?.click();
+                  setModelMenuOpen((open) => !open);
                 }}
-              />
-              <div className="menu-divider" />
-              <ToolMenuRow icon={Flame} label="Motivation" />
-              <ToolMenuRow icon={Lightbulb} label="Brainstorming" />
-              <ToolMenuRow icon={Wand2} label="Context Refine" />
-              <ToolMenuRow icon={PenLine} label="Context Rewrite" />
-              <ToolMenuRow
-                icon={ListPlus}
-                label="Request a task"
-                onClick={() => {
-                  setPlusMenuOpen(false);
-                  onNavigate?.("tasks");
-                }}
-              />
-              <ToolMenuRow
-                icon={MoreHorizontal}
-                label="More"
-                trailing={<ChevronRight size={14} strokeWidth={1.75} />}
-              />
+                type="button"
+              >
+                {formatModeLabel(selectedMode)}
+                <ChevronDown className={modelMenuOpen ? "is-open" : ""} size={14} strokeWidth={1.75} />
+              </button>
+              {modelMenuOpen && (
+                <div className="model-menu">
+                  <ModelGroup label="Private" />
+                  {modes
+                    .filter((mode) => mode.label.startsWith("Private"))
+                    .map((mode) => (
+                      <ModelOption
+                        key={mode.label}
+                        mode={mode}
+                        selected={mode.label === selectedMode}
+                        onClick={() => {
+                          setSelectedMode(mode.label);
+                          setModelMenuOpen(false);
+                        }}
+                      />
+                    ))}
+                  <ModelGroup label="Frontier" />
+                  {modes
+                    .filter((mode) => mode.label.startsWith("Frontier"))
+                    .map((mode) => (
+                      <ModelOption
+                        key={mode.label}
+                        mode={mode}
+                        selected={mode.label === selectedMode}
+                        onClick={() => {
+                          setSelectedMode(mode.label);
+                          setModelMenuOpen(false);
+                        }}
+                      />
+                    ))}
+                </div>
+              )}
             </div>
-          )}
+            <button className="send-button" disabled={!hasPromptInput || sending} type="submit" aria-label="Send">
+              <ArrowUp size={18} strokeWidth={2.25} />
+            </button>
+          </div>
         </div>
-        <input
-          ref={inputRef}
-          aria-label="Ask anything"
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="Ask anything"
-          value={input}
-        />
-        <div className="model-picker" ref={modelRef}>
-          <button
-            className="model-button"
-            onClick={() => {
-              setPlusMenuOpen(false);
-              setModelMenuOpen((open) => !open);
-            }}
-            type="button"
-          >
-            {formatModeLabel(selectedMode)}
-            <ChevronDown className={modelMenuOpen ? "is-open" : ""} size={14} strokeWidth={1.75} />
-          </button>
-          {modelMenuOpen && (
-            <div className="model-menu">
-              <ModelGroup label="Private" />
-              {modes
-                .filter((mode) => mode.label.startsWith("Private"))
-                .map((mode) => (
-                  <ModelOption
-                    key={mode.label}
-                    mode={mode}
-                    selected={mode.label === selectedMode}
-                    onClick={() => {
-                      setSelectedMode(mode.label);
-                      setModelMenuOpen(false);
-                    }}
-                  />
-                ))}
-              <ModelGroup label="Frontier" />
-              {modes
-                .filter((mode) => mode.label.startsWith("Frontier"))
-                .map((mode) => (
-                  <ModelOption
-                    key={mode.label}
-                    mode={mode}
-                    selected={mode.label === selectedMode}
-                    onClick={() => {
-                      setSelectedMode(mode.label);
-                      setModelMenuOpen(false);
-                    }}
-                  />
-                ))}
-            </div>
-          )}
-        </div>
-        <button className="send-button" disabled={!hasPromptInput || sending} type="submit" aria-label="Send">
-          <ArrowUp size={18} strokeWidth={2.25} />
-        </button>
       </form>
       {composerStatus && (
         <div className={`chat-composer-note ${composerStatus.tone}`}>
@@ -1810,6 +1863,43 @@ function readFileAsDataUrl(file) {
     reader.onerror = () => reject(reader.error || new Error("Could not read file."));
     reader.readAsDataURL(file);
   });
+}
+
+function byteSize(text = "") {
+  return new Blob([String(text || "")]).size;
+}
+
+function createPastedTextAttachment(text, size = byteSize(text)) {
+  const firstLine = String(text || "").split("\n").find((line) => line.trim()) || "Pasted text";
+  const trimmed = firstLine.trim().replace(/\s+/g, " ");
+  return {
+    id: `paste-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: `${trimmed.slice(0, 28)}${trimmed.length > 28 ? " .." : ""}`,
+    mimeType: "text/plain",
+    size,
+    dataUrl: `data:text/plain;charset=utf-8,${encodeURIComponent(String(text || ""))}`,
+    source: "paste",
+  };
+}
+
+function textFromAttachment(attachment) {
+  const dataUrl = String(attachment?.dataUrl || "");
+  const comma = dataUrl.indexOf(",");
+  if (!dataUrl.startsWith("data:text/plain") || comma === -1) return "";
+
+  try {
+    const metadata = dataUrl.slice(0, comma).toLowerCase();
+    const body = dataUrl.slice(comma + 1);
+    if (metadata.includes(";base64")) return atob(body);
+    return decodeURIComponent(body);
+  } catch {
+    return "";
+  }
+}
+
+function promptForAttachments(attachments = []) {
+  const hasPastedText = attachments.some((attachment) => attachment?.source === "paste");
+  return hasPastedText ? "Review the attached pasted text." : "Review the attached file.";
 }
 
 function formatFileSize(bytes) {
@@ -2212,16 +2302,34 @@ function UserMessage({
   );
 }
 
-function AttachmentTray({ attachments = [], onRemove }) {
+function AttachmentTray({ attachments = [], onRemove, onShowInText }) {
   if (attachments.length === 0) return null;
 
   return (
     <div className="attachment-tray">
       {attachments.map((attachment) => (
         <div className="attachment-chip" key={attachment.id || attachment.name}>
-          <Paperclip size={13} strokeWidth={1.8} />
-          <span>{attachment.name}</span>
-          <small>{formatFileSize(attachment.size)}</small>
+          <span className={attachment.source === "paste" ? "attachment-icon paste" : "attachment-icon"}>
+            {attachment.source === "paste" ? (
+              <FileText size={18} strokeWidth={1.8} />
+            ) : (
+              <Paperclip size={15} strokeWidth={1.8} />
+            )}
+          </span>
+          <span className="attachment-label">
+            <strong>{attachment.name}</strong>
+            {attachment.source === "paste" ? (
+              <button
+                className="attachment-action"
+                onClick={() => onShowInText?.(attachment)}
+                type="button"
+              >
+                Show in text field <ChevronRight size={12} strokeWidth={1.9} />
+              </button>
+            ) : (
+              <small>{formatFileSize(attachment.size)}</small>
+            )}
+          </span>
           <button
             aria-label={`Remove ${attachment.name}`}
             onClick={() => onRemove?.(attachment.id)}

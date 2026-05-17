@@ -1236,6 +1236,8 @@ h1 {
   flex-wrap: wrap;
   gap: 7px;
   justify-content: flex-start;
+  align-self: flex-start;
+  max-width: 100%;
 }
 
 .attachment-chip,
@@ -1251,54 +1253,136 @@ h1 {
 }
 
 .attachment-chip {
-  height: 30px;
-  padding: 0 6px 0 9px;
-  border-radius: 999px;
+  min-height: 48px;
+  padding: 4px 7px 4px 5px;
+  border-radius: 15px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
-.attachment-chip span {
-  max-width: 220px;
+.attachment-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #f2f2ef;
+  color: #56554f;
+}
+
+.attachment-icon.paste {
+  background: #2d7ff9;
+  color: #ffffff;
+}
+
+.attachment-label {
+  display: grid;
+  min-width: 0;
+  max-width: 260px;
+  padding: 0 6px 0 2px;
+  line-height: 1.25;
+}
+
+.attachment-label strong {
   overflow: hidden;
-  font-size: 12.5px;
-  font-weight: 500;
+  color: #171717;
+  font-size: 13.5px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.attachment-chip small {
+.attachment-label small {
   color: #8a877f;
   font-size: 11px;
 }
 
-.attachment-chip button {
+.attachment-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1px;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #6f6f68;
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.attachment-action:hover {
+  background: transparent;
+  color: #333333;
+}
+
+.attachment-chip > button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
   border: 0;
   border-radius: 999px;
-  background: transparent;
-  color: #77746d;
+  background: #111111;
+  color: #ffffff;
 }
 
-.attachment-chip button:hover {
-  background: rgba(0, 0, 0, 0.06);
+.attachment-chip > button:hover {
+  background: #333333;
 }
 
 .composer {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  gap: 9px;
   width: 100%;
   margin: 0;
-  padding: 6px 8px;
+  padding: 10px 12px 8px;
   border: 1px solid #e8e6df;
   border-radius: 28px;
   background: #ffffff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.composer-grid {
+  display: grid;
+  align-items: center;
+  gap: 8px 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  width: 100%;
+}
+
+.composer-grid.is-compact {
+  grid-template-areas: "plus input tools";
+}
+
+.composer-grid.is-expanded {
+  grid-template-areas:
+    "input input input"
+    "plus gap tools";
+}
+
+.composer-plus {
+  grid-area: plus;
+}
+
+.composer-input {
+  grid-area: input;
+}
+
+.composer-tools {
+  display: inline-flex;
+  grid-area: tools;
+  align-items: center;
+  justify-self: end;
+  gap: 6px;
+  min-width: 0;
 }
 
 .composer-dock {
@@ -1322,6 +1406,37 @@ h1 {
   background: rgba(0, 0, 0, 0.05);
 }
 
+.composer .attachment-action {
+  justify-content: flex-start;
+  gap: 1px;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  color: #6f6f68;
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.composer .attachment-action:hover {
+  background: transparent;
+  color: #333333;
+}
+
+.composer .attachment-chip > button {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  background: #111111;
+  color: #ffffff;
+}
+
+.composer .attachment-chip > button:hover {
+  background: #333333;
+}
+
 .composer .send-button {
   background: #111111;
   color: #ffffff;
@@ -1337,18 +1452,23 @@ h1 {
   background: #e5e5e0;
 }
 
-.composer input {
-  flex: 1;
+.composer textarea {
   min-width: 0;
+  width: 100%;
+  min-height: 36px;
   border: 0;
   background: transparent;
   outline: 0;
-  padding: 8px 6px;
+  padding: 7px 2px;
   color: #0d0d0d;
+  font-family: inherit;
   font-size: 15px;
+  line-height: 1.55;
+  resize: none;
+  overflow-y: auto;
 }
 
-.composer input::placeholder {
+.composer textarea::placeholder {
   color: #9a9a93;
 }
 
