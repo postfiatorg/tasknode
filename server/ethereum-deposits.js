@@ -352,17 +352,26 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
       observedBalances,
       pendingBalances,
       creditedBalances,
-      syncStatus: syncErrors.length > 0 ? "partial" : "ready",
+      syncStatus: syncErrors.length > 0
+        ? "partial"
+        : Object.values(pendingBalances).some(Boolean)
+          ? "pending"
+          : "ready",
       syncError: syncErrors.join("; "),
       blockTag: balanceBlockTag,
       creditedEntries,
     });
     const usage = usageSummary({ accountId });
+    const pendingSymbols = Object.entries(pendingBalances)
+      .filter(([, balance]) => balance?.amount && Number(balance.amount) > 0)
+      .map(([symbol]) => symbol);
     return {
       ok: true,
       action: "top_up_sync",
       message: creditedEntries.length > 0
         ? "Deposit credit recorded."
+        : pendingSymbols.length > 0
+          ? `${pendingSymbols.join(", ")} deposit detected. Waiting for safe confirmation before crediting.`
         : syncErrors.length > 0
           ? "Deposit sync completed with partial data."
           : "No new confirmed deposit balance found.",
