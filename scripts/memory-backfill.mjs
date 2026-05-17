@@ -1,7 +1,10 @@
 import { migrateDatabase } from "../server/db/migrate.js";
 import { closePool, query } from "../server/db/pool.js";
 import { processMemoryQueueOnce } from "../server/chat-memory-worker.js";
-import { enqueueChatMemoryJob } from "../server/repositories/chat-memory.js";
+import {
+  enqueueChatMemoryJob,
+  enqueueMissingDeepMemoryJobs,
+} from "../server/repositories/chat-memory.js";
 
 function argValue(name, fallback = "") {
   const prefix = `--${name}=`;
@@ -68,7 +71,9 @@ const rows = await query(
 );
 
 let queued = 0;
+const accounts = new Set();
 for (const row of rows.rows) {
+  accounts.add(row.account_id);
   const result = await enqueueChatMemoryJob({
     accountId: row.account_id,
     conversationId: row.conversation_id,
@@ -76,6 +81,12 @@ for (const row of rows.rows) {
     assistantMessageId: row.assistant_message_id,
   });
   if (result.queued) queued += 1;
+}
+
+let deepQueued = 0;
+for (const rowAccountId of accounts) {
+  const result = await enqueueMissingDeepMemoryJobs({ accountId: rowAccountId });
+  deepQueued += result.queued || 0;
 }
 
 let processed = null;
@@ -89,6 +100,7 @@ console.log(JSON.stringify({
   accountId: accountId || null,
   matchedPairs: rows.rows.length,
   queued,
+  deepQueued,
   processed,
 }, null, 2));
 

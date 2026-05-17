@@ -322,6 +322,29 @@ Implemented on May 17, 2026.
 - The `whatwork` local Postgres conversation was backfilled and processed:
   2 matched pairs, 2 queued, 2 processed, 0 failed.
 
+## Deep Memory Extension
+
+Added on May 17, 2026.
+
+Every 36 per-turn memory entries for an account now enqueue one account-level
+`deep_memory` job. This job is not attached to a specific chat conversation;
+it is keyed by account and numeric block index.
+
+Deep memory uses the same OpenRouter DeepSeek V4 Flash ZDR route and produces:
+
+- up to 5 bullet points summarizing user requests;
+- up to 5 bullet points summarizing system responses;
+- a 3-sentence memory summary of what the user is exploring and how the system
+  responded.
+
+Deep memory entries are inserted back into `chat_memory_entries` with
+`kind = 'deep_memory'`, `conversation_title = 'Deep memory #N'`, and a synthetic
+conversation id. They are excluded from the next 36-entry count, so deep memory
+does not recursively trigger itself.
+
+The memory tab renders deep memory rows with a small `Deep memory` badge and
+preserves the bullet formatting.
+
 ## Open Decisions
 
 - Whether to store full source excerpts or only bounded excerpts. Initial plan:

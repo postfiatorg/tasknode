@@ -11,6 +11,7 @@ const migrations = [
   "002_chat_attachments.sql",
   "003_context_cache.sql",
   "004_chat_memory.sql",
+  "005_deep_chat_memory.sql",
 ];
 
 let migrated = false;

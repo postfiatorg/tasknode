@@ -2,7 +2,12 @@ import { databaseEnabled } from "./db/pool.js";
 import {
   chatMemoryJobSource,
   claimChatMemoryJobs,
+  claimDeepMemoryJobs,
   completeChatMemoryJob,
+  completeDeepMemoryJob,
+  deepMemoryBlockSize,
+  deepMemoryJobSource,
+  failDeepMemoryJob,
   failChatMemoryJob,
 } from "./repositories/chat-memory.js";
 
@@ -10,6 +15,7 @@ const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const defaultProviderOrder = ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"];
 const providerTimeoutMs = Math.max(5000, Number(process.env.TASKNODE_MEMORY_PROVIDER_TIMEOUT_MS || 45000));
 const promptVersion = "chat_memory_v1";
+const deepPromptVersion = "deep_memory_v1";
 let timer = null;
 let running = false;
 
@@ -45,6 +51,17 @@ function memorySystemPrompt() {
     "user_request_summary must be 2-3 sentences summarizing what the user asked or implied.",
     "system_response_summary must be 2-3 sentences summarizing what the assistant answered or committed to.",
     "memory_text must preserve durable facts, preferences, goals, constraints, decisions, and follow-ups useful for future work.",
+    "Do not include secrets, seed phrases, private keys, access tokens, API keys, or passwords.",
+  ].join("\n");
+}
+
+function deepMemorySystemPrompt() {
+  return [
+    "You create account-level deep memory from exactly 36 compact Task Node memory records.",
+    "Return only valid JSON with keys user_request_summary, system_response_summary, and memory_text.",
+    "user_request_summary must be up to 5 newline-separated bullet points using '- ', each 1-2 sentences.",
+    "system_response_summary must be up to 5 newline-separated bullet points using '- ', each 1-2 sentences.",
+    "memory_text must be exactly 3 sentences summarizing what the user is exploring and how the system responded.",
     "Do not include secrets, seed phrases, private keys, access tokens, API keys, or passwords.",
   ].join("\n");
 }
@@ -162,6 +179,87 @@ async function fetchMemorySummary(source) {
   };
 }
 
+async function fetchDeepMemorySummary(source) {
+  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
+  const order = providerOrder();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
+  const memorySummaries = source.entries.map((entry, index) => ({
+    block_position: index + 1,
+    chat_title: entry.conversationTitle,
+    user_request_summary: entry.userRequestSummary,
+    system_response_summary: entry.systemResponseSummary,
+    memory_text: entry.memoryText,
+    created_at: entry.createdAt,
+  }));
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${openRouterKey()}`,
+        "content-type": "application/json",
+        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
+        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
+        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
+      },
+      body: JSON.stringify({
+        model: memoryModel(),
+        messages: [
+          { role: "system", content: deepMemorySystemPrompt() },
+          {
+            role: "user",
+            content: JSON.stringify({
+              deep_memory_block_index: source.block_index,
+              summary_count: memorySummaries.length,
+              memory_summaries: memorySummaries,
+            }),
+          },
+        ],
+        provider: {
+          zdr: true,
+          data_collection: "deny",
+          order: order.length > 0 ? order : defaultProviderOrder,
+          only: order.length > 0 ? order : defaultProviderOrder,
+        },
+        temperature: 0.1,
+        max_tokens: 900,
+        usage: { include: true },
+      }),
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("deep_memory_provider_timeout");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || body?.message || `OpenRouter deep memory HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  const content = body?.choices?.[0]?.message?.content || "";
+  const parsed = parseSummaryJson(content);
+  if (!parsed.userRequestSummary || !parsed.systemResponseSummary || !parsed.memoryText) {
+    throw new Error("deep_memory_summary_missing_fields");
+  }
+
+  return {
+    ...parsed,
+    sourceUserExcerpt: `${memorySummaries.length} memory summaries in block ${source.block_index}.`,
+    sourceAssistantExcerpt: `Deep memory synthesis for block ${source.block_index}.`,
+    provider: "openrouter",
+    model: body?.model || memoryModel(),
+    promptVersion: deepPromptVersion,
+    usage: openRouterUsage(body),
+  };
+}
+
 export async function processMemoryQueueOnce({ limit = 3 } = {}) {
   if (!memoryWorkerEnabled()) {
     return { ok: true, skipped: true, reason: "memory_worker_not_configured" };
@@ -171,6 +269,9 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
   running = true;
   let processed = 0;
   let failed = 0;
+  let deepProcessed = 0;
+  let deepFailed = 0;
+  let deepClaimed = 0;
   try {
     const jobs = await claimChatMemoryJobs({ limit });
     for (const job of jobs) {
@@ -187,7 +288,31 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
         await failChatMemoryJob(job, error);
       }
     }
-    return { ok: true, processed, failed, claimed: jobs.length };
+    const deepJobs = await claimDeepMemoryJobs({ limit: Math.max(1, Math.floor(Number(limit || 1) / 2)) });
+    deepClaimed = deepJobs.length;
+    for (const job of deepJobs) {
+      try {
+        const source = await deepMemoryJobSource(job);
+        if (!source?.entries || source.entries.length !== deepMemoryBlockSize) {
+          throw new Error("deep_memory_job_source_incomplete");
+        }
+        const summary = await fetchDeepMemorySummary(source);
+        await completeDeepMemoryJob({ job: source, summary });
+        deepProcessed += 1;
+      } catch (error) {
+        deepFailed += 1;
+        await failDeepMemoryJob(job, error);
+      }
+    }
+    return {
+      ok: true,
+      processed,
+      failed,
+      claimed: jobs.length,
+      deepProcessed,
+      deepFailed,
+      deepClaimed,
+    };
   } finally {
     running = false;
   }

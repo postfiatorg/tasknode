@@ -105,27 +105,50 @@ export function MemoryView({ session }) {
 }
 
 function MemoryRow({ entry }) {
+  const deepMemory = entry.kind === "deep_memory";
+
   return (
-    <article className="memory-row">
+    <article className={`memory-row${deepMemory ? " is-deep-memory" : ""}`}>
       <div className="memory-row-meta">
         <span>
           <Clock3 size={13} strokeWidth={1.8} />
           {formatMemoryDate(entry.createdAt)}
         </span>
-        <em>{entry.conversationTitle || "New chat"}</em>
+        <em>
+          {deepMemory && <b>Deep memory</b>}
+          {entry.conversationTitle || "New chat"}
+        </em>
       </div>
       <section>
         <small>User request</small>
-        <p>{entry.userRequestSummary}</p>
+        <MemoryText text={entry.userRequestSummary} />
       </section>
       <section>
         <small>System response</small>
-        <p>{entry.systemResponseSummary}</p>
+        <MemoryText text={entry.systemResponseSummary} />
       </section>
       <section>
         <small>Memory</small>
-        <p>{entry.memoryText}</p>
+        <MemoryText text={entry.memoryText} />
       </section>
     </article>
   );
+}
+
+function MemoryText({ text }) {
+  const value = String(text || "").trim();
+  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const bulletLines = lines.filter((line) => line.startsWith("- "));
+
+  if (bulletLines.length >= 2 && bulletLines.length === lines.length) {
+    return (
+      <ul className="memory-bullets">
+        {bulletLines.map((line, index) => (
+          <li key={`${index}:${line}`}>{line.slice(2).trim()}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  return <p>{value}</p>;
 }

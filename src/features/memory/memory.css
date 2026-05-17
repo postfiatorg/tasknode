@@ -88,6 +88,11 @@
   padding: 16px;
 }
 
+.memory-row.is-deep-memory {
+  border-color: #d8e9e2;
+  background: #fbfefd;
+}
+
 .memory-row-meta {
   display: flex;
   flex-wrap: wrap;
@@ -105,6 +110,9 @@
 }
 
 .memory-row-meta em {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   overflow: hidden;
   max-width: 380px;
   color: #3f3f3a;
@@ -113,17 +121,35 @@
   white-space: nowrap;
 }
 
+.memory-row-meta b {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e9f7f2;
+  color: #047857;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .memory-row section {
   display: grid;
   gap: 4px;
 }
 
 .memory-row p,
-.memory-empty p {
+.memory-empty p,
+.memory-bullets {
   margin: 0;
   color: #3f3f3a;
   font-size: 13.5px;
   line-height: 1.55;
+}
+
+.memory-bullets {
+  display: grid;
+  gap: 5px;
+  padding-left: 18px;
 }
 
 .memory-empty,
