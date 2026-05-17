@@ -27,6 +27,8 @@
     "db:import-context": "node scripts/import-runtime-store-context.mjs",
     "db:chat-billing-smoke": "node scripts/chat-billing-postgres-smoke.mjs",
     "db:context-smoke": "node scripts/context-postgres-smoke.mjs",
+    "db:memory-smoke": "node scripts/chat-memory-postgres-smoke.mjs",
+    "memory:backfill": "node scripts/memory-backfill.mjs",
     "runtime-smoke": "node scripts/runtime-store-smoke.mjs",
     "context-history-rpc-smoke": "node scripts/context-history-rpc-smoke.mjs",
     "wallet-balance-smoke": "node scripts/wallet-balance-smoke.mjs",

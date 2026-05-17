@@ -35,6 +35,7 @@ import {
   walletLinkVerify,
 } from "./product-contracts.js";
 import { executeChatStream } from "./chat-router.js";
+import { startMemoryWorker } from "./chat-memory-worker.js";
 import {
   conversationIdForSession,
   destroySession,
@@ -51,6 +52,7 @@ import {
   renameChatConversation,
   usageLedger,
 } from "./repositories/chat-billing.js";
+import { listChatMemory } from "./repositories/chat-memory.js";
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
@@ -620,6 +622,23 @@ async function routeApi(req, url, res) {
     return true;
   }
 
+  if (url.pathname === "/api/memory") {
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "memory_login_required",
+        message: "Sign in before reading chat memory.",
+      });
+      return true;
+    }
+    json(res, 200, await listChatMemory({
+      accountId: session.accountId,
+      q: url.searchParams.get("q") || "",
+      limit: url.searchParams.get("limit") || 100,
+    }));
+    return true;
+  }
+
   if (url.pathname === "/api/chat/stream") {
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
     const conversationId = conversationIdForSession(session, payload?.conversationId || "");
@@ -950,6 +969,7 @@ const server = createServer((req, res) => {
 
 assertStartupSecurity();
 await migrateDatabase();
+startMemoryWorker();
 
 server.listen(port, "0.0.0.0", () => {
   console.log(`tasknodeofficial listening on :${port}`);

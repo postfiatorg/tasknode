@@ -295,19 +295,32 @@ Add:
 
 ## Implementation Checklist
 
-- [ ] Add `004_chat_memory.sql`.
-- [ ] Add `server/repositories/chat-memory.js`.
-- [ ] Add memory OpenRouter request builder.
-- [ ] Add memory prompt contract and parser.
-- [ ] Add in-process async worker.
-- [ ] Enqueue memory jobs from completed chat persistence.
-- [ ] Add `GET /api/memory`.
-- [ ] Add `#memory` route and More menu entry.
-- [ ] Replace or bypass profile memory mocks for this surface.
-- [ ] Add `memory-backfill` script for `whatwork`.
-- [ ] Add smoke tests.
-- [ ] Run `npm run check`.
-- [ ] Run memory backfill against local Docker Postgres.
+- [x] Add `004_chat_memory.sql`.
+- [x] Add `server/repositories/chat-memory.js`.
+- [x] Add memory OpenRouter request builder.
+- [x] Add memory prompt contract and parser.
+- [x] Add in-process async worker.
+- [x] Enqueue memory jobs from completed chat persistence.
+- [x] Add `GET /api/memory`.
+- [x] Add `#memory` route and More menu entry.
+- [x] Replace or bypass profile memory mocks for this surface.
+- [x] Add `memory-backfill` script for `whatwork`.
+- [x] Add smoke tests.
+- [x] Run `npm run check`.
+- [x] Run memory backfill against local Docker Postgres.
+
+## Implementation Notes
+
+Implemented on May 17, 2026.
+
+- Chat persistence now enqueues memory jobs after a completed assistant turn
+  without awaiting summary generation.
+- The in-process worker uses `deepseek/deepseek-v4-flash` through OpenRouter
+  with ZDR, `data_collection: "deny"`, and the private-model provider allowlist.
+- Memory generation writes no billing ledger rows.
+- The Memory page is available at `#memory` from the More menu.
+- The `whatwork` local Postgres conversation was backfilled and processed:
+  2 matched pairs, 2 queued, 2 processed, 0 failed.
 
 ## Open Decisions
 

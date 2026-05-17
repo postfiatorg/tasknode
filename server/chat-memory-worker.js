@@ -1,0 +1,210 @@
+import { databaseEnabled } from "./db/pool.js";
+import {
+  chatMemoryJobSource,
+  claimChatMemoryJobs,
+  completeChatMemoryJob,
+  failChatMemoryJob,
+} from "./repositories/chat-memory.js";
+
+const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
+const defaultProviderOrder = ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"];
+const providerTimeoutMs = Math.max(5000, Number(process.env.TASKNODE_MEMORY_PROVIDER_TIMEOUT_MS || 45000));
+const promptVersion = "chat_memory_v1";
+let timer = null;
+let running = false;
+
+function openRouterKey() {
+  return process.env.OPENROUTER_API_KEY || process.env.OPENROUTER || "";
+}
+
+function providerOrder() {
+  const configured = process.env.TASKNODE_MEMORY_OPENROUTER_PROVIDERS || "";
+  return configured
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function memoryModel() {
+  return process.env.TASKNODE_MEMORY_MODEL || "deepseek/deepseek-v4-flash";
+}
+
+function memoryWorkerEnabled() {
+  return (
+    process.env.TASKNODE_MEMORY_ENABLED !== "false" &&
+    databaseEnabled() &&
+    Boolean(openRouterKey())
+  );
+}
+
+function memorySystemPrompt() {
+  return [
+    "You create compact private memory records from one Task Node chat exchange.",
+    "Return only valid JSON with keys user_request_summary, system_response_summary, and memory_text.",
+    "user_request_summary must be 2-3 sentences summarizing what the user asked or implied.",
+    "system_response_summary must be 2-3 sentences summarizing what the assistant answered or committed to.",
+    "memory_text must preserve durable facts, preferences, goals, constraints, decisions, and follow-ups useful for future work.",
+    "Do not include secrets, seed phrases, private keys, access tokens, API keys, or passwords.",
+  ].join("\n");
+}
+
+function redactSensitiveText(value = "") {
+  return String(value || "")
+    .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, "[redacted_api_key]")
+    .replace(/\b(?:0x)?[a-fA-F0-9]{64}\b/g, "[redacted_secret_or_hash]")
+    .replace(
+      /\b(seed phrase|recovery phrase|mnemonic|private key|password)\s*[:=]\s*[^\n\r]+/gi,
+      "$1: [redacted]"
+    );
+}
+
+function compactSourceText(value = "", maxLength = 16000) {
+  const text = redactSensitiveText(value).trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.floor(maxLength * 0.65))}\n\n[...middle truncated...]\n\n${text.slice(-Math.floor(maxLength * 0.35))}`;
+}
+
+function parseSummaryJson(text = "") {
+  const raw = String(text || "").trim();
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("memory_summary_invalid_json");
+  }
+  const parsed = JSON.parse(raw.slice(start, end + 1));
+  return {
+    userRequestSummary: String(parsed.user_request_summary || "").trim(),
+    systemResponseSummary: String(parsed.system_response_summary || "").trim(),
+    memoryText: String(parsed.memory_text || "").trim(),
+  };
+}
+
+function openRouterUsage(body = {}) {
+  const usage = body.usage || {};
+  return {
+    inputTokens: Number(usage.prompt_tokens || usage.input_tokens || 0),
+    outputTokens: Number(usage.completion_tokens || usage.output_tokens || 0),
+    totalTokens: Number(usage.total_tokens || 0),
+    costUsd: Number(usage.cost || 0),
+  };
+}
+
+async function fetchMemorySummary(source) {
+  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
+  const order = providerOrder();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
+  const userPayload = {
+    conversation_title: source.conversation_title || "New chat",
+    user_query: compactSourceText(source.user_body, 12000),
+    system_response: compactSourceText(source.assistant_body, 18000),
+  };
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${openRouterKey()}`,
+        "content-type": "application/json",
+        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
+        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
+        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
+      },
+      body: JSON.stringify({
+        model: memoryModel(),
+        messages: [
+          { role: "system", content: memorySystemPrompt() },
+          { role: "user", content: JSON.stringify(userPayload) },
+        ],
+        provider: {
+          zdr: true,
+          data_collection: "deny",
+          order: order.length > 0 ? order : defaultProviderOrder,
+          only: order.length > 0 ? order : defaultProviderOrder,
+        },
+        temperature: 0.1,
+        max_tokens: 700,
+        usage: { include: true },
+      }),
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("memory_provider_timeout");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || body?.message || `OpenRouter memory HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  const content = body?.choices?.[0]?.message?.content || "";
+  const parsed = parseSummaryJson(content);
+  if (!parsed.userRequestSummary || !parsed.systemResponseSummary || !parsed.memoryText) {
+    throw new Error("memory_summary_missing_fields");
+  }
+
+  return {
+    ...parsed,
+    conversationTitle: source.conversation_title || "New chat",
+    sourceUserExcerpt: compactSourceText(source.user_body, 500),
+    sourceAssistantExcerpt: compactSourceText(source.assistant_body, 500),
+    provider: "openrouter",
+    model: body?.model || memoryModel(),
+    promptVersion,
+    usage: openRouterUsage(body),
+  };
+}
+
+export async function processMemoryQueueOnce({ limit = 3 } = {}) {
+  if (!memoryWorkerEnabled()) {
+    return { ok: true, skipped: true, reason: "memory_worker_not_configured" };
+  }
+  if (running) return { ok: true, skipped: true, reason: "memory_worker_busy" };
+
+  running = true;
+  let processed = 0;
+  let failed = 0;
+  try {
+    const jobs = await claimChatMemoryJobs({ limit });
+    for (const job of jobs) {
+      try {
+        const source = await chatMemoryJobSource(job);
+        if (!source?.user_body || !source?.assistant_body) {
+          throw new Error("memory_job_source_missing");
+        }
+        const summary = await fetchMemorySummary(source);
+        await completeChatMemoryJob({ job: source, summary });
+        processed += 1;
+      } catch (error) {
+        failed += 1;
+        await failChatMemoryJob(job, error);
+      }
+    }
+    return { ok: true, processed, failed, claimed: jobs.length };
+  } finally {
+    running = false;
+  }
+}
+
+export function startMemoryWorker() {
+  if (timer || process.env.TASKNODE_MEMORY_ENABLED === "false" || !memoryWorkerEnabled()) {
+    return { ok: true, skipped: true };
+  }
+  const intervalMs = Math.max(5000, Number(process.env.TASKNODE_MEMORY_INTERVAL_MS || 15000));
+  const tick = () => {
+    processMemoryQueueOnce({ limit: Number(process.env.TASKNODE_MEMORY_BATCH_SIZE || 3) })
+      .catch((error) => console.warn(`chat memory worker failed: ${error?.message || error}`));
+  };
+  const initial = setTimeout(tick, 2500);
+  initial.unref?.();
+  timer = setInterval(tick, intervalMs);
+  timer.unref?.();
+  return { ok: true, intervalMs };
+}

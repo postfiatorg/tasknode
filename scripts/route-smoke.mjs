@@ -16,6 +16,7 @@ const routes = [
   { hash: "#wallet", labels: ["Available balance", "PFT", "Activity"] },
   { hash: "#context", labels: ["Context document", "Versions"] },
   { hash: "#tasks", labels: ["Tasks"] },
+  { hash: "#memory", labels: ["Memory"] },
 ];
 
 let server;

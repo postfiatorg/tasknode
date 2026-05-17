@@ -1,0 +1,161 @@
+.memory-view {
+  display: grid;
+  gap: 16px;
+  width: min(940px, 100%);
+}
+
+.memory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.memory-header small,
+.memory-row small {
+  color: #6b6b66;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.memory-header h1 {
+  margin: 2px 0 0;
+  color: #0d0d0d;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.memory-refresh,
+.memory-search {
+  border: 1px solid #e8e6df;
+  background: #ffffff;
+}
+
+.memory-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: #3f3f3a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.memory-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  color: #6b6b66;
+}
+
+.memory-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0d0d0d;
+  font: inherit;
+}
+
+.memory-list {
+  display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.memory-row,
+.memory-empty,
+.memory-status {
+  border: 1px solid #e8e6df;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.memory-row {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.memory-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.memory-row-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.memory-row-meta em {
+  overflow: hidden;
+  max-width: 380px;
+  color: #3f3f3a;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-row section {
+  display: grid;
+  gap: 4px;
+}
+
+.memory-row p,
+.memory-empty p {
+  margin: 0;
+  color: #3f3f3a;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.memory-empty,
+.memory-status {
+  padding: 18px;
+}
+
+.memory-empty strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #0d0d0d;
+  font-size: 15px;
+}
+
+.memory-status {
+  color: #6b6b66;
+  font-size: 13px;
+}
+
+.memory-status.error {
+  border-color: #f0b8b8;
+  background: #fff5f5;
+  color: #9f1239;
+}
+
+@media (max-width: 700px) {
+  .memory-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .memory-list {
+    max-height: none;
+  }
+}

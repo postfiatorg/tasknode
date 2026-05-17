@@ -3,6 +3,7 @@ import {
   appendChatTurn,
   getChatMessages,
 } from "./repositories/chat-billing.js";
+import { enqueueChatMemoryJob } from "./repositories/chat-memory.js";
 export {
   chatInputCharacterEstimate,
   normalizeChatAttachments,
@@ -609,6 +610,18 @@ function fallbackUsage({ mode, message, text }) {
   };
 }
 
+function enqueueMemoryForTurn({ accountId, conversationId, persisted }) {
+  if (!accountId || !persisted?.user?.id || !persisted?.assistant?.id) return;
+  enqueueChatMemoryJob({
+    accountId,
+    conversationId,
+    userMessageId: persisted.user.id,
+    assistantMessageId: persisted.assistant.id,
+  }).catch((error) => {
+    console.warn(`chat memory enqueue failed: ${error?.message || error}`);
+  });
+}
+
 async function executeOpenAi({ mode, model, message, conversationId, attachments = [], historyMessages = [] }) {
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
   const body = await fetchJson(`${baseUrl}/responses`, {
@@ -886,6 +899,7 @@ export async function executeChat({ accountId = "", mode, message, conversationI
     attachments,
     usage: result.usage,
   });
+  enqueueMemoryForTurn({ accountId, conversationId, persisted });
 
   return {
     ...result,
@@ -955,6 +969,7 @@ export async function executeChatStream({
     attachments,
     usage: result.usage,
   });
+  enqueueMemoryForTurn({ accountId, conversationId, persisted });
 
   return {
     ...result,

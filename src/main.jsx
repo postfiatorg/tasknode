@@ -90,6 +90,9 @@ import "./features/context/context.css";
 const WalletView = lazy(() =>
   import("./features/wallet/WalletView").then((module) => ({ default: module.WalletView })),
 );
+const MemoryView = lazy(() =>
+  import("./features/memory/MemoryView").then((module) => ({ default: module.MemoryView })),
+);
 
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
 const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
@@ -246,7 +249,7 @@ const SETTINGS_PAGES = [
   { key: "billing", label: "Billing", icon: CreditCard },
 ];
 
-const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "profile"]);
+const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "profile", "memory"]);
 const EMPTY_WALLET_VAULT_STATUS = {
   available: false,
   unlocked: false,
@@ -732,8 +735,8 @@ function App() {
                 <ToolMenuRow icon={Bot} label="Agents" />
                 <ToolMenuRow
                   icon={MessageSquare}
-                  label="Messages"
-                  trailing={<span className="menu-count">1</span>}
+                  label="Memory"
+                  onClick={() => navigateToView("memory")}
                 />
               </div>
             )}
@@ -958,6 +961,11 @@ function App() {
             setProfileTab={setProfileTab}
           />
         )}
+        {view === "memory" && (
+          <Suspense fallback={<StatusBanner>Loading memory</StatusBanner>}>
+            <MemoryView session={appState?.session} />
+          </Suspense>
+        )}
       </section>
 
       {loginOpen && (
@@ -1009,13 +1017,6 @@ function App() {
       )}
     </main>
   );
-}
-
-function titleForView(view) {
-  if (view === "tasks") return "Tasks";
-  if (view === "wallet") return "Wallet";
-  if (view === "context") return "Context";
-  return "What are we executing?";
 }
 
 function ChatSurface({
