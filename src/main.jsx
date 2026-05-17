@@ -62,6 +62,15 @@ import {
   X,
 } from "lucide-react";
 import { fetchAppState, fetchRuntimeConfig, requestEventStream, requestJson } from "./api";
+import {
+  byteSize,
+  createPastedTextAttachment,
+  formatFileSize,
+  mimeTypeFromFilename,
+  promptForAttachments,
+  readFileAsDataUrl,
+  textFromAttachment,
+} from "./chat-attachments";
 import { BillingSettings } from "./features/billing/BillingSettings";
 import { WalletView } from "./features/wallet/WalletView";
 import {
@@ -1026,6 +1035,7 @@ function ChatSurface({
   const [statusTone, setStatusTone] = useState("muted");
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState([]);
+  const [composerDragActive, setComposerDragActive] = useState(false);
   const [draftConversationId, setDraftConversationId] = useState(() => newClientConversationId());
   const [editingMsg, setEditingMsg] = useState(null);
   const [editDraft, setEditDraft] = useState("");
@@ -1034,6 +1044,7 @@ function ChatSurface({
   const modelRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const composerDragDepthRef = useRef(0);
   const messageListRef = useRef(null);
   const resetSeenRef = useRef(0);
   const shareSeenRef = useRef(chatShareRequestKey);
@@ -1279,9 +1290,8 @@ function ChatSurface({
     }
   }
 
-  async function handleAttachmentSelection(event) {
-    const files = Array.from(event.target.files || []);
-    event.target.value = "";
+  async function attachFiles(fileList) {
+    const files = Array.from(fileList || []);
     if (files.length === 0) return;
 
     const remainingSlots = Math.max(0, CHAT_ATTACHMENT_MAX_COUNT - attachments.length);
@@ -1316,6 +1326,50 @@ function ChatSurface({
       setSendMessage(error?.message || "Could not attach that file.");
       setStatusTone("error");
     }
+  }
+
+  async function handleAttachmentSelection(event) {
+    await attachFiles(event.target.files);
+    event.target.value = "";
+  }
+
+  function dataTransferHasFiles(dataTransfer) {
+    const types = Array.from(dataTransfer?.types || []);
+    if (types.includes("Files")) return true;
+    return Array.from(dataTransfer?.items || []).some((item) => item.kind === "file");
+  }
+
+  function handleComposerDragEnter(event) {
+    if (!dataTransferHasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    composerDragDepthRef.current += 1;
+    setComposerDragActive(true);
+  }
+
+  function handleComposerDragOver(event) {
+    if (!dataTransferHasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    setComposerDragActive(true);
+  }
+
+  function handleComposerDragLeave(event) {
+    if (!dataTransferHasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    composerDragDepthRef.current = Math.max(0, composerDragDepthRef.current - 1);
+    if (composerDragDepthRef.current === 0) setComposerDragActive(false);
+  }
+
+  async function handleComposerDrop(event) {
+    if (!dataTransferHasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    composerDragDepthRef.current = 0;
+    setComposerDragActive(false);
+    await attachFiles(event.dataTransfer.files);
   }
 
   function removeAttachment(id) {
@@ -1365,7 +1419,14 @@ function ChatSurface({
         onChange={handleAttachmentSelection}
         type="file"
       />
-      <form className="composer" onSubmit={submitMessage}>
+      <form
+        className={composerDragActive ? "composer is-drag-active" : "composer"}
+        onDragEnter={handleComposerDragEnter}
+        onDragLeave={handleComposerDragLeave}
+        onDragOver={handleComposerDragOver}
+        onDrop={handleComposerDrop}
+        onSubmit={submitMessage}
+      >
         {attachments.length > 0 && (
           <AttachmentTray
             attachments={attachments}
@@ -1854,74 +1915,6 @@ function redactAttachmentData(attachments = []) {
     mimeType,
     size,
   }));
-}
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Could not read file."));
-    reader.readAsDataURL(file);
-  });
-}
-
-function byteSize(text = "") {
-  return new Blob([String(text || "")]).size;
-}
-
-function createPastedTextAttachment(text, size = byteSize(text)) {
-  const firstLine = String(text || "").split("\n").find((line) => line.trim()) || "Pasted text";
-  const trimmed = firstLine.trim().replace(/\s+/g, " ");
-  return {
-    id: `paste-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    name: `${trimmed.slice(0, 28)}${trimmed.length > 28 ? " .." : ""}`,
-    mimeType: "text/plain",
-    size,
-    dataUrl: `data:text/plain;charset=utf-8,${encodeURIComponent(String(text || ""))}`,
-    source: "paste",
-  };
-}
-
-function textFromAttachment(attachment) {
-  const dataUrl = String(attachment?.dataUrl || "");
-  const comma = dataUrl.indexOf(",");
-  if (!dataUrl.startsWith("data:text/plain") || comma === -1) return "";
-
-  try {
-    const metadata = dataUrl.slice(0, comma).toLowerCase();
-    const body = dataUrl.slice(comma + 1);
-    if (metadata.includes(";base64")) return atob(body);
-    return decodeURIComponent(body);
-  } catch {
-    return "";
-  }
-}
-
-function promptForAttachments(attachments = []) {
-  const hasPastedText = attachments.some((attachment) => attachment?.source === "paste");
-  return hasPastedText ? "Review the attached pasted text." : "Review the attached file.";
-}
-
-function formatFileSize(bytes) {
-  const numeric = Number(bytes || 0);
-  if (numeric >= 1024 * 1024) return `${(numeric / (1024 * 1024)).toFixed(1)} MB`;
-  if (numeric >= 1024) return `${Math.round(numeric / 1024)} KB`;
-  return `${Math.max(0, numeric)} B`;
-}
-
-function mimeTypeFromFilename(name = "") {
-  const filename = String(name || "").toLowerCase();
-  if (filename.endsWith(".pdf")) return "application/pdf";
-  if (filename.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  if (filename.endsWith(".doc")) return "application/msword";
-  if (filename.endsWith(".md")) return "text/markdown";
-  if (filename.endsWith(".csv")) return "text/csv";
-  if (filename.endsWith(".json")) return "application/json";
-  if (filename.endsWith(".png")) return "image/png";
-  if (filename.endsWith(".jpg") || filename.endsWith(".jpeg")) return "image/jpeg";
-  if (filename.endsWith(".webp")) return "image/webp";
-  if (filename.endsWith(".gif")) return "image/gif";
-  return "text/plain";
 }
 
 function replaceTurnById(turns, id, replacement) {

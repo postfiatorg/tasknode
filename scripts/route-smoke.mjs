@@ -90,6 +90,11 @@ async function main() {
       }
     }
 
+    await cdp.send("Page.navigate", { url: baseUrl });
+    await waitForRootText();
+    await sleep(400);
+    await assertComposerFileDrop();
+
     console.log(`route smoke ok: ${routes.map((route) => route.hash || "/").join(", ")}`);
   } finally {
     cdp?.close();
@@ -166,6 +171,55 @@ async function waitForRootText() {
     await sleep(100);
   }
   throw new Error("React root stayed blank.");
+}
+
+async function assertComposerFileDrop() {
+  const result = await evaluate(`(async () => {
+    const composer = document.querySelector('form.composer');
+    if (!composer) throw new Error('Composer form missing for drag/drop smoke.');
+
+    const file = new File(['%PDF-1.4\\n% tasknode drag smoke\\n'], 'drag-smoke.pdf', {
+      type: 'application/pdf',
+    });
+    const data = new DataTransfer();
+    data.items.add(file);
+
+    composer.dispatchEvent(new DragEvent('dragenter', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: data,
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const activeDuringDrag = composer.classList.contains('is-drag-active');
+
+    composer.dispatchEvent(new DragEvent('dragover', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: data,
+    }));
+    composer.dispatchEvent(new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: data,
+    }));
+
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      if (document.querySelectorAll('.attachment-chip').length > 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    return {
+      activeDuringDrag,
+      activeAfterDrop: composer.classList.contains('is-drag-active'),
+      chipCount: document.querySelectorAll('.attachment-chip').length,
+      chipText: document.querySelector('.attachment-chip')?.textContent?.trim() || '',
+      statusText: document.querySelector('.chat-composer-note')?.textContent?.trim() || '',
+    };
+  })()`);
+
+  if (!result.activeDuringDrag || result.activeAfterDrop || result.chipCount !== 1 || !result.chipText.includes("drag-smoke.pdf")) {
+    throw new Error(`Composer drag/drop attachment smoke failed: ${JSON.stringify(result)}`);
+  }
 }
 
 async function evaluate(expression) {

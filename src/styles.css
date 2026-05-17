@@ -1350,6 +1350,29 @@ h1 {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
+.composer.is-drag-active {
+  border-color: #111111;
+  background: #fbfbf8;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
+}
+
+.composer.is-drag-active::after {
+  content: "Drop files to attach";
+  position: absolute;
+  z-index: 4;
+  inset: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed rgba(17, 17, 17, 0.72);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.84);
+  color: #111111;
+  font-size: 13px;
+  font-weight: 650;
+  pointer-events: none;
+}
+
 .composer-grid {
   display: grid;
   align-items: center;
