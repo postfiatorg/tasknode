@@ -205,6 +205,7 @@ export function WalletView({
     complete: true,
   });
   const actions = wallet?.actions || [];
+  const createAction = actions.find((action) => action.id === "create_start");
   const linkAction = actions.find((action) => action.id === "link_start");
   const relinkAction = actions.find((action) => action.id === "relink_start");
   const delinkAction = actions.find((action) => action.id === "delink");
@@ -216,6 +217,7 @@ export function WalletView({
   const vaultUnlocked = Boolean(vaultAvailable && walletVault?.unlocked);
   const vaultDisplay = walletVaultDisplayState(walletVault, linkedWallet.address);
   const signedIn = isSignedInSession(session);
+  const initiationGift = wallet?.initiationGift || {};
   const pftBalance = formatPftBalance(wallet);
   const balanceStatusLabel = walletLinked ? walletBalanceStatusLabel(wallet) : "";
   const balanceError = walletLinked && wallet?.pftBalanceError;
@@ -233,7 +235,7 @@ export function WalletView({
   const networkTone = networkLabel === "Network live" ? "live" : networkLabel === "Network issue" ? "error" : "muted";
   const walletAddressLabel = walletLinked ? shortWalletAddress(linkedWallet.address) : "No wallet linked";
   const vaultStatusLabel = vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : walletLinked ? "Not saved" : "Seed not linked";
-  const primaryActionLabel = !walletLinked || !vaultAvailable ? "Link wallet" : vaultUnlocked ? "Lock" : "Unlock";
+  const primaryActionLabel = !walletLinked ? "Create wallet" : !vaultAvailable ? "Link wallet" : vaultUnlocked ? "Lock" : "Unlock";
   const syncTopUpDeposits = useEthereumTopUpSync({
     enabled: signedIn,
     onSynced: async () => {
@@ -357,6 +359,17 @@ export function WalletView({
   async function startWalletAction(action) {
     if (!action) {
       setMessage("Wallet actions are still loading.");
+      return;
+    }
+    if (action.id === "create_start") {
+      if (!requireSignedInForWalletLink()) return;
+      if (walletLinked) {
+        setMessage("Delink the current wallet before creating a new one for this account.");
+        return;
+      }
+      setMessage("");
+      setWalletProofAction(action);
+      setLinkOpen(true);
       return;
     }
     if (action.id === "link_start") {
@@ -541,14 +554,24 @@ export function WalletView({
                   : vaultAvailable
                     ? "Encrypted seed vault saved locally. Unlock before wallet-bound signing actions."
                     : "Ownership proof is linked. Save an encrypted local vault before wallet-bound actions."
-                : "Link a 24-word recovery phrase locally. Your seed never leaves your device."}
+                : "Create a new 24-word PFT wallet locally, or link an existing one. Your seed never leaves this device."}
             </p>
 
             <div className="wallet-actions">
-              <button className="wallet-primary-action" onClick={() => startWalletAction(linkAction)} type="button">
-                {vaultUnlocked ? <Lock size={16} strokeWidth={2} /> : walletLinked && vaultAvailable ? <Unlock size={16} strokeWidth={2} /> : <Link2 size={16} strokeWidth={2} />}
+              <button
+                className="wallet-primary-action"
+                onClick={() => startWalletAction(!walletLinked ? createAction || linkAction : linkAction)}
+                type="button"
+              >
+                {!walletLinked ? <Plus size={16} strokeWidth={2} /> : vaultUnlocked ? <Lock size={16} strokeWidth={2} /> : walletLinked && vaultAvailable ? <Unlock size={16} strokeWidth={2} /> : <Link2 size={16} strokeWidth={2} />}
                 {primaryActionLabel}
               </button>
+              {!walletLinked && (
+                <button className="wallet-secondary-action" onClick={() => startWalletAction(linkAction)} type="button">
+                  <Link2 size={16} strokeWidth={2} />
+                  Link wallet
+                </button>
+              )}
               <button
                 className="wallet-secondary-action"
                 disabled={!walletLinked}
@@ -566,6 +589,16 @@ export function WalletView({
           </div>
         </section>
 
+        {!walletLinked && initiationGift?.amountPft && (
+          <div className="wallet-inline-status is-initiation" role="status">
+            {initiationGift.eligible
+              ? `${Number(initiationGift.amountPft).toLocaleString("en-US")} PFT initiation gift available for eligible OAuth accounts.`
+              : initiationGift.reason === "email_ineligible"
+                ? "Email-only accounts can create wallets, but do not receive the PFT initiation gift."
+                : initiationGift.message || "Wallet initiation gift eligibility will be checked after sign-in."}
+          </div>
+        )}
+
         {(balanceStatusLabel || balanceError || message) && (
           <div className="wallet-inline-status" role="status">
             {message || [balanceStatusLabel, balanceError].filter(Boolean).join(" · ")}
@@ -573,6 +606,14 @@ export function WalletView({
         )}
 
         <section className="wallet-management-grid" aria-label="Wallet management">
+          <WalletManagementCard
+            active={!walletLinked && initiationGift?.eligible}
+            disabled={walletLinked || pendingAction === "create_start"}
+            icon={Plus}
+            label="Create wallet"
+            onClick={() => startWalletAction(createAction)}
+            status={pendingAction === "create_start" ? "Working" : initiationGift?.eligible ? `${initiationGift.amountPft} PFT` : signedIn ? "Ready" : "Sign in"}
+          />
           <WalletManagementCard
             icon={ShieldCheck}
             label="Local seed vault"
@@ -689,6 +730,7 @@ export function WalletView({
             setLinkOpen(false);
             setWalletProofAction(null);
           }}
+          onNotice={(notice) => setMessage(notice)}
           session={session}
         />
       )}
@@ -922,11 +964,14 @@ function WalletLinkModal({
   onWalletVaultChange,
   onWalletVaultUnlocked,
   onClose,
+  onNotice,
   session,
 }) {
   const isRelink = action?.id === "relink_start";
+  const isCreate = action?.id === "create_start";
   const [walletCore, setWalletCore] = useState(null);
   const [mnemonic, setMnemonic] = useState("");
+  const [seedConfirmed, setSeedConfirmed] = useState(false);
   const [vaultPassword, setVaultPassword] = useState("");
   const [vaultPasswordConfirm, setVaultPasswordConfirm] = useState("");
   const [message, setMessage] = useState("");
@@ -952,6 +997,7 @@ function WalletLinkModal({
     import("../../wallet-core")
       .then((module) => {
         if (active) setWalletCore(module);
+        if (active && isCreate) setMnemonic(module.generateTaskNodeMnemonic());
       })
       .catch(() => {
         if (active) setMessage("Wallet tools could not be loaded.");
@@ -960,7 +1006,14 @@ function WalletLinkModal({
     return () => {
       active = false;
     };
-  }, []);
+  }, [isCreate]);
+
+  function regenerateMnemonic() {
+    if (!walletCore?.generateTaskNodeMnemonic) return;
+    setMnemonic(walletCore.generateTaskNodeMnemonic());
+    setSeedConfirmed(false);
+    setMessage("");
+  }
 
   if (valid) {
     try {
@@ -990,6 +1043,10 @@ function WalletLinkModal({
 
     if (!valid || !walletSummary) {
       setMessage("Enter a valid 24-word recovery phrase.");
+      return;
+    }
+    if (isCreate && !seedConfirmed) {
+      setMessage("Confirm that you saved the recovery phrase before creating this wallet.");
       return;
     }
     if (!passwordReady) {
@@ -1058,10 +1115,13 @@ function WalletLinkModal({
       }
 
       setMnemonic("");
+      setSeedConfirmed(false);
       setVaultPassword("");
       setVaultPasswordConfirm("");
-      setMessage(verify.body?.message || (isRelink ? "Wallet relinked." : "Wallet linked."));
+      const finalMessage = verify.body?.message || (isCreate ? "Wallet created." : isRelink ? "Wallet relinked." : "Wallet linked.");
+      setMessage(finalMessage);
       await onAppStateChange?.();
+      onNotice?.(finalMessage);
       onClose();
     } catch (error) {
       setMessage(error?.message || "Wallet link failed.");
@@ -1074,9 +1134,11 @@ function WalletLinkModal({
       <div className="wallet-link-modal" role="dialog" aria-modal="true" aria-label="Link seed wallet">
         <header>
           <div>
-            <h2>{isRelink ? "Relink Seed Wallet" : "Link Seed Wallet"}</h2>
+            <h2>{isCreate ? "Create Seed Wallet" : isRelink ? "Relink Seed Wallet" : "Link Seed Wallet"}</h2>
             <p>
-              {isRelink
+              {isCreate
+                ? "A new recovery phrase is generated in this browser. Save it before continuing."
+                : isRelink
                 ? "Prove wallet ownership again. The recovery phrase stays in this browser."
                 : "Validate and sign locally. Your recovery phrase is never sent to Task Node."}
             </p>
@@ -1092,14 +1154,35 @@ function WalletLinkModal({
             autoComplete="off"
             autoCorrect="off"
             onChange={(event) => {
+              if (isCreate) return;
               setMnemonic(event.target.value);
               setMessage("");
             }}
             placeholder="word one word two ..."
+            readOnly={isCreate}
             spellCheck={false}
             value={mnemonic}
           />
         </label>
+        {isCreate && (
+          <div className="wallet-create-controls">
+            <button className="light-pill" disabled={!walletCore || linking} onClick={regenerateMnemonic} type="button">
+              <RefreshCw size={13} strokeWidth={1.8} />
+              Regenerate
+            </button>
+            <label className="wallet-confirm-row">
+              <input
+                checked={seedConfirmed}
+                onChange={(event) => {
+                  setSeedConfirmed(event.target.checked);
+                  setMessage("");
+                }}
+                type="checkbox"
+              />
+              <span>I saved this recovery phrase.</span>
+            </label>
+          </div>
+        )}
         <div className="wallet-password-grid">
           <label className="wallet-seed-field compact">
             <span>Wallet password</span>
@@ -1147,7 +1230,9 @@ function WalletLinkModal({
           </span>
         </div>
         <div className="wallet-link-warning">
-          The encrypted vault is saved only in this browser. Task Node never receives the phrase or password.
+          {isCreate
+            ? "Task Node can link the public wallet address and send an eligible initiation gift, but cannot recover this phrase."
+            : "The encrypted vault is saved only in this browser. Task Node never receives the phrase or password."}
         </div>
         {message && <div className="inline-message">{message}</div>}
         <footer>
@@ -1155,7 +1240,17 @@ function WalletLinkModal({
             Cancel
           </button>
           <button className="dark-pill" disabled={linking} onClick={linkWallet} type="button">
-            {linking ? (isRelink ? "Relinking" : "Linking") : isRelink ? "Relink wallet" : "Link wallet"}
+            {linking
+              ? isCreate
+                ? "Creating"
+                : isRelink
+                  ? "Relinking"
+                  : "Linking"
+              : isCreate
+                ? "Create wallet"
+                : isRelink
+                  ? "Relink wallet"
+                  : "Link wallet"}
           </button>
         </footer>
       </div>

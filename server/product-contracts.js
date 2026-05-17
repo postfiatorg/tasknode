@@ -25,12 +25,16 @@ import {
   getOrCreateProviderAccount,
   linkProviderToAccount,
   linkWalletToAccount,
+  completeWalletInitiationGrant,
+  failWalletInitiationGrant,
   recordAuthEvent,
   getContextHistory,
   getLinkedWallet,
+  reserveWalletInitiationGrant,
   saveContextDocument,
   saveIndexedContextHistory,
   usageSummary,
+  walletInitiationGrantStatus,
 } from "./runtime-store.js";
 import { fetchContextIpfsJson, normalizeContextCid } from "./context-ipfs.js";
 import { discoverContextHistoryFromRpc } from "./context-history-rpc.js";
@@ -39,6 +43,10 @@ import {
   getOrCreateEthereumTopUpAccount,
   syncEthereumTopUpAccount,
 } from "./ethereum-deposits.js";
+import {
+  pftInitiationFaucetStatus,
+  sendPftInitiationGift,
+} from "./pftl-faucet.js";
 import { verifyWalletSignature } from "./wallet-proof.js";
 
 function hasAll(keys) {
@@ -734,6 +742,16 @@ export function devAuthStatus() {
 export function walletActions() {
   return [
     walletAction({
+      id: "create_start",
+      label: "Create seed wallet",
+      path: "/api/wallet/create/start",
+      enabled: true,
+      note:
+        "Generates a new 24-word seed wallet in the browser, links it by proof, and attempts the one-time OAuth initiation grant.",
+      actionRequired:
+        "Sign in with GitHub, X, Telegram, or Discord, save the generated phrase locally, and verify the wallet proof.",
+    }),
+    walletAction({
       id: "link_start",
       label: "Link seed wallet",
       path: "/api/wallet/link/start",
@@ -1329,7 +1347,154 @@ export function walletLinkStart(method, session = null) {
   };
 }
 
-export function walletLinkVerify(payload, method, session = null) {
+export function walletCreateStart(method, session = null) {
+  const action = walletActionByPath("/api/wallet/create/start");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "wallet_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Start wallet creation with POST.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "wallet_login_required",
+      action: action.id,
+      message: "Sign in before creating a seed wallet.",
+      actionRequired: "Use a non-email account login, then create the local seed wallet.",
+    });
+  }
+
+  const result = createWalletChallenge({
+    accountId: session.accountId,
+    purpose: "wallet_create",
+  });
+
+  if (!result.ok) {
+    return actionResponse({
+      status: result.status || 400,
+      error: result.error || "wallet_challenge_failed",
+      action: action.id,
+      message: "Wallet creation challenge could not be created.",
+      actionRequired: "Sign in and try wallet creation again.",
+    });
+  }
+
+  const gift = walletInitiationGrantStatus({ accountId: session.accountId });
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      action: "wallet_create_start",
+      message: "Sign this challenge locally to create and link your wallet.",
+      challenge: {
+        id: result.challenge.id,
+        purpose: result.challenge.purpose,
+        message: result.challenge.message,
+        expiresAt: result.challenge.expiresAt,
+      },
+      verifyPath: "/api/wallet/link/verify",
+      initiationGift: {
+        eligible: Boolean(gift.eligible),
+        reason: gift.reason || null,
+        amountPft: gift.amountPft,
+        amountDrops: gift.amountDrops,
+        message: gift.message,
+      },
+    },
+  };
+}
+
+async function claimWalletCreateInitiationGift({ accountId = "", walletAddress = "" } = {}) {
+  const eligibility = walletInitiationGrantStatus({ accountId, walletAddress });
+  if (!eligibility.eligible) {
+    return {
+      ok: false,
+      status: "not_eligible",
+      reason: eligibility.reason || "wallet_initiation_not_eligible",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: eligibility.message,
+      grant: eligibility.grant || null,
+    };
+  }
+
+  const faucet = pftInitiationFaucetStatus();
+  if (!faucet.configured) {
+    return {
+      ok: false,
+      status: "not_configured",
+      reason: "faucet_not_configured",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: faucet.actionRequired,
+    };
+  }
+
+  const reserved = reserveWalletInitiationGrant({
+    accountId,
+    walletAddress,
+    amountDrops: eligibility.amountDrops,
+    amountPft: eligibility.amountPft,
+  });
+  if (!reserved.ok) {
+    return {
+      ok: false,
+      status: "not_eligible",
+      reason: reserved.error || reserved.eligibility?.reason || "wallet_initiation_not_eligible",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: reserved.eligibility?.message || "Wallet initiation gift is not eligible.",
+      grant: reserved.eligibility?.grant || null,
+    };
+  }
+
+  try {
+    const sent = await sendPftInitiationGift({
+      destination: walletAddress,
+      amountDrops: eligibility.amountDrops,
+      memo: `Task Node initiation gift for ${accountId}`,
+    });
+    const completed = completeWalletInitiationGrant({
+      grantId: reserved.internalGrant.id,
+      txHash: sent.txHash,
+      faucetAddress: sent.faucetAddress,
+    });
+    return {
+      ok: true,
+      status: "completed",
+      amountPft: sent.amountPft,
+      amountDrops: sent.amountDrops,
+      txHash: sent.txHash,
+      faucetAddress: sent.faucetAddress,
+      message: `${sent.amountPft.toLocaleString("en-US")} PFT initiation gift sent.`,
+      grant: completed.grant || reserved.grant,
+    };
+  } catch (error) {
+    const failed = failWalletInitiationGrant({
+      grantId: reserved.internalGrant.id,
+      error: error?.message || "wallet_initiation_failed",
+      unknown: Boolean(error?.submitted),
+    });
+    return {
+      ok: false,
+      status: failed.grant?.status || "failed",
+      reason: error?.message || "wallet_initiation_failed",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: "Wallet was created, but the PFT initiation gift could not be sent yet.",
+      grant: failed.grant || reserved.grant,
+    };
+  }
+}
+
+export async function walletLinkVerify(payload, method, session = null) {
   if (method !== "POST") {
     return actionResponse({
       status: 405,
@@ -1353,7 +1518,7 @@ export function walletLinkVerify(payload, method, session = null) {
   const challengeResult = consumeWalletChallenge({
     accountId: session.accountId,
     challengeId: payload?.challengeId,
-    purpose: ["wallet_link", "wallet_relink"],
+    purpose: ["wallet_link", "wallet_relink", "wallet_create"],
   });
 
   if (!challengeResult.ok) {
@@ -1412,15 +1577,28 @@ export function walletLinkVerify(payload, method, session = null) {
   }
 
   const reclaimedWalletCount = Number(result.reclaimedWalletCount || 0);
+  const isCreate = challengeResult.challenge.purpose === "wallet_create";
+  const initiationGift = isCreate
+    ? await claimWalletCreateInitiationGift({
+        accountId: session.accountId,
+        walletAddress: result.wallet.address,
+      })
+    : null;
+  const message = isCreate
+    ? initiationGift?.ok
+      ? `Seed wallet created. ${initiationGift.message}`
+      : `Seed wallet created. ${initiationGift?.message || "PFT initiation gift was not available."}`
+    : reclaimedWalletCount
+      ? "Seed wallet linked. Prior stale links for this wallet were detached."
+      : "Seed wallet linked.";
   return {
     status: 200,
     body: {
       ok: true,
       action: "wallet_link_verify",
-      message: reclaimedWalletCount
-        ? "Seed wallet linked. Prior stale links for this wallet were detached."
-        : "Seed wallet linked.",
+      message,
       reclaimedWalletCount,
+      initiationGift,
       wallet: result.wallet,
     },
   };
@@ -1558,6 +1736,9 @@ export function walletDelink(payload, method, session = null) {
 }
 
 export function walletActionStart(pathname, method, session = null, payload = {}) {
+  if (pathname === "/api/wallet/create/start") {
+    return walletCreateStart(method, session);
+  }
   if (pathname === "/api/wallet/relink/start") {
     return walletRelinkStart(method, session);
   }

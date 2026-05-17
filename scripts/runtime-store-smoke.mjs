@@ -13,6 +13,10 @@ process.env.OPENROUTER_API_KEY = "runtime-smoke-openrouter-key";
 delete process.env.OPENROUTER_MODEL;
 delete process.env.OPENROUTER_CHAT_ENABLED;
 delete process.env.TASKNODE_ENABLE_OPENROUTER_CHAT;
+delete process.env.TASKNODE_PFT_FAUCET_SEED;
+delete process.env.FAUCET_SEED;
+delete process.env.PFTL_FAUCET_WSS_URL;
+delete process.env.PFTL_FAUCET_WSS_URL_FALLBACKS;
 
 try {
   const { HDNodeWallet } = await import("ethers");
@@ -36,24 +40,36 @@ try {
   const {
     appendUsageCredit,
     appendChatTurn,
+    createAccountSession,
     deleteChatConversation,
     delinkWalletFromAccount,
     getContextDocument,
     getContextHistory,
     getEthereumDepositAccount,
     getLinkedWallet,
+    getOrCreateEmailAccount,
+    getOrCreateProviderAccount,
     linkWalletToAccount,
     listChatConversations,
     renameChatConversation,
+    completeWalletInitiationGrant,
+    reserveWalletInitiationGrant,
     saveContextDocument,
     saveIndexedContextHistory,
     usageSummary,
+    walletInitiationGrantStatus,
   } = await import("../server/runtime-store.js");
   const {
     usageActions,
+    walletCreateStart,
+    walletLinkVerify,
     usageTopUpStart,
     usageTopUpSync,
   } = await import("../server/product-contracts.js");
+  const {
+    generateTaskNodeMnemonic,
+    signWalletChallenge,
+  } = await import("../src/wallet-core.js");
   const { appState } = await import("../server/app-state.js");
 
   if (modelForMode("Frontier Instant") !== "chat-latest") {
@@ -294,6 +310,78 @@ try {
 
   if (summary.currentCreditUsd !== 5 || summary.ledgerEntryCount !== 1) {
     throw new Error(`Unexpected credit summary: ${JSON.stringify(summary)}`);
+  }
+
+  const oauthAccount = getOrCreateProviderAccount({
+    provider: "github",
+    providerUserId: "runtime-smoke-gh",
+    username: "runtime-smoke",
+  });
+  const createFlowAccount = getOrCreateProviderAccount({
+    provider: "github",
+    providerUserId: "runtime-smoke-create-gh",
+    username: "runtime-smoke-create",
+  });
+  const createFlowSession = createAccountSession(createFlowAccount, { provider: "github", assurance: "medium" });
+  const createStart = walletCreateStart("POST", createFlowSession.session);
+  const createMnemonic = generateTaskNodeMnemonic();
+  const createProof = signWalletChallenge(createMnemonic, createStart.body.challenge.message);
+  const createVerify = await walletLinkVerify({
+    challengeId: createStart.body.challenge.id,
+    address: createProof.address,
+    publicKey: createProof.publicKey,
+    signature: createProof.signature,
+  }, "POST", createFlowSession.session);
+  const createLinkedWallet = getLinkedWallet({ accountId: createFlowAccount.id });
+  if (
+    createStart.status !== 200 ||
+    createStart.body.challenge.purpose !== "wallet_create" ||
+    createVerify.status !== 200 ||
+    createLinkedWallet.status !== "linked" ||
+    createLinkedWallet.address !== createProof.address ||
+    createVerify.body.initiationGift?.status !== "not_configured"
+  ) {
+    throw new Error(`Create wallet flow did not link with a non-faucet fallback: ${JSON.stringify({ createStart, createVerify, createLinkedWallet })}`);
+  }
+  const emailAccount = getOrCreateEmailAccount({
+    email: "runtime-smoke@example.com",
+    canonicalEmail: "runtime-smoke@example.com",
+    maskedEmail: "r***@example.com",
+  });
+  const emailGift = walletInitiationGrantStatus({ accountId: emailAccount.id });
+  if (emailGift.eligible || emailGift.reason !== "email_ineligible") {
+    throw new Error(`Email-only accounts must not be initiation-gift eligible: ${JSON.stringify(emailGift)}`);
+  }
+  const firstGiftStatus = walletInitiationGrantStatus({
+    accountId: oauthAccount.id,
+    walletAddress: "rRuntimeSmokeWalletInit1111111111111",
+  });
+  if (!firstGiftStatus.eligible || firstGiftStatus.amountPft !== 12) {
+    throw new Error(`OAuth account should be eligible for one wallet initiation gift: ${JSON.stringify(firstGiftStatus)}`);
+  }
+  const reservedGift = reserveWalletInitiationGrant({
+    accountId: oauthAccount.id,
+    walletAddress: "rRuntimeSmokeWalletInit1111111111111",
+    amountDrops: firstGiftStatus.amountDrops,
+    amountPft: firstGiftStatus.amountPft,
+  });
+  if (!reservedGift.ok || reservedGift.grant.status !== "processing") {
+    throw new Error(`Wallet initiation grant was not reserved: ${JSON.stringify(reservedGift)}`);
+  }
+  const completedGift = completeWalletInitiationGrant({
+    grantId: reservedGift.internalGrant.id,
+    txHash: "RUNTIME_SMOKE_INIT_TX",
+    faucetAddress: "rRuntimeSmokeFaucet",
+  });
+  if (!completedGift.ok || completedGift.grant.status !== "completed") {
+    throw new Error(`Wallet initiation grant was not completed: ${JSON.stringify(completedGift)}`);
+  }
+  const replayGift = walletInitiationGrantStatus({
+    accountId: oauthAccount.id,
+    walletAddress: "rRuntimeSmokeWalletInit1111111111111",
+  });
+  if (replayGift.eligible || replayGift.reason !== "account_registered") {
+    throw new Error(`Wallet initiation grant must be account-idempotent: ${JSON.stringify(replayGift)}`);
   }
 
   const persistedChat = appendChatTurn({

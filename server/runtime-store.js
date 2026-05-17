@@ -19,6 +19,7 @@ const defaultState = {
   accountEmails: {},
   accountIdentities: {},
   accountWallets: {},
+  walletInitiationGrants: [],
   ethereumDepositAccounts: {},
   ethereumDepositRetiredAccounts: [],
   ethereumDepositAddressIndex: {},
@@ -67,6 +68,9 @@ function loadState() {
         parsed.accountWallets && typeof parsed.accountWallets === "object" && !Array.isArray(parsed.accountWallets)
           ? parsed.accountWallets
           : {},
+      walletInitiationGrants: Array.isArray(parsed.walletInitiationGrants)
+        ? parsed.walletInitiationGrants
+        : [],
       ethereumDepositAccounts:
         parsed.ethereumDepositAccounts && typeof parsed.ethereumDepositAccounts === "object" && !Array.isArray(parsed.ethereumDepositAccounts)
           ? parsed.ethereumDepositAccounts
@@ -456,6 +460,229 @@ function mergeLinkedProvider(account, providerPayload) {
   account.linkedProviders = existing
     .filter((item) => item?.id !== providerPayload.id)
     .concat(providerPayload);
+}
+
+function walletInitiationAmountPft() {
+  const amount = Number(process.env.TASKNODE_WALLET_INITIATION_PFT || 12);
+  if (!Number.isFinite(amount) || amount <= 0) return 12;
+  return Math.min(amount, 100);
+}
+
+function walletInitiationAmountDrops() {
+  return String(Math.round(walletInitiationAmountPft() * 1_000_000));
+}
+
+function walletInitiationIdentityHash(provider, providerUserId) {
+  return stableId(`${String(provider || "").toLowerCase()}:${String(providerUserId || "")}`, "identity");
+}
+
+function walletInitiationIdentities(account) {
+  const linked = Array.isArray(account?.linkedProviders) ? account.linkedProviders : [];
+  return linked
+    .filter((provider) => {
+      const id = String(provider?.id || "").trim().toLowerCase();
+      if (!id || id === "email" || id === "dev" || id === "wallet") return false;
+      return provider?.kind === "oauth" && provider?.providerUserId;
+    })
+    .map((provider) => ({
+      provider: String(provider.id || "").trim().toLowerCase(),
+      providerUserId: String(provider.providerUserId || "").trim(),
+      providerUserIdHash: walletInitiationIdentityHash(provider.id, provider.providerUserId),
+      username: provider.username || null,
+    }));
+}
+
+function activeWalletInitiationGrants() {
+  return (state.walletInitiationGrants || []).filter((grant) => (
+    grant && ["processing", "completed", "unknown"].includes(grant.status)
+  ));
+}
+
+function latestWalletInitiationGrantForAccount(accountId) {
+  const normalizedAccountId = safeId(accountId, "account");
+  return (state.walletInitiationGrants || [])
+    .filter((grant) => grant?.accountId === normalizedAccountId)
+    .sort((left, right) => (Date.parse(right.updatedAt || right.createdAt || "") || 0) - (Date.parse(left.updatedAt || left.createdAt || "") || 0))[0] || null;
+}
+
+function publicWalletInitiationGrant(grant) {
+  if (!grant) return null;
+  return {
+    id: grant.id,
+    status: grant.status,
+    accountId: grant.accountId,
+    walletAddress: grant.walletAddress,
+    amountPft: grant.amountPft,
+    amountDrops: grant.amountDrops,
+    txHash: grant.txHash || null,
+    provider: grant.provider || null,
+    createdAt: grant.createdAt,
+    updatedAt: grant.updatedAt,
+    error: grant.error || null,
+  };
+}
+
+export function walletInitiationGrantStatus({ accountId = "", walletAddress = "" } = {}) {
+  const normalizedAccountId = accountId ? safeId(accountId, "account") : "";
+  const normalizedWalletAddress = String(walletAddress || "").trim();
+  const amountPft = walletInitiationAmountPft();
+  const amountDrops = walletInitiationAmountDrops();
+
+  if (!normalizedAccountId) {
+    return {
+      eligible: false,
+      reason: "login_required",
+      amountPft,
+      amountDrops,
+      message: "Sign in with GitHub, X, Telegram, or Discord before claiming the wallet initiation gift.",
+    };
+  }
+
+  const account = state.accounts[normalizedAccountId];
+  if (!account) {
+    return {
+      eligible: false,
+      reason: "account_not_found",
+      amountPft,
+      amountDrops,
+      message: "The signed-in account was not found.",
+    };
+  }
+
+  const latestAccountGrant = latestWalletInitiationGrantForAccount(normalizedAccountId);
+  if (latestAccountGrant && ["processing", "completed", "unknown"].includes(latestAccountGrant.status)) {
+    return {
+      eligible: false,
+      reason: "account_registered",
+      amountPft,
+      amountDrops,
+      grant: publicWalletInitiationGrant(latestAccountGrant),
+      message: latestAccountGrant.status === "completed"
+        ? "This account already received its wallet initiation gift."
+        : "This account already has a wallet initiation gift in progress.",
+    };
+  }
+
+  const identities = walletInitiationIdentities(account);
+  if (identities.length === 0) {
+    return {
+      eligible: false,
+      reason: account.primaryProvider === "email" ? "email_ineligible" : "provider_required",
+      amountPft,
+      amountDrops,
+      message: "Email-only accounts do not receive the PFT wallet initiation gift.",
+    };
+  }
+
+  const activeGrants = activeWalletInitiationGrants();
+  if (normalizedWalletAddress) {
+    const walletGrant = activeGrants.find((grant) => grant.walletAddress === normalizedWalletAddress);
+    if (walletGrant) {
+      return {
+        eligible: false,
+        reason: "wallet_registered",
+        amountPft,
+        amountDrops,
+        grant: publicWalletInitiationGrant(walletGrant),
+        message: "This wallet address is already registered for a wallet initiation gift.",
+      };
+    }
+  }
+
+  const identityHashSet = new Set(identities.map((identity) => identity.providerUserIdHash));
+  const providerGrant = activeGrants.find((grant) => (
+    Array.isArray(grant.providerUserIdHashes) &&
+    grant.providerUserIdHashes.some((hash) => identityHashSet.has(hash))
+  ));
+  if (providerGrant) {
+    return {
+      eligible: false,
+      reason: "provider_identity_registered",
+      amountPft,
+      amountDrops,
+      grant: publicWalletInitiationGrant(providerGrant),
+      message: "This sign-in identity already received a wallet initiation gift.",
+    };
+  }
+
+  return {
+    eligible: true,
+    reason: null,
+    amountPft,
+    amountDrops,
+    provider: identities[0].provider,
+    identities,
+    message: `${amountPft.toLocaleString("en-US")} PFT initiation gift available after creating a new wallet.`,
+  };
+}
+
+export function reserveWalletInitiationGrant({
+  accountId = "",
+  walletAddress = "",
+  amountDrops = walletInitiationAmountDrops(),
+  amountPft = walletInitiationAmountPft(),
+} = {}) {
+  const normalizedAccountId = safeId(accountId, "account");
+  const normalizedWalletAddress = String(walletAddress || "").trim();
+  const eligibility = walletInitiationGrantStatus({
+    accountId: normalizedAccountId,
+    walletAddress: normalizedWalletAddress,
+  });
+  if (!eligibility.eligible) {
+    return { ok: false, status: 409, error: eligibility.reason || "wallet_initiation_not_eligible", eligibility };
+  }
+
+  const now = new Date().toISOString();
+  const identities = Array.isArray(eligibility.identities) ? eligibility.identities : [];
+  const grant = {
+    id: `wallet_init_${randomUUID()}`,
+    status: "processing",
+    accountId: normalizedAccountId,
+    walletAddress: normalizedWalletAddress,
+    amountDrops: String(amountDrops),
+    amountPft: Number(Number(amountPft).toFixed(6)),
+    provider: identities[0]?.provider || "",
+    providerUserIdHashes: identities.map((identity) => identity.providerUserIdHash),
+    providers: identities.map((identity) => ({
+      provider: identity.provider,
+      providerUserIdHash: identity.providerUserIdHash,
+      username: identity.username || null,
+    })),
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  state.walletInitiationGrants.push(grant);
+  saveState();
+
+  return { ok: true, grant: publicWalletInitiationGrant(grant), internalGrant: structuredClone(grant) };
+}
+
+export function completeWalletInitiationGrant({ grantId = "", txHash = "", faucetAddress = "" } = {}) {
+  const grant = (state.walletInitiationGrants || []).find((item) => item?.id === grantId);
+  if (!grant) return { ok: false, status: 404, error: "wallet_initiation_grant_not_found" };
+
+  const now = new Date().toISOString();
+  grant.status = "completed";
+  grant.txHash = txHash || grant.txHash || null;
+  grant.faucetAddress = faucetAddress || grant.faucetAddress || null;
+  grant.updatedAt = now;
+  saveState();
+
+  return { ok: true, grant: publicWalletInitiationGrant(grant) };
+}
+
+export function failWalletInitiationGrant({ grantId = "", error = "", unknown = false } = {}) {
+  const grant = (state.walletInitiationGrants || []).find((item) => item?.id === grantId);
+  if (!grant) return { ok: false, status: 404, error: "wallet_initiation_grant_not_found" };
+
+  const now = new Date().toISOString();
+  grant.status = unknown ? "unknown" : "failed";
+  grant.error = String(error || "wallet_initiation_failed").slice(0, 240);
+  grant.updatedAt = now;
+  saveState();
+
+  return { ok: true, grant: publicWalletInitiationGrant(grant) };
 }
 
 export function getAccount(accountId) {

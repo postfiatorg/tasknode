@@ -17,6 +17,7 @@ import {
   getLinkedWallet,
   listChatConversations,
   usageSummary,
+  walletInitiationGrantStatus,
 } from "./runtime-store.js";
 
 function sessionState(session, providers, runtimeReadiness, linkedWallet) {
@@ -63,6 +64,10 @@ export function appState(session = null) {
   const ethDepositStatus = ethereumDepositConfigStatus();
   const ethDepositAccount = getEthereumDepositAccount({ accountId: session?.accountId || "" });
   const walletLinked = linkedWallet.status === "linked" && Boolean(linkedWallet.address);
+  const initiationGift = walletInitiationGrantStatus({
+    accountId: session?.accountId || "",
+    walletAddress: walletLinked ? linkedWallet.address : "",
+  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -139,6 +144,7 @@ export function appState(session = null) {
         ],
       },
       actions: walletActions(),
+      initiationGift,
       chatCreditUsd: usage.availableCreditUsd,
       fundingRails: [
         {

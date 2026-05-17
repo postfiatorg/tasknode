@@ -38,6 +38,32 @@ Wallet linking must follow this sequence:
 The seed phrase, private key, and wallet password must never be sent to any API,
 stored in server state, printed, logged, or committed.
 
+## New Wallet Initiation Flow
+
+The wallet page also supports `Create wallet`, which is distinct from restoring
+or relinking an existing wallet.
+
+1. `POST /api/wallet/create/start` creates a wallet proof challenge with
+   purpose `wallet_create`.
+2. The browser generates a new 24-word phrase locally and requires the user to
+   confirm that it was saved before submitting.
+3. The browser signs the challenge locally and sends only challenge id, address,
+   public key, and signature to `/api/wallet/link/verify`.
+4. The server links the wallet exactly like a normal wallet proof, then attempts
+   the one-time initiation gift only for `wallet_create` proofs.
+
+The initiation gift is 12 PFT by default. Eligibility follows the PFTasks faucet
+shape: one active claim per account, per created wallet address, and per OAuth
+provider identity hash. GitHub, X, Telegram, Discord, and future OAuth providers
+are eligible. Email-only and development sessions are not eligible. Restore,
+relink, and delink flows must not become faucet claim paths.
+
+The server-side initiation register stores public wallet address, account id,
+provider identity hashes, amount, status, and transaction hash. It never stores
+seed material. Payout requires `TASKNODE_PFT_FAUCET_SEED` or `FAUCET_SEED` plus
+a PFTL WSS endpoint. PFTL transaction signing must include the configured
+network id, defaulting to `PFTL_NETWORK_ID=2025`.
+
 ## UI Rules
 
 - A signed-out `Link wallet` click opens login, not the wallet modal.

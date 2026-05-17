@@ -631,12 +631,13 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/wallet/link/verify") {
     const payload = req.method === "POST" ? await readJson(req, 8192) : {};
-    const result = walletLinkVerify(payload, req.method, session);
+    const result = await walletLinkVerify(payload, req.method, session);
     json(res, result.status, result.body);
     return true;
   }
 
   if (
+    url.pathname === "/api/wallet/create/start" ||
     url.pathname === "/api/wallet/unlock/start" ||
     url.pathname === "/api/wallet/delink" ||
     url.pathname === "/api/wallet/relink/start"

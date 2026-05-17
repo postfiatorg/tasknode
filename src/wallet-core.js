@@ -1,4 +1,4 @@
-import { mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
+import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import sodium from "libsodium-wrappers";
 import * as keypairs from "ripple-keypairs";
@@ -25,6 +25,10 @@ export function mnemonicWordCount(mnemonic) {
 export function isValidTaskNodeMnemonic(mnemonic) {
   const normalized = normalizeMnemonic(mnemonic);
   return mnemonicWordCount(normalized) === 24 && validateMnemonic(normalized, wordlist);
+}
+
+export function generateTaskNodeMnemonic() {
+  return generateMnemonic(wordlist, 256);
 }
 
 function messageToHex(message) {
