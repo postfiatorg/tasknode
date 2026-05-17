@@ -10,6 +10,7 @@ import rewrite from "../../../docs/wiki/surfaces/rewrite.md?raw";
 import search from "../../../docs/wiki/surfaces/search.md?raw";
 import tasks from "../../../docs/wiki/surfaces/tasks.md?raw";
 import wallet from "../../../docs/wiki/surfaces/wallet.md?raw";
+import aiProviders from "../../../docs/wiki/architecture/ai-providers.md?raw";
 import database from "../../../docs/wiki/architecture/database.md?raw";
 import encryption from "../../../docs/wiki/architecture/encryption.md?raw";
 import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
@@ -60,6 +61,12 @@ export const DOC_GROUPS = [
     pages: [
       { slug: "pftl", title: "PFTL Usage", summary: "Chain records and pointer usage.", markdown: pftl },
       {
+        slug: "ai-providers",
+        title: "AI Providers",
+        summary: "Mode routing across OpenAI and OpenRouter.",
+        markdown: aiProviders,
+      },
+      {
         slug: "encryption",
         title: "Encryption",
         summary: "MessageKey and encrypted payloads.",
@@ -81,4 +88,3 @@ export const DOC_GROUPS = [
 export const DOC_PAGES = DOC_GROUPS.flatMap((group) =>
   group.pages.map((page) => ({ ...page, group: group.title }))
 );
-

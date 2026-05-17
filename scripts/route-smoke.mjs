@@ -19,7 +19,7 @@ const routes = [
   { hash: "#memory", labels: ["Memory"] },
   {
     hash: "#docs",
-    labels: ["Task Node Docs", "Product and architecture wiki"],
+    labels: ["Task Node Docs", "Product and architecture wiki", "AI Providers"],
     selectors: [".docs-rendered-diagram svg"],
   },
 ];

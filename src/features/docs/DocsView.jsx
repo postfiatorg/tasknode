@@ -269,14 +269,25 @@ function normalizeTableRow(row, count) {
 
 function renderInline(text) {
   const tokens = [];
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+  const pattern = /(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*)/g;
   let lastIndex = 0;
   let match;
 
   while ((match = pattern.exec(text)) !== null) {
     if (match.index > lastIndex) tokens.push(text.slice(lastIndex, match.index));
     const token = match[0];
-    if (token.startsWith("`")) {
+    if (token.startsWith("[")) {
+      const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+      tokens.push(
+        link ? (
+          <a href={link[2]} key={tokens.length} rel="noreferrer" target="_blank">
+            {link[1]}
+          </a>
+        ) : (
+          token
+        )
+      );
+    } else if (token.startsWith("`")) {
       tokens.push(<code key={tokens.length}>{token.slice(1, -1)}</code>);
     } else {
       tokens.push(<strong key={tokens.length}>{token.slice(2, -2)}</strong>);
