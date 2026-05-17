@@ -28,6 +28,35 @@ npm run tasknode-service-message-key -- --publish
 
 The Python reference is `reference_clients/python/tasknode_pftl/scenarios/encryption_pubkey_demo.py`.
 
+## Default TaskNode Sharing
+
+PFTL pointers do not share encryption keys. A pointer is a public transaction memo that says, in effect, "the encrypted payload for this context or task is at this CID." The sharing decision lives inside the JSON pinned to IPFS.
+
+The encrypted IPFS JSON contains:
+
+- `ciphertext`: the encrypted payload bytes.
+- `recipients`: one file-key shard per reader.
+- `recipients[].recipient_id`: `sha256(x25519_public_key_bytes)` for that reader.
+
+For Context publishing in the app, the default reader set is:
+
+- the user's unlocked wallet pubkey, so the user can restore and preview the document;
+- the TaskNode service pubkey, resolved from the service wallet `MessageKey`, so TaskNode can hydrate the pointer during replay or automation.
+
+The browser path is explicit in `src/features/context/context-publish.js`: it requests publish config, receives `tasknodeEncryptionPubkey`, derives the user pubkey, then calls `encryptTaskNodePayload({ recipientPublicKeys: [userPubkey, tasknodeEncryptionPubkey] })`.
+
+The server does not trust that blindly. Before pinning, `server/context-publish.js` resolves the TaskNode service key, computes the expected recipient id, and rejects the publish if the encrypted IPFS payload does not contain a matching TaskNode recipient shard. That means a malformed client cannot publish a context pointer that TaskNode itself cannot decrypt.
+
+For the Python full lifecycle replay, `reference_clients/python/tasknode_pftl/scenarios/full_lifecycle.py` builds recipients with `user_wallet.encryption`, `tasknode_identity`, and the verification service identity before uploading encrypted payloads to IPFS.
+
+To verify the service pubkey itself is discoverable:
+
+```bash
+npm run tasknode-service-message-key
+```
+
+To verify a published encrypted CID manually, fetch the IPFS JSON and check that one `recipients[].recipient_id` equals the `expectedRecipientId` printed by that command.
+
 ## Technical Architecture
 
 - Key derivation: `reference_clients/python/tasknode_pftl/encryption.py`
@@ -41,12 +70,14 @@ The Python reference is `reference_clients/python/tasknode_pftl/scenarios/encryp
 ```mermaid
 sequenceDiagram
   participant W as Wallet
+  participant T as TaskNode Service
   participant PFTL as PFTL
   participant Sender as Sender
   participant IPFS as IPFS
   W->>PFTL: AccountSet MessageKey
-  Sender->>PFTL: Resolve MessageKey
-  Sender->>Sender: Encrypt payload to X25519 recipients
+  T->>PFTL: AccountSet MessageKey
+  Sender->>PFTL: Resolve wallet and TaskNode MessageKeys
+  Sender->>Sender: Encrypt payload to wallet and TaskNode recipients
   Sender->>IPFS: Pin encrypted JSON
   Sender->>PFTL: Publish pointer to CID
 ```

@@ -42,6 +42,10 @@ function sha256(value = "") {
   return createHash("sha256").update(String(value || ""), "utf8").digest("hex");
 }
 
+function sha256HexBytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
 function cleanText(value = "", maxLength = 50000) {
   return String(value || "").slice(0, maxLength);
 }
@@ -257,6 +261,22 @@ function validateEncryptedPayload(payload) {
   return Boolean(encrypted.nonce && encrypted.ciphertext && Array.isArray(encrypted.recipients));
 }
 
+function recipientIdFromPublicKeyBase64(publicKey) {
+  const bytes = base64ToBytes(publicKey);
+  if (bytes.length !== sodium.crypto_box_PUBLICKEYBYTES) {
+    throw new Error("tasknode_encryption_pubkey_invalid");
+  }
+  return sha256HexBytes(bytes);
+}
+
+function encryptedPayloadHasRecipient(payload, publicKey) {
+  const expectedRecipientId = recipientIdFromPublicKeyBase64(publicKey);
+  const recipients = Array.isArray(payload?.recipients) ? payload.recipients : [];
+  return recipients.some((entry) => {
+    return String(entry?.recipient_id || "").trim().toLowerCase() === expectedRecipientId;
+  });
+}
+
 function safeTxHash(value = "") {
   const text = String(value || "").trim().toUpperCase();
   return /^[A-F0-9]{64}$/.test(text) ? text : "";
@@ -334,6 +354,25 @@ async function prepareContextPublish({ payload, session }) {
       error: "context_encrypted_payload_invalid",
       message: "Context payload must be encrypted before it is pinned.",
       actionRequired: "Unlock the local wallet vault and retry publish from the browser.",
+    });
+  }
+
+  const tasknodeEncryptionKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
+  if (!tasknodeEncryptionKey?.publicKey) {
+    return actionResponse({
+      status: 409,
+      error: "tasknode_encryption_key_missing",
+      message: "Task Node encryption key is not configured.",
+      actionRequired: "Configure the Task Node service encryption key before publishing context.",
+    });
+  }
+  if (!encryptedPayloadHasRecipient(encryptedPayload, tasknodeEncryptionKey.publicKey)) {
+    return actionResponse({
+      status: 400,
+      error: "context_tasknode_recipient_missing",
+      message: "Context payload is not encrypted to Task Node.",
+      actionRequired:
+        "Refresh the publish configuration and retry so the encrypted IPFS payload includes the Task Node recipient shard.",
     });
   }
 
