@@ -9,6 +9,7 @@ const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const providerTimeoutMs = Number(process.env.CHAT_PROVIDER_TIMEOUT_MS || 45000);
 const maxChatAttachments = 4;
 const maxAttachmentDataUrlBytes = 6 * 1024 * 1024;
+const maxTextAttachmentCharacters = 40_000;
 const webSearchUsdPerCall = 0.01;
 
 export const chatModePrices = {
@@ -241,14 +242,41 @@ function openRouterProviderPreferences({ providerOrder = [], requireParameters =
 }
 
 function decodeTextDataUrl(dataUrl) {
-  const match = /^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,(.+)$/i.exec(String(dataUrl || ""));
+  const match = /^data:([^,]*),(.*)$/is.exec(String(dataUrl || ""));
   if (!match) return "";
 
   try {
-    return Buffer.from(match[2], "base64").toString("utf8").replace(/\u0000/g, "").trim();
+    const metadata = match[1].toLowerCase();
+    const body = match[2] || "";
+    const decoded = metadata.includes(";base64")
+      ? Buffer.from(body, "base64").toString("utf8")
+      : decodeURIComponent(body);
+    return decoded.replace(/\u0000/g, "").trim();
   } catch {
     return "";
   }
+}
+
+function textAttachmentPrompt(attachment) {
+  const text = decodeTextDataUrl(attachment.dataUrl);
+  const safeText = text.slice(0, maxTextAttachmentCharacters);
+  const truncated = text.length > safeText.length;
+  return [
+    `Attached text: ${attachment.name}`,
+    truncated
+      ? `Showing the first ${safeText.length.toLocaleString("en-US")} of ${text.length.toLocaleString("en-US")} characters.`
+      : null,
+    safeText || "[The attached text could not be decoded.]",
+  ].filter(Boolean).join("\n\n");
+}
+
+export function chatInputCharacterEstimate({ message = "", attachments = [] } = {}) {
+  const attachmentCharacters = normalizeChatAttachments(attachments).reduce((total, attachment) => {
+    if (attachment.kind === "text") return total + textAttachmentPrompt(attachment).length;
+    return total + `Attached ${attachment.kind}: ${attachment.name} ${attachment.mimeType}`.length;
+  }, 0);
+
+  return String(message || "").length + attachmentCharacters;
 }
 
 function openRouterAttachmentPart(attachment) {
@@ -262,13 +290,9 @@ function openRouterAttachmentPart(attachment) {
   }
 
   if (attachment.kind === "text") {
-    const text = decodeTextDataUrl(attachment.dataUrl);
     return {
       type: "text",
-      text: [
-        `Attached file: ${attachment.name}`,
-        text ? text.slice(0, 40_000) : "[The attached text file could not be decoded.]",
-      ].join("\n\n"),
+      text: textAttachmentPrompt(attachment),
     };
   }
 
@@ -383,6 +407,14 @@ export function openAiInput({ conversationId, message, attachments = [], history
         type: "input_image",
         image_url: attachment.dataUrl,
         detail: "auto",
+      });
+      continue;
+    }
+
+    if (attachment.kind === "text") {
+      content.push({
+        type: "input_text",
+        text: textAttachmentPrompt(attachment),
       });
       continue;
     }

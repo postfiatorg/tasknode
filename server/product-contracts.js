@@ -3,6 +3,7 @@ import {
   actualChatCost,
   anyChatProviderEnabled,
   chatExecutionStatus,
+  chatInputCharacterEstimate,
   chatModeConfig,
   chatModePrices,
   executeChat,
@@ -568,9 +569,10 @@ function chatExecutionPreflight(payload, method, action = "chat_send") {
 }
 
 export function chatEstimate(payload) {
-  const { message, mode } = chatPayload(payload);
+  const { message, mode, attachments } = chatPayload(payload);
   const modeConfig = chatModeConfig(mode);
-  const inputTokens = Math.max(1, Math.ceil(message.length / 4));
+  const inputCharacters = chatInputCharacterEstimate({ message, attachments });
+  const inputTokens = Math.max(1, Math.ceil(inputCharacters / 4));
   const estimatedOutputTokens = modeConfig.maxOutputTokens || (mode.includes("Thinking") ? 1800 : 700);
   const estimatedUsd = actualChatCost(mode, {
     inputTokens,

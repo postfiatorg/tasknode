@@ -129,9 +129,29 @@ try {
   if (
     frontierRequest.model !== "chat-latest" ||
     frontierRequest.tools?.[0]?.type !== "web_search" ||
-    frontierRequest.input?.[0]?.content?.[1]?.type !== "input_file"
+    frontierRequest.input?.[0]?.content?.[1]?.type !== "input_text" ||
+    !frontierRequest.input?.[0]?.content?.[1]?.text?.includes("Hello world")
   ) {
-    throw new Error(`OpenAI Responses request is missing search or attachment support: ${JSON.stringify(frontierRequest)}`);
+    throw new Error(`OpenAI Responses request is missing search or readable text attachment support: ${JSON.stringify(frontierRequest)}`);
+  }
+
+  const frontierPdfRequest = openAiResponseRequest({
+    mode: "Frontier Instant",
+    model: "chat-latest",
+    message: "Read the attached PDF.",
+    conversationId: "runtime-smoke-response-pdf-contract",
+    attachments: [
+      {
+        name: "source.pdf",
+        mimeType: "application/pdf",
+        size: 12,
+        dataUrl: "data:application/pdf;base64,JVBERi0xLjQK",
+      },
+    ],
+  });
+
+  if (frontierPdfRequest.input?.[0]?.content?.[1]?.type !== "input_file") {
+    throw new Error(`OpenAI Responses PDF request should preserve file attachment support: ${JSON.stringify(frontierPdfRequest)}`);
   }
 
   const basicFrontierRequest = openAiResponseRequest({
