@@ -35,6 +35,24 @@ function normalizeWssUrl(value) {
   }
 }
 
+function endpointHost(value) {
+  try {
+    return new URL(value).host;
+  } catch {
+    return "configured-endpoint";
+  }
+}
+
+function isLocalOrPrivateHost(hostname = "") {
+  const host = String(hostname || "").trim().toLowerCase();
+  if (host === "localhost" || host === "::1") return true;
+  if (/^127\./.test(host)) return true;
+  if (/^10\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  const match = host.match(/^172\.(\d{1,2})\./);
+  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
+}
+
 function endpointCandidates(env = process.env) {
   const explicit = splitUrls(env.PFTL_WSS_URL || env.VITE_PFTL_WSS_URL).map(normalizeWssUrl);
   const fallback = splitUrls(env.PFTL_WSS_URL_FALLBACKS).map(normalizeWssUrl);
@@ -69,14 +87,33 @@ function wssRejectUnauthorized(env, url) {
 
   try {
     const hostname = new URL(url).hostname;
-    const localOnly = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
     const explicitlyAllowed =
       ["false", "0", "no"].includes(configured) &&
       env.TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS === "true";
-    return !(localOnly && explicitlyAllowed);
+    return !(isLocalOrPrivateHost(hostname) && explicitlyAllowed);
   } catch {
     return true;
   }
+}
+
+function sanitizePftlConnectError(error) {
+  const raw = String(
+    error?.data?.error ||
+      error?.data?.error_message ||
+      error?.code ||
+      error?.message ||
+      error ||
+      "pftl_connect_failed"
+  );
+  if (/self-signed|certificate/i.test(raw)) return "pftl_tls_certificate_rejected";
+  if (/timed out|timeout/i.test(raw)) return "pftl_wss_connect_timeout";
+  if (/ECONNREFUSED/i.test(raw)) return "pftl_wss_connection_refused";
+  if (/ENOTFOUND/i.test(raw)) return "pftl_wss_host_not_found";
+  return raw
+    .replace(/rippled/gi, "PFTL")
+    .replace(/xrpl/gi, "PFTL")
+    .replace(/[^a-zA-Z0-9_.:-]+/g, "_")
+    .slice(0, 120);
 }
 
 function clientOptionsForEndpoint({ endpoint, index, env, timeoutMs }) {
@@ -106,7 +143,7 @@ async function connectPftlClient({ env = process.env, timeoutMs = DEFAULT_TIMEOU
       await client.connect();
       return { client, endpoint };
     } catch (error) {
-      attempts.push({ endpoint, error: error?.message || "pftl_connect_failed" });
+      attempts.push({ endpointHost: endpointHost(endpoint), error: sanitizePftlConnectError(error) });
       try {
         if (client.isConnected()) await client.disconnect();
       } catch {
@@ -115,8 +152,9 @@ async function connectPftlClient({ env = process.env, timeoutMs = DEFAULT_TIMEOU
     }
   }
 
-  const error = new Error(attempts.at(-1)?.error || "pftl_wss_connect_failed");
+  const error = new Error("PFTL websocket endpoint could not be reached.");
   error.status = 502;
+  error.code = "pftl_wss_connect_failed";
   error.attempts = attempts;
   throw error;
 }

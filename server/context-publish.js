@@ -343,6 +343,9 @@ export async function contextManifestInk(payload = {}, method = "POST", session 
       error: error?.code || error?.message || "context_publish_failed",
       message: error?.message || "Context could not be published to PFT.",
       actionRequired: "Check wallet balance, PFTL connectivity, and IPFS configuration, then retry.",
+      extra: {
+        attempts: Array.isArray(error?.attempts) ? error.attempts : undefined,
+      },
     });
   }
 }

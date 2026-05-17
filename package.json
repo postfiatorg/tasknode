@@ -31,6 +31,7 @@
     "memory:backfill": "node scripts/memory-backfill.mjs",
     "runtime-smoke": "node scripts/runtime-store-smoke.mjs",
     "context-history-rpc-smoke": "node scripts/context-history-rpc-smoke.mjs",
+    "context-publish-live-smoke": "node scripts/context-publish-live-smoke.mjs",
     "wallet-balance-smoke": "node scripts/wallet-balance-smoke.mjs",
     "wallet-transactions-smoke": "node scripts/wallet-transactions-smoke.mjs",
     "eth-deposit-wallet": "node scripts/generate-eth-deposit-wallet.mjs",

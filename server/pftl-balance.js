@@ -56,6 +56,16 @@ function hostLabel(value) {
   }
 }
 
+function isLocalOrPrivateHost(hostname = "") {
+  const host = String(hostname || "").trim().toLowerCase();
+  if (host === "localhost" || host === "::1") return true;
+  if (/^127\./.test(host)) return true;
+  if (/^10\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  const match = host.match(/^172\.(\d{1,2})\./);
+  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
+}
+
 function coerceDrops(value) {
   if (value === null || value === undefined || value === "") return null;
   const text = String(value).trim();
@@ -132,11 +142,10 @@ function wssRejectUnauthorized(env, url) {
 
   try {
     const hostname = new URL(url).hostname;
-    const localOnly = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
     const explicitlyAllowed =
       ["false", "0", "no"].includes(configured) &&
       env.TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS === "true";
-    if (localOnly && explicitlyAllowed) {
+    if (isLocalOrPrivateHost(hostname) && explicitlyAllowed) {
       return false;
     }
   } catch {
