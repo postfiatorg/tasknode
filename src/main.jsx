@@ -326,7 +326,7 @@ function App() {
       .then(([config, state]) => {
         if (!active) return;
         setRuntimeConfig(config);
-        setAppState(state);
+        setAppState((current) => mergeAppStateWithClientWalletBalance(current, state));
       })
       .catch((error) => {
         if (active) setLoadError(error?.message || "Failed to load app state");
@@ -582,7 +582,7 @@ function App() {
   async function refreshAppState() {
     try {
       const state = await fetchAppState();
-      setAppState(state);
+      setAppState((current) => mergeAppStateWithClientWalletBalance(current, state));
       const nextAccountId = isSignedInSession(state?.session) ? state.session.accountId || "" : "";
       await refreshWalletVaultStatus({ preserveUnlock: true, accountId: nextAccountId });
       setLoadError("");
@@ -6398,6 +6398,39 @@ function ProviderIcon({ id }) {
 
 function StatusBanner({ children, tone = "default" }) {
   return <div className={`status-banner ${tone}`}>{children}</div>;
+}
+
+function linkedWalletAddressFromState(state) {
+  const wallet = state?.wallet?.pftWallet || {};
+  return wallet.status === "linked" ? wallet.address || "" : "";
+}
+
+function hasClientPftBalance(wallet) {
+  return wallet?.pftBalanceDrops !== null &&
+    wallet?.pftBalanceDrops !== undefined &&
+    wallet?.pftBalanceDrops !== "";
+}
+
+function mergeAppStateWithClientWalletBalance(current, next) {
+  if (!current || !next) return next;
+  const currentAddress = linkedWalletAddressFromState(current);
+  const nextAddress = linkedWalletAddressFromState(next);
+  if (!currentAddress || currentAddress !== nextAddress) return next;
+  if (next?.wallet?.pftBalanceStatus !== "checking") return next;
+  if (!hasClientPftBalance(current.wallet)) return next;
+
+  return {
+    ...next,
+    wallet: {
+      ...next.wallet,
+      pftBalanceDrops: current.wallet.pftBalanceDrops,
+      pftBalanceStatus: current.wallet.pftBalanceStatus,
+      pftBalanceSource: current.wallet.pftBalanceSource,
+      pftBalanceFetchedAt: current.wallet.pftBalanceFetchedAt,
+      pftBalanceAccountExists: current.wallet.pftBalanceAccountExists,
+      pftBalanceError: current.wallet.pftBalanceError || "",
+    },
+  };
 }
 
 function sameLinkedWallet(current, address) {
