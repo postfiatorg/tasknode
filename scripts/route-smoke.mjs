@@ -17,6 +17,7 @@ const routes = [
   { hash: "#context", labels: ["Context document", "Versions"] },
   { hash: "#tasks", labels: ["Tasks"] },
   { hash: "#memory", labels: ["Memory"] },
+  { hash: "#docs", labels: ["Task Node Docs", "Product and architecture wiki"] },
 ];
 
 let server;

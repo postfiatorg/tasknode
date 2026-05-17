@@ -94,12 +94,9 @@ import { escapeContextHtml, looksLikeContextHtml, sanitizeContextHtml } from "..
 import "./styles.css";
 import "./features/context/context.css";
 
-const WalletView = lazy(() =>
-  import("./features/wallet/WalletView").then((module) => ({ default: module.WalletView })),
-);
-const MemoryView = lazy(() =>
-  import("./features/memory/MemoryView").then((module) => ({ default: module.MemoryView })),
-);
+const WalletView = lazy(() => import("./features/wallet/WalletView").then((module) => ({ default: module.WalletView })));
+const MemoryView = lazy(() => import("./features/memory/MemoryView").then((module) => ({ default: module.MemoryView })));
+const DocsView = lazy(() => import("./features/docs/DocsView").then((module) => ({ default: module.DocsView })));
 
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
 const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
@@ -256,7 +253,7 @@ const SETTINGS_PAGES = [
   { key: "billing", label: "Billing", icon: CreditCard },
 ];
 
-const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "profile", "memory"]);
+const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "profile", "memory", "docs"]);
 const EMPTY_WALLET_VAULT_STATUS = {
   available: false,
   unlocked: false,
@@ -909,7 +906,7 @@ function App() {
                       navigateToView("profile");
                     }}
                   />
-                  <ToolMenuRow icon={LifeBuoy} label="Help" trailing={<ChevronRight size={14} />} />
+                  <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("docs")} trailing={<ChevronRight size={14} />} />
                   <div className="menu-divider" />
                   <ToolMenuRow icon={LogOut} label="Log out" onClick={logOut} />
                 </div>
@@ -991,6 +988,7 @@ function App() {
             <MemoryView session={appState?.session} />
           </Suspense>
         )}
+        {view === "docs" && <Suspense fallback={<StatusBanner>Loading docs</StatusBanner>}><DocsView /></Suspense>}
       </section>
 
       {loginOpen && (

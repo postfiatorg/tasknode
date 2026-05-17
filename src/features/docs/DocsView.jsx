@@ -1,0 +1,224 @@
+import React, { useMemo, useState } from "react";
+import { BookOpen, ChevronRight, Search } from "lucide-react";
+import { DOC_GROUPS, DOC_PAGES } from "./docs-content";
+import "./docs.css";
+
+const DEFAULT_DOC = "start";
+
+export function DocsView() {
+  const [selectedSlug, setSelectedSlug] = useState(DEFAULT_DOC);
+  const [query, setQuery] = useState("");
+  const selectedPage = DOC_PAGES.find((page) => page.slug === selectedSlug) || DOC_PAGES[0];
+  const filteredGroups = useMemo(() => filterGroups(DOC_GROUPS, query), [query]);
+
+  return (
+    <div className="docs-view">
+      <aside className="docs-sidebar" aria-label="Docs navigation">
+        <div className="docs-brand">
+          <span>
+            <BookOpen size={18} strokeWidth={1.75} />
+          </span>
+          <div>
+            <strong>Task Node Docs</strong>
+            <small>Product and architecture wiki</small>
+          </div>
+        </div>
+        <label className="docs-search">
+          <Search size={15} strokeWidth={1.75} />
+          <input
+            aria-label="Search docs"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search docs"
+            type="search"
+            value={query}
+          />
+        </label>
+        <nav className="docs-nav">
+          {filteredGroups.map((group) => (
+            <section key={group.title}>
+              <h2>{group.title}</h2>
+              {group.pages.map((page) => (
+                <button
+                  className={page.slug === selectedPage.slug ? "active" : ""}
+                  key={page.slug}
+                  onClick={() => setSelectedSlug(page.slug)}
+                  type="button"
+                >
+                  <span>
+                    <strong>{page.title}</strong>
+                    <small>{page.summary}</small>
+                  </span>
+                  <ChevronRight size={14} strokeWidth={1.75} />
+                </button>
+              ))}
+            </section>
+          ))}
+        </nav>
+      </aside>
+      <article className="docs-content" aria-labelledby="docs-page-title">
+        <header className="docs-header">
+          <span>{selectedPage.group}</span>
+          <h1 id="docs-page-title">{selectedPage.title}</h1>
+          <p>{selectedPage.summary}</p>
+        </header>
+        <MarkdownArticle markdown={selectedPage.markdown} />
+      </article>
+    </div>
+  );
+}
+
+function filterGroups(groups, query) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return groups;
+
+  return groups
+    .map((group) => ({
+      ...group,
+      pages: group.pages.filter((page) =>
+        `${page.title} ${page.summary} ${page.markdown}`.toLowerCase().includes(needle)
+      ),
+    }))
+    .filter((group) => group.pages.length > 0);
+}
+
+function MarkdownArticle({ markdown }) {
+  return (
+    <div className="docs-markdown">
+      {parseMarkdown(markdown).map((block, index) => (
+        <MarkdownBlock block={block} key={index} />
+      ))}
+    </div>
+  );
+}
+
+function MarkdownBlock({ block }) {
+  if (block.type === "h1") return null;
+  if (block.type === "h2") return <h2>{block.text}</h2>;
+  if (block.type === "h3") return <h3>{block.text}</h3>;
+  if (block.type === "p") return <p>{renderInline(block.text)}</p>;
+  if (block.type === "ul") {
+    return (
+      <ul>
+        {block.items.map((item, index) => (
+          <li key={index}>{renderInline(item)}</li>
+        ))}
+      </ul>
+    );
+  }
+  if (block.type === "ol") {
+    return (
+      <ol>
+        {block.items.map((item, index) => (
+          <li key={index}>{renderInline(item)}</li>
+        ))}
+      </ol>
+    );
+  }
+  if (block.type === "code") {
+    return (
+      <pre className={block.lang === "mermaid" ? "docs-diagram" : ""}>
+        <code>{block.text}</code>
+      </pre>
+    );
+  }
+  return null;
+}
+
+function parseMarkdown(markdown) {
+  const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let paragraph = [];
+  let list = null;
+  let code = null;
+
+  function flushParagraph() {
+    if (paragraph.length === 0) return;
+    blocks.push({ type: "p", text: paragraph.join(" ") });
+    paragraph = [];
+  }
+
+  function flushList() {
+    if (!list) return;
+    blocks.push(list);
+    list = null;
+  }
+
+  for (const line of lines) {
+    const raw = line.trimEnd();
+    const trimmed = raw.trim();
+    const fence = trimmed.match(/^```(\w+)?/);
+
+    if (fence) {
+      if (code) {
+        blocks.push({ type: "code", lang: code.lang, text: code.lines.join("\n") });
+        code = null;
+      } else {
+        flushParagraph();
+        flushList();
+        code = { lang: fence[1] || "", lines: [] };
+      }
+      continue;
+    }
+
+    if (code) {
+      code.lines.push(raw);
+      continue;
+    }
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: `h${heading[1].length}`, text: heading[2] });
+      continue;
+    }
+
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+    const ordered = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (bullet || ordered) {
+      flushParagraph();
+      const type = bullet ? "ul" : "ol";
+      if (!list || list.type !== type) {
+        flushList();
+        list = { type, items: [] };
+      }
+      list.items.push((bullet || ordered)[1]);
+      continue;
+    }
+
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  flushList();
+  if (code) blocks.push({ type: "code", lang: code.lang, text: code.lines.join("\n") });
+  return blocks;
+}
+
+function renderInline(text) {
+  const tokens = [];
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) tokens.push(text.slice(lastIndex, match.index));
+    const token = match[0];
+    if (token.startsWith("`")) {
+      tokens.push(<code key={tokens.length}>{token.slice(1, -1)}</code>);
+    } else {
+      tokens.push(<strong key={tokens.length}>{token.slice(2, -2)}</strong>);
+    }
+    lastIndex = match.index + token.length;
+  }
+
+  if (lastIndex < text.length) tokens.push(text.slice(lastIndex));
+  return tokens;
+}
+
