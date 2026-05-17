@@ -21,6 +21,7 @@ import {
   contextActionStart,
   contextActions,
   contextEditSave,
+  contextManifestInk,
   contextHistoryRpcImport,
   contextIndexedHistoryImport,
   contextHistoryIpfsFetch,
@@ -847,11 +848,15 @@ async function routeApi(req, url, res) {
     return true;
   }
 
-  if (
-    url.pathname === "/api/context/import/start" ||
-    url.pathname === "/api/context/manifest/ink"
-  ) {
+  if (url.pathname === "/api/context/import/start") {
     const result = contextActionStart(url.pathname, req.method);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/context/manifest/ink") {
+    const payload = req.method === "POST" ? await readJson(req, 1_200_000) : {};
+    const result = await contextManifestInk(payload, req.method, session);
     json(res, result.status, result.body);
     return true;
   }

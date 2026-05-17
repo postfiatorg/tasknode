@@ -74,7 +74,13 @@ async function main() {
     for (const route of routes) {
       runtimeExceptions.length = 0;
       const url = `${baseUrl}/${route.hash}`;
+      const pageLoad = waitForPageLoad();
       await cdp.send("Page.navigate", { url });
+      await pageLoad;
+      await sleep(400);
+      if (runtimeExceptions.length > 0) {
+        throw new Error(`Runtime exception on ${route.hash || "/"}:\n${runtimeExceptions.join("\n")}`);
+      }
       await waitForRootText();
       await sleep(400);
 
@@ -91,7 +97,9 @@ async function main() {
       }
     }
 
+    const pageLoad = waitForPageLoad();
     await cdp.send("Page.navigate", { url: baseUrl });
+    await pageLoad;
     await waitForRootText();
     await sleep(400);
     await assertComposerFileDrop();
@@ -175,7 +183,36 @@ async function waitForRootText() {
     if (rootText.length > 0) return rootText;
     await sleep(100);
   }
-  throw new Error("React root stayed blank.");
+  const detail = await evaluate(`({
+    url: location.href,
+    readyState: document.readyState,
+    title: document.title,
+    bodyText: document.body?.innerText?.slice(0, 500) || '',
+    rootHtml: document.querySelector('#root')?.outerHTML?.slice(0, 500) || '',
+  })`);
+  throw new Error(`React root stayed blank: ${JSON.stringify(detail)}`);
+}
+
+async function waitForPageLoad(timeoutMs = 1500) {
+  let cleanup = () => {};
+  try {
+    await Promise.race([
+      new Promise((resolve) => {
+        const handler = () => {
+          cleanup();
+          resolve();
+        };
+        cleanup = () => {
+          const handlers = cdp.handlers.get("Page.loadEventFired") || [];
+          cdp.handlers.set("Page.loadEventFired", handlers.filter((entry) => entry !== handler));
+        };
+        cdp.on("Page.loadEventFired", handler);
+      }),
+      sleep(timeoutMs),
+    ]);
+  } finally {
+    cleanup();
+  }
 }
 
 async function assertComposerFileDrop() {

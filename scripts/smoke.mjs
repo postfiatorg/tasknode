@@ -722,7 +722,7 @@ await check("/api/context/actions", (response, text) => {
     historyAction?.enabled === true &&
     cidFetchAction?.enabled === true &&
     importAction?.enabled === false &&
-    inkAction?.enabled === false
+    inkAction?.enabled === true
   );
 });
 
@@ -756,10 +756,7 @@ await checkRequest(`/api/context/history/ipfs/${smokeContextCid}`, { method: "GE
 
 await checkRequest("/api/context/manifest/ink", { method: "POST" }, (response, text) => {
   const body = JSON.parse(text);
-  return (
-    [409, 503].includes(response.status) &&
-    ["context_action_not_configured", "context_action_disabled"].includes(body.error)
-  );
+  return response.status === 401 && body.error === "context_login_required";
 });
 
 await check("/api/auth/providers", (response, text) => {
@@ -823,7 +820,7 @@ await check("/api/readiness", (response, text) => {
     body.context?.importReady === false &&
     body.context?.indexedHistoryReady === true &&
     body.context?.encryptedCidHydrationReady === true &&
-    body.context?.manifestInkReady === false &&
+    typeof body.context?.manifestInkReady === "boolean" &&
     body.billing?.model === "usage_based" &&
     body.billing?.chatEstimateReady === true &&
     typeof body.billing?.adminCreditReady === "boolean" &&

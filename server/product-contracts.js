@@ -43,6 +43,8 @@ import {
   saveIndexedContextHistory,
 } from "./repositories/context.js";
 import { fetchContextIpfsJson, normalizeContextCid } from "./context-ipfs.js";
+import { contextPublishStatus } from "./context-publish.js";
+export { contextManifestInk } from "./context-publish.js";
 import { discoverContextHistoryFromRpc } from "./context-history-rpc.js";
 import {
   ethereumDepositConfigStatus,
@@ -897,11 +899,11 @@ export function contextActions() {
       id: "ink_manifest",
       label: "Ink PFTL manifest",
       path: "/api/context/manifest/ink",
-      requiredEnv: ["PFTL_RPC_URL", "PFTL_RPC_API_KEY"],
+      enabled: true,
       note:
-        "Explicitly writes a portable context manifest pointer to PFTL after wallet unlock.",
+        "Encrypts the native context document, pins it to IPFS, and signs a portable pf.ptr/v4 CONTEXT pointer from the unlocked wallet.",
       actionRequired:
-        "Implement manifest schema, wallet unlock confirmation, pointer transaction creation, and index verification before enabling manifest ink.",
+        "Unlock the local seed vault in the browser. The seed never leaves the device; the server only receives the encrypted payload and signed transaction blob.",
     }),
   ];
 }
@@ -2679,6 +2681,7 @@ export async function readiness() {
   const chatExecutionReady = anyChatProviderEnabled();
   const emailStatus = emailDeliveryStatus();
   const ethDeposits = ethereumDepositConfigStatus();
+  const publishStatus = await contextPublishStatus();
   return {
     generatedAt: new Date().toISOString(),
     auth: {
@@ -2706,10 +2709,10 @@ export async function readiness() {
       ]),
       challengeProofReady: true,
       seedStorageReady: true,
-      lifecycleActionsReady: false,
+      lifecycleActionsReady: publishStatus.configured,
       blockers: [
-        "PFTL transaction signing boundary is not implemented",
-        "Wallet-bound payout and manifest signing confirmation screens are not implemented",
+        ...(publishStatus.configured ? [] : ["PFTL context publish dependencies are not fully configured"]),
+        "Wallet-bound payout confirmation screens are not implemented",
       ],
     },
     context: {
@@ -2718,11 +2721,11 @@ export async function readiness() {
       indexedHistoryReady: true,
       historyRpcReady: true,
       encryptedCidHydrationReady: true,
-      manifestInkReady: false,
+      manifestInkReady: publishStatus.configured,
       blockers: [
         "Historical context plaintext is local-session only and not yet summarized into durable chat context",
         "Shared URL fetch and cache adapters are not implemented",
-        "PFTL manifest pointer creation is not implemented",
+        ...(publishStatus.configured ? [] : ["PFTL manifest publish dependencies are not fully configured"]),
       ],
     },
     billing: {

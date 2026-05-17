@@ -76,6 +76,35 @@ export function signWalletChallenge(mnemonic, message) {
   };
 }
 
+export function signPreparedPftlTransaction({ mnemonic, txJson, expectedAddress = "" } = {}) {
+  const normalized = normalizeMnemonic(mnemonic);
+  if (!isValidTaskNodeMnemonic(normalized)) {
+    throw new Error("INVALID_MNEMONIC");
+  }
+  if (!txJson || typeof txJson !== "object") {
+    throw new Error("MISSING_TRANSACTION_PAYLOAD");
+  }
+
+  const wallet = Wallet.fromMnemonic(normalized, {
+    mnemonicEncoding: "bip39",
+    derivationPath: TASKNODE_DERIVATION_PATH,
+  });
+  const expected = String(expectedAddress || txJson.Account || "").trim();
+  if (expected && wallet.classicAddress !== expected) {
+    throw new Error("WALLET_TRANSACTION_ADDRESS_MISMATCH");
+  }
+  if (txJson.Account && txJson.Account !== wallet.classicAddress) {
+    throw new Error("WALLET_TRANSACTION_ADDRESS_MISMATCH");
+  }
+
+  const signed = wallet.sign(txJson);
+  return {
+    address: wallet.classicAddress,
+    txBlob: signed.tx_blob,
+    txHash: signed.hash || null,
+  };
+}
+
 function requireBrowserCrypto() {
   const api = globalThis.crypto;
   if (!api?.subtle || typeof api.getRandomValues !== "function") {
@@ -209,7 +238,7 @@ export async function decryptTaskNodePayload({ blob, mnemonic }) {
   return textDecoder.decode(plaintextBytes);
 }
 
-export async function encryptTaskNodePayloadForTests({ plaintext, recipientPublicKeys } = {}) {
+export async function encryptTaskNodePayload({ plaintext, recipientPublicKeys } = {}) {
   const libsodium = await getSodium();
   const textBytes = textEncoder.encode(String(plaintext || ""));
   const fileKey = libsodium.randombytes_buf(libsodium.crypto_aead_xchacha20poly1305_ietf_KEYBYTES);
@@ -248,6 +277,10 @@ export async function encryptTaskNodePayloadForTests({ plaintext, recipientPubli
     content_hash: bytesToLowerHex(await sha256Bytes(textBytes)),
     recipients,
   };
+}
+
+export async function encryptTaskNodePayloadForTests(args = {}) {
+  return encryptTaskNodePayload(args);
 }
 
 export async function hydrateTaskNodeFetchedPayload({ payload, mnemonic }) {

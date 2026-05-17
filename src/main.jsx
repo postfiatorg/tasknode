@@ -73,6 +73,13 @@ import {
 } from "./chat-attachments";
 import { markdownToBlocks, plainTextFromBlocks } from "./features/chat/chat-markdown";
 import { BillingSettings } from "./features/billing/BillingSettings";
+import { publishContextToPft } from "./features/context/context-publish";
+import {
+  ContextToolButton,
+  contextWordCount,
+  stripContextHtml,
+  truncateCid,
+} from "./features/context/context-view-utils.jsx";
 import {
   applyWalletBalanceError,
   applyWalletBalanceResult,
@@ -484,6 +491,23 @@ function App() {
     },
     [walletAccountId]
   );
+
+  async function publishContextPointer({
+    title = "Task Node Context",
+    body = "",
+    revision = 0,
+    wordCount = 0,
+    path = "/api/context/manifest/ink",
+  } = {}) {
+    return publishContextToPft({
+      accountId: walletAccountId,
+      linkedWalletAddress,
+      walletSecret: walletSecretRef.current,
+      path,
+      context: { title, body, revision, wordCount },
+      onPublished: refreshAppState,
+    });
+  }
 
   const navigateToView = useCallback((nextView, options = {}) => {
     const normalizedView = APP_VIEWS.has(nextView) ? nextView : "chat";
@@ -950,6 +974,7 @@ function App() {
             linkedWalletAddress={linkedWalletAddress}
             onContextChange={refreshAppState}
             onHydrateContext={hydrateContextPointer}
+            onPublishContext={publishContextPointer}
             walletVault={walletVaultStatus}
           />
         )}
@@ -2811,26 +2836,6 @@ function contextBodyToHtml(value) {
   return looksLikeContextHtml(text) ? sanitizeContextHtml(text) : contextTextToHtml(text);
 }
 
-function stripContextHtml(value) {
-  return String(value || "")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function contextWordCount(value) {
-  const text = stripContextHtml(value);
-  return text ? text.split(/\s+/).filter(Boolean).length : 0;
-}
-
-function truncateCid(cid) {
-  const text = String(cid || "");
-  if (text.length <= 18) return text;
-  return `${text.slice(0, 10)}...${text.slice(-6)}`;
-}
-
 function buildContextVersions(documentState = {}, history = {}) {
   const versions = [];
   const currentHtml = contextBodyToHtml(documentState.body || "");
@@ -2864,26 +2869,7 @@ function buildContextVersions(documentState = {}, history = {}) {
   return versions;
 }
 
-function ContextToolButton({ active, children, disabled = false, onMouseDown, title }) {
-  return (
-    <button
-      aria-label={title}
-      aria-pressed={active ? "true" : "false"}
-      className={`ctx-tool-btn${active ? " is-active" : ""}`}
-      disabled={disabled}
-      onMouseDown={(event) => {
-        event.preventDefault();
-        if (!disabled) onMouseDown?.(event);
-      }}
-      title={title}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
-
-function ContextView({ context, linkedWalletAddress = "", onContextChange, onHydrateContext, walletVault }) {
+function ContextView({ context, linkedWalletAddress = "", onContextChange, onHydrateContext, onPublishContext, walletVault }) {
   const initialDocument = context?.document || {};
   const savePath = context?.savePath || initialDocument.savePath || "/api/context/edit/save";
   const history = context?.history || {};
@@ -3432,16 +3418,31 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       const saved = await saveContext();
       if (!saved) return;
     }
-
-    if (!manifestAction?.enabled) {
-      setSaveMessage("Publishing is not enabled yet.");
+    if (!walletVault?.unlocked) {
+      setSaveMessage("Unlock wallet vault to publish.");
+      return;
+    }
+    if (!linkedWalletAddress) {
+      setSaveMessage("Link a PFT wallet before publishing.");
+      return;
+    }
+    if (typeof onPublishContext !== "function") {
+      setSaveMessage("Publishing is unavailable.");
       return;
     }
 
     setPublishing(true);
     try {
-      const result = await requestJson(manifestAction.path, { method: manifestAction.method || "POST" });
-      setSaveMessage(result.body?.message || (result.ok ? "Published" : "Publishing is unavailable."));
+      const body = sanitizeContextHtml(editorRef.current?.innerHTML || documentState.body || "");
+      const result = await onPublishContext({
+        title,
+        body,
+        revision: documentState.revision || 0,
+        wordCount: contextWordCount(body),
+        path: manifestAction?.path || "/api/context/manifest/ink",
+      });
+      setSaveMessage(result?.message || "Published to PFT.");
+      await onContextChange?.();
     } catch (error) {
       setSaveMessage(error?.message || "Publishing is unavailable.");
     } finally {
@@ -3607,7 +3608,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
                   {publishing ? "Publishing" : "Publish to PFT"}
                 </button>
                 <span className="ctx-tip-card" role="tooltip">
-                  Portable publishing will write an immutable context pointer when manifest signing is enabled.
+                  Encrypts the document, pins it to IPFS, and writes an immutable PFT context pointer.
                 </span>
               </span>
             </div>

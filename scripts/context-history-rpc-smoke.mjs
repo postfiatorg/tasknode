@@ -6,6 +6,7 @@ import {
   extractPftPointerEvents,
   historyRpcConfig,
 } from "../server/context-history-rpc.js";
+import { buildPftPointerMemo } from "../server/pftl-pointer.js";
 
 const textEncoder = new TextEncoder();
 const walletAddress = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh";
@@ -75,6 +76,20 @@ assert.equal(contextPointer.kind, 5);
 assert.equal(contextPointer.kindLabel, "CONTEXT");
 assert.equal(contextPointer.schema, 4);
 assert.equal(contextPointer.contextId, "ctx-1");
+
+const builtPointer = buildPftPointerMemo({
+  cid: "bafycontextbuilt",
+  kind: "CONTEXT",
+  schema: 1,
+  flags: 1,
+  contextId: "ctx-built",
+});
+const decodedBuiltPointer = decodePftPointerMemo(builtPointer.memoDataHex);
+assert.equal(Buffer.from(builtPointer.memoTypeHex, "hex").toString("utf8"), "pf.ptr");
+assert.equal(Buffer.from(builtPointer.memoFormatHex, "hex").toString("utf8"), "v4");
+assert.equal(decodedBuiltPointer.cid, "bafycontextbuilt");
+assert.equal(decodedBuiltPointer.kind, 5);
+assert.equal(decodedBuiltPointer.contextId, "ctx-built");
 
 const transactions = [
   {
