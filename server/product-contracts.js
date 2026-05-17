@@ -28,11 +28,8 @@ import {
   completeWalletInitiationGrant,
   failWalletInitiationGrant,
   recordAuthEvent,
-  getContextHistory,
   getLinkedWallet,
   reserveWalletInitiationGrant,
-  saveContextDocument,
-  saveIndexedContextHistory,
   walletInitiationGrantStatus,
 } from "./runtime-store.js";
 import {
@@ -40,6 +37,11 @@ import {
   chatBillingStatus,
   usageSummary,
 } from "./repositories/chat-billing.js";
+import {
+  getContextHistory,
+  saveContextDocument,
+  saveIndexedContextHistory,
+} from "./repositories/context.js";
 import { fetchContextIpfsJson, normalizeContextCid } from "./context-ipfs.js";
 import { discoverContextHistoryFromRpc } from "./context-history-rpc.js";
 import {
@@ -960,7 +962,7 @@ export function contextActionStart(pathname, method) {
   });
 }
 
-export function contextEditSave(payload, method, session = null) {
+export async function contextEditSave(payload, method, session = null) {
   const action = contextActionByPath("/api/context/edit/save");
 
   if (method !== action.method) {
@@ -983,7 +985,7 @@ export function contextEditSave(payload, method, session = null) {
     });
   }
 
-  const result = saveContextDocument({
+  const result = await saveContextDocument({
     accountId: session.accountId,
     title: payload?.title,
     body: payload?.body,
@@ -1010,7 +1012,7 @@ export function contextEditSave(payload, method, session = null) {
   };
 }
 
-export function contextIndexedHistoryImport(payload, method, session = null) {
+export async function contextIndexedHistoryImport(payload, method, session = null) {
   const action = contextActionByPath("/api/context/history/indexed");
 
   if (method !== action.method) {
@@ -1066,7 +1068,7 @@ export function contextIndexedHistoryImport(payload, method, session = null) {
     });
   }
 
-  const result = saveIndexedContextHistory({
+  const result = await saveIndexedContextHistory({
     accountId: session.accountId,
     snapshot: {
       ...snapshot,
@@ -1167,12 +1169,12 @@ export async function contextHistoryRpcImport(payload, method, session = null) {
         action: action.id,
         message: "No historical PFT context pointers were found for the linked wallet.",
         discovery: summary,
-        history: getContextHistory({ accountId: session.accountId, walletAddress: wallet.address }),
+        history: await getContextHistory({ accountId: session.accountId, walletAddress: wallet.address }),
       },
     };
   }
 
-  const existingHistory = getContextHistory({ accountId: session.accountId, walletAddress: wallet.address });
+  const existingHistory = await getContextHistory({ accountId: session.accountId, walletAddress: wallet.address });
   const mergedSnapshot = {
     ...discovery.snapshot,
     contextRevisions: [
@@ -1186,7 +1188,7 @@ export async function contextHistoryRpcImport(payload, method, session = null) {
     taskEvents: Array.isArray(existingHistory.taskEvents) ? existingHistory.taskEvents : [],
   };
 
-  const result = saveIndexedContextHistory({
+  const result = await saveIndexedContextHistory({
     accountId: session.accountId,
     snapshot: {
       ...mergedSnapshot,
@@ -1269,7 +1271,7 @@ export async function contextHistoryIpfsFetch({ cid } = {}, method, session = nu
     });
   }
 
-  const history = getContextHistory({ accountId: session.accountId, walletAddress: wallet.address });
+  const history = await getContextHistory({ accountId: session.accountId, walletAddress: wallet.address });
   if (!contextHistoryCids(history).has(normalizedCid)) {
     return actionResponse({
       status: 404,

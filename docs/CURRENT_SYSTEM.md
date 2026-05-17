@@ -204,14 +204,15 @@ Usage/billing:
   and signs locally; the server receives only address, public key, and
   signature.
 - Chat estimate, non-streaming chat send, and SSE chat streaming.
-- Server-owned JSON-runtime chat conversations, per-account recents, and
-  history hydration.
-- Native account-scoped context document load/save in the JSON runtime store.
-  Context can be viewed before login, saved after account login, and does not
-  require wallet unlock.
-- PFDocs-compatible indexed PFTasks history import as sanitized pointer
-  metadata. The app stores CIDs/provenance/counts, not decrypted context or
-  evidence plaintext, and the import is scoped to the active linked wallet.
+- Server-owned Postgres chat conversations, per-account recents, and history
+  hydration, with JSON fallback when database use is disabled.
+- Native account-scoped context document load/save in Postgres revisions, with
+  JSON fallback during migration. Context can be viewed before login, saved
+  after account login, and does not require wallet unlock.
+- PFDocs-compatible indexed PFTasks history import as sanitized Postgres
+  pointer metadata. The app stores CIDs/provenance/counts, not decrypted
+  context or evidence plaintext, and the import is scoped to the active linked
+  wallet.
 - OpenAI execution and streaming when configured.
 - OpenRouter execution and streaming when configured. Private routes enforce
   OpenRouter ZDR/data-collection-deny provider preferences, support
@@ -235,11 +236,11 @@ Usage/billing:
 - PFTL transaction signing.
 - Wallet delink/relink behavior.
 - Production sweep service for Ethereum deposit addresses.
-- Context import.
+- Context import into the Postgres cache.
 - PFTL manifest ink.
 - OpenRouter production route verification against selected ZDR endpoints and
   attachment-heavy prompts.
-- Formal Postgres-backed chat history.
+- Formal Postgres-backed context cache backfill in production.
 - Initial eligible-provider credit for Telegram, Discord, and X callback paths.
 - Durable summaries/caches for decrypted PFDocs/PFTasks context history.
 

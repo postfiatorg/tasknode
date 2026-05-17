@@ -6,13 +6,13 @@ Last updated: 2026-05-17
 Implementation status:
 
 - Done first: Postgres migrations and repository coverage for chat history,
-  conversation recents, conversation rename/delete, usage billing ledger, and
-  O(1) account billing summaries.
+  conversation recents, conversation rename/delete, usage billing ledger,
+  O(1) account billing summaries, native context revisions, and historical
+  context pointer caches.
 - Database use is guarded by `TASKNODE_DATABASE_ENABLED=true`; this is
   intentionally stricter than merely detecting `DATABASE_URL`.
-- Still JSON-backed: account/session auth records, native context records,
-  wallet links, Ethereum deposit account records, and historical context import
-  cache.
+- Still JSON-backed: account/session auth records, wallet links, and Ethereum
+  deposit account records. Context keeps JSON fallback during migration.
 - Next cutovers should keep using repository modules rather than importing raw
   SQL from handlers.
 
@@ -293,23 +293,24 @@ context_documents
   id
   account_id
   title
-  body
-  active_revision_id
+  current_revision_id
+  revision
   created_at
   updated_at
+  deleted_at
 
 context_revisions
   id
   context_document_id
   account_id
-  revision_number
+  revision
   title
   body
   body_sha256
   word_count
   created_at
-  created_by_session_id nullable
   source
+  provenance_json
 ```
 
 Rules:
@@ -338,9 +339,10 @@ context_history_imports
   source
   status
   pointer_count
-  last_imported_at
-  last_archive_ledger_checked
-  source_confidence
+  context_update_count
+  task_event_count
+  metadata_json
+  created_at
 
 context_history_pointers
   id
@@ -348,18 +350,15 @@ context_history_pointers
   account_id
   wallet_address
   cid
+  pointer_type
+  kind
+  kind_label
   tx_hash
   ledger_index
   memo_index
-  pointer_kind
-  schema_version
-  created_at_from_chain nullable
-  imported_at
-  encrypted_sha256 nullable
-  preview_ciphertext nullable
-  preview_plaintext nullable
-  preview_status
-  unique(account_id, wallet_address, cid)
+  pointer_created_at nullable
+  source
+  metadata_json
 ```
 
 Rules:

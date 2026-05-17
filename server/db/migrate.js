@@ -9,6 +9,7 @@ const migrationsDir = path.join(__dirname, "migrations");
 const migrations = [
   "001_chat_billing.sql",
   "002_chat_attachments.sql",
+  "003_context_cache.sql",
 ];
 
 let migrated = false;

@@ -1,6 +1,6 @@
 # WIP: Migrate Context Documents To Postgres
 
-Status: active
+Status: implemented locally; pending production backfill decision
 Owner: Task Node Official
 Created: 2026-05-17
 
@@ -28,8 +28,10 @@ must not remove or hide the user's current native context document.
 - Chat history is Postgres-backed.
 - Chat text attachments are Postgres-backed.
 - Billing ledger and billing summaries are Postgres-backed.
-- Native context documents are still stored in `runtime-store.json`.
-- Historical context import snapshots are still stored in `runtime-store.json`.
+- Native context documents are Postgres-backed when
+  `TASKNODE_DATABASE_ENABLED=true`, with JSON fallback during migration.
+- Historical context import snapshots are cached in Postgres when
+  `TASKNODE_DATABASE_ENABLED=true`, with JSON fallback during migration.
 - Existing context APIs already provide the product boundary:
   - `GET /api/context`
   - `POST /api/context/edit/save`
@@ -124,19 +126,19 @@ Expected responsibilities:
 
 ## Implementation Checklist
 
-- [ ] Add a Postgres migration for context tables.
-- [ ] Add `server/repositories/context.js`.
-- [ ] Preserve the current API response shapes.
-- [ ] Route `GET /api/context` through Postgres when `DATABASE_URL` is present.
-- [ ] Route `POST /api/context/edit/save` through Postgres when available.
-- [ ] Route historical indexed imports through Postgres.
-- [ ] Route historical PFTL RPC imports through Postgres.
-- [ ] Keep JSON runtime fallback for local/dev safety during migration.
-- [ ] Add an idempotent importer from existing `runtime-store.json` context data.
-- [ ] Add smoke tests for save/load, revision creation, import dedupe, and wallet
+- [x] Add a Postgres migration for context tables.
+- [x] Add `server/repositories/context.js`.
+- [x] Preserve the current API response shapes.
+- [x] Route `GET /api/context` through Postgres when database use is enabled.
+- [x] Route `POST /api/context/edit/save` through Postgres when available.
+- [x] Route historical indexed imports through Postgres.
+- [x] Route historical PFTL RPC imports through Postgres.
+- [x] Keep JSON runtime fallback for local/dev safety during migration.
+- [x] Add an idempotent importer from existing `runtime-store.json` context data.
+- [x] Add smoke tests for save/load, revision creation, import dedupe, and wallet
       delink behavior.
-- [ ] Confirm the UI still shows current context when no wallet is linked.
-- [ ] Confirm historical wallet pointers do not appear as current context unless
+- [x] Confirm the UI still shows current context when no wallet is linked.
+- [x] Confirm historical wallet pointers do not appear as current context unless
       explicitly restored by the user.
 
 ## Acceptance Criteria
@@ -157,9 +159,8 @@ Expected responsibilities:
 ```bash
 npm run db:migrate
 npm run check
+npm run db:context-smoke
 ```
-
-Add a dedicated context smoke script during implementation, likely:
 
 ```bash
 DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5436/tasknodeofficial \

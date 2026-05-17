@@ -694,14 +694,14 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/context/edit/save") {
     const payload = req.method === "POST" ? await readJson(req, 65536) : {};
-    const result = contextEditSave(payload, req.method, session);
+    const result = await contextEditSave(payload, req.method, session);
     json(res, result.status, result.body);
     return true;
   }
 
   if (url.pathname === "/api/context/history/indexed") {
     const payload = req.method === "POST" ? await readJson(req, 262144) : {};
-    const result = contextIndexedHistoryImport(payload, req.method, session);
+    const result = await contextIndexedHistoryImport(payload, req.method, session);
     json(res, result.status, result.body);
     return true;
   }

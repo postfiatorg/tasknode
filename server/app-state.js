@@ -10,8 +10,6 @@ import {
 import { ethereumDepositConfigStatus, publicDepositAccount } from "./ethereum-deposits.js";
 import {
   conversationIdForSession,
-  getContextDocument,
-  getContextHistory,
   getEthereumDepositAccount,
   getLinkedWallet,
   walletInitiationGrantStatus,
@@ -21,6 +19,10 @@ import {
   listChatConversations,
   usageSummary,
 } from "./repositories/chat-billing.js";
+import {
+  getContextDocument,
+  getContextHistory,
+} from "./repositories/context.js";
 
 function sessionState(session, providers, runtimeReadiness, linkedWallet) {
   const base = {
@@ -184,8 +186,8 @@ export async function appState(session = null) {
     },
     context: {
       actions: contextActions(),
-      document: getContextDocument({ accountId: session?.accountId || "" }),
-      history: getContextHistory({
+      document: await getContextDocument({ accountId: session?.accountId || "" }),
+      history: await getContextHistory({
         accountId: session?.accountId || "",
         walletAddress: walletLinked ? linkedWallet.address : "",
       }),
