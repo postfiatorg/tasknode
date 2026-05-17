@@ -66,8 +66,9 @@ minimal deployable dev app:
   can be disabled with `OPENROUTER_CHAT_ENABLED=false` if needed.
 - `/api/chat/modes`, `/api/chat/conversations`, and `/api/chat/history` expose
   model-route readiness, server-owned recents, and per-thread history. Chat
-  turns and usage debits are stored in an append-only local runtime store until
-  Postgres account/session tables land.
+  turns and usage debits use the Postgres chat/billing repository when
+  `DATABASE_URL` is configured and `TASKNODE_DATABASE_ENABLED=true`, with the
+  JSON runtime store retained as a no-database development fallback.
 - The chat shell keeps usage accounting visible without crowding the thread:
   PFT and USD chat credit sit together in the sidebar balance area, while
   sub-cent USD credit and per-response billing feedback are shown without
@@ -75,8 +76,8 @@ minimal deployable dev app:
   toolbar exposes only backed behavior today: copy response and copy the visible
   transcript.
 - `/api/usage/ledger` exposes the current append-only usage ledger so chat
-  spend and account credits can be audited before durable Postgres ledger
-  tables land. The Billing settings surface reads this ledger directly.
+  spend and account credits can be audited. The Billing settings surface reads
+  this ledger directly; local Docker now stores it in Postgres.
 - `/api/usage/actions`, `/api/usage/top-up/start`, and
   `/api/usage/credit/admin` define the first usage-credit contract. Crypto
   top-up is still disabled while the safest rail is selected; admin credit is

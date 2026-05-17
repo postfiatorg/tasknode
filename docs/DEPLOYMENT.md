@@ -21,6 +21,8 @@ What runs:
 
 - `tasknodeofficial-web-1`: Vite dev server on `localhost:5174`.
 - `tasknodeofficial-api-1`: Node API server on `localhost:8080`.
+- `tasknodeofficial-db-1`: local Postgres 16/pgvector database on Docker
+  network `db:5432`, exposed to the host as `localhost:5436` by default.
 - Vite proxies `/api`, `/health`, `/runtime-config.js`, and
   `/runtime-config.json` to the API container.
 
@@ -28,8 +30,13 @@ Behavior:
 
 - `src/` changes hot reload in the browser.
 - `server/` changes restart the API through `node --watch`.
-- runtime JSON state persists in the Docker volume
-  `tasknodeofficial_dev_data`.
+- chat history and usage billing persist in the Postgres Docker volume
+  `tasknodeofficial_pg_data`.
+- compose explicitly sets `TASKNODE_DATABASE_ENABLED=true` for local Docker;
+  Fly or production deployments must set this deliberately before the app uses
+  any `DATABASE_URL` secret.
+- the remaining JSON runtime state persists in `tasknodeofficial_dev_data`
+  until auth/session/context/wallet records are migrated.
 - dev auth is enabled.
 - cookies are localhost cookies, not Fly HTTPS cookies.
 - wallet balance reads use the same rapid PFTL host PFTasks uses on this
@@ -66,6 +73,7 @@ Verify:
 
 ```bash
 curl -s http://localhost:8080/health
+DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5436/tasknodeofficial npm run db:chat-billing-smoke
 SMOKE_BASE_URL=http://127.0.0.1:5174 npm run smoke
 npm run wallet-balance-smoke
 npm run context-history-rpc-smoke
@@ -88,6 +96,10 @@ Wipe local Docker state:
 ```bash
 docker compose -f docker-compose.dev.yml down -v
 ```
+
+This wipes both `tasknodeofficial_pg_data` and `tasknodeofficial_dev_data`.
+Snapshot or import the JSON runtime store before doing this if you need local
+chat/billing cutover verification.
 
 ## 2. Local Production Docker
 

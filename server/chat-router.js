@@ -1,4 +1,8 @@
-import { appendChatTurn, getChatMessages } from "./runtime-store.js";
+import { getChatMessages as getRuntimeChatMessages } from "./runtime-store.js";
+import {
+  appendChatTurn,
+  getChatMessages,
+} from "./repositories/chat-billing.js";
 
 const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
@@ -133,14 +137,18 @@ function taskNodeInstructions() {
   ].join("\n");
 }
 
-function recentTranscript(conversationId, currentMessage) {
-  const history = getChatMessages(conversationId)
+function recentTranscriptFromMessages(messages, currentMessage) {
+  const history = messages
     .slice(-12)
     .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.body}`)
     .join("\n");
 
   if (!history) return currentMessage;
   return `Recent conversation:\n${history}\n\nUser: ${currentMessage}`;
+}
+
+function recentTranscript(conversationId, currentMessage) {
+  return recentTranscriptFromMessages(getRuntimeChatMessages(conversationId), currentMessage);
 }
 
 function chatAttachmentType(mimeType = "") {
@@ -286,9 +294,12 @@ function openRouterPlugins(attachments = []) {
   ];
 }
 
-export function openRouterMessages({ conversationId, message, attachments = [] }) {
+export function openRouterMessages({ conversationId, message, attachments = [], historyMessages = null }) {
   const normalizedAttachments = normalizeChatAttachments(attachments);
-  const history = getChatMessages(conversationId)
+  const sourceHistory = Array.isArray(historyMessages)
+    ? historyMessages
+    : getRuntimeChatMessages(conversationId);
+  const history = sourceHistory
     .slice(-12)
     .map((item) => ({
       role: item.role === "assistant" ? "assistant" : "user",
@@ -316,6 +327,7 @@ export function openRouterChatRequest({
   conversationId,
   attachments = [],
   stream = false,
+  historyMessages = null,
 }) {
   const config = chatModeConfig(mode);
   const normalizedAttachments = normalizeChatAttachments(attachments);
@@ -326,6 +338,7 @@ export function openRouterChatRequest({
       conversationId,
       message,
       attachments: normalizedAttachments,
+      historyMessages,
     }),
     provider: openRouterProviderPreferences({
       providerOrder: config.providerOrder || [],
@@ -353,11 +366,14 @@ export function openRouterChatRequest({
   };
 }
 
-export function openAiInput({ conversationId, message, attachments = [] }) {
+export function openAiInput({ conversationId, message, attachments = [], historyMessages = null }) {
+  const sourceHistory = Array.isArray(historyMessages)
+    ? historyMessages
+    : getRuntimeChatMessages(conversationId);
   const content = [
     {
       type: "input_text",
-      text: recentTranscript(conversationId, message),
+      text: recentTranscriptFromMessages(sourceHistory, message),
     },
   ];
 
@@ -381,13 +397,21 @@ export function openAiInput({ conversationId, message, attachments = [] }) {
   return [{ role: "user", content }];
 }
 
-export function openAiResponseRequest({ mode, model, message, conversationId, attachments = [], stream = false }) {
+export function openAiResponseRequest({
+  mode,
+  model,
+  message,
+  conversationId,
+  attachments = [],
+  stream = false,
+  historyMessages = null,
+}) {
   const config = chatModeConfig(mode);
   const tools = openAiTools({ message });
   return {
     model,
     instructions: taskNodeInstructions(),
-    input: openAiInput({ conversationId, message, attachments }),
+    input: openAiInput({ conversationId, message, attachments, historyMessages }),
     max_output_tokens: config.maxOutputTokens,
     reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
     stream: stream || undefined,
@@ -607,7 +631,7 @@ function fallbackUsage({ mode, message, text }) {
   };
 }
 
-async function executeOpenAi({ mode, model, message, conversationId, attachments = [] }) {
+async function executeOpenAi({ mode, model, message, conversationId, attachments = [], historyMessages = [] }) {
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
   const body = await fetchJson(`${baseUrl}/responses`, {
     method: "POST",
@@ -615,7 +639,14 @@ async function executeOpenAi({ mode, model, message, conversationId, attachments
       authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify(openAiResponseRequest({ mode, model, message, conversationId, attachments })),
+    body: JSON.stringify(openAiResponseRequest({
+      mode,
+      model,
+      message,
+      conversationId,
+      attachments,
+      historyMessages,
+    })),
   });
   const text = outputTextFromOpenAi(body);
 
@@ -628,7 +659,16 @@ async function executeOpenAi({ mode, model, message, conversationId, attachments
   };
 }
 
-async function streamOpenAi({ mode, model, message, conversationId, attachments = [], onDelta, signal }) {
+async function streamOpenAi({
+  mode,
+  model,
+  message,
+  conversationId,
+  attachments = [],
+  historyMessages = [],
+  onDelta,
+  signal,
+}) {
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
   const stream = await fetchEventStream(
     `${baseUrl}/responses`,
@@ -646,6 +686,7 @@ async function streamOpenAi({ mode, model, message, conversationId, attachments 
         conversationId,
         attachments,
         stream: true,
+        historyMessages,
       })),
     },
     { signal }
@@ -703,7 +744,7 @@ async function streamOpenAi({ mode, model, message, conversationId, attachments 
   };
 }
 
-async function executeOpenRouter({ mode, model, message, conversationId, attachments = [] }) {
+async function executeOpenRouter({ mode, model, message, conversationId, attachments = [], historyMessages = [] }) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -720,7 +761,14 @@ async function executeOpenRouter({ mode, model, message, conversationId, attachm
       "x-title": title,
       "x-openrouter-title": title,
     },
-    body: JSON.stringify(openRouterChatRequest({ mode, model, message, conversationId, attachments })),
+    body: JSON.stringify(openRouterChatRequest({
+      mode,
+      model,
+      message,
+      conversationId,
+      attachments,
+      historyMessages,
+    })),
   });
   const text = outputTextFromOpenRouter(body);
 
@@ -733,7 +781,16 @@ async function executeOpenRouter({ mode, model, message, conversationId, attachm
   };
 }
 
-async function streamOpenRouter({ mode, model, message, conversationId, attachments = [], onDelta, signal }) {
+async function streamOpenRouter({
+  mode,
+  model,
+  message,
+  conversationId,
+  attachments = [],
+  historyMessages = [],
+  onDelta,
+  signal,
+}) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -760,6 +817,7 @@ async function streamOpenRouter({ mode, model, message, conversationId, attachme
         conversationId,
         attachments,
         stream: true,
+        historyMessages,
       })),
     },
     { signal }
@@ -811,15 +869,24 @@ export async function executeChat({ accountId = "", mode, message, conversationI
     throw error;
   }
 
+  const historyMessages = await getChatMessages(conversationId);
   const result =
     status.provider === "openai"
-      ? await executeOpenAi({ mode: normalizedMode, model: status.model, message, conversationId, attachments })
+      ? await executeOpenAi({
+          mode: normalizedMode,
+          model: status.model,
+          message,
+          conversationId,
+          attachments,
+          historyMessages,
+        })
       : await executeOpenRouter({
           mode: normalizedMode,
           model: status.model,
           message,
           conversationId,
           attachments,
+          historyMessages,
         });
 
   if (!result.text) {
@@ -829,7 +896,7 @@ export async function executeChat({ accountId = "", mode, message, conversationI
     throw error;
   }
 
-  const persisted = appendChatTurn({
+  const persisted = await appendChatTurn({
     accountId,
     conversationId,
     mode: normalizedMode,
@@ -866,6 +933,7 @@ export async function executeChatStream({
     throw error;
   }
 
+  const historyMessages = await getChatMessages(conversationId);
   const result =
     status.provider === "openai"
       ? await streamOpenAi({
@@ -874,6 +942,7 @@ export async function executeChatStream({
           message,
           conversationId,
           attachments,
+          historyMessages,
           onDelta,
           signal,
         })
@@ -883,6 +952,7 @@ export async function executeChatStream({
           message,
           conversationId,
           attachments,
+          historyMessages,
           onDelta,
           signal,
         });
@@ -894,7 +964,7 @@ export async function executeChatStream({
     throw error;
   }
 
-  const persisted = appendChatTurn({
+  const persisted = await appendChatTurn({
     accountId,
     conversationId,
     mode: normalizedMode,

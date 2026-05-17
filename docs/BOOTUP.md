@@ -105,9 +105,16 @@ FRAME_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run frame-smoke
 Frame smoke writes screenshots to `/tmp/tasknodeofficial-frame-smoke` unless
 `FRAME_SCREENSHOT_DIR=0` is set.
 
-## Runtime Store
+## Runtime Store And Database
 
-The app currently uses a local JSON runtime store in `server/runtime-store.js`.
+The app currently uses Postgres for chat history and usage billing when
+`DATABASE_URL` is configured and `TASKNODE_DATABASE_ENABLED=true`. Local Docker
+configures both by default and stores those rows in `tasknodeofficial_pg_data`.
+The explicit enable flag prevents accidental writes to an unrelated generic
+`DATABASE_URL` secret.
+
+The remaining account/session/context/wallet surfaces still use the local JSON
+runtime store in `server/runtime-store.js`.
 
 Default path:
 
@@ -121,9 +128,11 @@ Override:
 TASKNODE_STORE_PATH=/path/to/runtime-store.json PORT=8080 npm start
 ```
 
-Important: `/tmp` is not durable across machine restarts. Before relying on chat
-history, account credits, or session continuity on Fly, either configure a
-durable store path on a Fly volume or move the data model to Postgres.
+Important: `/tmp` is not durable across machine restarts. Before relying on
+session continuity, account links, native context, or wallet-link records on
+Fly, either configure a durable store path on a Fly volume or move those
+remaining data models to Postgres. Do not use the JSON store for durable chat
+history or billing in new deployments.
 
 ## Environment And Secrets
 

@@ -544,14 +544,14 @@ try {
     challengeId: "smoke-challenge",
     signature: "smoke-signature",
   });
-  const linkedState = appState(accountSession);
+  const linkedState = await appState(accountSession);
 
   if (!linked.ok || linkedState.context.history.contextUpdateCount !== 1) {
     throw new Error(`Linked wallet history did not appear: ${JSON.stringify(linkedState.context.history)}`);
   }
 
   const delinked = delinkWalletFromAccount({ accountId: accountSession.accountId });
-  const delinkedState = appState(accountSession);
+  const delinkedState = await appState(accountSession);
 
   if (
     !delinked.ok ||
@@ -570,7 +570,7 @@ try {
     signature: "smoke-signature-2",
     proofPurpose: "wallet_relink",
   });
-  const relinkedState = appState(accountSession);
+  const relinkedState = await appState(accountSession);
 
   if (!relinked.ok || relinkedState.context.history.contextUpdateCount !== 1) {
     throw new Error(`Relinked wallet history did not reappear: ${JSON.stringify(relinkedState.context.history)}`);
@@ -585,7 +585,7 @@ try {
     signature: "smoke-signature-3",
     proofPurpose: "wallet_relink",
   });
-  const otherLinkedState = appState(accountSession);
+  const otherLinkedState = await appState(accountSession);
 
   if (!linkedOther.ok || otherLinkedState.context.history.pointerCount !== 0) {
     throw new Error(`Different linked wallet saw old history: ${JSON.stringify(otherLinkedState.context.history)}`);

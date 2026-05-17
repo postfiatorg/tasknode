@@ -36,17 +36,20 @@ import {
 import { executeChatStream } from "./chat-router.js";
 import {
   conversationIdForSession,
-  deleteChatConversation,
   destroySession,
-  getChatMessages,
   getLinkedWallet,
   getSession,
-  listChatConversations,
-  renameChatConversation,
   sessionCookieName,
   sessionTtlSeconds,
-  usageLedger,
 } from "./runtime-store.js";
+import {
+  deleteChatConversation,
+  getChatMessages,
+  listChatConversations,
+  renameChatConversation,
+  usageLedger,
+} from "./repositories/chat-billing.js";
+import { migrateDatabase } from "./db/migrate.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -261,15 +264,20 @@ async function serveStatic(url, res) {
 
 async function routeApi(req, url, res) {
   const session = currentSession(req);
-  const state = appState(session);
+  let statePromise = null;
+  const getState = () => {
+    if (!statePromise) statePromise = appState(session);
+    return statePromise;
+  };
   const parts = url.pathname.split("/").filter(Boolean);
 
   if (url.pathname === "/api/app-state") {
-    json(res, 200, state);
+    json(res, 200, await getState());
     return true;
   }
 
   if (url.pathname === "/api/session") {
+    const state = await getState();
     json(res, 200, state.session);
     return true;
   }
@@ -397,11 +405,12 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/readiness") {
-    json(res, 200, readiness());
+    json(res, 200, await readiness());
     return true;
   }
 
   if (url.pathname === "/api/tasks") {
+    const state = await getState();
     json(res, 200, state.tasks);
     return true;
   }
@@ -419,7 +428,7 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/chat/conversations") {
     json(res, 200, {
-      conversations: listChatConversations({
+      conversations: await listChatConversations({
         accountId: session?.accountId || "",
         limit: url.searchParams.get("limit") || 30,
       }),
@@ -444,12 +453,12 @@ async function routeApi(req, url, res) {
     );
     const action =
       req.method === "PATCH"
-        ? renameChatConversation({
+        ? await renameChatConversation({
             accountId: session?.accountId || "",
             conversationId,
             title: payload?.title || "",
           })
-        : deleteChatConversation({
+        : await deleteChatConversation({
             accountId: session?.accountId || "",
             conversationId,
           });
@@ -463,7 +472,7 @@ async function routeApi(req, url, res) {
       session,
       url.searchParams.get("conversationId") || ""
     );
-    json(res, 200, { conversationId, messages: getChatMessages(conversationId) });
+    json(res, 200, { conversationId, messages: await getChatMessages(conversationId) });
     return true;
   }
 
@@ -558,6 +567,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/wallet") {
+    const state = await getState();
     json(res, 200, state.wallet);
     return true;
   }
@@ -650,11 +660,13 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/context") {
+    const state = await getState();
     json(res, 200, state.context);
     return true;
   }
 
   if (url.pathname === "/api/context/history") {
+    const state = await getState();
     json(res, 200, state.context.history);
     return true;
   }
@@ -702,6 +714,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/usage") {
+    const state = await getState();
     json(res, 200, state.usage);
     return true;
   }
@@ -727,7 +740,7 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/usage/credit/admin") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
-    const result = usageAdminCredit(payload, req.method, req.headers.authorization || "");
+    const result = await usageAdminCredit(payload, req.method, req.headers.authorization || "");
     json(res, result.status, result.body);
     return true;
   }
@@ -739,7 +752,7 @@ async function routeApi(req, url, res) {
       : session
         ? conversationIdForSession(session)
         : "";
-    json(res, 200, usageLedger({
+    json(res, 200, await usageLedger({
       accountId: session?.accountId || "",
       conversationId,
       limit: url.searchParams.get("limit") || 50,
@@ -789,6 +802,8 @@ const server = createServer((req, res) => {
       });
     });
 });
+
+await migrateDatabase();
 
 server.listen(port, "0.0.0.0", () => {
   console.log(`tasknodeofficial listening on :${port}`);

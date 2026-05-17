@@ -7,12 +7,14 @@ import {
   zeroPadValue,
 } from "ethers";
 import {
-  appendUsageCredit,
   getEthereumDepositAccount,
   getOrCreateEthereumDepositAccount,
   updateEthereumDepositSync,
-  usageSummary,
 } from "./runtime-store.js";
+import {
+  appendUsageCredit,
+  usageSummary,
+} from "./repositories/chat-billing.js";
 
 const defaultEthereumRpcUrl = "https://ethereum.publicnode.com";
 const ethereumMainnetChainId = 1;
@@ -363,7 +365,7 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
       blockTag: balanceBlockTag,
       creditedEntries,
     });
-    const usage = usageSummary({ accountId });
+    const usage = await usageSummary({ accountId });
     const pendingSymbols = Object.entries(pendingBalances)
       .filter(([, balance]) => balance?.amount && Number(balance.amount) > 0)
       .map(([symbol]) => symbol);

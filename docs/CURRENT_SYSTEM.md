@@ -61,7 +61,11 @@ Server:
 - `server/product-contracts.js`: product action contracts for auth, chat,
   wallet, context, usage, provider readiness, and disabled actions.
 - `server/runtime-store.js`: JSON-backed sessions, accounts, identities, email
-  challenges, OAuth state, chat messages, and usage ledger.
+  challenges, OAuth state, wallet links, context documents, and remaining
+  non-migrated runtime state.
+- `server/db/`: Postgres pool and migration runner.
+- `server/repositories/chat-billing.js`: Postgres-backed chat history and
+  usage billing repository with JSON fallback when `DATABASE_URL` is absent.
 - `server/chat-router.js`: chat mode config, provider readiness, cost
   estimates, OpenAI/OpenRouter execution. Frontier Instant is pinned to the
   direct OpenAI `chat-latest` route unless a mode-specific
@@ -74,6 +78,9 @@ Tests:
 
 - `scripts/smoke.mjs`: API/product contract smoke test.
 - `scripts/runtime-store-smoke.mjs`: local runtime store invariant smoke test.
+- `scripts/chat-billing-postgres-smoke.mjs`: live Postgres smoke for chat
+  history, conversation rename/delete, idempotent credits, and usage ledger
+  projection.
 - `scripts/frame-smoke.mjs`: headless browser frame test with screenshots.
 
 ## Current API Contracts

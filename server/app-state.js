@@ -12,13 +12,15 @@ import {
   conversationIdForSession,
   getContextDocument,
   getContextHistory,
-  getChatMessages,
   getEthereumDepositAccount,
   getLinkedWallet,
-  listChatConversations,
-  usageSummary,
   walletInitiationGrantStatus,
 } from "./runtime-store.js";
+import {
+  getChatMessages,
+  listChatConversations,
+  usageSummary,
+} from "./repositories/chat-billing.js";
 
 function sessionState(session, providers, runtimeReadiness, linkedWallet) {
   const base = {
@@ -51,15 +53,15 @@ function sessionState(session, providers, runtimeReadiness, linkedWallet) {
   };
 }
 
-export function appState(session = null) {
+export async function appState(session = null) {
   const providers = authProviders();
-  const runtimeReadiness = readiness();
+  const runtimeReadiness = await readiness();
   const modes = chatModes();
   const enabledMode =
     modes.find((mode) => mode.label === "Frontier Instant" && mode.enabled) ||
     modes.find((mode) => mode.enabled);
   const conversationId = conversationIdForSession(session);
-  const usage = usageSummary({ accountId: session?.accountId, conversationId });
+  const usage = await usageSummary({ accountId: session?.accountId, conversationId });
   const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
   const ethDepositStatus = ethereumDepositConfigStatus();
   const ethDepositAccount = getEthereumDepositAccount({ accountId: session?.accountId || "" });
@@ -76,10 +78,10 @@ export function appState(session = null) {
       conversationId,
       conversationsPath: "/api/chat/conversations",
       historyPath: "/api/chat/history",
-      recents: listChatConversations({ accountId: session?.accountId || "" }),
+      recents: await listChatConversations({ accountId: session?.accountId || "" }),
       defaultMode: enabledMode?.label || "Private Instant",
       modes,
-      seedMessages: getChatMessages(conversationId),
+      seedMessages: await getChatMessages(conversationId),
     },
     tasks: {
       personalRequestEnabled: true,

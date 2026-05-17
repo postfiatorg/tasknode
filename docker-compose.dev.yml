@@ -1,9 +1,28 @@
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: tasknodeofficial
+      POSTGRES_PASSWORD: tasknodeofficial
+      POSTGRES_DB: tasknodeofficial
+    ports:
+      - "${TASKNODE_POSTGRES_PORT:-5436}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tasknodeofficial -d tasknodeofficial"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     build:
       context: .
       dockerfile: Dockerfile.dev
     command: npm run dev:api
+    depends_on:
+      db:
+        condition: service_healthy
     env_file:
       - path: .env.tasknodeofficial-dev
         required: false
@@ -19,6 +38,8 @@ services:
       VITE_ANALYTICS_ENABLED: "false"
       TASKNODE_DEV_AUTH_ENABLED: "true"
       TASKNODE_STORE_PATH: /data/runtime-store.json
+      TASKNODE_DATABASE_ENABLED: "true"
+      DATABASE_URL: ${TASKNODE_DATABASE_URL:-postgres://tasknodeofficial:tasknodeofficial@db:5432/tasknodeofficial}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       # Current-balance node on this machine. It is intentionally not the
@@ -75,3 +96,4 @@ volumes:
   api_node_modules:
   web_node_modules:
   dev_data:
+  pg_data:

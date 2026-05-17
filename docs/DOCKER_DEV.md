@@ -28,6 +28,15 @@ http://localhost:5174
 The Vite container serves the app and proxies API/config calls to the local Node
 API container.
 
+Local Docker also starts `tasknodeofficial-db-1`, a Postgres 16 server with the
+pgvector image. The API connects to it through Docker DNS at `db:5432`; the host
+port defaults to `5436` to avoid colliding with other local Postgres services.
+Override it with `TASKNODE_POSTGRES_PORT` if needed. Chat history and usage
+billing use this Postgres path because compose sets
+`TASKNODE_DATABASE_ENABLED=true` and `DATABASE_URL` for the API. The older JSON
+runtime store still backs auth/session/context/wallet records until those
+surfaces are cut over.
+
 The API container reads `.env.tasknodeofficial-dev` when that ignored local file
 exists, then compose overrides the public app URL back to localhost. Keep
 `OPENAI_API_KEY` there or export it before starting Docker. Frontier Instant is
@@ -70,6 +79,21 @@ http://localhost:5174
 http://localhost:5174/api/app-state
 http://localhost:8080/health
 ```
+
+Useful database commands:
+
+```bash
+npm run db:migrate
+npm run db:chat-billing-smoke
+npm run db:import-chat-billing -- --path /data/runtime-store.json --execute
+```
+
+When running the importer from the host instead of inside the API container,
+copy the Docker JSON store first or point `--path` at a local snapshot, and set
+`DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5436/tasknodeofficial`.
+The scripts opt into the database when `DATABASE_URL` is present; the server
+itself requires `TASKNODE_DATABASE_ENABLED=true` so stale Fly or shell
+`DATABASE_URL` values are not used accidentally.
 
 ## Local PFTL Balance Reads
 

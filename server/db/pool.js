@@ -1,0 +1,105 @@
+import pg from "pg";
+
+const { Pool } = pg;
+
+const statementTimeoutMs = Math.max(500, Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS || 5000));
+const connectionTimeoutMs = Math.max(500, Number(process.env.DATABASE_CONNECTION_TIMEOUT_MS || 5000));
+const maxConnections = Math.min(Math.max(Number(process.env.DATABASE_POOL_MAX || 6), 1), 30);
+
+let pool = null;
+let lastError = "";
+
+export function databaseUrl() {
+  return String(process.env.DATABASE_URL || "").trim();
+}
+
+export function databaseEnabled() {
+  if (process.env.TASKNODE_POSTGRES_DISABLED === "true") return false;
+  if (process.env.TASKNODE_DATABASE_DISABLED === "true") return false;
+  if (!databaseUrl()) return false;
+  return (
+    process.env.TASKNODE_DATABASE_ENABLED === "true" ||
+    process.env.TASKNODE_POSTGRES_ENABLED === "true"
+  );
+}
+
+export function databaseStatus() {
+  return {
+    configured: Boolean(databaseUrl()),
+    enabled: databaseEnabled(),
+    durable: databaseEnabled(),
+    lastError,
+  };
+}
+
+export function getPool() {
+  if (!databaseEnabled()) return null;
+  if (!pool) {
+    pool = new Pool({
+      connectionString: databaseUrl(),
+      max: maxConnections,
+      connectionTimeoutMillis: connectionTimeoutMs,
+      idleTimeoutMillis: Math.max(1000, Number(process.env.DATABASE_IDLE_TIMEOUT_MS || 30000)),
+      statement_timeout: statementTimeoutMs,
+      query_timeout: statementTimeoutMs,
+      application_name: process.env.TASKNODE_APP_NAME || "tasknodeofficial",
+    });
+    pool.on("error", (error) => {
+      lastError = error?.message || "database_pool_error";
+    });
+  }
+  return pool;
+}
+
+export async function query(text, params = []) {
+  const db = getPool();
+  if (!db) {
+    const error = new Error("database_not_configured");
+    error.code = "TASKNODE_DATABASE_NOT_CONFIGURED";
+    throw error;
+  }
+
+  try {
+    return await db.query(text, params);
+  } catch (error) {
+    lastError = error?.message || "database_query_failed";
+    throw error;
+  }
+}
+
+export async function transaction(work) {
+  const db = getPool();
+  if (!db) {
+    const error = new Error("database_not_configured");
+    error.code = "TASKNODE_DATABASE_NOT_CONFIGURED";
+    throw error;
+  }
+
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('statement_timeout', $1, true)", [String(statementTimeoutMs)]);
+    const result = await work(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    lastError = error?.message || "database_transaction_failed";
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export function isUniqueViolation(error) {
+  return error?.code === "23505";
+}
+
+export async function closePool() {
+  if (!pool) return;
+  const active = pool;
+  pool = null;
+  await active.end();
+}

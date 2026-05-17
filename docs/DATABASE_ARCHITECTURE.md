@@ -3,6 +3,19 @@
 Status: proposed target architecture
 Last updated: 2026-05-17
 
+Implementation status:
+
+- Done first: Postgres migrations and repository coverage for chat history,
+  conversation recents, conversation rename/delete, usage billing ledger, and
+  O(1) account billing summaries.
+- Database use is guarded by `TASKNODE_DATABASE_ENABLED=true`; this is
+  intentionally stricter than merely detecting `DATABASE_URL`.
+- Still JSON-backed: account/session auth records, native context records,
+  wallet links, Ethereum deposit account records, and historical context import
+  cache.
+- Next cutovers should keep using repository modules rather than importing raw
+  SQL from handlers.
+
 ## Purpose
 
 Task Node Official currently keeps application state in a JSON runtime store.
@@ -877,4 +890,3 @@ Importer requirements:
 6. What is the required backup/PITR window for billing and chat?
 7. Do we need row-level security in Postgres now, or is strict repository-level
    scoping sufficient for the first implementation?
-

@@ -9,7 +9,6 @@ import {
   normalizedChatMode,
 } from "./chat-router.js";
 import {
-  appendUsageCredit,
   consumeWalletChallenge,
   consumeEmailChallenge,
   consumeOAuthState,
@@ -33,9 +32,13 @@ import {
   reserveWalletInitiationGrant,
   saveContextDocument,
   saveIndexedContextHistory,
-  usageSummary,
   walletInitiationGrantStatus,
 } from "./runtime-store.js";
+import {
+  appendUsageCredit,
+  chatBillingStatus,
+  usageSummary,
+} from "./repositories/chat-billing.js";
 import { fetchContextIpfsJson, normalizeContextCid } from "./context-ipfs.js";
 import { discoverContextHistoryFromRpc } from "./context-history-rpc.js";
 import {
@@ -1984,7 +1987,7 @@ export async function usageTopUpSync(payload, method, session = null) {
   };
 }
 
-export function usageAdminCredit(payload, method, authorizationHeader = "") {
+export async function usageAdminCredit(payload, method, authorizationHeader = "") {
   const action = usageActionByPath("/api/usage/credit/admin");
 
   if (method !== action.method) {
@@ -2036,13 +2039,13 @@ export function usageAdminCredit(payload, method, authorizationHeader = "") {
     typeof payload?.note === "string" && payload.note.trim()
       ? payload.note.trim().slice(0, 240)
       : "Manual admin credit";
-  const entry = appendUsageCredit({
+  const entry = await appendUsageCredit({
     accountId,
     amountUsd,
     note,
     createdBy: "admin",
   });
-  const summary = usageSummary({ accountId });
+  const summary = await usageSummary({ accountId });
 
   return {
     status: 200,
@@ -2071,7 +2074,7 @@ function initialProviderCreditUsd() {
   return Number(Math.min(amount, 100).toFixed(2));
 }
 
-function grantInitialProviderCredit(account, provider) {
+async function grantInitialProviderCredit(account, provider) {
   const normalizedProvider = String(provider || "").trim().toLowerCase();
   if (!account?.id || !initialProviderCreditProviders.has(normalizedProvider)) return null;
 
@@ -2287,7 +2290,7 @@ export async function authCallback(providerId, query = {}, requestMeta = {}) {
         profileUrl: profile.html_url || "",
         emailInfo,
       });
-      const initialCredit = grantInitialProviderCredit(account, "github");
+      const initialCredit = await grantInitialProviderCredit(account, "github");
       const created = createAccountSession(account, { provider: "github", assurance: "medium" });
 
       recordAuthEvent({
@@ -2601,9 +2604,10 @@ export function authDevStart(payload, method) {
   };
 }
 
-export function readiness() {
+export async function readiness() {
   const providers = authProviders();
-  const ledger = usageSummary();
+  const ledger = await usageSummary();
+  const chatBilling = chatBillingStatus();
   const chatExecutionReady = anyChatProviderEnabled();
   const emailStatus = emailDeliveryStatus();
   const ethDeposits = ethereumDepositConfigStatus();
@@ -2657,13 +2661,15 @@ export function readiness() {
       model: "usage_based",
       ledgerReady: true,
       durableLedgerReady: ledger.durable,
+      postgresConfigured: chatBilling.configured,
+      postgresEnabled: chatBilling.enabled,
       adminCreditReady: hasAll(["TASKNODE_ADMIN_CREDIT_TOKEN"]),
       ethereumDepositReady: ethDeposits.enabled,
       ethereumDepositSyncReady: ethDeposits.enabled && ethDeposits.rpcConfigured,
       chatEstimateReady: true,
       chatExecutionReady,
       blockers: [
-        "Durable Postgres ledger tables are not implemented",
+        ledger.durable ? "" : "Durable Postgres ledger tables are not enabled",
         ethDeposits.enabled
           ? ""
           : "ETH_DEPOSIT_XPUB is not configured for live Ethereum deposit addresses",
