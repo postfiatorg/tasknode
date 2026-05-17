@@ -213,18 +213,23 @@ Usage/billing:
   pointer metadata. The app stores CIDs/provenance/counts, not decrypted
   context or evidence plaintext, and the import is scoped to the active linked
   wallet.
-- OpenAI execution and streaming when configured.
+- OpenAI execution and streaming when configured, gated by signed-in account
+  and available usage credit before provider calls.
 - OpenRouter execution and streaming when configured. Private routes enforce
   OpenRouter ZDR/data-collection-deny provider preferences, support
   image/PDF/text attachments, use pinned ZDR-listed defaults for instant and
   thinking, constrain private requests to known ZDR provider allowlists, and do
   not enable OpenRouter web search.
-- Usage ledger and admin credit when configured.
+- Usage ledger and idempotency-keyed admin credit when configured.
 - Account-scoped Ethereum mainnet top-up addresses when `ETH_DEPOSIT_XPUB` is
   configured. The rail accepts ETH, USDC, and USDT without MetaMask signatures,
   and credits positive configured-balance deltas through `/api/usage/top-up/sync`.
 - Idempotent initial provider credit ledger contract for eligible registrar
   accounts.
+- Public startup guard disables public dev auth and refuses default `/tmp`
+  runtime-store auth state for public origins.
+- API security headers and focused route rate limits for auth, chat, wallet,
+  context history RPC, and admin credit.
 - Runtime, API, and frame-smoke coverage.
 - Fly dev deployment.
 

@@ -7,6 +7,7 @@ import {
   saveContextDocument as saveRuntimeContextDocument,
   saveIndexedContextHistory as saveRuntimeIndexedContextHistory,
 } from "../runtime-store.js";
+import { normalizeContextBodyForStorage } from "../../shared/context-html.js";
 
 const maxContextBodyLength = 50_000;
 const maxContextTitleLength = 120;
@@ -40,7 +41,7 @@ function cleanTitle(title = "") {
 }
 
 function cleanBody(body = "") {
-  return String(body || "").slice(0, maxContextBodyLength);
+  return normalizeContextBodyForStorage(String(body || "").slice(0, maxContextBodyLength));
 }
 
 function sha256(text = "") {
@@ -255,14 +256,23 @@ export async function getContextDocument({ accountId = "" } = {}) {
     return defaultContextDocument({ accountId: "" });
   }
   if (!useDatabase()) {
-    return getRuntimeContextDocument({ accountId: normalizedAccountId });
+    const document = getRuntimeContextDocument({ accountId: normalizedAccountId });
+    return {
+      ...document,
+      body: normalizeContextBodyForStorage(document.body || ""),
+    };
   }
 
   const row = await selectContextDocument(normalizedAccountId);
   if (row) return publicContextDocument(row);
 
   const runtimeDocument = getRuntimeContextDocument({ accountId: normalizedAccountId });
-  if (runtimeHasSavedContext(runtimeDocument)) return runtimeDocument;
+  if (runtimeHasSavedContext(runtimeDocument)) {
+    return {
+      ...runtimeDocument,
+      body: normalizeContextBodyForStorage(runtimeDocument.body || ""),
+    };
+  }
 
   return defaultContextDocument({ accountId: normalizedAccountId });
 }
@@ -279,7 +289,11 @@ export async function saveContextDocument({
     return { ok: false, status: 401, error: "context_login_required" };
   }
   if (!useDatabase()) {
-    return saveRuntimeContextDocument({ accountId: normalizedAccountId, title, body });
+    return saveRuntimeContextDocument({
+      accountId: normalizedAccountId,
+      title,
+      body: cleanBody(body),
+    });
   }
 
   const normalizedTitle = cleanTitle(title);

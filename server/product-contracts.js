@@ -1,4 +1,4 @@
-import { createHmac, randomInt, randomUUID } from "node:crypto";
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   actualChatCost,
   anyChatProviderEnabled,
@@ -90,6 +90,13 @@ function authSecretReady() {
 function authHmac(value) {
   const secret = authSecret() || "tasknodeofficial-local-email-dev-secret";
   return createHmac("sha256", secret).update(String(value || "")).digest("hex");
+}
+
+function safeEqualText(left = "", right = "") {
+  const leftBuffer = Buffer.from(String(left || ""));
+  const rightBuffer = Buffer.from(String(right || ""));
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function emailCodeHash({ challengeId, canonicalEmail, code }) {
@@ -485,7 +492,7 @@ function chatPayload(payload) {
   return { accountId, message, mode: normalizedChatMode(mode), conversationId, dryRun, attachments };
 }
 
-function chatExecutionPreflight(payload, method, action = "chat_send") {
+async function chatExecutionPreflight(payload, method, action = "chat_send") {
   const chat = chatPayload(payload);
   const estimate = chatEstimate(payload);
 
@@ -517,6 +524,23 @@ function chatExecutionPreflight(payload, method, action = "chat_send") {
           ? "Chat stream requires a non-empty message."
           : "Chat send requires a non-empty message.",
         actionRequired: "Send a message before requesting chat execution.",
+      },
+      chat,
+      estimate,
+    };
+  }
+
+  if (!chat.accountId) {
+    return {
+      ok: false,
+      status: 401,
+      body: {
+        ok: false,
+        error: "chat_login_required",
+        action,
+        message: "Sign in before sending billable chat requests.",
+        actionRequired: "Use an account login before starting chat execution.",
+        estimate,
       },
       chat,
       estimate,
@@ -562,6 +586,32 @@ function chatExecutionPreflight(payload, method, action = "chat_send") {
     };
   }
 
+  const usage = await usageSummary({ accountId: chat.accountId, conversationId: chat.conversationId });
+  if (Number(usage.availableCreditUsd || 0) < Number(estimate.estimatedUsd || 0)) {
+    return {
+      ok: false,
+      status: 402,
+      body: {
+        ok: false,
+        error: "chat_credit_required",
+        action,
+        message: "Available chat credit is too low for this request.",
+        actionRequired: "Top up the account balance or use an account with available credit.",
+        estimate,
+        usage: {
+          billingModel: "usage_based",
+          currency: "USD",
+          currentSpendUsd: usage.currentSpendUsd,
+          currentCreditUsd: usage.currentCreditUsd,
+          availableCreditUsd: usage.availableCreditUsd,
+          ledgerEntryCount: usage.ledgerEntryCount,
+        },
+      },
+      chat,
+      estimate,
+    };
+  }
+
   return {
     ok: true,
     status: 200,
@@ -601,7 +651,7 @@ export function chatEstimate(payload) {
 }
 
 export async function chatSend(payload, method) {
-  const preflight = chatExecutionPreflight(payload, method, "chat_send");
+  const preflight = await chatExecutionPreflight(payload, method, "chat_send");
   const { accountId, message, mode, conversationId, attachments } = preflight.chat;
   const { estimate } = preflight;
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
@@ -655,8 +705,8 @@ export async function chatSend(payload, method) {
   }
 }
 
-export function chatStreamStart(payload, method) {
-  const preflight = chatExecutionPreflight(payload, method, "chat_stream");
+export async function chatStreamStart(payload, method) {
+  const preflight = await chatExecutionPreflight(payload, method, "chat_stream");
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
 
   return {
@@ -2014,7 +2064,8 @@ export async function usageAdminCredit(payload, method, authorizationHeader = ""
     });
   }
 
-  if (authorizationHeader !== `Bearer ${process.env.TASKNODE_ADMIN_CREDIT_TOKEN}`) {
+  const expectedAuthorization = `Bearer ${process.env.TASKNODE_ADMIN_CREDIT_TOKEN || ""}`;
+  if (!safeEqualText(authorizationHeader, expectedAuthorization)) {
     return actionResponse({
       status: 401,
       error: "usage_credit_unauthorized",
@@ -2038,16 +2089,50 @@ export async function usageAdminCredit(payload, method, authorizationHeader = ""
   const accountId =
     typeof payload?.accountId === "string" && payload.accountId.trim()
       ? payload.accountId.trim().slice(0, 80)
-      : "dev";
+      : "";
+  if (!accountId) {
+    return actionResponse({
+      status: 400,
+      error: "usage_credit_account_required",
+      action: action.id,
+      message: "Admin credit requires an explicit accountId.",
+      actionRequired: "Send the exact accountId that should receive credit.",
+    });
+  }
+
+  const idempotencyKey =
+    typeof payload?.idempotencyKey === "string" && payload.idempotencyKey.trim()
+      ? payload.idempotencyKey.trim().slice(0, 180)
+      : "";
+  if (idempotencyKey.length < 12) {
+    return actionResponse({
+      status: 400,
+      error: "usage_credit_idempotency_required",
+      action: action.id,
+      message: "Admin credit requires an idempotencyKey.",
+      actionRequired: "Send a stable idempotencyKey for this operator credit event.",
+    });
+  }
+
   const note =
     typeof payload?.note === "string" && payload.note.trim()
       ? payload.note.trim().slice(0, 240)
       : "Manual admin credit";
+  const actor =
+    typeof payload?.actor === "string" && payload.actor.trim()
+      ? payload.actor.trim().slice(0, 80)
+      : "admin";
   const entry = await appendUsageCredit({
     accountId,
     amountUsd,
+    source: "admin_credit",
     note,
-    createdBy: "admin",
+    createdBy: actor,
+    uniqueKey: `admin_credit:${idempotencyKey}`,
+    metadata: {
+      idempotencyKey,
+      actor,
+    },
   });
   const summary = await usageSummary({ accountId });
 

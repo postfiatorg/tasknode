@@ -34,6 +34,15 @@ const defaultState = {
 
 let state = loadState();
 
+export function runtimeStoreStatus() {
+  return {
+    path: storePath,
+    defaultPath: defaultStorePath,
+    explicit: Boolean(process.env.TASKNODE_STORE_PATH),
+    ephemeralDefault: storePath === defaultStorePath || storePath.startsWith("/tmp/"),
+  };
+}
+
 function loadState() {
   if (!existsSync(storePath)) return structuredClone(defaultState);
 

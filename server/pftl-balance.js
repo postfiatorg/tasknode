@@ -128,12 +128,15 @@ function dropsToPft(drops) {
 
 function wssRejectUnauthorized(env, url) {
   const configured = String(env.PFTL_WSS_REJECT_UNAUTHORIZED || "").trim().toLowerCase();
-  if (["false", "0", "no"].includes(configured)) return false;
   if (["true", "1", "yes"].includes(configured)) return true;
 
   try {
     const hostname = new URL(url).hostname;
-    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "178.156.143.199") {
+    const localOnly = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+    const explicitlyAllowed =
+      ["false", "0", "no"].includes(configured) &&
+      env.TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS === "true";
+    if (localOnly && explicitlyAllowed) {
       return false;
     }
   } catch {

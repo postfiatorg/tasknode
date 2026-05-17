@@ -46,7 +46,7 @@ services:
       # canonical historical pull endpoint.
       PFTL_WSS_URL: ${PFTL_WSS_URL:-wss://178.156.143.199:6005}
       PFTL_WSS_URL_FALLBACKS: ${PFTL_WSS_URL_FALLBACKS:-wss://ws.testnet.postfiat.org}
-      PFTL_WSS_REJECT_UNAUTHORIZED: ${PFTL_WSS_REJECT_UNAUTHORIZED:-false}
+      PFTL_WSS_REJECT_UNAUTHORIZED: ${PFTL_WSS_REJECT_UNAUTHORIZED:-true}
       PFTL_RPC_URL: ${PFTL_RPC_URL:-http://178.156.143.199:5005}
       PFTL_RPC_URL_FALLBACKS: ${PFTL_RPC_URL_FALLBACKS:-https://rpc.testnet.postfiat.org}
       PFTL_RPC_API_KEY: ${PFTL_RPC_API_KEY:-}

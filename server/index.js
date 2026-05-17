@@ -13,6 +13,7 @@ import {
   authEmailVerify,
   authProviders,
   authStart,
+  devAuthStatus,
   chatEstimate,
   chatModes,
   chatSend,
@@ -39,6 +40,7 @@ import {
   destroySession,
   getLinkedWallet,
   getSession,
+  runtimeStoreStatus,
   sessionCookieName,
   sessionTtlSeconds,
 } from "./runtime-store.js";
@@ -50,6 +52,7 @@ import {
   usageLedger,
 } from "./repositories/chat-billing.js";
 import { migrateDatabase } from "./db/migrate.js";
+import { checkRateLimit } from "./rate-limit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -72,11 +75,33 @@ const contentTypes = new Map([
   [".woff2", "font/woff2"],
 ]);
 
+function securityHeaders() {
+  return {
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "content-security-policy": [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      "connect-src 'self' https://traffic.postfiat.org https://us.posthog.com https://*.posthog.com",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+    ].join("; "),
+  };
+}
+
 function json(res, status, body, headers = {}) {
   const text = JSON.stringify(body);
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
+    ...securityHeaders(),
     ...headers,
   });
   res.end(text);
@@ -133,6 +158,7 @@ function runtimeConfigScript(res) {
   res.writeHead(200, {
     "content-type": "text/javascript; charset=utf-8",
     "cache-control": "no-store",
+    ...securityHeaders(),
   });
   res.end(script);
 }
@@ -173,6 +199,42 @@ function requestIp(req) {
   return raw.startsWith("::ffff:") ? raw.slice("::ffff:".length) : raw;
 }
 
+function rateLimitKey(req, route, session = null, extra = "") {
+  return [
+    route,
+    session?.accountId || "signed_out",
+    requestIp(req) || "unknown_ip",
+    String(extra || "").slice(0, 120),
+  ].join(":");
+}
+
+function enforceRateLimit(req, res, { route, session = null, extra = "", limit, windowMs }) {
+  const result = checkRateLimit({
+    key: rateLimitKey(req, route, session, extra),
+    limit,
+    windowMs,
+  });
+  if (result.allowed) return false;
+
+  json(
+    res,
+    429,
+    {
+      ok: false,
+      error: "rate_limited",
+      route,
+      message: "Too many requests. Try again after the retry window.",
+      retryAfterSeconds: result.retryAfterSeconds,
+    },
+    {
+      "retry-after": String(result.retryAfterSeconds),
+      "x-ratelimit-limit": String(result.limit),
+      "x-ratelimit-remaining": String(result.remaining),
+    }
+  );
+  return true;
+}
+
 function sessionCookie(req, sessionId) {
   const secure = secureCookie(req) ? "; Secure" : "";
   return `${sessionCookieName}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${sessionTtlSeconds}${secure}`;
@@ -203,6 +265,54 @@ function requestOrigin(req) {
   const proto = req.headers["x-forwarded-proto"] || (secureCookie(req) ? "https" : "http");
   if (!host) return "";
   return `${proto}://${host}`;
+}
+
+function isLocalHostname(hostname = "") {
+  const normalized = String(hostname || "").toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized.endsWith(".localhost")
+  );
+}
+
+function configuredPublicOrigin() {
+  return process.env.TASKNODE_PUBLIC_URL || process.env.VITE_SITE_ORIGIN || "";
+}
+
+function isPublicOrigin(value = "") {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === "https:") return true;
+    return !isLocalHostname(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function assertStartupSecurity() {
+  const publicOrigin = configuredPublicOrigin();
+  if (!isPublicOrigin(publicOrigin)) return;
+
+  const devAuth = devAuthStatus();
+  if (devAuth.enabled) {
+    throw new Error(
+      "refusing_public_startup_with_dev_auth_enabled: set TASKNODE_ENV=production and TASKNODE_DEV_AUTH_ENABLED=false"
+    );
+  }
+
+  const store = runtimeStoreStatus();
+  const durableStoreDeclared = process.env.TASKNODE_RUNTIME_STORE_DURABLE === "true";
+  if (
+    (!store.explicit || store.ephemeralDefault || !durableStoreDeclared) &&
+    process.env.TASKNODE_ALLOW_PUBLIC_EPHEMERAL_STORE !== "true"
+  ) {
+    throw new Error(
+      "refusing_public_startup_with_ephemeral_runtime_store: configure durable auth/account storage and TASKNODE_RUNTIME_STORE_DURABLE=true, or set an explicit reviewed override"
+    );
+  }
 }
 
 function responseHeadersForAuthResult(req, result) {
@@ -249,6 +359,7 @@ async function serveStatic(url, res) {
     res.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
+      ...securityHeaders(),
     });
     res.end(html);
     return;
@@ -258,6 +369,7 @@ async function serveStatic(url, res) {
   res.writeHead(200, {
     "content-type": contentTypes.get(ext) || "application/octet-stream",
     "cache-control": ext === ".html" ? "no-store" : "public, max-age=31536000, immutable",
+    ...securityHeaders(),
   });
   createReadStream(filePath).pipe(res);
 }
@@ -283,6 +395,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/auth/dev/start") {
+    if (enforceRateLimit(req, res, { route: "auth_dev_start", session, limit: 10, windowMs: 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = authDevStart(payload, req.method);
     const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
@@ -291,6 +404,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/auth/email/start") {
+    if (enforceRateLimit(req, res, { route: "auth_email_start", session, limit: 5, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = await authEmailStart(payload, req.method, {
       ip: requestIp(req),
@@ -301,6 +415,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/auth/email/verify") {
+    if (enforceRateLimit(req, res, { route: "auth_email_verify", session, limit: 20, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = authEmailVerify(payload, req.method);
     const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
@@ -362,6 +477,7 @@ async function routeApi(req, url, res) {
     if (result.status >= 300 && result.status < 400 && result.redirectLocation) {
       res.writeHead(result.status, {
         "cache-control": "no-store",
+        ...securityHeaders(),
         ...headers,
       });
       res.end("");
@@ -395,6 +511,7 @@ async function routeApi(req, url, res) {
     if (result.status >= 300 && result.status < 400 && result.redirectLocation) {
       res.writeHead(result.status, {
         "cache-control": "no-store",
+        ...securityHeaders(),
         ...headers,
       });
       res.end("");
@@ -477,9 +594,10 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/chat/stream") {
+    if (enforceRateLimit(req, res, { route: "chat_stream", session, limit: 30, windowMs: 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
     const conversationId = conversationIdForSession(session, payload?.conversationId || "");
-    const started = chatStreamStart(
+    const started = await chatStreamStart(
       { ...payload, accountId: session?.accountId || "", conversationId },
       req.method
     );
@@ -494,6 +612,7 @@ async function routeApi(req, url, res) {
       "cache-control": "no-store, no-transform",
       connection: "keep-alive",
       "x-accel-buffering": "no",
+      ...securityHeaders(),
     });
     writeSse(res, "meta", started.body);
 
@@ -556,6 +675,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/chat/send") {
+    if (enforceRateLimit(req, res, { route: "chat_send", session, limit: 60, windowMs: 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
     const conversationId = conversationIdForSession(session, payload?.conversationId || "");
     const result = await chatSend(
@@ -634,12 +754,14 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/wallet/link/start") {
+    if (enforceRateLimit(req, res, { route: "wallet_link_start", session, limit: 20, windowMs: 10 * 60_000 })) return true;
     const result = walletLinkStart(req.method, session);
     json(res, result.status, result.body);
     return true;
   }
 
   if (url.pathname === "/api/wallet/link/verify") {
+    if (enforceRateLimit(req, res, { route: "wallet_link_verify", session, limit: 30, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 8192) : {};
     const result = await walletLinkVerify(payload, req.method, session);
     json(res, result.status, result.body);
@@ -653,6 +775,7 @@ async function routeApi(req, url, res) {
     url.pathname === "/api/wallet/delink" ||
     url.pathname === "/api/wallet/relink/start"
   ) {
+    if (enforceRateLimit(req, res, { route: "wallet_action", session, extra: url.pathname, limit: 20, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 8192) : {};
     const result = await walletActionStart(url.pathname, req.method, session, payload);
     json(res, result.status, result.body);
@@ -707,6 +830,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/context/history/rpc/import") {
+    if (enforceRateLimit(req, res, { route: "context_history_rpc_import", session, limit: 5, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 8192) : {};
     const result = await contextHistoryRpcImport(payload, req.method, session);
     json(res, result.status, result.body);
@@ -739,6 +863,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/usage/credit/admin") {
+    if (enforceRateLimit(req, res, { route: "usage_admin_credit", session, limit: 20, windowMs: 10 * 60_000 })) return true;
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = await usageAdminCredit(payload, req.method, req.headers.authorization || "");
     json(res, result.status, result.body);
@@ -803,6 +928,7 @@ const server = createServer((req, res) => {
     });
 });
 
+assertStartupSecurity();
 await migrateDatabase();
 
 server.listen(port, "0.0.0.0", () => {

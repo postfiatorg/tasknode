@@ -134,6 +134,13 @@ Fly, either configure a durable store path on a Fly volume or move those
 remaining data models to Postgres. Do not use the JSON store for durable chat
 history or billing in new deployments.
 
+Public startup guard: `server/index.js` refuses to boot with a public
+`TASKNODE_PUBLIC_URL`/`VITE_SITE_ORIGIN` when dev auth is enabled or the runtime
+store is not explicitly declared durable. Keep `TASKNODE_ENV=production`,
+`TASKNODE_DEV_AUTH_ENABLED=false`, and, until auth/account/wallet state moves to
+Postgres, set `TASKNODE_RUNTIME_STORE_DURABLE=true` only after a durable store
+path or volume is actually configured.
+
 ## Environment And Secrets
 
 Do not commit or print secret values.
@@ -220,7 +227,8 @@ Current behavior:
 - indexed PFTasks context/task rows can be imported as sanitized pointer
   metadata; the latest encrypted context CID can be decrypted locally after
   wallet unlock;
-- admin credit requires `TASKNODE_ADMIN_CREDIT_TOKEN`;
+- admin credit requires `TASKNODE_ADMIN_CREDIT_TOKEN` plus a caller-supplied
+  idempotency key;
 - Ethereum top-up is account-scoped and enabled when `ETH_DEPOSIT_XPUB` is
   configured; it accepts ETH, USDC, and USDT on Ethereum mainnet and never
   asks the user to connect or sign with MetaMask.

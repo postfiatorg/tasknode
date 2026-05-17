@@ -163,6 +163,20 @@ npm run build
 SMOKE_BASE_URL=http://127.0.0.1:5174 npm run smoke
 ```
 
+Public deployments refuse to boot if development auth is enabled or if the app
+would use the default `/tmp` JSON runtime store for auth/account/wallet state.
+Before Fly deploys, confirm:
+
+```bash
+fly secrets set TASKNODE_DEV_AUTH_ENABLED=false -a tasknodeofficial-dev
+fly secrets set TASKNODE_ENV=production -a tasknodeofficial-dev
+```
+
+Until auth/account/wallet state is fully Postgres-backed, a public deployment
+also needs a reviewed durable runtime-store path and
+`TASKNODE_RUNTIME_STORE_DURABLE=true`, or an explicit reviewed override. Do not
+use the override as a production durability substitute.
+
 If local production Docker was tested, also run:
 
 ```bash

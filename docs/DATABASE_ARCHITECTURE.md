@@ -13,6 +13,9 @@ Implementation status:
   intentionally stricter than merely detecting `DATABASE_URL`.
 - Still JSON-backed: account/session auth records, wallet links, and Ethereum
   deposit account records. Context keeps JSON fallback during migration.
+  Public startup now refuses runtime-store auth state unless a durable store is
+  explicitly declared or a reviewed override is set, but the target remains
+  moving these auth/account models to Postgres.
 - Next cutovers should keep using repository modules rather than importing raw
   SQL from handlers.
 

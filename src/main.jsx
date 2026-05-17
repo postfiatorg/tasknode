@@ -83,6 +83,7 @@ import {
 } from "./features/wallet/wallet-state";
 import { formatCreditUsd, formatUsageUsd } from "./formatters";
 import { isSignedInSession } from "./session";
+import { escapeContextHtml, looksLikeContextHtml, sanitizeContextHtml } from "../shared/context-html";
 import "./styles.css";
 import "./features/context/context.css";
 
@@ -2962,17 +2963,6 @@ function formatRelativeShort(value, now = Date.now()) {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-function escapeContextHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function looksLikeHtml(value) {
-  return /<\/?[a-z][\s\S]*>/i.test(String(value || ""));
-}
-
 function contextTextToHtml(value) {
   const lines = String(value || "").replace(/\r\n/g, "\n").split("\n");
   let html = "";
@@ -3030,7 +3020,7 @@ function contextTextToHtml(value) {
 
 function contextBodyToHtml(value) {
   const text = String(value || "");
-  return looksLikeHtml(text) ? text : contextTextToHtml(text);
+  return looksLikeContextHtml(text) ? sanitizeContextHtml(text) : contextTextToHtml(text);
 }
 
 function stripContextHtml(value) {
@@ -3364,7 +3354,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
 
     setSaving(true);
     setSaveMessage("");
-    const body = editorRef.current.innerHTML;
+    const body = sanitizeContextHtml(editorRef.current.innerHTML);
 
     let result;
     try {

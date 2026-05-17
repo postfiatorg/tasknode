@@ -81,7 +81,8 @@ minimal deployable dev app:
 - `/api/usage/actions`, `/api/usage/top-up/start`, and
   `/api/usage/credit/admin` define the first usage-credit contract. Crypto
   top-up is still disabled while the safest rail is selected; admin credit is
-  enabled only when `TASKNODE_ADMIN_CREDIT_TOKEN` is configured.
+  enabled only when `TASKNODE_ADMIN_CREDIT_TOKEN` is configured and requires a
+  caller-supplied idempotency key.
 - Eligible provider login can grant an idempotent initial chat credit through
   the same usage ledger. Email-only login is excluded.
 - `/api/context` and `/api/context/edit/save` expose the first native
