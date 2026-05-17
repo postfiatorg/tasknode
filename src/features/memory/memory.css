@@ -66,12 +66,59 @@
   font: inherit;
 }
 
-.memory-list {
+.memory-sections {
   display: grid;
-  gap: 10px;
+  gap: 18px;
   max-height: calc(100vh - 220px);
   overflow: auto;
   padding-right: 4px;
+}
+
+.memory-section {
+  display: grid;
+  gap: 10px;
+}
+
+.memory-section-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 2px;
+}
+
+.memory-section-header h2 {
+  margin: 0;
+  color: #0d0d0d;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.memory-section-header p {
+  margin: 3px 0 0;
+  color: #6b6b66;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.memory-section-header span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid #e8e6df;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #3f3f3a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.memory-list {
+  display: grid;
+  gap: 10px;
 }
 
 .memory-row,
@@ -181,7 +228,7 @@
     flex-direction: column;
   }
 
-  .memory-list {
+  .memory-sections {
     max-height: none;
   }
 }

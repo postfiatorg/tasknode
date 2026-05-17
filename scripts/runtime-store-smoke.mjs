@@ -165,6 +165,45 @@ try {
     throw new Error(`Basic OpenAI Responses requests should not carry web search tools: ${JSON.stringify(basicFrontierRequest)}`);
   }
 
+  const smokeMemoryContext = {
+    deepMemories: [
+      {
+        conversationTitle: "Deep memory #2",
+        createdAt: "2026-05-17T18:24:43.872Z",
+        userRequestSummary: "- The user asked for account-level continuity across chat tabs.",
+        systemResponseSummary: "- The assistant agreed to inject durable memory into future chat context.",
+        memoryText: "The user is refining Task Node memory so every chat has useful account context without blocking normal chat execution.",
+      },
+    ],
+    memories: [
+      {
+        createdAt: "2026-05-17T18:30:00.000Z",
+        userRequestSummary: "TURN_USER_FIELD_SHOULD_NOT_APPEAR",
+        systemResponseSummary: "TURN_ASSISTANT_FIELD_SHOULD_NOT_APPEAR",
+        memoryText: "Recent memory should carry forward as date plus memory text only.",
+      },
+    ],
+  };
+
+  const frontierMemoryRequest = openAiResponseRequest({
+    mode: "Frontier Instant",
+    model: "chat-latest",
+    message: "Use my memory and reply.",
+    conversationId: "runtime-smoke-frontier-memory-contract",
+    memoryContext: smokeMemoryContext,
+  });
+
+  if (
+    !frontierMemoryRequest.instructions.includes("<deep_memory>") ||
+    !frontierMemoryRequest.instructions.includes("User:") ||
+    !frontierMemoryRequest.instructions.includes("Assistant:") ||
+    !frontierMemoryRequest.instructions.includes("Recent memory should carry forward") ||
+    frontierMemoryRequest.instructions.includes("TURN_USER_FIELD_SHOULD_NOT_APPEAR") ||
+    frontierMemoryRequest.instructions.includes("TURN_ASSISTANT_FIELD_SHOULD_NOT_APPEAR")
+  ) {
+    throw new Error(`OpenAI memory context must include deep memory and memory-only recent records: ${frontierMemoryRequest.instructions}`);
+  }
+
   const frontierThinkingRequest = openAiResponseRequest({
     mode: "Frontier Thinking",
     model: "gpt-5.5",
@@ -219,6 +258,26 @@ try {
     privateUserContent?.[3]?.text?.includes("hello world") !== true
   ) {
     throw new Error(`OpenRouter private request is missing ZDR or attachment support: ${JSON.stringify(openRouterRequest)}`);
+  }
+
+  const openRouterMemoryRequest = openRouterChatRequest({
+    mode: "Private Instant",
+    model: "openrouter/auto",
+    message: "Use my memory and reply.",
+    conversationId: "runtime-smoke-openrouter-memory-contract",
+    memoryContext: smokeMemoryContext,
+  });
+  const openRouterMemoryInstructions = openRouterMemoryRequest.messages?.[0]?.content || "";
+
+  if (
+    !openRouterMemoryInstructions.includes("<deep_memory>") ||
+    !openRouterMemoryInstructions.includes("User:") ||
+    !openRouterMemoryInstructions.includes("Assistant:") ||
+    !openRouterMemoryInstructions.includes("Recent memory should carry forward") ||
+    openRouterMemoryInstructions.includes("TURN_USER_FIELD_SHOULD_NOT_APPEAR") ||
+    openRouterMemoryInstructions.includes("TURN_ASSISTANT_FIELD_SHOULD_NOT_APPEAR")
+  ) {
+    throw new Error(`OpenRouter memory context must include deep memory and memory-only recent records: ${openRouterMemoryInstructions}`);
   }
 
   const openRouterThinkingRequest = openRouterChatRequest({

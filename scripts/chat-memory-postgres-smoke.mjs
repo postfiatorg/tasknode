@@ -12,6 +12,7 @@ import {
   deepMemoryBlockSize,
   deepMemoryJobSource,
   enqueueChatMemoryJob,
+  getChatMemoryContext,
   listChatMemory,
 } from "../server/repositories/chat-memory.js";
 
@@ -120,6 +121,14 @@ assert.equal(memory.entries.length, deepMemoryBlockSize + 1);
 const deepEntries = memory.entries.filter((entry) => entry.kind === "deep_memory");
 assert.equal(deepEntries.length, 1);
 assert.match(deepEntries[0].memoryText, /concise planning style/);
+
+const context = await getChatMemoryContext({ accountId, deepLimit: 3, turnLimit: 36 });
+assert.equal(context.deepMemories.length, 1);
+assert.equal(context.memories.length, deepMemoryBlockSize);
+assert.match(context.deepMemories[0].userRequestSummary, /remember concise implementation-plan preferences/);
+assert.match(context.deepMemories[0].systemResponseSummary, /acknowledged the concise-plan preference/);
+assert.match(context.deepMemories[0].memoryText, /concise planning style/);
+assert.match(context.memories[0].memoryText, /concrete checkpoints/);
 
 console.log(`chat memory postgres smoke ok: ${accountId}`);
 await closePool();

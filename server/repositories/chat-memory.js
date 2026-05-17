@@ -5,6 +5,8 @@ const maxListLimit = 200;
 const maxClaimLimit = 10;
 const failedAttemptLimit = Number(process.env.TASKNODE_MEMORY_MAX_ATTEMPTS || 5);
 export const deepMemoryBlockSize = 36;
+const maxContextDeepLimit = 10;
+const maxContextTurnLimit = 72;
 
 function useDatabase() {
   return databaseEnabled();
@@ -576,6 +578,75 @@ export async function listChatMemory({ accountId = "", q = "", limit = 100 } = {
 
   return {
     entries: result.rows.map(publicEntry),
+    durable: true,
+    storePath: "postgres",
+  };
+}
+
+export async function getChatMemoryContext({
+  accountId = "",
+  deepLimit = 3,
+  turnLimit = 36,
+} = {}) {
+  if (!useDatabase()) {
+    return {
+      deepMemories: [],
+      memories: [],
+      durable: false,
+      storePath: "runtime",
+    };
+  }
+
+  const normalizedAccountId = safeAccountId(accountId);
+  if (!normalizedAccountId) {
+    return {
+      deepMemories: [],
+      memories: [],
+      durable: true,
+      storePath: "postgres",
+    };
+  }
+
+  const normalizedDeepLimit = Math.min(
+    Math.max(Number(deepLimit) || 3, 0),
+    maxContextDeepLimit
+  );
+  const normalizedTurnLimit = Math.min(
+    Math.max(Number(turnLimit) || 36, 0),
+    maxContextTurnLimit
+  );
+  const [deepResult, turnResult] = await Promise.all([
+    normalizedDeepLimit > 0
+      ? query(
+          `
+            SELECT *
+            FROM chat_memory_entries
+            WHERE account_id = $1
+              AND kind = 'deep_memory'
+            ORDER BY created_at DESC, id DESC
+            LIMIT $2
+          `,
+          [normalizedAccountId, normalizedDeepLimit]
+        )
+      : { rows: [] },
+    normalizedTurnLimit > 0
+      ? query(
+          `
+            SELECT *
+            FROM chat_memory_entries
+            WHERE account_id = $1
+              AND kind = 'turn_memory'
+            ORDER BY created_at DESC, id DESC
+            LIMIT $2
+          `,
+          [normalizedAccountId, normalizedTurnLimit]
+        )
+      : { rows: [] },
+  ]);
+
+  return {
+    deepMemories: deepResult.rows.map(publicEntry),
+    memories: turnResult.rows.map(publicEntry),
     durable: true,
     storePath: "postgres",
   };

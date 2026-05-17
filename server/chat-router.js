@@ -4,6 +4,15 @@ import {
   getChatMessages,
 } from "./repositories/chat-billing.js";
 import { enqueueChatMemoryJob } from "./repositories/chat-memory.js";
+import {
+  chatMemoryContextForAccount,
+  taskNodeInstructions,
+} from "./chat-memory-context.js";
+import {
+  openAiTools,
+  webSearchUsdPerCall,
+} from "./chat-search-tools.js";
+export { shouldUseWebSearch } from "./chat-search-tools.js";
 export {
   chatInputCharacterEstimate,
   normalizeChatAttachments,
@@ -16,7 +25,6 @@ import {
 const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const providerTimeoutMs = Number(process.env.CHAT_PROVIDER_TIMEOUT_MS || 45000);
-const webSearchUsdPerCall = 0.01;
 
 export const chatModePrices = {
   "Private Instant": {
@@ -135,15 +143,6 @@ export function actualChatCost(mode, usage) {
   return Number(costUsd.toFixed(6));
 }
 
-function taskNodeInstructions() {
-  return [
-    "You are Task Node, a concise execution assistant for Post Fiat.",
-    "Help the user clarify goals, plan useful work, and move toward high-quality personal task execution.",
-    "Do not claim wallet, payment, task reward, or production account actions are complete unless the app has actually done them.",
-    "Keep answers direct and practical. Ask a short clarifying question only when the next action is genuinely ambiguous.",
-  ].join("\n");
-}
-
 function attachmentTranscriptText(message) {
   const textAttachments = Array.isArray(message?.attachments)
     ? message.attachments.filter((attachment) => (
@@ -178,38 +177,6 @@ function recentTranscriptFromMessages(messages, currentMessage) {
 
 function recentTranscript(conversationId, currentMessage) {
   return recentTranscriptFromMessages(getRuntimeChatMessages(conversationId), currentMessage);
-}
-
-export function shouldUseWebSearch(message = "") {
-  const text = String(message || "").toLowerCase();
-  const currentInfoSignals = [
-    "search",
-    "look up",
-    "web",
-    "internet",
-    "today",
-    "current",
-    "currently",
-    "latest",
-    "recent",
-    "right now",
-    "news",
-    "what is going on",
-    "what's going on",
-  ];
-
-  return currentInfoSignals.some((signal) => text.includes(signal));
-}
-
-function openAiTools({ message }) {
-  if (!shouldUseWebSearch(message)) return [];
-
-  return [
-    {
-      type: "web_search",
-      search_context_size: process.env.OPENAI_WEB_SEARCH_CONTEXT_SIZE || "low",
-    },
-  ];
 }
 
 function openRouterProviderPreferences({ providerOrder = [], requireParameters = false } = {}) {
@@ -265,7 +232,13 @@ function openRouterPlugins(attachments = []) {
   ];
 }
 
-export function openRouterMessages({ conversationId, message, attachments = [], historyMessages = null }) {
+export function openRouterMessages({
+  conversationId,
+  message,
+  attachments = [],
+  historyMessages = null,
+  memoryContext = null,
+}) {
   const normalizedAttachments = normalizeChatAttachments(attachments);
   const sourceHistory = Array.isArray(historyMessages)
     ? historyMessages
@@ -285,7 +258,7 @@ export function openRouterMessages({ conversationId, message, attachments = [], 
         ];
 
   return [
-    { role: "system", content: taskNodeInstructions() },
+    { role: "system", content: taskNodeInstructions({ memoryContext }) },
     ...history,
     { role: "user", content: userContent },
   ];
@@ -299,6 +272,7 @@ export function openRouterChatRequest({
   attachments = [],
   stream = false,
   historyMessages = null,
+  memoryContext = null,
 }) {
   const config = chatModeConfig(mode);
   const normalizedAttachments = normalizeChatAttachments(attachments);
@@ -310,6 +284,7 @@ export function openRouterChatRequest({
       message,
       attachments: normalizedAttachments,
       historyMessages,
+      memoryContext,
     }),
     provider: openRouterProviderPreferences({
       providerOrder: config.providerOrder || [],
@@ -384,12 +359,13 @@ export function openAiResponseRequest({
   attachments = [],
   stream = false,
   historyMessages = null,
+  memoryContext = null,
 }) {
   const config = chatModeConfig(mode);
   const tools = openAiTools({ message });
   return {
     model,
-    instructions: taskNodeInstructions(),
+    instructions: taskNodeInstructions({ memoryContext }),
     input: openAiInput({ conversationId, message, attachments, historyMessages }),
     max_output_tokens: config.maxOutputTokens,
     reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
@@ -622,7 +598,15 @@ function enqueueMemoryForTurn({ accountId, conversationId, persisted }) {
   });
 }
 
-async function executeOpenAi({ mode, model, message, conversationId, attachments = [], historyMessages = [] }) {
+async function executeOpenAi({
+  mode,
+  model,
+  message,
+  conversationId,
+  attachments = [],
+  historyMessages = [],
+  memoryContext = null,
+}) {
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
   const body = await fetchJson(`${baseUrl}/responses`, {
     method: "POST",
@@ -637,6 +621,7 @@ async function executeOpenAi({ mode, model, message, conversationId, attachments
       conversationId,
       attachments,
       historyMessages,
+      memoryContext,
     })),
   });
   const text = outputTextFromOpenAi(body);
@@ -657,6 +642,7 @@ async function streamOpenAi({
   conversationId,
   attachments = [],
   historyMessages = [],
+  memoryContext = null,
   onDelta,
   signal,
 }) {
@@ -678,6 +664,7 @@ async function streamOpenAi({
         attachments,
         stream: true,
         historyMessages,
+        memoryContext,
       })),
     },
     { signal }
@@ -735,7 +722,15 @@ async function streamOpenAi({
   };
 }
 
-async function executeOpenRouter({ mode, model, message, conversationId, attachments = [], historyMessages = [] }) {
+async function executeOpenRouter({
+  mode,
+  model,
+  message,
+  conversationId,
+  attachments = [],
+  historyMessages = [],
+  memoryContext = null,
+}) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -759,6 +754,7 @@ async function executeOpenRouter({ mode, model, message, conversationId, attachm
       conversationId,
       attachments,
       historyMessages,
+      memoryContext,
     })),
   });
   const text = outputTextFromOpenRouter(body);
@@ -779,6 +775,7 @@ async function streamOpenRouter({
   conversationId,
   attachments = [],
   historyMessages = [],
+  memoryContext = null,
   onDelta,
   signal,
 }) {
@@ -809,6 +806,7 @@ async function streamOpenRouter({
         attachments,
         stream: true,
         historyMessages,
+        memoryContext,
       })),
     },
     { signal }
@@ -860,7 +858,10 @@ export async function executeChat({ accountId = "", mode, message, conversationI
     throw error;
   }
 
-  const historyMessages = await getChatMessages(conversationId);
+  const [historyMessages, memoryContext] = await Promise.all([
+    getChatMessages(conversationId),
+    chatMemoryContextForAccount(accountId),
+  ]);
   const result =
     status.provider === "openai"
       ? await executeOpenAi({
@@ -870,6 +871,7 @@ export async function executeChat({ accountId = "", mode, message, conversationI
           conversationId,
           attachments,
           historyMessages,
+          memoryContext,
         })
       : await executeOpenRouter({
           mode: normalizedMode,
@@ -878,6 +880,7 @@ export async function executeChat({ accountId = "", mode, message, conversationI
           conversationId,
           attachments,
           historyMessages,
+          memoryContext,
         });
 
   if (!result.text) {
@@ -926,7 +929,10 @@ export async function executeChatStream({
     throw error;
   }
 
-  const historyMessages = await getChatMessages(conversationId);
+  const [historyMessages, memoryContext] = await Promise.all([
+    getChatMessages(conversationId),
+    chatMemoryContextForAccount(accountId),
+  ]);
   const result =
     status.provider === "openai"
       ? await streamOpenAi({
@@ -936,6 +942,7 @@ export async function executeChatStream({
           conversationId,
           attachments,
           historyMessages,
+          memoryContext,
           onDelta,
           signal,
         })
@@ -946,6 +953,7 @@ export async function executeChatStream({
           conversationId,
           attachments,
           historyMessages,
+          memoryContext,
           onDelta,
           signal,
         });

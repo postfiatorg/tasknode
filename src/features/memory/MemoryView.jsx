@@ -16,6 +16,8 @@ export function MemoryView({ session }) {
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
   const signedIn = isSignedInSession(session);
+  const deepEntries = entries.filter((entry) => entry.kind === "deep_memory").slice(0, 3);
+  const memoryEntries = entries.filter((entry) => entry.kind !== "deep_memory").slice(0, 36);
 
   const loadMemory = useCallback((nextQuery = query) => {
     if (!signedIn) return undefined;
@@ -94,18 +96,55 @@ export function MemoryView({ session }) {
       )}
 
       {entries.length > 0 && (
-        <div className="memory-list" aria-label="Chat memory records">
-          {entries.map((entry) => (
-            <MemoryRow entry={entry} key={entry.id} />
-          ))}
+        <div className="memory-sections" aria-label="Chat memory records">
+          {deepEntries.length > 0 && (
+            <MemorySection
+              count={deepEntries.length}
+              description="Last 3 deep memories. These preserve user, assistant, and memory summaries."
+              title="Deep Memory"
+            >
+              {deepEntries.map((entry) => (
+                <MemoryRow detail="deep" entry={entry} key={entry.id} />
+              ))}
+            </MemorySection>
+          )}
+
+          {memoryEntries.length > 0 && (
+            <MemorySection
+              count={memoryEntries.length}
+              description="Last 36 memory records. These show date and memory only."
+              title="Memory"
+            >
+              {memoryEntries.map((entry) => (
+                <MemoryRow detail="memory" entry={entry} key={entry.id} />
+              ))}
+            </MemorySection>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function MemoryRow({ entry }) {
-  const deepMemory = entry.kind === "deep_memory";
+function MemorySection({ children, count, description, title }) {
+  return (
+    <section className="memory-section">
+      <div className="memory-section-header">
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <span>{count}</span>
+      </div>
+      <div className="memory-list">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function MemoryRow({ detail, entry }) {
+  const deepMemory = detail === "deep";
 
   return (
     <article className={`memory-row${deepMemory ? " is-deep-memory" : ""}`}>
@@ -114,19 +153,25 @@ function MemoryRow({ entry }) {
           <Clock3 size={13} strokeWidth={1.8} />
           {formatMemoryDate(entry.createdAt)}
         </span>
-        <em>
-          {deepMemory && <b>Deep memory</b>}
-          {entry.conversationTitle || "New chat"}
-        </em>
+        {deepMemory && (
+          <em>
+            <b>Deep memory</b>
+            {entry.conversationTitle || "New chat"}
+          </em>
+        )}
       </div>
-      <section>
-        <small>User request</small>
-        <MemoryText text={entry.userRequestSummary} />
-      </section>
-      <section>
-        <small>System response</small>
-        <MemoryText text={entry.systemResponseSummary} />
-      </section>
+      {deepMemory && (
+        <>
+          <section>
+            <small>User</small>
+            <MemoryText text={entry.userRequestSummary} />
+          </section>
+          <section>
+            <small>Assistant</small>
+            <MemoryText text={entry.systemResponseSummary} />
+          </section>
+        </>
+      )}
       <section>
         <small>Memory</small>
         <MemoryText text={entry.memoryText} />
