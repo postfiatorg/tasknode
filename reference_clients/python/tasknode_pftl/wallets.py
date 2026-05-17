@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from xrpl.wallet import Wallet
 
-from .encryption import X25519Identity, generate_identity
+from .encryption import X25519Identity, identity_from_wallet_seed
 from .pftl import PftlClient, pft_to_drops
 
 
@@ -44,7 +44,7 @@ def create_protocol_wallet(role: str) -> ProtocolWallet:
     return ProtocolWallet(
         role=role,
         wallet=wallet,
-        encryption=generate_identity(role=role, wallet_address=wallet.address),
+        encryption=identity_from_wallet_seed(role=role, wallet_seed=wallet.seed, wallet_address=wallet.address),
     )
 
 
@@ -53,7 +53,7 @@ def wallet_from_seed(role: str, seed: str) -> ProtocolWallet:
     return ProtocolWallet(
         role=role,
         wallet=wallet,
-        encryption=generate_identity(role=role, wallet_address=wallet.address),
+        encryption=identity_from_wallet_seed(role=role, wallet_seed=wallet.seed, wallet_address=wallet.address),
     )
 
 
@@ -87,3 +87,41 @@ def fund_wallets(
         })
     return out
 
+
+def publish_wallet_message_keys(
+    client: PftlClient,
+    wallets: list[ProtocolWallet],
+) -> list[dict]:
+    out = []
+    for protocol_wallet in wallets:
+        expected = protocol_wallet.encryption.message_key
+        current = client.account_message_key(protocol_wallet.address)
+        if current == expected:
+            out.append({
+                "role": protocol_wallet.role,
+                "address": protocol_wallet.address,
+                "published": False,
+                "already_published": True,
+                "message_key": expected,
+                "x25519_public_key": protocol_wallet.encryption.public_key_b64,
+                "x25519_public_key_hex": protocol_wallet.encryption.public_key_hex,
+            })
+            continue
+
+        tx = client.submit_message_key(protocol_wallet.wallet, expected)
+        resolved = client.account_message_key(protocol_wallet.address)
+        out.append({
+            "role": protocol_wallet.role,
+            "address": protocol_wallet.address,
+            "published": True,
+            "already_published": False,
+            "prior_message_key": current,
+            "message_key": expected,
+            "resolved_message_key": resolved,
+            "x25519_public_key": protocol_wallet.encryption.public_key_b64,
+            "x25519_public_key_hex": protocol_wallet.encryption.public_key_hex,
+            "tx_hash": tx.tx_hash,
+            "ledger_index": tx.ledger_index,
+            "result": tx.result,
+        })
+    return out

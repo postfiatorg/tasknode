@@ -5,7 +5,7 @@ from typing import Any
 
 from xrpl.clients import JsonRpcClient
 from xrpl.models.requests import AccountInfo, AccountTx, ServerInfo
-from xrpl.models.transactions import Memo, Payment
+from xrpl.models.transactions import AccountSet, Memo, Payment
 from xrpl.transaction import submit_and_wait
 from xrpl.wallet import Wallet
 
@@ -28,7 +28,7 @@ class SubmittedTx:
     result: str
     ledger_index: int | None
     sender: str
-    destination: str
+    destination: str | None
     amount_drops: str
 
 
@@ -62,6 +62,19 @@ class PftlClient:
     def account_balance_pft(self, address: str) -> float:
         return drops_to_pft(self.account_balance_drops(address))
 
+    def account_info(self, address: str) -> dict[str, Any]:
+        response = self.client.request(AccountInfo(account=address, ledger_index="validated"))
+        result = response.result or {}
+        if result.get("error") == "actNotFound" or "account_data" not in result:
+            return {}
+        return result["account_data"]
+
+    def account_message_key(self, address: str) -> str | None:
+        value = self.account_info(address).get("MessageKey")
+        if not value:
+            return None
+        return str(value).strip().upper() or None
+
     def submit_payment(
         self,
         wallet: Wallet,
@@ -94,6 +107,28 @@ class PftlClient:
             sender=wallet.address,
             destination=destination,
             amount_drops=str(amount_drops),
+        )
+
+    def submit_message_key(self, wallet: Wallet, message_key: str) -> SubmittedTx:
+        tx = AccountSet(
+            account=wallet.address,
+            message_key=str(message_key).strip().upper(),
+            network_id=self.network_id,
+        )
+        response = submit_and_wait(tx, self.client, wallet=wallet, check_fee=False)
+        result = response.result or {}
+        meta = result.get("meta") or {}
+        tx_result = meta.get("TransactionResult") or result.get("engine_result") or "unknown"
+        tx_hash = result.get("hash") or result.get("tx_json", {}).get("hash") or result.get("tx", {}).get("hash")
+        if tx_result != "tesSUCCESS":
+            raise RuntimeError(f"PFTL MessageKey transaction failed: {tx_result} {result}")
+        return SubmittedTx(
+            tx_hash=tx_hash,
+            result=tx_result,
+            ledger_index=result.get("ledger_index") or result.get("validated_ledger_index"),
+            sender=wallet.address,
+            destination=None,
+            amount_drops="0",
         )
 
     def account_tx(self, address: str, *, limit: int = 200) -> list[dict[str, Any]]:

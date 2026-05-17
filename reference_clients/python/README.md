@@ -100,6 +100,35 @@ python3 -m tasknode_pftl.scenarios.full_lifecycle \
 The scenario prints addresses, balances, CIDs, tx hashes, and the final replay
 projection. It does not print seeds.
 
+## Encryption And MessageKey Reference
+
+`tasknode_pftl.scenarios.encryption_pubkey_demo` is the canonical minimal
+reference for wallet encryption key onboarding:
+
+1. create fresh PFTL wallets;
+2. derive each wallet's recoverable, domain-separated X25519 encryption key
+   from its wallet seed;
+3. fund the wallets from `FAUCET_SEED`;
+4. publish each X25519 public key to PFTL with `AccountSet.MessageKey` as
+   `ED<32-byte-x25519-public-key-hex>`;
+5. fetch those `MessageKey` values back from `account_info`;
+6. encrypt an IPFS task request payload only to the on-chain-resolved recipient
+   keys;
+7. write a `pf.ptr/v4` task pointer transaction to that encrypted CID;
+8. prove the intended wallets can decrypt and an outsider cannot.
+
+Run it:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+python3 -m tasknode_pftl.scenarios.encryption_pubkey_demo
+```
+
+This is the expected key-discovery model for new wallets. A PFTL address alone
+is not enough to encrypt to a wallet; the wallet must publish an encryption
+public key in `MessageKey` or the sender must have an explicit trusted key from
+another source.
+
 ## Verification Evidence Readers
 
 `tasknode_pftl.verification` is the canonical Python evidence adapter for

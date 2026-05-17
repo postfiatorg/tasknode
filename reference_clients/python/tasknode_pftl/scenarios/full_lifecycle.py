@@ -9,7 +9,13 @@ from xrpl.wallet import Wallet
 
 from tasknode_pftl.codec import canonical_json, now_iso, sha256_hex, short
 from tasknode_pftl.config import PftlConfig
-from tasknode_pftl.encryption import X25519Identity, encrypt_json_bytes, generate_identity, tasknode_identity_from_seed
+from tasknode_pftl.encryption import (
+    X25519Identity,
+    encrypt_json_bytes,
+    generate_identity,
+    tasknode_identity_from_seed,
+    x25519_public_key_b64_from_message_key,
+)
 from tasknode_pftl.ipfs import IpfsClient
 from tasknode_pftl.pftl import PftlClient, drops_to_pft, pft_to_drops
 from tasknode_pftl.pointers import Pointer
@@ -21,7 +27,7 @@ from tasknode_pftl.taskgen import (
     project_taskgen_input,
 )
 from tasknode_pftl.tx_queue import WalletTxQueue
-from tasknode_pftl.wallets import ProtocolWallet, create_protocol_wallet, fund_wallets
+from tasknode_pftl.wallets import ProtocolWallet, create_protocol_wallet, fund_wallets, publish_wallet_message_keys
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -162,6 +168,19 @@ def run_full_lifecycle(args: argparse.Namespace) -> dict[str, Any]:
     print("Funding complete:")
     for item in funding:
         print(f"  {item['address']}: {drops_to_pft(item['balance_drops']):,.6f} PFT")
+
+    key_publications = publish_wallet_message_keys(pftl, wallets)
+    print("MessageKey publication complete:")
+    for item in key_publications:
+        state = "already set" if item.get("already_published") else "published"
+        print(f"  {item['role']}: {state} {short(item['message_key'])}")
+    resolved_encryption_keys = {
+        wallet.role: x25519_public_key_b64_from_message_key(pftl.account_message_key(wallet.address) or "")
+        for wallet in wallets
+    }
+    for wallet in wallets:
+        if resolved_encryption_keys[wallet.role] != wallet.encryption.public_key_b64:
+            raise RuntimeError(f"Resolved MessageKey does not match local encryption identity for {wallet.role}")
 
     balances_before = {wallet.role: pftl.account_balance_drops(wallet.address) for wallet in wallets}
 
@@ -579,6 +598,8 @@ def run_full_lifecycle(args: argparse.Namespace) -> dict[str, Any]:
         "task_id": task_id,
         "wallets": public_wallets(wallets),
         "funding": funding,
+        "message_keys": key_publications,
+        "resolved_encryption_keys": resolved_encryption_keys,
         "balances_before_pft": {role: drops_to_pft(value) for role, value in balances_before.items()},
         "balances_after_pft": {role: drops_to_pft(value) for role, value in balances_after.items()},
         "cids": cids,

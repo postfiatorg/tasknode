@@ -135,3 +135,16 @@ class PftlConfig:
             missing.append("PINATA_API_SECRET")
         if missing:
             raise RuntimeError(f"Missing live config: {', '.join(missing)}")
+
+    def require_pftl_ipfs(self) -> None:
+        missing = []
+        if not self.rpc_url:
+            missing.append("PFTL_RPC_URL")
+        if not self.faucet_seed:
+            missing.append("FAUCET_SEED")
+        if not self.pinata_api_key:
+            missing.append("PINATA_API_KEY")
+        if not self.pinata_api_secret:
+            missing.append("PINATA_API_SECRET")
+        if missing:
+            raise RuntimeError(f"Missing live config: {', '.join(missing)}")
