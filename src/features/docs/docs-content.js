@@ -17,6 +17,7 @@ import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
 import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
+import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
 
 export const DOC_GROUPS = [
   {
@@ -81,6 +82,17 @@ export const DOC_GROUPS = [
         markdown: taskLifecycle,
       },
       { slug: "nostr", title: "Nostr TBD", summary: "Public broadcast boundary.", markdown: nostr },
+    ],
+  },
+  {
+    title: "Plans",
+    pages: [
+      {
+        slug: "getting-tasks-over-line",
+        title: "Getting Tasks Over The Line",
+        summary: "Plan to make task requests, submissions, rewards, and projections real.",
+        markdown: gettingTasksOverLine,
+      },
     ],
   },
 ];
