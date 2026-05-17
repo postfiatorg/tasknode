@@ -17,37 +17,42 @@ is intentionally not live yet.
 3. `DOCKER_DEV.md`
    Local Docker dev loop for rapid iteration without Fly deploys.
 
-4. `PFTL_TASK_ENGINE_SPEC.md`
+4. `DATABASE_ARCHITECTURE.md`
+   Target Postgres architecture for accounts, linked identities, context,
+   chat, billing, deposits, task projections, pgvector retrieval, and JSON
+   runtime-store migration.
+
+5. `PFTL_TASK_ENGINE_SPEC.md`
    Proposed on-chain-first task engine, PFTasks deprecation rationale,
    pointer-native lifecycle, wallet provisioning, cache strategy, and
    portability target for Codex/CLI clients.
 
-5. `PFTL_LIVE_TASK_REPLAY_WALKTHROUGH.md`
+6. `PFTL_LIVE_TASK_REPLAY_WALKTHROUGH.md`
    Human-readable walkthrough of the successful live PFTL/IPFS task lifecycle
    replay from request through reward.
 
-6. `PFTL_VERIFICATION_EVIDENCE.md`
+7. `PFTL_VERIFICATION_EVIDENCE.md`
    Canonical screenshot, PDF, DOCX, and public URL evidence readers for PFTL
    verification payloads.
 
-7. `DEPLOYMENT.md`
+8. `DEPLOYMENT.md`
    Local Docker dev, local production Docker, and Fly release deployment paths.
 
-8. `ETHEREUM_TOP_UPS.md`
+9. `ETHEREUM_TOP_UPS.md`
    Account-scoped Ethereum mainnet deposit addresses for ETH, USDC, and USDT
    top-ups, including custody boundaries and sync behavior.
 
-9. `../full_spec.md`
+10. `../full_spec.md`
    Product/architecture source of truth and active burndown.
 
-10. `../auth_account_spec.md`
+11. `../auth_account_spec.md`
    Auth, provider linking, wallet claim, email login, and delink/relink design.
 
-11. `AUTH_WALLET_BOUNDARY.md`
+12. `AUTH_WALLET_BOUNDARY.md`
    Concrete implementation guardrails for wallet auth UX, session refresh,
    wallet proof, local vault state, and regression coverage.
 
-12. `../whip_context.md`
+13. `../whip_context.md`
    Automation handoff instructions and whip shutdown guardrails.
 
 ## Source Of Truth Rules
@@ -66,7 +71,5 @@ These docs are intentionally a first spine, not a completed handbook.
 
 - `ARCHITECTURE.md`: durable app architecture, boundaries, and data flow.
 - `API_CONTRACTS.md`: endpoint-by-endpoint request/response contracts.
-- `DATA_MODEL.md`: account, conversation, usage ledger, context, wallet, and
-  PFTasks hydration models.
 - `SECURITY.md`: broader seed handling, OAuth, email login, provider keys,
   retention, logging, and supply-chain policy.
