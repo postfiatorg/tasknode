@@ -239,6 +239,8 @@ const EMPTY_WALLET_VAULT_STATUS = {
 };
 const WALLET_BALANCE_REFRESH_MS = 15000;
 const WALLET_TX_REFRESH_MS = 60000;
+const ETH_TOP_UP_SYNC_INITIAL_DELAY_MS = 1200;
+const ETH_TOP_UP_SYNC_INTERVAL_MS = 8000;
 
 function walletVaultDisplayState(walletVault = {}, linkedWalletAddress = "") {
   const hasLinkedWallet = Boolean(String(linkedWalletAddress || walletVault?.address || "").trim());
@@ -980,6 +982,7 @@ function App() {
       )}
       {settingsOpen && (
         <SettingsModal
+          onAppStateChange={refreshAppState}
           onClose={() => setSettingsOpen(false)}
           session={session}
           setTheme={setTheme}
@@ -2826,6 +2829,100 @@ function seedWordCount(value) {
   return normalized ? normalized.split(" ").length : 0;
 }
 
+function mergeTopUpSyncResult(current, body) {
+  return {
+    ...(current?.data || {}),
+    ...body,
+    depositAccount: body?.depositAccount || current?.data?.depositAccount,
+  };
+}
+
+function useEthereumTopUpSync({ enabled = true, onSynced, open, setTopUpState, state }) {
+  const inFlightRef = useRef(false);
+  const onSyncedRef = useRef(onSynced);
+  const syncPath = state?.data?.syncPath || "/api/usage/top-up/sync";
+  const depositAddress = state?.data?.depositAccount?.address || "";
+
+  useEffect(() => {
+    onSyncedRef.current = onSynced;
+  }, [onSynced]);
+
+  const syncNow = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!depositAddress || inFlightRef.current) return null;
+      inFlightRef.current = true;
+
+      if (!silent) {
+        setTopUpState((current) => ({
+          ...current,
+          status: "syncing",
+          message: "",
+        }));
+      } else {
+        setTopUpState((current) => ({
+          ...current,
+          status: current.status === "loading" || current.status === "syncing" ? current.status : "watching",
+          message: current.message || "Watching for deposits.",
+        }));
+      }
+
+      try {
+        const result = await requestJson(syncPath, { method: "POST" });
+        if (!result.ok || !result.body?.ok) {
+          throw new Error(result.body?.message || result.body?.actionRequired || "Deposit refresh failed.");
+        }
+
+        const creditedEntries = result.body?.creditedEntries || [];
+        setTopUpState((current) => ({
+          status: "ready",
+          data: mergeTopUpSyncResult(current, result.body),
+          message:
+            !silent || creditedEntries.length > 0
+              ? result.body.message || ""
+              : current.message || "Watching for deposits.",
+        }));
+        await onSyncedRef.current?.(result.body);
+        return result.body;
+      } catch (error) {
+        setTopUpState((current) => ({
+          ...current,
+          status: current.status === "watching" ? "ready" : current.status,
+          message: silent ? current.message : error?.message || "Deposit refresh failed.",
+        }));
+        return null;
+      } finally {
+        inFlightRef.current = false;
+      }
+    },
+    [depositAddress, setTopUpState, syncPath]
+  );
+
+  useEffect(() => {
+    if (!enabled || !open || !depositAddress) return undefined;
+
+    const run = () => {
+      syncNow({ silent: true });
+    };
+    const firstTimer = window.setTimeout(run, ETH_TOP_UP_SYNC_INITIAL_DELAY_MS);
+    const interval = window.setInterval(run, ETH_TOP_UP_SYNC_INTERVAL_MS);
+    const onFocus = () => run();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") run();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearTimeout(firstTimer);
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [depositAddress, enabled, open, syncNow]);
+
+  return syncNow;
+}
+
 function WalletView({
   onAppStateChange,
   onLoginRequired,
@@ -2890,6 +2987,15 @@ function WalletView({
   const walletAddressLabel = walletLinked ? shortWalletAddress(linkedWallet.address) : "No wallet linked";
   const vaultStatusLabel = vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : walletLinked ? "Not saved" : "Seed not linked";
   const primaryActionLabel = !walletLinked || !vaultAvailable ? "Link wallet" : vaultUnlocked ? "Lock" : "Unlock";
+  const syncTopUpDeposits = useEthereumTopUpSync({
+    enabled: signedIn,
+    onSynced: async () => {
+      await onAppStateChange?.();
+    },
+    open: topUpOpen,
+    setTopUpState,
+    state: topUpState,
+  });
 
   useEffect(() => {
     if (!signedIn) return;
@@ -2974,35 +3080,7 @@ function WalletView({
   }
 
   async function refreshTopUpDeposits() {
-    const syncPath = topUpState.data?.syncPath || "/api/usage/top-up/sync";
-    setTopUpState((current) => ({
-      ...current,
-      status: "syncing",
-      message: "",
-    }));
-
-    try {
-      const result = await requestJson(syncPath, { method: "POST" });
-      if (!result.ok || !result.body?.ok) {
-        throw new Error(result.body?.message || result.body?.actionRequired || "Deposit refresh failed.");
-      }
-      setTopUpState((current) => ({
-        status: "ready",
-        data: {
-          ...(current.data || {}),
-          ...result.body,
-          depositAccount: result.body.depositAccount || current.data?.depositAccount,
-        },
-        message: result.body.message || "",
-      }));
-      await onAppStateChange?.();
-    } catch (error) {
-      setTopUpState((current) => ({
-        ...current,
-        status: "ready",
-        message: error?.message || "Deposit refresh failed.",
-      }));
-    }
+    await syncTopUpDeposits({ silent: false });
   }
 
   async function startWalletAction(action) {
@@ -5481,7 +5559,7 @@ function SybilSignal({ hint, icon: Icon, label, tone = "ok", value }) {
   );
 }
 
-function SettingsModal({ onClose, session, setTheme, theme }) {
+function SettingsModal({ onAppStateChange, onClose, session, setTheme, theme }) {
   const [page, setPage] = useState("general");
   const activePage = SETTINGS_PAGES.find((item) => item.key === page) || SETTINGS_PAGES[0];
 
@@ -5517,7 +5595,7 @@ function SettingsModal({ onClose, session, setTheme, theme }) {
             {page === "general" && <GeneralSettings setTheme={setTheme} theme={theme} />}
             {page === "security" && <SecuritySettings session={session} />}
             {page === "data" && <DataSettings />}
-            {page === "billing" && <BillingSettings />}
+            {page === "billing" && <BillingSettings onAppStateChange={onAppStateChange} />}
           </div>
         </div>
       </section>
@@ -5660,7 +5738,7 @@ function DataSettings() {
   );
 }
 
-function BillingSettings() {
+function BillingSettings({ onAppStateChange }) {
   const [ledger, setLedger] = useState(null);
   const [ledgerError, setLedgerError] = useState("");
   const [topUpOpen, setTopUpOpen] = useState(false);
@@ -5690,6 +5768,16 @@ function BillingSettings() {
 
   useEffect(() => loadLedger(), [loadLedger]);
 
+  const syncBillingTopUp = useEthereumTopUpSync({
+    onSynced: async () => {
+      loadLedger();
+      await onAppStateChange?.();
+    },
+    open: topUpOpen,
+    setTopUpState,
+    state: topUpState,
+  });
+
   async function openBillingTopUp() {
     setTopUpOpen(true);
     setTopUpState((current) => ({
@@ -5710,30 +5798,7 @@ function BillingSettings() {
   }
 
   async function refreshBillingTopUp() {
-    setTopUpState((current) => ({ ...current, status: "syncing", message: "" }));
-
-    try {
-      const result = await requestJson("/api/usage/top-up/sync", { method: "POST" });
-      if (!result.ok || !result.body?.ok) {
-        throw new Error(result.body?.message || result.body?.actionRequired || "Deposit refresh failed.");
-      }
-      setTopUpState((current) => ({
-        status: "ready",
-        data: {
-          ...(current.data || {}),
-          ...result.body,
-          depositAccount: result.body.depositAccount || current.data?.depositAccount,
-        },
-        message: result.body.message || "",
-      }));
-      loadLedger();
-    } catch (error) {
-      setTopUpState((current) => ({
-        ...current,
-        status: "ready",
-        message: error?.message || "Deposit refresh failed.",
-      }));
-    }
+    await syncBillingTopUp({ silent: false });
   }
 
   const entries = ledger?.entries || [];
