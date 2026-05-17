@@ -847,7 +847,14 @@ async function streamOpenRouter({
   };
 }
 
-export async function executeChat({ accountId = "", mode, message, conversationId = "dev", attachments = [] }) {
+export async function executeChat({
+  accountId = "",
+  mode,
+  message,
+  conversationId = "dev",
+  attachments = [],
+  memoryContext,
+}) {
   const normalizedMode = normalizedChatMode(mode);
   const status = chatExecutionStatus(normalizedMode);
 
@@ -858,9 +865,9 @@ export async function executeChat({ accountId = "", mode, message, conversationI
     throw error;
   }
 
-  const [historyMessages, memoryContext] = await Promise.all([
+  const [historyMessages, resolvedMemoryContext] = await Promise.all([
     getChatMessages(conversationId),
-    chatMemoryContextForAccount(accountId),
+    memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
   ]);
   const result =
     status.provider === "openai"
@@ -871,7 +878,7 @@ export async function executeChat({ accountId = "", mode, message, conversationI
           conversationId,
           attachments,
           historyMessages,
-          memoryContext,
+          memoryContext: resolvedMemoryContext,
         })
       : await executeOpenRouter({
           mode: normalizedMode,
@@ -880,7 +887,7 @@ export async function executeChat({ accountId = "", mode, message, conversationI
           conversationId,
           attachments,
           historyMessages,
-          memoryContext,
+          memoryContext: resolvedMemoryContext,
         });
 
   if (!result.text) {
@@ -916,6 +923,7 @@ export async function executeChatStream({
   message,
   conversationId = "dev",
   attachments = [],
+  memoryContext,
   onDelta,
   signal,
 }) {
@@ -929,9 +937,9 @@ export async function executeChatStream({
     throw error;
   }
 
-  const [historyMessages, memoryContext] = await Promise.all([
+  const [historyMessages, resolvedMemoryContext] = await Promise.all([
     getChatMessages(conversationId),
-    chatMemoryContextForAccount(accountId),
+    memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
   ]);
   const result =
     status.provider === "openai"
@@ -942,7 +950,7 @@ export async function executeChatStream({
           conversationId,
           attachments,
           historyMessages,
-          memoryContext,
+          memoryContext: resolvedMemoryContext,
           onDelta,
           signal,
         })
@@ -953,7 +961,7 @@ export async function executeChatStream({
           conversationId,
           attachments,
           historyMessages,
-          memoryContext,
+          memoryContext: resolvedMemoryContext,
           onDelta,
           signal,
         });

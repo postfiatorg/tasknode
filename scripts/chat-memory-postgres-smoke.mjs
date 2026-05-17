@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { migrateDatabase } from "../server/db/migrate.js";
-import { closePool } from "../server/db/pool.js";
+import { closePool, query } from "../server/db/pool.js";
 import { appendChatTurn } from "../server/repositories/chat-billing.js";
 import {
   chatMemoryJobSource,
@@ -28,6 +28,49 @@ await migrateDatabase();
 const suffix = randomUUID().slice(0, 8);
 const accountId = `acct_memory_pg_smoke_${suffix}`;
 const conversationId = `account_${accountId}_memory`;
+const isolationAccountId = `${accountId}_isolation`;
+const isolationConversationId = `account_${isolationAccountId}_memory`;
+
+const isolationTurn = await appendChatTurn({
+  accountId: isolationAccountId,
+  conversationId: isolationConversationId,
+  mode: "Private Instant",
+  provider: "openrouter",
+  model: "deepseek/deepseek-v4-flash",
+  responseId: `or_${suffix}_isolation`,
+  userMessage: "This belongs only to the isolation account.",
+  assistantMessage: "Isolation response.",
+  usage: {
+    inputTokens: 1,
+    outputTokens: 1,
+    totalTokens: 2,
+    costUsd: 0,
+  },
+});
+
+const mismatchedJobId = `memjob_mismatch_${suffix}`;
+await query(
+  `
+    INSERT INTO chat_memory_jobs (
+      id,
+      account_id,
+      conversation_id,
+      user_message_id,
+      assistant_message_id
+    )
+    VALUES ($1, $2, $3, $4, $5)
+  `,
+  [
+    mismatchedJobId,
+    accountId,
+    conversationId,
+    isolationTurn.user.id,
+    isolationTurn.assistant.id,
+  ]
+);
+const mismatchedSource = await chatMemoryJobSource({ id: mismatchedJobId });
+assert.equal(mismatchedSource, null);
+await query("DELETE FROM chat_memory_jobs WHERE id = $1", [mismatchedJobId]);
 
 for (let index = 1; index <= deepMemoryBlockSize; index += 1) {
   const turn = await appendChatTurn({

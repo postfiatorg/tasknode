@@ -60,6 +60,7 @@ try {
     walletInitiationGrantStatus,
   } = await import("../server/runtime-store.js");
   const {
+    chatEstimate,
     usageActions,
     walletActionStart,
     walletCreateStart,
@@ -184,6 +185,25 @@ try {
       },
     ],
   };
+  const baseMemoryEstimate = chatEstimate({
+    mode: "Frontier Instant",
+    message: "Use my memory and reply.",
+  });
+  const chatMemoryEstimate = chatEstimate(
+    {
+      mode: "Frontier Instant",
+      message: "Use my memory and reply.",
+    },
+    { memoryContext: smokeMemoryContext }
+  );
+
+  if (
+    chatMemoryEstimate.memoryInputTokens <= 0 ||
+    chatMemoryEstimate.inputTokens <= baseMemoryEstimate.inputTokens ||
+    chatMemoryEstimate.estimatedUsd <= baseMemoryEstimate.estimatedUsd
+  ) {
+    throw new Error(`Chat estimate should include billable memory context tokens: ${JSON.stringify({ baseMemoryEstimate, chatMemoryEstimate })}`);
+  }
 
   const frontierMemoryRequest = openAiResponseRequest({
     mode: "Frontier Instant",

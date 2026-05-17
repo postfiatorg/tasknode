@@ -14,7 +14,7 @@ import {
   authProviders,
   authStart,
   devAuthStatus,
-  chatEstimate,
+  chatEstimateForAccount,
   chatModes,
   chatSend,
   chatStreamStart,
@@ -563,7 +563,7 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/chat/estimate") {
     const payload = req.method === "POST" ? await readJson(req) : {};
-    json(res, 200, chatEstimate(payload));
+    json(res, 200, await chatEstimateForAccount(payload, session?.accountId || ""));
     return true;
   }
 

@@ -1,14 +1,13 @@
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import {
-  actualChatCost,
   anyChatProviderEnabled,
   chatExecutionStatus,
-  chatInputCharacterEstimate,
-  chatModeConfig,
   chatModePrices,
   executeChat,
   normalizedChatMode,
 } from "./chat-router.js";
+import { chatEstimate } from "./chat-estimate.js";
+export { chatEstimate, chatEstimateForAccount } from "./chat-estimate.js";
 import {
   consumeWalletChallenge,
   consumeEmailChallenge,
@@ -37,6 +36,7 @@ import {
   chatBillingStatus,
   usageSummary,
 } from "./repositories/chat-billing.js";
+import { chatMemoryContextForAccount } from "./chat-memory-context.js";
 import {
   getContextHistory,
   saveContextDocument,
@@ -498,7 +498,7 @@ function chatPayload(payload) {
 
 async function chatExecutionPreflight(payload, method, action = "chat_send") {
   const chat = chatPayload(payload);
-  const estimate = chatEstimate(payload);
+  let estimate = chatEstimate(payload);
 
   if (method !== "POST") {
     return {
@@ -552,6 +552,8 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
   }
 
   if (chat.dryRun) {
+    const memoryContext = await chatMemoryContextForAccount(chat.accountId);
+    estimate = chatEstimate(payload, { memoryContext });
     return {
       ok: false,
       status: 200,
@@ -565,7 +567,7 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
           : "Chat execution is not configured for this mode. Dry run skipped the provider call.",
         estimate,
       },
-      chat,
+      chat: { ...chat, memoryContext },
       estimate,
     };
   }
@@ -589,6 +591,9 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
       estimate,
     };
   }
+
+  const memoryContext = await chatMemoryContextForAccount(chat.accountId);
+  estimate = chatEstimate(payload, { memoryContext });
 
   const usage = await usageSummary({ accountId: chat.accountId, conversationId: chat.conversationId });
   if (Number(usage.availableCreditUsd || 0) < Number(estimate.estimatedUsd || 0)) {
@@ -619,49 +624,19 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
   return {
     ok: true,
     status: 200,
-    chat,
+    chat: { ...chat, memoryContext },
     estimate,
-  };
-}
-
-export function chatEstimate(payload) {
-  const { message, mode, attachments } = chatPayload(payload);
-  const modeConfig = chatModeConfig(mode);
-  const inputCharacters = chatInputCharacterEstimate({ message, attachments });
-  const inputTokens = Math.max(1, Math.ceil(inputCharacters / 4));
-  const estimatedOutputTokens = modeConfig.maxOutputTokens || (mode.includes("Thinking") ? 1800 : 700);
-  const estimatedUsd = actualChatCost(mode, {
-    inputTokens,
-    outputTokens: estimatedOutputTokens,
-  });
-  const execution = chatExecutionStatus(mode);
-
-  return {
-    ok: true,
-    mode,
-    provider: execution.provider,
-    model: execution.model,
-    providerConfigured: execution.configured,
-    providerStatus: execution.status,
-    executionReady: execution.enabled,
-    inputTokens,
-    estimatedOutputTokens,
-    estimatedUsd: Number(Math.max(0.0001, estimatedUsd).toFixed(6)),
-    currency: "USD",
-    billingModel: "usage_based",
-    requiresConfirmation: estimatedUsd >= 0.05,
-    policy: "This is an estimate only. Final billing is based on provider usage returned after execution.",
   };
 }
 
 export async function chatSend(payload, method) {
   const preflight = await chatExecutionPreflight(payload, method, "chat_send");
-  const { accountId, message, mode, conversationId, attachments } = preflight.chat;
+  const { accountId, message, mode, conversationId, attachments, memoryContext } = preflight.chat;
   const { estimate } = preflight;
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
 
   try {
-    const result = await executeChat({ accountId, mode, message, conversationId, attachments });
+    const result = await executeChat({ accountId, mode, message, conversationId, attachments, memoryContext });
     return {
       status: 200,
       body: {

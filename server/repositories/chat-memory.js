@@ -155,10 +155,17 @@ export async function chatMemoryJobSource(job) {
       FROM chat_memory_jobs AS job
       JOIN chat_messages AS user_message
         ON user_message.id = job.user_message_id
+       AND user_message.account_id = job.account_id
+       AND user_message.conversation_id = job.conversation_id
+       AND user_message.role = 'user'
       JOIN chat_messages AS assistant_message
         ON assistant_message.id = job.assistant_message_id
+       AND assistant_message.account_id = job.account_id
+       AND assistant_message.conversation_id = job.conversation_id
+       AND assistant_message.role = 'assistant'
       LEFT JOIN chat_conversations AS conversation
         ON conversation.id = job.conversation_id
+       AND conversation.account_id = job.account_id
       WHERE job.id = $1
       LIMIT 1
     `,
