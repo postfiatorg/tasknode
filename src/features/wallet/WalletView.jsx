@@ -191,6 +191,8 @@ export function WalletView({
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [delinkOpen, setDelinkOpen] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
+  const [creationResult, setCreationResult] = useState(null);
+  const [creationRetrying, setCreationRetrying] = useState(false);
   const [topUpState, setTopUpState] = useState({
     status: wallet?.ethereumDeposit ? "ready" : "idle",
     data: wallet?.ethereumDeposit ? { depositAccount: wallet.ethereumDeposit } : null,
@@ -209,6 +211,7 @@ export function WalletView({
   const linkAction = actions.find((action) => action.id === "link_start");
   const relinkAction = actions.find((action) => action.id === "relink_start");
   const delinkAction = actions.find((action) => action.id === "delink");
+  const initiationRetryAction = actions.find((action) => action.id === "initiation_retry");
   const fundingActions = usage?.fundingActions || [];
   const topUpAction = fundingActions.find((action) => action.id === "top_up_start");
   const linkedWallet = wallet?.pftWallet || {};
@@ -354,6 +357,43 @@ export function WalletView({
 
   async function refreshTopUpDeposits() {
     await syncTopUpDeposits({ silent: false });
+  }
+
+  async function retryInitiationGift() {
+    if (!signedIn || creationRetrying) return;
+    setCreationRetrying(true);
+    setCreationResult((current) => ({
+      ...(current || {}),
+      retrying: true,
+      message: "Retrying the 12 PFT initiation gift.",
+    }));
+
+    try {
+      const result = await requestJson(initiationRetryAction?.path || "/api/wallet/initiation/retry", {
+        method: initiationRetryAction?.method || "POST",
+      });
+      setCreationResult({
+        ok: result.body?.ok === true,
+        message: result.body?.message || result.body?.initiationGift?.message || "Initiation gift retry finished.",
+        initiationGift: result.body?.initiationGift || null,
+        wallet: result.body?.wallet || creationResult?.wallet || null,
+      });
+      await onAppStateChange?.();
+    } catch (error) {
+      setCreationResult((current) => ({
+        ...(current || {}),
+        ok: false,
+        initiationGift: {
+          ...(current?.initiationGift || {}),
+          ok: false,
+          status: "failed",
+          message: error?.message || "Initiation gift retry failed.",
+        },
+        message: error?.message || "Initiation gift retry failed.",
+      }));
+    } finally {
+      setCreationRetrying(false);
+    }
   }
 
   async function startWalletAction(action) {
@@ -730,6 +770,7 @@ export function WalletView({
             setLinkOpen(false);
             setWalletProofAction(null);
           }}
+          onCreateResult={(result) => setCreationResult(result)}
           onNotice={(notice) => setMessage(notice)}
           session={session}
         />
@@ -762,6 +803,14 @@ export function WalletView({
           onClose={() => setTopUpOpen(false)}
           onRefresh={refreshTopUpDeposits}
           state={topUpState}
+        />
+      )}
+      {creationResult && (
+        <WalletCreationResultModal
+          onClose={() => setCreationResult(null)}
+          onRetry={retryInitiationGift}
+          retrying={creationRetrying}
+          result={creationResult}
         />
       )}
     </div>
@@ -887,6 +936,71 @@ export function EthereumTopUpModal({ onClose, onRefresh, state }) {
   );
 }
 
+function WalletCreationResultModal({ onClose, onRetry, result, retrying = false }) {
+  const gift = result?.initiationGift || {};
+  const giftOk = gift.ok === true || gift.status === "completed";
+  const canRetry = !giftOk && gift.status !== "not_eligible" && gift.reason !== "account_registered";
+  const amountPft = Number(gift.amountPft || 12);
+  const title = giftOk ? "Wallet Created" : "Wallet Created";
+  const body = giftOk
+    ? `${amountPft.toLocaleString("en-US")} PFT initiation gift sent.`
+    : gift.message || result?.message || "The wallet was linked, but the initiation gift did not complete.";
+
+  return (
+    <div className="modal-backdrop chat-edit-backdrop" onClick={onClose} role="presentation">
+      <div
+        aria-label="Wallet creation result"
+        aria-modal="true"
+        className="wallet-link-modal wallet-creation-result-modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header>
+          <div>
+            <h2>{title}</h2>
+            <p>{body}</p>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button" aria-label="Close wallet creation result">
+            <X size={16} strokeWidth={2} />
+          </button>
+        </header>
+
+        <div className={`wallet-creation-result-state${giftOk ? " is-success" : " is-warning"}`}>
+          <span>{giftOk ? "Initiation gift sent" : retrying ? "Retrying gift" : "Gift not completed"}</span>
+          <strong>{amountPft.toLocaleString("en-US")} PFT</strong>
+          {gift.txHash && <small>Tx {shortWalletAddress(gift.txHash)}</small>}
+        </div>
+
+        {result?.wallet?.address && (
+          <div className="wallet-proof-summary single">
+            <span>
+              <strong>{shortWalletAddress(result.wallet.address)}</strong>
+              Linked wallet
+            </span>
+          </div>
+        )}
+
+        {!giftOk && (
+          <div className="wallet-link-warning">
+            Wallet creation succeeded. The PFT gift is tracked separately and can be retried without creating another wallet.
+          </div>
+        )}
+
+        <footer>
+          <button className="light-pill" onClick={onClose} type="button">
+            Done
+          </button>
+          {!giftOk && canRetry && (
+            <button className="dark-pill" disabled={retrying} onClick={onRetry} type="button">
+              {retrying ? "Retrying" : "Retry 12 PFT gift"}
+            </button>
+          )}
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 function shortEthereumAddress(address = "") {
   const text = String(address || "").trim();
   if (!text) return "";
@@ -960,6 +1074,7 @@ function WalletTransactionRow({ hovered = false, onHover, tx }) {
 
 function WalletLinkModal({
   action,
+  onCreateResult,
   onAppStateChange,
   onWalletVaultChange,
   onWalletVaultUnlocked,
@@ -1063,7 +1178,7 @@ function WalletLinkModal({
     }
 
     setLinking(true);
-    setMessage("");
+    setMessage(isCreate ? "Creating wallet and requesting the initiation gift." : "");
 
     try {
       const start = await requestJson(action?.path || "/api/wallet/link/start", {
@@ -1076,6 +1191,7 @@ function WalletLinkModal({
       }
 
       const proof = walletCore.signWalletChallenge(normalized, start.body.challenge.message);
+      if (isCreate) setMessage("Wallet proof signed. Waiting for Task Node to link the wallet.");
       const verify = await requestJson(start.body.verifyPath || "/api/wallet/link/verify", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1121,6 +1237,14 @@ function WalletLinkModal({
       const finalMessage = verify.body?.message || (isCreate ? "Wallet created." : isRelink ? "Wallet relinked." : "Wallet linked.");
       setMessage(finalMessage);
       await onAppStateChange?.();
+      if (isCreate) {
+        onCreateResult?.({
+          ok: verify.body?.ok === true,
+          message: finalMessage,
+          initiationGift: verify.body?.initiationGift || null,
+          wallet: verify.body?.wallet || walletSummary,
+        });
+      }
       onNotice?.(finalMessage);
       onClose();
     } catch (error) {

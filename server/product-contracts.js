@@ -791,6 +791,16 @@ export function walletActions() {
       actionRequired:
         "Enter the recovery phrase locally and sign a fresh relink challenge.",
     }),
+    walletAction({
+      id: "initiation_retry",
+      label: "Retry initiation gift",
+      path: "/api/wallet/initiation/retry",
+      enabled: true,
+      note:
+        "Retries the one-time PFT initiation gift for a linked wallet when the prior faucet submit failed.",
+      actionRequired:
+        "Requires a signed-in OAuth account, a linked wallet, and configured PFTL faucet credentials.",
+    }),
   ];
 }
 
@@ -1494,6 +1504,57 @@ async function claimWalletCreateInitiationGift({ accountId = "", walletAddress =
   }
 }
 
+export async function walletInitiationRetry(method, session = null) {
+  const action = walletActionByPath("/api/wallet/initiation/retry");
+
+  if (method !== action.method) {
+    return actionResponse({
+      status: 405,
+      error: "wallet_action_method_not_allowed",
+      action: action.id,
+      message: `${action.label} requires ${action.method}.`,
+      actionRequired: "Retry the wallet initiation gift with POST.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "wallet_login_required",
+      action: action.id,
+      message: "Sign in before retrying a wallet initiation gift.",
+      actionRequired: "Use the account that owns the linked wallet.",
+    });
+  }
+
+  const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+  if (linkedWallet.status !== "linked" || !linkedWallet.address) {
+    return actionResponse({
+      status: 409,
+      error: "wallet_not_linked",
+      action: action.id,
+      message: "Link a wallet before retrying the initiation gift.",
+      actionRequired: "Create or link a wallet first.",
+    });
+  }
+
+  const initiationGift = await claimWalletCreateInitiationGift({
+    accountId: session.accountId,
+    walletAddress: linkedWallet.address,
+  });
+
+  return {
+    status: initiationGift.ok ? 200 : initiationGift.status === "not_eligible" ? 409 : 502,
+    body: {
+      ok: Boolean(initiationGift.ok),
+      action: action.id,
+      message: initiationGift.message,
+      initiationGift,
+      wallet: linkedWallet,
+    },
+  };
+}
+
 export async function walletLinkVerify(payload, method, session = null) {
   if (method !== "POST") {
     return actionResponse({
@@ -1735,9 +1796,12 @@ export function walletDelink(payload, method, session = null) {
   };
 }
 
-export function walletActionStart(pathname, method, session = null, payload = {}) {
+export async function walletActionStart(pathname, method, session = null, payload = {}) {
   if (pathname === "/api/wallet/create/start") {
     return walletCreateStart(method, session);
+  }
+  if (pathname === "/api/wallet/initiation/retry") {
+    return walletInitiationRetry(method, session);
   }
   if (pathname === "/api/wallet/relink/start") {
     return walletRelinkStart(method, session);

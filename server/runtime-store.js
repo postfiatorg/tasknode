@@ -666,6 +666,7 @@ export function completeWalletInitiationGrant({ grantId = "", txHash = "", fauce
   grant.status = "completed";
   grant.txHash = txHash || grant.txHash || null;
   grant.faucetAddress = faucetAddress || grant.faucetAddress || null;
+  grant.error = "";
   grant.updatedAt = now;
   saveState();
 

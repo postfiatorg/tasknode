@@ -593,6 +593,58 @@
   accent-color: #0d0d0d;
 }
 
+.wallet-creation-result-modal {
+  max-width: 460px;
+}
+
+.wallet-creation-result-state {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid #ececec;
+  border-radius: 12px;
+  background: #f8f8f8;
+}
+
+.wallet-creation-result-state span {
+  color: #5d5d5d;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.wallet-creation-result-state strong {
+  color: #0d0d0d;
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.wallet-creation-result-state small {
+  color: #8e8e8e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.wallet-creation-result-state.is-success {
+  border-color: #cfe8d8;
+  background: #f5fbf7;
+}
+
+.wallet-creation-result-state.is-success span {
+  color: #047857;
+}
+
+.wallet-creation-result-state.is-warning {
+  border-color: #eadfbd;
+  background: #fff9e8;
+}
+
+.wallet-creation-result-state.is-warning span {
+  color: #8a5b0a;
+}
+
 .wallet-activity-section {
   margin-top: 40px;
 }

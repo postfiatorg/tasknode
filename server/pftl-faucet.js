@@ -1,3 +1,4 @@
+import https from "node:https";
 import { Client, Wallet, isValidClassicAddress } from "xrpl";
 
 const DEFAULT_PFTL_NETWORK_ID = 2025;
@@ -37,9 +38,40 @@ function endpointCandidates(env = process.env) {
   const explicit = splitUrls(env.PFTL_FAUCET_WSS_URL || env.PFTL_WSS_URL || env.VITE_PFTL_WSS_URL);
   const fallback = splitUrls(env.PFTL_FAUCET_WSS_URL_FALLBACKS || env.PFTL_WSS_URL_FALLBACKS);
   const derived = splitUrls(env.PFTL_RPC_URL || env.PFTL_RPC_URL_FALLBACKS)
-    .map(normalizeWssUrl)
-    .filter((url) => url.startsWith("ws://") || url.startsWith("wss://"));
+    .filter((url) => /^wss?:\/\//i.test(url))
+    .map(normalizeWssUrl);
   return uniqueUrls([...explicit.map(normalizeWssUrl), ...fallback.map(normalizeWssUrl), ...derived]);
+}
+
+function wssRejectUnauthorized(env, url) {
+  const configured = String(env.PFTL_FAUCET_WSS_REJECT_UNAUTHORIZED || env.PFTL_WSS_REJECT_UNAUTHORIZED || "")
+    .trim()
+    .toLowerCase();
+  if (["false", "0", "no"].includes(configured)) return false;
+  if (["true", "1", "yes"].includes(configured)) return true;
+
+  try {
+    const hostname = new URL(url).hostname;
+    return !(hostname === "localhost" || hostname === "127.0.0.1" || hostname === "178.156.143.199");
+  } catch {
+    return true;
+  }
+}
+
+function clientOptionsForEndpoint({ endpoint, index, env, timeoutMs }) {
+  const options = {
+    connectionTimeout: timeoutMs,
+  };
+  const rejectUnauthorized = wssRejectUnauthorized(env, endpoint);
+  if (!rejectUnauthorized) {
+    options.rejectUnauthorized = false;
+    options.agent = new https.Agent({ rejectUnauthorized: false });
+  }
+  const apiKey = String(env.PFTL_FAUCET_WSS_API_KEY || env.PFTL_RPC_API_KEY || "").trim();
+  if (index === 0 && apiKey) {
+    options.headers = { "X-Api-Key": apiKey };
+  }
+  return options;
 }
 
 function pftToDrops(value) {
@@ -131,8 +163,8 @@ export async function sendPftInitiationGift({
   const timeoutMs = Math.max(3000, Number(env.PFTL_FAUCET_TIMEOUT_MS || DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
   const attempts = [];
 
-  for (const endpoint of endpoints) {
-    const client = new Client(endpoint, { connectionTimeout: timeoutMs });
+  for (const [index, endpoint] of endpoints.entries()) {
+    const client = new Client(endpoint, clientOptionsForEndpoint({ endpoint, index, env, timeoutMs }));
     try {
       await client.connect();
       const payment = applyNetworkId({

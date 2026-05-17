@@ -64,6 +64,11 @@ seed material. Payout requires `TASKNODE_PFT_FAUCET_SEED` or `FAUCET_SEED` plus
 a PFTL WSS endpoint. PFTL transaction signing must include the configured
 network id, defaulting to `PFTL_NETWORK_ID=2025`.
 
+If the wallet link succeeds but the faucet submit fails, the wallet remains
+linked and the gift moves to a retryable failure state. Users must see a
+completion dialog that clearly separates wallet creation from gift payout and
+offers a retry without creating or relinking another wallet.
+
 ## UI Rules
 
 - A signed-out `Link wallet` click opens login, not the wallet modal.

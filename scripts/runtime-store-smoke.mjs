@@ -61,6 +61,7 @@ try {
   } = await import("../server/runtime-store.js");
   const {
     usageActions,
+    walletActionStart,
     walletCreateStart,
     walletLinkVerify,
     usageTopUpStart,
@@ -342,6 +343,17 @@ try {
     createVerify.body.initiationGift?.status !== "not_configured"
   ) {
     throw new Error(`Create wallet flow did not link with a non-faucet fallback: ${JSON.stringify({ createStart, createVerify, createLinkedWallet })}`);
+  }
+  const retryWithoutFaucet = await walletActionStart(
+    "/api/wallet/initiation/retry",
+    "POST",
+    createFlowSession.session
+  );
+  if (
+    retryWithoutFaucet.status !== 502 ||
+    retryWithoutFaucet.body?.initiationGift?.reason !== "faucet_not_configured"
+  ) {
+    throw new Error(`Initiation retry should report faucet configuration without relinking: ${JSON.stringify(retryWithoutFaucet)}`);
   }
   const emailAccount = getOrCreateEmailAccount({
     email: "runtime-smoke@example.com",
