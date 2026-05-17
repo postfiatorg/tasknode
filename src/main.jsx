@@ -2837,11 +2837,33 @@ function mergeTopUpSyncResult(current, body) {
   };
 }
 
+function topUpDataSignature(data) {
+  const deposit = data?.depositAccount || {};
+  return JSON.stringify({
+    address: deposit.address || "",
+    lastSyncAt: deposit.lastSyncAt || "",
+    lastSyncStatus: deposit.lastSyncStatus || "",
+    observedBalances: deposit.observedBalances || {},
+    pendingBalances: deposit.pendingBalances || {},
+    creditedBalances: deposit.creditedBalances || {},
+    availableCreditUsd: data?.usage?.availableCreditUsd ?? null,
+    currentCreditUsd: data?.usage?.currentCreditUsd ?? null,
+    currentSpendUsd: data?.usage?.currentSpendUsd ?? null,
+  });
+}
+
 function useEthereumTopUpSync({ enabled = true, onSynced, open, setTopUpState, state }) {
   const inFlightRef = useRef(false);
+  const dataSignatureRef = useRef(topUpDataSignature(state?.data));
   const onSyncedRef = useRef(onSynced);
+  const stateDataRef = useRef(state?.data);
   const syncPath = state?.data?.syncPath || "/api/usage/top-up/sync";
   const depositAddress = state?.data?.depositAccount?.address || "";
+
+  useEffect(() => {
+    stateDataRef.current = state?.data;
+    dataSignatureRef.current = topUpDataSignature(state?.data);
+  }, [state?.data]);
 
   useEffect(() => {
     onSyncedRef.current = onSynced;
@@ -2858,12 +2880,6 @@ function useEthereumTopUpSync({ enabled = true, onSynced, open, setTopUpState, s
           status: "syncing",
           message: "",
         }));
-      } else {
-        setTopUpState((current) => ({
-          ...current,
-          status: current.status === "loading" || current.status === "syncing" ? current.status : "watching",
-          message: current.message || "Watching for deposits.",
-        }));
       }
 
       try {
@@ -2873,22 +2889,31 @@ function useEthereumTopUpSync({ enabled = true, onSynced, open, setTopUpState, s
         }
 
         const creditedEntries = result.body?.creditedEntries || [];
+        const nextData = mergeTopUpSyncResult({ data: stateDataRef.current }, result.body);
+        const nextSignature = topUpDataSignature(nextData);
+        const changed = nextSignature !== dataSignatureRef.current;
+        if (silent && !changed && creditedEntries.length === 0) {
+          return result.body;
+        }
+
+        dataSignatureRef.current = nextSignature;
         setTopUpState((current) => ({
           status: "ready",
           data: mergeTopUpSyncResult(current, result.body),
-          message:
-            !silent || creditedEntries.length > 0
-              ? result.body.message || ""
-              : current.message || "Watching for deposits.",
+          message: !silent || creditedEntries.length > 0 ? result.body.message || "" : current.message || "",
         }));
-        await onSyncedRef.current?.(result.body);
+        if (!silent || changed || creditedEntries.length > 0) {
+          await onSyncedRef.current?.(result.body);
+        }
         return result.body;
       } catch (error) {
-        setTopUpState((current) => ({
-          ...current,
-          status: current.status === "watching" ? "ready" : current.status,
-          message: silent ? current.message : error?.message || "Deposit refresh failed.",
-        }));
+        if (!silent) {
+          setTopUpState((current) => ({
+            ...current,
+            status: "ready",
+            message: error?.message || "Deposit refresh failed.",
+          }));
+        }
         return null;
       } finally {
         inFlightRef.current = false;
@@ -2992,7 +3017,7 @@ function WalletView({
     onSynced: async () => {
       await onAppStateChange?.();
     },
-    open: topUpOpen || Boolean(wallet?.ethereumDeposit),
+    open: topUpOpen,
     setTopUpState,
     state: topUpState,
   });
@@ -3009,17 +3034,36 @@ function WalletView({
     );
   }, [signedIn]);
 
+  const walletDepositSignature = topUpDataSignature({ depositAccount: wallet?.ethereumDeposit });
+
   useEffect(() => {
     if (!wallet?.ethereumDeposit) return;
-    setTopUpState((current) => ({
-      ...current,
-      status: current.status === "loading" ? current.status : "ready",
-      data: {
+    setTopUpState((current) => {
+      const nextData = {
         ...(current.data || {}),
         depositAccount: wallet.ethereumDeposit,
-      },
-    }));
-  }, [wallet?.ethereumDeposit]);
+      };
+      if (
+        current.status !== "loading" &&
+        topUpDataSignature(current.data) === topUpDataSignature(nextData)
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        status: current.status === "loading" ? current.status : "ready",
+        data: nextData,
+      };
+    });
+  }, [walletDepositSignature]);
+
+  useEffect(() => {
+    if (!signedIn || !wallet?.ethereumDeposit?.address || topUpOpen) return undefined;
+    const timer = window.setTimeout(() => {
+      syncTopUpDeposits({ silent: true });
+    }, ETH_TOP_UP_SYNC_INITIAL_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [signedIn, syncTopUpDeposits, topUpOpen, wallet?.ethereumDeposit?.address]);
 
   function requireSignedInForWalletLink() {
     if (signedIn) return true;
