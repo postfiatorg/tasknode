@@ -51,16 +51,64 @@ What we should adapt:
 The app user flow should become:
 
 1. User clicks `Request task` inside Chat.
-2. The app creates a bounded task request bundle from current account data.
-3. The user wallet signs a PFTL pointer to the encrypted request event.
-4. TaskNode reads the request, generates a task offer, encrypts it, and signs an offer pointer.
-5. The app cache indexes the offer and displays it in Tasks as `Proposed`.
-6. User accepts, rejects, or lets it expire.
-7. User submits initial evidence.
-8. TaskNode issues a verification request.
-9. User submits verification evidence.
-10. TaskNode scores it and sends a reward payment from the assigned reward wallet.
-11. The cache replays the wallet histories so the UX can show the final state ex post.
+2. The composer enters task-request mode. The placeholder changes from `Ask anything` to `Add any relevant details for your task request`.
+3. The next user send becomes the task request detail text, not a normal chat turn.
+4. The app creates a bounded task request bundle from current account data.
+5. The UI writes a pending/loading assistant message tied to the request id, bundle id, conversation id, and later task id.
+6. The user wallet signs a PFTL pointer to the encrypted request event.
+7. TaskNode reads the request, generates a task offer, encrypts it, and signs an offer pointer.
+8. The app cache indexes the offer and displays it in Tasks as `Proposed`.
+9. User accepts, rejects, or lets it expire.
+10. User submits initial evidence.
+11. TaskNode issues a verification request.
+12. User submits verification evidence.
+13. TaskNode scores it and sends a reward payment from the assigned reward wallet.
+14. The cache replays the wallet histories so the UX can show the final state ex post.
+
+The pending/loading chat message is a product affordance, not canonical state. The canonical state starts when the encrypted request bundle and request pointer are written. The loading message must carry enough correlation metadata to reconcile later:
+
+- `request_id`
+- `bundle_id`
+- `conversation_id`
+- `task_request_message_id`
+- `pftl_request_tx_hash` when signed
+- `task_id` when the offer appears
+
+## Repro Fixture
+
+Use goodalexander's chat titled `task_sample` as the first reproducible task-generation fixture.
+
+Fixture selection rules:
+
+- account: goodalexander;
+- wallet seed: local `ga_seed2.txt`;
+- chat: latest non-deleted conversation with title exactly `task_sample`;
+- context: current active context document for the same account;
+- memory: last 3 deep memories and last 36 recent memory records for the same account;
+- recent chats: latest bounded chat summaries for the same account, excluding deleted chats.
+
+The fixture should let us repeatedly produce the same task request blob shape while still using real app data. If multiple `task_sample` chats exist, use the most recently updated one and include the selected `conversation_id` in the receipt.
+
+Canonical request text:
+
+```text
+Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.
+```
+
+The user's composer text is stored separately as `request.user_detail_text`. The generated prompt projection can combine them, but the protocol bundle should preserve both fields so later replay can distinguish the user's explicit request from the app's task-request framing.
+
+Minimal request object:
+
+```json
+{
+  "request_id": "req_...",
+  "request_text": "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.",
+  "user_detail_text": "the text the user submitted after clicking Request task",
+  "requested_task_kind": "personal",
+  "source": "user_chat",
+  "source_conversation_title": "task_sample"
+}
+```
 
 ## Request Bundle V1
 
@@ -79,9 +127,11 @@ The request bundle must be a protocol object, not an internal React state blob. 
   },
   "request": {
     "request_id": "req_...",
-    "request_text": "user-visible task request",
+    "request_text": "canonical task request string",
+    "user_detail_text": "user's additional task details from the request-mode composer",
     "requested_task_kind": "personal|network|alpha|system",
-    "source": "user_chat"
+    "source": "user_chat",
+    "source_conversation_title": "task_sample"
   },
   "context": {
     "current_context": {
@@ -152,6 +202,7 @@ Rules:
 - Context documents should be referenced by CID and digest when available; the bundle can include a bounded excerpt so generation can proceed before a context CID exists.
 - Memory records are included as product context, not high-authority instructions.
 - Attachments should be represented by extracted text records and content digests, not raw unbounded file blobs.
+- The request bundle must include the chat title and selected `conversation_id` so a developer can reproduce why a task was generated from `task_sample`.
 
 ## PFTL Lifecycle
 
@@ -320,6 +371,25 @@ Read rules:
 
 ## Implementation Plan
 
+### Phase 0: Request Mode Correlation
+
+Goal: make the app able to create a properly tagged task-request intent from Chat without pretending the task engine is done.
+
+Work:
+
+- Add a `Request task` action behind the chat plus button.
+- Switch the composer placeholder to `Add any relevant details for your task request`.
+- On submit, create a pending task-request chat message with `request_id`, `bundle_id`, `conversation_id`, and `task_request_message_id`.
+- Do not create fake task cards from this phase.
+- Do not mark the request complete until the PFTL request pointer or harness receipt exists.
+
+Acceptance criteria:
+
+- `task_sample` can be selected and submitted through the request-mode path.
+- The pending/loading message has stable correlation IDs.
+- A failed request leaves a visible retry/error state instead of a silent normal chat response.
+- The same request metadata can be consumed by the Python harness.
+
 ### Phase 1: Real Goodalexander Harness
 
 Goal: prove the protocol using `ga_seed2.txt`, live PFTL, live IPFS, real task generation, and real rewards.
@@ -334,8 +404,9 @@ Work:
   - latest published context CID when present;
   - last 3 deep memories;
   - last 36 memory records;
-  - current chat transcript window;
+  - `task_sample` chat transcript window;
   - recent chat summaries.
+- Build the canonical request object with the fixed request string plus `user_detail_text` from `task_sample`.
 - Build `pf.task.request_bundle.v1`.
 - Encrypt and pin the bundle to IPFS.
 - Write the request pointer from the user wallet.
@@ -350,6 +421,7 @@ Work:
 
 Acceptance criteria:
 
+- Receipt identifies the selected `task_sample` conversation id.
 - At least two task submissions complete in one run so wallet queues and idempotency are tested.
 - No deterministic fallback task generator is used unless explicitly requested.
 - Every lifecycle event has a CID and PFTL tx hash.
@@ -381,12 +453,12 @@ Acceptance criteria:
 
 ### Phase 3: Chat Request Button
 
-Goal: wire the app request button after the protocol and projection are proven.
+Goal: complete the app request button after the protocol and projection are proven.
 
 Work:
 
-- Add `Request task` action in Chat.
-- Server builds the same request bundle from account data.
+- Promote Phase 0 request-mode UX from correlation-only to live task request creation.
+- Server builds the same request bundle from account data, with the canonical request string and user detail text.
 - Browser/user wallet signs the request pointer.
 - Async TaskNode worker generates offer and emits authority pointer.
 - UX shows a pending request, then proposed task when projection updates.
@@ -422,6 +494,9 @@ The first real test should run against goodalexander with `ga_seed2.txt`.
 | Test | What It Proves |
 | --- | --- |
 | Build bundle from real context, memory, and chat | App data can shape task generation without UX handwaving |
+| Load `task_sample` by title | Repro fixture can be rebuilt from Postgres |
+| Preserve canonical request text plus user detail text | Prompt input is replayable and not UX-ambiguous |
+| Pending/loading message has stable IDs | UX can reconcile request, offer, and task projection |
 | Publish user MessageKey if missing | User can decrypt and receive private task payloads |
 | Request pointer from user wallet | Wallet-first task initiation works |
 | Offer pointer from authority wallet | TaskNode can issue proposed tasks canonically |
@@ -435,10 +510,11 @@ The first real test should run against goodalexander with `ga_seed2.txt`.
 
 - Whether v1 allocation is exactly one wallet per user or shard size 10.
 - Whether task authority and TaskNode encryption service should be the same wallet or separate service identities.
-- Whether the first web request button should always write a user request pointer before generation, or allow a server-only dry-run preview.
+- Whether Phase 0 request-mode UX should land before the Python harness, as long as it only creates tagged request intent and never fake task state.
+- Whether the first live web request button should always write a user request pointer before generation, or allow a server-only dry-run preview.
 - How aggressively to include raw context excerpts versus CID references in task request bundles.
 - Whether task-generation costs are billed immediately at request time or included in task economics later.
 
 ## Immediate Next Step
 
-Build and run Phase 1 as a Python scenario before touching the Chat or Tasks UX. The output should be a human-readable receipt and machine-readable JSON projection. Only after that should the app implement task projection tables and replace the Tasks surface data.
+Implement either Phase 0 or Phase 1 next. Phase 0 is acceptable first if it only creates request-mode correlation metadata and loading/error UX. Phase 1 remains the protocol gate: build and run the goodalexander Python scenario against `task_sample`, `ga_seed2.txt`, live PFTL, live IPFS, and real rewards before replacing the Tasks surface data.
