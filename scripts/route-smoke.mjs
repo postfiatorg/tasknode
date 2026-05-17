@@ -17,7 +17,11 @@ const routes = [
   { hash: "#context", labels: ["Context document", "Versions"] },
   { hash: "#tasks", labels: ["Tasks"] },
   { hash: "#memory", labels: ["Memory"] },
-  { hash: "#docs", labels: ["Task Node Docs", "Product and architecture wiki"] },
+  {
+    hash: "#docs",
+    labels: ["Task Node Docs", "Product and architecture wiki"],
+    selectors: [".docs-rendered-diagram svg"],
+  },
 ];
 
 let server;
@@ -95,6 +99,10 @@ async function main() {
         throw new Error(
           `Route ${route.hash || "/"} rendered without expected text: ${missing.join(", ")}\nVisible text:\n${visibleText.slice(0, 1200)}`
         );
+      }
+      for (const selector of route.selectors || []) {
+        const exists = await evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
+        if (!exists) throw new Error(`Route ${route.hash || "/"} rendered without selector: ${selector}`);
       }
     }
 

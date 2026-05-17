@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { BookOpen, ChevronRight, Search } from "lucide-react";
 import { DOC_GROUPS, DOC_PAGES } from "./docs-content";
+import { DocsDiagram } from "./DocsDiagram";
 import "./docs.css";
 
 const DEFAULT_DOC = "start";
@@ -115,10 +116,35 @@ function MarkdownBlock({ block }) {
     );
   }
   if (block.type === "code") {
+    if (block.lang === "mermaid") return <DocsDiagram source={block.text} />;
     return (
-      <pre className={block.lang === "mermaid" ? "docs-diagram" : ""}>
+      <pre>
         <code>{block.text}</code>
       </pre>
+    );
+  }
+  if (block.type === "table") {
+    return (
+      <div className="docs-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              {block.headers.map((header, index) => (
+                <th key={index}>{renderInline(header)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {block.rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {row.map((cell, cellIndex) => (
+                  <td key={cellIndex}>{renderInline(cell)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     );
   }
   return null;
@@ -143,7 +169,8 @@ function parseMarkdown(markdown) {
     list = null;
   }
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
     const raw = line.trimEnd();
     const trimmed = raw.trim();
     const fence = trimmed.match(/^```(\w+)?/);
@@ -168,6 +195,22 @@ function parseMarkdown(markdown) {
     if (!trimmed) {
       flushParagraph();
       flushList();
+      continue;
+    }
+
+    const nextLine = lines[lineIndex + 1]?.trim() || "";
+    if (isMarkdownTableRow(trimmed) && isMarkdownTableSeparator(nextLine)) {
+      flushParagraph();
+      flushList();
+      const headers = splitMarkdownTableRow(trimmed);
+      const rows = [];
+      let cursor = lineIndex + 2;
+      while (cursor < lines.length && isMarkdownTableRow(lines[cursor]?.trim() || "")) {
+        rows.push(normalizeTableRow(splitMarkdownTableRow(lines[cursor]), headers.length));
+        cursor += 1;
+      }
+      blocks.push({ type: "table", headers, rows });
+      lineIndex = cursor - 1;
       continue;
     }
 
@@ -201,6 +244,29 @@ function parseMarkdown(markdown) {
   return blocks;
 }
 
+function isMarkdownTableRow(line) {
+  const text = String(line || "").trim();
+  return text.startsWith("|") && text.endsWith("|") && text.split("|").length > 3;
+}
+
+function isMarkdownTableSeparator(line) {
+  if (!isMarkdownTableRow(line)) return false;
+  return splitMarkdownTableRow(line).every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")));
+}
+
+function splitMarkdownTableRow(line) {
+  return String(line || "")
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function normalizeTableRow(row, count) {
+  return Array.from({ length: count }, (_, index) => row[index] || "");
+}
+
 function renderInline(text) {
   const tokens = [];
   const pattern = /(`[^`]+`|\*\*[^*]+\*\*)/g;
@@ -221,4 +287,3 @@ function renderInline(text) {
   if (lastIndex < text.length) tokens.push(text.slice(lastIndex));
   return tokens;
 }
-
