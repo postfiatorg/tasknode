@@ -32,6 +32,7 @@
     "runtime-smoke": "node scripts/runtime-store-smoke.mjs",
     "context-history-rpc-smoke": "node scripts/context-history-rpc-smoke.mjs",
     "context-publish-live-smoke": "node scripts/context-publish-live-smoke.mjs",
+    "tasknode-service-message-key": "PYTHONPATH=reference_clients/python python3 -m tasknode_pftl.scenarios.service_message_key",
     "wallet-balance-smoke": "node scripts/wallet-balance-smoke.mjs",
     "wallet-transactions-smoke": "node scripts/wallet-transactions-smoke.mjs",
     "eth-deposit-wallet": "node scripts/generate-eth-deposit-wallet.mjs",

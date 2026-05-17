@@ -129,6 +129,19 @@ is not enough to encrypt to a wallet; the wallet must publish an encryption
 public key in `MessageKey` or the sender must have an explicit trusted key from
 another source.
 
+TaskNode itself also needs a discoverable service encryption key. The app can
+derive the service key from `TASKNODE_SERVICE_SEED`,
+`TASKNODE_ENCRYPTION_SEED`, `TASKNODE_PFT_FAUCET_SEED`, or `FAUCET_SEED`, but
+external replay clients should resolve it from the service wallet's on-chain
+`MessageKey`.
+
+Inspect or publish the service wallet key without printing seed material:
+
+```bash
+npm run tasknode-service-message-key
+npm run tasknode-service-message-key -- --publish
+```
+
 ## Verification Evidence Readers
 
 `tasknode_pftl.verification` is the canonical Python evidence adapter for

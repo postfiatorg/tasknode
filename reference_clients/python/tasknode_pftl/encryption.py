@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from nacl import bindings
+from xrpl.wallet import Wallet
 
 from .codec import b64d, b64e, sha256_hex
 
@@ -71,7 +72,26 @@ def identity_from_seed_material(role: str, seed_material: str, wallet_address: s
 
 
 def identity_from_wallet_seed(role: str, wallet_seed: str, wallet_address: str | None = None) -> X25519Identity:
-    return identity_from_seed_material(role=role, seed_material=wallet_seed, wallet_address=wallet_address)
+    if not wallet_seed:
+        raise ValueError("wallet_seed is required")
+    wallet = Wallet.from_seed(wallet_seed)
+    public_hex = wallet.public_key
+    private_hex = wallet.private_key
+    if not public_hex.upper().startswith("ED") or not private_hex.upper().startswith("ED"):
+        raise ValueError("PFTL wallet encryption identity requires an Ed25519 wallet seed")
+    public_bytes = bytes.fromhex(public_hex[2:])
+    seed_bytes = bytes.fromhex(private_hex[2:])
+    ed_public, ed_private = bindings.crypto_sign_seed_keypair(seed_bytes)
+    if ed_public != public_bytes:
+        raise ValueError("PFTL wallet signing key derivation mismatch")
+    x_public = bindings.crypto_sign_ed25519_pk_to_curve25519(ed_public)
+    x_private = bindings.crypto_sign_ed25519_sk_to_curve25519(ed_private)
+    return X25519Identity(
+        role=role,
+        public_key=x_public,
+        private_key=x_private,
+        wallet_address=wallet_address or wallet.address,
+    )
 
 
 def identity_from_private_descriptor(data: dict) -> X25519Identity:
@@ -84,7 +104,16 @@ def identity_from_private_descriptor(data: dict) -> X25519Identity:
 
 
 def tasknode_identity_from_seed(seed: str, role: str = "task_node_service") -> X25519Identity:
-    return identity_from_seed_material(role=role, seed_material=seed)
+    if not seed:
+        raise ValueError("seed is required")
+    wallet_address = None
+    try:
+        wallet_address = Wallet.from_seed(seed).address
+    except Exception:
+        wallet_address = None
+    seed_bytes = hashlib.sha256(seed.encode("utf-8")).digest()
+    public_key, private_key = bindings.crypto_box_seed_keypair(seed_bytes)
+    return X25519Identity(role=role, public_key=public_key, private_key=private_key, wallet_address=wallet_address)
 
 
 def message_key_from_x25519_public_key(public_key: bytes | str) -> str:

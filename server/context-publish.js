@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import sodium from "libsodium-wrappers";
+import { Wallet } from "xrpl";
 import { getLinkedWallet } from "./runtime-store.js";
 import { getContextDocument, saveIndexedContextHistory } from "./repositories/context.js";
 import { contextIpfsPinStatus, pinContextIpfsJson } from "./context-ipfs.js";
@@ -10,7 +11,7 @@ import { normalizeContextBodyForStorage } from "../shared/context-html.js";
 const ACTION_ID = "ink_manifest";
 const CONTEXT_POINTER_SCHEMA = 1;
 const ENCRYPTION_SUITE = "ENC_X25519_XCHACHA20P1305";
-let tasknodeEncryptionPubkeyCache = null;
+let tasknodeEncryptionKeyCache = null;
 
 function actionResponse({ status, error, message, actionRequired, extra = {} }) {
   return {
@@ -68,35 +69,185 @@ function parsePhase(payload = {}) {
 }
 
 function configuredSeed(env = process.env) {
-  return String(env.TASKNODE_PFT_FAUCET_SEED || env.FAUCET_SEED || "").trim();
+  return String(
+    env.TASKNODE_SERVICE_SEED ||
+      env.TASKNODE_ENCRYPTION_SEED ||
+      env.TASKNODE_PFT_FAUCET_SEED ||
+      env.FAUCET_SEED ||
+      ""
+  ).trim();
 }
 
-export async function getTasknodeEncryptionPubkey(env = process.env) {
+function rpcCandidates(env = process.env) {
+  const values = `${env.PFTL_RPC_URL || ""} ${env.PFTL_RPC_URL_FALLBACKS || ""}`
+    .split(/[,\s]+/)
+    .map((item) => item.trim())
+    .filter((item) => /^https?:\/\//i.test(item));
+  return [...new Set(values)];
+}
+
+function bytesToBase64(bytes) {
+  return Buffer.from(bytes).toString("base64");
+}
+
+function base64ToBytes(value) {
+  return Buffer.from(String(value || ""), "base64");
+}
+
+function hexToBase64(value) {
+  return Buffer.from(value, "hex").toString("base64");
+}
+
+function messageKeyFromPublicKeyBytes(bytes) {
+  if (!bytes || bytes.length !== sodium.crypto_box_PUBLICKEYBYTES) {
+    throw new Error("tasknode_encryption_pubkey_invalid");
+  }
+  return `ED${Buffer.from(bytes).toString("hex")}`.toUpperCase();
+}
+
+function publicKeyBase64FromMessageKey(messageKey) {
+  const normalized = String(messageKey || "").trim().toUpperCase();
+  const hex = normalized.startsWith("ED") ? normalized.slice(2) : normalized;
+  if (!/^[A-F0-9]{64}$/.test(hex)) throw new Error("tasknode_message_key_invalid");
+  return hexToBase64(hex);
+}
+
+function normalizePublicKeyBase64(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^(ED)?[A-Fa-f0-9]{64}$/.test(raw)) {
+    return publicKeyBase64FromMessageKey(raw);
+  }
+  const bytes = base64ToBytes(raw);
+  if (bytes.length !== sodium.crypto_box_PUBLICKEYBYTES) {
+    throw new Error("tasknode_encryption_pubkey_invalid");
+  }
+  return bytesToBase64(bytes);
+}
+
+async function accountMessageKey(address, env = process.env) {
+  const account = String(address || "").trim();
+  if (!account) return "";
+  for (const endpoint of rpcCandidates(env)) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          method: "account_info",
+          params: [{ account, ledger_index: "validated" }],
+          id: 1,
+          jsonrpc: "2.0",
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const data = await response.json();
+      const value = data?.result?.account_data?.MessageKey;
+      if (value) return String(value).trim().toUpperCase();
+      return "";
+    } catch {
+      // Try the next configured RPC endpoint.
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return "";
+}
+
+async function deriveTasknodeEncryptionKey(env = process.env) {
   const explicit = String(env.TASKNODE_ENCRYPTION_PUBKEY || "").trim();
-  if (explicit) return explicit;
-  if (tasknodeEncryptionPubkeyCache) return tasknodeEncryptionPubkeyCache;
+  if (explicit) {
+    await sodium.ready;
+    const publicKey = normalizePublicKeyBase64(explicit);
+    return {
+      publicKey,
+      expectedMessageKey: messageKeyFromPublicKeyBytes(base64ToBytes(publicKey)),
+      source: "env",
+      serviceAddress: null,
+      derived: false,
+    };
+  }
 
   const seed = configuredSeed(env);
   if (!seed) return null;
   await sodium.ready;
   const seedBytes = createHash("sha256").update(seed, "utf8").digest();
   const keypair = sodium.crypto_box_seed_keypair(seedBytes);
-  tasknodeEncryptionPubkeyCache = sodium.to_base64(
-    keypair.publicKey,
-    sodium.base64_variants.ORIGINAL
-  );
-  return tasknodeEncryptionPubkeyCache;
+  let serviceAddress = null;
+  try {
+    serviceAddress = Wallet.fromSeed(seed).classicAddress;
+  } catch {
+    serviceAddress = null;
+  }
+  return {
+    publicKey: sodium.to_base64(keypair.publicKey, sodium.base64_variants.ORIGINAL),
+    expectedMessageKey: messageKeyFromPublicKeyBytes(keypair.publicKey),
+    source: "seed",
+    serviceAddress,
+    derived: true,
+  };
+}
+
+export async function resolveTasknodeEncryptionKey(env = process.env, { checkOnchain = false } = {}) {
+  const cacheAllowed = !checkOnchain;
+  if (cacheAllowed && tasknodeEncryptionKeyCache) return tasknodeEncryptionKeyCache;
+  const key = await deriveTasknodeEncryptionKey(env);
+  if (!key) return null;
+
+  if (checkOnchain && key.serviceAddress) {
+    const currentMessageKey = await accountMessageKey(key.serviceAddress, env);
+    if (currentMessageKey) {
+      if (currentMessageKey !== key.expectedMessageKey) {
+        const error = new Error("Task Node service wallet MessageKey does not match the configured encryption key.");
+        error.status = 409;
+        error.code = "tasknode_message_key_mismatch";
+        error.currentMessageKey = currentMessageKey;
+        error.expectedMessageKey = key.expectedMessageKey;
+        throw error;
+      }
+      return {
+        ...key,
+        publicKey: publicKeyBase64FromMessageKey(currentMessageKey),
+        currentMessageKey,
+        messageKeyPublished: true,
+        source: "pftl_message_key",
+      };
+    }
+    return {
+      ...key,
+      currentMessageKey: "",
+      messageKeyPublished: false,
+    };
+  }
+
+  const out = {
+    ...key,
+    currentMessageKey: null,
+    messageKeyPublished: null,
+  };
+  if (cacheAllowed) tasknodeEncryptionKeyCache = out;
+  return out;
+}
+
+export async function getTasknodeEncryptionPubkey(env = process.env, options = {}) {
+  const resolved = await resolveTasknodeEncryptionKey(env, options);
+  return resolved?.publicKey || null;
 }
 
 export async function contextPublishStatus(env = process.env) {
   const ipfs = contextIpfsPinStatus(env);
   const pftl = pftlSubmitStatus(env);
-  const tasknodeEncryptionPubkey = await getTasknodeEncryptionPubkey(env).catch(() => null);
+  const tasknodeEncryptionKey = await resolveTasknodeEncryptionKey(env).catch(() => null);
   return {
-    configured: Boolean(ipfs.configured && pftl.wssConfigured && tasknodeEncryptionPubkey),
+    configured: Boolean(ipfs.configured && pftl.wssConfigured && tasknodeEncryptionKey?.publicKey),
     ipfs,
     pftl,
-    tasknodeEncryptionPubkeyConfigured: Boolean(tasknodeEncryptionPubkey),
+    tasknodeEncryptionPubkeyConfigured: Boolean(tasknodeEncryptionKey?.publicKey),
+    tasknodeEncryptionKeySource: tasknodeEncryptionKey?.source || null,
+    tasknodeEncryptionMessageKeyPublished: tasknodeEncryptionKey?.messageKeyPublished ?? null,
   };
 }
 
@@ -145,20 +296,24 @@ async function contextPublishConfig(session) {
   const resolved = await requireSessionWallet(session);
   if (resolved.error) return resolved.error;
 
-  const tasknodeEncryptionPubkey = await getTasknodeEncryptionPubkey();
-  if (!tasknodeEncryptionPubkey) {
+  const tasknodeEncryptionKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
+  if (!tasknodeEncryptionKey?.publicKey) {
     return actionResponse({
       status: 409,
       error: "tasknode_encryption_key_missing",
       message: "Task Node encryption key is not configured.",
       actionRequired:
-        "Configure TASKNODE_ENCRYPTION_PUBKEY or the PFT faucet seed so published context can be encrypted to Task Node.",
+        "Configure TASKNODE_SERVICE_SEED, TASKNODE_ENCRYPTION_SEED, TASKNODE_ENCRYPTION_PUBKEY, or the PFT faucet seed so published context can be encrypted to Task Node.",
     });
   }
 
   return okResponse({
     phase: "config",
-    tasknodeEncryptionPubkey,
+    tasknodeEncryptionPubkey: tasknodeEncryptionKey.publicKey,
+    tasknodeEncryptionKeySource: tasknodeEncryptionKey.source,
+    tasknodeEncryptionMessageKeyPublished: tasknodeEncryptionKey.messageKeyPublished,
+    tasknodeEncryptionMessageKey: tasknodeEncryptionKey.expectedMessageKey,
+    tasknodeServiceAddress: tasknodeEncryptionKey.serviceAddress,
     pointer: {
       kind: "CONTEXT",
       schema: CONTEXT_POINTER_SCHEMA,
