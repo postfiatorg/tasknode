@@ -8,6 +8,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  KeyRound,
   Link2,
   Lock,
   Plus,
@@ -21,6 +22,7 @@ import {
 import { requestJson } from "../../api";
 import "./wallet.css";
 import { EthereumTopUpModal, topUpDataSignature, useEthereumTopUpSync } from "../billing/ethereum-top-up";
+import { WalletSeedBackupModal } from "./WalletSeedBackupModal";
 import { formatCreditUsd } from "../../formatters";
 import { isSignedInSession } from "../../session";
 import {
@@ -70,6 +72,7 @@ export function WalletView({
   const [linkOpen, setLinkOpen] = useState(false);
   const [walletProofAction, setWalletProofAction] = useState(null);
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
   const [delinkOpen, setDelinkOpen] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [creationResult, setCreationResult] = useState(null);
@@ -198,6 +201,20 @@ export function WalletView({
       setWalletProofAction(linkAction);
       setLinkOpen(true);
     }
+  }
+
+  function openSeedBackup() {
+    if (!requireSignedInForWalletLink()) return;
+    if (!walletLinked) {
+      setMessage("Link or create a wallet before backing up a seed phrase.");
+      return;
+    }
+    if (!vaultAvailable) {
+      setMessage("This browser does not have a saved local seed vault to back up.");
+      return;
+    }
+    setMessage("");
+    setBackupOpen(true);
   }
 
   async function openTopUpFlow() {
@@ -542,6 +559,13 @@ export function WalletView({
             status={vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : "Not saved"}
           />
           <WalletManagementCard
+            disabled={!walletLinked || !vaultAvailable}
+            icon={KeyRound}
+            label="Back up seed"
+            onClick={openSeedBackup}
+            status={vaultAvailable ? "Password required" : walletLinked ? "Not saved" : "No wallet"}
+          />
+          <WalletManagementCard
             disabled={!walletLinked || pendingAction === "delink"}
             icon={Unlink}
             label="Delink wallet"
@@ -676,6 +700,13 @@ export function WalletView({
             setMessage("");
             onWalletVaultUnlocked?.(unlock);
           }}
+          session={session}
+        />
+      )}
+      {backupOpen && (
+        <WalletSeedBackupModal
+          linkedWallet={linkedWallet}
+          onClose={() => setBackupOpen(false)}
           session={session}
         />
       )}
