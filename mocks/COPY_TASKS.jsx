@@ -67,7 +67,6 @@ import {
   ChevronUp,
   Clock,
 } from "lucide-react";
-
 /**
  * ChatGPT-style interface for the Task Node ecosystem.
  *
@@ -83,7 +82,6 @@ import {
  *   - A small PFT balance pill sits above the user profile so balance is always
  *     glanceable without intruding on the chat.
  */
-
 const RECENTS = [
   { id: "building", title: "Building Discussion" },
   { id: "greeting", title: "Greeting exchange", unread: true },
@@ -99,7 +97,6 @@ const RECENTS = [
   { id: "hamburger", title: "Hamburger Affordability Compari…" },
   { id: "logitcoin", title: "Logitcoin Research Packet" },
 ];
-
 // Rich sample thread used by the "Building Discussion" recent so the chat
 // shell has something to render that exercises markdown, the thinking trace,
 // the action toolbar, edit affordances, etc.
@@ -224,7 +221,6 @@ const SAMPLE_THREAD = [
     ],
   },
 ];
-
 // Activity panel content for the sample thread — what the assistant pulled in
 // while drafting its reply.
 const SAMPLE_ACTIVITY = {
@@ -247,7 +243,6 @@ const SAMPLE_ACTIVITY = {
   memoryMore: 5,
   files: [{ name: "Pasted text.txt", type: "TXT" }],
 };
-
 const TASKS = {
   outstanding: [
     {
@@ -303,7 +298,6 @@ const TASKS = {
   refused: 62,
   rewarded: 92,
 };
-
 const ACTIVITY = [
   {
     group: "Today",
@@ -380,7 +374,6 @@ const ACTIVITY = [
     ],
   },
 ];
-
 // 28 days of PFT generation, with one spike to match the user's screenshot
 const PFT_GENERATION = [
   { d: "04/18", v: 1800 },
@@ -412,20 +405,17 @@ const PFT_GENERATION = [
   { d: "05/14", v: 2400 },
   { d: "05/15", v: 2200 },
 ];
-
 const PFT_BREAKDOWN = [
   { label: "Personal", value: "42,900" },
   { label: "Network", value: "52,555.4" },
   { label: "Alpha", value: "10,000" },
 ];
-
 const NFTS = [
   { id: "1", title: "Network Reliability Engineer", date: "May 13, 2026", g: "from-emerald-200 to-emerald-500" },
   { id: "2", title: "NFT 2026-05-12", date: "May 12, 2026", g: "from-stone-300 to-stone-700" },
   { id: "3", title: "Alpha Brief Analyst", date: "May 7, 2026", g: "from-amber-200 to-amber-600" },
   { id: "4", title: "Alpha Brief Analyst", date: "May 7, 2026", g: "from-sky-200 to-sky-600" },
 ];
-
 const CONNECTIONS = [
   {
     handle: "rDVKRN…tyjB",
@@ -449,7 +439,6 @@ const CONNECTIONS = [
     tags: ["CLI JSON scoring", "Triage packet design", "Sim engineering"],
   },
 ];
-
 const CONTEXT_SOURCES = [
   {
     key: "gdocs",
@@ -476,13 +465,11 @@ const CONTEXT_SOURCES = [
     status: "connected",
   },
 ];
-
 // ---------- Messages data ----------
 //
 // Each conversation has a wallet handle as identity. The avatar is procedurally
 // generated from the handle (gradient + glyph), so it acts as an NFT-style pfp
 // without requiring real image assets.
-
 const CONVERSATIONS = [
   {
     id: "subs",
@@ -552,7 +539,6 @@ const CONVERSATIONS = [
     time: "Mar 7",
   },
 ];
-
 const MESSAGE_THREADS = {
   subs: [
     {
@@ -619,7 +605,6 @@ const MESSAGE_THREADS = {
     },
   ],
 };
-
 // Warm gradient pairs used as procedural NFT avatar fills. Tuned to harmonize
 // with the cream/stone palette rather than fight it like bright iMessage hues.
 const AVATAR_GRADIENTS = [
@@ -632,7 +617,6 @@ const AVATAR_GRADIENTS = [
   ["#d4a48f", "#a36856"], // terracotta
   ["#a5c0bc", "#647e7a"], // soft teal
 ];
-
 // ChatGPT-inspired palette. Warm off-white that shifts very slightly between
 // sidebar and main surface, with stone neutrals for borders and hovers.
 const PALETTE = {
@@ -645,7 +629,6 @@ const PALETTE = {
   mute: "#6b6b66",
   brand: "#10a37f",
 };
-
 export default function ChatGPTTaskNode() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [view, setView] = useState("chat"); // chat | tasks | wallet | context | profile
@@ -671,13 +654,11 @@ export default function ChatGPTTaskNode() {
   const [selectedConversation, setSelectedConversation] = useState("rsS2Y6");
   const [messageDraft, setMessageDraft] = useState("");
   const [convoSearch, setConvoSearch] = useState("");
-
   const inputRef = useRef(null);
   const profileRef = useRef(null);
   const plusRef = useRef(null);
   const moreRef = useRef(null);
   const modelRef = useRef(null);
-
   // close menus on outside click
   useEffect(() => {
     function onClick(e) {
@@ -697,7 +678,6 @@ export default function ChatGPTTaskNode() {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
-
   // close settings modal on Escape
   useEffect(() => {
     if (!settingsOpen) return;
@@ -707,7 +687,6 @@ export default function ChatGPTTaskNode() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [settingsOpen]);
-
   // close task modal on Escape
   useEffect(() => {
     if (!selectedTask) return;
@@ -717,7 +696,6 @@ export default function ChatGPTTaskNode() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [selectedTask]);
-
   // close share modal on Escape
   useEffect(() => {
     if (!shareOpen) return;
@@ -727,7 +705,6 @@ export default function ChatGPTTaskNode() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [shareOpen]);
-
   // close activity panel on Escape
   useEffect(() => {
     if (!activityOpen) return;
@@ -737,7 +714,6 @@ export default function ChatGPTTaskNode() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [activityOpen]);
-
   function sendMessage() {
     const text = input.trim();
     if (!text) return;
@@ -758,7 +734,6 @@ export default function ChatGPTTaskNode() {
     setInput("");
     if (!activeChat) setActiveChat({ id: "new", title: text.slice(0, 40) });
   }
-
   function openRecent(chat) {
     setView("chat");
     setActiveChat(chat);
@@ -780,16 +755,13 @@ export default function ChatGPTTaskNode() {
       ]);
     }
   }
-
   function newChat() {
     setView("chat");
     setActiveChat(null);
     setThread([]);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
-
   // ---------- shared atoms ----------
-
   const SidebarBtn = ({ icon: Icon, label, active, onClick, badge }) => (
     <button
       onClick={onClick}
@@ -817,11 +789,8 @@ export default function ChatGPTTaskNode() {
       )}
     </button>
   );
-
   // ---------- sidebar ----------
-
   const sidebarWidth = sidebarOpen ? 260 : 56;
-
   const Sidebar = (
     <aside
       className="flex h-full flex-col transition-all duration-200 ease-out"
@@ -879,7 +848,6 @@ export default function ChatGPTTaskNode() {
           </div>
         )}
       </div>
-
       {/* primary nav */}
       <nav className="flex flex-col gap-0.5 px-2 pt-1">
         <SidebarBtn
@@ -955,7 +923,6 @@ export default function ChatGPTTaskNode() {
           )}
         </div>
       </nav>
-
       {/* recents */}
       {sidebarOpen && (
         <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -997,9 +964,7 @@ export default function ChatGPTTaskNode() {
           </div>
         </div>
       )}
-
       {!sidebarOpen && <div className="flex-1" />}
-
       {/* PFT balance pill (subtle Task Node integration) */}
       {sidebarOpen && (
         <button
@@ -1028,7 +993,6 @@ export default function ChatGPTTaskNode() {
           <ChevronRight size={14} style={{ color: PALETTE.mute }} />
         </button>
       )}
-
       {/* profile */}
       <div className="relative px-2 pb-3 pt-1" ref={profileRef}>
         <button
@@ -1070,7 +1034,6 @@ export default function ChatGPTTaskNode() {
             </>
           )}
         </button>
-
         {profileMenu && sidebarOpen && (
           <div
             className="absolute z-30 overflow-hidden rounded-2xl"
@@ -1146,9 +1109,7 @@ export default function ChatGPTTaskNode() {
       </div>
     </aside>
   );
-
   // ---------- main views ----------
-
   const ChatEmpty = (
     <div className="flex w-full max-w-[760px] flex-col items-center px-4">
       <h1
@@ -1160,7 +1121,6 @@ export default function ChatGPTTaskNode() {
       {InputBar()}
     </div>
   );
-
   const ChatThread = (
     <div className="relative flex w-full max-w-[760px] flex-1 flex-col px-4">
       <div className="flex-1 overflow-y-auto py-6">
@@ -1225,7 +1185,6 @@ export default function ChatGPTTaskNode() {
       </div>
     </div>
   );
-
   function InputBar() {
     return (
       <div className="relative w-full">
@@ -1251,7 +1210,6 @@ export default function ChatGPTTaskNode() {
             >
               <Plus size={20} strokeWidth={1.75} />
             </button>
-
             {plusMenu && (
               <div
                 className="absolute bottom-12 left-0 z-40 w-[260px] overflow-hidden rounded-2xl py-2"
@@ -1287,7 +1245,6 @@ export default function ChatGPTTaskNode() {
               </div>
             )}
           </div>
-
           {/* text input */}
           <input
             ref={inputRef}
@@ -1303,7 +1260,6 @@ export default function ChatGPTTaskNode() {
             className="flex-1 bg-transparent px-1.5 py-2 text-[15px] outline-none placeholder:text-[#9a9a93]"
             style={{ color: PALETTE.text }}
           />
-
           {/* model picker */}
           <div className="relative" ref={modelRef}>
             <button
@@ -1323,7 +1279,6 @@ export default function ChatGPTTaskNode() {
                 style={{ transform: "rotate(90deg)" }}
               />
             </button>
-
             {modelMenu && (
               <div
                 className="absolute bottom-12 right-0 z-40 w-[240px] overflow-hidden rounded-2xl py-1.5"
@@ -1390,7 +1345,6 @@ export default function ChatGPTTaskNode() {
               </div>
             )}
           </div>
-
           {/* send button — replaces mic + voice mode */}
           <button
             onClick={sendMessage}
@@ -1406,7 +1360,6 @@ export default function ChatGPTTaskNode() {
             <ArrowUp size={18} strokeWidth={2.25} />
           </button>
         </div>
-
         {/* footer fineprint when in thread */}
         {thread.length > 0 && (
           <div
@@ -1419,7 +1372,6 @@ export default function ChatGPTTaskNode() {
       </div>
     );
   }
-
   // Tasks view — Outstanding / Verification / Refused / Rewarded
   const TasksView = (() => {
     const outstandingCount = TASKS.outstanding.length;
@@ -1460,7 +1412,6 @@ export default function ChatGPTTaskNode() {
             Request task
           </button>
         </div>
-
         {/* tabs — refined inline counts */}
         <div
           className="mb-6 flex items-center gap-7 overflow-x-auto border-b text-[13.5px]"
@@ -1519,7 +1470,6 @@ export default function ChatGPTTaskNode() {
             );
           })}
         </div>
-
         {/* task list — editorial entries, not cards */}
         {tasksTab === "outstanding" && (
           <div
@@ -1551,7 +1501,6 @@ export default function ChatGPTTaskNode() {
                   >
                     <StatusGlyph status={task.status} palette={PALETTE} />
                   </div>
-
                   {/* title + meta */}
                   <div className="min-w-0 flex-1">
                     <h3
@@ -1584,7 +1533,6 @@ export default function ChatGPTTaskNode() {
                       <span>{task.ago}</span>
                     </div>
                   </div>
-
                   {/* reward */}
                   <div className="shrink-0 text-right">
                     <div
@@ -1612,7 +1560,6 @@ export default function ChatGPTTaskNode() {
             ))}
           </div>
         )}
-
         {tasksTab === "verification" && (
           <RefinedEmptyState
             icon={Clock}
@@ -1640,7 +1587,6 @@ export default function ChatGPTTaskNode() {
       </div>
     );
   })();
-
   // Wallet view — hero balance + grouped activity
   const WalletView = (
     <div className="mx-auto flex w-full max-w-[760px] flex-col gap-4 px-5 py-10 sm:px-8">
@@ -1664,7 +1610,6 @@ export default function ChatGPTTaskNode() {
               "radial-gradient(circle at center, rgba(13,13,13,0.05) 0%, rgba(13,13,13,0) 70%)",
           }}
         />
-
         <div className="relative">
           <div
             className="text-[11px] font-semibold uppercase tracking-[0.08em]"
@@ -1672,7 +1617,6 @@ export default function ChatGPTTaskNode() {
           >
             Available balance
           </div>
-
           <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span
               className="text-[52px] font-semibold leading-none tabular-nums"
@@ -1687,7 +1631,6 @@ export default function ChatGPTTaskNode() {
               PFT
             </span>
           </div>
-
           <div className="mt-3 flex items-center gap-1.5 text-[12.5px]">
             <span
               className="font-semibold tabular-nums"
@@ -1699,7 +1642,6 @@ export default function ChatGPTTaskNode() {
               received in the last 24h
             </span>
           </div>
-
           {/* address chip */}
           <button
             className="mt-5 inline-flex items-center gap-2 rounded-full py-1.5 pl-3 pr-2 transition-colors"
@@ -1720,7 +1662,6 @@ export default function ChatGPTTaskNode() {
             </span>
             <Copy size={11} style={{ color: PALETTE.mute }} />
           </button>
-
           {/* actions */}
           <div className="mt-6 flex flex-wrap gap-2">
             <button
@@ -1747,7 +1688,6 @@ export default function ChatGPTTaskNode() {
               Receive
             </button>
           </div>
-
           {/* footer flow line */}
           <div
             className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-4 text-[11.5px]"
@@ -1788,7 +1728,6 @@ export default function ChatGPTTaskNode() {
           </div>
         </div>
       </section>
-
       {/* ACTIVITY */}
       <ProfileCard
         title="Activity"
@@ -1827,7 +1766,6 @@ export default function ChatGPTTaskNode() {
       </ProfileCard>
     </div>
   );
-
   // Context view — Hive Mind / Directory / Agents / Messages
   // Context view — three connectable sources
   const ContextView = (
@@ -1842,7 +1780,6 @@ export default function ChatGPTTaskNode() {
         Choose where the assistant draws context from. You can connect more
         than one source.
       </p>
-
       <div className="mt-6 flex flex-col gap-2.5">
         {CONTEXT_SOURCES.map((src) => {
           const Icon = src.icon;
@@ -1916,7 +1853,6 @@ export default function ChatGPTTaskNode() {
           );
         })}
       </div>
-
       <div
         className="mt-6 rounded-2xl px-4 py-3 text-[12px] leading-relaxed"
         style={{
@@ -1931,7 +1867,6 @@ export default function ChatGPTTaskNode() {
       </div>
     </div>
   );
-
   // Profile view — Private (you) / Public (what others see)
   const ProfileView = (
     <div className="mx-auto flex w-full max-w-[760px] flex-col px-5 py-8 sm:px-8">
@@ -1962,7 +1897,6 @@ export default function ChatGPTTaskNode() {
             );
           })}
         </div>
-
         <button
           onClick={() => setProfilePublic((s) => !s)}
           className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors"
@@ -1976,7 +1910,6 @@ export default function ChatGPTTaskNode() {
           {profilePublic ? "Profile public" : "Profile hidden"}
         </button>
       </div>
-
       {profileTab === "private" && (
         <div className="flex flex-col gap-4">
           {/* Profile Studio */}
@@ -2021,7 +1954,6 @@ export default function ChatGPTTaskNode() {
               </div>
             </div>
           </ProfileCard>
-
           {/* Today's airdrop */}
           <ProfileCard
             title="Today's airdrop"
@@ -2076,7 +2008,6 @@ export default function ChatGPTTaskNode() {
               />
             </div>
           </ProfileCard>
-
           {/* PFT Generation chart */}
           <ProfileCard
             title="PFT generation"
@@ -2147,7 +2078,6 @@ export default function ChatGPTTaskNode() {
               ))}
             </div>
           </ProfileCard>
-
           {/* NFT Gallery */}
           <ProfileCard
             title="NFT Gallery"
@@ -2184,7 +2114,6 @@ export default function ChatGPTTaskNode() {
               ))}
             </div>
           </ProfileCard>
-
           {/* Recommended connections */}
           <ProfileCard
             title="Recommended connections"
@@ -2199,7 +2128,6 @@ export default function ChatGPTTaskNode() {
           </ProfileCard>
         </div>
       )}
-
       {profileTab === "public" && (
         <div className="flex flex-col gap-4">
           {/* Wallet identity header */}
@@ -2262,7 +2190,6 @@ export default function ChatGPTTaskNode() {
               />
             </div>
           </div>
-
           {/* About me */}
           <ProfileCard
             title="About me"
@@ -2284,7 +2211,6 @@ export default function ChatGPTTaskNode() {
               Not specified yet.
             </p>
           </ProfileCard>
-
           {/* NFT Gallery (public view) */}
           <ProfileCard
             title="NFT Gallery"
@@ -2313,7 +2239,6 @@ export default function ChatGPTTaskNode() {
               ))}
             </div>
           </ProfileCard>
-
           {/* Post Fiat alignment */}
           <ProfileCard
             title="Post Fiat alignment"
@@ -2357,7 +2282,6 @@ export default function ChatGPTTaskNode() {
               </div>
             </div>
           </ProfileCard>
-
           {/* Sybil detail */}
           <ProfileCard
             title="Sybil score"
@@ -2421,12 +2345,10 @@ export default function ChatGPTTaskNode() {
       )}
     </div>
   );
-
   // ---------- Messages view ----------
   //
   // Two-pane layout: 320px conversation list on the left, thread flex on the
   // right. iMessage in skeleton, Task Node in palette and identity model.
-
   const activeConvo =
     CONVERSATIONS.find((c) => c.id === selectedConversation) || CONVERSATIONS[0];
   const activeMessages = MESSAGE_THREADS[activeConvo?.id] || [];
@@ -2441,7 +2363,6 @@ export default function ChatGPTTaskNode() {
     (s, c) => s + (c.unread || 0),
     0,
   );
-
   const MessagesView = (
     <div className="flex h-full w-full">
       {/* ---- Conversation list ---- */}
@@ -2488,7 +2409,6 @@ export default function ChatGPTTaskNode() {
             End-to-end encrypted · {totalUnread} unread
           </div>
         </div>
-
         <div className="px-4 pb-2">
           <div
             className="flex items-center gap-2 rounded-full px-3 py-1.5"
@@ -2506,7 +2426,6 @@ export default function ChatGPTTaskNode() {
             />
           </div>
         </div>
-
         <div className="flex-1 overflow-y-auto px-2 py-1">
           {filteredConvos.map((c) => {
             const active = c.id === activeConvo?.id;
@@ -2582,7 +2501,6 @@ export default function ChatGPTTaskNode() {
           })}
         </div>
       </div>
-
       {/* ---- Thread ---- */}
       <div className="flex h-full min-w-0 flex-1 flex-col">
         {activeConvo && (
@@ -2648,7 +2566,6 @@ export default function ChatGPTTaskNode() {
                 </button>
               </div>
             </div>
-
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-7 py-6">
               <div className="mx-auto flex max-w-[680px] flex-col gap-1.5">
@@ -2676,7 +2593,6 @@ export default function ChatGPTTaskNode() {
                 })}
               </div>
             </div>
-
             {/* Input */}
             <div
               className="shrink-0 px-7 py-4"
@@ -2740,9 +2656,7 @@ export default function ChatGPTTaskNode() {
       </div>
     </div>
   );
-
   // ---------- top bar ----------
-
   const TopBar = (
     <div
       className="flex items-center justify-between px-4 pt-3"
@@ -2778,7 +2692,6 @@ export default function ChatGPTTaskNode() {
           <SquarePen size={18} strokeWidth={1.75} />
         </button>
       </div>
-
       {/* in-thread actions, ChatGPT-style */}
       {view === "chat" && activeChat && (
         <div className="flex items-center gap-1">
@@ -2810,9 +2723,7 @@ export default function ChatGPTTaskNode() {
       )}
     </div>
   );
-
   // ---------- render ----------
-
   return (
     <div
       className="flex h-screen w-full overflow-hidden"
@@ -2824,10 +2735,8 @@ export default function ChatGPTTaskNode() {
       }}
     >
       {Sidebar}
-
       <main className="relative flex min-w-0 flex-1 flex-col">
         {TopBar}
-
         <div className="flex min-h-0 flex-1 flex-col items-center">
           {view === "chat" &&
             (thread.length === 0 ? (
@@ -2856,7 +2765,6 @@ export default function ChatGPTTaskNode() {
           )}
         </div>
       </main>
-
       {settingsOpen && (
         <SettingsModal
           theme={theme}
@@ -2865,7 +2773,6 @@ export default function ChatGPTTaskNode() {
           palette={PALETTE}
         />
       )}
-
       {selectedTask && (
         <TaskDetailModal
           task={selectedTask}
@@ -2873,7 +2780,6 @@ export default function ChatGPTTaskNode() {
           palette={PALETTE}
         />
       )}
-
       {shareOpen && (
         <ShareModal
           title={activeChat?.title || "Untitled chat"}
@@ -2882,7 +2788,6 @@ export default function ChatGPTTaskNode() {
           palette={PALETTE}
         />
       )}
-
       {activityOpen && (
         <ActivityPanel
           data={SAMPLE_ACTIVITY}
@@ -2893,9 +2798,7 @@ export default function ChatGPTTaskNode() {
     </div>
   );
 }
-
 // ---------- small bits ----------
-
 function MenuRow({ icon: Icon, label, trailing, onClick }) {
   return (
     <button
@@ -2908,7 +2811,6 @@ function MenuRow({ icon: Icon, label, trailing, onClick }) {
     </button>
   );
 }
-
 function StatusPill({ status }) {
   // Warm-neutral tones tuned to the cream palette, not Tailwind primary colors.
   const map = {
@@ -2927,7 +2829,6 @@ function StatusPill({ status }) {
     </span>
   );
 }
-
 // Small warm-neutral text color per status, used inline in the list row.
 function statusTextColor(status) {
   const map = {
@@ -2938,7 +2839,6 @@ function statusTextColor(status) {
   };
   return map[status] || "#3d3d38";
 }
-
 // Compact status glyph: open ring for pending states, filled circle for committed.
 function StatusGlyph({ status, palette }) {
   const filled = status === "Accepted" || status === "Rewarded";
@@ -2979,7 +2879,6 @@ function StatusGlyph({ status, palette }) {
     />
   );
 }
-
 // Tiny middot used to separate metadata fragments in the list row.
 function Dot({ palette }) {
   return (
@@ -2994,7 +2893,6 @@ function Dot({ palette }) {
     />
   );
 }
-
 function StatusSignal({ status, palette }) {
   // kept for backward compatibility if anything else references it
   return (
@@ -3011,7 +2909,6 @@ function StatusSignal({ status, palette }) {
     </span>
   );
 }
-
 function RefinedEmptyState({ icon: Icon, title, desc, palette }) {
   return (
     <div
@@ -3048,9 +2945,7 @@ function RefinedEmptyState({ icon: Icon, title, desc, palette }) {
     </div>
   );
 }
-
 // ---------- Messages primitives ----------
-
 // Deterministic small hash for use as an avatar seed.
 function avatarHash(s) {
   let h = 0;
@@ -3060,7 +2955,6 @@ function avatarHash(s) {
   }
   return Math.abs(h);
 }
-
 // Procedural NFT-style avatar: warm gradient background plus one of four
 // abstract white glyphs at low opacity, both derived from the handle.
 function NFTAvatar({ seed, size = 40, isBot = false, palette }) {
@@ -3153,7 +3047,6 @@ function NFTAvatar({ seed, size = 40, isBot = false, palette }) {
     </div>
   );
 }
-
 function ThreadDateSeparator({ label, palette }) {
   return (
     <div className="my-3 flex items-center justify-center">
@@ -3169,7 +3062,6 @@ function ThreadDateSeparator({ label, palette }) {
     </div>
   );
 }
-
 function MessageBubble({
   message,
   groupedTop,
@@ -3233,7 +3125,6 @@ function MessageBubble({
     </div>
   );
 }
-
 function ActivityRow({ tx, palette }) {
   const isIn = tx.kind === "in";
   const sign = isIn ? "+" : "−";
@@ -3290,7 +3181,6 @@ function ActivityRow({ tx, palette }) {
     </div>
   );
 }
-
 function ModelOption({ label, selected, onClick }) {
   return (
     <button
@@ -3302,19 +3192,15 @@ function ModelOption({ label, selected, onClick }) {
     </button>
   );
 }
-
 // ---------- Settings modal ----------
-
 const SETTINGS_PAGES = [
   { k: "general", label: "General", icon: SettingsIcon },
   { k: "security", label: "Security", icon: Shield },
   { k: "data", label: "Data controls", icon: Database },
   { k: "billing", label: "Billing", icon: CreditCard },
 ];
-
 function SettingsModal({ theme, setTheme, onClose, palette }) {
   const [page, setPage] = useState("general");
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
@@ -3376,7 +3262,6 @@ function SettingsModal({ theme, setTheme, onClose, palette }) {
               })}
             </nav>
           </aside>
-
           {/* right content */}
           <div className="flex min-w-0 flex-1 flex-col">
             <div
@@ -3408,18 +3293,14 @@ function SettingsModal({ theme, setTheme, onClose, palette }) {
     </div>
   );
 }
-
 // ---------- Settings pages ----------
-
 function GeneralPage({ theme, setTheme, palette }) {
   const [mfaDismissed, setMfaDismissed] = useState(false);
-
   const themeLabelMap = {
     auto: "System",
     light: "Light",
     dark: "Dark",
   };
-
   return (
     <div className="flex flex-col">
       {!mfaDismissed && (
@@ -3428,7 +3309,6 @@ function GeneralPage({ theme, setTheme, palette }) {
           palette={palette}
         />
       )}
-
       <div className="flex flex-col">
         <SettingsLineRow
           label="Appearance"
@@ -3474,7 +3354,6 @@ function GeneralPage({ theme, setTheme, palette }) {
     </div>
   );
 }
-
 function SecurityPage({ palette }) {
   return (
     <div className="flex flex-col">
@@ -3508,7 +3387,6 @@ function SecurityPage({ palette }) {
     </div>
   );
 }
-
 function DataControlsPage({ palette }) {
   return (
     <div className="flex flex-col">
@@ -3557,7 +3435,6 @@ function DataControlsPage({ palette }) {
     </div>
   );
 }
-
 const PAYMENT_METHODS = [
   {
     k: "xrp",
@@ -3601,7 +3478,6 @@ const PAYMENT_METHODS = [
     connected: false,
   },
 ];
-
 function BillingPage({ palette }) {
   return (
     <div className="flex flex-col gap-5">
@@ -3650,7 +3526,6 @@ function BillingPage({ palette }) {
           </button>
         </div>
       </div>
-
       {/* Payment methods */}
       <div>
         <div className="mb-2 flex items-baseline justify-between">
@@ -3674,7 +3549,6 @@ function BillingPage({ palette }) {
           Connect a wallet to top up your Task Node account or pay for
           premium features. All transactions settle on-chain.
         </p>
-
         <div
           className="overflow-hidden rounded-2xl bg-white"
           style={{ border: `1px solid ${palette.border}` }}
@@ -3684,7 +3558,6 @@ function BillingPage({ palette }) {
           ))}
         </div>
       </div>
-
       {/* Billing history */}
       <div>
         <h3
@@ -3714,9 +3587,7 @@ function BillingPage({ palette }) {
     </div>
   );
 }
-
 // ---------- Settings sub-components ----------
-
 function MFACallout({ onDismiss, palette }) {
   return (
     <div
@@ -3781,7 +3652,6 @@ function MFACallout({ onDismiss, palette }) {
     </div>
   );
 }
-
 function SettingsLineRow({ label, desc, right, palette, danger }) {
   const color = danger ? "#b42318" : palette.text;
   return (
@@ -3806,7 +3676,6 @@ function SettingsLineRow({ label, desc, right, palette, danger }) {
     </div>
   );
 }
-
 function StaticDropdown({ value, palette }) {
   return (
     <button
@@ -3824,7 +3693,6 @@ function StaticDropdown({ value, palette }) {
     </button>
   );
 }
-
 function DropdownCycle({ value, options, onChange, labelMap, palette }) {
   function next() {
     const idx = options.findIndex((o) => o.k === value);
@@ -3849,7 +3717,6 @@ function DropdownCycle({ value, options, onChange, labelMap, palette }) {
     </button>
   );
 }
-
 function PillButton2({ children, palette, danger }) {
   const fg = danger ? "#b42318" : palette.text;
   return (
@@ -3868,7 +3735,6 @@ function PillButton2({ children, palette, danger }) {
     </button>
   );
 }
-
 function ToggleSwitch({ initial, palette }) {
   const [on, setOn] = useState(!!initial);
   return (
@@ -3890,7 +3756,6 @@ function ToggleSwitch({ initial, palette }) {
     </button>
   );
 }
-
 function CryptoMethodRow({ method, palette }) {
   return (
     <div
@@ -3944,9 +3809,7 @@ function CryptoMethodRow({ method, palette }) {
     </div>
   );
 }
-
 // ---------- Chat thread renderers ----------
-
 function UserMessage({
   text,
   isEditing,
@@ -4022,7 +3885,6 @@ function UserMessage({
     </div>
   );
 }
-
 function AssistantMessage({ message, prev, onOpenActivity, palette }) {
   return (
     <div className="mb-6 max-w-[100%]">
@@ -4055,7 +3917,6 @@ function AssistantMessage({ message, prev, onOpenActivity, palette }) {
     </div>
   );
 }
-
 function BlockRenderer({ block, palette }) {
   switch (block.type) {
     case "p":
@@ -4122,7 +3983,6 @@ function BlockRenderer({ block, palette }) {
       return null;
   }
 }
-
 function Inline({ parts }) {
   return (
     <>
@@ -4144,7 +4004,6 @@ function Inline({ parts }) {
     </>
   );
 }
-
 function MessageToolbar({ palette, onOpenSources }) {
   return (
     <div className="mt-3 flex items-center gap-0.5">
@@ -4164,7 +4023,6 @@ function MessageToolbar({ palette, onOpenSources }) {
     </div>
   );
 }
-
 function ToolbarButton({ icon: Icon, label, onClick, palette }) {
   const [hover, setHover] = useState(false);
   return (
@@ -4190,9 +4048,7 @@ function ToolbarButton({ icon: Icon, label, onClick, palette }) {
     </span>
   );
 }
-
 // ---------- Task detail modal ----------
-
 function TaskDetailModal({ task, onClose, palette }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -4206,7 +4062,6 @@ function TaskDetailModal({ task, onClose, palette }) {
       window.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
-
   return (
     <div className="fixed inset-0 z-50">
       {/* backdrop — softer than a modal overlay, more like a wash */}
@@ -4219,7 +4074,6 @@ function TaskDetailModal({ task, onClose, palette }) {
         }}
         onClick={onClose}
       />
-
       {/* right-anchored panel */}
       <div
         className="absolute right-0 top-0 flex h-full w-full max-w-[600px] flex-col bg-white"
@@ -4258,7 +4112,6 @@ function TaskDetailModal({ task, onClose, palette }) {
             Close
           </button>
         </div>
-
         {/* body — generous padding now that vertical room is full screen */}
         <div className="flex-1 overflow-y-auto px-8 py-7">
           {/* Title */}
@@ -4282,7 +4135,6 @@ function TaskDetailModal({ task, onClose, palette }) {
             {task.fullId}
             <ExternalLink size={11} />
           </a>
-
           {/* Status + Deadline — quieter container, no bordered grid */}
           <div className="mt-7 flex gap-10">
             <div className="min-w-0">
@@ -4345,13 +4197,11 @@ function TaskDetailModal({ task, onClose, palette }) {
               </div>
             </div>
           </div>
-
           {/* Hairline divider in place of bordered status box */}
           <div
             className="mt-7 h-px"
             style={{ background: palette.border }}
           />
-
           {/* Description */}
           <TaskSection title="Description" palette={palette}>
             <p
@@ -4361,7 +4211,6 @@ function TaskDetailModal({ task, onClose, palette }) {
               {task.description}
             </p>
           </TaskSection>
-
           {/* Steps */}
           <TaskSection title="Steps" palette={palette}>
             <ol className="flex flex-col gap-4">
@@ -4389,7 +4238,6 @@ function TaskDetailModal({ task, onClose, palette }) {
               ))}
             </ol>
           </TaskSection>
-
           {/* Verification */}
           <TaskSection title="Verification" palette={palette} last>
             <div
@@ -4406,7 +4254,6 @@ function TaskDetailModal({ task, onClose, palette }) {
             </p>
           </TaskSection>
         </div>
-
         {/* footer actions — destructive on left as quiet text, primary CTA on right */}
         <div
           className="flex shrink-0 items-center justify-between gap-3 px-8 py-5"
@@ -4453,7 +4300,6 @@ function TaskDetailModal({ task, onClose, palette }) {
     </div>
   );
 }
-
 function TaskSection({ title, children, palette, last }) {
   return (
     <div
@@ -4470,9 +4316,7 @@ function TaskSection({ title, children, palette, last }) {
     </div>
   );
 }
-
 // ---------- Share modal ----------
-
 function ShareModal({ title, thread, onClose, palette }) {
   const previewThread = (thread && thread.length ? thread : []).slice(0, 4);
   return (
@@ -4510,7 +4354,6 @@ function ShareModal({ title, thread, onClose, palette }) {
             <X size={18} strokeWidth={1.75} />
           </button>
         </div>
-
         <div className="px-5 pt-4">
           {/* preview card */}
           <div
@@ -4556,7 +4399,6 @@ function ShareModal({ title, thread, onClose, palette }) {
             </div>
           </div>
         </div>
-
         {/* share targets */}
         <div className="flex justify-center gap-6 px-5 py-6">
           <ShareTarget icon={Link2} label="Copy link" />
@@ -4564,7 +4406,6 @@ function ShareModal({ title, thread, onClose, palette }) {
           <ShareTarget icon={Linkedin} label="LinkedIn" />
           <ShareTarget label="Reddit" symbol="R" />
         </div>
-
         <div
           className="px-5 pb-5 text-center text-[12px]"
           style={{ color: palette.mute }}
@@ -4575,7 +4416,6 @@ function ShareModal({ title, thread, onClose, palette }) {
     </div>
   );
 }
-
 function ShareTarget({ icon: Icon, symbol, label }) {
   return (
     <button className="flex flex-col items-center gap-2">
@@ -4595,9 +4435,7 @@ function ShareTarget({ icon: Icon, symbol, label }) {
     </button>
   );
 }
-
 // ---------- Activity panel ----------
-
 function ActivityPanel({ data, onClose, palette }) {
   const [showMoreMemory, setShowMoreMemory] = useState(false);
   return (
@@ -4639,7 +4477,6 @@ function ActivityPanel({ data, onClose, palette }) {
           <X size={16} strokeWidth={1.75} />
         </button>
       </div>
-
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {/* Thinking */}
         <div className="mb-7">
@@ -4704,7 +4541,6 @@ function ActivityPanel({ data, onClose, palette }) {
             ))}
           </div>
         </div>
-
         {/* Memory */}
         <div className="mb-6">
           <div
@@ -4754,7 +4590,6 @@ function ActivityPanel({ data, onClose, palette }) {
             )}
           </div>
         </div>
-
         {/* Files */}
         {data.files && data.files.length > 0 && (
           <div>
@@ -4806,9 +4641,7 @@ function ActivityPanel({ data, onClose, palette }) {
     </aside>
   );
 }
-
 // ---------- Profile helpers ----------
-
 function ProfileCard({ title, subtitle, trailing, children, palette }) {
   return (
     <section
@@ -4838,7 +4671,6 @@ function ProfileCard({ title, subtitle, trailing, children, palette }) {
     </section>
   );
 }
-
 function PillButton({ icon: Icon, children, dark }) {
   return (
     <button
@@ -4854,7 +4686,6 @@ function PillButton({ icon: Icon, children, dark }) {
     </button>
   );
 }
-
 function MiniNote({ title, body, palette }) {
   return (
     <div
@@ -4876,7 +4707,6 @@ function MiniNote({ title, body, palette }) {
     </div>
   );
 }
-
 function ConnectionRow({ c, palette }) {
   return (
     <div
@@ -4937,7 +4767,6 @@ function ConnectionRow({ c, palette }) {
     </div>
   );
 }
-
 function PublicStat({ label, value, unit, pill, divider, palette }) {
   return (
     <div
@@ -4979,7 +4808,6 @@ function PublicStat({ label, value, unit, pill, divider, palette }) {
     </div>
   );
 }
-
 function SybilRing({ value }) {
   const radius = 28;
   const c = 2 * Math.PI * radius;
@@ -5014,7 +4842,6 @@ function SybilRing({ value }) {
     </div>
   );
 }
-
 function SybilSignal({ icon: Icon, label, hint, value, tone, palette }) {
   const toneColor =
     tone === "warn" ? "#b45309" : tone === "bad" ? "#b42318" : "#166534";
