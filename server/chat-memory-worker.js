@@ -84,13 +84,13 @@ function compactSourceText(value = "", maxLength = 16000) {
   return `${text.slice(0, Math.floor(maxLength * 0.65))}\n\n[...middle truncated...]\n\n${text.slice(-Math.floor(maxLength * 0.35))}`;
 }
 
-function compactDeepMemoryEntry(entry, index) {
+function boundedDeepMemoryEntry(entry, index) {
   return {
     block_position: index + 1,
-    chat_title: compactSourceText(entry.conversationTitle, 90),
-    user_request_summary: compactSourceText(entry.userRequestSummary, 420),
-    system_response_summary: compactSourceText(entry.systemResponseSummary, 420),
-    memory_text: compactSourceText(entry.memoryText, 420),
+    chat_title: compactSourceText(entry.conversationTitle, 180),
+    user_request_summary: compactSourceText(entry.userRequestSummary, 1800),
+    system_response_summary: compactSourceText(entry.systemResponseSummary, 1800),
+    memory_text: compactSourceText(entry.memoryText, 2400),
   };
 }
 
@@ -230,7 +230,7 @@ async function fetchDeepMemorySummary(source) {
   const order = providerOrder();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
-  const memorySummaries = source.entries.map(compactDeepMemoryEntry);
+  const memorySummaries = source.entries.map(boundedDeepMemoryEntry);
   let response;
   try {
     response = await fetch(`${baseUrl}/chat/completions`, {
@@ -262,12 +262,8 @@ async function fetchDeepMemorySummary(source) {
           order: order.length > 0 ? order : defaultProviderOrder,
           only: order.length > 0 ? order : defaultProviderOrder,
         },
-        reasoning: {
-          effort: "low",
-          exclude: true,
-        },
         temperature: 0.1,
-        max_tokens: 3500,
+        max_tokens: Math.max(3500, Number(process.env.TASKNODE_DEEP_MEMORY_MAX_TOKENS || 12000)),
         usage: { include: true },
       }),
     });
