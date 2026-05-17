@@ -13,9 +13,10 @@ withdraw from it through the app.
   - USDC, ERC-20 at `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`.
   - USDT, ERC-20 at `0xdAC17F958D2ee523a2206206994597C13D831ec7`.
 - Credits:
-  - USDC and USDT are credited 1:1 as USD after the safe balance increases.
+  - USDC and USDT are credited 1:1 as USD after the configured balance tag
+    observes the token balance increase.
   - ETH is converted to USD using the configured or fetched ETH/USD price when
-    the safe balance sync credits the deposit.
+    the configured balance sync credits the deposit.
 - Withdrawals: disabled. Funds are operator custody once deposited.
 - Sweeping: deferred. Deposit balances can remain at per-account addresses until
   a separate sweep service is built.
@@ -82,8 +83,8 @@ npm run eth-deposit-verify -- --index 12
 
 ## Sync
 
-The sync endpoint reads safe-chain balances and credits only positive balance
-deltas:
+The sync endpoint reads the configured Ethereum balance tag and credits only
+positive balance deltas:
 
 ```text
 POST /api/usage/top-up/start
@@ -94,9 +95,13 @@ Recommended configuration:
 
 ```text
 ETH_DEPOSIT_RPC_URL=https://...
-ETH_DEPOSIT_BALANCE_BLOCK_TAG=safe
+ETH_DEPOSIT_BALANCE_BLOCK_TAG=latest
 ETH_DEPOSIT_ETH_USD_PRICE=<optional fixed operator price fallback>
 ```
+
+`latest` is the default because top-ups should become usable once the transfer
+is visible on the assigned account address. Operators who want stricter
+settlement can override `ETH_DEPOSIT_BALANCE_BLOCK_TAG=safe` or `finalized`.
 
 The sync path uses `eth_getBalance` for ETH and ERC-20 `balanceOf(address)` for
 USDC and USDT. It stores observed balances and credited balances separately so a

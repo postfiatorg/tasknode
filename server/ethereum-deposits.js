@@ -18,7 +18,8 @@ const defaultEthereumRpcUrl = "https://ethereum.publicnode.com";
 const ethereumMainnetChainId = 1;
 const defaultReceivePath = "m/44'/60'/0'/0";
 const defaultDepositStartIndex = 1;
-const balanceBlockTag = process.env.ETH_DEPOSIT_BALANCE_BLOCK_TAG || "safe";
+const defaultBalanceBlockTag = "latest";
+const balanceBlockTag = process.env.ETH_DEPOSIT_BALANCE_BLOCK_TAG || defaultBalanceBlockTag;
 const pendingBalanceBlockTag = process.env.ETH_DEPOSIT_PENDING_BLOCK_TAG || "latest";
 const balanceOfSelector = keccakId("balanceOf(address)").slice(0, 10);
 
@@ -29,7 +30,7 @@ export const ethereumDepositAssets = [
     decimals: 18,
     kind: "native",
     contractAddress: null,
-    creditPolicy: "ETH is converted to USD using the price available when the safe balance sync credits the deposit.",
+    creditPolicy: "ETH is converted to USD using the price available when the configured balance sync credits the deposit.",
   },
   {
     symbol: "USDC",
@@ -37,7 +38,7 @@ export const ethereumDepositAssets = [
     decimals: 6,
     kind: "erc20",
     contractAddress: getAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
-    creditPolicy: "Credited 1:1 as USD after the safe token balance increases.",
+    creditPolicy: "Credited 1:1 as USD after the configured token balance increases.",
   },
   {
     symbol: "USDT",
@@ -45,7 +46,7 @@ export const ethereumDepositAssets = [
     decimals: 6,
     kind: "erc20",
     contractAddress: getAddress("0xdAC17F958D2ee523a2206206994597C13D831ec7"),
-    creditPolicy: "Credited 1:1 as USD after the safe token balance increases.",
+    creditPolicy: "Credited 1:1 as USD after the configured token balance increases.",
   },
 ];
 
@@ -241,7 +242,7 @@ function formattedBalance(balance, blockTag = balanceBlockTag) {
     amount: balance.amount,
     decimals: balance.decimals,
     syncedAt: new Date().toISOString(),
-    blockTag: balanceBlockTag,
+    blockTag,
   };
 }
 
@@ -314,8 +315,9 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
           pendingBalances[asset.symbol] = {
             ...formattedBalance(pendingBalance, pendingBalanceBlockTag),
             blockTag: pendingBalanceBlockTag,
-            safeRaw: balance.raw.toString(),
-            safeAmount: balance.amount,
+            creditedRaw: balance.raw.toString(),
+            creditedAmount: balance.amount,
+            creditedBlockTag: balanceBlockTag,
           };
         } else {
           pendingBalances[asset.symbol] = null;
@@ -371,10 +373,10 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
       message: creditedEntries.length > 0
         ? "Deposit credit recorded."
         : pendingSymbols.length > 0
-          ? `${pendingSymbols.join(", ")} deposit detected. Waiting for safe confirmation before crediting.`
+          ? `${pendingSymbols.join(", ")} deposit detected. Waiting for the configured confirmation policy before crediting.`
         : syncErrors.length > 0
           ? "Deposit sync completed with partial data."
-          : "No new confirmed deposit balance found.",
+          : "No new deposit balance found.",
       depositAccount: publicDepositAccount(updated || account),
       creditedEntries,
       syncErrors,

@@ -65,7 +65,7 @@ function writeXpubFile({ outPath, force, receivePath, xpub, firstAddress }) {
     `ETH_DEPOSIT_RECEIVE_PATH=${receivePath}`,
     `ETH_DEPOSIT_START_INDEX=${defaultDepositStartIndex}`,
     "ETH_DEPOSIT_RPC_URL=https://ethereum.publicnode.com",
-    "ETH_DEPOSIT_BALANCE_BLOCK_TAG=safe",
+    "ETH_DEPOSIT_BALANCE_BLOCK_TAG=latest",
     `# ETH_DEPOSIT_FIRST_ADDRESS=${firstAddress}`,
     "",
   ].join("\n");

@@ -214,7 +214,7 @@ Usage/billing:
 - Usage ledger and admin credit when configured.
 - Account-scoped Ethereum mainnet top-up addresses when `ETH_DEPOSIT_XPUB` is
   configured. The rail accepts ETH, USDC, and USDT without MetaMask signatures,
-  and credits positive safe-balance deltas through `/api/usage/top-up/sync`.
+  and credits positive configured-balance deltas through `/api/usage/top-up/sync`.
 - Idempotent initial provider credit ledger contract for eligible registrar
   accounts.
 - Runtime, API, and frame-smoke coverage.

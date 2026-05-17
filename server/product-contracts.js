@@ -863,7 +863,7 @@ export function usageActions() {
       enabled: ethDeposits.enabled && ethDeposits.rpcConfigured,
       status: ethDeposits.enabled && ethDeposits.rpcConfigured ? "ready" : ethDeposits.status,
       note:
-        "Reads the account deposit address on Ethereum mainnet and credits safe ETH, USDC, and USDT balance increases.",
+        "Reads the account deposit address on Ethereum mainnet and credits configured ETH, USDC, and USDT balance increases.",
       actionRequired: ethDeposits.rpcConfigured
         ? ethDeposits.actionRequired
         : "Configure ETH_DEPOSIT_RPC_URL or ETHEREUM_RPC_URL for deposit balance sync.",
@@ -1688,7 +1688,7 @@ export function usageTopUpStart(payload, method, session = null) {
       syncPath: "/api/usage/top-up/sync",
       instructions: [
         "Send only ETH, USDC, or USDT on Ethereum mainnet to this address.",
-        "Deposits credit Task Node chat balance after safe-chain balance sync.",
+        "Deposits credit Task Node chat balance after the configured balance sync.",
         "This is a custodial top-up address controlled by Task Node. Users cannot withdraw from it.",
       ],
     },
