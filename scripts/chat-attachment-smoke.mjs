@@ -61,6 +61,35 @@ assert.equal(
   "OpenAI PDF attachments should still be sent as file parts"
 );
 
+const restoredHistory = [
+  {
+    role: "user",
+    body: "can u read this",
+    attachments: [
+      {
+        name: "restored-code.jsx",
+        kind: "text",
+        textContent: "export const restored = true;",
+      },
+    ],
+  },
+  {
+    role: "assistant",
+    body: "Yes.",
+  },
+];
+const openAiHistoryInput = openAiInput({
+  conversationId: "chat-attachment-smoke",
+  message: "What code did I paste?",
+  historyMessages: restoredHistory,
+});
+
+assert.equal(
+  openAiHistoryInput[0].content[0].text.includes("export const restored = true;"),
+  true,
+  "Restored text attachments should be included in OpenAI chat history"
+);
+
 const openRouterMessagesForText = openRouterMessages({
   conversationId: "chat-attachment-smoke",
   message: "Can you read this?",
@@ -74,6 +103,21 @@ assert.equal(
   openRouterUserContent.some((part) => part.type === "text" && part.text.includes("Line 1: pasted task context")),
   true,
   "OpenRouter should receive base64 text uploads as readable text"
+);
+
+const openRouterMessagesForHistory = openRouterMessages({
+  conversationId: "chat-attachment-smoke",
+  message: "What code did I paste?",
+  historyMessages: restoredHistory,
+});
+
+assert.equal(
+  openRouterMessagesForHistory.some((message) => (
+    typeof message.content === "string" &&
+    message.content.includes("export const restored = true;")
+  )),
+  true,
+  "Restored text attachments should be included in OpenRouter chat history"
 );
 
 assert.equal(

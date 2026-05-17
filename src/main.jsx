@@ -1204,10 +1204,11 @@ function ChatSurface({
         message: message || fallbackPrompt,
         mode: selectedMode,
         conversationId: requestedConversationId,
-        attachments: submittedAttachments.map(({ name, mimeType, size, dataUrl }) => ({
+        attachments: submittedAttachments.map(({ name, mimeType, size, source, dataUrl }) => ({
           name,
           mimeType,
           size,
+          source,
           dataUrl,
         })),
       };
@@ -1290,7 +1291,7 @@ function ChatSurface({
     }
   }
 
-  async function attachFiles(fileList) {
+  async function attachFiles(fileList, { source = "upload" } = {}) {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
 
@@ -1314,6 +1315,7 @@ function ChatSurface({
           name: file.name || "attachment",
           mimeType: file.type || mimeTypeFromFilename(file.name),
           size: file.size,
+          source,
           dataUrl,
         });
       }
@@ -1329,7 +1331,7 @@ function ChatSurface({
   }
 
   async function handleAttachmentSelection(event) {
-    await attachFiles(event.target.files);
+    await attachFiles(event.target.files, { source: "upload" });
     event.target.value = "";
   }
 
@@ -1369,7 +1371,7 @@ function ChatSurface({
     event.stopPropagation();
     composerDragDepthRef.current = 0;
     setComposerDragActive(false);
-    await attachFiles(event.dataTransfer.files);
+    await attachFiles(event.dataTransfer.files, { source: "drag_drop" });
   }
 
   function removeAttachment(id) {

@@ -8,6 +8,7 @@ const migrationsDir = path.join(__dirname, "migrations");
 
 const migrations = [
   "001_chat_billing.sql",
+  "002_chat_attachments.sql",
 ];
 
 let migrated = false;
@@ -44,4 +45,3 @@ export async function migrateDatabase({ force = false } = {}) {
   migrated = true;
   return { ok: true, applied: appliedNow };
 }
-

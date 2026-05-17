@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   appendChatTurn as appendRuntimeChatTurn,
   appendUsageCredit as appendRuntimeUsageCredit,
@@ -9,6 +9,10 @@ import {
   usageLedger as runtimeUsageLedger,
   usageSummary as runtimeUsageSummary,
 } from "../runtime-store.js";
+import {
+  decodeTextDataUrl,
+  normalizeChatAttachments,
+} from "../chat-attachment-utils.js";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
 
 const creditKinds = new Set(["account_credit", "top_up_credit", "reward_credit", "refund_credit"]);
@@ -61,8 +65,37 @@ function jsonValue(value) {
   return value;
 }
 
-function publicMessage(row) {
-  return {
+function sha256(text = "") {
+  return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
+}
+
+function attachmentRowsForInsert({ attachments = [], accountId, conversationId, messageId, createdAt }) {
+  return normalizeChatAttachments(attachments).map((attachment, index) => {
+    const textContent = attachment.kind === "text" ? decodeTextDataUrl(attachment.dataUrl) : "";
+    const hashInput = textContent || attachment.dataUrl;
+    return {
+      id: `att_${randomUUID()}`,
+      accountId,
+      conversationId,
+      messageId,
+      ordinal: index,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      kind: attachment.kind,
+      source: attachment.source,
+      sizeBytes: Math.max(0, Number(attachment.size || 0)),
+      sha256: sha256(hashInput),
+      textContent: textContent || null,
+      textExcerpt: textContent ? textContent.slice(0, 500) : null,
+      storageUri: null,
+      createdAt,
+      metadata: {},
+    };
+  });
+}
+
+function publicMessage(row, attachments = []) {
+  const message = {
     id: row.id,
     role: row.role,
     body: row.body,
@@ -72,6 +105,27 @@ function publicMessage(row) {
     model: row.model || undefined,
     responseId: row.response_id || row.responseId || undefined,
   };
+  if (attachments.length > 0) message.attachments = attachments;
+  return message;
+}
+
+function publicAttachment(row) {
+  const attachment = {
+    id: row.id,
+    name: row.name,
+    mimeType: row.mime_type || undefined,
+    kind: row.kind || undefined,
+    source: row.source || undefined,
+    size: Number(row.size_bytes || 0),
+    sha256: row.sha256 || undefined,
+    textExcerpt: row.text_excerpt || undefined,
+    storageUri: row.storage_uri || undefined,
+    createdAt: toIso(row.created_at),
+  };
+  if (typeof row.text_content === "string" && row.text_content.length > 0) {
+    attachment.textContent = row.text_content;
+  }
+  return attachment;
 }
 
 function publicConversation(row) {
@@ -248,6 +302,61 @@ async function insertLedgerEntry(client, {
   return inserted.rows[0];
 }
 
+async function insertChatAttachments(client, attachments = []) {
+  if (attachments.length === 0) return [];
+
+  const rows = [];
+  for (const attachment of attachments) {
+    const inserted = await client.query(
+      `
+        INSERT INTO chat_attachments (
+          id,
+          account_id,
+          conversation_id,
+          message_id,
+          ordinal,
+          name,
+          mime_type,
+          kind,
+          source,
+          size_bytes,
+          sha256,
+          text_content,
+          text_excerpt,
+          storage_uri,
+          created_at,
+          metadata_json
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8,
+          $9, $10, $11, $12, $13, $14, $15, $16
+        )
+        RETURNING *
+      `,
+      [
+        attachment.id,
+        attachment.accountId,
+        attachment.conversationId,
+        attachment.messageId,
+        attachment.ordinal,
+        attachment.name,
+        attachment.mimeType || "",
+        attachment.kind || "file",
+        attachment.source || "",
+        attachment.sizeBytes,
+        attachment.sha256,
+        attachment.textContent,
+        attachment.textExcerpt,
+        attachment.storageUri,
+        attachment.createdAt,
+        jsonValue(attachment.metadata),
+      ]
+    );
+    rows.push(inserted.rows[0]);
+  }
+  return rows;
+}
+
 export async function appendUsageCredit(options = {}) {
   if (!useDatabase()) return appendRuntimeUsageCredit(options);
 
@@ -300,6 +409,7 @@ export async function appendChatTurn({
   responseId,
   userMessage,
   assistantMessage,
+  attachments = [],
   usage,
 } = {}) {
   if (!useDatabase()) {
@@ -312,6 +422,7 @@ export async function appendChatTurn({
       responseId,
       userMessage,
       assistantMessage,
+      attachments,
       usage,
     });
   }
@@ -396,6 +507,13 @@ export async function appendChatTurn({
         `,
         [userId, normalizedConversationId, normalizedAccountId, String(userMessage || ""), mode || null, now]
       );
+      const attachmentRows = await insertChatAttachments(client, attachmentRowsForInsert({
+        attachments,
+        accountId: normalizedAccountId,
+        conversationId: normalizedConversationId,
+        messageId: userId,
+        createdAt: now,
+      }));
       const assistantInsert = await client.query(
         `
           INSERT INTO chat_messages (
@@ -499,7 +617,7 @@ export async function appendChatTurn({
       }
 
       return {
-        user: publicMessage(userInsert.rows[0]),
+        user: publicMessage(userInsert.rows[0], attachmentRows.map(publicAttachment)),
         assistant: publicMessage(assistantInsert.rows[0]),
         ledgerEntry,
       };
@@ -515,6 +633,7 @@ export async function appendChatTurn({
         responseId,
         userMessage,
         assistantMessage,
+        attachments,
         usage,
       });
     }
@@ -537,7 +656,26 @@ export async function getChatMessages(conversationId = "dev", { limit = 30 } = {
       `,
       [safeConversationId(conversationId), normalizedLimit]
     );
-    return rows.rows.reverse().map(publicMessage);
+    const orderedMessages = rows.rows.reverse();
+    const messageIds = orderedMessages.map((row) => row.id);
+    const attachmentsByMessage = new Map();
+    if (messageIds.length > 0) {
+      const attachmentRows = await query(
+        `
+          SELECT *
+          FROM chat_attachments
+          WHERE message_id = ANY($1::text[])
+          ORDER BY message_id ASC, ordinal ASC
+        `,
+        [messageIds]
+      );
+      for (const row of attachmentRows.rows) {
+        const existing = attachmentsByMessage.get(row.message_id) || [];
+        existing.push(publicAttachment(row));
+        attachmentsByMessage.set(row.message_id, existing);
+      }
+    }
+    return orderedMessages.map((row) => publicMessage(row, attachmentsByMessage.get(row.id) || []));
   } catch (error) {
     if (process.env.TASKNODE_POSTGRES_STRICT === "false") {
       return getRuntimeChatMessages(conversationId);

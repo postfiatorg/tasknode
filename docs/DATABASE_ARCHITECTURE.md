@@ -430,22 +430,29 @@ chat_attachments
   id
   account_id
   conversation_id
-  message_id nullable
-  filename
+  message_id
+  ordinal
+  name
   mime_type
-  byte_size
+  kind
+  source
+  size_bytes
   sha256
-  storage_url nullable
-  provider_file_id nullable
-  extracted_text_status
-  extracted_text_ref nullable
+  text_content nullable
+  text_excerpt nullable
+  storage_uri nullable
   created_at
+  metadata_json
 ```
 
 Rules:
 
 - The thread list comes from `chat_conversations`.
 - The visible transcript comes from `chat_messages`.
+- Pasted code/text and text-file content is persisted in `text_content` because
+  it is part of the user interaction and required for restore/replay.
+- PDFs, images, and binary files store metadata plus hash only unless an
+  encrypted external object store/IPFS pointer is added in `storage_uri`.
 - Provider run cost and token accounting comes from `chat_model_runs` and the
   billing ledger.
 - Large files should live in object storage or IPFS-compatible storage, not in

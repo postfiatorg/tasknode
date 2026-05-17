@@ -3,13 +3,18 @@ import {
   appendChatTurn,
   getChatMessages,
 } from "./repositories/chat-billing.js";
+export {
+  chatInputCharacterEstimate,
+  normalizeChatAttachments,
+} from "./chat-attachment-utils.js";
+import {
+  normalizeChatAttachments,
+  textAttachmentPrompt,
+} from "./chat-attachment-utils.js";
 
 const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const providerTimeoutMs = Number(process.env.CHAT_PROVIDER_TIMEOUT_MS || 45000);
-const maxChatAttachments = 4;
-const maxAttachmentDataUrlBytes = 6 * 1024 * 1024;
-const maxTextAttachmentCharacters = 40_000;
 const webSearchUsdPerCall = 0.01;
 
 export const chatModePrices = {
@@ -138,10 +143,32 @@ function taskNodeInstructions() {
   ].join("\n");
 }
 
+function attachmentTranscriptText(message) {
+  const textAttachments = Array.isArray(message?.attachments)
+    ? message.attachments.filter((attachment) => (
+        attachment?.kind === "text" &&
+        typeof attachment.textContent === "string" &&
+        attachment.textContent.trim()
+      ))
+    : [];
+  if (textAttachments.length === 0) return "";
+
+  return textAttachments
+    .map((attachment) => [
+      `Attached text: ${attachment.name || "attachment"}`,
+      attachment.textContent.slice(0, 20_000),
+    ].join("\n"))
+    .join("\n\n");
+}
+
+function messageTranscriptText(message) {
+  return [message?.body || "", attachmentTranscriptText(message)].filter(Boolean).join("\n\n");
+}
+
 function recentTranscriptFromMessages(messages, currentMessage) {
   const history = messages
     .slice(-12)
-    .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.body}`)
+    .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${messageTranscriptText(message)}`)
     .join("\n");
 
   if (!history) return currentMessage;
@@ -150,49 +177,6 @@ function recentTranscriptFromMessages(messages, currentMessage) {
 
 function recentTranscript(conversationId, currentMessage) {
   return recentTranscriptFromMessages(getRuntimeChatMessages(conversationId), currentMessage);
-}
-
-function chatAttachmentType(mimeType = "") {
-  if (mimeType.startsWith("image/")) return "image";
-  if (mimeType === "application/pdf") return "pdf";
-  if (
-    mimeType.startsWith("text/") ||
-    mimeType === "application/json" ||
-    mimeType === "application/csv"
-  ) {
-    return "text";
-  }
-  return "file";
-}
-
-export function normalizeChatAttachments(attachments) {
-  if (!Array.isArray(attachments)) return [];
-
-  return attachments
-    .slice(0, maxChatAttachments)
-    .map((attachment) => {
-      const dataUrl = typeof attachment?.dataUrl === "string" ? attachment.dataUrl.trim() : "";
-      if (!dataUrl.startsWith("data:") || dataUrl.length > maxAttachmentDataUrlBytes) return null;
-
-      const mimeType = String(attachment?.mimeType || attachment?.type || "")
-        .trim()
-        .toLowerCase()
-        .slice(0, 120);
-      const name = String(attachment?.name || "attachment")
-        .trim()
-        .replace(/[^\w.\- ()[\]]+/g, "_")
-        .slice(0, 160) || "attachment";
-      const size = Math.max(0, Number(attachment?.size || 0));
-
-      return {
-        name,
-        mimeType,
-        size,
-        dataUrl,
-        kind: chatAttachmentType(mimeType),
-      };
-    })
-    .filter(Boolean);
 }
 
 export function shouldUseWebSearch(message = "") {
@@ -239,44 +223,6 @@ function openRouterProviderPreferences({ providerOrder = [], requireParameters =
     provider.only = providerOrder;
   }
   return provider;
-}
-
-function decodeTextDataUrl(dataUrl) {
-  const match = /^data:([^,]*),(.*)$/is.exec(String(dataUrl || ""));
-  if (!match) return "";
-
-  try {
-    const metadata = match[1].toLowerCase();
-    const body = match[2] || "";
-    const decoded = metadata.includes(";base64")
-      ? Buffer.from(body, "base64").toString("utf8")
-      : decodeURIComponent(body);
-    return decoded.replace(/\u0000/g, "").trim();
-  } catch {
-    return "";
-  }
-}
-
-function textAttachmentPrompt(attachment) {
-  const text = decodeTextDataUrl(attachment.dataUrl);
-  const safeText = text.slice(0, maxTextAttachmentCharacters);
-  const truncated = text.length > safeText.length;
-  return [
-    `Attached text: ${attachment.name}`,
-    truncated
-      ? `Showing the first ${safeText.length.toLocaleString("en-US")} of ${text.length.toLocaleString("en-US")} characters.`
-      : null,
-    safeText || "[The attached text could not be decoded.]",
-  ].filter(Boolean).join("\n\n");
-}
-
-export function chatInputCharacterEstimate({ message = "", attachments = [] } = {}) {
-  const attachmentCharacters = normalizeChatAttachments(attachments).reduce((total, attachment) => {
-    if (attachment.kind === "text") return total + textAttachmentPrompt(attachment).length;
-    return total + `Attached ${attachment.kind}: ${attachment.name} ${attachment.mimeType}`.length;
-  }, 0);
-
-  return String(message || "").length + attachmentCharacters;
 }
 
 function openRouterAttachmentPart(attachment) {
@@ -327,7 +273,7 @@ export function openRouterMessages({ conversationId, message, attachments = [], 
     .slice(-12)
     .map((item) => ({
       role: item.role === "assistant" ? "assistant" : "user",
-      content: item.body,
+      content: messageTranscriptText(item),
     }));
   const userContent =
     normalizedAttachments.length === 0
@@ -937,6 +883,7 @@ export async function executeChat({ accountId = "", mode, message, conversationI
     responseId: result.responseId,
     userMessage: message,
     assistantMessage: result.text,
+    attachments,
     usage: result.usage,
   });
 
@@ -1005,6 +952,7 @@ export async function executeChatStream({
     responseId: result.responseId,
     userMessage: message,
     assistantMessage: result.text,
+    attachments,
     usage: result.usage,
   });
 

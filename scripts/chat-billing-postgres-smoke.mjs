@@ -53,6 +53,15 @@ const chat = await appendChatTurn({
   responseId: `resp_${suffix}`,
   userMessage: "Persist this smoke chat.",
   assistantMessage: "Persisted.",
+  attachments: [
+    {
+      name: "smoke-code.jsx",
+      mimeType: "text/plain",
+      source: "paste",
+      size: 31,
+      dataUrl: "data:text/plain;charset=utf-8,const%20ok%20%3D%20%22persisted%20code%22%3B",
+    },
+  ],
   usage: {
     inputTokens: 100,
     outputTokens: 20,
@@ -75,7 +84,10 @@ const afterDelete = await listChatConversations({ accountId });
 
 if (
   !chat?.ledgerEntry ||
+  chat.user?.attachments?.[0]?.textContent !== 'const ok = "persisted code";' ||
   messages.length !== 2 ||
+  messages[0]?.attachments?.[0]?.textContent !== 'const ok = "persisted code";' ||
+  messages[0]?.attachments?.[0]?.source !== "paste" ||
   summary.currentCreditUsd !== 5 ||
   summary.currentSpendUsd !== 0.0011 ||
   summary.availableCreditUsd !== 4.9989 ||
