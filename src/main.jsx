@@ -2992,10 +2992,15 @@ function WalletView({
     onSynced: async () => {
       await onAppStateChange?.();
     },
-    open: topUpOpen,
+    open: topUpOpen || Boolean(wallet?.ethereumDeposit),
     setTopUpState,
     state: topUpState,
   });
+  const visibleChatCreditUsd =
+    topUpState.data?.usage?.availableCreditUsd ??
+    usage?.availableCreditUsd ??
+    wallet?.chatCreditUsd ??
+    0;
 
   useEffect(() => {
     if (!signedIn) return;
@@ -3327,7 +3332,7 @@ function WalletView({
 
         <div className="wallet-usage-note wallet-credit-note">
           <span>
-            Chat credit <strong>{formatCreditUsd(wallet?.chatCreditUsd || 0)}</strong>. Billing is{" "}
+            Chat credit <strong>{formatCreditUsd(visibleChatCreditUsd)}</strong>. Billing is{" "}
             {usage?.billingModel === "usage_based" ? "usage-based" : "not ready"}.
           </span>
           <button
