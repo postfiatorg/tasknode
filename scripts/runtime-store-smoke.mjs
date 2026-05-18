@@ -185,6 +185,56 @@ try {
       },
     ],
   };
+  const smokeTaskContext = {
+    sync: {
+      source: "task_projections",
+      status: "ready",
+      projectionCount: 4,
+      lastSyncedAt: "2026-05-18T14:00:00.000Z",
+    },
+    outstanding: [
+      {
+        fullId: "task_outstanding_1",
+        title: "Draft the task projection cache",
+        kind: "Engineering",
+        status: "Proposed",
+        due: "May 18, 2:00 PM",
+        pft: 3.2,
+        description: "Create a compact projection of active tasks for chat context.",
+        steps: ["Map task groups", "Format task context"],
+        verification: { body: "Submit the committed implementation and smoke output." },
+      },
+    ],
+    verification: [
+      {
+        fullId: "task_verification_1",
+        title: "Verify screenshot evidence flow",
+        kind: "Verification",
+        status: "Verification requested",
+        due: "May 18, 4:00 PM",
+        pft: 1.5,
+        verification: { body: "Answer the follow-up verification question." },
+      },
+    ],
+    refused: [
+      {
+        fullId: "task_refused_1",
+        title: "Research broad dashboard ideas",
+        kind: "Personal",
+        status: "Refused",
+        pft: 0,
+      },
+    ],
+    rewarded: [
+      {
+        fullId: "task_rewarded_1",
+        title: "Publish context document pointer",
+        kind: "System",
+        status: "Rewarded",
+        pft: 2.5,
+      },
+    ],
+  };
   const baseMemoryEstimate = chatEstimate({
     mode: "Frontier Instant",
     message: "Use my memory and reply.",
@@ -204,6 +254,20 @@ try {
   ) {
     throw new Error(`Chat estimate should include billable memory context tokens: ${JSON.stringify({ baseMemoryEstimate, chatMemoryEstimate })}`);
   }
+  const chatTaskEstimate = chatEstimate(
+    {
+      mode: "Frontier Instant",
+      message: "Use my tasks and reply.",
+    },
+    { taskContext: smokeTaskContext }
+  );
+  if (
+    chatTaskEstimate.taskInputTokens <= 0 ||
+    chatTaskEstimate.inputTokens <= baseMemoryEstimate.inputTokens ||
+    chatTaskEstimate.estimatedUsd <= baseMemoryEstimate.estimatedUsd
+  ) {
+    throw new Error(`Chat estimate should include billable task context tokens: ${JSON.stringify({ baseMemoryEstimate, chatTaskEstimate })}`);
+  }
 
   const frontierMemoryRequest = openAiResponseRequest({
     mode: "Frontier Instant",
@@ -222,6 +286,34 @@ try {
     frontierMemoryRequest.instructions.includes("TURN_ASSISTANT_FIELD_SHOULD_NOT_APPEAR")
   ) {
     throw new Error(`OpenAI memory context must include deep memory and memory-only recent records: ${frontierMemoryRequest.instructions}`);
+  }
+  const frontierTaskRequest = openAiResponseRequest({
+    mode: "Frontier Instant",
+    model: "chat-latest",
+    message: "Which task needs attention?",
+    conversationId: "runtime-smoke-frontier-task-context-contract",
+    taskContext: smokeTaskContext,
+  });
+
+  if (
+    !frontierTaskRequest.instructions.includes("<outstanding_tasks count=\"1\">") ||
+    !frontierTaskRequest.instructions.includes("<pending_verification_tasks count=\"1\">") ||
+    !frontierTaskRequest.instructions.includes("<refused_tasks count=\"1\">") ||
+    !frontierTaskRequest.instructions.includes("<rewarded_tasks count=\"1\">") ||
+    !frontierTaskRequest.instructions.includes("Draft the task projection cache") ||
+    !frontierTaskRequest.instructions.includes("Verify screenshot evidence flow")
+  ) {
+    throw new Error(`OpenAI task context must include grouped task state: ${frontierTaskRequest.instructions}`);
+  }
+  const frontierThinkingTaskRequest = openAiResponseRequest({
+    mode: "Frontier Thinking",
+    model: "gpt-5.5",
+    message: "Think through my task state.",
+    conversationId: "runtime-smoke-frontier-thinking-task-context-contract",
+    taskContext: smokeTaskContext,
+  });
+  if (!frontierThinkingTaskRequest.instructions.includes("<account_tasks_context>")) {
+    throw new Error(`Frontier Thinking must include grouped task context: ${frontierThinkingTaskRequest.instructions}`);
   }
 
   const frontierThinkingRequest = openAiResponseRequest({
@@ -298,6 +390,35 @@ try {
     openRouterMemoryInstructions.includes("TURN_ASSISTANT_FIELD_SHOULD_NOT_APPEAR")
   ) {
     throw new Error(`OpenRouter memory context must include deep memory and memory-only recent records: ${openRouterMemoryInstructions}`);
+  }
+  const openRouterTaskRequest = openRouterChatRequest({
+    mode: "Private Instant",
+    model: "openrouter/auto",
+    message: "Which task needs attention?",
+    conversationId: "runtime-smoke-openrouter-task-context-contract",
+    taskContext: smokeTaskContext,
+  });
+  const openRouterTaskInstructions = openRouterTaskRequest.messages?.[0]?.content || "";
+
+  if (
+    !openRouterTaskInstructions.includes("<account_tasks_context>") ||
+    !openRouterTaskInstructions.includes("<outstanding_tasks count=\"1\">") ||
+    !openRouterTaskInstructions.includes("<pending_verification_tasks count=\"1\">") ||
+    !openRouterTaskInstructions.includes("<refused_tasks count=\"1\">") ||
+    !openRouterTaskInstructions.includes("<rewarded_tasks count=\"1\">")
+  ) {
+    throw new Error(`OpenRouter task context must include grouped task state: ${openRouterTaskInstructions}`);
+  }
+  const openRouterThinkingTaskRequest = openRouterChatRequest({
+    mode: "Private Thinking",
+    model: "openrouter/auto",
+    message: "Think through my task state.",
+    conversationId: "runtime-smoke-openrouter-thinking-task-context-contract",
+    taskContext: smokeTaskContext,
+  });
+  const openRouterThinkingTaskInstructions = openRouterThinkingTaskRequest.messages?.[0]?.content || "";
+  if (!openRouterThinkingTaskInstructions.includes("<account_tasks_context>")) {
+    throw new Error(`Private Thinking must include grouped task context: ${openRouterThinkingTaskInstructions}`);
   }
 
   const openRouterThinkingRequest = openRouterChatRequest({

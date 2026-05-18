@@ -20,6 +20,7 @@ import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
+import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
 import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
 import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
 import blockContractPrompt from "../../../prompts/task_engine/block_contract_v1.md?raw";
@@ -54,6 +55,19 @@ const PROMPT_SOURCES = [
       "server/chat-memory-context.js::taskNodeInstructions",
     ],
     content: accountMemoryContextPrompt,
+  },
+  {
+    family: "Chat",
+    title: "Account Tasks Context",
+    path: "prompts/chat/account_tasks_context_v1.md",
+    summary: "Task projection context grouped as Outstanding, Pending Verification, Refused, and Rewarded.",
+    status: "Active when account task state exists",
+    usedBy: [
+      "server/chat-task-context.js::formatChatTaskContext",
+      "server/chat-task-context.js::taskContextForAccount",
+      "server/chat-memory-context.js::taskNodeInstructions",
+    ],
+    content: accountTasksContextPrompt,
   },
   {
     family: "Memory",
