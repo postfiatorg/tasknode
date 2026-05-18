@@ -57,7 +57,10 @@ Implementation order:
 Useful Task Node Official pieces:
 
 - `reference_clients/python/tasknode_pftl/scenarios/task_engine_speedrun.py`
-  runs the current N=1 live task engine walkthrough.
+  runs the current N=1 live task engine walkthrough and dispatches Stage B with
+  `--stage n10`.
+- `reference_clients/python/tasknode_pftl/scenarios/task_engine_stage_b.py`
+  contains the Stage B multi-wallet representative runner.
 - `reference_clients/python/tasknode_pftl/engine/` contains the engine modules
   for task queue cache loading, lifecycle orchestration, evidence packet
   construction, model-based verification/scoring, and receipts.
@@ -65,8 +68,6 @@ Useful Task Node Official pieces:
   proves the single-wallet encrypted PFTL/IPFS lifecycle.
 - `reference_clients/python/tasknode_pftl/scenarios/app_request_lifecycle.py`
   can build a request bundle from real app data such as `task_sample`.
-- `reference_clients/python/tasknode_pftl/scenarios/multi_wallet_async_demo.py`
-  proves per-wallet transaction queues across 10 user wallets.
 - `reference_clients/python/tasknode_pftl/scenarios/verification_evidence_examples.py`
   proves URL, screenshot, PDF, and DOCX evidence readers.
 - `reference_clients/python/tasknode_pftl/taskgen.py` has the minimal

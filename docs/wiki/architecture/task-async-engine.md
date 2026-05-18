@@ -10,7 +10,7 @@ Already implemented:
 
 - Chat `Request a task` mode records a structured `task_request_intent` turn through `server/task-request-intent.js`.
 - The Python reference can consume app data from Postgres and run an on-chain lifecycle through `reference_clients/python/tasknode_pftl/scenarios/app_request_lifecycle.py`.
-- The Python multi-wallet reference can create 10 independent requesters, shard authority/reward wallets, execute full PFTL/IPFS lifecycles, and replay every task to `rewarded` through `reference_clients/python/tasknode_pftl/scenarios/multi_wallet_async_demo.py`.
+- The Python Stage B reference can create 10 independent requesters, shard authority/reward wallets, execute representative PFTL/IPFS lifecycles, and import replayed projections through `reference_clients/python/tasknode_pftl/scenarios/task_engine_speedrun.py --stage n10`.
 - Task projection reads are wired through `server/repositories/tasks.js` and `task_projections`.
 - Replay receipts can be imported with `npm run db:import-task-replays`.
 
@@ -62,15 +62,15 @@ The production engine should be a set of small workers, not one giant request ha
 
 The Python reference currently demonstrates the lifecycle and queue shape. The production web engine should move those concepts into server workers with explicit tables, idempotency, locks, and monitoring.
 
-## Multi-Wallet Demo
+## Stage B Speedrun
 
-`reference_clients/python/tasknode_pftl/scenarios/multi_wallet_async_demo.py` is the canonical pre-production demo for this architecture. It exists to prove that the design works before the web `Request task` button starts creating real on-chain requests.
+`reference_clients/python/tasknode_pftl/scenarios/task_engine_speedrun.py --stage n10` is the canonical pre-production demo for this architecture. It exists to prove that the design works before the web `Request task` button starts creating real on-chain requests.
 
 Run it:
 
 ```bash
 cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
-python3 -m tasknode_pftl.scenarios.multi_wallet_async_demo
+python3 -m tasknode_pftl.scenarios.task_engine_speedrun --stage n10 --provider frontier --taskgen-model chat-latest
 ```
 
 Default topology:
@@ -80,39 +80,39 @@ Default topology:
 - 2 `allocation_reward_*` wallets.
 - 5 users per allocation wallet shard.
 - Per-wallet queue locks for every signing wallet.
-- 0.75 PFT reward per demo task.
+- representative URL, screenshot, text, code, file, mixed, faulty, wrong-evidence, refusal/re-request, and duplicate-guard paths.
 
-For each user wallet, the demo:
+For each accepted user wallet path, the demo:
 
 1. creates and funds a fresh PFTL user wallet;
 2. publishes the wallet `MessageKey`;
-3. builds a task request bundle from synthetic context, memory, and recent chat;
+3. builds a task request bundle from app-shaped context, memory, recent chat, and task queue cache;
 4. encrypts the request bundle and lifecycle payloads to the user, authority, allocation, TaskNode service, and verification identities;
 5. pins encrypted payloads to IPFS;
 6. submits a user-signed task request pointer;
 7. queues a task offer and verification request from the assigned authority wallet;
 8. submits accept, evidence, and verification response pointers from the user wallet;
-9. sends a reward payment from the assigned allocation wallet;
-10. replays wallet histories and encrypted IPFS payloads into final projections.
+9. scores the response through the configured model path;
+10. sends a reward payment from the assigned allocation wallet when the score is rewardable;
+11. replays wallet histories and encrypted IPFS payloads into final projections.
 
 The demo writes generated run artifacts under `reference_clients/python/runs/`, which is gitignored because private receipts contain generated testnet seeds and encryption private keys. Public receipts contain addresses, CIDs, transaction hashes, queue summaries, and replay status only.
 
 The latest verified run at the time this page was updated:
 
 ```text
-run_id: multi_wallet_2026-05-18T153817241609
+run_id: task_engine_n10_2026-05-18T200932453687
 wallets: 10 user wallets
 authority wallets: 2
 allocation wallets: 2
-reward: 0.75 PFT per task
-result: 10/10 rewarded
-pointer events found: 140
+task receipts: 11
+result: 8 rewarded, 1 refused, 2 verification_response_submitted
 ```
 
 Public artifacts from that run:
 
-- `reference_clients/python/runs/multi_wallet_2026-05-18T153817241609/receipt_public.json`
-- `reference_clients/python/runs/multi_wallet_2026-05-18T153817241609/multi_wallet_async_demo.md`
+- `reference_clients/python/runs/task_engine_n10_2026-05-18T200932453687/receipt_public.json`
+- `reference_clients/python/runs/task_engine_n10_2026-05-18T200932453687/TASK_ENGINE_N10.md`
 
 The run proves the scaling boundary directly: user-wallet transactions proceed independently, authority wallets serialize only their own offer/verification queues, and allocation wallets serialize only their own reward queues. It does not yet prove production worker durability, because the queue is an in-process Python reference queue rather than a Postgres-backed worker table.
 
