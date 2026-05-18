@@ -184,20 +184,19 @@ const PROMPT_PAGES = [
 ];
 
 function promptIndexMarkdown() {
-  const rows = PROMPT_SOURCES.map((source) =>
-    `| ${source.family} | \`${source.path}\` | ${source.status} | ${source.usedBy.map((item) => `\`${item}\``).join(", ")} |`
-  ).join("\n");
-  const table = [
-    "| Family | Prompt file | Status | Used by |",
-    "| --- | --- | --- | --- |",
-    rows,
-  ].join("\n");
+  const entries = PROMPT_SOURCES.flatMap((source) => [
+    `### ${source.family}: ${source.title}`,
+    `- Prompt file: \`${source.path}\``,
+    `- Status: ${source.status}`,
+    `- Summary: ${source.summary}`,
+    `- Used by: ${source.usedBy.map((item) => `\`${item}\``).join(", ")}`,
+  ]).join("\n\n");
   return [
     "# Prompt Index",
     "Prompt text shown in this Help section is imported directly from files under `prompts/` using Vite raw imports. Do not paste prompt text into docs by hand; update the prompt file and this page will change on the next build.",
     "Runtime code should record prompt version and prompt digest whenever prompt output becomes part of a PFTL payload, database cache, or audit trail.",
     "## Runtime Map",
-    table,
+    entries,
   ].join("\n\n");
 }
 

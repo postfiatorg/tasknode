@@ -1,7 +1,7 @@
 import React from "react";
 
-const NODE_WIDTH = 154;
-const NODE_HEIGHT = 58;
+const NODE_WIDTH = 180;
+const NODE_HEIGHT = 72;
 const GRAPH_MARGIN = 28;
 const GRAPH_GAP_X = 76;
 const GRAPH_GAP_Y = 24;
@@ -80,13 +80,13 @@ function GraphDiagram({ source, stateMode = false }) {
         {parsed.nodes.map((node) => {
           const position = positions.get(node.id);
           if (!position) return null;
-          const lines = wrapLabel(node.label, 18).slice(0, 3);
+          const lines = wrapLabel(node.label, 18, 4);
           return (
             <g className={node.kind === "start" ? "docs-diagram-node start" : "docs-diagram-node"} key={node.id}>
               <rect height={NODE_HEIGHT} rx="10" width={NODE_WIDTH} x={position.x} y={position.y} />
-              <text textAnchor="middle" x={position.x + NODE_WIDTH / 2} y={position.y + NODE_HEIGHT / 2 - (lines.length - 1) * 8}>
+              <text textAnchor="middle" x={position.x + NODE_WIDTH / 2} y={position.y + NODE_HEIGHT / 2 - (lines.length - 1) * 7}>
                 {lines.map((line, index) => (
-                  <tspan dy={index === 0 ? 0 : 16} key={index} x={position.x + NODE_WIDTH / 2}>
+                  <tspan dy={index === 0 ? 0 : 14} key={index} x={position.x + NODE_WIDTH / 2}>
                     {line}
                   </tspan>
                 ))}
@@ -105,12 +105,13 @@ function SequenceDiagram({ source }) {
     return <DiagramError message="Diagram has no renderable sequence messages." source={source} />;
   }
 
-  const participantWidth = 150;
+  const participantWidth = 174;
   const participantGap = 54;
   const margin = 34;
-  const rowHeight = 58;
+  const rowHeight = 72;
+  const headerHeight = 46;
   const headerY = 24;
-  const lineTop = 82;
+  const lineTop = 92;
   const width = margin * 2 + parsed.participants.length * participantWidth + (parsed.participants.length - 1) * participantGap;
   const height = lineTop + parsed.messages.length * rowHeight + 36;
   const xById = new Map();
@@ -130,11 +131,16 @@ function SequenceDiagram({ source }) {
         </defs>
         {parsed.participants.map((participant) => {
           const x = xById.get(participant.id);
+          const labelLines = wrapLabel(participant.label, 20, 2);
           return (
             <g className="docs-sequence-participant" key={participant.id}>
-              <rect height="36" rx="9" width={participantWidth} x={x - participantWidth / 2} y={headerY} />
-              <text textAnchor="middle" x={x} y={headerY + 23}>
-                {participant.label}
+              <rect height={headerHeight} rx="9" width={participantWidth} x={x - participantWidth / 2} y={headerY} />
+              <text textAnchor="middle" x={x} y={headerY + headerHeight / 2 - (labelLines.length - 1) * 6 + 4}>
+                {labelLines.map((line, index) => (
+                  <tspan dy={index === 0 ? 0 : 13} key={index} x={x}>
+                    {line}
+                  </tspan>
+                ))}
               </text>
               <line x1={x} x2={x} y1={lineTop - 12} y2={height - 18} />
             </g>
@@ -145,7 +151,7 @@ function SequenceDiagram({ source }) {
           const toX = xById.get(message.to);
           const y = lineTop + index * rowHeight;
           if (!fromX || !toX) return null;
-          const labelLines = wrapLabel(message.label, 38).slice(0, 2);
+          const labelLines = wrapLabel(message.label, 42, 3);
           return (
             <g className="docs-sequence-message" key={`${message.from}-${message.to}-${index}`}>
               <line
@@ -287,23 +293,44 @@ function cleanLines(source) {
     .filter((line) => !line.startsWith("%%"));
 }
 
-function wrapLabel(label, maxChars) {
+function wrapLabel(label, maxChars, maxLines = Infinity) {
   const words = String(label || "").split(/\s+/).filter(Boolean);
   const lines = [];
   let current = "";
 
   for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length > maxChars && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = next;
+    const chunks = breakLongWord(word, maxChars);
+    for (const chunk of chunks) {
+      const next = current ? `${current} ${chunk}` : chunk;
+      if (next.length > maxChars && current) {
+        lines.push(current);
+        current = chunk;
+      } else {
+        current = next;
+      }
     }
   }
 
   if (current) lines.push(current);
-  return lines.length > 0 ? lines : [String(label || "")];
+  return clampLines(lines.length > 0 ? lines : [String(label || "")], maxLines);
+}
+
+function breakLongWord(word, maxChars) {
+  const text = String(word || "");
+  if (text.length <= maxChars) return [text];
+  const chunks = [];
+  for (let index = 0; index < text.length; index += maxChars) {
+    chunks.push(text.slice(index, index + maxChars));
+  }
+  return chunks;
+}
+
+function clampLines(lines, maxLines) {
+  if (!Number.isFinite(maxLines) || lines.length <= maxLines) return lines;
+  const visible = lines.slice(0, maxLines);
+  const last = visible[visible.length - 1] || "";
+  visible[visible.length - 1] = last.length > 3 ? `${last.slice(0, -3)}...` : `${last}...`;
+  return visible;
 }
 
 function hashText(value) {
@@ -313,4 +340,3 @@ function hashText(value) {
   }
   return hash.toString(36);
 }
-
