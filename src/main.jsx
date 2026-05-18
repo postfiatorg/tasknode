@@ -96,6 +96,7 @@ import {
   stripContextHtml,
   truncateCid,
 } from "./features/context/context-view-utils.jsx";
+import { PostFiatLogo, SidebarButton, ToolMenuRow } from "./features/shell/ShellControls";
 import {
   applyWalletBalanceError,
   applyWalletBalanceResult,
@@ -104,6 +105,7 @@ import {
   mergeAppStateWithClientWalletBalance,
   walletVaultDisplayState,
 } from "./features/wallet/wallet-state";
+import { WalletUnlockModal } from "./features/wallet/WalletUnlockModal";
 import { formatCreditUsd, formatUsageUsd } from "./formatters";
 import { isSignedInSession } from "./session";
 import { escapeContextHtml, looksLikeContextHtml, sanitizeContextHtml } from "../shared/context-html";
@@ -273,6 +275,7 @@ function App() {
   const [chatActionMenu, setChatActionMenu] = useState(null);
   const [chatRenameTarget, setChatRenameTarget] = useState(null);
   const [chatDeleteTarget, setChatDeleteTarget] = useState(null);
+  const [walletUnlockOpen, setWalletUnlockOpen] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
   const [appState, setAppState] = useState(null);
   const [walletVaultStatus, setWalletVaultStatus] = useState(EMPTY_WALLET_VAULT_STATUS);
@@ -337,19 +340,20 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!settingsOpen && !selectedTask && !chatActionMenu) return undefined;
+    if (!settingsOpen && !selectedTask && !chatActionMenu && !walletUnlockOpen) return undefined;
 
     function closeModal(event) {
       if (event.key === "Escape") {
         setChatActionMenu(null);
         setSettingsOpen(false);
         setSelectedTask(null);
+        setWalletUnlockOpen(false);
       }
     }
 
     document.addEventListener("keydown", closeModal);
     return () => document.removeEventListener("keydown", closeModal);
-  }, [settingsOpen, selectedTask, chatActionMenu]);
+  }, [settingsOpen, selectedTask, chatActionMenu, walletUnlockOpen]);
 
   const recentChats = buildRecentChats(appState?.chat?.recents || []);
   const activeChatId = activeChat?.conversationId || activeChat?.id || "";
@@ -361,10 +365,13 @@ function App() {
   const profileInitials = profileAvatarText(session);
   const profileSubtext = profileSessionText(session);
   const walletAccountId = signedIn ? session?.accountId || "" : "";
-  const linkedWalletAddress =
+  const linkedWallet =
     signedIn && appState?.wallet?.pftWallet?.status === "linked"
-      ? appState.wallet.pftWallet.address || ""
-      : "";
+      ? appState.wallet.pftWallet
+      : null;
+  const linkedWalletAddress = linkedWallet?.address || "";
+  const walletVaultAvailable = Boolean(walletVaultStatus?.available && walletVaultStatus?.address === linkedWalletAddress);
+  const walletVaultUnlocked = Boolean(walletVaultAvailable && walletVaultStatus?.unlocked);
   const vaultDisplay = walletVaultDisplayState(walletVaultStatus, linkedWalletAddress);
 
   const lockWalletVault = useCallback(() => {
@@ -505,8 +512,46 @@ function App() {
     setSettingsOpen(false);
     setSelectedTask(null);
     setLoginOpen(false);
+    setWalletUnlockOpen(false);
     writeViewLocation(normalizedView, { replace: options.replace === true });
   }, []);
+
+  const openWalletVaultControl = useCallback(() => {
+    setProfileMenuOpen(false);
+    setMoreMenuOpen(false);
+    if (!signedIn) {
+      setLoginOpen(true);
+      return;
+    }
+    if (!linkedWalletAddress) {
+      navigateToView("wallet");
+      return;
+    }
+    if (walletVaultUnlocked) {
+      lockWalletVault();
+      return;
+    }
+    if (walletVaultAvailable) {
+      setWalletUnlockOpen(true);
+      return;
+    }
+    navigateToView("wallet");
+  }, [
+    linkedWalletAddress,
+    lockWalletVault,
+    navigateToView,
+    signedIn,
+    walletVaultAvailable,
+    walletVaultUnlocked,
+  ]);
+
+  const openWalletSummary = useCallback(() => {
+    if (walletVaultAvailable && !walletVaultUnlocked) {
+      openWalletVaultControl();
+      return;
+    }
+    navigateToView("wallet");
+  }, [navigateToView, openWalletVaultControl, walletVaultAvailable, walletVaultUnlocked]);
 
   const startNewChat = useCallback(() => {
     setActiveChat(null);
@@ -535,6 +580,7 @@ function App() {
       setSettingsOpen(false);
       setSelectedTask(null);
       setLoginOpen(false);
+      setWalletUnlockOpen(false);
     }
 
     window.addEventListener("popstate", syncViewFromLocation);
@@ -705,7 +751,7 @@ function App() {
             active={view === "wallet"}
             icon={Wallet}
             label="Wallet"
-            onClick={() => navigateToView("wallet")}
+            onClick={openWalletSummary}
             sidebarOpen={sidebarOpen}
             tooltip={`Wallet · ${vaultDisplay.label}`}
             trailing={
@@ -805,7 +851,7 @@ function App() {
 
         <div className="sidebar-footer">
           {sidebarOpen && (
-            <button className="balance-pill" onClick={() => navigateToView("wallet")} type="button">
+            <button className="balance-pill" onClick={openWalletSummary} type="button">
               <span className="balance-stack">
                 <span className="balance-row">
                   <Wallet size={14} strokeWidth={1.75} />
@@ -874,6 +920,14 @@ function App() {
                       <Check size={13} strokeWidth={2} />
                       <span>Signed in</span>
                     </div>
+                  )}
+                  {signedIn && linkedWalletAddress && (
+                    <ToolMenuRow
+                      icon={vaultDisplay.tone === "unlocked" ? Unlock : Lock}
+                      label={`Wallet ${vaultDisplay.label}`}
+                      onClick={openWalletVaultControl}
+                      trailing={<ChevronRight size={14} strokeWidth={1.75} />}
+                    />
                   )}
                   <div className="menu-divider" />
                   <ToolMenuRow
@@ -985,6 +1039,15 @@ function App() {
           onSessionChange={refreshAppState}
           session={session}
           onClose={() => setLoginOpen(false)}
+        />
+      )}
+      {walletUnlockOpen && linkedWallet && (
+        <WalletUnlockModal
+          linkedWallet={linkedWallet}
+          onClose={() => setWalletUnlockOpen(false)}
+          onWalletVaultChange={() => refreshWalletVaultStatus({ preserveUnlock: false })}
+          onWalletVaultUnlocked={handleWalletVaultUnlocked}
+          session={session}
         />
       )}
       {settingsOpen && (
@@ -2385,52 +2448,6 @@ function ShareModal({ onClose, thread, title }) {
   );
 }
 
-function SidebarButton({ active, badge, icon: Icon, label, onClick, sidebarOpen, tooltip, trailing }) {
-  return (
-    <button
-      aria-label={label}
-      className={active ? "active" : ""}
-      data-tooltip={sidebarOpen ? undefined : tooltip || label}
-      onClick={onClick}
-      type="button"
-    >
-      <Icon size={18} strokeWidth={1.75} />
-      {sidebarOpen && <span>{label}</span>}
-      {sidebarOpen && trailing}
-      {sidebarOpen && badge ? <small>{badge}</small> : null}
-      {!sidebarOpen && badge ? <small className="rail-badge">{badge}</small> : null}
-    </button>
-  );
-}
-
-function PostFiatLogo() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="post-fiat-logo"
-      fill="none"
-      viewBox="0 0 200 200"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M40 40 160 160m0-120L40 160"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="20"
-      />
-      <line
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="20"
-        x1="40"
-        x2="160"
-        y1="160"
-        y2="160"
-      />
-    </svg>
-  );
-}
-
 function ModelGroup({ label }) {
   return <div className="model-group">{label}</div>;
 }
@@ -2443,16 +2460,6 @@ function ModelOption({ mode, onClick, selected }) {
         <small>{modeDescription(mode)}</small>
       </span>
       {selected && <Check size={15} strokeWidth={2} />}
-    </button>
-  );
-}
-
-function ToolMenuRow({ icon: Icon, label, onClick, trailing }) {
-  return (
-    <button className="tool-menu-row" onClick={onClick} type="button">
-      <Icon size={16} strokeWidth={1.75} />
-      <span>{label}</span>
-      {trailing}
     </button>
   );
 }

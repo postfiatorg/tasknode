@@ -99,8 +99,14 @@
   border-radius: 999px;
   background: #f7f6f1;
   color: #6b6b66;
+  cursor: pointer;
+  font: inherit;
   font-size: 12px;
   font-weight: 600;
+}
+
+.wallet-vault-chip:hover {
+  filter: brightness(0.985);
 }
 
 .wallet-vault-chip.is-unlocked {
