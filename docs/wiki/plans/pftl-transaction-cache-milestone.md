@@ -46,6 +46,25 @@ Expected user-facing outcomes:
 - RPC outages show as stale/syncing cache state, not blank or fake product data.
 - Deleting projection rows remains repairable by replaying PFTL history.
 
+## Current Implementation Status
+
+Initial backend slice implemented:
+
+- Cache migration: `server/db/migrations/007_pftl_transaction_cache.sql`.
+- Cache repository: `server/repositories/pftl-cache.js`.
+- Sync helper and optional polling worker: `server/pftl-cache-sync.js`.
+- Cache endpoint: `GET /api/pftl/cache/account-tx`.
+- Wallet activity feed: cache-first read with direct PFTL fallback during rollout.
+- Wallet lifecycle: link/create registers a sync target; delink marks it inactive.
+
+Still open:
+
+- WSS watcher.
+- Archive backfill job with long-running checkpoint policy.
+- Context restore migration to cache-first pointer reads.
+- Task replay migration from `pftl_pointer_memos` into `task_projections`.
+- Operator monitoring and retention policy.
+
 ## Proposed Tables
 
 ```text

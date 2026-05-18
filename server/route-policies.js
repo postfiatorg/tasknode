@@ -62,6 +62,7 @@ export const apiRoutePolicies = [
   { id: "wallet", path: "/api/wallet", methods: ["GET"], auth: "optional" },
   { id: "wallet_balance", path: "/api/wallet/balance", methods: ["GET"], auth: "session" },
   { id: "wallet_transactions", path: "/api/wallet/transactions", methods: ["GET"], auth: "session" },
+  { id: "pftl_cache_account_tx", path: "/api/pftl/cache/account-tx", methods: ["GET"], auth: "session" },
   { id: "wallet_actions", path: "/api/wallet/actions", methods: ["GET"], auth: "none" },
   {
     id: "wallet_link_start",

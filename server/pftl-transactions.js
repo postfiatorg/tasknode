@@ -3,6 +3,7 @@ import {
   extractPftPointerEvents,
   fetchHistoricalAccountTransactions,
 } from "./context-history-rpc.js";
+import { readCachedAccountTx } from "./pftl-cache-sync.js";
 
 const PFT_DROPS_PER_PFT = 1_000_000;
 const RIPPLE_EPOCH_OFFSET = 946684800;
@@ -202,6 +203,7 @@ export function normalizeWalletTransactions(transactions, walletAddress = "", { 
 }
 
 export async function fetchWalletTransactions(walletAddress, {
+  accountId = "",
   force = false,
   limit = DEFAULT_LIMIT,
   maxPages = DEFAULT_MAX_PAGES,
@@ -227,6 +229,38 @@ export async function fetchWalletTransactions(walletAddress, {
       cached: true,
       cacheTtlMs: DEFAULT_CACHE_TTL_MS,
     };
+  }
+
+  try {
+    const cachedAccountTx = await readCachedAccountTx({
+      walletAddress: account,
+      accountId,
+      limit: Math.max(50, normalizedLimit),
+      forceSync: force,
+      syncIfEmpty: true,
+    });
+    if (cachedAccountTx.ok && (cachedAccountTx.transactions.length > 0 || cachedAccountTx.sync?.attempted?.ok)) {
+      const transactions = normalizeWalletTransactions(cachedAccountTx.transactions, account, {
+        limit: normalizedLimit,
+      });
+      const result = {
+        ok: true,
+        status: 200,
+        walletAddress: account,
+        transactions,
+        count: transactions.length,
+        scannedTransactions: cachedAccountTx.transactions.length,
+        complete: cachedAccountTx.sync?.attempted?.complete ?? null,
+        fetchedAt: new Date().toISOString(),
+        source: "pftl_cache",
+        sync: cachedAccountTx.sync,
+      };
+      txCache.set(cacheKey, { cachedAtMs: now, result });
+      return result;
+    }
+  } catch {
+    // Fall through to direct PFTL history read. Cache failures should not make
+    // the wallet page unusable while the cache is still rolling out.
   }
 
   try {

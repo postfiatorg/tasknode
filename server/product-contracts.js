@@ -56,6 +56,10 @@ import {
   pftInitiationFaucetStatus,
   sendPftInitiationGift,
 } from "./pftl-faucet.js";
+import {
+  bestEffortDeactivatePftlSyncWallet,
+  bestEffortRegisterPftlSyncWallet,
+} from "./pftl-cache-sync.js";
 import { verifyWalletSignature } from "./wallet-proof.js";
 export { taskRequestIntentStart } from "./task-request-intent.js";
 
@@ -1683,6 +1687,12 @@ export async function walletLinkVerify(payload, method, session = null) {
     });
   }
 
+  await bestEffortRegisterPftlSyncWallet({
+    accountId: session.accountId,
+    walletAddress: result.wallet.address,
+    reason: challengeResult.challenge.purpose,
+  });
+
   const reclaimedWalletCount = Number(result.reclaimedWalletCount || 0);
   const isCreate = challengeResult.challenge.purpose === "wallet_create";
   const initiationGift = isCreate
@@ -1766,7 +1776,7 @@ export function walletRelinkStart(method, session = null) {
   };
 }
 
-export function walletDelink(payload, method, session = null) {
+export async function walletDelink(payload, method, session = null) {
   const action = walletActionByPath("/api/wallet/delink");
 
   if (method !== action.method) {
@@ -1826,6 +1836,11 @@ export function walletDelink(payload, method, session = null) {
       actionRequired: "Refresh the wallet tab and try again.",
     });
   }
+
+  await bestEffortDeactivatePftlSyncWallet({
+    walletAddress: result.wallet.address,
+    reason: payload?.reason || "user_delinked",
+  });
 
   return {
     status: 200,

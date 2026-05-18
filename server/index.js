@@ -5,36 +5,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
 import { fetchPftBalance } from "./pftl-balance.js";
+import { startPftlCacheWorker } from "./pftl-cache-sync.js";
+import { handlePftlCacheRoute } from "./pftl-cache-route.js";
 import { fetchWalletTransactions } from "./pftl-transactions.js";
 import {
-  authCallback,
-  authDevStart,
-  authEmailStart,
-  authEmailVerify,
-  authProviders,
-  authStart,
+  authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart,
   devAuthStatus,
   chatEstimateForAccount,
-  chatModes,
-  chatSend,
-  chatStreamStart,
+  chatModes, chatSend, chatStreamStart,
   contextActionStart,
   contextActions,
   contextEditSave,
   contextManifestInk,
-  contextHistoryRpcImport,
-  contextIndexedHistoryImport,
-  contextHistoryIpfsFetch,
+  contextHistoryRpcImport, contextIndexedHistoryImport, contextHistoryIpfsFetch,
   readiness,
   taskRequestIntentStart,
-  usageActions,
-  usageAdminCredit,
-  usageTopUpStart,
-  usageTopUpSync,
-  walletActionStart,
-  walletActions,
-  walletLinkStart,
-  walletLinkVerify,
+  usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync,
+  walletActionStart, walletActions, walletLinkStart, walletLinkVerify,
 } from "./product-contracts.js";
 import { executeChatStream } from "./chat-router.js";
 import { startMemoryWorker } from "./chat-memory-worker.js";
@@ -801,6 +788,7 @@ async function routeApi(req, url, res) {
     }
 
     const result = await fetchWalletTransactions(linkedWallet.address, {
+      accountId: session.accountId,
       force: url.searchParams.get("force") === "1",
       limit: url.searchParams.get("limit"),
       maxPages: url.searchParams.get("maxPages"),
@@ -808,6 +796,8 @@ async function routeApi(req, url, res) {
     json(res, result.status || (result.ok ? 200 : 502), result);
     return true;
   }
+
+  if (await handlePftlCacheRoute({ url, res, session, json })) return true;
 
   if (url.pathname === "/api/wallet/actions") {
     json(res, 200, { actions: walletActions() });
@@ -991,6 +981,7 @@ const server = createServer((req, res) => {
 assertStartupSecurity();
 await migrateDatabase();
 startMemoryWorker();
+startPftlCacheWorker();
 
 server.listen(port, "0.0.0.0", () => {
   console.log(`tasknodeofficial listening on :${port}`);

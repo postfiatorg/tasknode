@@ -37,10 +37,11 @@ PFTasks also shows what to avoid:
 
 Task Node Official currently has partial pieces:
 
-- Wallet activity reads directly from `server/pftl-transactions.js`, which calls historical `account_tx` and keeps only a short in-memory cache.
+- Wallet activity reads through `server/pftl-transactions.js`, which now attempts the Postgres PFTL cache first and falls back to historical `account_tx` during rollout.
 - Historical context restore reads through `server/context-history-rpc.js`, which scans archive `account_tx` and then stores context pointer metadata.
 - Task projections exist in `server/db/migrations/006_task_projections.sql`, but replay imports currently come from receipts rather than a standing wallet transaction mirror.
-- There is no general `tx_cache` / `wallet_tx_index` equivalent yet.
+- The first general transaction cache tables live in `server/db/migrations/007_pftl_transaction_cache.sql`.
+- Cache repository and sync helpers live in `server/repositories/pftl-cache.js` and `server/pftl-cache-sync.js`.
 
 That means multiple surfaces still compete for RPC history:
 
@@ -206,3 +207,16 @@ This lets Python replay tools, task reducers, wallet feeds, and future message s
 - Whether task authority and allocation wallets should be inserted by static config, a provisioner table, or both.
 - Whether archive completeness is tracked per wallet only, or per wallet plus pointer kind.
 - Whether the cache endpoint should be public to authenticated users for their linked wallet only, or operator-only at first.
+
+## Initial Implementation
+
+The first implementation slice is live in code:
+
+- `server/db/migrations/007_pftl_transaction_cache.sql` creates the cache schema.
+- `server/repositories/pftl-cache.js` maps `account_tx` rows into transaction, wallet index, and pointer memo rows.
+- `server/pftl-cache-sync.js` performs cache sync from PFTL `account_tx` and exposes an optional polling worker gated by `PFTL_CACHE_WORKER_ENABLED=true`.
+- `/api/pftl/cache/account-tx` returns cached `account_tx`-style rows for the signed-in account's linked wallet.
+- `/api/wallet/transactions` is cache-first and falls back to direct PFTL history while the cache rolls out.
+- Wallet link/create registers the wallet for sync; wallet delink marks it inactive.
+
+The WSS watcher, archive-completeness policy, context cache-first migration, and task replay migration remain milestone work.
