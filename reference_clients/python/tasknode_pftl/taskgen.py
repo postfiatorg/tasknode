@@ -10,14 +10,14 @@ import requests
 
 from .codec import canonical_json, now_iso, sha256_hex
 from .config import PftlConfig
+from .prompt_registry import load_prompt, prompt_digest
 
 
-MINIMAL_TASKGEN_SYSTEM = """You generate one concise Task Node task.
-Return only JSON. No markdown.
-The task must be specific, useful, and verifiable.
-Do not include unrelated PFTasks legacy fields.
-Use reward_offer.amount_estimate_pft as a decimal string from 0.50 to 5.00 unless the input packet explicitly says otherwise.
-"""
+TASKGEN_PROMPT_VERSION = "taskgen_minimal_v1"
+TASKGEN_PROMPT_PATH = "task_engine/taskgen_minimal_v1.md"
+VERIFICATION_REQUEST_PROMPT_VERSION = "verification_request_v1"
+VERIFICATION_REQUEST_PROMPT_PATH = "task_engine/verification_request_v1.md"
+MINIMAL_TASKGEN_SYSTEM = load_prompt(TASKGEN_PROMPT_PATH)
 
 DEFAULT_REFERENCE_REWARD_PFT = Decimal("3.20")
 MIN_REFERENCE_REWARD_PFT = Decimal("0.50")
@@ -37,6 +37,10 @@ TASKGEN_RESPONSE_FORMAT = {
                 "title": {"type": "string"},
                 "description": {"type": "string"},
                 "task_kind": {"type": "string"},
+                "steps": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
                 "submission_requirement": {
                     "type": "object",
                     "additionalProperties": False,
@@ -82,6 +86,7 @@ TASKGEN_RESPONSE_FORMAT = {
                 "title",
                 "description",
                 "task_kind",
+                "steps",
                 "submission_requirement",
                 "verification_policy",
                 "reward_offer",
@@ -181,6 +186,8 @@ def build_request_bundle(*, subject_wallet: str, allocation_wallet: str, client_
 
 
 def project_taskgen_input(bundle: dict[str, Any], *, bundle_cid: str, bundle_digest: str) -> dict[str, Any]:
+    recent_history_items = bundle.get("relevant_history", {}).get("items") or []
+    memory = bundle.get("memory") or {}
     return {
         "schema": "pf.taskgen.input.v1",
         "request_bundle": {
@@ -196,7 +203,7 @@ def project_taskgen_input(bundle: dict[str, Any], *, bundle_cid: str, bundle_dig
         },
         "chat": {
             "recent_chat_summary": bundle["recent_chat"]["summary"],
-            "relevant_history_summary": "; ".join(item["summary"] for item in bundle["relevant_history"]["items"]),
+            "relevant_history_summary": "; ".join(item.get("summary", "") for item in recent_history_items if item.get("summary")),
             "recent_messages": [
                 {
                     "role": item["role"],
@@ -206,6 +213,10 @@ def project_taskgen_input(bundle: dict[str, Any], *, bundle_cid: str, bundle_dig
                 for item in bundle["recent_chat"]["messages"]
             ],
             "summary": bundle["recent_chat"]["summary"],
+        },
+        "memory": {
+            "deep_memory": memory.get("deep_memory") or [],
+            "recent_memory": memory.get("recent_memory") or [],
         },
         "wallet": bundle["wallet"],
         "policy": bundle["policy"],
@@ -221,6 +232,11 @@ def _fallback_task(task_input: dict[str, Any], *, reason: str | None = None) -> 
             "and provide the replay projection showing the task reaches rewarded state."
         ),
         "task_kind": "system",
+        "steps": [
+            "Run the reference Task Node lifecycle harness.",
+            "Confirm request, offer, acceptance, submission, verification, and reward pointers are written.",
+            "Replay the pointer history and capture the final rewarded state.",
+        ],
         "submission_requirement": {
             "type": "text",
             "criteria": "Submit a concise evidence packet with the run id, pointer transaction hashes, IPFS CIDs, and final replay status.",
@@ -242,8 +258,8 @@ def _fallback_task(task_input: dict[str, Any], *, reason: str | None = None) -> 
         output=output,
         metadata={
             "model": "deterministic-fallback",
-            "prompt_version": "taskgen-minimal-v1",
-            "prompt_digest": sha256_hex(MINIMAL_TASKGEN_SYSTEM),
+            "prompt_version": TASKGEN_PROMPT_VERSION,
+            "prompt_digest": prompt_digest(MINIMAL_TASKGEN_SYSTEM),
             "input_packet_digest": sha256_hex(task_input),
             "output_digest": sha256_hex(output),
             "latency_ms": 0,
@@ -278,6 +294,10 @@ def _validate_taskgen_output(value: dict[str, Any]) -> dict[str, Any]:
     if missing:
         raise ValueError(f"Taskgen output missing: {', '.join(missing)}")
     value.setdefault("schema", "pf.taskgen.output.v1")
+    steps = value.get("steps")
+    if not isinstance(steps, list):
+        steps = []
+    value["steps"] = [str(step).strip() for step in steps if str(step or "").strip()][:5]
     requirement = value.get("submission_requirement") or {}
     if requirement.get("type") not in {"text", "url", "github_commit", "screenshot", "file", "mixed"}:
         requirement["type"] = "text"
@@ -308,7 +328,7 @@ def generate_task(
     allow_fallback: bool = False,
 ) -> TaskgenResult:
     model_name = model or config.taskgen_model
-    prompt_digest = sha256_hex(MINIMAL_TASKGEN_SYSTEM)
+    system_prompt_digest = prompt_digest(MINIMAL_TASKGEN_SYSTEM)
     input_digest = sha256_hex(task_input)
     if not config.openai_api_key:
         if not allow_fallback:
@@ -345,8 +365,8 @@ def generate_task(
         latency_ms = int((time.time() - started) * 1000)
         metadata = {
             "model": model_name,
-            "prompt_version": "taskgen-minimal-v1",
-            "prompt_digest": prompt_digest,
+            "prompt_version": TASKGEN_PROMPT_VERSION,
+            "prompt_digest": system_prompt_digest,
             "input_packet_digest": input_digest,
             "output_digest": sha256_hex(output),
             "latency_ms": latency_ms,
@@ -404,6 +424,7 @@ def benchmark_taskgen(config: PftlConfig, task_input: dict[str, Any]) -> dict[st
 def build_verification_request(task_offer: dict[str, Any], initial_submission: dict[str, Any]) -> dict[str, Any]:
     requirement = task_offer.get("submission_requirement") or {}
     verification_type = (task_offer.get("verification_policy") or {}).get("verification_type") or requirement.get("type") or "text"
+    prompt_text = load_prompt(VERIFICATION_REQUEST_PROMPT_PATH)
     return {
         "verification_type": verification_type,
         "verification_ask": (
@@ -412,7 +433,8 @@ def build_verification_request(task_offer: dict[str, Any], initial_submission: d
         ),
         "verification_policy": task_offer.get("verification_policy") or {"mode": "standard_followup", "followup_required": True},
         "generated_at": now_iso(),
-        "prompt_version": "verification-minimal-v1",
+        "prompt_version": VERIFICATION_REQUEST_PROMPT_VERSION,
+        "prompt_digest": prompt_digest(prompt_text),
         "input_digest": sha256_hex({
             "task_offer": task_offer,
             "initial_submission": initial_submission,

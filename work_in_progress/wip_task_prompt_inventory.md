@@ -9,8 +9,9 @@ turn that UX action into a live PFTL task offer by itself. The live end-to-end
 task request, generation, verification request, verification response, reward,
 and replay path exists in the Python reference client.
 
-Production task generation prompts are not yet centralized in `prompts/`.
-The active task prompt logic lives beside the code that executes it.
+Production task generation prompts now live in `prompts/task_engine/`.
+The Python reference client loads the active prompt files and records prompt
+digests in taskgen and verification metadata.
 
 ## Prompt Surfaces
 
@@ -20,25 +21,23 @@ The active task prompt logic lives beside the code that executes it.
 | Turn memory summary | Active async memory worker | `server/chat-memory-worker.js` | `chat_memory_v1` | OpenRouter, default `deepseek/deepseek-v4-flash` | Summarizes one user/assistant exchange into user summary, system summary, and memory text. |
 | Deep memory summary | Active async memory worker | `server/chat-memory-worker.js` | `deep_memory_v1` | OpenRouter, default `deepseek/deepseek-v4-flash` | Triggered every 36 turn-memory records; produces account-level memory. |
 | Task request intent | Active UX correlation only | `server/task-request-intent.js` | `pf.task.request_intent.v1` | None | Records canonical request text plus user detail text. Does not generate a task yet. |
-| Task generation | Active Python replay only | `reference_clients/python/tasknode_pftl/taskgen.py` | `taskgen-minimal-v1` | OpenAI, default `chat-latest` | Generates `pf.taskgen.output.v1` with title, description, task kind, submission requirement, verification policy, reward offer, deadline. |
+| Task generation | Active Python replay only | `prompts/task_engine/taskgen_minimal_v1.md`, loaded by `reference_clients/python/tasknode_pftl/taskgen.py` | `taskgen_minimal_v1` | OpenAI, default `chat-latest` | Generates `pf.taskgen.output.v1` with title, description, task kind, steps, submission requirement, verification policy, reward offer, deadline. |
 | Task generation schema | Active Python replay only | `reference_clients/python/tasknode_pftl/taskgen.py` | `TASKGEN_RESPONSE_FORMAT` | OpenAI Chat Completions JSON schema | Strict output shape for task generation. |
-| Verification request | Active Python replay only | `reference_clients/python/tasknode_pftl/taskgen.py` | `verification-minimal-v1` | None currently | Deterministic follow-up ask generated from task offer and initial submission, not an LLM prompt yet. |
-| Screenshot evidence read | Active Python verification examples | `reference_clients/python/tasknode_pftl/verification.py` | implicit screenshot evidence prompt | OpenAI Responses, default `gpt-5.5` | Reads visible screenshot evidence. PDF, DOCX, and URL readers are deterministic extractors. |
+| Verification request | Active Python replay only | `prompts/task_engine/verification_request_v1.md`, referenced by `reference_clients/python/tasknode_pftl/taskgen.py` | `verification_request_v1` | None currently | Deterministic follow-up ask generated from task offer and initial submission; prompt policy is present for the future model-backed verifier. |
+| Screenshot evidence read | Active Python verification examples | `prompts/task_engine/evidence_screenshot_read_v1.md`, loaded by `reference_clients/python/tasknode_pftl/verification.py` | `evidence_screenshot_read_v1` | OpenAI Responses, default `gpt-5.5` | Reads visible screenshot evidence. PDF, DOCX, and URL readers are deterministic extractors. |
 | Verification response packet | Active Python verification examples | `reference_clients/python/tasknode_pftl/verification.py` | `pf.task.verification_response.v1` | None | Builds canonical packet from evidence summaries. |
 | Reward scoring | Not implemented in Task Node Official | n/a | n/a | n/a | PFTasks has reference reward prompts, but this repo has not ported scoring prompts yet. Current Python replay issues deterministic reward from the generated offer. |
 | Motivation | Prompt research / product surface, not currently wired as task engine | `prompts/openai_jobs_motivation.md`, `prompts/steve_jobs_*.md` | prompt artifact | n/a | These are not task generation prompts and should not be treated as production task-engine policy. |
 
 ## Current Task Generation Prompt
 
-File: `reference_clients/python/tasknode_pftl/taskgen.py`
+File: `prompts/task_engine/taskgen_minimal_v1.md`
 
-```text
-You generate one concise Task Node task.
-Return only JSON. No markdown.
-The task must be specific, useful, and verifiable.
-Do not include unrelated PFTasks legacy fields.
-Use reward_offer.amount_estimate_pft as a decimal string from 0.50 to 5.00 unless the input packet explicitly says otherwise.
-```
+The prompt is intentionally small. It explains the default blocks passed from
+Task Node (`request`, `context`, `memory`, `chat`, `relevant_history_summary`,
+`wallet`, and `policy`) and asks for one task with concise description, 2 to 5
+steps when useful, one submission requirement, one verification policy, and a
+bounded PFT reward estimate.
 
 The user prompt is assembled as:
 
@@ -50,7 +49,9 @@ Generate a minimal Task Node task from this input packet. Return JSON matching s
 
 ## Current Verification Request Text
 
-File: `reference_clients/python/tasknode_pftl/taskgen.py`
+Policy file: `prompts/task_engine/verification_request_v1.md`
+
+Current deterministic v1 text in `reference_clients/python/tasknode_pftl/taskgen.py`:
 
 ```text
 Confirm the run completed end to end. Include the request, offer, acceptance, submission, verification response, and reward transaction hashes, plus the replayed final status.
@@ -61,7 +62,7 @@ app exposes live task issuance to normal users.
 
 ## Current Screenshot Evidence Prompt
 
-File: `reference_clients/python/tasknode_pftl/verification.py`
+File: `prompts/task_engine/evidence_screenshot_read_v1.md`
 
 ```text
 Read this screenshot as Task Node verification evidence.
@@ -75,8 +76,6 @@ Verification criteria: ...
 
 ## Gaps Before UX Live Task Requests
 
-- Move task prompt policies into a small versioned registry instead of leaving
-  them embedded in Python functions.
 - Wire Chat `task_request_intent` to live server-side PFTL request creation.
 - Add a task authority worker that generates offers and writes PFTL pointers.
 - Add verification request policies by submission type.

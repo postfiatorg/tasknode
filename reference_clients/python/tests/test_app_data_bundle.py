@@ -1,6 +1,7 @@
 import unittest
 
 from tasknode_pftl.app_data import build_context_doc_payload, build_request_bundle_from_fixture
+from tasknode_pftl.taskgen import project_taskgen_input
 
 
 class Fixture:
@@ -80,6 +81,11 @@ class AppDataBundleTests(unittest.TestCase):
         self.assertEqual(len(bundle["recent_chat"]["messages"]), 2)
         self.assertEqual(len(bundle["memory"]["recent_memory"]), 1)
         self.assertIn("Context body", bundle["context"]["primary_context_doc"]["summary"])
+
+        taskgen_input = project_taskgen_input(bundle, bundle_cid="bafbundle", bundle_digest="sha256:bundle")
+        self.assertEqual(taskgen_input["request"]["user_detail_text"], "whatever you think is right")
+        self.assertEqual(len(taskgen_input["memory"]["recent_memory"]), 1)
+        self.assertIn("The user wants a portable task system.", taskgen_input["chat"]["relevant_history_summary"])
 
     def test_context_payload_preserves_body(self):
         payload = build_context_doc_payload(Fixture(), subject_wallet="rUser")

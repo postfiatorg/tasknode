@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from tasknode_pftl.config import PftlConfig
-from tasknode_pftl.taskgen import build_request_bundle, generate_task, project_taskgen_input
+from tasknode_pftl.taskgen import TASKGEN_PROMPT_VERSION, build_request_bundle, generate_task, project_taskgen_input
 
 
 class TaskgenContractTests(unittest.TestCase):
@@ -12,6 +12,8 @@ class TaskgenContractTests(unittest.TestCase):
         result = generate_task(PftlConfig(openai_api_key=None), task_input, allow_fallback=True)
         self.assertEqual(result.output["schema"], "pf.taskgen.output.v1")
         self.assertEqual(result.output["submission_requirement"]["type"], "text")
+        self.assertGreaterEqual(len(result.output["steps"]), 1)
+        self.assertEqual(result.metadata["prompt_version"], TASKGEN_PROMPT_VERSION)
         self.assertEqual(result.metadata["parse_status"], "fallback")
 
     def test_taskgen_fails_closed_without_openai_key(self):
@@ -33,6 +35,7 @@ class TaskgenContractTests(unittest.TestCase):
                             "message": {
                                 "content": (
                                     '{"schema":"pf.taskgen.output.v1","title":"T","description":"D","task_kind":"system",'
+                                    '"steps":["S1","S2"],'
                                     '"submission_requirement":{"type":"text","criteria":"C"},'
                                     '"verification_policy":{"followup_required":true,"mode":"standard_followup","verification_type":"text"},'
                                     '"reward_offer":{"amount_estimate_pft":"1.00"},'
@@ -69,6 +72,7 @@ class TaskgenContractTests(unittest.TestCase):
                             "message": {
                                 "content": (
                                     '{"schema":"pf.taskgen.output.v1","title":"T","description":"D","task_kind":"system",'
+                                    '"steps":["S1","S2"],'
                                     '"submission_requirement":{"type":"text","criteria":"C"},'
                                     '"verification_policy":{"followup_required":true,"mode":"standard_followup","verification_type":"text"},'
                                     '"reward_offer":{"amount_estimate_pft":"450"},'

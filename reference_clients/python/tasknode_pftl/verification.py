@@ -19,6 +19,7 @@ import requests
 
 from .codec import canonical_json, now_iso, sha256_hex
 from .config import PftlConfig
+from .prompt_registry import load_prompt, prompt_digest, render_prompt
 
 
 MAX_FILE_TEXT_CHARS = 40000
@@ -29,6 +30,8 @@ URL_CONTENT_CAP_GIST_SINGLE_FILE = 50000
 URL_CONTENT_CAP_GIST_MULTI_FILE = 100000
 URL_FETCH_TIMEOUT_SECONDS = 15
 SCREENSHOT_DESCRIPTION_CHARS = 4000
+SCREENSHOT_EVIDENCE_PROMPT_VERSION = "evidence_screenshot_read_v1"
+SCREENSHOT_EVIDENCE_PROMPT_PATH = "task_engine/evidence_screenshot_read_v1.md"
 
 UNSUPPORTED_URL_HOST_SUFFIXES = (
     "notion.so",
@@ -698,15 +701,15 @@ def describe_screenshot_with_openai(
     mime_type = guess_mime_type(file_path)
     if not mime_type.startswith("image/"):
         raise EvidenceError(f"screenshot_file_must_be_image:{mime_type}")
-    prompt = "\n".join([
-        "Read this screenshot as Task Node verification evidence.",
-        "Return a concise evidence description. Include visible text, completion state, important UI state, and any proof-relevant numbers.",
-        "Do not invent hidden state. If a claim is not visible, say so.",
-        "",
-        f"Task title: {task_title}",
-        f"Task description: {task_description}",
-        f"Verification criteria: {verification_criteria}",
-    ]).strip()
+    prompt_template = load_prompt(SCREENSHOT_EVIDENCE_PROMPT_PATH)
+    prompt = render_prompt(
+        prompt_template,
+        {
+            "TASK_TITLE": task_title,
+            "TASK_DESCRIPTION": task_description,
+            "VERIFICATION_CRITERIA": verification_criteria,
+        },
+    )
     image_part: dict[str, Any] = {
         "type": "input_image",
         "image_url": _image_data_url(file_path, mime_type),
@@ -756,6 +759,8 @@ def describe_screenshot_with_openai(
             "response_id": payload.get("id"),
             "latency_ms": int((time.time() - started) * 1000),
             "detail": detail,
+            "prompt_version": SCREENSHOT_EVIDENCE_PROMPT_VERSION,
+            "prompt_digest": prompt_digest(prompt_template),
         },
     )
 

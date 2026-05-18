@@ -78,7 +78,11 @@ function emptyTaskState({ walletLinked = false, walletAddress = "" } = {}) {
   };
 }
 
-function taskSteps(row) {
+function taskSteps(row, generatedTask = {}) {
+  const generatedSteps = Array.isArray(generatedTask.steps)
+    ? generatedTask.steps.map((step) => safeText(step, 1000)).filter(Boolean).slice(0, 5)
+    : [];
+  if (generatedSteps.length) return generatedSteps;
   const requirement = safeText(row.submission_requirement_text || "", 2000);
   if (!requirement) return [];
   return [requirement];
@@ -107,7 +111,7 @@ function publicTask(row) {
     ago: relativeAge(row.updated_at || row.last_event_at),
     pft,
     description: row.description || "",
-    steps: taskSteps(row),
+    steps: taskSteps(row, generatedTask),
     verification: {
       title: row.submission_type ? `Submit ${titleCase(row.submission_type)}` : "Submit evidence",
       body:
