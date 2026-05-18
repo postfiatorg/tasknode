@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import {
-  contextPointersFromTransactions,
   decodePftPointerMemo,
-  discoverContextHistoryFromRpc,
   extractPftPointerEvents,
+  fetchHistoricalAccountTransactions,
   historyRpcConfig,
 } from "../server/context-history-rpc.js";
 import { buildPftPointerMemo } from "../server/pftl-pointer.js";
@@ -119,7 +118,8 @@ assert.equal(pointerEvents.length, 2);
 assert.equal(pointerEvents[0].direction, "outbound");
 assert.equal(pointerEvents[0].createdAt, "2026-04-12T00:00:00.000Z");
 
-const contextEvents = contextPointersFromTransactions(transactions, walletAddress);
+const contextEvents = extractPftPointerEvents(transactions, walletAddress)
+  .filter((event) => event.kindLabel === "CONTEXT");
 assert.equal(contextEvents.length, 1);
 assert.equal(contextEvents[0].cid, "bafycontextcid");
 
@@ -145,7 +145,7 @@ const fakeFetch = async (url, options) => {
   });
 };
 
-const discovery = await discoverContextHistoryFromRpc({
+const accountTx = await fetchHistoricalAccountTransactions({
   walletAddress,
   env: {
     PFTL_HISTORY_WSS_URL: "",
@@ -157,10 +157,12 @@ const discovery = await discoverContextHistoryFromRpc({
 });
 
 assert.equal(requestCount, 1);
-assert.equal(discovery.contextUpdateCount, 1);
-assert.equal(discovery.snapshot.source, "pftl_history_rpc");
-assert.equal(discovery.snapshot.contextRevisions[0].source, "pftl_history_rpc.account_tx");
-assert.equal(discovery.snapshot.contextRevisions[0].cid, "bafycontextcid");
+assert.equal(accountTx.transactions.length, 1);
+assert.equal(accountTx.complete, true);
+const fetchedContextEvents = extractPftPointerEvents(accountTx.transactions, walletAddress)
+  .filter((event) => event.kindLabel === "CONTEXT");
+assert.equal(fetchedContextEvents.length, 1);
+assert.equal(fetchedContextEvents[0].cid, "bafycontextcid");
 
 const defaultConfig = historyRpcConfig({});
 assert.deepEqual(defaultConfig.wssUrls, ["wss://ws-archive.testnet.postfiat.org/"]);
@@ -170,12 +172,12 @@ assert.equal(defaultConfig.defaultedRpcPrimary, true);
 assert.equal(defaultConfig.apiKey, "");
 
 await assert.rejects(
-  () => discoverContextHistoryFromRpc({ walletAddress: "not-a-wallet", fetchImpl: fakeFetch }),
+  () => fetchHistoricalAccountTransactions({ walletAddress: "not-a-wallet", fetchImpl: fakeFetch }),
   /context_history_invalid_wallet/
 );
 
 await assert.rejects(
-  () => discoverContextHistoryFromRpc({
+  () => fetchHistoricalAccountTransactions({
     walletAddress,
     env: { PFTL_HISTORY_WSS_URL: "", PFTL_HISTORY_RPC_URL: "https://archive.example/rpc" },
     fetchImpl: async () => new Response(JSON.stringify({

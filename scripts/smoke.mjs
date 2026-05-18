@@ -14,7 +14,6 @@ const smokeTaskBundleId = `bundle_smoke_task_${Date.now().toString(36)}`;
 const smokeMnemonic =
   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
 const smokeContextCid = "bafybeigdyrztm3j5qwerasdfzxcvqwerasdfctx";
-const smokeEvidenceCid = "bafybeigdyrztm3j5qwerasdfzxcvqwerasdfevd";
 const smokeOtherCid = "bafybeigdyrztm3j5qwerasdfzxcvqwerasdfoth";
 
 const taskNodePublicKey = await deriveTaskNodePublicKey(smokeMnemonic);
@@ -440,62 +439,6 @@ if (devAuth.response.status === 200) {
   );
 
   await checkRequest(
-    "/api/context/history/indexed",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({
-        snapshot: {
-          walletAddress: walletProof.address,
-          contextRevisions: [
-            {
-              id: "ctx-smoke-1",
-              cid: `ipfs://${smokeContextCid}`,
-              tx_hash: "SMOKE_CONTEXT_TX",
-              created_at: "2026-05-16T00:00:00.000Z",
-              word_count: 120,
-            },
-          ],
-          tasks: [
-            {
-              id: "task-smoke-1",
-              title: "Smoke private task title",
-              status: "rewarded",
-              verification_type: "text",
-            },
-          ],
-          taskEvents: [
-            {
-              id: "event-smoke-1",
-              task_id: "task-smoke-1",
-              event_type: "submission_recorded",
-              event_payload: JSON.stringify({
-                artifact_cid: `ipfs://${smokeEvidenceCid}`,
-                encrypted_cid: `ipfs://${smokeEvidenceCid}`,
-                response_text: "SMOKE PRIVATE PAYLOAD MUST NOT LEAK",
-              }),
-              created_at: "2026-05-16T00:01:00.000Z",
-            },
-          ],
-        },
-      }),
-    },
-    (response, text) => {
-      const body = JSON.parse(text);
-      return (
-        response.ok &&
-        body.ok === true &&
-        body.action === "hydrate_indexed_history" &&
-        body.history?.contextUpdateCount === 1 &&
-        body.history?.taskEventCount === 1 &&
-        body.history?.latestContextPointer?.cid === smokeContextCid &&
-        text.includes(smokeEvidenceCid) &&
-        !text.includes("SMOKE PRIVATE PAYLOAD MUST NOT LEAK")
-      );
-    }
-  );
-
-  await checkRequest(
     "/api/context/history",
     { headers: { cookie } },
     (response, text) => {
@@ -503,7 +446,9 @@ if (devAuth.response.status === 200) {
       return (
         response.ok &&
         body.canHydrate === true &&
-        body.pointerCount === 2 &&
+        typeof body.pointerCount === "number" &&
+        body.source === "pftl_cache_context_projection" &&
+        body.sync?.source === "pftl_cache" &&
         body.hydration?.requiresWalletUnlock === true
       );
     }
@@ -514,7 +459,7 @@ if (devAuth.response.status === 200) {
     { headers: { cookie } },
     (response, text) => {
       const body = JSON.parse(text);
-      return response.status === 404 && body.error === "context_cid_not_imported";
+      return response.status === 404 && body.error === "context_cid_not_cached";
     }
   );
 
@@ -740,16 +685,14 @@ await check("/api/context/actions", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
   const saveAction = body.actions?.find((action) => action.id === "save_edit");
-  const rpcHistoryAction = body.actions?.find((action) => action.id === "hydrate_rpc_history");
-  const historyAction = body.actions?.find((action) => action.id === "hydrate_indexed_history");
   const cidFetchAction = body.actions?.find((action) => action.id === "fetch_history_cid");
   const importAction = body.actions?.find((action) => action.id === "import_shared_url");
   const inkAction = body.actions?.find((action) => action.id === "ink_manifest");
+  const actionIds = Array.isArray(body.actions) ? body.actions.map((action) => action.id) : [];
   return (
     Array.isArray(body.actions) &&
     saveAction?.enabled === true &&
-    rpcHistoryAction?.enabled === true &&
-    historyAction?.enabled === true &&
+    !actionIds.some((id) => String(id || "").startsWith("hydrate_")) &&
     cidFetchAction?.enabled === true &&
     importAction?.enabled === false &&
     inkAction?.enabled === true
@@ -765,16 +708,6 @@ await checkRequest("/api/context/import/start", { method: "POST" }, (response, t
 });
 
 await checkRequest("/api/context/edit/save", { method: "POST" }, (response, text) => {
-  const body = JSON.parse(text);
-  return response.status === 401 && body.error === "context_login_required";
-});
-
-await checkRequest("/api/context/history/indexed", { method: "POST" }, (response, text) => {
-  const body = JSON.parse(text);
-  return response.status === 401 && body.error === "context_login_required";
-});
-
-await checkRequest("/api/context/history/rpc/import", { method: "POST" }, (response, text) => {
   const body = JSON.parse(text);
   return response.status === 401 && body.error === "context_login_required";
 });
@@ -848,7 +781,7 @@ await check("/api/readiness", (response, text) => {
     body.wallet?.seedStorageReady === true &&
     body.wallet?.challengeProofReady === true &&
     body.context?.importReady === false &&
-    body.context?.indexedHistoryReady === true &&
+    body.context?.historyCacheReady === true &&
     body.context?.encryptedCidHydrationReady === true &&
     typeof body.context?.manifestInkReady === "boolean" &&
     body.billing?.model === "usage_based" &&

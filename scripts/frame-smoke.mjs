@@ -346,24 +346,13 @@ async function main() {
       await waitForText("Encrypted vault unlocked");
       await capture("18-wallet-unlocked");
 
-      await evaluate(`fetch('/api/context/history/indexed', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          snapshot: {
-            walletAddress: ${JSON.stringify(testWalletAddress)},
-            contextRevisions: [{
-              id: 'frame-context-1',
-              cid: ${JSON.stringify(frameContextCid)},
-              created_at: '2026-05-16T00:00:00.000Z',
-              word_count: 32
-            }]
-          }
-        })
-      }).then((response) => {
-        if (!response.ok) throw new Error('frame context import failed');
-        return true;
-      })`);
+      const contextProjectionTarget = await evaluate(`fetch('/api/app-state')
+        .then((response) => response.json())
+        .then((state) => ({
+          accountId: state.session?.accountId || '',
+          walletAddress: state.wallet?.pftWallet?.address || ''
+        }))`);
+      const contextProjectionSeeded = await seedFrameContextProjection(contextProjectionTarget.accountId);
       await evaluate("location.reload(); true");
       await waitForText("Task Node");
       await waitForText("Frame Smoke");
@@ -386,7 +375,7 @@ async function main() {
               gateway: 'frame-smoke',
               payload: {
                 title: 'Frame Hydrated Context',
-                body: 'Frame hydrated context body from imported history.'
+                body: 'Frame hydrated context body from cached history.'
               }
             }), {
               status: 200,
@@ -400,19 +389,24 @@ async function main() {
       await clickNav("Context");
       await assertText(["Task Node Context", "Versions"]);
       await clickButton("Versions");
-      await assertText(["Revision history", "Unlocked", "Restore"]);
-      await waitForText("1/1 previews");
-      await assertText(["Frame hydrated context body from imported history."]);
-      await evaluate("document.querySelector('.route-scroll')?.scrollTo(0, document.querySelector('.ctx-versions')?.offsetTop || 9999); true");
-      await sleep(250);
-      await capture("18b-context-preview-list");
-      await clickButton("Restore", "document.querySelector('.ctx-versions')");
-      await capture("19-context-preview-open");
-      await waitForText("Frame Hydrated Context");
-      await assertText(["Frame Hydrated Context", "Frame hydrated context body from imported history."]);
-      await clickButton("Use as draft", "document.querySelector('.ctx-restore-dialog')");
-      await waitForText("Historical version loaded");
-      await capture("19-context-hydrated");
+      if (contextProjectionSeeded) {
+        await assertText(["Revision history", "Unlocked", "Restore"]);
+        await waitForText("1/1 previews");
+        await assertText(["Frame hydrated context body from cached history."]);
+        await evaluate("document.querySelector('.route-scroll')?.scrollTo(0, document.querySelector('.ctx-versions')?.offsetTop || 9999); true");
+        await sleep(250);
+        await capture("18b-context-preview-list");
+        await clickButton("Restore", "document.querySelector('.ctx-versions')");
+        await capture("19-context-preview-open");
+        await waitForText("Frame Hydrated Context");
+        await assertText(["Frame Hydrated Context", "Frame hydrated context body from cached history."]);
+        await clickButton("Use as draft", "document.querySelector('.ctx-restore-dialog')");
+        await waitForText("Historical version loaded");
+        await capture("19-context-hydrated");
+      } else {
+        await assertText(["Revision history", "Syncing history"]);
+        await capture("18b-context-cache-empty");
+      }
       await evaluate(`(() => {
         if (window.__tasknodeContextFetch) {
           window.fetch = window.__tasknodeContextFetch;
@@ -529,6 +523,29 @@ async function assertLedgerRowsIfLedgerExists() {
   if (result.entries > 0 && result.rows === 0) {
     throw new Error("Ledger entries exist but billing rows are not visible.");
   }
+}
+
+async function seedFrameContextProjection(accountId) {
+  if (!process.env.DATABASE_URL || !accountId) return false;
+  if (!process.env.TASKNODE_DATABASE_ENABLED) process.env.TASKNODE_DATABASE_ENABLED = "true";
+  const { migrateDatabase } = await import("../server/db/migrate.js");
+  const { saveContextHistoryProjection } = await import("../server/repositories/context.js");
+  await migrateDatabase();
+  const result = await saveContextHistoryProjection({
+    accountId,
+    projection: {
+      walletAddress: testWalletAddress,
+      contextRevisions: [
+        {
+          id: "frame-context-1",
+          cid: frameContextCid,
+          created_at: "2026-05-16T00:00:00.000Z",
+          word_count: 32,
+        },
+      ],
+    },
+  });
+  return Boolean(result.ok);
 }
 
 async function setInput(selector, value) {

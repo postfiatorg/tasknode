@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS context_history_imports (
   id text PRIMARY KEY,
   account_id text NOT NULL,
   wallet_address text NOT NULL,
-  source text NOT NULL DEFAULT 'pftasks_indexed_snapshot',
+  source text NOT NULL DEFAULT 'pftl_cache_context_projection',
   status text NOT NULL DEFAULT 'completed',
   pointer_count integer NOT NULL DEFAULT 0,
   context_update_count integer NOT NULL DEFAULT 0,

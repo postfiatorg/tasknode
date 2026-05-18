@@ -17,10 +17,8 @@ Current product rules:
 - Usage is billing-based, not arbitrary rate-limit based.
 - Users may receive network and alpha tasks, but they cannot request them from
   the normal task request path.
-- The old PFTasks context editor is not a UX target.
 - Native context editing should fit the new Task Node Official shell.
-- PFDocs/PFTasks history hydration must be index-first because live PFTL
-  `account_tx` may be incomplete.
+- Context history is read from the PFTL cache projection in Postgres.
 
 ## Repo Layout
 
@@ -163,19 +161,15 @@ Context actions:
 - `GET /api/context/history`
 - `POST /api/context/import/start`
 - `POST /api/context/edit/save`
-- `POST /api/context/history/rpc/import`
-- `POST /api/context/history/indexed`
 - `GET /api/context/history/ipfs/:cid`
 - `POST /api/context/manifest/ink`
 
-Historical context restore uses a dedicated full-history PFTL archive WSS path,
-with JSON-RPC fallback. The server scans the linked wallet's `account_tx`
-history for `pf.ptr` / `v4` `CONTENT_KIND.CONTEXT` pointers and stores CID
-metadata only. Encrypted CID payloads are fetched by allow-listed CID and
-decrypted in the browser after local vault unlock. Native current context is
-account-scoped; imported PFT historical pointers are cached by account plus
-wallet address and are hidden when no wallet is linked or a different wallet is
-linked.
+Historical context restore reads the PFTL cache projection. Cache workers store
+linked-wallet `account_tx` rows in Postgres, reducer events project `pf.ptr` /
+`v4` `CONTENT_KIND.CONTEXT` pointers, and the browser fetches/decrypts selected
+CID payloads only after local vault unlock. Native current context is
+account-scoped; cached PFTL historical pointers are keyed by account plus wallet
+address and are hidden when no wallet is linked or a different wallet is linked.
 
 Usage/billing:
 
@@ -209,10 +203,9 @@ Usage/billing:
 - Native account-scoped context document load/save in Postgres revisions, with
   JSON fallback during migration. Context can be viewed before login, saved
   after account login, and does not require wallet unlock.
-- PFDocs-compatible indexed PFTasks history import as sanitized Postgres
-  pointer metadata. The app stores CIDs/provenance/counts, not decrypted
-  context or evidence plaintext, and the import is scoped to the active linked
-  wallet.
+- PFTL cache projection for historical context metadata. The app stores
+  CIDs/provenance/counts, not decrypted context or evidence plaintext, and the
+  projection is scoped to the active linked wallet.
 - OpenAI execution and streaming when configured, gated by signed-in account
   and available usage credit before provider calls.
 - OpenRouter execution and streaming when configured. Private routes enforce
@@ -229,7 +222,7 @@ Usage/billing:
 - Public startup guard disables public dev auth and refuses default `/tmp`
   runtime-store auth state for public origins.
 - API security headers and focused route rate limits for auth, chat, wallet,
-  context history RPC, and admin credit.
+  usage, and admin credit.
 - Runtime, API, and frame-smoke coverage.
 - Fly dev deployment.
 
@@ -247,7 +240,7 @@ Usage/billing:
   attachment-heavy prompts.
 - Formal Postgres-backed context cache backfill in production.
 - Initial eligible-provider credit for Telegram, Discord, and X callback paths.
-- Durable summaries/caches for decrypted PFDocs/PFTasks context history.
+- Durable summaries/caches for decrypted historical context.
 
 ## Intentional Deferrals
 
@@ -288,9 +281,9 @@ P1 seed login:
    AES-GCM/PBKDF2.
 6. Done: add local vault unlock/lock UX and keep the decrypted seed in memory
    only for the current browser session.
-7. Done: use the unlocked local vault to decrypt the latest imported encrypted
+7. Done: use the unlocked local vault to decrypt the latest cached encrypted
    context CID in the browser. The server only fetches encrypted JSON for CIDs
-   already present in the account's imported pointer metadata.
+   already present in the account's cached pointer metadata.
 8. Implement PFTL signing confirmation boundaries.
 9. Use wallet proof to claim/link legacy wallet identity.
 
@@ -299,12 +292,10 @@ P1 context:
 1. Done: build native account-scoped context save/load.
 2. Done: replace the placeholder connector picker with a native context editor
    that fits the app shell.
-3. Done: normalize indexed PFTasks rows into PFDocs-compatible context/task
-   pointer metadata before live RPC fallback.
+3. Done: project PFTL cache pointer memos into context/task read models.
 4. Done: hydrate the latest encrypted historical context CID only after local
    wallet unlock, without server-side plaintext storage.
-5. Use live PFTL RPC only as fallback/provenance until archive history is
-   proven.
+5. Done: remove user-triggered context history mutation endpoints from the product path.
 
 ## Maintainability Rules
 

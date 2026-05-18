@@ -205,9 +205,8 @@ Current behavior:
   browser;
 - encrypted seed vault persistence is browser-only and uses WebCrypto AES-GCM
   with PBKDF2; unlock state is in-memory and cleared on lock/logout;
-- latest imported encrypted context CID hydration is browser-only after local
-  wallet unlock; the server only fetches encrypted JSON for imported pointer
-  CIDs;
+- latest cached encrypted context CID hydration is browser-only after local
+  wallet unlock; the server only fetches encrypted JSON for cached pointer CIDs;
 - wallet delink/relink are enabled for account wallet proof testing and clear
   the browser-local encrypted vault on delink;
 - PFTL transaction signing and durable decrypted-context summaries remain
@@ -224,7 +223,7 @@ Current behavior:
   not enabled for Private modes;
 - native context documents can be viewed by anyone and saved by signed-in
   accounts without wallet unlock;
-- indexed PFTasks context/task rows can be imported as sanitized pointer
+- cached PFTL context/task pointers are projected as sanitized pointer
   metadata; the latest encrypted context CID can be decrypted locally after
   wallet unlock;
 - admin credit requires `TASKNODE_ADMIN_CREDIT_TOKEN` plus a caller-supplied
@@ -361,13 +360,12 @@ If context edits do not save:
 If historical PFT context does not appear:
 
 - check `/api/context/history`;
-- confirm the user is signed in before calling
-  `/api/context/history/rpc/import`;
-- confirm the account has a linked wallet; the RPC import never accepts an
-  arbitrary wallet address from the browser;
-- confirm `PFTL_HISTORY_WSS_URL` points at a full-history PFTL archive WSS, not
-  the machine-local rapid balance node;
+- confirm the account has a linked wallet;
+- confirm the linked wallet is active in `pftl_sync_wallets`;
+- confirm the PFTL cache and reducer workers are running;
+- confirm `PFTL_HISTORY_WSS_URL` points at a full-history PFTL archive WSS for
+  archive backfill, not the machine-local rapid balance node;
 - run `npm run context-history-rpc-smoke` if pointer decoding or account_tx
   mapping looks suspect;
-- remember this bridge imports pointer metadata only. Decrypted CID plaintext
+- remember the cache stores pointer metadata only. Decrypted CID plaintext
   requires browser-local wallet unlock.

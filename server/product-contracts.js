@@ -41,12 +41,10 @@ import { taskContextForAccount } from "./chat-task-context.js";
 import {
   getContextHistory,
   saveContextDocument,
-  saveIndexedContextHistory,
 } from "./repositories/context.js";
 import { fetchContextIpfsJson, normalizeContextCid } from "./context-ipfs.js";
 import { contextPublishStatus } from "./context-publish.js";
 export { contextManifestInk } from "./context-publish.js";
-import { discoverContextHistoryFromRpc } from "./context-history-rpc.js";
 import {
   ethereumDepositConfigStatus,
   getOrCreateEthereumTopUpAccount,
@@ -877,33 +875,13 @@ export function contextActions() {
         "Sign in with an account, edit the native context document, and save it without wallet unlock.",
     }),
     contextAction({
-      id: "hydrate_rpc_history",
-      label: "Find historical PFT context",
-      path: "/api/context/history/rpc/import",
-      enabled: true,
-      note:
-        "Scans full-history PFTL account_tx for pf.ptr/v4 CONTEXT memo pointers owned by the linked wallet and stores CID metadata only.",
-      actionRequired:
-        "Sign in, link the wallet, import historical CID metadata, then unlock the local seed vault before decrypting a selected CID.",
-    }),
-    contextAction({
-      id: "hydrate_indexed_history",
-      label: "Import indexed PFTasks history",
-      path: "/api/context/history/indexed",
-      enabled: true,
-      note:
-        "Normalizes PFTasks indexed context/task rows into PFDocs-compatible pointer metadata without fetching or decrypting CID plaintext.",
-      actionRequired:
-        "Sign in with an account and import indexed PFTasks snapshot rows. Wallet unlock is required later for encrypted CID hydration.",
-    }),
-    contextAction({
       id: "fetch_history_cid",
       label: "Fetch historical CID",
       path: "/api/context/history/ipfs/:cid",
       method: "GET",
       enabled: true,
       note:
-        "Fetches encrypted JSON only for CIDs already present in the signed-in account's imported PFTasks history.",
+        "Fetches encrypted JSON only for CIDs already present in the signed-in account's cached PFTL context projection.",
       actionRequired:
         "Unlock the local seed vault in the browser before decrypting fetched CID content.",
     }),
@@ -1055,212 +1033,6 @@ export async function contextEditSave(payload, method, session = null) {
   };
 }
 
-export async function contextIndexedHistoryImport(payload, method, session = null) {
-  const action = contextActionByPath("/api/context/history/indexed");
-
-  if (method !== action.method) {
-    return actionResponse({
-      status: 405,
-      error: "context_action_method_not_allowed",
-      action: action.id,
-      message: `${action.label} requires ${action.method}.`,
-      actionRequired: "Import indexed context history with POST.",
-    });
-  }
-
-  if (!session?.accountId) {
-    return actionResponse({
-      status: 401,
-      error: "context_login_required",
-      action: action.id,
-      message: "Sign in before importing context history.",
-      actionRequired: "Use an account login, then import indexed PFTasks snapshot rows.",
-    });
-  }
-
-  const wallet = getLinkedWallet({ accountId: session.accountId });
-  if (wallet.status !== "linked" || !wallet.address) {
-    return actionResponse({
-      status: 409,
-      error: "context_wallet_required",
-      action: action.id,
-      message: "Link a seed wallet before importing indexed PFT context history.",
-      actionRequired:
-        "Link the wallet that owns the indexed context pointers, then import the snapshot again.",
-    });
-  }
-
-  const snapshot = payload?.snapshot || payload || {};
-  const snapshotWalletAddress =
-    snapshot?.walletAddress ||
-    snapshot?.wallet_address ||
-    snapshot?.indexedData?.walletAddress ||
-    snapshot?.indexedData?.wallet_address ||
-    snapshot?.indexedData?.wallet?.walletAddress ||
-    snapshot?.indexedData?.wallet?.wallet_address ||
-    snapshot?.indexedData?.wallet?.address ||
-    "";
-  if (snapshotWalletAddress && String(snapshotWalletAddress).trim() !== wallet.address) {
-    return actionResponse({
-      status: 409,
-      error: "context_history_wallet_mismatch",
-      action: action.id,
-      message: "Indexed context history belongs to a different wallet.",
-      actionRequired:
-        "Relink the wallet that owns this history, or import a snapshot for the current linked wallet.",
-    });
-  }
-
-  const result = await saveIndexedContextHistory({
-    accountId: session.accountId,
-    snapshot: {
-      ...snapshot,
-      walletAddress: wallet.address,
-    },
-  });
-
-  if (!result.ok) {
-    return actionResponse({
-      status: result.status || 400,
-      error: result.error || "context_history_import_failed",
-      action: action.id,
-      message: "Context history could not be imported.",
-      actionRequired: "Check the indexed PFTasks snapshot shape and try again.",
-    });
-  }
-
-  return {
-    status: 200,
-    body: {
-      ok: true,
-      action: action.id,
-      message: "Indexed context history imported.",
-      history: result.history,
-    },
-  };
-}
-
-export async function contextHistoryRpcImport(payload, method, session = null) {
-  const action = contextActionByPath("/api/context/history/rpc/import");
-
-  if (method !== action.method) {
-    return actionResponse({
-      status: 405,
-      error: "context_action_method_not_allowed",
-      action: action.id,
-      message: `${action.label} requires ${action.method}.`,
-      actionRequired: "Import historical PFT context with POST.",
-    });
-  }
-
-  if (!session?.accountId) {
-    return actionResponse({
-      status: 401,
-      error: "context_login_required",
-      action: action.id,
-      message: "Sign in before importing historical context.",
-      actionRequired: "Use an account login, then import historical PFT context for the linked wallet.",
-    });
-  }
-
-  const wallet = getLinkedWallet({ accountId: session.accountId });
-  if (wallet.status !== "linked" || !wallet.address) {
-    return actionResponse({
-      status: 409,
-      error: "context_wallet_required",
-      action: action.id,
-      message: "Link a seed wallet before discovering historical PFT context.",
-      actionRequired:
-        "Link the wallet that owns the historical context pointers, then run historical context discovery again.",
-    });
-  }
-
-  let discovery;
-  try {
-    discovery = await discoverContextHistoryFromRpc({
-      walletAddress: wallet.address,
-      limit: payload?.limit,
-      maxPages: payload?.maxPages,
-    });
-  } catch (error) {
-    const errorCode = String(error?.code || error?.message || "context_history_rpc_failed")
-      .replace(/[^a-zA-Z0-9_.-]+/g, "_")
-      .slice(0, 100);
-    return actionResponse({
-      status: error?.status || 502,
-      error: errorCode || "context_history_rpc_failed",
-      action: action.id,
-      message: "Historical PFT context could not be discovered from account history.",
-      actionRequired:
-        "Check the full-history PFTL RPC configuration and retry. The local rapid balance node is not sufficient for archive context discovery.",
-    });
-  }
-
-  const summary = {
-    walletAddress: discovery.walletAddress,
-    scannedTransactions: discovery.scannedTransactions,
-    accountTxPages: discovery.accountTxPages,
-    accountTxComplete: discovery.accountTxComplete,
-    contextUpdateCount: discovery.contextUpdateCount,
-  };
-
-  if (discovery.contextUpdateCount === 0) {
-    return {
-      status: 200,
-      body: {
-        ok: true,
-        action: action.id,
-        message: "No historical PFT context pointers were found for the linked wallet.",
-        discovery: summary,
-        history: await getContextHistory({ accountId: session.accountId, walletAddress: wallet.address }),
-      },
-    };
-  }
-
-  const existingHistory = await getContextHistory({ accountId: session.accountId, walletAddress: wallet.address });
-  const mergedSnapshot = {
-    ...discovery.snapshot,
-    contextRevisions: [
-      ...discovery.snapshot.contextRevisions,
-      ...(
-        Array.isArray(existingHistory.contextUpdates)
-          ? existingHistory.contextUpdates
-          : []
-      ),
-    ],
-    taskEvents: Array.isArray(existingHistory.taskEvents) ? existingHistory.taskEvents : [],
-  };
-
-  const result = await saveIndexedContextHistory({
-    accountId: session.accountId,
-    snapshot: {
-      ...mergedSnapshot,
-      walletAddress: wallet.address,
-    },
-  });
-
-  if (!result.ok) {
-    return actionResponse({
-      status: result.status || 400,
-      error: result.error || "context_history_import_failed",
-      action: action.id,
-      message: "Discovered context history could not be saved.",
-      actionRequired: "Retry historical context discovery after checking local runtime storage.",
-    });
-  }
-
-  return {
-    status: 200,
-    body: {
-      ok: true,
-      action: action.id,
-      message: `Imported ${discovery.contextUpdateCount} historical context pointer${discovery.contextUpdateCount === 1 ? "" : "s"}.`,
-      discovery: summary,
-      history: result.history,
-    },
-  };
-}
-
 function contextHistoryCids(history) {
   const cids = new Set();
   const add = (value) => {
@@ -1297,7 +1069,7 @@ export async function contextHistoryIpfsFetch({ cid } = {}, method, session = nu
       error: "context_login_required",
       action: action.id,
       message: "Sign in before fetching historical context.",
-      actionRequired: "Use an account login, then fetch imported history CIDs.",
+      actionRequired: "Use an account login, then fetch cached context history CIDs.",
     });
   }
 
@@ -1310,7 +1082,7 @@ export async function contextHistoryIpfsFetch({ cid } = {}, method, session = nu
       action: action.id,
       message: "Link the wallet that owns this historical context before fetching the CID.",
       actionRequired:
-        "Relink and unlock the wallet that owns the imported history, then load the preview again.",
+        "Relink and unlock the wallet that owns the cached context pointer, then load the preview again.",
     });
   }
 
@@ -1318,10 +1090,10 @@ export async function contextHistoryIpfsFetch({ cid } = {}, method, session = nu
   if (!contextHistoryCids(history).has(normalizedCid)) {
     return actionResponse({
       status: 404,
-      error: "context_cid_not_imported",
+      error: "context_cid_not_cached",
       action: action.id,
-      message: "CID is not part of this account's imported context history.",
-      actionRequired: "Import indexed PFTasks history before hydrating its encrypted CIDs.",
+      message: "CID is not part of this account's cached context history.",
+      actionRequired: "Wait for the PFTL cache reducer to project the wallet pointer, then refresh history.",
     });
   }
 
@@ -2741,8 +2513,7 @@ export async function readiness() {
     context: {
       importReady: false,
       editReady: true,
-      indexedHistoryReady: true,
-      historyRpcReady: true,
+      historyCacheReady: true,
       encryptedCidHydrationReady: true,
       manifestInkReady: publishStatus.configured,
       blockers: [

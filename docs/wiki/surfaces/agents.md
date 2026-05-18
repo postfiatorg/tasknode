@@ -11,7 +11,7 @@ Agents are portable workers that can operate from outside the web app while stil
 
 ## Technical Architecture
 
-The reference implementation lives under `reference_clients/python/tasknode_pftl/`. The local Codex-facing runtime is described by the Task Node skill outside the app repo. The product app should treat agent activity as first-class replayable PFTL state, not as web-only actions.
+The reference implementation lives under `reference_clients/python/tasknode_pftl/`. The product app should treat agent activity as first-class replayable PFTL state, not as web-only actions.
 
 ## Data Model
 
@@ -35,4 +35,3 @@ flowchart LR
 - The app must not assume all task actions originate from the web UX.
 - Replay should reconcile external actions into the cache.
 - Delegated permissions need a separate security design before production.
-

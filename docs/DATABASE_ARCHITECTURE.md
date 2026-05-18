@@ -326,11 +326,11 @@ Rules:
 - Database backups and logs must treat context as sensitive. Do not log bodies.
 - Deleting or delinking a wallet must not delete the current context document.
 
-## Historical Context Imports
+## Historical Context Projection
 
-Historical PFTasks/PFDocs context documents are wallet-owned PFTL/IPFS records.
-The app caches pointer metadata and optional previews separately from the
-current native context document.
+Historical context documents are wallet-owned PFTL/IPFS records. The app
+caches pointer metadata and optional previews separately from the current
+native context document.
 
 Tables:
 

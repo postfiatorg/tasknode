@@ -137,26 +137,23 @@ seed-scoped until decryption.
 
 - The current native context document is account-scoped. Signed-in users can
   create, view, and edit it without a linked wallet.
-- Imported PFT/PFTasks historical context pointers are wallet-scoped. The
-  runtime cache key is account plus linked wallet address, not account alone.
+- Cached PFTL historical context pointers are wallet-scoped. The read model key
+  is account plus linked wallet address, not account alone.
 - Delinking a wallet must hide wallet-derived revision history immediately, but
   it must not delete or block the account's current native context document.
-- Relinking the same wallet may reveal its cached imported pointer history
+- Relinking the same wallet may reveal its cached pointer history
   again; linking a different wallet must not show the previous wallet's
   pointer history.
-- `POST /api/context/history/rpc/import` requires an authenticated account
-  session and uses only the wallet already linked to that account.
-- `POST /api/context/history/indexed` also requires the linked wallet that owns
-  the imported pointers, and rejects snapshots for a different wallet.
 - The browser must not submit an arbitrary wallet address for history restore.
   Changing the restore subject requires relinking or proving a different
   wallet.
-- The server uses full-history PFTL archive WSS `account_tx` to discover
-  `pf.ptr` / `v4` `CONTENT_KIND.CONTEXT` CIDs and stores pointer metadata only.
-- The rapid local balance node is not a valid historical restore source unless
-  it is explicitly replaced with a full-history endpoint.
+- PFTL cache workers use archive-capable `account_tx` to store wallet
+  transactions; reducer events project `pf.ptr` / `v4` `CONTENT_KIND.CONTEXT`
+  CIDs into `context_history_pointers`.
+- The rapid local balance node is not a valid archive backfill source unless it
+  is explicitly replaced with a full-history endpoint.
 - `GET /api/context/history/ipfs/:cid` may fetch encrypted JSON only for CIDs
-  already imported for the signed-in account and currently linked wallet.
+  already cached for the signed-in account and currently linked wallet.
 - Wallet unlock is required only when the browser decrypts a selected CID.
   Mnemonic, private key, wallet password, and decrypted context plaintext must
   never cross the API boundary.

@@ -2886,8 +2886,6 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     error: "",
   });
   const [hydrateMessage, setHydrateMessage] = useState("");
-  const [discoveringHistory, setDiscoveringHistory] = useState(false);
-  const [discoverMessage, setDiscoverMessage] = useState("");
   const editorRef = useRef(null);
   const savedRangeRef = useRef(null);
   const tableWrapRef = useRef(null);
@@ -2912,7 +2910,6 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     setHydrateMessage("");
     setRestoringVersionKey("");
     setHydratedPreviewByCid({});
-    setDiscoverMessage("");
   }, [history?.revision, history?.latestContextPointer?.cid, linkedWalletAddress]);
 
   const canEdit = Boolean(documentState.canEdit);
@@ -2931,27 +2928,26 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     .filter((version) => version.cid);
   const historyPreviewTargetKey = historyPreviewTargets.map((version) => `${version.key}:${version.cid}`).join("|");
   const manifestAction = (context?.actions || []).find((action) => action.id === "ink_manifest");
-  const rpcHistoryAction = (context?.actions || []).find((action) => action.id === "hydrate_rpc_history");
-  const rpcHistoryPath =
-    context?.historyRpcImportPath ||
-    history?.rpcImportPath ||
-    rpcHistoryAction?.path ||
-    "/api/context/history/rpc/import";
-  const canDiscoverHistory = Boolean(
-    activeWalletAddress &&
-    history?.canHydrate &&
-    (rpcHistoryAction?.enabled ?? context?.historyRpcReady ?? true)
-  );
   const vaultDisplay = walletVaultDisplayState(walletVault, linkedWalletAddress);
   const restoringAnyVersion = Boolean(restoringVersionKey);
   const previewedHistoryCount = historyPreviewTargets.filter((version) => hydratedPreviewByCid[version.cid]?.text).length;
   const historyPreviewTotal = historyPreviewTargets.length;
   const historyPointerCount = walletHistoryActive ? Number(history?.pointerCount || 0) : 0;
+  const historySync = walletHistoryActive ? history?.sync || {} : {};
+  const historySyncLabel = !activeWalletAddress
+    ? ""
+    : historySync.status === "error"
+      ? "Sync issue"
+      : historySync.archiveComplete
+        ? "Archive synced"
+        : historySync.status === "ready"
+          ? "Cache synced"
+          : "Syncing history";
   const historySubtitle = !activeWalletAddress
     ? "Current account context is available without a wallet. Wallet history appears after linking."
     : historyPointerCount
-      ? `${historyPointerCount} wallet historical pointer${historyPointerCount === 1 ? "" : "s"} available.`
-      : "No historical PFT pointers imported for the linked wallet yet.";
+      ? `${historyPointerCount} cached wallet pointer${historyPointerCount === 1 ? "" : "s"} available.`
+      : "No cached PFTL context pointers for the linked wallet yet.";
 
   const recomputeDirty = useCallback(() => {
     const currentHtml = editorRef.current?.innerHTML || "";
@@ -3297,32 +3293,6 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     };
   }, [cacheHydratedPreview, historyPreviewTargetKey, onHydrateContext, versionsOpen, walletVault?.unlocked]);
 
-  const discoverHistoricalContext = async () => {
-    if (discoveringHistory) return;
-    if (!activeWalletAddress) {
-      setDiscoverMessage("Link a wallet before finding wallet-owned PFT history.");
-      return;
-    }
-    if (!history?.canHydrate) {
-      setDiscoverMessage("Sign in before finding historical context.");
-      return;
-    }
-
-    setDiscoveringHistory(true);
-    setDiscoverMessage("");
-    try {
-      const result = await requestJson(rpcHistoryPath, { method: "POST" });
-      setDiscoverMessage(result.body?.message || (result.ok ? "Historical context checked." : "Historical context could not be checked."));
-      if (result.ok) {
-        await onContextChange?.();
-      }
-    } catch (error) {
-      setDiscoverMessage(error?.message || "Historical context could not be checked.");
-    } finally {
-      setDiscoveringHistory(false);
-    }
-  };
-
   const applyHydratedContext = useCallback(() => {
     if (!hydratedContext?.text) return;
     setTitle(hydratedContext.title || "Historical PFT Context");
@@ -3621,14 +3591,9 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
                   </>
                 )}
                 {activeWalletAddress && (
-                  <button
-                    className="ctx-version-restore"
-                    disabled={!canDiscoverHistory || discoveringHistory}
-                    onClick={discoverHistoricalContext}
-                    type="button"
-                  >
-                    {discoveringHistory ? "Finding" : "Find PFT history"}
-                  </button>
+                  <span className={`ctx-preview-state${historySync.status === "syncing" ? " is-active" : ""}`}>
+                    {historySyncLabel}
+                  </span>
                 )}
                 {!activeWalletAddress && (
                   <span className="ctx-preview-state">
@@ -3638,7 +3603,9 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
                 <span className="ctx-versions-count">{versions.length} versions</span>
               </div>
             </header>
-            {discoverMessage && <div className="ctx-discover-message">{discoverMessage}</div>}
+            {historySync?.lastError && (
+              <div className="ctx-discover-message">{historySync.lastError}</div>
+            )}
             {previewHydration.error && !previewHydration.active && (
               <div className="ctx-discover-message">{previewHydration.error}</div>
             )}

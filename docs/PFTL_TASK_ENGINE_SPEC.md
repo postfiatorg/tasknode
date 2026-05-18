@@ -1293,9 +1293,8 @@ Recommended next implementation:
 2. Add `server/task-history.js`.
 3. Define the normalized event envelope and reducer.
 4. Add `/api/task-history` returning projected wallet-scoped task state.
-5. Add indexed PFTasks import for pending/in-flight rows.
-6. Add PFTL pointer import for `TASK`, `TASK_UPDATE`, `TASK_SUBMISSION`, and
-   `REWARD`.
+5. Project cached PFTL pointers for `TASK`, `TASK_UPDATE`, `TASK_SUBMISSION`,
+   and `REWARD`.
 7. Replace mock task data with the projection.
 8. Keep task UI unaware of source: PFTasks bridge, RPC replay, or cache.
 9. Add tests for reducer transitions, duplicate events, missing CIDs, reward

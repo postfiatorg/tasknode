@@ -343,38 +343,6 @@ export function extractPftPointerEvents(transactions, walletAddress = "") {
     .sort(sortDesc);
 }
 
-export function contextPointersFromTransactions(transactions, walletAddress = "") {
-  return extractPftPointerEvents(transactions, walletAddress)
-    .filter((event) => event.kind === CONTENT_KIND.CONTEXT);
-}
-
-export function contextEventsToIndexedSnapshot({ walletAddress, contextEvents } = {}) {
-  const events = Array.isArray(contextEvents) ? contextEvents : [];
-  return {
-    source: "pftl_history_rpc",
-    walletAddress,
-    contextRevisions: events.map((event, index) => ({
-      id: event.contextId || `pftl:${event.txHash || event.cid}:${event.memoIndex ?? index}`,
-      cid: event.cid,
-      context_id: event.contextId || null,
-      tx_hash: event.txHash,
-      tx_timestamp: event.createdAt,
-      ledger_index: event.ledgerIndex,
-      memo_index: event.memoIndex ?? index,
-      context_version: event.schema || null,
-      schema: event.schema || null,
-      flags: event.flags || 0,
-      account: event.account || null,
-      destination: event.destination || null,
-      direction: event.direction || null,
-      source: "pftl_history_rpc.account_tx",
-    })),
-    tasks: [],
-    taskEvents: [],
-    taskSubmissions: [],
-  };
-}
-
 export function historyRpcConfig(env = process.env) {
   const hasWssOverride = Object.prototype.hasOwnProperty.call(env, "PFTL_HISTORY_WSS_URL");
   const primaryWssUrl = hasWssOverride
@@ -633,37 +601,5 @@ export async function fetchHistoricalAccountTransactions({
     complete: !marker,
     nextMarker: marker || null,
     attempts,
-  };
-}
-
-export async function discoverContextHistoryFromRpc({
-  walletAddress,
-  env = process.env,
-  fetchImpl = fetch,
-  limit,
-  maxPages,
-} = {}) {
-  const txHistory = await fetchHistoricalAccountTransactions({
-    walletAddress,
-    env,
-    fetchImpl,
-    limit,
-    maxPages,
-  });
-  const contextEvents = contextPointersFromTransactions(txHistory.transactions, txHistory.walletAddress);
-  const snapshot = contextEventsToIndexedSnapshot({
-    walletAddress: txHistory.walletAddress,
-    contextEvents,
-  });
-
-  return {
-    ok: true,
-    walletAddress: txHistory.walletAddress,
-    scannedTransactions: txHistory.transactions.length,
-    accountTxPages: txHistory.pages,
-    accountTxComplete: txHistory.complete,
-    contextUpdateCount: contextEvents.length,
-    contextEvents,
-    snapshot,
   };
 }

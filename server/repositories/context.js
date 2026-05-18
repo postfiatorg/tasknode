@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { normalizeIndexedContextHistory } from "../context-history.js";
+import { normalizeContextHistoryProjection } from "../context-history.js";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
 import {
   getContextDocument as getRuntimeContextDocument,
   getContextHistory as getRuntimeContextHistory,
   saveContextDocument as saveRuntimeContextDocument,
-  saveIndexedContextHistory as saveRuntimeIndexedContextHistory,
+  saveContextHistoryProjection as saveRuntimeContextHistoryProjection,
 } from "../runtime-store.js";
 import { normalizeContextBodyForStorage } from "../../shared/context-html.js";
 
@@ -13,6 +13,7 @@ const maxContextBodyLength = 50_000;
 const maxContextTitleLength = 120;
 const maxContextUpdates = 250;
 const maxTaskEvents = 500;
+const contextProjectionSource = "pftl_cache_context_projection";
 
 function useDatabase() {
   return databaseEnabled();
@@ -148,11 +149,16 @@ function defaultHydration() {
     ipfsFetchReady: true,
     fetchPath: "/api/context/history/ipfs/:cid",
     note:
-      "This bridge stores PFDocs-compatible pointer metadata only. Encrypted CID plaintext is fetched by CID and decrypted after local wallet unlock.",
+      "The cache stores PFTL pointer metadata only. Encrypted CID plaintext is fetched by CID and decrypted after local wallet unlock.",
   };
 }
 
-function emptyContextHistory({ accountId = "", walletAddress = "", canHydrate = false } = {}) {
+function emptyContextHistory({
+  accountId = "",
+  walletAddress = "",
+  canHydrate = false,
+  sync = null,
+} = {}) {
   const normalizedAccountId = accountId ? safeAccountId(accountId) : null;
   const normalizedWalletAddress = walletAddress ? String(walletAddress).trim() : null;
   return {
@@ -162,9 +168,9 @@ function emptyContextHistory({ accountId = "", walletAddress = "", canHydrate = 
         : normalizedAccountId || "signed_out"
     }`,
     accountId: normalizedAccountId,
-    source: "pftasks_indexed_snapshot",
+    source: contextProjectionSource,
     revision: 0,
-    importedAt: null,
+    projectedAt: null,
     walletAddress: normalizedWalletAddress,
     pointerCount: 0,
     contextUpdateCount: 0,
@@ -175,12 +181,46 @@ function emptyContextHistory({ accountId = "", walletAddress = "", canHydrate = 
     hydration: {
       ...defaultHydration(),
       note:
-        "Historical PFT context has not been imported yet. Discover encrypted context CIDs from full-history PFTL RPC, then decrypt locally after wallet unlock.",
+        "No cached PFTL context pointers are available for this wallet yet. Background sync projects context pointers from cached wallet transactions.",
     },
+    sync: sync || publicContextHistorySyncState(null, 0),
     canHydrate: Boolean(canHydrate && normalizedWalletAddress),
-    importPath: "/api/context/history/indexed",
-    rpcImportPath: "/api/context/history/rpc/import",
   };
+}
+
+function publicContextHistorySyncState(row, pointerCount = 0) {
+  const archiveMarker = jsonObject(row?.archive_marker);
+  const lastHotSyncAt = toIso(row?.last_hot_sync_at);
+  const lastArchiveSyncAt = toIso(row?.last_archive_sync_at);
+  const lastError = row?.last_error || null;
+  let status = "syncing";
+  if (lastError) status = "error";
+  else if (archiveMarker.complete === true || lastHotSyncAt || lastArchiveSyncAt || Number(pointerCount || 0) > 0) {
+    status = "ready";
+  }
+  return {
+    source: "pftl_cache",
+    status,
+    archiveComplete: archiveMarker.complete === true,
+    lastHotSyncAt,
+    lastArchiveSyncAt,
+    lastError,
+  };
+}
+
+async function selectContextHistorySync({ walletAddress = "" } = {}) {
+  const wallet = String(walletAddress || "").trim();
+  if (!wallet) return null;
+  const result = await query(
+    `
+      SELECT archive_marker, last_hot_sync_at, last_archive_sync_at, last_error
+      FROM pftl_sync_wallets
+      WHERE wallet_address = $1
+      LIMIT 1
+    `,
+    [wallet]
+  );
+  return result.rows[0] || null;
 }
 
 function pointerType(pointer) {
@@ -407,12 +447,18 @@ export async function getContextHistory({ accountId = "", walletAddress = "" } =
     return getRuntimeContextHistory({ accountId: normalizedAccountId, walletAddress: normalizedWalletAddress });
   }
   if (!normalizedAccountId || !normalizedWalletAddress) {
+    const syncRow = normalizedWalletAddress
+      ? await selectContextHistorySync({ walletAddress: normalizedWalletAddress })
+      : null;
     return emptyContextHistory({
       accountId: normalizedAccountId,
       walletAddress: normalizedWalletAddress,
       canHydrate: Boolean(normalizedAccountId && normalizedWalletAddress),
+      sync: publicContextHistorySyncState(syncRow, 0),
     });
   }
+
+  const syncRow = await selectContextHistorySync({ walletAddress: normalizedWalletAddress });
 
   const imports = await query(
     `
@@ -481,15 +527,11 @@ export async function getContextHistory({ accountId = "", walletAddress = "" } =
   );
 
   if (totalPointers === 0) {
-    const runtimeHistory = getRuntimeContextHistory({
-      accountId: normalizedAccountId,
-      walletAddress: normalizedWalletAddress,
-    });
-    if (Number(runtimeHistory?.pointerCount || 0) > 0) return runtimeHistory;
     return emptyContextHistory({
       accountId: normalizedAccountId,
       walletAddress: normalizedWalletAddress,
       canHydrate: true,
+      sync: publicContextHistorySyncState(syncRow, 0),
     });
   }
 
@@ -511,10 +553,10 @@ export async function getContextHistory({ accountId = "", walletAddress = "" } =
       walletAddress: normalizedWalletAddress,
     })}`,
     accountId: normalizedAccountId,
-    source: latestImport?.source || "pftasks_indexed_snapshot",
-    revision: Number(metadata.importCount || 0) || Number(imports.rowCount || 0) || 1,
-    importedAt: toIso(latestImport?.created_at),
-    normalizedAt: metadata.normalizedAt || null,
+    source: latestImport?.source || contextProjectionSource,
+    revision: Number(metadata.projectionCount || 0) || Number(imports.rowCount || 0) || 1,
+    projectedAt: toIso(latestImport?.created_at),
+    normalizedAt: metadata.normalizedAt || metadata.projectedAt || null,
     walletAddress: normalizedWalletAddress,
     pointerCount: totalPointers,
     contextUpdateCount: totalContextUpdates,
@@ -523,9 +565,8 @@ export async function getContextHistory({ accountId = "", walletAddress = "" } =
     contextUpdates,
     taskEvents,
     hydration: jsonObject(metadata.hydration).fetchPath ? metadata.hydration : defaultHydration(),
+    sync: publicContextHistorySyncState(syncRow, totalPointers),
     canHydrate: true,
-    importPath: "/api/context/history/indexed",
-    rpcImportPath: "/api/context/history/rpc/import",
   };
 }
 
@@ -618,16 +659,21 @@ async function insertPointer({
   return Boolean(inserted.rows[0]);
 }
 
-export async function saveIndexedContextHistory({ accountId = "", snapshot = {} } = {}) {
+export async function saveContextHistoryProjection({ accountId = "", projection = {}, snapshot = {} } = {}) {
   const normalizedAccountId = safeAccountId(accountId);
   if (!normalizedAccountId) {
     return { ok: false, status: 401, error: "context_login_required" };
   }
   if (!useDatabase()) {
-    return saveRuntimeIndexedContextHistory({ accountId: normalizedAccountId, snapshot });
+    return saveRuntimeContextHistoryProjection({
+      accountId: normalizedAccountId,
+      projection: Object.keys(jsonObject(projection)).length ? projection : snapshot,
+    });
   }
 
-  const normalized = normalizeIndexedContextHistory(snapshot);
+  const normalized = normalizeContextHistoryProjection(
+    Object.keys(jsonObject(projection)).length ? projection : snapshot
+  );
   const normalizedWalletAddress = normalized.walletAddress ? String(normalized.walletAddress).trim() : "";
   if (!normalizedWalletAddress) {
     return {
@@ -638,8 +684,8 @@ export async function saveIndexedContextHistory({ accountId = "", snapshot = {} 
   }
 
   await transaction(async (client) => {
-    const importId = `ctximport_${randomUUID()}`;
-    const existingImports = await client.query(
+    const projectionId = `ctxproj_${randomUUID()}`;
+    const existingProjections = await client.query(
       `
         SELECT count(*)::integer AS count
         FROM context_history_imports
@@ -648,7 +694,7 @@ export async function saveIndexedContextHistory({ accountId = "", snapshot = {} 
       `,
       [normalizedAccountId, normalizedWalletAddress]
     );
-    const importCount = Number(existingImports.rows[0]?.count || 0) + 1;
+    const projectionCount = Number(existingProjections.rows[0]?.count || 0) + 1;
 
     await client.query(
       `
@@ -666,16 +712,16 @@ export async function saveIndexedContextHistory({ accountId = "", snapshot = {} 
         VALUES ($1, $2, $3, $4, 'completed', $5, $6, $7, $8)
       `,
       [
-        importId,
+        projectionId,
         normalizedAccountId,
         normalizedWalletAddress,
-        normalized.source,
+        normalized.source || contextProjectionSource,
         normalized.pointerCount,
         normalized.contextUpdateCount,
         normalized.taskEventCount,
         {
           normalizedAt: normalized.normalizedAt,
-          importCount,
+          projectionCount,
           hydration: normalized.hydration,
         },
       ]
@@ -684,7 +730,7 @@ export async function saveIndexedContextHistory({ accountId = "", snapshot = {} 
     for (const pointer of normalized.contextUpdates) {
       await insertPointer({
         client,
-        importId,
+        importId: projectionId,
         accountId: normalizedAccountId,
         walletAddress: normalizedWalletAddress,
         pointer,
@@ -696,7 +742,7 @@ export async function saveIndexedContextHistory({ accountId = "", snapshot = {} 
       if (!pointer?.cid) continue;
       await insertPointer({
         client,
-        importId,
+        importId: projectionId,
         accountId: normalizedAccountId,
         walletAddress: normalizedWalletAddress,
         pointer,

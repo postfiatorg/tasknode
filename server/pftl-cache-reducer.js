@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import sodium from "libsodium-wrappers";
 import { Wallet } from "xrpl";
 import { fetchContextIpfsJson } from "./context-ipfs.js";
-import { saveIndexedContextHistory } from "./repositories/context.js";
+import { saveContextHistoryProjection } from "./repositories/context.js";
 import { importTaskReplayReceipt } from "./repositories/tasks.js";
 import { databaseEnabled, query, transaction } from "./db/pool.js";
 
@@ -246,7 +246,7 @@ function contextSnapshotFromPointer({ event, pointer }) {
         kindLabel: pointer.pointer_kind || decoded.kindLabel || "CONTEXT",
         account: pointer.account_address || null,
         destination: pointer.destination_address || null,
-        direction: pointer.direction || "indexed",
+        direction: pointer.direction || "cached",
         source: "pftl_cache.context_pointer",
       },
     ],
@@ -260,9 +260,9 @@ async function reduceContextPointer(event) {
   if (!event.account_id) throw new Error("context_reducer_account_id_missing");
   const pointer = await pointerMemoForReducerEvent(event);
   if (!pointer?.cid) throw new Error("context_pointer_missing");
-  const saved = await saveIndexedContextHistory({
+  const saved = await saveContextHistoryProjection({
     accountId: event.account_id,
-    snapshot: contextSnapshotFromPointer({ event, pointer }),
+    projection: contextSnapshotFromPointer({ event, pointer }),
   });
   if (!saved.ok) throw new Error(saved.error || "context_pointer_save_failed");
   return {

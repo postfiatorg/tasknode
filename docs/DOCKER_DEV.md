@@ -129,9 +129,10 @@ PFTL_HISTORY_ACCOUNT_TX_LIMIT=200
 PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES=8
 ```
 
-Use `POST /api/context/history/rpc/import` only after signing in and linking a
-wallet. The endpoint imports encrypted context CID metadata; wallet unlock and
-browser-local decryption happen afterward.
+Context history is populated by the PFTL cache workers and reducer. After
+signing in and linking a wallet, use `GET /api/context/history` to inspect the
+cached projection; wallet unlock and browser-local decryption happen only when
+fetching a selected CID preview.
 
 ## Edit Loop
 

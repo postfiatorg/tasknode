@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
-import { normalizeIndexedContextHistory } from "./context-history.js";
+import { normalizeContextHistoryProjection } from "./context-history.js";
 
 const defaultStorePath = path.join("/tmp", "tasknodeofficial-runtime-store.json");
 export const sessionCookieName = "tasknode_session";
@@ -1544,9 +1544,9 @@ function emptyContextHistory({ accountId = "", walletAddress = "", canHydrate = 
         : normalizedAccountId || "signed_out"
     }`,
     accountId: normalizedAccountId,
-    source: "pftasks_indexed_snapshot",
+    source: "pftl_cache_context_projection",
     revision: 0,
-    importedAt: null,
+    projectedAt: null,
     walletAddress: normalizedWalletAddress,
     pointerCount: 0,
     contextUpdateCount: 0,
@@ -1560,11 +1560,17 @@ function emptyContextHistory({ accountId = "", walletAddress = "", canHydrate = 
       ipfsFetchReady: true,
       fetchPath: "/api/context/history/ipfs/:cid",
       note:
-        "Historical PFT context has not been imported yet. Discover encrypted context CIDs from full-history PFTL RPC, then decrypt locally after wallet unlock.",
+        "No cached PFTL context pointers are available for this wallet yet. Background sync projects context pointers from cached wallet transactions.",
+    },
+    sync: {
+      source: "runtime_store",
+      status: normalizedWalletAddress ? "syncing" : "ready",
+      archiveComplete: false,
+      lastHotSyncAt: null,
+      lastArchiveSyncAt: null,
+      lastError: null,
     },
     canHydrate: Boolean(canHydrate && normalizedWalletAddress),
-    importPath: "/api/context/history/indexed",
-    rpcImportPath: "/api/context/history/rpc/import",
   };
 }
 
@@ -1583,31 +1589,14 @@ export function getContextHistory({ accountId = "", walletAddress = "" } = {}) {
       ...existing,
       walletAddress: existing.walletAddress || normalizedWalletAddress,
       canHydrate: true,
-      importPath: "/api/context/history/indexed",
-      rpcImportPath: "/api/context/history/rpc/import",
-    };
-  }
-
-  const legacyExisting = hasAccount ? state.contextHistorySnapshots[normalizedAccountId] : null;
-  if (
-    legacyExisting &&
-    normalizedWalletAddress &&
-    legacyExisting.walletAddress === normalizedWalletAddress
-  ) {
-    const migrated = {
-      ...legacyExisting,
-      id: legacyExisting.id || `ctx_history_${snapshotKey}`,
-      accountId: normalizedAccountId,
-      walletAddress: normalizedWalletAddress,
-    };
-    state.contextHistorySnapshots[snapshotKey] = migrated;
-    delete state.contextHistorySnapshots[normalizedAccountId];
-    saveState();
-    return {
-      ...migrated,
-      canHydrate: true,
-      importPath: "/api/context/history/indexed",
-      rpcImportPath: "/api/context/history/rpc/import",
+      sync: existing.sync || {
+        source: "runtime_store",
+        status: "ready",
+        archiveComplete: false,
+        lastHotSyncAt: null,
+        lastArchiveSyncAt: null,
+        lastError: null,
+      },
     };
   }
 
@@ -1618,13 +1607,15 @@ export function getContextHistory({ accountId = "", walletAddress = "" } = {}) {
   });
 }
 
-export function saveIndexedContextHistory({ accountId = "", snapshot = {} } = {}) {
+export function saveContextHistoryProjection({ accountId = "", projection = {}, snapshot = {} } = {}) {
   if (!accountId) {
     return { ok: false, status: 401, error: "context_login_required" };
   }
 
   const normalizedAccountId = safeId(accountId, "account");
-  const normalized = normalizeIndexedContextHistory(snapshot);
+  const normalized = normalizeContextHistoryProjection(
+    projection && typeof projection === "object" && Object.keys(projection).length ? projection : snapshot
+  );
   const normalizedWalletAddress = normalized.walletAddress ? String(normalized.walletAddress).trim() : "";
   if (!normalizedWalletAddress) {
     return {
@@ -1645,7 +1636,7 @@ export function saveIndexedContextHistory({ accountId = "", snapshot = {} } = {}
     accountId: normalizedAccountId,
     source: normalized.source,
     revision: Number(existing?.revision || 0) + 1,
-    importedAt: now,
+    projectedAt: now,
     normalizedAt: normalized.normalizedAt,
     walletAddress: normalizedWalletAddress,
     pointerCount: normalized.pointerCount,
@@ -1655,6 +1646,14 @@ export function saveIndexedContextHistory({ accountId = "", snapshot = {} } = {}
     contextUpdates: normalized.contextUpdates.slice(0, 50),
     taskEvents: normalized.taskEvents.slice(0, 200),
     hydration: normalized.hydration,
+    sync: {
+      source: "runtime_store",
+      status: "ready",
+      archiveComplete: false,
+      lastHotSyncAt: now,
+      lastArchiveSyncAt: null,
+      lastError: null,
+    },
   };
 
   state.contextHistorySnapshots[snapshotKey] = document;
@@ -1668,8 +1667,6 @@ export function saveIndexedContextHistory({ accountId = "", snapshot = {} } = {}
     history: {
       ...document,
       canHydrate: true,
-      importPath: "/api/context/history/indexed",
-      rpcImportPath: "/api/context/history/rpc/import",
     },
   };
 }

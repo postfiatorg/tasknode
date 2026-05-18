@@ -20,7 +20,7 @@ import {
   contextActions,
   contextEditSave,
   contextManifestInk,
-  contextHistoryRpcImport, contextIndexedHistoryImport, contextHistoryIpfsFetch,
+  contextHistoryIpfsFetch,
   readiness,
   taskRequestIntentStart,
   usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync,
@@ -876,20 +876,6 @@ async function routeApi(req, url, res) {
     return true;
   }
 
-  if (url.pathname === "/api/context/history/indexed") {
-    const payload = req.method === "POST" ? await readJson(req, 262144) : {};
-    const result = await contextIndexedHistoryImport(payload, req.method, session);
-    json(res, result.status, result.body);
-    return true;
-  }
-
-  if (url.pathname === "/api/context/history/rpc/import") {
-    const payload = req.method === "POST" ? await readJson(req, 8192) : {};
-    const result = await contextHistoryRpcImport(payload, req.method, session);
-    json(res, result.status, result.body);
-    return true;
-  }
-
   if (url.pathname === "/api/usage") {
     const state = await getState();
     json(res, 200, state.usage);
@@ -967,6 +953,10 @@ const server = createServer((req, res) => {
   routeApi(req, url, res)
     .then((handled) => {
       if (handled) return;
+      if (url.pathname.startsWith("/api/")) {
+        json(res, 404, { ok: false, error: "api_route_not_found" });
+        return;
+      }
 
       serveStatic(url, res).catch((error) => {
         json(res, 500, { ok: false, error: error?.message || "internal_error" });

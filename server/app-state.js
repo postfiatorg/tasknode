@@ -160,20 +160,18 @@ export async function appState(session = null) {
         walletAddress: walletLinked ? linkedWallet.address : "",
       }),
       savePath: "/api/context/edit/save",
-      historyImportPath: "/api/context/history/indexed",
-      historyRpcImportPath: "/api/context/history/rpc/import",
+      historyPath: "/api/context/history",
       importReady: runtimeReadiness.context.importReady,
       editReady: runtimeReadiness.context.editReady,
-      indexedHistoryReady: runtimeReadiness.context.indexedHistoryReady,
-      historyRpcReady: runtimeReadiness.context.historyRpcReady,
+      historyCacheReady: runtimeReadiness.context.historyCacheReady,
       encryptedCidHydrationReady: runtimeReadiness.context.encryptedCidHydrationReady,
       manifestInkReady: runtimeReadiness.context.manifestInkReady,
       sources: [
         {
           label: "PFT Context",
-          status: runtimeReadiness.context.historyRpcReady ? "historical restore ready" : "supported later",
+          status: runtimeReadiness.context.historyCacheReady ? "cache projection ready" : "supported later",
           note:
-            "Full-history PFTL account history discovers encrypted context CIDs; indexed PFTasks rows remain a deterministic fixture/import path.",
+            "PFTL wallet sync stores account transactions in Postgres; reducer events project encrypted context CIDs into the context history read model.",
         },
         {
           label: "Google Docs share link",

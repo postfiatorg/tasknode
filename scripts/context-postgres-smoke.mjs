@@ -6,7 +6,7 @@ import {
   getContextDocument,
   getContextHistory,
   saveContextDocument,
-  saveIndexedContextHistory,
+  saveContextHistoryProjection,
 } from "../server/repositories/context.js";
 
 if (!process.env.DATABASE_URL) {
@@ -52,9 +52,9 @@ const unlinkedHistory = await getContextHistory({ accountId });
 assert.equal(unlinkedHistory.pointerCount, 0);
 assert.equal(unlinkedHistory.canHydrate, false);
 
-const imported = await saveIndexedContextHistory({
+const projected = await saveContextHistoryProjection({
   accountId,
-  snapshot: {
+  projection: {
     walletAddress,
     contextRevisions: [
       {
@@ -87,13 +87,13 @@ const imported = await saveIndexedContextHistory({
     ],
   },
 });
-assert.equal(imported.ok, true);
-assert.equal(imported.history.contextUpdateCount, 1);
-assert.equal(imported.history.taskEventCount, 1);
+assert.equal(projected.ok, true);
+assert.equal(projected.history.contextUpdateCount, 1);
+assert.equal(projected.history.taskEventCount, 1);
 
-const replay = await saveIndexedContextHistory({
+const replay = await saveContextHistoryProjection({
   accountId,
-  snapshot: {
+  projection: {
     walletAddress,
     contextRevisions: [
       {

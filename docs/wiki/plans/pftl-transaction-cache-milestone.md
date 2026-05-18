@@ -117,10 +117,9 @@ Reason: those rows are replay substrate. They preserve enough chain evidence to 
 
 ## Current Remaining Work
 
-1. Make Context restore read directly from `pftl_pointer_memos`.
-2. Add task replay recovery tooling from cached pointer rows plus IPFS payloads.
-3. Define a public-scale cold-storage policy for raw transaction growth.
+1. Add task replay recovery tooling from cached pointer rows plus IPFS payloads.
+2. Define a public-scale cold-storage policy for raw transaction growth.
 
 ## Done Definition
 
-The milestone is done when Wallet, Context, and Tasks can read from the Postgres cache without request-time historical scans, and projection loss can be repaired from cached pointer rows plus PFTL/IPFS replay.
+The milestone is done when Wallet, Context, and Tasks read from the Postgres cache without request-time historical scans, and projection loss can be repaired from cached pointer rows plus PFTL/IPFS replay.

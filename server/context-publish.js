@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import sodium from "libsodium-wrappers";
 import { Wallet } from "xrpl";
 import { getLinkedWallet } from "./runtime-store.js";
-import { getContextDocument, saveIndexedContextHistory } from "./repositories/context.js";
+import { getContextDocument, saveContextHistoryProjection } from "./repositories/context.js";
 import { contextIpfsPinStatus, pinContextIpfsJson } from "./context-ipfs.js";
 import { buildPftPointerMemo, CONTENT_KIND, POINTER_FLAGS } from "./pftl-pointer.js";
 import { preparePftPointerTransaction, pftlSubmitStatus, submitSignedPftTransaction } from "./pftl-submit.js";
@@ -494,16 +494,16 @@ async function submitContextPublish({ payload, session }) {
         submit.destination && submit.destination === resolved.wallet.address
           ? "self"
           : "outbound",
-      source: "tasknodeofficial.context_publish",
+      source: "pftl_cache.context_publish",
       word_count: context.wordCount ?? null,
     }],
     tasks: [],
     taskEvents: [],
     taskSubmissions: [],
   };
-  const saved = await saveIndexedContextHistory({
+  const saved = await saveContextHistoryProjection({
     accountId: resolved.accountId,
-    snapshot,
+    projection: snapshot,
   });
 
   return okResponse({

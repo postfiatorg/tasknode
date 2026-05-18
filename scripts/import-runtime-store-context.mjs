@@ -3,9 +3,9 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { closePool, query, transaction } from "../server/db/pool.js";
-import { normalizeIndexedContextHistory } from "../server/context-history.js";
+import { normalizeContextHistoryProjection } from "../server/context-history.js";
 import {
-  saveIndexedContextHistory,
+  saveContextHistoryProjection,
 } from "../server/repositories/context.js";
 
 function argValue(name, fallback = "") {
@@ -204,7 +204,7 @@ const contextDocuments = Object.entries(jsonObject(state.contextDocuments))
 
 const contextHistorySnapshots = Object.entries(jsonObject(state.contextHistorySnapshots))
   .map(([key, snapshot]) => {
-    const normalized = normalizeIndexedContextHistory(snapshot);
+    const normalized = normalizeContextHistoryProjection(snapshot);
     return {
       key,
       accountId: accountIdForHistory(key, snapshot),
@@ -260,9 +260,9 @@ for (const history of contextHistorySnapshots) {
     continue;
   }
 
-  const result = await saveIndexedContextHistory({
+  const result = await saveContextHistoryProjection({
     accountId: history.accountId,
-    snapshot: history.snapshot,
+    projection: history.snapshot,
   });
   if (result.ok) importedHistorySnapshots += 1;
 }

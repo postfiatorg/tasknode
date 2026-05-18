@@ -179,8 +179,8 @@ function normalizeContextRows(rows, walletAddress) {
   return asArray(rows).map((row, index) => {
     const cid = normalizeCid(pickField(row, ["cid", "context_doc_cid", "contextDocCid"]));
     if (!cid) return null;
-    const source = normalizeText(pickField(row, ["source"])) || "pftasks.context_revisions";
-    const direction = normalizeText(pickField(row, ["direction"])) || "indexed";
+    const source = normalizeText(pickField(row, ["source"])) || "pftl_cache.context_pointer";
+    const direction = normalizeText(pickField(row, ["direction"])) || "cached";
     return {
       cid,
       kind: CONTENT_KIND.CONTEXT,
@@ -226,8 +226,8 @@ function normalizeTaskEventRows(rows, taskMap, walletAddress) {
       createdAt: normalizeDate(pickField(row, ["created_at", "createdAt"])),
       account: walletAddress || null,
       destination: null,
-      direction: normalizeText(pickField(row, ["direction"])) || "indexed",
-      source: normalizeText(pickField(row, ["source"])) || "pftasks.task_events",
+      direction: normalizeText(pickField(row, ["direction"])) || "cached",
+      source: normalizeText(pickField(row, ["source"])) || "pftl_cache.task_pointer",
       eventId: normalizeText(pickField(row, ["id", "event_id", "eventId"])) || null,
       eventType,
       title: task.title || "",
@@ -273,8 +273,8 @@ function normalizeSubmissionRows(rows, taskMap, existingEvents, walletAddress) {
       createdAt: normalizeDate(pickField(row, ["created_at", "createdAt"])),
       account: walletAddress || null,
       destination: null,
-      direction: "indexed",
-      source: "pftasks.task_submissions",
+      direction: "cached",
+      source: "pftl_cache.task_submission",
       eventId: normalizeText(pickField(row, ["id", "submission_id", "submissionId"])) || null,
       eventType: "submission_recorded",
       title: task.title || "",
@@ -287,20 +287,20 @@ function normalizeSubmissionRows(rows, taskMap, existingEvents, walletAddress) {
   return normalized;
 }
 
-export function normalizeIndexedContextHistory(input = {}) {
-  const indexedData = isPlainObject(input.indexedData) ? input.indexedData : input;
+export function normalizeContextHistoryProjection(input = {}) {
+  const projectionData = isPlainObject(input.projectionData) ? input.projectionData : input;
   const walletAddress = normalizeText(
     input.walletAddress ||
-    pickField(indexedData.wallet, ["wallet_address", "walletAddress", "address"]) ||
-    pickField(indexedData, ["wallet_address", "walletAddress", "address"])
+    pickField(projectionData.wallet, ["wallet_address", "walletAddress", "address"]) ||
+    pickField(projectionData, ["wallet_address", "walletAddress", "address"])
   ) || null;
-  const contextRevisions = input.contextRevisions || indexedData.contextRevisions ||
-    indexedData.context_revisions || indexedData.context || [];
-  const tasks = input.tasks || indexedData.tasks || [];
-  const taskEvents = input.taskEvents || indexedData.taskEvents || indexedData.task_events || [];
+  const contextRevisions = input.contextRevisions || input.contextUpdates || projectionData.contextRevisions ||
+    projectionData.contextUpdates || projectionData.context_revisions || projectionData.context || [];
+  const tasks = input.tasks || projectionData.tasks || [];
+  const taskEvents = input.taskEvents || projectionData.taskEvents || projectionData.task_events || [];
   const taskSubmissions = input.taskSubmissions || input.submissions ||
-    indexedData.taskSubmissions || indexedData.task_submissions || indexedData.submissions || [];
-  const source = normalizeText(input.source || indexedData.source) || "pftasks_indexed_snapshot";
+    projectionData.taskSubmissions || projectionData.task_submissions || projectionData.submissions || [];
+  const source = normalizeText(input.source || projectionData.source) || "pftl_cache_context_projection";
   const taskMap = normalizeTaskMap(tasks);
   const contextUpdates = dedupeEvents(normalizeContextRows(contextRevisions, walletAddress)).sort(sortDesc);
   const taskEventRows = normalizeTaskEventRows(taskEvents, taskMap, walletAddress);

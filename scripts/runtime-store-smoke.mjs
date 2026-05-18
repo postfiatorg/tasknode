@@ -55,7 +55,7 @@ try {
     completeWalletInitiationGrant,
     reserveWalletInitiationGrant,
     saveContextDocument,
-    saveIndexedContextHistory,
+    saveContextHistoryProjection,
     usageSummary,
     walletInitiationGrantStatus,
   } = await import("../server/runtime-store.js");
@@ -678,9 +678,9 @@ try {
     throw new Error(`Native context did not save: ${JSON.stringify(savedContext)}`);
   }
 
-  const imported = saveIndexedContextHistory({
+  const projected = saveContextHistoryProjection({
     accountId: "acct_runtime_smoke",
-    snapshot: {
+    projection: {
       walletAddress: "rSmokeWalletAddress",
       contextRevisions: [
         {
@@ -725,7 +725,7 @@ try {
   });
   const serializedHistory = JSON.stringify(history);
 
-  if (!imported.ok || history.contextUpdateCount !== 1 || history.taskEventCount !== 1) {
+  if (!projected.ok || history.contextUpdateCount !== 1 || history.taskEventCount !== 1) {
     throw new Error(`Unexpected context history summary: ${serializedHistory}`);
   }
 
@@ -831,11 +831,11 @@ try {
   }
 
   if (!serializedHistory.includes("bafyEvidenceSmoke")) {
-    throw new Error("Indexed task event CID was not retained.");
+    throw new Error("Projected task event CID was not retained.");
   }
 
   if (serializedHistory.includes("PRIVATE EVIDENCE TEXT MUST NOT BE STORED")) {
-    throw new Error("Indexed history import leaked raw event payload text.");
+    throw new Error("Context history projection leaked raw event payload text.");
   }
 
   console.log("runtime store smoke ok");
