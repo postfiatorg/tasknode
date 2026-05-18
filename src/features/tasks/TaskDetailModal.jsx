@@ -454,6 +454,11 @@ function TaskForensicsEvent({ copiedValue, event, index, onCopy }) {
   const details = Array.isArray(event.details) ? event.details : [];
   const rawPayload = event.rawPayload && typeof event.rawPayload === "object" ? event.rawPayload : null;
   const observed = formatForensicsTimestamp(event.observedAt || event.occurredAt);
+  const auditItems = [
+    { label: "CID", name: `event-cid-${index}`, value: event.cid },
+    { label: "Transaction", name: `event-tx-${index}`, value: event.txHash },
+    { label: "Digest", name: `event-digest-${index}`, value: event.eventDigest },
+  ].filter((item) => item.value);
   return (
     <article className="task-forensics-row">
       <div className="task-forensics-index">{index + 1}</div>
@@ -471,15 +476,24 @@ function TaskForensicsEvent({ copiedValue, event, index, onCopy }) {
           {event.memoIndex !== null && event.memoIndex !== undefined && <span>Memo {event.memoIndex}</span>}
           {event.source && <span>{event.source}</span>}
         </div>
-        <TaskAuditValue label="CID" name={`event-cid-${index}`} onCopy={onCopy} value={event.cid} copiedValue={copiedValue} />
-        <TaskAuditValue label="Transaction" name={`event-tx-${index}`} onCopy={onCopy} value={event.txHash} copiedValue={copiedValue} />
-        {event.eventDigest && (
-          <TaskAuditValue label="Digest" name={`event-digest-${index}`} onCopy={onCopy} value={event.eventDigest} copiedValue={copiedValue} />
+        {auditItems.length > 0 && (
+          <div className="task-event-audit-grid">
+            {auditItems.map((item) => (
+              <TaskAuditValue
+                copiedValue={copiedValue}
+                key={item.name}
+                label={item.label}
+                name={item.name}
+                onCopy={onCopy}
+                value={item.value}
+              />
+            ))}
+          </div>
         )}
         {details.length > 0 && (
           <div className="task-event-details">
             {details.map((detail) => (
-              <div key={`${detail.label}-${detail.value}`}>
+              <div className={detail.value.length > 160 ? "is-wide" : ""} key={`${detail.label}-${detail.value}`}>
                 <span>{detail.label}</span>
                 <p>{detail.value}</p>
               </div>

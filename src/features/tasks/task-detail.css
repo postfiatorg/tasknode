@@ -611,6 +611,13 @@
   margin-bottom: 6px;
 }
 
+.task-event-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .task-event-meta span,
 .task-reducer-events span {
   padding: 5px 8px;
@@ -624,9 +631,10 @@
 
 .task-event-details {
   display: grid;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid #f0eee8;
 }
 
@@ -634,6 +642,10 @@
   display: grid;
   gap: 3px;
   min-width: 0;
+}
+
+.task-event-details div.is-wide {
+  grid-column: 1 / -1;
 }
 
 .task-event-details span,
@@ -711,7 +723,7 @@
 }
 
 .task-forensics-row .task-audit-value {
-  margin-top: 7px;
+  width: 100%;
 }
 
 .task-audit-value span {
@@ -766,7 +778,9 @@
 
   .task-modal-stats,
   .task-forensics-summary,
-  .task-audit-grid {
+  .task-audit-grid,
+  .task-event-audit-grid,
+  .task-event-details {
     grid-template-columns: 1fr;
   }
 
