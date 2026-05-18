@@ -19,6 +19,10 @@ function numeric(value) {
   return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : 0;
 }
 
+function hasNumericValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
 function titleCase(value = "") {
   return String(value || "")
     .replace(/[_-]+/g, " ")
@@ -95,7 +99,8 @@ function taskSteps(row, generatedTask = {}) {
 function publicTask(row) {
   const rewardActual = numeric(row.reward_actual_pft);
   const rewardOffer = numeric(row.reward_offer_pft);
-  const pft = rewardActual || rewardOffer;
+  const actualRewardRecorded = hasNumericValue(row.reward_actual_pft);
+  const pft = row.status === "rewarded" && actualRewardRecorded ? rewardActual : rewardOffer;
   const metadata = safeObject(row.metadata_json);
   const generatedTask = safeObject(metadata.generatedTask);
   const verification = safeObject(row.verification_policy_json);
@@ -652,7 +657,7 @@ function projectionForReceipt(receipt) {
 function pointerKindForSchema(schema = "") {
   if (schema === "pf.reward.v1") return "REWARD";
   if (schema === "pf.task.submission.v1" || schema === "pf.task.verification_response.v1") return "TASK_SUBMISSION";
-  if (schema === "pf.task.update.v1") return "TASK_UPDATE";
+  if (schema === "pf.task.update.v1" || schema === "pf.task.reward_decision.v1") return "TASK_UPDATE";
   return "TASK";
 }
 

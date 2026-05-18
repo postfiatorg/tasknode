@@ -25,8 +25,11 @@ const authorityWallet = Wallet.generate().address;
 const allocationWallet = Wallet.generate().address;
 const contextTxHash = `PFTL_REDUCER_CONTEXT_${runId}`;
 const taskTxHash = `PFTL_REDUCER_TASK_${runId}`;
+const rewardDecisionTxHash = `PFTL_REDUCER_REWARD_DECISION_${runId}`;
+const txHashes = [contextTxHash, taskTxHash, rewardDecisionTxHash];
 const contextCid = `bafkreireducercontext${Date.now()}`;
 const taskCid = `bafkreireducertask${Date.now()}`;
+const rewardDecisionCid = `bafkreireducerrewarddecision${Date.now()}`;
 const taskId = `task_${runId}`;
 
 function sha256Hex(value) {
@@ -104,16 +107,16 @@ function txEntry({ txHash, pointerMemo, ledgerIndex }) {
 }
 
 async function cleanup() {
-  await query("DELETE FROM pftl_cache_reducer_events WHERE tx_hash = ANY($1)", [[contextTxHash, taskTxHash]]);
-  await query("DELETE FROM context_history_pointers WHERE tx_hash = ANY($1)", [[contextTxHash, taskTxHash]]);
+  await query("DELETE FROM pftl_cache_reducer_events WHERE tx_hash = ANY($1)", [txHashes]);
+  await query("DELETE FROM context_history_pointers WHERE tx_hash = ANY($1)", [txHashes]);
   await query("DELETE FROM context_history_imports WHERE account_id = $1 AND wallet_address = $2", [accountId, userWallet]);
   await query("DELETE FROM task_events WHERE task_id = $1", [taskId]);
   await query("DELETE FROM task_projections WHERE task_id = $1", [taskId]);
-  await query("DELETE FROM pftl_task_pointer_events WHERE source_tx_hash = ANY($1)", [[contextTxHash, taskTxHash]]);
+  await query("DELETE FROM pftl_task_pointer_events WHERE source_tx_hash = ANY($1)", [txHashes]);
   await query("DELETE FROM pftl_task_sync_runs WHERE account_id = $1 AND wallet_address = $2", [accountId, userWallet]);
-  await query("DELETE FROM pftl_pointer_memos WHERE tx_hash = ANY($1)", [[contextTxHash, taskTxHash]]);
-  await query("DELETE FROM pftl_wallet_transactions WHERE tx_hash = ANY($1)", [[contextTxHash, taskTxHash]]);
-  await query("DELETE FROM pftl_transactions WHERE tx_hash = ANY($1)", [[contextTxHash, taskTxHash]]);
+  await query("DELETE FROM pftl_pointer_memos WHERE tx_hash = ANY($1)", [txHashes]);
+  await query("DELETE FROM pftl_wallet_transactions WHERE tx_hash = ANY($1)", [txHashes]);
+  await query("DELETE FROM pftl_transactions WHERE tx_hash = ANY($1)", [txHashes]);
   await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = $1", [userWallet]);
 }
 
@@ -136,6 +139,12 @@ try {
     cid: taskCid,
     kind: "TASK",
     schema: 1,
+  });
+  const rewardDecisionPointer = buildPftPointerMemo({
+    cid: rewardDecisionCid,
+    kind: "TASK_UPDATE",
+    schema: 1,
+    taskId,
   });
 
   const taskOffer = {
@@ -168,15 +177,36 @@ try {
     deadline_at: new Date(Date.now() + 7200000).toISOString(),
   };
   const encryptedTaskOffer = await encryptForService(taskOffer);
-  const ipfsPayloads = new Map([[taskCid, encryptedTaskOffer]]);
+  const rewardDecision = {
+    schema: "pf.task.reward_decision.v1",
+    task_id: taskId,
+    status_after: "reward_decided",
+    score: {
+      decision: "reject",
+      reward_pft: "0.00",
+    },
+    subject_wallet: userWallet,
+    authority_wallet: authorityWallet,
+    allocation_wallet: allocationWallet,
+  };
+  const encryptedRewardDecision = await encryptForService(rewardDecision);
+  const ipfsPayloads = new Map([
+    [taskCid, encryptedTaskOffer],
+    [rewardDecisionCid, encryptedRewardDecision],
+  ]);
 
   const contextEntry = txEntry({ txHash: contextTxHash, pointerMemo: contextPointer, ledgerIndex: 810001 });
   const taskEntry = txEntry({ txHash: taskTxHash, pointerMemo: taskPointer, ledgerIndex: 810002 });
+  const rewardDecisionEntry = txEntry({
+    txHash: rewardDecisionTxHash,
+    pointerMemo: rewardDecisionPointer,
+    ledgerIndex: 810003,
+  });
   await storePftlAccountTransactions({
     walletAddress: userWallet,
-    transactions: [contextEntry, taskEntry],
+    transactions: [contextEntry, taskEntry, rewardDecisionEntry],
   });
-  for (const entry of [contextEntry, taskEntry]) {
+  for (const entry of [contextEntry, taskEntry, rewardDecisionEntry]) {
     await enqueuePftlReducerEventsForTransaction({
       walletAddress: userWallet,
       accountId,
@@ -196,9 +226,9 @@ try {
       WHERE tx_hash = ANY($1)
       RETURNING *
     `,
-    [[contextTxHash, taskTxHash]]
+    [txHashes]
   );
-  assert.equal(reducerEvents.rows.length, 4);
+  assert.equal(reducerEvents.rows.length, 6);
 
   const reducerOptions = {
     fetchIpfsJson: async ({ cid }) => ({
@@ -224,19 +254,20 @@ try {
   assert.equal(contextRows.rows[0].pointer_type, "context");
 
   const projectionRows = await query(
-    "SELECT status, title, reward_offer_pft::text AS reward_offer_pft FROM task_projections WHERE task_id = $1",
+    "SELECT status, title, reward_offer_pft::text AS reward_offer_pft, reward_actual_pft::text AS reward_actual_pft FROM task_projections WHERE task_id = $1",
     [taskId]
   );
   assert.equal(projectionRows.rows.length, 1);
-  assert.equal(projectionRows.rows[0].status, "proposed");
+  assert.equal(projectionRows.rows[0].status, "rewarded");
   assert.equal(projectionRows.rows[0].title, "Reducer smoke projected task");
   assert.equal(projectionRows.rows[0].reward_offer_pft, "12.500000");
+  assert.equal(projectionRows.rows[0].reward_actual_pft, "0.000000");
 
   const reducerRows = await query(
     "SELECT reducer_kind, status FROM pftl_cache_reducer_events WHERE tx_hash = ANY($1)",
-    [[contextTxHash, taskTxHash]]
+    [txHashes]
   );
-  assert.equal(reducerRows.rows.length, 4);
+  assert.equal(reducerRows.rows.length, 6);
   assert.ok(reducerRows.rows.every((row) => row.status === "completed"));
 
   console.log("pftl cache reducer postgres smoke ok");

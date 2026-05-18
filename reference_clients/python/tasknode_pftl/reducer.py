@@ -120,6 +120,10 @@ def reduce_task_events(events: list[ReplayEvent]) -> dict[str, TaskProjection]:
                 projection.status = "submitted"
         elif schema == "pf.task.verification_response.v1":
             projection.status = "verification_response_submitted"
+        elif schema == "pf.task.reward_decision.v1":
+            projection.status = "rewarded"
+            score = payload.get("score") or {}
+            projection.reward_actual_pft = str(score.get("reward_pft") or payload.get("reward_pft") or "0")
         elif schema == "pf.reward.v1":
             projection.status = "rewarded"
             projection.reward_actual_pft = str(payload.get("reward_pft") or "")

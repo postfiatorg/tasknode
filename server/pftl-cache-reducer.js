@@ -272,36 +272,6 @@ async function reduceContextPointer(event) {
   };
 }
 
-async function taskPointerRows({ walletAddress, taskId }) {
-  const result = await query(
-    `
-      SELECT
-        pm.*,
-        t.ledger_index AS tx_ledger_index,
-        t.close_time,
-        t.account AS account_address,
-        t.destination AS destination_address,
-        wt.direction
-      FROM pftl_pointer_memos pm
-      LEFT JOIN pftl_transactions t ON t.tx_hash = pm.tx_hash
-      LEFT JOIN pftl_wallet_transactions wt
-        ON wt.tx_hash = pm.tx_hash
-       AND wt.wallet_address = $1
-      WHERE pm.wallet_address = $1
-        AND pm.task_id = $2
-        AND pm.cid IS NOT NULL
-        AND pm.decode_error IS NULL
-      ORDER BY
-        t.ledger_index ASC NULLS LAST,
-        t.close_time ASC NULLS LAST,
-        pm.tx_hash ASC,
-        pm.memo_index ASC
-    `,
-    [walletAddress, taskId]
-  );
-  return result.rows;
-}
-
 async function candidateTaskPointerRows({ walletAddress, taskId = "", seedCid = "" }) {
   const result = await query(
     `
@@ -374,6 +344,15 @@ function statusFromTaskUpdate(payload = {}) {
   return "";
 }
 
+function rewardAmountFromDecision(payload = {}) {
+  return normalizeText(
+    payload.score?.reward_pft ??
+      payload.reward_pft ??
+      payload.reward_actual_pft ??
+      "0"
+  );
+}
+
 function reduceHydratedTaskEvents(hydratedEvents) {
   const projections = new Map();
   const offerPayloads = new Map();
@@ -426,6 +405,9 @@ function reduceHydratedTaskEvents(hydratedEvents) {
         : "submitted";
     } else if (schema === "pf.task.verification_response.v1") {
       projection.status = "verification_response_submitted";
+    } else if (schema === "pf.task.reward_decision.v1") {
+      projection.status = "rewarded";
+      projection.reward_actual_pft = rewardAmountFromDecision(payload);
     } else if (schema === "pf.reward.v1") {
       projection.status = "rewarded";
       projection.reward_actual_pft = normalizeText(payload.reward_pft);
@@ -526,16 +508,11 @@ async function reduceTaskProjection(event, { fetchIpfsJson = fetchContextIpfsJso
   }
   if (!taskId) throw new Error("task_reducer_task_id_missing");
 
-  const rows = event.task_id
-    ? await taskPointerRows({
-      walletAddress: event.wallet_address,
-      taskId,
-    })
-    : await candidateTaskPointerRows({
-      walletAddress: event.wallet_address,
-      taskId,
-      seedCid: seedPointer.cid,
-    });
+  const rows = await candidateTaskPointerRows({
+    walletAddress: event.wallet_address,
+    taskId,
+    seedCid: seedPointer.cid,
+  });
   if (rows.length === 0) throw new Error("task_pointer_rows_missing");
 
   const hydratedEvents = [];
