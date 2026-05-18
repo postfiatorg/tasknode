@@ -1,0 +1,55 @@
+{
+  "task_56e4026772be18750692279d": {
+    "accepted_at": "2026-05-18T00:00:00Z",
+    "created_at": "2026-05-18T00:00:00Z",
+    "description": "Build a deterministic Python CLI that generates a task, accepts it, submits an artifact, reviews the submission, and updates local reputation state.",
+    "reputation_delta": {
+      "after_points": 50,
+      "before_points": 42,
+      "delta_points": 8
+    },
+    "request_id": "req_b74e4b510002f2055c802747",
+    "review": {
+      "approved": true,
+      "checks": {
+        "artifact_digest_matches": true,
+        "mentions_json_outputs": true,
+        "mentions_reputation_update": true
+      },
+      "review_id": "review_7da3e58e6077c0a4e67c6dfb",
+      "score": 0.96,
+      "summary": "Artifact satisfies the deterministic local JSON task loop requirements."
+    },
+    "reward": {
+      "amount_pft": "3.200000",
+      "unit": "PFT"
+    },
+    "reward_offer": {
+      "amount_pft": "3.200000",
+      "unit": "PFT"
+    },
+    "schema": "pf.task.local_json_loop.v1.task",
+    "status": "rewarded",
+    "steps": [
+      "Create a canonical request bundle and generated task.",
+      "Persist the accepted task and evidence artifact to local JSON storage.",
+      "Review the artifact and update reputation state deterministically."
+    ],
+    "subject_user_id": "user_goodalexander_demo",
+    "submission": {
+      "artifact_id": "artifact_2933c8e2a9369d0b65fe5016",
+      "digest": "sha256:8f1b1ee8d759c87501db6c6f004eec6ab6089af3c0d7eaa8544429b8f90f551e",
+      "relative_path": "artifacts/artifact_2933c8e2a9369d0b65fe5016.md",
+      "size_bytes": 504,
+      "task_id": "task_56e4026772be18750692279d",
+      "type": "markdown_evidence"
+    },
+    "submission_requirement": {
+      "criteria": "Provide a commit or repository link containing the CLI, outputs, and README.",
+      "type": "github_commit_or_repository"
+    },
+    "task_id": "task_56e4026772be18750692279d",
+    "title": "Create local JSON task loop CLI",
+    "updated_at": "2026-05-18T00:00:00Z"
+  }
+}
