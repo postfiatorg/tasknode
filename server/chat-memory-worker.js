@@ -1,4 +1,5 @@
 import { databaseEnabled } from "./db/pool.js";
+import { loadPrompt } from "./prompt-registry.js";
 import {
   chatMemoryJobSource,
   claimChatMemoryJobs,
@@ -16,6 +17,8 @@ const defaultProviderOrder = ["parasail", "siliconflow", "atlas-cloud", "deepinf
 const providerTimeoutMs = Math.max(5000, Number(process.env.TASKNODE_MEMORY_PROVIDER_TIMEOUT_MS || 45000));
 const promptVersion = "chat_memory_v1";
 const deepPromptVersion = "deep_memory_v1";
+const chatMemoryPrompt = loadPrompt("memory/chat_memory_v1.md");
+const deepMemoryPrompt = loadPrompt("memory/deep_memory_v1.md");
 let timer = null;
 let running = false;
 
@@ -45,27 +48,11 @@ function memoryWorkerEnabled() {
 }
 
 function memorySystemPrompt() {
-  return [
-    "You create compact private memory records from one Task Node chat exchange.",
-    "Return only valid JSON with keys user_request_summary, system_response_summary, and memory_text.",
-    "Return raw JSON only: no markdown fence, no prose before or after the JSON object.",
-    "user_request_summary must be 2-3 sentences summarizing what the user asked or implied.",
-    "system_response_summary must be 2-3 sentences summarizing what the assistant answered or committed to.",
-    "memory_text must preserve durable facts, preferences, goals, constraints, decisions, and follow-ups useful for future work.",
-    "Do not include secrets, seed phrases, private keys, access tokens, API keys, or passwords.",
-  ].join("\n");
+  return chatMemoryPrompt;
 }
 
 function deepMemorySystemPrompt() {
-  return [
-    "You create account-level deep memory from exactly 36 compact Task Node memory records.",
-    "Return raw JSON only: no markdown fence, no prose before or after the JSON object.",
-    "Return keys user_request_summary_bullets, system_response_summary_bullets, and memory_text.",
-    "user_request_summary_bullets must be an array of up to 5 strings, each 1-2 sentences.",
-    "system_response_summary_bullets must be an array of up to 5 strings, each 1-2 sentences.",
-    "memory_text must be exactly 3 sentences summarizing what the user is exploring and how the system responded.",
-    "Do not include secrets, seed phrases, private keys, access tokens, API keys, or passwords.",
-  ].join("\n");
+  return deepMemoryPrompt;
 }
 
 function redactSensitiveText(value = "") {

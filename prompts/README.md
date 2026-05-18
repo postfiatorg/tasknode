@@ -7,6 +7,8 @@ reviewed, versioned, and replayed.
 
 - `task_engine/`: Canonical prompts for PFTL task request generation,
   verification, evidence reading, and reward scoring policy.
+- `chat/`: Chat system instructions and memory-context injection templates.
+- `memory/`: Async memory and deep-memory summarization prompts.
 - `openai_jobs_*.md` and `steve_jobs_*.md`: Product prompt artifacts for the
   Motivation/Jobs surfaces. They are not task-engine policy.
 

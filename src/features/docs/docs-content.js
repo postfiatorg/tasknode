@@ -18,6 +18,213 @@ import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
+import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
+import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
+import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
+import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
+import blockContractPrompt from "../../../prompts/task_engine/block_contract_v1.md?raw";
+import evidenceScreenshotPrompt from "../../../prompts/task_engine/evidence_screenshot_read_v1.md?raw";
+import rewardScoringPrompt from "../../../prompts/task_engine/reward_scoring_v1.md?raw";
+import taskgenPrompt from "../../../prompts/task_engine/taskgen_minimal_v1.md?raw";
+import taskgenRepairPrompt from "../../../prompts/task_engine/taskgen_repair_v1.md?raw";
+import verificationRequestPrompt from "../../../prompts/task_engine/verification_request_v1.md?raw";
+
+const PROMPT_SOURCES = [
+  {
+    family: "Chat",
+    title: "Task Node Instructions",
+    path: "prompts/chat/task_node_instructions_v1.md",
+    summary: "Base chat system instructions for OpenAI Frontier modes and OpenRouter Private modes.",
+    status: "Active",
+    usedBy: [
+      "server/chat-memory-context.js::taskNodeInstructions",
+      "server/chat-router.js::openRouterMessages",
+      "server/chat-router.js::openAiResponseRequest",
+    ],
+    content: taskNodeInstructionsPrompt,
+  },
+  {
+    family: "Chat",
+    title: "Account Memory Context",
+    path: "prompts/chat/account_memory_context_v1.md",
+    summary: "Template around deep memory and recent memory injected into chat instructions.",
+    status: "Active when memory exists",
+    usedBy: [
+      "server/chat-memory-context.js::formatChatMemoryContext",
+      "server/chat-memory-context.js::taskNodeInstructions",
+    ],
+    content: accountMemoryContextPrompt,
+  },
+  {
+    family: "Memory",
+    title: "Turn Memory Summary",
+    path: "prompts/memory/chat_memory_v1.md",
+    summary: "Async summary prompt for one user/assistant exchange.",
+    status: "Active async worker",
+    usedBy: [
+      "server/chat-memory-worker.js::memorySystemPrompt",
+      "server/chat-memory-worker.js::fetchMemorySummary",
+      "server/repositories/chat-memory.js::completeChatMemoryJob",
+    ],
+    content: chatMemoryPrompt,
+  },
+  {
+    family: "Memory",
+    title: "Deep Memory Summary",
+    path: "prompts/memory/deep_memory_v1.md",
+    summary: "Async summary prompt that compresses 36 turn memories into account-level memory.",
+    status: "Active async worker",
+    usedBy: [
+      "server/chat-memory-worker.js::deepMemorySystemPrompt",
+      "server/chat-memory-worker.js::fetchDeepMemorySummary",
+      "server/repositories/chat-memory.js::completeDeepMemoryJob",
+    ],
+    content: deepMemoryPrompt,
+  },
+  {
+    family: "Task Engine",
+    title: "Task Generation",
+    path: "prompts/task_engine/taskgen_minimal_v1.md",
+    summary: "Generates one concise PFTL task from request, context, memory, chat, wallet, and policy blocks.",
+    status: "Active Python reference",
+    usedBy: [
+      "reference_clients/python/tasknode_pftl/taskgen.py::generate_task",
+      "reference_clients/python/tasknode_pftl/taskgen.py::benchmark_taskgen",
+      "reference_clients/python/tasknode_pftl/taskgen.py::TASKGEN_RESPONSE_FORMAT",
+    ],
+    content: taskgenPrompt,
+  },
+  {
+    family: "Task Engine",
+    title: "Task Block Contract",
+    path: "prompts/task_engine/block_contract_v1.md",
+    summary: "Human-readable contract for taskgen input blocks.",
+    status: "Documentation contract",
+    usedBy: [
+      "reference_clients/python/tasknode_pftl/taskgen.py::project_taskgen_input",
+      "reference_clients/python/tasknode_pftl/app_data.py::build_request_bundle_from_fixture",
+    ],
+    content: blockContractPrompt,
+  },
+  {
+    family: "Task Engine",
+    title: "Task JSON Repair",
+    path: "prompts/task_engine/taskgen_repair_v1.md",
+    summary: "Reserved repair prompt for malformed task generation JSON.",
+    status: "Reserved",
+    usedBy: ["No runtime caller yet"],
+    content: taskgenRepairPrompt,
+  },
+  {
+    family: "Verification",
+    title: "Verification Request",
+    path: "prompts/task_engine/verification_request_v1.md",
+    summary: "Policy for a single follow-up verification ask after initial task submission.",
+    status: "Policy recorded; deterministic v1 ask remains code-generated",
+    usedBy: ["reference_clients/python/tasknode_pftl/taskgen.py::build_verification_request"],
+    content: verificationRequestPrompt,
+  },
+  {
+    family: "Verification",
+    title: "Screenshot Evidence Read",
+    path: "prompts/task_engine/evidence_screenshot_read_v1.md",
+    summary: "Vision prompt for describing screenshot evidence without inventing hidden state.",
+    status: "Active Python reference",
+    usedBy: ["reference_clients/python/tasknode_pftl/verification.py::describe_screenshot_with_openai"],
+    content: evidenceScreenshotPrompt,
+  },
+  {
+    family: "Reward",
+    title: "Reward Scoring",
+    path: "prompts/task_engine/reward_scoring_v1.md",
+    summary: "Reserved scoring policy for future reward adjudication.",
+    status: "Reserved",
+    usedBy: ["No runtime caller yet"],
+    content: rewardScoringPrompt,
+  },
+];
+
+const PROMPT_PAGES = [
+  {
+    slug: "prompts-index",
+    title: "Prompt Index",
+    summary: "Source-controlled prompts and runtime call sites.",
+    markdown: promptIndexMarkdown(),
+  },
+  promptFamilyPage({
+    slug: "prompts-chat",
+    title: "Chat Prompts",
+    summary: "System instructions and account memory context used by chat.",
+    family: "Chat",
+  }),
+  promptFamilyPage({
+    slug: "prompts-memory",
+    title: "Memory Prompts",
+    summary: "Async memory compression prompts.",
+    family: "Memory",
+  }),
+  promptFamilyPage({
+    slug: "prompts-task-engine",
+    title: "Task Engine Prompts",
+    summary: "Task generation and input block prompt contracts.",
+    family: "Task Engine",
+  }),
+  promptFamilyPage({
+    slug: "prompts-verification",
+    title: "Verification Prompts",
+    summary: "Follow-up verification and evidence reading prompts.",
+    family: "Verification",
+  }),
+  promptFamilyPage({
+    slug: "prompts-reward",
+    title: "Reward Prompts",
+    summary: "Reward scoring prompt policy.",
+    family: "Reward",
+  }),
+];
+
+function promptIndexMarkdown() {
+  const rows = PROMPT_SOURCES.map((source) =>
+    `| ${source.family} | \`${source.path}\` | ${source.status} | ${source.usedBy.map((item) => `\`${item}\``).join(", ")} |`
+  ).join("\n");
+  const table = [
+    "| Family | Prompt file | Status | Used by |",
+    "| --- | --- | --- | --- |",
+    rows,
+  ].join("\n");
+  return [
+    "# Prompt Index",
+    "Prompt text shown in this Help section is imported directly from files under `prompts/` using Vite raw imports. Do not paste prompt text into docs by hand; update the prompt file and this page will change on the next build.",
+    "Runtime code should record prompt version and prompt digest whenever prompt output becomes part of a PFTL payload, database cache, or audit trail.",
+    "## Runtime Map",
+    table,
+  ].join("\n\n");
+}
+
+function promptFamilyPage({ slug, title, summary, family }) {
+  const sources = PROMPT_SOURCES.filter((source) => source.family === family);
+  return {
+    slug,
+    title,
+    summary,
+    markdown: [
+      `# ${title}`,
+      summary,
+      "These prompt blocks are rendered from the source files listed below. Editing a prompt file changes the Help rendering on the next frontend build.",
+      ...sources.flatMap((source) => promptSourceSections(source)),
+    ].join("\n\n"),
+  };
+}
+
+function promptSourceSections(source) {
+  return [
+    `## ${source.title}`,
+    `Source file: \`${source.path}\``,
+    `Runtime status: ${source.status}`,
+    ["Used by:", ...source.usedBy.map((item) => `- \`${item}\``)].join("\n"),
+    ["Prompt text:", "```text", source.content.trim(), "```"].join("\n"),
+  ];
+}
 
 export const DOC_GROUPS = [
   {
@@ -83,6 +290,10 @@ export const DOC_GROUPS = [
       },
       { slug: "nostr", title: "Nostr TBD", summary: "Public broadcast boundary.", markdown: nostr },
     ],
+  },
+  {
+    title: "Prompts",
+    pages: PROMPT_PAGES,
   },
   {
     title: "Plans",

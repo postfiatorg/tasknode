@@ -15,6 +15,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY server ./server
+COPY prompts ./prompts
 COPY --from=build /app/dist ./dist
 EXPOSE 8080
 CMD ["node", "server/index.js"]
