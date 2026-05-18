@@ -2523,6 +2523,7 @@ function taskArray(value) {
 
 function TasksView({ onSelectTask, tasks = EMPTY_TASKS }) {
   const [tasksTab, setTasksTab] = useState("outstanding");
+  const didAutoSelectTaskTabRef = useRef(false);
   const outstanding = taskArray(tasks.outstanding);
   const verification = taskArray(tasks.verification);
   const refused = taskArray(tasks.refused);
@@ -2543,8 +2544,10 @@ function TasksView({ onSelectTask, tasks = EMPTY_TASKS }) {
   ];
 
   useEffect(() => {
+    if (didAutoSelectTaskTabRef.current) return;
     if (tasksTab !== "outstanding") return;
     if (outstanding.length > 0 || verification.length > 0 || rewarded.length === 0) return;
+    didAutoSelectTaskTabRef.current = true;
     setTasksTab("rewarded");
   }, [outstanding.length, rewarded.length, tasksTab, verification.length]);
 
