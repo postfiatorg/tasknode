@@ -1,7 +1,7 @@
 # Code Review: AI Providers
 
 Source doc: `docs/wiki/architecture/ai-providers.md`
-Branch: `review/chat-history-ownership`
+Branch: `review/ai-provider-billing`
 Review status: complete
 Code review complete: yes
 Last updated: 2026-05-18
@@ -23,13 +23,19 @@ Reviewed the provider routing boundary for Chat modes:
 
 No P0 was found in this pass.
 
-The strongest issue is billing correctness for Frontier web search. The
-provider usage path charges web-search calls after execution, but the estimate
-and credit gate do not include possible tool cost before execution.
+The strongest issue was billing correctness for Frontier web search. The
+provider usage path charged web-search calls after execution, but the estimate
+and credit gate did not include possible tool cost before execution.
+
+Fix status on `review/ai-provider-billing`: the P1 web-search estimate and
+credit-gate issue is implemented on this branch. Remaining findings below are
+still open.
 
 ## Findings
 
 ### P1 - Frontier web-search tool cost is omitted from preflight credit checks
+
+Fix status: implemented on `review/ai-provider-billing`.
 
 Surfaces:
 

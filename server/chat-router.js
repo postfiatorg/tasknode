@@ -10,6 +10,7 @@ import {
 import { chatContextDocumentForAccount } from "./chat-account-context.js";
 import { taskContextForAccount } from "./chat-task-context.js";
 import {
+  maxOpenAiWebSearchToolCalls,
   openAiTools,
   webSearchUsdPerCall,
 } from "./chat-search-tools.js";
@@ -252,7 +253,7 @@ export function openAiResponseRequest({
     store: false,
     tool_choice: tools.length > 0 ? "auto" : undefined,
     tools,
-    max_tool_calls: tools.length > 0 ? 4 : undefined,
+    max_tool_calls: tools.length > 0 ? maxOpenAiWebSearchToolCalls : undefined,
     metadata: {
       app: "tasknodeofficial",
       mode,

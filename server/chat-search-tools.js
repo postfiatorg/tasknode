@@ -1,4 +1,5 @@
 export const webSearchUsdPerCall = 0.01;
+export const maxOpenAiWebSearchToolCalls = 4;
 
 export function shouldUseWebSearch(message = "") {
   const text = String(message || "").toLowerCase();

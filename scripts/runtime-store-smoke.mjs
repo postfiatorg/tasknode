@@ -113,6 +113,26 @@ try {
     throw new Error("Web search routing should be explicit and should not attach tools to every Frontier request.");
   }
 
+  const frontierSearchEstimate = chatEstimate({
+    mode: "Frontier Instant",
+    message: "Search latest public health news.",
+  });
+  if (
+    frontierSearchEstimate.estimatedWebSearchCalls !== 4 ||
+    frontierSearchEstimate.estimatedToolCostUsd !== 0.04 ||
+    frontierSearchEstimate.estimatedUsd <= frontierSearchEstimate.estimatedTokenUsd
+  ) {
+    throw new Error(`Frontier web-search estimates should include tool cost: ${JSON.stringify(frontierSearchEstimate)}`);
+  }
+
+  const privateSearchEstimate = chatEstimate({
+    mode: "Private Instant",
+    message: "Search latest public health news.",
+  });
+  if (privateSearchEstimate.estimatedWebSearchCalls !== 0 || privateSearchEstimate.estimatedToolCostUsd !== 0) {
+    throw new Error(`Private modes should not estimate web-search tool cost: ${JSON.stringify(privateSearchEstimate)}`);
+  }
+
   const frontierRequest = openAiResponseRequest({
     mode: "Frontier Instant",
     model: "chat-latest",

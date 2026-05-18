@@ -14,6 +14,11 @@ import {
   formatChatContextDocument,
 } from "./chat-account-context.js";
 import {
+  maxOpenAiWebSearchToolCalls,
+  shouldUseWebSearch,
+  webSearchUsdPerCall,
+} from "./chat-search-tools.js";
+import {
   formatChatTaskContext,
   taskContextForAccount,
 } from "./chat-task-context.js";
@@ -39,10 +44,14 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
   const memoryInputTokens = memoryContextCharacters > 0 ? Math.ceil(memoryContextCharacters / 4) : 0;
   const taskInputTokens = taskContextCharacters > 0 ? Math.ceil(taskContextCharacters / 4) : 0;
   const estimatedOutputTokens = modeConfig.maxOutputTokens || (mode.includes("Thinking") ? 1800 : 700);
-  const estimatedUsd = actualChatCost(mode, {
+  const estimatedTokenUsd = actualChatCost(mode, {
     inputTokens,
     outputTokens: estimatedOutputTokens,
   });
+  const estimatedWebSearchCalls =
+    modeConfig.provider === "openai" && shouldUseWebSearch(message) ? maxOpenAiWebSearchToolCalls : 0;
+  const estimatedToolCostUsd = Number((estimatedWebSearchCalls * webSearchUsdPerCall).toFixed(6));
+  const estimatedUsd = Number(Math.max(0.0001, estimatedTokenUsd + estimatedToolCostUsd).toFixed(6));
   const execution = chatExecutionStatus(mode);
 
   return {
@@ -62,7 +71,10 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
     memoryContextCharacters,
     taskContextCharacters,
     estimatedOutputTokens,
-    estimatedUsd: Number(Math.max(0.0001, estimatedUsd).toFixed(6)),
+    estimatedWebSearchCalls,
+    estimatedTokenUsd,
+    estimatedToolCostUsd,
+    estimatedUsd,
     currency: "USD",
     billingModel: "usage_based",
     requiresConfirmation: estimatedUsd >= 0.05,

@@ -71,6 +71,34 @@ try {
   assert.equal(noCreditStream.status, 402);
   assert.equal(noCreditStream.body.error, "chat_credit_required");
 
+  const lowCreditAccount = "acct_security_web_search_low_credit";
+  const lowCreditGrant = await usageAdminCredit(
+    {
+      accountId: lowCreditAccount,
+      amountUsd: 0.03,
+      note: "low web search credit",
+      idempotencyKey: "security-web-search-low-credit",
+    },
+    "POST",
+    "Bearer security-smoke-admin-token"
+  );
+  assert.equal(lowCreditGrant.status, 200);
+
+  const lowCreditWebSearchChat = await chatSend(
+    {
+      accountId: lowCreditAccount,
+      message: "Search latest public health news.",
+      mode: "Frontier Instant",
+      conversationId: `account_${lowCreditAccount}_default`,
+    },
+    "POST"
+  );
+  assert.equal(lowCreditWebSearchChat.status, 402);
+  assert.equal(lowCreditWebSearchChat.body.error, "chat_credit_required");
+  assert.equal(lowCreditWebSearchChat.body.estimate.estimatedWebSearchCalls, 4);
+  assert.equal(lowCreditWebSearchChat.body.estimate.estimatedToolCostUsd, 0.04);
+  assert.equal(lowCreditWebSearchChat.body.usage.availableCreditUsd, 0.03);
+
   const signedOutTaskRequest = await taskRequestIntentStart(
     {
       userDetailText: "This must not persist without a signed-in account.",
