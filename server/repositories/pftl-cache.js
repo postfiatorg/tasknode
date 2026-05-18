@@ -4,6 +4,7 @@ import { databaseEnabled, query, transaction } from "../db/pool.js";
 const RIPPLE_EPOCH_OFFSET = 946684800;
 const POINTER_MEMO_TYPE = "pf.ptr";
 const POINTER_MEMO_FORMAT = "v4";
+const TASK_POINTER_KINDS = new Set(["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"]);
 
 function normalizeText(value) {
   if (value === undefined || value === null) return "";
@@ -536,13 +537,30 @@ export async function recordPftlSyncError({ walletAddress = "", error } = {}) {
   return { ok: true };
 }
 
+export async function markPftlSyncWalletChecked({ walletAddress = "", previousTxnId = "" } = {}) {
+  if (!databaseEnabled()) return { ok: false, skipped: true };
+  const wallet = normalizeText(walletAddress);
+  if (!wallet) return { ok: false };
+  await query(
+    `
+      UPDATE pftl_sync_wallets
+      SET last_checked_at = now(),
+          metadata_json = metadata_json || $2::jsonb,
+          updated_at = now()
+      WHERE wallet_address = $1
+    `,
+    [wallet, { previousTxnId: normalizeText(previousTxnId) }]
+  );
+  return { ok: true };
+}
+
 export async function listPftlWalletsDueForHotSync({ limit = 5, staleMs = 60000 } = {}) {
   if (!databaseEnabled()) return [];
   const cappedLimit = Math.min(Math.max(Number(limit) || 5, 1), 50);
   const cappedStaleMs = Math.min(Math.max(Number(staleMs) || 60000, 1000), 86_400_000);
   const result = await query(
     `
-      SELECT wallet_address, account_id, role, priority, last_hot_sync_at
+      SELECT wallet_address, account_id, role, priority, last_seen_tx_hash, last_hot_sync_at
       FROM pftl_sync_wallets
       WHERE status = 'active'
         AND (
@@ -555,4 +573,211 @@ export async function listPftlWalletsDueForHotSync({ limit = 5, staleMs = 60000 
     [cappedLimit, cappedStaleMs]
   );
   return result.rows;
+}
+
+export async function listActivePftlSyncWallets({ limit = 1000 } = {}) {
+  if (!databaseEnabled()) return [];
+  const cappedLimit = Math.min(Math.max(Number(limit) || 1000, 1), 5000);
+  const result = await query(
+    `
+      SELECT wallet_address, account_id, role, priority, last_seen_ledger, last_hot_sync_at
+      FROM pftl_sync_wallets
+      WHERE status = 'active'
+      ORDER BY priority ASC, updated_at DESC, wallet_address ASC
+      LIMIT $1
+    `,
+    [cappedLimit]
+  );
+  return result.rows;
+}
+
+function reducerKindForPointer(pointerKind = "") {
+  const kind = normalizeText(pointerKind).toUpperCase();
+  if (kind === "CONTEXT") return "context_pointer_hydrate";
+  if (TASK_POINTER_KINDS.has(kind)) return "task_projection_replay";
+  return "";
+}
+
+function reducerDedupeKey({ walletAddress = "", txHash = "", reducerKind = "", memoIndex = null, cid = "" } = {}) {
+  return [
+    normalizeText(walletAddress),
+    normalizeText(txHash),
+    normalizeText(reducerKind),
+    memoIndex === null || memoIndex === undefined ? -1 : intOrNull(memoIndex),
+    normalizeText(cid),
+  ].join("|");
+}
+
+export async function enqueuePftlReducerEventsForTransaction({
+  walletAddress = "",
+  accountId = "",
+  txHash = "",
+  ledgerIndex = null,
+  transactionResult = "",
+  source = "pftl_cache_watcher",
+  payload = {},
+} = {}) {
+  if (!databaseEnabled()) return { ok: false, skipped: true, inserted: 0 };
+  const wallet = normalizeText(walletAddress);
+  const hash = normalizeText(txHash);
+  if (!wallet || !hash) return { ok: false, inserted: 0 };
+
+  let inserted = 0;
+  const balanceResult = await query(
+    `
+      INSERT INTO pftl_cache_reducer_events (
+        dedupe_key,
+        wallet_address,
+        account_id,
+        tx_hash,
+        ledger_index,
+        reducer_kind,
+        source,
+        payload_json
+      )
+      VALUES ($1,$2,$3,$4,$5,'wallet_balance_refresh',$6,$7)
+      ON CONFLICT (dedupe_key)
+      DO NOTHING
+    `,
+    [
+      reducerDedupeKey({
+        walletAddress: wallet,
+        txHash: hash,
+        reducerKind: "wallet_balance_refresh",
+      }),
+      wallet,
+      normalizeText(accountId),
+      hash,
+      intOrNull(ledgerIndex),
+      normalizeText(source) || "pftl_cache_watcher",
+      safeJson(payload),
+    ]
+  );
+  inserted += balanceResult.rowCount || 0;
+
+  if (normalizeText(transactionResult) && normalizeText(transactionResult) !== "tesSUCCESS") {
+    return { ok: true, inserted };
+  }
+
+  const pointerRows = await query(
+    `
+      SELECT
+        memo_index,
+        pointer_kind,
+        cid,
+        task_id,
+        context_id,
+        decoded_json
+      FROM pftl_pointer_memos
+      WHERE tx_hash = $1
+        AND cid IS NOT NULL
+        AND decode_error IS NULL
+    `,
+    [hash]
+  );
+
+  for (const pointer of pointerRows.rows) {
+    const reducerKind = reducerKindForPointer(pointer.pointer_kind);
+    if (!reducerKind) continue;
+    const pointerResult = await query(
+      `
+        INSERT INTO pftl_cache_reducer_events (
+          dedupe_key,
+          wallet_address,
+          account_id,
+          tx_hash,
+          ledger_index,
+          reducer_kind,
+          pointer_kind,
+          cid,
+          task_id,
+          context_id,
+          memo_index,
+          source,
+          payload_json
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        ON CONFLICT (dedupe_key)
+        DO NOTHING
+      `,
+      [
+        reducerDedupeKey({
+          walletAddress: wallet,
+          txHash: hash,
+          reducerKind,
+          memoIndex: pointer.memo_index,
+          cid: pointer.cid,
+        }),
+        wallet,
+        normalizeText(accountId),
+        hash,
+        intOrNull(ledgerIndex),
+        reducerKind,
+        pointer.pointer_kind || null,
+        pointer.cid || null,
+        pointer.task_id || null,
+        pointer.context_id || null,
+        intOrNull(pointer.memo_index),
+        normalizeText(source) || "pftl_cache_watcher",
+        {
+          ...safeJson(payload),
+          pointer: safeJson(pointer.decoded_json),
+        },
+      ]
+    );
+    inserted += pointerResult.rowCount || 0;
+  }
+
+  return { ok: true, inserted };
+}
+
+export async function recordPftlCacheWatcherState({
+  id = "default",
+  endpointUrl = "",
+  status = "idle",
+  subscribedWalletCount = 0,
+  lastLedgerIndex = null,
+  lastEventTxHash = "",
+  lastError = "",
+  metadata = {},
+} = {}) {
+  if (!databaseEnabled()) return { ok: false, skipped: true };
+  await query(
+    `
+      INSERT INTO pftl_cache_watcher_state (
+        id,
+        endpoint_url,
+        status,
+        subscribed_wallet_count,
+        last_ledger_index,
+        last_event_tx_hash,
+        last_event_at,
+        last_error,
+        metadata_json
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,CASE WHEN $6 = '' THEN NULL ELSE now() END,$7,$8)
+      ON CONFLICT (id)
+      DO UPDATE SET
+        endpoint_url = EXCLUDED.endpoint_url,
+        status = EXCLUDED.status,
+        subscribed_wallet_count = EXCLUDED.subscribed_wallet_count,
+        last_ledger_index = COALESCE(EXCLUDED.last_ledger_index, pftl_cache_watcher_state.last_ledger_index),
+        last_event_tx_hash = COALESCE(NULLIF(EXCLUDED.last_event_tx_hash, ''), pftl_cache_watcher_state.last_event_tx_hash),
+        last_event_at = COALESCE(EXCLUDED.last_event_at, pftl_cache_watcher_state.last_event_at),
+        last_error = EXCLUDED.last_error,
+        metadata_json = pftl_cache_watcher_state.metadata_json || EXCLUDED.metadata_json,
+        updated_at = now()
+    `,
+    [
+      normalizeText(id) || "default",
+      normalizeText(endpointUrl),
+      normalizeText(status) || "idle",
+      intOrNull(subscribedWalletCount) ?? 0,
+      intOrNull(lastLedgerIndex),
+      normalizeText(lastEventTxHash),
+      normalizeText(lastError),
+      safeJson(metadata),
+    ]
+  );
+  return { ok: true };
 }

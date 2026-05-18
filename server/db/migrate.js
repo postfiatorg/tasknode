@@ -14,6 +14,8 @@ const migrations = [
   "005_deep_chat_memory.sql",
   "006_task_projections.sql",
   "007_pftl_transaction_cache.sql",
+  "008_pftl_cache_watcher.sql",
+  "009_pftl_cache_reducer_dedupe_key.sql",
 ];
 
 let migrated = false;

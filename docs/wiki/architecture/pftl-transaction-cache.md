@@ -41,7 +41,7 @@ Task Node Official currently has partial pieces:
 - Historical context restore reads through `server/context-history-rpc.js`, which scans archive `account_tx` and then stores context pointer metadata.
 - Task projections exist in `server/db/migrations/006_task_projections.sql`, but replay imports currently come from receipts rather than a standing wallet transaction mirror.
 - The first general transaction cache tables live in `server/db/migrations/007_pftl_transaction_cache.sql`.
-- Cache repository and sync helpers live in `server/repositories/pftl-cache.js` and `server/pftl-cache-sync.js`.
+- Cache repository and sync helpers live in `server/repositories/pftl-cache.js`, `server/pftl-cache-sync.js`, and `server/pftl-cache-watcher.js`.
 
 That means multiple surfaces still compete for RPC history:
 
@@ -115,6 +115,33 @@ pftl_pointer_memos
   decoded_json jsonb not null default '{}'
   created_at
   unique(tx_hash, memo_index)
+
+pftl_cache_watcher_state
+  id primary key
+  endpoint_url
+  status idle | connecting | connected | reconnecting | failed
+  subscribed_wallet_count
+  last_ledger_index
+  last_event_tx_hash
+  last_event_at
+  last_error
+  metadata_json
+
+pftl_cache_reducer_events
+  id primary key
+  dedupe_key unique
+  wallet_address
+  account_id
+  tx_hash
+  ledger_index
+  reducer_kind wallet_balance_refresh | context_pointer_hydrate | task_projection_replay
+  pointer_kind nullable
+  cid nullable
+  task_id nullable
+  context_id nullable
+  memo_index nullable
+  status pending | processing | completed | failed
+  payload_json
 ```
 
 The app already has `pftl_task_pointer_events`, `task_events`, and `task_projections`. Those should become task-specific reductions fed by `pftl_pointer_memos` plus hydrated IPFS payloads.
@@ -126,10 +153,13 @@ The production design should have two lanes.
 Fast lane:
 
 1. Add wallets to `pftl_sync_wallets` when a wallet is linked, relinked, created, assigned as an allocation wallet, assigned as an authority wallet, or used by a service.
-2. Worker WSS subscribes to active wallets in shards.
-3. On validated activity, update `last_seen_tx_hash` and enqueue a hot sync job.
-4. Hot sync calls `account_tx` for the latest page, upserts `pftl_transactions`, links rows in `pftl_wallet_transactions`, decodes pointer memos into `pftl_pointer_memos`, and updates `last_hot_sync_at`.
+2. WSS watcher subscribes to active wallets in shards using the PFTL `accounts` stream.
+3. On validated activity, it upserts the transaction immediately, links affected watched wallets, decodes pointer memos, and creates reducer events.
+4. The same reducer events are created by `account_tx` hot sync so reconnect/backfill repair uses the same downstream path as live WSS events.
 5. API reads from Postgres first. If stale, it may enqueue sync work and return a visible syncing status.
+
+The state-change trigger is native account activity, not balance polling. `accounts_proposed` can be added later for optimistic UI, but canonical cache updates use validated transactions only.
+The polling repair worker first checks `account_info.PreviousTxnID`; if it matches the cached checkpoint, it marks the wallet checked without running `account_tx`.
 
 Archive lane:
 
@@ -190,6 +220,7 @@ This lets Python replay tools, task reducers, wallet feeds, and future message s
 - Archive RPC should be used for historical completeness; the local rapid RPC is acceptable for hot path and balance reads.
 - Request handlers should not block on archive sync.
 - Deleting cache rows must be repairable by replaying PFTL history.
+- On Fly dev, the watcher runs inside the app process while the machine is awake; startup backfill repairs missed activity after sleep. A public production deployment should run this as an always-on worker or keep at least one machine running.
 
 ## Migration Plan
 
@@ -213,10 +244,14 @@ This lets Python replay tools, task reducers, wallet feeds, and future message s
 The first implementation slice is live in code:
 
 - `server/db/migrations/007_pftl_transaction_cache.sql` creates the cache schema.
+- `server/db/migrations/008_pftl_cache_watcher.sql` creates watcher state and reducer event tables.
+- `server/db/migrations/009_pftl_cache_reducer_dedupe_key.sql` makes reducer event dedupe explicit for idempotent repair.
 - `server/repositories/pftl-cache.js` maps `account_tx` rows into transaction, wallet index, and pointer memo rows.
-- `server/pftl-cache-sync.js` performs cache sync from PFTL `account_tx` and exposes an optional polling worker gated by `PFTL_CACHE_WORKER_ENABLED=true`.
+- `server/pftl-cache-sync.js` performs cache sync from PFTL `account_tx`, creates reducer events, and exposes an optional polling worker gated by `PFTL_CACHE_WORKER_ENABLED=true`.
+- `server/pftl-cache-watcher.js` subscribes to PFTL WSS account activity, stores validated events, records watcher state, and backfills on startup/reconnect/ledger gaps.
 - `/api/pftl/cache/account-tx` returns cached `account_tx`-style rows for the signed-in account's linked wallet.
 - `/api/wallet/transactions` is cache-first and falls back to direct PFTL history while the cache rolls out.
 - Wallet link/create registers the wallet for sync; wallet delink marks it inactive.
+- `npm run db:pftl-cache-watcher-stress` runs a deterministic 10-wallet cache stress test.
 
-The WSS watcher, archive-completeness policy, context cache-first migration, and task replay migration remain milestone work.
+The archive-completeness policy, context cache-first migration, task replay reducer execution, and retention/monitoring remain milestone work.

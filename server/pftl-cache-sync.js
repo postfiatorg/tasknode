@@ -3,9 +3,12 @@ import { fetchHistoricalAccountTransactions } from "./context-history-rpc.js";
 import { databaseEnabled } from "./db/pool.js";
 import {
   getPftlSyncWallet,
+  enqueuePftlReducerEventsForTransaction,
   listCachedAccountTx,
   listPftlWalletsDueForHotSync,
+  markPftlSyncWalletChecked,
   markPftlSyncWalletInactive,
+  mapPftlTransaction,
   recordPftlSyncError,
   registerPftlSyncWallet,
   storePftlAccountTransactions,
@@ -20,6 +23,100 @@ function clampInteger(value, fallback, min, max) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, Math.floor(number)));
+}
+
+function splitUrls(value) {
+  return String(value || "")
+    .split(/[,\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function uniqueUrls(urls) {
+  const seen = new Set();
+  const result = [];
+  for (const url of urls) {
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    result.push(url);
+  }
+  return result;
+}
+
+function pollRpcUrls(env = process.env) {
+  return uniqueUrls([
+    ...splitUrls(env.PFTL_CACHE_POLL_RPC_URL || env.PFTL_RPC_URL),
+    ...splitUrls(env.PFTL_CACHE_POLL_RPC_URL_FALLBACKS || env.PFTL_RPC_URL_FALLBACKS),
+  ]);
+}
+
+async function fetchJsonRpc({ url, apiKey, method, params, timeoutMs, fetchImpl = fetch }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const headers = { "content-type": "application/json" };
+    if (apiKey) headers["X-Api-Key"] = apiKey;
+    const response = await fetchImpl(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method,
+        params: Array.isArray(params) ? params : [params || {}],
+      }),
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(`pftl_poll_rpc_http_${response.status}`);
+    if (payload?.error) throw new Error(payload.error.message || payload.error.error || "pftl_poll_rpc_error");
+    if (payload?.result?.error || payload?.result?.status === "error") {
+      throw new Error(payload.result.error_message || payload.result.error || "pftl_poll_rpc_error");
+    }
+    return payload?.result || {};
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function readPftlAccountPreviousTxnId({
+  walletAddress = "",
+  env = process.env,
+  fetchImpl = fetch,
+} = {}) {
+  const wallet = normalizeText(walletAddress);
+  if (!isValidClassicAddress(wallet)) {
+    return { ok: false, error: "pftl_cache_invalid_wallet" };
+  }
+  const urls = pollRpcUrls(env);
+  const timeoutMs = clampInteger(env.PFTL_CACHE_POLL_TIMEOUT_MS, 5000, 1000, 30000);
+  let lastError = null;
+  for (const [index, url] of urls.entries()) {
+    try {
+      const result = await fetchJsonRpc({
+        url,
+        apiKey: index === 0 ? normalizeText(env.PFTL_RPC_API_KEY) : "",
+        method: "account_info",
+        params: {
+          account: wallet,
+          ledger_index: "validated",
+        },
+        timeoutMs,
+        fetchImpl,
+      });
+      return {
+        ok: true,
+        previousTxnId: normalizeText(result?.account_data?.PreviousTxnID),
+        ledgerIndex: result?.ledger_index || result?.validated_ledger_index || null,
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  return {
+    ok: false,
+    error: normalizeText(lastError?.message || "pftl_poll_rpc_unavailable"),
+  };
 }
 
 export async function bestEffortRegisterPftlSyncWallet({ accountId, walletAddress, reason }) {
@@ -99,6 +196,26 @@ export async function syncPftlWalletTransactions({
       transactions: history.transactions,
       syncKind,
     });
+    let reducerEvents = 0;
+    for (const entry of history.transactions) {
+      const mapped = mapPftlTransaction(entry, wallet);
+      if (!mapped?.txHash) continue;
+      const queued = await enqueuePftlReducerEventsForTransaction({
+        walletAddress: wallet,
+        accountId,
+        txHash: mapped.txHash,
+        ledgerIndex: mapped.ledgerIndex,
+        transactionResult: mapped.transactionResult,
+        source: `pftl_account_tx_${syncKind}`,
+        payload: {
+          source: "pftl_account_tx",
+          syncKind,
+          txHash: mapped.txHash,
+          ledgerIndex: mapped.ledgerIndex,
+        },
+      });
+      reducerEvents += queued?.inserted || 0;
+    }
     return {
       ok: true,
       status: 200,
@@ -106,6 +223,7 @@ export async function syncPftlWalletTransactions({
       scannedTransactions: history.transactions.length,
       complete: history.complete,
       stored,
+      reducerEvents,
       source: "pftl_account_tx",
     };
   } catch (error) {
@@ -196,6 +314,7 @@ export function startPftlCacheWorker({
   intervalMs = Number(process.env.PFTL_CACHE_WORKER_INTERVAL_MS || 60000),
   batchLimit = Number(process.env.PFTL_CACHE_WORKER_BATCH_LIMIT || 3),
   staleMs = Number(process.env.PFTL_CACHE_HOT_STALE_MS || 120000),
+  previousTxnReader = readPftlAccountPreviousTxnId,
   logger = console,
 } = {}) {
   if (!enabled) return { started: false, reason: "disabled" };
@@ -209,6 +328,19 @@ export function startPftlCacheWorker({
     try {
       const due = await listPftlWalletsDueForHotSync({ limit: safeBatch, staleMs });
       for (const wallet of due) {
+        const previous = await previousTxnReader({ walletAddress: wallet.wallet_address });
+        if (
+          previous.ok &&
+          wallet.last_seen_tx_hash &&
+          previous.previousTxnId &&
+          previous.previousTxnId === wallet.last_seen_tx_hash
+        ) {
+          await markPftlSyncWalletChecked({
+            walletAddress: wallet.wallet_address,
+            previousTxnId: previous.previousTxnId,
+          });
+          continue;
+        }
         const result = await syncPftlWalletTransactions({
           walletAddress: wallet.wallet_address,
           accountId: wallet.account_id || "",

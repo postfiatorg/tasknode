@@ -51,18 +51,22 @@ Expected user-facing outcomes:
 Initial backend slice implemented:
 
 - Cache migration: `server/db/migrations/007_pftl_transaction_cache.sql`.
+- Watcher/reducer migration: `server/db/migrations/008_pftl_cache_watcher.sql`.
+- Reducer dedupe migration: `server/db/migrations/009_pftl_cache_reducer_dedupe_key.sql`.
 - Cache repository: `server/repositories/pftl-cache.js`.
 - Sync helper and optional polling worker: `server/pftl-cache-sync.js`.
+- Native WSS watcher: `server/pftl-cache-watcher.js`.
 - Cache endpoint: `GET /api/pftl/cache/account-tx`.
 - Wallet activity feed: cache-first read with direct PFTL fallback during rollout.
 - Wallet lifecycle: link/create registers a sync target; delink marks it inactive.
+- Local/docker/fly config enables the WSS watcher and polling repair worker.
+- Deterministic 10-wallet stress script: `npm run db:pftl-cache-watcher-stress`.
 
 Still open:
 
-- WSS watcher.
 - Archive backfill job with long-running checkpoint policy.
 - Context restore migration to cache-first pointer reads.
-- Task replay migration from `pftl_pointer_memos` into `task_projections`.
+- Reducer execution from `pftl_cache_reducer_events` into context hydration and task projections.
 - Operator monitoring and retention policy.
 
 ## Proposed Tables
@@ -127,6 +131,33 @@ pftl_pointer_memos
   decoded_json jsonb not null default '{}'
   created_at
   unique(tx_hash, memo_index)
+
+pftl_cache_watcher_state
+  id primary key
+  endpoint_url
+  status
+  subscribed_wallet_count
+  last_ledger_index
+  last_event_tx_hash
+  last_event_at
+  last_error
+  metadata_json
+
+pftl_cache_reducer_events
+  id primary key
+  dedupe_key unique
+  wallet_address
+  account_id
+  tx_hash
+  ledger_index
+  reducer_kind
+  pointer_kind nullable
+  cid nullable
+  task_id nullable
+  context_id nullable
+  memo_index nullable
+  status
+  payload_json
 ```
 
 ## Phase 1: Schema And Repository
@@ -152,7 +183,8 @@ Work:
 - Add `pftl_tx_sync_hot` worker job for recent `account_tx` pulls.
 - Add `pftl_tx_sync_archive` worker job for paginated archive backfill.
 - Add WSS watcher that subscribes to active wallets in shards and enqueues hot sync on validated activity.
-- Add polling watcher using `account_info.PreviousTxnID` as reliability fallback.
+- Store the validated WSS transaction immediately and enqueue the same reducer events used by hot sync.
+- Add polling repair using `account_info.PreviousTxnID` before falling back to `account_tx`.
 - Add duplicate-job suppression and per-wallet cooldown.
 
 Acceptance criteria:
@@ -233,7 +265,9 @@ Acceptance criteria:
 | Migration smoke | Tables and indexes exist. |
 | Fixture upsert | Transaction and wallet index writes are idempotent. |
 | Pointer decode smoke | `pf.ptr/v4` memo rows decode into `pftl_pointer_memos`. |
-| WSS disabled | Polling watcher still detects `PreviousTxnID` change. |
+| WSS watcher smoke | Account event matching and endpoint normalization work. |
+| 10-wallet watcher stress | Ten wallet-affecting tx events populate tx, wallet index, pointer, and reducer rows idempotently. |
+| WSS disabled | Polling/hot sync still repairs cache by account history. |
 | Empty cache | API returns syncing/stale status instead of false completeness. |
 | Wallet feed cache read | `/api/wallet/transactions` can render without direct RPC. |
 | Context pointer restore | Context history reads pointer rows from cache. |
