@@ -17,6 +17,8 @@ The chat composer and thread live in `ChatSurface` in `src/main.jsx`. Provider r
 
 Memory context is injected by `server/chat-memory-context.js`. The memory worker runs after a successful assistant response and must not block the user response.
 
+Task state is also ported into chat by `server/chat-task-context.js`. This is a read-only projection of the user's cached task state, not a task mutation path.
+
 ## Chat Modes
 
 The model picker is not cosmetic. Each option maps to a provider, model default, reasoning policy, privacy posture, attachment path, and web-search policy in `server/chat-router.js`.
@@ -40,6 +42,32 @@ Frontier modes use the OpenAI Responses API with `store=false`. Task Node passes
 
 Web search is currently deterministic and conservative. `server/chat-search-tools.js` enables OpenAI `web_search` only when the message includes current-information signals such as `search`, `look up`, `today`, `current`, `latest`, `recent`, `news`, or `what is going on`. If those signals are absent, Frontier modes answer without web search. Private modes never add OpenRouter web search.
 
+## Task Context Porting
+
+Every chat mode can receive the user's task state as background context. The purpose is for chat to know what is outstanding, pending verification, refused, and rewarded without making the database the canonical task engine.
+
+The runtime path is:
+
+1. `server/chat-router.js::executeChat` and `server/chat-router.js::executeChatStream` load chat history, memory context, and task context in parallel before calling the provider.
+2. `server/chat-task-context.js::taskContextForAccount` resolves the linked PFT wallet for the app account.
+3. `server/repositories/tasks.js::listTaskState` reads the `task_projections` cache for that wallet and account. The projection is ordered by most recently updated task and capped at 200 rows at the database read boundary.
+4. `server/chat-task-context.js::formatChatTaskContext` renders the projection through `prompts/chat/account_tasks_context_v1.md`.
+5. `server/chat-memory-context.js::taskNodeInstructions` appends the rendered task block to the base chat instructions.
+6. `server/chat-router.js` sends those instructions to OpenAI Responses API as `instructions` or to OpenRouter Chat Completions as the system message.
+
+The injected block is shaped as:
+
+- `outstanding_tasks`: active tasks that need user attention.
+- `pending_verification_tasks`: tasks waiting on verification response or evidence.
+- `refused_tasks`: rejected, refused, expired, or cancelled tasks.
+- `rewarded_tasks`: completed tasks with reward state.
+
+Outstanding and pending verification tasks are intentionally uncapped in the chat context because active work should not disappear from the model's view. Refused history is capped at 10 items and rewarded history is capped at 12 items. The XML `count` attributes still show the full group counts, so the model can tell when history was trimmed.
+
+This context is advisory only. The prompt tells the model to treat it as a cached projection, to say the cache may be stale if it conflicts with visible product state, and to never claim that a task, verification, refusal, or reward changed unless the current action actually changed it. Including a task in chat does not write Postgres, emit PFTL events, update IPFS, accept a task, submit evidence, or issue a reward.
+
+Because task context is sent to the provider as part of the chat input, those input tokens are part of ordinary chat usage. The separate asynchronous memory write remains non-user-billed.
+
 ## Billing And Persistence
 
 Before execution, `server/product-contracts.js` checks login, provider readiness, estimated cost, and available chat credit. After execution, `server/repositories/chat-billing.js` persists the user message, assistant message, provider, model, response ID, token usage, web-search calls, model cost, tool cost, and ledger entry. Memory summarization is queued afterward and is not billed to the user.
@@ -59,6 +87,7 @@ Before execution, `server/product-contracts.js` checks login, provider readiness
 - Extracted attachment text is part of the user interaction record.
 - Token usage and cost are recorded against the signup identity account.
 - Memory summaries are separate from ordinary chat history.
+- Task state is read from `task_projections`, which is a cache over replayable PFTL task events.
 
 ## Diagram
 
@@ -69,13 +98,15 @@ sequenceDiagram
   participant API as /api/chat/send
   participant R as Chat Router
   participant DB as Postgres
+  participant T as Task Projection
   participant M as Memory Worker
   U->>UI: Send text and attachments
   UI->>API: conversationId, mode, attachments
-  API->>DB: Save user turn
+  API->>DB: Load history and memory context
+  API->>T: Load linked-wallet task projection
   API->>R: Execute provider request
   R-->>API: Assistant response and usage
-  API->>DB: Save assistant turn and bill usage
+  API->>DB: Save user and assistant turn, then bill usage
   API-->>UI: Response
   API->>M: Queue memory write
 ```
