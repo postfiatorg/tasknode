@@ -107,9 +107,30 @@ function TaskOverviewPanel({ displayTask, steps, verification }) {
   );
 }
 
+function initialEvidenceMethod(task = {}, verification = {}) {
+  const text = [
+    task.title,
+    task.description,
+    verification.title,
+    verification.body,
+    verification?.policy?.type,
+    verification?.policy?.criteria,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (text.includes("github") || text.includes("commit") || text.includes("repository")) return "commit";
+  if (text.includes("screenshot") || text.includes("image")) return "screenshot";
+  if (text.includes("code")) return "code";
+  if (text.includes("url") || text.includes("link")) return "url";
+  if (text.includes("file") || text.includes("pdf") || text.includes("docx")) return "file";
+  return "text";
+}
+
 function TaskSubmitPanel({ detail, loading, task, verification }) {
-  const [method, setMethod] = useState("text");
+  const [method, setMethod] = useState(() => initialEvidenceMethod(task, verification));
   const [confirmed, setConfirmed] = useState(false);
+  const [copiedPacket, setCopiedPacket] = useState(false);
   const [draft, setDraft] = useState({
     code: "",
     commit: "",
@@ -122,9 +143,19 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
   const actions = detail?.actions || {};
   const submissionOpen = Boolean(actions.canSubmitInitialEvidence || actions.canSubmitVerificationEvidence);
   const summaries = Array.isArray(detail?.submission?.summaries) ? detail.submission.summaries : [];
-  const disabledReason = loading
-    ? "Loading task projection state."
-    : actions.submissionReason || "Live submission requires browser-side PFTL signing.";
+  const signingEnabled = Boolean(actions.browserSubmissionEnabled);
+  const evidenceValue = {
+    code: draft.code,
+    commit: draft.commit,
+    file: draft.fileName,
+    screenshot: draft.screenshot,
+    text: draft.text,
+    url: draft.url,
+  }[method] || "";
+  const canPrepareEvidence = Boolean(evidenceValue.trim() && !loading && (!signingEnabled || confirmed));
+  const helperText = signingEnabled
+    ? "This will publish a signed PFTL task submission."
+    : "Browser signing is not enabled for this task yet. Copy the evidence packet and submit it through the active verification workflow.";
   const methods = [
     { key: "text", label: "Text", icon: FileText },
     { key: "url", label: "URL", icon: ExternalLink },
@@ -135,7 +166,24 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
   ];
 
   function updateDraft(key, value) {
+    setCopiedPacket(false);
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function copyEvidencePacket() {
+    const packet = {
+      schema: "tasknode.task.evidence.draft.v1",
+      task_id: task.taskId || task.fullId || task.id || "",
+      task_title: task.title || "",
+      evidence_type: method,
+      evidence: evidenceValue,
+      notes: draft.notes,
+      prepared_at: new Date().toISOString(),
+    };
+    const ok = await copyText(JSON.stringify(packet, null, 2));
+    if (!ok) return;
+    setCopiedPacket(true);
+    window.setTimeout(() => setCopiedPacket(false), 1600);
   }
 
   return (
@@ -262,22 +310,29 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
         </label>
       </div>
 
-      <label className="task-submit-confirm">
-        <input
-          checked={confirmed}
-          onChange={(event) => setConfirmed(event.target.checked)}
-          type="checkbox"
-        />
-        This evidence is ready to be published as a signed PFTL task submission.
-      </label>
+      <button
+        className="dark-pill task-submit-button"
+        disabled={!canPrepareEvidence}
+        onClick={signingEnabled ? undefined : copyEvidencePacket}
+        type="button"
+      >
+        {signingEnabled ? "Submit evidence" : copiedPacket ? "Evidence packet copied" : "Copy evidence packet"}
+        {copiedPacket ? <Check size={14} strokeWidth={2} /> : <ArrowRight size={14} strokeWidth={2} />}
+      </button>
+      {signingEnabled && (
+        <label className="task-submit-confirm">
+          <input
+            checked={confirmed}
+            onChange={(event) => setConfirmed(event.target.checked)}
+            type="checkbox"
+          />
+          This evidence is ready to submit.
+        </label>
+      )}
       <div className="task-inline-warning">
         <AlertTriangle size={15} strokeWidth={1.8} />
-        <span>{disabledReason}</span>
+        <span>{helperText}</span>
       </div>
-      <button className="dark-pill task-submit-button" disabled type="button">
-        Publish signed evidence
-        <ArrowRight size={14} strokeWidth={2} />
-      </button>
     </div>
   );
 }
@@ -300,9 +355,9 @@ function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy }) {
 
   if (error) {
     return (
-      <div className="task-empty-panel is-error">
-        <AlertTriangle size={18} strokeWidth={1.8} />
-        {error}
+      <div className="task-empty-panel">
+        <Flag size={18} strokeWidth={1.8} />
+        No indexed audit trail is available for this task yet.
       </div>
     );
   }
@@ -448,7 +503,7 @@ export function TaskDetailModal({ onClose, task }) {
         } else {
           setDetailState({
             data: null,
-            error: result.body?.message || "Task detail is not available for this linked wallet.",
+            error: result.body?.error || "task_detail_unavailable",
             loading: false,
           });
         }
@@ -575,22 +630,6 @@ export function TaskDetailModal({ onClose, task }) {
             />
           )}
         </div>
-        <footer className="task-modal-footer">
-          <button
-            className="danger-text"
-            disabled={!detailState.data?.actions?.canRefuse}
-            type="button"
-          >
-            Refuse task
-          </button>
-          <div className="task-modal-actions">
-            <button className="light-pill" onClick={() => setActiveTab("forensics")} type="button">Audit trail</button>
-            <button className="dark-pill" onClick={() => setActiveTab("submit")} type="button">
-              Submit evidence
-              <ArrowRight size={14} strokeWidth={2} />
-            </button>
-          </div>
-        </footer>
       </section>
     </div>
   );
