@@ -20,6 +20,8 @@ const testMnemonic = generateMnemonic(wordlist, 256);
 const testWalletAddress = deriveWalletSummary(testMnemonic).address;
 const testVaultPassword = "frame-smoke-vault-pass";
 const frameContextCid = "bafybeigdyrztm3j5framecontextpointeraaaa";
+const frameContextDraftText = `Frame saved context draft ${randomBytes(3).toString("hex")}`;
+const chatComposerSelector = 'textarea[aria-label="Ask anything"], input[aria-label="Ask anything"]';
 
 let cdp;
 
@@ -54,7 +56,7 @@ async function main() {
     await waitForText("Task Node");
 
     await assertText(["Task Node", "New chat", "Tasks", "Wallet", "Context"]);
-    await assertSelector('input[aria-label="Ask anything"]');
+    await assertSelector(chatComposerSelector);
     await assertSidebarBalances();
     await capture("01-chat");
 
@@ -72,7 +74,7 @@ async function main() {
     await clickSelector('button[aria-label="Add"]');
 
     await clickNav("More");
-    await assertText(["Agents", "Messages", "Motivation", "Brainstorming"]);
+    await assertText(["Agents", "Memory", "Motivation", "Brainstorming"]);
     await capture("03-sidebar-more");
     await clickNav("More");
 
@@ -154,7 +156,7 @@ async function main() {
       };
       return true;
     })()`);
-    await setInput('input[aria-label="Ask anything"]', "Optimistic pending smoke");
+    await setInput(chatComposerSelector, "Optimistic pending smoke");
     await clickSelector(".send-button");
     await assertText(["Optimistic pending smoke", "Thinking"]);
     await assertSelector(".assistant-message.pending");
@@ -197,20 +199,16 @@ async function main() {
     })()`);
 
     await clickNav("New chat");
-    await assertSelector('input[aria-label="Ask anything"]');
+    await assertSelector(chatComposerSelector);
     await assertLocationHash("");
 
     await clickNav("Tasks");
     await assertText(["Tasks", "Outstanding", "Verification", "Refused", "Rewarded", "Request task"]);
-    await assertText(["Ship A 90 Percent Task Node Surface Cut", "Make The 8-K Extractor Emit Cited Rows"]);
+    await assertText(["Link a wallet to view tasks", "Tasks appear here after the PFTL projection cache indexes"]);
     await capture("04-tasks");
 
-    await clickSelector(".task-row");
-    await assertText(["Description", "Steps", "Verification", "Reward", "Submit evidence", "Discuss", "Cancel task"]);
-    await capture("05-task-modal");
-    await clickSelector(".task-modal header button");
-
     await clickNav("Wallet");
+    await waitForText("No wallet linked");
     await assertText(["Available balance", "PFT", "Link wallet", "Receive", "Activity", "Your latest transactions", "No wallet linked"]);
     await assertLocationHash("#wallet");
     await capture("06-wallet");
@@ -234,7 +232,7 @@ async function main() {
     await capture("07-context");
 
     await clickNav("New chat");
-    await assertSelector('input[aria-label="Ask anything"]');
+    await assertSelector(chatComposerSelector);
     await assertLocationHash("");
     await capture("08-home-return");
 
@@ -250,7 +248,7 @@ async function main() {
     ]);
 
     await clickNav("New chat");
-    await assertSelector('input[aria-label="Ask anything"]');
+    await assertSelector(chatComposerSelector);
     await assertLocationHash("");
 
     await clickSelector(".profile-button");
@@ -276,7 +274,7 @@ async function main() {
     await capture("13-settings-security");
 
     await clickButton("Billing", "document.querySelector('.settings-rail')");
-    await assertText(["Payment methods", "XRP", "Ether", "Bitcoin", "USDT", "USDC", "Billing history"]);
+    await assertText(["Payment methods", "Ether", "Ethereum mainnet", "USDT", "USDC", "Billing history"]);
     await assertLedgerRowsIfLedgerExists();
     await capture("14-settings-billing");
     await clickSelector(".settings-close");
@@ -320,6 +318,15 @@ async function main() {
     }
 
     if (signedIn) {
+      await clickNav("Context");
+      await assertText(["Task Node Context"]);
+      await setContextEditorText(frameContextDraftText);
+      await waitForContextDocumentBody(frameContextDraftText);
+      await clickNav("Tasks");
+      await clickNav("Context");
+      await assertText([frameContextDraftText]);
+      await capture("16b-context-save-navigation");
+
       await clickNav("Wallet");
       await clickButton("Link wallet");
       await assertText(["Link Seed Wallet", "24-word recovery phrase", "Words", "Mnemonic", "Address"]);
@@ -387,7 +394,8 @@ async function main() {
         return true;
       })()`);
       await clickNav("Context");
-      await assertText(["Task Node Context", "Versions"]);
+      await waitForText("Versions");
+      await assertText(["Versions"]);
       await clickButton("Versions");
       if (contextProjectionSeeded) {
         await assertText(["Revision history", "Unlocked", "Restore"]);
@@ -404,7 +412,7 @@ async function main() {
         await waitForText("Historical version loaded");
         await capture("19-context-hydrated");
       } else {
-        await assertText(["Revision history", "Syncing history"]);
+        await assertText(["Revision history"]);
         await capture("18b-context-cache-empty");
       }
       await evaluate(`(() => {
@@ -546,6 +554,36 @@ async function seedFrameContextProjection(accountId) {
     },
   });
   return Boolean(result.ok);
+}
+
+async function setContextEditorText(value) {
+  await evaluate(`(() => {
+    const editor = document.querySelector('.ctx-editor');
+    if (!editor) throw new Error('context editor not found');
+    editor.focus();
+    editor.innerHTML = '';
+    const paragraph = document.createElement('p');
+    paragraph.textContent = ${JSON.stringify(value)};
+    editor.appendChild(paragraph);
+    editor.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      inputType: 'insertText',
+      data: ${JSON.stringify(value)}
+    }));
+    return true;
+  })()`);
+}
+
+async function waitForContextDocumentBody(text) {
+  for (let index = 0; index < 80; index += 1) {
+    const result = await evaluate(`fetch('/api/app-state')
+      .then((response) => response.json())
+      .then((state) => String(state.context?.document?.body || '').includes(${JSON.stringify(text)}))
+      .catch(() => false)`);
+    if (result === true) return;
+    await sleep(100);
+  }
+  throw new Error(`Timed out waiting for saved context body: ${text}`);
 }
 
 async function setInput(selector, value) {

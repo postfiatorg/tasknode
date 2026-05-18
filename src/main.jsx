@@ -2890,20 +2890,34 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const savedRangeRef = useRef(null);
   const tableWrapRef = useRef(null);
   const previewHydrationRunRef = useRef(0);
+  const dirtyRef = useRef(false);
+  const titleRef = useRef(initialDocument.title || "Task Node Context");
   const lastSavedHtmlRef = useRef(contextBodyToHtml(initialDocument.body || ""));
 
   useEffect(() => {
     const nextDocument = context?.document || {};
     const nextTitle = nextDocument.title || "Task Node Context";
     const nextHtml = contextBodyToHtml(nextDocument.body || "");
+    const preserveLocalDraft = dirtyRef.current;
     setDocumentState(nextDocument);
-    setTitle(nextTitle);
     setSavedTitle(nextTitle);
     lastSavedHtmlRef.current = nextHtml;
-    if (editorRef.current) editorRef.current.innerHTML = nextHtml;
-    setDirty(false);
-    setSaveMessage("");
+    if (!preserveLocalDraft) {
+      setTitle(nextTitle);
+      titleRef.current = nextTitle;
+      if (editorRef.current) editorRef.current.innerHTML = nextHtml;
+      setDirty(false);
+      setSaveMessage("");
+    }
   }, [context?.document?.id, context?.document?.revision, context?.document?.updatedAt]);
+
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
+
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
 
   useEffect(() => {
     setHydratedContext(null);
@@ -3127,15 +3141,32 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       return false;
     }
 
-    setDocumentState(result.body.document);
-    setTitle(result.body.document.title || "Task Node Context");
-    setSavedTitle(result.body.document.title || "Task Node Context");
-    lastSavedHtmlRef.current = contextBodyToHtml(result.body.document.body || "");
-    setSaveMessage("Saved just now");
-    setDirty(false);
+    const savedDocument = result.body.document;
+    const refreshedState = await onContextChange?.();
+    const refreshedDocument = refreshedState?.context?.document;
+    const durableDocument =
+      refreshedDocument?.id === savedDocument.id &&
+      Number(refreshedDocument.revision || 0) >= Number(savedDocument.revision || 0)
+        ? refreshedDocument
+        : savedDocument;
+    const currentBody = sanitizeContextHtml(editorRef.current?.innerHTML || "");
+    const currentTitle = titleRef.current;
+    const continuedEditing = currentBody !== body || currentTitle !== title;
+
+    setDocumentState(durableDocument);
+    setSavedTitle(durableDocument.title || "Task Node Context");
+    lastSavedHtmlRef.current = contextBodyToHtml(durableDocument.body || "");
+    if (continuedEditing) {
+      setDirty(true);
+    } else {
+      setTitle(durableDocument.title || "Task Node Context");
+      titleRef.current = durableDocument.title || "Task Node Context";
+      setSaveMessage("Saved just now");
+      setDirty(false);
+    }
     setSaving(false);
     return true;
-  }, [canEdit, savePath, saving, title]);
+  }, [canEdit, onContextChange, savePath, saving, title]);
 
   useEffect(() => {
     if (!dirty || saving || !canEdit) return undefined;
@@ -3149,6 +3180,11 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     setSaveMessage("");
     recomputeDirty();
   };
+
+  const flushPendingContextSave = useCallback(() => {
+    if (!dirty || saving || !canEdit) return;
+    saveContext();
+  }, [canEdit, dirty, saveContext, saving]);
 
   const handleEditorKeyDown = (event) => {
     const mod = event.metaKey || event.ctrlKey;
@@ -3507,7 +3543,9 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
               className="ctx-title-input"
               disabled={!canEdit}
               maxLength={120}
+              onBlur={flushPendingContextSave}
               onChange={(event) => {
+                titleRef.current = event.target.value;
                 setTitle(event.target.value);
                 setSaveMessage("");
               }}
@@ -3521,6 +3559,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
               className="ctx-editor"
               contentEditable={canEdit}
               data-placeholder="Add stable preferences, active projects, constraints, and working notes."
+              onBlur={flushPendingContextSave}
               onClick={updateActiveFormats}
               onFocus={updateActiveFormats}
               onInput={handleEditorInput}
