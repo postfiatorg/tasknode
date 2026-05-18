@@ -15,7 +15,7 @@ Task lifecycle replay is the ability to reconstruct task state from PFTL wallet 
 
 ## Technical Architecture
 
-The protocol plan is `docs/PFTL_TASK_ENGINE_SPEC.md`. The live replay reference is `reference_clients/python/tasknode_pftl/scenarios/full_lifecycle.py`. The encryption-specific onboarding reference is `reference_clients/python/tasknode_pftl/scenarios/encryption_pubkey_demo.py`.
+The protocol plan is `docs/PFTL_TASK_ENGINE_SPEC.md`. The async worker and wallet queue design is in Help under `Task Async Engine`, backed by `docs/wiki/architecture/task-async-engine.md`. The live replay reference is `reference_clients/python/tasknode_pftl/scenarios/full_lifecycle.py`. The encryption-specific onboarding reference is `reference_clients/python/tasknode_pftl/scenarios/encryption_pubkey_demo.py`.
 
 The app should maintain a task projection cache for speed. The cache should be rebuildable by scanning relevant wallet histories and fetching referenced IPFS CIDs.
 
@@ -43,4 +43,3 @@ sequenceDiagram
 - PFTL is synchronous per wallet, so transaction queues are required.
 - Cache updates should tolerate delayed or out-of-order replay.
 - Encrypted payload fetch failures should be retried without losing pointer events.
-

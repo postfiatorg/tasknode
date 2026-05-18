@@ -16,6 +16,7 @@ import encryption from "../../../docs/wiki/architecture/encryption.md?raw";
 import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
 import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
+import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
@@ -300,6 +301,12 @@ export const DOC_GROUPS = [
         title: "Task Lifecycle",
         summary: "Replayable task state machine.",
         markdown: taskLifecycle,
+      },
+      {
+        slug: "task-async-engine",
+        title: "Task Async Engine",
+        summary: "Wallet queues, worker ownership, and request edge states.",
+        markdown: taskAsyncEngine,
       },
       { slug: "nostr", title: "Nostr TBD", summary: "Public broadcast boundary.", markdown: nostr },
     ],
