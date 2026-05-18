@@ -56,17 +56,19 @@ Initial backend slice implemented:
 - Cache repository: `server/repositories/pftl-cache.js`.
 - Sync helper and optional polling worker: `server/pftl-cache-sync.js`.
 - Native WSS watcher: `server/pftl-cache-watcher.js`.
+- Reducer worker: `server/pftl-cache-reducer.js`.
 - Cache endpoint: `GET /api/pftl/cache/account-tx`.
 - Wallet activity feed: cache-first read with direct PFTL fallback during rollout.
 - Wallet lifecycle: link/create registers a sync target; delink marks it inactive.
-- Local/docker/fly config enables the WSS watcher and polling repair worker.
+- Local/docker/fly config enables the WSS watcher, polling repair worker, and reducer worker.
 - Deterministic 10-wallet stress script: `npm run db:pftl-cache-watcher-stress`.
+- Reducer smoke script: `npm run db:pftl-cache-reducer-smoke`.
 
 Still open:
 
 - Archive backfill job with long-running checkpoint policy.
 - Context restore migration to cache-first pointer reads.
-- Reducer execution from `pftl_cache_reducer_events` into context hydration and task projections.
+- Full replay recovery tooling from cache rows after deleting projections.
 - Operator monitoring and retention policy.
 
 ## Proposed Tables
@@ -186,6 +188,7 @@ Work:
 - Store the validated WSS transaction immediately and enqueue the same reducer events used by hot sync.
 - Add polling repair using `account_info.PreviousTxnID` before falling back to `account_tx`.
 - Add duplicate-job suppression and per-wallet cooldown.
+- Add reducer worker for `wallet_balance_refresh`, `context_pointer_hydrate`, and `task_projection_replay`.
 
 Acceptance criteria:
 
@@ -267,6 +270,7 @@ Acceptance criteria:
 | Pointer decode smoke | `pf.ptr/v4` memo rows decode into `pftl_pointer_memos`. |
 | WSS watcher smoke | Account event matching and endpoint normalization work. |
 | 10-wallet watcher stress | Ten wallet-affecting tx events populate tx, wallet index, pointer, and reducer rows idempotently. |
+| Reducer smoke | A cached CONTEXT pointer writes context history and an encrypted TASK pointer writes `task_projections`. |
 | WSS disabled | Polling/hot sync still repairs cache by account history. |
 | Empty cache | API returns syncing/stale status instead of false completeness. |
 | Wallet feed cache read | `/api/wallet/transactions` can render without direct RPC. |

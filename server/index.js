@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
 import { fetchPftBalance } from "./pftl-balance.js";
+import { startPftlCacheReducerWorker } from "./pftl-cache-reducer.js";
 import { startPftlCacheWorker } from "./pftl-cache-sync.js";
 import { startPftlCacheWatcher } from "./pftl-cache-watcher.js";
 import { handlePftlCacheRoute } from "./pftl-cache-route.js";
@@ -984,6 +985,7 @@ await migrateDatabase();
 startMemoryWorker();
 startPftlCacheWorker();
 startPftlCacheWatcher();
+startPftlCacheReducerWorker();
 
 server.listen(port, "0.0.0.0", () => {
   console.log(`tasknodeofficial listening on :${port}`);

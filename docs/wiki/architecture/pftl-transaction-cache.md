@@ -156,7 +156,8 @@ Fast lane:
 2. WSS watcher subscribes to active wallets in shards using the PFTL `accounts` stream.
 3. On validated activity, it upserts the transaction immediately, links affected watched wallets, decodes pointer memos, and creates reducer events.
 4. The same reducer events are created by `account_tx` hot sync so reconnect/backfill repair uses the same downstream path as live WSS events.
-5. API reads from Postgres first. If stale, it may enqueue sync work and return a visible syncing status.
+5. The reducer worker consumes `pftl_cache_reducer_events`: context pointers become context history rows, task pointers hydrate/decrypt IPFS payloads with the Task Node service key and rebuild task projections, and wallet balance refresh events mark the wallet feed stale/complete without blocking reads.
+6. API reads from Postgres first. If stale, it may enqueue sync work and return a visible syncing status.
 
 The state-change trigger is native account activity, not balance polling. `accounts_proposed` can be added later for optimistic UI, but canonical cache updates use validated transactions only.
 The polling repair worker first checks `account_info.PreviousTxnID`; if it matches the cached checkpoint, it marks the wallet checked without running `account_tx`.
@@ -249,9 +250,11 @@ The first implementation slice is live in code:
 - `server/repositories/pftl-cache.js` maps `account_tx` rows into transaction, wallet index, and pointer memo rows.
 - `server/pftl-cache-sync.js` performs cache sync from PFTL `account_tx`, creates reducer events, and exposes an optional polling worker gated by `PFTL_CACHE_WORKER_ENABLED=true`.
 - `server/pftl-cache-watcher.js` subscribes to PFTL WSS account activity, stores validated events, records watcher state, and backfills on startup/reconnect/ledger gaps.
+- `server/pftl-cache-reducer.js` consumes reducer events and writes context history plus task projections.
 - `/api/pftl/cache/account-tx` returns cached `account_tx`-style rows for the signed-in account's linked wallet.
 - `/api/wallet/transactions` is cache-first and falls back to direct PFTL history while the cache rolls out.
 - Wallet link/create registers the wallet for sync; wallet delink marks it inactive.
 - `npm run db:pftl-cache-watcher-stress` runs a deterministic 10-wallet cache stress test.
+- `npm run db:pftl-cache-reducer-smoke` proves reducer events update context history and task projections.
 
-The archive-completeness policy, context cache-first migration, task replay reducer execution, and retention/monitoring remain milestone work.
+The archive-completeness policy, full context cache-first migration, full task replay recovery tooling, and retention/monitoring remain milestone work.

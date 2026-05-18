@@ -31,6 +31,7 @@
     "db:tasks-smoke": "node scripts/task-projection-postgres-smoke.mjs",
     "db:pftl-cache-smoke": "node scripts/pftl-cache-postgres-smoke.mjs",
     "db:pftl-cache-watcher-stress": "node scripts/pftl-cache-watcher-stress.mjs",
+    "db:pftl-cache-reducer-smoke": "node scripts/pftl-cache-reducer-postgres-smoke.mjs",
     "db:import-task-replays": "node scripts/import-task-replay-receipts.mjs",
     "memory:backfill": "node scripts/memory-backfill.mjs",
     "runtime-smoke": "node scripts/runtime-store-smoke.mjs",
