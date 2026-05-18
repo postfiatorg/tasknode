@@ -18,6 +18,7 @@ TASKGEN_PROMPT_PATH = "task_engine/taskgen_minimal_v1.md"
 VERIFICATION_REQUEST_PROMPT_VERSION = "verification_request_v1"
 VERIFICATION_REQUEST_PROMPT_PATH = "task_engine/verification_request_v1.md"
 MINIMAL_TASKGEN_SYSTEM = load_prompt(TASKGEN_PROMPT_PATH)
+PRIVATE_TASKGEN_PROVIDER_ORDER = ["novita", "atlas-cloud", "siliconflow", "deepinfra"]
 
 DEFAULT_REFERENCE_REWARD_PFT = Decimal("3.20")
 MIN_REFERENCE_REWARD_PFT = Decimal("0.50")
@@ -218,6 +219,21 @@ def project_taskgen_input(bundle: dict[str, Any], *, bundle_cid: str, bundle_dig
             "deep_memory": memory.get("deep_memory") or [],
             "recent_memory": memory.get("recent_memory") or [],
         },
+        "task_queue": bundle.get("task_queue") or {
+            "schema": "pf.task.queue_cache.v1",
+            "groups": {
+                "outstanding": [],
+                "pending_verification": [],
+                "refused": [],
+                "rewarded": [],
+            },
+            "summary": {
+                "outstanding": 0,
+                "pending_verification": 0,
+                "refused": 0,
+                "rewarded": 0,
+            },
+        },
         "wallet": bundle["wallet"],
         "policy": bundle["policy"],
     }
@@ -278,6 +294,70 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     return json.loads(raw)
 
 
+def _openrouter_provider_preferences() -> dict[str, Any]:
+    return {
+        "zdr": True,
+        "data_collection": "deny",
+        "require_parameters": True,
+        "order": PRIVATE_TASKGEN_PROVIDER_ORDER,
+        "only": PRIVATE_TASKGEN_PROVIDER_ORDER,
+    }
+
+
+def _structured_chat_completion(
+    *,
+    config: PftlConfig,
+    provider: str,
+    model: str,
+    messages: list[dict[str, str]],
+    response_format: dict[str, Any],
+    timeout: int,
+) -> dict[str, Any]:
+    normalized = str(provider or "frontier").strip().lower()
+    if normalized == "frontier":
+        if not config.openai_api_key:
+            raise RuntimeError("OPENAI_API_KEY is required for frontier task generation")
+        response = requests.post(
+            f"{config.openai_base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.openai_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": messages,
+                "response_format": response_format,
+            },
+            timeout=timeout,
+        )
+    elif normalized == "private":
+        if not config.openrouter_api_key:
+            raise RuntimeError("OPENROUTER_API_KEY is required for private task generation")
+        response = requests.post(
+            f"{config.openrouter_base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.openrouter_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://tasknodeofficial.local",
+                "X-Title": "Task Node Official Python Task Engine",
+            },
+            json={
+                "model": model,
+                "messages": messages,
+                "response_format": response_format,
+                "provider": _openrouter_provider_preferences(),
+            },
+            timeout=timeout,
+        )
+    else:
+        raise RuntimeError(f"Unsupported task generation provider: {provider}")
+    if hasattr(response, "ok") and not response.ok:
+        raise RuntimeError(f"{normalized} task generation HTTP {response.status_code}: {response.text[:500]}")
+    if hasattr(response, "raise_for_status"):
+        response.raise_for_status()
+    return response.json()
+
+
 def _normalize_reference_reward(value: Any) -> str:
     try:
         amount = Decimal(str(value))
@@ -323,17 +403,23 @@ def generate_task(
     config: PftlConfig,
     task_input: dict[str, Any],
     *,
+    provider: str = "frontier",
     model: str | None = None,
     benchmark_high_reasoning: bool = False,
     allow_fallback: bool = False,
 ) -> TaskgenResult:
-    model_name = model or config.taskgen_model
+    provider_name = str(provider or "frontier").strip().lower()
+    model_name = model or (config.private_taskgen_model if provider_name == "private" else config.taskgen_model)
     system_prompt_digest = prompt_digest(MINIMAL_TASKGEN_SYSTEM)
     input_digest = sha256_hex(task_input)
-    if not config.openai_api_key:
+    provider_configured = (
+        bool(config.openrouter_api_key) if provider_name == "private" else bool(config.openai_api_key)
+    )
+    if not provider_configured:
         if not allow_fallback:
-            raise RuntimeError("OPENAI_API_KEY is required for task generation")
-        return _fallback_task(task_input, reason="missing_openai_api_key")
+            required = "OPENROUTER_API_KEY" if provider_name == "private" else "OPENAI_API_KEY"
+            raise RuntimeError(f"{required} is required for {provider_name} task generation")
+        return _fallback_task(task_input, reason=f"missing_{provider_name}_provider_key")
 
     user_prompt = (
         "Generate a minimal Task Node task from this input packet. "
@@ -342,28 +428,22 @@ def generate_task(
     )
     started = time.time()
     try:
-        response = requests.post(
-            f"{config.openai_base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {config.openai_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model_name,
-                "messages": [
-                    {"role": "system", "content": MINIMAL_TASKGEN_SYSTEM},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "response_format": TASKGEN_RESPONSE_FORMAT,
-            },
+        body = _structured_chat_completion(
+            config=config,
+            provider=provider_name,
+            model=model_name,
+            messages=[
+                {"role": "system", "content": MINIMAL_TASKGEN_SYSTEM},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format=TASKGEN_RESPONSE_FORMAT,
             timeout=45,
         )
-        response.raise_for_status()
-        body = response.json()
         content = body["choices"][0]["message"]["content"]
         output = _validate_taskgen_output(_parse_json_object(content))
         latency_ms = int((time.time() - started) * 1000)
         metadata = {
+            "provider": provider_name,
             "model": model_name,
             "prompt_version": TASKGEN_PROMPT_VERSION,
             "prompt_digest": system_prompt_digest,
@@ -379,7 +459,7 @@ def generate_task(
         return TaskgenResult(output=output, metadata=metadata)
     except Exception as exc:
         if not allow_fallback:
-            raise RuntimeError(f"OpenAI task generation failed: {type(exc).__name__}: {exc}") from exc
+            raise RuntimeError(f"{provider_name} task generation failed: {type(exc).__name__}: {exc}") from exc
         return _fallback_task(task_input, reason=f"{type(exc).__name__}: {exc}")
 
 

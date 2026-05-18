@@ -2,8 +2,12 @@
 
 ## Status
 
-Draft with review decisions captured. Do not implement until this scope is
-accepted.
+Stage A is implemented and has been run live against PFTL testnet. The current
+Python engine can execute a real N=1 task request from the `task_sample` app
+bundle through offer, acceptance, evidence submission, verification request,
+verification response, AI scoring, PFT payout, replay receipt generation, and
+Postgres projection import. Stage B, the 10-wallet representative speedrun, is
+still pending.
 
 This plan extends `docs/wiki/plans/getting-tasks-over-line.md`. That plan
 defines the wallet-first PFTL task lifecycle and app-data request bundle. This
@@ -50,6 +54,11 @@ Implementation order:
 
 Useful Task Node Official pieces:
 
+- `reference_clients/python/tasknode_pftl/scenarios/task_engine_speedrun.py`
+  runs the current N=1 live task engine walkthrough.
+- `reference_clients/python/tasknode_pftl/engine/` contains the engine modules
+  for task queue cache loading, lifecycle orchestration, evidence packet
+  construction, model-based verification/scoring, and receipts.
 - `reference_clients/python/tasknode_pftl/scenarios/full_lifecycle.py` already
   proves the single-wallet encrypted PFTL/IPFS lifecycle.
 - `reference_clients/python/tasknode_pftl/scenarios/app_request_lifecycle.py`
@@ -106,6 +115,21 @@ reference_clients/python/tasknode_pftl/scenarios/task_engine_speedrun.py
 
 The scenario should compose existing modules instead of duplicating pointer,
 encryption, IPFS, wallet, reducer, or taskgen code.
+
+The N=1 implementation currently supports:
+
+- `--stage n1`;
+- `--provider frontier` with OpenAI `chat-latest`;
+- `--provider private` with OpenRouter `deepseek/deepseek-v4-pro` and ZDR
+  provider routing;
+- app-backed bundle loading from `task_sample`;
+- mixed, URL, screenshot, text, file, code, and GitHub commit evidence packet
+  construction;
+- real model calls for task generation, verification request generation, and
+  reward scoring;
+- fail-closed behavior when model providers fail, unless the operator explicitly
+  passes `--allow-taskgen-fallback` for protocol-only local smoke testing;
+- public receipt import into `task_projections`.
 
 ### Wallet Model
 
@@ -424,6 +448,8 @@ Acceptance:
 Create `tasknode_pftl.engine` and the `task_engine_speedrun` scenario. Wire
 configuration, wallet creation, queue assignment, and receipt generation.
 
+Status: complete for N=1; 10-wallet queue assignment remains for Stage B.
+
 Acceptance:
 
 - `--wallet-count 2 --dry-run` builds queue assignments and receipts without
@@ -436,6 +462,9 @@ Load app-backed context, memory, chat, and `task_projections` into the request
 bundle. Support both `task_sample` and synthetic users. Build the representative
 dataset for the live test: 10 funded wallets, 10 canonical context docs, 10
 app-shaped chat/memory bundles, and task-type assignments.
+
+Status: complete for app-backed N=1 bundle and task queue cache; representative
+10-user dataset remains for Stage B.
 
 Acceptance:
 
@@ -450,6 +479,9 @@ Acceptance:
 Move canonical evidence fixtures into `fixtures/evidence/` and normalize every
 surface into `pf.task.evidence.v1` packets.
 
+Status: complete for generated runtime fixtures and normalized packets.
+Committed static fixtures remain optional.
+
 Acceptance:
 
 - URL, screenshot, code sample, text, PDF, DOCX, and mixed packets are generated;
@@ -461,6 +493,9 @@ Acceptance:
 Run one wallet through request, offer, accept, submission, verification,
 verification response, score, reward, and replay. Codex should perform the user
 side of the run by submitting real evidence and verification evidence.
+
+Status: complete. Live runs have covered both wrong-evidence and reward paths,
+including a rewarded mixed-evidence run imported into Postgres.
 
 Acceptance:
 

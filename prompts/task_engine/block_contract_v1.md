@@ -23,6 +23,9 @@ from Codex, or from another wallet-native client.
 - `chat.relevant_history_summary`: Task or chat history selected by the client.
   Treat it as a retrieval hint, not as ground truth when it conflicts with the
   current request.
+- `task_queue`: Current cached task state grouped as outstanding, pending
+  verification, refused, and rewarded. Use it to avoid duplicates. The cache is
+  advisory; chain/IPFS pointers remain canonical.
 - `wallet`: Subject, authority, and allocation wallet hints. These identify who
   the task belongs to and how rewards are routed. They do not determine task
   content.

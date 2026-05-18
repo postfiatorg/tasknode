@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 from typing import Any
 
 from xrpl.clients import JsonRpcClient
-from xrpl.models.requests import AccountInfo, AccountTx, ServerInfo
+from xrpl.models.requests import AccountInfo, AccountTx, ServerInfo, Tx
 from xrpl.models.transactions import AccountSet, Memo, Payment
-from xrpl.transaction import submit_and_wait
+from xrpl.transaction import autofill_and_sign, submit
 from xrpl.wallet import Wallet
 
 from .pointers import Pointer, build_memo, extract_pointer_memos
 
 PFT_DROPS_PER_PFT = 1_000_000
+DEFAULT_TX_TIMEOUT_SECONDS = 45.0
+DEFAULT_TX_POLL_SECONDS = 2.0
 
 
 def pft_to_drops(value: float | int | str) -> str:
@@ -93,8 +96,7 @@ class PftlClient:
             memos=memos or None,
             network_id=self.network_id,
         )
-        response = submit_and_wait(tx, self.client, wallet=wallet, check_fee=False)
-        result = response.result or {}
+        result = self._submit_and_wait_bounded(tx, wallet)
         meta = result.get("meta") or {}
         tx_result = meta.get("TransactionResult") or result.get("engine_result") or "unknown"
         tx_hash = result.get("hash") or result.get("tx_json", {}).get("hash") or result.get("tx", {}).get("hash")
@@ -115,8 +117,7 @@ class PftlClient:
             message_key=str(message_key).strip().upper(),
             network_id=self.network_id,
         )
-        response = submit_and_wait(tx, self.client, wallet=wallet, check_fee=False)
-        result = response.result or {}
+        result = self._submit_and_wait_bounded(tx, wallet)
         meta = result.get("meta") or {}
         tx_result = meta.get("TransactionResult") or result.get("engine_result") or "unknown"
         tx_hash = result.get("hash") or result.get("tx_json", {}).get("hash") or result.get("tx", {}).get("hash")
@@ -130,6 +131,42 @@ class PftlClient:
             destination=None,
             amount_drops="0",
         )
+
+    def _submit_and_wait_bounded(
+        self,
+        tx: Payment | AccountSet,
+        wallet: Wallet,
+        *,
+        timeout_seconds: float = DEFAULT_TX_TIMEOUT_SECONDS,
+        poll_seconds: float = DEFAULT_TX_POLL_SECONDS,
+    ) -> dict[str, Any]:
+        signed = autofill_and_sign(tx, self.client, wallet, check_fee=False)
+        submit_response = submit(signed, self.client)
+        submit_result = submit_response.result or {}
+        engine_result = submit_result.get("engine_result")
+        if engine_result and engine_result not in {"tesSUCCESS", "terQUEUED"}:
+            raise RuntimeError(f"PFTL transaction submit failed: {engine_result} {submit_result}")
+        tx_hash = (
+            submit_result.get("hash")
+            or submit_result.get("tx_json", {}).get("hash")
+            or submit_result.get("tx", {}).get("hash")
+            or signed.get_hash()
+        )
+        deadline = time.time() + max(1.0, float(timeout_seconds))
+        last_error: str | None = None
+        while time.time() < deadline:
+            try:
+                response = self.client.request(Tx(transaction=tx_hash, binary=False))
+                result = response.result or {}
+                meta = result.get("meta") or {}
+                tx_result = meta.get("TransactionResult")
+                if tx_result:
+                    result.setdefault("hash", tx_hash)
+                    return result
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+            time.sleep(max(0.2, float(poll_seconds)))
+        raise RuntimeError(f"PFTL transaction validation timeout: {tx_hash} {last_error or ''}".strip())
 
     def account_tx(self, address: str, *, limit: int = 200) -> list[dict[str, Any]]:
         marker = None

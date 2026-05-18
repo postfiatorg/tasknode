@@ -7,6 +7,7 @@ Read the packet blocks this way:
 - `memory`: Compressed account memory. Use it for continuity and relevance, but keep it lower authority than the current request.
 - `chat`: Recent messages around the request. Use it for concrete details, artifacts, links, nouns, and immediate intent.
 - `relevant_history_summary`: Prior task or chat context selected by the client. Use it to avoid duplicates and stale work.
+- `task_queue`: Current cached task state grouped as outstanding, pending verification, refused, and rewarded. Use it to avoid duplicates. The cache is advisory; chain/IPFS pointers remain canonical.
 - `wallet`: Attribution and routing metadata only. Do not infer task content from an address.
 - `policy`: Operating constraints and version IDs. Treat policy as authoritative.
 

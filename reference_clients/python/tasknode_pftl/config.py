@@ -79,7 +79,10 @@ class PftlConfig:
     ])
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
     taskgen_model: str = "chat-latest"
+    private_taskgen_model: str = "deepseek/deepseek-v4-pro"
     high_reasoning_model: str = "gpt-5.5"
     verification_vision_model: str = "gpt-5.5"
     tasknode_encryption_pubkey: str | None = None
@@ -117,7 +120,10 @@ class PftlConfig:
             ipfs_gateway_urls=normalized_gateways,
             openai_api_key=env.get("OPENAI_API_KEY"),
             openai_base_url=(env.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/"),
+            openrouter_api_key=env.get("OPENROUTER_API_KEY"),
+            openrouter_base_url=(env.get("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1").rstrip("/"),
             taskgen_model=env.get("TASKNODE_TASKGEN_MODEL") or "chat-latest",
+            private_taskgen_model=env.get("TASKNODE_PRIVATE_TASKGEN_MODEL") or "deepseek/deepseek-v4-pro",
             high_reasoning_model=env.get("TASKNODE_TASKGEN_HIGH_REASONING_MODEL") or "gpt-5.5",
             verification_vision_model=env.get("TASKNODE_VERIFICATION_VISION_MODEL") or "gpt-5.5",
             tasknode_encryption_pubkey=env.get("TASKNODE_ENCRYPTION_PUBKEY"),

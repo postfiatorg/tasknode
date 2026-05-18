@@ -52,6 +52,8 @@ Optional:
 
 ```text
 OPENAI_BASE_URL
+OPENROUTER_API_KEY
+OPENROUTER_BASE_URL
 TASKNODE_ENCRYPTION_PUBKEY
 ```
 
@@ -91,6 +93,37 @@ memories, last 36 memory records, and the bounded `task_sample` chat window,
 then writes the full PFTL/IPFS lifecycle. The app database is an input fixture
 only; the task request, offer, submissions, verification response, and reward
 are replayable from PFTL pointers and encrypted IPFS payloads.
+
+Run the live N=1 task engine speedrun from the latest `task_sample` app bundle:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+python3 -m tasknode_pftl.scenarios.task_engine_speedrun \
+  --stage n1 \
+  --provider frontier \
+  --taskgen-model chat-latest \
+  --evidence-type mixed \
+  --user-seed-file /path/to/user_seed.txt
+```
+
+This is the canonical single-user walkthrough for the production task engine.
+It loads the app-shaped request bundle, attaches the current task queue cache,
+publishes context and task request pointers, generates a task with a real model,
+accepts it, submits evidence, requests verification, scores the verification
+response with a real model, pays PFT from an allocation wallet, and writes a
+public receipt. `--provider private` routes task generation and scoring through
+OpenRouter `deepseek/deepseek-v4-pro` with the ZDR provider preference used by
+the app; screenshot evidence still uses OpenAI vision in v1.
+
+Import a public receipt into the Postgres task projection cache:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial
+DATABASE_URL='postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5436/tasknodeofficial' \
+TASKNODE_DATABASE_ENABLED=true \
+node scripts/import-task-replay-receipts.mjs \
+  reference_clients/python/runs/<run_id>/receipt_public.json
+```
 
 Run the canonical 10-wallet async architecture demo:
 
