@@ -2,7 +2,8 @@
 
 ## Status
 
-Draft for review. Do not implement until this scope is accepted.
+Draft with review decisions captured. Do not implement until this scope is
+accepted.
 
 This plan extends `docs/wiki/plans/getting-tasks-over-line.md`. That plan
 defines the wallet-first PFTL task lifecycle and app-data request bundle. This
@@ -29,6 +30,12 @@ web UX and still exercise the complete Task Node lifecycle:
 The engine must be chain-verifiable without Postgres. Postgres is only a fast
 read model and fixture source. If the cache is deleted, PFTL pointer events plus
 encrypted IPFS payloads must be enough to rebuild the task state.
+
+Implementation order:
+
+1. Run one live Codex-operated task from request through payout, with Codex
+   submitting the evidence as the user.
+2. After the N=1 path is correct, run the 10-wallet representative speedrun.
 
 ## Non-Goals
 
@@ -168,6 +175,8 @@ Task generation defaults:
 - task interface later: user-selectable provider/mode;
 - Python speedrun default: OpenAI `chat-latest` unless `--provider private` is
   passed.
+- provider costs for this protocol milestone are paid by the project and
+  recorded in receipts, not billed to the user.
 
 CLI shape:
 
@@ -189,8 +198,9 @@ python3 -m tasknode_pftl.scenarios.task_engine_speedrun \
   --openrouter-zdr-only
 ```
 
-Verification and scoring may use the same provider selection, except screenshot
-vision must use a provider/model path that actually accepts image input.
+Verification and scoring may use the same provider selection. Screenshot
+evidence uses OpenAI vision in v1, even when task generation uses the private
+OpenRouter path. This can be revisited later.
 
 ## Prompt Migration
 
@@ -248,6 +258,30 @@ reference_clients/python/runs/<run_id>/
 The committed fixture set should include at least one screenshot PNG so Codex can
 inspect the expected evidence surface without using the web UX.
 
+## Representative Live Dataset
+
+The 10-wallet run should be representative of real app usage, not a toy fixture.
+
+Before the 10-wallet run:
+
+- fund 10 different PFTL user wallets;
+- create 10 different canonical context documents;
+- publish/cache those context documents through the same IPFS and chain pointer
+  path used by the app;
+- generate representative chat history and memory history for each user in the
+  same bundle shape the app passes to task generation;
+- allocate different task and verification types across the 10 users;
+- include URL evidence, screenshot evidence, code evidence, text evidence, file
+  evidence, and mixed evidence;
+- use public Gists for representative URL evidence when useful;
+- record every generated context document, memory bundle, chat bundle, task
+  request, evidence packet, verification prompt, and reward decision in the run
+  receipt.
+
+The N=1 run should use the same data shape, but only one funded wallet and one
+canonical app-style bundle. That run is the human-readable walkthrough that
+proves the lifecycle before scaling to 10 wallets.
+
 ## Required Edge Cases
 
 Each run should include positive and negative paths.
@@ -256,9 +290,9 @@ Each run should include positive and negative paths.
 | --- | --- |
 | User refuses task | `refused`; no submission accepted; no reward. |
 | User refuses then re-requests | first task remains `refused`; new request receives a new task id. |
-| User submits faulty evidence | verification request is issued or score rejects; no full reward. |
+| User submits faulty evidence | verification request is still issued; the verification should become more specific or harder; no full reward unless the verification response passes. |
 | User submits correct evidence | verification response scores rewardable; PFT reward paid. |
-| User submits wrong evidence type | state remains pending verification or rejected with reason. |
+| User submits wrong evidence type | verification request asks for the missing required evidence; state does not become rewarded until the correct surface is submitted. |
 | Duplicate request | duplicate guard references existing queue and either refuses generation or creates distinct task with explicit reason. |
 | Replay after cache wipe | projection rebuilds from PFTL/IPFS. |
 | Allocation wallet low balance | reward job waits for top-up or fails visibly without corrupting task state. |
@@ -266,7 +300,32 @@ Each run should include positive and negative paths.
 
 ## Speedrun Scenario
 
-The canonical run should exercise 10 wallets at once:
+### Stage A: N=1 Live Codex Walkthrough
+
+First, run one live task with Codex acting as the user submitting evidence.
+
+The run should:
+
+- use one funded PFTL user wallet;
+- load one app-style request bundle containing context document, memory, deep
+  memory, recent chat, and task queue cache;
+- request a task through the same Python engine that the 10-wallet run will use;
+- generate the task with OpenAI `chat-latest` by default;
+- accept the task;
+- submit real evidence from one canonical evidence surface;
+- generate a verification request;
+- submit verification evidence;
+- score the task;
+- pay a real PFT reward from an allocation wallet;
+- import the replay into the projection cache so the app can show the task ex
+  post;
+- write a complete markdown receipt that a new Codex session can follow step by
+  step.
+
+### Stage B: 10-Wallet Representative Run
+
+After Stage A works, the canonical multi-wallet run should exercise 10 wallets at
+once:
 
 ```text
 wallet 01: correct URL task -> rewarded
@@ -371,14 +430,18 @@ Acceptance:
   network writes;
 - no seeds in logs or receipts.
 
-### Phase 2: Cache Loader
+### Phase 2: Cache Loader And Representative Data
 
 Load app-backed context, memory, chat, and `task_projections` into the request
-bundle. Support both `task_sample` and synthetic users.
+bundle. Support both `task_sample` and synthetic users. Build the representative
+dataset for the live test: 10 funded wallets, 10 canonical context docs, 10
+app-shaped chat/memory bundles, and task-type assignments.
 
 Acceptance:
 
 - goodalexander `task_sample` can be loaded by title;
+- one canonical N=1 bundle can be loaded without the app UX;
+- 10 canonical bundles can be generated and cached through IPFS/PFTL pointers;
 - existing queue summary is present in taskgen input;
 - cache unavailable is explicit.
 
@@ -396,13 +459,15 @@ Acceptance:
 ### Phase 4: Single-Wallet Real Lifecycle
 
 Run one wallet through request, offer, accept, submission, verification,
-verification response, score, reward, and replay.
+verification response, score, reward, and replay. Codex should perform the user
+side of the run by submitting real evidence and verification evidence.
 
 Acceptance:
 
 - one correct task reaches `rewarded`;
 - one faulty task reaches rejected or partial state;
 - all events have CIDs and tx hashes.
+- the markdown receipt is readable as a step-by-step walkthrough.
 
 ### Phase 5: Multi-Wallet Concurrent Speedrun
 
@@ -431,17 +496,20 @@ Acceptance:
 
 Resolved:
 
+- First implementation target is N=1 first: one live Codex-operated walkthrough
+  through request, evidence, verification, scoring, and real payout. The
+  10-wallet representative run comes after that works.
 - Screenshot evidence uses OpenAI vision in v1, even when task generation uses
   the private OpenRouter path. This can be revisited later.
+- The 10-wallet run should use 10 funded wallets, 10 canonical context docs,
+  representative chat/memory bundles, and IPFS/PFTL cache paths.
+- Faulty evidence should still receive a verification request. The verification
+  should become more specific or harder rather than short-circuiting directly to
+  rejection.
+- Provider costs are paid by the project during this protocol milestone and
+  recorded in receipts.
 
 Still open:
 
-- First implementation target: should the first accepted implementation run the
-  10-wallet synthetic matrix, goodalexander `task_sample`, or both from the same
-  CLI?
-- Faulty evidence state: should obviously wrong evidence still create a
-  verification request, or should scoring reject it immediately?
 - Allocation wallet shape: should v1 use one allocation wallet per user, or one
   allocation wallet per shard of five to ten users?
-- Provider costs: should task generation and scoring costs be billed to the user
-  later, included in task economics, or ignored during this protocol milestone?
