@@ -21,6 +21,11 @@ try {
     taskRequestIntentStart,
     usageAdminCredit,
   } = await import("../server/product-contracts.js");
+  const { appState } = await import("../server/app-state.js");
+  const {
+    appendChatTurn,
+    getChatMessages,
+  } = await import("../server/repositories/chat-billing.js");
   const { checkRateLimit, resetRateLimitsForTests } = await import("../server/rate-limit.js");
   const { sanitizeContextHtml } = await import("../shared/context-html.js");
 
@@ -75,6 +80,44 @@ try {
   );
   assert.equal(signedOutTaskRequest.status, 401);
   assert.equal(signedOutTaskRequest.body.error, "task_request_login_required");
+
+  const ownedConversationId = "account_acct_security_owner_default";
+  await appendChatTurn({
+    accountId: "acct_security_owner",
+    conversationId: ownedConversationId,
+    mode: "Frontier Instant",
+    provider: "openai",
+    model: "chat-latest",
+    responseId: "security-smoke-owned-chat",
+    userMessage: "This account owns this history.",
+    assistantMessage: "Owned history persisted.",
+    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
+  });
+
+  const ownerMessages = await getChatMessages({
+    accountId: "acct_security_owner",
+    conversationId: ownedConversationId,
+  });
+  assert.equal(ownerMessages.length, 2);
+  assert.equal(ownerMessages[0].body, "This account owns this history.");
+
+  await assert.rejects(
+    () => getChatMessages({
+      accountId: "acct_security_other",
+      conversationId: ownedConversationId,
+    }),
+    /chat_conversation_not_found/
+  );
+  await assert.rejects(
+    () => getChatMessages({
+      conversationId: ownedConversationId,
+    }),
+    /chat_conversation_not_found/
+  );
+
+  const signedOutState = await appState(null);
+  assert.deepEqual(signedOutState.chat.seedMessages, []);
+  assert.deepEqual(signedOutState.chat.recents, []);
 
   const adminNoIdempotency = await usageAdminCredit(
     {

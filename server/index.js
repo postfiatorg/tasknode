@@ -570,10 +570,12 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/chat/conversations") {
     json(res, 200, {
-      conversations: await listChatConversations({
-        accountId: session?.accountId || "",
-        limit: url.searchParams.get("limit") || 30,
-      }),
+      conversations: session?.accountId
+        ? await listChatConversations({
+            accountId: session.accountId,
+            limit: url.searchParams.get("limit") || 30,
+          })
+        : [],
     });
     return true;
   }
@@ -610,11 +612,15 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/chat/history") {
-    const conversationId = conversationIdForSession(
-      session,
-      url.searchParams.get("conversationId") || ""
-    );
-    json(res, 200, { conversationId, messages: await getChatMessages(conversationId) });
+    if (!session?.accountId) {
+      json(res, 401, { ok: false, error: "chat_history_login_required", message: "Sign in before reading chat history." });
+      return true;
+    }
+    const conversationId = conversationIdForSession(session, url.searchParams.get("conversationId") || "");
+    json(res, 200, {
+      conversationId,
+      messages: await getChatMessages({ accountId: session.accountId, conversationId }),
+    });
     return true;
   }
 

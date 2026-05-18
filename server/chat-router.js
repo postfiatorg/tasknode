@@ -176,8 +176,18 @@ function recentTranscriptFromMessages(messages, currentMessage) {
   return `Recent conversation:\n${history}\n\nUser: ${currentMessage}`;
 }
 
+function runtimeHistoryForRequestBuilder(conversationId) {
+  if (String(conversationId || "").startsWith("account_")) return [];
+  try {
+    return getRuntimeChatMessages(conversationId);
+  } catch (error) {
+    if (error?.message === "chat_conversation_not_found") return [];
+    throw error;
+  }
+}
+
 function recentTranscript(conversationId, currentMessage) {
-  return recentTranscriptFromMessages(getRuntimeChatMessages(conversationId), currentMessage);
+  return recentTranscriptFromMessages(runtimeHistoryForRequestBuilder(conversationId), currentMessage);
 }
 
 function openRouterProviderPreferences({ providerOrder = [], requireParameters = false } = {}) {
@@ -244,7 +254,7 @@ export function openRouterMessages({
   const normalizedAttachments = normalizeChatAttachments(attachments);
   const sourceHistory = Array.isArray(historyMessages)
     ? historyMessages
-    : getRuntimeChatMessages(conversationId);
+    : runtimeHistoryForRequestBuilder(conversationId);
   const history = sourceHistory
     .slice(-12)
     .map((item) => ({
@@ -319,7 +329,7 @@ export function openRouterChatRequest({
 export function openAiInput({ conversationId, message, attachments = [], historyMessages = null }) {
   const sourceHistory = Array.isArray(historyMessages)
     ? historyMessages
-    : getRuntimeChatMessages(conversationId);
+    : runtimeHistoryForRequestBuilder(conversationId);
   const content = [
     {
       type: "input_text",
@@ -846,7 +856,7 @@ export async function executeChat({
   }
 
   const [historyMessages, resolvedMemoryContext, resolvedTaskContext] = await Promise.all([
-    getChatMessages(conversationId),
+    getChatMessages({ accountId, conversationId }),
     memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
     taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
   ]);
@@ -922,7 +932,7 @@ export async function executeChatStream({
   }
 
   const [historyMessages, resolvedMemoryContext, resolvedTaskContext] = await Promise.all([
-    getChatMessages(conversationId),
+    getChatMessages({ accountId, conversationId }),
     memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
     taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
   ]);

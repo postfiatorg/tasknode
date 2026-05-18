@@ -43,7 +43,7 @@ export const apiRoutePolicies = [
   { id: "chat_modes", path: "/api/chat/modes", methods: ["GET"], auth: "none" },
   { id: "chat_conversations", path: "/api/chat/conversations", methods: ["GET"], auth: "optional" },
   { id: "chat_conversation", path: "/api/chat/conversation", methods: ["PATCH", "DELETE"], auth: "handler" },
-  { id: "chat_history", path: "/api/chat/history", methods: ["GET"], auth: "optional" },
+  { id: "chat_history", path: "/api/chat/history", methods: ["GET"], auth: "session" },
   { id: "memory", path: "/api/memory", methods: ["GET"], auth: "session" },
   {
     id: "chat_stream",

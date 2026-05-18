@@ -524,15 +524,14 @@ await check("/api/chat/modes", (response, text) => {
 });
 
 await check("/api/chat/history", (response, text) => {
-  if (!response.ok) return false;
   const body = JSON.parse(text);
-  return Array.isArray(body.messages);
+  return response.status === 401 && body.error === "chat_history_login_required";
 });
 
 await check("/api/chat/conversations", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
-  return Array.isArray(body.conversations);
+  return Array.isArray(body.conversations) && body.conversations.length === 0;
 });
 
 await check("/api/usage/ledger", (response, text) => {

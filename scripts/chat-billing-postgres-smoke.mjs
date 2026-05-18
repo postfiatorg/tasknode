@@ -70,7 +70,7 @@ const chat = await appendChatTurn({
   },
 });
 
-const messages = await getChatMessages(conversationId);
+const messages = await getChatMessages({ accountId, conversationId });
 const summary = await usageSummary({ accountId });
 const ledger = await usageLedger({ accountId, limit: 10 });
 const conversations = await listChatConversations({ accountId });

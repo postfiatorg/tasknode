@@ -60,21 +60,22 @@ export async function appState(session = null) {
   const providers = authProviders();
   const runtimeReadiness = await readiness();
   const modes = chatModes();
+  const accountId = session?.accountId || "";
   const enabledMode =
     modes.find((mode) => mode.label === "Frontier Instant" && mode.enabled) ||
     modes.find((mode) => mode.enabled);
   const conversationId = conversationIdForSession(session);
-  const usage = await usageSummary({ accountId: session?.accountId, conversationId });
-  const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
+  const usage = await usageSummary({ accountId, conversationId });
+  const linkedWallet = getLinkedWallet({ accountId });
   const ethDepositStatus = ethereumDepositConfigStatus();
-  const ethDepositAccount = getEthereumDepositAccount({ accountId: session?.accountId || "" });
+  const ethDepositAccount = getEthereumDepositAccount({ accountId });
   const walletLinked = linkedWallet.status === "linked" && Boolean(linkedWallet.address);
   const initiationGift = walletInitiationGrantStatus({
-    accountId: session?.accountId || "",
+    accountId,
     walletAddress: walletLinked ? linkedWallet.address : "",
   });
   const tasks = await listTaskState({
-    accountId: session?.accountId || "",
+    accountId,
     walletAddress: walletLinked ? linkedWallet.address : "",
   });
 
@@ -85,10 +86,10 @@ export async function appState(session = null) {
       conversationId,
       conversationsPath: "/api/chat/conversations",
       historyPath: "/api/chat/history",
-      recents: await listChatConversations({ accountId: session?.accountId || "" }),
+      recents: accountId ? await listChatConversations({ accountId }) : [],
       defaultMode: enabledMode?.label || "Private Instant",
       modes,
-      seedMessages: await getChatMessages(conversationId),
+      seedMessages: accountId ? await getChatMessages({ accountId, conversationId }) : [],
     },
     tasks,
     wallet: {

@@ -36,6 +36,63 @@ function safeConversationId(conversationId = "dev") {
   return String(conversationId || "dev").trim().slice(0, 180) || "dev";
 }
 
+function safeConversationAccountId(accountId = "") {
+  return String(accountId || "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+}
+
+function chatMessagesArgs(input = "dev", options = {}) {
+  if (typeof input === "string") {
+    return {
+      accountId: options.accountId || "",
+      conversationId: input,
+      limit: options.limit,
+    };
+  }
+
+  return {
+    accountId: input?.accountId || "",
+    conversationId: input?.conversationId || "dev",
+    limit: input?.limit,
+  };
+}
+
+function chatConversationNotFound() {
+  const error = new Error("chat_conversation_not_found");
+  error.status = 404;
+  return error;
+}
+
+function assertConversationIdAccountBoundary({ accountId = "", conversationId = "" } = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedConversationId = safeConversationId(conversationId);
+  if (!normalizedConversationId.startsWith("account_")) return;
+
+  const conversationAccountId = safeConversationAccountId(normalizedAccountId);
+  const accountPrefix = conversationAccountId ? `account_${conversationAccountId}_` : "";
+  if (!accountPrefix || !normalizedConversationId.startsWith(accountPrefix)) {
+    throw chatConversationNotFound();
+  }
+}
+
+async function assertChatConversationReadable({ accountId = "", conversationId = "" } = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedConversationId = safeConversationId(conversationId);
+  assertConversationIdAccountBoundary({ accountId: normalizedAccountId, conversationId: normalizedConversationId });
+
+  const conversation = await query(
+    "SELECT account_id, status FROM chat_conversations WHERE id = $1",
+    [normalizedConversationId]
+  );
+  const row = conversation.rows[0];
+  if (!row) return;
+  if (row.status !== "active" || (row.account_id || "") !== normalizedAccountId) {
+    throw chatConversationNotFound();
+  }
+}
+
 function cleanTitle(title = "") {
   return String(title || "").trim().replace(/\s+/g, " ").slice(0, 80);
 }
@@ -423,10 +480,17 @@ export async function appendChatTurn({
   attachments = [],
   usage,
 } = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedConversationId = safeConversationId(conversationId);
+  assertConversationIdAccountBoundary({
+    accountId: normalizedAccountId,
+    conversationId: normalizedConversationId,
+  });
+
   if (!useDatabase()) {
     return appendRuntimeChatTurn({
-      accountId,
-      conversationId,
+      accountId: normalizedAccountId,
+      conversationId: normalizedConversationId,
       mode,
       provider,
       model,
@@ -444,8 +508,6 @@ export async function appendChatTurn({
   }
 
   const now = new Date();
-  const normalizedAccountId = safeAccountId(accountId);
-  const normalizedConversationId = safeConversationId(conversationId);
   const userId = typeof userMessageId === "string" && userMessageId.trim()
     ? userMessageId.trim().slice(0, 180)
     : `msg_${randomUUID()}_user`;
@@ -679,20 +741,33 @@ export async function appendChatTurn({
   }
 }
 
-export async function getChatMessages(conversationId = "dev", { limit = 30 } = {}) {
-  if (!useDatabase()) return getRuntimeChatMessages(conversationId);
-
+export async function getChatMessages(input = "dev", options = {}) {
+  const { accountId, conversationId, limit = 30 } = chatMessagesArgs(input, options);
   const normalizedLimit = Math.min(Math.max(Number(limit) || 30, 1), maxMessageLimit);
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedConversationId = safeConversationId(conversationId);
+  assertConversationIdAccountBoundary({
+    accountId: normalizedAccountId,
+    conversationId: normalizedConversationId,
+  });
+  if (!useDatabase()) return getRuntimeChatMessages(normalizedConversationId).slice(-normalizedLimit);
+
   try {
+    await assertChatConversationReadable({
+      accountId: normalizedAccountId,
+      conversationId: normalizedConversationId,
+    });
+
     const rows = await query(
       `
         SELECT *
         FROM chat_messages
         WHERE conversation_id = $1
+          AND account_id = $3
         ORDER BY message_order DESC
         LIMIT $2
       `,
-      [safeConversationId(conversationId), normalizedLimit]
+      [normalizedConversationId, normalizedLimit, normalizedAccountId]
     );
     const orderedMessages = rows.rows.reverse();
     const messageIds = orderedMessages.map((row) => row.id);
@@ -715,8 +790,9 @@ export async function getChatMessages(conversationId = "dev", { limit = 30 } = {
     }
     return orderedMessages.map((row) => publicMessage(row, attachmentsByMessage.get(row.id) || []));
   } catch (error) {
+    if (error?.message === "chat_conversation_not_found") throw error;
     if (process.env.TASKNODE_POSTGRES_STRICT === "false") {
-      return getRuntimeChatMessages(conversationId);
+      return getRuntimeChatMessages(normalizedConversationId).slice(-normalizedLimit);
     }
     throw error;
   }
