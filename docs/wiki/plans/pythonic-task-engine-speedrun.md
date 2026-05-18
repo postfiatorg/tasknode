@@ -427,15 +427,21 @@ Acceptance:
 - deleting projection rows and replaying restores the same final state;
 - no fake task rows are inserted.
 
-## Review Questions
+## Open Decisions
 
-1. Should the first accepted implementation target the 10-wallet synthetic run,
-   goodalexander `task_sample`, or both in the same CLI?
-2. Should screenshot evidence use OpenAI vision by default even when task
-   generation uses the private OpenRouter path?
-3. Should faulty evidence lead to `verification_requested` first, or can scoring
-   reject immediately for obviously wrong evidence?
-4. Should v1 allocation wallets be one per user or one per shard of five or ten
-   users?
-5. Should task-generation and scoring provider costs be billed to the user later,
-   included in task economics, or ignored during this protocol milestone?
+Resolved:
+
+- Screenshot evidence uses OpenAI vision in v1, even when task generation uses
+  the private OpenRouter path. This can be revisited later.
+
+Still open:
+
+- First implementation target: should the first accepted implementation run the
+  10-wallet synthetic matrix, goodalexander `task_sample`, or both from the same
+  CLI?
+- Faulty evidence state: should obviously wrong evidence still create a
+  verification request, or should scoring reject it immediately?
+- Allocation wallet shape: should v1 use one allocation wallet per user, or one
+  allocation wallet per shard of five to ten users?
+- Provider costs: should task generation and scoring costs be billed to the user
+  later, included in task economics, or ignored during this protocol milestone?
