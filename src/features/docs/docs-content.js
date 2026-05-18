@@ -20,6 +20,7 @@ import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transacti
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
+import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
 import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
@@ -330,6 +331,12 @@ export const DOC_GROUPS = [
         title: "Getting Tasks Over The Line",
         summary: "Plan to make task requests, submissions, rewards, and projections real.",
         markdown: gettingTasksOverLine,
+      },
+      {
+        slug: "pftl-transaction-cache-milestone",
+        title: "PFTL Transaction Cache Milestone",
+        summary: "Milestone for the wallet transaction mirror, sync workers, and cache consumers.",
+        markdown: pftlTransactionCacheMilestone,
       },
     ],
   },
