@@ -125,19 +125,23 @@ node scripts/import-task-replay-receipts.mjs \
   reference_clients/python/runs/<run_id>/receipt_public.json
 ```
 
-Run the canonical 10-wallet async architecture demo:
+Run the canonical 10-wallet live task engine speedrun:
 
 ```bash
 cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
-python3 -m tasknode_pftl.scenarios.multi_wallet_async_demo
+python3 -m tasknode_pftl.scenarios.task_engine_speedrun \
+  --stage n10 \
+  --provider frontier \
+  --taskgen-model chat-latest
 ```
 
-This creates 10 fresh user wallets, shards them across authority wallets and
-allocation/reward wallets, serializes transactions per signing wallet, writes
-the request, offer, acceptance, submission, verification, and reward pointers
-for every user, then replays all wallet histories into rewarded task
-projections. It is the pre-production reference for the Task Async Engine
-architecture.
+This creates 10 fresh user wallets, shards them across authority and allocation
+wallets, serializes transactions per signing wallet, and runs representative
+task cases: URL, screenshot, text, code, file, mixed evidence, faulty evidence,
+wrong evidence type, refusal followed by re-request, and duplicate-guard
+generation. Task generation, verification requests, and scoring use real model
+calls. Postgres remains a projection cache; the task state is replayable from
+PFTL pointers and encrypted IPFS payloads.
 
 Run with an explicit RPC endpoint:
 

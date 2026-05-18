@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import threading
 from typing import Any
 
 from xrpl.wallet import Wallet
@@ -37,6 +38,9 @@ class EngineQueues:
     user: WalletTxQueue
     authority: WalletTxQueue
     allocation: WalletTxQueue
+    user_lock: threading.Lock | None = None
+    authority_lock: threading.Lock | None = None
+    allocation_lock: threading.Lock | None = None
 
 
 def submit_wallet_pointer(
@@ -51,16 +55,23 @@ def submit_wallet_pointer(
     task_id: str | None = None,
     context_id: str | None = None,
     amount_drops: str = "1",
+    lock: threading.Lock | None = None,
 ) -> dict[str, Any]:
-    return submit_pointer_payment(
-        client=client,
-        queue=queue,
-        wallet=wallet,
-        destination=destination,
-        pointer=Pointer(cid=cid, kind=kind, schema=1, task_id=task_id, context_id=context_id),
-        amount_drops=amount_drops,
-        idem=sha256_hex(idem_payload),
-    )
+    def submit() -> dict[str, Any]:
+        return submit_pointer_payment(
+            client=client,
+            queue=queue,
+            wallet=wallet,
+            destination=destination,
+            pointer=Pointer(cid=cid, kind=kind, schema=1, task_id=task_id, context_id=context_id),
+            amount_drops=amount_drops,
+            idem=sha256_hex(idem_payload),
+        )
+
+    if lock:
+        with lock:
+            return submit()
+    return submit()
 
 
 def task_recipients(
@@ -107,6 +118,9 @@ def run_task_engine_lifecycle(
     allow_taskgen_fallback: bool = False,
     benchmark_high_reasoning: bool = False,
     import_context_pointer: bool = True,
+    queues: EngineQueues | None = None,
+    task_decision: str = "accept",
+    refusal_reason: str = "",
 ) -> dict[str, Any]:
     recipients = task_recipients(
         user_wallet=user_wallet,
@@ -116,7 +130,7 @@ def run_task_engine_lifecycle(
         verification_identity=verification_identity,
         tasknode_pubkey_override=config.tasknode_encryption_pubkey,
     )
-    queues = EngineQueues(
+    queues = queues or EngineQueues(
         user=WalletTxQueue(user_wallet.address),
         authority=WalletTxQueue(authority_wallet.address),
         allocation=WalletTxQueue(allocation_wallet.address),
@@ -141,6 +155,7 @@ def run_task_engine_lifecycle(
             kind="CONTEXT",
             context_id=context_id or None,
             idem_payload={"context": context_doc, "cid": context_upload["cid"]},
+            lock=queues.user_lock,
         )
 
     request_bundle["context"]["primary_context_doc"]["cid"] = context_upload["cid"]
@@ -195,6 +210,7 @@ def run_task_engine_lifecycle(
         cid=request_event_upload["cid"],
         kind="TASK",
         idem_payload=request_event,
+        lock=queues.user_lock,
     )
 
     task_input = project_taskgen_input(
@@ -270,7 +286,98 @@ def run_task_engine_lifecycle(
         kind="TASK",
         task_id=task_id,
         idem_payload=task_offer,
+        lock=queues.authority_lock,
     )
+
+    normalized_decision = str(task_decision or "accept").strip().lower()
+    if normalized_decision == "refuse":
+        refused_event = {
+            "schema": "pf.task.update.v1",
+            "protocol": "tasknode.pftl",
+            "created_at": now_iso(),
+            "chain": config.network_name,
+            "task_id": task_id,
+            "event_id": event_id("evt", {"task_id": task_id, "transition": "refused", "reason": refusal_reason}),
+            "actor_wallet": user_wallet.address,
+            "subject_wallet": user_wallet.address,
+            "authority_wallet": authority_wallet.address,
+            "allocation_wallet": allocation_wallet.address,
+            "transition": "refused",
+            "status_after": "refused",
+            "reason": refusal_reason or "User refused the offered task.",
+            "refused_at": now_iso(),
+        }
+        refused_upload = encrypted_upload(
+            ipfs=ipfs,
+            payload=refused_event,
+            recipients=recipients,
+            name=f"{run_id}-task-refused",
+            content_kind="TASK_UPDATE",
+            task_id=task_id,
+        )
+        refused_tx = submit_wallet_pointer(
+            client=pftl,
+            queue=queues.user,
+            wallet=user_wallet.wallet,
+            destination=authority_wallet.address,
+            cid=refused_upload["cid"],
+            kind="TASK_UPDATE",
+            task_id=task_id,
+            idem_payload=refused_event,
+            lock=queues.user_lock,
+        )
+        cids = {
+            "context_doc": context_upload["cid"],
+            "request_bundle": request_upload["cid"],
+            "request_event": request_event_upload["cid"],
+            "offer": offer_upload["cid"],
+            "refused": refused_upload["cid"],
+        }
+        txs = {
+            "context": context_tx,
+            "request": request_tx,
+            "offer": offer_tx,
+            "refused": refused_tx,
+            "accepted": None,
+            "submission": None,
+            "verification_request": None,
+            "verification_response": None,
+            "reward_decision": None,
+            "reward": None,
+        }
+        hydrated, projections, relevant_events = hydrate_lifecycle_events(
+            pftl=pftl,
+            ipfs=ipfs,
+            tasknode_identity=tasknode_identity,
+            task_id=task_id,
+            wallets=[user_wallet, authority_wallet, allocation_wallet],
+            cids=cids,
+        )
+        return lifecycle_result(
+            task_id=task_id,
+            request_bundle=request_bundle,
+            context_id=context_id,
+            taskgen=taskgen,
+            verification_result=None,
+            scoring_result=None,
+            reward_paid=False,
+            reward_amount=0.0,
+            wallets={
+                "user": user_wallet.address,
+                "authority": authority_wallet.address,
+                "allocation": allocation_wallet.address,
+            },
+            cids=cids,
+            txs=txs,
+            submissions={},
+            hydrated=hydrated,
+            projections=projections,
+            relevant_events=relevant_events,
+            queues=queues,
+            extra={"refusal": refused_event},
+        )
+    if normalized_decision != "accept":
+        raise RuntimeError(f"Unsupported task decision: {task_decision}")
 
     accepted_event = {
         "schema": "pf.task.update.v1",
@@ -304,6 +411,7 @@ def run_task_engine_lifecycle(
         kind="TASK_UPDATE",
         task_id=task_id,
         idem_payload=accepted_event,
+        lock=queues.user_lock,
     )
 
     submission_id = f"sub_{sha256_hex({'task_id': task_id, 'phase': 'initial', 'run_id': run_id})[:24]}"
@@ -313,12 +421,18 @@ def run_task_engine_lifecycle(
     if selected_evidence_plan.artifact_type == "auto":
         selected_evidence_plan.artifact_type = (task_offer.get("submission_requirement") or {}).get("type") or "text"
     if not selected_evidence_plan.response_text:
-        selected_evidence_plan.response_text = (
-            f"Initial evidence for {task_offer['title']}: Codex ran the Python task engine harness for task_id "
-            f"{task_id}. The public gist and canonical screenshot were normalized into pf.task.evidence.v1 "
-            f"packets. Stable identifiers: request_bundle_cid={request_upload['cid']}; "
-            f"context_cid={context_upload['cid']}."
-        )
+        if selected_evidence_plan.faulty:
+            selected_evidence_plan.response_text = (
+                f"Faulty initial evidence for {task_offer['title']}: I cannot provide the requested artifact, "
+                "and this submission should be treated as incomplete or unrelated evidence."
+            )
+        else:
+            selected_evidence_plan.response_text = (
+                f"Initial evidence for {task_offer['title']}: Codex ran the Python task engine harness for task_id "
+                f"{task_id}. The {selected_evidence_plan.artifact_type} artifact set was normalized into pf.task.evidence.v1 "
+                f"packets. Stable identifiers: request_bundle_cid={request_upload['cid']}; "
+                f"context_cid={context_upload['cid']}."
+            )
     initial_reads = read_evidence(
         config=config,
         run_dir=run_dir,
@@ -391,6 +505,7 @@ def run_task_engine_lifecycle(
         kind="TASK_SUBMISSION",
         task_id=task_id,
         idem_payload=initial_submission,
+        lock=queues.user_lock,
     )
 
     verification_result = generate_verification_request(
@@ -435,6 +550,7 @@ def run_task_engine_lifecycle(
         kind="TASK_UPDATE",
         task_id=task_id,
         idem_payload=verification_event,
+        lock=queues.authority_lock,
     )
 
     selected_verification_plan = verification_evidence_plan or EvidencePlan(
@@ -451,13 +567,19 @@ def run_task_engine_lifecycle(
             "initial_submission_cid": initial_submission_upload["cid"],
             "initial_evidence_packet_digests": processed_initial.get("packet_digests") or [],
         })
-        selected_verification_plan.response_text = (
-            f"Verification response for {task_offer['title']}: replay output was deterministic and normalized "
-            f"successfully for task_id {task_id}. Stable identifiers: request_bundle_cid={request_upload['cid']}; "
-            f"initial_submission_cid={initial_submission_upload['cid']}; initial_evidence_packet_digests={packet_digests}; "
-            f"prior_replay_state_hash={replay_state_hash}; current_replay_state_hash={replay_state_hash}; "
-            "the prior and current replay hashes match exactly."
-        )
+        if selected_verification_plan.faulty:
+            selected_verification_plan.response_text = (
+                f"Faulty verification response for {task_offer['title']}: I cannot answer the follow-up request "
+                "with a concrete artifact detail, and this should not receive a full reward."
+            )
+        else:
+            selected_verification_plan.response_text = (
+                f"Verification response for {task_offer['title']}: replay output was deterministic and normalized "
+                f"successfully for task_id {task_id}. Stable identifiers: request_bundle_cid={request_upload['cid']}; "
+                f"initial_submission_cid={initial_submission_upload['cid']}; initial_evidence_packet_digests={packet_digests}; "
+                f"prior_replay_state_hash={replay_state_hash}; current_replay_state_hash={replay_state_hash}; "
+                "the prior and current replay hashes match exactly."
+            )
     verification_reads = read_evidence(
         config=config,
         run_dir=run_dir,
@@ -530,6 +652,7 @@ def run_task_engine_lifecycle(
         kind="TASK_SUBMISSION",
         task_id=task_id,
         idem_payload=verification_response,
+        lock=queues.user_lock,
     )
 
     scoring_result = score_submission(
@@ -579,6 +702,7 @@ def run_task_engine_lifecycle(
         kind="TASK_UPDATE",
         task_id=task_id,
         idem_payload=reward_decision,
+        lock=queues.authority_lock,
     )
 
     reward_payload = None
@@ -629,6 +753,7 @@ def run_task_engine_lifecycle(
             task_id=task_id,
             amount_drops=pft_to_drops(reward_amount),
             idem_payload=reward_payload,
+            lock=queues.allocation_lock,
         )
 
     cids: dict[str, Any] = {
@@ -658,37 +783,32 @@ def run_task_engine_lifecycle(
         "reward": reward_tx,
     }
 
-    all_pointer_events = []
-    for wallet in [user_wallet, authority_wallet, allocation_wallet]:
-        all_pointer_events.extend(pftl.pointer_events_for_wallet(wallet.address))
-    cid_set = set(flatten_cids(cids))
-    relevant_events = [
-        event for event in all_pointer_events
-        if event.get("task_id") == task_id or event.get("cid") in cid_set
-    ]
-    hydrated, projections = hydrate_and_reduce(relevant_events, ipfs, tasknode_identity)
+    hydrated, projections, relevant_events = hydrate_lifecycle_events(
+        pftl=pftl,
+        ipfs=ipfs,
+        tasknode_identity=tasknode_identity,
+        task_id=task_id,
+        wallets=[user_wallet, authority_wallet, allocation_wallet],
+        cids=cids,
+    )
 
-    return {
-        "task_id": task_id,
-        "request_id": request_bundle["request"]["request_id"],
-        "bundle_id": request_bundle["bundle_id"],
-        "context_id": context_id,
-        "generated_task": taskgen.output,
-        "taskgen": taskgen.metadata,
-        "verification_request_model": verification_result.metadata,
-        "verification_request": verification_result.output,
-        "scoring": scoring_result.metadata,
-        "score": scoring_result.output,
-        "reward_paid": bool(reward_tx),
-        "reward_pft": f"{reward_amount:.2f}",
-        "wallets": {
+    return lifecycle_result(
+        task_id=task_id,
+        request_bundle=request_bundle,
+        context_id=context_id,
+        taskgen=taskgen,
+        verification_result=verification_result,
+        scoring_result=scoring_result,
+        reward_paid=bool(reward_tx),
+        reward_amount=reward_amount,
+        wallets={
             "user": user_wallet.address,
             "authority": authority_wallet.address,
             "allocation": allocation_wallet.address,
         },
-        "cids": cids,
-        "txs": txs,
-        "submissions": {
+        cids=cids,
+        txs=txs,
+        submissions={
             "initial": {
                 "submission": initial_submission,
                 "processed_evidence": processed_initial,
@@ -698,6 +818,71 @@ def run_task_engine_lifecycle(
                 "processed_evidence": processed_verification,
             },
         },
+        hydrated=hydrated,
+        projections=projections,
+        relevant_events=relevant_events,
+        queues=queues,
+    )
+
+
+def hydrate_lifecycle_events(
+    *,
+    pftl: PftlClient,
+    ipfs: IpfsClient,
+    tasknode_identity: X25519Identity,
+    task_id: str,
+    wallets: list[ProtocolWallet],
+    cids: dict[str, Any],
+) -> tuple[list[Any], dict[str, Any], list[dict[str, Any]]]:
+    all_pointer_events = []
+    for wallet in wallets:
+        all_pointer_events.extend(pftl.pointer_events_for_wallet(wallet.address))
+    cid_set = set(flatten_cids(cids))
+    relevant_events = [
+        event for event in all_pointer_events
+        if event.get("task_id") == task_id or event.get("cid") in cid_set
+    ]
+    hydrated, projections = hydrate_and_reduce(relevant_events, ipfs, tasknode_identity)
+    return hydrated, projections, relevant_events
+
+
+def lifecycle_result(
+    *,
+    task_id: str,
+    request_bundle: dict[str, Any],
+    context_id: str,
+    taskgen: Any,
+    verification_result: Any | None,
+    scoring_result: Any | None,
+    reward_paid: bool,
+    reward_amount: float,
+    wallets: dict[str, str],
+    cids: dict[str, Any],
+    txs: dict[str, Any],
+    submissions: dict[str, Any],
+    hydrated: list[Any],
+    projections: dict[str, Any],
+    relevant_events: list[dict[str, Any]],
+    queues: EngineQueues,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result = {
+        "task_id": task_id,
+        "request_id": request_bundle["request"]["request_id"],
+        "bundle_id": request_bundle["bundle_id"],
+        "context_id": context_id,
+        "generated_task": taskgen.output,
+        "taskgen": taskgen.metadata,
+        "verification_request_model": verification_result.metadata if verification_result else {},
+        "verification_request": verification_result.output if verification_result else {},
+        "scoring": scoring_result.metadata if scoring_result else {},
+        "score": scoring_result.output if scoring_result else {},
+        "reward_paid": reward_paid,
+        "reward_pft": f"{reward_amount:.2f}",
+        "wallets": wallets,
+        "cids": cids,
+        "txs": txs,
+        "submissions": submissions,
         "pointer_events_found": len(relevant_events),
         "hydrated_events": [
             {
@@ -716,6 +901,9 @@ def run_task_engine_lifecycle(
             "allocation": public_queue_entries(queues.allocation),
         },
     }
+    if extra:
+        result.update(extra)
+    return result
 
 
 def flatten_cids(cids: dict[str, Any]) -> list[str]:

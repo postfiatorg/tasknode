@@ -27,11 +27,16 @@ from tasknode_pftl.pftl import PftlClient, drops_to_pft
 from tasknode_pftl.scenarios.app_request_lifecycle import publish_message_keys_safely
 from tasknode_pftl.scenarios.full_lifecycle import RUNS_DIR, private_wallets, public_wallets
 from tasknode_pftl.wallets import ProtocolWallet, create_protocol_wallet, fund_wallets, wallet_from_seed
+from tasknode_pftl.scenarios.task_engine_stage_b import (
+    DEFAULT_ALLOCATION_SHARD_SIZE,
+    DEFAULT_AUTHORITY_COUNT,
+    DEFAULT_WALLET_COUNT,
+    run_n10,
+)
 
 
 DEFAULT_USER_SEED_FILE = Path(os.environ.get("TASKNODE_USER_SEED_FILE", "~/.tasknode/user_seed.txt")).expanduser()
 DEFAULT_CHAT_TITLE = "task_sample"
-
 
 def read_seed_file(path: Path) -> str:
     seed = path.read_text(encoding="utf-8").strip()
@@ -78,6 +83,8 @@ def evidence_plan_from_args(args: argparse.Namespace) -> EvidencePlan:
         faulty=args.faulty_evidence,
         screenshot_detail=args.vision_detail,
     )
+
+
 
 
 def run_n1(args: argparse.Namespace) -> dict[str, Any]:
@@ -257,14 +264,21 @@ def run_n1(args: argparse.Namespace) -> dict[str, Any]:
     return public_receipt
 
 
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the Pythonic Task Engine speedrun.")
-    parser.add_argument("--stage", choices=["n1"], default="n1")
+    parser.add_argument("--stage", choices=["n1", "n10"], default="n1")
     parser.add_argument("--chat-title", default=DEFAULT_CHAT_TITLE)
     parser.add_argument("--request-id", default=None)
     parser.add_argument("--database-url", default=None)
     parser.add_argument("--user-seed-file", default=str(DEFAULT_USER_SEED_FILE))
     parser.add_argument("--create-user-wallet", action="store_true")
+    parser.add_argument("--wallet-count", type=int, default=DEFAULT_WALLET_COUNT)
+    parser.add_argument("--authority-count", type=int, default=DEFAULT_AUTHORITY_COUNT)
+    parser.add_argument("--allocation-count", type=int, default=None)
+    parser.add_argument("--allocation-shard-size", type=int, default=DEFAULT_ALLOCATION_SHARD_SIZE)
+    parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--provider", choices=["frontier", "private"], default="frontier")
     parser.add_argument("--taskgen-model", default=None)
     parser.add_argument("--verification-model", default=None)
@@ -293,6 +307,8 @@ def main() -> None:
     args = parse_args()
     if args.stage == "n1":
         run_n1(args)
+    elif args.stage == "n10":
+        run_n10(args)
 
 
 if __name__ == "__main__":

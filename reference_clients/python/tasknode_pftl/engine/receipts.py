@@ -118,6 +118,67 @@ def write_n1_markdown(path: Path, receipt: dict[str, Any]) -> None:
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
+def write_n10_markdown(path: Path, receipt: dict[str, Any]) -> None:
+    lines = [
+        "# Pythonic Task Engine Stage B Live Speedrun",
+        "",
+        f"- Run id: `{receipt['run_id']}`",
+        f"- Network: `{receipt['network']['name']}`",
+        f"- Provider: `{receipt['provider']}`",
+        f"- Wallet count: `{receipt['wallet_count']}`",
+        f"- Authority wallets: `{receipt['authority_count']}`",
+        f"- Allocation wallets: `{receipt['allocation_count']}`",
+        f"- Task receipts: `{receipt['task_count']}`",
+        "",
+        "## Status Counts",
+        "",
+    ]
+    for status, count in sorted((receipt.get("status_counts") or {}).items()):
+        lines.append(f"- `{status}`: {count}")
+    lines.extend([
+        "",
+        "## Task Matrix",
+        "",
+        "| Case | Attempt | Wallet | Task id | Status | Reward PFT | Title |",
+        "| --- | --- | --- | --- | --- | ---: | --- |",
+    ])
+    for task_receipt in receipt.get("task_receipts") or []:
+        result = task_receipt.get("result") or {}
+        projection = (task_receipt.get("projection") or {}).get(task_receipt.get("task_id"), {})
+        case = task_receipt.get("case") or {}
+        wallet = result.get("wallets", {}).get("user") or ""
+        score = result.get("score") or {}
+        lines.append(
+            "| {case} | {attempt} | `{wallet}` | `{task}` | `{status}` | {reward} | {title} |".format(
+                case=case.get("label", ""),
+                attempt=case.get("attempt", ""),
+                wallet=wallet,
+                task=task_receipt.get("task_id", ""),
+                status=projection.get("status", "missing"),
+                reward=score.get("reward_pft") or projection.get("reward_actual_pft") or "0",
+                title=(task_receipt.get("generated_task") or {}).get("title", ""),
+            )
+        )
+    lines.extend([
+        "",
+        "## Queue Summary",
+        "",
+    ])
+    for queue_name, entries in sorted((receipt.get("queue_state") or {}).items()):
+        lines.append(f"- `{queue_name}`: {len(entries)} transaction(s)")
+    lines.extend([
+        "",
+        "## Import Command",
+        "",
+        "```bash",
+        "DATABASE_URL='postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5436/tasknodeofficial' \\",
+        "TASKNODE_DATABASE_ENABLED=true \\",
+        f"node scripts/import-task-replay-receipts.mjs reference_clients/python/runs/{receipt['run_id']}/receipt_public.json",
+        "```",
+    ])
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
 def append_processed_evidence(lines: list[str], processed: dict[str, Any]) -> None:
     for index, artifact in enumerate(processed.get("artifacts") or [], start=1):
         source = artifact.get("source") or {}

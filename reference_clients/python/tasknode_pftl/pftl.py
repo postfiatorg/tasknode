@@ -25,6 +25,14 @@ def drops_to_pft(value: int | str) -> float:
     return int(value) / PFT_DROPS_PER_PFT
 
 
+def pftl_error_result(result: dict[str, Any]) -> dict[str, Any]:
+    sanitized = dict(result)
+    message = sanitized.get("engine_result_message")
+    if isinstance(message, str):
+        sanitized["engine_result_message"] = message.replace("XRP", "PFT")
+    return sanitized
+
+
 @dataclass
 class SubmittedTx:
     tx_hash: str
@@ -145,7 +153,7 @@ class PftlClient:
         submit_result = submit_response.result or {}
         engine_result = submit_result.get("engine_result")
         if engine_result and engine_result not in {"tesSUCCESS", "terQUEUED"}:
-            raise RuntimeError(f"PFTL transaction submit failed: {engine_result} {submit_result}")
+            raise RuntimeError(f"PFTL transaction submit failed: {engine_result} {pftl_error_result(submit_result)}")
         tx_hash = (
             submit_result.get("hash")
             or submit_result.get("tx_json", {}).get("hash")

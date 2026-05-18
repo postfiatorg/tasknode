@@ -317,6 +317,7 @@ function pointerEventFromRow(row) {
 function statusFromTaskUpdate(payload = {}) {
   const transition = normalizeText(payload.transition);
   if (transition === "accepted") return "accepted";
+  if (transition === "refused") return "refused";
   if (transition === "rejected") return "rejected";
   if (transition === "expired") return "expired";
   if (transition === "cancelled") return "cancelled";

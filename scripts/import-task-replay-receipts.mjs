@@ -8,7 +8,7 @@ import { importTaskReplayReceipt } from "../server/repositories/tasks.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const runsDir = path.join(repoRoot, "reference_clients/python/runs");
-const defaultRunPrefixes = ["app_request_", "task_engine_n1_"];
+const defaultRunPrefixes = ["app_request_", "task_engine_n1_", "task_engine_n10_"];
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
@@ -45,12 +45,15 @@ await migrateDatabase({ force: true });
 const imported = [];
 for (const receiptPath of receiptPaths) {
   const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
-  if (!receipt?.task_id || !receipt?.fixture?.account_id) {
-    continue;
+  const receipts = Array.isArray(receipt?.task_receipts) ? receipt.task_receipts : [receipt];
+  for (const taskReceipt of receipts) {
+    if (!taskReceipt?.task_id || !taskReceipt?.fixture?.account_id) {
+      continue;
+    }
+    imported.push(await importTaskReplayReceipt(taskReceipt, {
+      sourceRef: path.relative(repoRoot, receiptPath),
+    }));
   }
-  imported.push(await importTaskReplayReceipt(receipt, {
-    sourceRef: path.relative(repoRoot, receiptPath),
-  }));
 }
 
 console.log(JSON.stringify({ ok: true, imported }, null, 2));

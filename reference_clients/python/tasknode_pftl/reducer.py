@@ -103,6 +103,8 @@ def reduce_task_events(events: list[ReplayEvent]) -> dict[str, TaskProjection]:
             transition = payload.get("transition")
             if transition == "accepted":
                 projection.status = "accepted"
+            elif transition == "refused":
+                projection.status = "refused"
             elif transition == "rejected":
                 projection.status = "rejected"
             elif transition == "expired":
@@ -147,4 +149,3 @@ def hydrate_and_reduce(events: list[dict[str, Any]], ipfs: IpfsClient, identity:
                 event_type="hydrate_failed",
             ))
     return hydrated, reduce_task_events([event for event in hydrated if event.event_type != "hydrate_failed"])
-

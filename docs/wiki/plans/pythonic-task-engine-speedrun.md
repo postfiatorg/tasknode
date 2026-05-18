@@ -2,12 +2,14 @@
 
 ## Status
 
-Stage A is implemented and has been run live against PFTL testnet. The current
-Python engine can execute a real N=1 task request from the `task_sample` app
+Stage A and Stage B are implemented and have been run live against PFTL testnet.
+The Python engine can execute a real N=1 task request from the `task_sample` app
 bundle through offer, acceptance, evidence submission, verification request,
 verification response, AI scoring, PFT payout, replay receipt generation, and
-Postgres projection import. Stage B, the 10-wallet representative speedrun, is
-still pending.
+Postgres projection import. The Stage B speedrun creates 10 wallets, shards them
+across authority and allocation wallets, exercises representative evidence and
+edge-case paths, writes batch receipts, and imports those receipts into the
+Postgres projection cache.
 
 This plan extends `docs/wiki/plans/getting-tasks-over-line.md`. That plan
 defines the wallet-first PFTL task lifecycle and app-data request bundle. This
@@ -130,6 +132,20 @@ The N=1 implementation currently supports:
 - fail-closed behavior when model providers fail, unless the operator explicitly
   passes `--allow-taskgen-fallback` for protocol-only local smoke testing;
 - public receipt import into `task_projections`.
+
+The Stage B implementation currently supports:
+
+- `--stage n10`;
+- 10 generated user wallets by default;
+- authority wallet sharding;
+- allocation/reward wallet sharding;
+- shared queue locks per signing wallet;
+- real model calls for task generation, verification request generation, and
+  scoring;
+- URL, screenshot, text, code, file, mixed evidence, faulty evidence,
+  wrong-evidence, refusal/re-request, and duplicate-guard cases;
+- batch public receipts with per-task public receipts;
+- batch receipt import into `task_projections`.
 
 ### Wallet Model
 
@@ -448,7 +464,7 @@ Acceptance:
 Create `tasknode_pftl.engine` and the `task_engine_speedrun` scenario. Wire
 configuration, wallet creation, queue assignment, and receipt generation.
 
-Status: complete for N=1; 10-wallet queue assignment remains for Stage B.
+Status: complete for N=1 and Stage B.
 
 Acceptance:
 
@@ -463,8 +479,8 @@ bundle. Support both `task_sample` and synthetic users. Build the representative
 dataset for the live test: 10 funded wallets, 10 canonical context docs, 10
 app-shaped chat/memory bundles, and task-type assignments.
 
-Status: complete for app-backed N=1 bundle and task queue cache; representative
-10-user dataset remains for Stage B.
+Status: complete for app-backed N=1 bundle, task queue cache, and representative
+Stage B wallet-specific bundles.
 
 Acceptance:
 
@@ -508,6 +524,10 @@ Acceptance:
 
 Run the 10-wallet matrix with real PFTL transactions and real scoring.
 
+Status: complete. Live run `task_engine_n10_2026-05-18T200932453687` produced
+11 task receipts across 10 wallets: 8 rewarded, 1 refused, and 2
+verification-response-submitted negative paths.
+
 Acceptance:
 
 - 10 user wallets complete the assigned paths;
@@ -520,6 +540,9 @@ Acceptance:
 
 Import the speedrun replay into the existing projection cache so the app can show
 the tasks ex post.
+
+Status: complete for receipt import. The Stage B public receipt was imported
+into `task_projections` through `scripts/import-task-replay-receipts.mjs`.
 
 Acceptance:
 
@@ -543,8 +566,5 @@ Resolved:
   rejection.
 - Provider costs are paid by the project during this protocol milestone and
   recorded in receipts.
-
-Still open:
-
-- Allocation wallet shape: should v1 use one allocation wallet per user, or one
-  allocation wallet per shard of five to ten users?
+- Stage B uses allocation shards by default: one allocation wallet per five user
+  wallets unless the operator passes `--allocation-count`.
