@@ -69,6 +69,40 @@ Initial backend slice implemented:
 - Archive backfill worker: `PFTL_CACHE_ARCHIVE_WORKER_ENABLED=true`.
 - Conservative retention worker: `PFTL_CACHE_RETENTION_WORKER_ENABLED=true`.
 
+## Current Operational Model
+
+The cache now has four cooperating paths:
+
+| Path | Driver | Writes | Purpose |
+| --- | --- | --- | --- |
+| Live watcher | PFTL WSS validated account events | Transaction rows, wallet index rows, pointer memo rows, reducer events, watcher state | Keep active wallet activity current with low latency. |
+| Polling repair | `account_info.PreviousTxnID` plus hot `account_tx` fallback | Same cache rows and reducer events as the live watcher | Catch missed WSS events and repair after process sleep/reconnect. |
+| Archive backfill | Paginated archive `account_tx` with checkpoint markers | Same cache rows and reducer events plus `archive_marker` | Fill historical wallet activity without blocking page loads. |
+| Retention | Scheduled maintenance worker | Deletes old completed reducer events only by default | Keep queue storage bounded without deleting replay substrate. |
+
+The reducer is the boundary between chain evidence and app projections. Transaction and pointer rows preserve what happened on PFTL. Reducer events tell the app which projections need to be updated. Context history rows and task projections can be rebuilt from cached pointer rows plus IPFS if projections are deleted.
+
+## What Was Just Completed
+
+The latest slice completed the "archive-completeness/backfill policy, operator monitoring, and retention" portion of the milestone:
+
+1. `fetchHistoricalAccountTransactions` now accepts a real `marker` and returns the real `nextMarker`.
+2. `syncPftlWalletArchive` uses that marker to resume archive scans per wallet.
+3. `pftl_sync_wallets.archive_marker` records whether archive backfill is complete, what marker to use next, how many transactions/pages were scanned in the last tick, and when the checkpoint was updated.
+4. `startPftlArchiveWorker` slowly processes archive-incomplete wallets in the background.
+5. `/api/pftl/cache/health` gives operators one health read for wallet freshness, archive completeness, watcher status, reducer depth, recent errors, row counts, and maintenance runs.
+6. `startPftlCacheRetentionWorker` prunes completed reducer queue rows after policy age.
+7. Raw transactions, wallet transaction rows, and pointer memos are retained by default because they are the replay substrate.
+
+Verification added:
+
+```text
+npm run db:pftl-cache-archive-smoke
+npm run db:pftl-cache-health-retention-smoke
+```
+
+The archive smoke proves interrupted archive pagination resumes and completes. The health/retention smoke proves the operator summary works and that retention deletes only scoped completed reducer events.
+
 Still open:
 
 - Context restore migration to cache-first pointer reads.

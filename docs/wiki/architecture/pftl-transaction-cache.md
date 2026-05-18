@@ -6,6 +6,63 @@ Task Node Official should add a Postgres-native PFTL transaction mirror for ever
 
 The cache is not canonical. PFTL remains canonical for wallet activity, pointer memos, task lifecycle events, and rewards. The cache exists so app reads do not depend on live `account_tx` scans, shallow RPC history, or archive RPC latency.
 
+## Latest Operations Slice
+
+This section describes the archive-completeness, monitoring, and retention work added in commit `8fe5ec7`.
+
+Before this slice, the cache had a good live path:
+
+```text
+PFTL WSS / hot account_tx
+  -> pftl_transactions
+  -> pftl_wallet_transactions
+  -> pftl_pointer_memos
+  -> pftl_cache_reducer_events
+  -> context/task projections
+```
+
+That was enough for fresh activity, but not enough to operate the system reliably. Three gaps remained:
+
+| Gap | Why it mattered | What changed |
+| --- | --- | --- |
+| Archive completeness | A wallet can have useful historical context/task pointers older than the hot cache window. Starting every archive scan from page one is wasteful and can fail mid-run. | `syncPftlWalletArchive` now resumes from the real opaque `account_tx` marker and checkpoints progress in `pftl_sync_wallets.archive_marker`. |
+| Operator monitoring | We needed one place to see whether WSS, hot polling, archive backfill, reducer queue, and retention are healthy. | `/api/pftl/cache/health` reports tracked wallet counts, stale wallets, archive status, reducer queue depth, watcher state, row counts, recent sync errors, and maintenance runs. |
+| Retention | Reducer events are a work queue and should not grow forever, but raw transaction and pointer rows are replay substrate. | `startPftlCacheRetentionWorker` prunes only old completed reducer events by default. Raw transaction pruning is disabled unless explicitly enabled. |
+
+The operational architecture is now:
+
+```text
+Live path:
+  validated PFTL tx
+    -> cache rows
+    -> reducer events
+    -> context/task/wallet projections
+
+Archive path:
+  active sync wallet
+    -> archive account_tx page
+    -> cache rows
+    -> reducer events
+    -> archive_marker checkpoint
+    -> repeat until complete
+
+Monitoring path:
+  operator health endpoint
+    -> sync wallet freshness
+    -> archive completeness
+    -> watcher status
+    -> reducer queue depth
+    -> recent errors and retention runs
+
+Retention path:
+  old completed reducer events
+    -> delete after retention age
+  raw tx / wallet tx / pointer memos
+    -> retained by default for replayability
+```
+
+This is still a cache. If the Postgres mirror is lost, the intended repair is to replay PFTL `account_tx` plus IPFS payload hydration, not to treat the lost Postgres rows as canonical state.
+
 ## PFTasks Reference
 
 PFTasks already implemented the correct backend shape for messaging and wallet history:
@@ -183,6 +240,29 @@ Archive completeness is tracked per wallet. The checkpoint shape is:
 
 When `complete` becomes `true`, `marker` is cleared. The marker is the opaque PFTL/XRPL `account_tx` marker and must be treated as a resume token, not parsed app state.
 
+### Archive Worker Details
+
+The archive worker is intentionally slow and resumable. It does not run inside user request paths.
+
+| Config | Default | Meaning |
+| --- | --- | --- |
+| `PFTL_CACHE_ARCHIVE_WORKER_ENABLED` | `true` in local Docker/Fly config | Starts the background archive worker in `server/index.js`. |
+| `PFTL_CACHE_ARCHIVE_WORKER_INTERVAL_MS` | `300000` | Worker tick interval. |
+| `PFTL_CACHE_ARCHIVE_BATCH_LIMIT` | `1` | Number of wallets to archive per tick. Kept low to avoid hammering archive RPC. |
+| `PFTL_CACHE_ARCHIVE_MAX_PAGES` | `1` | Number of `account_tx` pages per wallet per tick. |
+| `PFTL_CACHE_ARCHIVE_ACCOUNT_TX_LIMIT` | `200` | Page size for archive `account_tx`. |
+
+On each tick:
+
+1. `listPftlWalletsDueForArchiveSync` selects active wallets whose archive marker is not complete and whose archive sync is stale.
+2. `syncPftlWalletArchive` reads the last `archive_marker.marker`.
+3. `fetchHistoricalAccountTransactions` calls archive `account_tx` with that marker.
+4. `storePftlAccountTransactions` upserts global tx rows, wallet index rows, and pointer memo rows.
+5. `enqueuePftlReducerEventsForTransaction` queues the same reducer events used by hot sync.
+6. `recordPftlArchiveCheckpoint` saves the next marker or marks the wallet complete.
+
+If a process dies after a page is stored but before the archive completes, the next tick resumes from the checkpoint. Reprocessing a page is safe because transaction, wallet index, pointer memo, and reducer event writes are idempotent.
+
 ## API Compatibility
 
 Expose a cache read that can return a native `account_tx`-like shape:
@@ -256,6 +336,22 @@ The response reports:
 - transaction, wallet-transaction, and pointer memo row counts;
 - recent maintenance runs such as retention.
 
+Useful fields:
+
+| Field | How to read it |
+| --- | --- |
+| `wallets.hot_stale` | Active wallets that need hot repair. If this grows, WSS/polling is falling behind or RPC is unavailable. |
+| `wallets.archive_incomplete` | Active wallets that still need historical archive backfill. This is expected to be nonzero during rollout. |
+| `wallets.archive_stale` | Archive-incomplete wallets that have not made archive progress within the configured threshold. |
+| `wallets.error_count` | Wallets with a recorded sync error. Check `recentErrors`. |
+| `reducerQueue.pending` | Work still waiting to reduce into wallet/context/task projections. |
+| `reducerQueue.failed` | Reducer failures that need repair. |
+| `watchers[].status` | WSS watcher status. `connected` is expected when the app process is awake. |
+| `watchers[].subscribed_wallet_count` | Number of active wallets subscribed by the watcher. |
+| `maintenanceRuns[]` | Recent retention or maintenance summaries. |
+
+This endpoint is for operators. Normal users should not need to know what WSS, archive RPC, or reducer queues are.
+
 ## Retention Policy
 
 The retention worker is intentionally narrow:
@@ -265,6 +361,8 @@ The retention worker is intentionally narrow:
 - Orphan raw transaction pruning exists only behind `PFTL_CACHE_RETENTION_RAW_TX_ENABLED=true` and only touches transactions that have no wallet index rows and no pointer memo rows.
 
 This preserves replayability while keeping the queue table from growing without bound.
+
+The important product decision is that reducer events are operational queue rows, but transaction and pointer rows are replay substrate. Deleting completed reducer events does not remove evidence of a task, context pointer, reward, or wallet transaction. Deleting raw transaction/pointer rows would reduce replayability, so that remains off by default.
 
 ## Migration Plan
 
