@@ -23,6 +23,7 @@ import {
   getContextDocument,
   getContextHistory,
 } from "./repositories/context.js";
+import { listTaskState } from "./repositories/tasks.js";
 
 function sessionState(session, providers, runtimeReadiness, linkedWallet) {
   const base = {
@@ -72,6 +73,10 @@ export async function appState(session = null) {
     accountId: session?.accountId || "",
     walletAddress: walletLinked ? linkedWallet.address : "",
   });
+  const tasks = await listTaskState({
+    accountId: session?.accountId || "",
+    walletAddress: walletLinked ? linkedWallet.address : "",
+  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -85,44 +90,7 @@ export async function appState(session = null) {
       modes,
       seedMessages: await getChatMessages(conversationId),
     },
-    tasks: {
-      personalRequestEnabled: true,
-      networkRequestEnabled: false,
-      alphaRequestEnabled: false,
-      dailyRewardCap: 8,
-      outstanding: [
-        {
-          id: "tn-dev-001",
-          title: "Wire account-first login contract",
-          kind: "Personal",
-          status: "Next",
-          pft: 3600,
-          due: "Dev milestone",
-          summary:
-            "Define account session, provider links, and seed-wallet onboarding surfaces without requiring wallet authentication for normal app access.",
-        },
-        {
-          id: "tn-dev-002",
-          title: "Specify seed wallet storage and delink flow",
-          kind: "Personal",
-          status: "Research",
-          pft: 3000,
-          due: "Security gate",
-          summary:
-            "Choose local seed storage, backup, recovery, delink, and relink rules before any real PFTL signing UI ships.",
-        },
-      ],
-      routed: [
-        {
-          id: "routed-network",
-          title: "Network and alpha tasks will appear here when routed",
-          kind: "Routed",
-          status: "Receive only",
-          summary:
-            "Users can receive network and alpha work in this app, but cannot request those task classes through the personal task path.",
-        },
-      ],
-    },
+    tasks,
     wallet: {
       pftBalanceDrops: walletLinked ? null : 0,
       pftBalanceStatus: walletLinked ? "checking" : "not_linked",

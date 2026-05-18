@@ -520,6 +520,20 @@ the portable `pf.task.request_bundle.v1` from the account's current context
 document, recent app memory, deep memory, and bounded chat window. Postgres is
 only the fixture source; the replay remains PFTL/IPFS-first.
 
+Implemented Phase 2 projection cache:
+
+```bash
+DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@127.0.0.1:5436/tasknodeofficial \
+TASKNODE_DATABASE_ENABLED=true \
+npm run db:import-task-replays
+```
+
+The first projection layer is deliberately thin. `pftl_task_pointer_events`
+stores pointer/event references, `task_events` stores reduced event rows, and
+`task_projections` stores the read model consumed by `/api/tasks`. The app now
+reads Tasks from `task_projections`; replay receipts are importable evidence
+from the live PFTL/IPFS harness, not hand-created product rows.
+
 ## Open Decisions
 
 - Whether v1 allocation is exactly one wallet per user or shard size 10.

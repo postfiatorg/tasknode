@@ -12,6 +12,7 @@ const migrations = [
   "003_context_cache.sql",
   "004_chat_memory.sql",
   "005_deep_chat_memory.sql",
+  "006_task_projections.sql",
 ];
 
 let migrated = false;

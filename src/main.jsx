@@ -147,60 +147,12 @@ const PALETTE = {
   brand: "#10a37f",
 };
 
-const MOCK_TASKS = {
-  outstanding: [
-    {
-      id: "221bb8e5",
-      fullId: "221bb8e5-5a64-44f6-a4fc-712841e01ee7",
-      title: "Ship A 90 Percent Task Node Surface Cut",
-      kind: "Personal",
-      status: "Proposed",
-      due: "Due May 17 @ 1:27 PM",
-      fullDue: "Sun, May 17 at 1:27 PM",
-      ago: "4m ago",
-      pft: 3600,
-      description:
-        'Implement a temporary founder-controlled "simple mode" for Task Node that hides or disables the majority of nonessential product surfaces and leaves only the core path a user should take next. Scope this as an aggressive product triage patch, not a redesign: reduce visible navigation/actions, remove confusing secondary flows from the default view, and make one primary task/request path obvious.',
-      steps: [
-        "Inventory the current default Task Node entry surface and mark every visible nav item, button, module, or flow as keep, hide, or defer.",
-        "Implement a simple-mode flag or equivalent product gate that makes the default user view expose only the minimum viable task/request path and one support or recovery path.",
-        "Replace ambiguous or multi-action empty states with one clear primary call to action and remove competing CTAs from the first screen.",
-        "Run the app locally or in staging and verify that the default surface area is visibly reduced by roughly 90% without breaking the primary path.",
-      ],
-      verification: {
-        title: "Submit a screenshot",
-        body:
-          "Submit one screenshot of the updated Task Node default user view with simple mode active. The screenshot must visibly show a dramatically reduced interface with one dominant primary action and no broad navigation/menu sprawl.",
-      },
-    },
-    {
-      id: "e808cfe2",
-      fullId: "e808cfe2-9a11-4d27-bc04-3a5f9b18d2c1",
-      title: "Make The 8-K Extractor Emit Cited Rows",
-      kind: "Personal",
-      status: "Accepted",
-      due: "Due May 16 @ 5:09 PM",
-      fullDue: "Sat, May 16 at 5:09 PM",
-      ago: "2h ago",
-      pft: 3000,
-      description:
-        "Update the 8-K extraction pipeline so that every emitted row includes an explicit citation pointing back to the source document and offset. The goal is to make downstream verification trivially possible without re-reading the filing.",
-      steps: [
-        "Extend the extractor schema with a citation field that carries the filing URL, page or section reference, and a character offset range.",
-        "Modify the extraction step to populate the citation from the source span used to produce each row.",
-        "Backfill or invalidate any cached rows that lack citations so downstream consumers can rely on the new contract.",
-        "Add an end-to-end test that fails if any emitted row is missing a citation.",
-      ],
-      verification: {
-        title: "Submit a CSV sample",
-        body:
-          "Submit a CSV of at least 20 extracted rows from a real 8-K filing showing the new citation column populated for every row. The verifier will spot-check a handful against the source filing.",
-      },
-    },
-  ],
+const EMPTY_TASKS = {
+  outstanding: [],
   verification: [],
-  refused: 62,
-  rewarded: 92,
+  refused: [],
+  rewarded: [],
+  sync: { status: "loading", projectionCount: 0 },
 };
 
 const PFT_GENERATION = [
@@ -347,6 +299,25 @@ function App() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (view !== "tasks") return undefined;
+    let active = true;
+
+    fetchAppState()
+      .then((state) => {
+        if (!active) return;
+        setAppState((current) => mergeAppStateWithClientWalletBalance(current, state));
+        setLoadError("");
+      })
+      .catch((error) => {
+        if (active) setLoadError(error?.message || "Failed to load task state");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [view]);
 
   useEffect(() => {
     function closeMenus(event) {
@@ -967,7 +938,7 @@ function App() {
             usage={appState?.usage}
           />
         )}
-        {view === "tasks" && <TasksView onSelectTask={setSelectedTask} />}
+        {view === "tasks" && <TasksView onSelectTask={setSelectedTask} tasks={appState?.tasks} />}
         {view === "wallet" && (
           <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
             <WalletView
@@ -2546,16 +2517,59 @@ function ProfileAvatar({ initials, signedIn }) {
   );
 }
 
-function TasksView({ onSelectTask }) {
+function taskArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function TasksView({ onSelectTask, tasks = EMPTY_TASKS }) {
   const [tasksTab, setTasksTab] = useState("outstanding");
-  const outstandingCount = MOCK_TASKS.outstanding.length;
-  const totalPft = MOCK_TASKS.outstanding.reduce((sum, task) => sum + task.pft, 0);
+  const outstanding = taskArray(tasks.outstanding);
+  const verification = taskArray(tasks.verification);
+  const refused = taskArray(tasks.refused);
+  const rewarded = taskArray(tasks.rewarded);
+  const currentTabTasks = {
+    outstanding,
+    verification,
+    refused,
+    rewarded,
+  }[tasksTab] || [];
+  const outstandingCount = outstanding.length;
+  const totalPft = [...outstanding, ...verification].reduce((sum, task) => sum + Number(task.pft || 0), 0);
   const tabs = [
-    { key: "outstanding", label: "Outstanding", count: MOCK_TASKS.outstanding.length },
-    { key: "verification", label: "Verification", count: MOCK_TASKS.verification.length },
-    { key: "refused", label: "Refused", count: MOCK_TASKS.refused },
-    { key: "rewarded", label: "Rewarded", count: MOCK_TASKS.rewarded },
+    { key: "outstanding", label: "Outstanding", count: outstanding.length },
+    { key: "verification", label: "Verification", count: verification.length },
+    { key: "refused", label: "Refused", count: refused.length },
+    { key: "rewarded", label: "Rewarded", count: rewarded.length },
   ];
+
+  useEffect(() => {
+    if (tasksTab !== "outstanding") return;
+    if (outstanding.length > 0 || verification.length > 0 || rewarded.length === 0) return;
+    setTasksTab("rewarded");
+  }, [outstanding.length, rewarded.length, tasksTab, verification.length]);
+
+  const emptyCopy = {
+    outstanding: {
+      icon: Flag,
+      title: tasks?.sync?.status === "wallet_required" ? "Link a wallet to view tasks" : "No outstanding tasks",
+      desc: "Tasks appear here after the PFTL projection cache indexes proposed or accepted work for your linked wallet.",
+    },
+    verification: {
+      icon: Trophy,
+      title: "Nothing awaiting verification",
+      desc: "When a verification request is indexed from PFTL, it will appear here.",
+    },
+    refused: {
+      icon: MoreHorizontal,
+      title: "No refused tasks",
+      desc: "Rejected, expired, and cancelled task projections appear here.",
+    },
+    rewarded: {
+      icon: Trophy,
+      title: "No rewarded tasks",
+      desc: "Rewarded task projections appear here after PFTL reward pointers are indexed.",
+    },
+  }[tasksTab];
 
   return (
     <div className="route-scroll">
@@ -2567,6 +2581,12 @@ function TasksView({ onSelectTask }) {
               <strong>{outstandingCount} outstanding</strong>
               <span aria-hidden="true">.</span>
               <span className="task-in-flight">{totalPft.toLocaleString()} PFT in flight</span>
+              {tasks?.sync?.projectionCount > 0 && (
+                <>
+                  <span aria-hidden="true">.</span>
+                  <span>{tasks.sync.projectionCount} chain indexed</span>
+                </>
+              )}
             </p>
           </div>
           <button className="dark-pill task-request-button" type="button">
@@ -2592,37 +2612,22 @@ function TasksView({ onSelectTask }) {
           })}
         </div>
 
-        {tasksTab === "outstanding" && (
+        {currentTabTasks.length > 0 ? (
           <div className="task-list task-entry-list">
-            {MOCK_TASKS.outstanding.map((task, index) => (
+            {currentTabTasks.map((task, index) => (
               <TaskRow
                 isFirst={index === 0}
-                key={task.id}
+                key={task.taskId || task.fullId || task.id}
                 onClick={() => onSelectTask(task)}
                 task={task}
               />
             ))}
           </div>
-        )}
-        {tasksTab === "verification" && (
+        ) : (
           <EmptyState
-            icon={Trophy}
-            title="Nothing awaiting verification"
-            desc="When a verifier picks up your submission it will appear here."
-          />
-        )}
-        {tasksTab === "refused" && (
-          <EmptyState
-            icon={MoreHorizontal}
-            title="62 refused tasks"
-            desc="Historical refusals are summarized rather than expanded by default."
-          />
-        )}
-        {tasksTab === "rewarded" && (
-          <EmptyState
-            icon={Trophy}
-            title="92 rewarded tasks"
-            desc="Open the wallet to see the resulting PFT transfers."
+            icon={emptyCopy.icon}
+            title={emptyCopy.title}
+            desc={emptyCopy.desc}
           />
         )}
       </div>
@@ -2655,7 +2660,7 @@ function TaskRow({ isFirst, onClick, task }) {
         </span>
       </span>
       <span className="task-reward">
-        <strong>{task.pft.toLocaleString()}</strong>
+        <strong>{Number(task.pft || 0).toLocaleString()}</strong>
         <span>PFT</span>
       </span>
     </button>
@@ -4326,6 +4331,9 @@ function ToggleSwitch({ initial }) {
 
 function TaskDetailModal({ onClose, task }) {
   const [mounted, setMounted] = useState(false);
+  const steps = Array.isArray(task.steps) ? task.steps : [];
+  const verification = task.verification || {};
+  const rewardPft = Number(task.pft || 0);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
@@ -4384,7 +4392,7 @@ function TaskDetailModal({ onClose, task }) {
             <div>
               <small>Reward</small>
               <span className="task-modal-reward">
-                {task.pft.toLocaleString()}
+                {rewardPft.toLocaleString()}
                 <em>PFT</em>
               </span>
             </div>
@@ -4393,19 +4401,21 @@ function TaskDetailModal({ onClose, task }) {
           <TaskSection title="Description">
             <p>{task.description}</p>
           </TaskSection>
-          <TaskSection title="Steps">
-            <ol>
-              {task.steps.map((step, index) => (
-                <li key={step}>
-                  <span>{index + 1}</span>
-                  <p>{step}</p>
-                </li>
-              ))}
-            </ol>
-          </TaskSection>
+          {steps.length > 0 && (
+            <TaskSection title="Steps">
+              <ol>
+                {steps.map((step, index) => (
+                  <li key={step}>
+                    <span>{index + 1}</span>
+                    <p>{step}</p>
+                  </li>
+                ))}
+              </ol>
+            </TaskSection>
+          )}
           <TaskSection last title="Verification">
-            <strong>{task.verification.title}</strong>
-            <p>{task.verification.body}</p>
+            <strong>{verification.title || "Submit evidence"}</strong>
+            <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
           </TaskSection>
         </div>
         <footer className="task-modal-footer">

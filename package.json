@@ -28,6 +28,8 @@
     "db:chat-billing-smoke": "node scripts/chat-billing-postgres-smoke.mjs",
     "db:context-smoke": "node scripts/context-postgres-smoke.mjs",
     "db:memory-smoke": "node scripts/chat-memory-postgres-smoke.mjs",
+    "db:tasks-smoke": "node scripts/task-projection-postgres-smoke.mjs",
+    "db:import-task-replays": "node scripts/import-task-replay-receipts.mjs",
     "memory:backfill": "node scripts/memory-backfill.mjs",
     "runtime-smoke": "node scripts/runtime-store-smoke.mjs",
     "context-history-rpc-smoke": "node scripts/context-history-rpc-smoke.mjs",
