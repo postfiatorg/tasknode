@@ -27,6 +27,10 @@ function titleCase(value = "") {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function safeObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
 function taskStatusLabel(status = "") {
   const normalized = String(status || "unknown").trim().toLowerCase();
   if (normalized === "verification_requested") return "Verification requested";
@@ -92,11 +96,9 @@ function publicTask(row) {
   const rewardActual = numeric(row.reward_actual_pft);
   const rewardOffer = numeric(row.reward_offer_pft);
   const pft = rewardActual || rewardOffer;
-  const metadata = row.metadata_json && typeof row.metadata_json === "object" ? row.metadata_json : {};
-  const generatedTask = metadata.generatedTask && typeof metadata.generatedTask === "object" ? metadata.generatedTask : {};
-  const verification = row.verification_policy_json && typeof row.verification_policy_json === "object"
-    ? row.verification_policy_json
-    : {};
+  const metadata = safeObject(row.metadata_json);
+  const generatedTask = safeObject(metadata.generatedTask);
+  const verification = safeObject(row.verification_policy_json);
 
   return {
     id: String(row.task_id || "").slice(0, 12),
@@ -158,6 +160,92 @@ function groupTasks(rows) {
   return { outstanding, verification, refused, rewarded };
 }
 
+function schemaLabel(schema = "") {
+  const normalized = String(schema || "").trim();
+  return {
+    "pf.task.request.v1": "Task requested",
+    "pf.task.offer.v1": "Task offered",
+    "pf.task.acceptance.v1": "Task accepted",
+    "pf.task.refusal.v1": "Task refused",
+    "pf.task.submission.v1": "Evidence submitted",
+    "pf.task.verification_request.v1": "Verification requested",
+    "pf.task.verification_response.v1": "Verification response submitted",
+    "pf.reward.v1": "Reward paid",
+    "pf.task.update.v1": "Task updated",
+  }[normalized] || titleCase(normalized.replace(/^pf\./, "") || "Task event");
+}
+
+function publicCidEntries(cids = {}) {
+  return Object.entries(safeObject(cids))
+    .map(([label, cid]) => ({
+      label: titleCase(label),
+      cid: safeText(cid, 240),
+    }))
+    .filter((entry) => entry.cid);
+}
+
+function publicTransactionEntries(txs = {}) {
+  return Object.entries(safeObject(txs))
+    .map(([label, value]) => {
+      const tx = safeObject(value);
+      const txHash = typeof value === "string" ? value : tx.tx_hash || tx.hash || tx.transaction_hash;
+      return {
+        label: titleCase(label),
+        txHash: safeText(txHash, 240),
+        ledgerIndex: tx.ledger_index || tx.ledgerIndex || null,
+      };
+    })
+    .filter((entry) => entry.txHash);
+}
+
+function publicPointerEvent(row, index = 0) {
+  const pointer = safeObject(row.pointer_json);
+  const payload = safeObject(row.payload_json);
+  const schema = safeText(row.event_schema || pointer.schema || payload.schema, 120);
+  return {
+    id: row.id || `event_${index + 1}`,
+    index: Number(row.memo_index ?? index),
+    label: schemaLabel(schema),
+    schema,
+    pointerKind: row.pointer_kind || pointer.pointer_kind || "",
+    txHash: safeText(row.source_tx_hash || pointer.tx_hash || payload.tx_hash, 240),
+    cid: safeText(row.source_cid || pointer.cid || payload.cid, 240),
+    eventDigest: safeText(row.event_digest || pointer.event_digest || "", 240),
+    source: row.source || "",
+    observedAt: toIso(row.observed_at),
+  };
+}
+
+function publicReducerEvent(row, index = 0) {
+  const pointer = safeObject(row.pointer_json);
+  const payload = safeObject(row.payload_json);
+  const schema = safeText(row.event_type || pointer.schema || payload.schema, 120);
+  return {
+    id: row.id || `reducer_event_${index + 1}`,
+    index,
+    label: schemaLabel(schema),
+    schema,
+    txHash: safeText(row.source_tx_hash || pointer.tx_hash || payload.tx_hash, 240),
+    cid: safeText(row.source_cid || pointer.cid || payload.cid, 240),
+    eventDigest: safeText(row.event_digest || pointer.event_digest || "", 240),
+    observedAt: toIso(row.occurred_at),
+  };
+}
+
+function taskActionState(status = "") {
+  const statusKey = String(status || "").trim().toLowerCase();
+  const active = ["proposed", "accepted", "submitted"].includes(statusKey);
+  const verification = verificationStatuses.has(statusKey);
+  return {
+    canRefuse: ["proposed", "accepted"].includes(statusKey),
+    canSubmitInitialEvidence: active,
+    canSubmitVerificationEvidence: verification,
+    browserSubmissionEnabled: false,
+    submissionReason:
+      "Browser-side PFTL signing is not enabled yet. Use the Python reference client for live task submissions.",
+  };
+}
+
 export async function listTaskState({ accountId = "", walletAddress = "" } = {}) {
   const linked = Boolean(String(walletAddress || "").trim());
   if (!linked) return emptyTaskState({ walletLinked: false });
@@ -199,6 +287,96 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
       walletAddress,
       projectionCount: rows.length,
       lastSyncedAt,
+    },
+  };
+}
+
+export async function getTaskDetail({ accountId = "", walletAddress = "", taskId = "" } = {}) {
+  const linked = Boolean(String(walletAddress || "").trim());
+  const normalizedTaskId = safeText(taskId, 180);
+  if (!linked || !normalizedTaskId) return null;
+  if (!databaseEnabled()) {
+    const error = new Error("database_not_configured");
+    error.code = "TASKNODE_DATABASE_NOT_CONFIGURED";
+    throw error;
+  }
+
+  const taskResult = await query(
+    `
+      SELECT *
+      FROM task_projections
+      WHERE task_id = $1
+        AND subject_wallet = $2
+        AND ($3::text = '' OR account_id = $3)
+      LIMIT 1
+    `,
+    [normalizedTaskId, walletAddress, accountId || ""]
+  );
+  const row = taskResult.rows[0];
+  if (!row) return null;
+
+  const [pointerResult, reducerResult] = await Promise.all([
+    query(
+      `
+        SELECT *
+        FROM pftl_task_pointer_events
+        WHERE task_id = $1
+          AND wallet_address = $2
+          AND ($3::text = '' OR account_id = $3)
+        ORDER BY observed_at ASC, memo_index ASC, id ASC
+        LIMIT 200
+      `,
+      [normalizedTaskId, walletAddress, accountId || ""]
+    ),
+    query(
+      `
+        SELECT *
+        FROM task_events
+        WHERE task_id = $1
+          AND wallet_address = $2
+          AND ($3::text = '' OR account_id = $3)
+        ORDER BY occurred_at ASC, id ASC
+        LIMIT 200
+      `,
+      [normalizedTaskId, walletAddress, accountId || ""]
+    ),
+  ]);
+
+  const metadata = safeObject(row.metadata_json);
+  const submissionSummaries = Array.isArray(metadata.submissionSummaries)
+    ? metadata.submissionSummaries
+    : [];
+  const task = publicTask(row);
+
+  return {
+    ok: true,
+    task,
+    wallets: {
+      user: row.subject_wallet || "",
+      authority: row.authority_wallet || "",
+      allocation: row.allocation_wallet || "",
+    },
+    actions: taskActionState(row.status),
+    submission: {
+      summaries: submissionSummaries.slice(0, 12),
+      generatedTask: safeObject(metadata.generatedTask),
+      verificationPolicy: safeObject(row.verification_policy_json),
+    },
+    forensics: {
+      source: row.source || "task_projections",
+      eventCount: Number(row.event_count || 0),
+      requestBundleCid: row.request_bundle_cid || "",
+      contextCid: row.context_cid || "",
+      lastEventTxHash: row.last_event_tx_hash || "",
+      lastEventCid: row.last_event_cid || "",
+      cids: publicCidEntries(metadata.cids),
+      transactions: publicTransactionEntries(metadata.txs),
+      timeline: pointerResult.rows.map(publicPointerEvent),
+      reducerEvents: reducerResult.rows.map(publicReducerEvent),
+    },
+    sync: {
+      updatedAt: toIso(row.updated_at),
+      lastEventAt: toIso(row.last_event_at),
     },
   };
 }

@@ -45,10 +45,10 @@ import {
   usageLedger,
 } from "./repositories/chat-billing.js";
 import { listChatMemory } from "./repositories/chat-memory.js";
-import { listTaskState } from "./repositories/tasks.js";
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
+import { handleTaskReadRoute } from "./task-routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -548,14 +548,7 @@ async function routeApi(req, url, res) {
     return true;
   }
 
-  if (url.pathname === "/api/tasks") {
-    const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
-    json(res, 200, await listTaskState({
-      accountId: session?.accountId || "",
-      walletAddress: linkedWallet.status === "linked" ? linkedWallet.address || "" : "",
-    }));
-    return true;
-  }
+  if (await handleTaskReadRoute({ getLinkedWallet, json, res, session, url })) return true;
 
   if (url.pathname === "/api/chat/estimate") {
     const payload = req.method === "POST" ? await readJson(req) : {};

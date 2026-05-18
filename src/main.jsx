@@ -97,6 +97,7 @@ import {
   truncateCid,
 } from "./features/context/context-view-utils.jsx";
 import { PostFiatLogo, SidebarButton, ToolMenuRow } from "./features/shell/ShellControls";
+import { TaskDetailModal } from "./features/tasks/TaskDetailModal.jsx";
 import {
   applyWalletBalanceError,
   applyWalletBalanceResult,
@@ -239,8 +240,24 @@ const WALLET_BALANCE_REFRESH_MS = 15000;
 
 function viewFromLocation() {
   if (typeof window === "undefined") return "chat";
-  const hashView = window.location.hash.replace(/^#\/?/, "").trim().toLowerCase();
+  const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
+  const hashView = hashPath.split("?")[0].split("/")[0].toLowerCase();
   return APP_VIEWS.has(hashView) ? hashView : "chat";
+}
+
+function taskIdFromLocation() {
+  if (typeof window === "undefined") return "";
+  const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
+  const [pathPart, queryPart = ""] = hashPath.split("?");
+  const parts = pathPart.split("/").filter(Boolean);
+  if ((parts[0] || "").toLowerCase() !== "tasks") return "";
+  const queryTaskId = new URLSearchParams(queryPart).get("taskId") || "";
+  const rawTaskId = queryTaskId || parts.slice(1).join("/");
+  try {
+    return decodeURIComponent(rawTaskId);
+  } catch {
+    return rawTaskId;
+  }
 }
 
 function writeViewLocation(nextView, { replace = false } = {}) {
@@ -255,6 +272,19 @@ function writeViewLocation(nextView, { replace = false } = {}) {
 
   const method = replace ? "replaceState" : "pushState";
   window.history[method]({ tasknodeView: normalizedView }, "", nextPath);
+}
+
+function writeTaskLocation(taskId, { replace = false } = {}) {
+  if (typeof window === "undefined") return;
+  const normalizedTaskId = String(taskId || "").trim();
+  if (!normalizedTaskId) return;
+  const url = new URL(window.location.href);
+  url.hash = `tasks/${encodeURIComponent(normalizedTaskId)}`;
+  const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const nextPath = `${url.pathname}${url.search}${url.hash}`;
+  if (currentPath === nextPath) return;
+  const method = replace ? "replaceState" : "pushState";
+  window.history[method]({ tasknodeView: "tasks", taskId: normalizedTaskId }, "", nextPath);
 }
 
 function App() {
@@ -321,6 +351,14 @@ function App() {
       active = false;
     };
   }, [view]);
+
+  useEffect(() => {
+    if (view !== "tasks") return;
+    const taskId = taskIdFromLocation();
+    if (!taskId) return;
+    const task = findTaskById(appState?.tasks, taskId);
+    if (task) setSelectedTask(task);
+  }, [appState?.tasks, view]);
 
   useEffect(() => {
     function closeMenus(event) {
@@ -516,6 +554,20 @@ function App() {
     writeViewLocation(normalizedView, { replace: options.replace === true });
   }, []);
 
+  const openTaskDetail = useCallback((task) => {
+    const taskId = task?.taskId || task?.fullId || task?.id || "";
+    setSelectedTask(task);
+    setView("tasks");
+    if (taskId) writeTaskLocation(taskId);
+  }, []);
+
+  const closeTaskDetail = useCallback(() => {
+    setSelectedTask(null);
+    if (view === "tasks" && taskIdFromLocation()) {
+      writeViewLocation("tasks", { replace: true });
+    }
+  }, [view]);
+
   const openWalletVaultControl = useCallback(() => {
     setProfileMenuOpen(false);
     setMoreMenuOpen(false);
@@ -571,7 +623,12 @@ function App() {
   );
 
   useEffect(() => {
-    writeViewLocation(viewFromLocation(), { replace: true });
+    const initialTaskId = taskIdFromLocation();
+    if (initialTaskId) {
+      writeTaskLocation(initialTaskId, { replace: true });
+    } else {
+      writeViewLocation(viewFromLocation(), { replace: true });
+    }
 
     function syncViewFromLocation() {
       setView(viewFromLocation());
@@ -992,7 +1049,7 @@ function App() {
             usage={appState?.usage}
           />
         )}
-        {view === "tasks" && <TasksView onSelectTask={setSelectedTask} tasks={appState?.tasks} />}
+        {view === "tasks" && <TasksView onSelectTask={openTaskDetail} tasks={appState?.tasks} />}
         {view === "wallet" && (
           <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
             <WalletView
@@ -1060,7 +1117,7 @@ function App() {
         />
       )}
       {selectedTask && (
-        <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />
+        <TaskDetailModal task={selectedTask} onClose={closeTaskDetail} />
       )}
       {chatActionMenu && sidebarOpen && (
         <ChatItemActionMenu
@@ -2526,6 +2583,23 @@ function ProfileAvatar({ initials, signedIn }) {
 
 function taskArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function allTaskBuckets(tasks = EMPTY_TASKS) {
+  return [
+    ...taskArray(tasks.outstanding),
+    ...taskArray(tasks.verification),
+    ...taskArray(tasks.refused),
+    ...taskArray(tasks.rewarded),
+  ];
+}
+
+function findTaskById(tasks = EMPTY_TASKS, taskId = "") {
+  const normalized = String(taskId || "").trim();
+  if (!normalized) return null;
+  return allTaskBuckets(tasks).find((task) =>
+    [task.taskId, task.fullId, task.id].some((value) => String(value || "") === normalized)
+  ) || null;
 }
 
 function TasksView({ onSelectTask, tasks = EMPTY_TASKS }) {
@@ -4345,110 +4419,6 @@ function ToggleSwitch({ initial }) {
   );
 }
 
-function TaskDetailModal({ onClose, task }) {
-  const [mounted, setMounted] = useState(false);
-  const steps = Array.isArray(task.steps) ? task.steps : [];
-  const verification = task.verification || {};
-  const rewardPft = Number(task.pft || 0);
-
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setMounted(true));
-    const onKey = (event) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      cancelAnimationFrame(id);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-
-  return (
-    <div className="task-modal-layer">
-      <div
-        className={`task-modal-wash${mounted ? " is-mounted" : ""}`}
-        onClick={onClose}
-        role="presentation"
-      />
-      <section
-        className={`task-modal${mounted ? " is-mounted" : ""}`}
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="task-title"
-      >
-        <header className="task-modal-header">
-          <div className="task-modal-kicker">
-            <Flag size={12} strokeWidth={1.75} />
-            {task.kind}
-          </div>
-          <button className="task-modal-close" onClick={onClose} type="button">
-            <X size={14} strokeWidth={1.75} />
-            Close
-          </button>
-        </header>
-        <div className="task-modal-body">
-          <h2 id="task-title">{task.title}</h2>
-          <a className="task-id-link">
-            {task.fullId}
-            <ExternalLink size={11} strokeWidth={1.75} />
-          </a>
-          <div className="task-modal-stats">
-            <div>
-              <small>Status</small>
-              <span className="task-status-inline">
-                <TaskStatusGlyph status={task.status} />
-                <strong style={{ color: taskStatusColor(task.status) }}>{task.status}</strong>
-              </span>
-            </div>
-            <div>
-              <small>Deadline</small>
-              <span>{task.fullDue}</span>
-            </div>
-            <div>
-              <small>Reward</small>
-              <span className="task-modal-reward">
-                {rewardPft.toLocaleString()}
-                <em>PFT</em>
-              </span>
-            </div>
-          </div>
-          <div className="task-modal-divider" />
-          <TaskSection title="Description">
-            <p>{task.description}</p>
-          </TaskSection>
-          {steps.length > 0 && (
-            <TaskSection title="Steps">
-              <ol>
-                {steps.map((step, index) => (
-                  <li key={step}>
-                    <span>{index + 1}</span>
-                    <p>{step}</p>
-                  </li>
-                ))}
-              </ol>
-            </TaskSection>
-          )}
-          <TaskSection last title="Verification">
-            <strong>{verification.title || "Submit evidence"}</strong>
-            <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
-          </TaskSection>
-        </div>
-        <footer className="task-modal-footer">
-          <button className="danger-text" type="button">Cancel task</button>
-          <div className="task-modal-actions">
-            <button className="light-pill" type="button">Discuss</button>
-            <button className="dark-pill" type="button">
-              Submit evidence
-              <ArrowRight size={14} strokeWidth={2} />
-            </button>
-          </div>
-        </footer>
-      </section>
-    </div>
-  );
-}
-
 function TaskStatusGlyph({ status }) {
   if (status === "Refused") {
     return (
@@ -4457,7 +4427,7 @@ function TaskStatusGlyph({ status }) {
       </svg>
     );
   }
-  return <span className={`task-status-glyph is-${String(status || "unknown").toLowerCase()}`} aria-hidden="true" />;
+  return <span className={`task-status-glyph is-${slugify(status || "unknown")}`} aria-hidden="true" />;
 }
 
 function taskStatusColor(status) {
@@ -4466,16 +4436,9 @@ function taskStatusColor(status) {
     Accepted: "#4a5934",
     Refused: "#7c3c2e",
     Rewarded: "#6e5223",
+    "Verification requested": "#5b4b8a",
+    "Verification submitted": "#4a5934",
   }[status] || "#3d3d38";
-}
-
-function TaskSection({ children, last, title }) {
-  return (
-    <section className={last ? "task-section last" : "task-section"}>
-      <h3>{title}</h3>
-      {children}
-    </section>
-  );
 }
 
 function nextTheme(theme) {

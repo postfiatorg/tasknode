@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { migrateDatabase } from "../server/db/migrate.js";
 import { closePool } from "../server/db/pool.js";
-import { importTaskReplayReceipt, listTaskState } from "../server/repositories/tasks.js";
+import { getTaskDetail, importTaskReplayReceipt, listTaskState } from "../server/repositories/tasks.js";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required for task projection Postgres smoke.");
@@ -98,6 +98,14 @@ assert.equal(state.rewarded.length, 1);
 assert.equal(state.rewarded[0].taskId, taskId);
 assert.equal(state.rewarded[0].title, "Smoke projected PFTL task");
 assert.equal(state.rewarded[0].pft, 3);
+
+const detail = await getTaskDetail({ accountId, walletAddress, taskId });
+assert.equal(detail.ok, true);
+assert.equal(detail.task.taskId, taskId);
+assert.equal(detail.forensics.timeline.length, 2);
+assert.equal(detail.forensics.timeline[0].cid, `QmOfferSmoke${suffix}`);
+assert.equal(detail.forensics.transactions[0].txHash, `REWARD_TX_${suffix}`);
+assert.equal(detail.forensics.cids.some((entry) => entry.cid === `QmBundleSmoke${suffix}`), true);
 
 console.log(`task projection postgres smoke ok: ${taskId}`);
 await closePool();

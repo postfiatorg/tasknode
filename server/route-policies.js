@@ -32,6 +32,7 @@ export const apiRoutePolicies = [
   { id: "auth_provider_callback", pattern: /^\/api\/auth\/[^/]+\/callback$/, methods: ["GET"], auth: "oauth_state" },
   { id: "readiness", path: "/api/readiness", methods: ["GET"], auth: "none" },
   { id: "tasks", path: "/api/tasks", methods: ["GET"], auth: "optional" },
+  { id: "task_detail", path: "/api/tasks/detail", methods: ["GET"], auth: "optional" },
   {
     id: "task_request_intent",
     path: "/api/tasks/request-intent",
