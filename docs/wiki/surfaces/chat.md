@@ -15,6 +15,8 @@ Chat is the primary work surface. Users should be able to speak naturally, attac
 
 The chat composer and thread live in `ChatSurface` in `src/main.jsx`. Provider routing is handled by `server/chat-router.js`. Billing and conversation persistence flow through `server/repositories/chat-billing.js` and migration `server/db/migrations/001_chat_billing.sql`. Attachment text extraction is handled by `server/chat-attachment-utils.js` and migration `server/db/migrations/002_chat_attachments.sql`.
 
+The current account context document is injected by `server/chat-account-context.js`. It reads the saved Context document from `server/repositories/context.js` and renders it through `prompts/chat/account_context_document_v1.md`.
+
 Memory context is injected by `server/chat-memory-context.js`. The memory worker runs after a successful assistant response and must not block the user response.
 
 Task state is also ported into chat by `server/chat-task-context.js`. This is a read-only projection of the user's cached task state, not a task mutation path.
@@ -42,13 +44,37 @@ Frontier modes use the OpenAI Responses API with `store=false`. Task Node passes
 
 Web search is currently deterministic and conservative. `server/chat-search-tools.js` enables OpenAI `web_search` only when the message includes current-information signals such as `search`, `look up`, `today`, `current`, `latest`, `recent`, `news`, or `what is going on`. If those signals are absent, Frontier modes answer without web search. Private modes never add OpenRouter web search.
 
+## Context Document Porting
+
+Every chat mode receives the user's current saved Context document as durable background when the user is signed in. This does not require a linked wallet, an unlocked seed vault, or publishing to PFT. Publishing to PFT creates an encrypted IPFS/PFTL pointer for portable history; ordinary chat grounding reads the current Postgres-backed account context.
+
+The runtime path is:
+
+1. `server/product-contracts.js::chatExecutionPreflight`, `server/chat-router.js::executeChat`, and `server/chat-router.js::executeChatStream` load the current context document alongside chat history, memory context, and task context.
+2. `server/chat-account-context.js::chatContextDocumentForAccount` calls `server/repositories/context.js::getContextDocument` for the signed-in account.
+3. `server/chat-account-context.js::formatChatContextDocument` converts stored rich-text HTML into readable text, removes markup, clips the body to `TASKNODE_CHAT_CONTEXT_DOCUMENT_MAX_CHARS`, and renders `prompts/chat/account_context_document_v1.md`.
+4. `server/chat-memory-context.js::taskNodeInstructions` appends the rendered context block after the base chat instructions and before task and memory blocks.
+5. `server/chat-router.js` sends those instructions to OpenAI Responses API as `instructions` or to OpenRouter Chat Completions as the system message.
+
+The injected block is shaped as:
+
+- `account_context_document`: current account context document metadata and body.
+- `Title`: current context title.
+- `Revision`: current account-local revision number.
+- `Updated`: last saved timestamp.
+- `body`: plain readable text from the saved context body.
+
+The context document is user-authored background, not a higher-authority command channel. If the user asks what is in their context, the assistant should answer from this block. If the current conversation conflicts with the saved document, the current conversation should win.
+
+Because the context document is sent to the provider as part of the chat input, those input tokens are part of ordinary chat usage. This is separate from async memory writes, which remain non-user-billed.
+
 ## Task Context Porting
 
 Every chat mode can receive the user's task state as background context. The purpose is for chat to know what is outstanding, pending verification, refused, and rewarded without making the database the canonical task engine.
 
 The runtime path is:
 
-1. `server/chat-router.js::executeChat` and `server/chat-router.js::executeChatStream` load chat history, memory context, and task context in parallel before calling the provider.
+1. `server/chat-router.js::executeChat` and `server/chat-router.js::executeChatStream` load chat history, context document, memory context, and task context in parallel before calling the provider.
 2. `server/chat-task-context.js::taskContextForAccount` resolves the linked PFT wallet for the app account.
 3. `server/repositories/tasks.js::listTaskState` reads the `task_projections` cache for that wallet and account. The projection is ordered by most recently updated task and capped at 200 rows at the database read boundary.
 4. `server/chat-task-context.js::formatChatTaskContext` renders the projection through `prompts/chat/account_tasks_context_v1.md`.
@@ -70,7 +96,7 @@ Because task context is sent to the provider as part of the chat input, those in
 
 ## Billing And Persistence
 
-Before execution, `server/product-contracts.js` checks login, provider readiness, estimated cost, and available chat credit. After execution, `server/repositories/chat-billing.js` persists the user message, assistant message, provider, model, response ID, token usage, web-search calls, model cost, tool cost, and ledger entry. Memory summarization is queued afterward and is not billed to the user.
+Before execution, `server/product-contracts.js` checks login, provider readiness, estimated cost, and available chat credit. The estimate includes the current context document, task context, memory context, message text, and attachments. After execution, `server/repositories/chat-billing.js` persists the user message, assistant message, provider, model, response ID, token usage, web-search calls, model cost, tool cost, and ledger entry. Memory summarization is queued afterward and is not billed to the user.
 
 ## External References
 
@@ -85,6 +111,7 @@ Before execution, `server/product-contracts.js` checks login, provider readiness
 - Conversations are cached in Postgres.
 - Messages are cached in Postgres.
 - Extracted attachment text is part of the user interaction record.
+- The current Context document is read from `context_documents` and `context_revisions` for signed-in chat grounding.
 - Token usage and cost are recorded against the signup identity account.
 - Memory summaries are separate from ordinary chat history.
 - Task state is read from `task_projections`, which is a cache over replayable PFTL task events.
@@ -98,11 +125,13 @@ sequenceDiagram
   participant API as /api/chat/send
   participant R as Chat Router
   participant DB as Postgres
+  participant C as Context Document
   participant T as Task Projection
   participant M as Memory Worker
   U->>UI: Send text and attachments
   UI->>API: conversationId, mode, attachments
-  API->>DB: Load history and memory context
+  API->>DB: Load chat history and memory context
+  API->>C: Load current saved context document
   API->>T: Load linked-wallet task projection
   API->>R: Execute provider request
   R-->>API: Assistant response and usage
