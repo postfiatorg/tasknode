@@ -61,6 +61,7 @@ try {
   } = await import("../server/runtime-store.js");
   const {
     chatEstimate,
+    chatEstimateForAccount,
     usageActions,
     walletActionStart,
     walletCreateStart,
@@ -208,6 +209,12 @@ try {
     refused: Array.from({ length: 11 }, (_, index) => makeSmokeTask("Refused", index + 1, "Refused")),
     rewarded: Array.from({ length: 13 }, (_, index) => makeSmokeTask("Rewarded", index + 1, "Rewarded", 2.5)),
   };
+  const smokeContextDocument = {
+    title: "Runtime Smoke Context",
+    revision: 7,
+    updatedAt: "2026-05-18T14:30:00.000Z",
+    body: "<p>The user's active context sentinel is houston 1421.</p><p>They are fixing P0s in Task Node.</p>",
+  };
   const baseMemoryEstimate = chatEstimate({
     mode: "Frontier Instant",
     message: "Use my memory and reply.",
@@ -241,6 +248,36 @@ try {
   ) {
     throw new Error(`Chat estimate should include billable task context tokens: ${JSON.stringify({ baseMemoryEstimate, chatTaskEstimate })}`);
   }
+  const chatContextEstimate = chatEstimate(
+    {
+      mode: "Frontier Instant",
+      message: "What city and number are in my context doc?",
+    },
+    { contextDocument: smokeContextDocument }
+  );
+  if (
+    chatContextEstimate.contextDocumentInputTokens <= 0 ||
+    chatContextEstimate.inputTokens <= baseMemoryEstimate.inputTokens ||
+    chatContextEstimate.estimatedUsd <= baseMemoryEstimate.estimatedUsd
+  ) {
+    throw new Error(`Chat estimate should include billable context document tokens: ${JSON.stringify({ baseMemoryEstimate, chatContextEstimate })}`);
+  }
+
+  await saveContextDocument({
+    accountId: "account_context_smoke",
+    title: smokeContextDocument.title,
+    body: smokeContextDocument.body,
+  });
+  const accountContextEstimate = await chatEstimateForAccount(
+    {
+      mode: "Frontier Instant",
+      message: "What city and number are in my context doc?",
+    },
+    "account_context_smoke"
+  );
+  if (accountContextEstimate.contextDocumentInputTokens <= 0) {
+    throw new Error(`Account chat estimate must load the saved context document: ${JSON.stringify(accountContextEstimate)}`);
+  }
 
   const frontierMemoryRequest = openAiResponseRequest({
     mode: "Frontier Instant",
@@ -259,6 +296,20 @@ try {
     frontierMemoryRequest.instructions.includes("TURN_ASSISTANT_FIELD_SHOULD_NOT_APPEAR")
   ) {
     throw new Error(`OpenAI memory context must include deep memory and memory-only recent records: ${frontierMemoryRequest.instructions}`);
+  }
+  const frontierContextRequest = openAiResponseRequest({
+    mode: "Frontier Instant",
+    model: "chat-latest",
+    message: "What city and number are in my context doc?",
+    conversationId: "runtime-smoke-frontier-context-contract",
+    contextDocument: smokeContextDocument,
+  });
+  if (
+    !frontierContextRequest.instructions.includes("<account_context_document>") ||
+    !frontierContextRequest.instructions.includes("houston 1421") ||
+    frontierContextRequest.instructions.includes("<p>")
+  ) {
+    throw new Error(`OpenAI chat instructions must include the current context document as readable text: ${frontierContextRequest.instructions}`);
   }
   const frontierTaskRequest = openAiResponseRequest({
     mode: "Frontier Instant",
@@ -291,6 +342,16 @@ try {
   });
   if (!frontierThinkingTaskRequest.instructions.includes("<account_tasks_context>")) {
     throw new Error(`Frontier Thinking must include grouped task context: ${frontierThinkingTaskRequest.instructions}`);
+  }
+  const frontierThinkingContextRequest = openAiResponseRequest({
+    mode: "Frontier Thinking",
+    model: "gpt-5.5",
+    message: "Think through my context.",
+    conversationId: "runtime-smoke-frontier-thinking-context-contract",
+    contextDocument: smokeContextDocument,
+  });
+  if (!frontierThinkingContextRequest.instructions.includes("houston 1421")) {
+    throw new Error(`Frontier Thinking must include current context document: ${frontierThinkingContextRequest.instructions}`);
   }
 
   const frontierThinkingRequest = openAiResponseRequest({
@@ -368,6 +429,21 @@ try {
   ) {
     throw new Error(`OpenRouter memory context must include deep memory and memory-only recent records: ${openRouterMemoryInstructions}`);
   }
+  const openRouterContextRequest = openRouterChatRequest({
+    mode: "Private Instant",
+    model: "openrouter/auto",
+    message: "What city and number are in my context doc?",
+    conversationId: "runtime-smoke-openrouter-context-contract",
+    contextDocument: smokeContextDocument,
+  });
+  const openRouterContextInstructions = openRouterContextRequest.messages?.[0]?.content || "";
+  if (
+    !openRouterContextInstructions.includes("<account_context_document>") ||
+    !openRouterContextInstructions.includes("houston 1421") ||
+    openRouterContextInstructions.includes("<p>")
+  ) {
+    throw new Error(`OpenRouter chat instructions must include the current context document as readable text: ${openRouterContextInstructions}`);
+  }
   const openRouterTaskRequest = openRouterChatRequest({
     mode: "Private Instant",
     model: "openrouter/auto",
@@ -402,6 +478,17 @@ try {
   const openRouterThinkingTaskInstructions = openRouterThinkingTaskRequest.messages?.[0]?.content || "";
   if (!openRouterThinkingTaskInstructions.includes("<account_tasks_context>")) {
     throw new Error(`Private Thinking must include grouped task context: ${openRouterThinkingTaskInstructions}`);
+  }
+  const openRouterThinkingContextRequest = openRouterChatRequest({
+    mode: "Private Thinking",
+    model: "openrouter/auto",
+    message: "Think through my context.",
+    conversationId: "runtime-smoke-openrouter-thinking-context-contract",
+    contextDocument: smokeContextDocument,
+  });
+  const openRouterThinkingContextInstructions = openRouterThinkingContextRequest.messages?.[0]?.content || "";
+  if (!openRouterThinkingContextInstructions.includes("houston 1421")) {
+    throw new Error(`Private Thinking must include current context document: ${openRouterThinkingContextInstructions}`);
   }
 
   const openRouterThinkingRequest = openRouterChatRequest({

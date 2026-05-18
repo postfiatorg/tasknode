@@ -10,6 +10,10 @@ import {
   formatChatMemoryContext,
 } from "./chat-memory-context.js";
 import {
+  chatContextDocumentForAccount,
+  formatChatContextDocument,
+} from "./chat-account-context.js";
+import {
   formatChatTaskContext,
   taskContextForAccount,
 } from "./chat-task-context.js";
@@ -21,15 +25,17 @@ function estimatePayload(payload) {
   return { message, mode: normalizedChatMode(mode), attachments };
 }
 
-export function chatEstimate(payload, { memoryContext = null, taskContext = null } = {}) {
+export function chatEstimate(payload, { contextDocument = null, memoryContext = null, taskContext = null } = {}) {
   const { message, mode, attachments } = estimatePayload(payload);
   const modeConfig = chatModeConfig(mode);
   const baseInputCharacters = chatInputCharacterEstimate({ message, attachments });
+  const contextDocumentCharacters = formatChatContextDocument(contextDocument).length;
   const memoryContextCharacters = formatChatMemoryContext(memoryContext).length;
   const taskContextCharacters = formatChatTaskContext(taskContext).length;
-  const inputCharacters = baseInputCharacters + memoryContextCharacters + taskContextCharacters;
+  const inputCharacters = baseInputCharacters + contextDocumentCharacters + memoryContextCharacters + taskContextCharacters;
   const inputTokens = Math.max(1, Math.ceil(inputCharacters / 4));
   const baseInputTokens = Math.max(1, Math.ceil(baseInputCharacters / 4));
+  const contextDocumentInputTokens = contextDocumentCharacters > 0 ? Math.ceil(contextDocumentCharacters / 4) : 0;
   const memoryInputTokens = memoryContextCharacters > 0 ? Math.ceil(memoryContextCharacters / 4) : 0;
   const taskInputTokens = taskContextCharacters > 0 ? Math.ceil(taskContextCharacters / 4) : 0;
   const estimatedOutputTokens = modeConfig.maxOutputTokens || (mode.includes("Thinking") ? 1800 : 700);
@@ -49,8 +55,10 @@ export function chatEstimate(payload, { memoryContext = null, taskContext = null
     executionReady: execution.enabled,
     inputTokens,
     baseInputTokens,
+    contextDocumentInputTokens,
     memoryInputTokens,
     taskInputTokens,
+    contextDocumentCharacters,
     memoryContextCharacters,
     taskContextCharacters,
     estimatedOutputTokens,
@@ -63,8 +71,12 @@ export function chatEstimate(payload, { memoryContext = null, taskContext = null
 }
 
 export async function chatEstimateForAccount(payload, accountId = "") {
-  const [memoryContext, taskContext] = accountId
-    ? await Promise.all([chatMemoryContextForAccount(accountId), taskContextForAccount(accountId)])
-    : [null, null];
-  return chatEstimate(payload, { memoryContext, taskContext });
+  const [contextDocument, memoryContext, taskContext] = accountId
+    ? await Promise.all([
+        chatContextDocumentForAccount(accountId),
+        chatMemoryContextForAccount(accountId),
+        taskContextForAccount(accountId),
+      ])
+    : [null, null, null];
+  return chatEstimate(payload, { contextDocument, memoryContext, taskContext });
 }

@@ -1,5 +1,6 @@
 import { getChatMemoryContext } from "./repositories/chat-memory.js";
 import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
+import { formatChatContextDocument } from "./chat-account-context.js";
 import { formatChatTaskContext } from "./chat-task-context.js";
 
 const memoryContextDeepLimit = Math.min(
@@ -95,10 +96,13 @@ export function formatChatMemoryContext(memoryContext = null) {
   });
 }
 
-export function taskNodeInstructions({ memoryContext = null, taskContext = null } = {}) {
+export function taskNodeInstructions({ contextDocument = null, memoryContext = null, taskContext = null } = {}) {
+  const formattedContextDocument = formatChatContextDocument(contextDocument);
   const formattedMemory = formatChatMemoryContext(memoryContext);
   const formattedTasks = formatChatTaskContext(taskContext);
-  return [taskNodeInstructionsPrompt, formattedTasks, formattedMemory].filter(Boolean).join("\n\n");
+  return [taskNodeInstructionsPrompt, formattedContextDocument, formattedTasks, formattedMemory]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export async function chatMemoryContextForAccount(accountId = "") {
