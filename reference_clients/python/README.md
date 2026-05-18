@@ -76,6 +76,22 @@ cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
 python3 -m tasknode_pftl.scenarios.full_lifecycle
 ```
 
+Run the app-data lifecycle from the latest `task_sample` request intent:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+python3 -m tasknode_pftl.scenarios.app_request_lifecycle \
+  --chat-title task_sample \
+  --user-seed-file /home/pfrpc/repos/ga_seed2.txt
+```
+
+This loads the verified request intent from Task Node Postgres, builds a
+`pf.task.request_bundle.v1` from the current context document, last 3 deep
+memories, last 36 memory records, and the bounded `task_sample` chat window,
+then writes the full PFTL/IPFS lifecycle. The app database is an input fixture
+only; the task request, offer, submissions, verification response, and reward
+are replayable from PFTL pointers and encrypted IPFS payloads.
+
 Run with an explicit RPC endpoint:
 
 ```bash

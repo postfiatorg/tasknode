@@ -506,6 +506,20 @@ The first real test should run against goodalexander with `ga_seed2.txt`.
 | Replay after cache wipe | Postgres is a rebuildable projection |
 | App Tasks read projection | UX shows ex post chain state |
 
+Implemented Phase 1 entrypoint:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+python3 -m tasknode_pftl.scenarios.app_request_lifecycle \
+  --chat-title task_sample \
+  --user-seed-file /home/pfrpc/repos/ga_seed2.txt
+```
+
+The loader reads the latest `task_request_intent` in `task_sample`, then builds
+the portable `pf.task.request_bundle.v1` from the account's current context
+document, recent app memory, deep memory, and bounded chat window. Postgres is
+only the fixture source; the replay remains PFTL/IPFS-first.
+
 ## Open Decisions
 
 - Whether v1 allocation is exactly one wallet per user or shard size 10.

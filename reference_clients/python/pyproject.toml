@@ -8,6 +8,8 @@ dependencies = [
   "requests",
   "PyNaCl",
   "base58",
+  "cryptography",
+  "mnemonic",
   "Pillow",
   "pypdf",
 ]

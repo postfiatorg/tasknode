@@ -4,6 +4,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import Iterable
 
+from mnemonic import Mnemonic
 from nacl import bindings
 from xrpl.wallet import Wallet
 
@@ -12,6 +13,16 @@ from .codec import b64d, b64e, sha256_hex
 ENC_SUITE = "ENC_X25519_XCHACHA20P1305"
 MESSAGE_KEY_PREFIX = "ED"
 X25519_DERIVATION_DOMAIN = "tasknode.pftl.x25519.v1"
+_MNEMONIC = Mnemonic("english")
+
+
+def normalize_mnemonic(mnemonic: str) -> str:
+    return " ".join(str(mnemonic or "").strip().lower().split())
+
+
+def is_bip39_mnemonic(value: str) -> bool:
+    normalized = normalize_mnemonic(value)
+    return len(normalized.split()) == 24 and _MNEMONIC.check(normalized)
 
 
 @dataclass
@@ -92,6 +103,15 @@ def identity_from_wallet_seed(role: str, wallet_seed: str, wallet_address: str |
         private_key=x_private,
         wallet_address=wallet_address or wallet.address,
     )
+
+
+def identity_from_mnemonic(role: str, mnemonic: str, wallet_address: str | None = None) -> X25519Identity:
+    normalized = normalize_mnemonic(mnemonic)
+    if not is_bip39_mnemonic(normalized):
+        raise ValueError("valid 24-word BIP39 mnemonic is required")
+    seed_bytes = hashlib.sha256(_MNEMONIC.to_seed(normalized)).digest()
+    public_key, private_key = bindings.crypto_box_seed_keypair(seed_bytes)
+    return X25519Identity(role=role, public_key=public_key, private_key=private_key, wallet_address=wallet_address)
 
 
 def identity_from_private_descriptor(data: dict) -> X25519Identity:
