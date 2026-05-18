@@ -17,6 +17,8 @@ Tasks are portable work objects. The long-term product direction is that task li
 
 The current product task surface is in `src/main.jsx`. The protocol specification is `docs/PFTL_TASK_ENGINE_SPEC.md`. The live Python replay reference is under `reference_clients/python/tasknode_pftl/scenarios/`.
 
+The current canonical load demo is `reference_clients/python/tasknode_pftl/scenarios/multi_wallet_async_demo.py`. It creates 10 user wallets, shards them across authority and allocation reward wallets, executes the full request-to-reward lifecycle, and replays all tasks to `rewarded` from PFTL pointers and encrypted IPFS payloads.
+
 The database should cache task envelopes, status projections, display titles, due dates, reward amounts, and verification requirements. It should not be the canonical task state machine.
 
 ## Data Model
@@ -45,4 +47,3 @@ stateDiagram-v2
 - A wallet is required for task acceptance, submission, verification, and reward.
 - A missing IPFS payload should not erase the pointer event.
 - A stale Postgres projection should be repairable by replaying wallet history.
-
