@@ -1,14 +1,10 @@
 import { isValidClassicAddress } from "xrpl";
-import {
-  extractPftPointerEvents,
-  fetchHistoricalAccountTransactions,
-} from "./context-history-rpc.js";
+import { extractPftPointerEvents } from "./context-history-rpc.js";
 import { readCachedAccountTx } from "./pftl-cache-sync.js";
 
 const PFT_DROPS_PER_PFT = 1_000_000;
 const RIPPLE_EPOCH_OFFSET = 946684800;
 const DEFAULT_LIMIT = 50;
-const DEFAULT_MAX_PAGES = 3;
 const DEFAULT_CACHE_TTL_MS = 30_000;
 const txCache = new Map();
 
@@ -206,7 +202,6 @@ export async function fetchWalletTransactions(walletAddress, {
   accountId = "",
   force = false,
   limit = DEFAULT_LIMIT,
-  maxPages = DEFAULT_MAX_PAGES,
 } = {}) {
   const account = normalizeText(walletAddress);
   if (!isValidClassicAddress(account)) {
@@ -219,8 +214,7 @@ export async function fetchWalletTransactions(walletAddress, {
   }
 
   const normalizedLimit = clampInteger(limit, DEFAULT_LIMIT, 1, 100);
-  const normalizedMaxPages = clampInteger(maxPages, DEFAULT_MAX_PAGES, 1, 10);
-  const cacheKey = `${account}:${normalizedLimit}:${normalizedMaxPages}`;
+  const cacheKey = `${account}:${normalizedLimit}`;
   const now = Date.now();
   const cached = txCache.get(cacheKey);
   if (!force && cached && now - cached.cachedAtMs < DEFAULT_CACHE_TTL_MS) {
@@ -239,47 +233,29 @@ export async function fetchWalletTransactions(walletAddress, {
       forceSync: force,
       syncIfEmpty: true,
     });
-    if (cachedAccountTx.ok && (cachedAccountTx.transactions.length > 0 || cachedAccountTx.sync?.attempted?.ok)) {
-      const transactions = normalizeWalletTransactions(cachedAccountTx.transactions, account, {
-        limit: normalizedLimit,
-      });
-      const result = {
-        ok: true,
-        status: 200,
-        walletAddress: account,
-        transactions,
-        count: transactions.length,
-        scannedTransactions: cachedAccountTx.transactions.length,
-        complete: cachedAccountTx.sync?.attempted?.complete ?? null,
-        fetchedAt: new Date().toISOString(),
-        source: "pftl_cache",
-        sync: cachedAccountTx.sync,
+    if (!cachedAccountTx.ok) {
+      return {
+        ok: false,
+        status: cachedAccountTx.status || 502,
+        error: cachedAccountTx.error || "pft_cache_unavailable",
+        message: cachedAccountTx.message || "The PFT transaction cache is unavailable.",
       };
-      txCache.set(cacheKey, { cachedAtMs: now, result });
-      return result;
     }
-  } catch {
-    // Fall through to direct PFTL history read. Cache failures should not make
-    // the wallet page unusable while the cache is still rolling out.
-  }
 
-  try {
-    const history = await fetchHistoricalAccountTransactions({
-      walletAddress: account,
-      limit: Math.max(50, normalizedLimit),
-      maxPages: normalizedMaxPages,
+    const transactions = normalizeWalletTransactions(cachedAccountTx.transactions, account, {
+      limit: normalizedLimit,
     });
-    const transactions = normalizeWalletTransactions(history.transactions, account, { limit: normalizedLimit });
     const result = {
       ok: true,
       status: 200,
       walletAddress: account,
       transactions,
       count: transactions.length,
-      scannedTransactions: history.transactions.length,
-      complete: history.complete,
+      scannedTransactions: cachedAccountTx.transactions.length,
+      complete: cachedAccountTx.sync?.attempted?.complete ?? null,
       fetchedAt: new Date().toISOString(),
-      source: "pftl_account_tx",
+      source: "pftl_cache",
+      sync: cachedAccountTx.sync,
     };
     txCache.set(cacheKey, { cachedAtMs: now, result });
     return result;

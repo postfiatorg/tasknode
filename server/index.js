@@ -794,7 +794,6 @@ async function routeApi(req, url, res) {
       accountId: session.accountId,
       force: url.searchParams.get("force") === "1",
       limit: url.searchParams.get("limit"),
-      maxPages: url.searchParams.get("maxPages"),
     });
     json(res, result.status || (result.ok ? 200 : 502), result);
     return true;
