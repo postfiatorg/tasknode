@@ -5,8 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
 import { fetchPftBalance } from "./pftl-balance.js";
+import { startPftlCacheRetentionWorker } from "./pftl-cache-maintenance.js";
 import { startPftlCacheReducerWorker } from "./pftl-cache-reducer.js";
-import { startPftlCacheWorker } from "./pftl-cache-sync.js";
+import { startPftlArchiveWorker, startPftlCacheWorker } from "./pftl-cache-sync.js";
 import { startPftlCacheWatcher } from "./pftl-cache-watcher.js";
 import { handlePftlCacheRoute } from "./pftl-cache-route.js";
 import { fetchWalletTransactions } from "./pftl-transactions.js";
@@ -984,8 +985,10 @@ assertStartupSecurity();
 await migrateDatabase();
 startMemoryWorker();
 startPftlCacheWorker();
+startPftlArchiveWorker();
 startPftlCacheWatcher();
 startPftlCacheReducerWorker();
+startPftlCacheRetentionWorker();
 
 server.listen(port, "0.0.0.0", () => {
   console.log(`tasknodeofficial listening on :${port}`);

@@ -63,13 +63,17 @@ Initial backend slice implemented:
 - Local/docker/fly config enables the WSS watcher, polling repair worker, and reducer worker.
 - Deterministic 10-wallet stress script: `npm run db:pftl-cache-watcher-stress`.
 - Reducer smoke script: `npm run db:pftl-cache-reducer-smoke`.
+- Archive resume smoke script: `npm run db:pftl-cache-archive-smoke`.
+- Health/retention smoke script: `npm run db:pftl-cache-health-retention-smoke`.
+- Operator health endpoint: `GET /api/pftl/cache/health`.
+- Archive backfill worker: `PFTL_CACHE_ARCHIVE_WORKER_ENABLED=true`.
+- Conservative retention worker: `PFTL_CACHE_RETENTION_WORKER_ENABLED=true`.
 
 Still open:
 
-- Archive backfill job with long-running checkpoint policy.
 - Context restore migration to cache-first pointer reads.
 - Full replay recovery tooling from cache rows after deleting projections.
-- Operator monitoring and retention policy.
+- Raw transaction cold-storage policy for public scale.
 
 ## Proposed Tables
 
@@ -244,14 +248,22 @@ Acceptance criteria:
 
 Work:
 
-- Add sync health queries for total tracked wallets, fresh/stale wallets, job depth, and archive completeness.
-- Add operator diagnostics for recent sync errors.
-- Decide retention policy for raw `tx_json` and old wallet index rows.
+- Add sync health queries for total tracked wallets, fresh/stale wallets, reducer depth, watcher state, archive completeness, and recent maintenance runs.
+- Add operator diagnostics for recent sync errors through `GET /api/pftl/cache/health`.
+- Prune completed reducer events after projections are written and old enough.
+- Keep raw transaction rows, wallet index rows, and pointer memos by default; only orphan raw transactions can be pruned behind explicit config.
 
 Acceptance criteria:
 
 - Operator can see whether WSS, polling, hot sync, and archive sync are healthy.
 - Large raw transaction storage has a documented retention or cold-storage plan before public scale.
+
+Status:
+
+- Implemented in `server/pftl-cache-maintenance.js`, `server/repositories/pftl-cache.js`, and `server/db/migrations/010_pftl_cache_operations.sql`.
+- `PFTL_CACHE_RETENTION_COMPLETED_REDUCER_DAYS` controls completed reducer event retention.
+- `PFTL_CACHE_RETENTION_RAW_TX_ENABLED=false` keeps raw transaction pruning disabled by default.
+- `npm run db:pftl-cache-health-retention-smoke` proves the health query and scoped retention path.
 
 ## Non-Goals
 
@@ -277,6 +289,8 @@ Acceptance criteria:
 | Context pointer restore | Context history reads pointer rows from cache. |
 | Task replay rebuild | Task projection rows rebuild after deletion. |
 | Archive resume | Archive marker resumes after interruption. |
+| Operator health | Health endpoint reports stale wallets, archive completeness, watcher state, reducer queue depth, and recent errors. |
+| Retention | Completed reducer events are pruned after policy age while raw transaction rows remain retained by default. |
 | Duplicate tx | Repeated hot sync does not duplicate rows. |
 
 ## Implementation Order

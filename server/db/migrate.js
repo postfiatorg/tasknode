@@ -16,6 +16,7 @@ const migrations = [
   "007_pftl_transaction_cache.sql",
   "008_pftl_cache_watcher.sql",
   "009_pftl_cache_reducer_dedupe_key.sql",
+  "010_pftl_cache_operations.sql",
 ];
 
 let migrated = false;

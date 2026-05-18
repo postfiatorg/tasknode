@@ -6,9 +6,11 @@ import {
   enqueuePftlReducerEventsForTransaction,
   listCachedAccountTx,
   listPftlWalletsDueForHotSync,
+  listPftlWalletsDueForArchiveSync,
   markPftlSyncWalletChecked,
   markPftlSyncWalletInactive,
   mapPftlTransaction,
+  recordPftlArchiveCheckpoint,
   recordPftlSyncError,
   registerPftlSyncWallet,
   storePftlAccountTransactions,
@@ -148,6 +150,45 @@ export async function bestEffortDeactivatePftlSyncWallet({ walletAddress, reason
   }
 }
 
+async function enqueueReducerEventsForEntries({
+  walletAddress = "",
+  accountId = "",
+  transactions = [],
+  syncKind = "hot",
+} = {}) {
+  let reducerEvents = 0;
+  for (const entry of transactions) {
+    const mapped = mapPftlTransaction(entry, walletAddress);
+    if (!mapped?.txHash) continue;
+    const queued = await enqueuePftlReducerEventsForTransaction({
+      walletAddress,
+      accountId,
+      txHash: mapped.txHash,
+      ledgerIndex: mapped.ledgerIndex,
+      transactionResult: mapped.transactionResult,
+      source: `pftl_account_tx_${syncKind}`,
+      payload: {
+        source: "pftl_account_tx",
+        syncKind,
+        txHash: mapped.txHash,
+        ledgerIndex: mapped.ledgerIndex,
+      },
+    });
+    reducerEvents += queued?.inserted || 0;
+  }
+  return reducerEvents;
+}
+
+function oldestLedgerIndex(transactions = [], walletAddress = "") {
+  let oldest = null;
+  for (const entry of transactions) {
+    const mapped = mapPftlTransaction(entry, walletAddress);
+    if (mapped?.ledgerIndex === null || mapped?.ledgerIndex === undefined) continue;
+    if (oldest === null || mapped.ledgerIndex < oldest) oldest = mapped.ledgerIndex;
+  }
+  return oldest;
+}
+
 export async function syncPftlWalletTransactions({
   walletAddress = "",
   accountId = "",
@@ -196,26 +237,12 @@ export async function syncPftlWalletTransactions({
       transactions: history.transactions,
       syncKind,
     });
-    let reducerEvents = 0;
-    for (const entry of history.transactions) {
-      const mapped = mapPftlTransaction(entry, wallet);
-      if (!mapped?.txHash) continue;
-      const queued = await enqueuePftlReducerEventsForTransaction({
-        walletAddress: wallet,
-        accountId,
-        txHash: mapped.txHash,
-        ledgerIndex: mapped.ledgerIndex,
-        transactionResult: mapped.transactionResult,
-        source: `pftl_account_tx_${syncKind}`,
-        payload: {
-          source: "pftl_account_tx",
-          syncKind,
-          txHash: mapped.txHash,
-          ledgerIndex: mapped.ledgerIndex,
-        },
-      });
-      reducerEvents += queued?.inserted || 0;
-    }
+    const reducerEvents = await enqueueReducerEventsForEntries({
+      walletAddress: wallet,
+      accountId,
+      transactions: history.transactions,
+      syncKind,
+    });
     return {
       ok: true,
       status: 200,
@@ -233,6 +260,105 @@ export async function syncPftlWalletTransactions({
       status: error?.status || 502,
       error: String(error?.code || error?.message || "pftl_cache_sync_failed"),
       message: "The PFTL transaction cache could not sync this wallet.",
+    };
+  }
+}
+
+export async function syncPftlWalletArchive({
+  walletAddress = "",
+  accountId = "",
+  role = "user",
+  limit = 200,
+  maxPages = 1,
+  fetchImpl = fetch,
+} = {}) {
+  const wallet = normalizeText(walletAddress);
+  if (!databaseEnabled()) {
+    return {
+      ok: false,
+      status: 503,
+      skipped: true,
+      error: "pftl_cache_database_not_configured",
+      message: "The PFTL transaction cache database is not configured.",
+    };
+  }
+  if (!isValidClassicAddress(wallet)) {
+    return {
+      ok: false,
+      status: 400,
+      error: "pftl_cache_invalid_wallet",
+      message: "The wallet address is not a valid PFTL classic address.",
+    };
+  }
+
+  await registerPftlSyncWallet({
+    walletAddress: wallet,
+    accountId,
+    role,
+    priority: role === "user" ? 10 : 50,
+    status: "active",
+  });
+
+  const checkpoint = await getPftlSyncWallet({ walletAddress: wallet });
+  const archiveMarker = checkpoint?.archive_marker || {};
+  if (archiveMarker?.complete === true) {
+    return {
+      ok: true,
+      status: 200,
+      walletAddress: wallet,
+      skipped: true,
+      complete: true,
+      scannedTransactions: 0,
+      source: "pftl_account_tx_archive",
+    };
+  }
+
+  try {
+    const history = await fetchHistoricalAccountTransactions({
+      walletAddress: wallet,
+      limit: clampInteger(limit, 200, 20, 400),
+      maxPages: clampInteger(maxPages, 1, 1, 30),
+      marker: archiveMarker?.marker || null,
+      fetchImpl,
+    });
+    const stored = await storePftlAccountTransactions({
+      walletAddress: wallet,
+      transactions: history.transactions,
+      syncKind: "archive",
+    });
+    const reducerEvents = await enqueueReducerEventsForEntries({
+      walletAddress: wallet,
+      accountId,
+      transactions: history.transactions,
+      syncKind: "archive",
+    });
+    const archiveCheckpoint = await recordPftlArchiveCheckpoint({
+      walletAddress: wallet,
+      marker: history.nextMarker,
+      complete: history.complete,
+      lastArchiveLedger: oldestLedgerIndex(history.transactions, wallet),
+      scannedTransactions: history.transactions.length,
+      pages: history.pages.length,
+    });
+    return {
+      ok: true,
+      status: 200,
+      walletAddress: wallet,
+      scannedTransactions: history.transactions.length,
+      complete: history.complete,
+      nextMarker: history.nextMarker ? "present" : null,
+      stored,
+      reducerEvents,
+      archiveCheckpoint: archiveCheckpoint.checkpoint,
+      source: "pftl_account_tx_archive",
+    };
+  } catch (error) {
+    await recordPftlSyncError({ walletAddress: wallet, error });
+    return {
+      ok: false,
+      status: error?.status || 502,
+      error: String(error?.code || error?.message || "pftl_cache_archive_sync_failed"),
+      message: "The PFTL transaction cache could not archive-sync this wallet.",
     };
   }
 }
@@ -366,6 +492,63 @@ export function startPftlCacheWorker({
   const timer = setInterval(runOnce, safeInterval);
   runOnce().catch((error) => {
     logger.warn?.("pftl_cache_worker_initial_tick_failed", { error: error?.message || String(error) });
+  });
+  return {
+    started: true,
+    stop: () => clearInterval(timer),
+  };
+}
+
+export function startPftlArchiveWorker({
+  enabled = process.env.PFTL_CACHE_ARCHIVE_WORKER_ENABLED === "true",
+  intervalMs = Number(process.env.PFTL_CACHE_ARCHIVE_WORKER_INTERVAL_MS || 300000),
+  batchLimit = Number(process.env.PFTL_CACHE_ARCHIVE_BATCH_LIMIT || 1),
+  staleMs = Number(process.env.PFTL_CACHE_ARCHIVE_STALE_MS || 900000),
+  accountTxLimit = Number(process.env.PFTL_CACHE_ARCHIVE_ACCOUNT_TX_LIMIT || 200),
+  maxPages = Number(process.env.PFTL_CACHE_ARCHIVE_MAX_PAGES || 1),
+  logger = console,
+} = {}) {
+  if (!enabled) return { started: false, reason: "disabled" };
+  const safeInterval = Math.min(Math.max(intervalMs || 300000, 30000), 24 * 3_600_000);
+  const safeBatch = Math.min(Math.max(batchLimit || 1, 1), 10);
+  const safeStaleMs = Math.min(Math.max(staleMs || 900000, 60000), 7 * 86_400_000);
+  const safeLimit = clampInteger(accountTxLimit, 200, 20, 400);
+  const safeMaxPages = clampInteger(maxPages, 1, 1, 30);
+  let running = false;
+
+  const runOnce = async () => {
+    if (running) return;
+    running = true;
+    try {
+      const due = await listPftlWalletsDueForArchiveSync({
+        limit: safeBatch,
+        staleMs: safeStaleMs,
+      });
+      for (const wallet of due) {
+        const result = await syncPftlWalletArchive({
+          walletAddress: wallet.wallet_address,
+          accountId: wallet.account_id || "",
+          role: wallet.role || "user",
+          limit: safeLimit,
+          maxPages: safeMaxPages,
+        });
+        if (!result.ok) {
+          logger.warn?.("pftl_archive_worker_sync_failed", {
+            wallet: wallet.wallet_address,
+            error: result.error,
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn?.("pftl_archive_worker_tick_failed", { error: error?.message || String(error) });
+    } finally {
+      running = false;
+    }
+  };
+
+  const timer = setInterval(runOnce, safeInterval);
+  runOnce().catch((error) => {
+    logger.warn?.("pftl_archive_worker_initial_tick_failed", { error: error?.message || String(error) });
   });
   return {
     started: true,

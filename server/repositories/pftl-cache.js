@@ -16,6 +16,12 @@ function intOrNull(value) {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }
 
+function clampInteger(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(number)));
+}
+
 function safeJson(value, fallback = {}) {
   return value && typeof value === "object" ? value : fallback;
 }
@@ -448,13 +454,19 @@ export async function storePftlAccountTransactions({
       `
         UPDATE pftl_sync_wallets
         SET ${timestampColumn} = now(),
-            last_seen_tx_hash = COALESCE($2, last_seen_tx_hash),
-            last_seen_ledger = COALESCE($3, last_seen_ledger),
+            last_seen_tx_hash = CASE
+              WHEN $4 = 'archive' THEN COALESCE(last_seen_tx_hash, $2)
+              ELSE COALESCE($2, last_seen_tx_hash)
+            END,
+            last_seen_ledger = CASE
+              WHEN $4 = 'archive' THEN GREATEST(COALESCE(last_seen_ledger, $3), COALESCE($3, last_seen_ledger))
+              ELSE COALESCE($3, last_seen_ledger)
+            END,
             last_error = NULL,
             updated_at = now()
         WHERE wallet_address = $1
       `,
-      [wallet, result.newestHash, result.maxLedger]
+      [wallet, result.newestHash, result.maxLedger, normalizeText(syncKind)]
     );
     return { ok: true, ...result };
   });
@@ -573,6 +585,68 @@ export async function listPftlWalletsDueForHotSync({ limit = 5, staleMs = 60000 
     [cappedLimit, cappedStaleMs]
   );
   return result.rows;
+}
+
+export async function listPftlWalletsDueForArchiveSync({ limit = 1, staleMs = 3_600_000 } = {}) {
+  if (!databaseEnabled()) return [];
+  const cappedLimit = clampInteger(limit, 1, 1, 20);
+  const cappedStaleMs = clampInteger(staleMs, 3_600_000, 60_000, 7 * 86_400_000);
+  const result = await query(
+    `
+      SELECT
+        wallet_address,
+        account_id,
+        role,
+        priority,
+        archive_marker,
+        last_archive_ledger,
+        last_archive_sync_at
+      FROM pftl_sync_wallets
+      WHERE status = 'active'
+        AND COALESCE(archive_marker @> '{"complete": true}'::jsonb, false) = false
+        AND (
+          last_archive_sync_at IS NULL
+          OR last_archive_sync_at < now() - ($2 * INTERVAL '1 millisecond')
+        )
+      ORDER BY priority ASC, COALESCE(last_archive_sync_at, 'epoch'::timestamptz) ASC, updated_at DESC
+      LIMIT $1
+    `,
+    [cappedLimit, cappedStaleMs]
+  );
+  return result.rows;
+}
+
+export async function recordPftlArchiveCheckpoint({
+  walletAddress = "",
+  marker = null,
+  complete = false,
+  lastArchiveLedger = null,
+  scannedTransactions = 0,
+  pages = 0,
+} = {}) {
+  if (!databaseEnabled()) return { ok: false, skipped: true };
+  const wallet = normalizeText(walletAddress);
+  if (!wallet) return { ok: false };
+  const checkpoint = {
+    complete: Boolean(complete),
+    marker: complete ? null : marker || null,
+    scannedTransactions: intOrNull(scannedTransactions) ?? 0,
+    pages: intOrNull(pages) ?? 0,
+    updatedAt: new Date().toISOString(),
+  };
+  await query(
+    `
+      UPDATE pftl_sync_wallets
+      SET archive_marker = $2,
+          last_archive_sync_at = now(),
+          last_archive_ledger = COALESCE($3, last_archive_ledger),
+          last_error = NULL,
+          updated_at = now()
+      WHERE wallet_address = $1
+    `,
+    [wallet, checkpoint, intOrNull(lastArchiveLedger)]
+  );
+  return { ok: true, walletAddress: wallet, checkpoint };
 }
 
 export async function listActivePftlSyncWallets({ limit = 1000 } = {}) {

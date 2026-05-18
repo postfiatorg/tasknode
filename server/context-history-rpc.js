@@ -574,6 +574,7 @@ export async function fetchHistoricalAccountTransactions({
   fetchImpl = fetch,
   limit,
   maxPages,
+  marker: initialMarker = null,
 } = {}) {
   const account = normalizeText(walletAddress);
   if (!isValidClassicAddress(account)) {
@@ -588,7 +589,8 @@ export async function fetchHistoricalAccountTransactions({
   const pages = [];
   const transactions = [];
   const attempts = [];
-  let marker = null;
+  let marker = initialMarker === undefined ? null : initialMarker;
+  if (typeof marker === "string" && !marker.trim()) marker = null;
 
   for (let pageIndex = 0; pageIndex < pageMax; pageIndex += 1) {
     const params = {
@@ -629,7 +631,7 @@ export async function fetchHistoricalAccountTransactions({
     transactions,
     pages,
     complete: !marker,
-    nextMarker: marker ? "present" : null,
+    nextMarker: marker || null,
     attempts,
   };
 }

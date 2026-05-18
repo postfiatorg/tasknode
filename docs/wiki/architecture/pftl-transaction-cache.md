@@ -165,9 +165,23 @@ The polling repair worker first checks `account_info.PreviousTxnID`; if it match
 Archive lane:
 
 1. Full history jobs paginate `account_tx` against the archive RPC using opaque markers.
-2. Archive jobs run in the background and checkpoint marker progress.
+2. Archive jobs run in the background and checkpoint marker progress in `pftl_sync_wallets.archive_marker`.
 3. Context history, task replay, and audit pages use archive-complete rows when available.
 4. If archive history is incomplete, the UX should say that sync is in progress rather than silently showing incomplete state.
+
+Archive completeness is tracked per wallet. The checkpoint shape is:
+
+```json
+{
+  "complete": false,
+  "marker": {},
+  "scannedTransactions": 200,
+  "pages": 1,
+  "updatedAt": "ISO-8601"
+}
+```
+
+When `complete` becomes `true`, `marker` is cleared. The marker is the opaque PFTL/XRPL `account_tx` marker and must be treated as a resume token, not parsed app state.
 
 ## API Compatibility
 
@@ -221,7 +235,36 @@ This lets Python replay tools, task reducers, wallet feeds, and future message s
 - Archive RPC should be used for historical completeness; the local rapid RPC is acceptable for hot path and balance reads.
 - Request handlers should not block on archive sync.
 - Deleting cache rows must be repairable by replaying PFTL history.
+- Retention is conservative: completed reducer events can be pruned after their projections are written, but raw wallet transactions and pointer memos stay retained unless an explicit cold-storage policy is enabled.
 - On Fly dev, the watcher runs inside the app process while the machine is awake; startup backfill repairs missed activity after sleep. A public production deployment should run this as an always-on worker or keep at least one machine running.
+
+## Operator Monitoring
+
+Operators can query:
+
+```text
+GET /api/pftl/cache/health
+```
+
+The endpoint requires a signed-in account listed in `TASKNODE_OPERATOR_ACCOUNT_IDS` or `TASKNODE_ADMIN_ACCOUNT_IDS`. Local development allows signed-in access unless `PFTL_CACHE_OPERATOR_ALLOW_LOCAL=false`.
+
+The response reports:
+
+- tracked wallet counts, stale hot-sync counts, archive-complete and archive-incomplete counts;
+- reducer queue depth by status;
+- WSS watcher state, last ledger, subscribed wallet count, and recent errors;
+- transaction, wallet-transaction, and pointer memo row counts;
+- recent maintenance runs such as retention.
+
+## Retention Policy
+
+The retention worker is intentionally narrow:
+
+- `pftl_cache_reducer_events` with `status='completed'` and old `processed_at` are pruned after `PFTL_CACHE_RETENTION_COMPLETED_REDUCER_DAYS` days.
+- Raw `pftl_transactions`, `pftl_wallet_transactions`, and `pftl_pointer_memos` are not pruned by default.
+- Orphan raw transaction pruning exists only behind `PFTL_CACHE_RETENTION_RAW_TX_ENABLED=true` and only touches transactions that have no wallet index rows and no pointer memo rows.
+
+This preserves replayability while keeping the queue table from growing without bound.
 
 ## Migration Plan
 
@@ -247,14 +290,20 @@ The first implementation slice is live in code:
 - `server/db/migrations/007_pftl_transaction_cache.sql` creates the cache schema.
 - `server/db/migrations/008_pftl_cache_watcher.sql` creates watcher state and reducer event tables.
 - `server/db/migrations/009_pftl_cache_reducer_dedupe_key.sql` makes reducer event dedupe explicit for idempotent repair.
+- `server/db/migrations/010_pftl_cache_operations.sql` adds archive/retention indexes and maintenance run records.
 - `server/repositories/pftl-cache.js` maps `account_tx` rows into transaction, wallet index, and pointer memo rows.
-- `server/pftl-cache-sync.js` performs cache sync from PFTL `account_tx`, creates reducer events, and exposes an optional polling worker gated by `PFTL_CACHE_WORKER_ENABLED=true`.
+- `server/repositories/pftl-cache-operations.js` holds operator health and retention queries.
+- `server/pftl-cache-sync.js` performs cache sync from PFTL `account_tx`, creates reducer events, exposes the polling worker gated by `PFTL_CACHE_WORKER_ENABLED=true`, and runs resumable archive backfill gated by `PFTL_CACHE_ARCHIVE_WORKER_ENABLED=true`.
 - `server/pftl-cache-watcher.js` subscribes to PFTL WSS account activity, stores validated events, records watcher state, and backfills on startup/reconnect/ledger gaps.
 - `server/pftl-cache-reducer.js` consumes reducer events and writes context history plus task projections.
+- `server/pftl-cache-maintenance.js` exposes operator health and starts the conservative retention worker.
 - `/api/pftl/cache/account-tx` returns cached `account_tx`-style rows for the signed-in account's linked wallet.
+- `/api/pftl/cache/health` returns operator-only sync, reducer, watcher, archive, and retention status.
 - `/api/wallet/transactions` is cache-first and falls back to direct PFTL history while the cache rolls out.
 - Wallet link/create registers the wallet for sync; wallet delink marks it inactive.
 - `npm run db:pftl-cache-watcher-stress` runs a deterministic 10-wallet cache stress test.
 - `npm run db:pftl-cache-reducer-smoke` proves reducer events update context history and task projections.
+- `npm run db:pftl-cache-archive-smoke` proves archive markers resume and complete.
+- `npm run db:pftl-cache-health-retention-smoke` proves operator health and completed reducer-event retention.
 
-The archive-completeness policy, full context cache-first migration, full task replay recovery tooling, and retention/monitoring remain milestone work.
+Full context cache-first migration and full task replay recovery tooling remain milestone work.

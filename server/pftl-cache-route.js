@@ -1,7 +1,29 @@
+import { readPftlCacheOperatorHealth } from "./pftl-cache-maintenance.js";
 import { readCachedAccountTx } from "./pftl-cache-sync.js";
 import { getLinkedWallet } from "./runtime-store.js";
 
 export async function handlePftlCacheRoute({ url, res, session, json }) {
+  if (url.pathname === "/api/pftl/cache/health") {
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "wallet_login_required",
+        message: "Sign in before reading PFTL cache health.",
+      });
+      return true;
+    }
+    const result = await readPftlCacheOperatorHealth({
+      accountId: session.accountId,
+      query: {
+        hotStaleMs: url.searchParams.get("hotStaleMs"),
+        archiveStaleMs: url.searchParams.get("archiveStaleMs"),
+        recentLimit: url.searchParams.get("recentLimit"),
+      },
+    });
+    json(res, result.status || (result.ok ? 200 : 500), result);
+    return true;
+  }
+
   if (url.pathname !== "/api/pftl/cache/account-tx") return false;
 
   if (!session?.accountId) {
