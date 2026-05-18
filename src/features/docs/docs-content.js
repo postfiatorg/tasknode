@@ -21,6 +21,7 @@ import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.m
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
 import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
+import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-engine-speedrun.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
 import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
@@ -331,6 +332,12 @@ export const DOC_GROUPS = [
         title: "Getting Tasks Over The Line",
         summary: "Plan to make task requests, submissions, rewards, and projections real.",
         markdown: gettingTasksOverLine,
+      },
+      {
+        slug: "pythonic-task-engine-speedrun",
+        title: "Pythonic Task Engine Speedrun",
+        summary: "Review plan for the raw Python multi-wallet task lifecycle proof.",
+        markdown: pythonicTaskEngineSpeedrun,
       },
       {
         slug: "pftl-transaction-cache-milestone",
