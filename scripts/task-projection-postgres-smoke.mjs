@@ -63,12 +63,45 @@ const receipt = {
       task_id: taskId,
       tx_hash: `OFFER_TX_${suffix}`,
       cid: `QmOfferSmoke${suffix}`,
+      payload: {
+        schema: "pf.task.offer.v1",
+        task_id: taskId,
+        event_id: `evt_offer_${suffix}`,
+        title: "Smoke projected PFTL task",
+        task_kind: "engineering",
+        reward_offer: { amount_estimate_pft: "3.00" },
+      },
     },
     {
       schema: "pf.reward.v1",
       task_id: taskId,
       tx_hash: `REWARD_TX_${suffix}`,
       cid: `QmRewardSmoke${suffix}`,
+      payload: {
+        schema: "pf.reward.v1",
+        task_id: taskId,
+        event_id: `evt_reward_${suffix}`,
+        reward_pft: "3.00",
+        reward_tier: "accepted",
+        reward_score: 100,
+        evidence_refs: [
+          {
+            artifact_cid: `QmEvidenceSmoke${suffix}`,
+            artifact_type: "url",
+            artifact_digest: `sha256:evidence${suffix}`,
+          },
+        ],
+        processed_evidence: {
+          artifacts: [
+            {
+              artifact_type: "url",
+              status: "extracted",
+              source: { url: "https://example.com/task-evidence" },
+              excerpt: "Smoke evidence excerpt.",
+            },
+          ],
+        },
+      },
     },
   ],
   projection: {
@@ -104,8 +137,14 @@ assert.equal(detail.ok, true);
 assert.equal(detail.task.taskId, taskId);
 assert.equal(detail.forensics.timeline.length, 2);
 assert.equal(detail.forensics.timeline[0].cid, `QmOfferSmoke${suffix}`);
-assert.equal(detail.forensics.transactions[0].txHash, `REWARD_TX_${suffix}`);
+assert.equal(detail.forensics.timeline[0].details.some((entry) => entry.label === "Title"), true);
+assert.equal(detail.forensics.timeline[0].details.some((entry) => entry.label === "Event ID"), true);
+assert.equal(detail.forensics.timeline[1].details.some((entry) => entry.label === "Evidence refs"), true);
+assert.equal(detail.forensics.timeline[1].details.some((entry) => entry.label === "Processed artifacts"), true);
+assert.equal(detail.forensics.transactions.some((entry) => entry.txHash === `OFFER_TX_${suffix}`), true);
+assert.equal(detail.forensics.transactions.some((entry) => entry.txHash === `REWARD_TX_${suffix}`), true);
 assert.equal(detail.forensics.cids.some((entry) => entry.cid === `QmBundleSmoke${suffix}`), true);
+assert.equal(detail.forensics.cids.some((entry) => entry.cid === `QmOfferSmoke${suffix}`), true);
 
 console.log(`task projection postgres smoke ok: ${taskId}`);
 await closePool();

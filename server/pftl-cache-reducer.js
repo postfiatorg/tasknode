@@ -8,6 +8,7 @@ import { databaseEnabled, query, transaction } from "./db/pool.js";
 
 const ENCRYPTION_SUITE = "ENC_X25519_XCHACHA20P1305";
 const TEXT_DECODER = new TextDecoder();
+const TASK_POINTER_KINDS = ["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"];
 
 function normalizeText(value) {
   if (value === undefined || value === null) return "";
@@ -301,6 +302,42 @@ async function taskPointerRows({ walletAddress, taskId }) {
   return result.rows;
 }
 
+async function candidateTaskPointerRows({ walletAddress, taskId = "", seedCid = "" }) {
+  const result = await query(
+    `
+      SELECT
+        pm.*,
+        t.ledger_index AS tx_ledger_index,
+        t.close_time,
+        t.account AS account_address,
+        t.destination AS destination_address,
+        wt.direction
+      FROM pftl_pointer_memos pm
+      LEFT JOIN pftl_transactions t ON t.tx_hash = pm.tx_hash
+      LEFT JOIN pftl_wallet_transactions wt
+        ON wt.tx_hash = pm.tx_hash
+       AND wt.wallet_address = $1
+      WHERE pm.wallet_address = $1
+        AND pm.cid IS NOT NULL
+        AND pm.decode_error IS NULL
+        AND pm.pointer_kind = ANY($4)
+        AND (
+          pm.task_id = $2
+          OR pm.task_id IS NULL
+          OR ($3::text <> '' AND pm.cid = $3)
+        )
+      ORDER BY
+        t.ledger_index ASC NULLS LAST,
+        t.close_time ASC NULLS LAST,
+        pm.tx_hash ASC,
+        pm.memo_index ASC
+      LIMIT 500
+    `,
+    [walletAddress, taskId, seedCid, TASK_POINTER_KINDS]
+  );
+  return result.rows;
+}
+
 function pointerEventFromRow(row) {
   const decoded = safeJson(row.decoded_json);
   return {
@@ -311,6 +348,18 @@ function pointerEventFromRow(row) {
     ledger_index: row.tx_ledger_index,
     memo_index: row.memo_index,
     source: "pftl_cache.task_pointer",
+  };
+}
+
+async function hydrateTaskPointerRow(row, { fetchIpfsJson = fetchContextIpfsJson, env = process.env } = {}) {
+  const pointer = pointerEventFromRow(row);
+  const fetched = await fetchIpfsJson({ cid: pointer.cid });
+  if (!fetched?.ok) throw new Error(fetched?.error || "task_ipfs_fetch_failed");
+  const payload = await decryptTasknodeServicePayload({ blob: fetched.payload, env });
+  return {
+    pointer,
+    payload,
+    tx_hash: row.tx_hash,
   };
 }
 
@@ -451,36 +500,54 @@ function receiptForProjection({
       cid: event.pointer?.cid || "",
       event_digest: sha256Hex(event.payload),
       pointer: event.pointer,
-      payload: {
-        schema: event.payload?.schema || "",
-        task_id: event.payload?.task_id || taskId,
-      },
+      payload: safeJson(event.payload),
     })),
   };
 }
 
 async function reduceTaskProjection(event, { fetchIpfsJson = fetchContextIpfsJson, env = process.env } = {}) {
   if (!event.account_id) throw new Error("task_reducer_account_id_missing");
-  const taskId = normalizeText(event.task_id);
+  const seedPointer = await pointerMemoForReducerEvent(event);
+  if (!seedPointer?.cid) throw new Error("task_pointer_missing");
+
+  let taskId = normalizeText(event.task_id || seedPointer.task_id || safeJson(seedPointer.decoded_json).taskId);
+  let seedHydrated = null;
+  if (!taskId) {
+    seedHydrated = await hydrateTaskPointerRow(seedPointer, { fetchIpfsJson, env });
+    taskId = normalizeText(seedHydrated.payload?.task_id || seedHydrated.pointer?.task_id);
+    if (!taskId && normalizeText(seedHydrated.payload?.schema) === "pf.task.request.v1") {
+      return {
+        skipped: true,
+        reason: "task_request_pointer_without_task_id",
+        cid: seedPointer.cid,
+        txHash: event.tx_hash,
+      };
+    }
+  }
   if (!taskId) throw new Error("task_reducer_task_id_missing");
 
-  const rows = await taskPointerRows({
-    walletAddress: event.wallet_address,
-    taskId,
-  });
+  const rows = event.task_id
+    ? await taskPointerRows({
+      walletAddress: event.wallet_address,
+      taskId,
+    })
+    : await candidateTaskPointerRows({
+      walletAddress: event.wallet_address,
+      taskId,
+      seedCid: seedPointer.cid,
+    });
   if (rows.length === 0) throw new Error("task_pointer_rows_missing");
 
   const hydratedEvents = [];
+  const hydratedByCid = new Map();
+  if (seedHydrated?.pointer?.cid) hydratedByCid.set(seedHydrated.pointer.cid, seedHydrated);
   for (const row of rows) {
-    const pointer = pointerEventFromRow(row);
-    const fetched = await fetchIpfsJson({ cid: pointer.cid });
-    if (!fetched?.ok) throw new Error(fetched?.error || "task_ipfs_fetch_failed");
-    const payload = await decryptTasknodeServicePayload({ blob: fetched.payload, env });
-    hydratedEvents.push({
-      pointer,
-      payload,
-      tx_hash: row.tx_hash,
-    });
+    const existing = hydratedByCid.get(row.cid);
+    const hydrated = existing || await hydrateTaskPointerRow(row, { fetchIpfsJson, env });
+    hydratedByCid.set(row.cid, hydrated);
+    const hydratedTaskId = normalizeText(hydrated.payload?.task_id || hydrated.pointer?.task_id || row.task_id);
+    if (hydratedTaskId !== taskId) continue;
+    hydratedEvents.push(hydrated);
   }
 
   const { projections, offerPayloads } = reduceHydratedTaskEvents(hydratedEvents);

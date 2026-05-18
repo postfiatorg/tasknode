@@ -573,10 +573,22 @@
   margin-bottom: 10px;
 }
 
+.task-forensics-copy header div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
 .task-forensics-copy strong {
   color: #0d0d0d;
   font-size: 13.5px;
   font-weight: 650;
+}
+
+.task-forensics-copy small {
+  color: #7a7770;
+  font-size: 11.5px;
+  font-weight: 500;
 }
 
 .task-forensics-copy header span {
@@ -586,6 +598,103 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.task-event-meta,
+.task-reducer-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-event-meta {
+  margin-bottom: 6px;
+}
+
+.task-event-meta span,
+.task-reducer-events span {
+  padding: 5px 8px;
+  border: 1px solid #e8e6df;
+  border-radius: 999px;
+  background: #fbfaf7;
+  color: #4d4b47;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.task-event-details {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0eee8;
+}
+
+.task-event-details div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.task-event-details span,
+.task-audit-metric span {
+  color: #6b6b66;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.task-event-details p {
+  margin: 0;
+  color: #1f1f1d;
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.task-event-payload {
+  margin-top: 10px;
+  border-top: 1px solid #f0eee8;
+  padding-top: 10px;
+}
+
+.task-event-payload summary {
+  cursor: pointer;
+  color: #5f5d58;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.task-event-payload pre {
+  max-height: 260px;
+  margin: 10px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid #e8e6df;
+  border-radius: 10px;
+  background: #fbfaf7;
+  color: #1f1f1d;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-audit-metric {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #e8e6df;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.task-audit-metric strong {
+  color: #0d0d0d;
+  font-size: 13.5px;
+  font-weight: 650;
 }
 
 .task-audit-value {
@@ -620,22 +729,6 @@
   font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.task-reducer-events {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.task-reducer-events span {
-  padding: 5px 8px;
-  border: 1px solid #e8e6df;
-  border-radius: 999px;
-  background: #fbfaf7;
-  color: #4d4b47;
-  font-size: 11.5px;
-  font-weight: 600;
 }
 
 .task-forensics-empty,

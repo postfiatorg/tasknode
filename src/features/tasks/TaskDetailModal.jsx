@@ -339,10 +339,13 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
 
 function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy }) {
   const forensics = detail?.forensics || {};
-  const timeline = Array.isArray(forensics.timeline) ? forensics.timeline : [];
+  const pointerTimeline = Array.isArray(forensics.timeline) ? forensics.timeline : [];
   const cids = Array.isArray(forensics.cids) ? forensics.cids : [];
   const transactions = Array.isArray(forensics.transactions) ? forensics.transactions : [];
   const reducerEvents = Array.isArray(forensics.reducerEvents) ? forensics.reducerEvents : [];
+  const timeline = pointerTimeline.length ? pointerTimeline : reducerEvents;
+  const integrity = forensics.integrity || {};
+  const expectedEvents = Number(forensics.eventCount || integrity.expectedEventCount || 0);
 
   if (loading) {
     return (
@@ -355,9 +358,9 @@ function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy }) {
 
   if (error) {
     return (
-      <div className="task-empty-panel">
+      <div className="task-empty-panel is-error">
         <Flag size={18} strokeWidth={1.8} />
-        No indexed audit trail is available for this task yet.
+        Task detail could not be loaded: {error}
       </div>
     );
   }
@@ -365,9 +368,11 @@ function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy }) {
   return (
     <div className="task-forensics-panel">
       <div className="task-forensics-summary">
+        <TaskAuditMetric label="Event rows" value={timeline.length ? `${timeline.length}${expectedEvents ? ` / ${expectedEvents}` : ""}` : expectedEvents || ""} />
         <TaskAuditValue label="Request bundle CID" name="request-cid" onCopy={onCopy} value={forensics.requestBundleCid} copiedValue={copiedValue} />
         <TaskAuditValue label="Context CID" name="context-cid" onCopy={onCopy} value={forensics.contextCid} copiedValue={copiedValue} />
         <TaskAuditValue label="Last transaction" name="last-tx" onCopy={onCopy} value={forensics.lastEventTxHash} copiedValue={copiedValue} />
+        <TaskAuditValue label="Last CID" name="last-cid" onCopy={onCopy} value={forensics.lastEventCid} copiedValue={copiedValue} />
       </div>
 
       <section className="task-forensics-section">
@@ -385,43 +390,51 @@ function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy }) {
             ))}
           </div>
         ) : (
-          <p className="task-forensics-empty">No pointer events were indexed for this task.</p>
+          <p className="task-forensics-empty">
+            {expectedEvents > 0
+              ? `${expectedEvents} events are counted on the projection, but no event rows were returned.`
+              : "No indexed task events have been projected yet."}
+          </p>
         )}
       </section>
 
-      <section className="task-forensics-section">
-        <h3>CIDs</h3>
-        <div className="task-audit-grid">
-          {cids.map((entry) => (
-            <TaskAuditValue
-              copiedValue={copiedValue}
-              key={`${entry.label}-${entry.cid}`}
-              label={entry.label}
-              name={`cid-${entry.label}`}
-              onCopy={onCopy}
-              value={entry.cid}
-            />
-          ))}
-        </div>
-      </section>
+      {cids.length > 0 && (
+        <section className="task-forensics-section">
+          <h3>CIDs</h3>
+          <div className="task-audit-grid">
+            {cids.map((entry) => (
+              <TaskAuditValue
+                copiedValue={copiedValue}
+                key={`${entry.label}-${entry.cid}`}
+                label={entry.label}
+                name={`cid-${entry.label}-${entry.cid}`}
+                onCopy={onCopy}
+                value={entry.cid}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
-      <section className="task-forensics-section">
-        <h3>Transactions</h3>
-        <div className="task-audit-grid">
-          {transactions.map((entry) => (
-            <TaskAuditValue
-              copiedValue={copiedValue}
-              key={`${entry.label}-${entry.txHash}`}
-              label={entry.label}
-              name={`tx-${entry.label}`}
-              onCopy={onCopy}
-              value={entry.txHash}
-            />
-          ))}
-        </div>
-      </section>
+      {transactions.length > 0 && (
+        <section className="task-forensics-section">
+          <h3>Transactions</h3>
+          <div className="task-audit-grid">
+            {transactions.map((entry) => (
+              <TaskAuditValue
+                copiedValue={copiedValue}
+                key={`${entry.label}-${entry.txHash}`}
+                label={entry.label}
+                name={`tx-${entry.label}-${entry.txHash}`}
+                onCopy={onCopy}
+                value={entry.txHash}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
-      {reducerEvents.length > 0 && (
+      {reducerEvents.length > 0 && pointerTimeline.length > 0 && (
         <section className="task-forensics-section">
           <h3>Projection reducer</h3>
           <div className="task-reducer-events">
@@ -438,21 +451,60 @@ function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy }) {
 }
 
 function TaskForensicsEvent({ copiedValue, event, index, onCopy }) {
+  const details = Array.isArray(event.details) ? event.details : [];
+  const rawPayload = event.rawPayload && typeof event.rawPayload === "object" ? event.rawPayload : null;
+  const observed = formatForensicsTimestamp(event.observedAt || event.occurredAt);
   return (
     <article className="task-forensics-row">
       <div className="task-forensics-index">{index + 1}</div>
       <div className="task-forensics-copy">
         <header>
-          <strong>{event.label}</strong>
+          <div>
+            <strong>{event.label}</strong>
+            {observed && <small>{observed}</small>}
+          </div>
           <span>{event.schema}</span>
         </header>
+        <div className="task-event-meta">
+          {event.pointerKind && <span>{event.pointerKind}</span>}
+          {event.ledgerIndex !== null && event.ledgerIndex !== undefined && <span>Ledger {event.ledgerIndex}</span>}
+          {event.memoIndex !== null && event.memoIndex !== undefined && <span>Memo {event.memoIndex}</span>}
+          {event.source && <span>{event.source}</span>}
+        </div>
         <TaskAuditValue label="CID" name={`event-cid-${index}`} onCopy={onCopy} value={event.cid} copiedValue={copiedValue} />
         <TaskAuditValue label="Transaction" name={`event-tx-${index}`} onCopy={onCopy} value={event.txHash} copiedValue={copiedValue} />
         {event.eventDigest && (
           <TaskAuditValue label="Digest" name={`event-digest-${index}`} onCopy={onCopy} value={event.eventDigest} copiedValue={copiedValue} />
         )}
+        {details.length > 0 && (
+          <div className="task-event-details">
+            {details.map((detail) => (
+              <div key={`${detail.label}-${detail.value}`}>
+                <span>{detail.label}</span>
+                <p>{detail.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {rawPayload && (
+          <details className="task-event-payload">
+            <summary>Raw payload</summary>
+            <pre>{JSON.stringify(rawPayload, null, 2)}</pre>
+          </details>
+        )}
       </div>
     </article>
+  );
+}
+
+function TaskAuditMetric({ label, value }) {
+  const text = String(value || "");
+  if (!text) return null;
+  return (
+    <div className="task-audit-metric">
+      <span>{label}</span>
+      <strong>{text}</strong>
+    </div>
   );
 }
 
@@ -466,6 +518,20 @@ function TaskAuditValue({ copiedValue, label, name, onCopy, value }) {
       {copiedValue === name ? <Check size={12} strokeWidth={1.8} /> : <Copy size={12} strokeWidth={1.8} />}
     </button>
   );
+}
+
+function formatForensicsTimestamp(value) {
+  if (!value) return "";
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return "";
+  }
 }
 
 export function TaskDetailModal({ onClose, task }) {

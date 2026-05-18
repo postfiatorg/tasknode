@@ -136,7 +136,6 @@ try {
     cid: taskCid,
     kind: "TASK",
     schema: 1,
-    taskId,
   });
 
   const taskOffer = {

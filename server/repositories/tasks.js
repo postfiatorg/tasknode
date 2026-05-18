@@ -160,8 +160,19 @@ function groupTasks(rows) {
   return { outstanding, verification, refused, rewarded };
 }
 
-function schemaLabel(schema = "") {
+function schemaLabel(schema = "", payload = {}) {
   const normalized = String(schema || "").trim();
+  const transition = safeText(payload.transition || payload.status, 80);
+  if (normalized === "pf.task.update.v1" && transition) {
+    return {
+      accepted: "Task accepted",
+      refused: "Task refused",
+      rejected: "Task rejected",
+      expired: "Task expired",
+      cancelled: "Task cancelled",
+      verification_requested: "Verification requested",
+    }[transition] || `Task update: ${titleCase(transition)}`;
+  }
   return {
     "pf.task.request.v1": "Task requested",
     "pf.task.offer.v1": "Task offered",
@@ -171,8 +182,135 @@ function schemaLabel(schema = "") {
     "pf.task.verification_request.v1": "Verification requested",
     "pf.task.verification_response.v1": "Verification response submitted",
     "pf.reward.v1": "Reward paid",
+    "pf.task.reward_decision.v1": "Reward decision",
     "pf.task.update.v1": "Task updated",
   }[normalized] || titleCase(normalized.replace(/^pf\./, "") || "Task event");
+}
+
+function objectKeyCount(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).length : 0;
+}
+
+function bestPayload({ payloadJson = {}, pointerJson = {} } = {}) {
+  const direct = safeObject(payloadJson);
+  const pointerPayload = safeObject(pointerJson.payload);
+  return objectKeyCount(pointerPayload) > objectKeyCount(direct) ? pointerPayload : direct;
+}
+
+function bestPointer({ row = {}, pointerJson = {} } = {}) {
+  return {
+    kind: row.pointer_kind || pointerJson.pointer_kind || pointerJson.kind || pointerJson.pointer?.kind || "",
+    cid: row.source_cid || pointerJson.cid || pointerJson.pointer?.cid || "",
+    txHash: row.source_tx_hash || pointerJson.tx_hash || pointerJson.pointer?.tx_hash || "",
+    ledgerIndex:
+      row.ledger_index ??
+      pointerJson.ledger_index ??
+      pointerJson.ledgerIndex ??
+      pointerJson.pointer?.ledger_index ??
+      pointerJson.pointer?.ledgerIndex ??
+      null,
+    memoIndex:
+      row.memo_index ??
+      pointerJson.memo_index ??
+      pointerJson.memoIndex ??
+      pointerJson.pointer?.memo_index ??
+      pointerJson.pointer?.memoIndex ??
+      null,
+  };
+}
+
+function detailValue(value) {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value === "string") return safeText(value, 1200);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return safeText(JSON.stringify(value), 1200);
+}
+
+function addDetail(details, label, value) {
+  const rendered = detailValue(value);
+  if (!rendered) return;
+  details.push({ label, value: rendered });
+}
+
+function summarizeEvidenceRefs(refs = []) {
+  if (!Array.isArray(refs)) return "";
+  return refs
+    .map((ref, index) => {
+      const artifactType = safeText(ref?.artifact_type || ref?.type || "artifact", 80);
+      const cid = safeText(ref?.artifact_cid || ref?.cid || "", 180);
+      const digest = safeText(ref?.artifact_digest || ref?.digest || "", 220);
+      return [
+        `${Number(ref?.index || index + 1)}. ${artifactType}`,
+        cid ? `CID ${cid}` : "",
+        digest ? `Digest ${digest}` : "",
+      ].filter(Boolean).join(" - ");
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function summarizeProcessedArtifacts(artifacts = []) {
+  if (!Array.isArray(artifacts)) return "";
+  return artifacts
+    .map((artifact, index) => {
+      const source = safeObject(artifact?.source);
+      const sourceLabel = source.url || source.path || source.file_name || source.host || "";
+      return [
+        `${index + 1}. ${safeText(artifact?.artifact_type || artifact?.source_type || "artifact", 80)}`,
+        safeText(artifact?.status || "", 80),
+        safeText(sourceLabel, 260),
+        safeText(artifact?.excerpt || "", 360),
+      ].filter(Boolean).join(" - ");
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function payloadDetails(schema = "", payload = {}, pointer = {}) {
+  const details = [];
+  addDetail(details, "Task ID", payload.task_id || pointer.task_id);
+  addDetail(details, "Event ID", payload.event_id);
+  addDetail(details, "Request ID", payload.request_id);
+  addDetail(details, "Phase", payload.phase);
+  addDetail(details, "Transition", payload.transition || payload.status);
+  addDetail(details, "Status after", payload.status_after);
+  addDetail(details, "Title", payload.title);
+  addDetail(details, "Kind", payload.task_kind || payload.kind);
+  addDetail(details, "Reward offer", payload.reward_offer?.amount_estimate_pft || payload.reward_offer_pft);
+  addDetail(details, "Reward paid", payload.reward_pft || payload.reward_actual_pft || payload.score?.reward_pft);
+  addDetail(details, "Reward tier", payload.reward_tier || payload.score?.decision);
+  addDetail(details, "Reward score", payload.reward_score || payload.score?.completion);
+  addDetail(details, "Evidence quality", payload.score?.evidence_quality);
+  addDetail(details, "Reward summary", payload.reward_summary || payload.summary || payload.score?.user_feedback);
+  addDetail(details, "Reward reason", payload.score?.reason);
+  addDetail(details, "Submission type", payload.submission_requirement?.type || payload.submission_type);
+  addDetail(details, "Evidence type", payload.evidence_type || payload.artifact_type);
+  addDetail(details, "Verification type", payload.verification_policy?.verification_type || payload.verification_type || payload.verification_request?.verification_type);
+  addDetail(details, "Verification assessment", payload.verification_request?.assessment);
+  addDetail(details, "Verification ask", payload.verification_ask || payload.verification_request?.verification_ask);
+  addDetail(details, "Verification reason", payload.verification_request?.reason);
+  addDetail(details, "Response text", payload.response_text || payload.response);
+  addDetail(details, "Response CID", payload.response_cid || payload.verification_response_cid);
+  addDetail(details, "Submission CID", payload.submission_cid || payload.artifact_cid);
+  addDetail(details, "Evidence refs", summarizeEvidenceRefs(payload.evidence_refs));
+  addDetail(details, "Processed artifacts", summarizeProcessedArtifacts(payload.processed_evidence?.artifacts));
+  addDetail(details, "Reward pointer CID", payload.reward_pointer_cid);
+  addDetail(details, "Actor wallet", payload.actor_wallet);
+  addDetail(details, "Subject wallet", payload.subject_wallet);
+  addDetail(details, "Authority wallet", payload.authority_wallet);
+  addDetail(details, "Allocation wallet", payload.allocation_wallet);
+  addDetail(details, "Created at", payload.created_at);
+  addDetail(details, "Submitted at", payload.submitted_at);
+  addDetail(details, "Responded at", payload.responded_at);
+  addDetail(details, "Prompt version", payload.generation?.prompt_version);
+  addDetail(details, "Model", payload.generation?.model);
+  addDetail(details, "Provider", payload.generation?.provider);
+  addDetail(details, "Provider response", payload.generation?.provider_response_id);
+  addDetail(details, "Description", payload.description);
+  addDetail(details, "Submission requirement", payload.submission_requirement?.criteria || payload.submission_requirement?.description);
+  addDetail(details, "Verification criteria", payload.verification_policy?.criteria || payload.verification_criteria);
+  addDetail(details, "Schema", schema);
+  return details;
 }
 
 function publicCidEntries(cids = {}) {
@@ -198,36 +336,91 @@ function publicTransactionEntries(txs = {}) {
     .filter((entry) => entry.txHash);
 }
 
+function dedupeAuditEntries(entries = [], valueKey = "value") {
+  const seen = new Set();
+  const output = [];
+  for (const entry of entries) {
+    const value = safeText(entry?.[valueKey], 300);
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(entry);
+  }
+  return output;
+}
+
+function eventCidEntries(events = []) {
+  return events
+    .map((event) => ({
+      label: `${event.label || "Event"} CID`,
+      cid: event.cid,
+    }))
+    .filter((entry) => entry.cid);
+}
+
+function eventTransactionEntries(events = []) {
+  return events
+    .map((event) => ({
+      label: `${event.label || "Event"} TX`,
+      txHash: event.txHash,
+      ledgerIndex: event.ledgerIndex ?? null,
+      memoIndex: event.memoIndex ?? null,
+    }))
+    .filter((entry) => entry.txHash);
+}
+
 function publicPointerEvent(row, index = 0) {
-  const pointer = safeObject(row.pointer_json);
-  const payload = safeObject(row.payload_json);
-  const schema = safeText(row.event_schema || pointer.schema || payload.schema, 120);
+  const pointerJson = safeObject(row.pointer_json);
+  const payload = bestPayload({ payloadJson: row.payload_json, pointerJson });
+  const pointer = bestPointer({ row, pointerJson });
+  const schema = safeText(row.event_schema || pointerJson.schema || payload.schema, 120);
   return {
     id: row.id || `event_${index + 1}`,
-    index: Number(row.memo_index ?? index),
-    label: schemaLabel(schema),
+    index: Number(pointer.memoIndex ?? index),
+    label: schemaLabel(schema, payload),
     schema,
-    pointerKind: row.pointer_kind || pointer.pointer_kind || "",
-    txHash: safeText(row.source_tx_hash || pointer.tx_hash || payload.tx_hash, 240),
-    cid: safeText(row.source_cid || pointer.cid || payload.cid, 240),
-    eventDigest: safeText(row.event_digest || pointer.event_digest || "", 240),
+    pointerKind: safeText(pointer.kind, 120),
+    txHash: safeText(pointer.txHash || payload.tx_hash, 240),
+    cid: safeText(pointer.cid || payload.cid, 240),
+    ledgerIndex: pointer.ledgerIndex,
+    memoIndex: pointer.memoIndex,
+    eventDigest: safeText(row.event_digest || pointerJson.event_digest || "", 240),
+    details: payloadDetails(schema, payload, pointerJson.pointer || pointerJson),
+    rawPayload: payload,
+    pointer,
     source: row.source || "",
     observedAt: toIso(row.observed_at),
   };
 }
 
 function publicReducerEvent(row, index = 0) {
-  const pointer = safeObject(row.pointer_json);
-  const payload = safeObject(row.payload_json);
-  const schema = safeText(row.event_type || pointer.schema || payload.schema, 120);
+  const pointerJson = safeObject(row.pointer_json);
+  const payload = bestPayload({ payloadJson: row.payload_json, pointerJson });
+  const pointer = bestPointer({
+    row: {
+      ...row,
+      source_tx_hash: row.source_tx_hash || row.tx_hash,
+      source_cid: row.source_cid || row.cid,
+      memo_index: row.memo_index,
+    },
+    pointerJson,
+  });
+  const schema = safeText(row.event_type || pointerJson.schema || payload.schema, 120);
   return {
     id: row.id || `reducer_event_${index + 1}`,
     index,
-    label: schemaLabel(schema),
+    label: schemaLabel(schema, payload),
     schema,
-    txHash: safeText(row.source_tx_hash || pointer.tx_hash || payload.tx_hash, 240),
-    cid: safeText(row.source_cid || pointer.cid || payload.cid, 240),
-    eventDigest: safeText(row.event_digest || pointer.event_digest || "", 240),
+    pointerKind: safeText(pointer.kind, 120),
+    txHash: safeText(pointer.txHash || payload.tx_hash, 240),
+    cid: safeText(pointer.cid || payload.cid, 240),
+    ledgerIndex: pointer.ledgerIndex,
+    memoIndex: pointer.memoIndex,
+    eventDigest: safeText(row.event_digest || pointerJson.event_digest || "", 240),
+    details: payloadDetails(schema, payload, pointerJson.pointer || pointerJson),
+    rawPayload: payload,
+    pointer,
     observedAt: toIso(row.occurred_at),
   };
 }
@@ -347,6 +540,18 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
     ? metadata.submissionSummaries
     : [];
   const task = publicTask(row);
+  const pointerTimeline = pointerResult.rows.map(publicPointerEvent);
+  const reducerTimeline = reducerResult.rows.map(publicReducerEvent);
+  const timeline = pointerTimeline.length ? pointerTimeline : reducerTimeline;
+  const cidEntries = dedupeAuditEntries([
+    ...publicCidEntries(metadata.cids),
+    ...eventCidEntries(timeline),
+  ], "cid");
+  const transactionEntries = dedupeAuditEntries([
+    ...publicTransactionEntries(metadata.txs),
+    ...eventTransactionEntries(timeline),
+  ], "txHash");
+  const expectedEventCount = Number(row.event_count || 0);
 
   return {
     ok: true,
@@ -369,10 +574,18 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
       contextCid: row.context_cid || "",
       lastEventTxHash: row.last_event_tx_hash || "",
       lastEventCid: row.last_event_cid || "",
-      cids: publicCidEntries(metadata.cids),
-      transactions: publicTransactionEntries(metadata.txs),
-      timeline: pointerResult.rows.map(publicPointerEvent),
-      reducerEvents: reducerResult.rows.map(publicReducerEvent),
+      cids: cidEntries,
+      transactions: transactionEntries,
+      timeline,
+      pointerEvents: pointerTimeline,
+      reducerEvents: reducerTimeline,
+      integrity: {
+        expectedEventCount,
+        pointerEventCount: pointerTimeline.length,
+        reducerEventCount: reducerTimeline.length,
+        renderedEventCount: timeline.length,
+        missingTimelineRows: expectedEventCount > 0 && timeline.length === 0,
+      },
     },
     sync: {
       updatedAt: toIso(row.updated_at),
