@@ -9,6 +9,8 @@ import {
 const baseUrl = process.env.SMOKE_BASE_URL || "http://127.0.0.1:8080";
 let readyChatMode = process.env.SMOKE_CHAT_MODE || "Private Instant";
 const smokeConversationId = process.env.SMOKE_CONVERSATION_ID || `smoke-${Date.now()}`;
+const smokeTaskRequestId = `req_smoke_task_${Date.now().toString(36)}`;
+const smokeTaskBundleId = `bundle_smoke_task_${Date.now().toString(36)}`;
 const smokeMnemonic =
   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
 const smokeContextCid = "bafybeigdyrztm3j5qwerasdfzxcvqwerasdfctx";
@@ -369,6 +371,34 @@ if (devAuth.response.status === 200) {
     (response, text) => {
       const body = JSON.parse(text);
       return response.ok && body.dryRun === true && body.conversationId === signedInConversationId;
+    }
+  );
+
+  await checkRequest(
+    "/api/tasks/request-intent",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        requestId: smokeTaskRequestId,
+        bundleId: smokeTaskBundleId,
+        conversationId: signedInConversationId,
+        userDetailText: "Use this smoke detail to create a tagged task request intent.",
+        sourceConversationTitle: "Smoke chat",
+      }),
+    },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return (
+        response.ok &&
+        body.ok === true &&
+        body.action === "task_request_intent" &&
+        body.request?.requestId === smokeTaskRequestId &&
+        body.request?.bundleId === smokeTaskBundleId &&
+        body.request?.status === "intent_recorded" &&
+        body.user?.metadata?.kind === "task_request_intent" &&
+        body.assistant?.metadata?.kind === "task_request_intent"
+      );
     }
   );
 

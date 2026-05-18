@@ -32,6 +32,13 @@ export const apiRoutePolicies = [
   { id: "auth_provider_callback", pattern: /^\/api\/auth\/[^/]+\/callback$/, methods: ["GET"], auth: "oauth_state" },
   { id: "readiness", path: "/api/readiness", methods: ["GET"], auth: "none" },
   { id: "tasks", path: "/api/tasks", methods: ["GET"], auth: "optional" },
+  {
+    id: "task_request_intent",
+    path: "/api/tasks/request-intent",
+    methods: ["POST"],
+    auth: "handler",
+    rateLimit: { limit: 20, windowMs: 60_000 },
+  },
   { id: "chat_estimate", path: "/api/chat/estimate", methods: ["GET", "POST"], auth: "optional" },
   { id: "chat_modes", path: "/api/chat/modes", methods: ["GET"], auth: "none" },
   { id: "chat_conversations", path: "/api/chat/conversations", methods: ["GET"], auth: "optional" },

@@ -18,6 +18,7 @@ try {
     authDevStart,
     chatSend,
     chatStreamStart,
+    taskRequestIntentStart,
     usageAdminCredit,
   } = await import("../server/product-contracts.js");
   const { checkRateLimit, resetRateLimitsForTests } = await import("../server/rate-limit.js");
@@ -64,6 +65,16 @@ try {
   );
   assert.equal(noCreditStream.status, 402);
   assert.equal(noCreditStream.body.error, "chat_credit_required");
+
+  const signedOutTaskRequest = await taskRequestIntentStart(
+    {
+      userDetailText: "This must not persist without a signed-in account.",
+      conversationId: "security-smoke-task-request",
+    },
+    "POST"
+  );
+  assert.equal(signedOutTaskRequest.status, 401);
+  assert.equal(signedOutTaskRequest.body.error, "task_request_login_required");
 
   const adminNoIdempotency = await usageAdminCredit(
     {

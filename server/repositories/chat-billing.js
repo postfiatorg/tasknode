@@ -95,6 +95,11 @@ function attachmentRowsForInsert({ attachments = [], accountId, conversationId, 
 }
 
 function publicMessage(row, attachments = []) {
+  const metadata = row.metadata_json && typeof row.metadata_json === "object"
+    ? row.metadata_json
+    : row.metadata && typeof row.metadata === "object"
+      ? row.metadata
+      : {};
   const message = {
     id: row.id,
     role: row.role,
@@ -106,6 +111,7 @@ function publicMessage(row, attachments = []) {
     responseId: row.response_id || row.responseId || undefined,
   };
   if (attachments.length > 0) message.attachments = attachments;
+  if (Object.keys(metadata).length > 0) message.metadata = metadata;
   return message;
 }
 
@@ -409,6 +415,11 @@ export async function appendChatTurn({
   responseId,
   userMessage,
   assistantMessage,
+  userMessageId = "",
+  assistantMessageId = "",
+  userMetadata = {},
+  assistantMetadata = {},
+  runMetadata = {},
   attachments = [],
   usage,
 } = {}) {
@@ -422,6 +433,11 @@ export async function appendChatTurn({
       responseId,
       userMessage,
       assistantMessage,
+      userMessageId,
+      assistantMessageId,
+      userMetadata,
+      assistantMetadata,
+      runMetadata,
       attachments,
       usage,
     });
@@ -430,8 +446,12 @@ export async function appendChatTurn({
   const now = new Date();
   const normalizedAccountId = safeAccountId(accountId);
   const normalizedConversationId = safeConversationId(conversationId);
-  const userId = `msg_${randomUUID()}_user`;
-  const assistantId = `msg_${randomUUID()}_assistant`;
+  const userId = typeof userMessageId === "string" && userMessageId.trim()
+    ? userMessageId.trim().slice(0, 180)
+    : `msg_${randomUUID()}_user`;
+  const assistantId = typeof assistantMessageId === "string" && assistantMessageId.trim()
+    ? assistantMessageId.trim().slice(0, 180)
+    : `msg_${randomUUID()}_assistant`;
   const modelRunId = `run_${randomUUID()}`;
   const costUsd = numeric(usage?.costUsd || 0);
   const preview = messagePreview(assistantMessage) || messagePreview(userMessage);
@@ -500,12 +520,21 @@ export async function appendChatTurn({
             role,
             body,
             mode,
-            created_at
+            created_at,
+            metadata_json
           )
-          VALUES ($1, $2, $3, 'user', $4, $5, $6)
+          VALUES ($1, $2, $3, 'user', $4, $5, $6, $7)
           RETURNING *
         `,
-        [userId, normalizedConversationId, normalizedAccountId, String(userMessage || ""), mode || null, now]
+        [
+          userId,
+          normalizedConversationId,
+          normalizedAccountId,
+          String(userMessage || ""),
+          mode || null,
+          now,
+          jsonValue(userMetadata),
+        ]
       );
       const attachmentRows = await insertChatAttachments(client, attachmentRowsForInsert({
         attachments,
@@ -526,9 +555,10 @@ export async function appendChatTurn({
             provider,
             model,
             response_id,
-            created_at
+            created_at,
+            metadata_json
           )
-          VALUES ($1, $2, $3, 'assistant', $4, $5, $6, $7, $8, $9)
+          VALUES ($1, $2, $3, 'assistant', $4, $5, $6, $7, $8, $9, $10)
           RETURNING *
         `,
         [
@@ -541,6 +571,7 @@ export async function appendChatTurn({
           model || null,
           responseId || null,
           now,
+          jsonValue(assistantMetadata),
         ]
       );
 
@@ -565,11 +596,12 @@ export async function appendChatTurn({
             model_cost_usd,
             total_cost_usd,
             started_at,
-            completed_at
+            completed_at,
+            metadata_json
           )
           VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, 'completed',
-            $10, $11, $12, $13, $14, $15, $16, $17, $17
+            $10, $11, $12, $13, $14, $15, $16, $17, $17, $18
           )
         `,
         [
@@ -590,6 +622,7 @@ export async function appendChatTurn({
           costUsd,
           costUsd,
           now,
+          jsonValue(runMetadata),
         ]
       );
 
@@ -633,6 +666,11 @@ export async function appendChatTurn({
         responseId,
         userMessage,
         assistantMessage,
+        userMessageId,
+        assistantMessageId,
+        userMetadata,
+        assistantMetadata,
+        runMetadata,
         attachments,
         usage,
       });

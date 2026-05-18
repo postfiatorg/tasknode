@@ -71,7 +71,23 @@ import {
   readFileAsDataUrl,
   textFromAttachment,
 } from "./chat-attachments";
-import { markdownToBlocks, plainTextFromBlocks } from "./features/chat/chat-markdown";
+import { plainTextFromBlocks } from "./features/chat/chat-markdown";
+import {
+  appendAssistantDelta,
+  chatTitleFromPrompt,
+  createErrorAssistantTurn,
+  createPendingAssistantTurn,
+  createRecentPlaceholderThread,
+  createUserTurn,
+  formatElapsedSeconds,
+  newClientConversationId,
+  newClientCorrelationId,
+  normalizeChatMessage,
+  normalizeChatMessages,
+  replaceTurnById,
+  titleFromTurns,
+  transcriptTextFromThread,
+} from "./features/chat/chat-turns";
 import { BillingSettings } from "./features/billing/BillingSettings";
 import { publishContextToPft } from "./features/context/context-publish";
 import {
@@ -103,6 +119,9 @@ const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
 const CHAT_ATTACHMENT_MAX_COUNT = 4;
 const CHAT_PASTE_ATTACHMENT_THRESHOLD = 200;
 const CHAT_COMPOSER_MAX_HEIGHT = 220;
+const TASK_REQUEST_CANONICAL_TEXT =
+  "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.";
+const TASK_REQUEST_PLACEHOLDER = "Add any relevant details for your task request";
 const CHAT_ATTACHMENT_ACCEPT = [
   "image/png",
   "image/jpeg",
@@ -945,7 +964,6 @@ function App() {
             chat={appState?.chat}
             onActiveChatChange={setActiveChat}
             onChatSettled={refreshAppState}
-            onNavigate={navigateToView}
             usage={appState?.usage}
           />
         )}
@@ -1050,7 +1068,6 @@ function ChatSurface({
   chatShareRequestKey,
   onActiveChatChange,
   onChatSettled,
-  onNavigate,
   usage,
 }) {
   const modes = chat?.modes || [];
@@ -1060,6 +1077,7 @@ function ChatSurface({
   const [selectedMode, setSelectedMode] = useState(defaultMode);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [taskRequestMode, setTaskRequestMode] = useState(false);
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
   const [actualUsage, setActualUsage] = useState(null);
@@ -1098,6 +1116,7 @@ function ChatSurface({
     setTurns([]);
     setInput("");
     setAttachments([]);
+    setTaskRequestMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -1110,6 +1129,7 @@ function ChatSurface({
   useEffect(() => {
     if (!activeChat || activeChat.source === "live") return undefined;
     clearedChatRef.current = false;
+    setTaskRequestMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -1207,9 +1227,31 @@ function ChatSurface({
     clearedChatRef.current = false;
     const startedAt = Date.now();
     const requestedConversationId = activeChat?.conversationId || activeChat?.id || draftConversationId;
-    const pendingId = `assistant-pending-${startedAt}`;
+    const isTaskRequest = taskRequestMode;
+    const requestId = isTaskRequest ? newClientCorrelationId("req") : "";
+    const bundleId = isTaskRequest ? newClientCorrelationId("bundle") : "";
+    const taskRequestMessageId = requestId ? `msg_${requestId}_request_user`.slice(0, 180) : "";
+    const taskRequestAssistantId = requestId ? `msg_${requestId}_request_assistant`.slice(0, 180) : "";
+    const pendingId = taskRequestAssistantId || `assistant-pending-${startedAt}`;
     const submittedAttachments = attachments;
     const fallbackPrompt = promptForAttachments(submittedAttachments);
+    const submittedText = message || fallbackPrompt;
+    const taskRequestMetadata = isTaskRequest
+      ? {
+          schema: "pf.task.request_intent.v1",
+          kind: "task_request_intent",
+          requestId,
+          bundleId,
+          conversationId: requestedConversationId,
+          taskRequestMessageId,
+          requestText: TASK_REQUEST_CANONICAL_TEXT,
+          userDetailText: submittedText,
+          requestedTaskKind: "personal",
+          source: "user_chat",
+          sourceConversationTitle: activeChat?.title || titleFromTurns(turns) || "New chat",
+          status: "intent_pending",
+        }
+      : undefined;
     setSending(true);
     setSendMessage("");
     setActualUsage(null);
@@ -1218,21 +1260,89 @@ function ChatSurface({
     setAttachments([]);
     setTurns((current) => [
       ...current,
-      createUserTurn(message || fallbackPrompt, `user-local-${startedAt}`, submittedAttachments),
-      createPendingAssistantTurn(pendingId, startedAt),
+      createUserTurn(
+        submittedText,
+        taskRequestMessageId || `user-local-${startedAt}`,
+        submittedAttachments,
+        taskRequestMetadata
+      ),
+      createPendingAssistantTurn(pendingId, startedAt, taskRequestMetadata),
     ]);
     if (!activeChat) {
       onActiveChatChange?.({
         id: requestedConversationId,
         conversationId: requestedConversationId,
         source: "live",
-        title: chatTitleFromPrompt(message),
+        title: isTaskRequest ? "Task request" : chatTitleFromPrompt(message),
       });
     }
 
     try {
+      if (isTaskRequest) {
+        const taskPayload = {
+          requestId,
+          bundleId,
+          requestText: TASK_REQUEST_CANONICAL_TEXT,
+          userDetailText: submittedText,
+          requestedTaskKind: "personal",
+          source: "user_chat",
+          sourceConversationTitle: activeChat?.title || titleFromTurns(turns) || "New chat",
+          mode: selectedMode,
+          conversationId: requestedConversationId,
+          attachments: submittedAttachments.map(({ name, mimeType, size, source, dataUrl }) => ({
+            name,
+            mimeType,
+            size,
+            source,
+            dataUrl,
+          })),
+        };
+        const result = await requestJson("/api/tasks/request-intent", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(taskPayload),
+        });
+
+        if (result.ok && result.body?.assistant) {
+          const settledConversationId = result.body?.conversationId || requestedConversationId;
+          const assistantTurn = normalizeChatMessage(
+            result.body.assistant,
+            pendingId
+          );
+          setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
+          setTaskRequestMode(false);
+          setSendMessage(result.body.message || "Task request intent recorded.");
+          setStatusTone("muted");
+          setDraftConversationId(settledConversationId);
+          onActiveChatChange?.({
+            id: settledConversationId,
+            conversationId: settledConversationId,
+            source: "live",
+            title: activeChat?.title || "Task request",
+          });
+          await onChatSettled?.();
+        } else {
+          const failureMessage =
+            result.body?.message ||
+            result.body?.actionRequired ||
+            `Task request returned HTTP ${result.status}.`;
+          setTurns((current) =>
+            replaceTurnById(
+              current,
+              pendingId,
+              createErrorAssistantTurn(pendingId, failureMessage, startedAt)
+            )
+          );
+          setInput(message);
+          setAttachments(submittedAttachments);
+          setSendMessage(failureMessage);
+          setStatusTone("error");
+        }
+        return;
+      }
+
       const chatPayload = {
-        message: message || fallbackPrompt,
+        message: submittedText,
         mode: selectedMode,
         conversationId: requestedConversationId,
         attachments: submittedAttachments.map(({ name, mimeType, size, source, dataUrl }) => ({
@@ -1286,7 +1396,7 @@ function ChatSurface({
           id: settledConversationId,
           conversationId: settledConversationId,
           source: "live",
-          title: activeChat?.title || chatTitleFromPrompt(message),
+          title: activeChat?.title || chatTitleFromPrompt(submittedText),
         });
         await onChatSettled?.();
       } else {
@@ -1315,6 +1425,10 @@ function ChatSurface({
           createErrorAssistantTurn(pendingId, failureMessage, startedAt)
         )
       );
+      if (isTaskRequest) {
+        setInput(message);
+        setAttachments(submittedAttachments);
+      }
       setSendMessage(failureMessage);
       setStatusTone("error");
     } finally {
@@ -1442,6 +1556,12 @@ function ChatSurface({
   const chatTitle = activeChat?.title || titleFromTurns(turns);
   const hasPromptInput = input.trim().length > 0 || attachments.length > 0;
   const composerExpanded = input.length > 0;
+  const composerPlaceholder = taskRequestMode ? TASK_REQUEST_PLACEHOLDER : "Ask anything";
+  const composerClassName = [
+    "composer",
+    composerDragActive ? "is-drag-active" : "",
+    taskRequestMode ? "is-task-request" : "",
+  ].filter(Boolean).join(" ");
   const composer = (
     <div className="composer-shell">
       <input
@@ -1453,7 +1573,7 @@ function ChatSurface({
         type="file"
       />
       <form
-        className={composerDragActive ? "composer is-drag-active" : "composer"}
+        className={composerClassName}
         onDragEnter={handleComposerDragEnter}
         onDragLeave={handleComposerDragLeave}
         onDragOver={handleComposerDragOver}
@@ -1500,7 +1620,10 @@ function ChatSurface({
                   label="Request a task"
                   onClick={() => {
                     setPlusMenuOpen(false);
-                    onNavigate?.("tasks");
+                    setTaskRequestMode(true);
+                    setSendMessage("");
+                    setStatusTone("muted");
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
                   }}
                 />
                 <ToolMenuRow
@@ -1513,7 +1636,7 @@ function ChatSurface({
           </div>
           <textarea
             ref={inputRef}
-            aria-label="Ask anything"
+            aria-label={composerPlaceholder}
             className="composer-input"
             onChange={(event) => setInput(event.target.value)}
             onPaste={handleComposerPaste}
@@ -1523,7 +1646,7 @@ function ChatSurface({
                 submitMessage(event);
               }
             }}
-            placeholder={composerExpanded ? "" : "Ask anything"}
+            placeholder={composerExpanded ? "" : composerPlaceholder}
             rows={1}
             style={{ maxHeight: CHAT_COMPOSER_MAX_HEIGHT }}
             value={input}
@@ -1865,163 +1988,6 @@ function DeleteChatModal({ chat, onClose, onDelete }) {
   );
 }
 
-function newClientConversationId() {
-  const entropy =
-    typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID().slice(0, 8)
-      : Math.random().toString(36).slice(2, 10);
-  return `chat_${Date.now().toString(36)}_${entropy}`;
-}
-
-function normalizeChatMessages(messages) {
-  return (messages || [])
-    .map((message, index) => normalizeChatMessage(message, index))
-    .filter(Boolean);
-}
-
-function normalizeChatMessage(message, index = 0) {
-  if (!message) return null;
-  const role = message.role === "user" ? "user" : "assistant";
-  const text = String(message.text || message.content || message.body || "");
-
-  if (role === "user") {
-    return {
-      id: message.id || `user-${index}`,
-      role,
-      text,
-      attachments: Array.isArray(message.attachments) ? message.attachments : [],
-    };
-  }
-
-  return {
-    id: message.id || `assistant-${index}`,
-    role,
-    thinking: message.thinking,
-    blocks: Array.isArray(message.blocks) ? message.blocks : markdownToBlocks(text),
-  };
-}
-
-function createUserTurn(text, id, attachments = []) {
-  return {
-    id,
-    role: "user",
-    text,
-    attachments: redactAttachmentData(attachments),
-  };
-}
-
-function createPendingAssistantTurn(id, startedAt) {
-  return {
-    id,
-    role: "assistant",
-    pending: true,
-    thinking: {
-      state: "running",
-      startedAt,
-    },
-    blocks: [],
-  };
-}
-
-function createErrorAssistantTurn(id, message, startedAt) {
-  return {
-    id,
-    role: "assistant",
-    error: true,
-    thinking: {
-      state: "stopped",
-      duration: formatElapsedSeconds(Date.now() - startedAt),
-    },
-    blocks: [
-      {
-        type: "p",
-        inline: [{ text: message || "Chat execution is unavailable." }],
-      },
-    ],
-  };
-}
-
-function redactAttachmentData(attachments = []) {
-  return attachments.map(({ id, name, mimeType, size }) => ({
-    id,
-    name,
-    mimeType,
-    size,
-  }));
-}
-
-function replaceTurnById(turns, id, replacement) {
-  return turns.map((turn) => (turn.id === id ? replacement : turn));
-}
-
-function appendAssistantDelta(turns, id, delta, startedAt) {
-  return turns.map((turn) => {
-    if (turn.id !== id) return turn;
-    const text = `${turn.text || plainTextFromBlocks(turn.blocks)}${delta}`;
-    return {
-      ...turn,
-      pending: true,
-      text,
-      thinking: turn.thinking || {
-        state: "running",
-        startedAt,
-      },
-      blocks: markdownToBlocks(text),
-    };
-  });
-}
-
-function formatElapsedSeconds(ms) {
-  const seconds = Math.max(1, Math.round(Number(ms || 0) / 1000));
-  return `${seconds}s`;
-}
-
-function createRecentPlaceholderThread(title) {
-  return [
-    { role: "user", text: `Open ${title}` },
-    {
-      role: "assistant",
-      blocks: [
-        {
-          type: "p",
-          inline: [
-            {
-              text:
-                "This chat row could not be hydrated from the app server.",
-            },
-          ],
-        },
-      ],
-    },
-  ];
-}
-
-function chatTitleFromPrompt(prompt) {
-  const title = String(prompt || "").trim().replace(/\s+/g, " ").slice(0, 48);
-  return title || "New chat";
-}
-
-function titleFromTurns(turns) {
-  const firstUser = turns.find((turn) => turn.role === "user" && turn.text);
-  return chatTitleFromPrompt(firstUser?.text || "Untitled chat");
-}
-
-function transcriptTextFromThread(thread, title = "Untitled chat") {
-  const rows = [title || "Untitled chat"];
-
-  for (const message of thread || []) {
-    if (message.role === "user") {
-      rows.push(`User: ${message.text || ""}`.trim());
-      continue;
-    }
-
-    const text = plainTextFromBlocks(message.blocks || []);
-    if (text) rows.push(`Task Node: ${text}`);
-  }
-
-  return rows.filter(Boolean).join("\n\n");
-}
-
 function slugify(value) {
   return String(value || "")
     .toLowerCase()
@@ -2228,6 +2194,9 @@ function thinkingLabel(thinking) {
 }
 
 function thinkingSteps(message) {
+  if (message.pending && message.metadata?.kind === "task_request_intent") {
+    return ["Capturing request details", "Preparing the task bundle", "Waiting for PFTL signing"];
+  }
   if (message.pending) {
     return ["Reading context", "Selecting the execution route", "Drafting response"];
   }

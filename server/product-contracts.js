@@ -56,6 +56,7 @@ import {
   sendPftInitiationGift,
 } from "./pftl-faucet.js";
 import { verifyWalletSignature } from "./wallet-proof.js";
+export { taskRequestIntentStart } from "./task-request-intent.js";
 
 function hasAll(keys) {
   return keys.every((key) => Boolean(process.env[key]));

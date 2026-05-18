@@ -1356,6 +1356,12 @@ h1 {
   box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
 }
 
+.composer.is-task-request {
+  border-color: #b8b4aa;
+  background: #fffdf8;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.04);
+}
+
 .composer.is-drag-active::after {
   content: "Drop files to attach";
   position: absolute;

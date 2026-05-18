@@ -26,6 +26,7 @@ import {
   contextIndexedHistoryImport,
   contextHistoryIpfsFetch,
   readiness,
+  taskRequestIntentStart,
   usageActions,
   usageAdminCredit,
   usageTopUpStart,
@@ -724,6 +725,17 @@ async function routeApi(req, url, res) {
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
     const conversationId = conversationIdForSession(session, payload?.conversationId || "");
     const result = await chatSend(
+      { ...payload, accountId: session?.accountId || "", conversationId },
+      req.method
+    );
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/tasks/request-intent") {
+    const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
+    const conversationId = conversationIdForSession(session, payload?.conversationId || "");
+    const result = await taskRequestIntentStart(
       { ...payload, accountId: session?.accountId || "", conversationId },
       req.method
     );

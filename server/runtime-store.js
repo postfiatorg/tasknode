@@ -1171,31 +1171,32 @@ export function appendChatTurn({
   responseId,
   userMessage,
   assistantMessage,
+  userMessageId = "",
+  assistantMessageId = "",
+  userMetadata = {},
+  assistantMetadata = {},
   usage,
 }) {
   const now = new Date().toISOString();
   const messages = conversationMessages(conversationId);
-  const userId = `msg_${randomUUID()}_user`;
-  const assistantId = `msg_${randomUUID()}_assistant`;
+  const userId = typeof userMessageId === "string" && userMessageId.trim()
+    ? userMessageId.trim().slice(0, 180)
+    : `msg_${randomUUID()}_user`;
+  const assistantId = typeof assistantMessageId === "string" && assistantMessageId.trim()
+    ? assistantMessageId.trim().slice(0, 180)
+    : `msg_${randomUUID()}_assistant`;
   const ledgerId = `ledger_${randomUUID()}`;
+  const userMeta = userMetadata && typeof userMetadata === "object" && !Array.isArray(userMetadata);
+  const assistantMeta = assistantMetadata && typeof assistantMetadata === "object" && !Array.isArray(assistantMetadata);
 
-  messages.push({
-    id: userId,
-    role: "user",
-    body: userMessage,
-    createdAt: now,
-    mode,
-  });
-  messages.push({
-    id: assistantId,
-    role: "assistant",
-    body: assistantMessage,
-    createdAt: now,
-    mode,
-    provider,
-    model,
-    responseId,
-  });
+  messages.push(Object.assign(
+    { id: userId, role: "user", body: userMessage, createdAt: now, mode },
+    userMeta ? { metadata: userMetadata } : {}
+  ));
+  messages.push(Object.assign(
+    { id: assistantId, role: "assistant", body: assistantMessage, createdAt: now, mode, provider, model, responseId },
+    assistantMeta ? { metadata: assistantMetadata } : {}
+  ));
 
   const existingMeta = ensureConversationMeta(conversationId, accountId);
   state.conversationMeta[conversationId] = {
