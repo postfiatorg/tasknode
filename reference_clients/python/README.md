@@ -92,6 +92,20 @@ then writes the full PFTL/IPFS lifecycle. The app database is an input fixture
 only; the task request, offer, submissions, verification response, and reward
 are replayable from PFTL pointers and encrypted IPFS payloads.
 
+Run the canonical 10-wallet async architecture demo:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+python3 -m tasknode_pftl.scenarios.multi_wallet_async_demo
+```
+
+This creates 10 fresh user wallets, shards them across authority wallets and
+allocation/reward wallets, serializes transactions per signing wallet, writes
+the request, offer, acceptance, submission, verification, and reward pointers
+for every user, then replays all wallet histories into rewarded task
+projections. It is the pre-production reference for the Task Async Engine
+architecture.
+
 Run with an explicit RPC endpoint:
 
 ```bash
