@@ -25,6 +25,8 @@ Backend PFTL helpers live in `server/pftl-balance.js`, `server/pftl-transactions
 
 The app should prefer the local fast RPC for routine balance and pointer reads, with production RPC checks used when historical completeness matters.
 
+The planned backend transaction mirror is described in Help under `PFTL Transaction Cache`, backed by `docs/wiki/architecture/pftl-transaction-cache.md`. It is the cache layer that should replace repeated request-path `account_tx` scans for wallet feeds, context history, task replay, and future wallet-native messaging.
+
 ## Diagram
 
 ```mermaid
@@ -42,4 +44,3 @@ flowchart LR
 - RPC timeout should surface as a PFTL connectivity issue.
 - Cache must not pretend to be canonical.
 - Replay should be able to reconstruct task state from wallet history and pointers.
-

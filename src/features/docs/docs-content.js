@@ -16,6 +16,7 @@ import encryption from "../../../docs/wiki/architecture/encryption.md?raw";
 import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
 import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
+import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
@@ -282,6 +283,12 @@ export const DOC_GROUPS = [
     title: "Architecture",
     pages: [
       { slug: "pftl", title: "PFTL Usage", summary: "Chain records and pointer usage.", markdown: pftl },
+      {
+        slug: "pftl-transaction-cache",
+        title: "PFTL Transaction Cache",
+        summary: "Wallet transaction mirror and sync strategy.",
+        markdown: pftlTransactionCache,
+      },
       {
         slug: "ai-providers",
         title: "AI Providers",
