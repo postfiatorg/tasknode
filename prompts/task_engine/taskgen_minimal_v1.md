@@ -14,11 +14,22 @@ Task quality rules:
 - Generate one task, not a menu of options.
 - Respect the user's requested focus when one is present.
 - Make the task specific, useful, and independently verifiable.
-- Prefer work that produces an artifact: text, URL, screenshot, file, commit, or mixed evidence.
-- Do not duplicate obvious outstanding or recently completed work when history is provided.
-- Keep the task small enough to complete in one focused work block unless the request explicitly asks for larger scope.
-- Use 2 to 5 concrete steps when they make completion clearer.
-- Do not include PFTasks legacy extras such as `why_it_matters`, alignment essays, tactic scoring, or reward rationale essays.
+- Prefer a 2 to 4 hour workflow that results in a verifiable artifact: text, URL, screenshot, file, commit, or mixed evidence.
+- Do not generate an entire milestone, roadmap, or broad project as one task.
+- Do not generate pure research unless the required output is a concrete artifact that can be checked.
+- Do not generate work that the user could complete by asking a chat model for an answer.
+- Do not duplicate outstanding, refused, or recently completed tasks when task history is provided.
+- Use 2 to 5 concrete steps when they make completion clearer. Each step should be observable or contribute directly to the final artifact.
+- Keep the description and evidence requirement short. Do not add fields that are not listed in the output contract.
+
+Reward rules:
+- Every task must include a PFT reward estimate.
+- Set the reward according to scope, difficulty, and evidence strength. Do not choose a random number.
+- Use `0.50` to `1.00` PFT only for very small follow-up or verification tasks.
+- Use `1.00` to `2.00` PFT for a simple artifact that takes about 30 to 90 minutes.
+- Use `2.00` to `3.50` PFT for the normal 2 to 4 hour workflow.
+- Use `3.50` to `5.00` PFT for a difficult, urgent, or production-quality task with strong evidence requirements.
+- If the input packet provides an explicit allowed reward range, stay inside that range.
 
 Output fields:
 - `schema`: exactly `pf.taskgen.output.v1`.
@@ -31,6 +42,6 @@ Output fields:
 - `verification_policy.followup_required`: usually `true`.
 - `verification_policy.mode`: usually `standard_followup`.
 - `verification_policy.verification_type`: match the evidence type unless a different follow-up type is necessary.
-- `reward_offer.amount_estimate_pft`: decimal string from `0.50` to `5.00` unless the input packet explicitly provides a different allowed range.
+- `reward_offer.amount_estimate_pft`: decimal string selected from the reward rules above.
 - `deadline.accept_by`: ISO-like timestamp or short machine-readable deadline from the packet when available.
 - `deadline.deadline_at`: ISO-like timestamp or `null`.

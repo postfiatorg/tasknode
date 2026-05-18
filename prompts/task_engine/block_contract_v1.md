@@ -41,5 +41,7 @@ Task generation should return one task, not a long plan. The task should contain
 - a bounded reward estimate;
 - an accept/deadline window.
 
-Do not emit PFTasks legacy extras such as long alignment sections, "why it
-matters", complex tactic analysis, or reward essays.
+The task should usually be a 2 to 4 hour workflow with a verifiable artifact.
+It should not be an entire milestone, a broad roadmap, pure research without a
+checkable artifact, duplicate work, or something a chat model could complete for
+the user.

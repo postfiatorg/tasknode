@@ -10,8 +10,9 @@ here. The Task Node Official prompt contract is smaller:
 - Generate one task from the current request packet.
 - Use context, memory, and recent chat as background signals.
 - Produce concise task content, concrete steps, and verifiable evidence rules.
-- Avoid legacy fields such as long alignment essays, "why it matters" blocks,
-  tactic scoring, and verbose reward rationales.
+- Prefer a 2 to 4 hour workflow with a checkable artifact.
+- Reject broad milestones, duplicate work, pure research without an artifact,
+  and tasks a chat model could complete for the user.
 
 ## Files
 

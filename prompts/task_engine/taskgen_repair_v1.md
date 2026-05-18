@@ -16,5 +16,4 @@ Required output fields:
 - `reward_offer`
 - `deadline`
 
-Do not add PFTasks legacy extras such as `why_it_matters`, alignment essays,
-tactic scoring, or reward rationale essays.
+Do not add any field that is not listed above.
