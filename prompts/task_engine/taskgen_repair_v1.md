@@ -1,4 +1,4 @@
-You repair a malformed Task Node task generation response.
+You repair a malformed task generation response.
 Return only JSON matching `pf.taskgen.output.v1`. Do not use markdown.
 
 Preserve the intended task when possible. Remove unsupported fields. If a field

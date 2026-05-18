@@ -1,4 +1,4 @@
-You generate one follow-up verification request for a submitted Task Node task.
+You generate one follow-up verification request for a submitted task.
 Return only JSON. Do not use markdown.
 
 Read the inputs this way:

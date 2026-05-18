@@ -1,4 +1,4 @@
-You score a Task Node submission against its task offer and verification record.
+You score a submission against its task offer and verification record.
 Return only JSON. Do not use markdown.
 
 Read the inputs this way:
