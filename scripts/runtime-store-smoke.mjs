@@ -185,55 +185,28 @@ try {
       },
     ],
   };
+  const makeSmokeTask = (prefix, index, status, pft = 0) => ({
+    fullId: `${prefix.toLowerCase().replace(/\s+/g, "_")}_${index}`,
+    title: `${prefix} task ${index}`,
+    kind: index % 2 === 0 ? "Engineering" : "Personal",
+    status,
+    due: "May 18, 4:00 PM",
+    pft,
+    description: `${prefix} smoke task ${index}.`,
+    steps: [`Complete ${prefix.toLowerCase()} step ${index}`],
+    verification: { body: `${prefix} verification note ${index}.` },
+  });
   const smokeTaskContext = {
     sync: {
       source: "task_projections",
       status: "ready",
-      projectionCount: 4,
+      projectionCount: 66,
       lastSyncedAt: "2026-05-18T14:00:00.000Z",
     },
-    outstanding: [
-      {
-        fullId: "task_outstanding_1",
-        title: "Draft the task projection cache",
-        kind: "Engineering",
-        status: "Proposed",
-        due: "May 18, 2:00 PM",
-        pft: 3.2,
-        description: "Create a compact projection of active tasks for chat context.",
-        steps: ["Map task groups", "Format task context"],
-        verification: { body: "Submit the committed implementation and smoke output." },
-      },
-    ],
-    verification: [
-      {
-        fullId: "task_verification_1",
-        title: "Verify screenshot evidence flow",
-        kind: "Verification",
-        status: "Verification requested",
-        due: "May 18, 4:00 PM",
-        pft: 1.5,
-        verification: { body: "Answer the follow-up verification question." },
-      },
-    ],
-    refused: [
-      {
-        fullId: "task_refused_1",
-        title: "Research broad dashboard ideas",
-        kind: "Personal",
-        status: "Refused",
-        pft: 0,
-      },
-    ],
-    rewarded: [
-      {
-        fullId: "task_rewarded_1",
-        title: "Publish context document pointer",
-        kind: "System",
-        status: "Rewarded",
-        pft: 2.5,
-      },
-    ],
+    outstanding: Array.from({ length: 21 }, (_, index) => makeSmokeTask("Outstanding", index + 1, "Proposed", 3.2)),
+    verification: Array.from({ length: 21 }, (_, index) => makeSmokeTask("Pending verification", index + 1, "Verification requested", 1.5)),
+    refused: Array.from({ length: 11 }, (_, index) => makeSmokeTask("Refused", index + 1, "Refused")),
+    rewarded: Array.from({ length: 13 }, (_, index) => makeSmokeTask("Rewarded", index + 1, "Rewarded", 2.5)),
   };
   const baseMemoryEstimate = chatEstimate({
     mode: "Frontier Instant",
@@ -296,12 +269,16 @@ try {
   });
 
   if (
-    !frontierTaskRequest.instructions.includes("<outstanding_tasks count=\"1\">") ||
-    !frontierTaskRequest.instructions.includes("<pending_verification_tasks count=\"1\">") ||
-    !frontierTaskRequest.instructions.includes("<refused_tasks count=\"1\">") ||
-    !frontierTaskRequest.instructions.includes("<rewarded_tasks count=\"1\">") ||
-    !frontierTaskRequest.instructions.includes("Draft the task projection cache") ||
-    !frontierTaskRequest.instructions.includes("Verify screenshot evidence flow")
+    !frontierTaskRequest.instructions.includes("<outstanding_tasks count=\"21\">") ||
+    !frontierTaskRequest.instructions.includes("<pending_verification_tasks count=\"21\">") ||
+    !frontierTaskRequest.instructions.includes("<refused_tasks count=\"11\">") ||
+    !frontierTaskRequest.instructions.includes("<rewarded_tasks count=\"13\">") ||
+    !frontierTaskRequest.instructions.includes("Outstanding task 21") ||
+    !frontierTaskRequest.instructions.includes("Pending verification task 21") ||
+    !frontierTaskRequest.instructions.includes("Refused task 10") ||
+    frontierTaskRequest.instructions.includes("Refused task 11") ||
+    !frontierTaskRequest.instructions.includes("Rewarded task 12") ||
+    frontierTaskRequest.instructions.includes("Rewarded task 13")
   ) {
     throw new Error(`OpenAI task context must include grouped task state: ${frontierTaskRequest.instructions}`);
   }
@@ -402,10 +379,16 @@ try {
 
   if (
     !openRouterTaskInstructions.includes("<account_tasks_context>") ||
-    !openRouterTaskInstructions.includes("<outstanding_tasks count=\"1\">") ||
-    !openRouterTaskInstructions.includes("<pending_verification_tasks count=\"1\">") ||
-    !openRouterTaskInstructions.includes("<refused_tasks count=\"1\">") ||
-    !openRouterTaskInstructions.includes("<rewarded_tasks count=\"1\">")
+    !openRouterTaskInstructions.includes("<outstanding_tasks count=\"21\">") ||
+    !openRouterTaskInstructions.includes("<pending_verification_tasks count=\"21\">") ||
+    !openRouterTaskInstructions.includes("<refused_tasks count=\"11\">") ||
+    !openRouterTaskInstructions.includes("<rewarded_tasks count=\"13\">") ||
+    !openRouterTaskInstructions.includes("Outstanding task 21") ||
+    !openRouterTaskInstructions.includes("Pending verification task 21") ||
+    !openRouterTaskInstructions.includes("Refused task 10") ||
+    openRouterTaskInstructions.includes("Refused task 11") ||
+    !openRouterTaskInstructions.includes("Rewarded task 12") ||
+    openRouterTaskInstructions.includes("Rewarded task 13")
   ) {
     throw new Error(`OpenRouter task context must include grouped task state: ${openRouterTaskInstructions}`);
   }

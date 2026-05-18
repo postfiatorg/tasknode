@@ -7,14 +7,8 @@ const taskContextTimeoutMs = Math.min(
   Math.max(Number(process.env.TASKNODE_CHAT_TASK_CONTEXT_TIMEOUT_MS) || 300, 50),
   2500
 );
-const defaultTaskGroupLimit = Math.min(
-  Math.max(Number(process.env.TASKNODE_CHAT_TASK_CONTEXT_GROUP_LIMIT) || 6, 0),
-  20
-);
-const defaultRewardedLimit = Math.min(
-  Math.max(Number(process.env.TASKNODE_CHAT_TASK_CONTEXT_REWARDED_LIMIT) || 8, 0),
-  20
-);
+const refusedTaskLimit = 10;
+const rewardedTaskLimit = 12;
 
 function clip(value = "", max = 260) {
   const text = String(value || "").trim().replace(/\s+/g, " ");
@@ -47,10 +41,11 @@ function taskLine(task, index) {
   return lines.join("\n");
 }
 
-function formatGroup(tasks = [], { limit = defaultTaskGroupLimit } = {}) {
-  const visible = Array.isArray(tasks) ? tasks.slice(0, limit) : [];
+function formatGroup(tasks = [], { limit = Infinity } = {}) {
+  const source = Array.isArray(tasks) ? tasks : [];
+  const visible = Number.isFinite(limit) ? source.slice(0, limit) : source;
   if (visible.length === 0) return "None.";
-  const omitted = tasks.length > visible.length ? `\n${tasks.length - visible.length} more task(s) omitted from context.` : "";
+  const omitted = source.length > visible.length ? `\n${source.length - visible.length} more task(s) omitted from context.` : "";
   return visible.map(taskLine).join("\n") + omitted;
 }
 
@@ -75,9 +70,9 @@ export function formatChatTaskContext(taskContext = null) {
     PENDING_VERIFICATION_COUNT: pendingVerification.length,
     PENDING_VERIFICATION_TASKS: formatGroup(pendingVerification),
     REFUSED_COUNT: refused.length,
-    REFUSED_TASKS: formatGroup(refused),
+    REFUSED_TASKS: formatGroup(refused, { limit: refusedTaskLimit }),
     REWARDED_COUNT: rewarded.length,
-    REWARDED_TASKS: formatGroup(rewarded, { limit: defaultRewardedLimit }),
+    REWARDED_TASKS: formatGroup(rewarded, { limit: rewardedTaskLimit }),
   });
 }
 
