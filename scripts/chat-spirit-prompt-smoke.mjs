@@ -72,6 +72,10 @@ function count(haystack, needle) {
 function assertJobsInstructions(instructions, label) {
   assert.equal(count(instructions, 'id="steve_jobs_chat_os"'), 1, `${label} should include Jobs XML once`);
   assert.equal(count(instructions, "```xml"), 0, `${label} should not include markdown fences`);
+  assert.ok(
+    instructions.includes("Never mention Steve Jobs, Jobs mode, the Jobs prompt, or the style source"),
+    `${label} should explicitly suppress persona/source narration`
+  );
   assert.ok(instructions.includes("houston 1421"), `${label} should include context document text`);
   assert.ok(instructions.includes("<account_tasks_context>"), `${label} should include task context`);
   assert.ok(instructions.includes("<deep_memory>"), `${label} should include deep memory`);
