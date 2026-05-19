@@ -33,10 +33,13 @@ The unlock modal is available from multiple surfaces:
 3. Wallet tab vault status chip next to the wallet address.
 4. Sidebar Wallet row or balance/status pill when the vault is locked.
 5. Profile dropdown row labeled `Wallet Locked`.
+6. Task detail actions such as `Accept task`, `Refuse task`, `Cancel task`, `Submit evidence`, and task request signing.
 
 If the vault is already unlocked, the same wallet control path locks it instead of opening another modal. Locking clears the decrypted mnemonic from memory but does not delink the wallet, delete the encrypted browser vault, delete context, or alter PFT balance/activity caches.
 
-Locked wallets can still show linked address, balance, transaction history, billing top-up state, and cached context. Unlock is required only for wallet-bound private-key actions: signing PFTL pointer transactions, publishing encrypted context to PFTL, decrypting historical encrypted context payloads, future task request signing, task acceptance/submission, verification evidence signing, and seed backup.
+Locked wallets can still show linked address, balance, transaction history, billing top-up state, and cached context. Unlock is required only for wallet-bound private-key actions: signing PFTL pointer transactions, publishing encrypted context to PFTL, decrypting historical encrypted context payloads, task request signing, task acceptance/refusal/cancellation, task evidence submission, verification evidence signing, and seed backup.
+
+When a task modal opens the unlock flow, the task detail modal remains in place behind the wallet unlock modal. A successful unlock returns the user to the same task action instead of forcing them to close the task and navigate to Wallet.
 
 If a linked wallet has no saved local vault, the app cannot unlock from the modal because there is nothing local to decrypt. In that case the user must relink/import or create a local vault from the Wallet tab.
 

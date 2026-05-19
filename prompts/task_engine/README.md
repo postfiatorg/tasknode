@@ -19,11 +19,11 @@ here. The Task Node Official prompt contract is smaller:
 | File | Purpose | Runtime status |
 | --- | --- | --- |
 | `block_contract_v1.md` | Human-readable contract for the data blocks task prompts receive. | Documentation |
-| `taskgen_minimal_v1.md` | System prompt for task generation from a `pf.taskgen.input.v1` packet. | Loaded by `reference_clients/python/tasknode_pftl/taskgen.py` |
+| `taskgen_minimal_v1.md` | System prompt for task generation from a `pf.taskgen.input.v1` packet. | Loaded by `server/task-generation-worker.js` and `reference_clients/python/tasknode_pftl/taskgen.py` |
 | `taskgen_repair_v1.md` | Minimal repair prompt for malformed task JSON. | Reserved |
-| `verification_request_v1.md` | Prompt policy for a single follow-up verification request. | Referenced by deterministic v1 verification metadata |
+| `verification_request_v1.md` | Prompt policy for a single follow-up verification request. | Loaded by `server/task-review-worker.js` and `reference_clients/python/tasknode_pftl/engine/scoring.py` |
 | `evidence_screenshot_read_v1.md` | Vision prompt for screenshot evidence reads. | Loaded by `server/task-evidence-processing.js` and `reference_clients/python/tasknode_pftl/verification.py` |
-| `reward_scoring_v1.md` | Minimal reward scoring policy for reward adjudication. | Loaded by `server/task-review-worker.js` |
+| `reward_scoring_v1.md` | Minimal reward scoring policy for reward adjudication. | Loaded by `server/task-review-worker.js` and `reference_clients/python/tasknode_pftl/engine/scoring.py` |
 
 ## Data Blocks
 

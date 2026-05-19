@@ -137,6 +137,18 @@ Reducer event dedupe is explicit in `pftl_cache_reducer_events.dedupe_key`. Hot 
 
 For task projection replay, a reducer event starts from one task pointer and rebuilds the projection for that task. When the pointer carries a task ID, the reducer hydrates pointers for that same task ID plus the seed CID that caused the replay. It does not hydrate every historical task pointer with a blank task ID for the wallet; doing that turns one task update into an unrelated wallet-history scan and can block visible task state.
 
+Current task replay recognizes these app-produced payload schemas:
+
+- `pf.task.request.v1` as the user request pointer and bundle anchor.
+- `pf.task.offer.v1` as the authority-issued proposed task.
+- `pf.task.update.v1` for accepted, refused, cancelled, verification requested, and reward-decision transitions.
+- `pf.task.submission.v1` for initial evidence.
+- `pf.task.verification_response.v1` for follow-up verification evidence.
+- `pf.task.reward_decision.v1` for terminal scoring.
+- `pf.reward.v1` for positive PFT payment evidence.
+
+The reducer writes readable forensics fields only when the Task Node service key can decrypt the IPFS payload. CID, transaction hash, ledger, memo index, schema, and digest remain visible even if readable payload hydration fails.
+
 ## Operator Health
 
 Operators can inspect cache health here:
@@ -230,6 +242,6 @@ npm run db:pftl-cache-health-retention-smoke
 
 ## Current Remaining Work
 
-- Move Context restore reads directly onto `pftl_pointer_memos` so page-load restore does not perform historical scans.
-- Add replay tooling that rebuilds task projections from cached pointer rows plus IPFS after projection rows are deleted.
+- Add operator replay tooling that rebuilds task projections from cached pointer rows plus IPFS after projection rows are deleted.
 - Decide cold-storage policy before public-scale raw transaction growth becomes material.
+- Add alerting for reducer lag when task submissions, verification requests, or rewards are indexed but not projected quickly.

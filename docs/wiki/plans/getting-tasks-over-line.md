@@ -2,22 +2,28 @@
 
 ## Objective
 
-Turn the Tasks surface from vaporware into a wallet-first PFTL task system. The first milestone is not UX polish. The first milestone is proving that the real goodalexander wallet can request tasks from real chat/context data, receive task offers, submit multiple tasks, answer verification, receive real PFT rewards, and then have those events appear in the app from a cache rebuilt from chain-verifiable records.
+Turn the Tasks surface into a wallet-first PFTL task system. The first milestone was proving that the real goodalexander wallet can request tasks from real chat/context data, receive task offers, submit evidence, answer verification, receive real PFT rewards, and then have those events appear in the app from a cache rebuilt from chain-verifiable records.
 
 The target wallet seed for the first real replay is stored outside the app source in `ga_seed2.txt`. The seed must never be printed, committed, copied into markdown, or passed through model context. The Python harness should read it locally, derive the wallet, and report only the classic address, CIDs, tx hashes, task IDs, and replay projection.
 
 ## Current Ground Truth
 
-Task Node already has the right primitives:
+Task Node now has the live app path plus the Python reference primitives:
 
+- `POST /api/tasks/request` publishes signed task requests from the browser wallet and writes `task_requests`.
+- `server/task-generation-worker.js` consumes request rows and emits real `pf.task.offer.v1` pointers.
+- `POST /api/tasks/action` publishes accept, refuse, and cancel lifecycle updates.
+- `POST /api/tasks/submission` publishes initial evidence and verification evidence, with up to two compact artifacts per packet.
+- `server/task-review-worker.js` publishes verification requests, reward decisions, and positive reward payments.
+- `server/pftl-cache-reducer.js` projects task pointers into `task_projections` and forensics.
 - `reference_clients/python/tasknode_pftl/scenarios/full_lifecycle.py` can run a full encrypted PFTL/IPFS task replay.
 - `reference_clients/python/tasknode_pftl/taskgen.py` has a minimal task-generation contract.
 - `reference_clients/python/tasknode_pftl/verification.py` has evidence readers for screenshots, PDFs, DOCX, and public URLs.
 - `server/context-publish.js` can publish encrypted context pointers and now enforces a TaskNode recipient shard.
-- `server/db/migrations/001_*` through `005_*` persist chats, attachments, context, and memory.
+- `server/db/migrations/001_*` through `013_*` persist chats, attachments, context, memory, task requests, task projections, and PFTL cache state.
 - `docs/PFTL_TASK_ENGINE_SPEC.md` defines the canonical pointer lifecycle.
 
-The missing piece is a real-wallet task request harness that consumes current app data instead of simulated bundle data, plus a projection cache that makes the web Tasks surface read from replayed state.
+The remaining architecture work is not basic task correctness. It is hardening: wallet-level transaction queues, allocation wallet provisioning, treasury top-ups, worker retry panels, and operator monitoring.
 
 ## PFTasks Research Summary
 
@@ -48,7 +54,7 @@ What we should adapt:
 
 ## Product Event Shape
 
-The app user flow should become:
+The app user flow is:
 
 1. User clicks `Request task` inside Chat.
 2. The composer enters task-request mode. The placeholder changes from `Ask anything` to `Add any relevant details for your task request`.
@@ -262,125 +268,119 @@ flowchart TD
 
 Postgres is a projection cache. It must make the Tasks UX fast, but cache loss must be recoverable from PFTL and IPFS.
 
-Add migrations only after the real-wallet harness proves the event shape.
+The core migrations now exist. The remaining database work is allocation wallet provisioning and wallet-level transaction queues, not basic task projection.
 
 Core tables:
 
 ```text
-task_wallet_allocations
-  id
-  account_id nullable
+task_requests
+  request_id primary key
+  account_id
   subject_wallet
-  allocation_wallet
-  authority_wallet
-  policy_version
+  source
+  source_conversation_id
+  source_conversation_title
+  request_text
+  user_detail_text
+  requested_task_kind
+  request_bundle_cid
+  request_event_cid
+  request_tx_hash
+  bundle_id
   status
+  generated_task_id
+  worker_claimed_at
+  worker_completed_at
+  worker_attempt_count
+  last_error
+  metadata_json
   created_at
   updated_at
-  unique(subject_wallet)
-
-task_request_bundles
-  bundle_id
-  account_id nullable
-  subject_wallet
-  conversation_id nullable
-  request_id
-  request_text
-  bundle_cid
-  bundle_digest
-  context_digest nullable
-  memory_digest nullable
-  chat_digest nullable
-  created_at
 
 pftl_task_pointer_events
   id
+  sync_run_id
+  account_id
   wallet_address
-  counterparty_wallet nullable
-  tx_hash
-  ledger_index
-  tx_index nullable
-  memo_index
+  task_id
+  event_schema
   pointer_kind
-  schema_version
-  cid
-  task_id nullable
-  request_id nullable
-  flags_json
-  source_rpc
+  source_tx_hash
+  source_cid
+  ledger_index
+  memo_index
+  event_digest
+  payload_json
+  pointer_json
+  source
   observed_at
-  unique(tx_hash, memo_index)
-
-task_payload_cache
-  cid
-  schema
-  content_kind
-  encrypted_sha256
-  decrypt_status
-  decrypted_summary_json nullable
-  hydrated_at nullable
-  error nullable
+  created_at
 
 task_events
   id
   task_id
+  account_id
+  wallet_address
   event_type
-  subject_wallet
-  actor_wallet
-  authority_wallet nullable
-  allocation_wallet nullable
   source_tx_hash
   source_cid
-  canonical_order
+  event_digest
   payload_json
+  pointer_json
+  occurred_at
   created_at
-  unique(task_id, event_type, source_tx_hash, source_cid)
 
 task_projections
   task_id
-  account_id nullable
+  account_id
   subject_wallet
+  authority_wallet
+  allocation_wallet
+  request_id
   status
   title
-  description_preview
+  description
   task_kind
-  reward_offer_pft nullable
-  reward_actual_pft nullable
-  accept_by nullable
-  deadline_at nullable
-  latest_event_id
-  latest_tx_hash
-  source_confidence
-  sync_status
-  updated_at
-
-task_sync_checkpoints
-  wallet_address
-  last_hot_ledger_seen nullable
-  last_archive_ledger_checked nullable
-  last_full_replay_at nullable
+  reward_offer_pft
+  reward_actual_pft
+  request_bundle_cid
+  context_cid
+  submission_type
+  submission_requirement_text
+  verification_policy_json
+  accept_by
+  deadline_at
+  event_count
+  last_event_tx_hash
+  last_event_cid
+  last_event_at
+  source
+  metadata_json
+  created_at
   updated_at
 ```
 
 Read rules:
 
 - Tasks UX reads `task_projections`.
-- Details modal reads `task_events` plus decrypted summaries from `task_payload_cache`.
-- Replay workers rebuild `task_events` from `pftl_task_pointer_events` plus IPFS payloads.
+- Details modal reads `task_events`, `pftl_task_pointer_events`, and decrypted payload summaries produced during reducer hydration.
+- Reducer workers rebuild `task_events` from cached pointer memos, `pftl_task_pointer_events`, and IPFS payloads.
 - App account IDs annotate rows, but wallet history remains canonical.
 
-## Implementation Plan
+## Implementation Status
 
 ### Phase 0: Request Mode Correlation
 
-Goal: make the app able to create a properly tagged task-request intent from Chat without pretending the task engine is done.
+Status: completed and promoted into the signed request path.
+
+Original goal: make the app able to create a properly tagged task-request intent from Chat without inventing task state.
 
 Work:
 
 - Add a `Request task` action behind the chat plus button.
 - Switch the composer placeholder to `Add any relevant details for your task request`.
 - On submit, create a pending task-request chat message with `request_id`, `bundle_id`, `conversation_id`, and `task_request_message_id`.
-- Do not create fake task cards from this phase.
+- Do not create task cards from this phase alone.
 - Do not mark the request complete until the PFTL request pointer or harness receipt exists.
 
 Acceptance criteria:
@@ -392,7 +392,9 @@ Acceptance criteria:
 
 ### Phase 1: Real Goodalexander Harness
 
-Goal: prove the protocol using `ga_seed2.txt`, live PFTL, live IPFS, real task generation, and real rewards.
+Status: completed as protocol reference, then superseded by the JavaScript app path for browser UX.
+
+Original goal: prove the protocol using `ga_seed2.txt`, live PFTL, live IPFS, real task generation, and real rewards.
 
 Work:
 
@@ -430,7 +432,9 @@ Acceptance criteria:
 
 ### Phase 2: Task Projection Cache
 
-Goal: make completed harness tasks appear ex post in the app.
+Status: completed for the active app path. Tasks render from `task_projections`, forensics render from projected task events, and chat task context reads the projection.
+
+Original goal: make completed harness tasks appear ex post in the app.
 
 Work:
 
@@ -443,7 +447,7 @@ Work:
 - Decrypt with TaskNode service key.
 - Reduce events into `task_projections`.
 - Expose `/api/tasks` from projections.
-- Replace vapor task data in the Tasks surface with projection rows.
+- Replace placeholder task data in the Tasks surface with projection rows.
 
 Acceptance criteria:
 
@@ -453,7 +457,9 @@ Acceptance criteria:
 
 ### Phase 3: Chat Request Button
 
-Goal: complete the app request button after the protocol and projection are proven.
+Status: completed for task request mode. The `+` menu can publish a signed task request and the generated task appears after the worker/reducer path completes.
+
+Original goal: complete the app request button after the protocol and projection are proven.
 
 Work:
 

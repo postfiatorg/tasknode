@@ -8,7 +8,7 @@ The most important distinction is canonical state versus convenience state. Post
 
 - Chat is where users work.
 - Context is the durable profile of what the user is building and what matters.
-- Tasks are portable work objects that should replay from PFTL without trusting Postgres.
+- Tasks are portable work objects that request, accept, submit, verify, and reward through PFTL/IPFS while Postgres provides the fast read model.
 - Wallet is identity, rewards, publishing authority, and balance visibility.
 - Memory is lightweight compression of user and assistant turns so future chats can carry continuity.
 - Motivation, Brainstorming Context, Refine Context, and Rewrite are specialized chat tools that operate against the current context and recent conversation.
@@ -27,6 +27,7 @@ flowchart LR
   Context --> PFTL[PFTL Pointer]
   PFTL --> IPFS[Encrypted IPFS Payload]
   Tasks[Task Engine] --> PFTL
+  Tasks --> TaskCache[Task Projection Cache]
   PFTL --> Replay[Replay From Chain]
 ```
 
@@ -50,4 +51,3 @@ flowchart LR
 - `server/repositories/context.js`
 - `server/repositories/chat-memory.js`
 - `reference_clients/python/tasknode_pftl/`
-

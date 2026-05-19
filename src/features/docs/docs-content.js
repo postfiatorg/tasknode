@@ -107,8 +107,9 @@ const PROMPT_SOURCES = [
     title: "Task Generation",
     path: "prompts/task_engine/taskgen_minimal_v1.md",
     summary: "Generates one concise PFTL task from request, context, memory, chat, wallet, and policy blocks.",
-    status: "Active Python reference",
+    status: "Active app worker and Python reference",
     usedBy: [
+      "server/task-generation-worker.js::generateTaskWithOpenAi",
       "reference_clients/python/tasknode_pftl/taskgen.py::generate_task",
       "reference_clients/python/tasknode_pftl/taskgen.py::benchmark_taskgen",
       "reference_clients/python/tasknode_pftl/taskgen.py::TASKGEN_RESPONSE_FORMAT",
@@ -141,8 +142,11 @@ const PROMPT_SOURCES = [
     title: "Verification Request",
     path: "prompts/task_engine/verification_request_v1.md",
     summary: "Policy for a single follow-up verification ask after initial task submission.",
-    status: "Policy recorded; deterministic v1 ask remains code-generated",
-    usedBy: ["reference_clients/python/tasknode_pftl/taskgen.py::build_verification_request"],
+    status: "Active app worker and Python reference",
+    usedBy: [
+      "server/task-review-worker.js::processSubmittedTask",
+      "reference_clients/python/tasknode_pftl/engine/scoring.py::build_verification_request",
+    ],
     content: verificationRequestPrompt,
   },
   {
@@ -161,9 +165,12 @@ const PROMPT_SOURCES = [
     family: "Reward",
     title: "Reward Scoring",
     path: "prompts/task_engine/reward_scoring_v1.md",
-    summary: "Reserved scoring policy for future reward adjudication.",
-    status: "Reserved",
-    usedBy: ["No runtime caller yet"],
+    summary: "Scores verification evidence and produces reward, partial reward, or zero-reward decisions.",
+    status: "Active app worker and Python reference",
+    usedBy: [
+      "server/task-review-worker.js::processVerificationResponse",
+      "reference_clients/python/tasknode_pftl/engine/scoring.py::score_reward",
+    ],
     content: rewardScoringPrompt,
   },
 ];

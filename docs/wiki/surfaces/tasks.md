@@ -13,7 +13,9 @@ The Tasks surface is reached from the left navigation. It shows a compact task q
 | Refused | Rejected, refused, expired, or cancelled tasks. | UI may paginate later; chat context currently caps refused history at 10. |
 | Rewarded | Tasks that reached a reward decision or reward payment state. | UI may paginate later; chat context currently caps rewarded history at 12. |
 
-The top summary shows outstanding count, PFT in flight, chain-indexed projection count, and active request count. The `Request task` button opens a modal where the user can describe the kind of work they want. Submitting the modal now uses `POST /api/tasks/request` to build a request bundle from the current context document, deep memory, recent memory, recent chats, and existing task queue; encrypt the bundle locally in the browser; pin it to IPFS; encrypt a `pf.task.request.v1` event that points at that bundle; and sign a PFTL `TASK` pointer transaction from the linked user wallet.
+The top summary shows outstanding count, PFT in flight, chain-indexed projection count, and active request count. Deadlines render as calendar dates, such as `May 20`, while real event and review timestamps render with time and timezone. This prevents date-only deadlines from showing as misleading `12:00 AM` event times.
+
+The `Request task` button opens a modal where the user can describe the kind of work they want. Submitting the modal uses `POST /api/tasks/request` to build a request bundle from the current context document, deep memory, recent memory, recent chats, and existing task queue; encrypt the bundle locally in the browser; pin it to IPFS; encrypt a `pf.task.request.v1` event that points at that bundle; and sign a PFTL `TASK` pointer transaction from the linked user wallet.
 
 After a successful chain submit, the server records a durable `task_requests` row plus the hidden `pf.task.request_intent.v1` chat turn tagged as `source: task_interface` and `status: pftl_request_published`. The Tasks page only shows a compact in-flight request strip while a request is actively signing, queued, generating, recently published, or recently failed. Once a request becomes a proposed task, the request receipt leaves the main UX and the user should interact with the projected task card instead. Chat also supports task request mode from the `+` menu. It uses the same signed request publisher, tags the cache entry as `source: user_chat`, and keeps the receipt in the active chat thread.
 
@@ -36,7 +38,7 @@ The detail header always shows:
 - task title;
 - full task ID;
 - status;
-- deadline;
+- deadline, formatted as a date-only value when the protocol field is a calendar deadline;
 - displayed reward;
 - indexed event count.
 
@@ -74,7 +76,7 @@ After submission, the server does a best-effort wallet sync and reducer pass so 
 
 ## Evidence And Review
 
-The Submit tab has one primary button: `Submit evidence`. A user can include one or two artifacts in the same signed packet, which covers common verification asks such as text plus screenshot or code plus terminal output. It does not create a local-only evidence packet. The browser route is:
+The Submit tab has one primary button: `Submit evidence`. A user can include one or two artifacts in the same signed packet, which covers common verification asks such as text plus screenshot or code plus terminal output. The second artifact is opt-in through `Add evidence`; new tasks and new submission phases start with one empty artifact so stale draft fields do not carry from initial submission into verification response. The flow does not create a local-only evidence packet. The browser route is:
 
 1. For screenshot evidence, the browser reads the selected image and calls `POST /api/tasks/submission` with `phase: process_evidence`.
 2. The server uses `prompts/task_engine/evidence_screenshot_read_v1.md` with OpenAI vision to extract visible proof text. The raw screenshot bytes are not placed in the final PFTL evidence payload.
@@ -86,7 +88,7 @@ The Submit tab has one primary button: `Submit evidence`. A user can include one
 8. The server submits the signed transaction and returns the tx hash as soon as PFTL accepts it.
 9. Wallet sync and reducer projection are scheduled asynchronously. The UI should show the publish result immediately, then refresh task state as indexing catches up.
 
-The task detail modal keeps its own local detail state while it is open. After a successful evidence transaction, the modal updates optimistically to `Submitted` or `Awaiting review` and polls task detail for the submitted transaction hash so the user is not left looking at the old verification prompt while indexing catches up.
+The task detail modal keeps its own local detail state while it is open. After a successful evidence transaction, the modal updates optimistically to `Submitted` or `Awaiting review` and polls task detail for the submitted transaction hash so the user is not left looking at the old prompt while indexing catches up.
 
 The Tasks page refresh policy is driven by the shared lifecycle contract in `shared/task-lifecycle.js` and the server metadata returned by `GET /api/tasks`. Initial submissions can be advanced by the review worker into `Verification requested`; verification responses can be advanced into `Rewarded` after the authority scores the evidence and, when positive, publishes the reward payment. The list and tab counts should therefore follow the projection cache without a manual browser reload.
 
@@ -104,6 +106,8 @@ The IPFS payload limit is intentionally small enough to catch bad evidence archi
 - the worker publishes `pf.task.reward_decision.v1`;
 - if the model returns a positive reward, the reward wallet publishes `pf.reward.v1` and transfers PFT;
 - if the model returns zero, the task is terminal `rewarded` with `0 PFT` and no payment pointer is expected.
+
+The browser path has now exercised zero, partial, and positive reward outcomes. The task projection treats each as terminal `rewarded`; the reward panel explains whether a separate `pf.reward.v1` payment pointer exists.
 
 ## Forensics
 
@@ -181,7 +185,9 @@ The app should never invent a task card. Durable task cards come from `task_proj
 | Browser task action signing | `src/features/tasks/task-actions.js` |
 | Browser task request signing | `src/features/tasks/task-request-actions.js` |
 | Browser task evidence signing | `src/features/tasks/task-submission-actions.js` |
+| Task detail modal, wallet unlock overlay, and evidence drafts | `src/features/tasks/TaskDetailModal.jsx` |
 | Screenshot evidence extraction | `server/task-evidence-processing.js`, `prompts/task_engine/evidence_screenshot_read_v1.md` |
+| Evidence item summaries | `server/task-evidence-summary.js` |
 | Active task request strip | `src/features/tasks/TaskRequestQueue.jsx` |
 | Task read routes | `server/task-routes.js` |
 | Task action route | `server/task-actions.js` |
@@ -201,6 +207,7 @@ The app should never invent a task card. Durable task cards come from `task_proj
 | Cache reducer | `server/pftl-cache-reducer.js` |
 | Chat task context | `server/chat-task-context.js` |
 | Shared task lifecycle contract | `shared/task-lifecycle.js` |
+| Shared task time formatting | `shared/task-time-format.js` |
 | Python reference lifecycle | `reference_clients/python/tasknode_pftl/` |
 
 Endpoints:
@@ -214,6 +221,18 @@ Endpoints:
 | `POST /api/tasks/submission` | Configures, prepares, or submits signed initial evidence and verification evidence. |
 | `POST /api/tasks/request` | Configures, pins, prepares, or submits a signed on-chain task request. |
 | `POST /api/tasks/request-intent` | Records the hidden app-side task request cache entry after chain submit, and records chat-sourced request mode turns. |
+
+## Timestamp Rules
+
+Task date/time rendering uses `shared/task-time-format.js`.
+
+| Field kind | Rendering rule | Example |
+| --- | --- | --- |
+| Calendar deadline | If the ISO value is midnight UTC, show date only. | `2026-05-20T00:00:00.000Z` -> `May 20` |
+| Real event timestamp | Show date, time, and timezone. | `2026-05-19T17:48:00.000Z` -> `May 19, 5:48 PM UTC` |
+| Relative list freshness | Use the projection `updated_at` or `last_event_at` display. | `2h ago`, `just now` |
+
+This distinction matters because task deadlines are often date-only commitments while PFTL events are exact transaction history.
 
 ## Database Tables
 
@@ -249,10 +268,11 @@ Outstanding and pending verification tasks are uncapped in chat context. Refused
 - Browser task request publishing is live for the Tasks modal and chat request mode.
 - The local Docker API starts `server/task-generation-worker.js`, which claims `task_requests` rows and emits real `pf.task.offer.v1` pointers. Browser publishes also schedule an immediate generation tick; the 5 second worker interval is the backstop. Production should keep this controlled by `TASKNODE_TASK_GENERATION_WORKER_ENABLED`.
 - Browser accept/refuse/cancel task updates are live through `POST /api/tasks/action`.
-- Browser evidence and verification-response submission are live through `POST /api/tasks/submission`.
+- Browser evidence and verification-response submission are live through `POST /api/tasks/submission`, including up to two compact artifacts in one signed packet.
 - The local Docker API starts `server/task-review-worker.js`, controlled by `TASKNODE_TASK_REVIEW_WORKER_ENABLED`. It publishes verification requests, reward decisions, and positive reward payments from configured service/reward seeds.
-- Positive reward payment code is wired but still needs a clean positive-path browser QA receipt. The live smoke recorded here verified the zero-reward decision path.
+- Positive reward, partial reward, and zero-reward browser paths have been exercised against projected tasks.
 - Allocation wallet provisioning is still seed-config based. Per-user or per-shard allocation wallet provisioning is not implemented.
+- Worker failure state is not yet a full user-facing retry panel. Errors are retained in request rows, projection worker metadata, and logs.
 - The UI is cache-backed. If the chain cache is stale, the task detail may lag until wallet sync and reducer processing catch up.
 
 ## Verification Checklist
@@ -266,3 +286,5 @@ When changing Tasks, verify:
 5. Zero-reward tasks explain the reason from `pf.task.reward_decision.v1`.
 6. Forensics rows show CIDs, transaction hashes, schema, and decrypted payload details when the service key can read them.
 7. Chat task context still treats task state as read-only projection data.
+8. Task deadlines render without `12:00 AM`, while real event rows still show exact times.
+9. A new verification response draft starts with one empty evidence artifact unless the user explicitly adds a second artifact.

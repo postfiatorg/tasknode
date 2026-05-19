@@ -28,7 +28,7 @@ If any step is manual, Python-only, hidden in chat metadata, or missing from the
 
 ## Current Truth
 
-The current repo has useful pieces, but they are not yet one app pipeline.
+The repo now has one live app pipeline for request, offer, accept/refuse/cancel, evidence submission, verification request, verification response, reward decision, and positive reward payment. It is still a v1 pipeline with seed-configured authority/reward wallets and limited worker failure UI.
 
 Implemented:
 
@@ -45,9 +45,8 @@ Implemented:
 - `server/task-review-worker.js` consumes submitted tasks, generates a verification request with the configured prompt/model, and publishes a `pf.task.update.v1` verification request pointer.
 - `server/task-review-worker.js` consumes verification responses, scores them with the configured prompt/model, publishes a `pf.task.reward_decision.v1`, and pays positive rewards with `pf.reward.v1` when the score is positive.
 
-Not implemented as an app pipeline:
+Not implemented yet:
 
-- A clean positive-reward browser QA receipt. The payment code path is wired, but the live receipt recorded below intentionally tested bad evidence and produced `0 PFT`.
 - Worker failure state UI. Failures are retained in worker metadata/logs, but the user-facing task detail does not yet show a dedicated retry/failure panel for review-worker failures.
 - Per-user or per-shard allocation wallet provisioning. Reward signing currently uses configured service/reward seeds.
 
@@ -55,40 +54,15 @@ The Python engine remains a reference. The app now invokes its own JavaScript re
 
 ## Executed Bridge Proof
 
-The first app bridge has been executed against live PFTL testnet state:
-
-| Request | Generated task | Offer transaction | Current task state |
-| --- | --- | --- | --- |
-| `req_codexlive_1779152970816` | `task_880e60cf38a6aa23da350a1b03884bfc` | `77FE87DCEB5BA0B6A570C065C0EA9106F0D2537AE0502415CBCB07B3A902DB30` | Proposed |
-| `req_11f5cf94-a83d-4840-ba66-6abd4b8b47ae` | `task_3665c17974505135be16a1019e7d21fb` | `6241CA032E49EB81B05337216AED367D06EAD49FCF3DC029AEAB3235E6A80F03` | Accepted |
-
-The accepted task has a user-signed `pf.task.update.v1` pointer:
+Live PFTL testnet tasks have exercised these outcomes from the browser-backed path:
 
 ```text
-task_id: task_3665c17974505135be16a1019e7d21fb
-accept_tx: 79D6124E8C64FA7F358A8D76AF4839585955E1A45652C38730041E9684C8EAA5
-accept_cid: QmS3ipf6fNZLWYamzBgSWR5yLb4zreu4qAMTJKDKgQ41uc
+task_880e60cf38a6aa23da350a1b03884bfc -> rewarded, partial positive payout, 0.45 / 0.75 PFT
+task_ab585795d15c8556386b8a4f8a4e68b6 -> rewarded, partial positive payout, 1.80 / 3.00 PFT
+task_a89f56f7028d7cc8c397b529f58e4cef -> rewarded, full positive payout, 2.50 / 2.50 PFT
 ```
 
-This proves request publishing, visible queueing, AI task generation, offer publication, projection, and signed acceptance. It does not prove browser evidence submission, verification generation, reward scoring, or payout.
-
-The next bridge was also executed against the accepted task:
-
-```text
-task_id: task_3665c17974505135be16a1019e7d21fb
-initial_submission_tx: 57F1EE8EBACA779BDBB4D53B8A9C33F889BEF1D781E2DBC6E2A9FEC6E2A98A8D
-initial_submission_cid: QmXXmmokY3JU1byYdpnRhbCw4hGJ3pMhj76RzkPivofEdW
-verification_request_tx: E5FCFC31DAE8E9565085C603C1C4691C1C97B7246B850FBDCC99FD093318C5C9
-verification_request_cid: QmR6V1CPjnyXdwxMEpbpLuBiQxH1tRos5zkh1HsRyBEEKW
-verification_response_tx: 0F4CE99B33E020D9AE4F8D4CDD49482C6F317F96B49550292EED618087B33765
-verification_response_cid: Qma7scyowBgRpBuw5z8ALH56sJCmW3kTL6et5pR3VjCpJA
-reward_decision_tx: B046C176B6F6B4ECEAB729A09B63496AA60C1E50684D52602D89209518B6DD65
-reward_decision_cid: QmdZKcDHjvD9FnbdAwhGjPoas5g7vfoHwq4XFxvTRC6jHN
-final_state: rewarded
-reward_actual_pft: 0
-```
-
-The reward decision was intentionally a bad-evidence path. The model rejected the submission because the evidence did not satisfy the original persistence task, which is the correct terminal zero-reward behavior.
+The forensics pages for these tasks show offer, acceptance, evidence, verification request, verification response, reward decision, and reward payment pointers when present. Zero-reward tasks remain valid terminal `rewarded` tasks; they show the reward decision reason and do not require a separate payment pointer.
 
 ## Backend To Frontend Port Map
 
@@ -232,18 +206,17 @@ After verification response:
 - Bad evidence emits a zero-reward decision with reason, score, and what would be needed to satisfy the task.
 - The Rewarded tab shows both positive and zero-reward terminal tasks.
 
-## Data Model Plan
+## Data Model
 
 PFTL and encrypted IPFS remain canonical. Postgres is the product read model and worker coordination layer.
 
-Add or formalize these Postgres surfaces:
+Current Postgres surfaces:
 
 | Surface | Purpose |
 | --- | --- |
 | `task_requests` | Durable task request receipt and worker claim table. Stores request ID, account ID, wallet, CIDs, tx hash, status, worker attempts, generated task ID, and last error. The main UX only renders active in-flight rows. |
-| `task_generation_jobs` | Worker claim queue for published requests. Can be merged with `task_requests` if job fields are clear. |
-| `task_worker_runs` | Operator/debug log for request generation, verification generation, scoring, and reward payout attempts. |
-| `task_evidence_drafts` | Optional local draft cache before signed evidence is published. Not canonical. |
+| `pftl_cache_reducer_events` | Idempotent reducer queue for task, context, and wallet projection work. |
+| `pftl_task_pointer_events` | Hydrated task pointer events with tx hash, CID, ledger, schema, and payload JSON. |
 | `task_events` | Existing normalized projected event history. |
 | `task_projections` | Existing current task read model used by Tasks and chat context. |
 
@@ -270,7 +243,7 @@ created_at
 updated_at
 ```
 
-The `status` values should be product states, not low-level implementation labels:
+The `status` values are product states, not low-level implementation labels:
 
 ```text
 signing
@@ -282,46 +255,40 @@ failed
 cancelled
 ```
 
-## Worker Plan
+## Worker Path
 
-The first production bridge should reuse the Python task engine as the source of task-generation behavior, but run it as a real app worker rather than a manual demo.
+The app uses JavaScript workers in the API process for the live UX path. The Python task engine remains a reference and external-agent harness, not the bridge used by the browser.
 
-Worker responsibilities:
+Request generation worker:
 
 1. Claim one published request from `task_requests` using `FOR UPDATE SKIP LOCKED`.
 2. Hydrate the request bundle from the request bundle CID.
 3. Decrypt with the Task Node service key.
 4. Load task queue cache for duplicate avoidance.
-5. Select authority and allocation wallets from configured pools.
-6. Serialize transactions per signing wallet.
-7. Generate a task using the provider selected by the request:
-   - Frontier: OpenAI `chat-latest`.
-   - Private: OpenRouter `deepseek/deepseek-v4-pro` with ZDR provider routing.
-8. Encrypt and pin `pf.task.offer.v1`.
-9. Submit the authority wallet `TASK` pointer.
-10. Sync the subject wallet and authority wallet through the PFTL cache.
-11. Run the reducer until the new task appears in `task_projections`.
-12. Update `task_requests.status` to `proposed` and attach `generated_task_id`.
-13. On failure, update `task_requests.status` to `failed`, store `last_error`, and expose retry in the UI.
+5. Generate a task with OpenAI `chat-latest` and `prompts/task_engine/taskgen_minimal_v1.md`.
+6. Encrypt and pin `pf.task.offer.v1`.
+7. Submit the authority wallet `TASK` pointer.
+8. Sync the subject wallet and authority wallet through the PFTL cache.
+9. Run the reducer until the new task appears in `task_projections`.
+10. Update `task_requests.status` to `proposed` and attach `generated_task_id`.
+11. On failure, update `task_requests.status` to `failed` and store `last_error`.
 
-The worker can start as a Node-controlled Python subprocess if that is the fastest safe bridge. It should not remain a manual CLI.
+## Evidence And Verification Worker
 
-## Evidence And Verification Worker Plan
+Initial evidence submission publishes `pf.task.submission.v1` from the user wallet.
 
-Initial evidence submission should publish `pf.task.submission.v1` from the user wallet.
-
-After that, a worker should:
+After that, `server/task-review-worker.js`:
 
 1. Claim submitted tasks that do not yet have a verification request.
 2. Read the task offer and submitted evidence.
-3. Use evidence adapters for URL, screenshot/image, PDF, DOCX, code, and text.
+3. Use evidence adapters for URL, screenshot/image, file metadata, code, and text. Screenshot/image inputs are described by OpenAI vision before the final payload is pinned.
 4. Generate one sensible verification request.
-5. Publish `pf.task.verification_request.v1` from the authority wallet.
+5. Publish a `pf.task.update.v1` verification-request transition from the authority wallet.
 6. Sync/reduce until the task appears in Verification.
 
-Verification response should publish `pf.task.verification_response.v1` from the user wallet.
+Verification response publishes `pf.task.verification_response.v1` from the user wallet.
 
-After that, a scoring worker should:
+After that, the same review worker:
 
 1. Claim verification responses awaiting review.
 2. Read task offer, initial evidence, verification request, and verification response.
@@ -345,10 +312,10 @@ After that, a scoring worker should:
 
 ## Existing Holes To Close
 
-1. Positive-reward browser QA still needs a clean receipt showing `pf.reward.v1` payment after strong evidence.
-2. Verification, scoring, and reward worker failures need a visible user-facing failure/retry panel.
-3. Allocation wallet provisioning needs the planned per-user or per-shard design instead of seed-config-only operation.
-4. The docs must continue to distinguish reference proof from app integration.
+1. Verification, scoring, and reward worker failures need a visible user-facing failure/retry panel.
+2. Allocation wallet provisioning needs the planned per-user or per-shard design instead of seed-config-only operation.
+3. Authority and reward transactions need wallet-level queueing before public-scale load.
+4. Operator monitoring needs explicit metrics for request generation, review, scoring, payout, and projection lag.
 
 ## Implementation Phases
 
@@ -434,7 +401,7 @@ Work:
 - Claim submitted tasks without verification request.
 - Process evidence through adapters.
 - Generate one verification request using the configured prompt/model.
-- Publish `pf.task.verification_request.v1`.
+- Publish a `pf.task.update.v1` transition with `verification_requested`.
 - Project task into Verification tab.
 
 Done when:
@@ -463,7 +430,7 @@ Done when:
 - Bad evidence produces a zero-reward decision visible in Tasks with reason and no payment.
 - Both paths are reproduced from the app UX, not a manual Python-only run.
 
-Status: partially implemented. Browser verification response publishing and AI reward scoring are live-smoked. The bad-evidence path produced a terminal zero-reward decision with tx `B046C176B6F6B4ECEAB729A09B63496AA60C1E50684D52602D89209518B6DD65`. The positive-payment path is coded but still needs a clean browser QA receipt.
+Status: implemented and live-smoked for positive, partial, and zero-reward outcomes. Current browser-backed examples include `task_880e60cf38a6aa23da350a1b03884bfc`, `task_ab585795d15c8556386b8a4f8a4e68b6`, and `task_a89f56f7028d7cc8c397b529f58e4cef`.
 
 ### Phase 7: QA And Operator Hardening
 

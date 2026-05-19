@@ -4,28 +4,30 @@ Task requests cannot be treated like normal chat requests. A chat response can b
 
 ## Current State
 
-The current web app has the first request-intent surface, but not the production on-chain request engine.
+The current web app has a live chain-backed task loop for a single configured authority/reward seed path. It is no longer just a request-intent or Python-only reference.
 
-Already implemented:
+Implemented in the app:
 
-- Chat `Request a task` mode records a structured `task_request_intent` turn through `server/task-request-intent.js`.
-- The Python reference can consume app data from Postgres and run an on-chain lifecycle through `reference_clients/python/tasknode_pftl/scenarios/app_request_lifecycle.py`.
-- The Python Stage B reference can create 10 independent requesters, shard authority/reward wallets, execute representative PFTL/IPFS lifecycles, and import replayed projections through `reference_clients/python/tasknode_pftl/scenarios/task_engine_speedrun.py --stage n10`.
-- Task projection reads are wired through `server/repositories/tasks.js` and `task_projections`.
-- Replay receipts can be imported with `npm run db:import-task-replays`.
-- The web task detail page can now publish user-signed stop actions for existing projected tasks through `POST /api/tasks/action`. Proposed tasks become `refused`; accepted/submitted/verification-loop tasks become `cancelled`.
+- Tasks modal and chat `Request task` mode publish encrypted `pf.task.request.v1` PFTL pointers from the linked browser wallet through `POST /api/tasks/request`.
+- `server/task-request.js` builds the request bundle from the saved context document, last 3 deep memories, last 36 recent memories, recent chats, and current task queue projection.
+- `task_requests` is the durable request receipt and worker claim table.
+- `server/task-generation-worker.js` claims published requests, decrypts the bundle, calls OpenAI `chat-latest` with `prompts/task_engine/taskgen_minimal_v1.md`, publishes encrypted `pf.task.offer.v1` pointers from the authority wallet, syncs PFTL, and runs the reducer.
+- The Tasks page renders real task cards from `task_projections`, not fabricated local cards.
+- The task detail page publishes user-signed accept, refuse, and cancel transitions through `POST /api/tasks/action`.
+- The Submit tab publishes user-signed initial evidence and verification evidence through `POST /api/tasks/submission`.
+- Evidence packets can contain one or two compact artifacts. Screenshot files are described by the OpenAI vision evidence reader before being included in the encrypted payload.
+- `server/task-review-worker.js` claims submitted tasks, generates a follow-up verification request with `verification_request_v1`, publishes a `pf.task.update.v1` pointer, then scores verification responses with `reward_scoring_v1`.
+- Positive reward decisions publish both `pf.task.reward_decision.v1` and a `pf.reward.v1` payment pointer. Zero-reward decisions publish the reward decision only and still close the task as terminal `rewarded`.
+- The Python reference still exists for external agent playback and multi-wallet protocol stress tests, but the app path now uses the JavaScript server modules listed above.
 
-Not implemented yet:
+Still not implemented:
 
-- Production `request task` API that signs a PFTL request pointer from the browser wallet.
-- Production task-generation worker that watches request events and emits authority offers.
-- Production wallet transaction queue tables and workers.
-- Allocation wallet provisioner and treasury top-up worker.
-- Browser evidence submission and verification response signing.
+- A Postgres `wallet_tx_queue` that serializes every authority and reward wallet transaction independently. Current authority/reward worker transactions are signed inline by the worker process.
+- Per-user or per-shard allocation wallet provisioning. Current reward signing uses configured service/reward seeds.
+- Treasury top-up worker for allocation wallets.
+- A complete user-facing retry panel for worker failures. Errors are retained in `task_requests`, projection worker metadata, and logs, but the UX does not yet expose all retry controls.
 
-Until those exist, a task request must not create fake task cards. It should either create a real signed request path or fail with a clear reason.
-
-Existing task stop actions are narrower than the full task engine. They do not generate tasks, score evidence, or pay rewards. They publish one encrypted `pf.task.update.v1` lifecycle event from the linked user wallet and then rely on the PFTL cache/reducer path to update the projection.
+A task request must not create a fake task card. The card appears only after the authority publishes `pf.task.offer.v1` and the PFTL cache reducer writes `task_projections`.
 
 ## Why Async
 
@@ -51,24 +53,22 @@ The way to scale is not to submit many transactions at once from one wallet. The
 
 ## Engine Components
 
-The production engine should be a set of small workers, not one giant request handler.
+The current engine is a set of small modules inside the Node API process. The boundaries are intentionally explicit so authority, reward, indexer, and wallet transaction workers can be split into separate processes later.
 
-| Component | Responsibility | Canonical source | Cache/write target |
-| --- | --- | --- | --- |
-| `task_request_preflight` | Validate login, linked wallet, unlocked vault, MessageKey readiness, fee readiness, and request payload shape. | App session plus browser wallet state. | No task state writes. |
-| `task_request_submitter` | Build request bundle from context, memory, recent chat, and user detail text; encrypt to recipients; pin IPFS; ask browser wallet to sign request pointer. | User wallet signed PFTL transaction. | `task_request_bundles`, pending UI receipt. |
-| `wallet_tx_queue_worker` | Submit one transaction at a time per signing wallet using idempotency keys and advisory locks. | PFTL transaction result. | `wallet_tx_queue`, pointer event cache. |
-| `task_generation_worker` | Watch confirmed request pointers, hydrate bundle, call task-generation prompt, emit proposed task from authority wallet. | Authority wallet PFTL pointer. | `task_events`, `task_projections`. |
-| `verification_worker` | Process submissions and emit follow-up verification requests when needed. | Authority wallet PFTL pointer. | `task_events`, `task_projections`. |
-| `reward_worker` | Score approved evidence, select allocation wallet, queue reward payment, and emit reward pointer/payment. | Allocation wallet PFTL payment. | `task_events`, `task_projections`, reward ledger diagnostics. |
-| `allocation_wallet_provisioner` | Assign or create allocation wallets, enforce shard policy, and request treasury top-ups. | Operator policy plus wallet funding transactions. | `task_wallet_allocations`, funding status. |
-| `task_replay_indexer` | Read hot wallet history, reconcile archive history, hydrate IPFS, decrypt service-readable payloads, rebuild projection cache. | PFTL plus IPFS. | `pftl_task_pointer_events`, `task_payload_cache`, `task_events`, `task_projections`. |
-
-The Python reference currently demonstrates the lifecycle and queue shape. The production web engine should move those concepts into server workers with explicit tables, idempotency, locks, and monitoring.
+| Component | Current code | Responsibility | Canonical source | Cache/write target |
+| --- | --- | --- | --- | --- |
+| Request preflight and bundle assembly | `server/task-request.js` | Validate session and linked wallet, build app-shaped context/memory/chat/task bundle, return Task Node encryption key and transaction-prep phases. | Browser wallet state plus account cache. | `task_requests` after signed request submit. |
+| Browser request signer | `src/features/tasks/task-request-actions.js` | Encrypt request bundle and event payload locally, pin IPFS, sign the PFTL pointer with the unlocked seed vault. | User wallet signed PFTL transaction. | Hidden request intent row and `task_requests`. |
+| Task generation worker | `server/task-generation-worker.js` | Claim request rows, decrypt bundle, call task generation model, publish `pf.task.offer.v1`. | Authority wallet PFTL pointer. | `task_requests`, PFTL cache, `task_projections`. |
+| Lifecycle action route | `server/task-actions.js` | Prepare and submit signed accept, refuse, and cancel pointers. | User wallet signed PFTL transaction. | PFTL cache and `task_projections`. |
+| Evidence submission route | `server/task-submission.js` | Prepare and submit signed initial or verification evidence pointers. | User wallet signed PFTL transaction. | PFTL cache and `task_projections`. |
+| Evidence processor | `server/task-evidence-processing.js` | Read screenshots/files before payload construction so raw media is not embedded in encrypted JSON. | User-provided artifact plus model extraction. | Compact evidence metadata in IPFS payload. |
+| Review and reward worker | `server/task-review-worker.js` | Publish verification requests, reward decisions, and positive reward payments. | Authority/reward wallet PFTL pointers. | Worker metadata, PFTL cache, `task_projections`. |
+| Projection reducer | `server/pftl-cache-reducer.js` | Hydrate/decrypt task pointers and rebuild current task state. | PFTL plus encrypted IPFS. | `pftl_task_pointer_events`, `task_events`, `task_projections`. |
 
 ## Stage B Speedrun
 
-`reference_clients/python/tasknode_pftl/scenarios/task_engine_speedrun.py --stage n10` is the canonical pre-production demo for this architecture. It exists to prove that the design works before the web `Request task` button starts creating real on-chain requests.
+`reference_clients/python/tasknode_pftl/scenarios/task_engine_speedrun.py --stage n10` is the canonical Python reference demo for this architecture. It exists so external agents and Codex workflows can reproduce the wallet-native task loop outside the web UX, and it remains useful for multi-wallet stress testing even though the web `Request task` path is now live.
 
 Run it:
 
@@ -130,7 +130,7 @@ sequenceDiagram
   participant API as Task API
   participant IPFS as IPFS
   participant PFTL as PFTL
-  participant Q as Worker Queues
+  participant Req as task_requests
   participant A as Authority Wallet
   participant R as Allocation Wallet
   participant DB as Projection Cache
@@ -141,13 +141,13 @@ sequenceDiagram
   UI->>B: Build/sign request pointer after user confirms details
   API->>IPFS: Pin encrypted request bundle
   B->>PFTL: Submit TASK_REQUEST pointer
-  PFTL-->>Q: Confirmed request event
-  Q->>A: Queue task offer transaction
+  API->>Req: Upsert durable request row
+  Req->>A: Worker claims request row
   A->>PFTL: Submit TASK_OFFER pointer
   PFTL-->>DB: Replay proposed task projection
   U->>B: Accept, submit, verify
-  Q->>A: Queue verification request when needed
-  Q->>R: Queue reward payment
+  DB->>A: Review worker claims submitted projection
+  DB->>R: Reward worker signs positive reward
   R->>PFTL: Pay reward with pointer memo
   PFTL-->>DB: Replay rewarded projection
 ```
@@ -169,49 +169,19 @@ The `Request task` control must fail before chain work when the required wallet 
 | PFTL submit times out | Mark request as `pending_chain` only if a tx hash exists; otherwise show retryable failure with the same idempotency key. |
 | Authority or reward worker is delayed | Keep task state pending and let projection update after confirmed events. Do not fake proposed or rewarded state. |
 
-## Queue Model
+## Current Queue Boundaries
 
-Every signing wallet has its own queue.
+Current queue ownership is split across two Postgres-backed claim paths:
 
-```text
-wallet_tx_queue
-  id
-  signing_wallet
-  role
-  event_type
-  task_id nullable
-  request_id nullable
-  payload_cid nullable
-  idempotency_key
-  status prepared | submitting | submitted | confirmed | failed_retryable | failed_final
-  tx_hash nullable
-  ledger_index nullable
-  attempts
-  available_at
-  locked_by nullable
-  locked_at nullable
-  created_at
-  updated_at
-```
+| Queue boundary | Table/projection | Claim rule |
+| --- | --- | --- |
+| Request generation | `task_requests` | `claimTaskGenerationRequests` claims `published` request rows and marks worker attempt metadata. |
+| Verification request | `task_projections` | `claimSubmittedTasks` claims `submitted` projections that do not have a published verification worker marker. |
+| Reward scoring/payment | `task_projections` | `claimVerificationResponses` claims `verification_response_submitted` projections that do not have a published reward worker marker. |
 
-Idempotency key:
+These queues prevent duplicate worker processing for the same request or task phase, but they do not yet serialize all transactions per signing wallet. The current worker signs authority and reward transactions inline. That is acceptable for low-volume local/testnet use, but the scalable design still needs a `wallet_tx_queue` table and one-at-a-time execution per authority/reward wallet before public load.
 
-```text
-sha256(signing_wallet + event_type + task_id + request_id + payload_cid)
-```
-
-Worker rule:
-
-```text
-SELECT queued tx for wallet
-TAKE advisory lock on signing_wallet
-submit one tx
-wait for result or timeout
-record tx hash and confirmation status
-release lock
-```
-
-Different wallets can proceed in parallel:
+Target wallet-level parallelism:
 
 ```mermaid
 flowchart LR
@@ -291,7 +261,18 @@ Treasury is a funding source only. It should top up allocation wallets asynchron
 
 ## Worker Ownership
 
-Recommended production processes:
+Current local Docker starts the task workers from `server/index.js` in the API process:
+
+```text
+tasknode-api
+  request preflight
+  browser signing coordination
+  read projection state
+  startTaskGenerationWorker()
+  startTaskReviewWorker()
+```
+
+Recommended production split once volume requires it:
 
 ```text
 tasknode-api
@@ -341,12 +322,10 @@ The app should show task request status from real pipeline state:
 
 The Tasks surface should read `task_projections`. The chat surface may show transient request status, but durable task cards should come from projection replay.
 
-## Implementation Order
+## Current Remaining Work
 
-1. Implement request preflight and edge-state UI.
-2. Promote request intent into bundle creation and user-wallet request pointer signing.
-3. Add `wallet_tx_queue` and one transaction worker for authority/allocation wallets.
-4. Add authority task-generation worker.
-5. Add replay/indexer updates into `task_projections`.
-6. Add allocation wallet provisioner and treasury top-up worker.
-7. Scale authority and allocation wallets only after single-wallet correctness is proven.
+1. Add `wallet_tx_queue` and one transaction worker for authority/allocation wallets.
+2. Add allocation wallet provisioner and treasury top-up worker.
+3. Expose worker failure and retry state directly in task detail.
+4. Add operator monitoring around request generation, review, scoring, reward payout, and projection lag.
+5. Scale authority and allocation wallets only after single-wallet correctness remains stable.
