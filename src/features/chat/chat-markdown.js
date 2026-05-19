@@ -75,6 +75,7 @@ export function markdownToBlocks(input) {
     const quote = raw.match(/^>\s+(.+)/);
     const ul = raw.match(/^[-*]\s+(.+)/);
     const ol = raw.match(/^\d+[.)]\s+(.+)/);
+    const implicitList = implicitListAfterColon(lines, lineIndex);
 
     if (/^---+$/.test(raw)) {
       flushParagraph();
@@ -96,6 +97,15 @@ export function markdownToBlocks(input) {
       pushList("ul", ul[1]);
     } else if (ol) {
       pushList("ol", ol[1]);
+    } else if (implicitList) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "p", inline: parseInline(raw) });
+      list = { type: "ul", items: [] };
+      implicitList.items.forEach((item) => list.items.push(parseInline(item)));
+      flushList();
+      lineIndex = implicitList.endIndex;
+      continue;
     } else {
       paragraph.push(raw);
     }
@@ -172,6 +182,33 @@ function tableColumnAlignment(cell) {
 
 function normalizeTableCells(cells, count, fallback = "") {
   return Array.from({ length: Math.max(0, count) }, (_, index) => cells[index] || fallback);
+}
+
+function implicitListAfterColon(lines, startIndex) {
+  const intro = String(lines[startIndex] || "").trim();
+  if (!/:$/.test(intro) || intro.length > 120) return null;
+
+  const items = [];
+  let cursor = startIndex + 1;
+  while (cursor < lines.length) {
+    const raw = String(lines[cursor] || "").trim();
+    if (!raw) break;
+    if (!isImplicitListItem(raw)) return null;
+    items.push(raw);
+    cursor += 1;
+  }
+
+  if (items.length < 3) return null;
+  return { items, endIndex: cursor - 1 };
+}
+
+function isImplicitListItem(line) {
+  const raw = String(line || "").trim();
+  if (!raw || raw.length > 96) return false;
+  if (/^(#{1,6}\s+|>\s+|[-*]\s+|\d+[.)]\s+|```|~~~)/.test(raw)) return false;
+  if (isMarkdownTableRow(raw)) return false;
+  const sentenceMarks = raw.match(/[.!?]/g) || [];
+  return sentenceMarks.length <= 1;
 }
 
 function parseInline(input) {

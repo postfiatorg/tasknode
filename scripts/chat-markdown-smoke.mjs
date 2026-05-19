@@ -18,4 +18,32 @@ assert.equal(blocks[0].type, "h2");
 assert.equal(blocks[1].type, "ul");
 assert.equal(plainTextFromBlocks(blocks), "Header\n\nFast\nSafe\n\nplain text");
 
+const implicitListBlocks = markdownToBlocks(
+  [
+    "Learn taste outside technology.",
+    "Study:",
+    "Typography",
+    "Film editing",
+    "Architecture",
+    "Great interviews",
+    "Leica cameras",
+    "The original iPhone onboarding",
+    "Retail environments",
+    "Menu design",
+    "Rhythm in music",
+    "Why certain rooms feel calm",
+    "",
+    "Because the future winners in AI will not be the people who can generate the most output.",
+  ].join("\n")
+);
+assert.equal(implicitListBlocks[0].type, "p");
+assert.equal(implicitListBlocks[1].type, "p");
+assert.equal(implicitListBlocks[2].type, "ul");
+assert.equal(implicitListBlocks[2].items.length, 10);
+assert.equal(plainTextFromBlocks(implicitListBlocks).includes("Study:\n\nTypography\nFilm editing"), true);
+
+const shortExplanation = markdownToBlocks("Root cause:\nThe parser was too narrow.\nIt only handled explicit bullets.");
+assert.equal(shortExplanation.length, 1);
+assert.equal(shortExplanation[0].type, "p");
+
 console.log("chat markdown smoke ok");
