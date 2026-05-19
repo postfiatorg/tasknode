@@ -68,6 +68,8 @@ The current chat stack already carries several kinds of awareness. The Jobs prom
 
 Goal: test the Jobs XML prompt across Private Instant, Private Thinking, Frontier Instant, and Frontier Thinking without building retrieval yet.
 
+Phase 1 must be completed locally in Docker before any Fly deployment. The goal is to make the loop fast and observable on `http://localhost:5174`, prove the prompt assembly once, and only then promote the same code path to Fly.
+
 ### Implementation Shape
 
 1. Promote the local XML prompt artifact into a versioned runtime prompt file, likely `prompts/chat/jobs_chat_os_v1.xml`. The current `docs/jobs.md` wrapper is a staging artifact; runtime prompt code should load XML as XML or plain text, not as markdown.
@@ -165,6 +167,42 @@ Likely tests:
 | `npm run route-smoke` | Confirms Help and Chat still render. |
 | Optional live provider smoke | Sends one small prompt through each enabled provider route and records mode/model/result metadata. |
 
+### Local Docker Gate
+
+Run Phase 1 against local Docker first:
+
+```bash
+npm run docker:dev
+```
+
+The local gate is not just a build. It must prove the running app path:
+
+1. Local web is reachable at `http://localhost:5174`.
+2. Local API uses the same prompt assembly function as production.
+3. `TASKNODE_CHAT_SPIRIT_ENABLED=true` is set in local Docker env.
+4. The Jobs XML prompt is loaded from one runtime prompt file.
+5. Private Instant, Private Thinking, Frontier Instant, and Frontier Thinking all route through the same rendered instruction path.
+6. Context document access still works.
+7. Deep memory and recent memory still work.
+8. Task context still works.
+9. Attachments still flow through the existing chat attachment path.
+10. Frontier web search remains available only when the user asks for current/external/source-grounded information.
+11. Private modes do not gain web search.
+12. Billing still records ordinary chat tokens.
+
+Local verification should include:
+
+- `npm run quality`
+- `npm run build`
+- `npm run route-smoke`
+- `npm run chat-attachment-smoke`
+- `npm run runtime-smoke`
+- `scripts/chat-spirit-prompt-smoke.mjs` once it exists
+- one browser screenshot of the local chat/docs surface if UI docs or visible prompt controls change
+- one local provider smoke per enabled mode, or a precise explanation for any mode not configured locally
+
+Only after this local gate passes should the same commit be tested on Fly.
+
 ## Phase 2: pgvector Jobs Retrieval
 
 Goal: retrieve three relevant Jobs corpus chunks for the user's workflow and inject them into the Jobs prompt retrieval slot.
@@ -258,6 +296,8 @@ Retrieval output should be advisory calibration, not a quote dump. The Jobs XML 
 ### Fly Deployment Model
 
 Do not deploy a local vector DB file per server. Use the shared Fly Postgres database so every app instance reads the same rows.
+
+Fly is the second environment, not the first proving ground. For Phase 1, Fly deployment should happen only after Docker proves the prompt path across the four chat modes. For Phase 2, Fly deployment should happen only after local Docker proves pgvector migration, ingestion idempotency, retrieval, failure fallback, and prompt injection.
 
 Deployment plan:
 
