@@ -16,6 +16,34 @@ LOCAL_JSON_TASK_FIXTURE_PATH = ROOT / "tasknode_pftl" / "fixtures" / "local_json
 FIXED_TIMESTAMP = "2026-05-18T00:00:00Z"
 SCHEMA = "pf.task.local_json_loop.v1"
 
+TASK_STATE_TRANSITIONS: dict[str, dict[str, set[str]]] = {
+    "none": {"proposed": {"task_generated"}},
+    "proposed": {"accepted": {"task_accepted"}, "refused": {"task_refused"}},
+    "accepted": {"submitted": {"artifact_submitted"}, "cancelled": {"task_cancelled"}},
+    "submitted": {"reviewed": {"submission_reviewed"}},
+    "reviewed": {"rewarded": {"reputation_updated"}, "rejected": {"reputation_updated"}},
+    "refused": {},
+    "cancelled": {},
+    "rewarded": {},
+    "rejected": {},
+}
+
+
+class InvalidTaskTransition(ValueError):
+    def __init__(self, *, event_type: str, from_status: str, to_status: str):
+        allowed = sorted(TASK_STATE_TRANSITIONS.get(from_status, {}).keys())
+        self.rejection = {
+            "event_type": event_type,
+            "from_status": from_status,
+            "to_status": to_status,
+            "allowed_to_statuses": allowed,
+            "reason": "invalid_task_state_transition",
+        }
+        super().__init__(
+            f"invalid task transition {event_type}: {from_status} -> {to_status}; "
+            f"allowed: {', '.join(allowed) or 'none'}"
+        )
+
 
 def canonical_id(prefix: str, payload: dict[str, Any]) -> str:
     return f"{prefix}_{sha256_hex(payload)[:24]}"
@@ -34,6 +62,22 @@ def read_json(path: Path, default: Any) -> Any:
 
 def load_task_fixture() -> dict[str, Any]:
     return read_json(LOCAL_JSON_TASK_FIXTURE_PATH, {})
+
+
+def validate_task_transition(*, event_type: str, from_status: str, to_status: str) -> dict[str, Any]:
+    allowed_events = TASK_STATE_TRANSITIONS.get(from_status, {}).get(to_status)
+    if event_type not in (allowed_events or set()):
+        raise InvalidTaskTransition(
+            event_type=event_type,
+            from_status=from_status,
+            to_status=to_status,
+        )
+    return {
+        "event_type": event_type,
+        "from_status": from_status,
+        "to_status": to_status,
+        "valid": True,
+    }
 
 
 class LocalJsonTaskStore:
@@ -93,6 +137,11 @@ def transition_event(
     to_status: str,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
+    validate_task_transition(
+        event_type=event_type,
+        from_status=from_status,
+        to_status=to_status,
+    )
     core = {
         "schema": SCHEMA,
         "event_type": event_type,
@@ -201,6 +250,7 @@ def run_demo(*, store_dir: Path, reset: bool = False) -> dict[str, Any]:
     reputation_before = state["reputation"].get(user_id) or base_reputation(user_id)
     events: list[dict[str, Any]] = []
     transitions: list[dict[str, str]] = []
+    rejected_transitions: list[dict[str, Any]] = []
 
     def record(event: dict[str, Any]) -> None:
         events.append(event)
@@ -211,6 +261,18 @@ def run_demo(*, store_dir: Path, reset: bool = False) -> dict[str, Any]:
             "event_id": event["event_id"],
         })
 
+    def reject_transition(*, event_type: str, from_status: str, to_status: str) -> None:
+        try:
+            validate_task_transition(
+                event_type=event_type,
+                from_status=from_status,
+                to_status=to_status,
+            )
+        except InvalidTaskTransition as error:
+            rejected_transitions.append(error.rejection)
+            return
+        raise AssertionError(f"expected transition rejection for {from_status} -> {to_status}")
+
     record(
         transition_event(
             event_type="task_generated",
@@ -220,6 +282,12 @@ def run_demo(*, store_dir: Path, reset: bool = False) -> dict[str, Any]:
             to_status="proposed",
             payload={"request": request, "task": task},
         )
+    )
+
+    reject_transition(
+        event_type="artifact_submitted",
+        from_status="proposed",
+        to_status="submitted",
     )
 
     task["status"] = "accepted"
@@ -234,6 +302,12 @@ def run_demo(*, store_dir: Path, reset: bool = False) -> dict[str, Any]:
             to_status="accepted",
             payload={"task_id": task_id, "accepted_by": user_id},
         )
+    )
+
+    reject_transition(
+        event_type="reputation_updated",
+        from_status="accepted",
+        to_status="rewarded",
     )
 
     body = artifact_body(task, request)
@@ -321,6 +395,15 @@ def run_demo(*, store_dir: Path, reset: bool = False) -> dict[str, Any]:
         "final_status": task["status"],
         "transition_count": len(transitions),
         "transitions": transitions,
+        "rejected_transition_count": len(rejected_transitions),
+        "rejected_transitions": rejected_transitions,
+        "state_machine": {
+            from_status: {
+                to_status: sorted(event_types)
+                for to_status, event_types in transitions_by_target.items()
+            }
+            for from_status, transitions_by_target in TASK_STATE_TRANSITIONS.items()
+        },
         "reputation_before": reputation_before,
         "reputation_after": reputation_after,
         "state_digest": "sha256:" + sha256_hex({
@@ -352,6 +435,11 @@ def main() -> None:
     )
     print(f"  receipt_id: {receipt['receipt_id']}")
     print(f"  state_digest: {receipt['state_digest']}")
+    for rejection in receipt["rejected_transitions"]:
+      print(
+          "  rejected_transition: "
+          f"{rejection['event_type']} {rejection['from_status']} -> {rejection['to_status']}"
+      )
     print(f"  store_dir: {Path(args.store_dir).resolve()}")
 
 

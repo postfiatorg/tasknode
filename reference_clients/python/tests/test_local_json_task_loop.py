@@ -15,10 +15,17 @@ class LocalJsonTaskLoopTests(unittest.TestCase):
             self.assertEqual(receipt["state_digest"], repeat["state_digest"])
             self.assertEqual(receipt["final_status"], "rewarded")
             self.assertEqual(receipt["transition_count"], 5)
+            self.assertEqual(receipt["rejected_transition_count"], 2)
             self.assertEqual(
                 [transition["to"] for transition in receipt["transitions"]],
                 ["proposed", "accepted", "submitted", "reviewed", "rewarded"],
             )
+            self.assertEqual(
+                [rejection["reason"] for rejection in receipt["rejected_transitions"]],
+                ["invalid_task_state_transition", "invalid_task_state_transition"],
+            )
+            self.assertIn("accepted", receipt["state_machine"]["proposed"])
+            self.assertNotIn("submitted", receipt["state_machine"]["proposed"])
             self.assertEqual(receipt["reputation_before"]["reputation_points"], 42)
             self.assertEqual(receipt["reputation_after"]["reputation_points"], 50)
             self.assertTrue((Path(tmp) / "events.json").exists())
