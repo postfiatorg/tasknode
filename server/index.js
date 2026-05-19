@@ -28,6 +28,7 @@ import {
   walletActionStart, walletActions, walletLinkStart, walletLinkVerify,
 } from "./product-contracts.js";
 import { executeChatStream } from "./chat-router.js";
+import { conversationIdForChatWrite, explicitConversationId } from "./chat-conversation-ids.js";
 import { startMemoryWorker } from "./chat-memory-worker.js";
 import {
   conversationIdForSession,
@@ -45,6 +46,7 @@ import {
   renameChatConversation,
   usageLedger,
 } from "./repositories/chat-billing.js";
+import { chatConversationExistsForAccount } from "./repositories/chat-conversation-lookup.js";
 import { listChatMemory } from "./repositories/chat-memory.js";
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
@@ -58,6 +60,15 @@ const distDir = path.join(rootDir, "dist");
 const port = Number(process.env.PORT || 8080);
 const buildId = process.env.VITE_BUILD_ID || process.env.BUILD_ID || "dev";
 const environment = process.env.TASKNODE_ENV || process.env.NODE_ENV || "development";
+
+function resolveChatWriteConversationId(session, requestedId = "") {
+  return conversationIdForChatWrite({
+    conversationIdForSession,
+    existsForAccount: chatConversationExistsForAccount,
+    requestedId,
+    session,
+  });
+}
 
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -587,10 +598,7 @@ async function routeApi(req, url, res) {
     }
 
     const payload = await readJson(req);
-    const conversationId = conversationIdForSession(
-      session,
-      payload?.conversationId || payload?.id || ""
-    );
+    const conversationId = explicitConversationId(payload?.conversationId || payload?.id || "");
     const action =
       req.method === "PATCH"
         ? await renameChatConversation({
@@ -612,7 +620,7 @@ async function routeApi(req, url, res) {
       json(res, 401, { ok: false, error: "chat_history_login_required", message: "Sign in before reading chat history." });
       return true;
     }
-    const conversationId = conversationIdForSession(session, url.searchParams.get("conversationId") || "");
+    const conversationId = explicitConversationId(url.searchParams.get("conversationId") || "") || conversationIdForSession(session);
     json(res, 200, {
       conversationId,
       messages: await getChatMessages({ accountId: session.accountId, conversationId }),
@@ -639,7 +647,7 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/chat/stream") {
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
-    const conversationId = conversationIdForSession(session, payload?.conversationId || "");
+    const conversationId = await resolveChatWriteConversationId(session, payload?.conversationId || "");
     const started = await chatStreamStart(
       { ...payload, accountId: session?.accountId || "", conversationId },
       req.method
@@ -719,7 +727,7 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/chat/send") {
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
-    const conversationId = conversationIdForSession(session, payload?.conversationId || "");
+    const conversationId = await resolveChatWriteConversationId(session, payload?.conversationId || "");
     const result = await chatSend(
       { ...payload, accountId: session?.accountId || "", conversationId },
       req.method
@@ -730,7 +738,7 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/tasks/request-intent") {
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
-    const conversationId = conversationIdForSession(session, payload?.conversationId || "");
+    const conversationId = await resolveChatWriteConversationId(session, payload?.conversationId || "");
     const result = await taskRequestIntentStart(
       { ...payload, accountId: session?.accountId || "", conversationId },
       req.method
@@ -913,7 +921,7 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/usage/ledger") {
     const requestedConversationId = url.searchParams.get("conversationId") || "";
     const conversationId = requestedConversationId
-      ? conversationIdForSession(session, requestedConversationId)
+      ? await resolveChatWriteConversationId(session, requestedConversationId)
       : session
         ? conversationIdForSession(session)
         : "";

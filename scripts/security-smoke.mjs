@@ -22,6 +22,8 @@ try {
     usageAdminCredit,
   } = await import("../server/product-contracts.js");
   const { appState } = await import("../server/app-state.js");
+  const { conversationIdForChatWrite } = await import("../server/chat-conversation-ids.js");
+  const { conversationIdForSession } = await import("../server/runtime-store.js");
   const {
     appendChatTurn,
     getChatMessages,
@@ -187,6 +189,24 @@ try {
     }),
     /chat_conversation_not_found/
   );
+
+  const rawOwnedConversationId = "conv_security_raw_owned";
+  const rawResolvedConversationId = await conversationIdForChatWrite({
+    conversationIdForSession,
+    existsForAccount: async ({ accountId, conversationId }) =>
+      accountId === "acct_security_owner" && conversationId === rawOwnedConversationId,
+    requestedId: rawOwnedConversationId,
+    session: { accountId: "acct_security_owner" },
+  });
+  assert.equal(rawResolvedConversationId, rawOwnedConversationId);
+
+  const newDraftConversationId = await conversationIdForChatWrite({
+    conversationIdForSession,
+    existsForAccount: async () => false,
+    requestedId: "chat_security_new",
+    session: { accountId: "acct_security_owner" },
+  });
+  assert.equal(newDraftConversationId, "account_acct_security_owner_chat_security_new");
 
   const signedOutState = await appState(null);
   assert.deepEqual(signedOutState.chat.seedMessages, []);
