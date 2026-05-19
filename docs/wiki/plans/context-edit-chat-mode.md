@@ -12,7 +12,7 @@ The user should feel like Steve Jobs is helping edit the Context document: direc
 
 The user flow should be:
 
-1. User enters Context Edit mode from Chat, the `+` menu, or a Context page handoff.
+1. User clicks `+` in Chat and chooses `Context Refine`.
 2. The chat composer clearly shows that the next messages are about editing the Context document.
 3. The system silently loads the current Context document, line-numbered document text, memory, task state, and recent chat.
 4. User describes what they want changed.
@@ -71,11 +71,11 @@ Problems to avoid:
 
 Context Edit mode can be entered from:
 
-- Chat `+` menu: `Edit context`.
+- Chat `+` menu: `Context Refine`.
 - Context page toolbar: `Edit with chat`, which navigates to Chat with Context Edit mode active.
 - Potential future keyboard command or command palette.
 
-The entry point should not open a modal. It should switch the current chat into a typed context-edit state or create a new chat titled from the edit request.
+The primary user-facing action is `Context Refine`. Internally it activates `context_edit` mode. The entry point should not open a modal. It should switch the current chat into a typed context-edit state, keep the user in the same conversation, and change the composer into a context-edit request box.
 
 ### Chat Mode Treatment
 
@@ -83,6 +83,7 @@ When Context Edit mode is active:
 
 - The composer placeholder becomes `Describe the context edit you want...`.
 - A compact mode badge appears near the composer: `Context Edit`.
+- The chat remains the same chat; it does not navigate to a different page, open a modal, or force a new conversation.
 - The first pending assistant message says what it is doing in plain language, for example `Reading your context document`.
 - The assistant uses the dedicated context-edit prompt.
 - The mode remains active until the user exits it or accepts/rejects the current edit and chooses to continue normal chat.
@@ -381,7 +382,7 @@ Known breakages to design out before implementation:
 ### Phase 1: Chat Mode and Line Numbers
 
 - Add `context_edit` chat mode state.
-- Add a `+` menu action for `Edit context`.
+- Wire the existing Chat `+` menu `Context Refine` action to activate `context_edit` mode.
 - Add a Context page handoff button that switches to Chat in `context_edit` mode.
 - Render line numbers in the Context page.
 - Add fixture-backed inline proposal cards for local design validation.
@@ -418,7 +419,7 @@ Known breakages to design out before implementation:
 This is done only when:
 
 1. The Context page has visible line numbers that match the normalized model packet.
-2. Chat has a visible `Context Edit` mode entered from the `+` menu and Context page handoff.
+2. Clicking `+` then `Context Refine` keeps the user in Chat and visibly activates `Context Edit` mode.
 3. Context Edit mode uses the dedicated context-edit Jobs prompt, not the generic chat prompt alone.
 4. The assistant can ask one calibration question or return one structured proposal.
 5. The proposal appears as an inline chat card with line range, before, suggested edit, patched preview, rationale, and clear actions.
