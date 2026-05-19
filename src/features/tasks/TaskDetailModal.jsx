@@ -372,6 +372,11 @@ function TaskSubmitPanel({
   const actions = detail?.actions || {};
   const verificationRequest = detail?.currentVerificationRequest || null;
   const submissionOpen = Boolean(actions.canSubmitInitialEvidence || actions.canSubmitVerificationEvidence);
+  const submissionModeKey = actions.canSubmitVerificationEvidence
+    ? `verification:${verificationRequest?.eventId || verificationRequest?.body || taskId}`
+    : actions.canSubmitInitialEvidence
+      ? `initial:${taskId}`
+      : `closed:${task?.statusKey || task?.status || taskId}`;
   const summaries = Array.isArray(detail?.submission?.summaries) ? detail.submission.summaries : [];
   const signingEnabled = Boolean(actions.browserSubmissionEnabled);
   const vaultUnlocked = Boolean(walletVault?.unlocked);
@@ -409,7 +414,7 @@ function TaskSubmitPanel({
     setNotes("");
     setConfirmed(false);
     setState({ error: "", pending: false, pendingLabel: "", result: "" });
-  }, [defaultEvidenceMethod, taskId]);
+  }, [defaultEvidenceMethod, submissionModeKey]);
 
   function updateEvidenceDraft(id, key, value) {
     setState({ error: "", pending: false, pendingLabel: "", result: "" });
@@ -513,6 +518,9 @@ function TaskSubmitPanel({
         pendingLabel: "",
         result: result?.txHash ? `Published ${truncateCid(result.txHash)}` : "Evidence published",
       });
+      setEvidenceDrafts([createEvidenceDraft(defaultEvidenceMethod)]);
+      setNotes("");
+      setConfirmed(false);
       Promise.resolve(onEvidenceSubmitted?.(result)).catch(() => {});
     } catch (error) {
       setState({
