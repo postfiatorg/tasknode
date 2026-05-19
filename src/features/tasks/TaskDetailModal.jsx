@@ -21,6 +21,7 @@ import {
   taskRequiresRefresh,
   taskStatusColor,
 } from "../../../shared/task-lifecycle";
+import { formatTaskTimestamp } from "../../../shared/task-time-format";
 import { truncateCid } from "../context/context-view-utils.jsx";
 import { publishTaskLifecycleAction } from "./task-actions.js";
 import {
@@ -788,7 +789,7 @@ function TaskForensicsNotice({ state }) {
 function TaskForensicsEvent({ copiedValue, event, index, onCopy }) {
   const details = Array.isArray(event.details) ? event.details : [];
   const rawPayload = event.rawPayload && typeof event.rawPayload === "object" ? event.rawPayload : null;
-  const observed = formatForensicsTimestamp(event.observedAt || event.occurredAt);
+  const observed = formatTaskTimestamp(event.observedAt || event.occurredAt);
   const auditItems = [
     { label: "CID", name: `event-cid-${index}`, value: event.cid },
     { label: "Transaction", name: `event-tx-${index}`, value: event.txHash },
@@ -881,20 +882,6 @@ function TaskAuditValue({ copiedValue, label, name, onCopy, value }) {
       {copiedValue === name ? <Check size={12} strokeWidth={1.8} /> : <Copy size={12} strokeWidth={1.8} />}
     </button>
   );
-}
-
-function formatForensicsTimestamp(value) {
-  if (!value) return "";
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(new Date(value));
-  } catch {
-    return "";
-  }
 }
 
 export function TaskDetailModal({

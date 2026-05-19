@@ -19,6 +19,7 @@
     "wallet-state-regression": "node scripts/wallet-state-regression.mjs",
     "route-smoke": "node scripts/route-smoke.mjs",
     "chat-attachment-smoke": "node scripts/chat-attachment-smoke.mjs",
+    "task-time-format-smoke": "node scripts/task-time-format-smoke.mjs",
     "security-smoke": "node scripts/security-smoke.mjs",
     "check": "npm run quality && npm run wallet-state-regression && npm run runtime-smoke && npm run chat-attachment-smoke && npm run pftl-cache-smoke && npm run pftl-cache-watcher-smoke && npm run security-smoke && npm run build && npm run route-smoke",
     "start": "node server/index.js",

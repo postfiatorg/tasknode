@@ -8,6 +8,7 @@ import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
 import { emptyTaskRequestState, listTaskRequests } from "./task-requests.js";
 import { normalizeTaskStatus, taskLifecycleActions, taskRefreshMetadata, taskStatusInfo, taskStatusLabel, taskStatusTab } from "../../shared/task-lifecycle.js";
+import { formatTaskDeadline, formatTaskTimestamp } from "../../shared/task-time-format.js";
 
 const pointerEnvelopeKeys = new Set(["schema", "task_id", "tx_hash", "cid"]);
 
@@ -56,17 +57,6 @@ function relativeAge(value) {
   return `${days}d ago`;
 }
 
-function formatDeadline(value) {
-  const iso = toIso(value);
-  if (!iso) return "No deadline";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(iso));
-}
-
 function emptyTaskState({ walletLinked = false, walletAddress = "" } = {}) {
   return {
     ...taskProductConfig(),
@@ -102,6 +92,10 @@ function publicTask(row) {
   const metadata = safeObject(row.metadata_json);
   const generatedTask = safeObject(metadata.generatedTask);
   const verification = safeObject(row.verification_policy_json);
+  const acceptBy = toIso(row.accept_by);
+  const deadlineAt = toIso(row.deadline_at);
+  const dueAt = deadlineAt || acceptBy;
+  const formattedDue = formatTaskDeadline(dueAt, { locale: "en-US" });
 
   return {
     id: String(row.task_id || "").slice(0, 12),
@@ -115,8 +109,11 @@ function publicTask(row) {
     statusColor: statusInfo.color,
     statusTab: statusInfo.tab,
     lifecycle: statusInfo,
-    due: formatDeadline(row.deadline_at || row.accept_by),
-    fullDue: formatDeadline(row.deadline_at || row.accept_by),
+    due: formattedDue,
+    fullDue: formattedDue,
+    dueAt,
+    acceptBy,
+    deadlineAt,
     ago: relativeAge(row.updated_at || row.last_event_at),
     pft,
     description: row.description || "",
@@ -145,6 +142,9 @@ function publicTask(row) {
     txHash: row.last_event_tx_hash || "",
     source: row.source || "pftl_replay",
     updatedAt: toIso(row.updated_at),
+    updatedAtDisplay: formatTaskTimestamp(row.updated_at, { locale: "en-US" }),
+    lastEventAt: toIso(row.last_event_at),
+    lastEventAtDisplay: formatTaskTimestamp(row.last_event_at, { locale: "en-US" }),
     metadata: {
       requestId: row.request_id || undefined, eventCount: Number(row.event_count || 0),
       sourceRunId: metadata.runId || undefined, openaiResponseId: metadata.taskgen?.openai_response_id || undefined,
@@ -328,9 +328,9 @@ function payloadDetails(schema = "", payload = {}, pointer = {}) {
   addDetail(details, "Subject wallet", payload.subject_wallet);
   addDetail(details, "Authority wallet", payload.authority_wallet);
   addDetail(details, "Allocation wallet", payload.allocation_wallet);
-  addDetail(details, "Created at", payload.created_at);
-  addDetail(details, "Submitted at", payload.submitted_at);
-  addDetail(details, "Responded at", payload.responded_at);
+  addDetail(details, "Created at", formatTaskTimestamp(payload.created_at, { locale: "en-US" }));
+  addDetail(details, "Submitted at", formatTaskTimestamp(payload.submitted_at, { locale: "en-US" }));
+  addDetail(details, "Responded at", formatTaskTimestamp(payload.responded_at, { locale: "en-US" }));
   addDetail(details, "Prompt version", payload.generation?.prompt_version);
   addDetail(details, "Model", payload.generation?.model);
   addDetail(details, "Provider", payload.generation?.provider);
