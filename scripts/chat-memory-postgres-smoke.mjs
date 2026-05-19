@@ -16,6 +16,17 @@ import {
   listChatMemory,
 } from "../server/repositories/chat-memory.js";
 
+function jsonArray(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required for chat memory Postgres smoke.");
 }
@@ -134,8 +145,44 @@ for (let index = 1; index <= deepMemoryBlockSize; index += 1) {
 const deepJobs = await claimDeepMemoryJobs({ limit: 1 });
 assert.equal(deepJobs.length, 1);
 assert.equal(deepJobs[0].block_index, 1);
+const sourceEntryIds = jsonArray(deepJobs[0].source_entry_ids);
+assert.equal(sourceEntryIds.length, deepMemoryBlockSize);
+
+const driftEntryId = `mem_drift_${suffix}`;
+await query(
+  `
+    INSERT INTO chat_memory_entries (
+      id,
+      account_id,
+      conversation_id,
+      conversation_title,
+      user_message_id,
+      assistant_message_id,
+      user_request_summary,
+      system_response_summary,
+      memory_text,
+      kind,
+      created_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'turn_memory', now() - interval '1 year')
+  `,
+  [
+    driftEntryId,
+    accountId,
+    conversationId,
+    "Drift entry",
+    `msg_${suffix}_drift_user`,
+    `msg_${suffix}_drift_assistant`,
+    "This row is inserted after the deep job was created with an old timestamp.",
+    "It would shift ordinal block membership if source rows were recomputed later.",
+    "Deep-memory source snapshots must ignore this drift row.",
+  ]
+);
+
 const deepSource = await deepMemoryJobSource(deepJobs[0]);
 assert.equal(deepSource.entries.length, deepMemoryBlockSize);
+assert.equal(deepSource.entries.some((entry) => entry.id === driftEntryId), false);
+assert.deepEqual(deepSource.entries.map((entry) => entry.id), sourceEntryIds);
 
 await completeDeepMemoryJob({
   job: deepSource,
@@ -159,11 +206,54 @@ await completeDeepMemoryJob({
   },
 });
 
+await query("DELETE FROM chat_deep_memory_jobs WHERE id = $1", [deepJobs[0].id]);
+const recreatedDeepJobId = `deepmemjob_recreated_${suffix}`;
+await query(
+  `
+    INSERT INTO chat_deep_memory_jobs (
+      id,
+      account_id,
+      block_index,
+      status,
+      source_entry_ids
+    )
+    VALUES ($1, $2, 1, 'processing', $3::jsonb)
+  `,
+  [recreatedDeepJobId, accountId, JSON.stringify(sourceEntryIds)]
+);
+const recreatedDeepSource = await deepMemoryJobSource({
+  id: recreatedDeepJobId,
+  account_id: accountId,
+  block_index: 1,
+  source_entry_ids: sourceEntryIds,
+});
+await completeDeepMemoryJob({
+  job: recreatedDeepSource,
+  summary: {
+    userRequestSummary: [
+      "- The user repeatedly asked the system to remember concise implementation-plan preferences.",
+      "- The user wants future implementation plans to stay concrete and checkpoint driven.",
+    ].join("\n"),
+    systemResponseSummary: [
+      "- The assistant repeatedly acknowledged the concise-plan preference.",
+      "- The assistant committed to using concrete checkpoints in future planning.",
+    ].join("\n"),
+    memoryText:
+      "Retry-stable concise planning style memory. The user is exploring a concise planning style for implementation work. The system responded by acknowledging the recurring preference and framing it as durable memory.",
+    sourceUserExcerpt: "36 deterministic memory summaries.",
+    sourceAssistantExcerpt: "Recreated deep memory job smoke synthesis.",
+    provider: "smoke",
+    model: "deterministic",
+    promptVersion: "smoke_deep",
+    usage: {},
+  },
+});
+
 const memory = await listChatMemory({ accountId });
-assert.equal(memory.entries.length, deepMemoryBlockSize + 1);
+assert.equal(memory.entries.length, deepMemoryBlockSize + 2);
 const deepEntries = memory.entries.filter((entry) => entry.kind === "deep_memory");
 assert.equal(deepEntries.length, 1);
-assert.match(deepEntries[0].memoryText, /concise planning style/);
+assert.match(deepEntries[0].memoryText, /Retry-stable concise planning style/);
 
 const context = await getChatMemoryContext({ accountId, deepLimit: 3, turnLimit: 36 });
 assert.equal(context.deepMemories.length, 1);

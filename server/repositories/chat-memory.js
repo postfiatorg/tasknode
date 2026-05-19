@@ -36,6 +36,23 @@ function jsonValue(value) {
   return value;
 }
 
+function jsonArray(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function safeIdArray(value) {
+  return jsonArray(value)
+    .map((entryId) => safeText(entryId, 180))
+    .filter(Boolean);
+}
+
 function publicEntry(row) {
   return {
     id: row.id,
@@ -280,18 +297,37 @@ async function maybeEnqueueDeepMemoryJobForAccount(client, { accountId = "" } = 
   }
 
   const blockIndex = count / deepMemoryBlockSize;
+  const sourceEntryIds = await turnMemoryEntryIdsForBlock(client, {
+    accountId: normalizedAccountId,
+    blockIndex,
+  });
+  if (sourceEntryIds.length !== deepMemoryBlockSize) {
+    return {
+      queued: false,
+      count,
+      blockIndex,
+      reason: "source_snapshot_incomplete",
+    };
+  }
+
   const inserted = await client.query(
     `
       INSERT INTO chat_deep_memory_jobs (
         id,
         account_id,
-        block_index
+        block_index,
+        source_entry_ids
       )
-      VALUES ($1, $2, $3)
+      VALUES ($1, $2, $3, $4::jsonb)
       ON CONFLICT (account_id, block_index) DO NOTHING
       RETURNING *
     `,
-    [`deepmemjob_${randomUUID()}`, normalizedAccountId, blockIndex]
+    [
+      `deepmemjob_${randomUUID()}`,
+      normalizedAccountId,
+      blockIndex,
+      JSON.stringify(sourceEntryIds),
+    ]
   );
 
   return {
@@ -299,6 +335,31 @@ async function maybeEnqueueDeepMemoryJobForAccount(client, { accountId = "" } = 
     blockIndex,
     jobId: inserted.rows[0]?.id || null,
   };
+}
+
+async function turnMemoryEntryIdsForBlock(client, { accountId = "", blockIndex = 1 } = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedBlockIndex = Math.max(1, Number(blockIndex || 1));
+  const startOrdinal = (normalizedBlockIndex - 1) * deepMemoryBlockSize;
+  const result = await client.query(
+    `
+      WITH ordered AS (
+        SELECT
+          id,
+          row_number() OVER (ORDER BY created_at ASC, id ASC) AS ordinal
+        FROM chat_memory_entries
+        WHERE account_id = $1
+          AND kind = 'turn_memory'
+      )
+      SELECT id
+      FROM ordered
+      WHERE ordinal > $2
+        AND ordinal <= $3
+      ORDER BY ordinal ASC
+    `,
+    [normalizedAccountId, startOrdinal, startOrdinal + deepMemoryBlockSize]
+  );
+  return result.rows.map((row) => safeText(row.id, 180)).filter(Boolean);
 }
 
 export async function enqueueMissingDeepMemoryJobs({ accountId = "" } = {}) {
@@ -320,20 +381,40 @@ export async function enqueueMissingDeepMemoryJobs({ accountId = "" } = {}) {
   let queued = 0;
 
   for (let blockIndex = 1; blockIndex <= blockCount; blockIndex += 1) {
-    const result = await query(
-      `
-        INSERT INTO chat_deep_memory_jobs (
-          id,
-          account_id,
-          block_index
-        )
-        VALUES ($1, $2, $3)
-        ON CONFLICT (account_id, block_index) DO NOTHING
-        RETURNING id
-      `,
-      [`deepmemjob_${randomUUID()}`, normalizedAccountId, blockIndex]
-    );
-    if (result.rows[0]) queued += 1;
+    await transaction(async (client) => {
+      const sourceEntryIds = await turnMemoryEntryIdsForBlock(client, {
+        accountId: normalizedAccountId,
+        blockIndex,
+      });
+      if (sourceEntryIds.length !== deepMemoryBlockSize) return;
+
+      const result = await client.query(
+        `
+          INSERT INTO chat_deep_memory_jobs (
+            id,
+            account_id,
+            block_index,
+            source_entry_ids
+          )
+          VALUES ($1, $2, $3, $4::jsonb)
+          ON CONFLICT (account_id, block_index) DO UPDATE SET
+            source_entry_ids = CASE
+              WHEN jsonb_array_length(chat_deep_memory_jobs.source_entry_ids) = 0
+                THEN EXCLUDED.source_entry_ids
+              ELSE chat_deep_memory_jobs.source_entry_ids
+            END,
+            updated_at = now()
+          RETURNING (xmax = 0) AS inserted
+        `,
+        [
+          `deepmemjob_${randomUUID()}`,
+          normalizedAccountId,
+          blockIndex,
+          JSON.stringify(sourceEntryIds),
+        ]
+      );
+      if (result.rows[0]?.inserted) queued += 1;
+    });
   }
 
   return { ok: true, count, blockCount, queued };
@@ -384,28 +465,37 @@ export async function claimDeepMemoryJobs({ limit = 1 } = {}) {
 
 export async function deepMemoryJobSource(job) {
   if (!useDatabase() || !job?.id) return null;
-  const startOrdinal = (Number(job.block_index || 1) - 1) * deepMemoryBlockSize;
+  const sourceEntryIds = safeIdArray(job.source_entry_ids);
+  if (sourceEntryIds.length !== deepMemoryBlockSize) {
+    return {
+      ...job,
+      entries: [],
+      sourceEntryIds,
+    };
+  }
+
   const result = await query(
     `
-      WITH ordered AS (
+      WITH source_ids AS (
         SELECT
-          *,
-          row_number() OVER (ORDER BY created_at ASC, id ASC) AS ordinal
-        FROM chat_memory_entries
-        WHERE account_id = $1
-          AND kind = 'turn_memory'
+          value::text AS id,
+          ordinality
+        FROM jsonb_array_elements_text($2::jsonb) WITH ORDINALITY
       )
-      SELECT *
-      FROM ordered
-      WHERE ordinal > $2
-        AND ordinal <= $3
-      ORDER BY ordinal ASC
+      SELECT entry.*
+      FROM source_ids
+      JOIN chat_memory_entries AS entry
+        ON entry.id = source_ids.id
+       AND entry.account_id = $1
+       AND entry.kind = 'turn_memory'
+      ORDER BY source_ids.ordinality ASC
     `,
-    [safeAccountId(job.account_id), startOrdinal, startOrdinal + deepMemoryBlockSize]
+    [safeAccountId(job.account_id), JSON.stringify(sourceEntryIds)]
   );
 
   return {
     ...job,
+    sourceEntryIds,
     entries: result.rows.map(publicEntry),
   };
 }
@@ -439,10 +529,15 @@ export async function completeDeepMemoryJob({ job, summary }) {
         )
         VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8,
-          $9, $10, $11, $12, $13, $14, $15, $16, $17
+          $9, $10, $11, 'deep_memory', $12, $13, $14, $15, $16
         )
-        ON CONFLICT (assistant_message_id) DO UPDATE SET
+        ON CONFLICT (account_id, deep_memory_block_index)
+          WHERE kind = 'deep_memory' AND deep_memory_block_index IS NOT NULL
+        DO UPDATE SET
+          conversation_id = EXCLUDED.conversation_id,
           conversation_title = EXCLUDED.conversation_title,
+          user_message_id = EXCLUDED.user_message_id,
+          assistant_message_id = EXCLUDED.assistant_message_id,
           user_request_summary = EXCLUDED.user_request_summary,
           system_response_summary = EXCLUDED.system_response_summary,
           memory_text = EXCLUDED.memory_text,
@@ -468,7 +563,6 @@ export async function completeDeepMemoryJob({ job, summary }) {
         safeText(summary.memoryText, 1800),
         safeText(summary.sourceUserExcerpt, 500),
         safeText(summary.sourceAssistantExcerpt, 500),
-        "deep_memory",
         blockIndex,
         safeText(summary.provider, 80),
         safeText(summary.model, 160),
