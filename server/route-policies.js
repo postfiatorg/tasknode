@@ -122,6 +122,7 @@ export const apiRoutePolicies = [
   { id: "context_import_start", path: "/api/context/import/start", methods: ["POST"], auth: "handler" },
   { id: "context_manifest_ink", path: "/api/context/manifest/ink", methods: ["POST"], auth: "handler" },
   { id: "context_edit_save", path: "/api/context/edit/save", methods: ["POST"], auth: "handler" },
+  { id: "context_edit_proposal", prefix: "/api/context/edit/proposals/", methods: ["POST"], auth: "handler" },
   { id: "usage", path: "/api/usage", methods: ["GET"], auth: "optional" },
   { id: "usage_actions", path: "/api/usage/actions", methods: ["GET"], auth: "none" },
   { id: "usage_top_up_start", path: "/api/usage/top-up/start", methods: ["POST"], auth: "handler" },

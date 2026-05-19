@@ -71,7 +71,12 @@ import {
   readFileAsDataUrl,
   textFromAttachment,
 } from "./chat-attachments";
-import { plainTextFromBlocks } from "./features/chat/chat-markdown";
+import {
+  AssistantMessage,
+  AttachmentTray,
+  copyText,
+  UserMessage,
+} from "./features/chat/ChatMessages.jsx";
 import {
   appendAssistantDelta,
   chatTitleFromPrompt,
@@ -89,6 +94,13 @@ import {
   transcriptTextFromThread,
 } from "./features/chat/chat-turns";
 import { BillingSettings } from "./features/billing/BillingSettings";
+import {
+  applyContextEditProposal,
+  CONTEXT_EDIT_MODE,
+  CONTEXT_EDIT_PLACEHOLDER,
+  patchContextEditProposalTurn,
+  rejectContextEditProposal,
+} from "./features/context/context-edit-client";
 import { publishContextToPft } from "./features/context/context-publish";
 import {
   ContextToolButton,
@@ -1206,6 +1218,8 @@ function ChatSurface({
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [taskRequestMode, setTaskRequestMode] = useState(false);
+  const [contextEditMode, setContextEditMode] = useState(false);
+  const [contextEditSavingId, setContextEditSavingId] = useState("");
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
   const [actualUsage, setActualUsage] = useState(null);
@@ -1249,6 +1263,7 @@ function ChatSurface({
     setInput("");
     setAttachments([]);
     setTaskRequestMode(false);
+    setContextEditMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -1262,6 +1277,7 @@ function ChatSurface({
     if (!activeChat || activeChat.source === "live") return undefined;
     clearedChatRef.current = false;
     setTaskRequestMode(false);
+    setContextEditMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -1360,6 +1376,7 @@ function ChatSurface({
     const startedAt = Date.now();
     const requestedConversationId = activeChat?.conversationId || activeChat?.id || draftConversationId;
     const isTaskRequest = taskRequestMode;
+    const isContextEdit = contextEditMode && !isTaskRequest;
     const requestId = isTaskRequest ? newClientCorrelationId("req") : "";
     const bundleId = isTaskRequest ? newClientCorrelationId("bundle") : "";
     const taskRequestMessageId = requestId ? `msg_${requestId}_request_user`.slice(0, 180) : "";
@@ -1384,6 +1401,8 @@ function ChatSurface({
           status: "intent_pending",
         }
       : undefined;
+    const contextEditMetadata = isContextEdit ? { kind: CONTEXT_EDIT_MODE } : undefined;
+    const turnMetadata = taskRequestMetadata || contextEditMetadata;
 
     if (isTaskRequest && (!accountId || !linkedWalletAddress)) {
       setSendMessage("Link a PFT wallet before requesting a task.");
@@ -1409,9 +1428,9 @@ function ChatSurface({
         submittedText,
         taskRequestMessageId || `user-local-${startedAt}`,
         submittedAttachments,
-        taskRequestMetadata
+        turnMetadata
       ),
-      createPendingAssistantTurn(pendingId, startedAt, taskRequestMetadata),
+      createPendingAssistantTurn(pendingId, startedAt, turnMetadata),
     ]);
     if (!activeChat) {
       onActiveChatChange?.({
@@ -1471,11 +1490,12 @@ function ChatSurface({
 
       const chatPayload = {
         message: submittedText,
-        mode: selectedMode,
+        mode: isContextEdit ? "Frontier Thinking" : selectedMode,
+        contextMode: isContextEdit ? CONTEXT_EDIT_MODE : undefined,
         conversationId: requestedConversationId,
         attachments: serializeChatAttachments(submittedAttachments),
       };
-      const result = usage?.chatStreamPath
+      const result = usage?.chatStreamPath && !isContextEdit
         ? await requestEventStream(
             usage.chatStreamPath,
             {
@@ -1511,7 +1531,7 @@ function ChatSurface({
           pendingId
         );
         setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
-        setSendMessage(result.body.message || "Chat response generated.");
+        setSendMessage(result.body.message || (isContextEdit ? "Context edit response generated." : "Chat response generated."));
         setStatusTone("muted");
         setDraftConversationId(settledConversationId);
         onActiveChatChange?.({
@@ -1547,7 +1567,7 @@ function ChatSurface({
           createErrorAssistantTurn(pendingId, failureMessage, startedAt)
         )
       );
-      if (isTaskRequest) {
+      if (isTaskRequest || isContextEdit) {
         setInput(message);
         setAttachments(submittedAttachments);
       }
@@ -1667,6 +1687,54 @@ function ChatSurface({
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }
 
+  async function handleContextEditApply(proposal) {
+    if (!proposal?.id || contextEditSavingId) return;
+    setContextEditSavingId(proposal.id);
+    try {
+      const result = await applyContextEditProposal(proposal.id);
+      if (result.ok && result.body?.proposal) {
+        setTurns((current) => patchContextEditProposalTurn(current, proposal.id, result.body.proposal));
+        setSendMessage(result.body.message || "Context updated.");
+        setStatusTone("muted");
+        await onChatSettled?.();
+      } else {
+        throw new Error(result.body?.message || "Context edit could not be applied.");
+      }
+    } catch (error) {
+      const errorText = error?.message || "Context edit could not be applied.";
+      setTurns((current) => patchContextEditProposalTurn(current, proposal.id, { error: errorText }));
+      setSendMessage(errorText);
+      setStatusTone("error");
+    } finally {
+      setContextEditSavingId("");
+    }
+  }
+
+  async function handleContextEditReject(proposal) {
+    if (!proposal?.id || contextEditSavingId) return;
+    setContextEditSavingId(proposal.id);
+    try {
+      const result = await rejectContextEditProposal(proposal.id);
+      if (!result.ok || !result.body?.proposal) {
+        throw new Error(result.body?.message || "Context edit could not be rejected.");
+      }
+      setTurns((current) => patchContextEditProposalTurn(current, proposal.id, result.body.proposal));
+      setSendMessage("Context edit rejected.");
+      setStatusTone("muted");
+    } catch (error) {
+      setSendMessage(error?.message || "Context edit could not be rejected.");
+      setStatusTone("error");
+    } finally {
+      setContextEditSavingId("");
+    }
+  }
+
+  function handleContextEditRevise(proposal) {
+    setContextEditMode(true);
+    setInput(`Revise this context edit: ${proposal?.rationale || ""}`.trim());
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
   const composerStatus = chatComposerStatus({
     actualUsage,
     message: sendMessage,
@@ -1678,11 +1746,16 @@ function ChatSurface({
   const chatTitle = activeChat?.title || titleFromTurns(turns);
   const hasPromptInput = input.trim().length > 0 || attachments.length > 0;
   const composerExpanded = input.length > 0;
-  const composerPlaceholder = taskRequestMode ? TASK_REQUEST_PLACEHOLDER : "Ask anything";
+  const composerPlaceholder = taskRequestMode
+    ? TASK_REQUEST_PLACEHOLDER
+    : contextEditMode
+      ? CONTEXT_EDIT_PLACEHOLDER
+      : "Ask anything";
   const composerClassName = [
     "composer",
     composerDragActive ? "is-drag-active" : "",
     taskRequestMode ? "is-task-request" : "",
+    contextEditMode ? "is-context-edit" : "",
   ].filter(Boolean).join(" ");
   const composer = (
     <div className="composer-shell">
@@ -1708,6 +1781,15 @@ function ChatSurface({
             onRemove={removeAttachment}
             onShowInText={showAttachmentInTextField}
           />
+        )}
+        {contextEditMode && (
+          <div className="composer-mode-chip">
+            <Wand2 size={13} strokeWidth={1.9} />
+            <span>Context Edit</span>
+            <button aria-label="Exit Context Edit" onClick={() => setContextEditMode(false)} type="button">
+              <X size={12} strokeWidth={2} />
+            </button>
+          </div>
         )}
         <div className={composerExpanded ? "composer-grid is-expanded" : "composer-grid is-compact"}>
           <div className="plus-picker composer-plus" ref={plusRef}>
@@ -1735,7 +1817,18 @@ function ChatSurface({
                 <div className="menu-divider" />
                 <ToolMenuRow icon={Flame} label="Motivation" />
                 <ToolMenuRow icon={Lightbulb} label="Brainstorming" />
-                <ToolMenuRow icon={Wand2} label="Context Refine" />
+                <ToolMenuRow
+                  icon={Wand2}
+                  label="Context Refine"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    setTaskRequestMode(false);
+                    setContextEditMode(true);
+                    setSendMessage("");
+                    setStatusTone("muted");
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                  }}
+                />
                 <ToolMenuRow icon={PenLine} label="Context Rewrite" />
                 <ToolMenuRow
                   icon={ListPlus}
@@ -1743,6 +1836,7 @@ function ChatSurface({
                   onClick={() => {
                     setPlusMenuOpen(false);
                     setTaskRequestMode(true);
+                    setContextEditMode(false);
                     setSendMessage("");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1777,16 +1871,18 @@ function ChatSurface({
             <div className="model-picker" ref={modelRef}>
               <button
                 className="model-button"
+                disabled={contextEditMode}
                 onClick={() => {
+                  if (contextEditMode) return;
                   setPlusMenuOpen(false);
                   setModelMenuOpen((open) => !open);
                 }}
                 type="button"
               >
-                {formatModeLabel(selectedMode)}
+                {contextEditMode ? "Thinking carefully" : formatModeLabel(selectedMode)}
                 <ChevronDown className={modelMenuOpen ? "is-open" : ""} size={14} strokeWidth={1.75} />
               </button>
-              {modelMenuOpen && (
+              {modelMenuOpen && !contextEditMode && (
                 <div className="model-menu">
                   <ModelGroup label="Private" />
                   {modes
@@ -1872,8 +1968,12 @@ function ChatSurface({
 
               return (
                 <AssistantMessage
+                  contextEditSavingId={contextEditSavingId}
                   key={message.id || `assistant-${index}`}
                   message={message}
+                  onContextEditApply={handleContextEditApply}
+                  onContextEditReject={handleContextEditReject}
+                  onContextEditRevise={handleContextEditRevise}
                   onShare={() => setShareOpen(true)}
                 />
               );
@@ -2116,362 +2216,6 @@ function slugify(value) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
-}
-
-async function copyText(text) {
-  const value = String(text || "");
-  if (!value) return false;
-
-  if (navigator?.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(value);
-      return true;
-    } catch {
-      // Fall back to a temporary textarea for browsers that block Clipboard API.
-    }
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = value;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-
-  try {
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    textarea.remove();
-  }
-}
-
-function UserMessage({
-  attachments = [],
-  draft,
-  isEditing,
-  onCancelEdit,
-  onDraftChange,
-  onSaveEdit,
-  onStartEdit,
-  text,
-}) {
-  if (isEditing) {
-    return (
-      <article className="user-message editing">
-        <div className="user-edit-card">
-          <textarea
-            autoFocus
-            onChange={(event) => onDraftChange(event.target.value)}
-            value={draft}
-          />
-          <div className="user-edit-actions">
-            <button onClick={onCancelEdit} type="button">
-              Cancel
-            </button>
-            <button className="dark" onClick={onSaveEdit} type="button">
-              Send
-            </button>
-          </div>
-        </div>
-      </article>
-    );
-  }
-
-  return (
-    <article className="user-message">
-      {attachments.length > 0 && <MessageAttachmentList attachments={attachments} />}
-      <div className="user-bubble">{text}</div>
-      <div className="user-message-tools">
-        <ToolbarButton
-          doneLabel="Copied"
-          icon={Copy}
-          label="Copy message"
-          onClick={() => copyText(text)}
-        />
-        <ToolbarButton icon={Pencil} label="Edit" onClick={onStartEdit} />
-      </div>
-    </article>
-  );
-}
-
-function AttachmentTray({ attachments = [], onRemove, onShowInText }) {
-  if (attachments.length === 0) return null;
-
-  return (
-    <div className="attachment-tray">
-      {attachments.map((attachment) => (
-        <div className="attachment-chip" key={attachment.id || attachment.name}>
-          <span className={attachment.source === "paste" ? "attachment-icon paste" : "attachment-icon"}>
-            {attachment.source === "paste" ? (
-              <FileText size={18} strokeWidth={1.8} />
-            ) : (
-              <Paperclip size={15} strokeWidth={1.8} />
-            )}
-          </span>
-          <span className="attachment-label">
-            <strong>{attachment.name}</strong>
-            {attachment.source === "paste" ? (
-              <button
-                className="attachment-action"
-                onClick={() => onShowInText?.(attachment)}
-                type="button"
-              >
-                Show in text field <ChevronRight size={12} strokeWidth={1.9} />
-              </button>
-            ) : (
-              <small>{formatFileSize(attachment.size)}</small>
-            )}
-          </span>
-          <button
-            aria-label={`Remove ${attachment.name}`}
-            onClick={() => onRemove?.(attachment.id)}
-            type="button"
-          >
-            <X size={12} strokeWidth={2} />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function MessageAttachmentList({ attachments = [] }) {
-  if (attachments.length === 0) return null;
-
-  return (
-    <div className="message-attachment-list">
-      {attachments.map((attachment) => (
-        <span className="message-attachment-chip" key={attachment.id || attachment.name}>
-          <Paperclip size={12} strokeWidth={1.8} />
-          {attachment.name}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function AssistantMessage({ message, onShare }) {
-  const [thinkingOpen, setThinkingOpen] = useState(false);
-  const body = plainTextFromBlocks(message.blocks);
-  const hasThinking = Boolean(message.thinking);
-  const showToolbar = !message.pending && !message.error;
-
-  return (
-    <article
-      className={[
-        "assistant-message",
-        message.pending ? "pending" : "",
-        message.error ? "error" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      {hasThinking && (
-        <div className="thinking-toggle-wrap">
-          <button
-            className={message.pending ? "thinking-row pending" : "thinking-row"}
-            onClick={() => setThinkingOpen((open) => !open)}
-            type="button"
-          >
-            {message.pending && <span className="thinking-pulse" aria-hidden="true" />}
-            {thinkingLabel(message.thinking)}
-            {thinkingOpen ? (
-              <ChevronDown size={13} strokeWidth={1.75} />
-            ) : (
-              <ChevronRight size={13} strokeWidth={1.75} />
-            )}
-          </button>
-          {thinkingOpen && (
-            <div className="thinking-details">
-              {thinkingSteps(message).map((step) => (
-                <span key={step}>{step}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      <div className="assistant-body">
-        {(message.blocks || []).map((block, index) => (
-          <BlockRenderer block={block} key={index} />
-        ))}
-      </div>
-      {message.error && <div className="assistant-error">Response failed</div>}
-      {showToolbar && (
-        <MessageToolbar
-          onCopy={() => copyText(body)}
-          onShare={onShare}
-        />
-      )}
-    </article>
-  );
-}
-
-function thinkingLabel(thinking) {
-  if (thinking?.state === "running") return "Thinking";
-  if (thinking?.state === "stopped") return "Stopped thinking";
-  return `Thought for ${thinking?.duration || "1s"}`;
-}
-
-function thinkingSteps(message) {
-  if (message.pending && message.metadata?.kind === "task_request_intent") {
-    return ["Capturing request details", "Preparing the task bundle", "Waiting for PFTL signing"];
-  }
-  if (message.pending) {
-    return ["Reading context", "Selecting the execution route", "Drafting response"];
-  }
-  if (message.error) {
-    return ["Request started", "Provider did not complete", "Kept your message in the thread"];
-  }
-  return ["Read the prompt", "Checked available context", "Composed the response"];
-}
-
-function BlockRenderer({ block }) {
-  if (!block) return null;
-
-  switch (block.type) {
-    case "p":
-      return (
-        <p>
-          <Inline parts={block.inline || [{ text: block.text || "" }]} />
-        </p>
-      );
-    case "h2":
-      return (
-        <h2>
-          <Inline parts={block.inline || [{ text: block.text || "" }]} />
-        </h2>
-      );
-    case "h3":
-      return (
-        <h3>
-          <Inline parts={block.inline || [{ text: block.text || "" }]} />
-        </h3>
-      );
-    case "quote":
-      return (
-        <blockquote>
-          <Inline parts={block.inline || [{ text: block.text || "" }]} />
-        </blockquote>
-      );
-    case "ul":
-      return (
-        <ul>
-          {(block.items || []).map((item, index) => (
-            <li key={index}>
-              <Inline parts={Array.isArray(item) ? item : [{ text: item }]} />
-            </li>
-          ))}
-        </ul>
-      );
-    case "ol":
-      return (
-        <ol>
-          {(block.items || []).map((item, index) => (
-            <li key={index}>
-              <Inline parts={Array.isArray(item) ? item : [{ text: item }]} />
-            </li>
-          ))}
-        </ol>
-      );
-    case "table":
-      return (
-        <div className="assistant-table-wrap">
-          <table className="assistant-table">
-            <thead>
-              <tr>
-                {(block.headers || []).map((cell, index) => (
-                  <th
-                    className={`align-${block.alignments?.[index] || "left"}`}
-                    key={index}
-                    scope="col"
-                  >
-                    <Inline parts={cell} />
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(block.rows || []).map((row, rowIndex) => (
-                <tr key={rowIndex}>
-                  {row.map((cell, cellIndex) => (
-                    <td
-                      className={`align-${block.alignments?.[cellIndex] || "left"}`}
-                      key={cellIndex}
-                    >
-                      <Inline parts={cell} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    case "hr":
-      return <hr />;
-    default:
-      return null;
-  }
-}
-
-function Inline({ parts }) {
-  return (
-    <>
-      {(parts || []).map((part, index) => {
-        if (part.bold) return <strong key={index}>{part.bold}</strong>;
-        if (part.italic) return <em key={index}>{part.italic}</em>;
-        if (part.code) return <code key={index}>{part.code}</code>;
-        if (part.link) {
-          return (
-            <a href={part.href} key={index} rel="noreferrer" target="_blank">
-              {part.link}
-            </a>
-          );
-        }
-        return <span key={index}>{part.text}</span>;
-      })}
-    </>
-  );
-}
-
-function MessageToolbar({ onCopy, onShare }) {
-  return (
-    <div className="message-toolbar">
-      <ToolbarButton doneLabel="Copied" icon={Copy} label="Copy response" onClick={onCopy} />
-      <ToolbarButton icon={ArrowUp} label="Share" onClick={onShare} />
-    </div>
-  );
-}
-
-function ToolbarButton({ doneLabel = "", icon: Icon, label, onClick }) {
-  const [hover, setHover] = useState(false);
-  const [done, setDone] = useState(false);
-
-  async function handleClick() {
-    const result = await onClick?.();
-    if (!doneLabel || result === false) return;
-    setDone(true);
-    window.setTimeout(() => setDone(false), 1200);
-  }
-
-  return (
-    <span className="toolbar-button-wrap">
-      <button
-        aria-label={done ? doneLabel : label}
-        className="toolbar-button"
-        onClick={handleClick}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        type="button"
-      >
-        <Icon size={14} strokeWidth={1.75} />
-      </button>
-      {(hover || done) && <span className="toolbar-tip">{done ? doneLabel : label}</span>}
-    </span>
-  );
 }
 
 function ShareModal({ onClose, thread, title }) {
@@ -2944,6 +2688,34 @@ function contextBodyToHtml(value) {
   return looksLikeContextHtml(text) ? sanitizeContextHtml(text) : contextTextToHtml(text);
 }
 
+function contextLineCountFromHtml(value = "") {
+  const text = String(value || "")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\s*\/(p|div|h[1-6]|li|blockquote|pre|tr|table|ul|ol)\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return Math.max(1, text ? text.split("\n").length : 1);
+}
+
+function contextEditorLineRows(editor) {
+  if (!editor) return [];
+  const editorTop = editor.getBoundingClientRect().top;
+  const rows = [];
+  const blockTags = new Set(["H1", "H2", "H3", "P", "LI", "BLOCKQUOTE", "PRE", "TR"]);
+  const collect = (node) => {
+    for (const child of Array.from(node.children || [])) {
+      if (blockTags.has(child.tagName) && child.textContent.trim()) rows.push(child);
+      if (!blockTags.has(child.tagName) || ["UL", "OL", "TABLE", "TBODY", "THEAD"].includes(child.tagName)) collect(child);
+    }
+  };
+  collect(editor);
+  return (rows.length ? rows : [editor]).map((node, index) => ({
+    number: index + 1,
+    top: Math.max(0, Math.round(node.getBoundingClientRect().top - editorTop)),
+  }));
+}
+
 function buildContextVersions(documentState = {}, history = {}) {
   const versions = [];
   const currentHtml = contextBodyToHtml(documentState.body || "");
@@ -2987,6 +2759,10 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [contextLineCount, setContextLineCount] = useState(() =>
+    contextLineCountFromHtml(contextBodyToHtml(initialDocument.body || ""))
+  );
+  const [contextLineRows, setContextLineRows] = useState([]);
   const [copied, setCopied] = useState(false);
   const [copiedCid, setCopiedCid] = useState("");
   const [versionsOpen, setVersionsOpen] = useState(false);
@@ -3020,6 +2796,16 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const titleRef = useRef(initialDocument.title || "Task Node Context");
   const lastSavedHtmlRef = useRef(contextBodyToHtml(initialDocument.body || ""));
 
+  const refreshContextLineRows = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const rows = contextEditorLineRows(editorRef.current);
+      setContextLineRows(rows.length ? rows : Array.from({ length: contextLineCount }, (_, index) => ({
+        number: index + 1,
+        top: index * 24,
+      })));
+    });
+  }, [contextLineCount]);
+
   useEffect(() => {
     const nextDocument = context?.document || {};
     const nextTitle = nextDocument.title || "Task Node Context";
@@ -3032,10 +2818,12 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       setTitle(nextTitle);
       titleRef.current = nextTitle;
       if (editorRef.current) editorRef.current.innerHTML = nextHtml;
+      setContextLineCount(contextLineCountFromHtml(nextHtml));
+      refreshContextLineRows();
       setDirty(false);
       setSaveMessage("");
     }
-  }, [context?.document?.id, context?.document?.revision, context?.document?.updatedAt]);
+  }, [context?.document?.id, context?.document?.revision, context?.document?.updatedAt, refreshContextLineRows]);
 
   useEffect(() => {
     dirtyRef.current = dirty;
@@ -3304,6 +3092,8 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
 
   const handleEditorInput = () => {
     setSaveMessage("");
+    setContextLineCount(contextLineCountFromHtml(editorRef.current?.innerHTML || ""));
+    refreshContextLineRows();
     recomputeDirty();
   };
 
@@ -3459,12 +3249,14 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     if (!hydratedContext?.text) return;
     setTitle(hydratedContext.title || "Historical PFT Context");
     if (editorRef.current) editorRef.current.innerHTML = contextTextToHtml(hydratedContext.text);
+    setContextLineCount(contextLineCountFromHtml(contextTextToHtml(hydratedContext.text)));
+    refreshContextLineRows();
     setHydratedContext(null);
     setHydrateMessage("Historical version loaded into the editor. It will autosave as the current context document.");
     setVersionsOpen(true);
     setSaveMessage("Historical version loaded");
     setDirty(true);
-  }, [hydratedContext]);
+  }, [hydratedContext, refreshContextLineRows]);
 
   const closeHydratedPreview = useCallback(() => {
     setHydratedContext(null);
@@ -3513,6 +3305,8 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     if (version.type === "current") {
       setTitle(savedTitle);
       if (editorRef.current) editorRef.current.innerHTML = lastSavedHtmlRef.current;
+      setContextLineCount(contextLineCountFromHtml(lastSavedHtmlRef.current));
+      refreshContextLineRows();
       setDirty(false);
       setHydratedContext(null);
       setHydrateMessage("");
@@ -3678,25 +3472,35 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
               placeholder="Untitled context"
               value={title}
             />
-            <div
-              aria-disabled={!canEdit}
-              aria-label="Context document body"
-              aria-multiline="true"
-              className="ctx-editor"
-              contentEditable={canEdit}
-              data-placeholder="Add stable preferences, active projects, constraints, and working notes."
-              onBlur={flushPendingContextSave}
-              onClick={updateActiveFormats}
-              onFocus={updateActiveFormats}
-              onInput={handleEditorInput}
-              onKeyDown={handleEditorKeyDown}
-              onKeyUp={updateActiveFormats}
-              onPaste={handleEditorPaste}
-              ref={editorRef}
-              role="textbox"
-              spellCheck
-              suppressContentEditableWarning
-            />
+            <div className="ctx-editor-shell">
+              <div className="ctx-line-gutter" aria-hidden="true">
+                {(contextLineRows.length ? contextLineRows : Array.from({ length: contextLineCount }, (_, index) => ({
+                  number: index + 1,
+                  top: index * 24,
+                }))).map((row) => (
+                  <span key={row.number} style={{ transform: `translateY(${row.top}px)` }}>{row.number}</span>
+                ))}
+              </div>
+              <div
+                aria-disabled={!canEdit}
+                aria-label="Context document body"
+                aria-multiline="true"
+                className="ctx-editor"
+                contentEditable={canEdit}
+                data-placeholder="Add stable preferences, active projects, constraints, and working notes."
+                onBlur={flushPendingContextSave}
+                onClick={updateActiveFormats}
+                onFocus={updateActiveFormats}
+                onInput={handleEditorInput}
+                onKeyDown={handleEditorKeyDown}
+                onKeyUp={updateActiveFormats}
+                onPaste={handleEditorPaste}
+                ref={editorRef}
+                role="textbox"
+                spellCheck
+                suppressContentEditableWarning
+              />
+            </div>
           </div>
 
           <footer className="ctx-card-foot">

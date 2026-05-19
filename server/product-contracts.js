@@ -8,6 +8,11 @@ import {
   isKnownChatMode,
   normalizedChatMode,
 } from "./chat-router.js";
+import {
+  contextEditMode,
+  executeContextEditChat,
+  isContextEditPayload,
+} from "./context-edit-chat.js";
 import { chatEstimate, chatEstimateForAccount } from "./chat-estimate.js";
 export { chatEstimate, chatEstimateForAccount } from "./chat-estimate.js";
 import {
@@ -498,8 +503,9 @@ function usageAction({ id, label, path, requiredEnv = [], enabled = false, statu
 function chatPayload(payload) {
   const accountId = typeof payload?.accountId === "string" ? payload.accountId.trim().slice(0, 160) : "";
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
+  const contextMode = isContextEditPayload(payload) ? contextEditMode : "";
   const requestedMode = typeof payload?.mode === "string" ? payload.mode.trim() : "";
-  const mode = requestedMode || defaultChatMode;
+  const mode = contextMode ? "Frontier Thinking" : requestedMode || defaultChatMode;
   const conversationId =
     typeof payload?.conversationId === "string" && payload.conversationId.trim()
       ? payload.conversationId.trim().slice(0, 160)
@@ -511,6 +517,7 @@ function chatPayload(payload) {
     message,
     mode: isKnownChatMode(mode) ? normalizedChatMode(mode) : "",
     requestedMode: mode,
+    contextMode,
     conversationId,
     dryRun,
     attachments,
@@ -763,16 +770,26 @@ export async function chatSend(payload, method) {
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
 
   try {
-    const result = await executeChat({
-      accountId,
-      mode,
-      message,
-      conversationId,
-      attachments,
-      contextDocument,
-      memoryContext,
-      taskContext,
-    });
+    const result = preflight.chat.contextMode === contextEditMode
+      ? await executeContextEditChat({
+          accountId,
+          message,
+          conversationId,
+          attachments,
+          contextDocument,
+          memoryContext,
+          taskContext,
+        })
+      : await executeChat({
+          accountId,
+          mode,
+          message,
+          conversationId,
+          attachments,
+          contextDocument,
+          memoryContext,
+          taskContext,
+        });
     return {
       status: 200,
       body: {
@@ -823,6 +840,19 @@ export async function chatSend(payload, method) {
 export async function chatStreamStart(payload, method) {
   const preflight = await chatExecutionPreflight(payload, method, "chat_stream");
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
+  if (preflight.chat.contextMode === contextEditMode) {
+    return {
+      status: 400,
+      body: {
+        ok: false,
+        error: "context_edit_requires_send",
+        action: "chat_stream",
+        message: "Context Edit uses the non-streaming chat route so the structured proposal can be validated before display.",
+        actionRequired: "Send Context Edit requests through /api/chat/send.",
+        estimate: preflight.estimate,
+      },
+    };
+  }
 
   return {
     status: 200,

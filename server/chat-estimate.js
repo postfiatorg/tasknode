@@ -25,36 +25,54 @@ import {
   taskContextForAccount,
 } from "./chat-task-context.js";
 import { jobsRetrievalEstimateText } from "./jobs-corpus.js";
+import { contextDocumentPacket } from "./context-line-map.js";
+import {
+  contextEditPromptText,
+  renderContextEditPrompt,
+} from "./context-edit-prompts.js";
 
 function estimatePayload(payload) {
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
   const requestedMode = typeof payload?.mode === "string" ? payload.mode.trim() : "";
   const mode = requestedMode || defaultChatMode;
   const attachments = Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 4) : [];
-  if (!isKnownChatMode(mode)) {
+  const contextMode = payload?.contextMode === "context_edit" || mode === "context_edit" ? "context_edit" : "";
+  const effectiveMode = contextMode ? "Frontier Thinking" : mode;
+  if (!isKnownChatMode(effectiveMode)) {
     const error = new Error("unknown_chat_mode");
     error.status = 400;
-    error.mode = mode;
+    error.mode = effectiveMode;
     throw error;
   }
-  return { message, mode: normalizedChatMode(mode), attachments };
+  return { message, mode: normalizedChatMode(effectiveMode), attachments, contextMode };
 }
 
 export function chatEstimate(payload, { contextDocument = null, memoryContext = null, taskContext = null } = {}) {
-  const { message, mode, attachments } = estimatePayload(payload);
+  const { message, mode, attachments, contextMode } = estimatePayload(payload);
   const modeConfig = chatModeConfig(mode);
   const baseInputCharacters = chatInputCharacterEstimate({ message, attachments });
   const contextDocumentCharacters = formatChatContextDocument(contextDocument).length;
   const memoryContextCharacters = formatChatMemoryContext(memoryContext).length;
   const taskContextCharacters = formatChatTaskContext(taskContext).length;
-  const estimatedJobsEssence = jobsRetrievalEstimateText();
+  const estimatedJobsEssence = contextMode === "context_edit" ? "" : jobsRetrievalEstimateText();
   const jobsRetrievalCharacters = estimatedJobsEssence.length;
-  const instructionCharacters = taskNodeInstructions({
-    contextDocument,
-    memoryContext,
-    taskContext,
-    jobsEssence: estimatedJobsEssence,
-  }).length;
+  const instructionCharacters = contextMode === "context_edit"
+    ? renderContextEditPrompt({
+        contextDocument,
+        memoryContext,
+        taskContext,
+        userRequest: message,
+      }).length
+    : taskNodeInstructions({
+        contextDocument,
+        memoryContext,
+        taskContext,
+        jobsEssence: estimatedJobsEssence,
+      }).length;
+  const contextEditLineNumberCharacters = contextMode === "context_edit"
+    ? contextDocumentPacket(contextDocument || {}).lineNumberedText.length
+    : 0;
+  const contextEditPromptCharacters = contextMode === "context_edit" ? contextEditPromptText.length : 0;
   const baseInstructionCharacters = Math.max(
     0,
     instructionCharacters -
@@ -79,7 +97,7 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
     outputTokens: estimatedOutputTokens,
   });
   const estimatedWebSearchCalls =
-    modeConfig.provider === "openai" ? maxOpenAiWebSearchToolCalls : 0;
+    modeConfig.provider === "openai" && contextMode !== "context_edit" ? maxOpenAiWebSearchToolCalls : 0;
   const estimatedToolCostUsd = Number((estimatedWebSearchCalls * webSearchUsdPerCall).toFixed(6));
   const estimatedUsd = Number(Math.max(0.0001, estimatedTokenUsd + estimatedToolCostUsd).toFixed(6));
   const execution = chatExecutionStatus(mode);
@@ -91,6 +109,7 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
     model: execution.model,
     providerConfigured: execution.configured,
     providerStatus: execution.status,
+    contextMode,
     executionReady: execution.enabled,
     inputTokens,
     baseInputTokens,
@@ -106,6 +125,8 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
     memoryContextCharacters,
     taskContextCharacters,
     jobsRetrievalCharacters,
+    contextEditLineNumberCharacters,
+    contextEditPromptCharacters,
     estimatedOutputTokens,
     estimatedWebSearchCalls,
     estimatedTokenUsd,

@@ -1362,6 +1362,37 @@ h1 {
   box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.04);
 }
 
+.composer.is-context-edit {
+  border-color: #b8b4aa;
+  background: #fffdf8;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.04);
+}
+
+.composer-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  margin: 2px 0 0 2px;
+  padding: 4px 8px;
+  border: 1px solid #e8e6df;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #44443f;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.composer-mode-chip button {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #6b6b66;
+}
+
 .composer.is-drag-active::after {
   content: "Drop files to attach";
   position: absolute;
@@ -1515,6 +1546,11 @@ h1 {
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
+}
+
+.composer .model-button:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .model-button svg {

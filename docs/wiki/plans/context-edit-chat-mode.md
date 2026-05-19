@@ -1,6 +1,6 @@
 # Context Edit Chat Mode Plan
 
-This is a research and implementation-scope document. It is not an implemented surface yet.
+This plan is now the implementation reference for the first working Context Refine pass. The active shipped path is: Chat `+` menu activates `context_edit`, the server uses the dedicated context-edit Jobs XML prompt with structured output, proposals render inline in chat, and accepting a proposal saves a new Postgres Context revision.
 
 The product direction is: context editing happens in Chat, in a dedicated Context Edit mode. There should not be a separate context-edit modal or a second app surface. The user is already in conversation with the system; editing the Context document should be another mode of that conversation.
 
@@ -429,6 +429,22 @@ This is done only when:
 9. PFT publishing remains separate.
 10. Stale proposals cannot overwrite newer document edits.
 11. The route is verified in the running app with screenshots.
+
+## Current Implementation Snapshot
+
+Implemented in this repo:
+
+- `prompts/context/context_edit_jobs_v1.xml`: dedicated context editing prompt. It tells the model not to mention Steve Jobs or prompt machinery.
+- `server/context-edit-chat.js`: Context Refine execution path. It forces Frontier Thinking, disables tools/web search, loads context, memory, task state, recent chat, and active proposal state, and stores chat turns.
+- `server/context-edit-prompts.js`: prompt rendering and Responses API structured-output schema.
+- `server/context-edit-proposals.js`: proposal parsing and server-side patch application.
+- `server/repositories/context-edit.js`: `context_edit_proposals` persistence.
+- `server/db/migrations/015_context_edit_proposals.sql`: Postgres proposal table.
+- `src/main.jsx`: `+` menu Context Refine activation, composer mode badge, non-streaming send for structured proposal validation, and proposal apply/reject handlers.
+- `src/features/context/ContextEditProposalCard.jsx`: inline proposal review card.
+- `src/features/context/context-edit-client.js`: apply/reject client calls and chat turn proposal-state patching.
+
+The remaining hardening work is richer proposal revision state, stale-card recovery buttons, and mobile screenshot QA across long full-document proposals.
 
 ## Non-Goals
 

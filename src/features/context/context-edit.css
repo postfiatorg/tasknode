@@ -1,0 +1,139 @@
+.context-edit-proposal-card {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  margin: 12px 0 4px;
+  padding: 14px;
+  border: 1px solid #d9d6cc;
+  border-radius: 10px;
+  background: #fffdf7;
+  color: #0d0d0d;
+}
+
+.context-edit-proposal-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.context-edit-proposal-card header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.context-edit-eyebrow,
+.context-edit-lines,
+.context-edit-proposal-text span,
+.context-edit-state,
+.context-edit-error {
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.context-edit-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.context-edit-proposal-card strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.context-edit-lines {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid #e8e6df;
+  border-radius: 999px;
+  background: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-edit-rationale {
+  margin: 0;
+  color: #44443f;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.context-edit-proposal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.context-edit-proposal-text {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.context-edit-proposal-text pre {
+  max-height: 220px;
+  min-height: 72px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid #e8e6df;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111111;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.context-edit-proposal-card footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.context-edit-proposal-card button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #d9d6cc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #222222;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.context-edit-proposal-card button:hover:not(:disabled) {
+  border-color: #0d0d0d;
+}
+
+.context-edit-proposal-card button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.context-edit-proposal-card .context-edit-primary {
+  border-color: #0d0d0d;
+  background: #0d0d0d;
+  color: #ffffff;
+}
+
+.context-edit-error {
+  margin: 0;
+  color: #9f1239;
+}
+
+.context-edit-state {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .context-edit-proposal-grid {
+    grid-template-columns: 1fr;
+  }
+}

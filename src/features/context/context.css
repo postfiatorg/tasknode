@@ -503,6 +503,31 @@
   color: var(--ctx-ink);
 }
 
+.ctx-editor-shell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding-left: 48px;
+}
+
+.ctx-line-gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 34px;
+  color: #aaa69b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  user-select: none;
+}
+
+.ctx-line-gutter span {
+  position: absolute;
+  right: 0;
+  line-height: 1;
+}
+
 .ctx-editor {
   flex: 1;
   min-height: 0;
@@ -1237,4 +1262,3 @@
   color: var(--ctx-ink-3);
   font-size: 12px;
 }
-

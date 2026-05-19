@@ -259,15 +259,19 @@ export function openAiResponseRequest({
   memoryContext = null,
   taskContext = null,
   jobsEssence = "",
+  instructionsOverride = "",
+  responseFormat = null,
+  toolsEnabled = true,
 }) {
   const config = chatModeConfig(mode);
-  const tools = openAiTools();
+  const tools = toolsEnabled ? openAiTools() : [];
   return {
     model,
-    instructions: taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence }),
+    instructions: instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence }),
     input: openAiInput({ conversationId, message, attachments, historyMessages }),
     max_output_tokens: config.maxOutputTokens,
     reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
+    text: responseFormat ? { format: responseFormat } : undefined,
     stream: stream || undefined,
     store: false,
     tool_choice: tools.length > 0 ? "auto" : undefined,
@@ -497,7 +501,7 @@ function enqueueMemoryForTurn({ accountId, conversationId, persisted }) {
   });
 }
 
-async function executeOpenAi({
+export async function executeOpenAi({
   mode,
   model,
   message,
@@ -508,6 +512,9 @@ async function executeOpenAi({
   contextDocument = null,
   taskContext = null,
   jobsEssence = "",
+  instructionsOverride = "",
+  responseFormat = null,
+  toolsEnabled = true,
 }) {
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
   const request = {
@@ -521,6 +528,9 @@ async function executeOpenAi({
     memoryContext,
     taskContext,
     jobsEssence,
+    instructionsOverride,
+    responseFormat,
+    toolsEnabled,
   };
   const body = await fetchJson(`${baseUrl}/responses`, {
     method: "POST",

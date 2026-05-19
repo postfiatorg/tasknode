@@ -6,9 +6,10 @@ Context is the user's durable working profile. It is the structured background t
 
 1. The user edits the current context document.
 2. The app saves the current version to Postgres.
-3. If the user has a wallet, they can publish encrypted context pointers to PFTL.
-4. The PFTL cache projects historical context pointers for the linked wallet.
-5. The user can preview and restore a historical version.
+3. The editor shows line numbers that correspond to the plain-text context packet used by Context Refine.
+4. If the user has a wallet, they can publish encrypted context pointers to PFTL.
+5. The PFTL cache projects historical context pointers for the linked wallet.
+6. The user can preview and restore a historical version.
 
 ## Technical Architecture
 
@@ -16,12 +17,17 @@ The context editor is in `src/main.jsx` and `src/features/context/context.css`. 
 
 The context cache repository is `server/repositories/context.js`, backed by `server/db/migrations/003_context_cache.sql` and `server/db/migrations/011_context_history_projection_source.sql`. Historical pointer projection uses `server/context-history.js`, `server/pftl-cache-sync.js`, and `server/pftl-cache-reducer.js`.
 
+Context Refine runs through Chat, not a separate Context modal. `src/main.jsx::ChatSurface` activates `contextMode: "context_edit"` from the `+` menu. `server/context-edit-chat.js` uses `prompts/context/context_edit_jobs_v1.xml`, stores pending proposals in `context_edit_proposals`, and applies accepted proposals through `server/repositories/context.js::saveContextDocument`. The Context page then reloads the saved revision from Postgres.
+
+Line numbers are generated from the same normalized HTML-to-text idea used by `server/context-line-map.js`. They are inspection anchors for the user and model packet; the server still validates accepted edits by revision, body hash, and exact `target_before` text before saving.
+
 ## Data Model
 
 - Current context: Postgres cache tied to account identity.
 - Historical wallet context: cached PFTL pointer projections and encrypted IPFS payloads.
 - Restore preview: decrypted payload held only for the current restore workflow.
 - Published context: encrypted IPFS document referenced by PFTL memo pointer.
+- Context edit proposal: account-scoped pending/applied/rejected proposal tied to a chat conversation and assistant message.
 
 ## Diagram
 
@@ -46,3 +52,4 @@ sequenceDiagram
 - Publishing must require an unlocked local vault.
 - Restore must make overwrite behavior explicit.
 - Historical previews should load per document, not mark every version as restoring.
+- Context Refine proposals must not overwrite newer manual edits; stale proposals fail before save.

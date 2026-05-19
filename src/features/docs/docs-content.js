@@ -29,6 +29,7 @@ import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-e
 import taskEngineUxIntegrationPlan from "../../../docs/wiki/plans/task-engine-ux-integration-plan.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import jobsChatOsPrompt from "../../../prompts/chat/jobs_chat_os_v1.xml?raw";
+import contextEditJobsPrompt from "../../../prompts/context/context_edit_jobs_v1.xml?raw";
 import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
 import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
 import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
@@ -67,6 +68,18 @@ const PROMPT_SOURCES = [
       "server/chat-router.js::openAiResponseRequest",
     ],
     content: jobsChatOsPrompt,
+  },
+  {
+    family: "Chat",
+    title: "Context Edit Jobs",
+    path: "prompts/context/context_edit_jobs_v1.xml",
+    summary: "Dedicated structured-output prompt for Chat Context Refine mode.",
+    status: "Active for Context Refine",
+    usedBy: [
+      "server/context-edit-prompts.js::renderContextEditPrompt",
+      "server/context-edit-chat.js::executeContextEditChat",
+    ],
+    content: contextEditJobsPrompt,
   },
   {
     family: "Chat",

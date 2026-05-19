@@ -25,6 +25,8 @@ The chat voice is calibrated by the Jobs XML prompt in `prompts/chat/jobs_chat_o
 
 Chat also has an explicit task-request mode from the `+` menu. That mode is different from ordinary chat. The next send becomes task request detail text and uses the same `POST /api/tasks/request` browser-wallet signing path as the Tasks page modal. It publishes a signed `pf.task.request.v1` pointer, records a durable `task_requests` row, and leaves the actual task card to appear from the PFTL projection after the task-generation worker publishes `pf.task.offer.v1`.
 
+Chat also has a Context Refine mode from the `+` menu. That mode stays in the same chat, changes the composer into `Context Edit`, and sends the next message through the dedicated context-edit route. Context Refine is not a modal and does not require a wallet.
+
 ## Chat Modes
 
 The model picker is not cosmetic. Each option maps to a provider, model default, reasoning policy, privacy posture, attachment path, and web-search policy in `server/chat-router.js`.
@@ -92,6 +94,26 @@ The context document is user-authored background, not a higher-authority command
 
 Because the context document is sent to the provider as part of the chat input, those input tokens are part of ordinary chat usage. This is separate from async memory writes, which remain non-user-billed.
 
+## Context Refine Mode
+
+The `+` menu `Context Refine` action activates an explicit `context_edit` chat mode. The visible chat stays in place, but the composer badge and placeholder show that the next messages are about editing the current Context document.
+
+Runtime path:
+
+1. `src/main.jsx::ChatSurface` sends the next message to `/api/chat/send` with `contextMode: "context_edit"`.
+2. `server/product-contracts.js::chatPayload` forces Context Refine through Frontier Thinking so the user does not have to choose a model for durable document edits.
+3. `server/context-edit-chat.js::executeContextEditChat` loads chat history, current context, memory, task state, and the active pending proposal for the conversation.
+4. `server/context-edit-prompts.js::renderContextEditPrompt` renders `prompts/context/context_edit_jobs_v1.xml` with the plain context document and a line-numbered copy.
+5. OpenAI Responses API is called with structured output and `store=false`; tools are disabled for Context Refine because editing the current document should not invoke web search.
+6. A calibration reply or proposal is saved as an ordinary chat turn through `server/repositories/chat-billing.js`.
+7. If a proposal exists, `server/repositories/context-edit.js` stores it in `context_edit_proposals`.
+8. The assistant message renders an inline proposal card. `Accept edit` posts to `/api/context/edit/proposals/:proposalId/apply`.
+9. Applying reloads the latest context document, checks the base revision and body hash, applies the structured proposal, and saves a new `context_revisions` row through `server/repositories/context.js::saveContextDocument`.
+
+The proposal card is deliberately inline. The user can keep talking to revise the edit, reject it, or accept it. Accepting writes Postgres context only. Publishing to PFTL remains a separate Context page action.
+
+Staleness rule: a proposal carries `base_context_revision` and `base_body_sha256`. If the Context document changed after the proposal was generated, the apply route returns `context_edit_stale` and does not alter the document.
+
 ## Task Context Porting
 
 Every chat mode can receive the user's task state as background context. The purpose is for chat to know what is outstanding, pending verification, refused, and rewarded without making the database the canonical task engine.
@@ -152,6 +174,7 @@ Before execution, `server/product-contracts.js` checks login, provider readiness
 - Messages are cached in Postgres.
 - Extracted attachment text is part of the user interaction record.
 - The current Context document is read from `context_documents` and `context_revisions` for signed-in chat grounding.
+- Context Refine proposals are cached in `context_edit_proposals` until accepted or rejected.
 - Token usage and cost are recorded against the signup identity account.
 - Memory summaries are separate from ordinary chat history.
 - Task state is read from `task_projections`, which is a cache over replayable PFTL task events.

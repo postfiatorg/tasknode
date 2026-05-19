@@ -17,6 +17,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - Task request queue and receipt cache: `server/db/migrations/012_task_requests.sql`
 - Deep memory source snapshots: `server/db/migrations/013_deep_memory_snapshots.sql`
 - Jobs pgvector corpus: `server/db/migrations/014_jobs_corpus_pgvector.sql`
+- Context edit proposals: `server/db/migrations/015_context_edit_proposals.sql`
 
 ## Table Inventory
 
@@ -32,6 +33,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `context_revisions` | Immutable context revision rows with body, body hash, word count, source, provenance, and revision number. | Context editing, version restore, publish preparation, Search, future audit/diff UX. | `003_context_cache.sql` |
 | `context_history_imports` | Context projection run records, including wallet address, projection source, pointer counts, task event counts, status, and errors. | Context historical restore, wallet-linked context recovery, reducer diagnostics. | `003_context_cache.sql`, `011_context_history_projection_source.sql` |
 | `context_history_pointers` | Cached PFTL pointer projection rows from wallet history, including CID, tx hash, ledger index, memo index, pointer kind, task/thread/context IDs, event metadata, and source fields. | Context revision history, restore previews, PFTL replay, task projection cache seed. | `003_context_cache.sql` |
+| `context_edit_proposals` | Account-scoped Context Refine proposals tied to a chat conversation, assistant message, base context revision/body hash, edit operation, target text, replacement text, state, and saved revision metadata. | Chat Context Refine proposal cards, proposal accept/reject, Context page saved revisions after accepted edits. | `015_context_edit_proposals.sql` |
 | `chat_memory_jobs` | Async queue row for one memory summarization job tied to a user message and assistant message, with retry and lock fields. | Memory worker, non-blocking chat memory writes, worker diagnostics. | `004_chat_memory.sql` |
 | `chat_memory_entries` | Memory output rows containing user request summary, system response summary, memory text, source excerpts, provider/model, prompt version, usage JSON, and deep memory classification fields. Deep-memory rows are unique per account/block. | Memory page, chat memory injection, Search, future profile export. | `004_chat_memory.sql`, `005_deep_chat_memory.sql`, `013_deep_memory_snapshots.sql` |
 | `chat_deep_memory_jobs` | Async queue row for every 36-memory deep compression block, with account/block uniqueness, exact source memory entry IDs, and retry/lock fields. | Deep Memory section, chat memory injection, memory worker diagnostics. | `005_deep_chat_memory.sql`, `013_deep_memory_snapshots.sql` |

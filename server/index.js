@@ -13,19 +13,11 @@ import { handlePftlCacheRoute } from "./pftl-cache-route.js";
 import { fetchWalletTransactions } from "./pftl-transactions.js";
 import { startTaskGenerationWorker } from "./task-generation-worker.js";
 import {
-  authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart,
-  devAuthStatus,
-  chatEstimateStart,
-  chatModes, chatSend, chatStreamStart,
-  contextActionStart,
-  contextActions,
-  contextEditSave,
-  contextManifestInk,
-  contextHistoryIpfsFetch,
-  readiness,
-  taskRequestIntentStart,
-  usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync,
-  walletActionStart, walletActions, walletLinkStart, walletLinkVerify,
+  authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart, chatEstimateStart,
+  chatModes, chatSend, chatStreamStart, contextActionStart, contextActions, contextEditSave,
+  contextManifestInk, contextHistoryIpfsFetch, devAuthStatus, readiness, taskRequestIntentStart,
+  usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync, walletActionStart, walletActions,
+  walletLinkStart, walletLinkVerify,
 } from "./product-contracts.js";
 import { executeChatStream } from "./chat-router.js";
 import { conversationIdForChatWrite, explicitConversationId } from "./chat-conversation-ids.js";
@@ -53,6 +45,7 @@ import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
 import { handleTaskReadRoute } from "./task-routes.js";
 import { startTaskReviewWorker } from "./task-review-worker.js";
+import { contextEditProposalAction } from "./context-edit-actions.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -875,6 +868,13 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/context/manifest/ink") {
     const payload = req.method === "POST" ? await readJson(req, 1_200_000) : {};
     const result = await contextManifestInk(payload, req.method, session);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname.startsWith("/api/context/edit/proposals/")) {
+    const parts = url.pathname.split("/").filter(Boolean);
+    const result = await contextEditProposalAction({ action: parts[5] || "", method: req.method, proposalId: decodeURIComponent(parts[4] || ""), session });
     json(res, result.status, result.body);
     return true;
   }
