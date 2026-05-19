@@ -21,7 +21,7 @@ import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transacti
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import codeReviewBurndown from "../../../docs/wiki/plans/code-review-burndown.md?raw";
-import contextRefineJobsEditor from "../../../docs/wiki/plans/context-refine-jobs-editor.md?raw";
+import contextEditChatMode from "../../../docs/wiki/plans/context-edit-chat-mode.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
 import jobsChatSpirit from "../../../docs/wiki/plans/jobs-chat-spirit.md?raw";
 import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
@@ -388,10 +388,10 @@ export const DOC_GROUPS = [
         markdown: jobsChatSpirit,
       },
       {
-        slug: "context-refine-jobs-editor",
-        title: "Context Refine Jobs Editor",
-        summary: "Plan for one line-numbered Jobs-calibrated context edit assistant.",
-        markdown: contextRefineJobsEditor,
+        slug: "context-edit-chat-mode",
+        title: "Context Edit Chat Mode",
+        summary: "Plan for line-numbered Jobs-calibrated context editing inside Chat.",
+        markdown: contextEditChatMode,
       },
       {
         slug: "pythonic-task-engine-speedrun",
