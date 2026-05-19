@@ -2286,6 +2286,128 @@ h1 {
   padding-bottom: 14px;
 }
 
+.task-request-queue {
+  display: grid;
+  gap: 8px;
+  margin: -14px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid #e8e6df;
+  border-radius: 12px;
+  background: #fbfaf7;
+}
+
+.task-request-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-request-queue-head div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-request-queue-head strong {
+  margin: 0;
+  color: #0d0d0d;
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.task-request-queue-head span {
+  color: #6b6b66;
+  font-size: 11.5px;
+}
+
+.task-request-queue-head em {
+  flex: 0 0 auto;
+  color: #6b6b66;
+  font-size: 11.5px;
+  font-style: normal;
+}
+
+.task-request-queue-list {
+  display: grid;
+  overflow: hidden;
+  border-top: 1px solid #ebe8df;
+}
+
+.task-request-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 0 0;
+  border-top: 0;
+}
+
+.task-request-row + .task-request-row {
+  padding-top: 8px;
+}
+
+.task-request-status-dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: #7a5a1f;
+}
+
+.task-request-row.is-generating .task-request-status-dot,
+.task-request-row.is-queued .task-request-status-dot,
+.task-request-row.is-published .task-request-status-dot {
+  background: #7a5a1f;
+}
+
+.task-request-row.is-proposed .task-request-status-dot {
+  background: #4a5934;
+}
+
+.task-request-row.is-failed .task-request-status-dot {
+  background: #7c2d12;
+}
+
+.task-request-row-main {
+  min-width: 0;
+}
+
+.task-request-row-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.task-request-row-top strong {
+  color: #0d0d0d;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.task-request-row-top span {
+  color: #6b6b66;
+  font-size: 11.5px;
+}
+
+.task-request-row p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: #34342f;
+  font-size: 12.5px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.task-request-row .task-request-row-error {
+  color: #7c2d12;
+}
+
 .task-list {
   display: grid;
   gap: 8px;

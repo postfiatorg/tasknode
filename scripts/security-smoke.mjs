@@ -71,6 +71,38 @@ try {
   assert.equal(noCreditStream.status, 402);
   assert.equal(noCreditStream.body.error, "chat_credit_required");
 
+  const invalidAttachment = {
+    name: "broken.txt",
+    mimeType: "text/plain",
+    dataUrl: "not-a-data-url",
+  };
+  const invalidAttachmentChat = await chatSend(
+    {
+      accountId: "acct_security_smoke",
+      message: "This must be rejected before billing or provider execution.",
+      mode: "Frontier Instant",
+      conversationId: "account_acct_security_smoke_default",
+      attachments: [invalidAttachment],
+    },
+    "POST"
+  );
+  assert.equal(invalidAttachmentChat.status, 400);
+  assert.equal(invalidAttachmentChat.body.error, "chat_attachment_invalid");
+  assert.equal(invalidAttachmentChat.body.attachmentErrors[0].code, "invalid_data_url");
+
+  const invalidAttachmentStream = await chatStreamStart(
+    {
+      accountId: "acct_security_smoke",
+      message: "This stream must be rejected before provider execution.",
+      mode: "Frontier Instant",
+      conversationId: "account_acct_security_smoke_default",
+      attachments: [invalidAttachment],
+    },
+    "POST"
+  );
+  assert.equal(invalidAttachmentStream.status, 400);
+  assert.equal(invalidAttachmentStream.body.error, "chat_attachment_invalid");
+
   const lowCreditAccount = "acct_security_web_search_low_credit";
   const lowCreditGrant = await usageAdminCredit(
     {
@@ -108,6 +140,19 @@ try {
   );
   assert.equal(signedOutTaskRequest.status, 401);
   assert.equal(signedOutTaskRequest.body.error, "task_request_login_required");
+
+  const invalidTaskRequest = await taskRequestIntentStart(
+    {
+      accountId: "acct_security_smoke",
+      userDetailText: "This task request has a broken attachment.",
+      conversationId: "account_acct_security_smoke_task_request",
+      attachments: [invalidAttachment],
+    },
+    "POST"
+  );
+  assert.equal(invalidTaskRequest.status, 400);
+  assert.equal(invalidTaskRequest.body.error, "task_request_attachment_invalid");
+  assert.equal(invalidTaskRequest.body.attachmentErrors[0].code, "invalid_data_url");
 
   const ownedConversationId = "account_acct_security_owner_default";
   await appendChatTurn({

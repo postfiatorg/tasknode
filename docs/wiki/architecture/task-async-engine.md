@@ -13,6 +13,7 @@ Already implemented:
 - The Python Stage B reference can create 10 independent requesters, shard authority/reward wallets, execute representative PFTL/IPFS lifecycles, and import replayed projections through `reference_clients/python/tasknode_pftl/scenarios/task_engine_speedrun.py --stage n10`.
 - Task projection reads are wired through `server/repositories/tasks.js` and `task_projections`.
 - Replay receipts can be imported with `npm run db:import-task-replays`.
+- The web task detail page can now publish user-signed stop actions for existing projected tasks through `POST /api/tasks/action`. Proposed tasks become `refused`; accepted/submitted/verification-loop tasks become `cancelled`.
 
 Not implemented yet:
 
@@ -20,8 +21,11 @@ Not implemented yet:
 - Production task-generation worker that watches request events and emits authority offers.
 - Production wallet transaction queue tables and workers.
 - Allocation wallet provisioner and treasury top-up worker.
+- Browser evidence submission and verification response signing.
 
 Until those exist, a task request must not create fake task cards. It should either create a real signed request path or fail with a clear reason.
+
+Existing task stop actions are narrower than the full task engine. They do not generate tasks, score evidence, or pay rewards. They publish one encrypted `pf.task.update.v1` lifecycle event from the linked user wallet and then rely on the PFTL cache/reducer path to update the projection.
 
 ## Why Async
 

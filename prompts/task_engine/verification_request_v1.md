@@ -12,6 +12,7 @@ Verification rules:
 - Make it hard to answer without actually doing the work.
 - Keep it answerable in less than 5 minutes for a legitimate user.
 - Prefer a question about a specific artifact, decision, edge case, result, or visible detail.
+- If the work is likely private or local to the user's machine, ask for screenshot, code excerpt, text, file, or mixed proof that does not require a public repository link.
 - Do not ask for broad essays, duplicate screenshots, or generic "confirm you did it" statements.
 
 Output fields:

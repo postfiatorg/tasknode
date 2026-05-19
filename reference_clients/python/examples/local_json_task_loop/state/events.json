@@ -2,7 +2,7 @@
   {
     "actor": "tasknode_local_authority",
     "created_at": "2026-05-18T00:00:00Z",
-    "event_id": "evt_7ec02d2f3a6aac7fa657ab28",
+    "event_id": "evt_afcce5fca31da369bf6a8f8d",
     "event_type": "task_generated",
     "from_status": "none",
     "payload": {
@@ -34,15 +34,15 @@
         ],
         "subject_user_id": "user_goodalexander_demo",
         "submission_requirement": {
-          "criteria": "Provide a commit or repository link containing the CLI, outputs, and README.",
-          "type": "github_commit_or_repository"
+          "criteria": "Submit the local demo receipt and evidence artifact text showing deterministic IDs, JSON persistence outputs, and the final reputation update.",
+          "type": "text"
         },
         "task_id": "task_56e4026772be18750692279d",
         "title": "Create local JSON task loop CLI",
         "updated_at": "2026-05-18T00:00:00Z"
       }
     },
-    "payload_digest": "sha256:e8a491a0fac5bc4ba4ed6924d315368242eb0dfe82afd6e0f2b611300e060048",
+    "payload_digest": "sha256:0e0b52d0cae04fe4fbf00e84f637c46efedb1693343a5d56dd75efb16d437373",
     "schema": "pf.task.local_json_loop.v1",
     "task_id": "task_56e4026772be18750692279d",
     "to_status": "proposed"

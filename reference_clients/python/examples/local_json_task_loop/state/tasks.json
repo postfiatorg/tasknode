@@ -45,8 +45,8 @@
       "type": "markdown_evidence"
     },
     "submission_requirement": {
-      "criteria": "Provide a commit or repository link containing the CLI, outputs, and README.",
-      "type": "github_commit_or_repository"
+      "criteria": "Submit the local demo receipt and evidence artifact text showing deterministic IDs, JSON persistence outputs, and the final reputation update.",
+      "type": "text"
     },
     "task_id": "task_56e4026772be18750692279d",
     "title": "Create local JSON task loop CLI",

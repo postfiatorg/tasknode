@@ -1,30 +1,7 @@
 export const webSearchUsdPerCall = 0.01;
 export const maxOpenAiWebSearchToolCalls = 4;
 
-export function shouldUseWebSearch(message = "") {
-  const text = String(message || "").toLowerCase();
-  const currentInfoSignals = [
-    "search",
-    "look up",
-    "web",
-    "internet",
-    "today",
-    "current",
-    "currently",
-    "latest",
-    "recent",
-    "right now",
-    "news",
-    "what is going on",
-    "what's going on",
-  ];
-
-  return currentInfoSignals.some((signal) => text.includes(signal));
-}
-
-export function openAiTools({ message }) {
-  if (!shouldUseWebSearch(message)) return [];
-
+export function openAiTools() {
   return [
     {
       type: "web_search",

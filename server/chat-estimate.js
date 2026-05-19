@@ -3,6 +3,8 @@ import {
   chatExecutionStatus,
   chatInputCharacterEstimate,
   chatModeConfig,
+  defaultChatMode,
+  isKnownChatMode,
   normalizedChatMode,
 } from "./chat-router.js";
 import {
@@ -15,7 +17,6 @@ import {
 } from "./chat-account-context.js";
 import {
   maxOpenAiWebSearchToolCalls,
-  shouldUseWebSearch,
   webSearchUsdPerCall,
 } from "./chat-search-tools.js";
 import {
@@ -25,8 +26,15 @@ import {
 
 function estimatePayload(payload) {
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
-  const mode = typeof payload?.mode === "string" ? payload.mode : "Private Instant";
+  const requestedMode = typeof payload?.mode === "string" ? payload.mode.trim() : "";
+  const mode = requestedMode || defaultChatMode;
   const attachments = Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 4) : [];
+  if (!isKnownChatMode(mode)) {
+    const error = new Error("unknown_chat_mode");
+    error.status = 400;
+    error.mode = mode;
+    throw error;
+  }
   return { message, mode: normalizedChatMode(mode), attachments };
 }
 
@@ -43,13 +51,13 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
   const contextDocumentInputTokens = contextDocumentCharacters > 0 ? Math.ceil(contextDocumentCharacters / 4) : 0;
   const memoryInputTokens = memoryContextCharacters > 0 ? Math.ceil(memoryContextCharacters / 4) : 0;
   const taskInputTokens = taskContextCharacters > 0 ? Math.ceil(taskContextCharacters / 4) : 0;
-  const estimatedOutputTokens = modeConfig.maxOutputTokens || (mode.includes("Thinking") ? 1800 : 700);
+  const estimatedOutputTokens = modeConfig.maxOutputTokens || (modeConfig.reasoningEffort ? 1800 : 700);
   const estimatedTokenUsd = actualChatCost(mode, {
     inputTokens,
     outputTokens: estimatedOutputTokens,
   });
   const estimatedWebSearchCalls =
-    modeConfig.provider === "openai" && shouldUseWebSearch(message) ? maxOpenAiWebSearchToolCalls : 0;
+    modeConfig.provider === "openai" ? maxOpenAiWebSearchToolCalls : 0;
   const estimatedToolCostUsd = Number((estimatedWebSearchCalls * webSearchUsdPerCall).toFixed(6));
   const estimatedUsd = Number(Math.max(0.0001, estimatedTokenUsd + estimatedToolCostUsd).toFixed(6));
   const execution = chatExecutionStatus(mode);

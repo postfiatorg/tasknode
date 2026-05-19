@@ -97,23 +97,19 @@ function wssRejectUnauthorized(env, url) {
 }
 
 function sanitizePftlConnectError(error) {
-  const raw = String(
-    error?.data?.error ||
-      error?.data?.error_message ||
-      error?.code ||
-      error?.message ||
-      error ||
-      "pftl_connect_failed"
-  );
-  if (/self-signed|certificate/i.test(raw)) return "pftl_tls_certificate_rejected";
-  if (/timed out|timeout/i.test(raw)) return "pftl_wss_connect_timeout";
-  if (/ECONNREFUSED/i.test(raw)) return "pftl_wss_connection_refused";
-  if (/ENOTFOUND/i.test(raw)) return "pftl_wss_host_not_found";
-  return raw
-    .replace(/rippled/gi, "PFTL")
-    .replace(/xrpl/gi, "PFTL")
-    .replace(/[^a-zA-Z0-9_.:-]+/g, "_")
-    .slice(0, 120);
+  const code = String(error?.code || error?.data?.error || "").trim();
+  const tlsCodes = new Set([
+    "DEPTH_ZERO_SELF_SIGNED_CERT",
+    "SELF_SIGNED_CERT_IN_CHAIN",
+    "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+    "CERT_HAS_EXPIRED",
+  ]);
+  if (tlsCodes.has(code)) return "pftl_tls_certificate_rejected";
+  if (code === "ETIMEDOUT" || code === "ERR_SOCKET_CONNECTION_TIMEOUT") return "pftl_wss_connect_timeout";
+  if (code === "ECONNREFUSED") return "pftl_wss_connection_refused";
+  if (code === "ENOTFOUND") return "pftl_wss_host_not_found";
+  if (error?.name === "AbortError" || error?.name === "TimeoutError") return "pftl_wss_connect_timeout";
+  return "pftl_connect_failed";
 }
 
 function clientOptionsForEndpoint({ endpoint, index, env, timeoutMs }) {

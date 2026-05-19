@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
+import { canonicalReceiptProjection } from "../task-receipt-projection.js";
+import { taskEventExpectation, taskEventMeaning } from "../task-event-meaning.js";
+import { fetchAndDecryptTasknodePayload } from "../task-payloads.js";
+import { taskProductConfig } from "../task-product-config.js";
+import { taskRewardOutcome } from "../task-reward-outcome.js";
+import { currentVerificationRequest } from "../task-verification-view.js";
+import { emptyTaskRequestState, listTaskRequests } from "./task-requests.js";
+import { normalizeTaskStatus, taskLifecycleActions, taskRefreshMetadata, taskStatusInfo, taskStatusLabel, taskStatusTab } from "../../shared/task-lifecycle.js";
 
-const verificationStatuses = new Set(["verification_requested", "verification_response_submitted"]);
+const pointerEnvelopeKeys = new Set(["schema", "task_id", "tx_hash", "cid"]);
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -35,13 +43,6 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
-function taskStatusLabel(status = "") {
-  const normalized = String(status || "unknown").trim().toLowerCase();
-  if (normalized === "verification_requested") return "Verification requested";
-  if (normalized === "verification_response_submitted") return "Verification submitted";
-  return titleCase(normalized || "unknown");
-}
-
 function relativeAge(value) {
   const timestamp = Date.parse(value || "");
   if (!Number.isFinite(timestamp)) return "";
@@ -68,20 +69,15 @@ function formatDeadline(value) {
 
 function emptyTaskState({ walletLinked = false, walletAddress = "" } = {}) {
   return {
-    personalRequestEnabled: true,
-    networkRequestEnabled: false,
-    alphaRequestEnabled: false,
-    dailyRewardCap: 8,
-    outstanding: [],
-    verification: [],
-    refused: [],
-    rewarded: [],
+    ...taskProductConfig(),
+    requests: emptyTaskRequestState({ walletLinked, walletAddress }),
+    outstanding: [], verification: [], refused: [], rewarded: [],
     sync: {
       source: "task_projections",
       status: walletLinked ? "empty" : "wallet_required",
       walletAddress: walletAddress || null,
-      projectionCount: 0,
-      lastSyncedAt: null,
+      projectionCount: 0, lastSyncedAt: null, requiresRefresh: false, nextPollMs: null,
+      refreshReason: "", activeRequestCount: 0, refreshTaskIds: [],
     },
   };
 }
@@ -100,7 +96,9 @@ function publicTask(row) {
   const rewardActual = numeric(row.reward_actual_pft);
   const rewardOffer = numeric(row.reward_offer_pft);
   const actualRewardRecorded = hasNumericValue(row.reward_actual_pft);
-  const pft = row.status === "rewarded" && actualRewardRecorded ? rewardActual : rewardOffer;
+  const statusKey = normalizeTaskStatus(row.status);
+  const statusInfo = taskStatusInfo(statusKey);
+  const pft = statusKey === "rewarded" && actualRewardRecorded ? rewardActual : rewardOffer;
   const metadata = safeObject(row.metadata_json);
   const generatedTask = safeObject(metadata.generatedTask);
   const verification = safeObject(row.verification_policy_json);
@@ -111,8 +109,12 @@ function publicTask(row) {
     taskId: row.task_id,
     title: row.title || "Untitled task",
     kind: titleCase(row.task_kind || "task"),
-    status: taskStatusLabel(row.status),
-    statusKey: row.status || "unknown",
+    status: taskStatusLabel(statusKey),
+    statusKey,
+    statusTone: statusInfo.tone,
+    statusColor: statusInfo.color,
+    statusTab: statusInfo.tab,
+    lifecycle: statusInfo,
     due: formatDeadline(row.deadline_at || row.accept_by),
     fullDue: formatDeadline(row.deadline_at || row.accept_by),
     ago: relativeAge(row.updated_at || row.last_event_at),
@@ -128,34 +130,42 @@ function publicTask(row) {
         "Submit evidence that satisfies the task requirement.",
       policy: verification,
     },
+    submissionRequirement: {
+      type: row.submission_type || generatedTask?.submission_requirement?.type || "",
+      criteria:
+        row.submission_requirement_text ||
+        generatedTask?.submission_requirement?.criteria ||
+        generatedTask?.submission_requirement?.description ||
+        "",
+    },
+    verificationPolicy: verification,
+    submissionType: row.submission_type || generatedTask?.submission_requirement?.type || "",
     requestBundleCid: row.request_bundle_cid || "",
     contextCid: row.context_cid || "",
     txHash: row.last_event_tx_hash || "",
     source: row.source || "pftl_replay",
     updatedAt: toIso(row.updated_at),
     metadata: {
-      requestId: row.request_id || undefined,
-      eventCount: Number(row.event_count || 0),
-      sourceRunId: metadata.runId || undefined,
-      openaiResponseId: metadata.taskgen?.openai_response_id || undefined,
+      requestId: row.request_id || undefined, eventCount: Number(row.event_count || 0),
+      sourceRunId: metadata.runId || undefined, openaiResponseId: metadata.taskgen?.openai_response_id || undefined,
       model: metadata.taskgen?.model || undefined,
     },
   };
 }
 
-function groupTasks(rows) {
-  const tasks = rows.map(publicTask);
+function groupTasks(tasks) {
   const outstanding = [];
   const verification = [];
   const refused = [];
   const rewarded = [];
 
   for (const task of tasks) {
-    if (task.statusKey === "rewarded") {
+    const tab = taskStatusTab(task.statusKey);
+    if (tab === "rewarded") {
       rewarded.push(task);
-    } else if (["rejected", "refused", "expired", "cancelled"].includes(task.statusKey)) {
+    } else if (tab === "refused") {
       refused.push(task);
-    } else if (verificationStatuses.has(task.statusKey)) {
+    } else if (tab === "verification") {
       verification.push(task);
     } else {
       outstanding.push(task);
@@ -224,11 +234,22 @@ function bestPointer({ row = {}, pointerJson = {} } = {}) {
   };
 }
 
+function safeError(error) {
+  return safeText(error?.code || error?.message || error || "task_event_payload_error", 500);
+}
+
+function isPointerEnvelopePayload(payload = {}) {
+  const objectPayload = safeObject(payload);
+  const keys = Object.keys(objectPayload);
+  if (!keys.length) return false;
+  return keys.every((key) => pointerEnvelopeKeys.has(key));
+}
+
 function detailValue(value) {
   if (value === undefined || value === null || value === "") return "";
-  if (typeof value === "string") return safeText(value, 1200);
+  if (typeof value === "string") return safeText(value, 12000);
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return safeText(JSON.stringify(value), 1200);
+  return safeText(JSON.stringify(value), 12000);
 }
 
 function addDetail(details, label, value) {
@@ -273,6 +294,7 @@ function summarizeProcessedArtifacts(artifacts = []) {
 
 function payloadDetails(schema = "", payload = {}, pointer = {}) {
   const details = [];
+  addDetail(details, "What happened", taskEventMeaning(schema, payload));
   addDetail(details, "Task ID", payload.task_id || pointer.task_id);
   addDetail(details, "Event ID", payload.event_id);
   addDetail(details, "Request ID", payload.request_id);
@@ -296,7 +318,9 @@ function payloadDetails(schema = "", payload = {}, pointer = {}) {
   addDetail(details, "Verification reason", payload.verification_request?.reason);
   addDetail(details, "Response text", payload.response_text || payload.response);
   addDetail(details, "Response CID", payload.response_cid || payload.verification_response_cid);
-  addDetail(details, "Submission CID", payload.submission_cid || payload.artifact_cid);
+  addDetail(details, "Submission CID", payload.submission_cid);
+  addDetail(details, "Evidence artifact CID", payload.artifact_cid);
+  addDetail(details, "Evidence artifact digest", payload.artifact_digest);
   addDetail(details, "Evidence refs", summarizeEvidenceRefs(payload.evidence_refs));
   addDetail(details, "Processed artifacts", summarizeProcessedArtifacts(payload.processed_evidence?.artifacts));
   addDetail(details, "Reward pointer CID", payload.reward_pointer_cid);
@@ -316,6 +340,16 @@ function payloadDetails(schema = "", payload = {}, pointer = {}) {
   addDetail(details, "Verification criteria", payload.verification_policy?.criteria || payload.verification_criteria);
   addDetail(details, "Schema", schema);
   return details;
+}
+
+function appendDetail(event, label, value) {
+  return {
+    ...event,
+    details: [
+      ...(Array.isArray(event.details) ? event.details : []),
+      { label, value: detailValue(value) || "" },
+    ].filter((detail) => detail.value),
+  };
 }
 
 function publicCidEntries(cids = {}) {
@@ -430,33 +464,69 @@ function publicReducerEvent(row, index = 0) {
   };
 }
 
+async function hydrateForensicsEvent(event = {}) {
+  const cid = safeText(event.cid, 240);
+  const rawPayload = safeObject(event.rawPayload);
+  if (!cid || !isPointerEnvelopePayload(rawPayload)) return event;
+  try {
+    const result = await fetchAndDecryptTasknodePayload({ cid });
+    const hydratedPayload = safeObject(result.payload);
+    const hydratedTaskId = safeText(hydratedPayload.task_id, 180);
+    const eventTaskId = safeText(rawPayload.task_id || event.pointer?.task_id, 180);
+    if (hydratedTaskId && eventTaskId && hydratedTaskId !== eventTaskId) {
+      return appendDetail(event, "Payload content", "Encrypted IPFS payload belongs to a different task ID.");
+    }
+    const schema = safeText(hydratedPayload.schema || event.schema || rawPayload.schema, 120);
+    return {
+      ...event,
+      label: schemaLabel(schema, hydratedPayload),
+      schema,
+      details: payloadDetails(schema, hydratedPayload, event.pointer || {}),
+      rawPayload: hydratedPayload,
+      payloadHydration: {
+        status: "hydrated",
+        cid: result.cid || cid,
+        gateway: result.gateway || "",
+      },
+    };
+  } catch (error) {
+    return appendDetail(
+      event,
+      "Payload content",
+      `Encrypted IPFS payload could not be read by this service: ${safeError(error)}`
+    );
+  }
+}
+
 function taskActionState(status = "") {
-  const statusKey = String(status || "").trim().toLowerCase();
-  const active = ["proposed", "accepted", "submitted"].includes(statusKey);
-  const verification = verificationStatuses.has(statusKey);
-  return {
-    canRefuse: ["proposed", "accepted"].includes(statusKey),
-    canSubmitInitialEvidence: active,
-    canSubmitVerificationEvidence: verification,
-    browserSubmissionEnabled: false,
-    submissionReason:
-      "Browser-side PFTL signing is not enabled yet. Use the Python reference client for live task submissions.",
-  };
+  return taskLifecycleActions(status);
 }
 
 export async function listTaskState({ accountId = "", walletAddress = "" } = {}) {
   const linked = Boolean(String(walletAddress || "").trim());
   if (!linked) return emptyTaskState({ walletLinked: false });
+  const requests = await listTaskRequests({ accountId, walletAddress }).catch((error) => ({
+    ...emptyTaskRequestState({ walletLinked: true, walletAddress }),
+    sync: {
+      source: "task_requests",
+      status: "error",
+      walletAddress,
+      requestCount: 0,
+      lastUpdatedAt: null,
+      error: safeText(error?.message || error, 500),
+    },
+  }));
 
   if (!databaseEnabled()) {
     return {
       ...emptyTaskState({ walletLinked: true, walletAddress }),
+      requests,
       sync: {
         source: "task_projections",
         status: "database_not_configured",
         walletAddress,
-        projectionCount: 0,
-        lastSyncedAt: null,
+        projectionCount: 0, lastSyncedAt: null, requiresRefresh: false, nextPollMs: null,
+        refreshReason: "", activeRequestCount: 0, refreshTaskIds: [],
       },
     };
   }
@@ -472,12 +542,20 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
     `,
     [walletAddress, accountId || ""]
   );
-  const grouped = groupTasks(result.rows);
+  const taskItems = result.rows.map(publicTask);
+  const grouped = groupTasks(taskItems);
   const rows = result.rows;
   const lastSyncedAt = rows[0]?.updated_at ? toIso(rows[0].updated_at) : null;
+  const refresh = taskRefreshMetadata({
+    tasks: taskItems,
+    activeRequestCount: Array.isArray(requests?.items)
+      ? requests.items.filter((request) => request?.isActive).length
+      : 0,
+  });
 
   return {
     ...emptyTaskState({ walletLinked: true, walletAddress }),
+    requests,
     ...grouped,
     sync: {
       source: "task_projections",
@@ -485,6 +563,7 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
       walletAddress,
       projectionCount: rows.length,
       lastSyncedAt,
+      ...refresh,
     },
   };
 }
@@ -545,8 +624,12 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
     ? metadata.submissionSummaries
     : [];
   const task = publicTask(row);
-  const pointerTimeline = pointerResult.rows.map(publicPointerEvent);
-  const reducerTimeline = reducerResult.rows.map(publicReducerEvent);
+  const pointerTimeline = await Promise.all(pointerResult.rows.map((eventRow, index) => (
+    hydrateForensicsEvent(publicPointerEvent(eventRow, index))
+  )));
+  const reducerTimeline = await Promise.all(reducerResult.rows.map((eventRow, index) => (
+    hydrateForensicsEvent(publicReducerEvent(eventRow, index))
+  )));
   const timeline = pointerTimeline.length ? pointerTimeline : reducerTimeline;
   const cidEntries = dedupeAuditEntries([
     ...publicCidEntries(metadata.cids),
@@ -572,6 +655,8 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
       generatedTask: safeObject(metadata.generatedTask),
       verificationPolicy: safeObject(row.verification_policy_json),
     },
+    currentVerificationRequest: currentVerificationRequest(timeline),
+    rewardOutcome: taskRewardOutcome({ offeredPft: row.reward_offer_pft, task, timeline }),
     forensics: {
       source: row.source || "task_projections",
       eventCount: Number(row.event_count || 0),
@@ -584,6 +669,7 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
       timeline,
       pointerEvents: pointerTimeline,
       reducerEvents: reducerTimeline,
+      reviewState: taskEventExpectation({ status: row.status, timeline }),
       integrity: {
         expectedEventCount,
         pointerEventCount: pointerTimeline.length,
@@ -595,6 +681,7 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
     sync: {
       updatedAt: toIso(row.updated_at),
       lastEventAt: toIso(row.last_event_at),
+      ...taskRefreshMetadata({ tasks: [task] }),
     },
   };
 }
@@ -620,8 +707,9 @@ function projectionForReceipt(receipt) {
   };
   const hydratedEvents = Array.isArray(receipt?.hydrated_events) ? receipt.hydrated_events : [];
   const lastEvent = hydratedEvents[hydratedEvents.length - 1] || {};
+  const canonicalProjection = canonicalReceiptProjection({ projection, hydratedEvents });
   const rewardOffer = numeric(generatedTask?.reward_offer?.amount_estimate_pft || projection.reward_offer_pft);
-  const rewardActual = numeric(projection.reward_actual_pft || generatedTask?.reward_actual_pft);
+  const rewardActual = numeric(canonicalProjection.rewardActualPft || generatedTask?.reward_actual_pft);
 
   return {
     taskId,
@@ -630,7 +718,7 @@ function projectionForReceipt(receipt) {
     authorityWallet: roleWallet(receipt, "task_authority"),
     allocationWallet: roleWallet(receipt, "allocation_reward"),
     requestId: safeText(receipt?.fixture?.request_id || "", 180),
-    status: safeText(projection.status || "unknown", 80),
+    status: safeText(canonicalProjection.status || "unknown", 80),
     title: safeText(generatedTask.title || projection.title || "", 240),
     description: safeText(generatedTask.description || projection.description || "", 8000),
     taskKind: safeText(generatedTask.task_kind || projection.task_kind || "", 80),
@@ -712,12 +800,16 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
       const txHash = safeText(event.tx_hash || "", 180);
       const cid = safeText(event.cid || "", 180);
       if (!txHash || !cid) continue;
-      const payloadJson = {
+      const eventPayload = safeObject(event.payload);
+      const pointerEnvelope = {
         schema: eventSchema,
         task_id: eventTaskId,
         tx_hash: txHash,
         cid,
       };
+      const payloadJson = objectKeyCount(eventPayload) > objectKeyCount(pointerEnvelope)
+        ? eventPayload
+        : pointerEnvelope;
       await client.query(
         `
           INSERT INTO pftl_task_pointer_events (

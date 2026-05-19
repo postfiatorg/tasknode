@@ -28,13 +28,9 @@ export function chatBillingStatus() {
   return databaseStatus();
 }
 
-function safeAccountId(accountId = "") {
-  return String(accountId || "").trim().slice(0, 160);
-}
-
-function safeConversationId(conversationId = "dev") {
-  return String(conversationId || "dev").trim().slice(0, 180) || "dev";
-}
+const safeAccountId = (accountId = "") => String(accountId || "").trim().slice(0, 160);
+const safeConversationId = (conversationId = "dev") =>
+  String(conversationId || "dev").trim().slice(0, 180) || "dev";
 
 function safeConversationAccountId(accountId = "") {
   return String(accountId || "")
@@ -93,17 +89,11 @@ async function assertChatConversationReadable({ accountId = "", conversationId =
   }
 }
 
-function cleanTitle(title = "") {
-  return String(title || "").trim().replace(/\s+/g, " ").slice(0, 80);
-}
-
-function titleFromPrompt(prompt = "") {
-  return cleanTitle(prompt).slice(0, 64) || "New chat";
-}
-
-function messagePreview(message = "") {
-  return String(message || "").trim().replace(/\s+/g, " ").slice(0, 140);
-}
+const cleanTitle = (title = "") => String(title || "").trim().replace(/\s+/g, " ").slice(0, 80);
+const titleFromPrompt = (prompt = "") => cleanTitle(prompt).slice(0, 64) || "New chat";
+const messagePreview = (message = "") => String(message || "").trim().replace(/\s+/g, " ").slice(0, 140);
+const conversationStatusForInsert = (status = "active") =>
+  String(status || "active").trim().toLowerCase().slice(0, 40) === "task_request" ? "task_request" : "active";
 
 function toIso(value) {
   if (!value) return null;
@@ -477,6 +467,7 @@ export async function appendChatTurn({
   userMetadata = {},
   assistantMetadata = {},
   runMetadata = {},
+  conversationStatus = "active",
   attachments = [],
   usage,
 } = {}) {
@@ -517,6 +508,7 @@ export async function appendChatTurn({
   const modelRunId = `run_${randomUUID()}`;
   const costUsd = numeric(usage?.costUsd || 0);
   const preview = messagePreview(assistantMessage) || messagePreview(userMessage);
+  const status = conversationStatusForInsert(conversationStatus);
 
   try {
     return await transaction(async (client) => {
@@ -545,10 +537,10 @@ export async function appendChatTurn({
             last_message_preview,
             message_count
           )
-          VALUES ($1, $2, $3, 'active', $4, $5, $5, $5, $6, 2)
+          VALUES ($1, $2, $3, $7, $4, $5, $5, $5, $6, 2)
           ON CONFLICT (id) DO UPDATE SET
             account_id = EXCLUDED.account_id,
-            status = 'active',
+            status = EXCLUDED.status,
             title = CASE
               WHEN chat_conversations.title IS NULL
                 OR chat_conversations.title = ''
@@ -570,6 +562,7 @@ export async function appendChatTurn({
           mode || null,
           now,
           preview,
+          status,
         ]
       );
 

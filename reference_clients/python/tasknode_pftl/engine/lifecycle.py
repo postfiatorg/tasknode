@@ -115,7 +115,6 @@ def run_task_engine_lifecycle(
     scoring_model: str | None = None,
     evidence_plan: EvidencePlan | None = None,
     verification_evidence_plan: EvidencePlan | None = None,
-    allow_taskgen_fallback: bool = False,
     benchmark_high_reasoning: bool = False,
     import_context_pointer: bool = True,
     queues: EngineQueues | None = None,
@@ -224,7 +223,6 @@ def run_task_engine_lifecycle(
         provider=provider,
         model=taskgen_model,
         benchmark_high_reasoning=benchmark_high_reasoning,
-        allow_fallback=allow_taskgen_fallback,
     )
 
     offer_core = {

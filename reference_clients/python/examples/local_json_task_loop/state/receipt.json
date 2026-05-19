@@ -1,7 +1,7 @@
 {
   "artifact_id": "artifact_2933c8e2a9369d0b65fe5016",
   "final_status": "rewarded",
-  "receipt_id": "receipt_2a6462f996d319198593fa08",
+  "receipt_id": "receipt_bb344038f0340987e66d57c2",
   "reputation_after": {
     "approved_submissions": 3,
     "completed_tasks": 3,
@@ -23,12 +23,12 @@
   "request_id": "req_b74e4b510002f2055c802747",
   "run_id": "local_json_task_loop_demo_v1",
   "schema": "pf.task.local_json_loop.v1",
-  "state_digest": "sha256:aa0d04fa6498d1f523002173d7d22247c2e9db162a4ce04c24c1c857d53e8600",
+  "state_digest": "sha256:138b98f79cc5b82effba4ce22f948e524b4ff165e961c05d08c28b9247efd0d5",
   "task_id": "task_56e4026772be18750692279d",
   "transition_count": 5,
   "transitions": [
     {
-      "event_id": "evt_7ec02d2f3a6aac7fa657ab28",
+      "event_id": "evt_afcce5fca31da369bf6a8f8d",
       "event_type": "task_generated",
       "from": "none",
       "to": "proposed"

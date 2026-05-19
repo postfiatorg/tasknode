@@ -34,14 +34,13 @@ class VerificationReaderTests(unittest.TestCase):
         self.assertIn("Task Node PDF evidence", read.text)
         self.assertIn("canonical PFTL evidence", read.text)
 
-    def test_external_url_policy_accepts_gist_and_rejects_binary(self):
+    def test_external_url_policy_only_validates_transport_shape(self):
         gist = "https://gist.github.com/goodalexander/d390caddb019ec3cb08748a15a97a760"
         self.assertEqual(extract_gist_id(gist), "d390caddb019ec3cb08748a15a97a760")
         self.assertTrue(classify_external_url(gist)["ok"])
 
         binary = classify_external_url("https://example.com/evidence.pdf")
-        self.assertFalse(binary["ok"])
-        self.assertEqual(binary["reason"], "binary_url")
+        self.assertTrue(binary["ok"])
 
     def test_evidence_packet_has_canonical_shape(self):
         with tempfile.TemporaryDirectory() as temp_dir:

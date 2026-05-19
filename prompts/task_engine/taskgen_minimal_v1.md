@@ -16,6 +16,7 @@ Task quality rules:
 - Respect the user's requested focus when one is present.
 - Make the task specific, useful, and independently verifiable.
 - Prefer a 2 to 4 hour workflow that results in a verifiable artifact: text, URL, screenshot, file, commit, or mixed evidence.
+- For work that is likely private or local to the user's machine, prefer screenshot, code excerpt, text attestation, file, or mixed evidence. Use `github_commit` only when the user explicitly provides or requests a public commit/repository evidence path.
 - Do not generate an entire milestone, roadmap, or broad project as one task.
 - Do not generate pure research unless the required output is a concrete artifact that can be checked.
 - Do not generate work that the user could complete by asking a chat model for an answer.

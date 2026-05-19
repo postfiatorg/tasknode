@@ -10,8 +10,8 @@ The code owner for this boundary is `server/chat-router.js`. The product contrac
 | --- | --- | --- | --- | --- | --- | --- |
 | Private Instant | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-flash` | None | Disabled | `zdr=true`, `data_collection="deny"`, provider allowlist |
 | Private Thinking | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-pro` | `high`, excluded from response | Disabled | `zdr=true`, `data_collection="deny"`, provider allowlist, `require_parameters=true` |
-| Frontier Instant | OpenAI | `/v1/responses` | `chat-latest` | `medium` | Optional, intent-triggered | Direct OpenAI route, `store=false` |
-| Frontier Thinking | OpenAI | `/v1/responses` | `gpt-5.5` | `high` | Optional, intent-triggered | Direct OpenAI route, `store=false` |
+| Frontier Instant | OpenAI | `/v1/responses` | `chat-latest` | `medium` | Prompt-governed | Direct OpenAI route, `store=false` |
+| Frontier Thinking | OpenAI | `/v1/responses` | `gpt-5.5` | `high` | Prompt-governed | Direct OpenAI route, `store=false` |
 
 ## Model Selection
 
@@ -24,7 +24,7 @@ Mode-specific environment variables always win:
 
 For private modes only, `OPENROUTER_MODEL` is the next fallback. Frontier modes intentionally do not use a broad `OPENAI_MODEL` override; they are pinned to the explicit defaults unless the mode-specific variable is set.
 
-The app normalizes unknown modes to Private Instant. On app load, the default mode prefers Frontier Instant when that route is enabled, then falls back to the first enabled configured route.
+Unknown mode strings are rejected with `unknown_chat_mode`. On app load, the default mode prefers Frontier Instant when that route is enabled, then falls back to the first enabled configured route.
 
 ## OpenAI Route
 
@@ -34,7 +34,7 @@ Frontier modes call OpenAI through the Responses API. Task Node sends:
 - `input`: recent conversation, the user message, and supported attachments.
 - `reasoning`: `medium` for Frontier Instant and `high` for Frontier Thinking.
 - `store: false`: app history remains in Task Node Postgres instead of provider-hosted state.
-- `tools`: `web_search` only when the user asks for current or external information.
+- `tools`: `web_search` for Frontier modes, with use governed by the assistant instructions.
 
 Images are sent as `input_image`. Text attachments are sent as `input_text`. Other files are sent as `input_file` with filename and base64 data URL.
 
@@ -54,7 +54,7 @@ Image attachments are sent as `image_url` parts. Text attachments are sent as te
 
 ## Web Search Policy
 
-OpenAI Responses supports a hosted `web_search` tool, and Task Node enables it only for Frontier modes when `server/chat-search-tools.js` detects current-information intent. The current intent check is simple and conservative. It looks for phrases such as `search`, `look up`, `today`, `current`, `latest`, `recent`, `news`, and `what is going on`.
+OpenAI Responses supports a hosted `web_search` tool. Task Node exposes that tool only on Frontier modes and instructs the assistant to use it only when the user asks for current, external, or source-grounded information that is not already available in the conversation, attachments, context document, memory, or task state. There is no keyword router for search intent.
 
 OpenRouter now documents an `openrouter:web_search` server tool, but Task Node does not enable it for private modes. That is a product choice: private modes should stay ZDR, open-source, and predictable. If OpenRouter web search is added later, it should be a separate explicit mode or toggle with billing, citation, and privacy behavior documented before launch.
 
@@ -68,6 +68,8 @@ Provider usage is normalized into the app ledger:
 - `billing_ledger_entries` records the actual debit.
 
 The current configured rates live in `chatModePrices`. They are estimates and caps for preflight; provider-returned usage is preferred when available.
+
+Because Frontier requests may use OpenAI-hosted web search, preflight reserves the configured maximum search tool budget for Frontier modes. Actual billing still uses provider-returned token usage plus observed `web_search_call` items.
 
 ## Diagram
 
@@ -101,4 +103,3 @@ flowchart LR
 - Provider timeout returns a provider failure, not a fake assistant answer.
 - Empty provider text is treated as an upstream failure.
 - Attachments that cannot be normalized or parsed should fail visibly before or during chat execution.
-

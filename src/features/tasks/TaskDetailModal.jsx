@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -14,7 +14,20 @@ import {
   X,
 } from "lucide-react";
 import { requestJson } from "../../api";
+import {
+  normalizeTaskStatus,
+  statusSlug,
+  taskIsTerminal,
+  taskRequiresRefresh,
+  taskStatusColor,
+} from "../../../shared/task-lifecycle";
 import { truncateCid } from "../context/context-view-utils.jsx";
+import { publishTaskLifecycleAction } from "./task-actions.js";
+import {
+  processTaskEvidenceFile,
+  publishTaskEvidenceSubmission,
+  readEvidenceFile,
+} from "./task-submission-actions.js";
 import "./task-detail.css";
 
 async function copyText(text) {
@@ -42,33 +55,16 @@ async function copyText(text) {
   return copied;
 }
 
-function statusSlug(status = "") {
-  return String(status || "unknown")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function taskStatusColor(status) {
-  return {
-    Proposed: "#7a5a1f",
-    Accepted: "#4a5934",
-    Refused: "#7c3c2e",
-    Rewarded: "#6e5223",
-    "Verification requested": "#5b4b8a",
-    "Verification submitted": "#4a5934",
-  }[status] || "#3d3d38";
-}
-
-function TaskStatusGlyph({ status }) {
-  if (status === "Refused") {
+function TaskStatusGlyph({ statusKey }) {
+  const normalized = normalizeTaskStatus(statusKey);
+  if (["refused", "rejected", "cancelled"].includes(normalized)) {
     return (
       <svg className="task-status-x" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
         <path d="M2 2 L9 9 M9 2 L2 9" strokeLinecap="round" />
       </svg>
     );
   }
-  return <span className={`task-status-glyph is-${statusSlug(status)}`} aria-hidden="true" />;
+  return <span className={`task-status-glyph is-${statusSlug(normalized)}`} aria-hidden="true" />;
 }
 
 function TaskSection({ children, last, title }) {
@@ -80,10 +76,89 @@ function TaskSection({ children, last, title }) {
   );
 }
 
-function TaskOverviewPanel({ displayTask, steps, verification }) {
+function formatPftValue(value) {
+  const parsed = Number(value || 0);
+  if (!Number.isFinite(parsed)) return "0";
+  return parsed.toLocaleString(undefined, {
+    maximumFractionDigits: parsed % 1 === 0 ? 0 : 6,
+    minimumFractionDigits: 0,
+  });
+}
+
+function formatReviewMetric(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return "";
+  return String(value);
+}
+
+function TaskRewardOutcome({ outcome }) {
+  if (!outcome) return null;
+  const rewardPft = Number(outcome.rewardPft || 0);
+  const offeredPft = Number(outcome.offeredPft || 0);
+  const rows = [
+    ["Decision", outcome.decision],
+    ["Reward decision", `${formatPftValue(rewardPft)} PFT`],
+    offeredPft > 0 && offeredPft !== rewardPft
+      ? ["Original offer", `${formatPftValue(offeredPft)} PFT`]
+      : null,
+    ["Completion", formatReviewMetric(outcome.completion)],
+    ["Evidence quality", formatReviewMetric(outcome.evidenceQuality)],
+  ].filter((row) => row && Boolean(String(row[1] || "").trim()));
+
+  return (
+    <section className={`task-reward-outcome is-${statusSlug(outcome.status)}`}>
+      <div className="task-reward-outcome-head">
+        <span>Reward outcome</span>
+        <strong>{outcome.title || "Reward decision"}</strong>
+        <p>{outcome.summary || "The reward decision has been indexed on-chain."}</p>
+      </div>
+      {rows.length > 0 && (
+        <dl className="task-reward-outcome-grid">
+          {rows.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {outcome.reason && (
+        <div className="task-reward-outcome-text">
+          <span>Verifier reason</span>
+          <p>{outcome.reason}</p>
+        </div>
+      )}
+      {outcome.userFeedback && (
+        <div className="task-reward-outcome-text">
+          <span>What to fix</span>
+          <p>{outcome.userFeedback}</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TaskOverviewPanel({
+  detail,
+  displayTask,
+  loading,
+  onLifecycleAction,
+  onWalletUnlock,
+  steps,
+  verification,
+  walletVault,
+}) {
+  const actions = detail?.actions || {};
   return (
     <>
       <div className="task-modal-divider" />
+      <TaskLifecycleActionPanel
+        actions={actions}
+        loading={loading}
+        onLifecycleAction={onLifecycleAction}
+        onWalletUnlock={onWalletUnlock}
+        walletVault={walletVault}
+      />
+      <TaskRewardOutcome outcome={detail?.rewardOutcome} />
       <TaskSection title="Description">
         <p>{displayTask.description}</p>
       </TaskSection>
@@ -107,43 +182,172 @@ function TaskOverviewPanel({ displayTask, steps, verification }) {
   );
 }
 
-function initialEvidenceMethod(task = {}, verification = {}) {
-  const text = [
-    task.title,
-    task.description,
-    verification.title,
-    verification.body,
+const evidenceMethodByStructuredType = {
+  code: "code",
+  file: "file",
+  github_commit: "commit",
+  mixed: "text",
+  screenshot: "screenshot",
+  text: "text",
+  url: "url",
+};
+
+function evidenceMethodFromContract(task = {}, verification = {}) {
+  const structuredTypes = [
+    task?.submissionRequirement?.type,
+    task?.submission_type,
+    task?.submissionType,
+    task?.metadata?.submissionType,
+    verification?.submissionRequirement?.type,
+    verification?.policy?.verification_type,
     verification?.policy?.type,
-    verification?.policy?.criteria,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  if (text.includes("github") || text.includes("commit") || text.includes("repository")) return "commit";
-  if (text.includes("screenshot") || text.includes("image")) return "screenshot";
-  if (text.includes("code")) return "code";
-  if (text.includes("url") || text.includes("link")) return "url";
-  if (text.includes("file") || text.includes("pdf") || text.includes("docx")) return "file";
+  ];
+  for (const value of structuredTypes) {
+    const method = evidenceMethodByStructuredType[String(value || "").trim()];
+    if (method) return method;
+  }
   return "text";
 }
 
-function TaskSubmitPanel({ detail, loading, task, verification }) {
-  const [method, setMethod] = useState(() => initialEvidenceMethod(task, verification));
+function TaskLifecycleActionPanel({
+  actions,
+  loading,
+  onLifecycleAction,
+  onWalletUnlock,
+  walletVault,
+}) {
+  const [reason, setReason] = useState("");
+  const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "" });
+  if (!actions?.canAccept && !actions?.canCancel) return null;
+
+  const vaultUnlocked = Boolean(walletVault?.unlocked);
+  const actionLabel = actions.stopLabel || "Cancel task";
+  const helper = actions.canAccept
+    ? "Accepting signs a PFTL task update and puts this task on your plate. Refusing closes the offer."
+    : vaultUnlocked
+      ? "Publishes a signed TASK_UPDATE pointer. The task will move after the chain cache indexes it."
+      : "Unlock the local seed vault to sign this task update. The seed stays in this browser.";
+  const stopDisabled = loading || state.pending;
+  const acceptDisabled = stopDisabled;
+  const stopCopy = vaultUnlocked ? actionLabel : "Unlock wallet";
+  const acceptCopy = vaultUnlocked ? "Accept task" : "Unlock wallet";
+  const title = actions.canAccept ? "Accept or refuse task" : actionLabel;
+  const resultAction = state.resultAction ? `${state.resultAction}: ` : "";
+  const pendingAction = state.pendingAction || "";
+  const stopPending = state.pending && pendingAction !== "accept";
+  const acceptPending = state.pending && pendingAction === "accept";
+  const reasonLabel = actions.canAccept ? "Refusal note" : "Reason";
+  const reasonPlaceholder = actions.canAccept
+    ? "Optional note if you refuse this task."
+    : "Optional note for the task audit trail.";
+
+  async function submitLifecycleAction(taskAction) {
+    if (!vaultUnlocked) {
+      onWalletUnlock?.();
+      return;
+    }
+    setState({ error: "", pending: true, pendingAction: taskAction, result: "", resultAction: "" });
+    try {
+      const result = await onLifecycleAction?.({
+        reason: taskAction === "accept" ? "" : reason,
+        taskAction,
+      });
+      setState({
+        error: "",
+        pending: false,
+        pendingAction: "",
+        result: result?.txHash ? `Published ${truncateCid(result.txHash)}` : "Published",
+        resultAction: taskAction === "accept" ? "Accepted" : actionLabel,
+      });
+    } catch (error) {
+      setState({
+        error: error?.message || "Task action could not be published.",
+        pending: false,
+        pendingAction: "",
+        result: "",
+        resultAction: "",
+      });
+    }
+  }
+
+  return (
+    <div className="task-lifecycle-action">
+      <div>
+        <h4>{title}</h4>
+        <p>{helper}</p>
+      </div>
+      <label>
+        {reasonLabel}
+        <textarea
+          disabled={state.pending}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder={reasonPlaceholder}
+          rows={3}
+          value={reason}
+        />
+      </label>
+      <div className="task-lifecycle-buttons">
+        {actions.canAccept && (
+          <button
+            className="dark-pill"
+            disabled={acceptDisabled}
+            onClick={() => submitLifecycleAction("accept")}
+            type="button"
+          >
+            {acceptPending ? "Publishing" : acceptCopy}
+            <ArrowRight size={14} strokeWidth={2} />
+          </button>
+        )}
+        {actions.canCancel && (
+          <button
+            className="light-pill"
+            disabled={stopDisabled}
+            onClick={() => submitLifecycleAction(actions.stopAction || "cancel")}
+            type="button"
+          >
+            {stopPending ? "Publishing" : stopCopy}
+            <ArrowRight size={14} strokeWidth={2} />
+          </button>
+        )}
+      </div>
+      {state.error && <p className="task-action-message is-error">{state.error}</p>}
+      {state.result && <p className="task-action-message">{resultAction}{state.result}</p>}
+    </div>
+  );
+}
+
+function TaskSubmitPanel({
+  accountId,
+  detail,
+  linkedWalletAddress,
+  loading,
+  onEvidenceSubmitted,
+  onWalletUnlock,
+  task,
+  verification,
+  walletSecret,
+  walletVault,
+}) {
+  const [method, setMethod] = useState(() => evidenceMethodFromContract(task, verification));
   const [confirmed, setConfirmed] = useState(false);
-  const [copiedPacket, setCopiedPacket] = useState(false);
+  const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "" });
   const [draft, setDraft] = useState({
     code: "",
     commit: "",
+    file: null,
     fileName: "",
     notes: "",
+    screenshotFile: null,
     screenshot: "",
     text: "",
     url: "",
   });
   const actions = detail?.actions || {};
+  const verificationRequest = detail?.currentVerificationRequest || null;
   const submissionOpen = Boolean(actions.canSubmitInitialEvidence || actions.canSubmitVerificationEvidence);
   const summaries = Array.isArray(detail?.submission?.summaries) ? detail.submission.summaries : [];
   const signingEnabled = Boolean(actions.browserSubmissionEnabled);
+  const vaultUnlocked = Boolean(walletVault?.unlocked);
   const evidenceValue = {
     code: draft.code,
     commit: draft.commit,
@@ -152,10 +356,19 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
     text: draft.text,
     url: draft.url,
   }[method] || "";
-  const canPrepareEvidence = Boolean(evidenceValue.trim() && !loading && (!signingEnabled || confirmed));
+  const selectedFile = method === "screenshot" ? draft.screenshotFile : method === "file" ? draft.file : null;
+  const canPrepareEvidence = Boolean(
+    evidenceValue.trim() &&
+      !loading &&
+      !state.pending &&
+      signingEnabled &&
+      confirmed
+  );
   const helperText = signingEnabled
-    ? "This will publish a signed PFTL task submission."
-    : "Browser signing is not enabled for this task yet. Copy the evidence packet and submit it through the active verification workflow.";
+    ? vaultUnlocked
+      ? "Evidence is encrypted in this browser, pinned to IPFS, and published as a signed PFTL task pointer."
+      : "Unlock the local seed vault to sign evidence. The seed stays in this browser."
+    : "This task state is not accepting evidence right now.";
   const methods = [
     { key: "text", label: "Text", icon: FileText },
     { key: "url", label: "URL", icon: ExternalLink },
@@ -165,25 +378,100 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
     { key: "file", label: "File", icon: Paperclip },
   ];
 
+  useEffect(() => {
+    setMethod(evidenceMethodFromContract(task, verification));
+  }, [task, verification]);
+
   function updateDraft(key, value) {
-    setCopiedPacket(false);
+    setState({ error: "", pending: false, pendingLabel: "", result: "" });
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
-  async function copyEvidencePacket() {
-    const packet = {
-      schema: "tasknode.task.evidence.draft.v1",
-      task_id: task.taskId || task.fullId || task.id || "",
-      task_title: task.title || "",
-      evidence_type: method,
-      evidence: evidenceValue,
-      notes: draft.notes,
-      prepared_at: new Date().toISOString(),
-    };
-    const ok = await copyText(JSON.stringify(packet, null, 2));
-    if (!ok) return;
-    setCopiedPacket(true);
-    window.setTimeout(() => setCopiedPacket(false), 1600);
+  async function updateEvidenceFile(key, fileKey, file) {
+    if (!file) {
+      updateDraft(key, "");
+      updateDraft(fileKey, null);
+      return;
+    }
+    const taskId = task?.taskId || task?.fullId || task?.id || detail?.task?.taskId || detail?.task?.fullId || "";
+    setState({
+      error: "",
+      pending: true,
+      pendingLabel: key === "screenshot" ? "Reading screenshot" : "Reading file",
+      result: "",
+    });
+    try {
+      const readFile = await readEvidenceFile(file);
+      const processedFile = await processTaskEvidenceFile({
+        file: readFile,
+        method: key === "screenshot" ? "screenshot" : "file",
+        taskId,
+        value: file.name,
+        verificationCriteria: verification?.body || verification?.title || "",
+      });
+      setDraft((current) => ({
+        ...current,
+        [key]: file.name,
+        [fileKey]: processedFile,
+      }));
+      setState({
+        error: "",
+        pending: false,
+        pendingLabel: "",
+        result: key === "screenshot" ? "Screenshot read and compacted" : "",
+      });
+    } catch (error) {
+      setState({
+        error: error?.message || "Evidence file could not be read.",
+        pending: false,
+        pendingLabel: "",
+        result: "",
+      });
+    }
+  }
+
+  async function submitEvidence() {
+    if (!vaultUnlocked) {
+      onWalletUnlock?.();
+      return;
+    }
+    setState({ error: "", pending: true, pendingLabel: "Publishing evidence", result: "" });
+    try {
+      const result = await publishTaskEvidenceSubmission({
+        accountId,
+        detail,
+        linkedWalletAddress,
+        method,
+        notes: draft.notes,
+        onProgress: (label) => {
+          setState((current) => ({
+            ...current,
+            error: "",
+            pending: true,
+            pendingLabel: label,
+            result: "",
+          }));
+        },
+        task,
+        value: evidenceValue,
+        walletSecret,
+        file: selectedFile,
+      });
+      setState({
+        error: "",
+        pending: false,
+        pendingLabel: "",
+        result: result?.txHash ? `Published ${truncateCid(result.txHash)}` : "Evidence published",
+      });
+      Promise.resolve(onEvidenceSubmitted?.(result)).catch(() => {});
+    } catch (error) {
+      setState({
+        error: error?.message || "Task evidence could not be published.",
+        pending: false,
+        pendingLabel: "",
+        result: "",
+      });
+    }
   }
 
   return (
@@ -191,7 +479,14 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
       <div className="task-submit-head">
         <div>
           <h3>{actions.canSubmitVerificationEvidence ? "Submit verification evidence" : "Submit task evidence"}</h3>
-          <p>{verification.body || "Submit evidence that satisfies this task."}</p>
+          <p>
+            {actions.canSubmitVerificationEvidence
+              ? verificationRequest?.body || "Respond to the indexed verification request."
+              : verification.body || "Submit evidence that satisfies this task."}
+          </p>
+          {actions.canSubmitVerificationEvidence && verificationRequest?.reason && (
+            <small>{verificationRequest.reason}</small>
+          )}
         </div>
         <span className={submissionOpen ? "task-submit-state is-open" : "task-submit-state"}>
           {submissionOpen ? "Open" : task.status}
@@ -256,11 +551,14 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
               Screenshot file
               <input
                 accept="image/*"
-                onChange={(event) => updateDraft("screenshot", event.target.files?.[0]?.name || "")}
+                onChange={(event) => updateEvidenceFile("screenshot", "screenshotFile", event.target.files?.[0] || null)}
                 type="file"
               />
             </label>
             <span>{draft.screenshot || "No screenshot selected"}</span>
+            {draft.screenshotFile?.description && (
+              <p className="task-evidence-processed">{draft.screenshotFile.description}</p>
+            )}
           </div>
         )}
         {method === "code" && (
@@ -292,7 +590,7 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
             <label>
               Evidence file
               <input
-                onChange={(event) => updateDraft("fileName", event.target.files?.[0]?.name || "")}
+                onChange={(event) => updateEvidenceFile("fileName", "file", event.target.files?.[0] || null)}
                 type="file"
               />
             </label>
@@ -313,11 +611,11 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
       <button
         className="dark-pill task-submit-button"
         disabled={!canPrepareEvidence}
-        onClick={signingEnabled ? undefined : copyEvidencePacket}
+        onClick={submitEvidence}
         type="button"
       >
-        {signingEnabled ? "Submit evidence" : copiedPacket ? "Evidence packet copied" : "Copy evidence packet"}
-        {copiedPacket ? <Check size={14} strokeWidth={2} /> : <ArrowRight size={14} strokeWidth={2} />}
+        {state.pending ? state.pendingLabel || "Working" : vaultUnlocked ? "Submit evidence" : "Unlock wallet"}
+        <ArrowRight size={14} strokeWidth={2} />
       </button>
       {signingEnabled && (
         <label className="task-submit-confirm">
@@ -329,6 +627,8 @@ function TaskSubmitPanel({ detail, loading, task, verification }) {
           This evidence is ready to submit.
         </label>
       )}
+      {state.error && <p className="task-action-message is-error">{state.error}</p>}
+      {state.result && !state.pending && <p className="task-action-message">{state.result}</p>}
       <div className="task-inline-warning">
         <AlertTriangle size={15} strokeWidth={1.8} />
         <span>{helperText}</span>
@@ -373,6 +673,24 @@ function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy }) {
         <TaskAuditValue label="Context CID" name="context-cid" onCopy={onCopy} value={forensics.contextCid} copiedValue={copiedValue} />
         <TaskAuditValue label="Last transaction" name="last-tx" onCopy={onCopy} value={forensics.lastEventTxHash} copiedValue={copiedValue} />
         <TaskAuditValue label="Last CID" name="last-cid" onCopy={onCopy} value={forensics.lastEventCid} copiedValue={copiedValue} />
+      </div>
+
+      {forensics.reviewState && (
+        <TaskForensicsNotice state={forensics.reviewState} />
+      )}
+
+      <div className="task-forensics-note">
+        <strong>How to read this</strong>
+        <p>
+          Each row is a PFTL transaction pointer. CID and Transaction are the proof anchors;
+          the readable fields come from the decrypted IPFS payload when the Task Node service
+          key can read it.
+        </p>
+        <p>
+          <code>TASK_UPDATE</code> is a state transition such as accepted, refused, or
+          verification requested. <code>TASK_SUBMISSION</code> is initial evidence or
+          verification evidence.
+        </p>
       </div>
 
       <section className="task-forensics-section">
@@ -450,6 +768,23 @@ function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy }) {
   );
 }
 
+function TaskForensicsNotice({ state }) {
+  const missingSchemas = Array.isArray(state?.missingSchemas) ? state.missingSchemas : [];
+  return (
+    <div className={`task-forensics-notice is-${statusSlug(state?.severity || "neutral")}`}>
+      <strong>{state?.label || "Task review state"}</strong>
+      {state?.body && <p>{state.body}</p>}
+      {missingSchemas.length > 0 && (
+        <div className="task-missing-schemas" aria-label="Missing expected schemas">
+          {missingSchemas.map((schema) => (
+            <code key={schema}>{schema}</code>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TaskForensicsEvent({ copiedValue, event, index, onCopy }) {
   const details = Array.isArray(event.details) ? event.details : [];
   const rawPayload = event.rawPayload && typeof event.rawPayload === "object" ? event.rawPayload : null;
@@ -492,10 +827,24 @@ function TaskForensicsEvent({ copiedValue, event, index, onCopy }) {
         )}
         {details.length > 0 && (
           <div className="task-event-details">
-            {details.map((detail) => (
-              <div className={detail.value.length > 160 ? "is-wide" : ""} key={`${detail.label}-${detail.value}`}>
+            {details.map((detail, detailIndex) => (
+              <div className={detail.value.length > 160 ? "is-wide" : ""} key={`${detail.label}-${detailIndex}`}>
                 <span>{detail.label}</span>
-                <p>{detail.value}</p>
+                {detail.value.length > 600 ? (
+                  <details className="task-event-detail-expanded">
+                    <summary>{detail.value.slice(0, 320)}...</summary>
+                    <p>{detail.value}</p>
+                  </details>
+                ) : (
+                  <p>{detail.value}</p>
+                )}
+                <button
+                  className="task-event-detail-copy"
+                  onClick={() => onCopy(`detail-${index}-${detailIndex}`, detail.value)}
+                  type="button"
+                >
+                  {copiedValue === `detail-${index}-${detailIndex}` ? "Copied" : "Copy"}
+                </button>
               </div>
             ))}
           </div>
@@ -548,11 +897,22 @@ function formatForensicsTimestamp(value) {
   }
 }
 
-export function TaskDetailModal({ onClose, task }) {
+export function TaskDetailModal({
+  accountId = "",
+  linkedWalletAddress = "",
+  onClose,
+  onTaskChanged,
+  onWalletUnlock,
+  task,
+  walletSecret = null,
+  walletVault = null,
+}) {
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [detailState, setDetailState] = useState({ data: null, error: "", loading: true });
+  const [detailRefreshKey, setDetailRefreshKey] = useState(0);
   const [copiedValue, setCopiedValue] = useState("");
+  const aliveRef = useRef(true);
   const displayTask = detailState.data?.task || task;
   const steps = Array.isArray(displayTask.steps) ? displayTask.steps : [];
   const verification = displayTask.verification || {};
@@ -561,16 +921,44 @@ export function TaskDetailModal({ onClose, task }) {
   const forensicsCount = detailState.data?.forensics?.timeline?.length || displayTask.metadata?.eventCount || 0;
 
   useEffect(() => {
+    aliveRef.current = true;
     const id = requestAnimationFrame(() => setMounted(true));
     const onKey = (event) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => {
+      aliveRef.current = false;
       cancelAnimationFrame(id);
       window.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
+
+  async function refreshTaskDetail({ showLoading = true } = {}) {
+    if (showLoading) setDetailState((current) => ({ ...current, loading: true }));
+    try {
+      const result = await requestJson(`/api/tasks/detail?taskId=${encodeURIComponent(taskId)}`);
+      if (!aliveRef.current) return null;
+      if (result.ok && result.body?.ok) {
+        setDetailState({ data: result.body, error: "", loading: false });
+        return result.body;
+      }
+      setDetailState({
+        data: null,
+        error: result.body?.error || "task_detail_unavailable",
+        loading: false,
+      });
+      return null;
+    } catch {
+      if (!aliveRef.current) return null;
+      setDetailState({
+        data: null,
+        error: "Task detail could not be loaded.",
+        loading: false,
+      });
+      return null;
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -599,13 +987,90 @@ export function TaskDetailModal({ onClose, task }) {
     return () => {
       active = false;
     };
-  }, [taskId]);
+  }, [detailRefreshKey, taskId]);
+
+  function applyOptimisticEvidenceState(result = {}) {
+    const schema = result?.submissionPayload?.schema || "";
+    const verificationResponse = schema === "pf.task.verification_response.v1";
+    const nextTaskStatus = verificationResponse
+      ? { status: "Awaiting review", statusKey: "verification_response_submitted" }
+      : { status: "Submitted", statusKey: "submitted" };
+    setDetailState((current) => {
+      const data = current.data;
+      if (!data?.task) return current;
+      return {
+        ...current,
+        data: {
+          ...data,
+          task: {
+            ...data.task,
+            ...nextTaskStatus,
+            metadata: {
+              ...(data.task.metadata || {}),
+              optimisticLastTxHash: result?.txHash || "",
+            },
+          },
+          actions: {
+            ...(data.actions || {}),
+            canSubmitInitialEvidence: false,
+            canSubmitVerificationEvidence: false,
+            browserSubmissionEnabled: false,
+          },
+        },
+      };
+    });
+  }
+
+  async function pollTaskDetailForSubmittedTx(result = {}) {
+    const txHash = String(result?.txHash || "").trim();
+    const verificationResponse = result?.submissionPayload?.schema === "pf.task.verification_response.v1";
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2000));
+      if (!aliveRef.current) return;
+      const detail = await refreshTaskDetail({ showLoading: false });
+      await onTaskChanged?.();
+      if (!detail?.task) continue;
+      const lastTx = detail?.forensics?.lastEventTxHash || "";
+      const hasSubmittedTx = txHash && (
+        lastTx === txHash ||
+        (Array.isArray(detail?.forensics?.timeline) && detail.forensics.timeline.some((event) => event?.txHash === txHash))
+      );
+      const statusKey = normalizeTaskStatus(detail.task.statusKey || detail.task.status);
+      const terminal = taskIsTerminal(statusKey);
+      if (terminal) return;
+      if (!verificationResponse && (statusKey === "verification_requested" || (hasSubmittedTx && !taskRequiresRefresh(statusKey)))) {
+        return;
+      }
+      applyOptimisticEvidenceState(result);
+    }
+  }
+
+  async function handleEvidenceSubmitted(result = {}) {
+    applyOptimisticEvidenceState(result);
+    await onTaskChanged?.();
+    pollTaskDetailForSubmittedTx(result);
+  }
 
   async function copyTaskValue(label, value) {
     const ok = await copyText(value);
     if (!ok) return;
     setCopiedValue(label);
     window.setTimeout(() => setCopiedValue((current) => (current === label ? "" : current)), 1400);
+  }
+
+  async function handleLifecycleAction({ reason = "", taskAction = "cancel" } = {}) {
+    const result = await publishTaskLifecycleAction({
+      accountId,
+      linkedWalletAddress,
+      walletSecret,
+      task: displayTask,
+      detail: detailState.data,
+      taskAction,
+      reason,
+    });
+    setDetailRefreshKey((key) => key + 1);
+    await onTaskChanged?.();
+    return result;
   }
 
   return (
@@ -646,8 +1111,10 @@ export function TaskDetailModal({ onClose, task }) {
             <div>
               <small>Status</small>
               <span className="task-status-inline">
-                <TaskStatusGlyph status={displayTask.status} />
-                <strong style={{ color: taskStatusColor(displayTask.status) }}>{displayTask.status}</strong>
+                <TaskStatusGlyph statusKey={displayTask.statusKey || displayTask.status} />
+                <strong style={{ color: displayTask.statusColor || taskStatusColor(displayTask.statusKey) }}>
+                  {displayTask.status}
+                </strong>
               </span>
             </div>
             <div>
@@ -687,17 +1154,30 @@ export function TaskDetailModal({ onClose, task }) {
 
           {activeTab === "overview" && (
             <TaskOverviewPanel
+              detail={detailState.data}
               displayTask={displayTask}
+              loading={detailState.loading}
+              onLifecycleAction={handleLifecycleAction}
+              onWalletUnlock={onWalletUnlock}
               steps={steps}
               verification={verification}
+              walletVault={walletVault}
             />
           )}
           {activeTab === "submit" && (
             <TaskSubmitPanel
+              accountId={accountId}
               detail={detailState.data}
+              linkedWalletAddress={linkedWalletAddress}
               loading={detailState.loading}
+              onEvidenceSubmitted={async (result) => {
+                await handleEvidenceSubmitted(result);
+              }}
+              onWalletUnlock={onWalletUnlock}
               task={displayTask}
               verification={verification}
+              walletSecret={walletSecret}
+              walletVault={walletVault}
             />
           )}
           {activeTab === "forensics" && (

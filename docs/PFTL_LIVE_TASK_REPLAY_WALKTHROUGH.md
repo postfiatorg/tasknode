@@ -40,8 +40,7 @@ Prompt version: taskgen-minimal-v1
 ```
 
 The harness now fails closed if OpenAI task generation is missing or invalid.
-The deterministic fallback is available only when the operator explicitly
-passes `--allow-taskgen-fallback`.
+Runtime task generation does not use deterministic fallback content.
 
 ## Actors
 

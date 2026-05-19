@@ -23,6 +23,7 @@ from tasknode_pftl.ipfs import IpfsClient
 from tasknode_pftl.pftl import PftlClient, drops_to_pft, pft_to_drops
 from tasknode_pftl.pointers import Pointer
 from tasknode_pftl.reducer import hydrate_and_reduce
+from tasknode_pftl.engine.scoring import generate_verification_request
 from tasknode_pftl.scenarios.full_lifecycle import (
     RUNS_DIR,
     encrypted_upload,
@@ -34,7 +35,7 @@ from tasknode_pftl.scenarios.full_lifecycle import (
     submit_pointer_payment,
     write_json,
 )
-from tasknode_pftl.taskgen import build_verification_request, generate_task, project_taskgen_input
+from tasknode_pftl.taskgen import generate_task, project_taskgen_input
 from tasknode_pftl.tx_queue import WalletTxQueue
 from tasknode_pftl.wallets import ProtocolWallet, create_protocol_wallet, fund_wallets, wallet_from_seed
 
@@ -106,8 +107,8 @@ def resolved_encryption_keys(client: PftlClient, wallets: list[ProtocolWallet]) 
 def run_app_request_lifecycle(args: argparse.Namespace) -> dict[str, Any]:
     config = PftlConfig.from_env()
     config.require_live()
-    if not config.openai_api_key and not args.allow_taskgen_fallback:
-        raise RuntimeError("OPENAI_API_KEY is required unless --allow-taskgen-fallback is explicit.")
+    if not config.openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY is required for prompt-backed task generation.")
 
     run_id = args.run_id or f"app_request_{now_iso().replace(':', '').replace('.', '').replace('Z', '')}"
     run_dir = RUNS_DIR / run_id
@@ -229,7 +230,6 @@ def run_app_request_lifecycle(args: argparse.Namespace) -> dict[str, Any]:
         config,
         task_input,
         benchmark_high_reasoning=args.benchmark_high_reasoning,
-        allow_fallback=args.allow_taskgen_fallback,
     )
 
     offer_core = {
@@ -375,7 +375,25 @@ def run_app_request_lifecycle(args: argparse.Namespace) -> dict[str, Any]:
         idem=sha256_hex(initial_submission),
     )
 
-    verification_request = build_verification_request(task_offer, initial_submission)
+    verification_result = generate_verification_request(
+        config=config,
+        task_offer=task_offer,
+        initial_submission=initial_submission,
+        processed_evidence={
+            "schema": "pf.task.processed_evidence.v1",
+            "artifact_count": 1,
+            "artifacts": [
+                {
+                    "artifact_type": initial_submission["artifact_type"],
+                    "source_type": "encrypted_ipfs_pointer",
+                    "status": "submitted",
+                    "excerpt": initial_evidence["response"],
+                }
+            ],
+        },
+        context=request_bundle.get("context") or {},
+    )
+    verification_request = verification_result.output
     verification_event = {
         "schema": "pf.task.update.v1",
         "protocol": "tasknode.pftl",
@@ -389,6 +407,7 @@ def run_app_request_lifecycle(args: argparse.Namespace) -> dict[str, Any]:
         "transition": "verification_requested",
         "status_after": "verification_requested",
         "verification_request": verification_request,
+        "generation": verification_result.metadata,
     }
     verification_request_upload = encrypted_upload(
         ipfs=ipfs,
@@ -749,11 +768,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-pft", type=float, default=3.2)
     parser.add_argument("--replace-message-key", action="store_true")
     parser.add_argument("--benchmark-high-reasoning", action="store_true")
-    parser.add_argument(
-        "--allow-taskgen-fallback",
-        action="store_true",
-        help="Permit deterministic local task generation if OpenAI is missing or fails. Off by default.",
-    )
     return parser.parse_args()
 
 

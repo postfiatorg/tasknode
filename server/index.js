@@ -11,10 +11,11 @@ import { startPftlArchiveWorker, startPftlCacheWorker } from "./pftl-cache-sync.
 import { startPftlCacheWatcher } from "./pftl-cache-watcher.js";
 import { handlePftlCacheRoute } from "./pftl-cache-route.js";
 import { fetchWalletTransactions } from "./pftl-transactions.js";
+import { startTaskGenerationWorker } from "./task-generation-worker.js";
 import {
   authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart,
   devAuthStatus,
-  chatEstimateForAccount,
+  chatEstimateStart,
   chatModes, chatSend, chatStreamStart,
   contextActionStart,
   contextActions,
@@ -49,6 +50,7 @@ import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
 import { handleTaskReadRoute } from "./task-routes.js";
+import { startTaskReviewWorker } from "./task-review-worker.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -548,11 +550,12 @@ async function routeApi(req, url, res) {
     return true;
   }
 
-  if (await handleTaskReadRoute({ getLinkedWallet, json, res, session, url })) return true;
+  if (await handleTaskReadRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
 
   if (url.pathname === "/api/chat/estimate") {
     const payload = req.method === "POST" ? await readJson(req) : {};
-    json(res, 200, await chatEstimateForAccount(payload, session?.accountId || ""));
+    const result = await chatEstimateStart(payload, session?.accountId || "");
+    json(res, result.status, result.body);
     return true;
   }
 
@@ -977,6 +980,8 @@ startPftlArchiveWorker();
 startPftlCacheWatcher();
 startPftlCacheReducerWorker();
 startPftlCacheRetentionWorker();
+startTaskGenerationWorker();
+startTaskReviewWorker();
 
 server.listen(port, "0.0.0.0", () => {
   console.log(`tasknodeofficial listening on :${port}`);

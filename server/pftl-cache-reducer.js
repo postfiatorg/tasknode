@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
-import sodium from "libsodium-wrappers";
-import { Wallet } from "xrpl";
 import { fetchContextIpfsJson } from "./context-ipfs.js";
 import { saveContextHistoryProjection } from "./repositories/context.js";
 import { importTaskReplayReceipt } from "./repositories/tasks.js";
 import { databaseEnabled, query, transaction } from "./db/pool.js";
+import {
+  decryptTasknodeServicePayload,
+  tasknodeServiceIdentityFromEnv,
+} from "./task-payloads.js";
 
-const ENCRYPTION_SUITE = "ENC_X25519_XCHACHA20P1305";
-const TEXT_DECODER = new TextDecoder();
 const TASK_POINTER_KINDS = ["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"];
 
 function normalizeText(value) {
@@ -28,84 +28,6 @@ function sha256Hex(value) {
     ? value
     : JSON.stringify(value || {});
   return createHash("sha256").update(data).digest("hex");
-}
-
-function base64ToBytes(value) {
-  return Buffer.from(String(value || ""), "base64");
-}
-
-function bytesToBase64(value) {
-  return Buffer.from(value).toString("base64");
-}
-
-function configuredSeed(env = process.env) {
-  return normalizeText(
-    env.TASKNODE_SERVICE_SEED ||
-      env.TASKNODE_ENCRYPTION_SEED ||
-      env.TASKNODE_PFT_FAUCET_SEED ||
-      env.FAUCET_SEED ||
-      ""
-  );
-}
-
-export async function tasknodeServiceIdentityFromEnv(env = process.env) {
-  const seed = configuredSeed(env);
-  if (!seed) return null;
-  await sodium.ready;
-  const seedBytes = createHash("sha256").update(seed, "utf8").digest();
-  const keypair = sodium.crypto_box_seed_keypair(seedBytes);
-  let walletAddress = "";
-  try {
-    walletAddress = Wallet.fromSeed(seed).classicAddress;
-  } catch {
-    walletAddress = "";
-  }
-  return {
-    role: "task_node_service",
-    walletAddress,
-    publicKey: keypair.publicKey,
-    privateKey: keypair.privateKey,
-    publicKeyBase64: bytesToBase64(keypair.publicKey),
-    recipientId: sha256Hex(Buffer.from(keypair.publicKey)),
-  };
-}
-
-export async function decryptTasknodeServicePayload({ blob, env = process.env } = {}) {
-  if (!blob || typeof blob !== "object") throw new Error("task_payload_missing");
-  if (blob.enc !== ENCRYPTION_SUITE) {
-    throw new Error(`task_payload_unsupported_encryption:${blob.enc || "missing"}`);
-  }
-  const identity = await tasknodeServiceIdentityFromEnv(env);
-  if (!identity?.privateKey) throw new Error("tasknode_service_decryption_seed_missing");
-
-  const recipients = Array.isArray(blob.recipients) ? blob.recipients : [];
-  const shard = recipients.find((entry) => {
-    return normalizeText(entry?.recipient_id).toLowerCase() === identity.recipientId;
-  });
-  if (!shard) throw new Error("tasknode_service_recipient_missing");
-
-  await sodium.ready;
-  const fileKey = sodium.crypto_box_open_easy(
-    base64ToBytes(shard.encrypted_file_key),
-    base64ToBytes(shard.wrap_nonce),
-    base64ToBytes(shard.ephemeral_pubkey),
-    identity.privateKey
-  );
-  const plaintextBytes = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
-    null,
-    base64ToBytes(blob.ciphertext),
-    null,
-    base64ToBytes(blob.nonce),
-    fileKey
-  );
-  if (blob.content_hash) {
-    const digest = sha256Hex(Buffer.from(plaintextBytes));
-    if (digest !== normalizeText(blob.content_hash).toLowerCase()) {
-      throw new Error("task_payload_content_hash_mismatch");
-    }
-  }
-  const plaintext = TEXT_DECODER.decode(plaintextBytes);
-  return JSON.parse(plaintext);
 }
 
 export async function claimPftlReducerEvents({ limit = 10 } = {}) {
@@ -134,7 +56,10 @@ export async function claimPftlReducerEvents({ limit = 10 } = {}) {
           FROM pftl_cache_reducer_events
           WHERE status = 'pending'
             AND available_at <= now()
-          ORDER BY available_at ASC, id ASC
+          ORDER BY
+            CASE WHEN task_id IS NULL OR task_id = '' THEN 1 ELSE 0 END ASC,
+            available_at ASC,
+            id ASC
           LIMIT $1
           FOR UPDATE SKIP LOCKED
         )
@@ -292,9 +217,9 @@ async function candidateTaskPointerRows({ walletAddress, taskId = "", seedCid = 
         AND pm.decode_error IS NULL
         AND pm.pointer_kind = ANY($4)
         AND (
-          pm.task_id = $2
-          OR pm.task_id IS NULL
+          ($2::text <> '' AND pm.task_id = $2)
           OR ($3::text <> '' AND pm.cid = $3)
+          OR ($2::text = '' AND pm.task_id IS NULL)
         )
       ORDER BY
         t.ledger_index ASC NULLS LAST,
@@ -490,7 +415,20 @@ function receiptForProjection({
 async function reduceTaskProjection(event, { fetchIpfsJson = fetchContextIpfsJson, env = process.env } = {}) {
   if (!event.account_id) throw new Error("task_reducer_account_id_missing");
   const seedPointer = await pointerMemoForReducerEvent(event);
-  if (!seedPointer?.cid) throw new Error("task_pointer_missing");
+  if (!seedPointer?.cid) {
+    const eventPointer = safeJson(event.payload_json).pointer;
+    if (normalizeText(eventPointer.cid)) {
+      return {
+        skipped: true,
+        reason: "task_pointer_not_cached_for_event_wallet",
+        cid: eventPointer.cid,
+        txHash: event.tx_hash,
+        taskId: event.task_id || eventPointer.taskId || "",
+        walletAddress: event.wallet_address,
+      };
+    }
+    throw new Error("task_pointer_missing");
+  }
 
   let taskId = normalizeText(event.task_id || seedPointer.task_id || safeJson(seedPointer.decoded_json).taskId);
   let seedHydrated = null;

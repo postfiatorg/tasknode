@@ -58,9 +58,8 @@ TASKNODE_ENCRYPTION_PUBKEY
 ```
 
 Task generation uses `chat-latest` by default and fails closed if OpenAI auth or
-model execution fails. For local protocol-only smoke tests, pass
-`--allow-taskgen-fallback` to use the deterministic fallback generator
-explicitly.
+model execution fails. Runtime task generation does not use deterministic
+fallback content.
 
 ## Commands
 
@@ -155,13 +154,6 @@ Run with the high-reasoning benchmark path:
 ```bash
 python3 -m tasknode_pftl.scenarios.full_lifecycle \
   --benchmark-high-reasoning
-```
-
-Run a protocol-only smoke test without OpenAI task generation:
-
-```bash
-python3 -m tasknode_pftl.scenarios.full_lifecycle \
-  --allow-taskgen-fallback
 ```
 
 The scenario prints addresses, balances, CIDs, tx hashes, and the final replay

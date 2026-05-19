@@ -98,6 +98,10 @@ import {
 } from "./features/context/context-view-utils.jsx";
 import { PostFiatLogo, SidebarButton, ToolMenuRow } from "./features/shell/ShellControls";
 import { TaskDetailModal } from "./features/tasks/TaskDetailModal.jsx";
+import { TaskRequestModal } from "./features/tasks/TaskRequestModal.jsx";
+import { activeTaskRequests, TaskRequestQueue } from "./features/tasks/TaskRequestQueue.jsx";
+import { TaskRow } from "./features/tasks/TaskRow.jsx";
+import { publishTaskRequest } from "./features/tasks/task-request-actions.js";
 import {
   applyWalletBalanceError,
   applyWalletBalanceResult,
@@ -110,6 +114,7 @@ import { WalletUnlockModal } from "./features/wallet/WalletUnlockModal";
 import { formatCreditUsd, formatUsageUsd } from "./formatters";
 import { isSignedInSession } from "./session";
 import { escapeContextHtml, looksLikeContextHtml, sanitizeContextHtml } from "../shared/context-html";
+import { taskRequiresRefresh } from "../shared/task-lifecycle";
 import "./styles.css";
 import "./features/context/context.css";
 
@@ -138,6 +143,8 @@ const CHAT_ATTACHMENT_ACCEPT = [
   "text/csv",
   "application/json",
 ].join(",");
+const serializeChatAttachments = (items = []) =>
+  items.map(({ name, mimeType, size, source, dataUrl }) => ({ name, mimeType, size, source, dataUrl }));
 
 const PALETTE = {
   bg: "#faf9f6",
@@ -494,16 +501,22 @@ function App() {
     async (pointer) => {
       const secret = walletSecretRef.current;
       if (!walletAccountId || !secret?.mnemonic || secret.accountId !== walletAccountId) {
-        throw new Error("Unlock the local seed vault first.");
+        const error = new Error("Unlock the local seed vault first.");
+        error.code = "wallet_vault_locked";
+        throw error;
       }
       const cid = String(pointer?.cid || "").trim();
       if (!cid) {
-        throw new Error("No context CID is selected.");
+        const error = new Error("No context CID is selected.");
+        error.code = "context_cid_missing";
+        throw error;
       }
 
       const fetched = await requestJson(`/api/context/history/ipfs/${encodeURIComponent(cid)}`);
       if (!fetched.ok || !fetched.body?.payload) {
-        throw new Error(fetched.body?.message || "Context CID could not be fetched.");
+        const error = new Error(fetched.body?.message || "Context CID could not be fetched.");
+        error.code = fetched.body?.error || "context_cid_fetch_failed";
+        throw error;
       }
 
       const walletCore = await import("./wallet-core");
@@ -1039,17 +1052,33 @@ function App() {
 
         {view === "chat" && (
           <ChatSurface
+            accountId={walletAccountId}
             activeChat={activeChat}
             chatResetKey={chatResetKey}
             chatSelectionKey={chatSelectionKey}
             chatShareRequestKey={chatShareRequestKey}
             chat={appState?.chat}
+            linkedWalletAddress={linkedWalletAddress}
             onActiveChatChange={setActiveChat}
             onChatSettled={refreshAppState}
+            onWalletUnlock={openWalletVaultControl}
             usage={appState?.usage}
+            walletSecret={walletSecretRef.current}
+            walletVault={walletVaultStatus}
           />
         )}
-        {view === "tasks" && <TasksView onSelectTask={openTaskDetail} tasks={appState?.tasks} />}
+        {view === "tasks" && (
+          <TasksView
+            accountId={walletAccountId}
+            linkedWalletAddress={linkedWalletAddress}
+            onRequestSettled={refreshAppState}
+            onSelectTask={openTaskDetail}
+            onWalletUnlock={openWalletVaultControl}
+            tasks={appState?.tasks}
+            walletSecret={walletSecretRef.current}
+            walletVault={walletVaultStatus}
+          />
+        )}
         {view === "wallet" && (
           <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
             <WalletView
@@ -1117,7 +1146,16 @@ function App() {
         />
       )}
       {selectedTask && (
-        <TaskDetailModal task={selectedTask} onClose={closeTaskDetail} />
+        <TaskDetailModal
+          accountId={walletAccountId}
+          linkedWalletAddress={linkedWalletAddress}
+          onClose={closeTaskDetail}
+          onTaskChanged={refreshAppState}
+          onWalletUnlock={openWalletVaultControl}
+          task={selectedTask}
+          walletSecret={walletSecretRef.current}
+          walletVault={walletVaultStatus}
+        />
       )}
       {chatActionMenu && sidebarOpen && (
         <ChatItemActionMenu
@@ -1152,14 +1190,9 @@ function App() {
 }
 
 function ChatSurface({
-  activeChat,
-  chat,
-  chatResetKey,
-  chatSelectionKey,
-  chatShareRequestKey,
-  onActiveChatChange,
-  onChatSettled,
-  usage,
+  accountId = "", activeChat, chat, chatResetKey, chatSelectionKey, chatShareRequestKey,
+  linkedWalletAddress = "", onActiveChatChange, onChatSettled, onWalletUnlock, usage,
+  walletSecret = null, walletVault = {},
 }) {
   const modes = chat?.modes || [];
   const messages = chat?.seedMessages || [];
@@ -1180,6 +1213,10 @@ function ChatSurface({
   const [editingMsg, setEditingMsg] = useState(null);
   const [editDraft, setEditDraft] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
+  const walletVaultUnlocked = Boolean(
+    walletVault?.unlocked && walletVault?.address && linkedWalletAddress && walletVault.address === linkedWalletAddress
+  );
+  const walletReady = Boolean(accountId && linkedWalletAddress && walletSecret?.mnemonic && walletVaultUnlocked);
   const plusRef = useRef(null);
   const modelRef = useRef(null);
   const inputRef = useRef(null);
@@ -1343,6 +1380,19 @@ function ChatSurface({
           status: "intent_pending",
         }
       : undefined;
+
+    if (isTaskRequest && (!accountId || !linkedWalletAddress)) {
+      setSendMessage("Link a PFT wallet before requesting a task.");
+      setStatusTone("error");
+      return;
+    }
+    if (isTaskRequest && !walletReady) {
+      onWalletUnlock?.();
+      setSendMessage("Unlock the linked wallet, then publish the task request.");
+      setStatusTone("error");
+      return;
+    }
+
     setSending(true);
     setSendMessage("");
     setActualUsage(null);
@@ -1370,65 +1420,48 @@ function ChatSurface({
 
     try {
       if (isTaskRequest) {
-        const taskPayload = {
+        const result = await publishTaskRequest({
+          accountId,
+          linkedWalletAddress,
+          walletSecret,
           requestId,
           bundleId,
-          requestText: TASK_REQUEST_CANONICAL_TEXT,
+          conversationId: requestedConversationId,
           userDetailText: submittedText,
           requestedTaskKind: "personal",
           source: "user_chat",
           sourceConversationTitle: activeChat?.title || titleFromTurns(turns) || "New chat",
-          mode: selectedMode,
-          conversationId: requestedConversationId,
-          attachments: submittedAttachments.map(({ name, mimeType, size, source, dataUrl }) => ({
-            name,
-            mimeType,
-            size,
-            source,
-            dataUrl,
-          })),
-        };
-        const result = await requestJson("/api/tasks/request-intent", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(taskPayload),
+          attachments: serializeChatAttachments(submittedAttachments),
         });
 
-        if (result.ok && result.body?.assistant) {
-          const settledConversationId = result.body?.conversationId || requestedConversationId;
-          const assistantTurn = normalizeChatMessage(
-            result.body.assistant,
-            pendingId
-          );
-          setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
-          setTaskRequestMode(false);
-          setSendMessage(result.body.message || "Task request intent recorded.");
-          setStatusTone("muted");
-          setDraftConversationId(settledConversationId);
-          onActiveChatChange?.({
-            id: settledConversationId,
-            conversationId: settledConversationId,
-            source: "live",
-            title: activeChat?.title || "Task request",
-          });
-          await onChatSettled?.();
-        } else {
-          const failureMessage =
-            result.body?.message ||
-            result.body?.actionRequired ||
-            `Task request returned HTTP ${result.status}.`;
-          setTurns((current) =>
-            replaceTurnById(
-              current,
-              pendingId,
-              createErrorAssistantTurn(pendingId, failureMessage, startedAt)
-            )
-          );
-          setInput(message);
-          setAttachments(submittedAttachments);
-          setSendMessage(failureMessage);
-          setStatusTone("error");
-        }
+        const receipt = `Task request published to PFT. Transaction ${String(result.txHash || "").slice(0, 12)}...`;
+        const assistantTurn = normalizeChatMessage(
+          {
+            id: taskRequestAssistantId,
+            role: "assistant",
+            body: receipt,
+            metadata: {
+              ...taskRequestMetadata,
+              status: "pftl_request_published",
+              requestEventCid: result.cid,
+              requestBundleCid: result.bundleCid,
+              txHash: result.txHash,
+            },
+          },
+          pendingId
+        );
+        setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
+        setTaskRequestMode(false);
+        setSendMessage("Task request published to PFT.");
+        setStatusTone("muted");
+        setDraftConversationId(requestedConversationId);
+        onActiveChatChange?.({
+          id: requestedConversationId,
+          conversationId: requestedConversationId,
+          source: "live",
+          title: activeChat?.title || "Task request",
+        });
+        await onChatSettled?.();
         return;
       }
 
@@ -1436,13 +1469,7 @@ function ChatSurface({
         message: submittedText,
         mode: selectedMode,
         conversationId: requestedConversationId,
-        attachments: submittedAttachments.map(({ name, mimeType, size, source, dataUrl }) => ({
-          name,
-          mimeType,
-          size,
-          source,
-          dataUrl,
-        })),
+        attachments: serializeChatAttachments(submittedAttachments),
       };
       const result = usage?.chatStreamPath
         ? await requestEventStream(
@@ -2585,6 +2612,10 @@ function taskArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function taskRequestArray(tasks = EMPTY_TASKS) {
+  return Array.isArray(tasks?.requests?.items) ? tasks.requests.items : [];
+}
+
 function allTaskBuckets(tasks = EMPTY_TASKS) {
   return [
     ...taskArray(tasks.outstanding),
@@ -2592,6 +2623,14 @@ function allTaskBuckets(tasks = EMPTY_TASKS) {
     ...taskArray(tasks.refused),
     ...taskArray(tasks.rewarded),
   ];
+}
+
+function needsLegacyTaskRefresh(tasks = EMPTY_TASKS) {
+  if (Object.prototype.hasOwnProperty.call(tasks?.sync || {}, "requiresRefresh")) return false;
+  return allTaskBuckets(tasks).some((task) => {
+    const statusKey = String(task?.statusKey || "").toLowerCase();
+    return taskRequiresRefresh(task?.statusKey || task?.status) || statusKey === "verification_requested";
+  });
 }
 
 function findTaskById(tasks = EMPTY_TASKS, taskId = "") {
@@ -2602,13 +2641,28 @@ function findTaskById(tasks = EMPTY_TASKS, taskId = "") {
   ) || null;
 }
 
-function TasksView({ onSelectTask, tasks = EMPTY_TASKS }) {
+function TasksView({
+  accountId = "",
+  linkedWalletAddress = "",
+  onRequestSettled,
+  onSelectTask,
+  onWalletUnlock,
+  tasks = EMPTY_TASKS,
+  walletSecret = null,
+  walletVault = {},
+}) {
   const [tasksTab, setTasksTab] = useState("outstanding");
+  const [taskRequestOpen, setTaskRequestOpen] = useState(false);
   const didAutoSelectTaskTabRef = useRef(false);
   const outstanding = taskArray(tasks.outstanding);
   const verification = taskArray(tasks.verification);
   const refused = taskArray(tasks.refused);
   const rewarded = taskArray(tasks.rewarded);
+  const requests = taskRequestArray(tasks);
+  const activeRequests = activeTaskRequests(requests);
+  const taskSync = tasks?.sync || {};
+  const shouldRefreshTaskState = Boolean(taskSync.requiresRefresh || activeRequests.length || needsLegacyTaskRefresh(tasks));
+  const taskRefreshMs = Math.min(Math.max(Number(taskSync.nextPollMs || 2500), 1000), 30000);
   const currentTabTasks = {
     outstanding,
     verification,
@@ -2631,6 +2685,14 @@ function TasksView({ onSelectTask, tasks = EMPTY_TASKS }) {
     didAutoSelectTaskTabRef.current = true;
     setTasksTab("rewarded");
   }, [outstanding.length, rewarded.length, tasksTab, verification.length]);
+
+  useEffect(() => {
+    if (!shouldRefreshTaskState || typeof onRequestSettled !== "function") return undefined;
+    const refresh = window.setInterval(() => {
+      Promise.resolve(onRequestSettled()).catch(() => null);
+    }, taskRefreshMs);
+    return () => window.clearInterval(refresh);
+  }, [onRequestSettled, shouldRefreshTaskState, taskRefreshMs]);
 
   const emptyCopy = {
     outstanding: {
@@ -2671,13 +2733,21 @@ function TasksView({ onSelectTask, tasks = EMPTY_TASKS }) {
                   <span>{tasks.sync.projectionCount} chain indexed</span>
                 </>
               )}
+              {activeRequests.length > 0 && (
+                <>
+                  <span aria-hidden="true">.</span>
+                  <span>{activeRequests.length} requests processing</span>
+                </>
+              )}
             </p>
           </div>
-          <button className="dark-pill task-request-button" type="button">
+          <button className="dark-pill task-request-button" onClick={() => setTaskRequestOpen(true)} type="button">
             <Plus size={16} strokeWidth={2} />
             Request task
           </button>
         </div>
+
+        <TaskRequestQueue requests={activeRequests} />
 
         <div className="tab-row tasks-copy-tabs">
           {tabs.map((tab) => {
@@ -2714,43 +2784,21 @@ function TasksView({ onSelectTask, tasks = EMPTY_TASKS }) {
             desc={emptyCopy.desc}
           />
         )}
+        {taskRequestOpen && (
+          <TaskRequestModal
+            accountId={accountId}
+            linkedWalletAddress={linkedWalletAddress}
+            onClose={() => setTaskRequestOpen(false)}
+            onRecorded={onRequestSettled}
+            onWalletUnlock={onWalletUnlock}
+            walletSecret={walletSecret}
+            walletVault={walletVault}
+          />
+        )}
       </div>
     </div>
   );
 }
-
-function TaskDot() {
-  return <span className="task-dot" aria-hidden="true" />;
-}
-
-function TaskRow({ isFirst, onClick, task }) {
-  return (
-    <button className={`task-row task-entry${isFirst ? " is-first" : ""}`} onClick={onClick} type="button">
-      <span className="task-entry-signal">
-        <TaskStatusGlyph status={task.status} />
-      </span>
-      <span className="task-entry-main">
-        <span className="task-title">{task.title}</span>
-        <span className="task-meta">
-          <strong>{task.kind}</strong>
-          <TaskDot />
-          <span className="task-status-text" style={{ color: taskStatusColor(task.status) }}>
-            {task.status}
-          </span>
-          <TaskDot />
-          <span>{task.fullDue}</span>
-          <TaskDot />
-          <span>{task.ago}</span>
-        </span>
-      </span>
-      <span className="task-reward">
-        <strong>{Number(task.pft || 0).toLocaleString()}</strong>
-        <span>PFT</span>
-      </span>
-    </button>
-  );
-}
-
 
 function pickContextText(value) {
   if (!value) return "";
@@ -3373,7 +3421,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
           }
         } catch (error) {
           firstError ||= error?.message || "Some previews could not be loaded.";
-          if (String(firstError).toLowerCase().includes("unlock")) break;
+          if (error?.code === "wallet_vault_locked" || error?.code === "context_wallet_required") break;
         } finally {
           loaded += 1;
           if (!cancelled && previewHydrationRunRef.current === runId) {
@@ -4417,28 +4465,6 @@ function ToggleSwitch({ initial }) {
       <span />
     </button>
   );
-}
-
-function TaskStatusGlyph({ status }) {
-  if (status === "Refused") {
-    return (
-      <svg className="task-status-x" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
-        <path d="M2 2 L9 9 M9 2 L2 9" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  return <span className={`task-status-glyph is-${slugify(status || "unknown")}`} aria-hidden="true" />;
-}
-
-function taskStatusColor(status) {
-  return {
-    Proposed: "#7a5a1f",
-    Accepted: "#4a5934",
-    Refused: "#7c3c2e",
-    Rewarded: "#6e5223",
-    "Verification requested": "#5b4b8a",
-    "Verification submitted": "#4a5934",
-  }[status] || "#3d3d38";
 }
 
 function nextTheme(theme) {

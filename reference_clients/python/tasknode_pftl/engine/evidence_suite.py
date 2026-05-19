@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 from tasknode_pftl.codec import now_iso, sha256_hex
 from tasknode_pftl.config import PftlConfig
 from tasknode_pftl.verification import (
+    EvidenceError,
     EvidenceRead,
     build_evidence_packet,
     describe_screenshot_with_openai,
@@ -18,14 +19,13 @@ from tasknode_pftl.verification import (
 )
 
 
-DEFAULT_GIST_URL = "https://gist.github.com/goodalexander/d390caddb019ec3cb08748a15a97a760"
 SUPPORTED_EVIDENCE_TYPES = {"text", "url", "github_commit", "screenshot", "file", "mixed", "code"}
 
 
 @dataclass
 class EvidencePlan:
     artifact_type: str = "url"
-    url: str = DEFAULT_GIST_URL
+    url: str = ""
     path: str | None = None
     response_text: str | None = None
     faulty: bool = False
@@ -34,10 +34,8 @@ class EvidencePlan:
 
 def normalize_evidence_type(value: str | None) -> str:
     normalized = str(value or "url").strip().lower().replace("-", "_")
-    if normalized == "github":
-        return "github_commit"
     if normalized not in SUPPORTED_EVIDENCE_TYPES:
-        return "text"
+        raise EvidenceError(f"unsupported_evidence_type:{normalized or 'missing'}")
     return normalized
 
 
@@ -51,12 +49,16 @@ def read_evidence(
 ) -> list[EvidenceRead]:
     artifact_type = normalize_evidence_type(plan.artifact_type)
     if artifact_type == "mixed":
+        if not plan.url:
+            raise EvidenceError("mixed_evidence_url_required")
         return [
             read_evidence(config=config, run_dir=run_dir, task_offer=task_offer, plan=EvidencePlan("url", url=plan.url), phase=phase)[0],
             read_evidence(config=config, run_dir=run_dir, task_offer=task_offer, plan=EvidencePlan("screenshot"), phase=phase)[0],
-            text_evidence_read(plan.response_text or default_evidence_text(task_offer, phase, faulty=plan.faulty)),
+            text_evidence_read(plan.response_text or required_text_evidence(plan, phase)),
         ]
     if artifact_type in {"url", "github_commit"}:
+        if not plan.url:
+            raise EvidenceError(f"{artifact_type}_evidence_url_required")
         return [read_external_url_evidence(plan.url)]
     if artifact_type == "screenshot":
         path = Path(plan.path) if plan.path else ensure_sample_inputs(run_dir)["screenshot"]
@@ -75,8 +77,8 @@ def read_evidence(
         return [read_file_evidence(path, artifact_type="file")]
     if artifact_type == "code":
         path = Path(plan.path) if plan.path else ensure_sample_inputs(run_dir)["code"]
-        return [read_file_evidence(path, artifact_type="github_commit")]
-    return [text_evidence_read(plan.response_text or default_evidence_text(task_offer, phase, faulty=plan.faulty))]
+        return [read_file_evidence(path, artifact_type="code")]
+    return [text_evidence_read(plan.response_text or required_text_evidence(plan, phase))]
 
 
 def build_evidence_packets(
@@ -136,21 +138,10 @@ def text_evidence_read(text: str) -> EvidenceRead:
     )
 
 
-def default_evidence_text(task_offer: dict[str, Any], phase: str, *, faulty: bool = False) -> str:
-    if faulty:
+def required_text_evidence(plan: EvidencePlan, phase: str) -> str:
+    if plan.faulty:
         return "I did something unrelated and cannot provide the requested artifact."
-    title = str(task_offer.get("title") or "Task")
-    if phase == "verification_response":
-        return (
-            f"Verification response for {title}: the submitted artifact matches the requested evidence surface, "
-            "the replay output was deterministic, the evidence was normalized into canonical pf.task.evidence.v1 packets, "
-            "and the receipt includes the relevant IPFS CID, PFTL transaction hash, and replay status."
-        )
-    return (
-        f"Initial evidence for {title}: Codex completed the requested workflow and produced a concrete artifact "
-        "that can be verified through the attached evidence packet. The replay output was deterministic and the "
-        "URL, screenshot, and text artifacts were normalized into canonical pf.task.evidence.v1 packets."
-    )
+    raise EvidenceError(f"{phase}_text_response_required")
 
 
 def ensure_sample_inputs(output_dir: Path) -> dict[str, Path]:

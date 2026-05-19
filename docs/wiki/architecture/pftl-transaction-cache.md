@@ -135,6 +135,8 @@ Reducer events decouple chain indexing from app projections.
 
 Reducer event dedupe is explicit in `pftl_cache_reducer_events.dedupe_key`. Hot sync, live WSS, and historical backfill all enqueue the same reducer event shapes.
 
+For task projection replay, a reducer event starts from one task pointer and rebuilds the projection for that task. When the pointer carries a task ID, the reducer hydrates pointers for that same task ID plus the seed CID that caused the replay. It does not hydrate every historical task pointer with a blank task ID for the wallet; doing that turns one task update into an unrelated wallet-history scan and can block visible task state.
+
 ## Operator Health
 
 Operators can inspect cache health here:

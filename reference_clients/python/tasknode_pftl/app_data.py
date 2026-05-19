@@ -90,7 +90,7 @@ WITH selected_conversation AS (
   SELECT *
   FROM chat_conversations
   WHERE title = {sql_literal(chat_title)}
-    AND status = 'active'
+    AND status IN ('active', 'task_request')
     AND deleted_at IS NULL
   ORDER BY updated_at DESC, id DESC
   LIMIT 1

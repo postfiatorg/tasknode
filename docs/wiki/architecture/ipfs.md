@@ -17,6 +17,8 @@ Server IPFS helpers live in `server/context-ipfs.js`. Context publishing uses `s
 
 Pinata is the current simple pinning path. A self-hosted IPFS node can be added as another adapter as long as the CID and payload schema stay stable.
 
+`server/context-ipfs.js` enforces a 1 MB JSON pin limit. That limit is intentional: IPFS pointers should carry compact canonical JSON, not raw media blobs. Screenshot and binary evidence must be processed before signing so the encrypted payload contains extracted text, SHA-256 digest metadata, file metadata, and processing metadata rather than base64 image or file bytes. The current screenshot path uses `server/task-evidence-processing.js` and `prompts/task_engine/evidence_screenshot_read_v1.md` before the browser encrypts and publishes the task submission pointer.
+
 ## Diagram
 
 ```mermaid
@@ -34,4 +36,4 @@ flowchart LR
 - CID fetch failure should not erase the on-chain pointer.
 - Payload schema should be versioned.
 - Pinning metadata should not include secrets.
-
+- Raw screenshot/file base64 should not be embedded directly in task evidence JSON.

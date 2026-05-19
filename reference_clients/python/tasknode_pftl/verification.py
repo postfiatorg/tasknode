@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 from xml.etree import ElementTree
 
 import requests
@@ -32,43 +32,6 @@ URL_FETCH_TIMEOUT_SECONDS = 15
 SCREENSHOT_DESCRIPTION_CHARS = 4000
 SCREENSHOT_EVIDENCE_PROMPT_VERSION = "evidence_screenshot_read_v1"
 SCREENSHOT_EVIDENCE_PROMPT_PATH = "task_engine/evidence_screenshot_read_v1.md"
-
-UNSUPPORTED_URL_HOST_SUFFIXES = (
-    "notion.so",
-    "notion.site",
-    "atlassian.net",
-    "coda.io",
-    "clickup.com",
-    "monday.com",
-    "asana.com",
-    "linear.app",
-)
-
-BINARY_URL_EXTENSIONS = {
-    "png",
-    "jpg",
-    "jpeg",
-    "gif",
-    "webp",
-    "bmp",
-    "ico",
-    "svg",
-    "avif",
-    "heic",
-    "heif",
-    "tif",
-    "tiff",
-    "pdf",
-    "doc",
-    "docx",
-    "zip",
-    "rar",
-    "7z",
-    "tar",
-    "gz",
-    "bz2",
-    "xz",
-}
 
 TEXT_FILE_EXTENSIONS = {
     "adoc",
@@ -235,25 +198,6 @@ def looks_like_text_filename(file_name: str) -> bool:
     return ext in TEXT_FILE_EXTENSIONS
 
 
-def host_matches_suffix(hostname: str, suffix: str) -> bool:
-    return hostname == suffix or hostname.endswith(f".{suffix}")
-
-
-def _extract_extension_hint(value: str, *, require_dot: bool = False) -> str:
-    token = unquote(str(value or "")).strip().lower().split("#", 1)[0].split("?", 1)[0]
-    if not token:
-        return ""
-    tail = token.split("/")[-1] or token
-    if require_dot:
-        match = re.search(r"\.([a-z0-9]{2,10})$", tail)
-        return match.group(1) if match else ""
-    direct = re.fullmatch(r"([a-z0-9]{2,10})", tail)
-    if direct:
-        return direct.group(1)
-    dotted = re.search(r"\.([a-z0-9]{2,10})$", tail)
-    return dotted.group(1) if dotted else ""
-
-
 def classify_external_url(raw_url: str) -> dict[str, Any]:
     value = str(raw_url or "").strip()
     if not value:
@@ -262,41 +206,7 @@ def classify_external_url(raw_url: str) -> dict[str, Any]:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return {"ok": False, "reason": "invalid_url", "message": "Provide a full public http(s) URL."}
     host = parsed.hostname.lower() if parsed.hostname else ""
-    if any(host_matches_suffix(host, suffix) for suffix in UNSUPPORTED_URL_HOST_SUFFIXES):
-        return {
-            "ok": False,
-            "reason": "unsupported_host",
-            "host": host,
-            "message": "Private collaboration document URLs are not supported as URL evidence.",
-        }
-    path_ext = _extract_extension_hint(parsed.path, require_dot=True)
-    if path_ext in BINARY_URL_EXTENSIONS:
-        return {
-            "ok": False,
-            "reason": "binary_url",
-            "host": host,
-            "message": "Use file upload evidence for binary documents instead of URL evidence.",
-        }
-    for key in ("format", "fm", "ext", "file", "filename", "download", "attachment", "name"):
-        extension = _extract_extension_hint(dict(_parse_query_pairs(parsed.query)).get(key, ""), require_dot=key not in {"format", "fm", "ext"})
-        if extension in BINARY_URL_EXTENSIONS:
-            return {
-                "ok": False,
-                "reason": "binary_url",
-                "host": host,
-                "message": "Use file upload evidence for binary documents instead of URL evidence.",
-            }
     return {"ok": True, "host": host, "normalized_url": value}
-
-
-def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
-    pairs = []
-    for part in str(query or "").split("&"):
-        if not part:
-            continue
-        key, _, value = part.partition("=")
-        pairs.append((unquote(key), unquote(value)))
-    return pairs
 
 
 def _fetch_text_response(url: str, *, force_read: bool = False) -> tuple[str, str]:

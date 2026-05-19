@@ -48,8 +48,7 @@ Implementation order:
 - Do not start with app UX changes.
 - Do not copy PFTasks SQL-first task truth.
 - Do not broaden the task JSON contract beyond what the engine actually needs.
-- Do not use deterministic fallback task generation unless the CLI explicitly
-  asks for a protocol-only smoke test.
+- Do not use deterministic fallback task generation in runtime task paths.
 - Do not print, log, commit, or write wallet seeds into receipts.
 
 ## Current Assets
@@ -130,8 +129,7 @@ The N=1 implementation currently supports:
   construction;
 - real model calls for task generation, verification request generation, and
   reward scoring;
-- fail-closed behavior when model providers fail, unless the operator explicitly
-  passes `--allow-taskgen-fallback` for protocol-only local smoke testing;
+- fail-closed behavior when model providers fail;
 - public receipt import into `task_projections`.
 
 The Stage B implementation currently supports:

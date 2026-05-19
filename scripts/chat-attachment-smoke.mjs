@@ -4,6 +4,10 @@ import {
   openAiInput,
   openRouterMessages,
 } from "../server/chat-router.js";
+import {
+  maxAttachmentDataUrlBytes,
+  validateChatAttachments,
+} from "../server/chat-attachment-utils.js";
 
 const longText = Array.from(
   { length: 12 },
@@ -30,6 +34,50 @@ const pdfAttachment = {
   size: 12,
   dataUrl: "data:application/pdf;base64,JVBERi0xLjQK",
 };
+
+const invalidDataUrl = validateChatAttachments([
+  {
+    name: "not-data.txt",
+    mimeType: "text/plain",
+    dataUrl: "not-a-data-url",
+  },
+]);
+assert.equal(invalidDataUrl.ok, false);
+assert.equal(invalidDataUrl.status, 400);
+assert.equal(invalidDataUrl.errors[0].code, "invalid_data_url");
+
+const tooManyAttachments = validateChatAttachments(Array.from(
+  { length: 5 },
+  (_, index) => ({
+    ...percentEncodedTextAttachment,
+    name: `note-${index + 1}.txt`,
+  })
+));
+assert.equal(tooManyAttachments.ok, false);
+assert.equal(tooManyAttachments.status, 400);
+assert.equal(tooManyAttachments.errors.some((error) => error.code === "too_many_attachments"), true);
+
+const oversizedAttachment = validateChatAttachments([
+  {
+    name: "huge.txt",
+    mimeType: "text/plain",
+    dataUrl: `data:text/plain,${"a".repeat(maxAttachmentDataUrlBytes)}`,
+  },
+]);
+assert.equal(oversizedAttachment.ok, false);
+assert.equal(oversizedAttachment.status, 413);
+assert.equal(oversizedAttachment.errors[0].code, "attachment_too_large");
+
+const unreadableTextAttachment = validateChatAttachments([
+  {
+    name: "broken.txt",
+    mimeType: "text/plain",
+    dataUrl: "data:text/plain;charset=utf-8,%E0%A4%A",
+  },
+]);
+assert.equal(unreadableTextAttachment.ok, false);
+assert.equal(unreadableTextAttachment.status, 400);
+assert.equal(unreadableTextAttachment.errors[0].code, "text_attachment_unreadable");
 
 const openAiTextInput = openAiInput({
   conversationId: "chat-attachment-smoke",

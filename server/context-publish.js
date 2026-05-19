@@ -255,7 +255,7 @@ export async function contextPublishStatus(env = process.env) {
   };
 }
 
-function validateEncryptedPayload(payload) {
+export function validateEncryptedPayload(payload) {
   const encrypted = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
   if (!encrypted || encrypted.version !== 1 || encrypted.enc !== ENCRYPTION_SUITE) return false;
   return Boolean(encrypted.nonce && encrypted.ciphertext && Array.isArray(encrypted.recipients));
@@ -269,7 +269,7 @@ function recipientIdFromPublicKeyBase64(publicKey) {
   return sha256HexBytes(bytes);
 }
 
-function encryptedPayloadHasRecipient(payload, publicKey) {
+export function encryptedPayloadHasRecipient(payload, publicKey) {
   const expectedRecipientId = recipientIdFromPublicKeyBase64(publicKey);
   const recipients = Array.isArray(payload?.recipients) ? payload.recipients : [];
   return recipients.some((entry) => {
@@ -277,7 +277,7 @@ function encryptedPayloadHasRecipient(payload, publicKey) {
   });
 }
 
-function safeTxHash(value = "") {
+export function safeTxHash(value = "") {
   const text = String(value || "").trim().toUpperCase();
   return /^[A-F0-9]{64}$/.test(text) ? text : "";
 }

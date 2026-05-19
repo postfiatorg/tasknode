@@ -1,0 +1,132 @@
+.task-request-backdrop {
+  z-index: 86;
+}
+
+.task-request-modal {
+  display: flex;
+  width: min(560px, 100%);
+  max-height: min(760px, 92vh);
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+}
+
+.task-request-modal header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid #e8e6df;
+}
+
+.task-request-modal h2 {
+  margin: 0;
+  color: #0d0d0d;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.task-request-modal header p {
+  margin: 5px 0 0;
+  color: #6b6b66;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.task-request-modal header .task-request-wallet-note {
+  color: #7c2d12;
+}
+
+.task-request-close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #0d0d0d;
+}
+
+.task-request-close:hover {
+  background: #f4f3ee;
+}
+
+.task-request-modal form {
+  display: grid;
+  gap: 14px;
+  padding: 18px 22px 20px;
+}
+
+.task-request-modal label {
+  display: grid;
+  gap: 8px;
+  color: #3d3d38;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.task-request-modal textarea {
+  width: 100%;
+  min-height: 172px;
+  max-height: 42vh;
+  resize: vertical;
+  padding: 13px 14px;
+  border: 1px solid #dedbd2;
+  border-radius: 12px;
+  background: #fbfaf7;
+  color: #0d0d0d;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  outline: none;
+}
+
+.task-request-modal textarea:focus {
+  border-color: #0d0d0d;
+  background: #ffffff;
+}
+
+.task-request-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: #4a5934;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.task-request-message.is-error {
+  color: #7c2d12;
+}
+
+.task-request-modal footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.task-request-modal .solid-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.44;
+}
+
+@media (max-width: 760px) {
+  .task-request-modal {
+    border-radius: 16px;
+  }
+
+  .task-request-modal footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+}

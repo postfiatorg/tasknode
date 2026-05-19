@@ -2,19 +2,15 @@ import unittest
 from unittest.mock import patch
 
 from tasknode_pftl.config import PftlConfig
-from tasknode_pftl.taskgen import TASKGEN_PROMPT_VERSION, build_request_bundle, generate_task, project_taskgen_input
+from tasknode_pftl.taskgen import build_request_bundle, generate_task, project_taskgen_input
 
 
 class TaskgenContractTests(unittest.TestCase):
-    def test_fallback_task_is_minimal_schema(self):
+    def test_taskgen_fails_closed_without_provider_key(self):
         bundle = build_request_bundle(subject_wallet="rUser", allocation_wallet="rAllocation")
         task_input = project_taskgen_input(bundle, bundle_cid="bafbundle", bundle_digest="sha256:abc")
-        result = generate_task(PftlConfig(openai_api_key=None), task_input, allow_fallback=True)
-        self.assertEqual(result.output["schema"], "pf.taskgen.output.v1")
-        self.assertEqual(result.output["submission_requirement"]["type"], "text")
-        self.assertGreaterEqual(len(result.output["steps"]), 1)
-        self.assertEqual(result.metadata["prompt_version"], TASKGEN_PROMPT_VERSION)
-        self.assertEqual(result.metadata["parse_status"], "fallback")
+        with self.assertRaisesRegex(RuntimeError, "OPENAI_API_KEY is required"):
+            generate_task(PftlConfig(openai_api_key=None), task_input)
 
     def test_taskgen_fails_closed_without_openai_key(self):
         bundle = build_request_bundle(subject_wallet="rUser", allocation_wallet="rAllocation")

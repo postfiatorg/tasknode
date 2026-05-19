@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { validateChatAttachments } from "./chat-attachment-utils.js";
 import { appendChatTurn } from "./repositories/chat-billing.js";
 
 export const taskRequestCanonicalText =
@@ -35,15 +36,45 @@ function taskRequestIntentPayload(payload) {
       : "dev";
   const userDetailText = safeTaskString(payload?.userDetailText || payload?.message || "", 8000);
   const sourceConversationTitle = safeTaskString(payload?.sourceConversationTitle || "", 160);
+  const source = safeTaskString(payload?.source || "user_chat", 80) || "user_chat";
+  const requestedTaskKind = safeTaskString(payload?.requestedTaskKind || "personal", 80) || "personal";
   const requestId = safeTaskCorrelationId(payload?.requestId, "req");
   const bundleId = safeTaskCorrelationId(payload?.bundleId, "bundle");
-  const attachments = Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 4) : [];
-  return { accountId, conversationId, userDetailText, sourceConversationTitle, requestId, bundleId, attachments };
+  const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
+  return {
+    accountId,
+    conversationId,
+    userDetailText,
+    sourceConversationTitle,
+    source,
+    requestedTaskKind,
+    requestId,
+    bundleId,
+    attachments,
+    status: safeTaskString(payload?.status || "intent_recorded", 80) || "intent_recorded",
+    requestEventCid: safeTaskString(payload?.requestEventCid || payload?.cid || "", 240),
+    requestBundleCid: safeTaskString(payload?.requestBundleCid || "", 240),
+    txHash: safeTaskString(payload?.txHash || "", 120),
+    assistantMessage: safeTaskString(payload?.assistantMessage || "", 1000),
+  };
+}
+
+function taskAttachmentFailure(validation) {
+  const tooLarge = validation.status === 413;
+  return actionResponse({
+    status: validation.status,
+    error: tooLarge ? "task_request_attachment_too_large" : "task_request_attachment_invalid",
+    action: "task_request_intent",
+    message: tooLarge
+      ? "One or more task request attachments are too large."
+      : "One or more task request attachments could not be accepted.",
+    actionRequired: "Remove or replace the failed attachments before requesting the task.",
+  });
 }
 
 export async function taskRequestIntentStart(payload, method) {
   const action = "task_request_intent";
-  const request = taskRequestIntentPayload(payload);
+  let request = taskRequestIntentPayload(payload);
 
   if (method !== "POST") {
     return actionResponse({
@@ -64,6 +95,14 @@ export async function taskRequestIntentStart(payload, method) {
       actionRequired: "Use an account login before starting a task request.",
     });
   }
+
+  const attachmentValidation = validateChatAttachments(request.attachments);
+  if (!attachmentValidation.ok) {
+    const failure = taskAttachmentFailure(attachmentValidation);
+    failure.body.attachmentErrors = attachmentValidation.errors;
+    return failure;
+  }
+  request = { ...request, attachments: attachmentValidation.attachments };
 
   if (!request.userDetailText && request.attachments.length === 0) {
     return actionResponse({
@@ -86,10 +125,13 @@ export async function taskRequestIntentStart(payload, method) {
     taskRequestMessageId,
     requestText: taskRequestCanonicalText,
     userDetailText: request.userDetailText,
-    requestedTaskKind: "personal",
-    source: "user_chat",
+    requestedTaskKind: request.requestedTaskKind,
+    source: request.source,
     sourceConversationTitle: request.sourceConversationTitle || "New chat",
-    status: "intent_recorded",
+    status: request.status,
+    requestEventCid: request.requestEventCid || undefined,
+    requestBundleCid: request.requestBundleCid || undefined,
+    txHash: request.txHash || undefined,
   };
 
   let persisted;
@@ -102,7 +144,9 @@ export async function taskRequestIntentStart(payload, method) {
       model: "request-intent-v1",
       responseId: request.requestId,
       userMessage: request.userDetailText || "See attached task request files.",
-      assistantMessage: "Task request recorded. Preparing the context, memory, and recent chat bundle for PFTL signing.",
+      assistantMessage:
+        request.assistantMessage ||
+        "Task request recorded. Preparing the context, memory, and recent chat bundle for PFTL signing.",
       userMessageId: taskRequestMessageId,
       assistantMessageId,
       userMetadata: {
@@ -114,11 +158,12 @@ export async function taskRequestIntentStart(payload, method) {
         role: "request_receipt",
       },
       runMetadata: baseMetadata,
+      conversationStatus: request.source === "task_interface" ? "task_request" : "active",
       attachments: request.attachments,
       usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
     });
   } catch (error) {
-    if (error?.code === "23505" || String(error?.message || "").includes("duplicate")) {
+    if (error?.code === "23505") {
       return actionResponse({
         status: 409,
         error: "task_request_duplicate",

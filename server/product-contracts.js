@@ -3,10 +3,12 @@ import {
   anyChatProviderEnabled,
   chatExecutionStatus,
   chatModePrices,
+  defaultChatMode,
   executeChat,
+  isKnownChatMode,
   normalizedChatMode,
 } from "./chat-router.js";
-import { chatEstimate } from "./chat-estimate.js";
+import { chatEstimate, chatEstimateForAccount } from "./chat-estimate.js";
 export { chatEstimate, chatEstimateForAccount } from "./chat-estimate.js";
 import {
   consumeWalletChallenge,
@@ -39,6 +41,7 @@ import {
 import { chatMemoryContextForAccount } from "./chat-memory-context.js";
 import { chatContextDocumentForAccount } from "./chat-account-context.js";
 import { taskContextForAccount } from "./chat-task-context.js";
+import { validateChatAttachments } from "./chat-attachment-utils.js";
 import {
   getContextHistory,
   saveContextDocument,
@@ -46,6 +49,8 @@ import {
 import { fetchContextIpfsJson, normalizeContextCid } from "./context-ipfs.js";
 import { contextPublishStatus } from "./context-publish.js";
 export { contextManifestInk } from "./context-publish.js";
+export { taskLifecycleAction } from "./task-actions.js";
+export { taskRequestAction } from "./task-request.js";
 import {
   ethereumDepositConfigStatus,
   getOrCreateEthereumTopUpAccount,
@@ -493,19 +498,102 @@ function usageAction({ id, label, path, requiredEnv = [], enabled = false, statu
 function chatPayload(payload) {
   const accountId = typeof payload?.accountId === "string" ? payload.accountId.trim().slice(0, 160) : "";
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
-  const mode = typeof payload?.mode === "string" ? payload.mode : "Private Instant";
+  const requestedMode = typeof payload?.mode === "string" ? payload.mode.trim() : "";
+  const mode = requestedMode || defaultChatMode;
   const conversationId =
     typeof payload?.conversationId === "string" && payload.conversationId.trim()
       ? payload.conversationId.trim().slice(0, 160)
       : "dev";
   const dryRun = payload?.dryRun === true;
-  const attachments = Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 4) : [];
-  return { accountId, message, mode: normalizedChatMode(mode), conversationId, dryRun, attachments };
+  const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
+  return {
+    accountId,
+    message,
+    mode: isKnownChatMode(mode) ? normalizedChatMode(mode) : "",
+    requestedMode: mode,
+    conversationId,
+    dryRun,
+    attachments,
+  };
+}
+
+function chatAttachmentFailureBody(action, validation, estimate) {
+  const tooLarge = validation.status === 413;
+  return {
+    ok: false,
+    error: tooLarge ? "chat_attachment_too_large" : "chat_attachment_invalid",
+    action,
+    message: tooLarge
+      ? "One or more attachments are too large."
+      : "One or more attachments could not be accepted.",
+    actionRequired: action === "chat_estimate"
+      ? "Remove or replace the failed attachments before estimating chat."
+      : "Remove or replace the failed attachments before sending.",
+    attachmentErrors: validation.errors,
+    estimate,
+  };
+}
+
+function unknownChatModeBody(action = "chat_estimate") {
+  return {
+    ok: false,
+    error: "unknown_chat_mode",
+    action,
+    message: "The requested chat mode is not available.",
+    actionRequired: "Choose one of the configured chat modes before sending.",
+  };
+}
+
+export async function chatEstimateStart(payload, accountId = "") {
+  const attachmentValidation = validateChatAttachments(payload?.attachments);
+  const estimatePayload = {
+    ...payload,
+    attachments: attachmentValidation.ok ? attachmentValidation.attachments : [],
+  };
+
+  let estimate;
+  try {
+    estimate = attachmentValidation.ok
+      ? await chatEstimateForAccount(estimatePayload, accountId)
+      : chatEstimate(estimatePayload);
+  } catch (error) {
+    if (error?.message === "unknown_chat_mode") {
+      return { status: 400, body: unknownChatModeBody("chat_estimate") };
+    }
+    throw error;
+  }
+
+  if (!attachmentValidation.ok) {
+    return {
+      status: attachmentValidation.status,
+      body: chatAttachmentFailureBody("chat_estimate", attachmentValidation, estimate),
+    };
+  }
+
+  return { status: 200, body: estimate };
 }
 
 async function chatExecutionPreflight(payload, method, action = "chat_send") {
-  const chat = chatPayload(payload);
-  let estimate = chatEstimate(payload);
+  let chat = chatPayload(payload);
+  let estimate = null;
+
+  if (!chat.mode) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        ok: false,
+        error: "unknown_chat_mode",
+        action,
+        message: "The requested chat mode is not available.",
+        actionRequired: "Choose one of the configured chat modes before sending.",
+      },
+      chat,
+      estimate,
+    };
+  }
+
+  estimate = chatEstimate({ ...payload, mode: chat.mode, attachments: chat.attachments });
 
   if (method !== "POST") {
     return {
@@ -558,13 +646,28 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
     };
   }
 
+  const attachmentValidation = validateChatAttachments(chat.attachments);
+  if (!attachmentValidation.ok) {
+    estimate = chatEstimate({ ...payload, mode: chat.mode, attachments: [] });
+    return {
+      ok: false,
+      status: attachmentValidation.status,
+      body: chatAttachmentFailureBody(action, attachmentValidation, estimate),
+      chat,
+      estimate,
+    };
+  }
+  chat = { ...chat, attachments: attachmentValidation.attachments };
+  const estimatePayload = { ...payload, mode: chat.mode, attachments: chat.attachments };
+  estimate = chatEstimate(estimatePayload);
+
   if (chat.dryRun) {
     const [contextDocument, memoryContext, taskContext] = await Promise.all([
       chatContextDocumentForAccount(chat.accountId),
       chatMemoryContextForAccount(chat.accountId),
       taskContextForAccount(chat.accountId),
     ]);
-    estimate = chatEstimate(payload, { contextDocument, memoryContext, taskContext });
+    estimate = chatEstimate(estimatePayload, { contextDocument, memoryContext, taskContext });
     return {
       ok: false,
       status: 200,
@@ -608,7 +711,7 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
     chatMemoryContextForAccount(chat.accountId),
     taskContextForAccount(chat.accountId),
   ]);
-  estimate = chatEstimate(payload, { contextDocument, memoryContext, taskContext });
+  estimate = chatEstimate(estimatePayload, { contextDocument, memoryContext, taskContext });
 
   const usage = await usageSummary({ accountId: chat.accountId, conversationId: chat.conversationId });
   if (Number(usage.availableCreditUsd || 0) < Number(estimate.estimatedUsd || 0)) {
@@ -741,6 +844,7 @@ export async function chatStreamStart(payload, method) {
 export function chatModes() {
   return Object.keys(chatModePrices).map((label) => {
     const status = chatExecutionStatus(label);
+    const config = chatModePrices[label];
     return {
       label,
       provider: status.provider,
@@ -749,7 +853,7 @@ export function chatModes() {
       enabled: status.enabled,
       status: status.status,
       privacy: status.provider === "openrouter" ? "Private provider route" : "Frontier provider route",
-      latency: label.includes("Thinking") ? "Deep" : "Fast",
+      latency: config.reasoningEffort ? "Deep" : "Fast",
     };
   });
 }

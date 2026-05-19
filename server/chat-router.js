@@ -14,7 +14,6 @@ import {
   openAiTools,
   webSearchUsdPerCall,
 } from "./chat-search-tools.js";
-export { shouldUseWebSearch } from "./chat-search-tools.js";
 export {
   chatInputCharacterEstimate,
   normalizeChatAttachments,
@@ -68,6 +67,7 @@ export const chatModePrices = {
     reasoningEffort: "high",
   },
 };
+export const defaultChatMode = "Private Instant";
 
 function hasOpenAi() {
   return Boolean(process.env.OPENAI_API_KEY);
@@ -94,16 +94,31 @@ function chatProviderEnabled(provider) {
   return false;
 }
 
+export function isKnownChatMode(mode) {
+  return Object.hasOwn(chatModePrices, String(mode || "").trim());
+}
+
+function unknownChatModeError(mode) {
+  const error = new Error("unknown_chat_mode");
+  error.status = 400;
+  error.mode = mode;
+  return error;
+}
+
 export function anyChatProviderEnabled() {
   return Object.values(chatModePrices).some((mode) => chatProviderEnabled(mode.provider));
 }
 
 export function chatModeConfig(mode) {
-  return chatModePrices[mode] || chatModePrices["Private Instant"];
+  const normalizedMode = normalizedChatMode(mode);
+  if (!normalizedMode) throw unknownChatModeError(mode);
+  return chatModePrices[normalizedMode];
 }
 
 export function normalizedChatMode(mode) {
-  return chatModePrices[mode] ? mode : "Private Instant";
+  const normalized = String(mode || "").trim();
+  if (!normalized) return defaultChatMode;
+  return isKnownChatMode(normalized) ? normalized : "";
 }
 
 export function modelForMode(mode) {
@@ -242,7 +257,7 @@ export function openAiResponseRequest({
   taskContext = null,
 }) {
   const config = chatModeConfig(mode);
-  const tools = openAiTools({ message });
+  const tools = openAiTools();
   return {
     model,
     instructions: taskNodeInstructions({ contextDocument, memoryContext, taskContext }),
@@ -756,6 +771,7 @@ export async function executeChat({
   taskContext,
 }) {
   const normalizedMode = normalizedChatMode(mode);
+  if (!normalizedMode) throw unknownChatModeError(mode);
   const status = chatExecutionStatus(normalizedMode);
 
   if (!status.enabled) {
@@ -836,6 +852,7 @@ export async function executeChatStream({
   signal,
 }) {
   const normalizedMode = normalizedChatMode(mode);
+  if (!normalizedMode) throw unknownChatModeError(mode);
   const status = chatExecutionStatus(normalizedMode);
 
   if (!status.enabled) {

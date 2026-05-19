@@ -12,6 +12,7 @@ from tasknode_pftl.codec import canonical_json, sha256_hex
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_STORE_DIR = ROOT / "examples" / "local_json_task_loop" / "state"
+LOCAL_JSON_TASK_FIXTURE_PATH = ROOT / "tasknode_pftl" / "fixtures" / "local_json_task_loop_task.json"
 FIXED_TIMESTAMP = "2026-05-18T00:00:00Z"
 SCHEMA = "pf.task.local_json_loop.v1"
 
@@ -29,6 +30,10 @@ def read_json(path: Path, default: Any) -> Any:
     if not path.exists():
         return default
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_task_fixture() -> dict[str, Any]:
+    return read_json(LOCAL_JSON_TASK_FIXTURE_PATH, {})
 
 
 class LocalJsonTaskStore:
@@ -106,11 +111,12 @@ def transition_event(
 
 
 def generated_task(request: dict[str, Any]) -> dict[str, Any]:
+    fixture = load_task_fixture()
     task_core = {
         "request_id": request["request_id"],
         "subject_user_id": request["subject_user_id"],
         "objective": request["objective"],
-        "task_kind": "engineering_demo",
+        "task_kind": fixture.get("task_kind") or "engineering_demo",
     }
     task_id = canonical_id("task", task_core)
     return {
@@ -119,21 +125,11 @@ def generated_task(request: dict[str, Any]) -> dict[str, Any]:
         "request_id": request["request_id"],
         "subject_user_id": request["subject_user_id"],
         "status": "proposed",
-        "title": "Create local JSON task loop CLI",
-        "description": (
-            "Build a deterministic Python CLI that generates a task, accepts it, "
-            "submits an artifact, reviews the submission, and updates local reputation state."
-        ),
-        "steps": [
-            "Create a canonical request bundle and generated task.",
-            "Persist the accepted task and evidence artifact to local JSON storage.",
-            "Review the artifact and update reputation state deterministically.",
-        ],
-        "submission_requirement": {
-            "type": "github_commit_or_repository",
-            "criteria": "Provide a commit or repository link containing the CLI, outputs, and README.",
-        },
-        "reward_offer": {"amount_pft": "3.200000", "unit": "PFT"},
+        "title": fixture.get("title") or "Local JSON task loop fixture",
+        "description": fixture.get("description") or "",
+        "steps": list(fixture.get("steps") or []),
+        "submission_requirement": dict(fixture.get("submission_requirement") or {}),
+        "reward_offer": dict(fixture.get("reward_offer") or {"amount_pft": "3.200000", "unit": "PFT"}),
         "created_at": FIXED_TIMESTAMP,
         "updated_at": FIXED_TIMESTAMP,
     }

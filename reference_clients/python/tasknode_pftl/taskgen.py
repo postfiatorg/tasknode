@@ -15,8 +15,6 @@ from .prompt_registry import load_prompt, prompt_digest
 
 TASKGEN_PROMPT_VERSION = "taskgen_minimal_v1"
 TASKGEN_PROMPT_PATH = "task_engine/taskgen_minimal_v1.md"
-VERIFICATION_REQUEST_PROMPT_VERSION = "verification_request_v1"
-VERIFICATION_REQUEST_PROMPT_PATH = "task_engine/verification_request_v1.md"
 MINIMAL_TASKGEN_SYSTEM = load_prompt(TASKGEN_PROMPT_PATH)
 PRIVATE_TASKGEN_PROVIDER_ORDER = ["novita", "atlas-cloud", "siliconflow", "deepinfra"]
 
@@ -60,7 +58,10 @@ TASKGEN_RESPONSE_FORMAT = {
                     "properties": {
                         "followup_required": {"type": "boolean"},
                         "mode": {"type": "string"},
-                        "verification_type": {"type": "string"},
+                        "verification_type": {
+                            "type": "string",
+                            "enum": ["text", "url", "github_commit", "screenshot", "file", "mixed"],
+                        },
                     },
                     "required": ["followup_required", "mode", "verification_type"],
                 },
@@ -239,52 +240,6 @@ def project_taskgen_input(bundle: dict[str, Any], *, bundle_cid: str, bundle_dig
     }
 
 
-def _fallback_task(task_input: dict[str, Any], *, reason: str | None = None) -> TaskgenResult:
-    output = {
-        "schema": "pf.taskgen.output.v1",
-        "title": "Replay the PFTL task lifecycle",
-        "description": (
-            "Run the reference Task Node harness end to end, confirm every lifecycle pointer is written to PFTL, "
-            "and provide the replay projection showing the task reaches rewarded state."
-        ),
-        "task_kind": "system",
-        "steps": [
-            "Run the reference Task Node lifecycle harness.",
-            "Confirm request, offer, acceptance, submission, verification, and reward pointers are written.",
-            "Replay the pointer history and capture the final rewarded state.",
-        ],
-        "submission_requirement": {
-            "type": "text",
-            "criteria": "Submit a concise evidence packet with the run id, pointer transaction hashes, IPFS CIDs, and final replay status.",
-        },
-        "verification_policy": {
-            "followup_required": True,
-            "mode": "standard_followup",
-            "verification_type": "text",
-        },
-        "reward_offer": {
-            "amount_estimate_pft": "3.20",
-        },
-        "deadline": {
-            "accept_by": now_iso(),
-            "deadline_at": None,
-        },
-    }
-    return TaskgenResult(
-        output=output,
-        metadata={
-            "model": "deterministic-fallback",
-            "prompt_version": TASKGEN_PROMPT_VERSION,
-            "prompt_digest": prompt_digest(MINIMAL_TASKGEN_SYSTEM),
-            "input_packet_digest": sha256_hex(task_input),
-            "output_digest": sha256_hex(output),
-            "latency_ms": 0,
-            "parse_status": "fallback",
-            "fallback_reason": reason,
-        },
-    )
-
-
 def _parse_json_object(text: str) -> dict[str, Any]:
     raw = text.strip()
     if raw.startswith("```"):
@@ -373,28 +328,31 @@ def _validate_taskgen_output(value: dict[str, Any]) -> dict[str, Any]:
     missing = [key for key in required if key not in value]
     if missing:
         raise ValueError(f"Taskgen output missing: {', '.join(missing)}")
-    value.setdefault("schema", "pf.taskgen.output.v1")
+    if value.get("schema") != "pf.taskgen.output.v1":
+        raise ValueError("Taskgen output has invalid schema")
     steps = value.get("steps")
     if not isinstance(steps, list):
         steps = []
     value["steps"] = [str(step).strip() for step in steps if str(step or "").strip()][:5]
     requirement = value.get("submission_requirement") or {}
     if requirement.get("type") not in {"text", "url", "github_commit", "screenshot", "file", "mixed"}:
-        requirement["type"] = "text"
+        raise ValueError("Taskgen output has invalid submission requirement type")
     if not requirement.get("criteria"):
-        requirement["criteria"] = "Submit a concise text evidence packet."
+        raise ValueError("Taskgen output missing submission requirement criteria")
     value["submission_requirement"] = requirement
     policy = value.get("verification_policy") or {}
-    policy.setdefault("followup_required", True)
-    policy.setdefault("mode", "standard_followup")
-    policy.setdefault("verification_type", requirement["type"])
+    for key in ("followup_required", "mode", "verification_type"):
+        if key not in policy:
+            raise ValueError(f"Taskgen output missing verification policy {key}")
+    if policy.get("verification_type") not in {"text", "url", "github_commit", "screenshot", "file", "mixed"}:
+        raise ValueError("Taskgen output has invalid verification type")
     value["verification_policy"] = policy
     reward = value.get("reward_offer") or {}
     reward["amount_estimate_pft"] = _normalize_reference_reward(reward.get("amount_estimate_pft"))
     value["reward_offer"] = reward
     deadline = value.get("deadline") or {}
-    deadline.setdefault("accept_by", now_iso())
-    deadline.setdefault("deadline_at", None)
+    if "accept_by" not in deadline or "deadline_at" not in deadline:
+        raise ValueError("Taskgen output missing deadline fields")
     value["deadline"] = deadline
     return value
 
@@ -406,7 +364,6 @@ def generate_task(
     provider: str = "frontier",
     model: str | None = None,
     benchmark_high_reasoning: bool = False,
-    allow_fallback: bool = False,
 ) -> TaskgenResult:
     provider_name = str(provider or "frontier").strip().lower()
     model_name = model or (config.private_taskgen_model if provider_name == "private" else config.taskgen_model)
@@ -416,10 +373,8 @@ def generate_task(
         bool(config.openrouter_api_key) if provider_name == "private" else bool(config.openai_api_key)
     )
     if not provider_configured:
-        if not allow_fallback:
-            required = "OPENROUTER_API_KEY" if provider_name == "private" else "OPENAI_API_KEY"
-            raise RuntimeError(f"{required} is required for {provider_name} task generation")
-        return _fallback_task(task_input, reason=f"missing_{provider_name}_provider_key")
+        required = "OPENROUTER_API_KEY" if provider_name == "private" else "OPENAI_API_KEY"
+        raise RuntimeError(f"{required} is required for {provider_name} task generation")
 
     user_prompt = (
         "Generate a minimal Task Node task from this input packet. "
@@ -458,9 +413,7 @@ def generate_task(
             metadata["benchmark"] = benchmark_taskgen(config, task_input)
         return TaskgenResult(output=output, metadata=metadata)
     except Exception as exc:
-        if not allow_fallback:
-            raise RuntimeError(f"{provider_name} task generation failed: {type(exc).__name__}: {exc}") from exc
-        return _fallback_task(task_input, reason=f"{type(exc).__name__}: {exc}")
+        raise RuntimeError(f"{provider_name} task generation failed: {type(exc).__name__}: {exc}") from exc
 
 
 def benchmark_taskgen(config: PftlConfig, task_input: dict[str, Any]) -> dict[str, Any]:
@@ -501,22 +454,8 @@ def benchmark_taskgen(config: PftlConfig, task_input: dict[str, Any]) -> dict[st
         }
 
 
-def build_verification_request(task_offer: dict[str, Any], initial_submission: dict[str, Any]) -> dict[str, Any]:
-    requirement = task_offer.get("submission_requirement") or {}
-    verification_type = (task_offer.get("verification_policy") or {}).get("verification_type") or requirement.get("type") or "text"
-    prompt_text = load_prompt(VERIFICATION_REQUEST_PROMPT_PATH)
-    return {
-        "verification_type": verification_type,
-        "verification_ask": (
-            "Confirm the run completed end to end. Include the request, offer, acceptance, submission, "
-            "verification response, and reward transaction hashes, plus the replayed final status."
-        ),
-        "verification_policy": task_offer.get("verification_policy") or {"mode": "standard_followup", "followup_required": True},
-        "generated_at": now_iso(),
-        "prompt_version": VERIFICATION_REQUEST_PROMPT_VERSION,
-        "prompt_digest": prompt_digest(prompt_text),
-        "input_digest": sha256_hex({
-            "task_offer": task_offer,
-            "initial_submission": initial_submission,
-        }),
-    }
+def build_verification_request(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+    raise RuntimeError(
+        "build_verification_request was removed from runtime use. "
+        "Use tasknode_pftl.engine.scoring.generate_verification_request so verification requests are prompt-backed."
+    )

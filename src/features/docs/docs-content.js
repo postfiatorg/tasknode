@@ -13,15 +13,18 @@ import wallet from "../../../docs/wiki/surfaces/wallet.md?raw";
 import aiProviders from "../../../docs/wiki/architecture/ai-providers.md?raw";
 import database from "../../../docs/wiki/architecture/database.md?raw";
 import encryption from "../../../docs/wiki/architecture/encryption.md?raw";
+import executionMandate from "../../../docs/wiki/architecture/execution-mandate.md?raw";
 import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
 import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
+import codeReviewBurndown from "../../../docs/wiki/plans/code-review-burndown.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
 import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
 import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-engine-speedrun.md?raw";
+import taskEngineUxIntegrationPlan from "../../../docs/wiki/plans/task-engine-ux-integration-plan.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
 import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
@@ -147,8 +150,11 @@ const PROMPT_SOURCES = [
     title: "Screenshot Evidence Read",
     path: "prompts/task_engine/evidence_screenshot_read_v1.md",
     summary: "Vision prompt for describing screenshot evidence without inventing hidden state.",
-    status: "Active Python reference",
-    usedBy: ["reference_clients/python/tasknode_pftl/verification.py::describe_screenshot_with_openai"],
+    status: "Active",
+    usedBy: [
+      "server/task-evidence-processing.js::processEvidenceFileForSubmission",
+      "reference_clients/python/tasknode_pftl/verification.py::describe_screenshot_with_openai",
+    ],
     content: evidenceScreenshotPrompt,
   },
   {
@@ -306,6 +312,12 @@ export const DOC_GROUPS = [
       { slug: "ipfs", title: "IPFS", summary: "CID-backed payload standards.", markdown: ipfs },
       { slug: "database", title: "Database", summary: "Postgres cache architecture.", markdown: database },
       {
+        slug: "execution-mandate",
+        title: "Execution Mandate",
+        summary: "Verification rules for repo work and claims of completion.",
+        markdown: executionMandate,
+      },
+      {
         slug: "task-lifecycle",
         title: "Task Lifecycle",
         summary: "Replayable task state machine.",
@@ -328,10 +340,22 @@ export const DOC_GROUPS = [
     title: "Plans",
     pages: [
       {
+        slug: "code-review-burndown",
+        title: "Code Review Burndown",
+        summary: "Doc-driven review queue for visible app promises.",
+        markdown: codeReviewBurndown,
+      },
+      {
         slug: "getting-tasks-over-line",
         title: "Getting Tasks Over The Line",
         summary: "Plan to make task requests, submissions, rewards, and projections real.",
         markdown: gettingTasksOverLine,
+      },
+      {
+        slug: "task-engine-ux-integration-plan",
+        title: "Task Engine UX Integration Plan",
+        summary: "Audit plan for porting the backend task engine into the visible app lifecycle.",
+        markdown: taskEngineUxIntegrationPlan,
       },
       {
         slug: "pythonic-task-engine-speedrun",

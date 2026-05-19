@@ -177,7 +177,6 @@ def run_n1(args: argparse.Namespace) -> dict[str, Any]:
         verification_model=args.verification_model,
         scoring_model=args.scoring_model,
         evidence_plan=evidence_plan_from_args(args),
-        allow_taskgen_fallback=args.allow_taskgen_fallback,
         benchmark_high_reasoning=args.benchmark_high_reasoning,
     )
     balances_after = {wallet.role: pftl.account_balance_drops(wallet.address) for wallet in wallets}
@@ -295,11 +294,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fund-pft", type=float, default=25.0)
     parser.add_argument("--replace-message-key", action="store_true")
     parser.add_argument("--benchmark-high-reasoning", action="store_true")
-    parser.add_argument(
-        "--allow-taskgen-fallback",
-        action="store_true",
-        help="Protocol-only fallback for local smoke tests. Do not use for live acceptance runs.",
-    )
     return parser.parse_args()
 
 

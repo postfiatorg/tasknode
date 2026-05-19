@@ -35,7 +35,6 @@ try {
     modelForMode,
     openAiResponseRequest,
     openRouterChatRequest,
-    shouldUseWebSearch,
   } = await import("../server/chat-router.js");
   const {
     appendUsageCredit,
@@ -109,10 +108,6 @@ try {
     throw new Error("Frontier Thinking gpt-5.5 pricing drifted from the configured OpenAI token rates.");
   }
 
-  if (!shouldUseWebSearch("Can you search what is going on today?") || shouldUseWebSearch("Reply exactly ok.")) {
-    throw new Error("Web search routing should be explicit and should not attach tools to every Frontier request.");
-  }
-
   const frontierSearchEstimate = chatEstimate({
     mode: "Frontier Instant",
     message: "Search latest public health news.",
@@ -122,7 +117,7 @@ try {
     frontierSearchEstimate.estimatedToolCostUsd !== 0.04 ||
     frontierSearchEstimate.estimatedUsd <= frontierSearchEstimate.estimatedTokenUsd
   ) {
-    throw new Error(`Frontier web-search estimates should include tool cost: ${JSON.stringify(frontierSearchEstimate)}`);
+    throw new Error(`Frontier estimates should reserve maximum web-search tool cost: ${JSON.stringify(frontierSearchEstimate)}`);
   }
 
   const privateSearchEstimate = chatEstimate({
@@ -154,7 +149,7 @@ try {
     frontierRequest.input?.[0]?.content?.[1]?.type !== "input_text" ||
     !frontierRequest.input?.[0]?.content?.[1]?.text?.includes("Hello world")
   ) {
-    throw new Error(`OpenAI Responses request is missing search or readable text attachment support: ${JSON.stringify(frontierRequest)}`);
+    throw new Error(`OpenAI Responses request is missing prompt-governed search tool or readable text attachment support: ${JSON.stringify(frontierRequest)}`);
   }
 
   const frontierPdfRequest = openAiResponseRequest({
@@ -183,8 +178,11 @@ try {
     conversationId: "runtime-smoke-basic-response-contract",
   });
 
-  if (basicFrontierRequest.tools.length !== 0 || basicFrontierRequest.tool_choice) {
-    throw new Error(`Basic OpenAI Responses requests should not carry web search tools: ${JSON.stringify(basicFrontierRequest)}`);
+  if (
+    basicFrontierRequest.tools?.[0]?.type !== "web_search" ||
+    basicFrontierRequest.tool_choice !== "auto"
+  ) {
+    throw new Error(`Basic OpenAI Responses requests should carry prompt-governed web search tools: ${JSON.stringify(basicFrontierRequest)}`);
   }
 
   const smokeMemoryContext = {
