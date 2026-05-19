@@ -10,7 +10,9 @@ import {
   Flag,
   Github,
   Paperclip,
+  Plus,
   RefreshCw,
+  Trash2,
   X,
 } from "lucide-react";
 import { requestJson } from "../../api";
@@ -193,6 +195,23 @@ const evidenceMethodByStructuredType = {
   url: "url",
 };
 
+const MAX_TASK_EVIDENCE_ITEMS = 2;
+
+function createEvidenceDraft(method = "text") {
+  return {
+    id: globalThis.crypto?.randomUUID?.() || `evidence-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    code: "",
+    commit: "",
+    file: null,
+    fileName: "",
+    method,
+    screenshotFile: null,
+    screenshot: "",
+    text: "",
+    url: "",
+  };
+}
+
 function evidenceMethodFromContract(task = {}, verification = {}) {
   const structuredTypes = [
     task?.submissionRequirement?.type,
@@ -208,6 +227,21 @@ function evidenceMethodFromContract(task = {}, verification = {}) {
     if (method) return method;
   }
   return "text";
+}
+
+function evidenceValueForDraft(draft = {}) {
+  return {
+    code: draft.code,
+    commit: draft.commit,
+    file: draft.fileName,
+    screenshot: draft.screenshot,
+    text: draft.text,
+    url: draft.url,
+  }[draft.method] || "";
+}
+
+function evidenceFileForDraft(draft = {}) {
+  return draft.method === "screenshot" ? draft.screenshotFile : draft.method === "file" ? draft.file : null;
 }
 
 function TaskLifecycleActionPanel({
@@ -329,37 +363,28 @@ function TaskSubmitPanel({
   walletSecret,
   walletVault,
 }) {
-  const [method, setMethod] = useState(() => evidenceMethodFromContract(task, verification));
+  const defaultEvidenceMethod = evidenceMethodFromContract(task, verification);
+  const taskId = task?.taskId || task?.fullId || task?.id || detail?.task?.taskId || detail?.task?.fullId || "";
+  const [evidenceDrafts, setEvidenceDrafts] = useState(() => [createEvidenceDraft(defaultEvidenceMethod)]);
   const [confirmed, setConfirmed] = useState(false);
   const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "" });
-  const [draft, setDraft] = useState({
-    code: "",
-    commit: "",
-    file: null,
-    fileName: "",
-    notes: "",
-    screenshotFile: null,
-    screenshot: "",
-    text: "",
-    url: "",
-  });
+  const [notes, setNotes] = useState("");
   const actions = detail?.actions || {};
   const verificationRequest = detail?.currentVerificationRequest || null;
   const submissionOpen = Boolean(actions.canSubmitInitialEvidence || actions.canSubmitVerificationEvidence);
   const summaries = Array.isArray(detail?.submission?.summaries) ? detail.submission.summaries : [];
   const signingEnabled = Boolean(actions.browserSubmissionEnabled);
   const vaultUnlocked = Boolean(walletVault?.unlocked);
-  const evidenceValue = {
-    code: draft.code,
-    commit: draft.commit,
-    file: draft.fileName,
-    screenshot: draft.screenshot,
-    text: draft.text,
-    url: draft.url,
-  }[method] || "";
-  const selectedFile = method === "screenshot" ? draft.screenshotFile : method === "file" ? draft.file : null;
+  const evidenceItems = evidenceDrafts.map((draft) => ({
+    file: evidenceFileForDraft(draft),
+    method: draft.method,
+    notes,
+    value: evidenceValueForDraft(draft),
+  }));
+  const readyEvidenceItems = evidenceItems.filter((item) => item.value.trim());
   const canPrepareEvidence = Boolean(
-    evidenceValue.trim() &&
+    readyEvidenceItems.length === evidenceDrafts.length &&
+      evidenceDrafts.length > 0 &&
       !loading &&
       !state.pending &&
       signingEnabled &&
@@ -380,21 +405,42 @@ function TaskSubmitPanel({
   ];
 
   useEffect(() => {
-    setMethod(evidenceMethodFromContract(task, verification));
-  }, [task, verification]);
-
-  function updateDraft(key, value) {
+    setEvidenceDrafts([createEvidenceDraft(defaultEvidenceMethod)]);
+    setNotes("");
+    setConfirmed(false);
     setState({ error: "", pending: false, pendingLabel: "", result: "" });
-    setDraft((current) => ({ ...current, [key]: value }));
+  }, [defaultEvidenceMethod, taskId]);
+
+  function updateEvidenceDraft(id, key, value) {
+    setState({ error: "", pending: false, pendingLabel: "", result: "" });
+    setEvidenceDrafts((current) =>
+      current.map((draft) => (draft.id === id ? { ...draft, [key]: value } : draft))
+    );
   }
 
-  async function updateEvidenceFile(key, fileKey, file) {
+  function addEvidenceDraft() {
+    setEvidenceDrafts((current) =>
+      current.length >= MAX_TASK_EVIDENCE_ITEMS
+        ? current
+        : [...current, createEvidenceDraft(defaultEvidenceMethod)]
+    );
+    setState({ error: "", pending: false, pendingLabel: "", result: "" });
+  }
+
+  function removeEvidenceDraft(id) {
+    setEvidenceDrafts((current) => {
+      if (current.length <= 1) return current;
+      return current.filter((draft) => draft.id !== id);
+    });
+    setState({ error: "", pending: false, pendingLabel: "", result: "" });
+  }
+
+  async function updateEvidenceFile(id, key, fileKey, file) {
     if (!file) {
-      updateDraft(key, "");
-      updateDraft(fileKey, null);
+      updateEvidenceDraft(id, key, "");
+      updateEvidenceDraft(id, fileKey, null);
       return;
     }
-    const taskId = task?.taskId || task?.fullId || task?.id || detail?.task?.taskId || detail?.task?.fullId || "";
     setState({
       error: "",
       pending: true,
@@ -410,11 +456,13 @@ function TaskSubmitPanel({
         value: file.name,
         verificationCriteria: verification?.body || verification?.title || "",
       });
-      setDraft((current) => ({
-        ...current,
-        [key]: file.name,
-        [fileKey]: processedFile,
-      }));
+      setEvidenceDrafts((current) =>
+        current.map((draft) =>
+          draft.id === id
+            ? { ...draft, [key]: file.name, [fileKey]: processedFile }
+            : draft
+        )
+      );
       setState({
         error: "",
         pending: false,
@@ -442,8 +490,8 @@ function TaskSubmitPanel({
         accountId,
         detail,
         linkedWalletAddress,
-        method,
-        notes: draft.notes,
+        method: evidenceItems[0]?.method || "text",
+        notes,
         onProgress: (label) => {
           setState((current) => ({
             ...current,
@@ -454,9 +502,10 @@ function TaskSubmitPanel({
           }));
         },
         task,
-        value: evidenceValue,
+        value: evidenceItems[0]?.value || "",
+        evidenceItems,
         walletSecret,
-        file: selectedFile,
+        file: evidenceItems[0]?.file || null,
       });
       setState({
         error: "",
@@ -506,105 +555,135 @@ function TaskSubmitPanel({
         </div>
       )}
 
-      <div className="task-evidence-methods" role="tablist" aria-label="Evidence type">
-        {methods.map(({ key, label, icon: Icon }) => (
-          <button
-            aria-selected={method === key}
-            className={method === key ? "active" : ""}
-            key={key}
-            onClick={() => setMethod(key)}
-            role="tab"
-            type="button"
-          >
-            <Icon size={14} strokeWidth={1.85} />
-            {label}
-          </button>
+      <div className="task-evidence-list">
+        {evidenceDrafts.map((draft, index) => (
+          <div className="task-evidence-card" key={draft.id}>
+            <div className="task-evidence-card-head">
+              <strong>Evidence {index + 1}</strong>
+              {evidenceDrafts.length > 1 && (
+                <button
+                  className="task-evidence-remove"
+                  onClick={() => removeEvidenceDraft(draft.id)}
+                  type="button"
+                >
+                  <Trash2 size={13} strokeWidth={1.85} />
+                  Remove
+                </button>
+              )}
+            </div>
+            <div className="task-evidence-methods" role="tablist" aria-label={`Evidence ${index + 1} type`}>
+              {methods.map(({ key, label, icon: Icon }) => (
+                <button
+                  aria-selected={draft.method === key}
+                  className={draft.method === key ? "active" : ""}
+                  key={key}
+                  onClick={() => updateEvidenceDraft(draft.id, "method", key)}
+                  role="tab"
+                  type="button"
+                >
+                  <Icon size={14} strokeWidth={1.85} />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {draft.method === "text" && (
+              <label>
+                Evidence body
+                <textarea
+                  onChange={(event) => updateEvidenceDraft(draft.id, "text", event.target.value)}
+                  placeholder="Describe the completed work and include any relevant artifact references."
+                  rows={7}
+                  value={draft.text}
+                />
+              </label>
+            )}
+            {draft.method === "url" && (
+              <label>
+                Public URL
+                <input
+                  onChange={(event) => updateEvidenceDraft(draft.id, "url", event.target.value)}
+                  placeholder="https://..."
+                  type="url"
+                  value={draft.url}
+                />
+              </label>
+            )}
+            {draft.method === "screenshot" && (
+              <div className="task-file-drop">
+                <Eye size={18} strokeWidth={1.75} />
+                <label>
+                  Screenshot file
+                  <input
+                    accept="image/*"
+                    onChange={(event) => updateEvidenceFile(draft.id, "screenshot", "screenshotFile", event.target.files?.[0] || null)}
+                    type="file"
+                  />
+                </label>
+                <span>{draft.screenshot || "No screenshot selected"}</span>
+                {draft.screenshotFile?.description && (
+                  <p className="task-evidence-processed">{draft.screenshotFile.description}</p>
+                )}
+              </div>
+            )}
+            {draft.method === "code" && (
+              <label>
+                Code sample
+                <textarea
+                  className="task-code-input"
+                  onChange={(event) => updateEvidenceDraft(draft.id, "code", event.target.value)}
+                  placeholder="Paste the relevant code or command output."
+                  rows={8}
+                  value={draft.code}
+                />
+              </label>
+            )}
+            {draft.method === "commit" && (
+              <label>
+                Commit or PR URL
+                <input
+                  onChange={(event) => updateEvidenceDraft(draft.id, "commit", event.target.value)}
+                  placeholder="https://github.com/org/repo/commit/..."
+                  type="url"
+                  value={draft.commit}
+                />
+              </label>
+            )}
+            {draft.method === "file" && (
+              <div className="task-file-drop">
+                <Paperclip size={18} strokeWidth={1.75} />
+                <label>
+                  Evidence file
+                  <input
+                    onChange={(event) => updateEvidenceFile(draft.id, "fileName", "file", event.target.files?.[0] || null)}
+                    type="file"
+                  />
+                </label>
+                <span>{draft.fileName || "No file selected"}</span>
+              </div>
+            )}
+          </div>
         ))}
       </div>
 
+      {evidenceDrafts.length < MAX_TASK_EVIDENCE_ITEMS && (
+        <button className="light-pill task-add-evidence" onClick={addEvidenceDraft} type="button">
+          <Plus size={14} strokeWidth={2} />
+          Add evidence
+        </button>
+      )}
+
       <div className="task-evidence-card">
-        {method === "text" && (
-          <label>
-            Evidence body
-            <textarea
-              onChange={(event) => updateDraft("text", event.target.value)}
-              placeholder="Describe the completed work and include any relevant artifact references."
-              rows={7}
-              value={draft.text}
-            />
-          </label>
-        )}
-        {method === "url" && (
-          <label>
-            Public URL
-            <input
-              onChange={(event) => updateDraft("url", event.target.value)}
-              placeholder="https://..."
-              type="url"
-              value={draft.url}
-            />
-          </label>
-        )}
-        {method === "screenshot" && (
-          <div className="task-file-drop">
-            <Eye size={18} strokeWidth={1.75} />
-            <label>
-              Screenshot file
-              <input
-                accept="image/*"
-                onChange={(event) => updateEvidenceFile("screenshot", "screenshotFile", event.target.files?.[0] || null)}
-                type="file"
-              />
-            </label>
-            <span>{draft.screenshot || "No screenshot selected"}</span>
-            {draft.screenshotFile?.description && (
-              <p className="task-evidence-processed">{draft.screenshotFile.description}</p>
-            )}
-          </div>
-        )}
-        {method === "code" && (
-          <label>
-            Code sample
-            <textarea
-              className="task-code-input"
-              onChange={(event) => updateDraft("code", event.target.value)}
-              placeholder="Paste the relevant code or command output."
-              rows={8}
-              value={draft.code}
-            />
-          </label>
-        )}
-        {method === "commit" && (
-          <label>
-            Commit or PR URL
-            <input
-              onChange={(event) => updateDraft("commit", event.target.value)}
-              placeholder="https://github.com/org/repo/commit/..."
-              type="url"
-              value={draft.commit}
-            />
-          </label>
-        )}
-        {method === "file" && (
-          <div className="task-file-drop">
-            <Paperclip size={18} strokeWidth={1.75} />
-            <label>
-              Evidence file
-              <input
-                onChange={(event) => updateEvidenceFile("fileName", "file", event.target.files?.[0] || null)}
-                type="file"
-              />
-            </label>
-            <span>{draft.fileName || "No file selected"}</span>
-          </div>
-        )}
         <label className="task-evidence-notes">
           Notes
           <textarea
-            onChange={(event) => updateDraft("notes", event.target.value)}
+            onChange={(event) => {
+              setNotes(event.target.value);
+              setState({ error: "", pending: false, pendingLabel: "", result: "" });
+            }}
             placeholder="Add context for the verifier."
             rows={3}
-            value={draft.notes}
+            value={notes}
           />
         </label>
       </div>

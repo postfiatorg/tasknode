@@ -194,24 +194,33 @@ async function fetchUrlExcerpt(url = "") {
 
 async function processedEvidenceFromPayload(payload = {}) {
   const evidence = safeObject(payload.evidence || payload.submission || payload.response);
-  const artifactType = safeText(payload.artifact_type || payload.evidence_type || evidence.artifact_type, 80);
-  const value = safeText(evidence.value || payload.response_text || "", 120000);
-  const artifacts = [{
-    artifact_type: artifactType || "text",
-    status: evidence.file?.processing?.status || "provided",
-    source: {
-      file_name: evidence.file?.name || "",
-      mime_type: evidence.file?.mime_type || "",
-      size: evidence.file?.size || null,
-      sha256: evidence.file?.sha256 || "",
-      url: artifactType === "url" ? value : "",
-    },
-    excerpt: safeText(evidence.file?.description || evidence.file?.text || value || evidence.notes, 6000),
-    processing: safeObject(evidence.file?.processing),
-  }];
-  if (artifactType === "url") {
-    const fetched = await fetchUrlExcerpt(value);
-    if (fetched) artifacts.push({ artifact_type: "url", ...fetched });
+  const evidenceItems = Array.isArray(payload.evidence_items)
+    ? payload.evidence_items
+    : Array.isArray(evidence.evidence_items)
+      ? evidence.evidence_items
+      : [];
+  const items = evidenceItems.length > 0 ? evidenceItems : [evidence];
+  const artifacts = [];
+  for (const item of items.slice(0, 2)) {
+    const artifactType = safeText(item?.artifact_type || payload.artifact_type || payload.evidence_type || "text", 80);
+    const value = safeText(item?.value || "", 120000);
+    artifacts.push({
+      artifact_type: artifactType || "text",
+      status: item?.file?.processing?.status || "provided",
+      source: {
+        file_name: item?.file?.name || "",
+        mime_type: item?.file?.mime_type || "",
+        size: item?.file?.size || null,
+        sha256: item?.file?.sha256 || "",
+        url: artifactType === "url" ? value : "",
+      },
+      excerpt: safeText(item?.file?.description || item?.file?.text || value || item?.notes || payload.response_text, 6000),
+      processing: safeObject(item?.file?.processing),
+    });
+    if (artifactType === "url") {
+      const fetched = await fetchUrlExcerpt(value);
+      if (fetched) artifacts.push({ artifact_type: "url", ...fetched });
+    }
   }
   return {
     schema: "tasknode.processed_evidence.v1",

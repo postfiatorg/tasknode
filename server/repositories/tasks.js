@@ -6,6 +6,7 @@ import { fetchAndDecryptTasknodePayload } from "../task-payloads.js";
 import { taskProductConfig } from "../task-product-config.js";
 import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
+import { summarizeEvidenceItems } from "../task-evidence-summary.js";
 import { emptyTaskRequestState, listTaskRequests } from "./task-requests.js";
 import { normalizeTaskStatus, taskLifecycleActions, taskRefreshMetadata, taskStatusInfo, taskStatusLabel, taskStatusTab } from "../../shared/task-lifecycle.js";
 import { formatTaskDeadline, formatTaskTimestamp } from "../../shared/task-time-format.js";
@@ -312,6 +313,8 @@ function payloadDetails(schema = "", payload = {}, pointer = {}) {
   addDetail(details, "Reward reason", payload.score?.reason);
   addDetail(details, "Submission type", payload.submission_requirement?.type || payload.submission_type);
   addDetail(details, "Evidence type", payload.evidence_type || payload.artifact_type);
+  addDetail(details, "Evidence count", payload.evidence_count);
+  addDetail(details, "Evidence items", summarizeEvidenceItems(payload.evidence_items || payload.evidence?.evidence_items));
   addDetail(details, "Verification type", payload.verification_policy?.verification_type || payload.verification_type || payload.verification_request?.verification_type);
   addDetail(details, "Verification assessment", payload.verification_request?.assessment);
   addDetail(details, "Verification ask", payload.verification_ask || payload.verification_request?.verification_ask);

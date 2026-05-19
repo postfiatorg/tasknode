@@ -26,7 +26,7 @@ Clicking a task opens a full-screen task detail surface with three tabs:
 | Detail tab | Purpose |
 | --- | --- |
 | Overview | Human-readable task contract, current status, reward outcome, and stop action when the task is not terminal. |
-| Submit | One signed evidence path. The browser encrypts the evidence locally, pins it to IPFS, and signs a PFTL `TASK_SUBMISSION` pointer from the linked wallet. |
+| Submit | One signed evidence path containing up to two evidence artifacts. The browser encrypts the evidence locally, pins it to IPFS, and signs a PFTL `TASK_SUBMISSION` pointer from the linked wallet. |
 | Forensics | Chain audit view: pointer transactions, CIDs, decrypted payload fields, raw payload, and replay integrity. |
 
 ## Current Task Detail Behavior
@@ -74,12 +74,12 @@ After submission, the server does a best-effort wallet sync and reducer pass so 
 
 ## Evidence And Review
 
-The Submit tab has one primary button: `Submit evidence`. It does not create a local-only evidence packet. The browser route is:
+The Submit tab has one primary button: `Submit evidence`. A user can include one or two artifacts in the same signed packet, which covers common verification asks such as text plus screenshot or code plus terminal output. It does not create a local-only evidence packet. The browser route is:
 
 1. For screenshot evidence, the browser reads the selected image and calls `POST /api/tasks/submission` with `phase: process_evidence`.
 2. The server uses `prompts/task_engine/evidence_screenshot_read_v1.md` with OpenAI vision to extract visible proof text. The raw screenshot bytes are not placed in the final PFTL evidence payload.
 3. `POST /api/tasks/submission` configures the task, confirms the current state accepts evidence, and returns the Task Node encryption pubkey.
-4. The browser builds `pf.task.submission.v1` for initial evidence or `pf.task.verification_response.v1` for verification evidence. File and screenshot evidence contains compact metadata, SHA-256, extracted text or screenshot description, and processing metadata. It does not embed raw base64 media.
+4. The browser builds `pf.task.submission.v1` for initial evidence or `pf.task.verification_response.v1` for verification evidence. The payload includes `evidence_items` with a maximum of two compact artifacts. If two artifacts are present, the top-level `artifact_type` is `mixed`; each item keeps its own type, value, file metadata, SHA-256, extracted text or screenshot description, and processing metadata. It does not embed raw base64 media.
 5. The browser encrypts the compact payload to the user key and Task Node key.
 6. `POST /api/tasks/submission` pins the encrypted payload and prepares a PFTL pointer transaction.
 7. The unlocked wallet signs locally.
@@ -98,7 +98,7 @@ The IPFS payload limit is intentionally small enough to catch bad evidence archi
 
 `server/task-review-worker.js` handles the authority side of the loop:
 
-- submitted tasks are scored for a follow-up verification request using `prompts/task_engine/verification_request_v1.md`;
+- submitted tasks are scored for a follow-up verification request using `prompts/task_engine/verification_request_v1.md`; multi-artifact submissions are expanded into separate processed evidence entries before the prompt call;
 - the worker publishes a `pf.task.update.v1` pointer with `transition: verification_requested`;
 - verification responses are scored using `prompts/task_engine/reward_scoring_v1.md`;
 - the worker publishes `pf.task.reward_decision.v1`;

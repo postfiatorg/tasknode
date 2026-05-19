@@ -77,6 +77,34 @@ function compactEvidence({ method = "text", value = "", notes = "", file = null 
   return base;
 }
 
+function compactEvidenceItems({ evidenceItems = [], method = "text", value = "", notes = "", file = null } = {}) {
+  const sourceItems = Array.isArray(evidenceItems) && evidenceItems.length > 0
+    ? evidenceItems
+    : [{ method, value, notes, file }];
+  return sourceItems.slice(0, 2).map((item, index) => ({
+    index: index + 1,
+    ...compactEvidence({
+      method: item?.method || "text",
+      value: item?.value || "",
+      notes: item?.notes || notes,
+      file: item?.file || null,
+    }),
+  }));
+}
+
+function combinedEvidenceText(evidenceItems = [], fallbackNotes = "") {
+  const parts = evidenceItems
+    .map((item, index) => {
+      const label = `Evidence ${index + 1} (${item.artifact_type || "text"})`;
+      const body = safeText(item.file?.description || item.file?.text || item.value || item.notes, 120000);
+      return body ? `${label}: ${body}` : "";
+    })
+    .filter(Boolean);
+  const notes = safeText(fallbackNotes, 8000);
+  if (notes) parts.push(`Notes: ${notes}`);
+  return safeText(parts.join("\n\n"), 120000);
+}
+
 export async function readEvidenceFile(file) {
   if (!file) return null;
   const maxBytes = 2_500_000;
@@ -157,14 +185,24 @@ async function buildSubmissionPayload({
   task = {},
   value = "",
   file = null,
+  evidenceItems = [],
 }) {
   const mode = submissionMode(detail);
   const schema = schemaForMode(mode);
   const taskId = safeText(task.taskId || task.fullId || task.id || detail?.task?.taskId || detail?.task?.fullId, 180);
   const createdAt = new Date().toISOString();
   const wallets = detail?.wallets || {};
-  const evidence = compactEvidence({ method, value, notes, file });
-  const responseText = safeText(file?.description || file?.text || value || notes, 120000);
+  const compactedEvidenceItems = compactEvidenceItems({ evidenceItems, method, value, notes, file });
+  const evidence =
+    compactedEvidenceItems.length === 1
+      ? compactedEvidenceItems[0]
+      : {
+          artifact_type: "mixed",
+          notes: safeText(notes, 8000),
+          evidence_items: compactedEvidenceItems,
+        };
+  const responseText = combinedEvidenceText(compactedEvidenceItems, notes);
+  const artifactType = compactedEvidenceItems.length > 1 ? "mixed" : evidence.artifact_type;
   const basePayload = {
     schema,
     protocol: "tasknode.pftl",
@@ -176,8 +214,10 @@ async function buildSubmissionPayload({
     authority_wallet: wallets.authority || "",
     allocation_wallet: wallets.allocation || "",
     phase: mode,
-    artifact_type: evidence.artifact_type,
-    evidence_type: evidence.artifact_type,
+    artifact_type: artifactType,
+    evidence_type: artifactType,
+    evidence_count: compactedEvidenceItems.length,
+    evidence_items: compactedEvidenceItems,
     evidence,
   };
   if (mode === "verification_response") {
@@ -194,6 +234,10 @@ async function buildSubmissionPayload({
   };
 }
 
+export async function buildTaskSubmissionPayloadForTests(args = {}) {
+  return buildSubmissionPayload(args);
+}
+
 export async function publishTaskEvidenceSubmission({
   accountId = "",
   detail = {},
@@ -203,6 +247,7 @@ export async function publishTaskEvidenceSubmission({
   notes = "",
   task = {},
   value = "",
+  evidenceItems = [],
   walletSecret = null,
   file = null,
 } = {}) {
@@ -244,6 +289,7 @@ export async function publishTaskEvidenceSubmission({
     task,
     value,
     file,
+    evidenceItems,
   });
   const encryptedPayload = await walletCore.encryptTaskNodePayload({
     plaintext: JSON.stringify(submissionPayload),
