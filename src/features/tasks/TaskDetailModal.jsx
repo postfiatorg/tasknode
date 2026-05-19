@@ -886,6 +886,7 @@ function TaskAuditValue({ copiedValue, label, name, onCopy, value }) {
 
 export function TaskDetailModal({
   accountId = "",
+  escapeDisabled = false,
   linkedWalletAddress = "",
   onClose,
   onTaskChanged,
@@ -911,7 +912,7 @@ export function TaskDetailModal({
     aliveRef.current = true;
     const id = requestAnimationFrame(() => setMounted(true));
     const onKey = (event) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !escapeDisabled) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -919,7 +920,7 @@ export function TaskDetailModal({
       cancelAnimationFrame(id);
       window.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [escapeDisabled, onClose]);
 
   async function refreshTaskDetail({ showLoading = true } = {}) {
     if (showLoading) setDetailState((current) => ({ ...current, loading: true }));

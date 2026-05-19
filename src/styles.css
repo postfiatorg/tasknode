@@ -3147,6 +3147,10 @@ h1 {
   z-index: 85;
 }
 
+.wallet-unlock-backdrop {
+  z-index: 95;
+}
+
 .chat-edit-modal {
   display: flex;
   width: min(420px, 100%);

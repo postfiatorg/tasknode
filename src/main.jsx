@@ -389,10 +389,13 @@ function App() {
 
     function closeModal(event) {
       if (event.key === "Escape") {
+        if (walletUnlockOpen) {
+          setWalletUnlockOpen(false);
+          return;
+        }
         setChatActionMenu(null);
         setSettingsOpen(false);
         setSelectedTask(null);
-        setWalletUnlockOpen(false);
       }
     }
 
@@ -1127,15 +1130,6 @@ function App() {
           onClose={() => setLoginOpen(false)}
         />
       )}
-      {walletUnlockOpen && linkedWallet && (
-        <WalletUnlockModal
-          linkedWallet={linkedWallet}
-          onClose={() => setWalletUnlockOpen(false)}
-          onWalletVaultChange={() => refreshWalletVaultStatus({ preserveUnlock: false })}
-          onWalletVaultUnlocked={handleWalletVaultUnlocked}
-          session={session}
-        />
-      )}
       {settingsOpen && (
         <SettingsModal
           onAppStateChange={refreshAppState}
@@ -1148,6 +1142,7 @@ function App() {
       {selectedTask && (
         <TaskDetailModal
           accountId={walletAccountId}
+          escapeDisabled={walletUnlockOpen}
           linkedWalletAddress={linkedWalletAddress}
           onClose={closeTaskDetail}
           onTaskChanged={refreshAppState}
@@ -1155,6 +1150,15 @@ function App() {
           task={selectedTask}
           walletSecret={walletSecretRef.current}
           walletVault={walletVaultStatus}
+        />
+      )}
+      {walletUnlockOpen && linkedWallet && (
+        <WalletUnlockModal
+          linkedWallet={linkedWallet}
+          onClose={() => setWalletUnlockOpen(false)}
+          onWalletVaultChange={() => refreshWalletVaultStatus({ preserveUnlock: false })}
+          onWalletVaultUnlocked={handleWalletVaultUnlocked}
+          session={session}
         />
       )}
       {chatActionMenu && sidebarOpen && (

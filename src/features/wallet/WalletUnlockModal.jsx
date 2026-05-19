@@ -74,7 +74,7 @@ export function WalletUnlockModal({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation">
+    <div className="modal-backdrop wallet-unlock-backdrop" role="presentation">
       <div className="wallet-link-modal" role="dialog" aria-modal="true" aria-label="Unlock seed wallet">
         <header>
           <div>
