@@ -21,6 +21,8 @@ Memory context is injected by `server/chat-memory-context.js`. The memory worker
 
 Task state is also ported into chat by `server/chat-task-context.js`. This is a read-only projection of the user's cached task state, not a task mutation path.
 
+The chat voice is calibrated by the Jobs XML prompt in `prompts/chat/jobs_chat_os_v1.xml`. The prompt is loaded once by `server/chat-spirit-context.js` and rendered from the shared `server/chat-memory-context.js::taskNodeInstructions` boundary, so Private Instant, Private Thinking, Frontier Instant, and Frontier Thinking all use the same prompt assembly path. The base Task Node operational prompt still comes first; the Jobs XML receives the current context document, task context, and memory context as runtime slots. The current user message, prior chat history, and attachments remain normal provider user messages instead of being duplicated into the XML.
+
 Chat also has an explicit task-request mode from the `+` menu. That mode is different from ordinary chat. The next send becomes task request detail text and uses the same `POST /api/tasks/request` browser-wallet signing path as the Tasks page modal. It publishes a signed `pf.task.request.v1` pointer, records a durable `task_requests` row, and leaves the actual task card to appear from the PFTL projection after the task-generation worker publishes `pf.task.offer.v1`.
 
 ## Chat Modes
@@ -57,8 +59,10 @@ The runtime path is:
 1. `server/product-contracts.js::chatExecutionPreflight`, `server/chat-router.js::executeChat`, and `server/chat-router.js::executeChatStream` load the current context document alongside chat history, memory context, and task context.
 2. `server/chat-account-context.js::chatContextDocumentForAccount` calls `server/repositories/context.js::getContextDocument` for the signed-in account.
 3. `server/chat-account-context.js::formatChatContextDocument` converts stored rich-text HTML into readable text, removes markup, clips the body to `TASKNODE_CHAT_CONTEXT_DOCUMENT_MAX_CHARS`, and renders `prompts/chat/account_context_document_v1.md`.
-4. `server/chat-memory-context.js::taskNodeInstructions` appends the rendered context block after the base chat instructions and before task and memory blocks.
+4. `server/chat-memory-context.js::taskNodeInstructions` renders the context block into the shared instruction payload.
 5. `server/chat-router.js` sends those instructions to OpenAI Responses API as `instructions` or to OpenRouter Chat Completions as the system message.
+
+With the Jobs XML layer enabled, step 4 renders the context document into the XML `CONTEXT_DOCUMENT` slot. Task context and memory context are rendered into `CURRENT_PLATE`. This keeps the user's saved context available to chat without adding duplicate context blocks after the Jobs prompt.
 
 The injected block is shaped as:
 
@@ -82,8 +86,10 @@ The runtime path is:
 2. `server/chat-task-context.js::taskContextForAccount` resolves the linked PFT wallet for the app account.
 3. `server/repositories/tasks.js::listTaskState` reads the `task_projections` cache for that wallet and account. The projection is ordered by most recently updated task and capped at 200 rows at the database read boundary.
 4. `server/chat-task-context.js::formatChatTaskContext` renders the projection through `prompts/chat/account_tasks_context_v1.md`.
-5. `server/chat-memory-context.js::taskNodeInstructions` appends the rendered task block to the base chat instructions.
+5. `server/chat-memory-context.js::taskNodeInstructions` renders the task block into the shared instruction payload.
 6. `server/chat-router.js` sends those instructions to OpenAI Responses API as `instructions` or to OpenRouter Chat Completions as the system message.
+
+With the Jobs XML layer enabled, the rendered task block is placed inside the XML `CURRENT_PLATE` slot alongside memory context. It is still advisory cache context and does not mutate task state.
 
 The injected block is shaped as:
 

@@ -27,6 +27,7 @@ import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transac
 import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-engine-speedrun.md?raw";
 import taskEngineUxIntegrationPlan from "../../../docs/wiki/plans/task-engine-ux-integration-plan.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
+import jobsChatOsPrompt from "../../../prompts/chat/jobs_chat_os_v1.xml?raw";
 import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
 import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
 import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
@@ -51,6 +52,20 @@ const PROMPT_SOURCES = [
       "server/chat-router.js::openAiResponseRequest",
     ],
     content: taskNodeInstructionsPrompt,
+  },
+  {
+    family: "Chat",
+    title: "Jobs Chat Spirit",
+    path: "prompts/chat/jobs_chat_os_v1.xml",
+    summary: "Shared XML operating prompt that gives all four chat modes the Jobs-style product voice while preserving Task Node context, memory, and task awareness.",
+    status: "Active by default; disabled only when TASKNODE_CHAT_SPIRIT_ENABLED=false",
+    usedBy: [
+      "server/chat-spirit-context.js::formatChatSpiritContext",
+      "server/chat-memory-context.js::taskNodeInstructions",
+      "server/chat-router.js::openRouterMessages",
+      "server/chat-router.js::openAiResponseRequest",
+    ],
+    content: jobsChatOsPrompt,
   },
   {
     family: "Chat",

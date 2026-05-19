@@ -10,6 +10,7 @@ import {
 import {
   chatMemoryContextForAccount,
   formatChatMemoryContext,
+  taskNodeInstructions,
 } from "./chat-memory-context.js";
 import {
   chatContextDocumentForAccount,
@@ -45,12 +46,20 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
   const contextDocumentCharacters = formatChatContextDocument(contextDocument).length;
   const memoryContextCharacters = formatChatMemoryContext(memoryContext).length;
   const taskContextCharacters = formatChatTaskContext(taskContext).length;
-  const inputCharacters = baseInputCharacters + contextDocumentCharacters + memoryContextCharacters + taskContextCharacters;
+  const instructionCharacters = taskNodeInstructions({ contextDocument, memoryContext, taskContext }).length;
+  const baseInstructionCharacters = Math.max(
+    0,
+    instructionCharacters - contextDocumentCharacters - memoryContextCharacters - taskContextCharacters
+  );
+  const inputCharacters = baseInputCharacters + instructionCharacters;
   const inputTokens = Math.max(1, Math.ceil(inputCharacters / 4));
   const baseInputTokens = Math.max(1, Math.ceil(baseInputCharacters / 4));
   const contextDocumentInputTokens = contextDocumentCharacters > 0 ? Math.ceil(contextDocumentCharacters / 4) : 0;
   const memoryInputTokens = memoryContextCharacters > 0 ? Math.ceil(memoryContextCharacters / 4) : 0;
   const taskInputTokens = taskContextCharacters > 0 ? Math.ceil(taskContextCharacters / 4) : 0;
+  const instructionInputTokens = Math.max(1, Math.ceil(instructionCharacters / 4));
+  const baseInstructionInputTokens =
+    baseInstructionCharacters > 0 ? Math.ceil(baseInstructionCharacters / 4) : 0;
   const estimatedOutputTokens = modeConfig.maxOutputTokens || (modeConfig.reasoningEffort ? 1800 : 700);
   const estimatedTokenUsd = actualChatCost(mode, {
     inputTokens,
@@ -72,9 +81,13 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
     executionReady: execution.enabled,
     inputTokens,
     baseInputTokens,
+    instructionInputTokens,
+    baseInstructionInputTokens,
     contextDocumentInputTokens,
     memoryInputTokens,
     taskInputTokens,
+    instructionCharacters,
+    baseInstructionCharacters,
     contextDocumentCharacters,
     memoryContextCharacters,
     taskContextCharacters,

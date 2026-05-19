@@ -30,7 +30,7 @@ Unknown mode strings are rejected with `unknown_chat_mode`. On app load, the def
 
 Frontier modes call OpenAI through the Responses API. Task Node sends:
 
-- `instructions`: the Task Node instruction block plus memory context.
+- `instructions`: the shared Task Node instruction assembly from `server/chat-memory-context.js::taskNodeInstructions`. This includes the base operational prompt and, by default, the Jobs XML prompt rendered with the current context document, memory, and task state.
 - `input`: recent conversation, the user message, and supported attachments.
 - `reasoning`: `medium` for Frontier Instant and `high` for Frontier Thinking.
 - `store: false`: app history remains in Task Node Postgres instead of provider-hosted state.
@@ -42,7 +42,7 @@ Images are sent as `input_image`. Text attachments are sent as `input_text`. Oth
 
 Private modes call OpenRouter through Chat Completions. Task Node sends:
 
-- `messages`: system instructions, recent conversation, memory context, and user content.
+- `messages`: the same shared instruction assembly as the system message, followed by recent conversation and user content.
 - `provider.zdr=true`: restrict to Zero Data Retention endpoints.
 - `provider.data_collection="deny"`: avoid providers that collect data.
 - `provider.order` and `provider.only`: keep routing inside the mode-specific provider allowlist.
@@ -51,6 +51,10 @@ Private modes call OpenRouter through Chat Completions. Task Node sends:
 - `provider.require_parameters=true` when reasoning is requested.
 
 Image attachments are sent as `image_url` parts. Text attachments are sent as text parts. File and PDF attachments are sent as file parts. PDFs add the OpenRouter `file-parser` plugin and use `OPENROUTER_PDF_ENGINE` or `cloudflare-ai`.
+
+## Shared Chat Spirit
+
+All four chat modes use one prompt assembly boundary. `prompts/chat/task_node_instructions_v1.md` remains the operational product-truth prompt. `prompts/chat/jobs_chat_os_v1.xml` is then rendered by `server/chat-spirit-context.js` so the model's voice and judgment feel product-led without duplicating provider code. The current user message, history, and attachments remain provider messages; the Jobs XML receives only durable background slots for the context document, task projection, memory context, and later pgvector Jobs retrieval.
 
 ## Web Search Policy
 

@@ -2,6 +2,7 @@ import { getChatMemoryContext } from "./repositories/chat-memory.js";
 import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
 import { formatChatContextDocument } from "./chat-account-context.js";
 import { formatChatTaskContext } from "./chat-task-context.js";
+import { formatChatSpiritContext, isChatSpiritEnabled } from "./chat-spirit-context.js";
 
 const memoryContextDeepLimit = Math.min(
   Math.max(Number(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_DEEP_LIMIT) || 3, 0),
@@ -100,6 +101,19 @@ export function taskNodeInstructions({ contextDocument = null, memoryContext = n
   const formattedContextDocument = formatChatContextDocument(contextDocument);
   const formattedMemory = formatChatMemoryContext(memoryContext);
   const formattedTasks = formatChatTaskContext(taskContext);
+  if (isChatSpiritEnabled()) {
+    return [
+      taskNodeInstructionsPrompt,
+      formatChatSpiritContext({
+        contextDocumentBlock: formattedContextDocument,
+        taskBlock: formattedTasks,
+        memoryBlock: formattedMemory,
+      }),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
   return [taskNodeInstructionsPrompt, formattedContextDocument, formattedTasks, formattedMemory]
     .filter(Boolean)
     .join("\n\n");

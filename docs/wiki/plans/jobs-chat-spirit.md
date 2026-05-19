@@ -14,7 +14,7 @@ There are two different source assets and they should not be confused:
 
 | Asset | Current location | Size observed | Purpose |
 | --- | --- | --- | --- |
-| Jobs XML prompt | `docs/jobs.md` today; should become `prompts/chat/jobs_chat_os_v1.xml` during implementation | 29,333 bytes | Candidate Phase 1 system prompt. It contains XML prompt text with runtime slots for context, current plate, retrieved Jobs essence, and current user message. |
+| Jobs XML prompt | `prompts/chat/jobs_chat_os_v1.xml` | 29,323 bytes | Active Phase 1 system prompt. It contains XML prompt text with runtime slots for context, current plate, retrieved Jobs essence, and current user message. |
 | Jobs corpus gist | `https://gist.github.com/goodalexander/3246640dcf10db350fbae9fab8e6a473` | raw `jobs.md` is 331,597 bytes | Phase 2 retrieval corpus. The gist is Jobs reference notes and source packets, not the runtime prompt itself. |
 
 The gist was inspected through the GitHub gist API. It currently exposes one file named `jobs.md` with raw URL:
@@ -23,7 +23,7 @@ The gist was inspected through the GitHub gist API. It currently exposes one fil
 https://gist.githubusercontent.com/goodalexander/3246640dcf10db350fbae9fab8e6a473/raw/bd144a47532fbcba8dd4e8a6f81b605a034c4d16/jobs.md
 ```
 
-Phase 1 should not require pgvector or the full gist corpus. Phase 1 only needs the Jobs XML prompt saved as an XML prompt asset, wired into the shared chat instruction path, aligned with the current chat context feeds, and tested across the four chat modes.
+Phase 1 does not require pgvector or the full gist corpus. Phase 1 uses the Jobs XML prompt as a source-controlled runtime prompt, wired into the shared chat instruction path, aligned with the current chat context feeds, and tested across the four chat modes.
 
 ## Non-Negotiable Boundaries
 
@@ -72,7 +72,7 @@ Phase 1 must be completed locally in Docker before any Fly deployment. The goal 
 
 ### Implementation Shape
 
-1. Promote the local XML prompt artifact into a versioned runtime prompt file, likely `prompts/chat/jobs_chat_os_v1.xml`. The current `docs/jobs.md` wrapper is a staging artifact; runtime prompt code should load XML as XML or plain text, not as markdown.
+1. `prompts/chat/jobs_chat_os_v1.xml` is the versioned runtime prompt file. The old markdown wrapper was a staging artifact and is not used by runtime code.
 2. Keep `prompts/chat/task_node_instructions_v1.md` as the first operational safety and product-truth prompt.
 3. Add a small formatter module, likely `server/chat-spirit-context.js`, that loads the Jobs prompt once through `server/prompt-registry.js`.
 4. Render the Jobs prompt with the existing account context, task context, and memory context instead of appending duplicate blocks after it.
@@ -82,14 +82,14 @@ Phase 1 must be completed locally in Docker before any Fly deployment. The goal 
 
 ```text
 TASKNODE_CHAT_SPIRIT_ENABLED=true
-TASKNODE_CHAT_SPIRIT_PROMPT=chat/jobs_chat_os_v1.md
+TASKNODE_CHAT_SPIRIT_PROMPT=chat/jobs_chat_os_v1.xml
 ```
 
 Recommended assembly:
 
 ```text
 task_node_instructions_v1.md
-jobs_chat_os_v1.md rendered with:
+jobs_chat_os_v1.xml rendered with:
   CONTEXT_DOCUMENT = formatted account context
   CURRENT_PLATE = formatted task context plus formatted deep memory and recent memory
   RELEVANT_JOBS_ESSENCE_FROM_VECTOR_DB = empty in Phase 1
@@ -325,12 +325,19 @@ Failure behavior:
 - Fly deployment uses shared Postgres rows, not local container state.
 - The app still works when retrieval fails.
 
-## Open Decisions
+## Current Phase 1 State
 
-- Whether the runtime prompt should preserve the exact XML structure in `docs/jobs.md` or be lightly revised before being saved as `prompts/chat/jobs_chat_os_v1.xml`.
-- Whether Phase 1 should default the Jobs layer on for all accounts or hide it behind an environment flag until live QA passes.
-- Whether the Jobs XML runtime slot `USER_MESSAGE` should be removed from the prompt or rendered with a note, since chat providers already receive the user message separately.
-- Whether memory deserves a dedicated `<memory>` XML slot instead of being merged into `<current_plate>`.
+- `server/chat-spirit-context.js` loads `prompts/chat/jobs_chat_os_v1.xml` through the prompt registry.
+- `server/chat-memory-context.js::taskNodeInstructions` renders the base Task Node operational prompt first, then renders the Jobs XML with the current context document, task projection, and memory context.
+- OpenAI Frontier modes receive the rendered instructions through `instructions`.
+- OpenRouter Private modes receive the same rendered instructions as the system message.
+- The current user message, conversation history, and attachments remain provider user messages. They are not duplicated into the XML prompt.
+- The Jobs corpus retrieval slot is populated with an explicit empty-retrieval note until pgvector retrieval exists.
+- `server/chat-estimate.js::chatEstimate` counts the full rendered instruction text, including the Jobs XML, so the preflight credit check reserves for the actual prompt payload.
+- The layer is on by default and can be disabled with `TASKNODE_CHAT_SPIRIT_ENABLED=false`.
+
+## Remaining Open Decisions
+
 - Which embedding model and vector dimension to standardize for Phase 2.
 - Whether retrieval query embeddings should be billed internally or eventually included in a small chat overhead buffer.
 
