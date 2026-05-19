@@ -24,6 +24,7 @@ import {
   formatChatTaskContext,
   taskContextForAccount,
 } from "./chat-task-context.js";
+import { jobsRetrievalEstimateText } from "./jobs-corpus.js";
 
 function estimatePayload(payload) {
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
@@ -46,10 +47,21 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
   const contextDocumentCharacters = formatChatContextDocument(contextDocument).length;
   const memoryContextCharacters = formatChatMemoryContext(memoryContext).length;
   const taskContextCharacters = formatChatTaskContext(taskContext).length;
-  const instructionCharacters = taskNodeInstructions({ contextDocument, memoryContext, taskContext }).length;
+  const estimatedJobsEssence = jobsRetrievalEstimateText();
+  const jobsRetrievalCharacters = estimatedJobsEssence.length;
+  const instructionCharacters = taskNodeInstructions({
+    contextDocument,
+    memoryContext,
+    taskContext,
+    jobsEssence: estimatedJobsEssence,
+  }).length;
   const baseInstructionCharacters = Math.max(
     0,
-    instructionCharacters - contextDocumentCharacters - memoryContextCharacters - taskContextCharacters
+    instructionCharacters -
+      contextDocumentCharacters -
+      memoryContextCharacters -
+      taskContextCharacters -
+      jobsRetrievalCharacters
   );
   const inputCharacters = baseInputCharacters + instructionCharacters;
   const inputTokens = Math.max(1, Math.ceil(inputCharacters / 4));
@@ -57,6 +69,7 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
   const contextDocumentInputTokens = contextDocumentCharacters > 0 ? Math.ceil(contextDocumentCharacters / 4) : 0;
   const memoryInputTokens = memoryContextCharacters > 0 ? Math.ceil(memoryContextCharacters / 4) : 0;
   const taskInputTokens = taskContextCharacters > 0 ? Math.ceil(taskContextCharacters / 4) : 0;
+  const jobsRetrievalInputTokens = jobsRetrievalCharacters > 0 ? Math.ceil(jobsRetrievalCharacters / 4) : 0;
   const instructionInputTokens = Math.max(1, Math.ceil(instructionCharacters / 4));
   const baseInstructionInputTokens =
     baseInstructionCharacters > 0 ? Math.ceil(baseInstructionCharacters / 4) : 0;
@@ -86,11 +99,13 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
     contextDocumentInputTokens,
     memoryInputTokens,
     taskInputTokens,
+    jobsRetrievalInputTokens,
     instructionCharacters,
     baseInstructionCharacters,
     contextDocumentCharacters,
     memoryContextCharacters,
     taskContextCharacters,
+    jobsRetrievalCharacters,
     estimatedOutputTokens,
     estimatedWebSearchCalls,
     estimatedTokenUsd,

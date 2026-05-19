@@ -64,6 +64,15 @@ const taskContext = {
   refused: [{ title: "Refused example", status: "Refused", pft: 0 }],
   rewarded: [{ title: "Rewarded example", status: "Rewarded", pft: 1.5 }],
 };
+const jobsEssence = [
+  "<jobs_retrieval_context count=\"1\">",
+  "  <chunk rank=\"1\" chunk_id=\"jobs_chunk_smoke\" source_sha256=\"jobs_source_smoke\" similarity=\"0.91\" title=\"Focus\">",
+  "<![CDATA[",
+  "Jobs retrieval should enter the XML retrieval slot exactly once.",
+  "]]>",
+  "  </chunk>",
+  "</jobs_retrieval_context>",
+].join("\n");
 
 function count(haystack, needle) {
   return String(haystack || "").split(needle).length - 1;
@@ -81,9 +90,10 @@ function assertJobsInstructions(instructions, label) {
   assert.ok(instructions.includes("<deep_memory>"), `${label} should include deep memory`);
   assert.ok(instructions.includes("Recent memory should carry forward"), `${label} should include recent memory`);
   assert.ok(
-    instructions.includes("No retrieved Jobs corpus chunks are available for this turn"),
-    `${label} should mark Phase 1 retrieval as empty`
+    instructions.includes("Jobs retrieval should enter the XML retrieval slot exactly once"),
+    `${label} should include pgvector Jobs retrieval context`
   );
+  assert.equal(count(instructions, "<jobs_retrieval_context count=\"1\">"), 1, `${label} should include retrieval once`);
   assert.equal(
     instructions.includes(userSentinel),
     false,
@@ -108,6 +118,7 @@ for (const [mode, model] of [
     contextDocument,
     memoryContext,
     taskContext,
+    jobsEssence,
   });
   assertJobsInstructions(request.instructions, mode);
   assert.equal(request.input.at(-1)?.content?.[0]?.text?.includes(userSentinel), true);
@@ -125,6 +136,7 @@ for (const [mode, model] of [
     contextDocument,
     memoryContext,
     taskContext,
+    jobsEssence,
   });
   const instructions = request.messages?.[0]?.content || "";
   assertJobsInstructions(instructions, mode);

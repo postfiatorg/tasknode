@@ -8,6 +8,7 @@ import {
   taskNodeInstructions,
 } from "./chat-memory-context.js";
 import { chatContextDocumentForAccount } from "./chat-account-context.js";
+import { jobsRetrievalForChat } from "./jobs-corpus.js";
 import { taskContextForAccount } from "./chat-task-context.js";
 import {
   maxOpenAiWebSearchToolCalls,
@@ -203,6 +204,7 @@ export function openRouterChatRequest({
   contextDocument = null,
   memoryContext = null,
   taskContext = null,
+  jobsEssence = "",
 }) {
   const config = chatModeConfig(mode);
   const normalizedAttachments = normalizeChatAttachments(attachments);
@@ -217,6 +219,7 @@ export function openRouterChatRequest({
       contextDocument,
       memoryContext,
       taskContext,
+      jobsEssence,
     }),
     provider: openRouterProviderPreferences({
       providerOrder: config.providerOrder || [],
@@ -255,12 +258,13 @@ export function openAiResponseRequest({
   contextDocument = null,
   memoryContext = null,
   taskContext = null,
+  jobsEssence = "",
 }) {
   const config = chatModeConfig(mode);
   const tools = openAiTools();
   return {
     model,
-    instructions: taskNodeInstructions({ contextDocument, memoryContext, taskContext }),
+    instructions: taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence }),
     input: openAiInput({ conversationId, message, attachments, historyMessages }),
     max_output_tokens: config.maxOutputTokens,
     reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
@@ -503,6 +507,7 @@ async function executeOpenAi({
   memoryContext = null,
   contextDocument = null,
   taskContext = null,
+  jobsEssence = "",
 }) {
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
   const request = {
@@ -515,6 +520,7 @@ async function executeOpenAi({
     contextDocument,
     memoryContext,
     taskContext,
+    jobsEssence,
   };
   const body = await fetchJson(`${baseUrl}/responses`, {
     method: "POST",
@@ -545,6 +551,7 @@ async function streamOpenAi({
   memoryContext = null,
   contextDocument = null,
   taskContext = null,
+  jobsEssence = "",
   onDelta,
   signal,
 }) {
@@ -559,6 +566,7 @@ async function streamOpenAi({
     contextDocument,
     memoryContext,
     taskContext,
+    jobsEssence,
   };
   const stream = await fetchEventStream(
     `${baseUrl}/responses`,
@@ -636,6 +644,7 @@ async function executeOpenRouter({
   memoryContext = null,
   contextDocument = null,
   taskContext = null,
+  jobsEssence = "",
 }) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
   const request = {
@@ -648,6 +657,7 @@ async function executeOpenRouter({
     contextDocument,
     memoryContext,
     taskContext,
+    jobsEssence,
   };
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -687,6 +697,7 @@ async function streamOpenRouter({
   memoryContext = null,
   contextDocument = null,
   taskContext = null,
+  jobsEssence = "",
   onDelta,
   signal,
 }) {
@@ -701,6 +712,7 @@ async function streamOpenRouter({
     contextDocument,
     memoryContext,
     taskContext,
+    jobsEssence,
   };
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -769,6 +781,7 @@ export async function executeChat({
   contextDocument,
   memoryContext,
   taskContext,
+  jobsEssence,
 }) {
   const normalizedMode = normalizedChatMode(mode);
   if (!normalizedMode) throw unknownChatModeError(mode);
@@ -787,6 +800,14 @@ export async function executeChat({
     memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
     taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
   ]);
+  const resolvedJobsEssence = jobsEssence === undefined
+    ? (await jobsRetrievalForChat({
+        message,
+        contextDocument: resolvedContextDocument,
+        memoryContext: resolvedMemoryContext,
+        taskContext: resolvedTaskContext,
+      })).text
+    : jobsEssence;
   const result =
     status.provider === "openai"
       ? await executeOpenAi({
@@ -799,6 +820,7 @@ export async function executeChat({
           contextDocument: resolvedContextDocument,
           memoryContext: resolvedMemoryContext,
           taskContext: resolvedTaskContext,
+          jobsEssence: resolvedJobsEssence,
         })
       : await executeOpenRouter({
           mode: normalizedMode,
@@ -810,6 +832,7 @@ export async function executeChat({
           contextDocument: resolvedContextDocument,
           memoryContext: resolvedMemoryContext,
           taskContext: resolvedTaskContext,
+          jobsEssence: resolvedJobsEssence,
         });
 
   if (!result.text) {
@@ -848,6 +871,7 @@ export async function executeChatStream({
   contextDocument,
   memoryContext,
   taskContext,
+  jobsEssence,
   onDelta,
   signal,
 }) {
@@ -868,6 +892,14 @@ export async function executeChatStream({
     memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
     taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
   ]);
+  const resolvedJobsEssence = jobsEssence === undefined
+    ? (await jobsRetrievalForChat({
+        message,
+        contextDocument: resolvedContextDocument,
+        memoryContext: resolvedMemoryContext,
+        taskContext: resolvedTaskContext,
+      })).text
+    : jobsEssence;
   const result =
     status.provider === "openai"
       ? await streamOpenAi({
@@ -880,6 +912,7 @@ export async function executeChatStream({
           contextDocument: resolvedContextDocument,
           memoryContext: resolvedMemoryContext,
           taskContext: resolvedTaskContext,
+          jobsEssence: resolvedJobsEssence,
           onDelta,
           signal,
         })
@@ -893,6 +926,7 @@ export async function executeChatStream({
           contextDocument: resolvedContextDocument,
           memoryContext: resolvedMemoryContext,
           taskContext: resolvedTaskContext,
+          jobsEssence: resolvedJobsEssence,
           onDelta,
           signal,
         });

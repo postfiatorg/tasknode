@@ -20,6 +20,7 @@ const migrations = [
   "011_context_history_projection_source.sql",
   "012_task_requests.sql",
   "013_deep_memory_snapshots.sql",
+  "014_jobs_corpus_pgvector.sql",
 ];
 
 let migrated = false;

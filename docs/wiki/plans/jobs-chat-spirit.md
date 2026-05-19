@@ -325,24 +325,26 @@ Failure behavior:
 - Fly deployment uses shared Postgres rows, not local container state.
 - The app still works when retrieval fails.
 
-## Current Phase 1 State
+## Current Implementation State
 
 - `server/chat-spirit-context.js` loads `prompts/chat/jobs_chat_os_v1.xml` through the prompt registry.
-- `server/chat-memory-context.js::taskNodeInstructions` renders the base Task Node operational prompt first, then renders the Jobs XML with the current context document, task projection, and memory context.
+- `server/chat-memory-context.js::taskNodeInstructions` renders the base Task Node operational prompt first, then renders the Jobs XML with the current context document, task projection, memory context, and Jobs retrieval context.
 - OpenAI Frontier modes receive the rendered instructions through `instructions`.
 - OpenRouter Private modes receive the same rendered instructions as the system message.
 - The current user message, conversation history, and attachments remain provider user messages. They are not duplicated into the XML prompt.
-- The Jobs corpus retrieval slot is populated with an explicit empty-retrieval note until pgvector retrieval exists.
+- `server/db/migrations/014_jobs_corpus_pgvector.sql` installs `pgvector` and creates `jobs_corpus_sources` and `jobs_corpus_chunks`.
+- `scripts/jobs-corpus-ingest.mjs` fetches the pinned gist or reads a local file, chunks the corpus deterministically, embeds chunks with `text-embedding-3-small`, and upserts rows idempotently.
+- `server/jobs-corpus.js::jobsRetrievalForChat` builds a compact query from the current user message, context document, memory, and task state, then retrieves the top three chunks from Postgres.
+- If retrieval fails or times out, chat continues with the explicit empty-retrieval note.
 - `server/chat-estimate.js::chatEstimate` counts the full rendered instruction text, including the Jobs XML, so the preflight credit check reserves for the actual prompt payload.
 - The layer is on by default and can be disabled with `TASKNODE_CHAT_SPIRIT_ENABLED=false`.
 
 ## Remaining Open Decisions
 
-- Which embedding model and vector dimension to standardize for Phase 2.
 - Whether retrieval query embeddings should be billed internally or eventually included in a small chat overhead buffer.
 
 ## Done Definition
 
 Phase 1 is done when the running app has one shared Jobs prompt loader, all four chat modes use it through the same instruction assembly path, Help shows the prompt source, and live or request-builder smoke tests prove no duplicate prompt injection.
 
-Phase 2 is done when the gist corpus is in pgvector, top-3 retrieval is injected into the Jobs prompt slot, Fly deployment reads from shared Postgres, and chat remains operational when retrieval is empty or degraded.
+Phase 2 is locally implemented when the gist corpus is in pgvector, top-3 retrieval is injected into the Jobs prompt slot, local Docker reads from shared Postgres, and chat remains operational when retrieval is empty or degraded.

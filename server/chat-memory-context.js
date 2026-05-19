@@ -97,7 +97,12 @@ export function formatChatMemoryContext(memoryContext = null) {
   });
 }
 
-export function taskNodeInstructions({ contextDocument = null, memoryContext = null, taskContext = null } = {}) {
+export function taskNodeInstructions({
+  contextDocument = null,
+  memoryContext = null,
+  taskContext = null,
+  jobsEssence = "",
+} = {}) {
   const formattedContextDocument = formatChatContextDocument(contextDocument);
   const formattedMemory = formatChatMemoryContext(memoryContext);
   const formattedTasks = formatChatTaskContext(taskContext);
@@ -108,6 +113,7 @@ export function taskNodeInstructions({ contextDocument = null, memoryContext = n
         contextDocumentBlock: formattedContextDocument,
         taskBlock: formattedTasks,
         memoryBlock: formattedMemory,
+        jobsEssence,
       }),
     ]
       .filter(Boolean)

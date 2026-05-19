@@ -16,6 +16,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - Context projection source metadata: `server/db/migrations/011_context_history_projection_source.sql`
 - Task request queue and receipt cache: `server/db/migrations/012_task_requests.sql`
 - Deep memory source snapshots: `server/db/migrations/013_deep_memory_snapshots.sql`
+- Jobs pgvector corpus: `server/db/migrations/014_jobs_corpus_pgvector.sql`
 
 ## Table Inventory
 
@@ -46,11 +47,13 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `pftl_cache_watcher_state` | Operational state for WSS cache watchers, including endpoint, status, subscribed wallet count, last ledger, last event, and error. | Operator health, cache diagnostics, deployment monitoring. | `008_pftl_cache_watcher.sql` |
 | `pftl_cache_reducer_events` | Idempotent reducer queue for wallet balance refresh, context pointer hydration, and task projection replay. | Context history projection, Tasks projection, wallet refresh, repair workers. | `008_pftl_cache_watcher.sql`, `009_pftl_cache_reducer_dedupe_key.sql` |
 | `pftl_cache_maintenance_runs` | Recent archive/retention/maintenance run summaries with status, optional wallet, metrics JSON, and errors. | Operator health, retention diagnostics, cache operations audit. | `010_pftl_cache_operations.sql` |
+| `jobs_corpus_sources` | Source manifest for the Jobs reference corpus, including raw URL, raw SHA-256, byte size, label, fetch time, and metadata. | Chat Jobs spirit retrieval, operator ingestion audit, future prompt source diagnostics. | `014_jobs_corpus_pgvector.sql` |
+| `jobs_corpus_chunks` | Chunked Jobs reference text with stable chunk index, content hash, embedding model/provider, 1536-dimension pgvector embedding, and metadata. | Chat Jobs spirit retrieval through `server/jobs-corpus.js`, future prompt diagnostics. | `014_jobs_corpus_pgvector.sql` |
 
 ## Known Gaps
 
 - Wallet link, auth identity linkage, initiation grants, and Ethereum deposit state are partially represented outside the typed migration set. Those should be pulled into explicit account, identity, wallet link, grant, and deposit tables before the billing and task surfaces become public production surfaces.
-- `pgvector` is not yet installed or migrated. Future semantic chat/context search should add explicit embedding tables rather than hiding vectors inside JSON blobs.
+- Account-scoped semantic search over user chat/context/task data is not implemented yet. The current pgvector implementation is limited to the global Jobs reference corpus used by chat style retrieval.
 
 ## Architecture
 
@@ -67,6 +70,7 @@ flowchart TB
   Account --> Memory[Memory Tables]
   Account --> Billing[Billing Ledger]
   Account --> Wallet[Wallet Link Metadata]
+  Jobs[Jobs Corpus pgvector] --> Chat
   PFTL[PFTL Events] --> TaskCache[Task Projection Cache]
   TaskCache --> Replay[Replay Repair]
 ```

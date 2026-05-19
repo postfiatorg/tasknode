@@ -21,7 +21,7 @@ Memory context is injected by `server/chat-memory-context.js`. The memory worker
 
 Task state is also ported into chat by `server/chat-task-context.js`. This is a read-only projection of the user's cached task state, not a task mutation path.
 
-The chat voice is calibrated by the Jobs XML prompt in `prompts/chat/jobs_chat_os_v1.xml`. The prompt is loaded once by `server/chat-spirit-context.js` and rendered from the shared `server/chat-memory-context.js::taskNodeInstructions` boundary, so Private Instant, Private Thinking, Frontier Instant, and Frontier Thinking all use the same prompt assembly path. The base Task Node operational prompt still comes first; the Jobs XML receives the current context document, task context, and memory context as runtime slots. The current user message, prior chat history, and attachments remain normal provider user messages instead of being duplicated into the XML.
+The chat voice is calibrated by the Jobs XML prompt in `prompts/chat/jobs_chat_os_v1.xml`. The prompt is loaded once by `server/chat-spirit-context.js` and rendered from the shared `server/chat-memory-context.js::taskNodeInstructions` boundary, so Private Instant, Private Thinking, Frontier Instant, and Frontier Thinking all use the same prompt assembly path. The base Task Node operational prompt still comes first; the Jobs XML receives the current context document, task context, memory context, and pgvector Jobs retrieval context as runtime slots. The current user message, prior chat history, and attachments remain normal provider user messages instead of being duplicated into the XML.
 
 Chat also has an explicit task-request mode from the `+` menu. That mode is different from ordinary chat. The next send becomes task request detail text and uses the same `POST /api/tasks/request` browser-wallet signing path as the Tasks page modal. It publishes a signed `pf.task.request.v1` pointer, records a durable `task_requests` row, and leaves the actual task card to appear from the PFTL projection after the task-generation worker publishes `pf.task.offer.v1`.
 
@@ -49,6 +49,22 @@ Frontier modes use the OpenAI Responses API with `store=false`. Task Node passes
 Web search is prompt-governed. `prompts/chat/task_node_instructions_v1.md` tells Frontier models to use web search only when the user asks for current, external, or source-grounded information that is not already available in the conversation, attachments, context document, memory, or task state. Private modes never add OpenRouter web search.
 
 Preflight reserves the configured maximum OpenAI search tool budget for Frontier requests because the model may choose to call the tool. Actual billing records only observed provider usage and observed `web_search_call` items.
+
+## Jobs pgvector Retrieval
+
+Every chat mode can receive up to three retrieved Jobs reference chunks. This is not a public mode switch and the assistant should not mention the retrieval machinery. The retrieval layer exists to calibrate taste and judgment inside the Jobs XML prompt.
+
+The runtime path is:
+
+1. `scripts/jobs-corpus-ingest.mjs` fetches the pinned Jobs corpus gist or reads a local file, chunks it deterministically, embeds each chunk with `text-embedding-3-small`, and upserts rows into `jobs_corpus_sources` and `jobs_corpus_chunks`.
+2. `server/db/migrations/014_jobs_corpus_pgvector.sql` installs `pgvector` and creates the durable corpus tables.
+3. `server/jobs-corpus.js::jobsRetrievalForChat` builds a compact retrieval query from the current user message, context document, memory, and task state.
+4. `server/embedding-provider.js` embeds the retrieval query with the same model and dimensions as the corpus.
+5. `server/jobs-corpus.js::searchJobsCorpus` runs a cosine-distance pgvector query and returns the top three chunks.
+6. `server/chat-router.js::executeChat` and `executeChatStream` pass the rendered retrieval XML into `taskNodeInstructions`.
+7. `server/chat-spirit-context.js::formatChatSpiritContext` places the result in the XML `RELEVANT_JOBS_ESSENCE_FROM_VECTOR_DB` slot.
+
+If the database, corpus rows, embeddings provider, or retrieval query fails, chat still runs with an empty retrieval slot. Retrieval has a short timeout so it does not hold the chat surface hostage.
 
 ## Context Document Porting
 
@@ -119,12 +135,13 @@ This mode requires a linked and unlocked PFT wallet. If the wallet is missing or
 
 ## Billing And Persistence
 
-Before execution, `server/product-contracts.js` checks login, provider readiness, estimated cost, and available chat credit. The estimate includes the current context document, task context, memory context, message text, and attachments. After execution, `server/repositories/chat-billing.js` persists the user message, assistant message, provider, model, response ID, token usage, web-search calls, model cost, tool cost, and ledger entry. Memory summarization is queued afterward and is not billed to the user.
+Before execution, `server/product-contracts.js` checks login, provider readiness, estimated cost, and available chat credit. The estimate includes the current context document, task context, memory context, estimated Jobs retrieval context, message text, and attachments. After execution, `server/repositories/chat-billing.js` persists the user message, assistant message, provider, model, response ID, token usage, web-search calls, model cost, tool cost, and ledger entry. Memory summarization is queued afterward and is not billed to the user.
 
 ## External References
 
 - [OpenAI Responses API migration guide](https://developers.openai.com/api/docs/guides/migrate-to-responses)
 - [OpenAI web search tool](https://developers.openai.com/api/docs/guides/tools-web-search)
+- [OpenAI embeddings API](https://developers.openai.com/api/reference/resources/embeddings/methods/create)
 - [OpenAI images and vision guide](https://developers.openai.com/api/docs/guides/images-vision)
 - [OpenRouter provider routing](https://openrouter.ai/docs/guides/routing/provider-selection)
 - [OpenRouter PDF inputs](https://openrouter.ai/docs/guides/overview/multimodal/pdfs)

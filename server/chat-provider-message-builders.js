@@ -81,6 +81,7 @@ export function openRouterMessages({
   contextDocument = null,
   memoryContext = null,
   taskContext = null,
+  jobsEssence = "",
 }) {
   const normalizedAttachments = normalizeChatAttachments(attachments);
   const sourceHistory = Array.isArray(historyMessages)
@@ -101,7 +102,7 @@ export function openRouterMessages({
         ];
 
   return [
-    { role: "system", content: taskNodeInstructions({ contextDocument, memoryContext, taskContext }) },
+    { role: "system", content: taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence }) },
     ...history,
     { role: "user", content: userContent },
   ];
