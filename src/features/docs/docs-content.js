@@ -22,6 +22,7 @@ import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.m
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import codeReviewBurndown from "../../../docs/wiki/plans/code-review-burndown.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
+import jobsChatSpirit from "../../../docs/wiki/plans/jobs-chat-spirit.md?raw";
 import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
 import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-engine-speedrun.md?raw";
 import taskEngineUxIntegrationPlan from "../../../docs/wiki/plans/task-engine-ux-integration-plan.md?raw";
@@ -363,6 +364,12 @@ export const DOC_GROUPS = [
         title: "Task Engine UX Integration Plan",
         summary: "Audit plan for porting the backend task engine into the visible app lifecycle.",
         markdown: taskEngineUxIntegrationPlan,
+      },
+      {
+        slug: "jobs-chat-spirit",
+        title: "Jobs Chat Spirit",
+        summary: "Plan for the Jobs XML chat prompt and later pgvector retrieval over Jobs notes.",
+        markdown: jobsChatSpirit,
       },
       {
         slug: "pythonic-task-engine-speedrun",
