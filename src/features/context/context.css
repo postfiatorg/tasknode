@@ -510,6 +510,10 @@
   padding-left: 48px;
 }
 
+.ctx-editor-shell.is-line-numbers-hidden {
+  padding-left: 0;
+}
+
 .ctx-line-gutter {
   position: absolute;
   top: 0;

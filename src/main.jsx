@@ -23,6 +23,8 @@ import {
   Flag,
   Flame,
   Github,
+  Hash,
+  Heading1,
   Heading2,
   Heading3,
   Italic,
@@ -2771,10 +2773,18 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
     italic: false,
+    h1: false,
     h2: false,
     h3: false,
     ul: false,
     ol: false,
+  });
+  const [lineNumbersVisible, setLineNumbersVisible] = useState(() => {
+    try {
+      return window.localStorage?.getItem("tasknode.context.lineNumbers") !== "hidden";
+    } catch {
+      return true;
+    }
   });
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const [tableHover, setTableHover] = useState({ rows: 0, cols: 0 });
@@ -2897,6 +2907,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       setActiveFormats({
         bold: document.queryCommandState("bold"),
         italic: document.queryCommandState("italic"),
+        h1: block === "h1" || block === "<h1>",
         h2: block === "h2" || block === "<h2>",
         h3: block === "h3" || block === "<h3>",
         ul: document.queryCommandState("insertUnorderedList"),
@@ -2915,6 +2926,14 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     document.addEventListener("selectionchange", handleSelectionChange);
     return () => document.removeEventListener("selectionchange", handleSelectionChange);
   }, [updateActiveFormats]);
+
+  useEffect(() => {
+    try {
+      window.localStorage?.setItem("tasknode.context.lineNumbers", lineNumbersVisible ? "visible" : "hidden");
+    } catch {
+      // Local display preference only.
+    }
+  }, [lineNumbersVisible]);
 
   useEffect(() => {
     if (!tablePickerOpen) return undefined;
@@ -3373,10 +3392,13 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
         <section className="ctx-card" aria-label="Context document">
           <div className="ctx-toolbar" role="toolbar" aria-label="Formatting">
             <div className="ctx-toolbar-group">
-              <ContextToolButton active={activeFormats.h2} disabled={!canEdit} onMouseDown={() => toggleHeading(2)} title="Heading">
+              <ContextToolButton active={activeFormats.h1} disabled={!canEdit} onMouseDown={() => toggleHeading(1)} title="Heading 1">
+                <Heading1 size={16} strokeWidth={2} />
+              </ContextToolButton>
+              <ContextToolButton active={activeFormats.h2} disabled={!canEdit} onMouseDown={() => toggleHeading(2)} title="Heading 2">
                 <Heading2 size={16} strokeWidth={2} />
               </ContextToolButton>
-              <ContextToolButton active={activeFormats.h3} disabled={!canEdit} onMouseDown={() => toggleHeading(3)} title="Subheading">
+              <ContextToolButton active={activeFormats.h3} disabled={!canEdit} onMouseDown={() => toggleHeading(3)} title="Heading 3">
                 <Heading3 size={16} strokeWidth={2} />
               </ContextToolButton>
             </div>
@@ -3451,6 +3473,16 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
               )}
             </div>
             <div className="ctx-toolbar-spacer" />
+            <button
+              aria-label={lineNumbersVisible ? "Hide line numbers" : "Show line numbers"}
+              aria-pressed={lineNumbersVisible ? "true" : "false"}
+              className={`ctx-tool-btn${lineNumbersVisible ? " is-active" : ""}`}
+              onClick={() => setLineNumbersVisible((visible) => !visible)}
+              title={lineNumbersVisible ? "Hide line numbers" : "Show line numbers"}
+              type="button"
+            >
+              <Hash size={15} strokeWidth={2} />
+            </button>
             <button className="ctx-tool-text" onClick={copyEditorText} type="button">
               {copied ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.9} />}
               <span>{copied ? "Copied" : "Copy"}</span>
@@ -3472,15 +3504,17 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
               placeholder="Untitled context"
               value={title}
             />
-            <div className="ctx-editor-shell">
-              <div className="ctx-line-gutter" aria-hidden="true">
-                {(contextLineRows.length ? contextLineRows : Array.from({ length: contextLineCount }, (_, index) => ({
-                  number: index + 1,
-                  top: index * 24,
-                }))).map((row) => (
-                  <span key={row.number} style={{ transform: `translateY(${row.top}px)` }}>{row.number}</span>
-                ))}
-              </div>
+            <div className={`ctx-editor-shell${lineNumbersVisible ? "" : " is-line-numbers-hidden"}`}>
+              {lineNumbersVisible && (
+                <div className="ctx-line-gutter" aria-hidden="true">
+                  {(contextLineRows.length ? contextLineRows : Array.from({ length: contextLineCount }, (_, index) => ({
+                    number: index + 1,
+                    top: index * 24,
+                  }))).map((row) => (
+                    <span key={row.number} style={{ transform: `translateY(${row.top}px)` }}>{row.number}</span>
+                  ))}
+                </div>
+              )}
               <div
                 aria-disabled={!canEdit}
                 aria-label="Context document body"
