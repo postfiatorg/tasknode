@@ -138,6 +138,7 @@ const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
 const CHAT_ATTACHMENT_MAX_COUNT = 4;
 const CHAT_PASTE_ATTACHMENT_THRESHOLD = 200;
 const CHAT_COMPOSER_MAX_HEIGHT = 220;
+const CHAT_SCROLL_BOTTOM_THRESHOLD = 96;
 const TASK_REQUEST_CANONICAL_TEXT =
   "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.";
 const TASK_REQUEST_PLACEHOLDER = "Add any relevant details for your task request";
@@ -1227,6 +1228,7 @@ function ChatSurface({
   const [editingMsg, setEditingMsg] = useState(null);
   const [editDraft, setEditDraft] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
   const walletVaultUnlocked = Boolean(
     walletVault?.unlocked && walletVault?.address && linkedWalletAddress && walletVault.address === linkedWalletAddress
   );
@@ -1240,6 +1242,20 @@ function ChatSurface({
   const resetSeenRef = useRef(0);
   const shareSeenRef = useRef(chatShareRequestKey);
   const clearedChatRef = useRef(false);
+  const scrollNearBottomRef = useRef(true);
+  const updateScrollBottomVisibility = useCallback(() => {
+    const list = messageListRef.current;
+    if (!list) {
+      setShowScrollBottom(false);
+      scrollNearBottomRef.current = true;
+      return;
+    }
+    const overflow = list.scrollHeight - list.clientHeight > CHAT_SCROLL_BOTTOM_THRESHOLD;
+    const distanceFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+    const nearBottom = !overflow || distanceFromBottom <= CHAT_SCROLL_BOTTOM_THRESHOLD;
+    scrollNearBottomRef.current = nearBottom;
+    setShowScrollBottom(overflow && !nearBottom);
+  }, []);
 
   useEffect(() => {
     setSelectedMode(defaultMode);
@@ -1356,11 +1372,24 @@ function ChatSurface({
   }, []);
 
   useEffect(() => {
-    messageListRef.current?.scrollTo({
-      top: messageListRef.current.scrollHeight,
-      behavior: "smooth",
+    const frame = window.requestAnimationFrame(() => {
+      const list = messageListRef.current;
+      if (!list) {
+        setShowScrollBottom(false);
+        return;
+      }
+      if (scrollNearBottomRef.current) {
+        list.scrollTo({
+          top: list.scrollHeight,
+          behavior: "auto",
+        });
+        setShowScrollBottom(false);
+        return;
+      }
+      updateScrollBottomVisibility();
     });
-  }, [turns.length]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [turns, input, sending, updateScrollBottomVisibility]);
 
   async function submitMessage(event) {
     event.preventDefault();
@@ -1931,7 +1960,12 @@ function ChatSurface({
         </div>
       ) : (
         <div className="chat-thread-shell">
-          <div className="message-list" ref={messageListRef} aria-live="polite">
+          <div
+            className="message-list"
+            ref={messageListRef}
+            aria-live="polite"
+            onScroll={updateScrollBottomVisibility}
+          >
             {turns.map((message, index) => {
               if (message.role === "user") {
                 return (
@@ -1972,19 +2006,26 @@ function ChatSurface({
               );
             })}
           </div>
-          <button
-            className="scroll-bottom-button"
-            onClick={() => {
-              messageListRef.current?.scrollTo({
-                top: messageListRef.current.scrollHeight,
-                behavior: "smooth",
-              });
-            }}
-            title="Scroll to bottom"
-            type="button"
-          >
-            <ArrowDown size={14} strokeWidth={2} />
-          </button>
+          {showScrollBottom && (
+            <button
+              aria-label="Scroll to latest message"
+              className="scroll-bottom-button"
+              onClick={() => {
+                const list = messageListRef.current;
+                if (!list) return;
+                list.scrollTo({
+                  top: list.scrollHeight,
+                  behavior: "auto",
+                });
+                scrollNearBottomRef.current = true;
+                setShowScrollBottom(false);
+              }}
+              title="Scroll to bottom"
+              type="button"
+            >
+              <ArrowDown size={14} strokeWidth={2} />
+            </button>
+          )}
           <div className="composer-dock">{composer}</div>
         </div>
       )}
