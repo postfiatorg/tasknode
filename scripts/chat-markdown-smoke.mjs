@@ -58,4 +58,22 @@ assert.equal(compactOrderedList[0].type, "ol");
 assert.equal(compactOrderedList[0].items.length, 3);
 assert.equal(plainTextFromBlocks(compactOrderedList), "first\nsecond\nthird");
 
+const sectionedOrderedList = markdownToBlocks(
+  [
+    "1. Make the task loop feel unbreakably clear.",
+    "",
+    "Not feature rich. Clear.",
+    "",
+    "2. Finish the wallet unlock gate.",
+    "",
+    "Locked. Unlock pending. Unlocked.",
+    "",
+    "3. Redesign the modal flows until they feel inevitable.",
+  ].join("\n")
+);
+const sectionedOrderedStarts = sectionedOrderedList
+  .filter((block) => block.type === "ol")
+  .map((block) => block.start || 1);
+assert.deepEqual(sectionedOrderedStarts, [1, 2, 3]);
+
 console.log("chat markdown smoke ok");

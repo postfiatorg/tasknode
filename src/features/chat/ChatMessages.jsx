@@ -282,7 +282,7 @@ function BlockRenderer({ block }) {
       );
     case "ol":
       return (
-        <ol>
+        <ol start={Number(block.start) > 1 ? Number(block.start) : undefined}>
           {(block.items || []).map((item, index) => (
             <li key={index}>
               <Inline parts={Array.isArray(item) ? item : [{ text: item }]} />

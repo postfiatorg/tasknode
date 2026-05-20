@@ -27,11 +27,11 @@ export function markdownToBlocks(input) {
     list = null;
   }
 
-  function pushList(type, rawItem) {
+  function pushList(type, rawItem, start = 1) {
     flushParagraph();
     if (!list || list.type !== type) {
       flushList();
-      list = { type, items: [] };
+      list = type === "ol" ? { type, start, items: [] } : { type, items: [] };
     }
     list.items.push(parseInline(rawItem.trim()));
   }
@@ -75,7 +75,7 @@ export function markdownToBlocks(input) {
     const h3 = raw.match(/^###\s+(.+)/);
     const quote = raw.match(/^>\s+(.+)/);
     const ul = raw.match(/^[-*]\s+(.+)/);
-    const ol = raw.match(/^\d+[.)]\s+(.+)/);
+    const ol = raw.match(/^(\d+)[.)]\s+(.+)/);
     const implicitList = implicitListAfterColon(lines, lineIndex);
 
     if (/^---+$/.test(raw)) {
@@ -97,7 +97,7 @@ export function markdownToBlocks(input) {
     } else if (ul) {
       pushList("ul", ul[1]);
     } else if (ol) {
-      pushList("ol", ol[1]);
+      pushList("ol", ol[2], Number(ol[1]) || 1);
     } else if (implicitList) {
       flushParagraph();
       flushList();
