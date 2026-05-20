@@ -104,6 +104,7 @@ async function main() {
         const exists = await evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`);
         if (!exists) throw new Error(`Route ${route.hash || "/"} rendered without selector: ${selector}`);
       }
+      if (route.hash === "#context") await assertContextSelectionBackspace();
     }
 
     const pageLoad = waitForPageLoad();
@@ -270,6 +271,83 @@ async function assertComposerFileDrop() {
 
   if (!result.activeDuringDrag || result.activeAfterDrop || result.chipCount !== 1 || !result.chipText.includes("drag-smoke.pdf")) {
     throw new Error(`Composer drag/drop attachment smoke failed: ${JSON.stringify(result)}`);
+  }
+}
+
+async function assertContextSelectionBackspace() {
+  const before = JSON.parse(await evaluate(`JSON.stringify((() => {
+    window.__routeSmokeBlockedContextSaves = [];
+    if (!window.__routeSmokeOriginalFetch) {
+      window.__routeSmokeOriginalFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : input?.url || '';
+        if (url.includes('/api/context/edit/save')) {
+          window.__routeSmokeBlockedContextSaves.push({ url, at: Date.now() });
+          return Promise.resolve(new Response(JSON.stringify({ message: 'blocked by route smoke' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }));
+        }
+        return window.__routeSmokeOriginalFetch(input, init);
+      };
+    }
+
+    const editor = document.querySelector('.ctx-editor');
+    if (!editor) throw new Error('Context editor missing for selection delete smoke.');
+    if (editor.contentEditable !== 'true') return { skipped: true, reason: 'context_not_editable' };
+
+    editor.focus();
+    editor.innerHTML = '<p>alpha bravo charlie</p><p>delta echo foxtrot</p>';
+    const first = editor.querySelectorAll('p')[0].firstChild;
+    const second = editor.querySelectorAll('p')[1].firstChild;
+    const range = document.createRange();
+    range.setStart(first, 'alpha '.length);
+    range.setEnd(second, 'delta '.length);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return {
+      active: document.activeElement === editor,
+      selected: selection.toString(),
+      text: editor.innerText,
+    };
+  })())`));
+
+  if (before.skipped) return;
+
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Backspace",
+    code: "Backspace",
+    windowsVirtualKeyCode: 8,
+    nativeVirtualKeyCode: 8,
+  });
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "Backspace",
+    code: "Backspace",
+    windowsVirtualKeyCode: 8,
+    nativeVirtualKeyCode: 8,
+  });
+  await sleep(300);
+
+  const after = JSON.parse(await evaluate(`JSON.stringify({
+    text: document.querySelector('.ctx-editor')?.innerText || '',
+    html: document.querySelector('.ctx-editor')?.innerHTML || '',
+    selected: window.getSelection()?.toString() || '',
+  })`));
+
+  if (!before.active || !before.selected.includes("bravo") || !before.selected.includes("delta")) {
+    throw new Error(`Context selection setup failed: ${JSON.stringify(before)}`);
+  }
+  if (
+    after.text.includes("bravo") ||
+    after.text.includes("charlie") ||
+    after.text.includes("delta") ||
+    !after.text.includes("alpha") ||
+    !after.text.includes("echo foxtrot")
+  ) {
+    throw new Error(`Context selected Backspace failed: ${JSON.stringify({ before, after })}`);
   }
 }
 

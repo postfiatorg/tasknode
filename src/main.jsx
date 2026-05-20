@@ -2822,15 +2822,16 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const titleRef = useRef(initialDocument.title || "Task Node Context");
   const lastSavedHtmlRef = useRef(contextBodyToHtml(initialDocument.body || ""));
 
-  const refreshContextLineRows = useCallback(() => {
+  const refreshContextLineRows = useCallback((fallbackLineCount = 1) => {
     window.requestAnimationFrame(() => {
       const rows = contextEditorLineRows(editorRef.current);
-      setContextLineRows(rows.length ? rows : Array.from({ length: contextLineCount }, (_, index) => ({
+      const lineCount = Math.max(1, Number(fallbackLineCount) || 1);
+      setContextLineRows(rows.length ? rows : Array.from({ length: lineCount }, (_, index) => ({
         number: index + 1,
         top: index * 24,
       })));
     });
-  }, [contextLineCount]);
+  }, []);
 
   useEffect(() => {
     const nextDocument = context?.document || {};
@@ -2844,8 +2845,9 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       setTitle(nextTitle);
       titleRef.current = nextTitle;
       if (editorRef.current) editorRef.current.innerHTML = nextHtml;
-      setContextLineCount(contextLineCountFromHtml(nextHtml));
-      refreshContextLineRows();
+      const nextLineCount = contextLineCountFromHtml(nextHtml);
+      setContextLineCount(nextLineCount);
+      refreshContextLineRows(nextLineCount);
       setDirty(false);
       setSaveMessage("");
     }
@@ -3127,8 +3129,9 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
 
   const handleEditorInput = () => {
     setSaveMessage("");
-    setContextLineCount(contextLineCountFromHtml(editorRef.current?.innerHTML || ""));
-    refreshContextLineRows();
+    const nextLineCount = contextLineCountFromHtml(editorRef.current?.innerHTML || "");
+    setContextLineCount(nextLineCount);
+    refreshContextLineRows(nextLineCount);
     recomputeDirty();
   };
 
@@ -3141,16 +3144,10 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     const selectedRange = editorSelectionRange(editorRef.current);
     if (canEdit && (event.key === "Backspace" || event.key === "Delete") && selectedRange) {
       event.preventDefault();
-      const beforeHtml = editorRef.current?.innerHTML || "";
-      const fallbackRange = selectedRange.cloneRange();
-      document.execCommand("delete", false);
-      const deleteChangedEditor = (editorRef.current?.innerHTML || "") !== beforeHtml;
-      if (!deleteChangedEditor) {
-        fallbackRange.deleteContents();
-        const selection = window.getSelection?.();
-        selection?.removeAllRanges();
-        selection?.addRange(fallbackRange);
-      }
+      selectedRange.deleteContents();
+      const selection = window.getSelection?.();
+      selection?.removeAllRanges();
+      selection?.addRange(selectedRange);
       if (editorRef.current && !stripContextHtml(editorRef.current.innerHTML)) {
         editorRef.current.innerHTML = "<p><br></p>";
       }
@@ -3305,8 +3302,9 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     if (!hydratedContext?.text) return;
     setTitle(hydratedContext.title || "Historical PFT Context");
     if (editorRef.current) editorRef.current.innerHTML = contextTextToHtml(hydratedContext.text);
-    setContextLineCount(contextLineCountFromHtml(contextTextToHtml(hydratedContext.text)));
-    refreshContextLineRows();
+    const nextLineCount = contextLineCountFromHtml(contextTextToHtml(hydratedContext.text));
+    setContextLineCount(nextLineCount);
+    refreshContextLineRows(nextLineCount);
     setHydratedContext(null);
     setHydrateMessage("Historical version loaded into the editor. It will autosave as the current context document.");
     setVersionsOpen(true);
@@ -3361,8 +3359,9 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     if (version.type === "current") {
       setTitle(savedTitle);
       if (editorRef.current) editorRef.current.innerHTML = lastSavedHtmlRef.current;
-      setContextLineCount(contextLineCountFromHtml(lastSavedHtmlRef.current));
-      refreshContextLineRows();
+      const nextLineCount = contextLineCountFromHtml(lastSavedHtmlRef.current);
+      setContextLineCount(nextLineCount);
+      refreshContextLineRows(nextLineCount);
       setDirty(false);
       setHydratedContext(null);
       setHydrateMessage("");
