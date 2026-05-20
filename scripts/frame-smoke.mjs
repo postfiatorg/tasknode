@@ -63,10 +63,7 @@ async function main() {
     await clickSelector('button[aria-label="Add"]');
     await assertText([
       "Upload photos & files",
-      "Motivation",
-      "Brainstorming",
       "Context Refine",
-      "Context Rewrite",
       "Request a task",
       "More",
     ]);
@@ -74,7 +71,7 @@ async function main() {
     await clickSelector('button[aria-label="Add"]');
 
     await clickNav("More");
-    await assertText(["Agents", "Memory", "Motivation", "Brainstorming"]);
+    await assertText(["Agents", "Memory", "Context Refine"]);
     await capture("03-sidebar-more");
     await clickNav("More");
 

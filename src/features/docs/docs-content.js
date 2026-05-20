@@ -1,12 +1,9 @@
 import startHere from "../../../docs/wiki/index.md?raw";
 import agents from "../../../docs/wiki/surfaces/agents.md?raw";
-import brainstormingContext from "../../../docs/wiki/surfaces/brainstorming-context.md?raw";
 import chat from "../../../docs/wiki/surfaces/chat.md?raw";
 import context from "../../../docs/wiki/surfaces/context.md?raw";
 import memory from "../../../docs/wiki/surfaces/memory.md?raw";
-import motivation from "../../../docs/wiki/surfaces/motivation.md?raw";
 import refineContext from "../../../docs/wiki/surfaces/refine-context.md?raw";
-import rewrite from "../../../docs/wiki/surfaces/rewrite.md?raw";
 import search from "../../../docs/wiki/surfaces/search.md?raw";
 import tasks from "../../../docs/wiki/surfaces/tasks.md?raw";
 import wallet from "../../../docs/wiki/surfaces/wallet.md?raw";
@@ -72,7 +69,7 @@ const PROMPT_SOURCES = [
   },
   {
     family: "Chat",
-    title: "Context Edit Jobs",
+    title: "Context Refine Jobs",
     path: "prompts/context/context_edit_jobs_v1.xml",
     summary: "Dedicated structured-output prompt for Chat Context Refine mode.",
     status: "Active for Context Refine",
@@ -307,20 +304,12 @@ export const DOC_GROUPS = [
       { slug: "tasks", title: "Tasks", summary: "Portable task lifecycle state.", markdown: tasks },
       { slug: "wallet", title: "Wallet", summary: "Identity, balances, and custody.", markdown: wallet },
       { slug: "context", title: "Context", summary: "Durable working profile.", markdown: context },
-      { slug: "motivation", title: "Motivation", summary: "Goal-grounded action framing.", markdown: motivation },
-      {
-        slug: "brainstorming-context",
-        title: "Brainstorming Context",
-        summary: "Explore context changes before saving.",
-        markdown: brainstormingContext,
-      },
       {
         slug: "refine-context",
         title: "Refine Context",
         summary: "Clean up context without changing meaning.",
         markdown: refineContext,
       },
-      { slug: "rewrite", title: "Rewrite", summary: "Controlled text transformation.", markdown: rewrite },
       { slug: "agents", title: "Agents", summary: "External wallet-native workers.", markdown: agents },
       { slug: "memory", title: "Memory", summary: "Inspectable chat compression.", markdown: memory },
     ],
@@ -403,7 +392,7 @@ export const DOC_GROUPS = [
       },
       {
         slug: "context-edit-chat-mode",
-        title: "Context Edit Chat Mode",
+        title: "Context Refine Chat Mode",
         summary: "Plan for line-numbered Jobs-calibrated context editing inside Chat.",
         markdown: contextEditChatMode,
       },

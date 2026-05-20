@@ -21,7 +21,6 @@ import {
   EyeOff,
   FileText,
   Flag,
-  Flame,
   Github,
   Hash,
   Heading1,
@@ -29,7 +28,6 @@ import {
   Heading3,
   Italic,
   LifeBuoy,
-  Lightbulb,
   List,
   ListOrdered,
   ListPlus,
@@ -41,7 +39,6 @@ import {
   Network,
   PanelLeft,
   Paperclip,
-  PenLine,
   Pencil,
   Plus,
   RefreshCw,
@@ -871,10 +868,7 @@ function App() {
             />
             {moreMenuOpen && sidebarOpen && (
               <div className="sidebar-popout">
-                <ToolMenuRow icon={Flame} label="Motivation" />
-                <ToolMenuRow icon={Lightbulb} label="Brainstorming" />
                 <ToolMenuRow icon={Wand2} label="Context Refine" />
-                <ToolMenuRow icon={PenLine} label="Context Rewrite" />
                 <div className="menu-divider" />
                 <ToolMenuRow icon={Bot} label="Agents" />
                 <ToolMenuRow
@@ -1787,8 +1781,8 @@ function ChatSurface({
         {contextEditMode && (
           <div className="composer-mode-chip">
             <Wand2 size={13} strokeWidth={1.9} />
-            <span>Context Edit</span>
-            <button aria-label="Exit Context Edit" onClick={() => setContextEditMode(false)} type="button">
+            <span>Context Refine</span>
+            <button aria-label="Exit Context Refine" onClick={() => setContextEditMode(false)} type="button">
               <X size={12} strokeWidth={2} />
             </button>
           </div>
@@ -1817,8 +1811,6 @@ function ChatSurface({
                   }}
                 />
                 <div className="menu-divider" />
-                <ToolMenuRow icon={Flame} label="Motivation" />
-                <ToolMenuRow icon={Lightbulb} label="Brainstorming" />
                 <ToolMenuRow
                   icon={Wand2}
                   label="Context Refine"
@@ -1831,7 +1823,6 @@ function ChatSurface({
                     window.setTimeout(() => inputRef.current?.focus(), 0);
                   }}
                 />
-                <ToolMenuRow icon={PenLine} label="Context Rewrite" />
                 <ToolMenuRow
                   icon={ListPlus}
                   label="Request a task"

@@ -1,7 +1,7 @@
 import { requestJson } from "../../api";
 
 export const CONTEXT_EDIT_MODE = "context_edit";
-export const CONTEXT_EDIT_PLACEHOLDER = "Describe the context edit you want";
+export const CONTEXT_EDIT_PLACEHOLDER = "Describe the context refinement you want";
 
 export async function applyContextEditProposal(proposalId) {
   return requestJson(`/api/context/edit/proposals/${encodeURIComponent(proposalId)}/apply`, {

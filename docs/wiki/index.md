@@ -11,7 +11,7 @@ The most important distinction is canonical state versus convenience state. Post
 - Tasks are portable work objects that request, accept, submit, verify, and reward through PFTL/IPFS while Postgres provides the fast read model.
 - Wallet is identity, rewards, publishing authority, and balance visibility.
 - Memory is lightweight compression of user and assistant turns so future chats can carry continuity.
-- Motivation, Brainstorming Context, Refine Context, and Rewrite are specialized chat tools that operate against the current context and recent conversation.
+- Context Refine is the active specialized chat tool for editing the current context document. Motivation, Brainstorming Context, and Rewrite are not exposed in the interface right now.
 
 ## System Diagram
 

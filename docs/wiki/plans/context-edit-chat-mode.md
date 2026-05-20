@@ -1,4 +1,4 @@
-# Context Edit Chat Mode Plan
+# Context Refine Chat Mode Plan
 
 This plan is now the implementation reference for the first working Context Refine pass. The active shipped path is: Chat `+` menu activates `context_edit`, the server uses the dedicated context-edit Jobs XML prompt with structured output, proposals render inline in chat, and accepting a proposal saves a new Postgres Context revision.
 
@@ -69,7 +69,7 @@ Problems to avoid:
 
 ### Entry Points
 
-Context Edit mode can be entered from:
+The internal context edit mode can be entered from:
 
 - Chat `+` menu: `Context Refine`.
 - Context page toolbar: `Edit with chat`, which navigates to Chat with Context Edit mode active.
@@ -81,8 +81,8 @@ The primary user-facing action is `Context Refine`. Internally it activates `con
 
 When Context Edit mode is active:
 
-- The composer placeholder becomes `Describe the context edit you want...`.
-- A compact mode badge appears near the composer: `Context Edit`.
+- The composer placeholder becomes `Describe the context refinement you want`.
+- A compact mode badge appears near the composer: `Context Refine`.
 - The chat remains the same chat; it does not navigate to a different page, open a modal, or force a new conversation.
 - The first pending assistant message says what it is doing in plain language, for example `Reading your context document`.
 - The assistant uses the dedicated context-edit prompt.
@@ -354,7 +354,7 @@ Do not apply stale proposals.
 
 Known breakages to design out before implementation:
 
-- The mode can be too subtle. The composer and assistant pending state must clearly show `Context Edit`.
+- The mode can be too subtle. The composer and assistant pending state must clearly show `Context Refine`.
 - The user may expect ordinary chat while the mode is active. Provide an obvious way to exit context-edit mode.
 - The line-number gutter can drift from contenteditable wrapping if visual rows are mistaken for document lines.
 - Autosave can race with proposal apply. Applying should use server-side revision/hash validation.
@@ -419,7 +419,7 @@ Known breakages to design out before implementation:
 This is done only when:
 
 1. The Context page has visible line numbers that match the normalized model packet.
-2. Clicking `+` then `Context Refine` keeps the user in Chat and visibly activates `Context Edit` mode.
+2. Clicking `+` then `Context Refine` keeps the user in Chat and visibly activates `Context Refine` mode.
 3. Context Edit mode uses the dedicated context-edit Jobs prompt, not the generic chat prompt alone.
 4. The assistant can ask one calibration question or return one structured proposal.
 5. The proposal appears as an inline chat card with line range, before, suggested edit, patched preview, rationale, and clear actions.

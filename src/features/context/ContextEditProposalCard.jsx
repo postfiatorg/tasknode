@@ -102,7 +102,7 @@ export function ContextEditProposalCard({
     <section className={`context-edit-proposal-card is-${state}`} aria-label="Context edit proposal">
       <header className="context-edit-card-head">
         <div>
-          <span className="context-edit-eyebrow">Context Edit · {operationLabel(proposal.operation)}</span>
+          <span className="context-edit-eyebrow">Context Refine · {operationLabel(proposal.operation)}</span>
           <strong>{proposalTitle(proposal)}</strong>
           {proposal.rationale && <p>{proposal.rationale}</p>}
         </div>
