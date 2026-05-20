@@ -5,7 +5,7 @@ Context is the user's durable working profile. It is the structured background t
 ## User Flow
 
 1. The user edits the current context document.
-2. The app saves the current version to Postgres.
+2. The app saves the current draft to Postgres by updating the active draft row in place.
 3. The editor shows line numbers that correspond to the plain-text context packet used by Context Refine.
 4. If the user has a wallet, they can publish encrypted context pointers to PFTL.
 5. The PFTL cache projects historical context pointers for the linked wallet.
@@ -15,7 +15,7 @@ Context is the user's durable working profile. It is the structured background t
 
 The context editor is in `src/main.jsx` and `src/features/context/context.css`. Publishing is handled by `src/features/context/context-publish.js`, `server/context-publish.js`, `server/context-ipfs.js`, `server/pftl-pointer.js`, and `server/pftl-submit.js`.
 
-The context cache repository is `server/repositories/context.js`, backed by `server/db/migrations/003_context_cache.sql` and `server/db/migrations/011_context_history_projection_source.sql`. Historical pointer projection uses `server/context-history.js`, `server/pftl-cache-sync.js`, and `server/pftl-cache-reducer.js`.
+The context cache repository is `server/repositories/context.js`, backed by `server/db/migrations/003_context_cache.sql`, `server/db/migrations/011_context_history_projection_source.sql`, `server/db/migrations/016_context_current_draft_only.sql`, and `server/db/migrations/017_context_prune_non_current_drafts.sql`. Normal editor saves are a current-draft cache, not immutable history. Historical pointer projection uses `server/context-history.js`, `server/pftl-cache-sync.js`, and `server/pftl-cache-reducer.js`.
 
 Context Refine runs through Chat, not a separate Context modal. `src/main.jsx::ChatSurface` activates `contextMode: "context_edit"` from the `+` menu. `server/context-edit-chat.js` uses `prompts/context/context_edit_jobs_v1.xml`, stores pending proposals in `context_edit_proposals`, and applies accepted proposals through `server/repositories/context.js::saveContextDocument`. The Context page then reloads the saved revision from Postgres.
 
@@ -23,8 +23,8 @@ Line numbers are generated from the same normalized HTML-to-text idea used by `s
 
 ## Data Model
 
-- Current context: Postgres cache tied to account identity.
-- Historical wallet context: cached PFTL pointer projections and encrypted IPFS payloads.
+- Current context: Postgres cache tied to account identity. It stores the latest draft for chat/task grounding and does not retain every autosave as long-term history.
+- Historical wallet context: cached PFTL pointer projections and encrypted IPFS payloads. This is the long-term context history path.
 - Restore preview: decrypted payload held only for the current restore workflow.
 - Published context: encrypted IPFS document referenced by PFTL memo pointer.
 - Context edit proposal: account-scoped pending/applied/rejected proposal tied to a chat conversation and assistant message.

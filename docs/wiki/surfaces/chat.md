@@ -108,7 +108,7 @@ Runtime path:
 6. A calibration reply or proposal is saved as an ordinary chat turn through `server/repositories/chat-billing.js`.
 7. If a proposal exists, `server/repositories/context-edit.js` stores it in `context_edit_proposals`.
 8. The assistant message renders an inline proposal card. `Accept edit` posts to `/api/context/edit/proposals/:proposalId/apply`.
-9. Applying reloads the latest context document, checks the base revision and body hash, applies the structured proposal, and saves a new `context_revisions` row through `server/repositories/context.js::saveContextDocument`.
+9. Applying reloads the latest context document, checks the base revision and body hash, applies the structured proposal, and saves the current draft through `server/repositories/context.js::saveContextDocument`.
 
 The proposal card is deliberately inline. The user can keep talking to revise the edit, reject it, or accept it. Accepting writes Postgres context only. Publishing to PFTL remains a separate Context page action.
 
@@ -173,7 +173,7 @@ Before execution, `server/product-contracts.js` checks login, provider readiness
 - Conversations are cached in Postgres.
 - Messages are cached in Postgres.
 - Extracted attachment text is part of the user interaction record.
-- The current Context document is read from `context_documents` and `context_revisions` for signed-in chat grounding.
+- The current Context document is read from `context_documents` and the current draft row in `context_revisions` for signed-in chat grounding. Native editor saves update this draft row in place; durable context history comes from PFTL/IPFS pointer writes.
 - Context Refine proposals are cached in `context_edit_proposals` until accepted or rejected.
 - Token usage and cost are recorded against the signup identity account.
 - Memory summaries are separate from ordinary chat history.

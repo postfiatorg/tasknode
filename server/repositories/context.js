@@ -357,8 +357,35 @@ export async function saveContextDocument({
     const now = new Date();
     const documentId = current?.id || runtimeDocument?.id || `ctx_${safeKey(normalizedAccountId, "account")}`;
     const currentRevision = Number(current?.revision || (runtimeHasSavedContext(runtimeDocument) ? runtimeDocument.revision : 0) || 0);
+    let currentRevisionRow = null;
+    if (current?.current_revision_id) {
+      const currentRevisionResult = await client.query(
+        `
+          SELECT *
+          FROM context_revisions
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [current.current_revision_id]
+      );
+      currentRevisionRow = currentRevisionResult.rows[0] || null;
+    }
+
+    const nextBodySha256 = sha256(normalizedBody);
+    if (
+      current &&
+      currentRevisionRow &&
+      current.title === normalizedTitle &&
+      currentRevisionRow.body_sha256 === nextBodySha256
+    ) {
+      return {
+        ...current,
+        body: currentRevisionRow.body,
+      };
+    }
+
     const nextRevision = currentRevision + 1;
-    const revisionId = `ctxrev_${randomUUID()}`;
+    const revisionId = currentRevisionRow?.id || `ctxrev_${randomUUID()}`;
 
     await client.query(
       `
@@ -381,38 +408,66 @@ export async function saveContextDocument({
       ]
     );
 
-    const insertedRevision = await client.query(
-      `
-        INSERT INTO context_revisions (
-          id,
-          context_document_id,
-          account_id,
-          revision,
-          title,
-          body,
-          body_sha256,
-          word_count,
-          source,
-          provenance_json,
-          created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        RETURNING *
-      `,
-      [
-        revisionId,
-        documentId,
-        normalizedAccountId,
-        nextRevision,
-        normalizedTitle,
-        normalizedBody,
-        sha256(normalizedBody),
-        wordCount(normalizedBody),
-        String(source || "native_editor").slice(0, 80),
-        jsonObject(provenance),
-        now,
-      ]
-    );
+    const savedRevision = currentRevisionRow
+      ? await client.query(
+        `
+          UPDATE context_revisions
+          SET
+            revision = $2,
+            title = $3,
+            body = $4,
+            body_sha256 = $5,
+            word_count = $6,
+            source = $7,
+            provenance_json = $8,
+            created_at = $9
+          WHERE id = $1
+          RETURNING *
+        `,
+        [
+          revisionId,
+          nextRevision,
+          normalizedTitle,
+          normalizedBody,
+          nextBodySha256,
+          wordCount(normalizedBody),
+          String(source || "native_editor").slice(0, 80),
+          jsonObject(provenance),
+          now,
+        ]
+      )
+      : await client.query(
+        `
+          INSERT INTO context_revisions (
+            id,
+            context_document_id,
+            account_id,
+            revision,
+            title,
+            body,
+            body_sha256,
+            word_count,
+            source,
+            provenance_json,
+            created_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          RETURNING *
+        `,
+        [
+          revisionId,
+          documentId,
+          normalizedAccountId,
+          nextRevision,
+          normalizedTitle,
+          normalizedBody,
+          nextBodySha256,
+          wordCount(normalizedBody),
+          String(source || "native_editor").slice(0, 80),
+          jsonObject(provenance),
+          now,
+        ]
+      );
 
     const updated = await client.query(
       `
@@ -425,12 +480,12 @@ export async function saveContextDocument({
         WHERE id = $1
         RETURNING *
       `,
-      [documentId, normalizedTitle, insertedRevision.rows[0].id, nextRevision, now]
+      [documentId, normalizedTitle, savedRevision.rows[0].id, nextRevision, now]
     );
 
     return {
       ...updated.rows[0],
-      body: insertedRevision.rows[0].body,
+      body: savedRevision.rows[0].body,
     };
   });
 

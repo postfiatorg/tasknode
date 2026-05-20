@@ -22,6 +22,8 @@ const migrations = [
   "013_deep_memory_snapshots.sql",
   "014_jobs_corpus_pgvector.sql",
   "015_context_edit_proposals.sql",
+  "016_context_current_draft_only.sql",
+  "017_context_prune_non_current_drafts.sql",
 ];
 
 let migrated = false;

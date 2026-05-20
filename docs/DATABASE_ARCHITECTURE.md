@@ -7,7 +7,7 @@ Implementation status:
 
 - Done first: Postgres migrations and repository coverage for chat history,
   conversation recents, conversation rename/delete, usage billing ledger,
-  O(1) account billing summaries, native context revisions, and historical
+  O(1) account billing summaries, native context current-draft cache, and historical
   context pointer caches.
 - Database use is guarded by `TASKNODE_DATABASE_ENABLED=true`; this is
   intentionally stricter than merely detecting `DATABASE_URL`.
@@ -319,8 +319,11 @@ context_revisions
 Rules:
 
 - One active native context document per account.
-- Every save creates a revision. The active document points at the latest
-  accepted revision.
+- Native editor saves update the current draft row in place. They are durable
+  enough to restore the current document, but they are not long-term history.
+- The only long-term context history is the PFTL/IPFS pointer stream. Publishing
+  to PFT creates the immutable record; cached pointer metadata lives under
+  `context_history_pointers`.
 - The server may read the current context body for chat/task context assembly.
   That means it cannot require wallet unlock.
 - Database backups and logs must treat context as sensitive. Do not log bodies.
@@ -692,7 +695,7 @@ retrieval_embeddings
 
 Candidate sources:
 
-- current context revisions;
+- current context draft;
 - chat messages;
 - attachment extracted text;
 - task projection summaries;
@@ -703,7 +706,7 @@ Rules:
 - Retrieval rows are account-scoped.
 - Vector rows are rebuildable.
 - Do not embed seed phrases, private keys, wallet passwords, or raw secrets.
-- Deleting a chat, context revision, or attachment must enqueue deletion of its
+- Deleting a chat, current context draft, or attachment must enqueue deletion of its
   retrieval rows.
 
 ## Jobs And Outbox
@@ -843,7 +846,7 @@ Importer requirements:
 ### Phase 2: Account, Context, Chat, Billing Cutover
 
 - Move account/session reads and writes to Postgres.
-- Move native context reads and saves to Postgres revisions.
+- Move native context reads and saves to the Postgres current-draft cache.
 - Move chat conversations/messages/model runs to Postgres.
 - Move usage ledger and Ethereum deposit records to Postgres.
 - Add smoke tests for restart persistence.
@@ -891,7 +894,7 @@ Importer requirements:
    wallet-independent?
 2. Should provider user IDs be stored only as hashes, or encrypted as well for
    support workflows?
-3. What retention policy applies to deleted chats and context revisions?
+3. What retention policy applies to deleted chats and current context drafts?
 4. Should task projection rows store account IDs, or only wallet addresses with
    account ownership resolved at query time?
 5. Should vector embeddings live in the primary app database permanently, or be

@@ -43,6 +43,14 @@ const secondSave = await saveContextDocument({
 assert.equal(secondSave.ok, true);
 assert.equal(secondSave.document.revision, 2);
 
+const duplicateSave = await saveContextDocument({
+  accountId,
+  title: "Context smoke updated",
+  body: "This revised context should survive server restarts via Postgres.",
+});
+assert.equal(duplicateSave.ok, true);
+assert.equal(duplicateSave.document.revision, 2);
+
 const loaded = await getContextDocument({ accountId });
 assert.equal(loaded.title, "Context smoke updated");
 assert.equal(loaded.revision, 2);
@@ -146,7 +154,7 @@ const pointerCount = await query(
   "SELECT count(*)::integer AS count FROM context_history_pointers WHERE account_id = $1 AND wallet_address = $2",
   [accountId, walletAddress]
 );
-assert.equal(revisionCount.rows[0].count, 2);
+assert.equal(revisionCount.rows[0].count, 1);
 assert.equal(pointerCount.rows[0].count, 2);
 
 console.log(`context postgres smoke ok: ${accountId}`);
