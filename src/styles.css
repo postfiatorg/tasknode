@@ -1046,14 +1046,16 @@ h1 {
 
 .assistant-body ul,
 .assistant-body ol {
-  display: grid;
-  gap: 6px;
   margin: 0 0 16px 22px;
   padding: 0;
 }
 
 .assistant-body li {
   padding-left: 2px;
+}
+
+.assistant-body li + li {
+  margin-top: 6px;
 }
 
 .assistant-body hr,

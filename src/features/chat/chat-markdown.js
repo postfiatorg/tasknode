@@ -4,8 +4,9 @@ export function markdownToBlocks(input) {
 
   let normalized = text
     .replace(/\r\n/g, "\n")
-    .replace(/([^\n])\s+(\d+\.\s+\*\*)/g, "$1\n$2")
-    .replace(/([^\n])\s+(\d+\.\s+[A-Z])/g, "$1\n$2");
+    .split("\n")
+    .flatMap(normalizeCompactOrderedListLine)
+    .join("\n");
   if (looksLikeMarkdownTable(normalized)) {
     normalized = normalizeCompactMarkdownTables(normalized);
   }
@@ -40,7 +41,7 @@ export function markdownToBlocks(input) {
     const raw = line.trim();
     if (!raw) {
       flushParagraph();
-      flushList();
+      if (!list || nextListType(lines, lineIndex + 1) !== list.type) flushList();
       continue;
     }
 
@@ -114,6 +115,26 @@ export function markdownToBlocks(input) {
   flushParagraph();
   flushList();
   return blocks.length > 0 ? blocks : [{ type: "p", inline: [{ text }] }];
+}
+
+function normalizeCompactOrderedListLine(line) {
+  const raw = String(line || "");
+  const trimmed = raw.trim();
+  if (!/^\d+[.)]\s+/.test(trimmed)) return [raw];
+
+  const parts = trimmed.split(/\s+(?=\d+[.)]\s+)/).filter(Boolean);
+  return parts.length > 1 ? parts : [raw];
+}
+
+function nextListType(lines, startIndex) {
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const raw = String(lines[index] || "").trim();
+    if (!raw) continue;
+    if (/^[-*]\s+/.test(raw)) return "ul";
+    if (/^\d+[.)]\s+/.test(raw)) return "ol";
+    return "";
+  }
+  return "";
 }
 
 export function plainTextFromBlocks(blocks) {

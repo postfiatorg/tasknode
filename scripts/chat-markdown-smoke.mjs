@@ -46,4 +46,16 @@ const shortExplanation = markdownToBlocks("Root cause:\nThe parser was too narro
 assert.equal(shortExplanation.length, 1);
 assert.equal(shortExplanation[0].type, "p");
 
+const looseOrderedList = markdownToBlocks("1. first\n\n1. second\n\n1. third");
+assert.equal(looseOrderedList.length, 1);
+assert.equal(looseOrderedList[0].type, "ol");
+assert.equal(looseOrderedList[0].items.length, 3);
+assert.equal(plainTextFromBlocks(looseOrderedList), "first\nsecond\nthird");
+
+const compactOrderedList = markdownToBlocks("1. first 1. second 1. third");
+assert.equal(compactOrderedList.length, 1);
+assert.equal(compactOrderedList[0].type, "ol");
+assert.equal(compactOrderedList[0].items.length, 3);
+assert.equal(plainTextFromBlocks(compactOrderedList), "first\nsecond\nthird");
+
 console.log("chat markdown smoke ok");
