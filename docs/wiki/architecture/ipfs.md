@@ -10,6 +10,27 @@ IPFS stores content-addressed payloads that PFTL pointers reference by CID. Priv
 - Task submissions.
 - Verification evidence packets.
 - Reward receipts.
+- Private NFT prompt series.
+- Private NFT generation run receipts.
+- Public NFT metadata.
+
+## Private NFT Prompt Series
+
+NFT art prompts are private product assets. The full prompt text must not be stored in public NFT metadata, public profile JSON, visible docs, or plaintext prompt files in the repository.
+
+The canonical storage pattern is:
+
+1. Build a stable JSON payload with schema `pf.asset.nft_prompt_series.v1`.
+2. Include the private `prompt_body`, negative prompt, provider policy, render contract, series id, and revision.
+3. Canonically serialize the unencrypted JSON and compute `sha256`.
+4. Encrypt the payload to the TaskNode service key and prompt authority key.
+5. Pin the encrypted payload to IPFS.
+6. Publish a `pf.ptr/v4` `ASSET` pointer on PFTL with `thread_id` set to the prompt series id.
+7. Cache the latest pointer in Postgres for speed.
+
+Generated NFT metadata may include the safe commitment fields `series_id`, `series_revision`, and `prompt_digest`. It must not include the private prompt body. The digest lets a prompt series be audited or revealed later without making it public at mint time.
+
+Each image generation should also create an encrypted run receipt with schema `pf.profile.nft_generation_run.v1`. That receipt records the series pointer, prompt digest, profile snapshot digest, provider/model, image CID, and metadata CID. It makes generation replayable for TaskNode without leaking private prompt text.
 
 ## Technical Architecture
 

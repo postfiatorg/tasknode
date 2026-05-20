@@ -130,6 +130,74 @@ Rules:
 
 NFT generation should be a separate child job owned by the profile snapshot, because image generation is slower and more failure-prone than profile text.
 
+The NFT art prompt itself must not be public. Task Node Official should not store the full NFT series prompt in `prompts/`, public NFT metadata, public profile JSON, or a plaintext database row. The canonical series prompt should be a private PFTL/IPFS asset pointer.
+
+### Private NFT Prompt-Series Pointer
+
+Use the existing `pf.ptr` / `v4` pointer format rather than inventing a parallel NFT prompt registry.
+
+Pointer memo:
+
+- `MemoType`: `pf.ptr`
+- `MemoFormat`: `v4`
+- `kind`: `ASSET`
+- `schema`: `1`
+- `flags`: `encrypted`
+- `thread_id`: stable NFT prompt series id, for example `nft_series_profile_avatar_v1`
+- `cid`: encrypted IPFS payload CID
+
+Encrypted IPFS payload schema:
+
+```json
+{
+  "schema": "pf.asset.nft_prompt_series.v1",
+  "series_id": "nft_series_profile_avatar_v1",
+  "revision": 1,
+  "title": "Profile Avatar Series",
+  "status": "active",
+  "prompt_body": "private prompt text goes here",
+  "negative_prompt": "private negative prompt text goes here",
+  "render_contract": {
+    "input_schema": "pf.profile.nft_input.v1",
+    "output_schema": "pf.profile.nft_output.v1",
+    "allowed_public_metadata_fields": [
+      "series_id",
+      "series_revision",
+      "prompt_digest",
+      "image_cid",
+      "metadata_cid"
+    ]
+  },
+  "provider_policy": {
+    "preferred_provider": "openai",
+    "preferred_model": "gpt-image-2",
+    "fallback_model": null
+  },
+  "previous_revision": null,
+  "created_at": "2026-05-20T00:00:00.000Z"
+}
+```
+
+Canonical digest:
+
+- Serialize the unencrypted payload with stable JSON key ordering.
+- Compute `sha256(canonical_json_bytes)`.
+- Store that digest in Postgres and in generated NFT run receipts.
+- Public metadata may expose the digest and series id. It must not expose `prompt_body`, `negative_prompt`, or the encrypted CID contents in plaintext.
+
+Recipients:
+
+- TaskNode service encryption key, so production workers can render the series.
+- Prompt curator / authority wallet, so the series can be audited or migrated.
+- Optional cold backup authority wallet.
+- The end user does not need the private prompt to own or display the generated NFT.
+
+Revision policy:
+
+- Updating a series prompt publishes a new encrypted `pf.asset.nft_prompt_series.v1` payload and a new `pf.ptr/v4` `ASSET` pointer.
+- Old prompt revisions remain immutable and replayable.
+- The database caches the latest active pointer for speed, but the pointer history is the canonical source.
+
 Inputs:
 
 - public-safe profile summary;
@@ -144,9 +212,56 @@ Output:
 - image CID;
 - metadata CID;
 - mint tx if minted;
+- prompt series id;
+- prompt series pointer tx hash;
+- prompt series digest;
+- private generation run pointer CID, if the run input must be replayed privately;
 - status: `draft`, `generated`, `pinned`, `minted`, `failed`.
 
 V1 can generate and pin first. Minting can be a second action so the UX does not pretend an image is on-chain before it is.
+
+### NFT Generation Run Pointer
+
+Each generated image should have a private run receipt. This keeps generation replayable without making the prompt public.
+
+Encrypted IPFS payload schema:
+
+```json
+{
+  "schema": "pf.profile.nft_generation_run.v1",
+  "series_id": "nft_series_profile_avatar_v1",
+  "series_revision": 1,
+  "series_prompt_digest": "sha256:...",
+  "series_pointer_tx_hash": "PFTL_TX_HASH",
+  "profile_snapshot_id": "profile_snapshot_uuid",
+  "profile_snapshot_digest": "sha256:...",
+  "public_input_summary": {
+    "skills": ["frontend audit", "verification workflow repair"],
+    "task_fit": ["PFTL replay debugging"]
+  },
+  "private_input_digest": "sha256:...",
+  "provider": "openai",
+  "model": "gpt-image-2",
+  "image_cid": "bafy...",
+  "metadata_cid": "bafy...",
+  "created_at": "2026-05-20T00:00:00.000Z"
+}
+```
+
+This run receipt can also be referenced by a `pf.ptr/v4` `ASSET` pointer. The public NFT metadata should reference only the safe series commitment:
+
+```json
+{
+  "name": "Task Node Profile Avatar",
+  "image": "ipfs://...",
+  "attributes": [
+    { "trait_type": "Prompt Series", "value": "nft_series_profile_avatar_v1" },
+    { "trait_type": "Prompt Digest", "value": "sha256:..." }
+  ]
+}
+```
+
+The full prompt remains private unless the authority later chooses to reveal that series revision.
 
 ## Recommended Connections
 
@@ -243,11 +358,31 @@ Fields:
 - `image_cid`
 - `metadata_cid`
 - `mint_tx_hash`
+- `prompt_series_id`
+- `prompt_series_pointer_tx_hash`
+- `prompt_series_digest`
+- `generation_run_pointer_cid`
+- `generation_run_pointer_tx_hash`
 - `prompt_version`
 - `provider`
 - `model`
 - `created_at`
 - `minted_at`
+
+### `nft_prompt_series_cache`
+
+Fast cache for private prompt-series pointers. This table does not store plaintext prompt bodies.
+
+Fields:
+
+- `series_id`
+- `active_revision`
+- `active_pointer_cid`
+- `active_pointer_tx_hash`
+- `active_prompt_digest`
+- `status`
+- `created_by_account_id`
+- `updated_at`
 
 ### `profile_recommended_connections`
 

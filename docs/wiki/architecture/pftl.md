@@ -10,6 +10,7 @@ PFTL is the Post Fiat L1. The app uses `xrpl` tooling because the network speaks
 - Task lifecycle events.
 - MessageKey pubkey settings.
 - Reward transactions.
+- Encrypted `ASSET` pointers for private NFT prompt series and NFT generation run receipts.
 
 ## What Does Not Go On Chain Directly
 
@@ -26,6 +27,19 @@ Backend PFTL helpers live in `server/pftl-balance.js`, `server/pftl-transactions
 The app should prefer the local fast RPC for routine balance and pointer reads, with production RPC checks used when historical completeness matters.
 
 The backend transaction mirror is described in Help under `PFTL Transaction Cache`, backed by `docs/wiki/architecture/pftl-transaction-cache.md`. It is the cache layer for wallet feeds, context history, task replay, and future wallet-native messaging.
+
+## Private NFT Prompt Pointers
+
+Private NFT prompt series use the same pointer family as tasks and context:
+
+- `MemoType`: `pf.ptr`
+- `MemoFormat`: `v4`
+- `kind`: `ASSET`
+- `schema`: `1`
+- `flags`: `encrypted`
+- `thread_id`: stable prompt series id, such as `nft_series_profile_avatar_v1`
+
+The pointer CID resolves to encrypted IPFS JSON, not to a public prompt. Public NFT metadata may cite the prompt series id and prompt digest, but never the plaintext prompt body. A later reveal can publish the plaintext prompt or decrypt it for auditors; the digest proves it matches the prompt used for the minted image.
 
 ## Diagram
 
