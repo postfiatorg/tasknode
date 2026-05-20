@@ -2718,6 +2718,22 @@ function contextEditorLineRows(editor) {
   }));
 }
 
+function nodeBelongsToEditor(editor, node) {
+  if (!editor || !node) return false;
+  const element = node.nodeType === 1 ? node : node.parentElement;
+  return node === editor || element === editor || editor.contains(element);
+}
+
+function editorSelectionRange(editor) {
+  const selection = window.getSelection?.();
+  if (!editor || !selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+  const range = selection.getRangeAt(0);
+  if (!nodeBelongsToEditor(editor, range.startContainer) || !nodeBelongsToEditor(editor, range.endContainer)) {
+    return null;
+  }
+  return range;
+}
+
 function buildContextVersions(documentState = {}, history = {}) {
   const versions = [];
   const currentHtml = contextBodyToHtml(documentState.body || "");
@@ -3122,6 +3138,27 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   }, [canEdit, dirty, saveContext, saving]);
 
   const handleEditorKeyDown = (event) => {
+    const selectedRange = editorSelectionRange(editorRef.current);
+    if (canEdit && (event.key === "Backspace" || event.key === "Delete") && selectedRange) {
+      event.preventDefault();
+      const beforeHtml = editorRef.current?.innerHTML || "";
+      const fallbackRange = selectedRange.cloneRange();
+      document.execCommand("delete", false);
+      const deleteChangedEditor = (editorRef.current?.innerHTML || "") !== beforeHtml;
+      if (!deleteChangedEditor) {
+        fallbackRange.deleteContents();
+        const selection = window.getSelection?.();
+        selection?.removeAllRanges();
+        selection?.addRange(fallbackRange);
+      }
+      if (editorRef.current && !stripContextHtml(editorRef.current.innerHTML)) {
+        editorRef.current.innerHTML = "<p><br></p>";
+      }
+      handleEditorInput();
+      updateActiveFormats();
+      return;
+    }
+
     const mod = event.metaKey || event.ctrlKey;
     if (!mod) return;
     const key = event.key.toLowerCase();
