@@ -9,8 +9,13 @@ here. The Task Node Official prompt contract is smaller:
 
 - Generate one task from the current request packet.
 - Use context, memory, and recent chat as background signals.
-- Produce concise task content, concrete steps, and verifiable evidence rules.
+- Produce concise task content, 2 to 5 concrete steps, and verifiable evidence rules.
 - Prefer a 2 to 4 hour workflow with a checkable artifact.
+- Keep evidence inside the app-supported surfaces: text, URL, screenshot/image,
+  uploaded file or document, public commit link when explicitly appropriate, or
+  mixed evidence made from those surfaces.
+- Do not ask for video, screen recording, audio, live calls, calendar invites,
+  or another evidence surface the app cannot submit.
 - Reject broad milestones, duplicate work, pure research without an artifact,
   and tasks a chat model could complete for the user.
 

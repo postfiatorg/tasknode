@@ -15,13 +15,15 @@ Task quality rules:
 - Generate one task, not a menu of options.
 - Respect the user's requested focus when one is present.
 - Make the task specific, useful, and independently verifiable.
-- Prefer a 2 to 4 hour workflow that results in a verifiable artifact: text, URL, screenshot, file, commit, or mixed evidence.
-- For work that is likely private or local to the user's machine, prefer screenshot, code excerpt, text attestation, file, or mixed evidence. Use `github_commit` only when the user explicitly provides or requests a public commit/repository evidence path.
+- Prefer a 2 to 4 hour workflow that results in an app-supported verifiable artifact.
+- The app-supported evidence surfaces are text, URL, screenshot/image, uploaded file or document, public commit link when explicitly appropriate, and mixed evidence made from those surfaces.
+- Do not request video, screen recordings, audio recordings, live calls, calendar invites, or any evidence surface the app cannot submit. If before/after proof is needed, ask for screenshots plus text, code excerpt, URL, or file evidence instead.
+- For work that is likely private or local to the user's machine, prefer screenshot, code excerpt as text, text attestation, file, or mixed evidence. Use `github_commit` only when the user explicitly provides or requests a public commit/repository evidence path.
 - Do not generate an entire milestone, roadmap, or broad project as one task.
 - Do not generate pure research unless the required output is a concrete artifact that can be checked.
 - Do not generate work that the user could complete by asking a chat model for an answer.
 - Do not duplicate outstanding, refused, or recently completed tasks when task history is provided.
-- Use 2 to 5 concrete steps when they make completion clearer. Each step should be observable or contribute directly to the final artifact.
+- Always use 2 to 5 concrete steps. Each step should be observable or contribute directly to the final artifact. Use 2 steps for a small atomic task; do not return one step or zero steps.
 - Keep the description and evidence requirement short. Do not add fields that are not listed in the output contract.
 
 Reward rules:
@@ -38,7 +40,7 @@ Output fields:
 - `title`: 5 to 12 words, imperative when natural.
 - `description`: 2 to 4 concise sentences describing the scope and expected artifact.
 - `task_kind`: short category such as `personal`, `network`, `alpha`, `system`, or `engineering`.
-- `steps`: 2 to 5 short checkable steps, or an empty array only when the task is already atomic.
+- `steps`: 2 to 5 short checkable steps. Never return one step or an empty array.
 - `submission_requirement.type`: one of `text`, `url`, `github_commit`, `screenshot`, `file`, or `mixed`.
 - `submission_requirement.criteria`: 1 to 3 sentences describing exactly what evidence is acceptable.
 - `verification_policy.followup_required`: usually `true`.

@@ -7,8 +7,8 @@ import { buildPftPointerMemo } from "../server/pftl-pointer.js";
 import {
   markPftlReducerEventCompleted,
   processPftlReducerEvent,
-  tasknodeServiceIdentityFromEnv,
 } from "../server/pftl-cache-reducer.js";
+import { tasknodeServiceIdentityFromEnv } from "../server/task-payloads.js";
 import {
   enqueuePftlReducerEventsForTransaction,
   registerPftlSyncWallet,
@@ -158,6 +158,11 @@ try {
     title: "Reducer smoke projected task",
     description: "Verify cached PFTL pointer reducer hydration writes task projections.",
     task_kind: "smoke",
+    steps: [
+      "Create a reducer smoke task offer payload.",
+      "Hydrate the encrypted task offer through the reducer.",
+      "Verify the task projection preserves generated steps.",
+    ],
     submission_requirement: {
       type: "text",
       criteria: "Submit the reducer smoke output.",
@@ -254,7 +259,7 @@ try {
   assert.equal(contextRows.rows[0].pointer_type, "context");
 
   const projectionRows = await query(
-    "SELECT status, title, reward_offer_pft::text AS reward_offer_pft, reward_actual_pft::text AS reward_actual_pft FROM task_projections WHERE task_id = $1",
+    "SELECT status, title, reward_offer_pft::text AS reward_offer_pft, reward_actual_pft::text AS reward_actual_pft, metadata_json FROM task_projections WHERE task_id = $1",
     [taskId]
   );
   assert.equal(projectionRows.rows.length, 1);
@@ -262,6 +267,7 @@ try {
   assert.equal(projectionRows.rows[0].title, "Reducer smoke projected task");
   assert.equal(projectionRows.rows[0].reward_offer_pft, "12.500000");
   assert.equal(projectionRows.rows[0].reward_actual_pft, "0.000000");
+  assert.deepEqual(projectionRows.rows[0].metadata_json.generatedTask.steps, taskOffer.steps);
 
   const reducerRows = await query(
     "SELECT reducer_kind, status FROM pftl_cache_reducer_events WHERE tx_hash = ANY($1)",

@@ -38,13 +38,17 @@ Task generation should return one task, not a long plan. The task should contain
 
 - a short title;
 - a compact description;
-- 2 to 5 concrete steps when useful;
+- 2 to 5 concrete steps;
 - a single submission requirement;
 - a verification policy;
 - a bounded reward estimate;
 - an accept/deadline window.
 
 The task should usually be a 2 to 4 hour workflow with a verifiable artifact.
-It should not be an entire milestone, a broad roadmap, pure research without a
-checkable artifact, duplicate work, or something a chat model could complete for
-the user.
+Supported evidence surfaces are text, URL, screenshot/image, uploaded file or
+document, public commit link when explicitly appropriate, and mixed evidence
+made from those surfaces. The task generator must not ask for video, screen
+recording, audio, live calls, calendar invites, or any evidence surface the app
+cannot submit. It should not be an entire milestone, a broad roadmap, pure
+research without a checkable artifact, duplicate work, or something a chat model
+could complete for the user.

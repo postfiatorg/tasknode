@@ -218,6 +218,7 @@ async function candidateTaskPointerRows({ walletAddress, taskId = "", seedCid = 
         AND pm.pointer_kind = ANY($4)
         AND (
           ($2::text <> '' AND pm.task_id = $2)
+          OR ($2::text <> '' AND pm.task_id IS NULL)
           OR ($3::text <> '' AND pm.cid = $3)
           OR ($2::text = '' AND pm.task_id IS NULL)
         )
@@ -380,6 +381,7 @@ function receiptForProjection({
         title: offerPayload.title || projection.title,
         description: offerPayload.description || projection.description,
         task_kind: offerPayload.task_kind || projection.task_kind,
+        steps: Array.isArray(offerPayload.steps) ? offerPayload.steps : [],
         reward_offer: offerPayload.reward_offer || {},
         submission_requirement: offerPayload.submission_requirement || {},
         verification_policy: offerPayload.verification_policy || {},

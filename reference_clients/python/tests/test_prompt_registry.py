@@ -9,6 +9,8 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("pf.taskgen.input.v1", prompt)
         self.assertIn("memory", prompt.lower())
         self.assertIn("recent messages", prompt.lower())
+        self.assertIn("Do not request video", prompt)
+        self.assertIn("2 to 5 concrete steps", prompt)
         self.assertEqual(len(prompt_digest(prompt)), 64)
 
     def test_prompt_template_rendering(self):

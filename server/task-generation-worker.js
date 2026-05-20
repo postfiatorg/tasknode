@@ -190,13 +190,17 @@ function validateTaskgenOutput(output = {}) {
   if (!requirement.type || !requirement.criteria) throw new Error("taskgen_submission_requirement_invalid");
   const verification = safeObject(output.verification_policy);
   if (!verification.verification_type || !verification.mode) throw new Error("taskgen_verification_policy_invalid");
+  const steps = Array.isArray(output.steps)
+    ? output.steps.map((step) => safeText(step, 1000)).filter(Boolean).slice(0, 5)
+    : [];
+  if (steps.length < 2) throw new Error("taskgen_steps_invalid");
   const reward = safeObject(output.reward_offer);
   return {
     ...output,
     title: safeText(output.title, 240),
     description: safeText(output.description, 8000),
     task_kind: safeText(output.task_kind, 80),
-    steps: Array.isArray(output.steps) ? output.steps.map((step) => safeText(step, 1000)).filter(Boolean).slice(0, 5) : [],
+    steps,
     submission_requirement: {
       type: safeText(requirement.type, 80),
       criteria: safeText(requirement.criteria, 4000),

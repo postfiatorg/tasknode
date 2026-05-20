@@ -21,6 +21,8 @@ After a successful chain submit, the server records a durable `task_requests` ro
 
 A signed request is not the same thing as a proposed task card. Durable task cards appear after `server/task-generation-worker.js` claims the `task_requests` row, decrypts the request bundle, calls the task-generation prompt/model, emits an encrypted `pf.task.offer.v1` pointer from the authority wallet, syncs PFTL, and the reducer projects the offer into `task_projections`.
 
+Generated offers use the evidence surfaces the app can actually submit: text, URL, screenshot/image, uploaded file or document, public commit link when explicitly appropriate, or mixed evidence made from those surfaces. The task-generation prompt and worker validation require 2 to 5 concrete steps. Video, screen recording, audio, live calls, calendar invites, and other unsupported evidence surfaces are outside the app contract and should not be requested.
+
 When a browser request publish succeeds, `POST /api/tasks/request` records the durable row and immediately schedules a one-shot generation tick. The periodic worker remains as a backstop, but the normal browser path does not wait for the next polling interval before generation starts. The Tasks page refreshes while a request is in flight so a queued receipt is replaced by the projected task card as soon as the offer pointer is indexed.
 
 Clicking a task opens a full-screen task detail surface with three tabs:
@@ -52,6 +54,8 @@ The Overview tab renders the task description, steps, verification requirement, 
 - `score.user_feedback`.
 
 If the authority decision is positive but the matching `pf.reward.v1` payment event is not indexed yet, the page should show that the reward decision exists but payment is pending.
+
+Task steps come from the decrypted `pf.task.offer.v1` payload. The reducer preserves those steps in `task_projections.metadata_json.generatedTask.steps`; the UI must not invent a one-step list from the submission requirement when real generated steps exist.
 
 ## Refuse And Cancel
 
@@ -288,3 +292,5 @@ When changing Tasks, verify:
 7. Chat task context still treats task state as read-only projection data.
 8. Task deadlines render without `12:00 AM`, while real event rows still show exact times.
 9. A new verification response draft starts with one empty evidence artifact unless the user explicitly adds a second artifact.
+10. Newly generated tasks contain 2 to 5 steps and do not ask for unsupported evidence such as video or screen recording.
+11. Existing projected tasks preserve the steps from the chain offer payload rather than falling back to the submission requirement as a fake one-step task.

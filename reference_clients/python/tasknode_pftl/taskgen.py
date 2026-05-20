@@ -334,6 +334,8 @@ def _validate_taskgen_output(value: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(steps, list):
         steps = []
     value["steps"] = [str(step).strip() for step in steps if str(step or "").strip()][:5]
+    if len(value["steps"]) < 2:
+        raise ValueError("Taskgen output must include at least 2 steps")
     requirement = value.get("submission_requirement") or {}
     if requirement.get("type") not in {"text", "url", "github_commit", "screenshot", "file", "mixed"}:
         raise ValueError("Taskgen output has invalid submission requirement type")

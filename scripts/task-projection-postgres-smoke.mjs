@@ -46,6 +46,11 @@ const receipt = {
     title: "Smoke projected PFTL task",
     description: "Verify task projections can be imported and listed from Postgres.",
     task_kind: "engineering",
+    steps: [
+      "Import a replay receipt with generated task steps.",
+      "List the projected task state from Postgres.",
+      "Open task detail and confirm audit fields are present.",
+    ],
     reward_offer: { amount_estimate_pft: "3.00" },
     submission_requirement: {
       type: "text",
@@ -131,10 +136,12 @@ assert.equal(state.rewarded.length, 1);
 assert.equal(state.rewarded[0].taskId, taskId);
 assert.equal(state.rewarded[0].title, "Smoke projected PFTL task");
 assert.equal(state.rewarded[0].pft, 3);
+assert.deepEqual(state.rewarded[0].steps, receipt.generated_task.steps);
 
 const detail = await getTaskDetail({ accountId, walletAddress, taskId });
 assert.equal(detail.ok, true);
 assert.equal(detail.task.taskId, taskId);
+assert.deepEqual(detail.task.steps, receipt.generated_task.steps);
 assert.equal(detail.forensics.timeline.length, 2);
 assert.equal(detail.forensics.timeline[0].cid, `QmOfferSmoke${suffix}`);
 assert.equal(detail.forensics.timeline[0].details.some((entry) => entry.label === "Title"), true);
