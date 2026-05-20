@@ -24,8 +24,8 @@ Line numbers are generated from the same normalized HTML-to-text idea used by `s
 ## Data Model
 
 - Current context: Postgres cache tied to account identity. It stores the latest draft for chat/task grounding and does not retain every autosave as long-term history.
-- Historical wallet context: cached PFTL pointer projections and encrypted IPFS payloads. This is the long-term context history path.
-- Restore preview: decrypted payload held only for the current restore workflow.
+- Historical wallet context: cached PFTL pointer projections. The server cache stores CID, transaction, ledger, timestamp, direction, version, and available metadata; it does not store decrypted plaintext previews.
+- Restore preview: encrypted IPFS payload fetched by CID and decrypted in the browser only after the local wallet vault is unlocked. The readable preview is a session cache, not durable Postgres state.
 - Published context: encrypted IPFS document referenced by PFTL memo pointer.
 - Context edit proposal: account-scoped pending/applied/rejected proposal tied to a chat conversation and assistant message.
 
@@ -51,5 +51,5 @@ sequenceDiagram
 - Context editing must not require a wallet.
 - Publishing must require an unlocked local vault.
 - Restore must make overwrite behavior explicit.
-- Historical previews should load per document, not mark every version as restoring.
+- Historical previews should load per document, distinguish queued/loading/error states, and never present failed or idle previews as still loading.
 - Context Refine proposals must not overwrite newer manual edits; stale proposals fail before save.

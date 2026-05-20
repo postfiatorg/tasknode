@@ -2632,6 +2632,10 @@ function extractHydratedContext(payload, plaintext) {
   };
 }
 
+function contextPreviewText(value, maxLength = 220) {
+  return stripContextHtml(contextBodyToHtml(value)).slice(0, maxLength);
+}
+
 function formatContextTimestamp(value) {
   if (!value) return "Not saved yet";
 
@@ -2838,6 +2842,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const [tableHover, setTableHover] = useState({ rows: 0, cols: 0 });
   const [hydratedContext, setHydratedContext] = useState(null);
   const [hydratedPreviewByCid, setHydratedPreviewByCid] = useState({});
+  const [previewStateByCid, setPreviewStateByCid] = useState({});
   const [restoringVersionKey, setRestoringVersionKey] = useState("");
   const [previewHydration, setPreviewHydration] = useState({
     active: false,
@@ -2898,6 +2903,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     setHydrateMessage("");
     setRestoringVersionKey("");
     setHydratedPreviewByCid({});
+    setPreviewStateByCid({});
   }, [history?.revision, history?.latestContextPointer?.cid, linkedWalletAddress]);
 
   const canEdit = Boolean(documentState.canEdit);
@@ -3219,8 +3225,29 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       [normalizedCid]: {
         title: contextResult.title,
         text: contextResult.text,
+        preview: contextPreviewText(contextResult.text),
+        wordCount: contextWordCount(contextBodyToHtml(contextResult.text)),
         decrypted: contextResult.decrypted,
         fetchedAt: contextResult.fetchedAt || new Date().toISOString(),
+      },
+    }));
+    setPreviewStateByCid((current) => ({
+      ...current,
+      [normalizedCid]: {
+        status: "loaded",
+        message: "",
+      },
+    }));
+  }, []);
+
+  const setPreviewState = useCallback((cid, nextState) => {
+    const normalizedCid = String(cid || "").trim();
+    if (!normalizedCid) return;
+    setPreviewStateByCid((current) => ({
+      ...current,
+      [normalizedCid]: {
+        ...current[normalizedCid],
+        ...nextState,
       },
     }));
   }, []);
@@ -3237,11 +3264,16 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     const nextRestoringKey = versionKey || cid;
     setRestoringVersionKey(nextRestoringKey);
     setHydrateMessage("");
+    setPreviewState(cid, { status: "loading", message: "" });
     try {
       const result = await onHydrateContext?.(pointer);
       if (!result?.text) {
         setHydrateMessage("Context CID was fetched, but no readable context text was found.");
         setHydratedContext(null);
+        setPreviewState(cid, {
+          status: "error",
+          message: "No readable context text was found. Click Restore to retry.",
+        });
       } else {
         const nextHydratedContext = { ...result, cid: result.cid || cid };
         setHydratedContext(nextHydratedContext);
@@ -3251,7 +3283,12 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       }
       return Boolean(result?.text);
     } catch (error) {
-      setHydrateMessage(error?.message || "Context could not be hydrated.");
+      const message = error?.message || "Context could not be hydrated.";
+      setHydrateMessage(message);
+      setPreviewState(cid, {
+        status: "error",
+        message,
+      });
       setHydratedContext(null);
       return false;
     } finally {
@@ -3285,6 +3322,15 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     previewHydrationRunRef.current = runId;
     let cancelled = false;
     setPreviewHydration({ active: true, loaded: 0, total: targets.length, error: "" });
+    setPreviewStateByCid((current) => {
+      const next = { ...current };
+      for (const target of targets) {
+        next[target.cid] = next[target.cid]?.status === "loaded"
+          ? next[target.cid]
+          : { status: "queued", message: "" };
+      }
+      return next;
+    });
 
     async function hydratePreviewRows() {
       let loaded = 0;
@@ -3294,12 +3340,22 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
         if (cancelled || previewHydrationRunRef.current !== runId) return;
 
         try {
+          setPreviewState(version.cid, { status: "loading", message: "" });
           const result = await onHydrateContext?.(version.pointer);
           if (result?.text) {
             cacheHydratedPreview(version.cid, { ...result, cid: result.cid || version.cid });
+          } else {
+            setPreviewState(version.cid, {
+              status: "error",
+              message: "No readable context text was found. Click Restore to retry.",
+            });
           }
         } catch (error) {
           firstError ||= error?.message || "Some previews could not be loaded.";
+          setPreviewState(version.cid, {
+            status: "error",
+            message: error?.message || "Preview could not be loaded. Click Restore to retry.",
+          });
           if (error?.code === "wallet_vault_locked" || error?.code === "context_wallet_required") break;
         } finally {
           loaded += 1;
@@ -3328,13 +3384,14 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     return () => {
       cancelled = true;
     };
-  }, [cacheHydratedPreview, historyPreviewTargetKey, onHydrateContext, versionsOpen, walletVault?.unlocked]);
+  }, [cacheHydratedPreview, historyPreviewTargetKey, onHydrateContext, setPreviewState, versionsOpen, walletVault?.unlocked]);
 
   const applyHydratedContext = useCallback(() => {
     if (!hydratedContext?.text) return;
     setTitle(hydratedContext.title || "Historical PFT Context");
-    if (editorRef.current) editorRef.current.innerHTML = contextTextToHtml(hydratedContext.text);
-    const nextLineCount = contextLineCountFromHtml(contextTextToHtml(hydratedContext.text));
+    const hydratedHtml = contextBodyToHtml(hydratedContext.text);
+    if (editorRef.current) editorRef.current.innerHTML = hydratedHtml;
+    const nextLineCount = contextLineCountFromHtml(hydratedHtml);
     setContextLineCount(nextLineCount);
     refreshContextLineRows(nextLineCount);
     setHydratedContext(null);
@@ -3685,16 +3742,23 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
               {versions.map((version, index) => {
                 const isCidCopied = copiedCid === version.cid;
                 const cachedPreview = version.cid ? hydratedPreviewByCid[version.cid] : null;
+                const previewState = version.cid ? previewStateByCid[version.cid] : null;
                 const isPreviewing = Boolean(hydratedContext?.cid && version.cid && hydratedContext.cid === version.cid);
                 const isRestoring = restoringVersionKey === version.key;
                 const previewText =
-                  cachedPreview?.text ||
+                  cachedPreview?.preview ||
                   (version.type === "pointer"
                     ? walletVault?.unlocked
-                      ? "Encrypted historical context preview is loading."
+                      ? previewState?.status === "loading"
+                        ? "Encrypted historical context preview is loading."
+                        : previewState?.status === "queued"
+                          ? "Encrypted historical context preview is queued."
+                          : previewState?.status === "error"
+                            ? previewState.message || "Preview could not be loaded. Click Restore to retry."
+                            : "Click Restore to load this encrypted context preview."
                       : "Unlock the local seed vault to load this encrypted context preview."
                     : version.preview);
-                const wordCount = cachedPreview?.text ? contextWordCount(cachedPreview.text) : version.words || 0;
+                const wordCount = cachedPreview?.wordCount || version.words || 0;
                 return (
                   <li className={`ctx-version${version.current ? " is-current" : ""}${isPreviewing ? " is-previewing" : ""}`} key={version.key}>
                     <div className="ctx-version-marker" aria-hidden="true">
@@ -3797,7 +3861,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
               </span>
             </div>
             {hydrateMessage && <div className="ctx-restore-state">{hydrateMessage}</div>}
-            <pre className="ctx-restore-preview">{hydratedContext.text}</pre>
+            <pre className="ctx-restore-preview">{contextPreviewText(hydratedContext.text, 50000)}</pre>
             <footer className="ctx-restore-foot">
               <span>{hydratedContext.decrypted ? "Decrypted locally from your unlocked vault." : "Fetched historical context."}</span>
               <button className="ctx-version-restore" onClick={closeHydratedPreview} type="button">
