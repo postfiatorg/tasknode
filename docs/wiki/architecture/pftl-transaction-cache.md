@@ -137,6 +137,8 @@ Reducer event dedupe is explicit in `pftl_cache_reducer_events.dedupe_key`. Hot 
 
 For task projection replay, a reducer event starts from one task pointer and rebuilds the projection for that task. When the pointer carries a task ID, the reducer hydrates pointers for that same task ID plus the seed CID that caused the replay. It does not hydrate every historical task pointer with a blank task ID for the wallet; doing that turns one task update into an unrelated wallet-history scan and can block visible task state.
 
+For `pf.task.offer.v1`, the reducer preserves the generated task contract in projection metadata, including `title`, `description`, `task_kind`, `steps`, reward offer, submission requirement, verification policy, and deadline fields. The Tasks UI reads `metadata_json.generatedTask.steps` from `task_projections`; it should not replace real offer steps with the submission requirement.
+
 Current task replay recognizes these app-produced payload schemas:
 
 - `pf.task.request.v1` as the user request pointer and bundle anchor.

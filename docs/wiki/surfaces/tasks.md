@@ -21,7 +21,17 @@ After a successful chain submit, the server records a durable `task_requests` ro
 
 A signed request is not the same thing as a proposed task card. Durable task cards appear after `server/task-generation-worker.js` claims the `task_requests` row, decrypts the request bundle, calls the task-generation prompt/model, emits an encrypted `pf.task.offer.v1` pointer from the authority wallet, syncs PFTL, and the reducer projects the offer into `task_projections`.
 
-Generated offers use the evidence surfaces the app can actually submit: text, URL, screenshot/image, uploaded file or document, public commit link when explicitly appropriate, or mixed evidence made from those surfaces. The task-generation prompt and worker validation require 2 to 5 concrete steps. Video, screen recording, audio, live calls, calendar invites, and other unsupported evidence surfaces are outside the app contract and should not be requested.
+## Task Generation Contract
+
+Generated offers must match the browser UX. The task-generation prompt in `prompts/task_engine/taskgen_minimal_v1.md` and the worker validation in `server/task-generation-worker.js` enforce this contract:
+
+| Contract | Current behavior |
+| --- | --- |
+| Evidence surfaces | Text, URL, screenshot/image, uploaded file or document, public commit link when explicitly appropriate, or mixed evidence made from those surfaces. |
+| Unsupported evidence | Video, screen recording, audio, live calls, calendar invites, or any other proof type the app cannot submit must not be requested. Before/after proof should use screenshots plus text, code excerpt, URL, or file evidence. |
+| Step count | New generated tasks must contain 2 to 5 concrete steps. One-step and zero-step generated tasks fail worker validation. |
+| Public repository proof | `github_commit` should be used only when the user explicitly provides or requests a public commit or repository evidence path. Private/local work should use screenshot, text, file, or mixed evidence. |
+| Canonical source | The generated task is written into the encrypted `pf.task.offer.v1` IPFS payload and anchored by the authority wallet PFTL pointer. Postgres only projects it for fast reads. |
 
 When a browser request publish succeeds, `POST /api/tasks/request` records the durable row and immediately schedules a one-shot generation tick. The periodic worker remains as a backstop, but the normal browser path does not wait for the next polling interval before generation starts. The Tasks page refreshes while a request is in flight so a queued receipt is replaced by the projected task card as soon as the offer pointer is indexed.
 
