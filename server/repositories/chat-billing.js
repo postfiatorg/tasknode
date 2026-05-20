@@ -14,6 +14,7 @@ import {
   normalizeChatAttachments,
 } from "../chat-attachment-utils.js";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
+import { hydrateContextEditProposalMetadata } from "./context-edit-chat-metadata.js";
 
 const creditKinds = new Set(["account_credit", "top_up_credit", "reward_credit", "refund_credit"]);
 const maxLedgerLimit = 200;
@@ -762,7 +763,10 @@ export async function getChatMessages(input = "dev", options = {}) {
       `,
       [normalizedConversationId, normalizedLimit, normalizedAccountId]
     );
-    const orderedMessages = rows.rows.reverse();
+    const orderedMessages = await hydrateContextEditProposalMetadata(
+      rows.rows.reverse(),
+      normalizedAccountId
+    );
     const messageIds = orderedMessages.map((row) => row.id);
     const attachmentsByMessage = new Map();
     if (messageIds.length > 0) {

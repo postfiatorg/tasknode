@@ -11,6 +11,10 @@ import {
   usageLedger,
   usageSummary,
 } from "../server/repositories/chat-billing.js";
+import {
+  createContextEditProposal,
+  markContextEditProposalApplied,
+} from "../server/repositories/context-edit.js";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required for chat/billing Postgres smoke.");
@@ -24,6 +28,7 @@ await migrateDatabase();
 const suffix = randomUUID().slice(0, 8);
 const accountId = `acct_pg_smoke_${suffix}`;
 const conversationId = `account_${accountId}_default`;
+const contextEditProposalId = `ctxedit_${suffix}`;
 
 const credit = await appendUsageCredit({
   accountId,
@@ -53,6 +58,19 @@ const chat = await appendChatTurn({
   responseId: `resp_${suffix}`,
   userMessage: "Persist this smoke chat.",
   assistantMessage: "Persisted.",
+  assistantMetadata: {
+    kind: "context_edit",
+    contextEdit: {
+      state: "proposal",
+      proposal: {
+        id: contextEditProposalId,
+        state: "pending",
+        operation: "replace_block",
+        targetBefore: "old",
+        targetAfter: "new",
+      },
+    },
+  },
   attachments: [
     {
       name: "smoke-code.jsx",
@@ -68,6 +86,30 @@ const chat = await appendChatTurn({
     totalTokens: 120,
     costUsd: 0.0011,
   },
+});
+
+await createContextEditProposal({
+  id: contextEditProposalId,
+  accountId,
+  conversationId,
+  assistantMessageId: chat.assistant.id,
+  baseContextRevision: 1,
+  baseBodySha256: "hash-before",
+  operation: "replace_block",
+  anchorType: "excerpt",
+  lineStart: 1,
+  lineEnd: 1,
+  targetBefore: "old",
+  targetAfter: "new",
+  rationale: "Smoke proposal.",
+  risk: "low",
+});
+await markContextEditProposalApplied({
+  accountId,
+  proposalId: contextEditProposalId,
+  savedContextRevision: 2,
+  savedContextDocumentId: "ctxdoc_smoke",
+  savedContextHash: "hash-after",
 });
 
 const messages = await getChatMessages({ accountId, conversationId });
@@ -86,6 +128,8 @@ if (
   !chat?.ledgerEntry ||
   chat.user?.attachments?.[0]?.textContent !== 'const ok = "persisted code";' ||
   messages.length !== 2 ||
+  messages[1]?.metadata?.contextEdit?.proposal?.state !== "applied" ||
+  messages[1]?.metadata?.contextEdit?.proposal?.savedContextRevision !== 2 ||
   messages[0]?.attachments?.[0]?.textContent !== 'const ok = "persisted code";' ||
   messages[0]?.attachments?.[0]?.source !== "paste" ||
   summary.currentCreditUsd !== 5 ||
