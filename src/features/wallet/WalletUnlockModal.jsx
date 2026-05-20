@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
+import "./wallet-unlock.css";
 
 function shortWalletAddress(address) {
   const text = String(address || "");
@@ -74,49 +75,63 @@ export function WalletUnlockModal({
   }
 
   return (
-    <div className="modal-backdrop wallet-unlock-backdrop" role="presentation">
-      <div className="wallet-link-modal" role="dialog" aria-modal="true" aria-label="Unlock seed wallet">
+    <div className="modal-backdrop wallet-unlock-backdrop" onClick={onClose} role="presentation">
+      <div
+        className="wallet-unlock-modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Unlock seed wallet"
+      >
         <header>
           <div>
             <h2>Unlock Seed Wallet</h2>
             <p>Decrypt the local vault for this browser session.</p>
           </div>
-          <button className="icon-button" onClick={onClose} type="button" aria-label="Close wallet unlock">
-            <X size={18} strokeWidth={1.75} />
+          <button className="wallet-unlock-close" onClick={onClose} type="button" aria-label="Close wallet unlock">
+            <X size={16} strokeWidth={1.75} />
           </button>
         </header>
-        <div className="wallet-proof-summary single">
-          <span>
+        <div className="wallet-unlock-divider" />
+        <div className="wallet-unlock-body">
+          <div className="wallet-unlock-card">
             <strong>{shortWalletAddress(linkedWallet?.address)}</strong>
-            Linked wallet
-          </span>
+            <span>Linked wallet</span>
+          </div>
+          <label className="wallet-unlock-field" htmlFor="wallet-unlock-password">
+            <span>Wallet password</span>
+            <input
+              id="wallet-unlock-password"
+              aria-label="Wallet unlock password"
+              autoComplete="current-password"
+              autoFocus
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setMessage("");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") unlockVault();
+              }}
+              type="password"
+              value={password}
+            />
+          </label>
+          <div className="wallet-unlock-warning">
+            <AlertTriangle size={13} strokeWidth={1.75} />
+            <span>Unlocking keeps the decrypted phrase in memory only. Lock the vault or log out to clear it.</span>
+          </div>
+          {message && <div className="wallet-unlock-message">{message}</div>}
         </div>
-        <label className="wallet-seed-field compact">
-          <span>Wallet password</span>
-          <input
-            aria-label="Wallet unlock password"
-            autoComplete="current-password"
-            autoFocus
-            onChange={(event) => {
-              setPassword(event.target.value);
-              setMessage("");
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") unlockVault();
-            }}
-            type="password"
-            value={password}
-          />
-        </label>
-        <div className="wallet-link-warning">
-          Unlocking keeps the decrypted phrase in memory only. Lock the vault or log out to clear it.
-        </div>
-        {message && <div className="inline-message">{message}</div>}
         <footer>
-          <button className="light-pill" disabled={forgetting} onClick={forgetVault} type="button">
+          <button className="wallet-unlock-secondary" disabled={forgetting} onClick={forgetVault} type="button">
             {forgetting ? "Forgetting" : "Forget local vault"}
           </button>
-          <button className="dark-pill" disabled={!walletCore || !password || unlocking} onClick={unlockVault} type="button">
+          <button
+            className="wallet-unlock-primary"
+            disabled={!walletCore || !password || unlocking}
+            onClick={unlockVault}
+            type="button"
+          >
             {unlocking ? "Unlocking" : "Unlock"}
           </button>
         </footer>
