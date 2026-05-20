@@ -25,6 +25,7 @@ import contextEditChatMode from "../../../docs/wiki/plans/context-edit-chat-mode
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
 import jobsChatSpirit from "../../../docs/wiki/plans/jobs-chat-spirit.md?raw";
 import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
+import profileAndHiveMindPlan from "../../../docs/wiki/plans/profile-and-hive-mind-plan.md?raw";
 import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-engine-speedrun.md?raw";
 import taskEngineUxIntegrationPlan from "../../../docs/wiki/plans/task-engine-ux-integration-plan.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
@@ -405,6 +406,12 @@ export const DOC_GROUPS = [
         title: "Context Edit Chat Mode",
         summary: "Plan for line-numbered Jobs-calibrated context editing inside Chat.",
         markdown: contextEditChatMode,
+      },
+      {
+        slug: "profile-and-hive-mind-plan",
+        title: "Profile and Hive Mind Plan",
+        summary: "Plan for member profiles, discoverability, recommendation jobs, and deterministic hive priorities.",
+        markdown: profileAndHiveMindPlan,
       },
       {
         slug: "pythonic-task-engine-speedrun",
