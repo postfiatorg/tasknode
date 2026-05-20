@@ -1,3 +1,4 @@
+import React from "react";
 import { Check, Pencil, X } from "lucide-react";
 import "./context-edit.css";
 
