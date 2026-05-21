@@ -2,7 +2,9 @@ import startHere from "../../../docs/wiki/index.md?raw";
 import agents from "../../../docs/wiki/surfaces/agents.md?raw";
 import chat from "../../../docs/wiki/surfaces/chat.md?raw";
 import context from "../../../docs/wiki/surfaces/context.md?raw";
+import dailyAirdrop from "../../../docs/wiki/surfaces/daily-airdrop.md?raw";
 import memory from "../../../docs/wiki/surfaces/memory.md?raw";
+import profile from "../../../docs/wiki/surfaces/profile.md?raw";
 import refineContext from "../../../docs/wiki/surfaces/refine-context.md?raw";
 import search from "../../../docs/wiki/surfaces/search.md?raw";
 import tasks from "../../../docs/wiki/surfaces/tasks.md?raw";
@@ -19,10 +21,13 @@ import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.m
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import codeReviewBurndown from "../../../docs/wiki/plans/code-review-burndown.md?raw";
 import contextEditChatMode from "../../../docs/wiki/plans/context-edit-chat-mode.md?raw";
+import dataArchitectureHardeningPlan from "../../../docs/wiki/plans/data-architecture-hardening-plan.md?raw";
+import dailyAirdropMigrationPlan from "../../../docs/wiki/plans/daily-airdrop-migration-plan.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
 import jobsChatSpirit from "../../../docs/wiki/plans/jobs-chat-spirit.md?raw";
 import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
 import profileAndHiveMindPlan from "../../../docs/wiki/plans/profile-and-hive-mind-plan.md?raw";
+import publicProfileRealDataPlan from "../../../docs/wiki/plans/public-profile-real-data-plan.md?raw";
 import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-engine-speedrun.md?raw";
 import taskEngineUxIntegrationPlan from "../../../docs/wiki/plans/task-engine-ux-integration-plan.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
@@ -32,14 +37,56 @@ import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_con
 import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
 import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
 import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
+import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
+import publicProfileSnapshotPrompt from "../../../prompts/profile/public_profile_snapshot_v1.md?raw";
 import blockContractPrompt from "../../../prompts/task_engine/block_contract_v1.md?raw";
 import evidenceScreenshotPrompt from "../../../prompts/task_engine/evidence_screenshot_read_v1.md?raw";
 import rewardScoringPrompt from "../../../prompts/task_engine/reward_scoring_v1.md?raw";
 import taskgenPrompt from "../../../prompts/task_engine/taskgen_minimal_v1.md?raw";
 import taskgenRepairPrompt from "../../../prompts/task_engine/taskgen_repair_v1.md?raw";
 import verificationRequestPrompt from "../../../prompts/task_engine/verification_request_v1.md?raw";
+import profileNftImagePrompt from "../../../prompts/profile_nft_image.placeholder.md?raw";
 
 const PROMPT_SOURCES = [
+  {
+    family: "Profile",
+    title: "Daily Airdrop Scoring",
+    path: "prompts/profile/daily_airdrop_v1.md",
+    summary: "Scores the recent positive-reward task packet into the daily PFT airdrop amount and explanatory bullets.",
+    status: "Active for scoring and operator-triggered live issuance",
+    usedBy: [
+      "server/profile-daily-airdrop.js::runDailyAirdropScore",
+      "scripts/profile-daily-airdrop-score.mjs",
+      "scripts/profile-daily-airdrop-issue.mjs",
+      "GET /api/profile/daily-airdrop",
+    ],
+    content: dailyAirdropPrompt,
+  },
+  {
+    family: "Profile",
+    title: "Profile NFT Image",
+    path: "prompts/profile_nft_image.placeholder.md",
+    summary: "Public fallback template for profile NFT image generation. Production uses ignored private_prompts/profile_nft_image.md or PROFILE_NFT_PROMPT_PATH.",
+    status: "Fallback template; private production prompt is intentionally not exposed",
+    usedBy: [
+      "server/profile-nft-prompts.js::renderProfileNftPrompt",
+      "server/profile-nft-generation.js::profileNftGenerateStart",
+    ],
+    content: profileNftImagePrompt,
+  },
+  {
+    family: "Profile",
+    title: "Public Profile Snapshot",
+    path: "prompts/profile/public_profile_snapshot_v1.md",
+    summary: "Generates role title, role summary, skills, and archetype from deterministic public profile metrics.",
+    status: "Active for public profile snapshot regeneration",
+    usedBy: [
+      "server/profile-public-snapshot.js::runPublicProfileSnapshot",
+      "scripts/profile-public-snapshot.mjs",
+      "POST /api/profile/public/regenerate",
+    ],
+    content: publicProfileSnapshotPrompt,
+  },
   {
     family: "Chat",
     title: "Task Node Instructions",
@@ -211,6 +258,12 @@ const PROMPT_PAGES = [
     markdown: promptIndexMarkdown(),
   },
   promptFamilyPage({
+    slug: "prompts-profile",
+    title: "Profile Prompts",
+    summary: "Daily airdrop scoring and profile generation prompts.",
+    family: "Profile",
+  }),
+  promptFamilyPage({
     slug: "prompts-chat",
     title: "Chat Prompts",
     summary: "System instructions and account memory context used by chat.",
@@ -303,6 +356,13 @@ export const DOC_GROUPS = [
       { slug: "search", title: "Search", summary: "Retrieval across cached work.", markdown: search },
       { slug: "tasks", title: "Tasks", summary: "Portable task lifecycle state.", markdown: tasks },
       { slug: "wallet", title: "Wallet", summary: "Identity, balances, and custody.", markdown: wallet },
+      { slug: "profile", title: "Profile", summary: "Member trust surface and daily airdrop state.", markdown: profile },
+      {
+        slug: "daily-airdrop",
+        title: "Daily Airdrop",
+        summary: "Account-level contributor scoring and identity-cloud recipient selection.",
+        markdown: dailyAirdrop,
+      },
       { slug: "context", title: "Context", summary: "Durable working profile.", markdown: context },
       {
         slug: "refine-context",
@@ -385,6 +445,12 @@ export const DOC_GROUPS = [
         markdown: taskEngineUxIntegrationPlan,
       },
       {
+        slug: "data-architecture-hardening-plan",
+        title: "Data Architecture Hardening Plan",
+        summary: "Audit and burndown for making PFTL cache, task projections, worker queues, and read models trustworthy.",
+        markdown: dataArchitectureHardeningPlan,
+      },
+      {
         slug: "jobs-chat-spirit",
         title: "Jobs Chat Spirit",
         summary: "Plan for the Jobs XML chat prompt and later pgvector retrieval over Jobs notes.",
@@ -401,6 +467,18 @@ export const DOC_GROUPS = [
         title: "Profile and Hive Mind Plan",
         summary: "Plan for member profiles, discoverability, recommendation jobs, and deterministic hive priorities.",
         markdown: profileAndHiveMindPlan,
+      },
+      {
+        slug: "public-profile-real-data-plan",
+        title: "Public Profile Real Data Plan",
+        summary: "Plan to replace public profile mock fields with real profile metrics, NFTs, and DeepSeek-generated role copy.",
+        markdown: publicProfileRealDataPlan,
+      },
+      {
+        slug: "daily-airdrop-migration-plan",
+        title: "Daily Airdrop Migration Plan",
+        summary: "PFTasks research and Task Node plan for a DeepSeek V4 Pro daily drop.",
+        markdown: dailyAirdropMigrationPlan,
       },
       {
         slug: "pythonic-task-engine-speedrun",

@@ -8,7 +8,7 @@ The cache stores enough transaction identity to rebuild app projections from PFT
 
 - raw transaction JSON and metadata;
 - per-wallet transaction indexes;
-- decoded pointer memos;
+- decoded pointer memos and wallet observation rows;
 - reducer events for wallet, context, and task projections;
 - sync checkpoints and health state.
 
@@ -34,6 +34,7 @@ PFTL validated transaction
   -> pftl_transactions
   -> pftl_wallet_transactions
   -> pftl_pointer_memos
+  -> pftl_pointer_observations
   -> pftl_cache_reducer_events
   -> context_history_pointers / task_projections / wallet refresh state
 ```
@@ -65,7 +66,8 @@ Normal app reads do not call historical `account_tx` directly. The wallet transa
 | `pftl_sync_wallets` | Wallet watchlist, owner account, wallet role, hot sync state, historical backfill checkpoint, and last error. |
 | `pftl_transactions` | Global transaction mirror keyed by tx hash with raw tx JSON, metadata, ledger index, type, result, accounts, and close time. |
 | `pftl_wallet_transactions` | Per-wallet index mapping tracked wallets to global tx rows with direction, counterparty, amount, fee, ledger, and close time. |
-| `pftl_pointer_memos` | Decoded `pf.ptr/v4` memos plus raw memo hex and decode errors. This is the replay substrate for Context and Tasks. |
+| `pftl_pointer_memos` | Global decoded `pf.ptr/v4` memo facts keyed by transaction hash and memo index. This row says what the pointer is; it does not decide which wallet owns it. |
+| `pftl_pointer_observations` | Wallet/account bridge for pointer visibility. One global pointer memo can have many observation rows when the user wallet, authority wallet, or allocation wallet all observe the same transaction. |
 | `pftl_cache_watcher_state` | Current WSS watcher state, endpoint, subscribed wallet count, latest ledger/event, and errors. |
 | `pftl_cache_reducer_events` | Idempotent reducer queue for wallet balance refresh, context pointer hydration, and task projection replay. |
 | `pftl_cache_maintenance_runs` | Retention and maintenance summaries for operator diagnostics. |
@@ -135,7 +137,9 @@ Reducer events decouple chain indexing from app projections.
 
 Reducer event dedupe is explicit in `pftl_cache_reducer_events.dedupe_key`. Hot sync, live WSS, and historical backfill all enqueue the same reducer event shapes.
 
-For task projection replay, a reducer event starts from one task pointer and rebuilds the projection for that task. When the pointer carries a task ID, the reducer hydrates pointers for that same task ID plus the seed CID that caused the replay. It does not hydrate every historical task pointer with a blank task ID for the wallet; doing that turns one task update into an unrelated wallet-history scan and can block visible task state.
+For task projection replay, a reducer event starts from one task pointer and rebuilds the projection for that task. When the pointer carries a task ID, the reducer hydrates cached pointers for that same task ID plus the seed CID that caused the replay across the active wallets registered to the same account. The account/wallet scope is resolved through `pftl_pointer_observations`, not `pftl_pointer_memos.wallet_address`.
+
+This matters because one task lifecycle can include user-wallet submissions and authority-wallet verification or reward events. The reducer does not hydrate every historical task pointer with a blank task ID for the wallet, and the cache enqueue path no longer creates task projection work for task-style pointers that have no task ID. That prevents unrelated wallet-history pointers from becoming stale or failed task projections.
 
 For `pf.task.offer.v1`, the reducer preserves the generated task contract in projection metadata, including `title`, `description`, `task_kind`, `steps`, reward offer, submission requirement, verification policy, and deadline fields. The Tasks UI reads `metadata_json.generatedTask.steps` from `task_projections`; it should not replace real offer steps with the submission requirement.
 
@@ -221,6 +225,7 @@ Hot activity should use the rapid PFTL RPC/WSS. Historical backfill should use t
 | `server/db/migrations/008_pftl_cache_watcher.sql` | Watcher state and reducer event queue. |
 | `server/db/migrations/009_pftl_cache_reducer_dedupe_key.sql` | Explicit reducer dedupe key. |
 | `server/db/migrations/010_pftl_cache_operations.sql` | Backfill/retention indexes and maintenance run table. |
+| `server/db/migrations/023_pftl_pointer_observations.sql` | Pointer observation bridge table and indexes. |
 | `server/repositories/pftl-cache.js` | Wallet registration, transaction upsert, pointer memo extraction, cache reads, sync checkpoints. |
 | `server/repositories/pftl-cache-operations.js` | Health and retention queries. |
 | `server/pftl-cache-sync.js` | Hot sync, historical backfill, polling repair workers. |
@@ -229,6 +234,10 @@ Hot activity should use the rapid PFTL RPC/WSS. Historical backfill should use t
 | `server/pftl-cache-maintenance.js` | Operator access and retention worker. |
 | `server/pftl-cache-route.js` | Cache API routes. |
 | `server/pftl-transactions.js` | Wallet transaction response formatting from cache rows. |
+| `scripts/pftl-pointer-observation-backfill.mjs` | Idempotent backfill from wallet transactions plus pointer memos into observation rows. |
+| `scripts/data-architecture-audit.mjs` | Cross-boundary audit for pointer observations, reducer failures, task projection drift, billing projection mismatch, and stuck memory jobs. |
+| `scripts/task-replay-repair.mjs` | Requeues and rebuilds task projections from cached PFTL pointer observations. |
+| `scripts/pftl-reducer-requeue.mjs` | Generic failed reducer requeue tool for context or task cache rows. |
 
 ## Verification
 
@@ -240,10 +249,16 @@ npm run db:pftl-cache-watcher-stress
 npm run db:pftl-cache-reducer-smoke
 npm run db:pftl-cache-archive-smoke
 npm run db:pftl-cache-health-retention-smoke
+npm run db:pftl-pointer-observation-backfill -- --limit=10000
+npm run data-architecture-audit
+npm run task-replay-repair -- --task-id=<task_id>
+npm run pftl-reducer-requeue -- --id=<reducer_event_id>
 ```
 
-## Current Remaining Work
+## Current Operator Rules
 
-- Add operator replay tooling that rebuilds task projections from cached pointer rows plus IPFS after projection rows are deleted.
-- Decide cold-storage policy before public-scale raw transaction growth becomes material.
-- Add alerting for reducer lag when task submissions, verification requests, or rewards are indexed but not projected quickly.
+- PFTL/IPFS remains canonical. Postgres task projections are disposable read models.
+- A pointer memo is global. Wallet/account visibility belongs in `pftl_pointer_observations`.
+- `npm run data-architecture-audit` must have no P0 or P1 findings before task/cache changes are called healthy.
+- `reducerFailedNoTaskPointerIgnored` counts historical no-task pointer rows that were incorrectly queued before the enqueue policy changed. New no-task-ID task pointers should not create task projection reducer work.
+- Use `task-replay-repair` for task-specific projection repair and `pftl-reducer-requeue` for a failed reducer row. Do not repair task state by hand-editing `task_projections`.

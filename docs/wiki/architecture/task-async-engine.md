@@ -158,12 +158,19 @@ sequenceDiagram
 
 The `Request task` control must fail before chain work when the required wallet boundary is missing.
 
+The deterministic policy lives in `src/features/tasks/task-request-unlock-policy.js` and is shared by:
+
+- chat `+` → `Request task` mode in `src/main.jsx`;
+- the Tasks page request modal in `src/features/tasks/TaskRequestModal.jsx`;
+- the browser signing publisher in `src/features/tasks/task-request-actions.js`, which keeps a final mismatch guard before encryption, IPFS pinning, and PFTL submission.
+
 | State | Behavior |
 | --- | --- |
 | User is not signed in | Show login requirement. Do not create a task request. |
 | User has no linked wallet | Show `Link or create a PFT wallet before requesting tasks`. Do not create a task request. |
 | Wallet is linked but local vault is missing | Route to Wallet tab to restore, relink, or create a local encrypted vault. Do not create a task request. |
 | Wallet is locked | Open the shared unlock modal. If the user closes it or password fails, the task request does not proceed. |
+| Unlock modal is already open | Treat the request as `unlock_pending`; do not submit or open a second modal. |
 | Unlocked wallet does not match linked wallet | Fail with wallet mismatch. Clear unlock state and require relink or correct vault unlock. |
 | User wallet lacks MessageKey | Queue or prompt a MessageKey publish transaction before private task payloads are used. |
 | User wallet lacks fee balance | Fail before request pointer submission and show the wallet funding requirement. |

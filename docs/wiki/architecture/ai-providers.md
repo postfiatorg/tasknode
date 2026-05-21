@@ -58,6 +58,25 @@ All four chat modes use one prompt assembly boundary. `prompts/chat/task_node_in
 
 Jobs retrieval uses OpenAI `/v1/embeddings` through `server/embedding-provider.js`, defaulting to `text-embedding-3-small` with 1536 dimensions. That embedding call is internal retrieval infrastructure; it is not a chat completion provider route and does not enable web search on private modes.
 
+## Profile NFT Image Generation
+
+Profile NFT image generation is not a chat mode. It is a separate profile action backed by `POST /api/profile/nft/generate`.
+
+Current behavior:
+
+- Provider: OpenAI Image API.
+- Model: `gpt-image-2`.
+- Private prompt source: `private_prompts/profile_nft_image.md`, or `PROFILE_NFT_PROMPT_PATH` when explicitly configured.
+- Public fallback prompt: `prompts/profile_nft_image.placeholder.md`.
+- Renderer: `server/profile-nft-prompts.js`.
+- Generator: `server/profile-nft-generation.js`.
+- Persistence: `server/repositories/profile-nfts.js` and `profile_nfts`.
+- Browser result: generated image data URL, IPFS image CID, model metadata, and prompt digests; not the prompt body.
+
+The OpenAI image generation guide says the Image API is the right path for a single image from one prompt, while the Responses API image tool is better for conversational or multi-turn image workflows. Task Node uses the Image API for the first profile NFT generation path. `gpt-image-2` supports square `1024x1024` output and `low`, `medium`, `high`, or `auto` quality; the current local route defaults to `1024x1024` and `low` for fast iteration. `gpt-image-2` does not support transparent backgrounds, so profile images should use opaque/light backgrounds.
+
+After generation, the server pins the image bytes to IPFS and records only public-safe metadata: image CID, image hash, prompt digest, template digest, provider/model, and status. The full image prompt remains server-side in `private_prompts/` or a configured private prompt path.
+
 ## Web Search Policy
 
 OpenAI Responses supports a hosted `web_search` tool. Task Node exposes that tool only on Frontier modes and instructs the assistant to use it only when the user asks for current, external, or source-grounded information that is not already available in the conversation, attachments, context document, memory, or task state. There is no keyword router for search intent.
@@ -96,6 +115,7 @@ flowchart LR
 
 - [OpenAI Responses API migration guide](https://developers.openai.com/api/docs/guides/migrate-to-responses)
 - [OpenAI web search tool](https://developers.openai.com/api/docs/guides/tools-web-search)
+- [OpenAI image generation guide](https://developers.openai.com/api/docs/guides/image-generation)
 - [OpenAI images and vision guide](https://developers.openai.com/api/docs/guides/images-vision)
 - [OpenRouter provider routing](https://openrouter.ai/docs/guides/routing/provider-selection)
 - [OpenRouter PDF inputs](https://openrouter.ai/docs/guides/overview/multimodal/pdfs)

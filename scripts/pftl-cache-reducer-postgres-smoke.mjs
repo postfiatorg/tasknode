@@ -25,11 +25,15 @@ const authorityWallet = Wallet.generate().address;
 const allocationWallet = Wallet.generate().address;
 const contextTxHash = `PFTL_REDUCER_CONTEXT_${runId}`;
 const taskTxHash = `PFTL_REDUCER_TASK_${runId}`;
+const verificationRequestTxHash = `PFTL_REDUCER_VERIFICATION_${runId}`;
 const rewardDecisionTxHash = `PFTL_REDUCER_REWARD_DECISION_${runId}`;
-const txHashes = [contextTxHash, taskTxHash, rewardDecisionTxHash];
+const nullTaskTxHash = `PFTL_REDUCER_NULL_TASK_${runId}`;
+const txHashes = [contextTxHash, taskTxHash, verificationRequestTxHash, rewardDecisionTxHash, nullTaskTxHash];
 const contextCid = `bafkreireducercontext${Date.now()}`;
 const taskCid = `bafkreireducertask${Date.now()}`;
+const verificationRequestCid = `bafkreireducerverification${Date.now()}`;
 const rewardDecisionCid = `bafkreireducerrewarddecision${Date.now()}`;
+const nullTaskCid = `bafkreireducernulltask${Date.now()}`;
 const taskId = `task_${runId}`;
 
 function sha256Hex(value) {
@@ -117,7 +121,7 @@ async function cleanup() {
   await query("DELETE FROM pftl_pointer_memos WHERE tx_hash = ANY($1)", [txHashes]);
   await query("DELETE FROM pftl_wallet_transactions WHERE tx_hash = ANY($1)", [txHashes]);
   await query("DELETE FROM pftl_transactions WHERE tx_hash = ANY($1)", [txHashes]);
-  await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = $1", [userWallet]);
+  await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = ANY($1)", [[userWallet, authorityWallet]]);
 }
 
 try {
@@ -126,6 +130,12 @@ try {
     walletAddress: userWallet,
     accountId,
     role: "user",
+    priority: 1,
+  });
+  await registerPftlSyncWallet({
+    walletAddress: authorityWallet,
+    accountId,
+    role: "task_authority",
     priority: 1,
   });
 
@@ -139,12 +149,24 @@ try {
     cid: taskCid,
     kind: "TASK",
     schema: 1,
+    taskId,
+  });
+  const verificationRequestPointer = buildPftPointerMemo({
+    cid: verificationRequestCid,
+    kind: "TASK_UPDATE",
+    schema: 1,
+    taskId,
   });
   const rewardDecisionPointer = buildPftPointerMemo({
     cid: rewardDecisionCid,
     kind: "TASK_UPDATE",
     schema: 1,
     taskId,
+  });
+  const nullTaskPointer = buildPftPointerMemo({
+    cid: nullTaskCid,
+    kind: "TASK_SUBMISSION",
+    schema: 1,
   });
 
   const taskOffer = {
@@ -182,6 +204,24 @@ try {
     deadline_at: new Date(Date.now() + 7200000).toISOString(),
   };
   const encryptedTaskOffer = await encryptForService(taskOffer);
+  const verificationRequest = {
+    schema: "pf.task.update.v1",
+    task_id: taskId,
+    transition: "verification_requested",
+    status_after: "verification_requested",
+    verification_type: "text",
+    verification_ask: "Provide the reducer smoke verification note.",
+    verification_request: {
+      assessment: "incomplete",
+      reason: "Reducer smoke follow-up.",
+      verification_type: "text",
+      verification_ask: "Provide the reducer smoke verification note.",
+    },
+    subject_wallet: userWallet,
+    authority_wallet: authorityWallet,
+    allocation_wallet: allocationWallet,
+  };
+  const encryptedVerificationRequest = await encryptForService(verificationRequest);
   const rewardDecision = {
     schema: "pf.task.reward_decision.v1",
     task_id: taskId,
@@ -197,23 +237,40 @@ try {
   const encryptedRewardDecision = await encryptForService(rewardDecision);
   const ipfsPayloads = new Map([
     [taskCid, encryptedTaskOffer],
+    [verificationRequestCid, encryptedVerificationRequest],
     [rewardDecisionCid, encryptedRewardDecision],
   ]);
+  const fetchedCids = [];
 
   const contextEntry = txEntry({ txHash: contextTxHash, pointerMemo: contextPointer, ledgerIndex: 810001 });
   const taskEntry = txEntry({ txHash: taskTxHash, pointerMemo: taskPointer, ledgerIndex: 810002 });
+  const nullTaskEntry = txEntry({ txHash: nullTaskTxHash, pointerMemo: nullTaskPointer, ledgerIndex: 810000 });
+  const verificationRequestEntry = txEntry({
+    txHash: verificationRequestTxHash,
+    pointerMemo: verificationRequestPointer,
+    ledgerIndex: 810003,
+  });
   const rewardDecisionEntry = txEntry({
     txHash: rewardDecisionTxHash,
     pointerMemo: rewardDecisionPointer,
-    ledgerIndex: 810003,
+    ledgerIndex: 810004,
   });
   await storePftlAccountTransactions({
     walletAddress: userWallet,
-    transactions: [contextEntry, taskEntry, rewardDecisionEntry],
+    transactions: [contextEntry, taskEntry],
   });
-  for (const entry of [contextEntry, taskEntry, rewardDecisionEntry]) {
+  await storePftlAccountTransactions({
+    walletAddress: authorityWallet,
+    transactions: [nullTaskEntry, verificationRequestEntry, rewardDecisionEntry],
+  });
+  for (const [walletAddress, entry] of [
+    [userWallet, contextEntry],
+    [userWallet, taskEntry],
+    [authorityWallet, verificationRequestEntry],
+    [authorityWallet, rewardDecisionEntry],
+  ]) {
     await enqueuePftlReducerEventsForTransaction({
-      walletAddress: userWallet,
+      walletAddress,
       accountId,
       txHash: entry.tx.hash,
       ledgerIndex: entry.ledger_index,
@@ -233,16 +290,19 @@ try {
     `,
     [txHashes]
   );
-  assert.equal(reducerEvents.rows.length, 6);
+  assert.equal(reducerEvents.rows.length, 8);
 
   const reducerOptions = {
-    fetchIpfsJson: async ({ cid }) => ({
-      ok: ipfsPayloads.has(cid),
-      status: ipfsPayloads.has(cid) ? 200 : 404,
-      cid,
-      payload: ipfsPayloads.get(cid),
-      error: ipfsPayloads.has(cid) ? null : "missing_fixture_cid",
-    }),
+    fetchIpfsJson: async ({ cid }) => {
+      fetchedCids.push(cid);
+      return {
+        ok: ipfsPayloads.has(cid),
+        status: ipfsPayloads.has(cid) ? 200 : 404,
+        cid,
+        payload: ipfsPayloads.get(cid),
+        error: ipfsPayloads.has(cid) ? null : "missing_fixture_cid",
+      };
+    },
     env: process.env,
   };
   for (const event of reducerEvents.rows) {
@@ -268,12 +328,21 @@ try {
   assert.equal(projectionRows.rows[0].reward_offer_pft, "12.500000");
   assert.equal(projectionRows.rows[0].reward_actual_pft, "0.000000");
   assert.deepEqual(projectionRows.rows[0].metadata_json.generatedTask.steps, taskOffer.steps);
+  assert.ok(!fetchedCids.includes(nullTaskCid), "known-task projection must not hydrate unrelated null-task pointers");
+
+  const taskEventRows = await query(
+    "SELECT payload_json->>'schema' AS schema, payload_json->>'transition' AS transition FROM task_events WHERE task_id = $1 ORDER BY occurred_at, source_tx_hash",
+    [taskId]
+  );
+  assert.ok(taskEventRows.rows.some((row) => (
+    row.schema === "pf.task.update.v1" && row.transition === "verification_requested"
+  )));
 
   const reducerRows = await query(
     "SELECT reducer_kind, status FROM pftl_cache_reducer_events WHERE tx_hash = ANY($1)",
     [txHashes]
   );
-  assert.equal(reducerRows.rows.length, 6);
+  assert.equal(reducerRows.rows.length, 8);
   assert.ok(reducerRows.rows.every((row) => row.status === "completed"));
 
   console.log("pftl cache reducer postgres smoke ok");

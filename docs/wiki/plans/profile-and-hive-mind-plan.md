@@ -132,6 +132,36 @@ NFT generation should be a separate child job owned by the profile snapshot, bec
 
 The NFT art prompt itself must not be public. Task Node Official should not store the full NFT series prompt in `prompts/`, public NFT metadata, public profile JSON, or a plaintext database row. The canonical series prompt should be a private PFTL/IPFS asset pointer.
 
+### Current App Implementation
+
+The current app has the profile mock ported into the production profile route at `src/features/profile/ProfileView.jsx`. The initial render intentionally follows `mocks/profile_mock.jsx`; production wiring is attached behind the existing controls rather than changing the mock composition.
+
+The profile NFT prompt path is server-side only:
+
+- private prompt source: `private_prompts/profile_nft_image.md`
+- tracked fallback/template: `prompts/profile_nft_image.placeholder.md`
+- loader and placeholder renderer: `server/profile-nft-prompts.js`
+- OpenAI image generation action: `server/profile-nft-generation.js`
+- persisted NFT repository: `server/repositories/profile-nfts.js`
+- mint preparation/submission action: `server/profile-nft-mint.js`
+- HTTP endpoints: `GET /api/profile/nfts`, `POST /api/profile/nft/generate`, `POST /api/profile/nft/mint`
+- database table: `profile_nfts`, from `server/db/migrations/018_profile_nfts.sql`
+- smoke tests: `npm run profile-nft-prompt-smoke`, `npm run profile-nft-flow-smoke`
+
+`private_prompts/` is ignored by git and Docker. The local private file can be copied from the historical PFTasks production prompt while the tracked placeholder keeps the app reproducible for open-source users. The prompt placeholders currently rendered are `___NFT_USER_DATA_REPLACED_HERE___`, `___USER_CONTEXT_DOCUMENT_CONTENT_REPLACED_HERE___`, and `< insert Random String>`.
+
+The current generation endpoint uses OpenAI `gpt-image-2` through the Image API. It returns a base64 data URL for immediate display, pins the generated image to IPFS, and writes a `profile_nfts` row with the image CID, prompt digest, template digest, model metadata, and generation status. The private prompt body is never sent to the browser; the browser receives only the generated image, public image CID, and prompt digests.
+
+Minting is split into an explicit wallet-signed flow:
+
+1. Browser requests `POST /api/profile/nft/mint` with `phase: "prepare"` and a generated `nftId`.
+2. Server validates the signed-in account and linked wallet, pins public XLS-24 metadata JSON with `image: "ipfs://<imageCid>"`, prepares a PFTL `NFTokenMint` transaction, and stores the prepared transaction JSON in `profile_nfts`.
+3. Browser signs the prepared transaction with the unlocked local seed vault. The seed never leaves the browser.
+4. Browser submits the signed blob through `POST /api/profile/nft/mint` with `phase: "submit"`.
+5. Server validates that the signed transaction is an `NFTokenMint` for the linked wallet and prepared metadata URI, submits it to PFTL, and stores the tx hash and `NFTokenID` when available.
+
+Current scope: generated images and public NFT metadata are pinned; prompt text stays private. The encrypted NFT prompt-series pointer and encrypted generation-run receipt remain the canonical public-hardening step before external launch.
+
 ### Private NFT Prompt-Series Pointer
 
 Use the existing `pf.ptr` / `v4` pointer format rather than inventing a parallel NFT prompt registry.
@@ -347,27 +377,43 @@ Fields:
 
 ### `profile_nfts`
 
-Profile picture generation and mint metadata.
+Current profile picture generation and mint metadata.
 
 Fields:
 
 - `id`
 - `account_id`
-- `profile_snapshot_id`
+- `wallet_address`
+- `title`
+- `description`
 - `status`
 - `image_cid`
+- `image_gateway_url`
+- `image_mime_type`
+- `image_size_bytes`
+- `image_sha256`
 - `metadata_cid`
-- `mint_tx_hash`
-- `prompt_series_id`
-- `prompt_series_pointer_tx_hash`
-- `prompt_series_digest`
-- `generation_run_pointer_cid`
-- `generation_run_pointer_tx_hash`
-- `prompt_version`
-- `provider`
+- `metadata_uri`
+- `metadata_json`
+- `prompt_source`
+- `prompt_digest`
+- `template_digest`
 - `model`
+- `size`
+- `quality`
+- `output_format`
+- `mint_tx_json`
+- `tx_hash`
+- `nft_token_id`
+- `selected`
+- `error`
+- `generated_at`
+- `prepared_at`
 - `created_at`
+- `updated_at`
 - `minted_at`
+
+Not yet implemented: prompt-series pointer cache fields and encrypted generation-run pointers. Those belong in a later hardening migration, not in the current `profile_nfts` table.
 
 ### `nft_prompt_series_cache`
 

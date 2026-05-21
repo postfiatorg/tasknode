@@ -24,6 +24,12 @@ const migrations = [
   "015_context_edit_proposals.sql",
   "016_context_current_draft_only.sql",
   "017_context_prune_non_current_drafts.sql",
+  "018_profile_nfts.sql",
+  "019_profile_daily_airdrop.sql",
+  "020_profile_daily_airdrop_issuance.sql",
+  "021_profile_public_snapshots.sql",
+  "022_profile_public_snapshot_prompt_uniqueness.sql",
+  "023_pftl_pointer_observations.sql",
 ];
 
 let migrated = false;

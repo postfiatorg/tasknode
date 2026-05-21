@@ -600,6 +600,20 @@ button {
   background: #0d0d0d;
 }
 
+.profile-avatar.has-image {
+  background: #f4f3ee;
+  border: 1px solid #dcd7cc;
+  color: transparent;
+  overflow: hidden;
+}
+
+.profile-avatar.has-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .profile-check {
   position: absolute;
   right: -2px;

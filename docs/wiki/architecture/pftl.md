@@ -10,6 +10,7 @@ PFTL is the Post Fiat L1. The app uses `xrpl` tooling because the network speaks
 - Task lifecycle events.
 - MessageKey pubkey settings.
 - Reward transactions.
+- Profile NFT `NFTokenMint` transactions.
 - Encrypted `ASSET` pointers for private NFT prompt series and NFT generation run receipts.
 
 ## What Does Not Go On Chain Directly
@@ -22,7 +23,7 @@ PFTL is the Post Fiat L1. The app uses `xrpl` tooling because the network speaks
 
 ## Technical Architecture
 
-Backend PFTL helpers live in `server/pftl-balance.js`, `server/pftl-transactions.js`, `server/pftl-submit.js`, `server/pftl-pointer.js`, and `server/pftl-faucet.js`. The Python canonical replay client lives in `reference_clients/python/tasknode_pftl/`.
+Backend PFTL helpers live in `server/pftl-balance.js`, `server/pftl-transactions.js`, `server/pftl-submit.js`, `server/pftl-pointer.js`, and `server/pftl-faucet.js`. `server/pftl-submit.js` prepares/submits signed pointer payments and profile NFT `NFTokenMint` transactions. The Python canonical replay client lives in `reference_clients/python/tasknode_pftl/`.
 
 The app should prefer the local fast RPC for routine balance and pointer reads, with production RPC checks used when historical completeness matters.
 
@@ -40,6 +41,17 @@ Private NFT prompt series use the same pointer family as tasks and context:
 - `thread_id`: stable prompt series id, such as `nft_series_profile_avatar_v1`
 
 The pointer CID resolves to encrypted IPFS JSON, not to a public prompt. Public NFT metadata may cite the prompt series id and prompt digest, but never the plaintext prompt body. A later reveal can publish the plaintext prompt or decrypt it for auditors; the digest proves it matches the prompt used for the minted image.
+
+## Profile NFT Minting
+
+Profile NFT minting is wallet-signed, not server-custodied:
+
+1. `POST /api/profile/nft/mint` with `phase: "prepare"` pins public XLS-24 metadata JSON and prepares an `NFTokenMint` transaction for the linked PFTL wallet.
+2. The browser signs the prepared transaction with `src/wallet-core.js` and the unlocked local seed vault.
+3. `POST /api/profile/nft/mint` with `phase: "submit"` validates the signed transaction type, linked wallet account, network id, and prepared URI before submitting it to PFTL.
+4. `profile_nfts` records the tx hash and `NFTokenID` when the ledger response or account NFT lookup exposes it.
+
+The NFT metadata URI is public. The private image prompt remains outside the mint transaction and outside public metadata.
 
 ## Diagram
 

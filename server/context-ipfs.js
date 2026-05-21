@@ -9,6 +9,7 @@ const CID_RE = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z2-7]{20,}|bafk[a-z2-7]{20,}
 const DEFAULT_TIMEOUT_MS = 12000;
 const MAX_IPFS_JSON_BYTES = 1_048_576;
 const MAX_PIN_JSON_BYTES = 1_048_576;
+const MAX_PIN_FILE_BYTES = 8_388_608;
 
 export function normalizeContextCid(value) {
   return String(value || "")
@@ -123,6 +124,10 @@ function sha256Hex(text) {
   return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
 }
 
+function sha256BytesHex(bytes) {
+  return createHash("sha256").update(Buffer.from(bytes || [])).digest("hex");
+}
+
 function pinataHeaders(env) {
   const jwt = String(env.PINATA_JWT || "").trim();
   if (jwt) return { Authorization: `Bearer ${jwt}` };
@@ -142,6 +147,73 @@ export function contextIpfsPinStatus(env = process.env) {
     configured: Boolean(headers),
     provider: headers ? "pinata" : null,
     status: headers ? "ready" : "missing_config",
+  };
+}
+
+export async function pinIpfsFile({
+  bytes,
+  name = "file.bin",
+  mimeType = "application/octet-stream",
+  keyvalues = {},
+  env = process.env,
+  fetchImpl = fetch,
+} = {}) {
+  const headers = pinataHeaders(env);
+  if (!headers) {
+    const error = new Error("pinata_not_configured");
+    error.status = 409;
+    throw error;
+  }
+
+  const buffer = Buffer.from(bytes || []);
+  if (!buffer.length) {
+    const error = new Error("ipfs_file_empty");
+    error.status = 400;
+    throw error;
+  }
+  if (buffer.byteLength > MAX_PIN_FILE_BYTES) {
+    const error = new Error("ipfs_file_too_large");
+    error.status = 413;
+    throw error;
+  }
+
+  const formData = new FormData();
+  const safeName = String(name || "file").replace(/[^a-zA-Z0-9_.-]+/g, "_").slice(0, 120) || "file";
+  formData.append("file", new Blob([buffer], { type: mimeType }), safeName);
+  formData.append(
+    "pinataMetadata",
+    JSON.stringify({
+      name: safeName,
+      keyvalues: keyvalues && typeof keyvalues === "object" ? keyvalues : {},
+    })
+  );
+
+  const response = await fetchImpl("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = new Error(result?.error || result?.message || `pinata_http_${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  const cid = normalizeContextCid(result?.IpfsHash || result?.cid || "");
+  if (!cid) {
+    const error = new Error("pinata_missing_cid");
+    error.status = 502;
+    throw error;
+  }
+
+  return {
+    ok: true,
+    provider: "pinata",
+    cid,
+    sha256: sha256BytesHex(buffer),
+    sizeBytes: buffer.byteLength,
+    response: result,
   };
 }
 

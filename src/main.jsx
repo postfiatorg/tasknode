@@ -5,7 +5,6 @@ import {
   ArrowDown,
   ArrowDownToLine,
   ArrowRight,
-  Activity,
   AlertTriangle,
   BookOpen,
   Bot,
@@ -17,8 +16,6 @@ import {
   CreditCard,
   Database,
   ExternalLink,
-  Eye,
-  EyeOff,
   FileText,
   Flag,
   Github,
@@ -41,13 +38,11 @@ import {
   Paperclip,
   Pencil,
   Plus,
-  RefreshCw,
   Search,
   Send,
   Settings as SettingsIcon,
   Share,
   Shield,
-  Sparkle,
   SquarePen,
   Store,
   Table,
@@ -55,7 +50,6 @@ import {
   Trophy,
   Unlock,
   User as UserIcon,
-  UserCheck,
   Wand2,
   Wallet,
   X,
@@ -113,6 +107,7 @@ import { TaskRequestModal } from "./features/tasks/TaskRequestModal.jsx";
 import { activeTaskRequests, TaskRequestQueue } from "./features/tasks/TaskRequestQueue.jsx";
 import { TaskRow } from "./features/tasks/TaskRow.jsx";
 import { publishTaskRequest } from "./features/tasks/task-request-actions.js";
+import { evaluateTaskRequestUnlockPolicy } from "./features/tasks/task-request-unlock-policy.js";
 import {
   applyWalletBalanceError,
   applyWalletBalanceResult,
@@ -132,6 +127,7 @@ import "./features/context/context.css";
 const WalletView = lazy(() => import("./features/wallet/WalletView").then((module) => ({ default: module.WalletView })));
 const MemoryView = lazy(() => import("./features/memory/MemoryView").then((module) => ({ default: module.MemoryView })));
 const DocsView = lazy(() => import("./features/docs/DocsView").then((module) => ({ default: module.DocsView })));
+const ProfilePage = lazy(() => import("./features/profile/ProfileView").then((module) => ({ default: module.ProfileView })));
 
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
 const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
@@ -158,6 +154,19 @@ const CHAT_ATTACHMENT_ACCEPT = [
 const serializeChatAttachments = (items = []) =>
   items.map(({ name, mimeType, size, source, dataUrl }) => ({ name, mimeType, size, source, dataUrl }));
 
+function profileNftImageCandidates(nft = {}) {
+  const record = nft || {};
+  const candidates = [record.imageDataUrl, record.imageGatewayUrl];
+  if (record.imageCid) {
+    candidates.push(`https://dweb.link/ipfs/${encodeURIComponent(record.imageCid)}`);
+    candidates.push(`https://ipfs.io/ipfs/${encodeURIComponent(record.imageCid)}`);
+  }
+  return candidates
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .filter((value, index, list) => list.indexOf(value) === index);
+}
+
 const PALETTE = {
   bg: "#faf9f6",
   sidebar: "#f4f3ee",
@@ -177,67 +186,6 @@ const EMPTY_TASKS = {
   sync: { status: "loading", projectionCount: 0 },
 };
 
-const PFT_GENERATION = [
-  1800, 2200, 1900, 2400, 2100, 1700, 2600, 2300, 1850, 2900, 2100, 1950, 2400, 2800,
-  2200, 2050, 2700, 1900, 2300, 2500, 2100, 2400, 2200, 2800, 36000, 3200, 2400, 2200,
-];
-
-const PFT_BREAKDOWN = [
-  { label: "Personal", value: "42,900" },
-  { label: "Network", value: "52,555.4" },
-  { label: "Alpha", value: "10,000" },
-];
-
-const NFTS = [
-  {
-    id: "1",
-    title: "Network Reliability Engineer",
-    date: "May 13, 2026",
-    gradient: "linear-gradient(135deg, #bbf7d0, #10b981)",
-  },
-  {
-    id: "2",
-    title: "NFT 2026-05-12",
-    date: "May 12, 2026",
-    gradient: "linear-gradient(135deg, #d6d3d1, #44403c)",
-  },
-  {
-    id: "3",
-    title: "Alpha Brief Analyst",
-    date: "May 7, 2026",
-    gradient: "linear-gradient(135deg, #fde68a, #d97706)",
-  },
-  {
-    id: "4",
-    title: "Alpha Brief Analyst",
-    date: "May 7, 2026",
-    gradient: "linear-gradient(135deg, #bae6fd, #0284c7)",
-  },
-];
-
-const CONNECTIONS = [
-  {
-    handle: "rDVKRN...tyjB",
-    match: 95,
-    summary:
-      "Strong synergy between your deterministic reward composers and their deterministic task-generation parser and verification policy fixes.",
-    tags: ["Task-generation parser", "Verification policy", "DB-backed constraints"],
-  },
-  {
-    handle: "rDep8S...EQKu",
-    match: 88,
-    summary:
-      "Direct alignment in building deterministic Python reducers and handling task-generation logic with regression-style scoring.",
-    tags: ["Python reducers", "Dependency-light validators", "Prompt escaping"],
-  },
-  {
-    handle: "rGu432...Dcw9",
-    match: 85,
-    summary:
-      "Overlap in deterministic tools and verification workflows with CLI-first JSON scoring and auditable triage.",
-    tags: ["CLI JSON scoring", "Triage packet design", "Sim engineering"],
-  },
-];
 
 const SETTINGS_PAGES = [
   { key: "general", label: "General", icon: SettingsIcon },
@@ -327,6 +275,7 @@ function App() {
   const [walletUnlockOpen, setWalletUnlockOpen] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
   const [appState, setAppState] = useState(null);
+  const [profileAvatarNft, setProfileAvatarNft] = useState(null);
   const [walletVaultStatus, setWalletVaultStatus] = useState(EMPTY_WALLET_VAULT_STATUS);
   const [loadError, setLoadError] = useState("");
   const profileRef = useRef(null);
@@ -423,6 +372,7 @@ function App() {
   const signedIn = isSignedInSession(session);
   const profileName = profileDisplayName(session);
   const profileInitials = profileAvatarText(session);
+  const profileAvatarImages = profileNftImageCandidates(profileAvatarNft);
   const profileSubtext = profileSessionText(session);
   const walletAccountId = signedIn ? session?.accountId || "" : "";
   const linkedWallet =
@@ -709,6 +659,31 @@ function App() {
     };
   }, [signedIn, linkedWalletAddress]);
 
+  useEffect(() => {
+    let active = true;
+    if (!signedIn || !walletAccountId) {
+      setProfileAvatarNft(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    requestJson("/api/profile/public")
+      .then((result) => {
+        if (!active) return;
+        if (result.ok && result.body?.ok) {
+          setProfileAvatarNft(result.body.profile?.heroNft || null);
+        }
+      })
+      .catch(() => {
+        if (active) setProfileAvatarNft(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [signedIn, walletAccountId]);
+
   async function refreshAppState() {
     try {
       const state = await fetchAppState();
@@ -963,7 +938,7 @@ function App() {
                 }}
                 type="button"
               >
-                <ProfileAvatar initials={profileInitials} signedIn={signedIn} />
+                <ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} />
                 <>
                   <span className="profile-copy">
                     <strong>{profileName}</strong>
@@ -990,7 +965,7 @@ function App() {
                     }}
                     type="button"
                   >
-                    <ProfileAvatar initials={profileInitials} signedIn={signedIn} />
+                    <ProfileAvatar imageCandidates={profileAvatarImages} initials={profileInitials} signedIn={signedIn} />
                     <span className="profile-copy">
                       <strong>{profileName}</strong>
                       <small>{profileSubtext}</small>
@@ -1076,6 +1051,7 @@ function App() {
             onWalletUnlock={openWalletVaultControl}
             usage={appState?.usage}
             walletSecret={walletSecretRef.current}
+            walletUnlockPending={walletUnlockOpen}
             walletVault={walletVaultStatus}
           />
         )}
@@ -1088,6 +1064,7 @@ function App() {
             onWalletUnlock={openWalletVaultControl}
             tasks={appState?.tasks}
             walletSecret={walletSecretRef.current}
+            walletUnlockPending={walletUnlockOpen}
             walletVault={walletVaultStatus}
           />
         )}
@@ -1117,12 +1094,20 @@ function App() {
           />
         )}
         {view === "profile" && (
-          <ProfileView
-            profilePublic={profilePublic}
-            profileTab={profileTab}
-            setProfilePublic={setProfilePublic}
-            setProfileTab={setProfileTab}
-          />
+          <Suspense fallback={<StatusBanner>Loading profile</StatusBanner>}>
+            <ProfilePage
+              accountId={walletAccountId}
+              linkedWalletAddress={linkedWalletAddress}
+              onProfileAvatarChange={setProfileAvatarNft}
+              onWalletUnlock={openWalletVaultControl}
+              profilePublic={profilePublic}
+              profileTab={profileTab}
+              setProfilePublic={setProfilePublic}
+              setProfileTab={setProfileTab}
+              walletSecret={walletSecretRef.current}
+              walletVault={walletVaultStatus}
+            />
+          </Suspense>
         )}
         {view === "memory" && (
           <Suspense fallback={<StatusBanner>Loading memory</StatusBanner>}>
@@ -1205,7 +1190,7 @@ function App() {
 function ChatSurface({
   accountId = "", activeChat, chat, chatResetKey, chatSelectionKey, chatShareRequestKey,
   linkedWalletAddress = "", onActiveChatChange, onChatSettled, onWalletUnlock, usage,
-  walletSecret = null, walletVault = {},
+  walletSecret = null, walletUnlockPending = false, walletVault = {},
 }) {
   const modes = chat?.modes || [];
   const messages = chat?.seedMessages || [];
@@ -1229,10 +1214,14 @@ function ChatSurface({
   const [editDraft, setEditDraft] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
-  const walletVaultUnlocked = Boolean(
-    walletVault?.unlocked && walletVault?.address && linkedWalletAddress && walletVault.address === linkedWalletAddress
-  );
-  const walletReady = Boolean(accountId && linkedWalletAddress && walletSecret?.mnemonic && walletVaultUnlocked);
+  const taskRequestUnlockPolicy = evaluateTaskRequestUnlockPolicy({
+    accountId,
+    linkedWalletAddress,
+    walletSecret,
+    walletVault,
+    unlockPending: walletUnlockPending,
+  });
+  const walletReady = taskRequestUnlockPolicy.allowed;
   const plusRef = useRef(null);
   const modelRef = useRef(null);
   const inputRef = useRef(null);
@@ -1429,14 +1418,9 @@ function ChatSurface({
     const contextEditMetadata = isContextEdit ? { kind: CONTEXT_EDIT_MODE } : undefined;
     const turnMetadata = taskRequestMetadata || contextEditMetadata;
 
-    if (isTaskRequest && (!accountId || !linkedWalletAddress)) {
-      setSendMessage("Link a PFT wallet before requesting a task.");
-      setStatusTone("error");
-      return;
-    }
     if (isTaskRequest && !walletReady) {
-      onWalletUnlock?.();
-      setSendMessage("Unlock the linked wallet, then publish the task request.");
+      if (["unlock", "open_wallet"].includes(taskRequestUnlockPolicy.action)) onWalletUnlock?.();
+      setSendMessage(taskRequestUnlockPolicy.message);
       setStatusTone("error");
       return;
     }
@@ -2377,11 +2361,27 @@ function sessionProviderLabel(session) {
   return "";
 }
 
-function ProfileAvatar({ initials, signedIn }) {
+function ProfileAvatar({ imageCandidates = [], initials, signedIn }) {
+  const [imageIndex, setImageIndex] = useState(0);
+  const imageSrc = signedIn ? imageCandidates[imageIndex] || "" : "";
+  const imageKey = imageCandidates.join("|");
+
+  useEffect(() => {
+    setImageIndex(0);
+  }, [imageKey]);
+
   return (
-    <span className={`profile-avatar ${signedIn ? "signed-in" : "signed-out"}`}>
-      {initials}
-      {signedIn && (
+    <span className={`profile-avatar ${signedIn ? "signed-in" : "signed-out"} ${imageSrc ? "has-image" : ""}`}>
+      {imageSrc ? (
+        <img
+          alt="Profile NFT"
+          onError={() => setImageIndex((index) => index + 1)}
+          src={imageSrc}
+        />
+      ) : (
+        initials
+      )}
+      {signedIn && !imageSrc && (
         <span className="profile-check" aria-hidden="true">
           <Check size={9} strokeWidth={2.5} />
         </span>
@@ -2423,6 +2423,18 @@ function findTaskById(tasks = EMPTY_TASKS, taskId = "") {
   ) || null;
 }
 
+function EmptyState({ icon: Icon, title, desc }) {
+  return (
+    <div className="empty-state">
+      <span>
+        <Icon size={18} strokeWidth={1.75} />
+      </span>
+      <strong>{title}</strong>
+      <p>{desc}</p>
+    </div>
+  );
+}
+
 function TasksView({
   accountId = "",
   linkedWalletAddress = "",
@@ -2431,6 +2443,7 @@ function TasksView({
   onWalletUnlock,
   tasks = EMPTY_TASKS,
   walletSecret = null,
+  walletUnlockPending = false,
   walletVault = {},
 }) {
   const [tasksTab, setTasksTab] = useState("outstanding");
@@ -2574,6 +2587,7 @@ function TasksView({
             onRecorded={onRequestSettled}
             onWalletUnlock={onWalletUnlock}
             walletSecret={walletSecret}
+            walletUnlockPending={walletUnlockPending}
             walletVault={walletVault}
           />
         )}
@@ -3875,331 +3889,6 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   );
 }
 
-function ProfileView({ profilePublic, profileTab, setProfilePublic, setProfileTab }) {
-  return (
-    <div className="route-scroll">
-      <div className="profile-view">
-        <div className="profile-tabs-bar">
-          <div className="segmented">
-            {[
-              { key: "private", label: "Private" },
-              { key: "public", label: "Public" },
-            ].map((tab) => (
-              <button
-                className={profileTab === tab.key ? "active" : ""}
-                key={tab.key}
-                onClick={() => setProfileTab(tab.key)}
-                type="button"
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          <button
-            className={profilePublic ? "visibility-pill public" : "visibility-pill"}
-            onClick={() => setProfilePublic((value) => !value)}
-            type="button"
-          >
-            {profilePublic ? <Eye size={13} /> : <EyeOff size={13} />}
-            {profilePublic ? "Profile public" : "Profile hidden"}
-          </button>
-        </div>
-
-        {profileTab === "private" ? <PrivateProfile /> : <PublicProfile />}
-      </div>
-    </div>
-  );
-}
-
-function PrivateProfile() {
-  return (
-    <div className="profile-stack">
-      <ProfileCard title="Profile Studio" subtitle="Generate the picture that represents you across the network">
-        <div className="profile-studio">
-          <div className="profile-art" />
-          <div>
-            <div className="eyebrow">Current picture</div>
-            <h3>Network Verification Engineer</h3>
-            <p>Today's gift NFT . minted May 13, 2026</p>
-            <div className="button-row">
-              <PillButton icon={RefreshCw}>Regenerate</PillButton>
-              <PillButton dark icon={Sparkle}>Mint as NFT</PillButton>
-            </div>
-          </div>
-        </div>
-      </ProfileCard>
-
-      <ProfileCard title="Today's airdrop" subtitle="Daily feedback on what the network would currently pay you">
-        <div className="airdrop-line">
-          <span>8,400</span>
-          <small>PFT</small>
-          <em>Core 84 / 100</em>
-        </div>
-        <p className="soft-copy">
-          Today's payout reflects high retained value from recent core-network
-          shipping, balanced by still-limited proof of wider adoption impact.
-        </p>
-        <div className="mini-note-grid">
-          <MiniNote title="Raised today" body="Shipping core network fixes and automation around rewards and NFT generation." />
-          <MiniNote title="Kept it lower" body="The main limiter is recent product stabilization rather than measured network growth." />
-          <MiniNote title="To improve" body="Tie shipped fixes to visible user adoption and repeatable network growth loops." />
-        </div>
-      </ProfileCard>
-
-      <ProfileCard title="PFT generation" subtitle="Last 28 days">
-        <Sparkline values={PFT_GENERATION} />
-        <div className="pft-breakdown">
-          {PFT_BREAKDOWN.map((item) => (
-            <div key={item.label}>
-              <small>{item.label}</small>
-              <strong>{item.value}</strong>
-            </div>
-          ))}
-        </div>
-      </ProfileCard>
-
-      <NftGallery />
-
-      <ProfileCard title="Recommended connections" subtitle="Members who may be valuable collaborators">
-        <div className="connection-list">
-          {CONNECTIONS.map((connection) => (
-            <ConnectionRow connection={connection} key={connection.handle} />
-          ))}
-        </div>
-      </ProfileCard>
-    </div>
-  );
-}
-
-function PublicProfile() {
-  return (
-    <div className="profile-stack">
-      <section className="public-wallet-card">
-        <div className="public-wallet-header">
-          <div className="profile-art small" />
-          <div>
-            <div className="eyebrow">Wallet</div>
-            <div className="mono-line">rPo8GkCA9YMKzuJGTHbj11kdVfPq5JHxNx</div>
-            <p>Last active 18 minutes ago</p>
-          </div>
-        </div>
-        <div className="public-stats">
-          <PublicStat label="Total rewards paid" value="552,308" unit="PFT" />
-          <PublicStat label="Sybil score" value="88" pill="Low risk" />
-          <PublicStat label="Alignment score" value="86" pill="Active contributor" />
-        </div>
-      </section>
-
-      <ProfileCard
-        title="About me"
-        trailing={<button className="link-button icon-link" type="button"><Pencil size={11} /> Edit</button>}
-      >
-        <p className="soft-copy italic">Not specified yet.</p>
-      </ProfileCard>
-
-      <NftGallery />
-
-      <ProfileCard title="Post Fiat alignment" subtitle="Network contribution this month">
-        <div className="alignment-grid">
-          <div>
-            <small>Rewards earned</small>
-            <strong>41,046.79 <span>PFT</span></strong>
-          </div>
-          <div>
-            <small>Tasks completed</small>
-            <strong>5</strong>
-          </div>
-        </div>
-      </ProfileCard>
-
-      <ProfileCard title="Sybil score" subtitle="System assessment of account authenticity">
-        <div className="sybil-card">
-          <SybilRing value={88} />
-          <div>
-            <span className="green-pill">Low risk</span>
-            <p>
-              This account shows strong signals of authentic activity based on
-              linked accounts, behavior patterns, and network topology.
-            </p>
-          </div>
-        </div>
-        <div className="sybil-signals">
-          <SybilSignal icon={UserCheck} label="Real accounts linked" hint="Verified external identities" value="3 / 4" />
-          <SybilSignal icon={AlertTriangle} label="Attempted gaming" hint="Manipulation detection signals" tone="warn" value="7 flagged" />
-          <SybilSignal icon={Activity} label="Network graph" hint="Interaction topology" value="28 connections . Organic" />
-        </div>
-      </ProfileCard>
-    </div>
-  );
-}
-
-function StatusPill({ status }) {
-  const tone = {
-    Proposed: { background: "#fef3c7", color: "#92400e" },
-    Accepted: { background: "#dcfce7", color: "#166534" },
-  }[status] || { background: "#e5e5e0", color: "#0d0d0d" };
-
-  return (
-    <span className="status-pill" style={tone}>
-      {status}
-    </span>
-  );
-}
-
-function EmptyState({ icon: Icon, title, desc }) {
-  return (
-    <div className="empty-state">
-      <span>
-        <Icon size={18} strokeWidth={1.75} />
-      </span>
-      <strong>{title}</strong>
-      <p>{desc}</p>
-    </div>
-  );
-}
-
-function ProfileCard({ children, subtitle, title, trailing }) {
-  return (
-    <section className="profile-card">
-      <div className="profile-card-heading">
-        <div>
-          <h3>{title}</h3>
-          {subtitle && <p>{subtitle}</p>}
-        </div>
-        {trailing}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function PillButton({ children, dark, icon: Icon }) {
-  return (
-    <button className={dark ? "pill-button dark" : "pill-button"} type="button">
-      {Icon && <Icon size={13} strokeWidth={1.75} />}
-      {children}
-    </button>
-  );
-}
-
-function MiniNote({ body, title }) {
-  return (
-    <div className="mini-note">
-      <strong>{title}</strong>
-      <p>{body}</p>
-    </div>
-  );
-}
-
-function Sparkline({ values }) {
-  const width = 720;
-  const height = 180;
-  const max = Math.max(...values);
-  const points = values
-    .map((value, index) => {
-      const x = (index / (values.length - 1)) * width;
-      const y = height - (value / max) * (height - 20) - 10;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(" ");
-
-  return (
-    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="PFT generation chart">
-      <polyline fill="none" points={points} stroke="#0d0d0d" strokeLinecap="round" strokeWidth="2" />
-    </svg>
-  );
-}
-
-function NftGallery() {
-  return (
-    <ProfileCard title="NFT Gallery" subtitle={`${NFTS.length} minted`} trailing={<button className="link-button" type="button">View all</button>}>
-      <div className="nft-grid">
-        {NFTS.map((nft) => (
-          <div className="nft-item" key={nft.id}>
-            <span style={{ background: nft.gradient }} />
-            <strong>{nft.title}</strong>
-            <small>{nft.date}</small>
-          </div>
-        ))}
-      </div>
-    </ProfileCard>
-  );
-}
-
-function ConnectionRow({ connection }) {
-  return (
-    <div className="connection-row">
-      <div className="connection-top">
-        <div>
-          <span className="connection-avatar" />
-          <strong>{connection.handle}</strong>
-        </div>
-        <span className="match-pill">Match {connection.match}%</span>
-      </div>
-      <p>{connection.summary}</p>
-      <div className="tag-row">
-        {connection.tags.map((tag) => (
-          <span key={tag}>{tag}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PublicStat({ label, pill, unit, value }) {
-  return (
-    <div className="public-stat">
-      <small>{label}</small>
-      <strong>
-        {value}
-        {unit && <span>{unit}</span>}
-        {pill && <em>{pill}</em>}
-      </strong>
-    </div>
-  );
-}
-
-function SybilRing({ value }) {
-  const radius = 28;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (value / 100) * circumference;
-
-  return (
-    <div className="sybil-ring">
-      <svg height="72" viewBox="0 0 72 72" width="72">
-        <circle cx="36" cy="36" fill="none" r={radius} stroke="#e8e6df" strokeWidth="6" />
-        <circle
-          cx="36"
-          cy="36"
-          fill="none"
-          r={radius}
-          stroke="#16a34a"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          strokeWidth="6"
-          transform="rotate(-90 36 36)"
-        />
-      </svg>
-      <span>{value}</span>
-    </div>
-  );
-}
-
-function SybilSignal({ hint, icon: Icon, label, tone = "ok", value }) {
-  return (
-    <div className="sybil-signal">
-      <span>
-        <Icon size={14} strokeWidth={1.75} />
-      </span>
-      <div>
-        <strong>{label}</strong>
-        <small>{hint}</small>
-      </div>
-      <em className={tone}>{value}</em>
-    </div>
-  );
-}
 
 function SettingsModal({ onAppStateChange, onClose, session, setTheme, theme }) {
   const [page, setPage] = useState("general");

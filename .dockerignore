@@ -6,3 +6,4 @@ dist
 *.env
 *.local
 chatgpt_postgres_spec.md
+private_prompts

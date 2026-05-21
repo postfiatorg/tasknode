@@ -428,6 +428,71 @@ export async function upsertPftlTransactionBatch({
         ]
       );
       pointerCount += 1;
+      if (wallet) {
+        await runQuery(
+          client,
+          `
+            INSERT INTO pftl_pointer_observations (
+              wallet_address,
+              tx_hash,
+              memo_index,
+              account_id,
+              wallet_role,
+              direction,
+              pointer_kind,
+              cid,
+              task_id,
+              request_id,
+              context_id,
+              thread_id,
+              source
+            )
+            SELECT
+              $1,
+              $2,
+              $3,
+              COALESCE(sw.account_id, ''),
+              COALESCE(sw.role, ''),
+              wt.direction,
+              $4,
+              $5,
+              $6,
+              $7,
+              $8,
+              $9,
+              'pftl_cache_ingest'
+            FROM (SELECT 1) seed
+            LEFT JOIN pftl_sync_wallets sw ON sw.wallet_address = $1
+            LEFT JOIN pftl_wallet_transactions wt
+              ON wt.wallet_address = $1
+             AND wt.tx_hash = $2
+            ON CONFLICT (wallet_address, tx_hash, memo_index)
+            DO UPDATE SET
+              account_id = COALESCE(NULLIF(EXCLUDED.account_id, ''), pftl_pointer_observations.account_id),
+              wallet_role = COALESCE(NULLIF(EXCLUDED.wallet_role, ''), pftl_pointer_observations.wallet_role),
+              direction = COALESCE(EXCLUDED.direction, pftl_pointer_observations.direction),
+              pointer_kind = COALESCE(EXCLUDED.pointer_kind, pftl_pointer_observations.pointer_kind),
+              cid = COALESCE(EXCLUDED.cid, pftl_pointer_observations.cid),
+              task_id = COALESCE(EXCLUDED.task_id, pftl_pointer_observations.task_id),
+              request_id = COALESCE(EXCLUDED.request_id, pftl_pointer_observations.request_id),
+              context_id = COALESCE(EXCLUDED.context_id, pftl_pointer_observations.context_id),
+              thread_id = COALESCE(EXCLUDED.thread_id, pftl_pointer_observations.thread_id),
+              source = EXCLUDED.source,
+              updated_at = now()
+          `,
+          [
+            wallet,
+            pointer.txHash,
+            pointer.memoIndex,
+            pointer.pointerKind,
+            pointer.cid,
+            pointer.taskId,
+            pointer.requestId,
+            pointer.contextId,
+            pointer.threadId,
+          ]
+        );
+      }
     }
 
     inserted += 1;
@@ -665,9 +730,10 @@ export async function listActivePftlSyncWallets({ limit = 1000 } = {}) {
   return result.rows;
 }
 
-function reducerKindForPointer(pointerKind = "") {
-  const kind = normalizeText(pointerKind).toUpperCase();
+function reducerKindForPointer(pointer = {}) {
+  const kind = normalizeText(pointer?.pointer_kind || pointer).toUpperCase();
   if (kind === "CONTEXT") return "context_pointer_hydrate";
+  if (TASK_POINTER_KINDS.has(kind) && !normalizeText(pointer?.task_id)) return "";
   if (TASK_POINTER_KINDS.has(kind)) return "task_projection_replay";
   return "";
 }
@@ -751,7 +817,7 @@ export async function enqueuePftlReducerEventsForTransaction({
   );
 
   for (const pointer of pointerRows.rows) {
-    const reducerKind = reducerKindForPointer(pointer.pointer_kind);
+    const reducerKind = reducerKindForPointer(pointer);
     if (!reducerKind) continue;
     const pointerResult = await query(
       `

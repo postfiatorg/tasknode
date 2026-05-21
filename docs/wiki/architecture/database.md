@@ -18,6 +18,10 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - Deep memory source snapshots: `server/db/migrations/013_deep_memory_snapshots.sql`
 - Jobs pgvector corpus: `server/db/migrations/014_jobs_corpus_pgvector.sql`
 - Context edit proposals: `server/db/migrations/015_context_edit_proposals.sql`
+- Profile NFTs: `server/db/migrations/018_profile_nfts.sql`
+- Profile daily airdrop runs: `server/db/migrations/019_profile_daily_airdrop.sql`
+- Profile public snapshots: `server/db/migrations/021_profile_public_snapshots.sql`
+- PFTL pointer observations: `server/db/migrations/023_pftl_pointer_observations.sql`
 
 ## Table Inventory
 
@@ -45,12 +49,17 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `pftl_sync_wallets` | Watchlist and checkpoint table for every wallet the app tracks, including account owner, role, status, hot sync state, archive marker, archive completeness, and last error. | Wallet activity feed, Context history backfill, Tasks replay, PFTL cache workers, operator health. | `007_pftl_transaction_cache.sql` |
 | `pftl_transactions` | Global transaction mirror keyed by tx hash with full tx JSON, meta JSON, ledger index, type, result, accounts, and close time. | Wallet activity, pointer memo extraction, replay repair, audit. | `007_pftl_transaction_cache.sql` |
 | `pftl_wallet_transactions` | Per-wallet transaction index linking tracked wallets to global tx rows with direction, counterparty, delivered drops, fee, ledger, and close time. | Wallet transaction feed, cache-compatible `account_tx` reads, future contact/message surfaces. | `007_pftl_transaction_cache.sql` |
-| `pftl_pointer_memos` | Decoded and raw pointer memo rows, including pointer kind, CID, task/request/context/thread IDs, memo hex, decoded JSON, and decode error. | Context restore, Tasks replay, future wallet-native messages, audit. | `007_pftl_transaction_cache.sql` |
+| `pftl_pointer_memos` | Global decoded and raw pointer memo facts keyed by transaction hash and memo index, including pointer kind, CID, task/request/context/thread IDs, memo hex, decoded JSON, and decode error. The old `wallet_address` column is compatibility metadata, not ownership. | Context restore, Tasks replay, future wallet-native messages, audit. | `007_pftl_transaction_cache.sql` |
+| `pftl_pointer_observations` | Wallet/account observation bridge for pointer memos. It records which tracked wallet saw a global pointer, account ownership, wallet role, direction, pointer kind, CID, task/request/context/thread IDs, and source. | PFTL cache reducer, Tasks replay across user/authority wallets, Context pointer hydration, operator repair, data architecture audit. | `023_pftl_pointer_observations.sql` |
 | `pftl_cache_watcher_state` | Operational state for WSS cache watchers, including endpoint, status, subscribed wallet count, last ledger, last event, and error. | Operator health, cache diagnostics, deployment monitoring. | `008_pftl_cache_watcher.sql` |
 | `pftl_cache_reducer_events` | Idempotent reducer queue for wallet balance refresh, context pointer hydration, and task projection replay. | Context history projection, Tasks projection, wallet refresh, repair workers. | `008_pftl_cache_watcher.sql`, `009_pftl_cache_reducer_dedupe_key.sql` |
 | `pftl_cache_maintenance_runs` | Recent archive/retention/maintenance run summaries with status, optional wallet, metrics JSON, and errors. | Operator health, retention diagnostics, cache operations audit. | `010_pftl_cache_operations.sql` |
 | `jobs_corpus_sources` | Source manifest for the Jobs reference corpus, including raw URL, raw SHA-256, byte size, label, fetch time, and metadata. | Chat Jobs spirit retrieval, operator ingestion audit, future prompt source diagnostics. | `014_jobs_corpus_pgvector.sql` |
 | `jobs_corpus_chunks` | Chunked Jobs reference text with stable chunk index, content hash, embedding model/provider, 1536-dimension pgvector embedding, and metadata. | Chat Jobs spirit retrieval through `server/jobs-corpus.js`, future prompt diagnostics. | `014_jobs_corpus_pgvector.sql` |
+| `profile_nfts` | Account-scoped profile NFT records with generated image CID, prompt/template digests, OpenAI model metadata, mint status, XLS-24 metadata CID, prepared `NFTokenMint` JSON, tx hash, and token id. The private prompt body is not stored. | Profile Studio, NFT gallery, profile NFT mint flow, future public profile avatar selection. | `018_profile_nfts.sql` |
+| `profile_daily_airdrop_runs` | Account-scoped daily airdrop scoring rows with dry-run/production mode, scenario id, model output fields, contributor reasoning, identity-cloud input snapshot, deterministic recipient metadata, alignment numerator/denominator, provider/model/prompt metadata, and status timestamps. | Profile Daily Airdrop panel, dry-run scoring audit, future live issuance worker, operator review. | `019_profile_daily_airdrop.sql` |
+| `profile_daily_airdrop_issuances` | Submitted daily airdrop payments with source wallet, recipient wallet, PFT amount, payload digest, pointer CID, tx hash, ledger index, and account/day uniqueness. | Private Profile paid airdrop display, reward history chart, public profile lifetime earned PFT. | `020_profile_daily_airdrop_issuance.sql` |
+| `profile_public_snapshots` | Account-scoped public profile role snapshots with deterministic input snapshot/fingerprint, DeepSeek output fields, provider/model/prompt metadata, status, and completion timestamps. Numeric scores and NFT state are not model-generated. | Public Profile role title, summary, skills, archetype, useful-to copy, profile snapshot audit. | `021_profile_public_snapshots.sql` |
 
 ## Known Gaps
 
@@ -63,6 +72,15 @@ Repositories live under `server/repositories/`. Runtime fallback behavior remain
 
 The database should cache projections that the app can render quickly. For chain-backed features, every cache row should preserve enough pointer or transaction identity to replay or repair the cache.
 
+Current task/cache integrity tooling:
+
+| Command | Purpose |
+| --- | --- |
+| `npm run db:pftl-pointer-observation-backfill -- --limit=10000` | Idempotently populates `pftl_pointer_observations` from existing wallet transactions and pointer memos. |
+| `npm run data-architecture-audit` | Fails on current task projection drift, missing pointer observations, orphan observations, billing projection mismatch, and stuck memory jobs. |
+| `npm run task-replay-repair -- --task-id=<task_id> --apply` | Requeues reducer work and rebuilds one task projection from cached PFTL pointers. |
+| `npm run pftl-reducer-requeue -- --id=<reducer_event_id> --apply` | Requeues a failed reducer row and runs the reducer without hand-editing cache tables. |
+
 ## Diagram
 
 ```mermaid
@@ -71,9 +89,12 @@ flowchart TB
   Account --> Context[Context Cache]
   Account --> Memory[Memory Tables]
   Account --> Billing[Billing Ledger]
+  Account --> Profile[Profile NFTs and Daily Airdrop]
   Account --> Wallet[Wallet Link Metadata]
   Jobs[Jobs Corpus pgvector] --> Chat
   PFTL[PFTL Events] --> TaskCache[Task Projection Cache]
+  PFTL --> PointerObs[Pointer Observations]
+  PointerObs --> TaskCache
   TaskCache --> Replay[Replay Repair]
 ```
 

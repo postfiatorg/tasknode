@@ -15,6 +15,8 @@ The Tasks surface is reached from the left navigation. It shows a compact task q
 
 The top summary shows outstanding count, PFT in flight, chain-indexed projection count, and active request count. Deadlines render as calendar dates, such as `May 20`, while real event and review timestamps render with time and timezone. This prevents date-only deadlines from showing as misleading `12:00 AM` event times.
 
+`GET /api/tasks` also returns task sync integrity from the cache layer. The sync status can be `ready`, `empty`, `indexing_lag`, or `reducer_attention`. `indexing_lag` means the cache has a newer task pointer than the projected row has consumed. `reducer_attention` means failed reducer work exists for one or more visible tasks. The UI should treat these as indexing states, not as final lifecycle states.
+
 The `Request task` button opens a modal where the user can describe the kind of work they want. Submitting the modal uses `POST /api/tasks/request` to build a request bundle from the current context document, deep memory, recent memory, recent chats, and existing task queue; encrypt the bundle locally in the browser; pin it to IPFS; encrypt a `pf.task.request.v1` event that points at that bundle; and sign a PFTL `TASK` pointer transaction from the linked user wallet.
 
 After a successful chain submit, the server records a durable `task_requests` row plus the hidden `pf.task.request_intent.v1` chat turn tagged as `source: task_interface` and `status: pftl_request_published`. The Tasks page only shows a compact in-flight request strip while a request is actively signing, queued, generating, recently published, or recently failed. Once a request becomes a proposed task, the request receipt leaves the main UX and the user should interact with the projected task card instead. Chat also supports task request mode from the `+` menu. It uses the same signed request publisher, tags the cache entry as `source: user_chat`, and keeps the receipt in the active chat thread.
@@ -148,6 +150,20 @@ When the Task Node service key can decrypt the IPFS payload, the app expands the
 
 The raw payload is kept collapsible below the readable fields so operators can audit exact schemas without losing the user-facing explanation.
 
+The detail response includes `forensics.integrity`, which compares the projected task row to the chain-cache inputs:
+
+| Field | Meaning |
+| --- | --- |
+| `expectedEventCount` | Event count stored on the projection. |
+| `pointerEventCount` | Legacy pointer event rows available for the task detail. |
+| `reducerEventCount` | Normalized task event rows available for the detail page. |
+| `pendingReducerCount`, `processingReducerCount`, `failedReducerCount` | Reducer work still pending, active, or failed for this task. |
+| `latestCachedPointer` | Newest cached pointer observation for the task ID across the account's active wallets. |
+| `projectionBehindCachedPointer` | True when the cache has a newer tx/CID than `task_projections.last_event_*`. |
+| `projectionLastEvent` | Last tx/CID/status/event count currently stored on the projection. |
+
+If `projectionBehindCachedPointer` is true, the task may be waiting on reducer indexing. The correct repair path is `npm run task-replay-repair -- --task-id=<task_id> --apply`, not manual SQL against `task_projections`.
+
 ## State Machine
 
 ```mermaid
@@ -258,6 +274,7 @@ Tasks currently rely on the PFTL cache and projection tables:
 | `pftl_transactions` | Raw wallet transaction mirror. |
 | `pftl_wallet_transactions` | Wallet-scoped transaction feed used by Wallet and cache consumers. |
 | `pftl_pointer_memos` | Decoded pointer memos with kind, CID, task ID, context ID, and memo index. |
+| `pftl_pointer_observations` | Wallet/account observation bridge used to replay one task across user, authority, and allocation wallets without pretending a pointer memo has a single wallet owner. |
 | `pftl_cache_reducer_events` | Idempotent queue that tells reducers which pointer rows need projection work. |
 | `pftl_task_pointer_events` | Task pointer events grouped by task ID, wallet, CID, tx hash, ledger, and schema. |
 | `task_events` | Normalized task lifecycle events for replay and forensics. |
@@ -265,6 +282,10 @@ Tasks currently rely on the PFTL cache and projection tables:
 | `pftl_task_sync_runs` | Replay/import diagnostics. |
 
 The database is allowed to make task reads fast. It is not allowed to become the canonical task source.
+
+Task projection replay is account scoped. A single lifecycle can include the user wallet, task authority wallet, and allocation wallet, so the reducer rebuilds a task from cached pointers with the same task ID across the active wallets registered to the account. Blank historical task IDs are not treated as candidates for a known task; only the concrete task ID and the seed CID are replay inputs.
+
+Task projection reducer events are only queued for task-style pointers that carry a task ID. Task request pointers and historical task-looking pointers without a task ID are not projected as task lifecycle rows. This prevents blank historical wallet pointers from creating failed or ambiguous task state.
 
 ## Chat Context
 
@@ -304,3 +325,5 @@ When changing Tasks, verify:
 9. A new verification response draft starts with one empty evidence artifact unless the user explicitly adds a second artifact.
 10. Newly generated tasks contain 2 to 5 steps and do not ask for unsupported evidence such as video or screen recording.
 11. Existing projected tasks preserve the steps from the chain offer payload rather than falling back to the submission requirement as a fake one-step task.
+12. `npm run data-architecture-audit` reports no P0/P1 findings for current task/cache state.
+13. If a detail page looks stale, `forensics.integrity.projectionBehindCachedPointer` explains the lag and `task-replay-repair` can rebuild the projection from cache rows.

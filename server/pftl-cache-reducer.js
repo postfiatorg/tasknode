@@ -131,13 +131,21 @@ async function pointerMemoForReducerEvent(event) {
         wt.direction
       FROM pftl_pointer_memos pm
       LEFT JOIN pftl_transactions t ON t.tx_hash = pm.tx_hash
+      LEFT JOIN pftl_pointer_observations po
+        ON po.tx_hash = pm.tx_hash
+       AND po.memo_index = pm.memo_index
+       AND po.wallet_address = $2
       LEFT JOIN pftl_wallet_transactions wt
         ON wt.tx_hash = pm.tx_hash
        AND wt.wallet_address = $2
       WHERE pm.tx_hash = $1
-        AND pm.wallet_address = $2
         AND ($3::integer IS NULL OR pm.memo_index = $3)
         AND ($4::text = '' OR pm.cid = $4)
+        AND (
+          po.wallet_address IS NOT NULL
+          OR pm.wallet_address = $2
+          OR $2::text = ''
+        )
       ORDER BY pm.memo_index ASC
       LIMIT 1
     `,
@@ -197,39 +205,78 @@ async function reduceContextPointer(event) {
   };
 }
 
-async function candidateTaskPointerRows({ walletAddress, taskId = "", seedCid = "" }) {
+async function candidateTaskPointerRows({ walletAddress, accountId = "", taskId = "", seedCid = "" }) {
   const result = await query(
     `
+      WITH scoped_wallets AS (
+        SELECT $1::text AS wallet_address
+        UNION
+        SELECT wallet_address
+        FROM pftl_sync_wallets
+        WHERE $2::text <> ''
+          AND account_id = $2
+          AND status = 'active'
+      ),
+      candidates AS (
       SELECT
         pm.*,
         t.ledger_index AS tx_ledger_index,
         t.close_time,
         t.account AS account_address,
         t.destination AS destination_address,
-        wt.direction
+        COALESCE(po.direction, wt.direction) AS direction,
+        COALESCE(po.wallet_address, pm.wallet_address) AS observation_wallet_address,
+        po.account_id AS observation_account_id,
+        row_number() OVER (
+          PARTITION BY pm.tx_hash, pm.memo_index
+          ORDER BY
+            CASE WHEN po.account_id = $2 THEN 0 ELSE 1 END ASC,
+            CASE WHEN po.wallet_address = $1 THEN 0 ELSE 1 END ASC,
+            po.updated_at DESC NULLS LAST
+        ) AS observation_rank
       FROM pftl_pointer_memos pm
+      LEFT JOIN pftl_pointer_observations po
+        ON po.tx_hash = pm.tx_hash
+       AND po.memo_index = pm.memo_index
       LEFT JOIN pftl_transactions t ON t.tx_hash = pm.tx_hash
       LEFT JOIN pftl_wallet_transactions wt
         ON wt.tx_hash = pm.tx_hash
-       AND wt.wallet_address = $1
-      WHERE pm.wallet_address = $1
+       AND wt.wallet_address = COALESCE(po.wallet_address, pm.wallet_address)
+      WHERE (
+          (
+            $2::text <> ''
+            AND (
+              po.wallet_address IN (SELECT wallet_address FROM scoped_wallets)
+              OR (po.wallet_address IS NULL AND pm.wallet_address IN (SELECT wallet_address FROM scoped_wallets))
+            )
+          )
+          OR (
+            $2::text = ''
+            AND (
+              po.wallet_address = $1
+              OR (po.wallet_address IS NULL AND pm.wallet_address = $1)
+            )
+          )
+        )
         AND pm.cid IS NOT NULL
         AND pm.decode_error IS NULL
-        AND pm.pointer_kind = ANY($4)
+        AND pm.pointer_kind = ANY($5)
         AND (
-          ($2::text <> '' AND pm.task_id = $2)
-          OR ($2::text <> '' AND pm.task_id IS NULL)
-          OR ($3::text <> '' AND pm.cid = $3)
-          OR ($2::text = '' AND pm.task_id IS NULL)
+          ($3::text <> '' AND pm.task_id = $3)
+          OR ($4::text <> '' AND pm.cid = $4)
         )
+      )
+      SELECT *
+      FROM candidates
+      WHERE observation_rank = 1
       ORDER BY
-        t.ledger_index ASC NULLS LAST,
-        t.close_time ASC NULLS LAST,
-        pm.tx_hash ASC,
-        pm.memo_index ASC
+        tx_ledger_index ASC NULLS LAST,
+        close_time ASC NULLS LAST,
+        tx_hash ASC,
+        memo_index ASC
       LIMIT 500
     `,
-    [walletAddress, taskId, seedCid, TASK_POINTER_KINDS]
+    [walletAddress, accountId, taskId, seedCid, TASK_POINTER_KINDS]
   );
   return result.rows;
 }
@@ -450,6 +497,7 @@ async function reduceTaskProjection(event, { fetchIpfsJson = fetchContextIpfsJso
 
   const rows = await candidateTaskPointerRows({
     walletAddress: event.wallet_address,
+    accountId: event.account_id,
     taskId,
     seedCid: seedPointer.cid,
   });

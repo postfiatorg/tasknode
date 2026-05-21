@@ -16,10 +16,11 @@ const routes = [
   { hash: "#wallet", labels: ["Available balance", "PFT", "Activity"] },
   { hash: "#context", labels: ["Context document", "Versions"] },
   { hash: "#tasks", labels: ["Tasks"] },
+  { hash: "#profile", labels: ["Today's airdrop", "Profile Studio", "PFT generation"] },
   { hash: "#memory", labels: ["Memory"] },
   {
     hash: "#docs",
-    labels: ["Task Node Docs", "Product and architecture wiki", "AI Providers", "Task Engine UX Integration Plan"],
+    labels: ["Task Node Docs", "Product and architecture wiki", "Daily Airdrop", "Profile Prompts", "AI Providers", "Task Engine UX Integration Plan"],
     selectors: [".docs-rendered-diagram svg"],
   },
 ];
@@ -105,6 +106,7 @@ async function main() {
         if (!exists) throw new Error(`Route ${route.hash || "/"} rendered without selector: ${selector}`);
       }
       if (route.hash === "#context") await assertContextSelectionBackspace();
+      if (route.hash === "#profile") await assertProfileRouteScrolls();
     }
 
     const pageLoad = waitForPageLoad();
@@ -271,6 +273,27 @@ async function assertComposerFileDrop() {
 
   if (!result.activeDuringDrag || result.activeAfterDrop || result.chipCount !== 1 || !result.chipText.includes("drag-smoke.pdf")) {
     throw new Error(`Composer drag/drop attachment smoke failed: ${JSON.stringify(result)}`);
+  }
+}
+
+async function assertProfileRouteScrolls() {
+  const result = await evaluate(`(() => {
+    const scroller = document.querySelector('.route-scroll');
+    if (!scroller) return { ok: false, reason: 'route_scroll_missing' };
+    const before = scroller.scrollTop;
+    scroller.scrollTop = scroller.scrollHeight;
+    return {
+      ok: scroller.scrollTop > before,
+      before,
+      after: scroller.scrollTop,
+      clientHeight: scroller.clientHeight,
+      scrollHeight: scroller.scrollHeight,
+      overflowY: getComputedStyle(scroller).overflowY,
+    };
+  })()`);
+
+  if (!result.ok) {
+    throw new Error(`Profile route did not expose a working scroll container: ${JSON.stringify(result)}`);
   }
 }
 

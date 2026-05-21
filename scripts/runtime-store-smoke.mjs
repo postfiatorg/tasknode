@@ -59,6 +59,9 @@ try {
     walletInitiationGrantStatus,
   } = await import("../server/runtime-store.js");
   const {
+    getAccountWalletCloud,
+  } = await import("../server/account-wallet-cloud.js");
+  const {
     chatEstimate,
     chatEstimateForAccount,
     usageActions,
@@ -898,6 +901,15 @@ try {
   if (!linkedOther.ok || otherLinkedState.context.history.pointerCount !== 0) {
     throw new Error(`Different linked wallet saw old history: ${JSON.stringify(otherLinkedState.context.history)}`);
   }
+  const accountWalletCloud = getAccountWalletCloud({ accountId: accountSession.accountId });
+  const cloudAddresses = accountWalletCloud.wallets.map((wallet) => wallet.address).sort();
+  if (
+    accountWalletCloud.activeWalletAddress !== "rDifferentSmokeWallet" ||
+    !cloudAddresses.includes("rSmokeWalletAddress") ||
+    !cloudAddresses.includes("rDifferentSmokeWallet")
+  ) {
+    throw new Error(`Account wallet cloud did not retain linked-wallet history: ${JSON.stringify(accountWalletCloud)}`);
+  }
 
   const reclaimAddress = "rReclaimSmokeWallet";
   const firstOwner = linkWalletToAccount({
@@ -929,6 +941,10 @@ try {
     throw new Error(
       `Wallet reclaim boundary failed: ${JSON.stringify({ firstOwner, reclaimed, firstOwnerWallet, secondOwnerWallet })}`
     );
+  }
+  const reclaimedCloud = getAccountWalletCloud({ accountId: "acct_reclaim_owner_a" });
+  if (reclaimedCloud.wallets.some((wallet) => wallet.address === reclaimAddress)) {
+    throw new Error(`Reclaimed wallet stayed in old owner cloud: ${JSON.stringify(reclaimedCloud)}`);
   }
 
   if (!history.latestContextPointer?.cid || history.latestContextPointer.cid !== "bafyContextSmoke") {

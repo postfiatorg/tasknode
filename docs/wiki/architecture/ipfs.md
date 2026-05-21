@@ -12,6 +12,7 @@ IPFS stores content-addressed payloads that PFTL pointers reference by CID. Priv
 - Reward receipts.
 - Private NFT prompt series.
 - Private NFT generation run receipts.
+- Public profile NFT images.
 - Public NFT metadata.
 
 ## Private NFT Prompt Series
@@ -32,9 +33,11 @@ Generated NFT metadata may include the safe commitment fields `series_id`, `seri
 
 Each image generation should also create an encrypted run receipt with schema `pf.profile.nft_generation_run.v1`. That receipt records the series pointer, prompt digest, profile snapshot digest, provider/model, image CID, and metadata CID. It makes generation replayable for TaskNode without leaking private prompt text.
 
+Current profile NFT implementation pins generated image bytes publicly at generation time and stores the resulting image CID in `profile_nfts`. Mint preparation pins public XLS-24 metadata JSON with `image: "ipfs://<imageCid>"`. The generated image and metadata are public assets; the private prompt is not included in either payload.
+
 ## Technical Architecture
 
-Server IPFS helpers live in `server/context-ipfs.js`. Context publishing uses `server/context-publish.js` and `src/features/context/context-publish.js`. Python reference IPFS upload and fetch code lives in `reference_clients/python/tasknode_pftl/ipfs.py`.
+Server IPFS helpers live in `server/context-ipfs.js`. JSON pins use `pinContextIpfsJson`; binary profile NFT image pins use `pinIpfsFile` with an 8 MB server-side size limit. Context publishing uses `server/context-publish.js` and `src/features/context/context-publish.js`. Python reference IPFS upload and fetch code lives in `reference_clients/python/tasknode_pftl/ipfs.py`.
 
 Pinata is the current simple pinning path. A self-hosted IPFS node can be added as another adapter as long as the CID and payload schema stay stable.
 

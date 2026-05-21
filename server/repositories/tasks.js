@@ -1,17 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { canonicalReceiptProjection } from "../task-receipt-projection.js";
-import { taskEventExpectation, taskEventMeaning } from "../task-event-meaning.js";
-import { fetchAndDecryptTasknodePayload } from "../task-payloads.js";
+import { taskEventExpectation } from "../task-event-meaning.js";
+import {
+  dedupeAuditEntries,
+  eventCidEntries,
+  eventTransactionEntries,
+  hydrateForensicsEvent,
+  publicCidEntries,
+  publicPointerEvent,
+  publicReducerEvent,
+  publicTransactionEntries,
+} from "../task-forensics-format.js";
 import { taskProductConfig } from "../task-product-config.js";
 import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
-import { summarizeEvidenceItems } from "../task-evidence-summary.js";
 import { emptyTaskRequestState, listTaskRequests } from "./task-requests.js";
 import { normalizeTaskStatus, taskLifecycleActions, taskRefreshMetadata, taskStatusInfo, taskStatusLabel, taskStatusTab } from "../../shared/task-lifecycle.js";
 import { formatTaskDeadline, formatTaskTimestamp } from "../../shared/task-time-format.js";
-
-const pointerEnvelopeKeys = new Set(["schema", "task_id", "tx_hash", "cid"]);
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -43,6 +49,10 @@ function titleCase(value = "") {
 
 function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function objectKeyCount(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).length : 0;
 }
 
 function relativeAge(value) {
@@ -176,333 +186,166 @@ function groupTasks(tasks) {
   return { outstanding, verification, refused, rewarded };
 }
 
-function schemaLabel(schema = "", payload = {}) {
-  const normalized = String(schema || "").trim();
-  const transition = safeText(payload.transition || payload.status, 80);
-  if (normalized === "pf.task.update.v1" && transition) {
-    return {
-      accepted: "Task accepted",
-      refused: "Task refused",
-      rejected: "Task rejected",
-      expired: "Task expired",
-      cancelled: "Task cancelled",
-      verification_requested: "Verification requested",
-    }[transition] || `Task update: ${titleCase(transition)}`;
-  }
-  return {
-    "pf.task.request.v1": "Task requested",
-    "pf.task.offer.v1": "Task offered",
-    "pf.task.acceptance.v1": "Task accepted",
-    "pf.task.refusal.v1": "Task refused",
-    "pf.task.submission.v1": "Evidence submitted",
-    "pf.task.verification_request.v1": "Verification requested",
-    "pf.task.verification_response.v1": "Verification response submitted",
-    "pf.reward.v1": "Reward paid",
-    "pf.task.reward_decision.v1": "Reward decision",
-    "pf.task.update.v1": "Task updated",
-  }[normalized] || titleCase(normalized.replace(/^pf\./, "") || "Task event");
-}
-
-function objectKeyCount(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).length : 0;
-}
-
-function bestPayload({ payloadJson = {}, pointerJson = {} } = {}) {
-  const direct = safeObject(payloadJson);
-  const pointerPayload = safeObject(pointerJson.payload);
-  return objectKeyCount(pointerPayload) > objectKeyCount(direct) ? pointerPayload : direct;
-}
-
-function bestPointer({ row = {}, pointerJson = {} } = {}) {
-  return {
-    kind: row.pointer_kind || pointerJson.pointer_kind || pointerJson.kind || pointerJson.pointer?.kind || "",
-    cid: row.source_cid || pointerJson.cid || pointerJson.pointer?.cid || "",
-    txHash: row.source_tx_hash || pointerJson.tx_hash || pointerJson.pointer?.tx_hash || "",
-    ledgerIndex:
-      row.ledger_index ??
-      pointerJson.ledger_index ??
-      pointerJson.ledgerIndex ??
-      pointerJson.pointer?.ledger_index ??
-      pointerJson.pointer?.ledgerIndex ??
-      null,
-    memoIndex:
-      row.memo_index ??
-      pointerJson.memo_index ??
-      pointerJson.memoIndex ??
-      pointerJson.pointer?.memo_index ??
-      pointerJson.pointer?.memoIndex ??
-      null,
-  };
-}
-
-function safeError(error) {
-  return safeText(error?.code || error?.message || error || "task_event_payload_error", 500);
-}
-
-function isPointerEnvelopePayload(payload = {}) {
-  const objectPayload = safeObject(payload);
-  const keys = Object.keys(objectPayload);
-  if (!keys.length) return false;
-  return keys.every((key) => pointerEnvelopeKeys.has(key));
-}
-
-function detailValue(value) {
-  if (value === undefined || value === null || value === "") return "";
-  if (typeof value === "string") return safeText(value, 12000);
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return safeText(JSON.stringify(value), 12000);
-}
-
-function addDetail(details, label, value) {
-  const rendered = detailValue(value);
-  if (!rendered) return;
-  details.push({ label, value: rendered });
-}
-
-function summarizeEvidenceRefs(refs = []) {
-  if (!Array.isArray(refs)) return "";
-  return refs
-    .map((ref, index) => {
-      const artifactType = safeText(ref?.artifact_type || ref?.type || "artifact", 80);
-      const cid = safeText(ref?.artifact_cid || ref?.cid || "", 180);
-      const digest = safeText(ref?.artifact_digest || ref?.digest || "", 220);
-      return [
-        `${Number(ref?.index || index + 1)}. ${artifactType}`,
-        cid ? `CID ${cid}` : "",
-        digest ? `Digest ${digest}` : "",
-      ].filter(Boolean).join(" - ");
-    })
-    .filter(Boolean)
-    .join("\n");
-}
-
-function summarizeProcessedArtifacts(artifacts = []) {
-  if (!Array.isArray(artifacts)) return "";
-  return artifacts
-    .map((artifact, index) => {
-      const source = safeObject(artifact?.source);
-      const sourceLabel = source.url || source.path || source.file_name || source.host || "";
-      return [
-        `${index + 1}. ${safeText(artifact?.artifact_type || artifact?.source_type || "artifact", 80)}`,
-        safeText(artifact?.status || "", 80),
-        safeText(sourceLabel, 260),
-        safeText(artifact?.excerpt || "", 360),
-      ].filter(Boolean).join(" - ");
-    })
-    .filter(Boolean)
-    .join("\n");
-}
-
-function payloadDetails(schema = "", payload = {}, pointer = {}) {
-  const details = [];
-  addDetail(details, "What happened", taskEventMeaning(schema, payload));
-  addDetail(details, "Task ID", payload.task_id || pointer.task_id);
-  addDetail(details, "Event ID", payload.event_id);
-  addDetail(details, "Request ID", payload.request_id);
-  addDetail(details, "Phase", payload.phase);
-  addDetail(details, "Transition", payload.transition || payload.status);
-  addDetail(details, "Status after", payload.status_after);
-  addDetail(details, "Title", payload.title);
-  addDetail(details, "Kind", payload.task_kind || payload.kind);
-  addDetail(details, "Reward offer", payload.reward_offer?.amount_estimate_pft || payload.reward_offer_pft);
-  addDetail(details, "Reward paid", payload.reward_pft || payload.reward_actual_pft || payload.score?.reward_pft);
-  addDetail(details, "Reward tier", payload.reward_tier || payload.score?.decision);
-  addDetail(details, "Reward score", payload.reward_score || payload.score?.completion);
-  addDetail(details, "Evidence quality", payload.score?.evidence_quality);
-  addDetail(details, "Reward summary", payload.reward_summary || payload.summary || payload.score?.user_feedback);
-  addDetail(details, "Reward reason", payload.score?.reason);
-  addDetail(details, "Submission type", payload.submission_requirement?.type || payload.submission_type);
-  addDetail(details, "Evidence type", payload.evidence_type || payload.artifact_type);
-  addDetail(details, "Evidence count", payload.evidence_count);
-  addDetail(details, "Evidence items", summarizeEvidenceItems(payload.evidence_items || payload.evidence?.evidence_items));
-  addDetail(details, "Verification type", payload.verification_policy?.verification_type || payload.verification_type || payload.verification_request?.verification_type);
-  addDetail(details, "Verification assessment", payload.verification_request?.assessment);
-  addDetail(details, "Verification ask", payload.verification_ask || payload.verification_request?.verification_ask);
-  addDetail(details, "Verification reason", payload.verification_request?.reason);
-  addDetail(details, "Response text", payload.response_text || payload.response);
-  addDetail(details, "Response CID", payload.response_cid || payload.verification_response_cid);
-  addDetail(details, "Submission CID", payload.submission_cid);
-  addDetail(details, "Evidence artifact CID", payload.artifact_cid);
-  addDetail(details, "Evidence artifact digest", payload.artifact_digest);
-  addDetail(details, "Evidence refs", summarizeEvidenceRefs(payload.evidence_refs));
-  addDetail(details, "Processed artifacts", summarizeProcessedArtifacts(payload.processed_evidence?.artifacts));
-  addDetail(details, "Reward pointer CID", payload.reward_pointer_cid);
-  addDetail(details, "Actor wallet", payload.actor_wallet);
-  addDetail(details, "Subject wallet", payload.subject_wallet);
-  addDetail(details, "Authority wallet", payload.authority_wallet);
-  addDetail(details, "Allocation wallet", payload.allocation_wallet);
-  addDetail(details, "Created at", formatTaskTimestamp(payload.created_at, { locale: "en-US" }));
-  addDetail(details, "Submitted at", formatTaskTimestamp(payload.submitted_at, { locale: "en-US" }));
-  addDetail(details, "Responded at", formatTaskTimestamp(payload.responded_at, { locale: "en-US" }));
-  addDetail(details, "Prompt version", payload.generation?.prompt_version);
-  addDetail(details, "Model", payload.generation?.model);
-  addDetail(details, "Provider", payload.generation?.provider);
-  addDetail(details, "Provider response", payload.generation?.provider_response_id);
-  addDetail(details, "Description", payload.description);
-  addDetail(details, "Submission requirement", payload.submission_requirement?.criteria || payload.submission_requirement?.description);
-  addDetail(details, "Verification criteria", payload.verification_policy?.criteria || payload.verification_criteria);
-  addDetail(details, "Schema", schema);
-  return details;
-}
-
-function appendDetail(event, label, value) {
-  return {
-    ...event,
-    details: [
-      ...(Array.isArray(event.details) ? event.details : []),
-      { label, value: detailValue(value) || "" },
-    ].filter((detail) => detail.value),
-  };
-}
-
-function publicCidEntries(cids = {}) {
-  return Object.entries(safeObject(cids))
-    .map(([label, cid]) => ({
-      label: titleCase(label),
-      cid: safeText(cid, 240),
-    }))
-    .filter((entry) => entry.cid);
-}
-
-function publicTransactionEntries(txs = {}) {
-  return Object.entries(safeObject(txs))
-    .map(([label, value]) => {
-      const tx = safeObject(value);
-      const txHash = typeof value === "string" ? value : tx.tx_hash || tx.hash || tx.transaction_hash;
-      return {
-        label: titleCase(label),
-        txHash: safeText(txHash, 240),
-        ledgerIndex: tx.ledger_index || tx.ledgerIndex || null,
-      };
-    })
-    .filter((entry) => entry.txHash);
-}
-
-function dedupeAuditEntries(entries = [], valueKey = "value") {
-  const seen = new Set();
-  const output = [];
-  for (const entry of entries) {
-    const value = safeText(entry?.[valueKey], 300);
-    if (!value) continue;
-    const key = value.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    output.push(entry);
-  }
-  return output;
-}
-
-function eventCidEntries(events = []) {
-  return events
-    .map((event) => ({
-      label: `${event.label || "Event"} CID`,
-      cid: event.cid,
-    }))
-    .filter((entry) => entry.cid);
-}
-
-function eventTransactionEntries(events = []) {
-  return events
-    .map((event) => ({
-      label: `${event.label || "Event"} TX`,
-      txHash: event.txHash,
-      ledgerIndex: event.ledgerIndex ?? null,
-      memoIndex: event.memoIndex ?? null,
-    }))
-    .filter((entry) => entry.txHash);
-}
-
-function publicPointerEvent(row, index = 0) {
-  const pointerJson = safeObject(row.pointer_json);
-  const payload = bestPayload({ payloadJson: row.payload_json, pointerJson });
-  const pointer = bestPointer({ row, pointerJson });
-  const schema = safeText(row.event_schema || pointerJson.schema || payload.schema, 120);
-  return {
-    id: row.id || `event_${index + 1}`,
-    index: Number(pointer.memoIndex ?? index),
-    label: schemaLabel(schema, payload),
-    schema,
-    pointerKind: safeText(pointer.kind, 120),
-    txHash: safeText(pointer.txHash || payload.tx_hash, 240),
-    cid: safeText(pointer.cid || payload.cid, 240),
-    ledgerIndex: pointer.ledgerIndex,
-    memoIndex: pointer.memoIndex,
-    eventDigest: safeText(row.event_digest || pointerJson.event_digest || "", 240),
-    details: payloadDetails(schema, payload, pointerJson.pointer || pointerJson),
-    rawPayload: payload,
-    pointer,
-    source: row.source || "",
-    observedAt: toIso(row.observed_at),
-  };
-}
-
-function publicReducerEvent(row, index = 0) {
-  const pointerJson = safeObject(row.pointer_json);
-  const payload = bestPayload({ payloadJson: row.payload_json, pointerJson });
-  const pointer = bestPointer({
-    row: {
-      ...row,
-      source_tx_hash: row.source_tx_hash || row.tx_hash,
-      source_cid: row.source_cid || row.cid,
-      memo_index: row.memo_index,
-    },
-    pointerJson,
-  });
-  const schema = safeText(row.event_type || pointerJson.schema || payload.schema, 120);
-  return {
-    id: row.id || `reducer_event_${index + 1}`,
-    index,
-    label: schemaLabel(schema, payload),
-    schema,
-    pointerKind: safeText(pointer.kind, 120),
-    txHash: safeText(pointer.txHash || payload.tx_hash, 240),
-    cid: safeText(pointer.cid || payload.cid, 240),
-    ledgerIndex: pointer.ledgerIndex,
-    memoIndex: pointer.memoIndex,
-    eventDigest: safeText(row.event_digest || pointerJson.event_digest || "", 240),
-    details: payloadDetails(schema, payload, pointerJson.pointer || pointerJson),
-    rawPayload: payload,
-    pointer,
-    observedAt: toIso(row.occurred_at),
-  };
-}
-
-async function hydrateForensicsEvent(event = {}) {
-  const cid = safeText(event.cid, 240);
-  const rawPayload = safeObject(event.rawPayload);
-  if (!cid || !isPointerEnvelopePayload(rawPayload)) return event;
-  try {
-    const result = await fetchAndDecryptTasknodePayload({ cid });
-    const hydratedPayload = safeObject(result.payload);
-    const hydratedTaskId = safeText(hydratedPayload.task_id, 180);
-    const eventTaskId = safeText(rawPayload.task_id || event.pointer?.task_id, 180);
-    if (hydratedTaskId && eventTaskId && hydratedTaskId !== eventTaskId) {
-      return appendDetail(event, "Payload content", "Encrypted IPFS payload belongs to a different task ID.");
-    }
-    const schema = safeText(hydratedPayload.schema || event.schema || rawPayload.schema, 120);
-    return {
-      ...event,
-      label: schemaLabel(schema, hydratedPayload),
-      schema,
-      details: payloadDetails(schema, hydratedPayload, event.pointer || {}),
-      rawPayload: hydratedPayload,
-      payloadHydration: {
-        status: "hydrated",
-        cid: result.cid || cid,
-        gateway: result.gateway || "",
-      },
-    };
-  } catch (error) {
-    return appendDetail(
-      event,
-      "Payload content",
-      `Encrypted IPFS payload could not be read by this service: ${safeError(error)}`
-    );
-  }
-}
-
 function taskActionState(status = "") {
   return taskLifecycleActions(status);
+}
+
+function latestPointerSortValue(row = {}) {
+  return [
+    Number(row.ledger_index || 0),
+    Date.parse(row.close_time || "") || 0,
+    String(row.tx_hash || ""),
+    Number(row.memo_index || 0),
+  ].join(":");
+}
+
+function isProjectionBehindCachedPointer(row = {}, latest = {}) {
+  if (!latest?.tx_hash && !latest?.cid) return false;
+  const projectionTx = safeText(row.last_event_tx_hash, 240);
+  const projectionCid = safeText(row.last_event_cid, 240);
+  const cachedTx = safeText(latest.tx_hash, 240);
+  const cachedCid = safeText(latest.cid, 240);
+  if (cachedTx && projectionTx && cachedTx === projectionTx) return false;
+  if (cachedCid && projectionCid && cachedCid === projectionCid) return false;
+  return Boolean(cachedTx || cachedCid);
+}
+
+async function taskReadIntegrityByTaskId({ taskIds = [], accountId = "", walletAddress = "" } = {}) {
+  const ids = [...new Set((Array.isArray(taskIds) ? taskIds : []).map((id) => safeText(id, 180)).filter(Boolean))];
+  if (!ids.length || !databaseEnabled()) {
+    return {
+      byTaskId: new Map(),
+      totals: {
+        pendingReducerCount: 0,
+        processingReducerCount: 0,
+        failedReducerCount: 0,
+        indexingLagCount: 0,
+      },
+    };
+  }
+
+  const [reducerResult, cachedPointerResult] = await Promise.all([
+    query(
+      `
+        SELECT
+          task_id,
+          count(*) FILTER (WHERE status = 'pending')::int AS pending_count,
+          count(*) FILTER (WHERE status = 'processing')::int AS processing_count,
+          count(*) FILTER (WHERE status = 'failed')::int AS failed_count,
+          max(updated_at) AS latest_reducer_updated_at,
+          max(processed_at) AS latest_reducer_processed_at
+        FROM pftl_cache_reducer_events
+        WHERE task_id = ANY($1::text[])
+          AND ($2::text = '' OR account_id = $2)
+        GROUP BY task_id
+      `,
+      [ids, accountId || ""]
+    ),
+    query(
+      `
+        SELECT DISTINCT ON (task_id)
+          task_id,
+          tx_hash,
+          cid,
+          pointer_kind,
+          ledger_index,
+          close_time,
+          memo_index,
+          wallet_address,
+          account_id
+        FROM (
+          SELECT
+            COALESCE(NULLIF(po.task_id, ''), NULLIF(pm.task_id, '')) AS task_id,
+            pm.tx_hash,
+            pm.cid,
+            pm.pointer_kind,
+            pm.memo_index,
+            t.ledger_index,
+            t.close_time,
+            po.wallet_address,
+            po.account_id
+          FROM pftl_pointer_memos pm
+          JOIN pftl_pointer_observations po
+            ON po.tx_hash = pm.tx_hash
+           AND po.memo_index = pm.memo_index
+          LEFT JOIN pftl_transactions t ON t.tx_hash = pm.tx_hash
+          WHERE COALESCE(NULLIF(po.task_id, ''), NULLIF(pm.task_id, '')) = ANY($1::text[])
+            AND pm.cid IS NOT NULL
+            AND pm.decode_error IS NULL
+            AND pm.pointer_kind IN ('TASK', 'TASK_UPDATE', 'TASK_SUBMISSION', 'REWARD')
+            AND (
+              ($2::text <> '' AND po.account_id = $2)
+              OR ($2::text = '' AND po.wallet_address = $3)
+            )
+        ) scoped
+        WHERE task_id IS NOT NULL
+        ORDER BY
+          task_id,
+          ledger_index DESC NULLS LAST,
+          close_time DESC NULLS LAST,
+          tx_hash DESC,
+          memo_index DESC
+      `,
+      [ids, accountId || "", walletAddress || ""]
+    ),
+  ]);
+
+  const byTaskId = new Map();
+  for (const id of ids) {
+    byTaskId.set(id, {
+      pendingReducerCount: 0,
+      processingReducerCount: 0,
+      failedReducerCount: 0,
+      latestCachedPointer: null,
+      projectionBehindCachedPointer: false,
+    });
+  }
+
+  for (const row of reducerResult.rows) {
+    const taskId = safeText(row.task_id, 180);
+    const existing = byTaskId.get(taskId) || {};
+    byTaskId.set(taskId, {
+      ...existing,
+      pendingReducerCount: Number(row.pending_count || 0),
+      processingReducerCount: Number(row.processing_count || 0),
+      failedReducerCount: Number(row.failed_count || 0),
+      latestReducerUpdatedAt: toIso(row.latest_reducer_updated_at),
+      latestReducerProcessedAt: toIso(row.latest_reducer_processed_at),
+    });
+  }
+
+  for (const row of cachedPointerResult.rows) {
+    const taskId = safeText(row.task_id, 180);
+    const existing = byTaskId.get(taskId) || {};
+    byTaskId.set(taskId, {
+      ...existing,
+      latestCachedPointer: {
+        txHash: safeText(row.tx_hash, 240),
+        cid: safeText(row.cid, 240),
+        pointerKind: safeText(row.pointer_kind, 120),
+        ledgerIndex: row.ledger_index ?? null,
+        closeTime: toIso(row.close_time),
+        memoIndex: row.memo_index ?? null,
+        walletAddress: safeText(row.wallet_address, 180),
+        accountId: safeText(row.account_id, 180),
+        sortValue: latestPointerSortValue(row),
+      },
+    });
+  }
+
+  const totals = {
+    pendingReducerCount: 0,
+    processingReducerCount: 0,
+    failedReducerCount: 0,
+    indexingLagCount: 0,
+  };
+  for (const item of byTaskId.values()) {
+    totals.pendingReducerCount += Number(item.pendingReducerCount || 0);
+    totals.processingReducerCount += Number(item.processingReducerCount || 0);
+    totals.failedReducerCount += Number(item.failedReducerCount || 0);
+  }
+
+  return { byTaskId, totals };
 }
 
 export async function listTaskState({ accountId = "", walletAddress = "" } = {}) {
@@ -545,9 +388,34 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
     `,
     [walletAddress, accountId || ""]
   );
-  const taskItems = result.rows.map(publicTask);
-  const grouped = groupTasks(taskItems);
   const rows = result.rows;
+  const integrity = await taskReadIntegrityByTaskId({
+    taskIds: rows.map((row) => row.task_id),
+    accountId,
+    walletAddress,
+  });
+  const taskItems = rows.map((row) => {
+    const task = publicTask(row);
+    const taskIntegrity = integrity.byTaskId.get(row.task_id) || {};
+    const projectionBehindCachedPointer = isProjectionBehindCachedPointer(
+      row,
+      taskIntegrity.latestCachedPointer
+        ? {
+          tx_hash: taskIntegrity.latestCachedPointer.txHash,
+          cid: taskIntegrity.latestCachedPointer.cid,
+        }
+        : {}
+    );
+    if (projectionBehindCachedPointer) integrity.totals.indexingLagCount += 1;
+    return {
+      ...task,
+      integrity: {
+        ...taskIntegrity,
+        projectionBehindCachedPointer,
+      },
+    };
+  });
+  const grouped = groupTasks(taskItems);
   const lastSyncedAt = rows[0]?.updated_at ? toIso(rows[0].updated_at) : null;
   const refresh = taskRefreshMetadata({
     tasks: taskItems,
@@ -562,10 +430,20 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
     ...grouped,
     sync: {
       source: "task_projections",
-      status: rows.length > 0 ? "ready" : "empty",
+      status: integrity.totals.indexingLagCount > 0
+        ? "indexing_lag"
+        : integrity.totals.failedReducerCount > 0
+          ? "reducer_attention"
+          : rows.length > 0
+            ? "ready"
+            : "empty",
       walletAddress,
       projectionCount: rows.length,
       lastSyncedAt,
+      pendingReducerCount: integrity.totals.pendingReducerCount,
+      processingReducerCount: integrity.totals.processingReducerCount,
+      failedReducerCount: integrity.totals.failedReducerCount,
+      indexingLagCount: integrity.totals.indexingLagCount,
       ...refresh,
     },
   };
@@ -595,7 +473,7 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
   const row = taskResult.rows[0];
   if (!row) return null;
 
-  const [pointerResult, reducerResult] = await Promise.all([
+  const [pointerResult, reducerResult, reducerHealthResult, cachedPointerResult] = await Promise.all([
     query(
       `
         SELECT *
@@ -620,6 +498,80 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
       `,
       [normalizedTaskId, walletAddress, accountId || ""]
     ),
+    query(
+      `
+        SELECT
+          count(*) FILTER (WHERE status = 'pending')::int AS pending_count,
+          count(*) FILTER (WHERE status = 'processing')::int AS processing_count,
+          count(*) FILTER (WHERE status = 'failed')::int AS failed_count,
+          max(updated_at) AS latest_reducer_updated_at,
+          max(processed_at) AS latest_reducer_processed_at,
+          jsonb_agg(
+            jsonb_build_object(
+              'id', id,
+              'status', status,
+              'walletAddress', wallet_address,
+              'txHash', tx_hash,
+              'cid', cid,
+              'lastError', last_error,
+              'updatedAt', updated_at
+            )
+            ORDER BY updated_at DESC, id DESC
+          ) FILTER (WHERE status = 'failed') AS failed_examples
+        FROM pftl_cache_reducer_events
+        WHERE task_id = $1
+          AND ($2::text = '' OR account_id = $2)
+      `,
+      [normalizedTaskId, accountId || ""]
+    ),
+    query(
+      `
+        SELECT DISTINCT ON (task_id)
+          task_id,
+          tx_hash,
+          cid,
+          pointer_kind,
+          ledger_index,
+          close_time,
+          memo_index,
+          wallet_address,
+          account_id
+        FROM (
+          SELECT
+            COALESCE(NULLIF(po.task_id, ''), NULLIF(pm.task_id, '')) AS task_id,
+            pm.tx_hash,
+            pm.cid,
+            pm.pointer_kind,
+            pm.memo_index,
+            t.ledger_index,
+            t.close_time,
+            po.wallet_address,
+            po.account_id
+          FROM pftl_pointer_memos pm
+          JOIN pftl_pointer_observations po
+            ON po.tx_hash = pm.tx_hash
+           AND po.memo_index = pm.memo_index
+          LEFT JOIN pftl_transactions t ON t.tx_hash = pm.tx_hash
+          WHERE COALESCE(NULLIF(po.task_id, ''), NULLIF(pm.task_id, '')) = $1
+            AND pm.cid IS NOT NULL
+            AND pm.decode_error IS NULL
+            AND pm.pointer_kind IN ('TASK', 'TASK_UPDATE', 'TASK_SUBMISSION', 'REWARD')
+            AND (
+              ($2::text <> '' AND po.account_id = $2)
+              OR ($2::text = '' AND po.wallet_address = $3)
+            )
+        ) scoped
+        WHERE task_id IS NOT NULL
+        ORDER BY
+          task_id,
+          ledger_index DESC NULLS LAST,
+          close_time DESC NULLS LAST,
+          tx_hash DESC,
+          memo_index DESC
+        LIMIT 1
+      `,
+      [normalizedTaskId, accountId || "", walletAddress || ""]
+    ),
   ]);
 
   const metadata = safeObject(row.metadata_json);
@@ -643,6 +595,9 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
     ...eventTransactionEntries(timeline),
   ], "txHash");
   const expectedEventCount = Number(row.event_count || 0);
+  const reducerHealth = reducerHealthResult.rows[0] || {};
+  const cachedPointer = cachedPointerResult.rows[0] || {};
+  const projectionBehindCachedPointer = isProjectionBehindCachedPointer(row, cachedPointer);
 
   return {
     ok: true,
@@ -679,6 +634,31 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
         reducerEventCount: reducerTimeline.length,
         renderedEventCount: timeline.length,
         missingTimelineRows: expectedEventCount > 0 && timeline.length === 0,
+        pendingReducerCount: Number(reducerHealth.pending_count || 0),
+        processingReducerCount: Number(reducerHealth.processing_count || 0),
+        failedReducerCount: Number(reducerHealth.failed_count || 0),
+        failedReducerExamples: Array.isArray(reducerHealth.failed_examples) ? reducerHealth.failed_examples : [],
+        latestReducerUpdatedAt: toIso(reducerHealth.latest_reducer_updated_at),
+        latestReducerProcessedAt: toIso(reducerHealth.latest_reducer_processed_at),
+        latestCachedPointer: cachedPointer.tx_hash || cachedPointer.cid
+          ? {
+            txHash: safeText(cachedPointer.tx_hash, 240),
+            cid: safeText(cachedPointer.cid, 240),
+            pointerKind: safeText(cachedPointer.pointer_kind, 120),
+            ledgerIndex: cachedPointer.ledger_index ?? null,
+            closeTime: toIso(cachedPointer.close_time),
+            memoIndex: cachedPointer.memo_index ?? null,
+            walletAddress: safeText(cachedPointer.wallet_address, 180),
+            accountId: safeText(cachedPointer.account_id, 180),
+          }
+          : null,
+        projectionBehindCachedPointer,
+        projectionLastEvent: {
+          txHash: safeText(row.last_event_tx_hash, 240),
+          cid: safeText(row.last_event_cid, 240),
+          status: safeText(row.status, 80),
+          eventCount: expectedEventCount,
+        },
       },
     },
     sync: {

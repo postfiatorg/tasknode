@@ -189,6 +189,81 @@ function applyLastLedgerBuffer(txJson, validatedLedgerSeq) {
   if (!Number.isFinite(current) || current < minimum) txJson.LastLedgerSequence = minimum;
 }
 
+function normalizeTokenIdValue(value) {
+  const text = String(value || "").trim();
+  return /^[A-Fa-f0-9]{32,256}$/.test(text) ? text.toUpperCase() : "";
+}
+
+function decodeHexToUtf8(value) {
+  const text = String(value || "").trim();
+  if (!text || text.length % 2 !== 0 || !/^[A-Fa-f0-9]+$/.test(text)) return "";
+  try {
+    return Buffer.from(text, "hex").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+function extractMintTokenIdFromMeta(meta) {
+  const directTokenId = normalizeTokenIdValue(meta?.nftoken_id || meta?.NFTokenID);
+  if (directTokenId) return directTokenId;
+
+  const affectedNodes = Array.isArray(meta?.AffectedNodes) ? meta.AffectedNodes : [];
+  for (const entry of affectedNodes) {
+    const node = entry?.CreatedNode || entry?.ModifiedNode || entry?.DeletedNode || null;
+    if (!node || node.LedgerEntryType !== "NFTokenPage") continue;
+    const fieldSets = [node.NewFields, node.FinalFields, node.PreviousFields];
+    for (const fields of fieldSets) {
+      const tokens = Array.isArray(fields?.NFTokens) ? fields.NFTokens : [];
+      for (const tokenEntry of tokens) {
+        const token = tokenEntry?.NFToken || tokenEntry || null;
+        const tokenId = normalizeTokenIdValue(token?.NFTokenID || token?.nftoken_id);
+        if (tokenId) return tokenId;
+      }
+    }
+  }
+  return "";
+}
+
+async function resolveMintTokenIdByAccountNfts({ client, walletAddress = "", expectedUriHex = "", maxPages = 8 } = {}) {
+  const account = String(walletAddress || "").trim();
+  const uriHex = String(expectedUriHex || "").trim().toUpperCase();
+  const expectedUri = decodeHexToUtf8(uriHex).trim().toLowerCase();
+  if (!account || !expectedUri) return "";
+
+  let marker;
+  for (let page = 0; page < maxPages; page += 1) {
+    const request = {
+      command: "account_nfts",
+      account,
+      ledger_index: "validated",
+      limit: 400,
+    };
+    if (marker) request.marker = marker;
+    const response = await client.request(request);
+    const nfts = Array.isArray(response?.result?.account_nfts) ? response.result.account_nfts : [];
+    for (const nft of nfts) {
+      const nftUri = decodeHexToUtf8(nft?.URI || "").trim().toLowerCase();
+      if (nftUri !== expectedUri) continue;
+      const tokenId = normalizeTokenIdValue(nft?.NFTokenID || nft?.nftoken_id);
+      if (tokenId) return tokenId;
+    }
+    marker = response?.result?.marker;
+    if (!marker) break;
+  }
+  return "";
+}
+
+export function pftUriToHex(uri = "") {
+  const text = String(uri || "").trim();
+  if (!text) {
+    const error = new Error("nft_uri_required");
+    error.status = 400;
+    throw error;
+  }
+  return Buffer.from(text, "utf8").toString("hex").toUpperCase();
+}
+
 function faucetSeed(env = process.env) {
   return String(env.TASKNODE_PFT_FAUCET_SEED || env.FAUCET_SEED || "").trim();
 }
@@ -318,6 +393,78 @@ export async function preparePftPointerTransaction({
   }
 }
 
+export async function preparePftNftMintTransaction({
+  account,
+  uriHex,
+  flags = 9,
+  taxon = 0,
+  transferFee = 0,
+  env = process.env,
+} = {}) {
+  const source = String(account || "").trim();
+  if (!isValidClassicAddress(source)) {
+    const error = new Error("source_wallet_invalid");
+    error.status = 400;
+    throw error;
+  }
+
+  const normalizedUriHex = String(uriHex || "").trim().toUpperCase();
+  if (!normalizedUriHex || normalizedUriHex.length % 2 !== 0 || !/^[A-F0-9]+$/.test(normalizedUriHex)) {
+    const error = new Error("nft_uri_hex_invalid");
+    error.status = 400;
+    throw error;
+  }
+
+  const networkId = configuredNetworkId(env);
+  const timeoutMs = Math.max(3000, Number(env.PFTL_SUBMIT_TIMEOUT_MS || DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
+  const { client, endpoint } = await connectPftlClient({ env, timeoutMs });
+
+  try {
+    const mintTx = applyNetworkId({
+      TransactionType: "NFTokenMint",
+      Account: source,
+      URI: normalizedUriHex,
+      Flags: Number(flags || 0),
+      NFTokenTaxon: Number(taxon || 0),
+      TransferFee: Number(transferFee || 0),
+    }, networkId);
+
+    let prepared;
+    try {
+      prepared = applyNetworkId(await client.autofill(mintTx), networkId);
+    } catch (error) {
+      if (sourceWalletUnfunded(error)) {
+        const wrapped = new Error("Active wallet is not activated on PFTL.");
+        wrapped.status = 400;
+        wrapped.code = "source_wallet_unfunded";
+        throw wrapped;
+      }
+      throw error;
+    }
+
+    const [accountInfo, serverInfo] = await Promise.all([
+      client.request({ command: "account_info", account: source, ledger_index: "validated" }),
+      client.request({ command: "server_info" }),
+    ]);
+    applyLastLedgerBuffer(prepared, serverInfo?.result?.info?.validated_ledger?.seq);
+
+    return {
+      txJson: prepared,
+      fromAddress: source,
+      feeDrops: prepared?.Fee || "0",
+      balanceDrops: accountInfo?.result?.account_data?.Balance || "0",
+      endpoint,
+      networkId,
+    };
+  } finally {
+    try {
+      if (client.isConnected()) await client.disconnect();
+    } catch {
+      // Disconnect errors are non-actionable after prepare.
+    }
+  }
+}
+
 export async function submitSignedPftTransaction({
   signedTxBlob,
   expectedAccount = "",
@@ -379,6 +526,94 @@ export async function submitSignedPftTransaction({
       networkId,
       account,
       destination: decoded.Destination || null,
+    };
+  } finally {
+    try {
+      if (client.isConnected()) await client.disconnect();
+    } catch {
+      // Keep the submit result/error as the actionable outcome.
+    }
+  }
+}
+
+export async function submitSignedPftNftMintTransaction({
+  signedTxBlob,
+  expectedAccount = "",
+  expectedUriHex = "",
+  env = process.env,
+} = {}) {
+  const blob = String(signedTxBlob || "").trim();
+  if (!/^[A-Fa-f0-9]+$/.test(blob)) {
+    const error = new Error("signed_transaction_blob_invalid");
+    error.status = 400;
+    throw error;
+  }
+
+  let decoded;
+  try {
+    decoded = decode(blob);
+  } catch {
+    const error = new Error("signed_transaction_blob_invalid");
+    error.status = 400;
+    throw error;
+  }
+
+  const networkId = configuredNetworkId(env);
+  if (!txNetworkIdValid(decoded, networkId)) {
+    const error = new Error(`Signed transaction must include NetworkID ${networkId}.`);
+    error.status = 400;
+    throw error;
+  }
+
+  const account = String(decoded?.Account || "").trim();
+  if (!account || (expectedAccount && account !== expectedAccount)) {
+    const error = new Error("Signed transaction does not match the linked wallet.");
+    error.status = 400;
+    throw error;
+  }
+  if (decoded?.TransactionType !== "NFTokenMint") {
+    const error = new Error("Only PFTL NFT mint transactions can be submitted here.");
+    error.status = 400;
+    throw error;
+  }
+
+  const normalizedExpectedUriHex = String(expectedUriHex || "").trim().toUpperCase();
+  if (normalizedExpectedUriHex && String(decoded.URI || "").trim().toUpperCase() !== normalizedExpectedUriHex) {
+    const error = new Error("Signed transaction URI does not match the prepared NFT metadata.");
+    error.status = 400;
+    throw error;
+  }
+
+  const timeoutMs = Math.max(3000, Number(env.PFTL_SUBMIT_TIMEOUT_MS || DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
+  const { client, endpoint } = await connectPftlClient({ env, timeoutMs });
+  try {
+    const result = await client.submitAndWait(blob);
+    const engineResult = result?.result?.meta?.TransactionResult || result?.result?.engine_result || "";
+    if (engineResult && engineResult !== "tesSUCCESS") {
+      const error = new Error(describeEngineResult(engineResult));
+      error.status = 400;
+      error.engineResult = engineResult;
+      throw error;
+    }
+
+    const txHash = result?.result?.hash || result?.result?.tx_json?.hash || null;
+    const nftTokenId =
+      extractMintTokenIdFromMeta(result?.result?.meta) ||
+      await resolveMintTokenIdByAccountNfts({
+        client,
+        walletAddress: account,
+        expectedUriHex: decoded.URI,
+      });
+
+    return {
+      ok: true,
+      txHash,
+      nftTokenId,
+      engineResult: engineResult || null,
+      ledgerIndex: result?.result?.ledger_index || result?.result?.ledgerIndex || null,
+      endpoint,
+      networkId,
+      account,
     };
   } finally {
     try {

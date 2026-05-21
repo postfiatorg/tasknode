@@ -12,3 +12,4 @@ github_local_auth.txt
 env_dump.txt
 node_modules/
 dist/
+private_prompts/

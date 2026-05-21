@@ -1748,6 +1748,14 @@ function activeWalletAccountsForAddress(address = "", exceptAccountId = "") {
   });
 }
 
+export function accountWalletCloudFacts({ accountId = "" } = {}) {
+  const normalizedAccountId = accountId ? safeId(accountId, "account") : "";
+  return {
+    accountId: normalizedAccountId, activeWallet: normalizedAccountId ? state.accountWallets[normalizedAccountId] || null : null, activeWallets: state.accountWallets || {},
+    authEvents: (state.authEvents || []).filter((event) => event?.accountId === normalizedAccountId && String(event.eventType || "").startsWith("wallet_")),
+  };
+}
+
 export function linkWalletToAccount({
   accountId = "",
   address = "",

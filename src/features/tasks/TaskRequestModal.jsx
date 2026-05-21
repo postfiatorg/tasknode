@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Check, X } from "lucide-react";
 import { newClientConversationId, newClientCorrelationId } from "../chat/chat-turns";
 import { publishTaskRequest, taskRequestCanonicalText } from "./task-request-actions.js";
+import { evaluateTaskRequestUnlockPolicy, TASK_REQUEST_UNLOCK_STATES } from "./task-request-unlock-policy.js";
 import "./task-request.css";
 
 export function TaskRequestModal({
@@ -11,28 +12,25 @@ export function TaskRequestModal({
   onRecorded,
   onWalletUnlock,
   walletSecret = null,
+  walletUnlockPending = false,
   walletVault = {},
 }) {
   const [detailText, setDetailText] = useState("");
   const [status, setStatus] = useState({ error: "", pending: false, success: "" });
   const [focused, setFocused] = useState(false);
   const textareaRef = useRef(null);
-  const vaultUnlocked = Boolean(
-    walletVault?.unlocked &&
-      walletVault?.address &&
-      linkedWalletAddress &&
-      walletVault.address === linkedWalletAddress
-  );
-  const walletReady = Boolean(accountId && linkedWalletAddress && walletSecret?.mnemonic && vaultUnlocked);
-  const vaultAvailable = Boolean(
-    walletVault?.available &&
-      walletVault?.address &&
-      linkedWalletAddress &&
-      walletVault.address === linkedWalletAddress
-  );
+  const unlockPolicy = evaluateTaskRequestUnlockPolicy({
+    accountId,
+    linkedWalletAddress,
+    walletSecret,
+    walletVault,
+    unlockPending: walletUnlockPending,
+  });
+  const walletReady = unlockPolicy.allowed;
   const canSubmit = Boolean(detailText.trim()) && !status.pending && walletReady;
-  const walletLocked = Boolean(linkedWalletAddress && vaultAvailable && !walletReady);
-  const vaultMissing = Boolean(linkedWalletAddress && !vaultAvailable);
+  const walletLocked = unlockPolicy.state === TASK_REQUEST_UNLOCK_STATES.LOCKED;
+  const vaultMissing = unlockPolicy.state === TASK_REQUEST_UNLOCK_STATES.NEEDS_LOCAL_VAULT;
+  const unlockPending = unlockPolicy.state === TASK_REQUEST_UNLOCK_STATES.UNLOCK_PENDING;
 
   useEffect(() => {
     if (walletReady) textareaRef.current?.focus();
@@ -49,18 +47,10 @@ export function TaskRequestModal({
     event.preventDefault();
     const userDetailText = detailText.trim();
     if (!userDetailText || status.pending) return;
-    if (!accountId || !linkedWalletAddress) {
-      setStatus({
-        error: "Link a PFT wallet before requesting a task.",
-        pending: false,
-        success: "",
-      });
-      return;
-    }
     if (!walletReady) {
-      onWalletUnlock?.();
+      if (["unlock", "open_wallet"].includes(unlockPolicy.action)) onWalletUnlock?.();
       setStatus({
-        error: "Unlock the linked wallet, then publish the request.",
+        error: unlockPolicy.message,
         pending: false,
         success: "",
       });
@@ -108,7 +98,11 @@ export function TaskRequestModal({
     onWalletUnlock?.();
   };
 
-  const primaryAction = walletLocked ? (
+  const primaryAction = unlockPending ? (
+    <button className="task-request-primary" disabled type="button">
+      Unlock pending
+    </button>
+  ) : walletLocked ? (
     <button className="task-request-primary" disabled={status.pending} onClick={openUnlock} type="button">
       Unlock wallet
     </button>
@@ -142,6 +136,9 @@ export function TaskRequestModal({
             )}
             {walletLocked && (
               <p className="task-request-wallet-note">Unlock your wallet to sign the request.</p>
+            )}
+            {unlockPending && (
+              <p className="task-request-wallet-note">Finish the wallet unlock modal to continue.</p>
             )}
           </div>
           <button aria-label="Close" className="task-request-close" onClick={onClose} type="button">
