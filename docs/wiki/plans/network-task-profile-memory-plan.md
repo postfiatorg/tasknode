@@ -6,7 +6,7 @@ Objective: add an auditable Memory feature that turns a member's current context
 
 Implemented v1 surfaces:
 
-- `src/features/memory/MemoryView.jsx` renders Generated Network Task Profile and Network Context Inputs above Deep Memory.
+- `src/features/memory/MemoryView.jsx` renders a single Network Diagnostic Report card that combines the generated Network Task Profile with live Network Context Inputs above Deep Memory.
 - `GET /api/memory/network-task-profile` returns Network Context Inputs, latest generated profile, current job state, and the auditable source packet.
 - `POST /api/memory/network-task-profile` requests a refresh without blocking page rendering.
 - `server/repositories/network-task-profile.js` builds the source packet from context, deep memory, profile snapshot input, public profile snapshot, and task projections.
@@ -17,16 +17,17 @@ This is not a public profile and not a social feed. It is a user-visible operati
 
 ## Product Shape
 
-The Memory page should gain a `Network Task Profile` section near Deep Memory.
+The Memory page has a `Network Diagnostic Report` section near Deep Memory.
 
-The section has two different freshness models:
+The section combines two different freshness models:
 
-1. `Network Context Inputs`: real-time public profile facts plus routable task projection state.
-2. `Generated Network Task Profile`: LLM-generated diagnostic report refreshed asynchronously, normally once every 24 hours or on manual refresh.
+1. `Generated Network Task Profile`: LLM-generated diagnostic report refreshed asynchronously, normally once every 24 hours or on manual refresh.
+2. `Network Context Inputs`: real-time public profile facts plus routable task projection state.
 
-The generated profile card should show:
+The report card shows:
 
 - the latest generated Network Task Profile;
+- live Network Context Inputs directly underneath the generated report;
 - when it was generated;
 - the model/provider used;
 - the packet digest and prompt digest;
@@ -224,26 +225,26 @@ Debounce:
 
 ## UX In Memory
 
-Memory should show four layers:
+Memory should show three layers:
 
-1. `Generated Network Task Profile`: async LLM-generated routing profile and source packet audit.
-2. `Network Context Inputs`: real-time profile plus task state from projections.
-3. `Deep Memory`: last 3 deep memory bundles.
-4. `Recent Memory`: last 36 memory summaries.
+1. `Network Diagnostic Report`: generated profile plus live Network Context Inputs and source packet audit.
+2. `Deep Memory`: last 3 deep memory bundles.
+3. `Recent Memory`: last 36 memory summaries.
 
-The Network Task Profile card should include:
+The Network Diagnostic Report card should include:
 
 - title;
 - current focus bullets;
 - primary contribution ability bullets;
 - domain expertise bullets linked to 5 to 10 public companies;
+- Network Context Inputs in a readable live evidence panel;
 - generated timestamp;
 - `View source packet`;
 - `Refresh`.
 
 The source packet view should be readable text, not only JSON. Users need to see exactly what the model saw.
 
-Network Context Inputs should be readable without opening the Profile or Tasks pages. They should be less detailed than Forensics and more compact than task cards.
+Network Context Inputs should be readable inside the same report without opening the Profile or Tasks pages. They should be less detailed than Forensics and more compact than task cards.
 
 ## Prompt Contract
 

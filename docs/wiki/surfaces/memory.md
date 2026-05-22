@@ -8,9 +8,9 @@ Memory is lightweight compression of user and assistant interactions. It helps f
 2. The app returns the response immediately.
 3. A background worker summarizes the user request and assistant response.
 4. Every 36 memory rows, a deep memory job snapshots the exact 36 source memory row IDs and compresses those summaries into broader user, assistant, and memory bullets.
-5. The Memory page renders Network Context Inputs directly from profile/task projections.
-6. A separate async Network Task Profile job can summarize the source packet for future network task routing.
-7. The Memory page lets the user inspect what the system remembers and what the routing profile saw.
+5. The Memory page renders a Network Diagnostic Report that combines the generated Network Task Profile with live Network Context Inputs from profile/task projections.
+6. The async Network Task Profile job summarizes the source packet for future network task routing, while live inputs continue to refresh independently.
+7. The Memory page lets the user inspect what the system remembers, what the generated report says, and what inputs the report is built from.
 
 ## Technical Architecture
 
@@ -24,10 +24,12 @@ Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. T
 
 ## Network Task Profile
 
-The Memory page now has two task-routing layers:
+The Memory page shows one task-routing report with two layers:
 
 - Generated Network Task Profile: an async LLM-generated diagnostic report stored in `network_task_profiles`.
 - Network Context Inputs: real-time public profile facts plus current task projection text.
+
+In the UI, these are concatenated in the same Network Diagnostic Report card. The generated report appears first because it is the human-readable interpretation. Network Context Inputs appear immediately underneath as the live evidence block, so the user can compare the model summary with the current profile/task state without opening a second section.
 
 The task state block inside Network Context Inputs is grouped as Proposed, Outstanding, Verification, Refused, and Rewarded. It shows task name, state, description, reward, and outcome when available. It intentionally does not show updated timestamps, CIDs, transaction hashes, event IDs, reducer names, raw JSON, or full forensics.
 
@@ -81,7 +83,7 @@ sequenceDiagram
   UI->>API: GET /api/memory/network-task-profile
   API->>DB: read profile facts and task_projections for Network Context Inputs
   API->>DB: read latest generated profile
-  API-->>UI: Network Context Inputs plus latest or pending profile
+  API-->>UI: Network Diagnostic Report data
   API->>DB: enqueue profile job when missing or stale
   Worker->>DB: claim network_task_profile_jobs
   Worker->>OR: summarize source packet

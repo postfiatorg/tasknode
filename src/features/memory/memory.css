@@ -243,6 +243,25 @@
   border-radius: 999px;
 }
 
+.network-report-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.network-report-actions > span {
+  border: 1px solid #ece8dc;
+  border-radius: 999px;
+  background: #fffefa;
+  color: #5f5b51;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  padding: 7px 9px;
+}
+
 .network-profile-card {
   border-color: #dedbd2;
   background: #fffefa;
@@ -285,6 +304,39 @@
   padding: 4px 8px;
 }
 
+.network-context-panel {
+  border: 1px solid #e8e3d6;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.network-context-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.network-context-heading p {
+  margin: 3px 0 0;
+  color: #5f5b51;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.network-context-heading > span {
+  flex: 0 0 auto;
+  border: 1px solid #ece8dc;
+  border-radius: 999px;
+  color: #5f5b51;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
 .network-source-packet {
   border-top: 1px solid #e8e6df;
   padding-top: 10px;
@@ -298,7 +350,7 @@
 }
 
 .network-source-packet pre,
-.live-task-context pre {
+.network-context-panel pre {
   overflow: auto;
   max-height: 420px;
   margin: 8px 0 0;
@@ -314,10 +366,6 @@
   padding: 12px;
 }
 
-.live-task-context {
-  background: #ffffff;
-}
-
 @media (max-width: 700px) {
   .memory-header {
     align-items: flex-start;
@@ -330,5 +378,11 @@
 
   .network-profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  .network-report-actions,
+  .network-context-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

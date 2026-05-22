@@ -135,14 +135,11 @@ export function MemoryView({ session }) {
       {(entries.length > 0 || networkProfile) && (
         <div className="memory-sections" aria-label="Chat memory records">
           {networkProfile && (
-            <>
-              <NetworkTaskProfileCard
-                onRefresh={() => loadNetworkProfile({ refresh: true })}
-                profileState={networkProfile}
-                status={networkStatus}
-              />
-              <NetworkContextInputs profileState={networkProfile} />
-            </>
+            <NetworkTaskProfileCard
+              onRefresh={() => loadNetworkProfile({ refresh: true })}
+              profileState={networkProfile}
+              status={networkStatus}
+            />
           )}
 
           {deepEntries.length > 0 && (
@@ -179,6 +176,8 @@ function NetworkTaskProfileCard({ onRefresh, profileState, status }) {
   const output = profile?.output || {};
   const job = profileState?.job || null;
   const source = profileState?.sourcePacket || {};
+  const context = profileState?.networkContextInputs || {};
+  const counts = context.counts || {};
   const pending = job && ["pending", "processing"].includes(String(job.status || ""));
   const currentFocus = Array.isArray(output.current_focus) ? output.current_focus.slice(0, 6) : [];
   const contribution = Array.isArray(output.primary_contribution_ability) ? output.primary_contribution_ability.slice(0, 6) : [];
@@ -189,18 +188,21 @@ function NetworkTaskProfileCard({ onRefresh, profileState, status }) {
     <section className="memory-section network-profile-section">
       <div className="memory-section-header">
         <div>
-          <h2>Generated Network Task Profile</h2>
-          <p>Async routing profile generated from context, memory, profile, and task state.</p>
+          <h2>Network Diagnostic Report</h2>
+          <p>Generated profile plus the live network context inputs it is built from.</p>
         </div>
-        <button
-          className="memory-refresh memory-profile-refresh"
-          disabled={status === "loading"}
-          onClick={onRefresh}
-          type="button"
-        >
-          <RefreshCw size={14} strokeWidth={1.8} />
-          Refresh
-        </button>
+        <div className="network-report-actions">
+          <span>{counts.total || 0} task inputs</span>
+          <button
+            className="memory-refresh memory-profile-refresh"
+            disabled={status === "loading"}
+            onClick={onRefresh}
+            type="button"
+          >
+            <RefreshCw size={14} strokeWidth={1.8} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <article className="memory-row network-profile-card">
@@ -244,14 +246,25 @@ function NetworkTaskProfileCard({ onRefresh, profileState, status }) {
             <small>Profile</small>
             <p>
               {pending
-                ? "A profile generation job is queued. Live task context below is already current."
+                ? "A profile generation job is queued. Network context inputs below are already current."
                 : "Open Memory or refresh to queue the first generated Network Task Profile."}
             </p>
           </section>
         )}
 
+        <section className="network-context-panel">
+          <div className="network-context-heading">
+            <div>
+              <small>Network context inputs</small>
+              <p>Live profile facts and task state used by the diagnostic report. This is not model output.</p>
+            </div>
+            <span>{counts.total || 0} shown</span>
+          </div>
+          <pre>{context.text || "No network context inputs are available for this account yet."}</pre>
+        </section>
+
         <details className="network-source-packet">
-          <summary>View source packet</summary>
+          <summary>View full source packet</summary>
           <pre>{source.text || "No source packet was built yet."}</pre>
         </details>
       </article>
@@ -272,22 +285,6 @@ function ProfileList({ items, title, wide = false }) {
         <p>No signal yet.</p>
       )}
     </section>
-  );
-}
-
-function NetworkContextInputs({ profileState }) {
-  const context = profileState?.networkContextInputs || {};
-  const counts = context.counts || {};
-  return (
-    <MemorySection
-      count={counts.total || 0}
-      description="Real-time profile and task state inputs used for network routing."
-      title="Network Context Inputs"
-    >
-      <article className="memory-row live-task-context">
-        <pre>{context.text || "No network context inputs are available for this account yet."}</pre>
-      </article>
-    </MemorySection>
   );
 }
 
