@@ -365,6 +365,86 @@ async function recentBoardManagerRuns({ limit = 12 } = {}) {
   }));
 }
 
+function boardManagerActionLabel(action = "") {
+  const labels = {
+    archive_project: "Archived project",
+    assign_contributor: "Assigned contributor",
+    create_project: "Created project",
+    do_nothing: "No decision",
+    initiate_network_task: "Initiated network task",
+    message_user: "Messaged user",
+    refresh_hive_secretary: "Updated Hive Secretary",
+    refresh_project_document: "Refreshed project document",
+    remove_contributor: "Removed contributor",
+    research: "Research",
+    review_evidence_packet: "Reviewed evidence",
+    update_board_context: "Updated board context",
+    update_project: "Updated project",
+  };
+  return labels[action] || "No decision";
+}
+
+function boardManagerRunSummary(run = {}, action = "", primaryResult = null) {
+  const payload = safeObject(run.actionPayload);
+  const decision = safeObject(run.decision);
+  const result = safeObject(primaryResult?.result);
+  if (run.status === "failed") return run.error || "The Board Manager run failed before completing a decision.";
+  if (!action || action === "no_decision") return "The Board Manager run did not record a selected action.";
+  if (action === "do_nothing") return payload.summary || decision.reason || "The agent reviewed current Hive state and chose not to change the board.";
+  return payload.summary || decision.reason || result.messagePreview || result.archiveReason || "The agent selected an action for the Hive board.";
+}
+
+function boardManagerRunState({ action, primaryResult, run }) {
+  const result = safeObject(primaryResult?.result);
+  if (run.status === "failed") return "failed";
+  if (run.dryRun) return "dry_run";
+  if (result.executed) return "executed";
+  if (!action || action === "no_decision" || action === "do_nothing") return "no_decision";
+  return "recorded";
+}
+
+export function formatBoardManagerAgentRun(run = {}) {
+  const results = safeArray(run.actionResults);
+  const primaryResult = results[0] || null;
+  const selectedAction = safeText(run.selectedAction, 80);
+  const fallbackAction = safeText(primaryResult?.action, 80);
+  const action = selectedAction || fallbackAction || "no_decision";
+  return {
+    id: safeText(run.id, 180),
+    runId: safeText(run.id, 180),
+    action,
+    label: boardManagerActionLabel(action),
+    state: boardManagerRunState({ action, primaryResult, run }),
+    status: safeText(run.status, 80),
+    dryRun: Boolean(run.dryRun),
+    summary: boardManagerRunSummary(run, action, primaryResult),
+    reason: safeText(run.decision?.reason || run.error || "", 2000),
+    confidence: Number(run.decision?.confidence || 0),
+    targetType: safeText(run.targetType || run.decision?.target_type || primaryResult?.targetType, 120),
+    targetId: safeText(run.targetId || run.decision?.target_id || primaryResult?.targetId, 240),
+    trigger: safeText(run.trigger, 160),
+    model: safeText(run.model, 120),
+    reasoningEffort: safeText(run.reasoningEffort, 40),
+    sourcePacketDigest: safeText(run.sourcePacketDigest, 120),
+    actionResults: results.slice(0, 6).map((result) => ({
+      id: safeText(result.id, 180),
+      action: safeText(result.action, 80),
+      targetType: safeText(result.targetType, 120),
+      targetId: safeText(result.targetId, 240),
+      executed: Boolean(result.result?.executed),
+      error: safeText(result.result?.error, 1000),
+      createdAt: result.createdAt || null,
+    })),
+    startedAt: run.startedAt || null,
+    completedAt: run.completedAt || null,
+  };
+}
+
+export async function getBoardManagerAgentFeed({ limit = 20 } = {}) {
+  const runs = await recentBoardManagerRuns({ limit: Math.min(Math.max(Number(limit) || 20, 1), 30) });
+  return runs.map(formatBoardManagerAgentRun);
+}
+
 export async function buildBoardManagerSourcePacket({
   trigger = "manual",
   scope = "global_hive",

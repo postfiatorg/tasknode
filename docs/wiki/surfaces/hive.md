@@ -12,7 +12,7 @@ The Hive route is available at `#hive` from the primary sidebar. The surface con
 - a routing feed showing recent task state transitions once live project-linked tasks exist
 - allotted operators once live project-linked task allocation exists
 - project detail pages for active `network_projects` rows
-- a collapsed `Hive Context` section at the bottom of the page with the latest Hive Secretary report and collapsible raw inputs
+- a collapsed `Hive Context` section at the bottom of the page with two tabs: `Hive Context` for Secretary/raw inputs and `Hive Mind Agent` for Board Manager actions
 
 The project detail page is layered as:
 
@@ -31,7 +31,9 @@ When the user selects `Hive Input`, the composer changes mode and the next messa
 
 `Hive Context` is a network context document built from user-submitted entries. It is grouped by user and shown collapsed on the Hive page.
 
-Expanding the section shows the current `Hive Secretary` report first. Raw user inputs are behind a second collapsible `Raw inputs` control so the page reads like a network report by default instead of a transcript dump. Raw inputs show contributor, timestamp, body, and whether the entry came from a validated linked wallet. Source chat title is intentionally not displayed because it is usually not useful network context.
+Expanding the section shows tabs. `Hive Context` shows the current `Hive Secretary` report first. Raw user inputs are behind a second collapsible `Raw inputs` control so the page reads like a network report by default instead of a transcript dump. Raw inputs show contributor, timestamp, body, and whether the entry came from a validated linked wallet. Source chat title is intentionally not displayed because it is usually not useful network context.
+
+`Hive Mind Agent` shows the Board Manager feed. This feed reads durable `board_manager_runs` plus `board_manager_action_results` and includes runs where the selected action is `do_nothing` or no selected action was recorded. User-visible Board Manager messages are shown under the feed so a member can see both what the agent decided and what it said directly to them.
 
 ## Board Manager Target
 
@@ -53,7 +55,7 @@ Allowed actions include:
 - initiate project-linked Network Tasks with rewards
 - review evidence packets through the existing task engine
 
-Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, and `assign_contributor`. `archive_project` is the delete-project behavior; the row is hidden from the active board but not hard deleted. `message_user` writes to `board_manager_user_messages`, which appears in the Board Manager block inside Hive Context for the target account.
+Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, and `assign_contributor`. `archive_project` is the delete-project behavior; the row is hidden from the active board but not hard deleted. `message_user` writes to `board_manager_user_messages`, which appears in the Hive Mind Agent tab for the target account.
 
 The old direct cascade where Hive Secretary automatically drives active projects is deprecated as the target architecture. The existing Secretary and Active Projects workers remain implementation primitives, but the Board Manager should own when they run.
 
@@ -101,7 +103,7 @@ That Product Document is planned to be generated per project by OpenRouter `deep
 Current endpoint:
 
 - `GET /api/hive/projects` returns active network projects, project task rows, contributor rollups, activity rows, and the latest Hive Secretary input reference.
-- `GET /api/hive/context` returns the grouped Hive Context document plus Hive Secretary report/job state.
+- `GET /api/hive/context` returns the grouped Hive Context document, Hive Secretary report/job state, Board Manager action feed, and user-visible Board Manager messages for the signed-in account.
 - `POST /api/hive/context` stores one signed-in user's Hive Input entry, records the chat acknowledgement, and queues Hive Secretary when the user has a linked wallet.
 
 ## Technical Architecture
@@ -114,7 +116,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
 - `server/hive-secretary-worker.js` processes validated Hive Inputs through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action handler.
 - `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
-- `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, and reads user-visible manager messages.
+- `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads user-visible manager messages.
 - `server/board-manager-actions.js` executes the first Board Manager action hooks.
 - `scripts/board-manager-codex-exec.mjs` runs one Codex Exec Board Manager dry run or, with `--execute`, dispatches supported action hooks.
 - `schemas/board-manager-action.schema.json` constrains the Codex Exec output.

@@ -41,6 +41,7 @@ The default v1 posture is conservative. Most ticks should do nothing unless ther
 Implemented v0 pieces:
 
 - `server/repositories/board-manager.js` builds the current Hive source packet and validates the returned action.
+- `server/repositories/board-manager.js` formats a Hive Mind Agent feed from `board_manager_runs` and `board_manager_action_results`.
 - `schemas/board-manager-action.schema.json` constrains the Codex Exec output, including action-specific `project`, `contributor`, `message_text`, and `archive_reason` payload fields.
 - `scripts/board-manager-codex-exec.mjs` runs Codex Exec with `gpt-5.5` and `model_reasoning_effort = xhigh`.
 - `server/board-manager-actions.js` executes the first supported actions.
@@ -61,6 +62,12 @@ Implemented action hooks:
 - `create_project`: creates or updates an active `network_projects` row from `payload.project`.
 - `archive_project`: archives the project and applies an operator archive lock. This is the delete-project hook; hard delete is intentionally not available.
 - `assign_contributor`: upserts a project contributor row using the project id and wallet address in `payload.contributor`.
+
+Hive page visibility:
+
+- The collapsed `Hive Context` section contains a `Hive Mind Agent` tab.
+- The tab shows recent Board Manager runs as a feed, including `do_nothing` and runs with no recorded selected action.
+- User-visible `message_user` outputs appear below that feed for the signed-in account.
 
 Not yet implemented action hooks:
 

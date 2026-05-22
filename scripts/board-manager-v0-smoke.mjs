@@ -6,6 +6,7 @@ process.env.TASKNODE_POSTGRES_DISABLED = "true";
 const {
   boardManagerActions,
   buildBoardManagerSourcePacket,
+  formatBoardManagerAgentRun,
   formatBoardManagerCodexPrompt,
   normalizeBoardManagerDecision,
 } = await import("../server/repositories/board-manager.js");
@@ -59,5 +60,33 @@ assert.throws(
   () => normalizeBoardManagerDecision({ action: "delete_everything", reason: "bad", payload: {} }),
   /board_manager_invalid_action/
 );
+
+const doNothingFeedItem = formatBoardManagerAgentRun({
+  id: "boardrun_do_nothing",
+  status: "completed",
+  selectedAction: "do_nothing",
+  actionPayload: { summary: "State reviewed; no board mutation is needed." },
+  decision: { action: "do_nothing", reason: "No strong reason to act.", confidence: 0.8 },
+  dryRun: false,
+  actionResults: [{ id: "result_1", action: "do_nothing", result: { executed: true }, createdAt: "2026-05-22T00:00:00.000Z" }],
+  startedAt: "2026-05-22T00:00:00.000Z",
+  completedAt: "2026-05-22T00:00:02.000Z",
+});
+assert.equal(doNothingFeedItem.label, "No decision");
+assert.equal(doNothingFeedItem.state, "executed");
+assert.equal(doNothingFeedItem.summary, "State reviewed; no board mutation is needed.");
+
+const noDecisionFeedItem = formatBoardManagerAgentRun({
+  id: "boardrun_no_decision",
+  status: "running",
+  selectedAction: "",
+  decision: {},
+  dryRun: false,
+  actionResults: [],
+  startedAt: "2026-05-22T00:00:00.000Z",
+});
+assert.equal(noDecisionFeedItem.action, "no_decision");
+assert.equal(noDecisionFeedItem.label, "No decision");
+assert.equal(noDecisionFeedItem.state, "no_decision");
 
 console.log("board manager v0 smoke ok");

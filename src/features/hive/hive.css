@@ -385,6 +385,33 @@
   padding: 4px 18px 18px;
 }
 
+.hive-context-tabs {
+  background: #f7f3ea;
+  border: 0.5px solid var(--hive-border);
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 14px;
+  padding: 3px;
+}
+
+.hive-context-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--hive-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.hive-context-tabs button.is-active {
+  background: var(--hive-surface);
+  box-shadow: 0 0 0 0.5px var(--hive-border);
+  color: var(--hive-ink);
+}
+
 .hive-secretary {
   padding-top: 14px;
 }
@@ -520,6 +547,97 @@
 .hive-board-manager-messages small {
   color: var(--hive-muted);
   font-size: 11.5px;
+}
+
+.hive-agent-panel {
+  padding-top: 14px;
+}
+
+.hive-agent-heading {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.hive-agent-heading strong {
+  color: var(--hive-ink);
+  display: block;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.hive-agent-heading small {
+  color: var(--hive-muted);
+  display: block;
+  font-size: 11.5px;
+  margin-top: 3px;
+}
+
+.hive-agent-feed {
+  display: grid;
+  gap: 8px;
+}
+
+.hive-agent-run {
+  background: #fbfaf6;
+  border: 0.5px solid var(--hive-border);
+  border-radius: 8px;
+  padding: 11px 12px;
+}
+
+.hive-agent-run.is-executed {
+  border-color: rgba(91, 138, 85, 0.26);
+}
+
+.hive-agent-run.is-failed {
+  border-color: rgba(168, 118, 26, 0.34);
+}
+
+.hive-agent-run-top {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+
+.hive-agent-run-top time {
+  color: var(--hive-muted);
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.hive-agent-state {
+  color: var(--hive-green);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.hive-agent-state.is-dry_run,
+.hive-agent-state.is-no_decision {
+  color: var(--hive-muted);
+}
+
+.hive-agent-state.is-failed {
+  color: var(--hive-amber);
+}
+
+.hive-agent-run p {
+  color: var(--hive-ink-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.hive-agent-run footer {
+  align-items: center;
+  color: var(--hive-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .hive-context-raw-toggle {

@@ -470,9 +470,9 @@ function ActivityRow({ entry, last = false, operators = {} }) {
 }
 
 function HiveContextPanel({ boardManager, context, expanded, onToggle, status, secretary }) {
+  const [activeTab, setActiveTab] = useState("context");
   const [rawOpen, setRawOpen] = useState(false);
   const groups = context?.groups || [];
-  const managerMessages = boardManager?.messages || [];
   const entryCount = Number(context?.entryCount || 0);
   const userCount = Number(context?.userCount || groups.length || 0);
   const hasEntries = entryCount > 0;
@@ -498,100 +498,196 @@ function HiveContextPanel({ boardManager, context, expanded, onToggle, status, s
       </button>
       {expanded && (
         <div className="hive-context-body">
-          {!hasEntries && status !== "loading" && (
-            <p className="hive-context-empty">Use Hive Input from Chat to add network context.</p>
+          <div className="hive-context-tabs" role="tablist" aria-label="Hive context views">
+            <button
+              aria-selected={activeTab === "context"}
+              className={activeTab === "context" ? "is-active" : ""}
+              onClick={() => setActiveTab("context")}
+              role="tab"
+              type="button"
+            >
+              Hive Context
+            </button>
+            <button
+              aria-selected={activeTab === "agent"}
+              className={activeTab === "agent" ? "is-active" : ""}
+              onClick={() => setActiveTab("agent")}
+              role="tab"
+              type="button"
+            >
+              Hive Mind Agent
+            </button>
+          </div>
+          {activeTab === "context" ? (
+            <HiveContextInputs
+              groups={groups}
+              hasEntries={hasEntries}
+              pending={pending}
+              rawOpen={rawOpen}
+              report={report}
+              reportOutput={reportOutput}
+              setRawOpen={setRawOpen}
+              status={status}
+              userCount={userCount}
+              entryCount={entryCount}
+            />
+          ) : (
+            <HiveMindAgentPanel boardManager={boardManager} />
           )}
-          {(report || pending || hasEntries) && (
-            <section className="hive-secretary">
-              <header>
-                <span>
-                  <strong>Hive Secretary</strong>
-                  <small>
-                    {report?.completedAt
-                      ? `Updated ${formatContextTime(report.completedAt)}`
-                      : pending
-                        ? "Updating from validated wallet inputs"
-                        : "Waiting for validated wallet inputs"}
-                  </small>
-                </span>
-                {report?.model && <code>{report.model}</code>}
-              </header>
-              {report ? (
-                <div className="hive-secretary-report">
-                  <h3>{reportOutput.title || "Hive Secretary Report"}</h3>
-                  {reportOutput.summary && <p>{reportOutput.summary}</p>}
-                  {Array.isArray(reportOutput.projectSignals) && reportOutput.projectSignals.length > 0 && (
-                    <HiveSecretaryList
-                      items={reportOutput.projectSignals.map((item) => [
-                        item.projectType ? `${projectTypeLabel(item.projectType)}: ` : "",
-                        item.signal || item.reason || "",
-                      ].join(""))}
-                      title="Project signals"
-                    />
-                  )}
-                  <HiveSecretaryList items={reportOutput.networkImplications} title="Network implications" />
-                  <HiveSecretaryList items={reportOutput.openQuestions} title="Open questions" />
-                  <HiveSecretaryList items={reportOutput.nextSystemFocus} title="Next system focus" />
-                </div>
-              ) : (
-                <p className="hive-context-empty">
-                  The Secretary report is generated asynchronously from linked-wallet Hive Inputs.
-                </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HiveContextInputs({
+  entryCount,
+  groups,
+  hasEntries,
+  pending,
+  rawOpen,
+  report,
+  reportOutput,
+  setRawOpen,
+  status,
+  userCount,
+}) {
+  return (
+    <>
+      {!hasEntries && status !== "loading" && (
+        <p className="hive-context-empty">Use Hive Input from Chat to add network context.</p>
+      )}
+      {(report || pending || hasEntries) && (
+        <section className="hive-secretary">
+          <header>
+            <span>
+              <strong>Hive Secretary</strong>
+              <small>
+                {report?.completedAt
+                  ? `Updated ${formatContextTime(report.completedAt)}`
+                  : pending
+                    ? "Updating from validated wallet inputs"
+                    : "Waiting for validated wallet inputs"}
+              </small>
+            </span>
+            {report?.model && <code>{report.model}</code>}
+          </header>
+          {report ? (
+            <div className="hive-secretary-report">
+              <h3>{reportOutput.title || "Hive Secretary Report"}</h3>
+              {reportOutput.summary && <p>{reportOutput.summary}</p>}
+              {Array.isArray(reportOutput.projectSignals) && reportOutput.projectSignals.length > 0 && (
+                <HiveSecretaryList
+                  items={reportOutput.projectSignals.map((item) => [
+                    item.projectType ? `${projectTypeLabel(item.projectType)}: ` : "",
+                    item.signal || item.reason || "",
+                  ].join(""))}
+                  title="Project signals"
+                />
               )}
-            </section>
+              <HiveSecretaryList items={reportOutput.networkImplications} title="Network implications" />
+              <HiveSecretaryList items={reportOutput.openQuestions} title="Open questions" />
+              <HiveSecretaryList items={reportOutput.nextSystemFocus} title="Next system focus" />
+            </div>
+          ) : (
+            <p className="hive-context-empty">
+              The Secretary report is generated asynchronously from linked-wallet Hive Inputs.
+            </p>
           )}
-          {managerMessages.length > 0 && (
-            <section className="hive-board-manager-messages">
+        </section>
+      )}
+      {hasEntries && (
+        <section className="hive-context-raw">
+          <button className="hive-context-raw-toggle" onClick={() => setRawOpen((open) => !open)} type="button">
+            <span>
+              <strong>Raw inputs</strong>
+              <small>{entryCount} {entryCount === 1 ? "entry" : "entries"} from {userCount} {userCount === 1 ? "user" : "users"}</small>
+            </span>
+            <ChevronDown className={rawOpen ? "is-open" : ""} size={15} strokeWidth={1.8} />
+          </button>
+          {rawOpen && groups.map((group) => (
+            <section className="hive-context-user" key={group.accountId || group.displayName}>
               <header>
-                <strong>Board Manager</strong>
-                <small>{managerMessages.length} {managerMessages.length === 1 ? "message" : "messages"}</small>
+                <strong>{group.displayName || "Unknown user"}</strong>
+                <small>{group.entryCount} {group.entryCount === 1 ? "entry" : "entries"}</small>
               </header>
               <div className="hive-context-entries">
-                {managerMessages.map((message) => (
-                  <article className="hive-context-entry is-board-manager" key={message.id}>
-                    <p>{message.body}</p>
+                {(group.entries || []).map((entry) => (
+                  <article className="hive-context-entry" key={entry.id}>
+                    <p>{entry.body}</p>
                     <footer>
-                      <time>{formatContextTime(message.createdAt)}</time>
-                      <span>board manager</span>
+                      <time>{formatContextTime(entry.createdAt)}</time>
+                      {entry.walletValidated && <span>validated wallet</span>}
                     </footer>
                   </article>
                 ))}
               </div>
             </section>
-          )}
-          {hasEntries && (
-            <section className="hive-context-raw">
-              <button className="hive-context-raw-toggle" onClick={() => setRawOpen((open) => !open)} type="button">
-                <span>
-                  <strong>Raw inputs</strong>
-                  <small>{entryCount} {entryCount === 1 ? "entry" : "entries"} from {userCount} {userCount === 1 ? "user" : "users"}</small>
-                </span>
-                <ChevronDown className={rawOpen ? "is-open" : ""} size={15} strokeWidth={1.8} />
-              </button>
-              {rawOpen && groups.map((group) => (
-                <section className="hive-context-user" key={group.accountId || group.displayName}>
-                  <header>
-                    <strong>{group.displayName || "Unknown user"}</strong>
-                    <small>{group.entryCount} {group.entryCount === 1 ? "entry" : "entries"}</small>
-                  </header>
-                  <div className="hive-context-entries">
-                    {(group.entries || []).map((entry) => (
-                      <article className="hive-context-entry" key={entry.id}>
-                        <p>{entry.body}</p>
-                        <footer>
-                          <time>{formatContextTime(entry.createdAt)}</time>
-                          {entry.walletValidated && <span>validated wallet</span>}
-                        </footer>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </section>
-          )}
-        </div>
+          ))}
+        </section>
       )}
-    </div>
+    </>
+  );
+}
+
+function HiveMindAgentPanel({ boardManager }) {
+  const feed = boardManager?.feed || [];
+  const managerMessages = boardManager?.messages || [];
+  return (
+    <section className="hive-agent-panel">
+      <header className="hive-agent-heading">
+        <span>
+          <strong>Hive Mind Agent</strong>
+          <small>{feed.length ? `${feed.length} recent ${feed.length === 1 ? "run" : "runs"}` : "No agent runs recorded"}</small>
+        </span>
+      </header>
+      <div className="hive-agent-feed">
+        {feed.length ? feed.map((entry) => (
+          <HiveAgentRun entry={entry} key={entry.id || entry.runId} />
+        )) : (
+          <p className="hive-context-empty">Board Manager runs will appear here after the agent evaluates Hive state.</p>
+        )}
+      </div>
+      {managerMessages.length > 0 && (
+        <section className="hive-board-manager-messages">
+          <header>
+            <strong>Messages to you</strong>
+            <small>{managerMessages.length} {managerMessages.length === 1 ? "message" : "messages"}</small>
+          </header>
+          <div className="hive-context-entries">
+            {managerMessages.map((message) => (
+              <article className="hive-context-entry is-board-manager" key={message.id}>
+                <p>{message.body}</p>
+                <footer>
+                  <time>{formatContextTime(message.createdAt)}</time>
+                  <span>board manager</span>
+                </footer>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+    </section>
+  );
+}
+
+function HiveAgentRun({ entry }) {
+  const target = [entry.targetType, entry.targetId].filter(Boolean).join(" · ");
+  const resultCount = entry.actionResults?.length || 0;
+  return (
+    <article className={`hive-agent-run is-${entry.state || "recorded"}`}>
+      <div className="hive-agent-run-top">
+        <span className={`hive-agent-state is-${entry.state || "recorded"}`}>{entry.label || "No decision"}</span>
+        <time>{formatContextTime(entry.completedAt || entry.startedAt)}</time>
+      </div>
+      <p>{entry.summary || entry.reason || "No summary recorded."}</p>
+      <footer>
+        {target && <span>{target}</span>}
+        {entry.dryRun && <span>dry run</span>}
+        {resultCount > 0 && <span>{resultCount} {resultCount === 1 ? "result" : "results"}</span>}
+        {entry.trigger && <span>{entry.trigger}</span>}
+      </footer>
+    </article>
   );
 }
 

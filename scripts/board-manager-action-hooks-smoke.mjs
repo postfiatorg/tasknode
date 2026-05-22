@@ -9,6 +9,7 @@ const { databaseEnabled, query } = await import("../server/db/pool.js");
 const { closePool } = await import("../server/db/pool.js");
 const {
   buildBoardManagerSourcePacket,
+  getBoardManagerAgentFeed,
   startBoardManagerRun,
 } = await import("../server/repositories/board-manager.js");
 const { executeBoardManagerDecision } = await import("../server/board-manager-actions.js");
@@ -175,6 +176,11 @@ async function main() {
   assert.equal(contributor.rows[0]?.status, "active");
   assert.ok(message.rows[0]?.id);
   assert.equal(actions.rows[0]?.count, 4);
+  const feed = await getBoardManagerAgentFeed({ limit: 20 });
+  const runFeed = feed.find((entry) => entry.runId === runId);
+  assert.ok(runFeed);
+  assert.equal(runFeed.actionResults.length, 4);
+  assert.ok(runFeed.actionResults.some((entry) => entry.action === "archive_project"));
   console.log(JSON.stringify({ ok: true, runId, projectId, actionResults: actions.rows[0]?.count }, null, 2));
 }
 
