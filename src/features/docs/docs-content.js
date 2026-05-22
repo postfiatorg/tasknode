@@ -3,6 +3,7 @@ import agents from "../../../docs/wiki/surfaces/agents.md?raw";
 import chat from "../../../docs/wiki/surfaces/chat.md?raw";
 import context from "../../../docs/wiki/surfaces/context.md?raw";
 import dailyAirdrop from "../../../docs/wiki/surfaces/daily-airdrop.md?raw";
+import hive from "../../../docs/wiki/surfaces/hive.md?raw";
 import memory from "../../../docs/wiki/surfaces/memory.md?raw";
 import profile from "../../../docs/wiki/surfaces/profile.md?raw";
 import refineContext from "../../../docs/wiki/surfaces/refine-context.md?raw";
@@ -355,6 +356,7 @@ export const DOC_GROUPS = [
       { slug: "chat", title: "Chat", summary: "The primary work surface.", markdown: chat },
       { slug: "search", title: "Search", summary: "Retrieval across cached work.", markdown: search },
       { slug: "tasks", title: "Tasks", summary: "Portable task lifecycle state.", markdown: tasks },
+      { slug: "hive", title: "Hive", summary: "Network project routing and operator coordination.", markdown: hive },
       { slug: "wallet", title: "Wallet", summary: "Identity, balances, and custody.", markdown: wallet },
       { slug: "profile", title: "Profile", summary: "Member trust surface and daily airdrop state.", markdown: profile },
       {

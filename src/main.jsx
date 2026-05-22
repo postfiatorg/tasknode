@@ -6,6 +6,7 @@ import {
   ArrowDownToLine,
   ArrowRight,
   AlertTriangle,
+  Activity,
   BookOpen,
   Bot,
   Bold,
@@ -128,6 +129,7 @@ import "./features/context/context.css";
 const WalletView = lazy(() => import("./features/wallet/WalletView").then((module) => ({ default: module.WalletView })));
 const MemoryView = lazy(() => import("./features/memory/MemoryView").then((module) => ({ default: module.MemoryView })));
 const DocsView = lazy(() => import("./features/docs/DocsView").then((module) => ({ default: module.DocsView })));
+const HiveView = lazy(() => import("./features/hive/HiveView").then((module) => ({ default: module.HiveView })));
 const ProfilePage = lazy(() => import("./features/profile/ProfileView").then((module) => ({ default: module.ProfileView })));
 
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
@@ -195,7 +197,7 @@ const SETTINGS_PAGES = [
   { key: "billing", label: "Billing", icon: CreditCard },
 ];
 
-const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "profile", "memory", "docs"]);
+const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "hive", "profile", "memory", "docs"]);
 const EMPTY_WALLET_VAULT_STATUS = {
   available: false,
   unlocked: false,
@@ -809,6 +811,14 @@ function App() {
             sidebarOpen={sidebarOpen}
           />
           <SidebarButton
+            active={view === "hive"}
+            icon={Activity}
+            label="Hive"
+            onClick={() => navigateToView("hive")}
+            sidebarOpen={sidebarOpen}
+            trailing={sidebarOpen ? <small className="nav-live-state">live</small> : null}
+          />
+          <SidebarButton
             active={view === "wallet"}
             icon={Wallet}
             label="Wallet"
@@ -1068,6 +1078,11 @@ function App() {
             walletUnlockPending={walletUnlockOpen}
             walletVault={walletVaultStatus}
           />
+        )}
+        {view === "hive" && (
+          <Suspense fallback={<StatusBanner>Loading hive</StatusBanner>}>
+            <HiveView />
+          </Suspense>
         )}
         {view === "wallet" && (
           <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
