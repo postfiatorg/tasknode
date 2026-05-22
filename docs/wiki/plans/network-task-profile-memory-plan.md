@@ -10,7 +10,12 @@ This is not a public profile and not a social feed. It is a user-visible operati
 
 The Memory page should gain a `Network Task Profile` section near Deep Memory.
 
-The section should show:
+The section has two different freshness models:
+
+1. `Live Task Routing Context`: real-time text rendered from the same task projection state that backs the Tasks UX.
+2. `Generated Network Task Profile`: LLM-generated routing summary refreshed asynchronously, normally once every 24 hours or on manual refresh.
+
+The generated profile card should show:
 
 - the latest generated Network Task Profile;
 - when it was generated;
@@ -20,6 +25,47 @@ The section should show:
 - a `View source packet` disclosure so the user can audit what was sent to the model.
 
 The user should be able to understand and challenge the generated routing profile. The profile must never be hidden system knowledge.
+
+## Live Task Routing Context
+
+Memory should show a live text view of the user's task state. This is not model output. It is rendered directly from task projections so it stays in line with the Tasks page.
+
+The live task block should be human-readable, text-based, and grouped by the same states the user understands in the app:
+
+```text
+LIVE TASK ROUTING CONTEXT
+
+Proposed
+- Task Name: <title>
+  State: proposed
+  Description: <one or two sentence task description>
+
+Outstanding
+- Task Name: <title>
+  State: accepted | submitted
+  Description: <one or two sentence task description>
+
+Verification
+- Task Name: <title>
+  State: verification_requested | awaiting_review
+  Description: <one or two sentence task description>
+
+Refused
+- Task Name: <title>
+  State: refused | cancelled | expired | rejected
+  Description: <one or two sentence task description>
+  Outcome: <refusal or cancellation summary when available>
+
+Rewarded
+- Task Name: <title>
+  State: rewarded
+  Description: <one or two sentence task description>
+  Outcome: <reward summary when available>
+```
+
+This view should not show raw JSON, CIDs, transaction hashes, reducer names, event IDs, or full forensics. The goal is quick human orientation: what tasks exist, what state they are in, and what each task is basically about.
+
+The live block should update whenever the Memory page fetches account state or task state refreshes. It should not wait for the 24-hour LLM job.
 
 ## Source Packet
 
@@ -45,8 +91,8 @@ Context Document
 Deep Memory
 <up to last 3 deep memory bundles, newest first>
 
-Outstanding Tasks
-<all current outstanding tasks, compacted>
+Live Task Routing Context
+<the current text block grouped by Proposed, Outstanding, Verification, Refused, Rewarded>
 
 Recently Refused Tasks
 <last 6 refused tasks, compacted>
@@ -73,6 +119,8 @@ The packet should preserve enough specificity to route useful work without flood
 
 Name: `network_task_profile_v1`
 
+The model job creates the generated Network Task Profile only. It does not own the live task text block.
+
 Provider:
 
 - OpenRouter private route;
@@ -83,6 +131,14 @@ Provider:
 - not billed to the user in v1.
 
 The model receives the source packet and returns a Network Task Profile.
+
+Schedule:
+
+- run asynchronously like deep memory;
+- normally refresh at most once every 24 hours per account;
+- run sooner only on explicit user refresh or a major source-packet change;
+- never block Memory page rendering, chat, or task state refresh;
+- if a valid profile exists and is less than 24 hours old, show it while the live task block continues to update in real time.
 
 Expected output:
 
@@ -153,17 +209,19 @@ Triggers:
 
 Debounce:
 
-- do not regenerate more than once every 30 minutes automatically;
+- do not regenerate more than once every 24 hours automatically;
 - manual refresh can bypass the debounce but should show pending state;
 - if the source packet digest has not changed, do not call the model.
+- task projection changes should update the live text block immediately even when they do not trigger a model call.
 
 ## UX In Memory
 
-Memory should show three layers:
+Memory should show four layers:
 
-1. `Network Task Profile`: current routing profile and source packet audit.
-2. `Deep Memory`: last 3 deep memory bundles.
-3. `Recent Memory`: last 36 memory summaries.
+1. `Generated Network Task Profile`: async LLM-generated routing profile and source packet audit.
+2. `Live Task Routing Context`: real-time text state from task projections.
+3. `Deep Memory`: last 3 deep memory bundles.
+4. `Recent Memory`: last 36 memory summaries.
 
 The Network Task Profile card should include:
 
@@ -179,6 +237,8 @@ The Network Task Profile card should include:
 - `Refresh`.
 
 The source packet view should be readable text, not only JSON. Users need to see exactly what the model saw.
+
+The live task block should be readable without opening the Tasks page. It should be less detailed than Forensics and more compact than task cards.
 
 ## Prompt Contract
 
@@ -235,12 +295,14 @@ The profile should help decide what to offer, not force a task onto a user.
 V1 is complete when:
 
 - Memory page shows a Network Task Profile section.
+- Memory page shows a live task routing text block grouped by Proposed, Outstanding, Verification, Refused, and Rewarded.
 - The generated profile is stored in Postgres with source packet and output digests.
 - The user can inspect the exact source packet.
 - The source packet includes full context document, up to 3 deep memories, current outstanding tasks, last 6 refused tasks, last 6 rewarded tasks, and profile information.
 - Refused/rewarded task entries are compact and do not include full forensics.
 - The worker uses a ZDR DeepSeek Flash class route and does not block chat.
 - Source packet digest prevents repeated model calls when nothing changed.
+- The LLM-generated profile refreshes asynchronously on a 24-hour cadence while live task text remains current.
 - In-app docs list the packet shape, trigger policy, privacy boundary, and Memory UX.
 
 ## Out Of Scope For V1
