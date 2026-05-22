@@ -17,6 +17,23 @@ The top summary shows outstanding count, PFT in flight, chain-indexed projection
 
 `GET /api/tasks` also returns task sync integrity from the cache layer. The sync status can be `ready`, `empty`, `indexing_lag`, or `reducer_attention`. `indexing_lag` means the cache has a newer task pointer than the projected row has consumed. `reducer_attention` means failed reducer work exists for one or more visible tasks. The UI should treat these as indexing states, not as final lifecycle states.
 
+## List And Detail State Consistency
+
+The task list, tab counts, and task detail page must agree because they read the same projected lifecycle. If the detail page says a task is rewarded, the list must not keep showing that task under Verification.
+
+The failure mode we just fixed was not a bad reward decision and not a one-off task record. The database projection already had the correct terminal state. The bug was that the Tasks page was allowed to stop refreshing while a task sat at `verification_requested`. That state is not stable. It means the user can still submit verification evidence and the authority worker can later publish a reward decision.
+
+The repair is in the shared lifecycle contract, not a hard-coded task patch. `shared/task-lifecycle.js` now marks `verification_requested` as an active review-loop state with `requiresRefresh: true`. `GET /api/tasks` uses that contract when returning sync metadata, and the Tasks page uses the metadata to keep polling until the projection reaches a terminal state such as `rewarded`, `refused`, or `cancelled`.
+
+In plain English:
+
+1. A task card can sit in Verification while the system is waiting for evidence or review.
+2. While it is in that review loop, the list keeps checking the projection cache.
+3. When the reducer projects a reward decision or payment, the card moves to Rewarded without a manual browser reload.
+4. Terminal states stop active refresh because no later lifecycle event is expected for the normal task loop.
+
+Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`. It asserts that `verification_requested` stays refreshable and that terminal `rewarded` tasks do not keep the page polling forever.
+
 The `Request task` button opens a modal where the user can describe the kind of work they want. Submitting the modal uses `POST /api/tasks/request` to build a request bundle from the current context document, deep memory, recent memory, recent chats, and existing task queue; encrypt the bundle locally in the browser; pin it to IPFS; encrypt a `pf.task.request.v1` event that points at that bundle; and sign a PFTL `TASK` pointer transaction from the linked user wallet.
 
 After a successful chain submit, the server records a durable `task_requests` row plus the hidden `pf.task.request_intent.v1` chat turn tagged as `source: task_interface` and `status: pftl_request_published`. The Tasks page only shows a compact in-flight request strip while a request is actively signing, queued, generating, recently published, or recently failed. Once a request becomes a proposed task, the request receipt leaves the main UX and the user should interact with the projected task card instead. Chat also supports task request mode from the `+` menu. It uses the same signed request publisher, tags the cache entry as `source: user_chat`, and keeps the receipt in the active chat thread.

@@ -34,6 +34,23 @@ Reward display is also projection-derived. A terminal reward decision with `rewa
 
 Evidence packets can include one or two compact artifacts. Screenshot/image evidence is processed into a vision description and digest metadata before the encrypted payload is pinned; raw image bytes should not be embedded in task payload JSON.
 
+## Review Loop Refresh Contract
+
+Task lifecycle state is shared between server and client through `shared/task-lifecycle.js`. That file is the source of truth for labels, tabs, allowed actions, terminal states, and refresh behavior.
+
+Review-loop states are not final. `submitted`, `verification_requested`, `verification_response_submitted`, and `reward_decided` can all be followed by worker-published events. The app must keep refreshing projections while a visible task is in one of those states. This prevents a split-brain UX where the detail route has already observed a reward but the list route still shows the older Verification card.
+
+The current contract is:
+
+| State | Why it refreshes |
+| --- | --- |
+| `submitted` | The authority worker may publish a verification request. |
+| `verification_requested` | The user may submit verification evidence and the worker may later review it. |
+| `verification_response_submitted` | The authority worker may publish a reward decision. |
+| `reward_decided` | A positive decision may still be followed by the actual reward payment pointer. |
+
+Terminal states such as `rewarded`, `refused`, `cancelled`, `expired`, and `rejected` do not request ongoing list refresh. They can still be opened and audited through detail/forensics, but the normal lifecycle is finished.
+
 ## Diagram
 
 ```mermaid
