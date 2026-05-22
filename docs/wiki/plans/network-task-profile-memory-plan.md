@@ -130,6 +130,37 @@ Outcome: <reward summary, refusal reason, cancellation reason, or current next a
 
 The packet should preserve enough specificity to route useful work without flooding the model with chain audit detail. It intentionally omits generic `Updated` timestamps because recency is not enough to route work and stale orphan rows can otherwise look legitimate.
 
+## Prompt Construction
+
+`server/repositories/network-task-profile.js::buildNetworkTaskProfileSourcePacket` builds the prompt input. The model does not receive ad hoc app state, raw chat transcripts, raw evidence files, CIDs, transaction hashes, or full task forensics.
+
+The prompt input is a single text packet with stable headings:
+
+- `Generated At`
+- `Account`
+- `Network Context Inputs`
+- `Context Document`
+- `Deep Memory`
+- `Recently Refused Tasks`
+- `Recently Rewarded Tasks`
+
+`Network Context Inputs` is the bridge between the live Memory tab and the async generated profile. It is rendered directly from the profile/task cache and then included inside the source packet. The generated report is therefore based on the same live task/profile text the user can inspect in the Memory tab.
+
+The prompt file is `prompts/memory/network_task_profile_v2.md`. It tells the model that the user message is a `NETWORK TASK PROFILE SOURCE PACKET`, explains each evidence block, and requires a small JSON output:
+
+```json
+{
+  "profile_title": "Concise professional role title for this user's network diagnostic profile",
+  "current_focus": ["active project, priority, or operating focus"],
+  "primary_contribution_ability": ["core capability and outcome it can drive"],
+  "domain_expertise": ["Public Company Name: why this user's work maps to that company"]
+}
+```
+
+The UI labels `domain_expertise` as `Companies this User Would Move the Needle At`. The stored JSON key remains `domain_expertise` for parser stability.
+
+Prompt-version changes are operational state. `server/repositories/network-task-profile.js::getNetworkTaskProfileState` compares the latest row's `prompt_version` with `network_task_profile_v2`; when they differ it queues a new async job even if the source packet digest is unchanged.
+
 ## Model Job
 
 Name: `network_task_profile_v2`
