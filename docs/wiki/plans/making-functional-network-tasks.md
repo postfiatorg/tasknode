@@ -424,14 +424,16 @@ Existing and planned prompt files:
 
 `board_manager_v1` is the planned policy boundary. It chooses one action per run from a finite registry.
 
-The harness runs this prompt through Codex Exec and defaults to dry-run:
+The harness runs this prompt through a persistent Codex Exec session and defaults to dry-run for app mutations:
 
 - command: `npm run board-manager:codex -- --trigger <name>`;
 - execution command: `npm run board-manager:codex -- --trigger <name> --execute`;
+- fresh-session command: `npm run board-manager:codex -- --trigger <name> --fresh-session`;
 - model: `gpt-5.5`;
 - reasoning: `xhigh`;
 - schema: `schemas/board-manager-action.schema.json`;
 - source packet: Hive Context, Hive Secretary state, active/project registry, task state, task requests, and recent Board Manager runs.
+- session table: `board_manager_sessions`; subsequent ticks use `codex exec resume <session_id>`.
 - implemented hooks: message a user, refresh Hive Secretary, create a project, archive a project, and assign a contributor.
 
 `hive_active_projects_v1` currently decides which durable projects exist. In the Board Manager architecture it becomes an action helper, not an independent decision loop.

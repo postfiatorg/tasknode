@@ -525,30 +525,6 @@
   padding-top: 2px;
 }
 
-.hive-board-manager-messages {
-  border-top: 0.5px solid var(--hive-border);
-  margin-top: 16px;
-  padding-top: 14px;
-}
-
-.hive-board-manager-messages header {
-  align-items: baseline;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.hive-board-manager-messages strong {
-  color: var(--hive-ink);
-  font-size: 13.5px;
-  font-weight: 500;
-}
-
-.hive-board-manager-messages small {
-  color: var(--hive-muted);
-  font-size: 11.5px;
-}
-
 .hive-agent-panel {
   padding-top: 14px;
 }
@@ -697,11 +673,6 @@
   border: 0.5px solid var(--hive-border);
   border-radius: 8px;
   padding: 10px 12px;
-}
-
-.hive-context-entry.is-board-manager {
-  background: var(--hive-green-soft);
-  border-color: rgba(91, 138, 85, 0.22);
 }
 
 .hive-context-entry p {

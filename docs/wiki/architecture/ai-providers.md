@@ -66,7 +66,7 @@ The target architecture is Board Manager centered. The Board Manager is a leased
 
 | Worker | Provider | API path | Default model | Reasoning | Output | Privacy policy |
 | --- | --- | --- | --- | --- | --- | --- |
-| Board Manager | Codex Exec | `codex exec` | `gpt-5.5` | `xhigh` | One action from registry | Internal run log |
+| Board Manager | Codex Exec | `codex exec` / `codex exec resume` | `gpt-5.5` | `xhigh` | One action from registry | Internal run log |
 | Hive Secretary | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON report | `store=false` |
 | Hive Active Projects | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON project set | `store=false` |
 
@@ -76,7 +76,7 @@ The planned Hive Product Document worker is a different job. It should generate 
 
 Current Hive Secretary and Active Projects workers still exist, but the planning direction is to stop treating them as the decision loop. The Board Manager owns whether a Secretary refresh, project update, product-doc refresh, research action, user follow-up, task allocation, or evidence review should happen.
 
-The Board Manager harness defaults to dry-run. `scripts/board-manager-codex-exec.mjs` builds the live Hive source packet, calls `codex exec --model gpt-5.5 -c model_reasoning_effort="xhigh"` with `schemas/board-manager-action.schema.json`, and records the selected action in `board_manager_runs` when Postgres is enabled. When run with `--execute`, it dispatches supported hooks through `server/board-manager-actions.js`: `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, and `assign_contributor`.
+The Board Manager harness defaults to dry-run for app mutations, but it is not ephemeral. `scripts/board-manager-codex-exec.mjs` builds the live Hive source packet, creates or resumes the persistent Codex session stored in `board_manager_sessions`, calls Codex with `gpt-5.5` and `model_reasoning_effort="xhigh"` against `schemas/board-manager-action.schema.json`, and records the selected action in `board_manager_runs` when Postgres is enabled. When run with `--execute`, it dispatches supported hooks through `server/board-manager-actions.js`: `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, and `assign_contributor`.
 
 Environment overrides:
 

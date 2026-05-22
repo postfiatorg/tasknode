@@ -33,13 +33,13 @@ When the user selects `Hive Input`, the composer changes mode and the next messa
 
 Expanding the section shows tabs. `Hive Context` shows the current `Hive Secretary` report first. Raw user inputs are behind a second collapsible `Raw inputs` control so the page reads like a network report by default instead of a transcript dump. Raw inputs show contributor, timestamp, body, and whether the entry came from a validated linked wallet. Source chat title is intentionally not displayed because it is usually not useful network context.
 
-`Hive Mind Agent` shows the Board Manager feed. This feed reads durable `board_manager_runs` plus `board_manager_action_results` and includes runs where the selected action is `do_nothing` or no selected action was recorded. User-visible Board Manager messages are shown under the feed so a member can see both what the agent decided and what it said directly to them.
+`Hive Mind Agent` shows the Board Manager feed. This feed reads durable `board_manager_runs` plus `board_manager_action_results` and includes runs where the selected action is `do_nothing` or no selected action was recorded.
 
 ## Board Manager Target
 
 The Board Manager is the planned system operator for Hive. It is a Codex Exec function with a bounded action registry. It should run periodically or after meaningful state changes, claim a single `global_hive` lease, inspect the current board state, and choose one action.
 
-V0 exists as a Codex Exec harness. It builds the current Hive source packet, calls Codex Exec using `gpt-5.5` with `xhigh` reasoning, validates the returned action against a JSON schema, and records the decision in `board_manager_runs` when Postgres is enabled. It defaults to dry-run, and executes supported action hooks only when the executor is run with `--execute`.
+V0 exists as a persistent Codex Exec harness. It builds the current Hive source packet, calls Codex Exec using `gpt-5.5` with `xhigh` reasoning, validates the returned action against a JSON schema, and records the decision in `board_manager_runs` when Postgres is enabled. It stores one Codex session id per manager scope in `board_manager_sessions`; later ticks call `codex exec resume <session_id>` instead of starting over. It defaults to dry-run for app mutations, and executes supported action hooks only when the executor is run with `--execute`.
 
 Allowed actions include:
 
@@ -55,7 +55,7 @@ Allowed actions include:
 - initiate project-linked Network Tasks with rewards
 - review evidence packets through the existing task engine
 
-Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, and `assign_contributor`. `archive_project` is the delete-project behavior; the row is hidden from the active board but not hard deleted. `message_user` writes to `board_manager_user_messages`, which appears in the Hive Mind Agent tab for the target account.
+Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, and `assign_contributor`. `archive_project` is the delete-project behavior; the row is hidden from the active board but not hard deleted. `message_user` writes to `board_manager_user_messages`; the Hive Mind Agent tab itself stays focused on the agent run/action feed.
 
 The old direct cascade where Hive Secretary automatically drives active projects is deprecated as the target architecture. The existing Secretary and Active Projects workers remain implementation primitives, but the Board Manager should own when they run.
 
@@ -118,7 +118,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads user-visible manager messages.
 - `server/board-manager-actions.js` executes the first Board Manager action hooks.
-- `scripts/board-manager-codex-exec.mjs` runs one Codex Exec Board Manager dry run or, with `--execute`, dispatches supported action hooks.
+- `scripts/board-manager-codex-exec.mjs` runs one persistent Codex Exec Board Manager tick or, with `--execute`, dispatches supported action hooks.
 - `schemas/board-manager-action.schema.json` constrains the Codex Exec output.
 - `server/repositories/hive-context.js` persists raw Hive Context entries, Secretary jobs, and Secretary reports.
 - `server/repositories/hive-projects.js` reads active network projects and links the latest Secretary report as a project input.
@@ -132,6 +132,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/db/migrations/033_board_manager_v0.sql` adds Board Manager lease/run/action-result tables.
 - `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks archived project rows so rejected projects do not reappear after a later planner run.
 - `server/db/migrations/035_board_manager_action_hooks.sql` adds user-visible Board Manager messages.
+- `server/db/migrations/036_board_manager_persistent_sessions.sql` adds persistent Codex session tracking.
 - `prompts/hive/hive_secretary_v1.md` is the source-controlled Secretary prompt.
 - `prompts/hive/hive_active_projects_v1.md` is the source-controlled active-project prompt.
 - `prompts/hive/board_manager_v1.md` is the planned Board Manager operating prompt.

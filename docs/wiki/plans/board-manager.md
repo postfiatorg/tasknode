@@ -1,6 +1,6 @@
 # Board Manager
 
-Status: v0 Codex Exec implemented with first action hooks
+Status: v0 persistent Codex Exec agent implemented with first action hooks
 
 This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, archive projects, refresh project documents, route tasks, or do nothing.
 
@@ -31,6 +31,8 @@ Planned ownership model:
 - A process can claim the lease only when it is expired or explicitly released.
 - The lease records `manager_id`, `owner_instance`, `scope`, `claimed_at`, `heartbeat_at`, and `expires_at`.
 - Each run records a durable `board_manager_runs` row with source packet digest, selected action, outcome, and errors.
+- `board_manager_sessions` stores the persistent Codex session id for each scope.
+- Each tick resumes that session with `codex exec resume <session_id>` unless an operator explicitly starts a fresh session.
 - The first scope is `global_hive`.
 - Later scopes can be project-specific, for example `project:pft_distribution_v3`, if the network becomes too large for one global manager.
 
@@ -43,16 +45,18 @@ Implemented v0 pieces:
 - `server/repositories/board-manager.js` builds the current Hive source packet and validates the returned action.
 - `server/repositories/board-manager.js` formats a Hive Mind Agent feed from `board_manager_runs` and `board_manager_action_results`.
 - `schemas/board-manager-action.schema.json` constrains the Codex Exec output, including action-specific `project`, `contributor`, `message_text`, and `archive_reason` payload fields.
-- `scripts/board-manager-codex-exec.mjs` runs Codex Exec with `gpt-5.5` and `model_reasoning_effort = xhigh`.
+- `scripts/board-manager-codex-exec.mjs` runs Codex Exec with `gpt-5.5` and `model_reasoning_effort = xhigh`, creating or resuming the persistent session for the Board Manager scope.
 - `server/board-manager-actions.js` executes the first supported actions.
 - `server/db/migrations/033_board_manager_v0.sql` adds lease, run, and action-result tables.
 - `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks operator-archived Hive projects so the project planner cannot silently reactivate rejected cards.
 - `server/db/migrations/035_board_manager_action_hooks.sql` adds user-visible Board Manager messages.
+- `server/db/migrations/036_board_manager_persistent_sessions.sql` adds persistent Codex session tracking.
 - `npm run board-manager:codex -- --trigger <name>` runs one dry-run Board Manager decision.
 - `npm run board-manager:codex -- --trigger <name> --execute` runs one Board Manager decision and executes supported action hooks.
+- `npm run board-manager:codex -- --trigger <name> --fresh-session` starts a new persistent Codex session for the scope.
 - `npm run board-manager:codex -- --packet-only` prints the source packet without calling Codex.
 
-The default remains dry-run. Execution requires the explicit `--execute` flag.
+The default remains dry-run for app mutations. It is not ephemeral. The Codex conversation persists, and execution of app hooks still requires the explicit `--execute` flag.
 
 Implemented action hooks:
 
@@ -67,7 +71,6 @@ Hive page visibility:
 
 - The collapsed `Hive Context` section contains a `Hive Mind Agent` tab.
 - The tab shows recent Board Manager runs as a feed, including `do_nothing` and runs with no recorded selected action.
-- User-visible `message_user` outputs appear below that feed for the signed-in account.
 
 Not yet implemented action hooks:
 

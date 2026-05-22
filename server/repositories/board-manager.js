@@ -314,7 +314,8 @@ async function recentBoardManagerRuns({ limit = 12 } = {}) {
     `
       SELECT id, scope, manager_id, trigger, status, source_packet_digest,
              selected_action, action_payload_json, decision_json, dry_run,
-             model, reasoning_effort, error, started_at, completed_at
+             model, reasoning_effort, error, codex_session_id, codex_session_path,
+             session_mode, started_at, completed_at
       FROM board_manager_runs
       ORDER BY started_at DESC, id DESC
       LIMIT $1
@@ -358,6 +359,9 @@ async function recentBoardManagerRuns({ limit = 12 } = {}) {
     dryRun: Boolean(row.dry_run),
     model: row.model,
     reasoningEffort: row.reasoning_effort,
+    codexSessionId: row.codex_session_id,
+    codexSessionPath: row.codex_session_path,
+    sessionMode: row.session_mode,
     error: row.error,
     actionResults: actionResultsByRun.get(row.id) || [],
     startedAt: iso(row.started_at),
@@ -425,6 +429,8 @@ export function formatBoardManagerAgentRun(run = {}) {
     trigger: safeText(run.trigger, 160),
     model: safeText(run.model, 120),
     reasoningEffort: safeText(run.reasoningEffort, 40),
+    codexSessionId: safeText(run.codexSessionId, 120),
+    sessionMode: safeText(run.sessionMode, 80),
     sourcePacketDigest: safeText(run.sourcePacketDigest, 120),
     actionResults: results.slice(0, 6).map((result) => ({
       id: safeText(result.id, 180),
@@ -443,6 +449,113 @@ export function formatBoardManagerAgentRun(run = {}) {
 export async function getBoardManagerAgentFeed({ limit = 20 } = {}) {
   const runs = await recentBoardManagerRuns({ limit: Math.min(Math.max(Number(limit) || 20, 1), 30) });
   return runs.map(formatBoardManagerAgentRun);
+}
+
+export async function getBoardManagerSession({ scope = "global_hive" } = {}) {
+  if (!useDatabase()) return null;
+  const exists = await query("SELECT to_regclass('public.board_manager_sessions') AS name");
+  if (!exists.rows[0]?.name) return null;
+  const result = await query(
+    `
+      SELECT scope, session_id, session_path, status, model, reasoning_effort,
+             last_run_id, metadata_json, created_at, updated_at
+      FROM board_manager_sessions
+      WHERE scope = $1
+        AND status = 'active'
+      LIMIT 1
+    `,
+    [safeText(scope, 120) || "global_hive"]
+  );
+  const row = result.rows[0];
+  if (!row?.session_id) return null;
+  return {
+    scope: row.scope,
+    sessionId: row.session_id,
+    sessionPath: row.session_path,
+    status: row.status,
+    model: row.model,
+    reasoningEffort: row.reasoning_effort,
+    lastRunId: row.last_run_id,
+    metadata: safeObject(row.metadata_json),
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+  };
+}
+
+export async function upsertBoardManagerSession({
+  scope = "global_hive",
+  sessionId = "",
+  sessionPath = "",
+  model = "",
+  reasoningEffort = "",
+  lastRunId = "",
+  metadata = {},
+} = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const normalizedSessionId = safeText(sessionId, 120);
+  if (!normalizedSessionId) throw new Error("board_manager_session_id_required");
+  const result = await query(
+    `
+      INSERT INTO board_manager_sessions (
+        scope,
+        session_id,
+        session_path,
+        status,
+        model,
+        reasoning_effort,
+        last_run_id,
+        metadata_json
+      )
+      VALUES ($1, $2, $3, 'active', $4, $5, $6, $7::jsonb)
+      ON CONFLICT (scope) DO UPDATE SET
+        session_id = EXCLUDED.session_id,
+        session_path = EXCLUDED.session_path,
+        status = 'active',
+        model = EXCLUDED.model,
+        reasoning_effort = EXCLUDED.reasoning_effort,
+        last_run_id = EXCLUDED.last_run_id,
+        metadata_json = board_manager_sessions.metadata_json || EXCLUDED.metadata_json,
+        updated_at = now()
+      RETURNING *
+    `,
+    [
+      safeText(scope, 120) || "global_hive",
+      normalizedSessionId,
+      safeText(sessionPath, 1000),
+      safeText(model, 120),
+      safeText(reasoningEffort, 40),
+      safeText(lastRunId, 180),
+      jsonValue(metadata),
+    ]
+  );
+  return { ok: true, session: result.rows[0] };
+}
+
+export async function updateBoardManagerRunSession({
+  runId = "",
+  codexSessionId = "",
+  codexSessionPath = "",
+  sessionMode = "",
+} = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const result = await query(
+    `
+      UPDATE board_manager_runs
+      SET codex_session_id = $2,
+          codex_session_path = $3,
+          session_mode = $4,
+          updated_at = now()
+      WHERE id = $1
+      RETURNING id, codex_session_id, codex_session_path, session_mode
+    `,
+    [
+      safeText(runId, 180),
+      safeText(codexSessionId, 120),
+      safeText(codexSessionPath, 1000),
+      safeText(sessionMode, 80),
+    ]
+  );
+  return { ok: true, run: result.rows[0] || null };
 }
 
 export async function buildBoardManagerSourcePacket({
@@ -518,8 +631,10 @@ export function formatBoardManagerCodexPrompt({ prompt = "", sourcePacket = {} }
   return [
     prompt,
     "",
-    "You are running in v0 dry-run mode.",
+    "You are running inside the persistent Board Manager Codex session.",
+    "Use your prior session context plus the current source packet, but treat the current packet as the live state of the app.",
     "Do not edit files. Do not run shell commands. Do not mutate database state.",
+    "The Task Node app will execute supported action hooks after your final JSON only when the caller uses --execute.",
     "Read the source packet and return exactly one action JSON object that matches the provided schema.",
     "",
     "BOARD MANAGER SOURCE PACKET",
@@ -690,15 +805,19 @@ export async function startBoardManagerRun({
   dryRun = true,
   model = "",
   reasoningEffort = "",
+  codexSessionId = "",
+  codexSessionPath = "",
+  sessionMode = "untracked",
 } = {}) {
   if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
   const result = await query(
     `
       INSERT INTO board_manager_runs (
         id, scope, manager_id, trigger, status, source_packet_digest,
-        source_packet_json, dry_run, model, reasoning_effort
+        source_packet_json, dry_run, model, reasoning_effort,
+        codex_session_id, codex_session_path, session_mode
       )
-      VALUES ($1, $2, $3, $4, 'running', $5, $6::jsonb, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, 'running', $5, $6::jsonb, $7, $8, $9, $10, $11, $12)
       RETURNING *
     `,
     [
@@ -711,6 +830,9 @@ export async function startBoardManagerRun({
       Boolean(dryRun),
       safeText(model, 120),
       safeText(reasoningEffort, 40),
+      safeText(codexSessionId, 120),
+      safeText(codexSessionPath, 1000),
+      safeText(sessionMode, 80),
     ]
   );
   return { ok: true, run: result.rows[0] };

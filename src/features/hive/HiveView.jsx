@@ -632,7 +632,6 @@ function HiveContextInputs({
 
 function HiveMindAgentPanel({ boardManager }) {
   const feed = boardManager?.feed || [];
-  const managerMessages = boardManager?.messages || [];
   return (
     <section className="hive-agent-panel">
       <header className="hive-agent-heading">
@@ -648,25 +647,6 @@ function HiveMindAgentPanel({ boardManager }) {
           <p className="hive-context-empty">Board Manager runs will appear here after the agent evaluates Hive state.</p>
         )}
       </div>
-      {managerMessages.length > 0 && (
-        <section className="hive-board-manager-messages">
-          <header>
-            <strong>Messages to you</strong>
-            <small>{managerMessages.length} {managerMessages.length === 1 ? "message" : "messages"}</small>
-          </header>
-          <div className="hive-context-entries">
-            {managerMessages.map((message) => (
-              <article className="hive-context-entry is-board-manager" key={message.id}>
-                <p>{message.body}</p>
-                <footer>
-                  <time>{formatContextTime(message.createdAt)}</time>
-                  <span>board manager</span>
-                </footer>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
     </section>
   );
 }

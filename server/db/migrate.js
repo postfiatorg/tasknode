@@ -42,6 +42,7 @@ const migrations = [
   "033_board_manager_v0.sql",
   "034_lock_operator_archived_hive_projects.sql",
   "035_board_manager_action_hooks.sql",
+  "036_board_manager_persistent_sessions.sql",
 ];
 
 let migrated = false;
