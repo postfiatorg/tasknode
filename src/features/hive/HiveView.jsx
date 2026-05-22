@@ -1,35 +1,59 @@
 import React, { useEffect, useState } from "react";
 import { Activity, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { requestJson } from "../../api";
-import {
-  operatorForWallet,
-  operators,
-  projectPreviewContributors,
-  projects,
-  projectTaskCount,
-  routingFeed,
-} from "./hive-data";
 import "./hive.css";
 
 export function HiveView() {
   const [selectedProject, setSelectedProject] = useState(null);
+  const [projectDocument, setProjectDocument] = useState(null);
+  const [projectStatus, setProjectStatus] = useState("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    setProjectStatus("loading");
+    requestJson("/api/hive/projects")
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) throw new Error(result.body?.message || `Hive projects returned HTTP ${result.status}.`);
+        setProjectDocument(result.body?.document || null);
+        setProjectStatus("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProjectDocument(null);
+        setProjectStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="route-scroll hive-route">
       {selectedProject ? (
-        <ProjectDetail projectId={selectedProject} onBack={() => setSelectedProject(null)} />
+        <ProjectDetail
+          onBack={() => setSelectedProject(null)}
+          operators={projectDocument?.operators || {}}
+          project={projectDocument?.projects?.[selectedProject] || null}
+          status={projectStatus}
+        />
       ) : (
-        <HiveIndex onSelectProject={setSelectedProject} />
+        <HiveIndex
+          onSelectProject={setSelectedProject}
+          projectDocument={projectDocument}
+          projectStatus={projectStatus}
+        />
       )}
     </div>
   );
 }
 
-function HiveIndex({ onSelectProject }) {
+function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
   const [hiveContext, setHiveContext] = useState(null);
   const [hiveSecretary, setHiveSecretary] = useState(null);
   const [hiveContextOpen, setHiveContextOpen] = useState(false);
   const [hiveContextStatus, setHiveContextStatus] = useState("loading");
+  const stats = projectDocument?.stats || {};
 
   useEffect(() => {
     let cancelled = false;
@@ -64,35 +88,49 @@ function HiveIndex({ onSelectProject }) {
           <p>Aggregate view of what the network is doing. The hive routes work to nodes; this is its memory in motion.</p>
         </div>
         <div className="hive-stats">
-          <Stat label="Operators online" value="47" />
-          <Stat label="Tasks in flight" value="124" />
-          <Stat label="PFT routed · 24h" value="1.8k" accent />
+          <Stat label="Operators online" value={projectStatus === "ready" ? stats.operatorsOnline || 0 : "—"} />
+          <Stat label="Tasks in flight" value={projectStatus === "ready" ? stats.tasksInFlight || 0 : "—"} />
+          <Stat label="PFT routed" value={projectStatus === "ready" ? formatCompactPft(stats.pftRouted) : "—"} accent />
         </div>
       </header>
 
       <Section title="Active projects" subtitle="What the hive is routing operators to">
-        <div className="hive-project-grid">
-          {Object.entries(projects).map(([id, project]) => (
-            <ProjectCard key={id} id={id} project={project} onClick={() => onSelectProject(id)} />
-          ))}
-        </div>
+        <ProjectGrid
+          document={projectDocument}
+          onSelectProject={onSelectProject}
+          status={projectStatus}
+        />
       </Section>
 
       <Section title="Routing feed" subtitle="Recent state transitions across the network">
         <div className="hive-card hive-feed">
-          {routingFeed.map((entry, index) => (
-            <FeedRow entry={entry} key={`${entry.wallet}-${entry.task}`} last={index === routingFeed.length - 1} />
+          {(projectDocument?.routingFeed || []).map((entry, index, list) => (
+            <FeedRow
+              entry={entry}
+              key={entry.id || `${entry.wallet}-${entry.task}-${index}`}
+              last={index === list.length - 1}
+              operators={projectDocument?.operators || {}}
+            />
           ))}
+          {projectStatus === "loading" && <div className="hive-empty-project">Loading project feed.</div>}
+          {projectStatus === "error" && <div className="hive-empty-project">Project feed is unavailable.</div>}
         </div>
       </Section>
 
       <Section title="Allotted operators" subtitle="Full-time nodes the hive routes to first">
         <div className="hive-card">
-          {Object.entries(operators)
+          {Object.entries(projectDocument?.operators || {})
             .filter(([, operator]) => operator.allotted)
             .map(([wallet], index, list) => (
-              <AllottedOperatorRow key={wallet} wallet={wallet} last={index === list.length - 1} />
+              <AllottedOperatorRow
+                key={wallet}
+                last={index === list.length - 1}
+                operator={projectDocument?.operators?.[wallet]}
+                wallet={wallet}
+              />
             ))}
+          {projectStatus === "loading" && <div className="hive-empty-project">Loading operators.</div>}
+          {projectStatus === "error" && <div className="hive-empty-project">Operator load is unavailable.</div>}
         </div>
       </Section>
 
@@ -101,7 +139,7 @@ function HiveIndex({ onSelectProject }) {
           context={hiveContext}
           expanded={hiveContextOpen}
           onToggle={() => setHiveContextOpen((open) => !open)}
-        status={hiveContextStatus}
+          status={hiveContextStatus}
           secretary={hiveSecretary}
         />
       </Section>
@@ -109,10 +147,39 @@ function HiveIndex({ onSelectProject }) {
   );
 }
 
-function ProjectDetail({ projectId, onBack }) {
-  const project = projects[projectId];
-  if (!project) return null;
-  const fullProject = project.contributors?.length > 0;
+function ProjectGrid({ document, onSelectProject, status }) {
+  const projects = document?.projects || {};
+  const projectIds = document?.projectIds || [];
+  if (status === "loading") {
+    return <div className="hive-card hive-empty-project">Loading active projects.</div>;
+  }
+  if (status === "error") {
+    return <div className="hive-card hive-empty-project">Active projects are unavailable.</div>;
+  }
+  if (!projectIds.length) {
+    return <div className="hive-card hive-empty-project">No active projects are registered.</div>;
+  }
+  return (
+    <div className="hive-project-grid">
+      {projectIds.map((id) => (
+        <ProjectCard
+          key={id}
+          operators={document?.operators || {}}
+          project={projects[id] || {}}
+          onClick={() => onSelectProject(id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ProjectDetail({ onBack, operators, project, status }) {
+  if (status === "loading") {
+    return <div className="hive-shell"><div className="hive-card hive-empty-project">Loading project.</div></div>;
+  }
+  if (!project) {
+    return <div className="hive-shell"><button className="hive-back" onClick={onBack} type="button"><ArrowLeft size={14} strokeWidth={1.8} />Hive</button><div className="hive-card hive-empty-project">Project is unavailable.</div></div>;
+  }
 
   return (
     <div className="hive-shell">
@@ -131,57 +198,81 @@ function ProjectDetail({ projectId, onBack }) {
           {project.summary && <p>{project.summary}</p>}
         </div>
         <div className="hive-stats">
-          <Stat label="Tasks" value={projectTaskCount[projectId] || project.tasks.length} />
-          <Stat label="Contributors" value={project.contributors?.length || 0} />
-          <Stat label="PFT routed" value={project.pft} accent />
+          <Stat label="Tasks" value={project.taskCount || project.tasks.length} />
+          <Stat label="Contributors" value={project.contributorCount || project.contributors?.length || 0} />
+          <Stat label="PFT routed" value={formatPft(project.pft)} accent />
         </div>
       </header>
 
-      {fullProject ? (
-        <>
-          <Section title="About" subtitle="What this project is" layerNumber="01">
-            <div className="hive-card hive-about">
-              <p>{project.about}</p>
-              <div className="hive-about-meta">
-                <span>
-                  <small>Proposed by hive</small>
-                  <strong>{project.proposed}</strong>
-                </span>
-                <span>
-                  <small>Phase</small>
-                  <strong>{project.phase}</strong>
-                </span>
-              </div>
-            </div>
-          </Section>
+      <Section title="About" subtitle="What this project is" layerNumber="01">
+        <div className="hive-card hive-about">
+          <p>{project.about || project.objective || project.summary}</p>
+          <div className="hive-about-meta">
+            <span>
+              <small>Proposed by {project.proposedBy || "hive"}</small>
+              <strong>{project.proposed || "Registered project"}</strong>
+            </span>
+            {project.phase && (
+              <span>
+                <small>Phase</small>
+                <strong>{project.phase}</strong>
+              </span>
+            )}
+            {project.sourceHiveSecretaryReportId && (
+              <span>
+                <small>Inputs</small>
+                <strong>Hive Secretary</strong>
+              </span>
+            )}
+          </div>
+        </div>
+      </Section>
 
-          <Section title="Contributors" subtitle={`${project.contributors.length} operators have earned PFT on this project`} layerNumber="02">
-            <div className="hive-contributor-grid">
-              {project.contributors.map((contributor) => (
-                <ContributorCard contributor={contributor} key={contributor.wallet} />
-              ))}
-            </div>
-          </Section>
+      <Section title="Contributors" subtitle={`${project.contributors.length} operators have earned PFT on this project`} layerNumber="02">
+        {project.contributors.length ? (
+          <div className="hive-contributor-grid">
+            {project.contributors.map((contributor) => (
+              <ContributorCard contributor={contributor} key={contributor.wallet} />
+            ))}
+          </div>
+        ) : (
+          <div className="hive-card hive-empty-project">Contributors will populate after tasks are allocated and rewarded.</div>
+        )}
+      </Section>
 
-          <Section title="Tasks" subtitle={`${project.tasks.length} tasks across all states`} layerNumber="03">
-            <div className="hive-card">
-              {project.tasks.map((task, index) => (
-                <ProjectTaskRow key={`${task.title}-${task.state}`} last={index === project.tasks.length - 1} task={task} />
-              ))}
-            </div>
-          </Section>
+      <Section title="Tasks" subtitle={`${project.tasks.length} project task rows`} layerNumber="03">
+        <div className="hive-card">
+          {project.tasks.length ? (
+            project.tasks.map((task, index) => (
+              <ProjectTaskRow
+                key={task.id || `${task.title}-${task.state}`}
+                last={index === project.tasks.length - 1}
+                operators={operators}
+                task={task}
+              />
+            ))
+          ) : (
+            <div className="hive-empty-project">Network tasks will appear after allocation attaches PFTL task IDs to this project.</div>
+          )}
+        </div>
+      </Section>
 
-          <Section title="Activity" subtitle="Recent events scoped to this project" layerNumber="04">
-            <div className="hive-card">
-              {project.activity.map((entry, index) => (
-                <ActivityRow entry={entry} key={`${entry.wallet}-${entry.task}`} last={index === project.activity.length - 1} />
-              ))}
-            </div>
-          </Section>
-        </>
-      ) : (
-        <div className="hive-empty-project">Full project view available for PFT distribution v3 in this mock. Other projects show summary only.</div>
-      )}
+      <Section title="Activity" subtitle="Recent events scoped to this project" layerNumber="04">
+        <div className="hive-card">
+          {project.activity.length ? (
+            project.activity.map((entry, index) => (
+              <ActivityRow
+                entry={entry}
+                key={entry.id || `${entry.wallet}-${entry.task}`}
+                last={index === project.activity.length - 1}
+                operators={operators}
+              />
+            ))
+          ) : (
+            <div className="hive-empty-project">Project activity will populate as project-linked tasks move.</div>
+          )}
+        </div>
+      </Section>
     </div>
   );
 }
@@ -210,10 +301,10 @@ function Section({ title, subtitle, children, layerNumber = "" }) {
   );
 }
 
-function ProjectCard({ id, project, onClick }) {
-  const previewWallets = (projectPreviewContributors[id] || []).slice(0, 4);
-  const contributorCount = (projectPreviewContributors[id] || []).length;
-  const taskCount = projectTaskCount[id] || 0;
+function ProjectCard({ operators, project, onClick }) {
+  const previewWallets = (project.contributors || []).map((contributor) => contributor.wallet).slice(0, 4);
+  const contributorCount = project.contributorCount || project.contributors?.length || 0;
+  const taskCount = project.taskCount || project.tasks?.length || 0;
 
   return (
     <button className="hive-project-card" onClick={onClick} type="button">
@@ -224,7 +315,7 @@ function ProjectCard({ id, project, onClick }) {
         <span className="hive-badge-stack">
           {previewWallets.map((wallet, index) => (
             <span className="hive-badge-wrap" key={wallet} style={{ marginLeft: index === 0 ? 0 : -8 }}>
-              <NftBadge size={22} variant={operatorForWallet(wallet).badge} />
+              <NftBadge size={22} variant={operatorForWallet(wallet, operators).badge} />
             </span>
           ))}
         </span>
@@ -236,15 +327,15 @@ function ProjectCard({ id, project, onClick }) {
         <span>
           <strong>{taskCount}</strong> tasks
         </span>
-        <span className="hive-pft">{project.pft} PFT</span>
+        <span className="hive-pft">{formatPft(project.pft)} PFT</span>
         <ChevronRight size={14} strokeWidth={1.8} />
       </span>
     </button>
   );
 }
 
-function FeedRow({ entry, last = false }) {
-  const operator = operatorForWallet(entry.wallet);
+function FeedRow({ entry, last = false, operators = {} }) {
+  const operator = operatorForWallet(entry.wallet, operators);
   return (
     <div className={`hive-feed-row ${last ? "is-last" : ""}`}>
       <NftBadge size={24} variant={operator.badge} />
@@ -258,32 +349,32 @@ function FeedRow({ entry, last = false }) {
         <small>· {entry.project}</small>
         {entry.routing && <em>{entry.routing}</em>}
       </span>
-      {entry.pft && <span className="hive-pft">+{entry.pft} PFT</span>}
+      {entry.pft !== null && entry.pft !== undefined && <span className="hive-pft">+{formatPft(entry.pft)} PFT</span>}
       <time>{entry.time}</time>
     </div>
   );
 }
 
-function AllottedOperatorRow({ wallet, last = false }) {
-  const operator = operatorForWallet(wallet);
-  const loadPercent = Math.round((operator.load / operator.cap) * 100);
-  const active = operator.status === "active";
+function AllottedOperatorRow({ wallet, operator, last = false }) {
+  const resolvedOperator = operator || operatorForWallet(wallet);
+  const loadPercent = resolvedOperator.cap ? Math.round((resolvedOperator.load / resolvedOperator.cap) * 100) : 0;
+  const active = resolvedOperator.status === "active";
 
   return (
     <div className={`hive-operator-row ${last ? "is-last" : ""}`}>
-      <NftBadge size={26} variant={operator.badge} />
+      <NftBadge size={26} variant={resolvedOperator.badge} />
       <span className="hive-operator-id">
-        <strong>{operator.codename}</strong>
+        <strong>{resolvedOperator.codename}</strong>
         <small>{wallet}</small>
       </span>
       <span className={`hive-presence ${active ? "is-active" : "is-quiet"}`} />
-      <span className="hive-operator-role">{operator.archetype}</span>
+      <span className="hive-operator-role">{resolvedOperator.archetype}</span>
       <span className="hive-load">
         <span>
           <i style={{ width: `${loadPercent}%` }} />
         </span>
         <small>
-          {operator.load}/{operator.cap}
+          {resolvedOperator.load}/{resolvedOperator.cap}
         </small>
       </span>
     </div>
@@ -291,33 +382,31 @@ function AllottedOperatorRow({ wallet, last = false }) {
 }
 
 function ContributorCard({ contributor }) {
-  const operator = operatorForWallet(contributor.wallet);
-
   return (
     <div className="hive-contributor-card">
-      <NftBadge size={36} variant={operator.badge} />
+      <NftBadge size={36} variant={contributor.badge} />
       <div className="hive-contributor-main">
         <span>
-          <strong>{operator.codename}</strong>
+          <strong>{contributor.codename || "Operator"}</strong>
           {contributor.role === "lead" && <small>lead</small>}
         </span>
         <code>{contributor.wallet}</code>
-        <p>{operator.archetype}</p>
+        <p>{contributor.archetype}</p>
       </div>
       <div className="hive-contributor-metrics">
         <span>
           <strong>{contributor.tasks}</strong> tasks
         </span>
-        <span className="hive-pft">{contributor.pft} PFT</span>
+        <span className="hive-pft">{formatPft(contributor.pft)} PFT</span>
         <small>active {contributor.lastActive}</small>
       </div>
     </div>
   );
 }
 
-function ProjectTaskRow({ task, last = false }) {
+function ProjectTaskRow({ task, last = false, operators = {} }) {
   const state = taskState(task.state);
-  const operator = task.assignee ? operatorForWallet(task.assignee) : null;
+  const operator = task.assignee ? operatorForWallet(task.assignee, operators) : null;
 
   return (
     <div className={`hive-task-row ${last ? "is-last" : ""} ${state.dim ? "is-dim" : ""}`}>
@@ -347,8 +436,8 @@ function ProjectTaskRow({ task, last = false }) {
   );
 }
 
-function ActivityRow({ entry, last = false }) {
-  const operator = operatorForWallet(entry.wallet);
+function ActivityRow({ entry, last = false, operators = {} }) {
+  const operator = operatorForWallet(entry.wallet, operators);
 
   return (
     <div className={`hive-activity-row ${last ? "is-last" : ""}`}>
@@ -492,6 +581,28 @@ function projectTypeLabel(value = "") {
     .filter(Boolean)
     .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
     .join(" ");
+}
+
+function operatorForWallet(wallet, operators = {}) {
+  return operators[wallet] || { codename: "—", archetype: "", badge: 0, allotted: false, cap: 0, load: 0, status: "quiet" };
+}
+
+function formatPft(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return "0";
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: number % 1 === 0 ? 0 : 2,
+  }).format(number);
+}
+
+function formatCompactPft(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return "0";
+  if (Math.abs(number) < 1000) return formatPft(number);
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(number);
 }
 
 function formatContextTime(value = "") {

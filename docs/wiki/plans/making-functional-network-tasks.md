@@ -30,7 +30,7 @@ These types are not user-facing bureaucracy. They are routing boundaries that he
 
 ## Core Data Model
 
-Network projects are not canonical chain objects in v1. They are Postgres coordination records that reference canonical PFTL tasks.
+Network projects are not canonical chain objects in v1. They are Postgres coordination records that exist before task allocation and later reference canonical PFTL tasks.
 
 ### `network_projects`
 
@@ -46,7 +46,9 @@ Fields:
 - `status`: `active`, `paused`, `completed`, or `archived`.
 - `priority`: integer or enum used for Hive ordering.
 - `origin`: `system_generated`, `system_migration`, or `system_backfill`.
-- `source_snapshot_id`: the network snapshot or generation job that created or last materially reshaped the project.
+- `source_hive_secretary_report_id`: latest Hive Secretary report used as a project input.
+- `source_hive_secretary_report_digest`: digest of that report source packet.
+- `source_inputs_json`: structured input metadata.
 - `created_at`
 - `updated_at`
 
@@ -66,7 +68,7 @@ Fields:
 - `linked_at`
 - `source`: `system_generated`, `task_request`, `migration`, or `system_backfill`
 
-The authoritative task state still comes from PFTL task events and `task_projections`. This table is a relationship layer, not a second task state machine.
+The authoritative task state still comes from PFTL task events and `task_projections` after allocation. Before allocation, this table can hold apriori project task rows so a project board can exist before concrete tasks are pushed to users. It is still not a second canonical task state machine.
 
 ### `network_project_contributors`
 
@@ -152,15 +154,16 @@ The current Hive page should become a read model over these data types.
 Source:
 
 - `network_projects`
-- task counts from `network_project_task_refs` joined to `task_projections`
+- task counts from `network_projects` and `network_project_task_refs`
 - contributor previews from `network_project_contributors`
-- PFT routed from reward events in `task_projections` / reward projections
+- PFT routed from the current project snapshot, later replaced by reward events in `task_projections` / reward projections
 
 Behavior:
 
 - show active projects grouped or labeled by type;
 - clicking a project opens the project board;
 - `PFT distribution v3` remains the visual reference for project detail cards.
+- projects are read from `GET /api/hive/projects`, not from React mock data.
 
 ### Routing Feed
 
@@ -219,6 +222,8 @@ Implemented pieces:
 - `GET /api/hive/context` returns grouped raw context plus latest Secretary report/job state.
 - `server/hive-secretary-worker.js` calls DeepSeek V4 Pro through OpenRouter ZDR.
 - `prompts/hive/hive_secretary_v1.md` defines the Secretary output.
+- `GET /api/hive/projects` returns Postgres-backed active project records.
+- `PFT distribution v3` is seeded as an apriori project row with About, contributors, project task rows, activity, and latest Hive Secretary input reference.
 
 ## Network Diagnostic Report Usage
 

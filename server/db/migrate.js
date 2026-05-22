@@ -35,6 +35,7 @@ const migrations = [
   "026_network_task_profile_prompt_v2_default.sql",
   "027_hive_context_entries.sql",
   "028_hive_secretary_reports.sql",
+  "029_hive_network_projects.sql",
 ];
 
 let migrated = false;

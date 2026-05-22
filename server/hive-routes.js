@@ -1,5 +1,6 @@
 import { appendChatTurn } from "./repositories/chat-billing.js";
 import { scheduleHiveSecretaryQueue } from "./hive-secretary-worker.js";
+import { getHiveProjectsDocument } from "./repositories/hive-projects.js";
 import {
   enqueueHiveSecretaryJob,
   getHiveContextDocument,
@@ -36,7 +37,23 @@ function linkedWalletForSession({ getLinkedWallet, session }) {
 }
 
 export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
-  if (url.pathname !== "/api/hive/context") return false;
+  if (!["/api/hive/context", "/api/hive/projects"].includes(url.pathname)) return false;
+
+  if (url.pathname === "/api/hive/projects") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "hive_projects_method_not_allowed",
+        message: "Hive projects supports GET.",
+      });
+      return true;
+    }
+    json(res, 200, {
+      ok: true,
+      document: await getHiveProjectsDocument(),
+    });
+    return true;
+  }
 
   if (!session?.accountId) {
     json(res, 401, {
