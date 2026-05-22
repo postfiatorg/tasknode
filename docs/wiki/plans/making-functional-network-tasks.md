@@ -1,0 +1,362 @@
+# Making Functional Network Tasks
+
+Status: planning
+
+This plan supersedes the earlier broad Hive Mind planning for Network Tasks. The current Hive UX is the starting point for the product ontology. The goal is to make Hive a real coordination surface where active projects contain PFTL tasks, contributors are derived from those tasks, and the network can allocate work to members using their Network Diagnostic Report.
+
+## Product Objective
+
+Hive should answer three questions without making the user inspect raw chain data:
+
+1. What projects is the network actively pushing forward?
+2. Which tasks belong to each project, and what state are they in?
+3. Which operators are being allocated to network work, and why are they eligible?
+
+The project-detail shape in the current `PFT distribution v3` mock is the reference layout: a project board with an About section, contributors, tasks, and scoped activity. That card pattern should remain the UX target while the data becomes real.
+
+## Project Types
+
+Network projects use a small fixed project-type enum in v1:
+
+| Type | Purpose |
+| --- | --- |
+| `protocol_marketing` | Narrative, publication, amplification, events, and public distribution. |
+| `protocol_development` | Protocol code, wallet flows, PFTL integration, task engine work, infrastructure, and audits. |
+| `alpha_generation` | Research tasks that produce market, trading, or intelligence outputs for the network. |
+| `protocol_applications` | Applications built on top of the protocol, including tools, agents, onboarding, and member-facing workflows. |
+| `network_validation` | Validators, operator reliability, verification, replay, chain forensics, and trust infrastructure. |
+
+These types are not user-facing bureaucracy. They are routing boundaries that help the system decide which operators should see which proposed Network Tasks.
+
+## Core Data Model
+
+Network projects are not canonical chain objects in v1. They are Postgres coordination records that reference canonical PFTL tasks.
+
+### `network_projects`
+
+One row per active network project.
+
+Fields:
+
+- `id`: stable project id, for example `project_pft_distribution_v3`.
+- `type`: one of the five project types above.
+- `title`
+- `summary`
+- `objective`
+- `status`: `active`, `paused`, `completed`, or `archived`.
+- `priority`: integer or enum used for Hive ordering.
+- `created_by_account_id`
+- `created_at`
+- `updated_at`
+
+### `network_project_task_refs`
+
+Associates canonical tasks with a project.
+
+Fields:
+
+- `project_id`
+- `task_id`
+- `request_id`
+- `task_title_snapshot`
+- `task_status_snapshot`
+- `reward_offer_pft_snapshot`
+- `reward_paid_pft_snapshot`
+- `linked_at`
+- `source`: `task_request`, `manual_link`, `migration`, or `worker`
+
+The authoritative task state still comes from PFTL task events and `task_projections`. This table is a relationship layer, not a second task state machine.
+
+### `network_project_contributors`
+
+Materialized contributor rollup for fast Hive reads. This can be rebuilt from task refs and task projections.
+
+Fields:
+
+- `project_id`
+- `account_id`
+- `primary_wallet_address`
+- `task_count`
+- `rewarded_task_count`
+- `rewarded_pft_total`
+- `last_task_at`
+- `role_label`: optional derived label such as `lead`, `contributor`, or `reviewer`.
+
+### `network_task_allocations`
+
+Tracks network-pushed tasks before and during user acceptance.
+
+Fields:
+
+- `id`
+- `project_id`
+- `task_id`: nullable until a concrete task offer exists.
+- `candidate_account_id`
+- `candidate_wallet_address`
+- `allocation_status`: `candidate`, `proposed`, `accepted`, `refused`, `expired`, `rerouted`, or `completed`.
+- `network_diagnostic_report_id`
+- `network_diagnostic_report_digest`
+- `allocation_reason_summary`
+- `expires_at`
+- `created_at`
+- `updated_at`
+
+This table powers the "network pushed this to you" experience. It must never override chain task state. It explains routing and tracks allocation lifecycle.
+
+### `network_task_generation_jobs`
+
+Durable async jobs that convert a project need into concrete task offers.
+
+Fields:
+
+- `id`
+- `project_id`
+- `requested_by_account_id`
+- `source_payload_digest`
+- `provider`
+- `model`
+- `prompt_version`
+- `status`: `queued`, `running`, `generated`, `published`, or `failed`.
+- `generated_task_payload`
+- `task_id`
+- `request_id`
+- `offer_cid`
+- `offer_tx_hash`
+- `error`
+- `created_at`
+- `updated_at`
+
+## PFTL Boundary
+
+The network project layer is off-chain in v1, but every actual task remains PFTL-native.
+
+New Network Tasks should include project identity in the task request and offer payloads:
+
+- `network_project_id`
+- `network_project_type`
+- `network_allocation_id`, when the task was pushed to a specific user
+- `routing_profile_digest`, when the Network Diagnostic Report was used
+
+This keeps the task replayable from chain pointers while allowing Hive to be a fast Postgres read surface.
+
+Existing tasks can be linked to projects by `network_project_task_refs` without rewriting history. New tasks should carry project metadata from creation.
+
+## Hive Page Read Model
+
+The current Hive page should become a read model over these data types.
+
+### Active Projects
+
+Source:
+
+- `network_projects`
+- task counts from `network_project_task_refs` joined to `task_projections`
+- contributor previews from `network_project_contributors`
+- PFT routed from reward events in `task_projections` / reward projections
+
+Behavior:
+
+- show active projects grouped or labeled by type;
+- clicking a project opens the project board;
+- `PFT distribution v3` remains the visual reference for project detail cards.
+
+### Routing Feed
+
+Source:
+
+- task state changes from `task_projections`
+- allocation status changes from `network_task_allocations`
+- reward/refusal/completion events scoped to `network_project_task_refs`
+
+Behavior:
+
+- show recent project-scoped transitions in plain English;
+- include the project name, task name, operator, state, time, and PFT when relevant;
+- do not show raw CIDs or transaction hashes in the feed. Those belong in task forensics.
+
+### Allocated Operators
+
+Source:
+
+- latest Network Diagnostic Report per account;
+- account-level availability settings;
+- active task load from task projections;
+- recent reward/refusal history;
+- network task allocation rows.
+
+Behavior:
+
+- show operators available for network work;
+- show load and rough fit, not private memory;
+- clicking an operator later should route to public profile, not raw diagnostic internals.
+
+## Network Diagnostic Report Usage
+
+The Network Diagnostic Report is the eligibility and routing input. It is not the final task assignment by itself.
+
+Routing should use it this way:
+
+1. Hard filters:
+   - account exists and is active;
+   - network tasks are enabled;
+   - wallet can receive PFT rewards;
+   - active task load is below account limit;
+   - latest diagnostic report is present and not stale.
+2. Project fit:
+   - compare project type and need against the report's current focus, contribution ability, and company/domain fit.
+3. Task fit:
+   - match the concrete task need to the report in plain-language terms.
+4. Allocation:
+   - create `network_task_allocations` rows for the best candidate accounts;
+   - publish a PFTL task offer only when the system is ready to push a concrete task to a user.
+
+The report should explain why a user can do a network task. The task system still decides task content, deadline, reward, and verification requirements.
+
+## Network Task Generation Flow
+
+The expected flow is:
+
+1. A maintainer or worker creates an active `network_project`.
+2. The project has an objective and project type.
+3. The task generation worker builds a source packet:
+   - project title, type, objective, and current status;
+   - recent task refs already attached to the project;
+   - network need or maintainer note;
+   - candidate Network Diagnostic Reports;
+   - current task engine reward and evidence policy.
+4. The AI system generates a concrete task proposal for a selected account.
+5. The app publishes a PFTL task request/offer carrying project metadata.
+6. The cache/reducer indexes the task into `task_projections`.
+7. `network_project_task_refs` links the task to the project.
+8. The user's Tasks page shows a proposed Network Task.
+9. If accepted, it becomes outstanding. If refused or expired, allocation status updates and the worker can reroute.
+10. Submission, verification, reward, zero-reward, or cancellation follows the existing task lifecycle.
+11. Hive updates project tasks, contributors, routed PFT, and activity from projections.
+
+## User-Facing Network Push
+
+When a Network Task is routed to a user, the Tasks page should show a proposed task card similar to the Hive mock:
+
+- project type badge;
+- project link, for example `PFT distribution v3`;
+- task title and objective;
+- reward;
+- deadline or accept timer;
+- "Why you" derived from the Network Diagnostic Report and task history;
+- refusal consequence in plain English;
+- Accept and Refuse actions.
+
+Accept/refuse should publish normal PFTL task updates. The allocation row follows the chain state; it does not create a second source of truth.
+
+## Infrastructure Needed
+
+### Database
+
+Add migrations for:
+
+- `network_projects`
+- `network_project_task_refs`
+- `network_project_contributors`
+- `network_task_allocations`
+- `network_task_generation_jobs`
+
+Every table should be account/project keyed and rebuildable where possible. Avoid embedding raw memory or raw evidence in Hive tables.
+
+### APIs
+
+Initial endpoints:
+
+- `GET /api/hive/projects`
+- `GET /api/hive/projects/:projectId`
+- `GET /api/hive/routing-feed`
+- `GET /api/hive/operators`
+- `POST /api/hive/projects/:projectId/generate-task` for operator/admin use only
+
+These endpoints should return read models shaped for the existing Hive UX, not raw database rows.
+
+### Workers
+
+Needed workers:
+
+- project rollup worker: rebuilds contributor and project aggregates from task refs and task projections;
+- network allocation worker: selects eligible candidates from Network Diagnostic Reports;
+- network task generation worker: creates concrete tasks and publishes PFTL offers;
+- allocation expiration worker: marks proposed tasks expired and reroutes when needed.
+
+### Prompt Files
+
+Prompts should live in source-controlled prompt files, not inline code.
+
+Expected prompt files:
+
+- `prompts/hive/network_task_generation_v1.md`
+- `prompts/hive/network_task_allocation_v1.md`
+
+The generation prompt should consume project context, task history, candidate diagnostic profile, and task engine policy. It should not invent evidence types the app cannot submit.
+
+The allocation prompt may help explain fit, but deterministic filters must still enforce availability, load, and wallet state.
+
+## What Not To Build Yet
+
+Do not make projects canonical chain objects in v1.
+
+Do not create a second task lifecycle for Network Tasks.
+
+Do not expose raw Network Diagnostic Reports publicly.
+
+Do not put project assignment logic in frontend components.
+
+Do not let the AI directly route tasks without deterministic availability and load filters.
+
+Do not generate tasks that ask for unsupported evidence such as video unless the app supports that evidence surface.
+
+## Milestones
+
+### Phase 1: Data Ontology And Read Model
+
+- Create project/task/allocation tables.
+- Seed one real active project matching `PFT distribution v3` shape.
+- Link existing task projections to a project through refs.
+- Add project metadata fields to new task request/offer payloads.
+- Replace `src/features/hive/hive-data.js` static data with API data.
+
+Done when Hive active projects, project detail tasks, contributors, and routing feed render from Postgres read models.
+
+### Phase 2: Allocation Without Auto-Publish
+
+- Build candidate selection using Network Diagnostic Reports.
+- Store `network_task_allocations` as `candidate` rows.
+- Show proposed routing internally without publishing PFTL offers.
+- Verify operator eligibility and refusal/load handling.
+
+Done when the system can explain which users would receive a project task and why, without creating user-visible tasks yet.
+
+### Phase 3: Network-Pushed Task Offers
+
+- Generate one concrete task for one selected user from a project.
+- Publish a PFTL task offer with project metadata.
+- Show it in Tasks as a proposed Network Task.
+- Accept/refuse from the normal task flow.
+- Update Hive project board from the resulting task projection.
+
+Done when a user can accept or refuse a network-pushed task and Hive reflects the state without manual refresh or stale categories.
+
+### Phase 4: Submission, Verification, Reward, And Project Rollup
+
+- Complete the full task lifecycle for project-linked tasks.
+- Roll rewarded tasks into project PFT totals and contributor cards.
+- Show zero-reward and refused outcomes clearly.
+- Keep task forensics as the proof surface for CIDs and transactions.
+
+Done when the `PFT distribution v3` detail card can be populated with real tasks, contributors, activity, and routed PFT.
+
+## Acceptance Criteria
+
+- Hive uses the five project types listed in this plan.
+- Each project can contain many canonical task refs.
+- Each task can be traced back to its project from the Hive UI.
+- Contributors are derived from task participation, not manually typed mock rows.
+- Routing uses the Network Diagnostic Report plus deterministic availability/load filters.
+- The user can see why a Network Task was proposed to them.
+- Accepting, refusing, submitting, verifying, and rewarding a Network Task use the existing PFTL task lifecycle.
+- No Hive read model can make task state disagree with task forensics.

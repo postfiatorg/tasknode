@@ -26,6 +26,7 @@ import dataArchitectureHardeningPlan from "../../../docs/wiki/plans/data-archite
 import dailyAirdropMigrationPlan from "../../../docs/wiki/plans/daily-airdrop-migration-plan.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
 import jobsChatSpirit from "../../../docs/wiki/plans/jobs-chat-spirit.md?raw";
+import makingFunctionalNetworkTasks from "../../../docs/wiki/plans/making-functional-network-tasks.md?raw";
 import networkTaskProfileMemoryPlan from "../../../docs/wiki/plans/network-task-profile-memory-plan.md?raw";
 import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
 import profileAndHiveMindPlan from "../../../docs/wiki/plans/profile-and-hive-mind-plan.md?raw";
@@ -484,6 +485,12 @@ export const DOC_GROUPS = [
         title: "Profile and Hive Mind Plan",
         summary: "Plan for member profiles, discoverability, recommendation jobs, and deterministic hive priorities.",
         markdown: profileAndHiveMindPlan,
+      },
+      {
+        slug: "making-functional-network-tasks",
+        title: "Making Functional Network Tasks",
+        summary: "Plan for Hive projects, project-linked PFTL tasks, routing allocations, and Network Diagnostic Report matching.",
+        markdown: makingFunctionalNetworkTasks,
       },
       {
         slug: "network-task-profile-memory-plan",
