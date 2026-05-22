@@ -139,7 +139,7 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
   if (secretary?.queued) {
     scheduleHiveSecretaryQueue({ delayMs: 250 });
   }
-  const assistantMessage = "Hive input saved to Hive Context.";
+  const assistantMessage = "Hive input saved to Hive Context. Hive may respond here if important.";
   let chatTurn = null;
   let chatHistoryWarning = "";
   if (sourceConversationId) {

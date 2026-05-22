@@ -961,6 +961,20 @@ h1 {
   color: #8a2d22;
 }
 
+.assistant-message.is-hive-input-ack {
+  margin-bottom: 18px;
+}
+
+.assistant-message.is-hive-input-ack .assistant-body {
+  color: #7d7b73;
+  font-style: italic;
+  line-height: 1.55;
+}
+
+.assistant-message.is-hive-input-ack .assistant-body p {
+  margin-bottom: 0;
+}
+
 .thinking-row {
   display: inline-flex;
   align-items: center;

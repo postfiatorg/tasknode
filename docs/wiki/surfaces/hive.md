@@ -27,7 +27,7 @@ Project IDs are part of the product surface. The project detail header should ex
 
 Chat has a `Hive Input` mode in the composer `+` menu. It is a persistence action, not a model call and not a billed chat response.
 
-When the user selects `Hive Input`, the composer changes mode and the next message is saved to `Hive Context`. The server also records the user message and a short acknowledgement in chat history so the conversation remains understandable after navigation.
+When the user selects `Hive Input`, the composer changes mode and the next message is saved to `Hive Context`. The server also records the user message and a muted italic acknowledgement in chat history so the conversation remains understandable after navigation. The acknowledgement says the Hive may respond in the same chat if the Board Manager decides a reply is important.
 
 `Hive Context` is a network context document built from user-submitted entries. It is grouped by user and shown collapsed on the Hive page.
 

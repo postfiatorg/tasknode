@@ -159,7 +159,8 @@ export function AssistantMessage({
   const [thinkingOpen, setThinkingOpen] = useState(false);
   const body = plainTextFromBlocks(message.blocks);
   const hasThinking = Boolean(message.thinking);
-  const showToolbar = !message.pending && !message.error;
+  const isHiveInputAck = message.metadata?.kind === "hive_input_ack";
+  const showToolbar = !message.pending && !message.error && !isHiveInputAck;
   const proposal = message.metadata?.contextEdit?.proposal || null;
 
   return (
@@ -168,6 +169,7 @@ export function AssistantMessage({
         "assistant-message",
         message.pending ? "pending" : "",
         message.error ? "error" : "",
+        isHiveInputAck ? "is-hive-input-ack" : "",
       ]
         .filter(Boolean)
         .join(" ")}
