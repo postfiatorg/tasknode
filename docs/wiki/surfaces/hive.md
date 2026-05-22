@@ -57,7 +57,7 @@ Allowed actions include:
 - initiate project-linked Network Tasks with rewards
 - review evidence packets through the existing task engine
 
-Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, and `assign_contributor`. `archive_project` is the delete-project behavior; the row is hidden from the active board but not hard deleted. `message_user` writes an assistant message into the user's original Hive Input chat conversation and records a delivery audit row in `board_manager_user_messages`; the Hive Mind Agent tab itself stays focused on the agent run/action feed.
+Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, `refresh_project_document`, and `assign_contributor`. `archive_project` is the delete-project behavior; the row is hidden from the active board but not hard deleted. `message_user` writes an assistant message into the user's original Hive Input chat conversation and records a delivery audit row in `board_manager_user_messages`; the Hive Mind Agent tab itself stays focused on the agent run/action feed. `refresh_project_document` writes the agent-managed Project Status shown inside a Hive project About section.
 
 The old direct cascade where Hive Secretary automatically drives active projects is deprecated as the target architecture. The existing Secretary and Active Projects workers remain implementation primitives, but the Board Manager should own when they run.
 
@@ -92,7 +92,7 @@ Hive Active Projects uses `prompts/hive/hive_active_projects_v1.md`. That prompt
 
 Scoping is not a project. The active-project prompt now treats scoping as a phase or status on a durable project. A project can be `Post Fiat L1` with phase `Scoping`; it should not be `Post Fiat L1 scoping`. The rejected generated scoping projects are archived by `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql`, locked by `server/db/migrations/034_lock_operator_archived_hive_projects.sql`, and skipped by `server/repositories/hive-project-planning.js` so future project generations cannot silently reactivate them.
 
-The next planned layer is a project-linked Product Document. Each project card should open a project board whose About section can expand into a generated document with:
+Each project can now have a project-linked Product Document. Each project card opens a project board whose About section can include a generated document with:
 
 - how the project realistically benefits the network;
 - what success looks like;
@@ -100,9 +100,11 @@ The next planned layer is a project-linked Product Document. Each project card s
 - who is working on it and why;
 - what is blocked or unclear.
 
-That Product Document is planned to be generated per project by OpenRouter `deepseek/deepseek-v4-pro` using a ZDR-capable provider. It is not implemented yet. Until that worker exists, Hive only shows the current project row fields and Secretary report, not a generated Product Document.
+That Product Document is generated per project by OpenRouter `deepseek/deepseek-v4-pro` using a ZDR-capable provider when the Board Manager chooses `refresh_project_document`. It is stored in `network_project_product_docs`, not in `network_projects.about`, so the static project identity is separate from the changing execution briefing.
 
 The Product Document should appear as a `Project Status` section inside About. The static `network_projects.about` text explains what the project is. The generated Project Status explains the current execution picture, key points, blockers, and next actions. The detailed plan lives in `docs/wiki/plans/agent-managed-about-panels.md`.
+
+If no current product document exists, the About section shows the static project description plus the empty state `Project status has not been generated yet.` It does not show filler copy.
 
 Current endpoint:
 
@@ -122,11 +124,13 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
 - `server/board-manager-actions.js` executes the first Board Manager action hooks.
+- `server/hive-project-product-doc-worker.js` generates one project product document through OpenRouter `deepseek/deepseek-v4-pro` with ZDR provider routing.
 - `server/repositories/chat-assistant-messages.js` appends Board Manager `message_user` responses to existing account-owned chat conversations without creating a billed model run.
 - `scripts/board-manager-codex-exec.mjs` runs one persistent Codex Exec Board Manager tick or, with `--execute`, dispatches supported action hooks.
 - `schemas/board-manager-action.schema.json` constrains the Codex Exec output.
 - `server/repositories/hive-context.js` persists raw Hive Context entries, Secretary jobs, and Secretary reports.
 - `server/repositories/hive-projects.js` reads active network projects and links the latest Secretary report as a project input.
+- `server/repositories/hive-project-product-docs.js` builds a single-project source packet, reads the current product document, and inserts a new current product document while superseding the old one.
 - `server/repositories/hive-project-planning.js` persists active-project planner jobs and completed generations, then upserts `network_projects`.
 - `server/db/migrations/027_hive_context_entries.sql` creates the Hive Context table.
 - `server/db/migrations/028_hive_secretary_reports.sql` adds linked-wallet validation metadata and Secretary job/report tables.
@@ -138,9 +142,11 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks archived project rows so rejected projects do not reappear after a later planner run.
 - `server/db/migrations/035_board_manager_action_hooks.sql` adds user-visible Board Manager messages.
 - `server/db/migrations/036_board_manager_persistent_sessions.sql` adds persistent Codex session tracking.
+- `server/db/migrations/038_network_project_product_docs.sql` adds versioned current/superseded product documents for Hive projects.
 - `prompts/hive/hive_secretary_v1.md` is the source-controlled Secretary prompt.
 - `prompts/hive/hive_active_projects_v1.md` is the source-controlled active-project prompt.
 - `prompts/hive/board_manager_v1.md` is the planned Board Manager operating prompt.
+- `prompts/hive/hive_project_product_doc_v1.md` is the product-document writer prompt.
 
 ## Current Data Boundary
 

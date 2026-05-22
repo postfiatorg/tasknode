@@ -46,11 +46,12 @@ Implemented v0 pieces:
 - `server/repositories/board-manager.js` formats a Hive Mind Agent feed from `board_manager_runs` and `board_manager_action_results`.
 - `schemas/board-manager-action.schema.json` constrains the Codex Exec output, including action-specific `project`, `contributor`, `message_text`, and `archive_reason` payload fields.
 - `scripts/board-manager-codex-exec.mjs` runs Codex Exec with `gpt-5.5` and `model_reasoning_effort = xhigh`, creating or resuming the persistent session for the Board Manager scope.
-- `server/board-manager-actions.js` executes the first supported actions.
+- `server/board-manager-actions.js` executes the first supported actions, including project-document refresh.
 - `server/db/migrations/033_board_manager_v0.sql` adds lease, run, and action-result tables.
 - `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks operator-archived Hive projects so the project planner cannot silently reactivate rejected cards.
 - `server/db/migrations/035_board_manager_action_hooks.sql` adds user-visible Board Manager messages.
 - `server/db/migrations/036_board_manager_persistent_sessions.sql` adds persistent Codex session tracking.
+- `server/db/migrations/038_network_project_product_docs.sql` adds current/superseded product documents for Hive projects.
 - `npm run board-manager:codex -- --trigger <name>` runs one dry-run Board Manager decision.
 - `npm run board-manager:codex -- --trigger <name> --execute` runs one Board Manager decision and executes supported action hooks.
 - `npm run board-manager:codex -- --trigger <name> --fresh-session` starts a new persistent Codex session for the scope.
@@ -66,6 +67,7 @@ Implemented action hooks:
 - `create_project`: creates or updates an active `network_projects` row from `payload.project`.
 - `archive_project`: archives the project and applies an operator archive lock. This is the delete-project hook; hard delete is intentionally not available.
 - `assign_contributor`: upserts a project contributor row using the project id and wallet address in `payload.contributor`.
+- `refresh_project_document`: builds a source packet for one project, calls OpenRouter `deepseek/deepseek-v4-pro` through the ZDR provider path, supersedes the prior current document, and writes a new `network_project_product_docs` row.
 
 Hive page visibility:
 
@@ -78,7 +80,6 @@ Not yet implemented action hooks:
 - `update_board_context`
 - `research`
 - `update_project`
-- `refresh_project_document`
 - `remove_contributor`
 - `initiate_network_task`
 - `review_evidence_packet`
@@ -257,6 +258,17 @@ The product document should answer:
 - what is blocked or unclear.
 
 This action owns the agent-managed Project Status blob shown inside a Hive project About section. The static project description stays in `network_projects.about`; the changing execution briefing belongs in a versioned product document row so the agent can update status without overwriting project identity.
+
+Current implementation:
+
+- Action hook: `server/board-manager-actions.js::executeRefreshProjectDocument`
+- Source packet and persistence: `server/repositories/hive-project-product-docs.js`
+- Provider call: `server/hive-project-product-doc-worker.js`
+- Prompt: `prompts/hive/hive_project_product_doc_v1.md`
+- Table: `network_project_product_docs`
+- UI projection: `GET /api/hive/projects` returns `project.productDocument`, and the Hive project detail About section renders it as `Project Status`.
+
+This action does not create tasks. It creates an operator-readable briefing that later task generation can use as input.
 
 Planned model:
 
@@ -468,8 +480,8 @@ Done when a Board Manager run can decide that a Secretary refresh is needed and 
 
 ### Phase 4: Project And Product Doc Actions
 
-- Implement `create_project`, `update_project`, `archive_project`, and `refresh_project_document`. Create and archive are implemented; update and product docs remain open.
-- Add project id visibility and expandable product docs in Hive UI.
+- Implement `create_project`, `update_project`, `archive_project`, and `refresh_project_document`. Create, archive, and product-document refresh are implemented; update remains open.
+- Add project id visibility and expandable product docs in Hive UI. Product documents render as Project Status inside About; explicit project id visibility remains open.
 
 Done when the Board Manager can create a durable project and attach a readable product document.
 

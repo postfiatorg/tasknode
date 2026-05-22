@@ -217,6 +217,7 @@ function ProjectDetail({ onBack, operators, project, status }) {
       <Section title="About" subtitle="What this project is" layerNumber="01">
         <div className="hive-card hive-about">
           <p>{project.about || project.objective || project.summary}</p>
+          <ProjectStatusDocument document={project.productDocument} />
           <div className="hive-about-meta">
             <span>
               <small>Proposed by {project.proposedBy || "hive"}</small>
@@ -284,6 +285,49 @@ function ProjectDetail({ onBack, operators, project, status }) {
         </div>
       </Section>
     </div>
+  );
+}
+
+function ProjectStatusDocument({ document }) {
+  if (!document) {
+    return (
+      <div className="hive-project-doc is-empty">
+        <span>Project Status</span>
+        <p>Project status has not been generated yet.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="hive-project-doc">
+      <header>
+        <span>Project Status</span>
+        {document.createdAt && <time>{formatContextTime(document.createdAt)}</time>}
+      </header>
+      {document.summary && <p>{document.summary}</p>}
+      {document.projectStatus && <p>{document.projectStatus}</p>}
+      <ProjectDocList items={document.keyPoints} title="Key execution points" />
+      <ProjectDocList items={document.blockedOrUnclear} title="Blocked or unclear" />
+      <ProjectDocList items={document.nextActions} title="Next actions" />
+      <footer>
+        {document.model && <span>{document.model}</span>}
+        {document.promptVersion && <span>{document.promptVersion}</span>}
+      </footer>
+    </div>
+  );
+}
+
+function ProjectDocList({ items = [], title }) {
+  const normalized = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!normalized.length) return null;
+  return (
+    <section className="hive-project-doc-list">
+      <h3>{title}</h3>
+      <ul>
+        {normalized.map((item, index) => (
+          <li key={`${title}-${index}`}>{item}</li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

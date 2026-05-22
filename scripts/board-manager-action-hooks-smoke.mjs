@@ -4,6 +4,7 @@ if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
 }
 process.env.TASKNODE_HIVE_SECRETARY_ENABLED = "false";
+process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "sk-board-manager-action-smoke";
 
 const { databaseEnabled, query } = await import("../server/db/pool.js");
 const { closePool } = await import("../server/db/pool.js");
@@ -17,6 +18,41 @@ const {
   startBoardManagerRun,
 } = await import("../server/repositories/board-manager.js");
 const { executeBoardManagerDecision } = await import("../server/board-manager-actions.js");
+
+async function fakeOpenRouterFetch() {
+  return {
+    ok: true,
+    status: 200,
+    async text() {
+      return JSON.stringify({
+        model: "deepseek/deepseek-v4-pro",
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              title: "Board Manager Action Smoke Status",
+              summary: "The temporary project exists to prove Board Manager action hooks can mutate Hive state.",
+              project_status: "The project was created by the Board Manager, assigned one contributor, and refreshed into a durable product document.",
+              key_points: [
+                "The action hook path can create project records.",
+                "The project document is stored separately from the static project description.",
+              ],
+              blocked_or_unclear: [],
+              next_actions: [
+                "Archive the temporary project after verification.",
+              ],
+            }),
+          },
+        }],
+        usage: {
+          prompt_tokens: 11,
+          completion_tokens: 22,
+          total_tokens: 33,
+          cost: 0,
+        },
+      });
+    },
+  };
+}
 
 function payload(overrides = {}) {
   return {
@@ -143,6 +179,23 @@ async function main() {
     runId,
     sourcePacket,
     dryRun: false,
+    fetchImpl: fakeOpenRouterFetch,
+    decision: {
+      action: "refresh_project_document",
+      target_type: "network_project",
+      target_id: projectId,
+      reason: "Smoke verifies project document refresh action hook.",
+      confidence: 1,
+      payload: payload({
+        summary: "Refresh the temporary project product document.",
+      }),
+    },
+  });
+
+  await executeBoardManagerDecision({
+    runId,
+    sourcePacket,
+    dryRun: false,
     decision: {
       action: "assign_contributor",
       target_type: "network_project",
@@ -199,26 +252,40 @@ async function main() {
     },
   });
 
-  const [project, contributor, message, actions] = await Promise.all([
+  const [project, contributor, productDoc, message, actions] = await Promise.all([
     query("SELECT status, metadata_json->>'operator_archived' AS operator_archived FROM network_projects WHERE id = $1", [projectId]),
     query("SELECT status FROM network_project_contributors WHERE project_id = $1 AND wallet_address = $2", [projectId, wallet]),
+    query(
+      `
+        SELECT id, project_status, status
+        FROM network_project_product_docs
+        WHERE project_id = $1
+          AND status = 'current'
+          AND superseded_at IS NULL
+        LIMIT 1
+      `,
+      [projectId]
+    ),
     query("SELECT id, metadata_json->>'chat_message_id' AS chat_message_id FROM board_manager_user_messages WHERE run_id = $1 AND account_id = $2", [runId, smokeAccountId]),
     query("SELECT count(*)::int AS count FROM board_manager_action_results WHERE run_id = $1", [runId]),
   ]);
   assert.equal(project.rows[0]?.status, "archived");
   assert.equal(project.rows[0]?.operator_archived, "true");
   assert.equal(contributor.rows[0]?.status, "active");
+  assert.ok(productDoc.rows[0]?.id);
+  assert.match(productDoc.rows[0]?.project_status || "", /project/i);
   assert.ok(message.rows[0]?.id);
   assert.ok(message.rows[0]?.chat_message_id);
   const chatMessages = await getChatMessages({ accountId: smokeAccountId, conversationId: smokeConversationId, limit: 10 });
   assert.ok(chatMessages.some((item) => item.role === "assistant" && item.body === "Board Manager action hook smoke message."));
-  assert.equal(actions.rows[0]?.count, 4);
+  assert.equal(actions.rows[0]?.count, 5);
   const publicFeed = await getBoardManagerAgentFeed({ limit: 20 });
   assert.equal(publicFeed.some((entry) => entry.runId === runId), false);
   const feed = await getBoardManagerAgentFeed({ limit: 20, includeInternal: true });
   const runFeed = feed.find((entry) => entry.runId === runId);
   assert.ok(runFeed);
-  assert.equal(runFeed.actionResults.length, 4);
+  assert.equal(runFeed.actionResults.length, 5);
+  assert.ok(runFeed.actionResults.some((entry) => entry.action === "refresh_project_document"));
   assert.ok(runFeed.actionResults.some((entry) => entry.action === "archive_project"));
   console.log(JSON.stringify({ ok: true, runId, projectId, actionResults: actions.rows[0]?.count }, null, 2));
 }

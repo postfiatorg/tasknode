@@ -32,6 +32,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - Board Manager v0 run tables: `server/db/migrations/033_board_manager_v0.sql`
 - Board Manager action hooks: `server/db/migrations/035_board_manager_action_hooks.sql`
 - Board Manager persistent sessions: `server/db/migrations/036_board_manager_persistent_sessions.sql`
+- Hive project product documents: `server/db/migrations/038_network_project_product_docs.sql`
 
 ## Table Inventory
 
@@ -62,10 +63,11 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `network_project_contributors` | Project-scoped contributor/operator rollups. Empty until live project-linked tasks allocate to real wallets and rewards accrue. | Hive contributor previews, allotted operators, project detail contributors. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
 | `network_project_task_refs` | Project-scoped task rows. Empty until the allocation worker creates or links concrete PFTL tasks to a project. | Hive project task board, future project-to-PFTL task linking. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
 | `network_project_activity` | Project-scoped activity feed rows. Empty until project-linked tasks produce live state changes. | Hive routing feed and project activity section. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
+| `network_project_product_docs` | Current and superseded agent-written project documents linked to `network_projects`. Stores Project Status, key points, blockers, next actions, source packet, prompt/provider metadata, and Board Manager run id. | Hive project About `Project Status`, Board Manager `refresh_project_document`, future project-linked task generation inputs. | `038_network_project_product_docs.sql` |
 | `board_manager_leases` | One lease per manager scope, starting with `global_hive`, so only one Board Manager runs across Fly instances. | Board Manager executor, future Hive manager loop, operator diagnostics. | `033_board_manager_v0.sql` |
 | `board_manager_sessions` | One persistent Codex session per Board Manager scope. Stores the session id/path, model, reasoning effort, and latest run id so future ticks resume the same agent instead of starting over. | Board Manager Codex Exec resume path, Hive Mind Agent continuity, operator diagnostics. | `036_board_manager_persistent_sessions.sql` |
 | `board_manager_runs` | Durable Board Manager run log with trigger, source packet digest, selected action, action payload, decision JSON, Codex model, reasoning effort, dry-run flag, status, and errors. Runs with `do_nothing` or no selected action still render in the Hive Mind Agent feed. | Board Manager Codex Exec audit, Hive Mind Agent feed, future Hive manager UI/operator controls. | `033_board_manager_v0.sql` |
-| `board_manager_action_results` | Audit log for executed manager actions. Current hooks record message-user, Secretary refresh, project create/archive, contributor assignment, and do-nothing results. | Hive Mind Agent feed, project action history, operator diagnostics. | `033_board_manager_v0.sql` |
+| `board_manager_action_results` | Audit log for executed manager actions. Current hooks record message-user, Secretary refresh, project create/archive, project-document refresh, contributor assignment, and do-nothing results. | Hive Mind Agent feed, project action history, operator diagnostics. | `033_board_manager_v0.sql` |
 | `board_manager_user_messages` | Delivery audit for Board Manager `message_user` actions keyed by account and run id. Metadata stores the source Hive Context entry, destination conversation id, and inserted chat message id. The visible user response is appended to `chat_messages`. | Board Manager message delivery audit, Hive Mind Agent action diagnostics, future notification surfaces. | `035_board_manager_action_hooks.sql` |
 | `pftl_task_sync_runs` | One row per task replay/import run with account, wallet, source, status, task count, pointer event count, and metadata. | Tasks replay diagnostics, operator recovery, Python replay imports. | `006_task_projections.sql` |
 | `task_requests` | Durable receipt and worker claim table for browser/chat task requests, including account, subject wallet, request/bundle CIDs, request transaction, generated task ID, worker attempts, status, and errors. | Tasks request strip, task generation worker, chat task request receipts, operator debugging. | `012_task_requests.sql` |
@@ -89,12 +91,11 @@ Postgres is the product cache and account database. It is critical for speed, UX
 
 ## Planned Board Manager Tables
 
-These tables are still planned. The v0 lease and run tables above are implemented; these complete the richer manager context and product-document layer.
+These tables are still planned. The v0 lease/run/session tables and project-document table above are implemented; this remaining table completes richer manager memory.
 
 | Table | Description | App surfaces that rely on it | Source |
 | --- | --- | --- | --- |
 | `board_manager_context_docs` | Versioned Board Manager context document used by the manager to retain network-level assumptions, unresolved questions, and decisions. | Hive Context, Board Manager source packet, future project/task generation. | Planned |
-| `network_project_product_docs` | Current and historical expandable product documents linked to `network_projects`. | Hive project About expansion, Board Manager project state review, future task generation. | Planned |
 
 ## Known Gaps
 

@@ -7,6 +7,7 @@ import {
   recordBoardManagerActionResult,
 } from "./repositories/board-manager.js";
 import { scheduleHiveSecretaryQueue } from "./hive-secretary-worker.js";
+import { refreshHiveProjectProductDocument } from "./hive-project-product-doc-worker.js";
 
 const projectTypes = new Set([
   "protocol_marketing",
@@ -397,11 +398,25 @@ async function executeAssignContributor({ runId, decision, sourcePacket }) {
   };
 }
 
+async function executeRefreshProjectDocument({ runId, decision, sourcePacket, fetchImpl }) {
+  const projectId = safeText(decision.target_id || decision.payload.project?.id, 180);
+  if (!projectId) throw new Error("board_manager_refresh_project_document_missing_project");
+  const exists = await query("SELECT id FROM network_projects WHERE id = $1 AND status <> 'archived'", [projectId]);
+  if (!exists.rows[0]) throw new Error("board_manager_refresh_project_document_project_not_found");
+  return refreshHiveProjectProductDocument({
+    projectId,
+    boardManagerRunId: runId,
+    boardSourcePacket: sourcePacket,
+    fetchImpl,
+  });
+}
+
 export async function executeBoardManagerDecision({
   runId = "",
   decision = {},
   sourcePacket = {},
   dryRun = true,
+  fetchImpl = fetch,
 } = {}) {
   if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
   const normalizedDecision = normalizeBoardManagerDecision(decision);
@@ -431,6 +446,14 @@ export async function executeBoardManagerDecision({
         break;
       case "assign_contributor":
         result = await executeAssignContributor({ runId, decision: normalizedDecision, sourcePacket });
+        break;
+      case "refresh_project_document":
+        result = await executeRefreshProjectDocument({
+          runId,
+          decision: normalizedDecision,
+          sourcePacket,
+          fetchImpl,
+        });
         break;
       default:
         throw new Error(`board_manager_action_not_implemented:${normalizedDecision.action}`);

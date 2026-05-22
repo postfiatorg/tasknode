@@ -1,5 +1,6 @@
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { latestHiveProjectPlanningState } from "./hive-project-planning.js";
+import { getCurrentProjectProductDocs } from "./hive-project-product-docs.js";
 
 function useDatabase() {
   return databaseEnabled();
@@ -145,6 +146,7 @@ function documentFromRows({
   contributorRows = [],
   taskRows = [],
   activityRows = [],
+  productDocs = [],
   latestSecretary = null,
   projectPlanning = null,
 } = {}) {
@@ -164,6 +166,10 @@ function documentFromRows({
   for (const row of activityRows) {
     const project = projects[row.project_id];
     if (project) project.activity.push(publicActivity(row));
+  }
+  for (const doc of safeArray(productDocs)) {
+    const project = projects[doc.projectId];
+    if (project) project.productDocument = doc;
   }
 
   const projectIds = Object.values(projects)
@@ -301,6 +307,9 @@ export async function getHiveProjectsDocument() {
       `
     ),
   ]);
+  const productDocs = await getCurrentProjectProductDocs({
+    projectIds: projectsResult.rows.map((row) => row.id),
+  });
   const projectPlanning = await latestHiveProjectPlanningState().catch(() => null);
 
   return documentFromRows({
@@ -308,6 +317,7 @@ export async function getHiveProjectsDocument() {
     contributorRows: contributorsResult.rows,
     taskRows: tasksResult.rows,
     activityRows: activityResult.rows,
+    productDocs,
     latestSecretary: secretaryResult.rows[0] || null,
     projectPlanning,
   });

@@ -44,6 +44,7 @@ import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
 import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
 import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profile_v2.md?raw";
 import boardManagerPrompt from "../../../prompts/hive/board_manager_v1.md?raw";
+import hiveProjectProductDocPrompt from "../../../prompts/hive/hive_project_product_doc_v1.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
@@ -224,6 +225,20 @@ const PROMPT_SOURCES = [
       "GET /api/hive/context",
     ],
     content: hiveSecretaryPrompt,
+  },
+  {
+    family: "Hive",
+    title: "Hive Project Product Document",
+    path: "prompts/hive/hive_project_product_doc_v1.md",
+    summary: "Writes the agent-managed Project Status document shown inside a Hive project About section.",
+    status: "Active for Board Manager refresh_project_document action",
+    usedBy: [
+      "server/hive-project-product-doc-worker.js::fetchHiveProjectProductDoc",
+      "server/hive-project-product-doc-worker.js::refreshHiveProjectProductDocument",
+      "server/board-manager-actions.js::executeRefreshProjectDocument",
+      "GET /api/hive/projects",
+    ],
+    content: hiveProjectProductDocPrompt,
   },
   {
     family: "Hive",

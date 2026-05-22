@@ -1,6 +1,6 @@
 # Agent-Managed About Panels
 
-Status: scoped, not implemented
+Status: implemented for Hive project documents
 
 This plan defines how the Board Manager should update readable About panels across Task Node surfaces, starting with Hive project detail pages.
 
@@ -65,7 +65,7 @@ That blob should be editable only by the Board Manager or an operator action hoo
 
 Do not overload `network_projects.about` with frequently changing status text.
 
-Recommended table:
+Implemented table:
 
 `network_project_product_docs`
 
@@ -94,11 +94,11 @@ The table is a Postgres read/write planning artifact. It is not canonical task p
 
 ## Board Manager Action
 
-Use the existing planned action:
+Use the implemented action:
 
 `refresh_project_document`
 
-The action should target a specific `network_project.id`.
+The action targets a specific `network_projects.id`.
 
 Input packet:
 
@@ -129,11 +129,13 @@ It should not refresh just because someone opened the Hive page.
 
 ## Model And Prompt
 
-Recommended provider for the document writer:
+Provider for the document writer:
 
 - OpenRouter `deepseek/deepseek-v4-pro`
 - ZDR-capable provider only
 - prompt file: `prompts/hive/hive_project_product_doc_v1.md`
+- implementation: `server/hive-project-product-doc-worker.js`
+- action hook: `server/board-manager-actions.js::executeRefreshProjectDocument`
 
 The prompt should require plain English and avoid jargon. It should not invent task state or contributor work. If status is unclear, it should say what information is missing and recommend information-gathering tasks or user follow-up.
 
@@ -183,15 +185,17 @@ Do not create a generic cross-page table first. Start with Hive project document
 
 ## Implementation Steps
 
-1. Add `network_project_product_docs` migration.
-2. Add repository functions to read current product docs by project id and insert a new current version while superseding the old one.
-3. Add `prompts/hive/hive_project_product_doc_v1.md`.
-4. Add a worker/helper that calls DeepSeek V4 Pro through the existing OpenRouter ZDR provider path.
-5. Implement Board Manager `refresh_project_document` action hook.
-6. Add product docs to the Board Manager source packet.
-7. Update `GET /api/hive/projects` to include current project product doc per project.
-8. Render Project Status inside the Hive project About section.
-9. Add smoke tests for repository versioning, prompt output shape, and API rendering.
+Implemented:
+
+1. `server/db/migrations/038_network_project_product_docs.sql` adds current/superseded project documents.
+2. `server/repositories/hive-project-product-docs.js` reads current docs, builds one project source packet, and inserts a new current version while superseding the old one.
+3. `prompts/hive/hive_project_product_doc_v1.md` defines the product-document writer prompt.
+4. `server/hive-project-product-doc-worker.js` calls OpenRouter `deepseek/deepseek-v4-pro` with ZDR provider routing and persists the structured output.
+5. `server/board-manager-actions.js` implements `refresh_project_document`.
+6. `server/repositories/board-manager.js` marks `refresh_project_document` as an implemented hook in the Board Manager source packet.
+7. `GET /api/hive/projects` includes current project product documents through `server/repositories/hive-projects.js`.
+8. `src/features/hive/HiveView.jsx` renders Project Status inside the Hive project About section.
+9. `scripts/hive-project-product-doc-smoke.mjs` verifies prompt/provider shape with a fake OpenRouter response, and `scripts/board-manager-action-hooks-smoke.mjs` verifies the executed action hook writes a current document when Postgres is enabled.
 
 ## Done Criteria
 

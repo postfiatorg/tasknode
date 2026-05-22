@@ -625,6 +625,7 @@ export async function buildBoardManagerSourcePacket({
         "refresh_hive_secretary",
         "create_project",
         "archive_project",
+        "refresh_project_document",
         "assign_contributor",
       ],
       projectDeletionPolicy: "archive_project hides the project from the active Hive board; hard delete is not a v0 action.",
