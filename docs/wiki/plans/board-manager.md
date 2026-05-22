@@ -71,6 +71,7 @@ Hive page visibility:
 
 - The collapsed `Hive Context` section contains a `Hive Mind Agent` tab.
 - The tab shows recent Board Manager runs as a feed, including `do_nothing` and runs with no recorded selected action.
+- Internal smoke/test runs remain queryable for verification but are filtered out of the normal Hive Mind Agent feed.
 
 Not yet implemented action hooks:
 

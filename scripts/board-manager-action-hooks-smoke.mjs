@@ -213,7 +213,9 @@ async function main() {
   const chatMessages = await getChatMessages({ accountId: smokeAccountId, conversationId: smokeConversationId, limit: 10 });
   assert.ok(chatMessages.some((item) => item.role === "assistant" && item.body === "Board Manager action hook smoke message."));
   assert.equal(actions.rows[0]?.count, 4);
-  const feed = await getBoardManagerAgentFeed({ limit: 20 });
+  const publicFeed = await getBoardManagerAgentFeed({ limit: 20 });
+  assert.equal(publicFeed.some((entry) => entry.runId === runId), false);
+  const feed = await getBoardManagerAgentFeed({ limit: 20, includeInternal: true });
   const runFeed = feed.find((entry) => entry.runId === runId);
   assert.ok(runFeed);
   assert.equal(runFeed.actionResults.length, 4);

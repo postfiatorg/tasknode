@@ -306,7 +306,13 @@ async function currentTaskRequests({ limit = 20 } = {}) {
   }));
 }
 
-async function recentBoardManagerRuns({ limit = 12 } = {}) {
+function internalRunFilterSql(includeInternal = false) {
+  return includeInternal
+    ? ""
+    : "AND lower(trigger) NOT LIKE '%smoke%' AND lower(manager_id) NOT LIKE '%smoke%'";
+}
+
+async function recentBoardManagerRuns({ limit = 12, includeInternal = false } = {}) {
   if (!useDatabase()) return [];
   const exists = await query("SELECT to_regclass('public.board_manager_runs') AS name");
   if (!exists.rows[0]?.name) return [];
@@ -317,6 +323,8 @@ async function recentBoardManagerRuns({ limit = 12 } = {}) {
              model, reasoning_effort, error, codex_session_id, codex_session_path,
              session_mode, started_at, completed_at
       FROM board_manager_runs
+      WHERE 1 = 1
+        ${internalRunFilterSql(includeInternal)}
       ORDER BY started_at DESC, id DESC
       LIMIT $1
     `,
@@ -446,8 +454,11 @@ export function formatBoardManagerAgentRun(run = {}) {
   };
 }
 
-export async function getBoardManagerAgentFeed({ limit = 20 } = {}) {
-  const runs = await recentBoardManagerRuns({ limit: Math.min(Math.max(Number(limit) || 20, 1), 30) });
+export async function getBoardManagerAgentFeed({ limit = 20, includeInternal = false } = {}) {
+  const runs = await recentBoardManagerRuns({
+    limit: Math.min(Math.max(Number(limit) || 20, 1), 30),
+    includeInternal,
+  });
   return runs.map(formatBoardManagerAgentRun);
 }
 
