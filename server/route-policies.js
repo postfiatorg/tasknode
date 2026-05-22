@@ -68,6 +68,7 @@ export const apiRoutePolicies = [
   { id: "chat_conversation", path: "/api/chat/conversation", methods: ["PATCH", "DELETE"], auth: "handler" },
   { id: "chat_history", path: "/api/chat/history", methods: ["GET"], auth: "session" },
   { id: "memory", path: "/api/memory", methods: ["GET"], auth: "session" },
+  { id: "network_task_profile", path: "/api/memory/network-task-profile", methods: ["GET", "POST"], auth: "session" },
   { id: "profile_daily_airdrop", path: "/api/profile/daily-airdrop", methods: ["GET"], auth: "session" },
   { id: "profile_public", path: "/api/profile/public", methods: ["GET"], auth: "session" },
   {

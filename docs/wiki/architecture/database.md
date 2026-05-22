@@ -22,6 +22,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - Profile daily airdrop runs: `server/db/migrations/019_profile_daily_airdrop.sql`
 - Profile public snapshots: `server/db/migrations/021_profile_public_snapshots.sql`
 - PFTL pointer observations: `server/db/migrations/023_pftl_pointer_observations.sql`
+- Network task profiles: `server/db/migrations/024_network_task_profiles.sql`
 
 ## Table Inventory
 
@@ -41,6 +42,8 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `chat_memory_jobs` | Async queue row for one memory summarization job tied to a user message and assistant message, with retry and lock fields. | Memory worker, non-blocking chat memory writes, worker diagnostics. | `004_chat_memory.sql` |
 | `chat_memory_entries` | Memory output rows containing user request summary, system response summary, memory text, source excerpts, provider/model, prompt version, usage JSON, and deep memory classification fields. Deep-memory rows are unique per account/block. | Memory page, chat memory injection, Search, future profile export. | `004_chat_memory.sql`, `005_deep_chat_memory.sql`, `013_deep_memory_snapshots.sql` |
 | `chat_deep_memory_jobs` | Async queue row for every 36-memory deep compression block, with account/block uniqueness, exact source memory entry IDs, and retry/lock fields. | Deep Memory section, chat memory injection, memory worker diagnostics. | `005_deep_chat_memory.sql`, `013_deep_memory_snapshots.sql` |
+| `network_task_profile_jobs` | Async queue rows for private Network Task Profile generation, including account, source packet JSON/text, digest, lock/retry state, and last error. | Memory Network Task Profile panel, future network task routing diagnostics. | `024_network_task_profiles.sql` |
+| `network_task_profiles` | Completed private routing profiles with source packet, model output, provider/model/prompt metadata, source digest, usage JSON, and superseded timestamp for audit history. | Memory page generated Network Task Profile, user-visible source packet audit, future task routing input. | `024_network_task_profiles.sql` |
 | `pftl_task_sync_runs` | One row per task replay/import run with account, wallet, source, status, task count, pointer event count, and metadata. | Tasks replay diagnostics, operator recovery, Python replay imports. | `006_task_projections.sql` |
 | `task_requests` | Durable receipt and worker claim table for browser/chat task requests, including account, subject wallet, request/bundle CIDs, request transaction, generated task ID, worker attempts, status, and errors. | Tasks request strip, task generation worker, chat task request receipts, operator debugging. | `012_task_requests.sql` |
 | `pftl_task_pointer_events` | Typed task pointer events hydrated from PFTL pointer memos and IPFS payloads. | Tasks, task replay repair, reward traceability, audit. | `006_task_projections.sql` |

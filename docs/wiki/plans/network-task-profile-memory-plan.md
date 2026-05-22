@@ -1,8 +1,17 @@
 # Network Task Profile Memory Plan
 
-Status: planning
+Status: implemented v1
 
 Objective: add an auditable Memory feature that turns a member's current context, memory, profile, and task state into a clean descriptive packet for routing network tasks.
+
+Implemented v1 surfaces:
+
+- `src/features/memory/MemoryView.jsx` renders Generated Network Task Profile and Live Task Routing Context above Deep Memory.
+- `GET /api/memory/network-task-profile` returns live task text, latest generated profile, current job state, and the auditable source packet.
+- `POST /api/memory/network-task-profile` requests a refresh without blocking page rendering.
+- `server/repositories/network-task-profile.js` builds the source packet from context, deep memory, profile snapshot input, public profile snapshot, and task projections.
+- `server/chat-memory-worker.js` claims `network_task_profile_jobs` and calls the ZDR OpenRouter memory model with `prompts/memory/network_task_profile_v1.md`.
+- `server/db/migrations/024_network_task_profiles.sql` stores jobs and generated profile rows.
 
 This is not a public profile and not a social feed. It is a user-visible operating profile that answers: what work should the network route to this member right now?
 

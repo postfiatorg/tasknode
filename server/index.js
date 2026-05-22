@@ -39,7 +39,6 @@ import {
   usageLedger,
 } from "./repositories/chat-billing.js";
 import { chatConversationExistsForAccount } from "./repositories/chat-conversation-lookup.js";
-import { listChatMemory } from "./repositories/chat-memory.js";
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
@@ -47,6 +46,7 @@ import { handleTaskReadRoute } from "./task-routes.js";
 import { startTaskReviewWorker } from "./task-review-worker.js";
 import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
+import { handleMemoryRoute } from "./memory-routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -622,22 +622,7 @@ async function routeApi(req, url, res) {
     return true;
   }
 
-  if (url.pathname === "/api/memory") {
-    if (!session?.accountId) {
-      json(res, 401, {
-        ok: false,
-        error: "memory_login_required",
-        message: "Sign in before reading chat memory.",
-      });
-      return true;
-    }
-    json(res, 200, await listChatMemory({
-      accountId: session.accountId,
-      q: url.searchParams.get("q") || "",
-      limit: url.searchParams.get("limit") || 100,
-    }));
-    return true;
-  }
+  if (await handleMemoryRoute({ json, req, res, session, url })) return true;
 
   if (await handleProfileRoute({ getState, json, readJson, req, res, session, url })) return true;
 

@@ -30,6 +30,7 @@ const migrations = [
   "021_profile_public_snapshots.sql",
   "022_profile_public_snapshot_prompt_uniqueness.sql",
   "023_pftl_pointer_observations.sql",
+  "024_network_task_profiles.sql",
 ];
 
 let migrated = false;

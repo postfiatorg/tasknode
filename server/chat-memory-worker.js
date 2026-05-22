@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { databaseEnabled } from "./db/pool.js";
 import { loadPrompt } from "./prompt-registry.js";
 import {
@@ -11,6 +12,12 @@ import {
   failDeepMemoryJob,
   failChatMemoryJob,
 } from "./repositories/chat-memory.js";
+import {
+  claimNetworkTaskProfileJobs,
+  completeNetworkTaskProfileJob,
+  failNetworkTaskProfileJob,
+  networkTaskProfilePromptVersion,
+} from "./repositories/network-task-profile.js";
 
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const defaultProviderOrder = ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"];
@@ -19,6 +26,7 @@ const promptVersion = "chat_memory_v1";
 const deepPromptVersion = "deep_memory_v1";
 const chatMemoryPrompt = loadPrompt("memory/chat_memory_v1.md");
 const deepMemoryPrompt = loadPrompt("memory/deep_memory_v1.md");
+const networkTaskProfilePrompt = loadPrompt("memory/network_task_profile_v1.md");
 let timer = null;
 let running = false;
 
@@ -53,6 +61,14 @@ function memorySystemPrompt() {
 
 function deepMemorySystemPrompt() {
   return deepMemoryPrompt;
+}
+
+function networkTaskProfileSystemPrompt() {
+  return networkTaskProfilePrompt;
+}
+
+function promptDigest(text = "") {
+  return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
 }
 
 function redactSensitiveText(value = "") {
@@ -128,6 +144,34 @@ function parseSummaryJson(text = "") {
   }
   const parsed = JSON.parse(raw.slice(start, end + 1));
   return parsedSummaryObject(parsed);
+}
+
+function stringArray(value, { maxItems = 5, maxLength = 260 } = {}) {
+  const values = Array.isArray(value) ? value : [];
+  return values
+    .slice(0, maxItems)
+    .map((item) => compactSourceText(item, maxLength))
+    .filter(Boolean);
+}
+
+function parseNetworkTaskProfileJson(text = "") {
+  const raw = stripMarkdownFence(text);
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("network_task_profile_invalid_json");
+  }
+  const parsed = JSON.parse(raw.slice(start, end + 1));
+  return {
+    profile_title: compactSourceText(parsed.profile_title, 160),
+    routing_summary: compactSourceText(parsed.routing_summary, 1400),
+    best_task_types: stringArray(parsed.best_task_types),
+    avoid_task_types: stringArray(parsed.avoid_task_types),
+    current_capacity_signal: compactSourceText(parsed.current_capacity_signal, 40),
+    routing_reasons: stringArray(parsed.routing_reasons, { maxLength: 320 }),
+    confidence: compactSourceText(parsed.confidence, 40),
+    user_visible_caveats: stringArray(parsed.user_visible_caveats, { maxLength: 320 }),
+  };
 }
 
 function openRouterUsage(body = {}) {
@@ -286,6 +330,71 @@ async function fetchDeepMemorySummary(source) {
   };
 }
 
+async function fetchNetworkTaskProfile(source) {
+  const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
+  const order = providerOrder();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${openRouterKey()}`,
+        "content-type": "application/json",
+        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
+        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
+        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
+      },
+      body: JSON.stringify({
+        model: memoryModel(),
+        messages: [
+          { role: "system", content: networkTaskProfileSystemPrompt() },
+          { role: "user", content: compactSourceText(source.source_packet_text, 60000) },
+        ],
+        provider: {
+          zdr: true,
+          data_collection: "deny",
+          order: order.length > 0 ? order : defaultProviderOrder,
+          only: order.length > 0 ? order : defaultProviderOrder,
+        },
+        temperature: 0,
+        max_tokens: Math.max(900, Number(process.env.TASKNODE_NETWORK_TASK_PROFILE_MAX_TOKENS || 1800)),
+        usage: { include: true },
+      }),
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("network_task_profile_provider_timeout");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || body?.message || `OpenRouter network task profile HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  const content = body?.choices?.[0]?.message?.content || "";
+  const parsed = parseNetworkTaskProfileJson(content);
+  if (!parsed.profile_title || !parsed.routing_summary) {
+    throw new Error("network_task_profile_missing_fields");
+  }
+
+  return {
+    output: parsed,
+    provider: "openrouter",
+    model: body?.model || memoryModel(),
+    promptDigest: promptDigest(networkTaskProfileSystemPrompt()),
+    promptVersion: networkTaskProfilePromptVersion,
+    usage: openRouterUsage(body),
+  };
+}
+
 export async function processMemoryQueueOnce({ limit = 3 } = {}) {
   if (!memoryWorkerEnabled()) {
     return { ok: true, skipped: true, reason: "memory_worker_not_configured" };
@@ -298,6 +407,9 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
   let deepProcessed = 0;
   let deepFailed = 0;
   let deepClaimed = 0;
+  let networkProfileProcessed = 0;
+  let networkProfileFailed = 0;
+  let networkProfileClaimed = 0;
   try {
     const jobs = await claimChatMemoryJobs({ limit });
     for (const job of jobs) {
@@ -330,6 +442,28 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
         await failDeepMemoryJob(job, error);
       }
     }
+    const networkJobs = await claimNetworkTaskProfileJobs({ limit: 1 });
+    networkProfileClaimed = networkJobs.length;
+    for (const job of networkJobs) {
+      try {
+        if (!job?.source_packet_text) {
+          throw new Error("network_task_profile_source_missing");
+        }
+        const result = await fetchNetworkTaskProfile(job);
+        await completeNetworkTaskProfileJob({
+          job,
+          output: result.output,
+          provider: result.provider,
+          model: result.model,
+          promptDigest: result.promptDigest,
+          usage: result.usage,
+        });
+        networkProfileProcessed += 1;
+      } catch (error) {
+        networkProfileFailed += 1;
+        await failNetworkTaskProfileJob(job, error);
+      }
+    }
     return {
       ok: true,
       processed,
@@ -338,6 +472,9 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
       deepProcessed,
       deepFailed,
       deepClaimed,
+      networkProfileProcessed,
+      networkProfileFailed,
+      networkProfileClaimed,
     };
   } finally {
     running = false;
