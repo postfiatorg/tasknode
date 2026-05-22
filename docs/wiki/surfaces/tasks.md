@@ -113,7 +113,7 @@ Users must be able to stop a task even after it has entered the verification loo
 | Accepted, submitted, verification requested, awaiting review | Cancel task | `cancelled` |
 | Refused, cancelled, expired, rewarded | No stop action | Terminal state. |
 
-The stop action is shown on the Overview tab. If the local seed vault is locked, clicking the action opens the shared wallet unlock flow. If the vault is unlocked, the browser builds an encrypted `pf.task.update.v1` payload and signs a PFTL `TASK_UPDATE` pointer transaction from the linked user wallet.
+The stop action is shown on the Overview tab. Proposed tasks show both `Accept task` and `Refuse task`; accepted or review-loop tasks show the relevant cancel action. If the local seed vault is locked, clicking the action opens the shared wallet unlock flow. If the vault is unlocked, the browser builds an encrypted `pf.task.update.v1` payload and signs a PFTL `TASK_UPDATE` pointer transaction from the linked user wallet.
 
 The seed never leaves the browser. The server only receives:
 

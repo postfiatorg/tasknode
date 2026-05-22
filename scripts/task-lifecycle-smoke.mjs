@@ -11,6 +11,11 @@ import {
 assert.equal(taskStatusTab(TASK_STATUS.verificationRequested), TASK_TABS.verification);
 assert.equal(taskRequiresRefresh(TASK_STATUS.verificationRequested), true);
 assert.equal(taskLifecycleActions(TASK_STATUS.verificationRequested).canSubmitVerificationEvidence, true);
+assert.equal(taskLifecycleActions(TASK_STATUS.proposed).canAccept, true);
+assert.equal(taskLifecycleActions(TASK_STATUS.proposed).canRefuse, true);
+assert.equal(taskLifecycleActions(TASK_STATUS.proposed).canStop, true);
+assert.equal(taskLifecycleActions(TASK_STATUS.proposed).stopAction, "refuse");
+assert.equal(taskLifecycleActions(TASK_STATUS.proposed).stopLabel, "Refuse task");
 
 const activeReview = taskRefreshMetadata({
   tasks: [
