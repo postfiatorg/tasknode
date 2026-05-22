@@ -9,6 +9,15 @@ import {
 } from "./task-payloads.js";
 
 const TASK_POINTER_KINDS = ["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"];
+const TASK_PAYLOAD_SCHEMAS = new Set([
+  "pf.task.request.v1",
+  "pf.task.offer.v1",
+  "pf.task.update.v1",
+  "pf.task.submission.v1",
+  "pf.task.verification_response.v1",
+  "pf.task.reward_decision.v1",
+  "pf.reward.v1",
+]);
 
 function normalizeText(value) {
   if (value === undefined || value === null) return "";
@@ -326,6 +335,10 @@ function rewardAmountFromDecision(payload = {}) {
   );
 }
 
+function recognizedTaskPayloadSchema(schema = "") {
+  return TASK_PAYLOAD_SCHEMAS.has(normalizeText(schema));
+}
+
 function reduceHydratedTaskEvents(hydratedEvents) {
   const projections = new Map();
   const offerPayloads = new Map();
@@ -351,6 +364,7 @@ function reduceHydratedTaskEvents(hydratedEvents) {
     const payload = safeJson(hydrated.payload);
     const pointer = safeJson(hydrated.pointer);
     const schema = normalizeText(payload.schema);
+    if (!recognizedTaskPayloadSchema(schema)) continue;
     const taskId = normalizeText(payload.task_id || pointer.task_id);
     if (!taskId || schema === "pf.task.request.v1") continue;
     const projection = getProjection(taskId);
@@ -483,6 +497,16 @@ async function reduceTaskProjection(event, { fetchIpfsJson = fetchContextIpfsJso
   let seedHydrated = null;
   if (!taskId) {
     seedHydrated = await hydrateTaskPointerRow(seedPointer, { fetchIpfsJson, env });
+    const seedSchema = normalizeText(seedHydrated.payload?.schema);
+    if (!recognizedTaskPayloadSchema(seedSchema)) {
+      return {
+        skipped: true,
+        reason: "unrecognized_task_payload_schema",
+        cid: seedPointer.cid,
+        txHash: event.tx_hash,
+        pointerKind: seedPointer.pointer_kind || "",
+      };
+    }
     taskId = normalizeText(seedHydrated.payload?.task_id || seedHydrated.pointer?.task_id);
     if (!taskId && normalizeText(seedHydrated.payload?.schema) === "pf.task.request.v1") {
       return {
@@ -520,9 +544,13 @@ async function reduceTaskProjection(event, { fetchIpfsJson = fetchContextIpfsJso
 
   const imported = [];
   for (const projection of projections.values()) {
+    const offerPayload = offerPayloads.get(projection.task_id);
+    if (!offerPayload && !normalizeText(projection.title) && !normalizeText(projection.description)) {
+      continue;
+    }
     const receipt = receiptForProjection({
       projection,
-      offerPayload: offerPayloads.get(projection.task_id),
+      offerPayload,
       hydratedEvents,
       accountId: event.account_id,
       walletAddress: event.wallet_address,
@@ -532,6 +560,14 @@ async function reduceTaskProjection(event, { fetchIpfsJson = fetchContextIpfsJso
       source: "pftl_cache_reducer",
       sourceRef: `reducer_event:${event.id}`,
     }));
+  }
+  if (imported.length === 0) {
+    return {
+      skipped: true,
+      reason: "task_projection_without_offer_or_readable_task",
+      taskId,
+      hydratedEventCount: hydratedEvents.length,
+    };
   }
 
   return {

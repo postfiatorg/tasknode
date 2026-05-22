@@ -141,6 +141,8 @@ For task projection replay, a reducer event starts from one task pointer and reb
 
 This matters because one task lifecycle can include user-wallet submissions and authority-wallet verification or reward events. The reducer does not hydrate every historical task pointer with a blank task ID for the wallet, and the cache enqueue path no longer creates task projection work for task-style pointers that have no task ID. That prevents unrelated wallet-history pointers from becoming stale or failed task projections.
 
+The reducer also refuses to promote garbage into `task_projections`. A raw pointer memo can stay in the PFTL cache, but a normalized task projection requires a recognized Task Node payload schema and a readable task contract. Orphan historical `TASK_SUBMISSION` pointers with blank schema, blank title, blank description, and no offer are skipped instead of becoming `unknown` tasks. Migration `025_prune_orphan_task_projection_garbage.sql` removes previously imported blank unknown projections and their blank-schema normalized task event rows.
+
 For `pf.task.offer.v1`, the reducer preserves the generated task contract in projection metadata, including `title`, `description`, `task_kind`, `steps`, reward offer, submission requirement, verification policy, and deadline fields. The Tasks UI reads `metadata_json.generatedTask.steps` from `task_projections`; it should not replace real offer steps with the submission requirement.
 
 Current task replay recognizes these app-produced payload schemas:

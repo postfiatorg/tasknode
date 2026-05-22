@@ -184,7 +184,7 @@ const PROMPT_SOURCES = [
     family: "Memory",
     title: "Network Task Profile",
     path: "prompts/memory/network_task_profile_v1.md",
-    summary: "Async routing profile prompt over context, memory, profile, and live task text.",
+    summary: "Async routing profile prompt over context, memory, profile, and Network Context Inputs.",
     status: "Active async worker",
     usedBy: [
       "server/chat-memory-worker.js::fetchNetworkTaskProfile",

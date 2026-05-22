@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import {
   buildNetworkTaskProfileSourcePacket,
   formatLiveTaskRoutingContext,
+  formatNetworkContextInputs,
   formatNetworkTaskProfileOutput,
 } from "../server/repositories/network-task-profile.js";
 
 const live = formatLiveTaskRoutingContext([
   {
+    taskId: "task_smoke_proposed",
     title: "Draft member routing spec",
     statusKey: "proposed",
     tab: "outstanding",
@@ -15,6 +17,7 @@ const live = formatLiveTaskRoutingContext([
     updatedAtDisplay: "May 22, 1:00 PM UTC",
   },
   {
+    taskId: "task_smoke_rewarded",
     title: "Implement task copy controls",
     statusKey: "rewarded",
     tab: "rewarded",
@@ -23,13 +26,41 @@ const live = formatLiveTaskRoutingContext([
     rewardOutcome: { summary: "Completed with deterministic copy acknowledgement and readable exported task text." },
     updatedAtDisplay: "May 22, 2:00 PM UTC",
   },
+  {
+    taskId: "legacy_orphan_submission",
+    title: "",
+    statusKey: "unknown",
+    tab: "outstanding",
+    description: "",
+    updatedAtDisplay: "May 22, 3:00 PM UTC",
+  },
 ]);
 
-assert.match(live.text, /LIVE TASK ROUTING CONTEXT/);
 assert.match(live.text, /Proposed \(1\)/);
 assert.match(live.text, /Rewarded \(1\)/);
+assert.doesNotMatch(live.text, /legacy_orphan_submission/);
+assert.doesNotMatch(live.text, /Updated:/);
 assert.doesNotMatch(live.text, /Qm[A-Za-z0-9]{10,}/);
 assert.doesNotMatch(live.text, /Transaction/i);
+
+const networkInputs = formatNetworkContextInputs({
+  liveTaskContext: live,
+  profileInput: {
+    account_id: "acct_network_task_profile_smoke",
+    identity: { primary_wallet: "rSmokeWallet" },
+    reward_totals: { lifetimeTaskRewardPft: 4.8, trailing30dRewardedTasks: 2, trailing30dTaskRewardPft: 4.8 },
+    alignment: { score0To100: 82 },
+    contribution_tier: { tier: "T1", basis: "2 rewarded tasks" },
+  },
+  latestProfileSnapshot: {
+    roleTitle: "Protocol Product Engineer",
+    roleSummary: "Builds reliable task loops.",
+    skills: ["Task routing", "Protocol UX"],
+  },
+});
+assert.match(networkInputs, /NETWORK CONTEXT INPUTS/);
+assert.match(networkInputs, /Public role: Protocol Product Engineer/);
+assert.match(networkInputs, /Task State/);
 
 const packet = buildNetworkTaskProfileSourcePacket({
   accountId: "acct_network_task_profile_smoke",
@@ -66,7 +97,7 @@ const packet = buildNetworkTaskProfileSourcePacket({
 
 assert.match(packet.sourceText, /NETWORK TASK PROFILE SOURCE PACKET/);
 assert.match(packet.sourceText, /Context Document/);
-assert.match(packet.sourceText, /Live Task Routing Context/);
+assert.match(packet.sourceText, /Network Context Inputs/);
 assert.equal(packet.sourceCounts.deepMemoryCount, 1);
 assert.equal(packet.sourceCounts.rewardedTaskCount, 1);
 assert.equal(packet.sourcePacketDigest.length, 64);

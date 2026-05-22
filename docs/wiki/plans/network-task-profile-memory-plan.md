@@ -6,8 +6,8 @@ Objective: add an auditable Memory feature that turns a member's current context
 
 Implemented v1 surfaces:
 
-- `src/features/memory/MemoryView.jsx` renders Generated Network Task Profile and Live Task Routing Context above Deep Memory.
-- `GET /api/memory/network-task-profile` returns live task text, latest generated profile, current job state, and the auditable source packet.
+- `src/features/memory/MemoryView.jsx` renders Generated Network Task Profile and Network Context Inputs above Deep Memory.
+- `GET /api/memory/network-task-profile` returns Network Context Inputs, latest generated profile, current job state, and the auditable source packet.
 - `POST /api/memory/network-task-profile` requests a refresh without blocking page rendering.
 - `server/repositories/network-task-profile.js` builds the source packet from context, deep memory, profile snapshot input, public profile snapshot, and task projections.
 - `server/chat-memory-worker.js` claims `network_task_profile_jobs` and calls the ZDR OpenRouter memory model with `prompts/memory/network_task_profile_v1.md`.
@@ -21,7 +21,7 @@ The Memory page should gain a `Network Task Profile` section near Deep Memory.
 
 The section has two different freshness models:
 
-1. `Live Task Routing Context`: real-time text rendered from the same task projection state that backs the Tasks UX.
+1. `Network Context Inputs`: real-time public profile facts plus routable task projection state.
 2. `Generated Network Task Profile`: LLM-generated routing summary refreshed asynchronously, normally once every 24 hours or on manual refresh.
 
 The generated profile card should show:
@@ -35,15 +35,19 @@ The generated profile card should show:
 
 The user should be able to understand and challenge the generated routing profile. The profile must never be hidden system knowledge.
 
-## Live Task Routing Context
+## Network Context Inputs
 
-Memory should show a live text view of the user's task state. This is not model output. It is rendered directly from task projections so it stays in line with the Tasks page.
+Memory should show a live text view of the user's profile facts and routable task state. This is not model output. It is rendered directly from profile/task projections so it stays in line with the Profile and Tasks pages.
 
-The live task block should be human-readable, text-based, and grouped by the same states the user understands in the app:
+The task state block should be human-readable, text-based, and grouped by the same states the user understands in the app:
 
 ```text
-LIVE TASK ROUTING CONTEXT
+NETWORK CONTEXT INPUTS
 
+Profile
+<public profile role, skills, alignment, wallet and reward facts>
+
+Task State
 Proposed
 - Task Name: <title>
   State: proposed
@@ -72,9 +76,11 @@ Rewarded
   Outcome: <reward summary when available>
 ```
 
-This view should not show raw JSON, CIDs, transaction hashes, reducer names, event IDs, or full forensics. The goal is quick human orientation: what tasks exist, what state they are in, and what each task is basically about.
+This view should not show raw JSON, CIDs, transaction hashes, reducer names, event IDs, updated timestamps, or full forensics. The goal is quick human orientation: who this member appears to be, what tasks exist, what state they are in, and what each task is basically about.
 
-The live block should update whenever the Memory page fetches account state or task state refreshes. It should not wait for the 24-hour LLM job.
+The task block only includes routable projections. Blank `unknown` rows and orphan historical submissions are not tasks for routing.
+
+Network Context Inputs should update whenever the Memory page fetches account state or task state refreshes. They should not wait for the 24-hour LLM job.
 
 ## Source Packet
 
@@ -100,8 +106,8 @@ Context Document
 Deep Memory
 <up to last 3 deep memory bundles, newest first>
 
-Live Task Routing Context
-<the current text block grouped by Proposed, Outstanding, Verification, Refused, Rewarded>
+Network Context Inputs
+<profile facts plus the current task text block grouped by Proposed, Outstanding, Verification, Refused, Rewarded>
 
 Recently Refused Tasks
 <last 6 refused tasks, compacted>
@@ -119,16 +125,15 @@ Status: <status>
 Reward: <offered or paid PFT>
 Summary: <what the task asked for>
 Outcome: <reward summary, refusal reason, cancellation reason, or current next action>
-Updated: <timestamp>
 ```
 
-The packet should preserve enough specificity to route useful work without flooding the model with chain audit detail.
+The packet should preserve enough specificity to route useful work without flooding the model with chain audit detail. It intentionally omits generic `Updated` timestamps because recency is not enough to route work and stale orphan rows can otherwise look legitimate.
 
 ## Model Job
 
 Name: `network_task_profile_v1`
 
-The model job creates the generated Network Task Profile only. It does not own the live task text block.
+The model job creates the generated Network Task Profile only. It does not own Network Context Inputs.
 
 Provider:
 
@@ -147,7 +152,7 @@ Schedule:
 - normally refresh at most once every 24 hours per account;
 - run sooner only on explicit user refresh or a major source-packet change;
 - never block Memory page rendering, chat, or task state refresh;
-- if a valid profile exists and is less than 24 hours old, show it while the live task block continues to update in real time.
+- if a valid profile exists and is less than 24 hours old, show it while Network Context Inputs continue to update in real time.
 
 Expected output:
 
@@ -221,14 +226,14 @@ Debounce:
 - do not regenerate more than once every 24 hours automatically;
 - manual refresh can bypass the debounce but should show pending state;
 - if the source packet digest has not changed, do not call the model.
-- task projection changes should update the live text block immediately even when they do not trigger a model call.
+- task projection changes should update Network Context Inputs immediately even when they do not trigger a model call.
 
 ## UX In Memory
 
 Memory should show four layers:
 
 1. `Generated Network Task Profile`: async LLM-generated routing profile and source packet audit.
-2. `Live Task Routing Context`: real-time text state from task projections.
+2. `Network Context Inputs`: real-time profile plus task state from projections.
 3. `Deep Memory`: last 3 deep memory bundles.
 4. `Recent Memory`: last 36 memory summaries.
 
@@ -247,7 +252,7 @@ The Network Task Profile card should include:
 
 The source packet view should be readable text, not only JSON. Users need to see exactly what the model saw.
 
-The live task block should be readable without opening the Tasks page. It should be less detailed than Forensics and more compact than task cards.
+Network Context Inputs should be readable without opening the Profile or Tasks pages. They should be less detailed than Forensics and more compact than task cards.
 
 ## Prompt Contract
 
@@ -304,14 +309,14 @@ The profile should help decide what to offer, not force a task onto a user.
 V1 is complete when:
 
 - Memory page shows a Network Task Profile section.
-- Memory page shows a live task routing text block grouped by Proposed, Outstanding, Verification, Refused, and Rewarded.
+- Memory page shows Network Context Inputs with profile facts plus task routing text grouped by Proposed, Outstanding, Verification, Refused, and Rewarded.
 - The generated profile is stored in Postgres with source packet and output digests.
 - The user can inspect the exact source packet.
-- The source packet includes full context document, up to 3 deep memories, current outstanding tasks, last 6 refused tasks, last 6 rewarded tasks, and profile information.
+- The source packet includes full context document, up to 3 deep memories, Network Context Inputs, current outstanding tasks, last 6 refused tasks, last 6 rewarded tasks, and profile information.
 - Refused/rewarded task entries are compact and do not include full forensics.
 - The worker uses a ZDR DeepSeek Flash class route and does not block chat.
 - Source packet digest prevents repeated model calls when nothing changed.
-- The LLM-generated profile refreshes asynchronously on a 24-hour cadence while live task text remains current.
+- The LLM-generated profile refreshes asynchronously on a 24-hour cadence while Network Context Inputs remain current.
 - In-app docs list the packet shape, trigger policy, privacy boundary, and Memory UX.
 
 ## Out Of Scope For V1

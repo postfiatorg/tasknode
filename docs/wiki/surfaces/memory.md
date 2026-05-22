@@ -8,7 +8,7 @@ Memory is lightweight compression of user and assistant interactions. It helps f
 2. The app returns the response immediately.
 3. A background worker summarizes the user request and assistant response.
 4. Every 36 memory rows, a deep memory job snapshots the exact 36 source memory row IDs and compresses those summaries into broader user, assistant, and memory bullets.
-5. The Memory page renders live task routing context directly from task projections.
+5. The Memory page renders Network Context Inputs directly from profile/task projections.
 6. A separate async Network Task Profile job can summarize the source packet for future network task routing.
 7. The Memory page lets the user inspect what the system remembers and what the routing profile saw.
 
@@ -20,23 +20,25 @@ Private memory jobs use the configured OpenRouter ZDR model path. Memory writes 
 
 Deep-memory jobs are stable snapshots. `chat_deep_memory_jobs.source_entry_ids` stores the exact 36 `chat_memory_entries.id` values selected when the block is queued. The worker reads those IDs directly instead of recalculating the block later from timestamps, so backfills, imports, or corrected timestamps cannot change what a queued deep-memory job summarizes. `chat_memory_entries` also enforces one `deep_memory` row per account and block index, so retrying or recreating a deep-memory job updates the existing block summary rather than creating duplicates.
 
-Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. The prompt is `prompts/memory/network_task_profile_v1.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh. The generated profile is not required for the page to render. Live task context is built from `task_projections` on every route read and is returned even while a profile job is pending.
+Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. The prompt is `prompts/memory/network_task_profile_v1.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh. The generated profile is not required for the page to render. Network Context Inputs are built from profile data and routable `task_projections` on every route read and are returned even while a profile job is pending.
 
 ## Network Task Profile
 
 The Memory page now has two task-routing layers:
 
 - Generated Network Task Profile: an async LLM-generated routing summary stored in `network_task_profiles`.
-- Live Task Routing Context: real-time text from current task projection rows.
+- Network Context Inputs: real-time public profile facts plus current task projection text.
 
-The live task block is grouped as Proposed, Outstanding, Verification, Refused, and Rewarded. It shows task name, state, description, reward, outcome when available, and updated time. It intentionally does not show CIDs, transaction hashes, event IDs, reducer names, raw JSON, or full forensics.
+The task state block inside Network Context Inputs is grouped as Proposed, Outstanding, Verification, Refused, and Rewarded. It shows task name, state, description, reward, and outcome when available. It intentionally does not show updated timestamps, CIDs, transaction hashes, event IDs, reducer names, raw JSON, or full forensics.
+
+Network Context Inputs filters out non-routable projections. Blank `unknown` projections, orphan historical submissions, and rows without a readable task title or description are not routing context. Those records can exist as raw PFTL cache observations, but they should not be promoted into the user-visible task routing packet.
 
 The generated profile source packet contains:
 
 - account and profile snapshot;
 - full current context document text;
 - up to the last 3 deep memories;
-- current live task routing text;
+- current Network Context Inputs text;
 - current proposed, outstanding, and verification tasks;
 - last 6 refused tasks;
 - last 6 rewarded tasks.
@@ -75,9 +77,9 @@ sequenceDiagram
   participant Worker as Memory Worker
   participant OR as OpenRouter ZDR
   UI->>API: GET /api/memory/network-task-profile
-  API->>DB: read task_projections for live text
+  API->>DB: read profile facts and task_projections for Network Context Inputs
   API->>DB: read latest generated profile
-  API-->>UI: live task text plus latest or pending profile
+  API-->>UI: Network Context Inputs plus latest or pending profile
   API->>DB: enqueue profile job when missing or stale
   Worker->>DB: claim network_task_profile_jobs
   Worker->>OR: summarize source packet
@@ -88,7 +90,7 @@ sequenceDiagram
 
 - Memory jobs must not block chat responses.
 - Network Task Profile jobs must not block Memory page rendering.
-- Live task context should remain current even if profile generation fails.
+- Network Context Inputs should remain current even if profile generation fails.
 - Memory failure should be logged and retryable.
 - User-derived memory should be presented as memory context, not as app policy.
 - Users should be able to inspect memory entries for trust.

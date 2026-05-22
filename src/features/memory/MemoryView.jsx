@@ -141,7 +141,7 @@ export function MemoryView({ session }) {
                 profileState={networkProfile}
                 status={networkStatus}
               />
-              <LiveTaskRoutingContext profileState={networkProfile} />
+              <NetworkContextInputs profileState={networkProfile} />
             </>
           )}
 
@@ -272,17 +272,17 @@ function ProfileList({ items, title }) {
   );
 }
 
-function LiveTaskRoutingContext({ profileState }) {
-  const live = profileState?.liveTaskContext || {};
-  const counts = live.counts || {};
+function NetworkContextInputs({ profileState }) {
+  const context = profileState?.networkContextInputs || {};
+  const counts = context.counts || {};
   return (
     <MemorySection
       count={counts.total || 0}
-      description="Real-time text from task projections. This does not wait for the generated profile job."
-      title="Live Task Routing Context"
+      description="Real-time profile and task state inputs used for network routing."
+      title="Network Context Inputs"
     >
       <article className="memory-row live-task-context">
-        <pre>{live.text || "No task state is available for this account yet."}</pre>
+        <pre>{context.text || "No network context inputs are available for this account yet."}</pre>
       </article>
     </MemorySection>
   );

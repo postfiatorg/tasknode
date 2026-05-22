@@ -232,6 +232,28 @@ try {
     });
   }
 
+  const orphanTaskProjectionGarbage = await scalar(
+    `
+      SELECT count(*)::int AS count
+      FROM task_projections
+      WHERE source = 'pftl_cache_reducer'
+        AND status = 'unknown'
+        AND COALESCE(title, '') = ''
+        AND COALESCE(description, '') = ''
+        AND COALESCE(request_id, '') = ''
+    `
+  );
+  report.counts.orphanTaskProjectionGarbage = orphanTaskProjectionGarbage;
+  if (orphanTaskProjectionGarbage > 0) {
+    pushIssue(report.p0, {
+      severity: "p0",
+      surface: "tasks",
+      code: "orphan_task_projection_garbage",
+      count: orphanTaskProjectionGarbage,
+      message: "Blank unknown task projections exist. The reducer should not promote orphan or unrecognized task submissions into task_projections.",
+    });
+  }
+
   const knownTaskSkippedReducers = await query(
     `
       SELECT re.id, re.account_id, re.wallet_address, re.task_id, re.tx_hash, re.cid, re.payload_json->'result' AS result

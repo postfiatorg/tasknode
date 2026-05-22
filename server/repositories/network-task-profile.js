@@ -102,7 +102,7 @@ function publicProfileFromRow(row = {}) {
   const statusKey = normalizeTaskStatus(row.status);
   return {
     taskId: safeText(row.task_id, 180),
-    title: safeText(row.title || generatedTask.title || "Untitled task", 240),
+    title: safeText(row.title || generatedTask.title, 240),
     kind: safeText(row.task_kind || generatedTask.task_kind || "task", 80),
     statusKey,
     statusLabel: taskStatusLabel(statusKey),
@@ -136,9 +136,15 @@ function publicProfileFromRow(row = {}) {
   };
 }
 
+function isRoutableTask(task = {}) {
+  if (!task.taskId || task.statusKey === "unknown") return false;
+  return Boolean(task.title || task.description);
+}
+
 function taskLine(task = {}) {
+  const taskName = task.title || truncateWithEllipsis(task.description, 120);
   const lines = [
-    `- Task Name: ${task.title || "Untitled task"}`,
+    `- Task Name: ${taskName}`,
     `  State: ${task.statusKey || "unknown"}`,
   ];
   if (task.description) lines.push(`  Description: ${truncateWithEllipsis(task.description, 420)}`);
@@ -149,7 +155,6 @@ function taskLine(task = {}) {
   }
   const outcome = task.rewardOutcome?.summary || task.stopOutcome?.summary || "";
   if (outcome) lines.push(`  Outcome: ${truncateWithEllipsis(outcome, 420)}`);
-  if (task.updatedAtDisplay) lines.push(`  Updated: ${task.updatedAtDisplay}`);
   return lines.join("\n");
 }
 
@@ -163,15 +168,14 @@ function groupText(title = "", tasks = [], { empty = "None" } = {}) {
 }
 
 export function formatLiveTaskRoutingContext(tasks = []) {
-  const normalized = safeArray(tasks);
+  const normalized = safeArray(tasks).filter(isRoutableTask);
   const proposed = normalized.filter((task) => task.statusKey === "proposed");
   const outstanding = normalized.filter((task) => task.tab === "outstanding" && task.statusKey !== "proposed");
   const verification = normalized.filter((task) => task.tab === "verification");
   const refused = normalized.filter((task) => task.tab === "refused").slice(0, 6);
   const rewarded = normalized.filter((task) => task.tab === "rewarded").slice(0, 6);
+  const displayedTotal = proposed.length + outstanding.length + verification.length + refused.length + rewarded.length;
   const text = [
-    "LIVE TASK ROUTING CONTEXT",
-    "",
     groupText("Proposed", proposed),
     "",
     groupText("Outstanding", outstanding),
@@ -192,9 +196,26 @@ export function formatLiveTaskRoutingContext(tasks = []) {
       verification: verification.length,
       refused: refused.length,
       rewarded: rewarded.length,
-      total: normalized.length,
+      total: displayedTotal,
+      available: normalized.length,
     },
   };
+}
+
+export function formatNetworkContextInputs({
+  liveTaskContext = null,
+  profileInput = null,
+  latestProfileSnapshot = null,
+} = {}) {
+  return [
+    "NETWORK CONTEXT INPUTS",
+    "",
+    "Profile",
+    profileSnapshotText({ profileInput, latestProfileSnapshot }),
+    "",
+    "Task State",
+    liveTaskContext?.text || "No task state is available.",
+  ].join("\n");
 }
 
 export function formatNetworkTaskProfileOutput(output = {}) {
@@ -261,7 +282,6 @@ function compactTask(task = {}) {
     reward: task.rewardActualPft > 0 ? `${task.rewardActualPft} PFT paid` : `${task.rewardOfferPft} PFT offered`,
     summary: truncateWithEllipsis(task.description, 700),
     outcome: truncateWithEllipsis(outcome, 700),
-    updated: task.updatedAtDisplay || task.updatedAt || "",
   };
 }
 
@@ -299,6 +319,11 @@ export function buildNetworkTaskProfileSourcePacket({
   const now = new Date().toISOString();
   const deepMemories = safeArray(memoryContext?.deepMemories).slice(0, 3);
   const contextText = stripHtmlForPacket(contextDocument?.body || "");
+  const networkContextInputsText = formatNetworkContextInputs({
+    liveTaskContext,
+    profileInput,
+    latestProfileSnapshot,
+  });
   const allTasks = [
     ...safeArray(liveTaskContext?.groups?.proposed),
     ...safeArray(liveTaskContext?.groups?.outstanding),
@@ -312,6 +337,10 @@ export function buildNetworkTaskProfileSourcePacket({
     account_id: safeAccountId(accountId),
     profile_snapshot: profileInput || {},
     latest_public_profile_snapshot: latestProfileSnapshot || null,
+    network_context_inputs: {
+      text: networkContextInputsText,
+      counts: liveTaskContext?.counts || {},
+    },
     context_document: {
       title: contextDocument?.title || "Task Node Context",
       revision: Number(contextDocument?.revision || 0),
@@ -324,10 +353,6 @@ export function buildNetworkTaskProfileSourcePacket({
       system_response_summary: entry.systemResponseSummary,
       memory_text: entry.memoryText,
     })),
-    live_task_routing_context: {
-      text: liveTaskContext?.text || "",
-      counts: liveTaskContext?.counts || {},
-    },
     current_tasks: {
       proposed: safeArray(liveTaskContext?.groups?.proposed).map(compactTask),
       outstanding: safeArray(liveTaskContext?.groups?.outstanding).map(compactTask),
@@ -346,8 +371,8 @@ export function buildNetworkTaskProfileSourcePacket({
     "Account",
     safeAccountId(accountId),
     "",
-    "Profile Snapshot",
-    profileSnapshotText({ profileInput, latestProfileSnapshot }),
+    "Network Context Inputs",
+    networkContextInputsText,
     "",
     "Context Document",
     contextText || "No context document text saved yet.",
@@ -362,9 +387,6 @@ export function buildNetworkTaskProfileSourcePacket({
       ].join("\n")).join("\n\n")
       : "No deep memory generated yet.",
     "",
-    "Live Task Routing Context",
-    liveTaskContext?.text || "No task routing context available.",
-    "",
     "Recently Refused Tasks",
     safeArray(liveTaskContext?.groups?.refused).length
       ? safeArray(liveTaskContext.groups.refused).slice(0, 6).map((task) => {
@@ -376,7 +398,6 @@ export function buildNetworkTaskProfileSourcePacket({
           `Reward: ${compact.reward}`,
           `Summary: ${compact.summary}`,
           compact.outcome ? `Outcome: ${compact.outcome}` : "",
-          `Updated: ${compact.updated}`,
         ].filter(Boolean).join("\n");
       }).join("\n\n")
       : "No recent refused tasks.",
@@ -392,7 +413,6 @@ export function buildNetworkTaskProfileSourcePacket({
           `Reward: ${compact.reward}`,
           `Summary: ${compact.summary}`,
           compact.outcome ? `Outcome: ${compact.outcome}` : "",
-          `Updated: ${compact.updated}`,
         ].filter(Boolean).join("\n");
       }).join("\n\n")
       : "No recent rewarded tasks.",
@@ -445,6 +465,7 @@ export async function getLiveTaskRoutingContext({ accountId = "" } = {}) {
              ) AS stop_payload
       FROM task_projections p
       WHERE p.account_id = $1
+        AND p.status <> 'unknown'
       ORDER BY p.updated_at DESC, p.task_id DESC
       LIMIT 200
     `,
@@ -463,8 +484,17 @@ export async function buildNetworkTaskProfileSource({ accountId = "" } = {}) {
     buildPublicProfileSnapshotInput({ accountId: normalizedAccountId }).catch(() => null),
     getLatestPublicProfileSnapshot({ accountId: normalizedAccountId }).catch(() => null),
   ]);
+  const networkContextInputs = {
+    text: formatNetworkContextInputs({
+      liveTaskContext,
+      profileInput,
+      latestProfileSnapshot,
+    }),
+    counts: liveTaskContext.counts,
+  };
   return {
     liveTaskContext,
+    networkContextInputs,
     ...buildNetworkTaskProfileSourcePacket({
       accountId: normalizedAccountId,
       contextDocument,
@@ -581,6 +611,7 @@ export async function getNetworkTaskProfileState({
   return {
     ok: true,
     liveTaskContext: source.liveTaskContext,
+    networkContextInputs: source.networkContextInputs,
     profile: latest,
     job: job || enqueue?.job || null,
     sourcePacket: {
