@@ -34,6 +34,7 @@ const migrations = [
   "025_prune_orphan_task_projection_garbage.sql",
   "026_network_task_profile_prompt_v2_default.sql",
   "027_hive_context_entries.sql",
+  "028_hive_secretary_reports.sql",
 ];
 
 let migrated = false;

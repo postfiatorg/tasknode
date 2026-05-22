@@ -2,7 +2,7 @@
 
 Hive is the network coordination surface. It shows active projects, task routing, operator load, and project-scoped activity in one place so members can understand where the network is concentrating attention.
 
-The current implementation is a UX mock ported into the real app shell. It is intentionally static while the next workstream defines the live data model and routing engine.
+The current implementation mixes a static project/routing mock with live Hive Context and Hive Secretary data. The static project cards are design scaffolding. Hive Context and Hive Secretary are live Postgres-backed surfaces.
 
 ## User Surface
 
@@ -12,7 +12,7 @@ The Hive route is available at `#hive` from the primary sidebar. The surface con
 - a routing feed showing recent task state transitions
 - allotted operators with load and availability
 - a project detail page for the full `PFT distribution v3` mock project
-- a collapsed `Hive Context` section at the bottom of the page
+- a collapsed `Hive Context` section at the bottom of the page with the latest Hive Secretary report and collapsible raw inputs
 
 The project detail page is layered as:
 
@@ -27,12 +27,38 @@ Chat has a `Hive Input` mode in the composer `+` menu. It is a persistence actio
 
 When the user selects `Hive Input`, the composer changes mode and the next message is saved to `Hive Context`. The server also records the user message and a short acknowledgement in chat history so the conversation remains understandable after navigation.
 
-`Hive Context` is a network context document built from user-submitted entries. It is grouped by user and shown collapsed on the Hive page. Expanding the section reveals entries by contributor with timestamp and source chat title.
+`Hive Context` is a network context document built from user-submitted entries. It is grouped by user and shown collapsed on the Hive page.
+
+Expanding the section shows the current `Hive Secretary` report first. Raw user inputs are behind a second collapsible `Raw inputs` control so the page reads like a network report by default instead of a transcript dump. Raw inputs show contributor, timestamp, body, and whether the entry came from a validated linked wallet. Source chat title is intentionally not displayed because it is usually not useful network context.
+
+## Hive Secretary
+
+Hive Secretary is an async report worker over validated-wallet Hive Inputs.
+
+When a signed-in user posts a Hive Input:
+
+1. `POST /api/hive/context` stores the raw input.
+2. The route checks the account's linked wallet through `getLinkedWallet`.
+3. If the account has a linked wallet, the entry is marked `wallet_validated = true`.
+4. Validated entries enqueue a Hive Secretary job.
+5. `server/hive-secretary-worker.js` calls OpenRouter using `deepseek/deepseek-v4-pro` with ZDR provider settings.
+6. The completed report is stored in `hive_secretary_reports`.
+7. `GET /api/hive/context` returns both the grouped raw context and the current Secretary report.
+
+Hive Secretary uses `prompts/hive/hive_secretary_v1.md`. The prompt returns strict JSON with:
+
+- `summary`
+- `project_signals`
+- `network_implications`
+- `open_questions`
+- `next_system_focus`
+
+The worker is source-bound: it summarizes validated Hive Inputs and classifies project signals into the current Hive project types. It does not create tasks yet.
 
 Current endpoint:
 
-- `GET /api/hive/context` returns the grouped Hive Context document.
-- `POST /api/hive/context` stores one signed-in user's Hive Input entry and records the chat acknowledgement.
+- `GET /api/hive/context` returns the grouped Hive Context document plus Hive Secretary report/job state.
+- `POST /api/hive/context` stores one signed-in user's Hive Input entry, records the chat acknowledgement, and queues Hive Secretary when the user has a linked wallet.
 
 ## Technical Architecture
 
@@ -43,14 +69,19 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `src/features/hive/hive.css` contains the isolated styling for the surface.
 - `src/main.jsx` registers `#hive`, adds the sidebar entry, and lazy-loads the view.
 - `server/hive-routes.js` serves Hive Context reads and writes.
-- `server/repositories/hive-context.js` persists and groups Hive Context entries.
+- `server/hive-secretary-worker.js` processes validated Hive Inputs through DeepSeek V4 Pro with ZDR.
+- `server/repositories/hive-context.js` persists raw Hive Context entries, Secretary jobs, and Secretary reports.
 - `server/db/migrations/027_hive_context_entries.sql` creates the Hive Context table.
+- `server/db/migrations/028_hive_secretary_reports.sql` adds linked-wallet validation metadata and Secretary job/report tables.
+- `prompts/hive/hive_secretary_v1.md` is the source-controlled Secretary prompt.
 
 ## Current Data Boundary
 
 Project, routing feed, and allotted-operator data are static for this milestone. They do not yet read from Postgres, PFTL task projections, profile snapshots, or a routing worker.
 
-Hive Context is live Postgres-backed app data. It is not on-chain and is not yet used by the system Network Task worker. It is the first user-authored input surface for future Hive project/task generation.
+Hive Context is live Postgres-backed app data. It is not on-chain. Hive Secretary is also Postgres-backed and regenerates from validated-wallet Hive Inputs after new entries arrive.
+
+The Secretary report is not canonical task state. It is an operator-readable network context report that will later feed the system Network Task worker.
 
 The expected live replacement path is:
 
@@ -60,6 +91,9 @@ flowchart LR
   Profiles[Profile snapshots] --> Cache
   Cache --> HiveAPI[Hive API projection]
   HiveAPI --> HiveUI[Hive route]
+  HiveInput[Chat Hive Input] --> HiveContext[Hive Context Entries]
+  HiveContext --> Secretary[Hive Secretary Worker]
+  Secretary --> HiveUI
 ```
 
 ## Future Live Sources
@@ -68,6 +102,7 @@ The likely production data sources are:
 
 - `task_projections` for task state, rewards, and project assignment
 - `hive_context_entries` for user-submitted network context
+- `hive_secretary_reports` for the current synthesized network context report
 - public profile snapshots for operator role and skill summaries
 - daily airdrop and reward history for contribution weighting
 - a future hive project table for project identity, lifecycle, and priority

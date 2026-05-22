@@ -27,6 +27,7 @@ export function HiveView() {
 
 function HiveIndex({ onSelectProject }) {
   const [hiveContext, setHiveContext] = useState(null);
+  const [hiveSecretary, setHiveSecretary] = useState(null);
   const [hiveContextOpen, setHiveContextOpen] = useState(false);
   const [hiveContextStatus, setHiveContextStatus] = useState("loading");
 
@@ -38,6 +39,7 @@ function HiveIndex({ onSelectProject }) {
         if (cancelled) return;
         if (!result.ok) throw new Error(result.body?.message || `Hive Context returned HTTP ${result.status}.`);
         setHiveContext(result.body?.context || null);
+        setHiveSecretary(result.body?.secretary || null);
         setHiveContextStatus("ready");
       })
       .catch(() => {
@@ -99,7 +101,8 @@ function HiveIndex({ onSelectProject }) {
           context={hiveContext}
           expanded={hiveContextOpen}
           onToggle={() => setHiveContextOpen((open) => !open)}
-          status={hiveContextStatus}
+        status={hiveContextStatus}
+          secretary={hiveSecretary}
         />
       </Section>
     </div>
@@ -362,11 +365,15 @@ function ActivityRow({ entry, last = false }) {
   );
 }
 
-function HiveContextPanel({ context, expanded, onToggle, status }) {
+function HiveContextPanel({ context, expanded, onToggle, status, secretary }) {
+  const [rawOpen, setRawOpen] = useState(false);
   const groups = context?.groups || [];
   const entryCount = Number(context?.entryCount || 0);
   const userCount = Number(context?.userCount || groups.length || 0);
   const hasEntries = entryCount > 0;
+  const report = secretary?.report || null;
+  const reportOutput = report?.output || {};
+  const pending = secretary?.job && ["pending", "processing"].includes(secretary.job.status);
   const statusText = status === "loading"
     ? "Loading"
     : status === "error"
@@ -389,29 +396,102 @@ function HiveContextPanel({ context, expanded, onToggle, status }) {
           {!hasEntries && status !== "loading" && (
             <p className="hive-context-empty">Use Hive Input from Chat to add network context.</p>
           )}
-          {groups.map((group) => (
-            <section className="hive-context-user" key={group.accountId || group.displayName}>
+          {(report || pending || hasEntries) && (
+            <section className="hive-secretary">
               <header>
-                <strong>{group.displayName || "Unknown user"}</strong>
-                <small>{group.entryCount} {group.entryCount === 1 ? "entry" : "entries"}</small>
+                <span>
+                  <strong>Hive Secretary</strong>
+                  <small>
+                    {report?.completedAt
+                      ? `Updated ${formatContextTime(report.completedAt)}`
+                      : pending
+                        ? "Updating from validated wallet inputs"
+                        : "Waiting for validated wallet inputs"}
+                  </small>
+                </span>
+                {report?.model && <code>{report.model}</code>}
               </header>
-              <div className="hive-context-entries">
-                {(group.entries || []).map((entry) => (
-                  <article className="hive-context-entry" key={entry.id}>
-                    <p>{entry.body}</p>
-                    <footer>
-                      <time>{formatContextTime(entry.createdAt)}</time>
-                      {entry.sourceConversationTitle && <span>{entry.sourceConversationTitle}</span>}
-                    </footer>
-                  </article>
-                ))}
-              </div>
+              {report ? (
+                <div className="hive-secretary-report">
+                  <h3>{reportOutput.title || "Hive Secretary Report"}</h3>
+                  {reportOutput.summary && <p>{reportOutput.summary}</p>}
+                  {Array.isArray(reportOutput.projectSignals) && reportOutput.projectSignals.length > 0 && (
+                    <HiveSecretaryList
+                      items={reportOutput.projectSignals.map((item) => [
+                        item.projectType ? `${projectTypeLabel(item.projectType)}: ` : "",
+                        item.signal || item.reason || "",
+                      ].join(""))}
+                      title="Project signals"
+                    />
+                  )}
+                  <HiveSecretaryList items={reportOutput.networkImplications} title="Network implications" />
+                  <HiveSecretaryList items={reportOutput.openQuestions} title="Open questions" />
+                  <HiveSecretaryList items={reportOutput.nextSystemFocus} title="Next system focus" />
+                </div>
+              ) : (
+                <p className="hive-context-empty">
+                  The Secretary report is generated asynchronously from linked-wallet Hive Inputs.
+                </p>
+              )}
             </section>
-          ))}
+          )}
+          {hasEntries && (
+            <section className="hive-context-raw">
+              <button className="hive-context-raw-toggle" onClick={() => setRawOpen((open) => !open)} type="button">
+                <span>
+                  <strong>Raw inputs</strong>
+                  <small>{entryCount} {entryCount === 1 ? "entry" : "entries"} from {userCount} {userCount === 1 ? "user" : "users"}</small>
+                </span>
+                <ChevronDown className={rawOpen ? "is-open" : ""} size={15} strokeWidth={1.8} />
+              </button>
+              {rawOpen && groups.map((group) => (
+                <section className="hive-context-user" key={group.accountId || group.displayName}>
+                  <header>
+                    <strong>{group.displayName || "Unknown user"}</strong>
+                    <small>{group.entryCount} {group.entryCount === 1 ? "entry" : "entries"}</small>
+                  </header>
+                  <div className="hive-context-entries">
+                    {(group.entries || []).map((entry) => (
+                      <article className="hive-context-entry" key={entry.id}>
+                        <p>{entry.body}</p>
+                        <footer>
+                          <time>{formatContextTime(entry.createdAt)}</time>
+                          {entry.walletValidated && <span>validated wallet</span>}
+                        </footer>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </section>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+function HiveSecretaryList({ items = [], title }) {
+  const normalized = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!normalized.length) return null;
+  return (
+    <section className="hive-secretary-list">
+      <h4>{title}</h4>
+      <ul>
+        {normalized.map((item, index) => (
+          <li key={`${title}-${index}`}>{item}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function projectTypeLabel(value = "") {
+  return String(value || "")
+    .split("_")
+    .filter(Boolean)
+    .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
+    .join(" ");
 }
 
 function formatContextTime(value = "") {

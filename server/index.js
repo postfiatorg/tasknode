@@ -22,6 +22,7 @@ import {
 import { executeChatStream } from "./chat-router.js";
 import { conversationIdForChatWrite, explicitConversationId } from "./chat-conversation-ids.js";
 import { startMemoryWorker } from "./chat-memory-worker.js";
+import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
 import {
   conversationIdForSession,
   destroySession,
@@ -627,7 +628,7 @@ async function routeApi(req, url, res) {
 
   if (await handleProfileRoute({ getState, json, readJson, req, res, session, url })) return true;
 
-  if (await handleHiveRoute({ json, readJson, req, res, session, url })) return true;
+  if (await handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
 
   if (url.pathname === "/api/chat/stream") {
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};
@@ -974,6 +975,7 @@ const server = createServer((req, res) => {
 assertStartupSecurity();
 await migrateDatabase();
 startMemoryWorker();
+startHiveSecretaryWorker();
 startPftlCacheWorker();
 startPftlArchiveWorker();
 startPftlCacheWatcher();

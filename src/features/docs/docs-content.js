@@ -41,6 +41,7 @@ import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_conte
 import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
 import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
 import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profile_v2.md?raw";
+import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
 import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
 import publicProfileSnapshotPrompt from "../../../prompts/profile/public_profile_snapshot_v1.md?raw";
 import blockContractPrompt from "../../../prompts/task_engine/block_contract_v1.md?raw";
@@ -195,6 +196,19 @@ const PROMPT_SOURCES = [
     content: networkTaskProfilePrompt,
   },
   {
+    family: "Hive",
+    title: "Hive Secretary",
+    path: "prompts/hive/hive_secretary_v1.md",
+    summary: "Updates the network context report from validated-wallet Hive Input entries.",
+    status: "Active async worker",
+    usedBy: [
+      "server/hive-secretary-worker.js::fetchHiveSecretaryReport",
+      "server/repositories/hive-context.js::completeHiveSecretaryJob",
+      "GET /api/hive/context",
+    ],
+    content: hiveSecretaryPrompt,
+  },
+  {
     family: "Task Engine",
     title: "Task Generation",
     path: "prompts/task_engine/taskgen_minimal_v1.md",
@@ -291,6 +305,12 @@ const PROMPT_PAGES = [
     title: "Memory Prompts",
     summary: "Async memory compression prompts.",
     family: "Memory",
+  }),
+  promptFamilyPage({
+    slug: "prompts-hive",
+    title: "Hive Prompts",
+    summary: "Network context synthesis prompts.",
+    family: "Hive",
   }),
   promptFamilyPage({
     slug: "prompts-task-engine",

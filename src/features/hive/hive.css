@@ -385,10 +385,137 @@
   padding: 4px 18px 18px;
 }
 
+.hive-secretary {
+  padding-top: 14px;
+}
+
+.hive-secretary header,
+.hive-context-raw-toggle {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.hive-secretary header {
+  margin-bottom: 12px;
+}
+
+.hive-secretary header strong,
+.hive-context-raw-toggle strong {
+  color: var(--hive-ink);
+  display: block;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.hive-secretary header small,
+.hive-context-raw-toggle small {
+  color: var(--hive-muted);
+  display: block;
+  font-size: 11.5px;
+  margin-top: 3px;
+}
+
+.hive-secretary header code {
+  color: var(--hive-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+}
+
+.hive-secretary-report {
+  background: #fbfaf6;
+  border: 0.5px solid var(--hive-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.hive-secretary-report h3 {
+  color: var(--hive-ink);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0;
+  margin: 0 0 8px;
+}
+
+.hive-secretary-report p {
+  color: var(--hive-ink-soft);
+  font-size: 12.5px;
+  line-height: 1.55;
+  margin: 0 0 12px;
+}
+
+.hive-secretary-list {
+  border-top: 0.5px solid var(--hive-border);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.hive-secretary-list h4 {
+  color: var(--hive-muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  margin: 0 0 7px;
+  text-transform: uppercase;
+}
+
+.hive-secretary-list ul {
+  display: grid;
+  gap: 7px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hive-secretary-list li {
+  color: var(--hive-ink-soft);
+  font-size: 12.3px;
+  line-height: 1.45;
+  padding-left: 13px;
+  position: relative;
+}
+
+.hive-secretary-list li::before {
+  background: var(--hive-green);
+  border-radius: 50%;
+  content: "";
+  height: 4px;
+  left: 0;
+  position: absolute;
+  top: 8px;
+  width: 4px;
+}
+
 .hive-context-empty {
   color: var(--hive-muted);
   font-size: 12.5px;
   margin: 14px 0 0;
+}
+
+.hive-context-raw {
+  border-top: 0.5px solid var(--hive-border);
+  margin-top: 16px;
+  padding-top: 2px;
+}
+
+.hive-context-raw-toggle {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 12px 0;
+  text-align: left;
+  width: 100%;
+}
+
+.hive-context-raw-toggle svg {
+  color: var(--hive-muted);
+  transition: transform 140ms ease;
+}
+
+.hive-context-raw-toggle svg.is-open {
+  transform: rotate(180deg);
 }
 
 .hive-context-user {

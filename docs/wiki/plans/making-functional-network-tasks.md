@@ -192,23 +192,33 @@ Behavior:
 - show load and rough fit, not private memory;
 - clicking an operator later should route to public profile, not raw diagnostic internals.
 
-### Hive Context
+### Hive Context And Secretary
 
-Hive Context is the first live input surface for the future system worker.
+Hive Context is the first live input surface for the future system worker. Hive Secretary is the first live synthesis layer over that input.
 
 Source:
 
 - `hive_context_entries`, written from Chat `+` menu `Hive Input` mode.
+- `hive_secretary_reports`, written by the async Hive Secretary worker from validated-wallet entries.
 
 Behavior:
 
 - store signed-in user inputs as a network context document;
-- group entries by user;
-- show only a collapsed summary on the Hive page by default;
-- expand on demand to read user entries;
+- group raw entries by user;
+- show the Hive Secretary report first when the Hive Context section is expanded;
+- keep raw user inputs behind a second collapsible `Raw inputs` section;
+- ignore chat title in the display;
+- only validated linked-wallet inputs feed Hive Secretary;
 - keep this off-chain in v1.
 
-The system network state worker should later consume Hive Context as one source of network need, alongside task state, project state, and Network Diagnostic Reports.
+The system network state worker should later consume Hive Secretary as one source of network need, alongside task state, project state, and Network Diagnostic Reports.
+
+Implemented pieces:
+
+- `POST /api/hive/context` stores Hive Input and queues Hive Secretary when the account has a linked wallet.
+- `GET /api/hive/context` returns grouped raw context plus latest Secretary report/job state.
+- `server/hive-secretary-worker.js` calls DeepSeek V4 Pro through OpenRouter ZDR.
+- `prompts/hive/hive_secretary_v1.md` defines the Secretary output.
 
 ## Network Diagnostic Report Usage
 

@@ -24,6 +24,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - PFTL pointer observations: `server/db/migrations/023_pftl_pointer_observations.sql`
 - Network task profiles: `server/db/migrations/024_network_task_profiles.sql`
 - Hive context entries: `server/db/migrations/027_hive_context_entries.sql`
+- Hive Secretary reports: `server/db/migrations/028_hive_secretary_reports.sql`
 
 ## Table Inventory
 
@@ -45,7 +46,9 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `chat_deep_memory_jobs` | Async queue row for every 36-memory deep compression block, with account/block uniqueness, exact source memory entry IDs, and retry/lock fields. | Deep Memory section, chat memory injection, memory worker diagnostics. | `005_deep_chat_memory.sql`, `013_deep_memory_snapshots.sql` |
 | `network_task_profile_jobs` | Async queue rows for private Network Task Profile generation, including account, source packet JSON/text, digest, lock/retry state, and last error. | Memory Network Task Profile panel, future network task routing diagnostics. | `024_network_task_profiles.sql` |
 | `network_task_profiles` | Completed private routing profiles with source packet, model output, provider/model/prompt metadata, source digest, usage JSON, and superseded timestamp for audit history. | Memory page generated Network Task Profile, user-visible source packet audit, future task routing input. | `024_network_task_profiles.sql` |
-| `hive_context_entries` | Signed-in user Hive Input entries grouped into the Hive Context document. Stores body text, display-name snapshot, source conversation, attachment metadata, body hash, and timestamps. | Chat `Hive Input` composer mode, Hive page collapsed `Hive Context` section, future system network state worker input. | `027_hive_context_entries.sql` |
+| `hive_context_entries` | Signed-in user Hive Input entries grouped into the Hive Context document. Stores body text, display-name snapshot, source conversation metadata, linked-wallet validation flag/address, attachment metadata, body hash, and timestamps. | Chat `Hive Input` composer mode, Hive page collapsed `Hive Context` section, Hive Secretary source packet, future system network state worker input. | `027_hive_context_entries.sql`, `028_hive_secretary_reports.sql` |
+| `hive_secretary_jobs` | Async queue rows for regenerating the Hive Secretary report after validated-wallet Hive Inputs arrive. Stores source packet JSON/text, packet digest, source entry id, lock/retry state, and errors. | Hive Secretary worker, Hive page report status, operator diagnostics. | `028_hive_secretary_reports.sql` |
+| `hive_secretary_reports` | Completed Hive Secretary reports over validated-wallet Hive Inputs, with source packet, DeepSeek output JSON/text, provider/model/prompt metadata, usage JSON, and supersession timestamp. | Hive page Secretary report, future system Network Task worker input, prompt audit. | `028_hive_secretary_reports.sql` |
 | `pftl_task_sync_runs` | One row per task replay/import run with account, wallet, source, status, task count, pointer event count, and metadata. | Tasks replay diagnostics, operator recovery, Python replay imports. | `006_task_projections.sql` |
 | `task_requests` | Durable receipt and worker claim table for browser/chat task requests, including account, subject wallet, request/bundle CIDs, request transaction, generated task ID, worker attempts, status, and errors. | Tasks request strip, task generation worker, chat task request receipts, operator debugging. | `012_task_requests.sql` |
 | `pftl_task_pointer_events` | Typed task pointer events hydrated from PFTL pointer memos and IPFS payloads. | Tasks, task replay repair, reward traceability, audit. | `006_task_projections.sql` |
@@ -96,6 +99,7 @@ flowchart TB
   Account --> Billing[Billing Ledger]
   Account --> Profile[Profile NFTs and Daily Airdrop]
   Account --> HiveContext[Hive Context Entries]
+  HiveContext --> HiveSecretary[Hive Secretary Reports]
   Account --> Wallet[Wallet Link Metadata]
   Jobs[Jobs Corpus pgvector] --> Chat
   PFTL[PFTL Events] --> TaskCache[Task Projection Cache]
