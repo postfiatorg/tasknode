@@ -79,6 +79,18 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `profile_daily_airdrop_issuances` | Submitted daily airdrop payments with source wallet, recipient wallet, PFT amount, payload digest, pointer CID, tx hash, ledger index, and account/day uniqueness. | Private Profile paid airdrop display, reward history chart, public profile lifetime earned PFT. | `020_profile_daily_airdrop_issuance.sql` |
 | `profile_public_snapshots` | Account-scoped public profile role snapshots with deterministic input snapshot/fingerprint, DeepSeek output fields, provider/model/prompt metadata, status, and completion timestamps. Numeric scores and NFT state are not model-generated. | Public Profile role title, summary, skills, archetype, useful-to copy, profile snapshot audit. | `021_profile_public_snapshots.sql` |
 
+## Planned Board Manager Tables
+
+These tables are planned and not implemented yet. They are included here because the Hive architecture is moving from independent worker cadence to a single leased Board Manager executor.
+
+| Table | Description | App surfaces that rely on it | Source |
+| --- | --- | --- | --- |
+| `board_manager_leases` | One lease per manager scope, starting with `global_hive`, so only one Board Manager runs across Fly instances. | Hive manager execution, operator diagnostics. | Planned |
+| `board_manager_runs` | Durable run log with trigger, source packet digest, selected action, action payload, status, timing, and error fields. | Hive manager audit, debugging stale board decisions, future operator controls. | Planned |
+| `board_manager_context_docs` | Versioned Board Manager context document used by the manager to retain network-level assumptions, unresolved questions, and decisions. | Hive Context, Board Manager source packet, future project/task generation. | Planned |
+| `board_manager_action_results` | Audit log for each executed manager action, keyed by run id and target object. | Hive project history, task allocation audit, evidence review audit. | Planned |
+| `network_project_product_docs` | Current and historical expandable product documents linked to `network_projects`. | Hive project About expansion, Board Manager project state review, future task generation. | Planned |
+
 ## Known Gaps
 
 - Wallet link, auth identity linkage, initiation grants, and Ethereum deposit state are partially represented outside the typed migration set. Those should be pulled into explicit account, identity, wallet link, grant, and deposit tables before the billing and task surfaces become public production surfaces.
@@ -110,8 +122,10 @@ flowchart TB
   Account --> Profile[Profile NFTs and Daily Airdrop]
   Account --> HiveContext[Hive Context Entries]
   HiveContext --> HiveSecretary[Hive Secretary Reports]
-  HiveSecretary --> HivePlanner[Hive Project Generations]
+  HiveSecretary --> BoardManager[Board Manager Runs]
+  BoardManager --> HivePlanner[Hive Project Generations]
   HivePlanner --> HiveProjects[Network Projects]
+  BoardManager --> ProductDocs[Project Product Docs]
   Account --> Wallet[Wallet Link Metadata]
   Jobs[Jobs Corpus pgvector] --> Chat
   PFTL[PFTL Events] --> TaskCache[Task Projection Cache]

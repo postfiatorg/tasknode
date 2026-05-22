@@ -2,7 +2,7 @@
 
 Hive is the network coordination surface. It shows active projects, task routing, operator load, and project-scoped activity in one place so members can understand where the network is concentrating attention.
 
-The current implementation uses Postgres-backed network project records plus live Hive Context and Hive Secretary data. The original Hive mock is preserved only as design reference.
+The current implementation uses Postgres-backed network project records plus live Hive Context and Hive Secretary data. The original Hive mock is preserved only as design reference. The target architecture is Board Manager centered: one leased Board Manager run decides when Hive context, projects, project documents, contributors, and Network Tasks should change.
 
 ## User Surface
 
@@ -33,9 +33,26 @@ When the user selects `Hive Input`, the composer changes mode and the next messa
 
 Expanding the section shows the current `Hive Secretary` report first. Raw user inputs are behind a second collapsible `Raw inputs` control so the page reads like a network report by default instead of a transcript dump. Raw inputs show contributor, timestamp, body, and whether the entry came from a validated linked wallet. Source chat title is intentionally not displayed because it is usually not useful network context.
 
-## Hive Secretary
+## Board Manager Target
 
-Hive Secretary is an async report worker over validated-wallet Hive Inputs. Hive Active Projects is a second async worker that uses the latest Secretary report to decide the active project set before tasks are allocated.
+The Board Manager is the planned system operator for Hive. It is a Codex Exec function with a bounded action registry. It should run periodically or after meaningful state changes, claim a single `global_hive` lease, inspect the current board state, and choose one action.
+
+Allowed actions include:
+
+- do nothing
+- update the Board Manager context document
+- refresh Hive Secretary
+- research
+- message a user for follow-up context
+- create or update projects
+- refresh a project product document
+- assign or remove contributors
+- initiate project-linked Network Tasks with rewards
+- review evidence packets through the existing task engine
+
+The old direct cascade where Hive Secretary automatically drives active projects is deprecated as the target architecture. The existing Secretary and Active Projects workers remain implementation primitives, but the Board Manager should own when they run.
+
+## Hive Secretary And Active Projects
 
 When a signed-in user posts a Hive Input:
 
@@ -45,10 +62,12 @@ When a signed-in user posts a Hive Input:
 4. Validated entries enqueue a Hive Secretary job.
 5. `server/hive-secretary-worker.js` calls OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false`.
 6. The completed report is stored in `hive_secretary_reports`.
-7. The completed report queues a Hive Active Projects job.
+7. In the current implementation, the completed report queues a Hive Active Projects job.
 8. `server/hive-project-worker.js` calls OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false`.
 9. The completed project generation is stored in `hive_project_generations` and upserts active rows in `network_projects`.
 10. `GET /api/hive/context` returns both the grouped raw context and the current Secretary report.
+
+Step 7 is the part to replace as Board Manager work lands. Hive Secretary should report network context. The Board Manager should decide whether that report is stale, whether active projects should change, whether research is needed, or whether the correct action is no action.
 
 Hive Secretary uses `prompts/hive/hive_secretary_v1.md`. The prompt returns strict JSON with:
 
@@ -88,8 +107,8 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `src/features/hive/hive.css` contains the isolated styling for the surface.
 - `src/main.jsx` registers `#hive`, adds the sidebar entry, and lazy-loads the view.
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
-- `server/hive-secretary-worker.js` processes validated Hive Inputs through OpenAI `gpt-5.5-pro`.
-- `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`.
+- `server/hive-secretary-worker.js` processes validated Hive Inputs through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action handler.
+- `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
 - `server/repositories/hive-context.js` persists raw Hive Context entries, Secretary jobs, and Secretary reports.
 - `server/repositories/hive-projects.js` reads active network projects and links the latest Secretary report as a project input.
 - `server/repositories/hive-project-planning.js` persists active-project planner jobs and completed generations, then upserts `network_projects`.
@@ -101,6 +120,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql` archives the three rejected generated scoping cards from existing environments.
 - `prompts/hive/hive_secretary_v1.md` is the source-controlled Secretary prompt.
 - `prompts/hive/hive_active_projects_v1.md` is the source-controlled active-project prompt.
+- `prompts/hive/board_manager_v1.md` is the planned Board Manager operating prompt.
 
 ## Current Data Boundary
 
@@ -117,11 +137,19 @@ Cadence today:
 - A completed Secretary report queues Hive Active Projects immediately.
 - Active project rows update after that worker completes.
 
-Planned cadence:
+Deprecated target:
 
-- Project Product Documents should queue after project creation or material project update.
-- Product Documents should also refresh on a slower periodic cadence, likely daily, so stale project descriptions are corrected without constantly reprocessing the same context.
-- If a Product Document identifies missing information, the task generator should create information-gathering Network Tasks under the existing project rather than creating a fake "scoping" project.
+- Do not keep adding independent cron-like workers for every Hive behavior.
+- Do not let each Fly instance run a Board Manager loop.
+- Do not let Active Projects, Product Documents, task assignment, and review each become separate overactive schedulers.
+
+Board Manager target:
+
+- A single leased Board Manager run wakes on a logical cadence or meaningful trigger.
+- The manager selects one scoped action.
+- Existing workers are called only as action handlers.
+- Product Documents refresh when the manager decides a project is stale or materially changed.
+- If a Product Document identifies missing information, the manager can research, ask follow-up questions, or initiate information-gathering Network Tasks under the existing project.
 
 The Secretary report and Active Projects generation are not canonical task state. They are operator-readable planning artifacts. They make project identity available to the future system Network Task worker without pretending the report is itself a task.
 
@@ -134,9 +162,12 @@ flowchart LR
   Cache --> HiveAPI[Hive API projection]
   HiveAPI --> HiveUI[Hive route]
   HiveInput[Chat Hive Input] --> HiveContext[Hive Context Entries]
-  HiveContext --> Secretary[Hive Secretary Worker]
-  Secretary --> ProjectPlanner[Hive Active Projects Worker]
+  HiveContext --> Manager[Board Manager]
+  Secretary[Hive Secretary Worker] --> Manager
+  Manager --> Secretary
+  Manager --> ProjectPlanner[Hive Active Projects Helper]
   ProjectPlanner --> Projects[Network Projects]
+  Manager --> Projects
   Projects --> HiveAPI
   Secretary --> HiveUI
 ```
@@ -151,6 +182,7 @@ The likely production data sources are:
 - `hive_context_entries` for user-submitted network context
 - `hive_secretary_reports` for the current synthesized network context report
 - `hive_project_planning_jobs` and `hive_project_generations` for active project determination
+- planned Board Manager lease/run/action tables
 - public profile snapshots for operator role and skill summaries
 - daily airdrop and reward history for contribution weighting
 - PFTL transaction cache rows for proof anchors and forensic drill-in

@@ -20,6 +20,7 @@ import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
+import boardManager from "../../../docs/wiki/plans/board-manager.md?raw";
 import codeReviewBurndown from "../../../docs/wiki/plans/code-review-burndown.md?raw";
 import contextEditChatMode from "../../../docs/wiki/plans/context-edit-chat-mode.md?raw";
 import dataArchitectureHardeningPlan from "../../../docs/wiki/plans/data-architecture-hardening-plan.md?raw";
@@ -41,6 +42,7 @@ import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_conte
 import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
 import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
 import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profile_v2.md?raw";
+import boardManagerPrompt from "../../../prompts/hive/board_manager_v1.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
@@ -195,6 +197,18 @@ const PROMPT_SOURCES = [
       "GET /api/memory/network-task-profile",
     ],
     content: networkTaskProfilePrompt,
+  },
+  {
+    family: "Hive",
+    title: "Board Manager",
+    path: "prompts/hive/board_manager_v1.md",
+    summary: "Planned operating prompt for the single leased Board Manager action registry.",
+    status: "Planned Board Manager executor prompt; not runtime-active yet",
+    usedBy: [
+      "docs/wiki/plans/board-manager.md",
+      "future Board Manager Codex Exec loop",
+    ],
+    content: boardManagerPrompt,
   },
   {
     family: "Hive",
@@ -478,6 +492,12 @@ export const DOC_GROUPS = [
   {
     title: "Plans",
     pages: [
+      {
+        slug: "board-manager",
+        title: "Board Manager",
+        summary: "Plan for the leased Codex Exec manager that owns Hive actions and replaces independent Hive crons.",
+        markdown: boardManager,
+      },
       {
         slug: "code-review-burndown",
         title: "Code Review Burndown",

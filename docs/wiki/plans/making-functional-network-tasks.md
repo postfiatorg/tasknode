@@ -2,7 +2,7 @@
 
 Status: planning
 
-This plan supersedes the earlier broad Hive Mind planning for Network Tasks. The current Hive UX is the starting point for the product ontology. The goal is to make Hive a real coordination surface where active projects contain PFTL tasks, contributors are derived from those tasks, and the network can allocate work to members using their Network Diagnostic Report.
+This plan supersedes the earlier broad Hive Mind planning for Network Tasks. The Board Manager plan now supersedes the direct-worker cadence described in earlier versions of this document. The current Hive UX remains the starting point for the product ontology, but the Board Manager owns when the system updates context, creates projects, refreshes project documents, assigns contributors, and initiates Network Tasks.
 
 ## Product Objective
 
@@ -12,7 +12,7 @@ Hive should answer three questions without making the user inspect raw chain dat
 2. Which tasks belong to each project, and what state are they in?
 3. Which operators are being allocated to network work, and why are they eligible?
 
-The project-detail shape in the `PFT distribution v3` mock is the reference layout: a project board with an About section, contributors, tasks, and scoped activity. The live app should not seed fake operators or fake task rows to make that layout look full. It should show the apriori project spec first, then populate contributors, tasks, and activity only when live project-linked allocation data exists.
+The project-detail shape in the `PFT distribution v3` mock is the reference layout: a project board with an About section, contributors, tasks, and scoped activity. The live app should not seed fake operators or fake task rows to make that layout look full. It should show the project spec first, then populate contributors, tasks, and activity only when the Board Manager or project rollup links live project allocation data.
 
 The current correction is that "scoping" is not a project. Scoping can be a phase, a status, or a reason to create information-gathering Network Tasks. It should not appear as the project title. A project title should name the durable workstream, such as `Post Fiat L1`, `Capital Deployment Protocol`, or `Task Node Product`, with `phase_label = Scoping` when the system is still gathering information.
 
@@ -86,7 +86,7 @@ The product document answers:
 - Who is working on it and why.
 - What is blocked or unknown.
 
-If the status or next move is unclear, the product document should not invent certainty. It should say what information is missing and recommend information-gathering Network Tasks that would make the project actionable.
+If the status or next move is unclear, the product document should not invent certainty. It should say what information is missing and recommend information-gathering Network Tasks that would make the project actionable. The Board Manager decides whether to create those tasks, ask a user for follow-up context, research the question, or do nothing.
 
 ### `network_project_task_refs`
 
@@ -272,7 +272,7 @@ Behavior:
 - only validated linked-wallet inputs feed Hive Secretary;
 - keep this off-chain in v1.
 
-The system network state worker should later consume Hive Secretary as one source of network need, alongside task state, project state, and Network Diagnostic Reports.
+The Board Manager should consume Hive Secretary as one source of network need, alongside task state, project state, product documents, and Network Diagnostic Reports.
 
 Implemented pieces:
 
@@ -291,15 +291,21 @@ Current cleanup:
 - the generated `task_node_product_scoping`, `post_fiat_l1_scoping`, and `capital_deployment_protocol_scoping` cards are archived by `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql`;
 - the prompt now treats scoping as phase/status, not as a durable project name.
 
-Planned cadence:
+Deprecated cadence:
 
-1. A validated-wallet Hive Input is saved.
-2. Hive Secretary queues immediately and updates the latest Secretary report.
-3. Hive Active Projects queues after the Secretary report completes.
-4. Active Projects may create or preserve durable projects, but not "scoping" projects.
-5. Project Product Document generation queues after a project is created or materially updated.
-6. Product docs regenerate on material Hive Secretary changes and on a slower periodic cadence, likely daily, so stale project descriptions are refreshed without hammering providers.
-7. Network Task generation later consumes the current project row plus the product document and creates information-gathering tasks when the product document identifies unknowns.
+1. A validated-wallet Hive Input saves.
+2. Hive Secretary queues immediately.
+3. Hive Active Projects queues directly after Hive Secretary.
+4. Product documents refresh on their own schedule.
+
+This direct cascade is no longer the target architecture. The replacement is the Board Manager:
+
+1. A trigger starts one Board Manager run under the `global_hive` lease.
+2. The manager builds a source packet from Hive Context, Hive Secretary, projects, product docs, tasks, diagnostics, pending evidence, and recent manager actions.
+3. The manager chooses one scoped action from its action registry.
+4. Existing workers such as Hive Secretary, Active Projects, and future Product Document generation become action handlers.
+5. The run records its action and result so the next run knows what happened.
+6. If a project is unclear, the manager chooses research, user follow-up, context update, or information-gathering Network Tasks rather than creating a fake project card.
 
 ## Network Diagnostic Report Usage
 
@@ -325,19 +331,19 @@ The report should explain why a user can do a network task. The task system stil
 
 ## Network Task Generation Flow
 
-The expected flow is:
+The expected Board Manager flow is:
 
-1. The system evaluates network state and identifies a project-level need.
-2. The system creates a new active `network_project` or selects an existing active project that matches the need.
-3. The project has an objective and one of the fixed project types.
-4. The task generation worker builds a source packet:
+1. A Board Manager run claims the global Hive lease.
+2. The manager evaluates network state and identifies whether any action is needed.
+3. If needed, the manager creates or updates a durable `network_project`, selects an existing active project, refreshes a project document, asks for follow-up, researches, or does nothing.
+4. If a concrete task should exist, the task generation action builds a source packet:
    - project title, type, objective, and current status;
    - relevant Hive Context entries;
    - recent task refs already attached to the project;
    - the system-detected network need;
    - candidate Network Diagnostic Reports;
    - current task engine reward and evidence policy.
-5. The AI system generates a concrete Network Task proposal for a selected account.
+5. The task generator creates a concrete Network Task proposal for a selected account.
 6. The app publishes a PFTL task request/offer carrying project metadata.
 7. The cache/reducer indexes the task into `task_projections`.
 8. `network_project_task_refs` links the task to the project.
@@ -388,16 +394,21 @@ Initial endpoints:
 
 These endpoints should return read models shaped for the existing Hive UX, not raw database rows.
 
-Task generation should run through durable internal workers, not a public frontend route. A future operator control can inspect or pause system runs, but it should not manually author Network Tasks.
+Task generation should run through durable internal workers invoked by Board Manager actions, not a public frontend route. A future operator control can inspect or pause Board Manager runs, but it should not manually author Network Tasks.
 
 ### Workers
 
-Needed workers:
+Needed workers/action handlers:
 
-- project rollup worker: rebuilds contributor and project aggregates from task refs and task projections;
-- network allocation worker: selects eligible candidates from Network Diagnostic Reports;
-- network task generation worker: creates concrete tasks and publishes PFTL offers;
-- allocation expiration worker: marks proposed tasks expired and reroutes when needed.
+- Board Manager executor: claims the global Hive lease, builds the source packet, selects one action, records the run, and dispatches the action handler.
+- project rollup handler: rebuilds contributor and project aggregates from task refs and task projections.
+- Hive Secretary handler: refreshes the Secretary report when the Board Manager chooses `refresh_hive_secretary`.
+- active project handler: creates, updates, pauses, or archives durable project rows when the Board Manager chooses project actions.
+- product document handler: refreshes the expandable project document when the Board Manager chooses `refresh_project_document`.
+- network allocation handler: selects eligible candidates from Network Diagnostic Reports.
+- network task generation handler: creates concrete tasks and publishes PFTL offers.
+- allocation expiration handler: marks proposed tasks expired and reroutes when needed.
+- evidence review handler: reviews project-linked evidence through the existing task review and reward path.
 
 ### Prompt Files
 
@@ -406,11 +417,14 @@ Prompts should live in source-controlled prompt files, not inline code.
 Existing and planned prompt files:
 
 - `prompts/hive/hive_active_projects_v1.md` exists now.
+- `prompts/hive/board_manager_v1.md` exists now as the planned operating prompt for the manager action registry.
 - `prompts/hive/hive_project_product_doc_v1.md` is planned with the product-document worker.
 - `prompts/hive/network_task_generation_v1.md` is planned with the network task generation worker.
 - `prompts/hive/network_task_allocation_v1.md` is planned with the allocation worker.
 
-`hive_active_projects_v1` decides which durable projects exist. It does not write product docs.
+`board_manager_v1` is the planned policy boundary. It chooses one action per run from a finite registry.
+
+`hive_active_projects_v1` currently decides which durable projects exist. In the Board Manager architecture it becomes an action helper, not an independent decision loop.
 
 `hive_project_product_doc_v1` should use OpenRouter `deepseek/deepseek-v4-pro` with a ZDR-capable provider. It should produce the expandable product document for one project at a time from the project row, latest Secretary report, and project-linked task state.
 
