@@ -58,6 +58,26 @@ All four chat modes use one prompt assembly boundary. `prompts/chat/task_node_in
 
 Jobs retrieval uses OpenAI `/v1/embeddings` through `server/embedding-provider.js`, defaulting to `text-embedding-3-small` with 1536 dimensions. That embedding call is internal retrieval infrastructure; it is not a chat completion provider route and does not enable web search on private modes.
 
+## Hive Planning Workers
+
+Hive planning workers are not user chat modes and are not billed to the user's chat balance. They are async internal coordination jobs.
+
+| Worker | Provider | API path | Default model | Reasoning | Output | Privacy policy |
+| --- | --- | --- | --- | --- | --- | --- |
+| Hive Secretary | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON report | `store=false` |
+| Hive Active Projects | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON project set | `store=false` |
+
+The model ID comes from OpenAI's GPT-5.5 pro model page: `gpt-5.5-pro`. OpenAI's reasoning guidance positions GPT-5.5 pro as the higher-intelligence option for harder asynchronous reasoning work and recommends the Responses API for reasoning models. Task Node therefore uses `gpt-5.5-pro` for project determination, not OpenRouter DeepSeek.
+
+Environment overrides:
+
+- `TASKNODE_HIVE_SECRETARY_MODEL`
+- `TASKNODE_HIVE_SECRETARY_REASONING_EFFORT`
+- `TASKNODE_HIVE_PROJECT_MODEL`
+- `TASKNODE_HIVE_PROJECT_REASONING_EFFORT`
+
+The default reasoning effort is `high`. These workers use structured outputs rather than prompt-only JSON parsing so invalid project shapes fail the job instead of silently changing the UI.
+
 ## Profile NFT Image Generation
 
 Profile NFT image generation is not a chat mode. It is a separate profile action backed by `POST /api/profile/nft/generate`.

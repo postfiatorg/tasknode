@@ -221,11 +221,13 @@ Implemented pieces:
 
 - `POST /api/hive/context` stores Hive Input and queues Hive Secretary when the account has a linked wallet.
 - `GET /api/hive/context` returns grouped raw context plus latest Secretary report/job state.
-- `server/hive-secretary-worker.js` calls DeepSeek V4 Pro through OpenRouter ZDR.
+- `server/hive-secretary-worker.js` calls OpenAI `gpt-5.5-pro` through the Responses API.
 - `prompts/hive/hive_secretary_v1.md` defines the Secretary output.
 - `GET /api/hive/projects` returns Postgres-backed active project records.
 - `PFT distribution v3` is seeded as an apriori project row with About text, target metrics, and latest Hive Secretary input reference.
 - Mock-only contributors, task rows, and activity rows were removed; those sections remain empty until the allocation worker links real PFTL task activity to the project.
+- `server/hive-project-worker.js` uses OpenAI `gpt-5.5-pro` through the Responses API to turn the latest Hive Secretary report into the active project set.
+- `prompts/hive/hive_active_projects_v1.md` defines the active project output contract.
 
 ## Network Diagnostic Report Usage
 

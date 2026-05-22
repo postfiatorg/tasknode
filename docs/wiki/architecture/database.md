@@ -27,6 +27,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - Hive Secretary reports: `server/db/migrations/028_hive_secretary_reports.sql`
 - Hive network projects: `server/db/migrations/029_hive_network_projects.sql`
 - Hive project seed cleanup: `server/db/migrations/030_hive_project_seed_cleanup.sql`
+- Hive active project planning: `server/db/migrations/031_hive_project_planning.sql`
 
 ## Table Inventory
 
@@ -50,7 +51,9 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `network_task_profiles` | Completed private routing profiles with source packet, model output, provider/model/prompt metadata, source digest, usage JSON, and superseded timestamp for audit history. | Memory page generated Network Task Profile, user-visible source packet audit, future task routing input. | `024_network_task_profiles.sql` |
 | `hive_context_entries` | Signed-in user Hive Input entries grouped into the Hive Context document. Stores body text, display-name snapshot, source conversation metadata, linked-wallet validation flag/address, attachment metadata, body hash, and timestamps. | Chat `Hive Input` composer mode, Hive page collapsed `Hive Context` section, Hive Secretary source packet, future system network state worker input. | `027_hive_context_entries.sql`, `028_hive_secretary_reports.sql` |
 | `hive_secretary_jobs` | Async queue rows for regenerating the Hive Secretary report after validated-wallet Hive Inputs arrive. Stores source packet JSON/text, packet digest, source entry id, lock/retry state, and errors. | Hive Secretary worker, Hive page report status, operator diagnostics. | `028_hive_secretary_reports.sql` |
-| `hive_secretary_reports` | Completed Hive Secretary reports over validated-wallet Hive Inputs, with source packet, DeepSeek output JSON/text, provider/model/prompt metadata, usage JSON, and supersession timestamp. | Hive page Secretary report, future system Network Task worker input, prompt audit. | `028_hive_secretary_reports.sql` |
+| `hive_secretary_reports` | Completed Hive Secretary reports over validated-wallet Hive Inputs, with source packet, OpenAI output JSON/text, provider/model/prompt metadata, usage JSON, and supersession timestamp. | Hive page Secretary report, Hive Active Projects worker input, future system Network Task worker input, prompt audit. | `028_hive_secretary_reports.sql` |
+| `hive_project_planning_jobs` | Async queue rows for turning the latest Hive Secretary report into active project records with OpenAI `gpt-5.5-pro`. | Hive Active Projects worker, Hive project diagnostics. | `031_hive_project_planning.sql` |
+| `hive_project_generations` | Completed active-project generations with source report, structured OpenAI output, provider/model/prompt metadata, response id, and usage JSON. | Hive active project audit, project registry rebuilds, future network task allocation. | `031_hive_project_planning.sql` |
 | `network_projects` | Active Hive project records that exist before task allocation. Stores type, title, summary, objective/about text, phase, priority, planned route budget, scoped task target, target contributor count, and latest Hive Secretary input reference. | Hive active project cards, Hive project detail, future network task allocation. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
 | `network_project_contributors` | Project-scoped contributor/operator rollups. Empty until live project-linked tasks allocate to real wallets and rewards accrue. | Hive contributor previews, allotted operators, project detail contributors. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
 | `network_project_task_refs` | Project-scoped task rows. Empty until the allocation worker creates or links concrete PFTL tasks to a project. | Hive project task board, future project-to-PFTL task linking. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
@@ -106,7 +109,8 @@ flowchart TB
   Account --> Profile[Profile NFTs and Daily Airdrop]
   Account --> HiveContext[Hive Context Entries]
   HiveContext --> HiveSecretary[Hive Secretary Reports]
-  HiveSecretary --> HiveProjects[Network Projects]
+  HiveSecretary --> HivePlanner[Hive Project Generations]
+  HivePlanner --> HiveProjects[Network Projects]
   Account --> Wallet[Wallet Link Metadata]
   Jobs[Jobs Corpus pgvector] --> Chat
   PFTL[PFTL Events] --> TaskCache[Task Projection Cache]

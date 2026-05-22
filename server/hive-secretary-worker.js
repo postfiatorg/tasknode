@@ -8,17 +8,28 @@ import {
   hiveSecretaryPromptVersion,
   normalizeHiveSecretaryOutput,
 } from "./repositories/hive-context.js";
+import { enqueueHiveProjectPlanningJob } from "./repositories/hive-project-planning.js";
+import { scheduleHiveProjectQueue } from "./hive-project-worker.js";
 
+const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const defaultProviderOrder = ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"];
-const providerTimeoutMs = Math.max(5000, Number(process.env.TASKNODE_HIVE_SECRETARY_PROVIDER_TIMEOUT_MS || 45000));
+const providerTimeoutMs = Math.max(5000, Number(process.env.TASKNODE_HIVE_SECRETARY_PROVIDER_TIMEOUT_MS || 240000));
 const hiveSecretaryPrompt = loadPrompt("hive/hive_secretary_v1.md");
 let timer = null;
 let running = false;
 let scheduled = null;
 
+function openAiKey() {
+  return process.env.OPENAI_API_KEY || "";
+}
+
 function openRouterKey() {
   return process.env.OPENROUTER_API_KEY || process.env.OPENROUTER || "";
+}
+
+function hiveSecretaryProvider() {
+  return process.env.TASKNODE_HIVE_SECRETARY_PROVIDER || "openai";
 }
 
 function providerOrder() {
@@ -31,14 +42,19 @@ function providerOrder() {
 }
 
 function hiveSecretaryModel() {
-  return process.env.TASKNODE_HIVE_SECRETARY_MODEL || "deepseek/deepseek-v4-pro";
+  return process.env.TASKNODE_HIVE_SECRETARY_MODEL || "gpt-5.5-pro";
+}
+
+function hiveSecretaryReasoningEffort() {
+  return process.env.TASKNODE_HIVE_SECRETARY_REASONING_EFFORT || "high";
 }
 
 function hiveSecretaryEnabled() {
+  const provider = hiveSecretaryProvider();
   return (
     process.env.TASKNODE_HIVE_SECRETARY_ENABLED !== "false" &&
     databaseEnabled() &&
-    Boolean(openRouterKey())
+    (provider === "openrouter" ? Boolean(openRouterKey()) : Boolean(openAiKey()))
   );
 }
 
@@ -94,7 +110,131 @@ function openRouterUsage(body = {}) {
   };
 }
 
-export async function fetchHiveSecretaryReport(source) {
+function openAiUsage(body = {}) {
+  const usage = body.usage || {};
+  return {
+    inputTokens: Number(usage.input_tokens || 0),
+    outputTokens: Number(usage.output_tokens || 0),
+    totalTokens: Number(usage.total_tokens || 0),
+    reasoningTokens: Number(usage.output_tokens_details?.reasoning_tokens || 0),
+  };
+}
+
+function openAiResponseText(body = {}) {
+  if (typeof body.output_text === "string") return body.output_text;
+  return (Array.isArray(body.output) ? body.output : [])
+    .flatMap((item) => Array.isArray(item?.content) ? item.content : [])
+    .map((part) => part?.text || "")
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function hiveSecretaryTextFormat() {
+  return {
+    type: "json_schema",
+    name: "hive_secretary_report",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["title", "summary", "project_signals", "network_implications", "open_questions", "next_system_focus"],
+      properties: {
+        title: { type: "string" },
+        summary: { type: "string" },
+        project_signals: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["project_type", "signal", "reason", "input_refs"],
+            properties: {
+              project_type: {
+                type: "string",
+                enum: [
+                  "protocol_marketing",
+                  "protocol_development",
+                  "alpha_generation",
+                  "protocol_applications",
+                  "network_validation",
+                ],
+              },
+              signal: { type: "string" },
+              reason: { type: "string" },
+              input_refs: {
+                type: "array",
+                items: { type: "string" },
+              },
+            },
+          },
+        },
+        network_implications: { type: "array", items: { type: "string" } },
+        open_questions: { type: "array", items: { type: "string" } },
+        next_system_focus: { type: "array", items: { type: "string" } },
+      },
+    },
+  };
+}
+
+async function fetchHiveSecretaryReportOpenAi(source) {
+  const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/responses`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${openAiKey()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: hiveSecretaryModel(),
+        input: [
+          { role: "system", content: hiveSecretaryPrompt },
+          { role: "user", content: compactSourceText(source.source_packet_text, 60000) },
+        ],
+        reasoning: { effort: hiveSecretaryReasoningEffort() },
+        text: {
+          verbosity: "low",
+          format: hiveSecretaryTextFormat(),
+        },
+        max_output_tokens: Math.max(4000, Number(process.env.TASKNODE_HIVE_SECRETARY_MAX_TOKENS || 8000)),
+        store: false,
+        metadata: {
+          app: "tasknodeofficial",
+          worker: "hive_secretary",
+          prompt_version: hiveSecretaryPromptVersion,
+        },
+      }),
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("hive_secretary_provider_timeout");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : {};
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || body?.message || `OpenAI Hive Secretary HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return {
+    output: parseHiveSecretaryJson(openAiResponseText(body)),
+    provider: "openai",
+    model: body?.model || hiveSecretaryModel(),
+    promptDigest: promptDigest(hiveSecretaryPrompt),
+    promptVersion: hiveSecretaryPromptVersion,
+    usage: openAiUsage(body),
+  };
+}
+
+async function fetchHiveSecretaryReportOpenRouter(source) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
   const order = providerOrder();
   const controller = new AbortController();
@@ -154,6 +294,13 @@ export async function fetchHiveSecretaryReport(source) {
   };
 }
 
+export async function fetchHiveSecretaryReport(source) {
+  if (hiveSecretaryProvider() === "openrouter") {
+    return fetchHiveSecretaryReportOpenRouter(source);
+  }
+  return fetchHiveSecretaryReportOpenAi(source);
+}
+
 export async function processHiveSecretaryQueueOnce({ limit = 1 } = {}) {
   if (!hiveSecretaryEnabled()) {
     return { ok: true, skipped: true, reason: "hive_secretary_not_configured" };
@@ -173,7 +320,7 @@ export async function processHiveSecretaryQueueOnce({ limit = 1 } = {}) {
           throw new Error("hive_secretary_source_missing");
         }
         const result = await fetchHiveSecretaryReport(job);
-        await completeHiveSecretaryJob({
+        const completed = await completeHiveSecretaryJob({
           job,
           output: result.output,
           provider: result.provider,
@@ -182,6 +329,10 @@ export async function processHiveSecretaryQueueOnce({ limit = 1 } = {}) {
           promptVersion: result.promptVersion,
           usage: result.usage,
         });
+        if (completed?.report) {
+          await enqueueHiveProjectPlanningJob({ report: completed.report, reason: "hive_secretary_completed" });
+          scheduleHiveProjectQueue({ delayMs: 500 });
+        }
         processed += 1;
       } catch (error) {
         failed += 1;

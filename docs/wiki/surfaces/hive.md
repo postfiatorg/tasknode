@@ -33,7 +33,7 @@ Expanding the section shows the current `Hive Secretary` report first. Raw user 
 
 ## Hive Secretary
 
-Hive Secretary is an async report worker over validated-wallet Hive Inputs.
+Hive Secretary is an async report worker over validated-wallet Hive Inputs. Hive Active Projects is a second async worker that uses the latest Secretary report to decide the active project set before tasks are allocated.
 
 When a signed-in user posts a Hive Input:
 
@@ -41,9 +41,12 @@ When a signed-in user posts a Hive Input:
 2. The route checks the account's linked wallet through `getLinkedWallet`.
 3. If the account has a linked wallet, the entry is marked `wallet_validated = true`.
 4. Validated entries enqueue a Hive Secretary job.
-5. `server/hive-secretary-worker.js` calls OpenRouter using `deepseek/deepseek-v4-pro` with ZDR provider settings.
+5. `server/hive-secretary-worker.js` calls OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false`.
 6. The completed report is stored in `hive_secretary_reports`.
-7. `GET /api/hive/context` returns both the grouped raw context and the current Secretary report.
+7. The completed report queues a Hive Active Projects job.
+8. `server/hive-project-worker.js` calls OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false`.
+9. The completed project generation is stored in `hive_project_generations` and upserts active rows in `network_projects`.
+10. `GET /api/hive/context` returns both the grouped raw context and the current Secretary report.
 
 Hive Secretary uses `prompts/hive/hive_secretary_v1.md`. The prompt returns strict JSON with:
 
@@ -53,7 +56,9 @@ Hive Secretary uses `prompts/hive/hive_secretary_v1.md`. The prompt returns stri
 - `open_questions`
 - `next_system_focus`
 
-The worker is source-bound: it summarizes validated Hive Inputs and classifies project signals into the current Hive project types. It does not create tasks yet.
+The Secretary worker is source-bound: it summarizes validated Hive Inputs and classifies project signals into the current Hive project types. It does not create tasks.
+
+Hive Active Projects uses `prompts/hive/hive_active_projects_v1.md`. That prompt decides which projects should be active based on the latest Secretary report and current project registry. It can preserve an existing project, create a new project, or pause generated/seeded projects that are no longer supported by the report. It still does not create tasks, contributors, wallets, payments, or activity rows.
 
 Current endpoint:
 
@@ -69,24 +74,28 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `src/features/hive/hive.css` contains the isolated styling for the surface.
 - `src/main.jsx` registers `#hive`, adds the sidebar entry, and lazy-loads the view.
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
-- `server/hive-secretary-worker.js` processes validated Hive Inputs through DeepSeek V4 Pro with ZDR.
+- `server/hive-secretary-worker.js` processes validated Hive Inputs through OpenAI `gpt-5.5-pro`.
+- `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`.
 - `server/repositories/hive-context.js` persists raw Hive Context entries, Secretary jobs, and Secretary reports.
 - `server/repositories/hive-projects.js` reads active network projects and links the latest Secretary report as a project input.
+- `server/repositories/hive-project-planning.js` persists active-project planner jobs and completed generations, then upserts `network_projects`.
 - `server/db/migrations/027_hive_context_entries.sql` creates the Hive Context table.
 - `server/db/migrations/028_hive_secretary_reports.sql` adds linked-wallet validation metadata and Secretary job/report tables.
 - `server/db/migrations/029_hive_network_projects.sql` creates the current network project read model and seeds the initial `PFT distribution v3` project spec.
 - `server/db/migrations/030_hive_project_seed_cleanup.sql` removes earlier mock-only operator/task/feed seed rows from existing environments.
+- `server/db/migrations/031_hive_project_planning.sql` adds the active-project planning job and generation tables.
 - `prompts/hive/hive_secretary_v1.md` is the source-controlled Secretary prompt.
+- `prompts/hive/hive_active_projects_v1.md` is the source-controlled active-project prompt.
 
 ## Current Data Boundary
 
-Active projects and project detail now read from Postgres. `PFT distribution v3` is seeded as an apriori network project record so tasks can later be allocated into it instead of creating the project after the fact.
+Active projects and project detail now read from Postgres. `PFT distribution v3` is seeded only as a bootstrap apriori network project record so the page has a real project shape before the first active-project generation runs. After a Hive Active Projects generation completes, the generated project set becomes the active set.
 
 The project seed is intentionally not a fake live network. The project can carry planned/scoped metrics such as 14 scoped tasks, 6 target contributors, and 420 PFT route target, but contributor cards, task rows, routing feed rows, and allotted operator rows stay empty until real project-linked allocation data exists.
 
-Hive Context is live Postgres-backed app data. It is not on-chain. Hive Secretary is also Postgres-backed and regenerates from validated-wallet Hive Inputs after new entries arrive.
+Hive Context is live Postgres-backed app data. It is not on-chain. Hive Secretary and Hive Active Projects are also Postgres-backed and regenerate from validated-wallet Hive Inputs after new entries arrive.
 
-The Secretary report is not canonical task state. It is an operator-readable network context report and is linked into active project rows as an input. This makes it available to the future system Network Task worker without pretending the report is itself a task.
+The Secretary report and Active Projects generation are not canonical task state. They are operator-readable planning artifacts. They make project identity available to the future system Network Task worker without pretending the report is itself a task.
 
 The expected live replacement path is:
 
@@ -98,7 +107,8 @@ flowchart LR
   HiveAPI --> HiveUI[Hive route]
   HiveInput[Chat Hive Input] --> HiveContext[Hive Context Entries]
   HiveContext --> Secretary[Hive Secretary Worker]
-  Secretary --> Projects[Network Project Inputs]
+  Secretary --> ProjectPlanner[Hive Active Projects Worker]
+  ProjectPlanner --> Projects[Network Projects]
   Projects --> HiveAPI
   Secretary --> HiveUI
 ```
@@ -112,6 +122,7 @@ The likely production data sources are:
 - `network_project_task_refs`, `network_project_contributors`, and `network_project_activity` after live allocation creates project-linked task rows, contributors, and activity
 - `hive_context_entries` for user-submitted network context
 - `hive_secretary_reports` for the current synthesized network context report
+- `hive_project_planning_jobs` and `hive_project_generations` for active project determination
 - public profile snapshots for operator role and skill summaries
 - daily airdrop and reward history for contribution weighting
 - PFTL transaction cache rows for proof anchors and forensic drill-in

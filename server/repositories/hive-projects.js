@@ -1,4 +1,5 @@
 import { databaseEnabled, query, transaction } from "../db/pool.js";
+import { latestHiveProjectPlanningState } from "./hive-project-planning.js";
 
 function useDatabase() {
   return databaseEnabled();
@@ -145,6 +146,7 @@ function documentFromRows({
   taskRows = [],
   activityRows = [],
   latestSecretary = null,
+  projectPlanning = null,
 } = {}) {
   const projects = Object.fromEntries(projectRows.map((row) => {
     const project = publicProject(row);
@@ -200,6 +202,7 @@ function documentFromRows({
           title: latestSecretary.output_json?.title || "Hive Secretary Report",
         }
       : null,
+    projectPlanning,
   };
 }
 
@@ -231,6 +234,7 @@ export async function syncNetworkProjectsWithLatestHiveSecretary() {
             ),
             updated_at = now()
         WHERE status = 'active'
+          AND origin = 'system_seed'
           AND (
             source_hive_secretary_report_id <> $1
             OR source_hive_secretary_report_digest <> $2
@@ -297,6 +301,7 @@ export async function getHiveProjectsDocument() {
       `
     ),
   ]);
+  const projectPlanning = await latestHiveProjectPlanningState().catch(() => null);
 
   return documentFromRows({
     projectRows: projectsResult.rows,
@@ -304,5 +309,6 @@ export async function getHiveProjectsDocument() {
     taskRows: tasksResult.rows,
     activityRows: activityResult.rows,
     latestSecretary: secretaryResult.rows[0] || null,
+    projectPlanning,
   });
 }

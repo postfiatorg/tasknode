@@ -42,6 +42,7 @@ import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
 import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
 import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profile_v2.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
+import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
 import publicProfileSnapshotPrompt from "../../../prompts/profile/public_profile_snapshot_v1.md?raw";
 import blockContractPrompt from "../../../prompts/task_engine/block_contract_v1.md?raw";
@@ -207,6 +208,19 @@ const PROMPT_SOURCES = [
       "GET /api/hive/context",
     ],
     content: hiveSecretaryPrompt,
+  },
+  {
+    family: "Hive",
+    title: "Hive Active Projects",
+    path: "prompts/hive/hive_active_projects_v1.md",
+    summary: "Determines the active network project set from the latest Hive Secretary report and current project registry.",
+    status: "Active async worker",
+    usedBy: [
+      "server/hive-project-worker.js::fetchHiveActiveProjects",
+      "server/repositories/hive-project-planning.js::completeHiveProjectPlanningJob",
+      "GET /api/hive/projects",
+    ],
+    content: hiveActiveProjectsPrompt,
   },
   {
     family: "Task Engine",

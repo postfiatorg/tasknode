@@ -23,6 +23,7 @@ import { executeChatStream } from "./chat-router.js";
 import { conversationIdForChatWrite, explicitConversationId } from "./chat-conversation-ids.js";
 import { startMemoryWorker } from "./chat-memory-worker.js";
 import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
+import { startHiveProjectWorker } from "./hive-project-worker.js";
 import {
   conversationIdForSession,
   destroySession,
@@ -976,6 +977,7 @@ assertStartupSecurity();
 await migrateDatabase();
 startMemoryWorker();
 startHiveSecretaryWorker();
+startHiveProjectWorker();
 startPftlCacheWorker();
 startPftlArchiveWorker();
 startPftlCacheWatcher();

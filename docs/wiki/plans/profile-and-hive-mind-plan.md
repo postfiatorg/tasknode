@@ -540,7 +540,8 @@ Output:
 
 Provider:
 
-- Use `deepseek/deepseek-v4-pro` with ZDR provider routing for board synthesis.
+- Use OpenAI `gpt-5.5-pro` through the Responses API for active project and board synthesis.
+- Use `reasoning.effort = high`, structured JSON output, and async queue execution so the Hive page is never blocked by model latency.
 - Keep prompts literal and source-bound.
 - Store output and source snapshot IDs so board state is explainable.
 
