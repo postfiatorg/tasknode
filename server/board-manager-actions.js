@@ -3,11 +3,15 @@ import { databaseEnabled, query } from "./db/pool.js";
 import { appendAssistantMessage } from "./repositories/chat-assistant-messages.js";
 import { enqueueHiveSecretaryJob } from "./repositories/hive-context.js";
 import {
+  boardManagerPromptVersion,
   normalizeBoardManagerDecision,
   recordBoardManagerActionResult,
 } from "./repositories/board-manager.js";
 import { scheduleHiveSecretaryQueue } from "./hive-secretary-worker.js";
-import { refreshHiveProjectProductDocument } from "./hive-project-product-doc-worker.js";
+import {
+  buildHiveProjectProductDocSourcePacket,
+  completeHiveProjectProductDoc,
+} from "./repositories/hive-project-product-docs.js";
 
 const projectTypes = new Set([
   "protocol_marketing",
@@ -398,17 +402,44 @@ async function executeAssignContributor({ runId, decision, sourcePacket }) {
   };
 }
 
-async function executeRefreshProjectDocument({ runId, decision, sourcePacket, fetchImpl }) {
+async function executeRefreshProjectDocument({ runId, decision, sourcePacket }) {
   const projectId = safeText(decision.target_id || decision.payload.project?.id, 180);
   if (!projectId) throw new Error("board_manager_refresh_project_document_missing_project");
   const exists = await query("SELECT id FROM network_projects WHERE id = $1 AND status <> 'archived'", [projectId]);
   if (!exists.rows[0]) throw new Error("board_manager_refresh_project_document_project_not_found");
-  return refreshHiveProjectProductDocument({
+  const document = safeObject(decision.payload.project_document);
+  if (!safeText(document.project_status || document.projectStatus, 1800)) {
+    throw new Error("board_manager_refresh_project_document_missing_project_status");
+  }
+  const source = await buildHiveProjectProductDocSourcePacket({
     projectId,
-    boardManagerRunId: runId,
     boardSourcePacket: sourcePacket,
-    fetchImpl,
   });
+  const run = runId
+    ? await query("SELECT model, reasoning_effort FROM board_manager_runs WHERE id = $1 LIMIT 1", [runId])
+    : { rows: [] };
+  const completed = await completeHiveProjectProductDoc({
+    projectId,
+    output: document,
+    sourcePacket: source,
+    boardManagerRunId: runId,
+    provider: "codex_exec",
+    model: safeText(run.rows[0]?.model || "board_manager", 160),
+    promptVersion: boardManagerPromptVersion,
+    usage: {
+      source: "board_manager_decision",
+      reasoningEffort: safeText(run.rows[0]?.reasoning_effort, 40),
+    },
+  });
+  return {
+    executed: true,
+    projectId,
+    productDocId: completed.doc?.id || "",
+    sourcePacketDigest: source.sourcePacketDigest,
+    title: completed.doc?.title || "",
+    model: completed.doc?.model || "",
+    promptVersion: completed.doc?.promptVersion || boardManagerPromptVersion,
+  };
 }
 
 export async function executeBoardManagerDecision({
@@ -416,7 +447,6 @@ export async function executeBoardManagerDecision({
   decision = {},
   sourcePacket = {},
   dryRun = true,
-  fetchImpl = fetch,
 } = {}) {
   if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
   const normalizedDecision = normalizeBoardManagerDecision(decision);
@@ -452,7 +482,6 @@ export async function executeBoardManagerDecision({
           runId,
           decision: normalizedDecision,
           sourcePacket,
-          fetchImpl,
         });
         break;
       default:

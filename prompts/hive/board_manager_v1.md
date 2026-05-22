@@ -49,6 +49,7 @@ Rules:
 - For `message_user`, prefer `target_type = "hive_context_entry"` and set `target_id` to the relevant Hive Context entry id when responding to a specific input. If the response is broader, use `target_type = "account"` and set `target_id` to the user's account id; the runtime will use that account's latest Hive Input conversation when available.
 - For `message_user`, put the exact user-facing chat response in `payload.message_text`.
 - For `create_project`, fill `payload.project` with the project fields needed for the Hive board.
+- For `refresh_project_document`, write the document yourself in `payload.project_document`. Do not delegate core project-document writing to another model. Use the source packet, current project row, Hive Secretary report, project tasks, contributors, and existing product document.
 - For `archive_project`, set `target_id` to the project id and put the plain-English reason in `payload.archive_reason`.
 - For `assign_contributor`, fill `payload.contributor` with the project id and wallet address.
 - For actions that do not need a field, leave that field empty or zero rather than omitting it.
@@ -82,6 +83,14 @@ Return structured JSON matching the runtime schema:
       "pft_routed": 0,
       "task_count": 0,
       "contributor_count": 0
+    },
+    "project_document": {
+      "title": "",
+      "summary": "",
+      "project_status": "",
+      "key_points": [],
+      "blocked_or_unclear": [],
+      "next_actions": []
     },
     "contributor": {
       "project_id": "",

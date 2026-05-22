@@ -69,11 +69,10 @@ The target architecture is Board Manager centered. The Board Manager is a leased
 | Board Manager | Codex Exec | `codex exec` / `codex exec resume` | `gpt-5.5` | `xhigh` | One action from registry | Internal run log |
 | Hive Secretary | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON report | `store=false` |
 | Hive Active Projects | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON project set | `store=false` |
-| Hive Project Product Document | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-pro` | None | Structured JSON project status | `zdr=true`, `data_collection="deny"`, provider allowlist |
 
 The model ID comes from OpenAI's GPT-5.5 pro model page: `gpt-5.5-pro`. OpenAI's reasoning guidance positions GPT-5.5 pro as the higher-intelligence option for harder asynchronous reasoning work and recommends the Responses API for reasoning models. Task Node therefore uses `gpt-5.5-pro` for project determination, not OpenRouter DeepSeek.
 
-The Hive Product Document worker is a different job. It generates one expandable product document for one existing project using OpenRouter `deepseek/deepseek-v4-pro` with a ZDR-capable provider. That job is for readable project documentation, not active-project selection, and it writes to `network_project_product_docs` rather than overwriting task state or `network_projects.about`.
+Hive Project Product Documents are not a separate provider job. When the Board Manager chooses `refresh_project_document`, Codex Exec writes the document in `payload.project_document`; the action hook validates and persists it to `network_project_product_docs`. This keeps core Hive management inside the Board Manager instead of delegating ordinary project-definition work to another model.
 
 Current Hive Secretary and Active Projects workers still exist, but the planning direction is to stop treating them as the decision loop. The Board Manager owns whether a Secretary refresh, project update, product-doc refresh, research action, user follow-up, task allocation, or evidence review should happen.
 
@@ -85,14 +84,7 @@ Environment overrides:
 - `TASKNODE_HIVE_SECRETARY_REASONING_EFFORT`
 - `TASKNODE_HIVE_PROJECT_MODEL`
 - `TASKNODE_HIVE_PROJECT_REASONING_EFFORT`
-- `TASKNODE_HIVE_PROJECT_DOC_MODEL`
-- `TASKNODE_HIVE_PROJECT_DOC_OPENROUTER_PROVIDERS`
-- `TASKNODE_HIVE_PROJECT_DOC_TIMEOUT_MS`
-- `TASKNODE_HIVE_PROJECT_DOC_MAX_TOKENS`
-
 The default reasoning effort is `high`. These workers use structured outputs rather than prompt-only JSON parsing so invalid project shapes fail the job instead of silently changing the UI.
-
-The Project Product Document worker uses JSON parsing over OpenRouter chat output, with a smoke test that verifies the ZDR provider routing payload and prompt shape. It is only invoked when the Board Manager action hook runs; opening the Hive page does not call the model.
 
 ## Profile NFT Image Generation
 

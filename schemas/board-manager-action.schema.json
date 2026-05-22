@@ -50,6 +50,7 @@
         "message_text",
         "archive_reason",
         "project",
+        "project_document",
         "contributor"
       ],
       "properties": {
@@ -156,6 +157,56 @@
               "type": "integer",
               "minimum": 0,
               "maximum": 100000
+            }
+          }
+        },
+        "project_document": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "summary",
+            "project_status",
+            "key_points",
+            "blocked_or_unclear",
+            "next_actions"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 1200
+            },
+            "project_status": {
+              "type": "string",
+              "maxLength": 1800
+            },
+            "key_points": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "string",
+                "maxLength": 700
+              }
+            },
+            "blocked_or_unclear": {
+              "type": "array",
+              "maxItems": 6,
+              "items": {
+                "type": "string",
+                "maxLength": 700
+              }
+            },
+            "next_actions": {
+              "type": "array",
+              "maxItems": 6,
+              "items": {
+                "type": "string",
+                "maxLength": 700
+              }
             }
           }
         },

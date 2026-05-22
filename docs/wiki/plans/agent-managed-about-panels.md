@@ -127,17 +127,13 @@ The Board Manager should choose this action when:
 
 It should not refresh just because someone opened the Hive page.
 
-## Model And Prompt
+## Board Manager Prompt
 
-Provider for the document writer:
+Project documents are written by the Board Manager itself.
 
-- OpenRouter `deepseek/deepseek-v4-pro`
-- ZDR-capable provider only
-- prompt file: `prompts/hive/hive_project_product_doc_v1.md`
-- implementation: `server/hive-project-product-doc-worker.js`
-- action hook: `server/board-manager-actions.js::executeRefreshProjectDocument`
+The `refresh_project_document` action requires `payload.project_document` in the Board Manager JSON decision. The action hook validates and persists that document directly. It does not call OpenRouter, DeepSeek, or a second writing model.
 
-The prompt should require plain English and avoid jargon. It should not invent task state or contributor work. If status is unclear, it should say what information is missing and recommend information-gathering tasks or user follow-up.
+The Board Manager prompt should require plain English and avoid jargon. It should not invent task state or contributor work. If status is unclear, it should say what information is missing and recommend information-gathering tasks or user follow-up.
 
 Expected structured output:
 
@@ -192,13 +188,13 @@ Implemented:
 
 1. `server/db/migrations/038_network_project_product_docs.sql` adds current/superseded project documents.
 2. `server/repositories/hive-project-product-docs.js` reads current docs, builds one project source packet, and inserts a new current version while superseding the old one.
-3. `prompts/hive/hive_project_product_doc_v1.md` defines the product-document writer prompt.
-4. `server/hive-project-product-doc-worker.js` calls OpenRouter `deepseek/deepseek-v4-pro` with ZDR provider routing and persists the structured output.
-5. `server/board-manager-actions.js` implements `refresh_project_document`.
+3. `prompts/hive/board_manager_v1.md` defines `payload.project_document` for the `refresh_project_document` action.
+4. `schemas/board-manager-action.schema.json` validates the product-document fields in the Board Manager decision.
+5. `server/board-manager-actions.js` implements `refresh_project_document` without calling a secondary writer model.
 6. `server/repositories/board-manager.js` marks `refresh_project_document` as an implemented hook in the Board Manager source packet.
 7. `GET /api/hive/projects` includes current project product documents through `server/repositories/hive-projects.js`.
 8. `src/features/hive/HiveView.jsx` renders Project Status inside the Hive project About section.
-9. `scripts/hive-project-product-doc-smoke.mjs` verifies prompt/provider shape with a fake OpenRouter response, and `scripts/board-manager-action-hooks-smoke.mjs` verifies the executed action hook writes a current document when Postgres is enabled.
+9. `scripts/board-manager-action-hooks-smoke.mjs` verifies the executed action hook writes a current document when Postgres is enabled and records `provider = codex_exec`.
 
 ## Done Criteria
 

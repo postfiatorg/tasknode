@@ -47,6 +47,14 @@ const emptyBoardManagerPayload = Object.freeze({
     task_count: 0,
     contributor_count: 0,
   },
+  project_document: {
+    title: "",
+    summary: "",
+    project_status: "",
+    key_points: [],
+    blocked_or_unclear: [],
+    next_actions: [],
+  },
   contributor: {
     project_id: "",
     account_id: "",
@@ -85,6 +93,7 @@ function jsonValue(value) {
 function normalizePayload(payload = {}) {
   const input = safeObject(payload);
   const project = safeObject(input.project);
+  const projectDocument = safeObject(input.project_document || input.projectDocument);
   const contributor = safeObject(input.contributor);
   return {
     summary: safeText(input.summary, 2000),
@@ -105,6 +114,14 @@ function normalizePayload(payload = {}) {
       pft_routed: Math.max(0, Number(project.pft_routed ?? project.pftRouted ?? 0) || 0),
       task_count: Math.max(0, Math.round(Number(project.task_count ?? project.taskCount ?? 0) || 0)),
       contributor_count: Math.max(0, Math.round(Number(project.contributor_count ?? project.contributorCount ?? 0) || 0)),
+    },
+    project_document: {
+      title: safeText(projectDocument.title, 180),
+      summary: safeText(projectDocument.summary, 1200),
+      project_status: safeText(projectDocument.project_status || projectDocument.projectStatus, 1800),
+      key_points: safeArray(projectDocument.key_points || projectDocument.keyPoints).slice(0, 8).map((item) => safeText(item, 700)).filter(Boolean),
+      blocked_or_unclear: safeArray(projectDocument.blocked_or_unclear || projectDocument.blockedOrUnclear).slice(0, 6).map((item) => safeText(item, 700)).filter(Boolean),
+      next_actions: safeArray(projectDocument.next_actions || projectDocument.nextActions).slice(0, 6).map((item) => safeText(item, 700)).filter(Boolean),
     },
     contributor: {
       project_id: safeText(contributor.project_id || contributor.projectId, 180),

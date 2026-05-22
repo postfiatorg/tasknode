@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 
-export const hiveProjectProductDocPromptVersion = "hive_project_product_doc_v1";
+export const hiveProjectProductDocPromptVersion = "board_manager_v1";
 
 function useDatabase() {
   return databaseEnabled();

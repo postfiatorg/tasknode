@@ -67,7 +67,7 @@ Implemented action hooks:
 - `create_project`: creates or updates an active `network_projects` row from `payload.project`.
 - `archive_project`: archives the project and applies an operator archive lock. This is the delete-project hook; hard delete is intentionally not available.
 - `assign_contributor`: upserts a project contributor row using the project id and wallet address in `payload.contributor`.
-- `refresh_project_document`: builds a source packet for one project, calls OpenRouter `deepseek/deepseek-v4-pro` through the ZDR provider path, supersedes the prior current document, and writes a new `network_project_product_docs` row.
+- `refresh_project_document`: persists the Board Manager's own `payload.project_document`, supersedes the prior current document, and writes a new `network_project_product_docs` row.
 
 Hive page visibility:
 
@@ -259,29 +259,18 @@ The product document should answer:
 
 This action owns the agent-managed Project Status blob shown inside a Hive project About section. The static project description stays in `network_projects.about`; the changing execution briefing belongs in a versioned product document row so the agent can update status without overwriting project identity. The UI renders this document collapsed by default, with the summary visible and the detailed status, key points, blockers, next actions, and model metadata behind an expand control.
 
-This is a two-stage model path:
-
-1. Codex Exec is the Board Manager. It decides whether to take `refresh_project_document`.
-2. The action hook invokes the project-document writer, currently OpenRouter `deepseek/deepseek-v4-pro` with ZDR routing, to produce the structured document.
-
-The DeepSeek model name in the UI is therefore the writer provenance, not the Board Manager's reasoning model.
+This is a single-agent path for core Hive work. Codex Exec is the Board Manager, and it writes the project document inside `payload.project_document` when it chooses `refresh_project_document`. The action hook validates and persists that document. It does not call DeepSeek, OpenRouter, or any other secondary writer model.
 
 Current implementation:
 
 - Action hook: `server/board-manager-actions.js::executeRefreshProjectDocument`
 - Source packet and persistence: `server/repositories/hive-project-product-docs.js`
-- Provider call: `server/hive-project-product-doc-worker.js`
-- Prompt: `prompts/hive/hive_project_product_doc_v1.md`
+- Decision prompt: `prompts/hive/board_manager_v1.md`
+- Decision schema: `schemas/board-manager-action.schema.json`
 - Table: `network_project_product_docs`
 - UI projection: `GET /api/hive/projects` returns `project.productDocument`, and the Hive project detail About section renders it as `Project Status`.
 
 This action does not create tasks. It creates an operator-readable briefing that later task generation can use as input.
-
-Planned model:
-
-- OpenRouter `deepseek/deepseek-v4-pro`
-- ZDR-capable provider
-- prompt file `prompts/hive/hive_project_product_doc_v1.md`
 
 Detailed implementation plan: `docs/wiki/plans/agent-managed-about-panels.md`.
 

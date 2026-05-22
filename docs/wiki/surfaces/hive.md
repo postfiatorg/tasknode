@@ -100,7 +100,7 @@ Each project can now have a project-linked Product Document. Each project card o
 - who is working on it and why;
 - what is blocked or unclear.
 
-That Product Document is generated per project by OpenRouter `deepseek/deepseek-v4-pro` using a ZDR-capable provider when the Board Manager chooses `refresh_project_document`. It is stored in `network_project_product_docs`, not in `network_projects.about`, so the static project identity is separate from the changing execution briefing.
+That Product Document is written by the Board Manager when it chooses `refresh_project_document`. The document is part of the Board Manager's JSON decision in `payload.project_document`; the action hook validates and stores it in `network_project_product_docs`. It does not call a second writer model. The static project identity remains in `network_projects.about`.
 
 The Product Document appears as a collapsible `Project Status` section inside About. The static `network_projects.about` text explains what the project is. The generated Project Status explains the current execution picture, key points, blockers, and next actions. The collapsed view shows only the short summary so the project page remains scannable. The detailed plan lives in `docs/wiki/plans/agent-managed-about-panels.md`.
 
@@ -124,7 +124,6 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
 - `server/board-manager-actions.js` executes the first Board Manager action hooks.
-- `server/hive-project-product-doc-worker.js` generates one project product document through OpenRouter `deepseek/deepseek-v4-pro` with ZDR provider routing.
 - `server/repositories/chat-assistant-messages.js` appends Board Manager `message_user` responses to existing account-owned chat conversations without creating a billed model run.
 - `scripts/board-manager-codex-exec.mjs` runs one persistent Codex Exec Board Manager tick or, with `--execute`, dispatches supported action hooks.
 - `schemas/board-manager-action.schema.json` constrains the Codex Exec output.
@@ -145,10 +144,9 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/db/migrations/038_network_project_product_docs.sql` adds versioned current/superseded product documents for Hive projects.
 - `prompts/hive/hive_secretary_v1.md` is the source-controlled Secretary prompt.
 - `prompts/hive/hive_active_projects_v1.md` is the source-controlled active-project prompt.
-- `prompts/hive/board_manager_v1.md` is the planned Board Manager operating prompt.
-- `prompts/hive/hive_project_product_doc_v1.md` is the product-document writer prompt.
+- `prompts/hive/board_manager_v1.md` is the Board Manager operating prompt and includes the `payload.project_document` shape for `refresh_project_document`.
 
-The Board Manager and Project Product Document worker are separate stages. Codex Exec is the agentic Board Manager: it reads Hive state, preserves session context, and chooses one action such as `refresh_project_document`. When that action executes, the action hook calls the DeepSeek V4 Pro ZDR document writer to write the readable project briefing. The UI footer therefore shows both the Board Manager action provenance and the writer model/prompt metadata.
+The Board Manager is the agentic writer for core Hive artifacts. It reads Hive state, preserves session context, chooses one action, and for `refresh_project_document` writes the document directly. External models are reserved for explicit tools such as user-facing task generation, profile analysis, or future subagent work, not for routine project-document authorship.
 
 ## Current Data Boundary
 
