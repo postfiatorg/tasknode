@@ -30,7 +30,15 @@ function taskVerificationText(task = {}) {
   );
 }
 
-export function buildTaskCopyPayloads(task = {}) {
+function currentVerificationRequestText(detail = {}) {
+  const request = detail?.currentVerificationRequest || {};
+  return cleanLines([
+    request.body || request.verificationAsk || request.ask || "",
+    request.reason ? `Reason: ${request.reason}` : "",
+  ]).join("\n");
+}
+
+export function buildTaskCopyPayloads(task = {}, detail = {}) {
   const title = cleanText(task.title || "Untitled task");
   const id = taskId(task);
   const kind = cleanText(task.kind || "Task");
@@ -40,6 +48,7 @@ export function buildTaskCopyPayloads(task = {}) {
   const steps = taskSteps(task);
   const verification = taskVerificationText(task);
   const requestId = cleanText(task.metadata?.requestId || "");
+  const currentVerificationRequest = currentVerificationRequestText(detail);
 
   const titlePayload = title;
   const summaryPayload = cleanLines([
@@ -74,7 +83,45 @@ export function buildTaskCopyPayloads(task = {}) {
     fullSections.push("", "Verification", verification);
   }
 
+  if (currentVerificationRequest) {
+    fullSections.push("", "Current Verification Request", currentVerificationRequest);
+  }
+
+  const codexSections = [
+    "Task for Codex",
+    "",
+    ...cleanLines([
+      `Title: ${title}`,
+      id ? `Task ID: ${id}` : "",
+      requestId ? `Request ID: ${requestId}` : "",
+      kind ? `Kind: ${kind}` : "",
+      status ? `Status: ${status}` : "",
+      `Reward: ${taskReward(task)}`,
+      due ? `Deadline: ${due}` : "",
+    ]),
+    "",
+    "Objective",
+    description || "No description provided.",
+  ];
+
+  if (steps.length > 0) {
+    codexSections.push("", "Steps", ...steps.map((step, index) => `${index + 1}. ${step}`));
+  }
+
+  codexSections.push("", "Verification Requirements", verification || "Submit evidence that satisfies the task requirement.");
+
+  if (currentVerificationRequest) {
+    codexSections.push("", "Current Verification Request", currentVerificationRequest);
+  }
+
+  codexSections.push(
+    "",
+    "Requested Output",
+    "Complete the task and return the evidence needed for the verification requirement. Include changed files, commands run, test results, links, screenshots, or concise proof artifacts when relevant."
+  );
+
   return {
+    codex: codexSections.join("\n"),
     title: titlePayload,
     summary: summaryPayload,
     full: fullSections.join("\n"),

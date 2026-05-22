@@ -511,6 +511,77 @@
   min-height: 38px;
 }
 
+.task-brief-copy-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #e8e6df;
+  border-radius: 14px;
+  background: #fbfaf7;
+}
+
+.task-brief-copy-card span {
+  display: block;
+  margin-bottom: 6px;
+  color: #6b6b66;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.task-brief-copy-card strong {
+  display: block;
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.task-brief-copy-card p {
+  margin: 6px 0 0;
+  color: #5f5d58;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.task-brief-copy-card button {
+  display: inline-flex;
+  align-items: center;
+  align-self: start;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #dedbd2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0d0d0d;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.task-brief-copy-card button:hover,
+.task-brief-copy-card button.is-copied {
+  border-color: #cfd9c7;
+  background: #f1f7ed;
+  color: #166534;
+}
+
+.task-brief-copy-card pre {
+  grid-column: 1 / -1;
+  max-height: 150px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f2f0e8;
+  color: #34342f;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
 .task-action-message {
   margin: 0 !important;
   color: #4a5934 !important;

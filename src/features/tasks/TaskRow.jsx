@@ -1,5 +1,4 @@
 import React from "react";
-import { Copy } from "lucide-react";
 import { statusSlug, taskStatusColor } from "../../../shared/task-lifecycle";
 
 function TaskStatusGlyph({ task }) {
@@ -18,7 +17,7 @@ function TaskDot() {
   return <span className="task-dot" aria-hidden="true" />;
 }
 
-export function TaskRow({ isFirst, onClick, onCopy, task }) {
+export function TaskRow({ isFirst, onClick, task }) {
   return (
     <article className={`task-row task-entry${isFirst ? " is-first" : ""}`}>
       <button className="task-entry-open" onClick={onClick} type="button">
@@ -39,15 +38,6 @@ export function TaskRow({ isFirst, onClick, onCopy, task }) {
             <span>{task.ago}</span>
           </span>
         </span>
-      </button>
-      <button
-        aria-label={`Copy ${task.title || "task"}`}
-        className="task-copy-trigger toolbar-button"
-        onClick={onCopy}
-        title="Copy task"
-        type="button"
-      >
-        <Copy size={14} strokeWidth={1.75} />
       </button>
       <span className="task-reward">
         <strong>{Number(task.pft || 0).toLocaleString()}</strong>

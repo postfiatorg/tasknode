@@ -64,17 +64,20 @@ Clicking a task opens a full-screen task detail surface with three tabs:
 
 ## Copy Task Flow
 
-Each visible task card has an explicit copy icon beside the reward. The icon uses the same quiet copy treatment as chat message actions: a small `Copy` glyph, no heavy button chrome, and clear copied acknowledgement after an action.
+Task list rows do not expose copy controls. Clicking a row opens the task detail card, where the user can inspect the task before exporting it.
 
-Clicking the copy icon does not open the task detail page. It opens a compact `Copy task` modal with three deterministic choices:
+The Overview tab contains a `Codex handoff` card with a single `Copy task brief` action. That action copies a plain-text task brief designed to be pasted into Codex or another external worker. The copied payload includes:
 
-| Copy action | Output |
-| --- | --- |
-| Copy title | The task title only. |
-| Copy summary | Title, task ID, status, reward, deadline, and short description. |
-| Copy full task | A readable task payload with task ID, request ID when available, kind, status, reward, deadline, description, numbered steps, and verification requirement. |
+- title;
+- task ID and request ID when available;
+- kind, status, reward, and deadline;
+- objective / description;
+- numbered steps;
+- verification requirements;
+- current verification request when the task is in a follow-up verification loop;
+- requested output guidance for the external worker.
 
-The copied text is intentionally plain text so it can be pasted into chat, Codex, external agents, notes, GitHub issues, or another task workflow. The modal shows a preview of the full task payload before copying. After a copy action, the selected row changes to `Copied` and the modal shows a short acknowledgement. The formatting is produced by `src/features/tasks/task-copy-format.js`, with regression coverage in `scripts/task-copy-payload-smoke.mjs` across accepted and rewarded task examples.
+The visible task ID remains copyable as an explicit ID-level affordance, but it is not the main handoff path. The formatting is produced by `src/features/tasks/task-copy-format.js`, with regression coverage in `scripts/task-copy-payload-smoke.mjs` across accepted, rewarded, and verification-requested task examples.
 
 ## Current Task Detail Behavior
 

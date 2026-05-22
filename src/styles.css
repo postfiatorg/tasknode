@@ -2543,11 +2543,6 @@ h1 {
   box-shadow: none;
 }
 
-.task-entry:hover .task-copy-trigger,
-.task-copy-trigger:focus-visible {
-  opacity: 1;
-}
-
 .task-entry-signal {
   display: flex;
   align-items: center;
@@ -2639,16 +2634,6 @@ h1 {
   flex: 0 0 auto;
   min-width: 88px;
   text-align: right;
-}
-
-.task-copy-trigger {
-  flex: 0 0 auto;
-  margin-top: 1px;
-  opacity: 0.72;
-}
-
-.task-copy-trigger:hover {
-  opacity: 1;
 }
 
 .task-entry .task-reward strong {
@@ -4642,7 +4627,6 @@ h1 {
   }
 
   .task-reward,
-  .task-copy-trigger,
   .activity-amount {
     align-self: flex-start;
     justify-items: start;

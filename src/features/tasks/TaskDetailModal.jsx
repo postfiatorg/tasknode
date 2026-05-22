@@ -30,6 +30,7 @@ import {
   publishTaskEvidenceSubmission,
   readEvidenceFile,
 } from "./task-submission-actions.js";
+import { buildTaskCopyPayloads, copyPreview } from "./task-copy-format.js";
 import { TaskForensicsPanel } from "./TaskForensicsPanel.jsx";
 import "./task-detail.css";
 
@@ -141,10 +142,12 @@ function TaskRewardOutcome({ outcome }) {
 }
 
 function TaskOverviewPanel({
+  copiedValue,
   detail,
   displayTask,
   loading,
   onLifecycleAction,
+  onCopyTaskBrief,
   onWalletUnlock,
   steps,
   verification,
@@ -160,6 +163,12 @@ function TaskOverviewPanel({
         onLifecycleAction={onLifecycleAction}
         onWalletUnlock={onWalletUnlock}
         walletVault={walletVault}
+      />
+      <TaskBriefCopyCard
+        copied={copiedValue === "task-brief"}
+        detail={detail}
+        onCopy={onCopyTaskBrief}
+        task={displayTask}
       />
       <TaskRewardOutcome outcome={detail?.rewardOutcome} />
       <TaskSection title="Description">
@@ -182,6 +191,24 @@ function TaskOverviewPanel({
         <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
       </TaskSection>
     </>
+  );
+}
+
+function TaskBriefCopyCard({ copied, detail, onCopy, task }) {
+  const payloads = buildTaskCopyPayloads(task, detail);
+  return (
+    <section className="task-brief-copy-card">
+      <div>
+        <span>Codex handoff</span>
+        <strong>Copy task brief</strong>
+        <p>Description, steps, verification requirement, task ID, reward, and current verification request when present.</p>
+      </div>
+      <button className={copied ? "is-copied" : ""} onClick={() => onCopy?.(payloads.codex)} type="button">
+        {copied ? <Check size={14} strokeWidth={1.9} /> : <Copy size={14} strokeWidth={1.75} />}
+        {copied ? "Copied" : "Copy"}
+      </button>
+      <pre>{copyPreview(payloads.codex, 520)}</pre>
+    </section>
   );
 }
 
@@ -983,10 +1010,12 @@ export function TaskDetailModal({
 
           {activeTab === "overview" && (
             <TaskOverviewPanel
+              copiedValue={copiedValue}
               detail={detailState.data}
               displayTask={displayTask}
               loading={detailState.loading}
               onLifecycleAction={handleLifecycleAction}
+              onCopyTaskBrief={(payload) => copyTaskValue("task-brief", payload)}
               onWalletUnlock={onWalletUnlock}
               steps={steps}
               verification={verification}

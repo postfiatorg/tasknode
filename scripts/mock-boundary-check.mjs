@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const checkedPrefixes = ["src/", "server/", "shared/"];
@@ -12,6 +12,7 @@ function trackedFiles() {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
+    .filter((file) => existsSync(file))
     .filter((file) => checkedPrefixes.some((prefix) => file.startsWith(prefix)))
     .filter((file) => checkedExtensions.has(path.extname(file)));
 }

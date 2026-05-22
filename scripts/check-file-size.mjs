@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const config = JSON.parse(readFileSync(new URL("../quality/file-size-limits.json", import.meta.url), "utf8"));
@@ -18,6 +18,7 @@ function trackedFiles() {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
+    .filter((file) => existsSync(file))
     .filter((file) => !ignoredFiles.has(file))
     .filter((file) => !ignoredPathPrefixes.some((prefix) => file.startsWith(prefix)));
 }

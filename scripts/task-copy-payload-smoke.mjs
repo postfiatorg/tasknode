@@ -32,13 +32,27 @@ assert.match(accepted.summary, /Reward: 2.5 PFT/);
 assert.match(accepted.full, /Task ID: task_copy_accepted/);
 assert.match(accepted.full, /1\. Add explicit copy controls\./);
 assert.match(accepted.full, /Verification\nSubmit screenshots and copied text output\./);
+assert.match(accepted.codex, /Task for Codex/);
+assert.match(accepted.codex, /Objective\nAdd a deterministic copy path for task cards\./);
+assert.match(accepted.codex, /Steps\n1\. Add explicit copy controls\./);
+assert.match(accepted.codex, /Verification Requirements\nSubmit screenshots and copied text output\./);
+assert.match(accepted.codex, /Requested Output/);
 
 const rewarded = buildTaskCopyPayloads(rewardedTask);
 assert.match(rewarded.summary, /Status: Rewarded/);
 assert.match(rewarded.summary, /Reward: 1.25 PFT/);
 assert.match(rewarded.full, /Ship task copy modal/);
 
-for (const payloads of [accepted, rewarded]) {
+const verificationRequested = buildTaskCopyPayloads(acceptedTask, {
+  currentVerificationRequest: {
+    body: "Provide the exact code diff and test output.",
+    reason: "The first submission did not include test evidence.",
+  },
+});
+assert.match(verificationRequested.codex, /Current Verification Request\nProvide the exact code diff and test output\./);
+assert.match(verificationRequested.codex, /Reason: The first submission did not include test evidence\./);
+
+for (const payloads of [accepted, rewarded, verificationRequested]) {
   for (const value of Object.values(payloads)) {
     assert.equal(value.includes("undefined"), false);
     assert.equal(value.includes("[object Object]"), false);
