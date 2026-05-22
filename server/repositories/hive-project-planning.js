@@ -32,6 +32,11 @@ function jsonValue(value) {
   return JSON.stringify(value && typeof value === "object" ? value : {});
 }
 
+export function projectHasOperatorArchiveLock(row = {}) {
+  const metadata = safeJson(row.metadata_json);
+  return Boolean(metadata.operator_archived || metadata.archived_reason);
+}
+
 function numberValue(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : fallback;
@@ -288,8 +293,37 @@ export async function completeHiveProjectPlanningJob({
       ]
     );
 
-    const activeIds = normalized.projects.map((project) => project.id);
-    for (const project of normalized.projects) {
+    const candidateIds = normalized.projects.map((project) => project.id);
+    const existingProjects = candidateIds.length
+      ? await client.query(
+          `
+            SELECT id, status, metadata_json
+            FROM network_projects
+            WHERE id = ANY($1::text[])
+          `,
+          [candidateIds]
+        )
+      : { rows: [] };
+    const lockedProjectIds = new Set(existingProjects.rows.filter(projectHasOperatorArchiveLock).map((row) => row.id));
+    if (lockedProjectIds.size) {
+      await client.query(
+        `
+          UPDATE network_projects
+          SET status = 'archived',
+              metadata_json = COALESCE(metadata_json, '{}'::jsonb) || jsonb_build_object(
+                'operator_archived', true,
+                'archive_lock_respected_at', now()
+              ),
+              updated_at = now()
+          WHERE id = ANY($1::text[])
+        `,
+        [Array.from(lockedProjectIds)]
+      );
+    }
+
+    const projectsToUpsert = normalized.projects.filter((project) => !lockedProjectIds.has(project.id));
+    const activeIds = projectsToUpsert.map((project) => project.id);
+    for (const project of projectsToUpsert) {
       await client.query(
         `
           INSERT INTO network_projects (

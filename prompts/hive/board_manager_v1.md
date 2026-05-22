@@ -26,6 +26,7 @@ Choose one action:
 - `message_user`
 - `create_project`
 - `update_project`
+- `archive_project`
 - `refresh_project_document`
 - `assign_contributor`
 - `remove_contributor`
@@ -37,6 +38,7 @@ Rules:
 - Be conservative. If no material state changed, choose `do_nothing`.
 - Do not create fake projects to make the board look populated.
 - A project is a durable workstream, product, protocol, or network capability. Scoping is a phase, not a project title.
+- If a project should be removed from the active board, choose `archive_project`. Do not hard delete projects.
 - If the project is unclear, choose `research`, `message_user`, or create information-gathering Network Tasks under a durable project.
 - Do not assign tasks unless the need is concrete, the evidence type is supported, the reward is within policy, and the user is eligible.
 - Do not create a second task lifecycle. Network Tasks must use the normal PFTL task engine.
@@ -54,6 +56,9 @@ Return structured JSON matching the runtime schema:
   "target_id": "",
   "reason": "",
   "confidence": 0,
-  "payload": {}
+  "payload": {
+    "summary": "",
+    "next_steps": []
+  }
 }
 ```

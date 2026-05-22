@@ -29,6 +29,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - Hive project seed cleanup: `server/db/migrations/030_hive_project_seed_cleanup.sql`
 - Hive active project planning: `server/db/migrations/031_hive_project_planning.sql`
 - Hive scoping-card archive cleanup: `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql`
+- Board Manager v0 run tables: `server/db/migrations/033_board_manager_v0.sql`
 
 ## Table Inventory
 
@@ -55,10 +56,13 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `hive_secretary_reports` | Completed Hive Secretary reports over validated-wallet Hive Inputs, with source packet, OpenAI output JSON/text, provider/model/prompt metadata, usage JSON, and supersession timestamp. | Hive page Secretary report, Hive Active Projects worker input, future system Network Task worker input, prompt audit. | `028_hive_secretary_reports.sql` |
 | `hive_project_planning_jobs` | Async queue rows for turning the latest Hive Secretary report into active project records with OpenAI `gpt-5.5-pro`. | Hive Active Projects worker, Hive project diagnostics. | `031_hive_project_planning.sql` |
 | `hive_project_generations` | Completed active-project generations with source report, structured OpenAI output, provider/model/prompt metadata, response id, and usage JSON. | Hive active project audit, project registry rebuilds, future network task allocation. | `031_hive_project_planning.sql` |
-| `network_projects` | Active Hive project records that exist before task allocation. Stores type, title, summary, objective/about text, phase, priority, planned route budget, scoped task target, target contributor count, and latest Hive Secretary input reference. Generated "scoping" cards are archived in existing environments because scoping is a phase, not a project. | Hive active project cards, Hive project detail, future network task allocation. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql`, `032_archive_rejected_hive_scoping_projects.sql` |
+| `network_projects` | Active Hive project records that exist before task allocation. Stores type, title, summary, objective/about text, phase, priority, planned route budget, scoped task target, target contributor count, and latest Hive Secretary input reference. Operator-archived rows carry an archive lock so generated project planning cannot silently reactivate rejected cards. | Hive active project cards, Hive project detail, future network task allocation. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql`, `032_archive_rejected_hive_scoping_projects.sql`, `034_lock_operator_archived_hive_projects.sql` |
 | `network_project_contributors` | Project-scoped contributor/operator rollups. Empty until live project-linked tasks allocate to real wallets and rewards accrue. | Hive contributor previews, allotted operators, project detail contributors. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
 | `network_project_task_refs` | Project-scoped task rows. Empty until the allocation worker creates or links concrete PFTL tasks to a project. | Hive project task board, future project-to-PFTL task linking. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
 | `network_project_activity` | Project-scoped activity feed rows. Empty until project-linked tasks produce live state changes. | Hive routing feed and project activity section. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
+| `board_manager_leases` | One lease per manager scope, starting with `global_hive`, so only one Board Manager runs across Fly instances. | Board Manager dry-run executor, future Hive manager loop, operator diagnostics. | `033_board_manager_v0.sql` |
+| `board_manager_runs` | Durable v0 Board Manager run log with trigger, source packet digest, selected action, action payload, decision JSON, Codex model, reasoning effort, status, and errors. | Board Manager Codex Exec audit, future Hive manager UI/operator controls. | `033_board_manager_v0.sql` |
+| `board_manager_action_results` | Audit log for executed manager actions. V0 does not execute mutations yet, so this is ready for later action handlers. | Future Hive project history, task allocation audit, evidence review audit. | `033_board_manager_v0.sql` |
 | `pftl_task_sync_runs` | One row per task replay/import run with account, wallet, source, status, task count, pointer event count, and metadata. | Tasks replay diagnostics, operator recovery, Python replay imports. | `006_task_projections.sql` |
 | `task_requests` | Durable receipt and worker claim table for browser/chat task requests, including account, subject wallet, request/bundle CIDs, request transaction, generated task ID, worker attempts, status, and errors. | Tasks request strip, task generation worker, chat task request receipts, operator debugging. | `012_task_requests.sql` |
 | `pftl_task_pointer_events` | Typed task pointer events hydrated from PFTL pointer memos and IPFS payloads. | Tasks, task replay repair, reward traceability, audit. | `006_task_projections.sql` |
@@ -81,14 +85,11 @@ Postgres is the product cache and account database. It is critical for speed, UX
 
 ## Planned Board Manager Tables
 
-These tables are planned and not implemented yet. They are included here because the Hive architecture is moving from independent worker cadence to a single leased Board Manager executor.
+These tables are still planned. The v0 lease and run tables above are implemented; these complete the richer manager context and product-document layer.
 
 | Table | Description | App surfaces that rely on it | Source |
 | --- | --- | --- | --- |
-| `board_manager_leases` | One lease per manager scope, starting with `global_hive`, so only one Board Manager runs across Fly instances. | Hive manager execution, operator diagnostics. | Planned |
-| `board_manager_runs` | Durable run log with trigger, source packet digest, selected action, action payload, status, timing, and error fields. | Hive manager audit, debugging stale board decisions, future operator controls. | Planned |
 | `board_manager_context_docs` | Versioned Board Manager context document used by the manager to retain network-level assumptions, unresolved questions, and decisions. | Hive Context, Board Manager source packet, future project/task generation. | Planned |
-| `board_manager_action_results` | Audit log for each executed manager action, keyed by run id and target object. | Hive project history, task allocation audit, evidence review audit. | Planned |
 | `network_project_product_docs` | Current and historical expandable product documents linked to `network_projects`. | Hive project About expansion, Board Manager project state review, future task generation. | Planned |
 
 ## Known Gaps

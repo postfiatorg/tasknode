@@ -5,6 +5,7 @@ delete process.env.TASKNODE_HIVE_PROJECT_MODEL;
 delete process.env.TASKNODE_HIVE_PROJECT_REASONING_EFFORT;
 
 const { fetchHiveActiveProjects } = await import("../server/hive-project-worker.js");
+const { projectHasOperatorArchiveLock } = await import("../server/repositories/hive-project-planning.js");
 
 let capturedBody = null;
 const result = await fetchHiveActiveProjects(
@@ -80,5 +81,8 @@ assert.equal(result.output.projects.length, 1);
 assert.equal(result.output.projects[0].id, "task_node_reliability");
 assert.equal(result.output.projects[0].type, "protocol_applications");
 assert.equal(result.usage.reasoningTokens, 25);
+assert.equal(projectHasOperatorArchiveLock({ metadata_json: { archived_reason: "operator_rejected" } }), true);
+assert.equal(projectHasOperatorArchiveLock({ metadata_json: { operator_archived: true } }), true);
+assert.equal(projectHasOperatorArchiveLock({ metadata_json: { rationale: "normal active project" } }), false);
 
 console.log("hive project planning smoke ok");

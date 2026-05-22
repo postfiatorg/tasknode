@@ -1,8 +1,8 @@
 # Board Manager
 
-Status: planning
+Status: v0 dry-run implemented; mutation action handlers planned
 
-This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, refresh project documents, route tasks, or do nothing.
+This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, archive projects, refresh project documents, route tasks, or do nothing.
 
 ## Product Role
 
@@ -35,6 +35,20 @@ Planned ownership model:
 - Later scopes can be project-specific, for example `project:pft_distribution_v3`, if the network becomes too large for one global manager.
 
 The default v1 posture is conservative. Most ticks should do nothing unless there is stale state, new validated input, a blocked project, pending evidence, or a clear task allocation opportunity.
+
+## V0 Codex Exec Harness
+
+Implemented v0 pieces:
+
+- `server/repositories/board-manager.js` builds the current Hive source packet and validates the returned action.
+- `schemas/board-manager-action.schema.json` constrains the Codex Exec output. The v0 payload is intentionally narrow: `summary` plus `next_steps`.
+- `scripts/board-manager-codex-exec.mjs` runs Codex Exec with `gpt-5.5` and `model_reasoning_effort = xhigh`.
+- `server/db/migrations/033_board_manager_v0.sql` adds lease, run, and action-result tables.
+- `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks operator-archived Hive projects so the project planner cannot silently reactivate rejected cards.
+- `npm run board-manager:codex -- --trigger <name>` runs one dry-run Board Manager decision.
+- `npm run board-manager:codex -- --packet-only` prints the source packet without calling Codex.
+
+V0 does not execute mutations. It records or prints the selected action so we can inspect whether the manager is choosing the right next move before wiring action handlers.
 
 ## Trigger Policy
 
@@ -165,6 +179,21 @@ Use when:
 - a project becomes blocked;
 - a project moves from scoping to execution;
 - a project should be paused or archived.
+
+### `archive_project`
+
+Remove a project from the active Hive board without destroying its audit trail.
+
+Use when:
+
+- the project was generated incorrectly;
+- the project is no longer supported by the Board Manager context;
+- the project is a duplicate of a stronger durable project;
+- the project is really a phase such as scoping rather than a project.
+
+This action should set `network_projects.status = archived`. It should not hard delete a project in v1.
+
+Operator-archived projects are locked. If a project row carries an archive marker, the active-project helper must keep it archived and skip reactivation unless a future explicit operator action removes that lock.
 
 ### `refresh_project_document`
 
@@ -368,7 +397,7 @@ Done when a Board Manager run can decide that a Secretary refresh is needed and 
 
 ### Phase 4: Project And Product Doc Actions
 
-- Implement `create_project`, `update_project`, and `refresh_project_document`.
+- Implement `create_project`, `update_project`, `archive_project`, and `refresh_project_document`.
 - Add project id visibility and expandable product docs in Hive UI.
 
 Done when the Board Manager can create a durable project and attach a readable product document.

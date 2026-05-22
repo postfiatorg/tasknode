@@ -11,7 +11,7 @@ The Hive route is available at `#hive` from the primary sidebar. The surface con
 - active projects with planned task count, target contributor count, and PFT route budget
 - a routing feed showing recent task state transitions once live project-linked tasks exist
 - allotted operators once live project-linked task allocation exists
-- a project detail page for `PFT distribution v3`, backed by the `network_projects` read model
+- project detail pages for active `network_projects` rows
 - a collapsed `Hive Context` section at the bottom of the page with the latest Hive Secretary report and collapsible raw inputs
 
 The project detail page is layered as:
@@ -37,6 +37,8 @@ Expanding the section shows the current `Hive Secretary` report first. Raw user 
 
 The Board Manager is the planned system operator for Hive. It is a Codex Exec function with a bounded action registry. It should run periodically or after meaningful state changes, claim a single `global_hive` lease, inspect the current board state, and choose one action.
 
+V0 exists as a dry-run Codex Exec harness. It builds the current Hive source packet, calls Codex Exec using `gpt-5.5` with `xhigh` reasoning, validates the returned action against a JSON schema, and records the decision in `board_manager_runs` when Postgres is enabled. It does not execute mutations yet.
+
 Allowed actions include:
 
 - do nothing
@@ -45,6 +47,7 @@ Allowed actions include:
 - research
 - message a user for follow-up context
 - create or update projects
+- archive projects that should leave the active board
 - refresh a project product document
 - assign or remove contributors
 - initiate project-linked Network Tasks with rewards
@@ -81,7 +84,7 @@ The Secretary worker is source-bound: it summarizes validated Hive Inputs and cl
 
 Hive Active Projects uses `prompts/hive/hive_active_projects_v1.md`. That prompt decides which projects should be active based on the latest Secretary report and current project registry. It can preserve an existing project, create a new project, or pause generated/seeded projects that are no longer supported by the report. It still does not create tasks, contributors, wallets, payments, or activity rows.
 
-Scoping is not a project. The active-project prompt now treats scoping as a phase or status on a durable project. A project can be `Post Fiat L1` with phase `Scoping`; it should not be `Post Fiat L1 scoping`. The rejected generated scoping projects are archived by `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql` so they do not remain visible as active cards.
+Scoping is not a project. The active-project prompt now treats scoping as a phase or status on a durable project. A project can be `Post Fiat L1` with phase `Scoping`; it should not be `Post Fiat L1 scoping`. The rejected generated scoping projects are archived by `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql`, locked by `server/db/migrations/034_lock_operator_archived_hive_projects.sql`, and skipped by `server/repositories/hive-project-planning.js` so future project generations cannot silently reactivate them.
 
 The next planned layer is a project-linked Product Document. Each project card should open a project board whose About section can expand into a generated document with:
 
@@ -109,6 +112,9 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
 - `server/hive-secretary-worker.js` processes validated Hive Inputs through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action handler.
 - `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
+- `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, and records v0 dry-run state.
+- `scripts/board-manager-codex-exec.mjs` runs one Codex Exec Board Manager dry run.
+- `schemas/board-manager-action.schema.json` constrains the Codex Exec output.
 - `server/repositories/hive-context.js` persists raw Hive Context entries, Secretary jobs, and Secretary reports.
 - `server/repositories/hive-projects.js` reads active network projects and links the latest Secretary report as a project input.
 - `server/repositories/hive-project-planning.js` persists active-project planner jobs and completed generations, then upserts `network_projects`.
@@ -118,6 +124,8 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/db/migrations/030_hive_project_seed_cleanup.sql` removes earlier mock-only operator/task/feed seed rows from existing environments.
 - `server/db/migrations/031_hive_project_planning.sql` adds the active-project planning job and generation tables.
 - `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql` archives the three rejected generated scoping cards from existing environments.
+- `server/db/migrations/033_board_manager_v0.sql` adds Board Manager lease/run/action-result tables.
+- `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks archived project rows so rejected projects do not reappear after a later planner run.
 - `prompts/hive/hive_secretary_v1.md` is the source-controlled Secretary prompt.
 - `prompts/hive/hive_active_projects_v1.md` is the source-controlled active-project prompt.
 - `prompts/hive/board_manager_v1.md` is the planned Board Manager operating prompt.
@@ -182,7 +190,7 @@ The likely production data sources are:
 - `hive_context_entries` for user-submitted network context
 - `hive_secretary_reports` for the current synthesized network context report
 - `hive_project_planning_jobs` and `hive_project_generations` for active project determination
-- planned Board Manager lease/run/action tables
+- Board Manager lease/run/action tables for v0 dry-run decisions
 - public profile snapshots for operator role and skill summaries
 - daily airdrop and reward history for contribution weighting
 - PFTL transaction cache rows for proof anchors and forensic drill-in

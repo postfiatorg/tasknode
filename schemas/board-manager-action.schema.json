@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Task Node Board Manager Action",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "target_type", "target_id", "reason", "confidence", "payload"],
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "do_nothing",
+        "update_board_context",
+        "refresh_hive_secretary",
+        "research",
+        "message_user",
+        "create_project",
+        "update_project",
+        "archive_project",
+        "refresh_project_document",
+        "assign_contributor",
+        "remove_contributor",
+        "initiate_network_task",
+        "review_evidence_packet"
+      ]
+    },
+    "target_type": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "target_id": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "next_steps"],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "next_steps": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      }
+    }
+  }
+}

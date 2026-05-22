@@ -424,6 +424,14 @@ Existing and planned prompt files:
 
 `board_manager_v1` is the planned policy boundary. It chooses one action per run from a finite registry.
 
+The v0 harness already runs this prompt through Codex Exec in dry-run mode:
+
+- command: `npm run board-manager:codex -- --trigger <name>`;
+- model: `gpt-5.5`;
+- reasoning: `xhigh`;
+- schema: `schemas/board-manager-action.schema.json`;
+- source packet: Hive Context, Hive Secretary state, active/project registry, task state, task requests, and recent Board Manager runs.
+
 `hive_active_projects_v1` currently decides which durable projects exist. In the Board Manager architecture it becomes an action helper, not an independent decision loop.
 
 `hive_project_product_doc_v1` should use OpenRouter `deepseek/deepseek-v4-pro` with a ZDR-capable provider. It should produce the expandable product document for one project at a time from the project row, latest Secretary report, and project-linked task state.
