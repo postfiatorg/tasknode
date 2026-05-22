@@ -187,6 +187,7 @@ function documentFromRows({
     operators,
     routingFeed,
     stats: {
+      activeProjects: projectIds.length,
       operatorsOnline: activeOperators,
       tasksInFlight,
       pftRouted,

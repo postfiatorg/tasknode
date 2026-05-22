@@ -8,9 +8,9 @@ The current implementation uses Postgres-backed network project records plus liv
 
 The Hive route is available at `#hive` from the primary sidebar. The surface contains:
 
-- active projects with contributor previews, task counts, and routed PFT totals
-- a routing feed showing recent task state transitions
-- allotted operators with load and availability
+- active projects with planned task count, target contributor count, and PFT route budget
+- a routing feed showing recent task state transitions once live project-linked tasks exist
+- allotted operators once live project-linked task allocation exists
 - a project detail page for `PFT distribution v3`, backed by the `network_projects` read model
 - a collapsed `Hive Context` section at the bottom of the page with the latest Hive Secretary report and collapsible raw inputs
 
@@ -74,12 +74,15 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/repositories/hive-projects.js` reads active network projects and links the latest Secretary report as a project input.
 - `server/db/migrations/027_hive_context_entries.sql` creates the Hive Context table.
 - `server/db/migrations/028_hive_secretary_reports.sql` adds linked-wallet validation metadata and Secretary job/report tables.
-- `server/db/migrations/029_hive_network_projects.sql` creates and seeds the current network project read model.
+- `server/db/migrations/029_hive_network_projects.sql` creates the current network project read model and seeds the initial `PFT distribution v3` project spec.
+- `server/db/migrations/030_hive_project_seed_cleanup.sql` removes earlier mock-only operator/task/feed seed rows from existing environments.
 - `prompts/hive/hive_secretary_v1.md` is the source-controlled Secretary prompt.
 
 ## Current Data Boundary
 
-Active projects, project detail, project task rows, contributor previews, allotted operators, and routing feed now read from Postgres. `PFT distribution v3` is seeded as an apriori network project record so tasks can later be allocated into it instead of creating the project after the fact.
+Active projects and project detail now read from Postgres. `PFT distribution v3` is seeded as an apriori network project record so tasks can later be allocated into it instead of creating the project after the fact.
+
+The project seed is intentionally not a fake live network. The project can carry planned/scoped metrics such as 14 scoped tasks, 6 target contributors, and 420 PFT route target, but contributor cards, task rows, routing feed rows, and allotted operator rows stay empty until real project-linked allocation data exists.
 
 Hive Context is live Postgres-backed app data. It is not on-chain. Hive Secretary is also Postgres-backed and regenerates from validated-wallet Hive Inputs after new entries arrive.
 
@@ -105,7 +108,8 @@ flowchart LR
 The likely production data sources are:
 
 - `task_projections` for task state, rewards, and project assignment
-- `network_projects`, `network_project_task_refs`, `network_project_contributors`, and `network_project_activity` for the current Hive project read model
+- `network_projects` for active project identity, target metrics, source inputs, and project detail
+- `network_project_task_refs`, `network_project_contributors`, and `network_project_activity` after live allocation creates project-linked task rows, contributors, and activity
 - `hive_context_entries` for user-submitted network context
 - `hive_secretary_reports` for the current synthesized network context report
 - public profile snapshots for operator role and skill summaries

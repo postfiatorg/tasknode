@@ -88,9 +88,9 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
           <p>Aggregate view of what the network is doing. The hive routes work to nodes; this is its memory in motion.</p>
         </div>
         <div className="hive-stats">
-          <Stat label="Operators online" value={projectStatus === "ready" ? stats.operatorsOnline || 0 : "—"} />
-          <Stat label="Tasks in flight" value={projectStatus === "ready" ? stats.tasksInFlight || 0 : "—"} />
-          <Stat label="PFT routed" value={projectStatus === "ready" ? formatCompactPft(stats.pftRouted) : "—"} accent />
+          <Stat label="Active projects" value={projectStatus === "ready" ? stats.activeProjects || 0 : "—"} />
+          <Stat label="Scoped tasks" value={projectStatus === "ready" ? stats.tasksInFlight || 0 : "—"} />
+          <Stat label="PFT target" value={projectStatus === "ready" ? formatCompactPft(stats.pftRouted) : "—"} accent />
         </div>
       </header>
 
@@ -114,6 +114,9 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
           ))}
           {projectStatus === "loading" && <div className="hive-empty-project">Loading project feed.</div>}
           {projectStatus === "error" && <div className="hive-empty-project">Project feed is unavailable.</div>}
+          {projectStatus === "ready" && !(projectDocument?.routingFeed || []).length && (
+            <div className="hive-empty-project">No project-linked routing events yet.</div>
+          )}
         </div>
       </Section>
 
@@ -131,6 +134,9 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
             ))}
           {projectStatus === "loading" && <div className="hive-empty-project">Loading operators.</div>}
           {projectStatus === "error" && <div className="hive-empty-project">Operator load is unavailable.</div>}
+          {projectStatus === "ready" && !Object.values(projectDocument?.operators || {}).some((operator) => operator.allotted) && (
+            <div className="hive-empty-project">No operators are allocated to active network projects yet.</div>
+          )}
         </div>
       </Section>
 
@@ -198,9 +204,9 @@ function ProjectDetail({ onBack, operators, project, status }) {
           {project.summary && <p>{project.summary}</p>}
         </div>
         <div className="hive-stats">
-          <Stat label="Tasks" value={project.taskCount || project.tasks.length} />
-          <Stat label="Contributors" value={project.contributorCount || project.contributors?.length || 0} />
-          <Stat label="PFT routed" value={formatPft(project.pft)} accent />
+          <Stat label="Scoped tasks" value={project.taskCount || project.tasks.length} />
+          <Stat label="Contributor target" value={project.contributorCount || project.contributors?.length || 0} />
+          <Stat label="PFT target" value={formatPft(project.pft)} accent />
         </div>
       </header>
 
@@ -228,7 +234,7 @@ function ProjectDetail({ onBack, operators, project, status }) {
         </div>
       </Section>
 
-      <Section title="Contributors" subtitle={`${project.contributors.length} operators have earned PFT on this project`} layerNumber="02">
+      <Section title="Contributors" subtitle={contributorsSubtitle(project)} layerNumber="02">
         {project.contributors.length ? (
           <div className="hive-contributor-grid">
             {project.contributors.map((contributor) => (
@@ -236,11 +242,11 @@ function ProjectDetail({ onBack, operators, project, status }) {
             ))}
           </div>
         ) : (
-          <div className="hive-card hive-empty-project">Contributors will populate after tasks are allocated and rewarded.</div>
+          <div className="hive-card hive-empty-project">Contributors will populate after live network tasks are allocated and rewarded.</div>
         )}
       </Section>
 
-      <Section title="Tasks" subtitle={`${project.tasks.length} project task rows`} layerNumber="03">
+      <Section title="Tasks" subtitle={tasksSubtitle(project)} layerNumber="03">
         <div className="hive-card">
           {project.tasks.length ? (
             project.tasks.map((task, index) => (
@@ -252,7 +258,7 @@ function ProjectDetail({ onBack, operators, project, status }) {
               />
             ))
           ) : (
-            <div className="hive-empty-project">Network tasks will appear after allocation attaches PFTL task IDs to this project.</div>
+            <div className="hive-empty-project">Network tasks will appear after the allocation worker creates PFTL task offers for this project.</div>
           )}
         </div>
       </Section>
@@ -305,6 +311,7 @@ function ProjectCard({ operators, project, onClick }) {
   const previewWallets = (project.contributors || []).map((contributor) => contributor.wallet).slice(0, 4);
   const contributorCount = project.contributorCount || project.contributors?.length || 0;
   const taskCount = project.taskCount || project.tasks?.length || 0;
+  const hasAllocatedContributors = previewWallets.length > 0;
 
   return (
     <button className="hive-project-card" onClick={onClick} type="button">
@@ -312,22 +319,26 @@ function ProjectCard({ operators, project, onClick }) {
       <span className="hive-project-type">{project.type}</span>
       <p>{project.summary}</p>
       <span className="hive-card-contributors">
-        <span className="hive-badge-stack">
-          {previewWallets.map((wallet, index) => (
-            <span className="hive-badge-wrap" key={wallet} style={{ marginLeft: index === 0 ? 0 : -8 }}>
-              <NftBadge size={22} variant={operatorForWallet(wallet, operators).badge} />
-            </span>
-          ))}
-        </span>
+        {hasAllocatedContributors && (
+          <span className="hive-badge-stack">
+            {previewWallets.map((wallet, index) => (
+              <span className="hive-badge-wrap" key={wallet} style={{ marginLeft: index === 0 ? 0 : -8 }}>
+                <NftBadge size={22} variant={operatorForWallet(wallet, operators).badge} />
+              </span>
+            ))}
+          </span>
+        )}
         <span>
-          {contributorCount} {contributorCount === 1 ? "contributor" : "contributors"}
+          {hasAllocatedContributors
+            ? `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"}`
+            : `${contributorCount} contributor target`}
         </span>
       </span>
       <span className="hive-project-card-foot">
         <span>
-          <strong>{taskCount}</strong> tasks
+          <strong>{taskCount}</strong> scoped tasks
         </span>
-        <span className="hive-pft">{formatPft(project.pft)} PFT</span>
+        <span className="hive-pft">{formatPft(project.pft)} PFT target</span>
         <ChevronRight size={14} strokeWidth={1.8} />
       </span>
     </button>
@@ -603,6 +614,22 @@ function formatCompactPft(value) {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(number);
+}
+
+function contributorsSubtitle(project = {}) {
+  const allocated = project.contributors?.length || 0;
+  const target = project.contributorCount || allocated;
+  if (allocated) return `${allocated} allocated ${allocated === 1 ? "operator" : "operators"} on this project`;
+  if (target) return `${target} target ${target === 1 ? "contributor" : "contributors"} before live allocation`;
+  return "No contributors allocated yet";
+}
+
+function tasksSubtitle(project = {}) {
+  const allocated = project.tasks?.length || 0;
+  const scoped = project.taskCount || allocated;
+  if (allocated) return `${allocated} allocated task ${allocated === 1 ? "row" : "rows"} on this project`;
+  if (scoped) return `${scoped} scoped tasks before live allocation`;
+  return "No project tasks allocated yet";
 }
 
 function formatContextTime(value = "") {

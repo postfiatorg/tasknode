@@ -12,7 +12,7 @@ Hive should answer three questions without making the user inspect raw chain dat
 2. Which tasks belong to each project, and what state are they in?
 3. Which operators are being allocated to network work, and why are they eligible?
 
-The project-detail shape in the current `PFT distribution v3` mock is the reference layout: a project board with an About section, contributors, tasks, and scoped activity. That card pattern should remain the UX target while the data becomes real.
+The project-detail shape in the `PFT distribution v3` mock is the reference layout: a project board with an About section, contributors, tasks, and scoped activity. The live app should not seed fake operators or fake task rows to make that layout look full. It should show the apriori project spec first, then populate contributors, tasks, and activity only when live project-linked allocation data exists.
 
 ## Project Types
 
@@ -163,6 +163,7 @@ Behavior:
 - show active projects grouped or labeled by type;
 - clicking a project opens the project board;
 - `PFT distribution v3` remains the visual reference for project detail cards.
+- The seeded project row may expose planned/scoped metrics, but contributor cards, task rows, and routing feed rows must come from real project-linked allocation rows.
 - projects are read from `GET /api/hive/projects`, not from React mock data.
 
 ### Routing Feed
@@ -223,7 +224,8 @@ Implemented pieces:
 - `server/hive-secretary-worker.js` calls DeepSeek V4 Pro through OpenRouter ZDR.
 - `prompts/hive/hive_secretary_v1.md` defines the Secretary output.
 - `GET /api/hive/projects` returns Postgres-backed active project records.
-- `PFT distribution v3` is seeded as an apriori project row with About, contributors, project task rows, activity, and latest Hive Secretary input reference.
+- `PFT distribution v3` is seeded as an apriori project row with About text, target metrics, and latest Hive Secretary input reference.
+- Mock-only contributors, task rows, and activity rows were removed; those sections remain empty until the allocation worker links real PFTL task activity to the project.
 
 ## Network Diagnostic Report Usage
 
@@ -388,7 +390,7 @@ Done when a user can accept or refuse a network-pushed task and Hive reflects th
 - Show zero-reward and refused outcomes clearly.
 - Keep task forensics as the proof surface for CIDs and transactions.
 
-Done when the `PFT distribution v3` detail card can be populated with real tasks, contributors, activity, and routed PFT.
+Done when the `PFT distribution v3` detail card can be populated with real tasks, contributors, activity, and routed PFT without mock seed rows.
 
 ## Acceptance Criteria
 
