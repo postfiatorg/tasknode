@@ -32,6 +32,7 @@ const migrations = [
   "023_pftl_pointer_observations.sql",
   "024_network_task_profiles.sql",
   "025_prune_orphan_task_projection_garbage.sql",
+  "026_network_task_profile_prompt_v2_default.sql",
 ];
 
 let migrated = false;

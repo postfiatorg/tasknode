@@ -10,7 +10,7 @@ Implemented v1 surfaces:
 - `GET /api/memory/network-task-profile` returns Network Context Inputs, latest generated profile, current job state, and the auditable source packet.
 - `POST /api/memory/network-task-profile` requests a refresh without blocking page rendering.
 - `server/repositories/network-task-profile.js` builds the source packet from context, deep memory, profile snapshot input, public profile snapshot, and task projections.
-- `server/chat-memory-worker.js` claims `network_task_profile_jobs` and calls the ZDR OpenRouter memory model with `prompts/memory/network_task_profile_v1.md`.
+- `server/chat-memory-worker.js` claims `network_task_profile_jobs` and calls the ZDR OpenRouter memory model with `prompts/memory/network_task_profile_v2.md`.
 - `server/db/migrations/024_network_task_profiles.sql` stores jobs and generated profile rows.
 
 This is not a public profile and not a social feed. It is a user-visible operating profile that answers: what work should the network route to this member right now?
@@ -22,7 +22,7 @@ The Memory page should gain a `Network Task Profile` section near Deep Memory.
 The section has two different freshness models:
 
 1. `Network Context Inputs`: real-time public profile facts plus routable task projection state.
-2. `Generated Network Task Profile`: LLM-generated routing summary refreshed asynchronously, normally once every 24 hours or on manual refresh.
+2. `Generated Network Task Profile`: LLM-generated diagnostic report refreshed asynchronously, normally once every 24 hours or on manual refresh.
 
 The generated profile card should show:
 
@@ -131,7 +131,7 @@ The packet should preserve enough specificity to route useful work without flood
 
 ## Model Job
 
-Name: `network_task_profile_v1`
+Name: `network_task_profile_v2`
 
 The model job creates the generated Network Task Profile only. It does not own Network Context Inputs.
 
@@ -158,26 +158,20 @@ Expected output:
 
 ```json
 {
-  "profile_title": "Concise role for network task routing",
-  "routing_summary": "Short explanation of what work should be routed to this member.",
-  "best_task_types": [
-    "task type this member is well suited for"
+  "profile_title": "Concise professional role title for this user's network diagnostic profile",
+  "current_focus": [
+    "active project, priority, or operating focus"
   ],
-  "avoid_task_types": [
-    "task type that should not be routed right now"
+  "primary_contribution_ability": [
+    "core capability and the outcome it can drive"
   ],
-  "current_capacity_signal": "high|medium|low|unknown",
-  "routing_reasons": [
-    "specific reason from context, memory, profile, or task outcomes"
-  ],
-  "confidence": "high|medium|low",
-  "user_visible_caveats": [
-    "thin data, stale context, many refusals, or other limitations"
+  "domain_expertise": [
+    "Public Company Name: why this user's work maps to that company's domain or team"
   ]
 }
 ```
 
-The generated text should be direct and human-readable. It should describe outcomes and fit, not mechanical implementation details. A member should be able to read it and understand why the network would offer them a specific task.
+The generated text should be direct and human-readable. It should describe current work, capability, and domain fit, not mechanical implementation details and not a list of task recommendations. A member should be able to read it and understand how the network sees their useful capability.
 
 ## Data Model
 
@@ -195,7 +189,7 @@ network_task_profiles (
   output_text text not null default '',
   provider text not null default '',
   model text not null default '',
-  prompt_version text not null default 'network_task_profile_v1',
+  prompt_version text not null default 'network_task_profile_v2',
   prompt_digest text not null default '',
   error text not null default '',
   created_at timestamptz not null default now(),
@@ -240,12 +234,9 @@ Memory should show four layers:
 The Network Task Profile card should include:
 
 - title;
-- routing summary;
-- best task types;
-- avoid task types;
-- capacity signal;
-- confidence;
-- caveats;
+- current focus bullets;
+- primary contribution ability bullets;
+- domain expertise bullets linked to 5 to 10 public companies;
 - generated timestamp;
 - `View source packet`;
 - `Refresh`.
@@ -256,16 +247,16 @@ Network Context Inputs should be readable without opening the Profile or Tasks p
 
 ## Prompt Contract
 
-Prompt file: `prompts/memory/network_task_profile_v1.md`
+Prompt file: `prompts/memory/network_task_profile_v2.md`
 
 Prompt intent:
 
 ```text
-You create a user-visible Network Task Profile from a Task Node source packet.
-This profile is used to route future network tasks.
+You create a user-visible Network Task Profile diagnostic report from a Task Node source packet.
+This profile is used as context for allocating future network tasks.
 Write plainly. Do not use jargon, corporate filler, or vague praise.
-Explain what kinds of tasks this member should receive, what tasks should be avoided, and why.
-Base every claim on the packet. If evidence is thin, say so.
+Explain the user's current focus, primary contribution ability, and domain expertise.
+Do not add task recommendations, avoidance lists, routing reasons, or caveats.
 Return only the requested JSON.
 ```
 

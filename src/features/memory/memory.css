@@ -259,6 +259,17 @@
   min-width: 0;
 }
 
+.network-profile-wide {
+  grid-column: 1 / -1;
+}
+
+.network-profile-stale {
+  margin: 0;
+  color: #5f5b51;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .network-profile-meta {
   display: flex;
   flex-wrap: wrap;

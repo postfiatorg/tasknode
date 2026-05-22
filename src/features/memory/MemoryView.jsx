@@ -180,10 +180,10 @@ function NetworkTaskProfileCard({ onRefresh, profileState, status }) {
   const job = profileState?.job || null;
   const source = profileState?.sourcePacket || {};
   const pending = job && ["pending", "processing"].includes(String(job.status || ""));
-  const best = Array.isArray(output.best_task_types) ? output.best_task_types.slice(0, 5) : [];
-  const avoid = Array.isArray(output.avoid_task_types) ? output.avoid_task_types.slice(0, 5) : [];
-  const reasons = Array.isArray(output.routing_reasons) ? output.routing_reasons.slice(0, 5) : [];
-  const caveats = Array.isArray(output.user_visible_caveats) ? output.user_visible_caveats.slice(0, 5) : [];
+  const currentFocus = Array.isArray(output.current_focus) ? output.current_focus.slice(0, 6) : [];
+  const contribution = Array.isArray(output.primary_contribution_ability) ? output.primary_contribution_ability.slice(0, 6) : [];
+  const domain = Array.isArray(output.domain_expertise) ? output.domain_expertise.slice(0, 10) : [];
+  const hasDiagnosticSections = currentFocus.length > 0 || contribution.length > 0 || domain.length > 0;
 
   return (
     <section className="memory-section network-profile-section">
@@ -218,21 +218,24 @@ function NetworkTaskProfileCard({ onRefresh, profileState, status }) {
         {profile ? (
           <>
             <section>
-              <small>Profile</small>
+              <small>Diagnostic report</small>
               <h3>{output.profile_title || "Network Task Profile"}</h3>
-              <MemoryText text={output.routing_summary || profile.outputText} />
             </section>
 
-            <div className="network-profile-grid">
-              <ProfileList title="Best task types" items={best} />
-              <ProfileList title="Avoid right now" items={avoid} />
-              <ProfileList title="Routing reasons" items={reasons} />
-              <ProfileList title="Caveats" items={caveats} />
-            </div>
+            {hasDiagnosticSections ? (
+              <div className="network-profile-grid">
+                <ProfileList title="Current focus" items={currentFocus} />
+                <ProfileList title="Primary contribution ability" items={contribution} />
+                <ProfileList title="Domain expertise" items={domain} wide />
+              </div>
+            ) : (
+              <p className="network-profile-stale">
+                This profile was generated with an older format. Refresh to create the diagnostic report.
+              </p>
+            )}
 
             <div className="network-profile-meta">
-              <span>Capacity: {output.current_capacity_signal || "unknown"}</span>
-              <span>Confidence: {output.confidence || "unknown"}</span>
+              <span>{profile.promptVersion || "network_task_profile"}</span>
               <span>Packet {String(profile.sourcePacketDigest || "").slice(0, 12) || "pending"}</span>
             </div>
           </>
@@ -256,10 +259,10 @@ function NetworkTaskProfileCard({ onRefresh, profileState, status }) {
   );
 }
 
-function ProfileList({ items, title }) {
+function ProfileList({ items, title, wide = false }) {
   const values = items.map((item) => String(item || "").trim()).filter(Boolean);
   return (
-    <section>
+    <section className={wide ? "network-profile-wide" : ""}>
       <small>{title}</small>
       {values.length ? (
         <ul className="memory-bullets">

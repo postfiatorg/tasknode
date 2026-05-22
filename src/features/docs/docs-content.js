@@ -39,7 +39,7 @@ import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_con
 import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
 import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
 import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
-import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profile_v1.md?raw";
+import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profile_v2.md?raw";
 import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
 import publicProfileSnapshotPrompt from "../../../prompts/profile/public_profile_snapshot_v1.md?raw";
 import blockContractPrompt from "../../../prompts/task_engine/block_contract_v1.md?raw";
@@ -183,8 +183,8 @@ const PROMPT_SOURCES = [
   {
     family: "Memory",
     title: "Network Task Profile",
-    path: "prompts/memory/network_task_profile_v1.md",
-    summary: "Async routing profile prompt over context, memory, profile, and Network Context Inputs.",
+    path: "prompts/memory/network_task_profile_v2.md",
+    summary: "Async diagnostic profile prompt over context, memory, profile, and Network Context Inputs.",
     status: "Active async worker",
     usedBy: [
       "server/chat-memory-worker.js::fetchNetworkTaskProfile",

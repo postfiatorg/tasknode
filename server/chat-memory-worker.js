@@ -26,7 +26,7 @@ const promptVersion = "chat_memory_v1";
 const deepPromptVersion = "deep_memory_v1";
 const chatMemoryPrompt = loadPrompt("memory/chat_memory_v1.md");
 const deepMemoryPrompt = loadPrompt("memory/deep_memory_v1.md");
-const networkTaskProfilePrompt = loadPrompt("memory/network_task_profile_v1.md");
+const networkTaskProfilePrompt = loadPrompt("memory/network_task_profile_v2.md");
 let timer = null;
 let running = false;
 
@@ -164,13 +164,9 @@ function parseNetworkTaskProfileJson(text = "") {
   const parsed = JSON.parse(raw.slice(start, end + 1));
   return {
     profile_title: compactSourceText(parsed.profile_title, 160),
-    routing_summary: compactSourceText(parsed.routing_summary, 1400),
-    best_task_types: stringArray(parsed.best_task_types),
-    avoid_task_types: stringArray(parsed.avoid_task_types),
-    current_capacity_signal: compactSourceText(parsed.current_capacity_signal, 40),
-    routing_reasons: stringArray(parsed.routing_reasons, { maxLength: 320 }),
-    confidence: compactSourceText(parsed.confidence, 40),
-    user_visible_caveats: stringArray(parsed.user_visible_caveats, { maxLength: 320 }),
+    current_focus: stringArray(parsed.current_focus, { maxItems: 6, maxLength: 420 }),
+    primary_contribution_ability: stringArray(parsed.primary_contribution_ability, { maxItems: 6, maxLength: 460 }),
+    domain_expertise: stringArray(parsed.domain_expertise, { maxItems: 10, maxLength: 520 }),
   };
 }
 
@@ -381,7 +377,12 @@ async function fetchNetworkTaskProfile(source) {
 
   const content = body?.choices?.[0]?.message?.content || "";
   const parsed = parseNetworkTaskProfileJson(content);
-  if (!parsed.profile_title || !parsed.routing_summary) {
+  if (
+    !parsed.profile_title ||
+    !parsed.current_focus.length ||
+    !parsed.primary_contribution_ability.length ||
+    !parsed.domain_expertise.length
+  ) {
     throw new Error("network_task_profile_missing_fields");
   }
 

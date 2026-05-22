@@ -9,7 +9,7 @@ import { formatTaskTimestamp } from "../../shared/task-time-format.js";
 const maxClaimLimit = 5;
 const failedAttemptLimit = 3;
 const autoRefreshMs = 24 * 60 * 60 * 1000;
-export const networkTaskProfilePromptVersion = "network_task_profile_v1";
+export const networkTaskProfilePromptVersion = "network_task_profile_v2";
 
 function useDatabase() {
   return databaseEnabled();
@@ -219,21 +219,15 @@ export function formatNetworkContextInputs({
 }
 
 export function formatNetworkTaskProfileOutput(output = {}) {
-  const best = safeArray(output.best_task_types).map((item) => safeText(item, 220)).filter(Boolean).slice(0, 5);
-  const avoid = safeArray(output.avoid_task_types).map((item) => safeText(item, 220)).filter(Boolean).slice(0, 5);
-  const reasons = safeArray(output.routing_reasons).map((item) => safeText(item, 280)).filter(Boolean).slice(0, 5);
-  const caveats = safeArray(output.user_visible_caveats).map((item) => safeText(item, 280)).filter(Boolean).slice(0, 5);
+  const currentFocus = safeArray(output.current_focus).map((item) => safeText(item, 360)).filter(Boolean).slice(0, 6);
+  const contribution = safeArray(output.primary_contribution_ability).map((item) => safeText(item, 420)).filter(Boolean).slice(0, 6);
+  const domain = safeArray(output.domain_expertise).map((item) => safeText(item, 480)).filter(Boolean).slice(0, 10);
   return [
     safeText(output.profile_title, 160) || "Network Task Profile",
     "",
-    safeText(output.routing_summary, 1200),
-    "",
-    best.length ? ["Best task types:", ...best.map((item) => `- ${item}`)].join("\n") : "",
-    avoid.length ? ["Avoid right now:", ...avoid.map((item) => `- ${item}`)].join("\n") : "",
-    reasons.length ? ["Routing reasons:", ...reasons.map((item) => `- ${item}`)].join("\n") : "",
-    caveats.length ? ["Caveats:", ...caveats.map((item) => `- ${item}`)].join("\n") : "",
-    `Capacity: ${safeText(output.current_capacity_signal, 40) || "unknown"}`,
-    `Confidence: ${safeText(output.confidence, 40) || "unknown"}`,
+    currentFocus.length ? ["Current focus:", ...currentFocus.map((item) => `- ${item}`)].join("\n") : "",
+    contribution.length ? ["Primary contribution ability:", ...contribution.map((item) => `- ${item}`)].join("\n") : "",
+    domain.length ? ["Domain expertise:", ...domain.map((item) => `- ${item}`)].join("\n") : "",
   ].filter(Boolean).join("\n\n");
 }
 
@@ -597,9 +591,10 @@ export async function getNetworkTaskProfileState({
   const latestCompletedAt = latest?.completedAt ? Date.parse(latest.completedAt) : 0;
   const stale = !latestCompletedAt || Date.now() - latestCompletedAt > autoRefreshMs;
   const digestChanged = latest?.sourcePacketDigest !== source.sourcePacketDigest;
+  const promptChanged = latest?.promptVersion !== networkTaskProfilePromptVersion;
   let enqueue = null;
 
-  if (!latest || (digestChanged && (force || stale))) {
+  if (!latest || force || promptChanged || (digestChanged && stale)) {
     enqueue = await enqueueNetworkTaskProfileJob({
       accountId: normalizedAccountId,
       sourcePacket: source,
@@ -622,6 +617,7 @@ export async function getNetworkTaskProfileState({
     refresh: {
       stale,
       digestChanged,
+      promptChanged,
       queued: Boolean(enqueue?.queued),
       reason: enqueue?.reason || reason,
     },

@@ -20,13 +20,13 @@ Private memory jobs use the configured OpenRouter ZDR model path. Memory writes 
 
 Deep-memory jobs are stable snapshots. `chat_deep_memory_jobs.source_entry_ids` stores the exact 36 `chat_memory_entries.id` values selected when the block is queued. The worker reads those IDs directly instead of recalculating the block later from timestamps, so backfills, imports, or corrected timestamps cannot change what a queued deep-memory job summarizes. `chat_memory_entries` also enforces one `deep_memory` row per account and block index, so retrying or recreating a deep-memory job updates the existing block summary rather than creating duplicates.
 
-Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. The prompt is `prompts/memory/network_task_profile_v1.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh. The generated profile is not required for the page to render. Network Context Inputs are built from profile data and routable `task_projections` on every route read and are returned even while a profile job is pending.
+Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. The prompt is `prompts/memory/network_task_profile_v2.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh. The generated profile is not required for the page to render. Network Context Inputs are built from profile data and routable `task_projections` on every route read and are returned even while a profile job is pending.
 
 ## Network Task Profile
 
 The Memory page now has two task-routing layers:
 
-- Generated Network Task Profile: an async LLM-generated routing summary stored in `network_task_profiles`.
+- Generated Network Task Profile: an async LLM-generated diagnostic report stored in `network_task_profiles`.
 - Network Context Inputs: real-time public profile facts plus current task projection text.
 
 The task state block inside Network Context Inputs is grouped as Proposed, Outstanding, Verification, Refused, and Rewarded. It shows task name, state, description, reward, and outcome when available. It intentionally does not show updated timestamps, CIDs, transaction hashes, event IDs, reducer names, raw JSON, or full forensics.
@@ -44,6 +44,8 @@ The generated profile source packet contains:
 - last 6 rewarded tasks.
 
 The packet is private and visible only in the Memory page. It is stored for audit so users can see exactly what was sent to the model.
+
+The generated profile answers three questions only: current focus, primary contribution ability, and domain expertise. It does not generate "best task types", avoidance lists, routing reasons, or caveats. The routing layer can use the report as context, but the user-facing text should read like a diagnostic understanding of the member rather than a task assignment policy.
 
 ## Data Model
 

@@ -104,17 +104,22 @@ assert.equal(packet.sourcePacketDigest.length, 64);
 
 const output = formatNetworkTaskProfileOutput({
   profile_title: "Protocol Product Engineer",
-  routing_summary: "Route reliability and task-loop work to this member.",
-  best_task_types: ["Protocol UX fixes"],
-  avoid_task_types: ["Pure social feed work"],
-  current_capacity_signal: "medium",
-  routing_reasons: ["Rewarded work shows task loop completion."],
-  confidence: "medium",
-  user_visible_caveats: ["Only a small sample is available."],
+  current_focus: ["Rebuilding a reliable task loop with auditable task state and memory-backed routing context."],
+  primary_contribution_ability: ["Turns ambiguous product and protocol failures into deterministic app behavior that can be tested and replayed."],
+  domain_expertise: [
+    "Coinbase: digital asset infrastructure and user-facing crypto workflow reliability.",
+    "Block: financial product engineering with wallet and payments-adjacent systems.",
+    "Cloudflare: reliability engineering for distributed systems with clear operational surfaces.",
+    "Datadog: observability and diagnostics for production workflows.",
+    "GitLab: developer tooling and workflow automation for engineering teams.",
+  ],
 });
 
 assert.match(output, /Protocol Product Engineer/);
-assert.match(output, /Best task types/);
-assert.match(output, /Confidence: medium/);
+assert.match(output, /Current focus/);
+assert.match(output, /Primary contribution ability/);
+assert.match(output, /Domain expertise/);
+assert.doesNotMatch(output, /Best task types/);
+assert.doesNotMatch(output, /Caveats/);
 
 console.log("network task profile smoke ok");
