@@ -200,6 +200,12 @@ Current implementation resolves the target from the Hive Context input repositor
 
 The Hive Mind Agent tab shows that the action happened. The user sees the actual response in Chat, in the conversation where the Hive Input was submitted.
 
+Repair path:
+
+- `npm run board-manager-message-repair` lists older `message_user` audit rows that have no delivered `chat_messages` row.
+- `npm run board-manager-message-repair -- --apply` appends those responses into the latest source Hive Input conversation for the same account before the message was created, then writes `metadata_json.chat_message_id` and `metadata_json.conversation_id` back to `board_manager_user_messages`.
+- Internal smoke/test runs are excluded from repair by default.
+
 ### `create_project`
 
 Create a durable network project.
