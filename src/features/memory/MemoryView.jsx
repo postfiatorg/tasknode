@@ -228,7 +228,7 @@ function NetworkTaskProfileCard({ onRefresh, profileState, status }) {
               <div className="network-profile-grid">
                 <ProfileList title="Current focus" items={currentFocus} />
                 <ProfileList title="Primary contribution ability" items={contribution} />
-                <ProfileList title="Domain expertise" items={domain} wide />
+                <ProfileList title="Companies this User Would Move the Needle At" items={domain} wide />
               </div>
             ) : (
               <p className="network-profile-stale">

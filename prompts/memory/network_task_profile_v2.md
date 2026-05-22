@@ -10,7 +10,7 @@ What is a Network Task:
 The overview must answer only these questions:
 - What is the user's current focus: what projects are they working on?
 - What is the user's primary contribution ability? Can they code, trade, operate as an amplifier for narratives, or do they have important information?
-- What is the user's domain expertise: if you had to link the user to 5 to 10 public companies where they would fit as an employee based on their skill set, where would that be and why?
+- Companies this User Would Move the Needle At: if you had to link the user to 5 to 10 public companies where they would fit as an employee based on their skill set, where would that be and why?
 
 Do not explain what types of network tasks would be good.
 Do not add caveats.

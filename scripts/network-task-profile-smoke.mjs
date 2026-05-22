@@ -118,7 +118,7 @@ const output = formatNetworkTaskProfileOutput({
 assert.match(output, /Protocol Product Engineer/);
 assert.match(output, /Current focus/);
 assert.match(output, /Primary contribution ability/);
-assert.match(output, /Domain expertise/);
+assert.match(output, /Companies this User Would Move the Needle At/);
 assert.doesNotMatch(output, /Best task types/);
 assert.doesNotMatch(output, /Caveats/);
 

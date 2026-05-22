@@ -47,7 +47,7 @@ The generated profile source packet contains:
 
 The packet is private and visible only in the Memory page. It is stored for audit so users can see exactly what was sent to the model.
 
-The generated profile answers three questions only: current focus, primary contribution ability, and domain expertise. It does not generate "best task types", avoidance lists, routing reasons, or caveats. The routing layer can use the report as context, but the user-facing text should read like a diagnostic understanding of the member rather than a task assignment policy.
+The generated profile answers three questions only: current focus, primary contribution ability, and "Companies this User Would Move the Needle At." It does not generate "best task types", avoidance lists, routing reasons, or caveats. The routing layer can use the report as context, but the user-facing text should read like a diagnostic understanding of the member rather than a task assignment policy.
 
 ## Data Model
 

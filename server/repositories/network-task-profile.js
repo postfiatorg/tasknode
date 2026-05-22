@@ -227,7 +227,9 @@ export function formatNetworkTaskProfileOutput(output = {}) {
     "",
     currentFocus.length ? ["Current focus:", ...currentFocus.map((item) => `- ${item}`)].join("\n") : "",
     contribution.length ? ["Primary contribution ability:", ...contribution.map((item) => `- ${item}`)].join("\n") : "",
-    domain.length ? ["Domain expertise:", ...domain.map((item) => `- ${item}`)].join("\n") : "",
+    domain.length
+      ? ["Companies this User Would Move the Needle At:", ...domain.map((item) => `- ${item}`)].join("\n")
+      : "",
   ].filter(Boolean).join("\n\n");
 }
 

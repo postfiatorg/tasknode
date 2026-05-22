@@ -236,7 +236,7 @@ The Network Diagnostic Report card should include:
 - title;
 - current focus bullets;
 - primary contribution ability bullets;
-- domain expertise bullets linked to 5 to 10 public companies;
+- "Companies this User Would Move the Needle At" bullets linked to 5 to 10 public companies;
 - Network Context Inputs in a readable live evidence panel;
 - generated timestamp;
 - `View source packet`;
@@ -256,7 +256,7 @@ Prompt intent:
 You create a user-visible Network Task Profile diagnostic report from a Task Node source packet.
 This profile is used as context for allocating future network tasks.
 Write plainly. Do not use jargon, corporate filler, or vague praise.
-Explain the user's current focus, primary contribution ability, and domain expertise.
+Explain the user's current focus, primary contribution ability, and companies where this user would move the needle.
 Do not add task recommendations, avoidance lists, routing reasons, or caveats.
 Return only the requested JSON.
 ```
