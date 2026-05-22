@@ -302,13 +302,14 @@ function TaskLifecycleActionPanel({
       : "Unlock the local seed vault to sign this task update. The seed stays in this browser.";
   const stopDisabled = loading || state.pending;
   const acceptDisabled = stopDisabled;
-  const stopCopy = vaultUnlocked ? actionLabel : `Unlock to ${actionLabel.toLowerCase()}`;
+  const stopCopy = vaultUnlocked ? actionLabel : "Unlock wallet";
   const acceptCopy = vaultUnlocked ? "Accept task" : "Unlock wallet";
   const title = actions.canAccept ? "Accept or refuse task" : actionLabel;
   const resultAction = state.resultAction ? `${state.resultAction}: ` : "";
   const pendingAction = state.pendingAction || "";
   const stopPending = state.pending && pendingAction !== "accept";
   const acceptPending = state.pending && pendingAction === "accept";
+  const showStopButton = Boolean(actions.canStop && (vaultUnlocked || !actions.canAccept));
   const reasonLabel = actions.canAccept ? "Refusal note" : "Reason";
   const reasonPlaceholder = actions.canAccept
     ? "Optional note if you refuse this task."
@@ -371,7 +372,7 @@ function TaskLifecycleActionPanel({
             <ArrowRight size={14} strokeWidth={2} />
           </button>
         )}
-        {actions.canStop && (
+        {showStopButton && (
           <button
             className="light-pill"
             disabled={stopDisabled}
