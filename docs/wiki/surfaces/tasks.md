@@ -126,7 +126,11 @@ After submission, the server does a best-effort wallet sync and reducer pass so 
 
 ## Evidence And Review
 
-The Submit tab has one primary button: `Submit evidence`. A user can include one or two artifacts in the same signed packet, which covers common verification asks such as text plus screenshot or code plus terminal output. The second artifact is opt-in through `Add evidence`; new tasks and new submission phases start with one empty artifact so stale draft fields do not carry from initial submission into verification response. The flow does not create a local-only evidence packet. The browser route is:
+The Submit tab has one primary button when the current task state accepts evidence: `Submit evidence`. If the task is already `Submitted`, `Awaiting review`, `Rewarded`, or otherwise closed to evidence, the Submit tab shows a read-only state card instead of the evidence form. This prevents the user from seeing an old task prompt while the authority is reviewing an indexed submission.
+
+A user can include one or two artifacts in the same signed packet, which covers common verification asks such as text plus screenshot or code plus terminal output. The second artifact is opt-in through `Add evidence`; new tasks and new submission phases start with one empty artifact so stale draft fields do not carry from initial submission into verification response. Empty optional artifact drafts are ignored rather than blocking submission, so a user does not have to remove an accidental second evidence slot before submitting the filled artifact.
+
+Screenshot and file uploads use a Task Node styled picker, not the native browser `Choose File` control. The browser route is:
 
 1. For screenshot evidence, the browser reads the selected image and calls `POST /api/tasks/submission` with `phase: process_evidence`.
 2. The server uses `prompts/task_engine/evidence_screenshot_read_v1.md` with OpenAI vision to extract visible proof text. The raw screenshot bytes are not placed in the final PFTL evidence payload.

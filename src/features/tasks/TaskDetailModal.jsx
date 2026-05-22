@@ -245,6 +245,43 @@ function evidenceFileForDraft(draft = {}) {
   return draft.method === "screenshot" ? draft.screenshotFile : draft.method === "file" ? draft.file : null;
 }
 
+function submitClosedCopy(task = {}) {
+  const status = normalizeTaskStatus(task.statusKey || task.status);
+  if (status === "submitted") {
+    return {
+      title: "Evidence submitted",
+      body: "Your initial evidence is indexed. The task authority is reviewing it and may request follow-up verification.",
+      detail: "No evidence action is needed right now.",
+    };
+  }
+  if (status === "verification_response_submitted") {
+    return {
+      title: "Awaiting review",
+      body: "Your verification response is indexed. The task authority is reviewing it for a reward decision.",
+      detail: "No evidence action is needed right now.",
+    };
+  }
+  if (status === "reward_decided") {
+    return {
+      title: "Reward decision indexed",
+      body: "The authority decision is indexed. The projection will settle after the reward state is fully reduced.",
+      detail: "No evidence action is available for this state.",
+    };
+  }
+  if (taskIsTerminal(status)) {
+    return {
+      title: "Submission closed",
+      body: "This task is closed and is no longer accepting evidence.",
+      detail: "Review the Overview or Forensics tabs for the final state.",
+    };
+  }
+  return {
+    title: "Submission unavailable",
+    body: "This task state is not accepting evidence right now.",
+    detail: "The task may still be indexing or waiting for the next authority action.",
+  };
+}
+
 function TaskLifecycleActionPanel({
   actions,
   loading,
@@ -373,6 +410,7 @@ function TaskSubmitPanel({
   const actions = detail?.actions || {};
   const verificationRequest = detail?.currentVerificationRequest || null;
   const submissionOpen = Boolean(actions.canSubmitInitialEvidence || actions.canSubmitVerificationEvidence);
+  const closedCopy = submitClosedCopy(task);
   const submissionModeKey = actions.canSubmitVerificationEvidence
     ? `verification:${verificationRequest?.eventId || verificationRequest?.body || taskId}`
     : actions.canSubmitInitialEvidence
@@ -389,11 +427,11 @@ function TaskSubmitPanel({
   }));
   const readyEvidenceItems = evidenceItems.filter((item) => item.value.trim());
   const canPrepareEvidence = Boolean(
-    readyEvidenceItems.length === evidenceDrafts.length &&
-      evidenceDrafts.length > 0 &&
+    readyEvidenceItems.length > 0 &&
       !loading &&
       !state.pending &&
       signingEnabled &&
+      submissionOpen &&
       confirmed
   );
   const helperText = signingEnabled
@@ -496,7 +534,7 @@ function TaskSubmitPanel({
         accountId,
         detail,
         linkedWalletAddress,
-        method: evidenceItems[0]?.method || "text",
+        method: readyEvidenceItems[0]?.method || "text",
         notes,
         onProgress: (label) => {
           setState((current) => ({
@@ -508,10 +546,10 @@ function TaskSubmitPanel({
           }));
         },
         task,
-        value: evidenceItems[0]?.value || "",
-        evidenceItems,
+        value: readyEvidenceItems[0]?.value || "",
+        evidenceItems: readyEvidenceItems,
         walletSecret,
-        file: evidenceItems[0]?.file || null,
+        file: readyEvidenceItems[0]?.file || null,
       });
       setState({
         error: "",
@@ -537,15 +575,24 @@ function TaskSubmitPanel({
     <div className="task-submit-panel">
       <div className="task-submit-head">
         <div>
-          <h3>{actions.canSubmitVerificationEvidence ? "Submit verification evidence" : "Submit task evidence"}</h3>
+          <h3>
+            {submissionOpen
+              ? actions.canSubmitVerificationEvidence
+                ? "Submit verification evidence"
+                : "Submit task evidence"
+              : closedCopy.title}
+          </h3>
           <p>
-            {actions.canSubmitVerificationEvidence
-              ? verificationRequest?.body || "Respond to the indexed verification request."
-              : verification.body || "Submit evidence that satisfies this task."}
+            {submissionOpen
+              ? actions.canSubmitVerificationEvidence
+                ? verificationRequest?.body || "Respond to the indexed verification request."
+                : verification.body || "Submit evidence that satisfies this task."
+              : closedCopy.body}
           </p>
           {actions.canSubmitVerificationEvidence && verificationRequest?.reason && (
             <small>{verificationRequest.reason}</small>
           )}
+          {!submissionOpen && <small>{closedCopy.detail}</small>}
         </div>
         <span className={submissionOpen ? "task-submit-state is-open" : "task-submit-state"}>
           {submissionOpen ? "Open" : task.status}
@@ -564,6 +611,8 @@ function TaskSubmitPanel({
         </div>
       )}
 
+      {submissionOpen && (
+        <>
       <div className="task-evidence-list">
         {evidenceDrafts.map((draft, index) => (
           <div className="task-evidence-card" key={draft.id}>
@@ -621,8 +670,8 @@ function TaskSubmitPanel({
             {draft.method === "screenshot" && (
               <div className="task-file-drop">
                 <Eye size={18} strokeWidth={1.75} />
-                <label>
-                  Screenshot file
+                <label className="task-file-picker">
+                  <span>Choose screenshot</span>
                   <input
                     accept="image/*"
                     onChange={(event) => updateEvidenceFile(draft.id, "screenshot", "screenshotFile", event.target.files?.[0] || null)}
@@ -661,8 +710,8 @@ function TaskSubmitPanel({
             {draft.method === "file" && (
               <div className="task-file-drop">
                 <Paperclip size={18} strokeWidth={1.75} />
-                <label>
-                  Evidence file
+                <label className="task-file-picker">
+                  <span>Choose file</span>
                   <input
                     onChange={(event) => updateEvidenceFile(draft.id, "fileName", "file", event.target.files?.[0] || null)}
                     type="file"
@@ -722,6 +771,8 @@ function TaskSubmitPanel({
         <AlertTriangle size={15} strokeWidth={1.8} />
         <span>{helperText}</span>
       </div>
+        </>
+      )}
     </div>
   );
 }

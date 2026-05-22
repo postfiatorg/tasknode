@@ -706,6 +706,36 @@
   background: #fbfaf7;
 }
 
+.task-file-drop .task-file-picker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #dedbd2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0d0d0d;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.task-file-drop .task-file-picker:hover {
+  border-color: #d1cdc2;
+  background: #f8f7f2;
+}
+
+.task-file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .task-file-drop span {
   grid-column: 2 / 3;
   overflow: hidden;
@@ -713,6 +743,13 @@
   font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.task-file-drop .task-file-picker span {
+  grid-column: auto;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
 }
 
 .task-evidence-processed {
