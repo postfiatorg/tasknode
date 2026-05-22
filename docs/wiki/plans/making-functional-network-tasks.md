@@ -45,7 +45,8 @@ Fields:
 - `objective`
 - `status`: `active`, `paused`, `completed`, or `archived`.
 - `priority`: integer or enum used for Hive ordering.
-- `created_by_account_id`
+- `origin`: `system_generated`, `system_migration`, or `system_backfill`.
+- `source_snapshot_id`: the network snapshot or generation job that created or last materially reshaped the project.
 - `created_at`
 - `updated_at`
 
@@ -63,7 +64,7 @@ Fields:
 - `reward_offer_pft_snapshot`
 - `reward_paid_pft_snapshot`
 - `linked_at`
-- `source`: `task_request`, `manual_link`, `migration`, or `worker`
+- `source`: `system_generated`, `task_request`, `migration`, or `system_backfill`
 
 The authoritative task state still comes from PFTL task events and `task_projections`. This table is a relationship layer, not a second task state machine.
 
@@ -111,7 +112,8 @@ Fields:
 
 - `id`
 - `project_id`
-- `requested_by_account_id`
+- `system_run_id`
+- `trigger`: `network_snapshot`, `project_gap`, `allocation_retry`, or `task_state_change`
 - `source_payload_digest`
 - `provider`
 - `model`
@@ -216,22 +218,25 @@ The report should explain why a user can do a network task. The task system stil
 
 The expected flow is:
 
-1. A maintainer or worker creates an active `network_project`.
-2. The project has an objective and project type.
-3. The task generation worker builds a source packet:
+1. The system evaluates network state and identifies a project-level need.
+2. The system creates a new active `network_project` or selects an existing active project that matches the need.
+3. The project has an objective and one of the fixed project types.
+4. The task generation worker builds a source packet:
    - project title, type, objective, and current status;
    - recent task refs already attached to the project;
-   - network need or maintainer note;
+   - the system-detected network need;
    - candidate Network Diagnostic Reports;
    - current task engine reward and evidence policy.
-4. The AI system generates a concrete task proposal for a selected account.
-5. The app publishes a PFTL task request/offer carrying project metadata.
-6. The cache/reducer indexes the task into `task_projections`.
-7. `network_project_task_refs` links the task to the project.
-8. The user's Tasks page shows a proposed Network Task.
-9. If accepted, it becomes outstanding. If refused or expired, allocation status updates and the worker can reroute.
-10. Submission, verification, reward, zero-reward, or cancellation follows the existing task lifecycle.
-11. Hive updates project tasks, contributors, routed PFT, and activity from projections.
+5. The AI system generates a concrete Network Task proposal for a selected account.
+6. The app publishes a PFTL task request/offer carrying project metadata.
+7. The cache/reducer indexes the task into `task_projections`.
+8. `network_project_task_refs` links the task to the project.
+9. The user's Tasks page shows a proposed Network Task.
+10. If accepted, it becomes outstanding. If refused or expired, allocation status updates and the worker can reroute.
+11. Submission, verification, reward, zero-reward, or cancellation follows the existing task lifecycle.
+12. Hive updates project tasks, contributors, routed PFT, and activity from projections.
+
+A Network Task is created by the system. The Hive page can display the project and the resulting task, but it is not the authoring surface for manually creating Network Tasks.
 
 ## User-Facing Network Push
 
@@ -270,9 +275,10 @@ Initial endpoints:
 - `GET /api/hive/projects/:projectId`
 - `GET /api/hive/routing-feed`
 - `GET /api/hive/operators`
-- `POST /api/hive/projects/:projectId/generate-task` for operator/admin use only
 
 These endpoints should return read models shaped for the existing Hive UX, not raw database rows.
+
+Task generation should run through durable internal workers, not a public frontend route. A future operator control can inspect or pause system runs, but it should not manually author Network Tasks.
 
 ### Workers
 
