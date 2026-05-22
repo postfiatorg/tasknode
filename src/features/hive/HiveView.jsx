@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { Activity, ArrowLeft, ChevronRight } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Activity, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
+import { requestJson } from "../../api";
 import {
   operatorForWallet,
   operators,
@@ -25,6 +26,30 @@ export function HiveView() {
 }
 
 function HiveIndex({ onSelectProject }) {
+  const [hiveContext, setHiveContext] = useState(null);
+  const [hiveContextOpen, setHiveContextOpen] = useState(false);
+  const [hiveContextStatus, setHiveContextStatus] = useState("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    setHiveContextStatus("loading");
+    requestJson("/api/hive/context?limit=120")
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) throw new Error(result.body?.message || `Hive Context returned HTTP ${result.status}.`);
+        setHiveContext(result.body?.context || null);
+        setHiveContextStatus("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHiveContext(null);
+        setHiveContextStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="hive-shell">
       <header className="hive-header">
@@ -67,6 +92,15 @@ function HiveIndex({ onSelectProject }) {
               <AllottedOperatorRow key={wallet} wallet={wallet} last={index === list.length - 1} />
             ))}
         </div>
+      </Section>
+
+      <Section title="Hive Context" subtitle="User-submitted network context, grouped by contributor">
+        <HiveContextPanel
+          context={hiveContext}
+          expanded={hiveContextOpen}
+          onToggle={() => setHiveContextOpen((open) => !open)}
+          status={hiveContextStatus}
+        />
       </Section>
     </div>
   );
@@ -326,6 +360,72 @@ function ActivityRow({ entry, last = false }) {
       <time>{entry.time}</time>
     </div>
   );
+}
+
+function HiveContextPanel({ context, expanded, onToggle, status }) {
+  const groups = context?.groups || [];
+  const entryCount = Number(context?.entryCount || 0);
+  const userCount = Number(context?.userCount || groups.length || 0);
+  const hasEntries = entryCount > 0;
+  const statusText = status === "loading"
+    ? "Loading"
+    : status === "error"
+      ? "Could not load"
+      : hasEntries
+        ? `${entryCount} ${entryCount === 1 ? "entry" : "entries"} from ${userCount} ${userCount === 1 ? "user" : "users"}`
+        : "No Hive Input yet";
+
+  return (
+    <div className="hive-card hive-context-panel">
+      <button className="hive-context-toggle" onClick={onToggle} type="button">
+        <span>
+          <strong>Hive Context</strong>
+          <small>{statusText}</small>
+        </span>
+        <ChevronDown className={expanded ? "is-open" : ""} size={16} strokeWidth={1.8} />
+      </button>
+      {expanded && (
+        <div className="hive-context-body">
+          {!hasEntries && status !== "loading" && (
+            <p className="hive-context-empty">Use Hive Input from Chat to add network context.</p>
+          )}
+          {groups.map((group) => (
+            <section className="hive-context-user" key={group.accountId || group.displayName}>
+              <header>
+                <strong>{group.displayName || "Unknown user"}</strong>
+                <small>{group.entryCount} {group.entryCount === 1 ? "entry" : "entries"}</small>
+              </header>
+              <div className="hive-context-entries">
+                {(group.entries || []).map((entry) => (
+                  <article className="hive-context-entry" key={entry.id}>
+                    <p>{entry.body}</p>
+                    <footer>
+                      <time>{formatContextTime(entry.createdAt)}</time>
+                      {entry.sourceConversationTitle && <span>{entry.sourceConversationTitle}</span>}
+                    </footer>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatContextTime(value = "") {
+  if (!value) return "";
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return String(value);
+  }
 }
 
 function NftBadge({ variant = 0, size = 28 }) {

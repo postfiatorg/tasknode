@@ -192,6 +192,24 @@ Behavior:
 - show load and rough fit, not private memory;
 - clicking an operator later should route to public profile, not raw diagnostic internals.
 
+### Hive Context
+
+Hive Context is the first live input surface for the future system worker.
+
+Source:
+
+- `hive_context_entries`, written from Chat `+` menu `Hive Input` mode.
+
+Behavior:
+
+- store signed-in user inputs as a network context document;
+- group entries by user;
+- show only a collapsed summary on the Hive page by default;
+- expand on demand to read user entries;
+- keep this off-chain in v1.
+
+The system network state worker should later consume Hive Context as one source of network need, alongside task state, project state, and Network Diagnostic Reports.
+
 ## Network Diagnostic Report Usage
 
 The Network Diagnostic Report is the eligibility and routing input. It is not the final task assignment by itself.
@@ -223,6 +241,7 @@ The expected flow is:
 3. The project has an objective and one of the fixed project types.
 4. The task generation worker builds a source packet:
    - project title, type, objective, and current status;
+   - relevant Hive Context entries;
    - recent task refs already attached to the project;
    - the system-detected network need;
    - candidate Network Diagnostic Reports;

@@ -140,6 +140,8 @@ const CHAT_SCROLL_BOTTOM_THRESHOLD = 96;
 const TASK_REQUEST_CANONICAL_TEXT =
   "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.";
 const TASK_REQUEST_PLACEHOLDER = "Add any relevant details for your task request";
+const HIVE_INPUT_MODE = "hive_input";
+const HIVE_INPUT_PLACEHOLDER = "Add context for Hive";
 const CHAT_ATTACHMENT_ACCEPT = [
   "image/png",
   "image/jpeg",
@@ -1216,6 +1218,7 @@ function ChatSurface({
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [taskRequestMode, setTaskRequestMode] = useState(false);
   const [contextEditMode, setContextEditMode] = useState(false);
+  const [hiveInputMode, setHiveInputMode] = useState(false);
   const [contextEditSavingId, setContextEditSavingId] = useState("");
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
@@ -1280,6 +1283,7 @@ function ChatSurface({
     setAttachments([]);
     setTaskRequestMode(false);
     setContextEditMode(false);
+    setHiveInputMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -1294,6 +1298,7 @@ function ChatSurface({
     clearedChatRef.current = false;
     setTaskRequestMode(false);
     setContextEditMode(false);
+    setHiveInputMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -1405,12 +1410,15 @@ function ChatSurface({
     const startedAt = Date.now();
     const requestedConversationId = activeChat?.conversationId || activeChat?.id || draftConversationId;
     const isTaskRequest = taskRequestMode;
-    const isContextEdit = contextEditMode && !isTaskRequest;
+    const isContextEdit = contextEditMode && !isTaskRequest && !hiveInputMode;
+    const isHiveInput = hiveInputMode && !isTaskRequest && !isContextEdit;
     const requestId = isTaskRequest ? newClientCorrelationId("req") : "";
     const bundleId = isTaskRequest ? newClientCorrelationId("bundle") : "";
     const taskRequestMessageId = requestId ? `msg_${requestId}_request_user`.slice(0, 180) : "";
     const taskRequestAssistantId = requestId ? `msg_${requestId}_request_assistant`.slice(0, 180) : "";
-    const pendingId = taskRequestAssistantId || `assistant-pending-${startedAt}`;
+    const hiveInputMessageId = isHiveInput ? `msg_${newClientCorrelationId("hive")}_user`.slice(0, 180) : "";
+    const hiveInputAssistantId = isHiveInput ? `${hiveInputMessageId}_assistant`.slice(0, 180) : "";
+    const pendingId = taskRequestAssistantId || hiveInputAssistantId || `assistant-pending-${startedAt}`;
     const submittedAttachments = attachments;
     const fallbackPrompt = promptForAttachments(submittedAttachments);
     const submittedText = message || fallbackPrompt;
@@ -1431,7 +1439,15 @@ function ChatSurface({
         }
       : undefined;
     const contextEditMetadata = isContextEdit ? { kind: CONTEXT_EDIT_MODE } : undefined;
-    const turnMetadata = taskRequestMetadata || contextEditMetadata;
+    const hiveInputMetadata = isHiveInput
+      ? {
+          kind: HIVE_INPUT_MODE,
+          source: "user_chat",
+          conversationId: requestedConversationId,
+          sourceConversationTitle: activeChat?.title || titleFromTurns(turns) || "New chat",
+        }
+      : undefined;
+    const turnMetadata = taskRequestMetadata || contextEditMetadata || hiveInputMetadata;
 
     if (isTaskRequest && !walletReady) {
       if (["unlock", "open_wallet"].includes(taskRequestUnlockPolicy.action)) onWalletUnlock?.();
@@ -1448,9 +1464,9 @@ function ChatSurface({
     setAttachments([]);
     setTurns((current) => [
       ...current,
-      createUserTurn(
+        createUserTurn(
         submittedText,
-        taskRequestMessageId || `user-local-${startedAt}`,
+        taskRequestMessageId || hiveInputMessageId || `user-local-${startedAt}`,
         submittedAttachments,
         turnMetadata
       ),
@@ -1461,7 +1477,7 @@ function ChatSurface({
         id: requestedConversationId,
         conversationId: requestedConversationId,
         source: "live",
-        title: isTaskRequest ? "Task request" : chatTitleFromPrompt(message),
+        title: isTaskRequest ? "Task request" : isHiveInput ? "Hive input" : chatTitleFromPrompt(message),
       });
     }
 
@@ -1507,6 +1523,40 @@ function ChatSurface({
           conversationId: requestedConversationId,
           source: "live",
           title: activeChat?.title || "Task request",
+        });
+        await onChatSettled?.();
+        return;
+      }
+
+      if (isHiveInput) {
+        const result = await requestJson("/api/hive/context", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            body: submittedText,
+            conversationId: requestedConversationId,
+            conversationTitle: activeChat?.title || titleFromTurns(turns) || "New chat",
+            attachments: serializeChatAttachments(submittedAttachments),
+            userMessageId: hiveInputMessageId,
+            assistantMessageId: hiveInputAssistantId,
+          }),
+        });
+
+        if (!result.ok || !result.body?.entry) {
+          throw new Error(result.body?.message || `Hive Context returned HTTP ${result.status}.`);
+        }
+
+        const assistantTurn = normalizeChatMessage(result.body.assistant, pendingId);
+        setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
+        setHiveInputMode(false);
+        setSendMessage(result.body.message || "Hive input saved.");
+        setStatusTone("muted");
+        setDraftConversationId(result.body?.assistant?.conversationId || requestedConversationId);
+        onActiveChatChange?.({
+          id: requestedConversationId,
+          conversationId: requestedConversationId,
+          source: "live",
+          title: activeChat?.title || "Hive input",
         });
         await onChatSettled?.();
         return;
@@ -1591,7 +1641,7 @@ function ChatSurface({
           createErrorAssistantTurn(pendingId, failureMessage, startedAt)
         )
       );
-      if (isTaskRequest || isContextEdit) {
+      if (isTaskRequest || isContextEdit || isHiveInput) {
         setInput(message);
         setAttachments(submittedAttachments);
       }
@@ -1755,6 +1805,7 @@ function ChatSurface({
 
   function handleContextEditRevise(proposal) {
     setContextEditMode(true);
+    setHiveInputMode(false);
     setInput(`Revise this context edit: ${proposal?.rationale || ""}`.trim());
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -1774,13 +1825,22 @@ function ChatSurface({
     ? TASK_REQUEST_PLACEHOLDER
     : contextEditMode
       ? CONTEXT_EDIT_PLACEHOLDER
-      : "Ask anything";
+      : hiveInputMode
+        ? HIVE_INPUT_PLACEHOLDER
+        : "Ask anything";
   const composerClassName = [
     "composer",
     composerDragActive ? "is-drag-active" : "",
     taskRequestMode ? "is-task-request" : "",
     contextEditMode ? "is-context-edit" : "",
+    hiveInputMode ? "is-hive-input" : "",
   ].filter(Boolean).join(" ");
+  const modelPickerDisabled = contextEditMode || hiveInputMode;
+  const modelPickerLabel = contextEditMode
+    ? "Thinking carefully"
+    : hiveInputMode
+      ? "Saving to Hive"
+      : formatModeLabel(selectedMode);
   const composer = (
     <div className="composer-shell">
       <input
@@ -1811,6 +1871,15 @@ function ChatSurface({
             <Wand2 size={13} strokeWidth={1.9} />
             <span>Context Refine</span>
             <button aria-label="Exit Context Refine" onClick={() => setContextEditMode(false)} type="button">
+              <X size={12} strokeWidth={2} />
+            </button>
+          </div>
+        )}
+        {hiveInputMode && (
+          <div className="composer-mode-chip">
+            <Network size={13} strokeWidth={1.9} />
+            <span>Hive Input</span>
+            <button aria-label="Exit Hive Input" onClick={() => setHiveInputMode(false)} type="button">
               <X size={12} strokeWidth={2} />
             </button>
           </div>
@@ -1846,6 +1915,7 @@ function ChatSurface({
                     setPlusMenuOpen(false);
                     setTaskRequestMode(false);
                     setContextEditMode(true);
+                    setHiveInputMode(false);
                     setSendMessage("");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1858,6 +1928,20 @@ function ChatSurface({
                     setPlusMenuOpen(false);
                     setTaskRequestMode(true);
                     setContextEditMode(false);
+                    setHiveInputMode(false);
+                    setSendMessage("");
+                    setStatusTone("muted");
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                  }}
+                />
+                <ToolMenuRow
+                  icon={Network}
+                  label="Hive Input"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    setTaskRequestMode(false);
+                    setContextEditMode(false);
+                    setHiveInputMode(true);
                     setSendMessage("");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1892,18 +1976,18 @@ function ChatSurface({
             <div className="model-picker" ref={modelRef}>
               <button
                 className="model-button"
-                disabled={contextEditMode}
+                disabled={modelPickerDisabled}
                 onClick={() => {
-                  if (contextEditMode) return;
+                  if (modelPickerDisabled) return;
                   setPlusMenuOpen(false);
                   setModelMenuOpen((open) => !open);
                 }}
                 type="button"
               >
-                {contextEditMode ? "Thinking carefully" : formatModeLabel(selectedMode)}
+                {modelPickerLabel}
                 <ChevronDown className={modelMenuOpen ? "is-open" : ""} size={14} strokeWidth={1.75} />
               </button>
-              {modelMenuOpen && !contextEditMode && (
+              {modelMenuOpen && !modelPickerDisabled && (
                 <div className="model-menu">
                   <ModelGroup label="Private" />
                   {modes

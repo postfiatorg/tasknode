@@ -47,6 +47,7 @@ import { startTaskReviewWorker } from "./task-review-worker.js";
 import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
 import { handleMemoryRoute } from "./memory-routes.js";
+import { handleHiveRoute } from "./hive-routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -625,6 +626,8 @@ async function routeApi(req, url, res) {
   if (await handleMemoryRoute({ json, req, res, session, url })) return true;
 
   if (await handleProfileRoute({ getState, json, readJson, req, res, session, url })) return true;
+
+  if (await handleHiveRoute({ json, readJson, req, res, session, url })) return true;
 
   if (url.pathname === "/api/chat/stream") {
     const payload = req.method === "POST" ? await readJson(req, 8 * 1024 * 1024) : {};

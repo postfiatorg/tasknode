@@ -1402,6 +1402,12 @@ h1 {
   box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.04);
 }
 
+.composer.is-hive-input {
+  border-color: #b8b4aa;
+  background: #fffdf8;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.04);
+}
+
 .composer-mode-chip {
   display: inline-flex;
   align-items: center;
