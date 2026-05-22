@@ -256,11 +256,15 @@ The product document should answer:
 - who is working on it and why;
 - what is blocked or unclear.
 
+This action owns the agent-managed Project Status blob shown inside a Hive project About section. The static project description stays in `network_projects.about`; the changing execution briefing belongs in a versioned product document row so the agent can update status without overwriting project identity.
+
 Planned model:
 
 - OpenRouter `deepseek/deepseek-v4-pro`
 - ZDR-capable provider
 - prompt file `prompts/hive/hive_project_product_doc_v1.md`
+
+Detailed implementation plan: `docs/wiki/plans/agent-managed-about-panels.md`.
 
 ### `assign_contributor`
 

@@ -102,6 +102,8 @@ The next planned layer is a project-linked Product Document. Each project card s
 
 That Product Document is planned to be generated per project by OpenRouter `deepseek/deepseek-v4-pro` using a ZDR-capable provider. It is not implemented yet. Until that worker exists, Hive only shows the current project row fields and Secretary report, not a generated Product Document.
 
+The Product Document should appear as a `Project Status` section inside About. The static `network_projects.about` text explains what the project is. The generated Project Status explains the current execution picture, key points, blockers, and next actions. The detailed plan lives in `docs/wiki/plans/agent-managed-about-panels.md`.
+
 Current endpoint:
 
 - `GET /api/hive/projects` returns active network projects, project task rows, contributor rollups, activity rows, and the latest Hive Secretary input reference.

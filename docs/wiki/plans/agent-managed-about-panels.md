@@ -1,0 +1,205 @@
+# Agent-Managed About Panels
+
+Status: scoped, not implemented
+
+This plan defines how the Board Manager should update readable About panels across Task Node surfaces, starting with Hive project detail pages.
+
+The immediate target is the Hive project About section. A project card such as `Capital Deployment Protocol` should not only show static seed text. It should have a current, agent-maintained project status document that explains what the project is, why it matters, what is happening now, what is blocked, and what execution points matter next.
+
+## Product Goal
+
+An About panel should make a complex project understandable without asking the user to read raw Hive Secretary reports, Board Manager actions, task pointers, or database state.
+
+For a Hive project, the About panel should answer:
+
+- What is this project?
+- Why does it matter to the network?
+- What is the current execution status?
+- What are the key points relevant to moving it forward?
+- What is blocked or unclear?
+- What should the Board Manager or contributors pay attention to next?
+
+This is not a marketing page. It is an operational briefing for people and agents.
+
+## Example Target Shape
+
+On a Hive project detail page:
+
+```text
+01
+About
+What this project is
+
+[Static project description from network_projects.about]
+
+Project Status
+[Agent-maintained current status blob]
+
+Key execution points
+- ...
+- ...
+- ...
+
+Blocked or unclear
+- ...
+
+Last updated by Board Manager
+May 22, 2026
+```
+
+For the example `Capital Deployment Protocol`, the static row can say:
+
+```text
+The Capital Deployment Protocol is the alpha-generation workstream for turning network activity into market opportunity routing. It exists because the report says Task Node should support alternative-data discovery and routing.
+```
+
+The agent-managed Project Status should be allowed to say things like:
+
+```text
+The project is currently in opportunity-routing map phase. The important execution question is how validated Task Node outputs become credible market signals, and what evidence is required before a signal can influence capital deployment. The next useful work is to define routing criteria, evidence thresholds, and the relationship between contributor tasks and deployable alpha.
+```
+
+That blob should be editable only by the Board Manager or an operator action hook, not manually by the frontend.
+
+## Data Boundary
+
+Do not overload `network_projects.about` with frequently changing status text.
+
+Recommended table:
+
+`network_project_product_docs`
+
+Fields:
+
+- `id`
+- `project_id`
+- `status`: `current`, `superseded`, or `archived`
+- `title`
+- `summary`
+- `project_status`
+- `key_points_json`
+- `blocked_or_unclear_json`
+- `next_actions_json`
+- `source_packet_digest`
+- `source_refs_json`
+- `board_manager_run_id`
+- `provider`
+- `model`
+- `prompt_version`
+- `output_json`
+- `created_at`
+- `superseded_at`
+
+The table is a Postgres read/write planning artifact. It is not canonical task protocol state. It can be regenerated from project rows, Hive Context, Hive Secretary reports, project-linked task projections, contributor state, and Board Manager run history.
+
+## Board Manager Action
+
+Use the existing planned action:
+
+`refresh_project_document`
+
+The action should target a specific `network_project.id`.
+
+Input packet:
+
+- project row: title, type, phase, summary, objective, static about text, targets
+- latest Hive Secretary report
+- relevant Hive Context entries
+- current project-linked tasks when available
+- contributor rollups when available
+- recent Board Manager actions for the project
+- existing current product document, if any
+
+Output:
+
+- one current project product document
+- source references sufficient for audit
+- concise reason for why the document changed
+
+The Board Manager should choose this action when:
+
+- a project has no product document;
+- the project phase changed;
+- new validated Hive Context materially changes the project;
+- project-linked task state changes the operational status;
+- contributors or blockers changed;
+- the current document is stale.
+
+It should not refresh just because someone opened the Hive page.
+
+## Model And Prompt
+
+Recommended provider for the document writer:
+
+- OpenRouter `deepseek/deepseek-v4-pro`
+- ZDR-capable provider only
+- prompt file: `prompts/hive/hive_project_product_doc_v1.md`
+
+The prompt should require plain English and avoid jargon. It should not invent task state or contributor work. If status is unclear, it should say what information is missing and recommend information-gathering tasks or user follow-up.
+
+Expected structured output:
+
+```json
+{
+  "title": "",
+  "summary": "",
+  "project_status": "",
+  "key_points": [],
+  "blocked_or_unclear": [],
+  "next_actions": []
+}
+```
+
+## UI Rules
+
+The Hive project detail About section should show:
+
+1. Static project description from `network_projects.about`.
+2. Agent-managed `Project Status` from `network_project_product_docs.current`.
+3. Key execution points.
+4. Blockers or unknowns when present.
+5. Last updated timestamp and model/prompt metadata in a subtle audit line.
+
+If no product document exists:
+
+- show the static project description;
+- show a restrained empty state: `Project status has not been generated yet.`;
+- do not show filler copy.
+
+The Project Status blob should be expandable if it becomes long, but the first two or three lines should be visible by default.
+
+## Generalization Beyond Hive
+
+The same pattern can later power About panels for other surfaces:
+
+- Tasks: task explanation and current review status;
+- Profile: profile trust explanation;
+- Memory: what the memory packet is doing;
+- Context: how the current context document is used;
+- Wallet: custody and balance explanation;
+- Hive: project and network coordination status.
+
+Do not create a generic cross-page table first. Start with Hive project documents because the data model and Board Manager action are already scoped there. Generalize only after the Hive project document path works.
+
+## Implementation Steps
+
+1. Add `network_project_product_docs` migration.
+2. Add repository functions to read current product docs by project id and insert a new current version while superseding the old one.
+3. Add `prompts/hive/hive_project_product_doc_v1.md`.
+4. Add a worker/helper that calls DeepSeek V4 Pro through the existing OpenRouter ZDR provider path.
+5. Implement Board Manager `refresh_project_document` action hook.
+6. Add product docs to the Board Manager source packet.
+7. Update `GET /api/hive/projects` to include current project product doc per project.
+8. Render Project Status inside the Hive project About section.
+9. Add smoke tests for repository versioning, prompt output shape, and API rendering.
+
+## Done Criteria
+
+This milestone is done when:
+
+- a project with no product document shows a clean empty Project Status state;
+- Board Manager can refresh one project document through `refresh_project_document`;
+- the Hive project page shows the generated Project Status and key points;
+- the document can be regenerated without duplicating current rows;
+- docs and prompt list show the prompt and code surfaces;
+- tests prove the old static `about` field and the new current product document do not overwrite each other.

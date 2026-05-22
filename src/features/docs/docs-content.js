@@ -20,6 +20,7 @@ import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
+import agentManagedAboutPanels from "../../../docs/wiki/plans/agent-managed-about-panels.md?raw";
 import boardManager from "../../../docs/wiki/plans/board-manager.md?raw";
 import codeReviewBurndown from "../../../docs/wiki/plans/code-review-burndown.md?raw";
 import contextEditChatMode from "../../../docs/wiki/plans/context-edit-chat-mode.md?raw";
@@ -493,6 +494,12 @@ export const DOC_GROUPS = [
   {
     title: "Plans",
     pages: [
+      {
+        slug: "agent-managed-about-panels",
+        title: "Agent-Managed About Panels",
+        summary: "Plan for Board Manager-updated project status and About documents, starting with Hive project detail pages.",
+        markdown: agentManagedAboutPanels,
+      },
       {
         slug: "board-manager",
         title: "Board Manager",
