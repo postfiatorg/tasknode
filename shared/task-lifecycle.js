@@ -66,6 +66,8 @@ const taskStatusDefinitions = Object.freeze({
     canCancel: true,
     canStop: true,
     canSubmitVerificationEvidence: true,
+    requiresRefresh: true,
+    reviewLoop: true,
     stopAction: "cancel",
     stopLabel: "Cancel task",
     stopTransition: "cancelled",
