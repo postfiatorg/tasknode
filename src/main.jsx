@@ -103,6 +103,7 @@ import {
 } from "./features/context/context-view-utils.jsx";
 import { PostFiatLogo, SidebarButton, ToolMenuRow } from "./features/shell/ShellControls";
 import { TaskDetailModal } from "./features/tasks/TaskDetailModal.jsx";
+import { TaskCopyModal } from "./features/tasks/TaskCopyModal.jsx";
 import { TaskRequestModal } from "./features/tasks/TaskRequestModal.jsx";
 import { activeTaskRequests, TaskRequestQueue } from "./features/tasks/TaskRequestQueue.jsx";
 import { TaskRow } from "./features/tasks/TaskRow.jsx";
@@ -2447,6 +2448,7 @@ function TasksView({
   walletVault = {},
 }) {
   const [tasksTab, setTasksTab] = useState("outstanding");
+  const [copyTask, setCopyTask] = useState(null);
   const [taskRequestOpen, setTaskRequestOpen] = useState(false);
   const didAutoSelectTaskTabRef = useRef(false);
   const outstanding = taskArray(tasks.outstanding);
@@ -2567,6 +2569,7 @@ function TasksView({
               <TaskRow
                 isFirst={index === 0}
                 key={task.taskId || task.fullId || task.id}
+                onCopy={() => setCopyTask(task)}
                 onClick={() => onSelectTask(task)}
                 task={task}
               />
@@ -2589,6 +2592,12 @@ function TasksView({
             walletSecret={walletSecret}
             walletUnlockPending={walletUnlockPending}
             walletVault={walletVault}
+          />
+        )}
+        {copyTask && (
+          <TaskCopyModal
+            onClose={() => setCopyTask(null)}
+            task={copyTask}
           />
         )}
       </div>

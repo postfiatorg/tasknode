@@ -62,6 +62,20 @@ Clicking a task opens a full-screen task detail surface with three tabs:
 | Submit | One signed evidence path containing up to two evidence artifacts. The browser encrypts the evidence locally, pins it to IPFS, and signs a PFTL `TASK_SUBMISSION` pointer from the linked wallet. |
 | Forensics | Chain audit view: pointer transactions, CIDs, decrypted payload fields, raw payload, and replay integrity. |
 
+## Copy Task Flow
+
+Each visible task card has an explicit copy icon beside the reward. The icon uses the same quiet copy treatment as chat message actions: a small `Copy` glyph, no heavy button chrome, and clear copied acknowledgement after an action.
+
+Clicking the copy icon does not open the task detail page. It opens a compact `Copy task` modal with three deterministic choices:
+
+| Copy action | Output |
+| --- | --- |
+| Copy title | The task title only. |
+| Copy summary | Title, task ID, status, reward, deadline, and short description. |
+| Copy full task | A readable task payload with task ID, request ID when available, kind, status, reward, deadline, description, numbered steps, and verification requirement. |
+
+The copied text is intentionally plain text so it can be pasted into chat, Codex, external agents, notes, GitHub issues, or another task workflow. The modal shows a preview of the full task payload before copying. After a copy action, the selected row changes to `Copied` and the modal shows a short acknowledgement. The formatting is produced by `src/features/tasks/task-copy-format.js`, with regression coverage in `scripts/task-copy-payload-smoke.mjs` across accepted and rewarded task examples.
+
 ## Current Task Detail Behavior
 
 The detail header always shows:

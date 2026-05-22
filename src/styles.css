@@ -2490,6 +2490,20 @@ h1 {
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04);
 }
 
+.task-entry-open {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
 .task-entry {
   align-items: flex-start;
   justify-content: flex-start;
@@ -2509,6 +2523,11 @@ h1 {
 .task-entry:hover {
   background: rgba(13, 13, 13, 0.018);
   box-shadow: none;
+}
+
+.task-entry:hover .task-copy-trigger,
+.task-copy-trigger:focus-visible {
+  opacity: 1;
 }
 
 .task-entry-signal {
@@ -2602,6 +2621,16 @@ h1 {
   flex: 0 0 auto;
   min-width: 88px;
   text-align: right;
+}
+
+.task-copy-trigger {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  opacity: 0.72;
+}
+
+.task-copy-trigger:hover {
+  opacity: 1;
 }
 
 .task-entry .task-reward strong {
@@ -4595,9 +4624,14 @@ h1 {
   }
 
   .task-reward,
+  .task-copy-trigger,
   .activity-amount {
     align-self: flex-start;
     justify-items: start;
+  }
+
+  .task-entry-open {
+    width: 100%;
   }
 
   .wallet-balance span {
