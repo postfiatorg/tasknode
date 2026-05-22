@@ -99,12 +99,19 @@
   line-height: 1.25;
 }
 
+.task-title-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .task-id-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  margin-top: 12px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -114,6 +121,32 @@
   font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.task-brief-copy-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: #6b6b66;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.task-brief-copy-link:hover {
+  border-color: #e8e6df;
+  background: #f8f7f2;
+  color: #0d0d0d;
+}
+
+.task-brief-copy-link.is-copied {
+  border-color: #d8e6d0;
+  background: #f2f8ee;
+  color: #166534;
 }
 
 .task-modal-stats {
@@ -509,77 +542,6 @@
 .task-lifecycle-buttons .dark-pill,
 .task-lifecycle-buttons .light-pill {
   min-height: 38px;
-}
-
-.task-brief-copy-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  margin-top: 20px;
-  padding: 16px;
-  border: 1px solid #e8e6df;
-  border-radius: 14px;
-  background: #fbfaf7;
-}
-
-.task-brief-copy-card span {
-  display: block;
-  margin-bottom: 6px;
-  color: #6b6b66;
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.task-brief-copy-card strong {
-  display: block;
-  color: #0d0d0d;
-  font-size: 14px;
-  font-weight: 650;
-}
-
-.task-brief-copy-card p {
-  margin: 6px 0 0;
-  color: #5f5d58;
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-
-.task-brief-copy-card button {
-  display: inline-flex;
-  align-items: center;
-  align-self: start;
-  gap: 7px;
-  min-height: 34px;
-  padding: 0 12px;
-  border: 1px solid #dedbd2;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #0d0d0d;
-  font-size: 12.5px;
-  font-weight: 650;
-}
-
-.task-brief-copy-card button:hover,
-.task-brief-copy-card button.is-copied {
-  border-color: #cfd9c7;
-  background: #f1f7ed;
-  color: #166534;
-}
-
-.task-brief-copy-card pre {
-  grid-column: 1 / -1;
-  max-height: 150px;
-  overflow: auto;
-  margin: 0;
-  padding: 12px;
-  border-radius: 10px;
-  background: #f2f0e8;
-  color: #34342f;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11.5px;
-  line-height: 1.55;
-  white-space: pre-wrap;
 }
 
 .task-action-message {

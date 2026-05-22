@@ -66,7 +66,7 @@ Clicking a task opens a full-screen task detail surface with three tabs:
 
 Task list rows do not expose copy controls. Clicking a row opens the task detail card, where the user can inspect the task before exporting it.
 
-The Overview tab contains a `Codex handoff` card with a single `Copy task brief` action. That action copies a plain-text task brief designed to be pasted into Codex or another external worker. The copied payload includes:
+The task detail header contains a subtle `Copy task brief` action next to the task ID. That action copies a plain-text task brief designed to be pasted into Codex or another external worker. The copied payload includes:
 
 - title;
 - task ID and request ID when available;
@@ -77,7 +77,7 @@ The Overview tab contains a `Codex handoff` card with a single `Copy task brief`
 - current verification request when the task is in a follow-up verification loop;
 - requested output guidance for the external worker.
 
-The visible task ID remains copyable as an explicit ID-level affordance, but it is not the main handoff path. The formatting is produced by `src/features/tasks/task-copy-format.js`, with regression coverage in `scripts/task-copy-payload-smoke.mjs` across accepted, rewarded, and verification-requested task examples.
+The visible task ID remains separately copyable as an explicit ID-level affordance, but it is not the main handoff path. The formatting is produced by `src/features/tasks/task-copy-format.js`, with regression coverage in `scripts/task-copy-payload-smoke.mjs` across accepted, rewarded, and verification-requested task examples.
 
 ## Current Task Detail Behavior
 
