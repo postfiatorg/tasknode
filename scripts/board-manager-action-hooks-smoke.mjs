@@ -8,6 +8,10 @@ process.env.TASKNODE_HIVE_SECRETARY_ENABLED = "false";
 const { databaseEnabled, query } = await import("../server/db/pool.js");
 const { closePool } = await import("../server/db/pool.js");
 const {
+  appendChatTurn,
+  getChatMessages,
+} = await import("../server/repositories/chat-billing.js");
+const {
   buildBoardManagerSourcePacket,
   getBoardManagerAgentFeed,
   startBoardManagerRun,
@@ -74,6 +78,36 @@ async function main() {
   const runId = run.run.id;
   const projectId = "board_manager_action_smoke_project";
   const wallet = "rBoardManagerSmokeWallet111111111111111111";
+  const smokeAccountId = "acct_board_manager_smoke";
+  const smokeConversationId = "conversation_board_manager_smoke";
+  const smokeHiveEntryId = "hivectx_board_manager_smoke";
+
+  await appendChatTurn({
+    accountId: smokeAccountId,
+    conversationId: smokeConversationId,
+    mode: "Hive Input",
+    provider: "tasknode",
+    model: "hive_context_store",
+    userMessage: "Smoke Hive Input asking whether the Board Manager can respond in chat.",
+    assistantMessage: "Hive input saved to Hive Context.",
+    usage: { costUsd: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+  });
+  sourcePacket.hiveContext.groups.push({
+    accountId: smokeAccountId,
+    displayName: "Smoke Operator",
+    latestAt: new Date().toISOString(),
+    entryCount: 1,
+    entries: [{
+      id: smokeHiveEntryId,
+      accountId: smokeAccountId,
+      displayName: "Smoke Operator",
+      body: "Smoke Hive Input asking whether the Board Manager can respond in chat.",
+      sourceConversationId: smokeConversationId,
+      walletValidated: true,
+      walletAddress: wallet,
+      createdAt: new Date().toISOString(),
+    }],
+  });
 
   await executeBoardManagerDecision({
     runId,
@@ -118,7 +152,7 @@ async function main() {
       payload: payload({
         contributor: {
           project_id: projectId,
-          account_id: "acct_board_manager_smoke",
+          account_id: smokeAccountId,
           wallet_address: wallet,
           codename: "Smoke Operator",
           archetype: "Action hook verifier",
@@ -139,8 +173,8 @@ async function main() {
     dryRun: false,
     decision: {
       action: "message_user",
-      target_type: "account",
-      target_id: "acct_board_manager_smoke",
+      target_type: "hive_context_entry",
+      target_id: smokeHiveEntryId,
       reason: "Smoke verifies user message action hook.",
       confidence: 1,
       payload: payload({
@@ -168,13 +202,16 @@ async function main() {
   const [project, contributor, message, actions] = await Promise.all([
     query("SELECT status, metadata_json->>'operator_archived' AS operator_archived FROM network_projects WHERE id = $1", [projectId]),
     query("SELECT status FROM network_project_contributors WHERE project_id = $1 AND wallet_address = $2", [projectId, wallet]),
-    query("SELECT id FROM board_manager_user_messages WHERE run_id = $1 AND account_id = 'acct_board_manager_smoke'", [runId]),
+    query("SELECT id, metadata_json->>'chat_message_id' AS chat_message_id FROM board_manager_user_messages WHERE run_id = $1 AND account_id = $2", [runId, smokeAccountId]),
     query("SELECT count(*)::int AS count FROM board_manager_action_results WHERE run_id = $1", [runId]),
   ]);
   assert.equal(project.rows[0]?.status, "archived");
   assert.equal(project.rows[0]?.operator_archived, "true");
   assert.equal(contributor.rows[0]?.status, "active");
   assert.ok(message.rows[0]?.id);
+  assert.ok(message.rows[0]?.chat_message_id);
+  const chatMessages = await getChatMessages({ accountId: smokeAccountId, conversationId: smokeConversationId, limit: 10 });
+  assert.ok(chatMessages.some((item) => item.role === "assistant" && item.body === "Board Manager action hook smoke message."));
   assert.equal(actions.rows[0]?.count, 4);
   const feed = await getBoardManagerAgentFeed({ limit: 20 });
   const runFeed = feed.find((entry) => entry.runId === runId);

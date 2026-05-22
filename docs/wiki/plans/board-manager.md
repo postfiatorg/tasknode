@@ -61,7 +61,7 @@ The default remains dry-run for app mutations. It is not ephemeral. The Codex co
 Implemented action hooks:
 
 - `do_nothing`: records an action result with no mutation.
-- `message_user`: writes a user-visible Board Manager message to `board_manager_user_messages`; the Hive Context panel reads it for the target account.
+- `message_user`: writes an assistant response into the user's original Hive Input chat conversation and records a delivery audit row in `board_manager_user_messages`.
 - `refresh_hive_secretary`: queues a Hive Secretary job from the current validated Hive Context packet.
 - `create_project`: creates or updates an active `network_projects` row from `payload.project`.
 - `archive_project`: archives the project and applies an operator archive lock. This is the delete-project hook; hard delete is intentionally not available.
@@ -189,7 +189,15 @@ Use when:
 
 Messages should be short and specific. They should ask for the minimum information required to advance the project.
 
-Current implementation writes the response to `board_manager_user_messages`. It appears under the Board Manager block inside Hive Context for the target account.
+Current implementation resolves the target from the Hive Context input repository:
+
+- `target_type = hive_context_entry` uses that exact `hive_context_entries.id`.
+- The entry supplies `account_id`, display name, and `source_conversation_id`.
+- The action hook appends the response as an assistant message in that account-owned chat conversation.
+- The response is tagged with chat metadata `kind = hive_manager_response`.
+- `board_manager_user_messages` remains the delivery audit table; it is not the primary user-facing response surface.
+
+The Hive Mind Agent tab shows that the action happened. The user sees the actual response in Chat, in the conversation where the Hive Input was submitted.
 
 ### `create_project`
 
@@ -374,6 +382,24 @@ Fields:
 - `target_id`
 - `result_json`
 - `created_at`
+
+### `board_manager_user_messages`
+
+Delivery audit for Board Manager responses to users.
+
+Fields:
+
+- `id`
+- `run_id`
+- `account_id`
+- `display_name`
+- `message_text`
+- `source_packet_digest`
+- `metadata_json.conversation_id`
+- `metadata_json.hive_context_entry_id`
+- `metadata_json.chat_message_id`
+
+The actual visible response lives in `chat_messages`, not in this table.
 
 ## Prompt And Skill Boundary
 

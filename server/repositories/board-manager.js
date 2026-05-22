@@ -618,6 +618,7 @@ export async function buildBoardManagerSourcePacket({
       ],
       projectDeletionPolicy: "archive_project hides the project from the active Hive board; hard delete is not a v0 action.",
       taskLifecyclePolicy: "Network tasks must use the existing PFTL task lifecycle.",
+      userResponsePolicy: "Hive Context entries are inbound user messages. message_user responses must target a hive_context_entry when possible and are delivered back to that entry's sourceConversationId as a chat assistant message.",
     },
   };
 

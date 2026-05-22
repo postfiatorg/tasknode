@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "./db/pool.js";
+import { appendAssistantMessage } from "./repositories/chat-assistant-messages.js";
 import { enqueueHiveSecretaryJob } from "./repositories/hive-context.js";
 import {
   normalizeBoardManagerDecision,
@@ -67,6 +68,49 @@ function displayNameForAccount(sourcePacket = {}, accountId = "") {
   return safeText(accountId, 120);
 }
 
+function flattenHiveContextEntries(sourcePacket = {}) {
+  const groups = Array.isArray(sourcePacket?.hiveContext?.groups) ? sourcePacket.hiveContext.groups : [];
+  return groups.flatMap((group) => (
+    Array.isArray(group.entries) ? group.entries.map((entry) => ({
+      ...entry,
+      accountId: safeText(entry.accountId || group.accountId, 180),
+      displayName: safeText(entry.displayName || group.displayName, 120),
+    })) : []
+  ));
+}
+
+function latestHiveInputForAccount({ accountId = "", sourcePacket = {} } = {}) {
+  const normalizedAccountId = safeText(accountId, 180);
+  return flattenHiveContextEntries(sourcePacket)
+    .filter((entry) => entry.accountId === normalizedAccountId && safeText(entry.sourceConversationId, 180))
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0] || null;
+}
+
+function resolveMessageTarget({ decision, sourcePacket }) {
+  const targetType = safeText(decision.target_type, 120);
+  const targetId = safeText(decision.target_id, 180);
+  const entries = flattenHiveContextEntries(sourcePacket);
+  if (targetType === "hive_context_entry") {
+    const entry = entries.find((item) => item.id === targetId);
+    if (!entry) throw new Error("board_manager_message_user_hive_input_not_found");
+    return {
+      accountId: safeText(entry.accountId, 180),
+      conversationId: safeText(entry.sourceConversationId, 180),
+      hiveContextEntryId: safeText(entry.id, 180),
+      displayName: safeText(entry.displayName, 120),
+    };
+  }
+
+  const accountId = targetId;
+  const entry = latestHiveInputForAccount({ accountId, sourcePacket });
+  return {
+    accountId,
+    conversationId: safeText(entry?.sourceConversationId, 180),
+    hiveContextEntryId: safeText(entry?.id, 180),
+    displayName: safeText(entry?.displayName, 120) || displayNameForAccount(sourcePacket, accountId),
+  };
+}
+
 async function recordResult({ runId, decision, result }) {
   if (!runId) return { ok: true, skipped: true, reason: "run_not_recorded", result };
   return recordBoardManagerActionResult({
@@ -79,10 +123,15 @@ async function recordResult({ runId, decision, result }) {
 }
 
 async function executeMessageUser({ runId, decision, sourcePacket }) {
-  const accountId = safeText(decision.target_id, 180);
+  const target = resolveMessageTarget({ decision, sourcePacket });
+  const accountId = target.accountId;
+  const conversationId = target.conversationId;
   const messageText = safeText(decision.payload.message_text || decision.payload.summary, 4000);
   if (!accountId) throw new Error("board_manager_message_user_missing_account");
+  if (!conversationId) throw new Error("board_manager_message_user_missing_conversation");
   if (!messageText) throw new Error("board_manager_message_user_missing_message");
+  const messageId = `boardmsg_${randomUUID()}`;
+  const assistantMessageId = `msg_${messageId}_assistant`.slice(0, 180);
   const inserted = await query(
     `
       INSERT INTO board_manager_user_messages (
@@ -100,22 +149,45 @@ async function executeMessageUser({ runId, decision, sourcePacket }) {
       RETURNING id, account_id, message_text, created_at
     `,
     [
-      `boardmsg_${randomUUID()}`,
+      messageId,
       safeText(runId, 180),
       accountId,
-      displayNameForAccount(sourcePacket, accountId),
+      target.displayName || displayNameForAccount(sourcePacket, accountId),
       messageText,
       safeText(sourcePacket.sourcePacketDigest, 120),
       jsonValue({
         reason: decision.reason,
         next_steps: decision.payload.next_steps,
+        conversation_id: conversationId,
+        hive_context_entry_id: target.hiveContextEntryId,
+        chat_message_id: assistantMessageId,
       }),
     ]
   );
+  const chatTurn = await appendAssistantMessage({
+    accountId,
+    conversationId,
+    mode: "Hive Input",
+    provider: "tasknode",
+    model: "board_manager",
+    responseId: safeText(runId, 180),
+    assistantMessage: messageText,
+    assistantMessageId,
+    assistantMetadata: {
+      kind: "hive_manager_response",
+      boardManagerRunId: safeText(runId, 180),
+      boardManagerMessageId: inserted.rows[0]?.id || messageId,
+      hiveContextEntryId: target.hiveContextEntryId,
+      sourcePacketDigest: safeText(sourcePacket.sourcePacketDigest, 120),
+      reason: decision.reason,
+    },
+  });
   return {
     executed: true,
     messageId: inserted.rows[0]?.id || "",
     accountId,
+    conversationId,
+    chatMessageId: chatTurn.assistant?.id || assistantMessageId,
     messagePreview: messageText.slice(0, 240),
   };
 }
