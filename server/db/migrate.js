@@ -38,6 +38,7 @@ const migrations = [
   "029_hive_network_projects.sql",
   "030_hive_project_seed_cleanup.sql",
   "031_hive_project_planning.sql",
+  "032_archive_rejected_hive_scoping_projects.sql",
 ];
 
 let migrated = false;

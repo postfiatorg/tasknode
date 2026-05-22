@@ -21,6 +21,8 @@ The project detail page is layered as:
 3. Tasks
 4. Activity
 
+Project IDs are part of the product surface. The project detail header should expose the stable `network_projects.id` so operators can refer to a project in tasks, docs, and chat without ambiguity.
+
 ## Hive Input
 
 Chat has a `Hive Input` mode in the composer `+` menu. It is a persistence action, not a model call and not a billed chat response.
@@ -60,6 +62,18 @@ The Secretary worker is source-bound: it summarizes validated Hive Inputs and cl
 
 Hive Active Projects uses `prompts/hive/hive_active_projects_v1.md`. That prompt decides which projects should be active based on the latest Secretary report and current project registry. It can preserve an existing project, create a new project, or pause generated/seeded projects that are no longer supported by the report. It still does not create tasks, contributors, wallets, payments, or activity rows.
 
+Scoping is not a project. The active-project prompt now treats scoping as a phase or status on a durable project. A project can be `Post Fiat L1` with phase `Scoping`; it should not be `Post Fiat L1 scoping`. The rejected generated scoping projects are archived by `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql` so they do not remain visible as active cards.
+
+The next planned layer is a project-linked Product Document. Each project card should open a project board whose About section can expand into a generated document with:
+
+- how the project realistically benefits the network;
+- what success looks like;
+- current status;
+- who is working on it and why;
+- what is blocked or unclear.
+
+That Product Document is planned to be generated per project by OpenRouter `deepseek/deepseek-v4-pro` using a ZDR-capable provider. It is not implemented yet. Until that worker exists, Hive only shows the current project row fields and Secretary report, not a generated Product Document.
+
 Current endpoint:
 
 - `GET /api/hive/projects` returns active network projects, project task rows, contributor rollups, activity rows, and the latest Hive Secretary input reference.
@@ -84,6 +98,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/db/migrations/029_hive_network_projects.sql` creates the current network project read model and seeds the initial `PFT distribution v3` project spec.
 - `server/db/migrations/030_hive_project_seed_cleanup.sql` removes earlier mock-only operator/task/feed seed rows from existing environments.
 - `server/db/migrations/031_hive_project_planning.sql` adds the active-project planning job and generation tables.
+- `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql` archives the three rejected generated scoping cards from existing environments.
 - `prompts/hive/hive_secretary_v1.md` is the source-controlled Secretary prompt.
 - `prompts/hive/hive_active_projects_v1.md` is the source-controlled active-project prompt.
 
@@ -94,6 +109,19 @@ Active projects and project detail now read from Postgres. `PFT distribution v3`
 The project seed is intentionally not a fake live network. The project can carry planned/scoped metrics such as 14 scoped tasks, 6 target contributors, and 420 PFT route target, but contributor cards, task rows, routing feed rows, and allotted operator rows stay empty until real project-linked allocation data exists.
 
 Hive Context is live Postgres-backed app data. It is not on-chain. Hive Secretary and Hive Active Projects are also Postgres-backed and regenerate from validated-wallet Hive Inputs after new entries arrive.
+
+Cadence today:
+
+- Hive Input saves immediately.
+- Validated-wallet input queues Hive Secretary immediately.
+- A completed Secretary report queues Hive Active Projects immediately.
+- Active project rows update after that worker completes.
+
+Planned cadence:
+
+- Project Product Documents should queue after project creation or material project update.
+- Product Documents should also refresh on a slower periodic cadence, likely daily, so stale project descriptions are corrected without constantly reprocessing the same context.
+- If a Product Document identifies missing information, the task generator should create information-gathering Network Tasks under the existing project rather than creating a fake "scoping" project.
 
 The Secretary report and Active Projects generation are not canonical task state. They are operator-readable planning artifacts. They make project identity available to the future system Network Task worker without pretending the report is itself a task.
 

@@ -69,6 +69,8 @@ Hive planning workers are not user chat modes and are not billed to the user's c
 
 The model ID comes from OpenAI's GPT-5.5 pro model page: `gpt-5.5-pro`. OpenAI's reasoning guidance positions GPT-5.5 pro as the higher-intelligence option for harder asynchronous reasoning work and recommends the Responses API for reasoning models. Task Node therefore uses `gpt-5.5-pro` for project determination, not OpenRouter DeepSeek.
 
+The planned Hive Product Document worker is a different job. It should generate one expandable product document for one existing project using OpenRouter `deepseek/deepseek-v4-pro` with a ZDR-capable provider. That job is for readable project documentation, not active-project selection, and it should write to a project-document table rather than overwrite task state.
+
 Environment overrides:
 
 - `TASKNODE_HIVE_SECRETARY_MODEL`
