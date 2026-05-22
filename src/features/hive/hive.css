@@ -812,7 +812,7 @@
   background: transparent;
 }
 
-.hive-project-doc header,
+.hive-project-doc-toggle,
 .hive-project-doc footer {
   align-items: center;
   display: flex;
@@ -821,11 +821,35 @@
   justify-content: space-between;
 }
 
-.hive-project-doc header {
-  margin-bottom: 9px;
+.hive-project-doc-toggle {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  width: 100%;
 }
 
-.hive-project-doc header span,
+.hive-project-doc-toggle span {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hive-project-doc-toggle svg {
+  color: var(--hive-muted);
+  flex-shrink: 0;
+  transition: transform 140ms ease;
+}
+
+.hive-project-doc-toggle svg.is-open {
+  transform: rotate(180deg);
+}
+
+.hive-project-doc-toggle strong,
 .hive-project-doc.is-empty > span {
   color: var(--hive-ink);
   display: block;
@@ -833,20 +857,31 @@
   font-weight: 500;
 }
 
-.hive-project-doc header time,
+.hive-project-doc-toggle time,
 .hive-project-doc footer {
   color: var(--hive-muted);
   font-size: 11px;
 }
 
-.hive-project-doc > p {
+.hive-project-doc-preview {
+  margin-top: 9px;
+}
+
+.hive-project-doc-preview p {
   color: var(--hive-ink-soft);
   font-size: 12.8px;
   line-height: 1.55;
   margin: 0;
 }
 
-.hive-project-doc > p + p {
+.hive-project-doc:not(.is-expanded) .hive-project-doc-preview p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.hive-project-doc-preview p + p {
   margin-top: 8px;
 }
 

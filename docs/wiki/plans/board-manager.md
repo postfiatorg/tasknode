@@ -257,7 +257,14 @@ The product document should answer:
 - who is working on it and why;
 - what is blocked or unclear.
 
-This action owns the agent-managed Project Status blob shown inside a Hive project About section. The static project description stays in `network_projects.about`; the changing execution briefing belongs in a versioned product document row so the agent can update status without overwriting project identity.
+This action owns the agent-managed Project Status blob shown inside a Hive project About section. The static project description stays in `network_projects.about`; the changing execution briefing belongs in a versioned product document row so the agent can update status without overwriting project identity. The UI renders this document collapsed by default, with the summary visible and the detailed status, key points, blockers, next actions, and model metadata behind an expand control.
+
+This is a two-stage model path:
+
+1. Codex Exec is the Board Manager. It decides whether to take `refresh_project_document`.
+2. The action hook invokes the project-document writer, currently OpenRouter `deepseek/deepseek-v4-pro` with ZDR routing, to produce the structured document.
+
+The DeepSeek model name in the UI is therefore the writer provenance, not the Board Manager's reasoning model.
 
 Current implementation:
 

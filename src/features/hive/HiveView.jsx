@@ -289,6 +289,7 @@ function ProjectDetail({ onBack, operators, project, status }) {
 }
 
 function ProjectStatusDocument({ document }) {
+  const [expanded, setExpanded] = useState(false);
   if (!document) {
     return (
       <div className="hive-project-doc is-empty">
@@ -297,21 +298,39 @@ function ProjectStatusDocument({ document }) {
       </div>
     );
   }
+  const metadata = [
+    document.boardManagerRunId ? "Board Manager" : "",
+    document.model || "",
+    document.promptVersion || "",
+  ].filter(Boolean);
   return (
-    <div className="hive-project-doc">
-      <header>
-        <span>Project Status</span>
-        {document.createdAt && <time>{formatContextTime(document.createdAt)}</time>}
-      </header>
-      {document.summary && <p>{document.summary}</p>}
-      {document.projectStatus && <p>{document.projectStatus}</p>}
-      <ProjectDocList items={document.keyPoints} title="Key execution points" />
-      <ProjectDocList items={document.blockedOrUnclear} title="Blocked or unclear" />
-      <ProjectDocList items={document.nextActions} title="Next actions" />
-      <footer>
-        {document.model && <span>{document.model}</span>}
-        {document.promptVersion && <span>{document.promptVersion}</span>}
-      </footer>
+    <div className={`hive-project-doc ${expanded ? "is-expanded" : ""}`}>
+      <button
+        aria-expanded={expanded}
+        className="hive-project-doc-toggle"
+        onClick={() => setExpanded((open) => !open)}
+        type="button"
+      >
+        <span>
+          <strong>Project Status</strong>
+          {document.createdAt && <time>{formatContextTime(document.createdAt)}</time>}
+        </span>
+        <ChevronDown className={expanded ? "is-open" : ""} size={16} strokeWidth={1.8} />
+      </button>
+      <div className="hive-project-doc-preview">
+        {document.summary && <p>{document.summary}</p>}
+        {expanded && document.projectStatus && <p>{document.projectStatus}</p>}
+      </div>
+      {expanded && (
+        <>
+          <ProjectDocList items={document.keyPoints} title="Key execution points" />
+          <ProjectDocList items={document.blockedOrUnclear} title="Blocked or unclear" />
+          <ProjectDocList items={document.nextActions} title="Next actions" />
+          <footer>
+            {metadata.map((item) => <span key={item}>{item}</span>)}
+          </footer>
+        </>
+      )}
     </div>
   );
 }

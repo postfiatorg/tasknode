@@ -157,10 +157,13 @@ Expected structured output:
 The Hive project detail About section should show:
 
 1. Static project description from `network_projects.about`.
-2. Agent-managed `Project Status` from `network_project_product_docs.current`.
-3. Key execution points.
-4. Blockers or unknowns when present.
-5. Last updated timestamp and model/prompt metadata in a subtle audit line.
+2. Collapsed agent-managed `Project Status` from `network_project_product_docs.current`.
+3. Key execution points after expansion.
+4. Blockers or unknowns after expansion when present.
+5. Next actions after expansion.
+6. Last updated timestamp and model/prompt metadata in a subtle audit line.
+
+The collapsed state should show the title, timestamp, and short summary only. The expanded state should show the full generated document. This keeps Hive project pages scannable while preserving the audit detail for operators.
 
 If no product document exists:
 

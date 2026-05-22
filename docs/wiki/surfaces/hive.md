@@ -102,7 +102,7 @@ Each project can now have a project-linked Product Document. Each project card o
 
 That Product Document is generated per project by OpenRouter `deepseek/deepseek-v4-pro` using a ZDR-capable provider when the Board Manager chooses `refresh_project_document`. It is stored in `network_project_product_docs`, not in `network_projects.about`, so the static project identity is separate from the changing execution briefing.
 
-The Product Document should appear as a `Project Status` section inside About. The static `network_projects.about` text explains what the project is. The generated Project Status explains the current execution picture, key points, blockers, and next actions. The detailed plan lives in `docs/wiki/plans/agent-managed-about-panels.md`.
+The Product Document appears as a collapsible `Project Status` section inside About. The static `network_projects.about` text explains what the project is. The generated Project Status explains the current execution picture, key points, blockers, and next actions. The collapsed view shows only the short summary so the project page remains scannable. The detailed plan lives in `docs/wiki/plans/agent-managed-about-panels.md`.
 
 If no current product document exists, the About section shows the static project description plus the empty state `Project status has not been generated yet.` It does not show filler copy.
 
@@ -147,6 +147,8 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `prompts/hive/hive_active_projects_v1.md` is the source-controlled active-project prompt.
 - `prompts/hive/board_manager_v1.md` is the planned Board Manager operating prompt.
 - `prompts/hive/hive_project_product_doc_v1.md` is the product-document writer prompt.
+
+The Board Manager and Project Product Document worker are separate stages. Codex Exec is the agentic Board Manager: it reads Hive state, preserves session context, and chooses one action such as `refresh_project_document`. When that action executes, the action hook calls the DeepSeek V4 Pro ZDR document writer to write the readable project briefing. The UI footer therefore shows both the Board Manager action provenance and the writer model/prompt metadata.
 
 ## Current Data Boundary
 
