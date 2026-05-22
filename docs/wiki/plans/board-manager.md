@@ -1,6 +1,6 @@
 # Board Manager
 
-Status: v0 dry-run implemented; mutation action handlers planned
+Status: v0 Codex Exec implemented with first action hooks
 
 This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, archive projects, refresh project documents, route tasks, or do nothing.
 
@@ -41,14 +41,36 @@ The default v1 posture is conservative. Most ticks should do nothing unless ther
 Implemented v0 pieces:
 
 - `server/repositories/board-manager.js` builds the current Hive source packet and validates the returned action.
-- `schemas/board-manager-action.schema.json` constrains the Codex Exec output. The v0 payload is intentionally narrow: `summary` plus `next_steps`.
+- `schemas/board-manager-action.schema.json` constrains the Codex Exec output, including action-specific `project`, `contributor`, `message_text`, and `archive_reason` payload fields.
 - `scripts/board-manager-codex-exec.mjs` runs Codex Exec with `gpt-5.5` and `model_reasoning_effort = xhigh`.
+- `server/board-manager-actions.js` executes the first supported actions.
 - `server/db/migrations/033_board_manager_v0.sql` adds lease, run, and action-result tables.
 - `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks operator-archived Hive projects so the project planner cannot silently reactivate rejected cards.
+- `server/db/migrations/035_board_manager_action_hooks.sql` adds user-visible Board Manager messages.
 - `npm run board-manager:codex -- --trigger <name>` runs one dry-run Board Manager decision.
+- `npm run board-manager:codex -- --trigger <name> --execute` runs one Board Manager decision and executes supported action hooks.
 - `npm run board-manager:codex -- --packet-only` prints the source packet without calling Codex.
 
-V0 does not execute mutations. It records or prints the selected action so we can inspect whether the manager is choosing the right next move before wiring action handlers.
+The default remains dry-run. Execution requires the explicit `--execute` flag.
+
+Implemented action hooks:
+
+- `do_nothing`: records an action result with no mutation.
+- `message_user`: writes a user-visible Board Manager message to `board_manager_user_messages`; the Hive Context panel reads it for the target account.
+- `refresh_hive_secretary`: queues a Hive Secretary job from the current validated Hive Context packet.
+- `create_project`: creates or updates an active `network_projects` row from `payload.project`.
+- `archive_project`: archives the project and applies an operator archive lock. This is the delete-project hook; hard delete is intentionally not available.
+- `assign_contributor`: upserts a project contributor row using the project id and wallet address in `payload.contributor`.
+
+Not yet implemented action hooks:
+
+- `update_board_context`
+- `research`
+- `update_project`
+- `refresh_project_document`
+- `remove_contributor`
+- `initiate_network_task`
+- `review_evidence_packet`
 
 ## Trigger Policy
 
@@ -156,6 +178,8 @@ Use when:
 - the user is already involved in that conversation or project.
 
 Messages should be short and specific. They should ask for the minimum information required to advance the project.
+
+Current implementation writes the response to `board_manager_user_messages`. It appears under the Board Manager block inside Hive Context for the target account.
 
 ### `create_project`
 
@@ -390,21 +414,21 @@ Done when only one manager can run for `global_hive` at a time.
 ### Phase 3: Context And Secretary Actions
 
 - Implement `update_board_context`.
-- Implement `refresh_hive_secretary`.
-- Keep current Hive Secretary worker as the action handler.
+- Implement `refresh_hive_secretary`. Done.
+- Keep current Hive Secretary worker as the action handler. Done for refresh.
 
-Done when a Board Manager run can decide that a Secretary refresh is needed and execute it.
+Done when a Board Manager run can decide that a Secretary refresh is needed and execute it. Secretary refresh action dispatch is implemented; Board Manager context document updates remain open.
 
 ### Phase 4: Project And Product Doc Actions
 
-- Implement `create_project`, `update_project`, `archive_project`, and `refresh_project_document`.
+- Implement `create_project`, `update_project`, `archive_project`, and `refresh_project_document`. Create and archive are implemented; update and product docs remain open.
 - Add project id visibility and expandable product docs in Hive UI.
 
 Done when the Board Manager can create a durable project and attach a readable product document.
 
 ### Phase 5: Allocation And Review Actions
 
-- Implement contributor assignment.
+- Implement contributor assignment. Done for direct project contributor assignment.
 - Implement project-linked Network Task initiation.
 - Implement evidence review through the existing task engine.
 

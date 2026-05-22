@@ -1,5 +1,6 @@
 import { appendChatTurn } from "./repositories/chat-billing.js";
 import { scheduleHiveSecretaryQueue } from "./hive-secretary-worker.js";
+import { getBoardManagerUserMessages } from "./repositories/board-manager.js";
 import { getHiveProjectsDocument } from "./repositories/hive-projects.js";
 import {
   enqueueHiveSecretaryJob,
@@ -85,6 +86,9 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       ok: true,
       context: await getHiveContextDocument({ limit: url.searchParams.get("limit") || 120 }),
       secretary: await getHiveSecretaryState(),
+      boardManager: {
+        messages: await getBoardManagerUserMessages({ accountId: session.accountId, limit: 12 }),
+      },
     });
     return true;
   }
@@ -191,6 +195,9 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
     },
     context: await getHiveContextDocument({ limit: 120 }),
     secretary: await getHiveSecretaryState(),
+    boardManager: {
+      messages: await getBoardManagerUserMessages({ accountId: session.accountId, limit: 12 }),
+    },
   });
   return true;
 }

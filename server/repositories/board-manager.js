@@ -27,6 +27,40 @@ export const boardManagerActions = Object.freeze([
 ]);
 
 const actionSet = new Set(boardManagerActions);
+const emptyBoardManagerPayload = Object.freeze({
+  summary: "",
+  next_steps: [],
+  message_text: "",
+  archive_reason: "",
+  project: {
+    id: "",
+    type: "",
+    title: "",
+    summary: "",
+    objective: "",
+    about: "",
+    priority: 0,
+    phase_label: "",
+    phase_current: 0,
+    phase_total: 0,
+    pft_routed: 0,
+    task_count: 0,
+    contributor_count: 0,
+  },
+  contributor: {
+    project_id: "",
+    account_id: "",
+    wallet_address: "",
+    codename: "",
+    archetype: "",
+    role_label: "",
+    status: "",
+    allotted: false,
+    cap: 0,
+    load: 0,
+    sort_order: 0,
+  },
+});
 
 function useDatabase() {
   return databaseEnabled();
@@ -46,6 +80,46 @@ function safeArray(value) {
 
 function jsonValue(value) {
   return JSON.stringify(value && typeof value === "object" ? value : {});
+}
+
+function normalizePayload(payload = {}) {
+  const input = safeObject(payload);
+  const project = safeObject(input.project);
+  const contributor = safeObject(input.contributor);
+  return {
+    summary: safeText(input.summary, 2000),
+    next_steps: safeArray(input.next_steps || input.nextSteps).slice(0, 8).map((item) => safeText(item, 500)).filter(Boolean),
+    message_text: safeText(input.message_text || input.messageText, 4000),
+    archive_reason: safeText(input.archive_reason || input.archiveReason, 1000),
+    project: {
+      id: safeText(project.id, 180),
+      type: safeText(project.type, 80),
+      title: safeText(project.title, 180),
+      summary: safeText(project.summary, 600),
+      objective: safeText(project.objective, 900),
+      about: safeText(project.about, 2000),
+      priority: Math.max(0, Math.round(Number(project.priority || 0) || 0)),
+      phase_label: safeText(project.phase_label || project.phaseLabel, 100),
+      phase_current: Math.max(0, Math.round(Number(project.phase_current ?? project.phaseCurrent ?? 0) || 0)),
+      phase_total: Math.max(0, Math.round(Number(project.phase_total ?? project.phaseTotal ?? 0) || 0)),
+      pft_routed: Math.max(0, Number(project.pft_routed ?? project.pftRouted ?? 0) || 0),
+      task_count: Math.max(0, Math.round(Number(project.task_count ?? project.taskCount ?? 0) || 0)),
+      contributor_count: Math.max(0, Math.round(Number(project.contributor_count ?? project.contributorCount ?? 0) || 0)),
+    },
+    contributor: {
+      project_id: safeText(contributor.project_id || contributor.projectId, 180),
+      account_id: safeText(contributor.account_id || contributor.accountId, 180),
+      wallet_address: safeText(contributor.wallet_address || contributor.walletAddress, 120),
+      codename: safeText(contributor.codename, 120),
+      archetype: safeText(contributor.archetype, 180),
+      role_label: safeText(contributor.role_label || contributor.roleLabel, 80),
+      status: safeText(contributor.status, 80),
+      allotted: Boolean(contributor.allotted),
+      cap: Math.max(0, Math.round(Number(contributor.cap || 0) || 0)),
+      load: Math.max(0, Math.round(Number(contributor.load || 0) || 0)),
+      sort_order: Math.max(0, Math.round(Number(contributor.sort_order ?? contributor.sortOrder ?? 0) || 0)),
+    },
+  };
 }
 
 function iso(value) {
@@ -90,6 +164,7 @@ function compactContextDocument(document = {}) {
         accountId: safeText(entry.accountId, 160),
         displayName: safeText(entry.displayName, 120),
         body: safeText(entry.body, 3600),
+        sourceConversationId: safeText(entry.sourceConversationId, 180),
         walletValidated: Boolean(entry.walletValidated),
         walletAddress: safeText(entry.walletAddress, 120),
         createdAt: entry.createdAt || null,
@@ -246,6 +321,30 @@ async function recentBoardManagerRuns({ limit = 12 } = {}) {
     `,
     [Math.min(Math.max(Number(limit) || 12, 1), 30)]
   );
+  const actionResults = result.rows.length
+    ? await query(
+        `
+          SELECT run_id, id, action, target_type, target_id, result_json, created_at
+          FROM board_manager_action_results
+          WHERE run_id = ANY($1::text[])
+          ORDER BY created_at DESC, id DESC
+        `,
+        [result.rows.map((row) => row.id)]
+      )
+    : { rows: [] };
+  const actionResultsByRun = new Map();
+  for (const row of actionResults.rows) {
+    const list = actionResultsByRun.get(row.run_id) || [];
+    list.push({
+      id: row.id,
+      action: row.action,
+      targetType: row.target_type,
+      targetId: row.target_id,
+      result: safeObject(row.result_json),
+      createdAt: iso(row.created_at),
+    });
+    actionResultsByRun.set(row.run_id, list);
+  }
   return result.rows.map((row) => ({
     id: row.id,
     scope: row.scope,
@@ -260,6 +359,7 @@ async function recentBoardManagerRuns({ limit = 12 } = {}) {
     model: row.model,
     reasoningEffort: row.reasoning_effort,
     error: row.error,
+    actionResults: actionResultsByRun.get(row.id) || [],
     startedAt: iso(row.started_at),
     completedAt: iso(row.completed_at),
   }));
@@ -315,7 +415,14 @@ export async function buildBoardManagerSourcePacket({
     recentBoardManagerRuns: recentRuns,
     executionPolicy: {
       dryRunDefault: true,
-      mutationActionsNotImplementedInV0: true,
+      implementedActionHooks: [
+        "do_nothing",
+        "message_user",
+        "refresh_hive_secretary",
+        "create_project",
+        "archive_project",
+        "assign_contributor",
+      ],
       projectDeletionPolicy: "archive_project hides the project from the active Hive board; hard delete is not a v0 action.",
       taskLifecyclePolicy: "Network tasks must use the existing PFTL task lifecycle.",
     },
@@ -356,8 +463,72 @@ export function normalizeBoardManagerDecision(decision = {}) {
     target_id: safeText(decision.target_id, 240),
     reason: safeText(decision.reason, 2000) || "No reason provided.",
     confidence: Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : 0,
-    payload: safeObject(decision.payload),
+    payload: normalizePayload({ ...emptyBoardManagerPayload, ...safeObject(decision.payload) }),
   };
+}
+
+export async function recordBoardManagerActionResult({
+  runId = "",
+  action = "",
+  targetType = "",
+  targetId = "",
+  result = {},
+} = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const inserted = await query(
+    `
+      INSERT INTO board_manager_action_results (
+        id,
+        run_id,
+        action,
+        target_type,
+        target_id,
+        result_json
+      )
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+      RETURNING *
+    `,
+    [
+      `boardaction_${randomUUID()}`,
+      safeText(runId, 180),
+      safeText(action, 80),
+      safeText(targetType, 120),
+      safeText(targetId, 240),
+      jsonValue(result),
+    ]
+  );
+  return { ok: true, result: inserted.rows[0] };
+}
+
+export async function getBoardManagerUserMessages({ accountId = "", limit = 12 } = {}) {
+  if (!useDatabase()) return [];
+  const normalizedAccountId = safeText(accountId, 180);
+  if (!normalizedAccountId) return [];
+  const result = await query(
+    `
+      SELECT id, run_id, account_id, display_name, message_text, status,
+             source_action, source_packet_digest, metadata_json, created_at, read_at
+      FROM board_manager_user_messages
+      WHERE account_id = $1
+        AND status <> 'archived'
+      ORDER BY created_at DESC, id DESC
+      LIMIT $2
+    `,
+    [normalizedAccountId, Math.min(Math.max(Number(limit) || 12, 1), 50)]
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    runId: row.run_id,
+    accountId: row.account_id,
+    displayName: row.display_name,
+    body: row.message_text,
+    status: row.status,
+    sourceAction: row.source_action,
+    sourcePacketDigest: row.source_packet_digest,
+    metadata: safeObject(row.metadata_json),
+    createdAt: iso(row.created_at),
+    readAt: iso(row.read_at),
+  }));
 }
 
 export async function claimBoardManagerLease({

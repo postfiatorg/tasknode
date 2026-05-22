@@ -30,6 +30,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - Hive active project planning: `server/db/migrations/031_hive_project_planning.sql`
 - Hive scoping-card archive cleanup: `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql`
 - Board Manager v0 run tables: `server/db/migrations/033_board_manager_v0.sql`
+- Board Manager action hooks: `server/db/migrations/035_board_manager_action_hooks.sql`
 
 ## Table Inventory
 
@@ -60,9 +61,10 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `network_project_contributors` | Project-scoped contributor/operator rollups. Empty until live project-linked tasks allocate to real wallets and rewards accrue. | Hive contributor previews, allotted operators, project detail contributors. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
 | `network_project_task_refs` | Project-scoped task rows. Empty until the allocation worker creates or links concrete PFTL tasks to a project. | Hive project task board, future project-to-PFTL task linking. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
 | `network_project_activity` | Project-scoped activity feed rows. Empty until project-linked tasks produce live state changes. | Hive routing feed and project activity section. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
-| `board_manager_leases` | One lease per manager scope, starting with `global_hive`, so only one Board Manager runs across Fly instances. | Board Manager dry-run executor, future Hive manager loop, operator diagnostics. | `033_board_manager_v0.sql` |
-| `board_manager_runs` | Durable v0 Board Manager run log with trigger, source packet digest, selected action, action payload, decision JSON, Codex model, reasoning effort, status, and errors. | Board Manager Codex Exec audit, future Hive manager UI/operator controls. | `033_board_manager_v0.sql` |
-| `board_manager_action_results` | Audit log for executed manager actions. V0 does not execute mutations yet, so this is ready for later action handlers. | Future Hive project history, task allocation audit, evidence review audit. | `033_board_manager_v0.sql` |
+| `board_manager_leases` | One lease per manager scope, starting with `global_hive`, so only one Board Manager runs across Fly instances. | Board Manager executor, future Hive manager loop, operator diagnostics. | `033_board_manager_v0.sql` |
+| `board_manager_runs` | Durable Board Manager run log with trigger, source packet digest, selected action, action payload, decision JSON, Codex model, reasoning effort, dry-run flag, status, and errors. | Board Manager Codex Exec audit, future Hive manager UI/operator controls. | `033_board_manager_v0.sql` |
+| `board_manager_action_results` | Audit log for executed manager actions. Current hooks record message-user, Secretary refresh, project create/archive, contributor assignment, and do-nothing results. | Hive Board Manager audit, project action history, operator diagnostics. | `033_board_manager_v0.sql` |
+| `board_manager_user_messages` | User-visible Board Manager messages keyed by account and run id. These are generated only by the `message_user` action hook and are separate from raw Hive Input. | Hive Context Board Manager message block, future user notification surfaces. | `035_board_manager_action_hooks.sql` |
 | `pftl_task_sync_runs` | One row per task replay/import run with account, wallet, source, status, task count, pointer event count, and metadata. | Tasks replay diagnostics, operator recovery, Python replay imports. | `006_task_projections.sql` |
 | `task_requests` | Durable receipt and worker claim table for browser/chat task requests, including account, subject wallet, request/bundle CIDs, request transaction, generated task ID, worker attempts, status, and errors. | Tasks request strip, task generation worker, chat task request receipts, operator debugging. | `012_task_requests.sql` |
 | `pftl_task_pointer_events` | Typed task pointer events hydrated from PFTL pointer memos and IPFS payloads. | Tasks, task replay repair, reward traceability, audit. | `006_task_projections.sql` |

@@ -44,7 +44,14 @@
     "payload": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary", "next_steps"],
+      "required": [
+        "summary",
+        "next_steps",
+        "message_text",
+        "archive_reason",
+        "project",
+        "contributor"
+      ],
       "properties": {
         "summary": {
           "type": "string",
@@ -56,6 +63,165 @@
           "items": {
             "type": "string",
             "maxLength": 500
+          }
+        },
+        "message_text": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "archive_reason": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "project": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "type",
+            "title",
+            "summary",
+            "objective",
+            "about",
+            "priority",
+            "phase_label",
+            "phase_current",
+            "phase_total",
+            "pft_routed",
+            "task_count",
+            "contributor_count"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "",
+                "protocol_marketing",
+                "protocol_development",
+                "alpha_generation",
+                "protocol_applications",
+                "network_validation"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 600
+            },
+            "objective": {
+              "type": "string",
+              "maxLength": 900
+            },
+            "about": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "priority": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "phase_label": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "phase_current": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "phase_total": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "pft_routed": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100000000
+            },
+            "task_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "contributor_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            }
+          }
+        },
+        "contributor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "project_id",
+            "account_id",
+            "wallet_address",
+            "codename",
+            "archetype",
+            "role_label",
+            "status",
+            "allotted",
+            "cap",
+            "load",
+            "sort_order"
+          ],
+          "properties": {
+            "project_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "account_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "wallet_address": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "codename": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "archetype": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "role_label": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "status": {
+              "type": "string",
+              "enum": ["", "active", "paused", "blocked"]
+            },
+            "allotted": {
+              "type": "boolean"
+            },
+            "cap": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "load": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "sort_order": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            }
           }
         }
       }

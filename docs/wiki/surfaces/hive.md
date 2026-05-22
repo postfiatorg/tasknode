@@ -37,7 +37,7 @@ Expanding the section shows the current `Hive Secretary` report first. Raw user 
 
 The Board Manager is the planned system operator for Hive. It is a Codex Exec function with a bounded action registry. It should run periodically or after meaningful state changes, claim a single `global_hive` lease, inspect the current board state, and choose one action.
 
-V0 exists as a dry-run Codex Exec harness. It builds the current Hive source packet, calls Codex Exec using `gpt-5.5` with `xhigh` reasoning, validates the returned action against a JSON schema, and records the decision in `board_manager_runs` when Postgres is enabled. It does not execute mutations yet.
+V0 exists as a Codex Exec harness. It builds the current Hive source packet, calls Codex Exec using `gpt-5.5` with `xhigh` reasoning, validates the returned action against a JSON schema, and records the decision in `board_manager_runs` when Postgres is enabled. It defaults to dry-run, and executes supported action hooks only when the executor is run with `--execute`.
 
 Allowed actions include:
 
@@ -52,6 +52,8 @@ Allowed actions include:
 - assign or remove contributors
 - initiate project-linked Network Tasks with rewards
 - review evidence packets through the existing task engine
+
+Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, and `assign_contributor`. `archive_project` is the delete-project behavior; the row is hidden from the active board but not hard deleted. `message_user` writes to `board_manager_user_messages`, which appears in the Board Manager block inside Hive Context for the target account.
 
 The old direct cascade where Hive Secretary automatically drives active projects is deprecated as the target architecture. The existing Secretary and Active Projects workers remain implementation primitives, but the Board Manager should own when they run.
 
@@ -112,8 +114,9 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
 - `server/hive-secretary-worker.js` processes validated Hive Inputs through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action handler.
 - `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
-- `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, and records v0 dry-run state.
-- `scripts/board-manager-codex-exec.mjs` runs one Codex Exec Board Manager dry run.
+- `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, and reads user-visible manager messages.
+- `server/board-manager-actions.js` executes the first Board Manager action hooks.
+- `scripts/board-manager-codex-exec.mjs` runs one Codex Exec Board Manager dry run or, with `--execute`, dispatches supported action hooks.
 - `schemas/board-manager-action.schema.json` constrains the Codex Exec output.
 - `server/repositories/hive-context.js` persists raw Hive Context entries, Secretary jobs, and Secretary reports.
 - `server/repositories/hive-projects.js` reads active network projects and links the latest Secretary report as a project input.
@@ -126,6 +129,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/db/migrations/032_archive_rejected_hive_scoping_projects.sql` archives the three rejected generated scoping cards from existing environments.
 - `server/db/migrations/033_board_manager_v0.sql` adds Board Manager lease/run/action-result tables.
 - `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks archived project rows so rejected projects do not reappear after a later planner run.
+- `server/db/migrations/035_board_manager_action_hooks.sql` adds user-visible Board Manager messages.
 - `prompts/hive/hive_secretary_v1.md` is the source-controlled Secretary prompt.
 - `prompts/hive/hive_active_projects_v1.md` is the source-controlled active-project prompt.
 - `prompts/hive/board_manager_v1.md` is the planned Board Manager operating prompt.
@@ -190,7 +194,7 @@ The likely production data sources are:
 - `hive_context_entries` for user-submitted network context
 - `hive_secretary_reports` for the current synthesized network context report
 - `hive_project_planning_jobs` and `hive_project_generations` for active project determination
-- Board Manager lease/run/action tables for v0 dry-run decisions
+- Board Manager lease/run/action tables plus user-visible Board Manager messages
 - public profile snapshots for operator role and skill summaries
 - daily airdrop and reward history for contribution weighting
 - PFTL transaction cache rows for proof anchors and forensic drill-in

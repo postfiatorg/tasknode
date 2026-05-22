@@ -51,6 +51,7 @@ export function HiveView() {
 function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
   const [hiveContext, setHiveContext] = useState(null);
   const [hiveSecretary, setHiveSecretary] = useState(null);
+  const [boardManager, setBoardManager] = useState(null);
   const [hiveContextOpen, setHiveContextOpen] = useState(false);
   const [hiveContextStatus, setHiveContextStatus] = useState("loading");
   const stats = projectDocument?.stats || {};
@@ -64,11 +65,13 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
         if (!result.ok) throw new Error(result.body?.message || `Hive Context returned HTTP ${result.status}.`);
         setHiveContext(result.body?.context || null);
         setHiveSecretary(result.body?.secretary || null);
+        setBoardManager(result.body?.boardManager || null);
         setHiveContextStatus("ready");
       })
       .catch(() => {
         if (cancelled) return;
         setHiveContext(null);
+        setBoardManager(null);
         setHiveContextStatus("error");
       });
     return () => {
@@ -147,6 +150,7 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
           onToggle={() => setHiveContextOpen((open) => !open)}
           status={hiveContextStatus}
           secretary={hiveSecretary}
+          boardManager={boardManager}
         />
       </Section>
     </div>
@@ -465,9 +469,10 @@ function ActivityRow({ entry, last = false, operators = {} }) {
   );
 }
 
-function HiveContextPanel({ context, expanded, onToggle, status, secretary }) {
+function HiveContextPanel({ boardManager, context, expanded, onToggle, status, secretary }) {
   const [rawOpen, setRawOpen] = useState(false);
   const groups = context?.groups || [];
+  const managerMessages = boardManager?.messages || [];
   const entryCount = Number(context?.entryCount || 0);
   const userCount = Number(context?.userCount || groups.length || 0);
   const hasEntries = entryCount > 0;
@@ -533,6 +538,25 @@ function HiveContextPanel({ context, expanded, onToggle, status, secretary }) {
                   The Secretary report is generated asynchronously from linked-wallet Hive Inputs.
                 </p>
               )}
+            </section>
+          )}
+          {managerMessages.length > 0 && (
+            <section className="hive-board-manager-messages">
+              <header>
+                <strong>Board Manager</strong>
+                <small>{managerMessages.length} {managerMessages.length === 1 ? "message" : "messages"}</small>
+              </header>
+              <div className="hive-context-entries">
+                {managerMessages.map((message) => (
+                  <article className="hive-context-entry is-board-manager" key={message.id}>
+                    <p>{message.body}</p>
+                    <footer>
+                      <time>{formatContextTime(message.createdAt)}</time>
+                      <span>board manager</span>
+                    </footer>
+                  </article>
+                ))}
+              </div>
             </section>
           )}
           {hasEntries && (

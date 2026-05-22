@@ -41,6 +41,7 @@ const migrations = [
   "032_archive_rejected_hive_scoping_projects.sql",
   "033_board_manager_v0.sql",
   "034_lock_operator_archived_hive_projects.sql",
+  "035_board_manager_action_hooks.sql",
 ];
 
 let migrated = false;

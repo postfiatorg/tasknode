@@ -24,7 +24,8 @@ assert.equal(packet.schema, "pf.hive.board_manager.source.v0");
 assert.equal(packet.scope, "global_hive");
 assert.equal(packet.trigger, "board_manager_smoke");
 assert.equal(packet.executionPolicy.dryRunDefault, true);
-assert.equal(packet.executionPolicy.mutationActionsNotImplementedInV0, true);
+assert.ok(packet.executionPolicy.implementedActionHooks.includes("message_user"));
+assert.ok(packet.executionPolicy.implementedActionHooks.includes("create_project"));
 assert.ok(packet.sourcePacketDigest.length >= 40);
 assert.deepEqual(packet.actionRegistry, boardManagerActions);
 
@@ -49,10 +50,10 @@ const decision = normalizeBoardManagerDecision({
 });
 assert.equal(decision.action, "refresh_hive_secretary");
 assert.equal(decision.confidence, 0.72);
-assert.deepEqual(decision.payload, {
-  summary: "Refresh the Hive Secretary report because validated inputs changed.",
-  next_steps: ["Run the secretary refresh action when mutation execution is enabled."],
-});
+assert.equal(decision.payload.summary, "Refresh the Hive Secretary report because validated inputs changed.");
+assert.deepEqual(decision.payload.next_steps, ["Run the secretary refresh action when mutation execution is enabled."]);
+assert.equal(decision.payload.project.title, "");
+assert.equal(decision.payload.contributor.wallet_address, "");
 
 assert.throws(
   () => normalizeBoardManagerDecision({ action: "delete_everything", reason: "bad", payload: {} }),

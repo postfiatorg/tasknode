@@ -203,7 +203,7 @@ const PROMPT_SOURCES = [
     title: "Board Manager",
     path: "prompts/hive/board_manager_v1.md",
     summary: "Operating prompt for the single leased Board Manager action registry.",
-    status: "Active for v0 dry-run Codex Exec board-manager runs",
+    status: "Active for Board Manager Codex Exec runs and first action hooks",
     usedBy: [
       "docs/wiki/plans/board-manager.md",
       "scripts/board-manager-codex-exec.mjs",

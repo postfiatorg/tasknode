@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPrompt } from "../server/prompt-registry.js";
 import { closePool } from "../server/db/pool.js";
+import { executeBoardManagerDecision } from "../server/board-manager-actions.js";
 import {
   buildBoardManagerSourcePacket,
   claimBoardManagerLease,
@@ -55,6 +56,7 @@ function usage() {
     "  --model <model>        Codex model. Default: gpt-5.5",
     "  --reasoning <effort>   Codex reasoning effort. Default: xhigh",
     "  --packet-only          Build and print the source packet without calling Codex.",
+    "  --execute              Execute supported action hooks after Codex chooses an action.",
     "  --no-record           Do not write board_manager_runs.",
     "  --no-lease            Do not claim board_manager_leases.",
     "  --json                Print machine-readable JSON.",
@@ -123,6 +125,7 @@ async function main() {
   const model = argValue("--model", process.env.TASKNODE_BOARD_MANAGER_CODEX_MODEL || "gpt-5.5");
   const reasoningEffort = argValue("--reasoning", process.env.TASKNODE_BOARD_MANAGER_CODEX_REASONING || "xhigh");
   const packetOnly = hasArg("--packet-only");
+  const execute = hasArg("--execute");
   const record = !hasArg("--no-record");
   const useLease = !hasArg("--no-lease");
   const json = hasArg("--json");
@@ -146,7 +149,7 @@ async function main() {
       lease = await claimBoardManagerLease({
         scope,
         ttlSeconds: Number(process.env.TASKNODE_BOARD_MANAGER_LEASE_SECONDS || 900),
-        metadata: { trigger, model, reasoningEffort, dry_run: true },
+        metadata: { trigger, model, reasoningEffort, dry_run: !execute },
       });
       if (!lease.ok) {
         throw new Error(`board_manager_lease_unavailable:${JSON.stringify(lease.active || {})}`);
@@ -159,7 +162,7 @@ async function main() {
         managerId: lease?.managerId || "board_manager_unleased",
         trigger,
         sourcePacket,
-        dryRun: true,
+        dryRun: !execute,
         model,
         reasoningEffort,
       });
@@ -174,13 +177,22 @@ async function main() {
         outputText: result.outputText,
       });
     }
+    const actionResult = execute
+      ? await executeBoardManagerDecision({
+          runId: run?.id || "",
+          decision: result.decision,
+          sourcePacket,
+          dryRun: false,
+        })
+      : null;
 
     const output = {
       ok: true,
-      dryRun: true,
+      dryRun: !execute,
       runId: run?.id || "",
       sourcePacketDigest: sourcePacket.sourcePacketDigest,
       decision: result.decision,
+      actionResult,
     };
     console.log(json ? JSON.stringify(output, null, 2) : [
       "board manager codex exec ok",
@@ -190,6 +202,7 @@ async function main() {
       `target: ${result.decision.target_type || "-"} ${result.decision.target_id || ""}`.trim(),
       `confidence: ${result.decision.confidence}`,
       `reason: ${result.decision.reason}`,
+      actionResult ? `executed: ${actionResult.result?.executed ? "yes" : "no"}` : "",
     ].join("\n"));
   } catch (error) {
     if (record && run?.id) {
