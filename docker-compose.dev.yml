@@ -92,6 +92,41 @@ services:
       - api_node_modules:/app/node_modules
       - dev_data:/data
 
+  board-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: npm run board-manager:worker -- --execute
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.tasknodeofficial-dev
+        required: false
+    environment:
+      NODE_ENV: development
+      TASKNODE_ENV: development
+      TASKNODE_APP_NAME: tasknodeofficial-local-board-manager
+      TASKNODE_PROCESS_ROLE: board-manager
+      TASKNODE_BOARD_MANAGER_ENABLED: "true"
+      TASKNODE_DATABASE_ENABLED: "true"
+      DATABASE_URL: ${TASKNODE_DATABASE_URL:-postgres://tasknodeofficial:tasknodeofficial@db:5432/tasknodeofficial}
+      CODEX_HOME: /codex_home
+      HOME: /tmp/tasknode-board-manager-home
+      TASKNODE_PUBLIC_URL: http://localhost:5174
+      VITE_SITE_ORIGIN: http://localhost:5174
+      TASKNODE_BOARD_MANAGER_WORKER_POLL_MS: ${TASKNODE_BOARD_MANAGER_WORKER_POLL_MS:-15000}
+      TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS: ${TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS:-5000}
+      TASKNODE_BOARD_MANAGER_ERROR_DELAY_MS: ${TASKNODE_BOARD_MANAGER_ERROR_DELAY_MS:-300000}
+      TASKNODE_BOARD_MANAGER_CODEX_MODEL: ${TASKNODE_BOARD_MANAGER_CODEX_MODEL:-gpt-5.5}
+      TASKNODE_BOARD_MANAGER_CODEX_REASONING: ${TASKNODE_BOARD_MANAGER_CODEX_REASONING:-xhigh}
+    user: "${TASKNODE_DOCKER_UID:-1001}:${TASKNODE_DOCKER_GID:-1001}"
+    volumes:
+      - .:/app
+      - board_manager_node_modules:/app/node_modules
+      - ${TASKNODE_CODEX_HOME:-/home/pfrpc/.codex}:/codex_home
+    restart: unless-stopped
+
   web:
     build:
       context: .
@@ -114,6 +149,7 @@ services:
 
 volumes:
   api_node_modules:
+  board_manager_node_modules:
   web_node_modules:
   dev_data:
   pg_data:

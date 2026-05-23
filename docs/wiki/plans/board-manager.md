@@ -249,6 +249,7 @@ Implemented v0 pieces:
 - `npm run board-manager:loop -- --execute` runs the continuous local Board Manager loop for development.
 - `npm run board-manager:worker -- --execute` runs the durable job-driven Board Manager worker.
 - `npm run board-manager:ops -- status` shows the scope, lease, and recent jobs.
+- local Docker has a dedicated `board-manager` service in `docker-compose.dev.yml`; it runs the durable worker continuously, mounts `CODEX_HOME`, and is separate from the API/web containers.
 
 The default remains dry-run for app mutations. It is not ephemeral. The Codex conversation persists, and execution of app hooks still requires the explicit `--execute` flag.
 

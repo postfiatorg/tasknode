@@ -110,7 +110,10 @@ async function runCodexOneShot({ job }) {
   child.stderr.on("data", (chunk) => {
     stderr += String(chunk);
   });
-  const code = await new Promise((resolve) => child.on("close", resolve));
+  const code = await new Promise((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", resolve);
+  });
   if (code !== 0) {
     const error = new Error(`board_manager_codex_job_failed:${code}`);
     error.stdout = stdout;

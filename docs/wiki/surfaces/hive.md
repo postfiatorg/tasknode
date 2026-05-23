@@ -227,6 +227,7 @@ Board Manager target:
 - Product Documents refresh when the manager decides a project is stale or materially changed.
 - If a Product Document identifies missing information, the manager can research, ask follow-up questions, or initiate information-gathering Network Tasks under the existing project.
 - Production runs come from a durable Fly worker process with `board_manager_jobs`, `board_manager_leases`, and auditable `board_manager_runs`, not from local tmux. The runnable entrypoints are `npm run start:web`, `npm run start:worker`, and `npm run start:board-manager`.
+- Local Docker now has a dedicated `board-manager` service. It runs `npm run board-manager:worker -- --execute`, mounts the local Codex home at `/codex_home`, and consumes `board_manager_jobs` separately from the API process.
 - In local Docker, `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true` is enabled. The worker consumes `network_task_generation_jobs`, creates normal encrypted task request bundles, and schedules the existing task-generation worker. A May 23, 2026 local Docker test produced task `task_01af1624fcb74e41d902ca32b126f27d` for project `task_node` with offer transaction `E6C86781C0D53A68F2E7740AA8751E19616B9732489D9EA8C4330A692AC1A931`.
 - Outside local Docker, a live PFTL network-task offer still requires the network worker, task-generation worker, service encryption key, IPFS, and PFTL submit credentials to be enabled.
 

@@ -173,7 +173,8 @@ async function runCodexExec({ prompt, model, reasoningEffort, resumeSessionId = 
     child.stderr.on("data", (chunk) => {
       stderr += String(chunk);
     });
-    const code = await new Promise((resolve) => {
+    const code = await new Promise((resolve, reject) => {
+      child.on("error", reject);
       child.on("close", resolve);
     });
     if (code !== 0) {
