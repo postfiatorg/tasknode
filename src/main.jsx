@@ -563,7 +563,7 @@ function App() {
       return;
     }
     if (walletVaultUnlocked) {
-      lockWalletVault();
+      navigateToView("wallet");
       return;
     }
     if (walletVaultAvailable) {
@@ -573,7 +573,6 @@ function App() {
     navigateToView("wallet");
   }, [
     linkedWalletAddress,
-    lockWalletVault,
     navigateToView,
     signedIn,
     walletVaultAvailable,

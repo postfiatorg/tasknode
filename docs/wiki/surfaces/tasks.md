@@ -17,7 +17,7 @@ The top summary shows outstanding count, PFT in flight, chain-indexed projection
 
 `GET /api/tasks` also returns task sync integrity from the cache layer. The sync status can be `ready`, `empty`, `indexing_lag`, or `reducer_attention`. `indexing_lag` means the cache has a newer task pointer than the projected row has consumed. `reducer_attention` means failed reducer work exists for one or more visible tasks. The UI should treat these as indexing states, not as final lifecycle states.
 
-Network-pushed work appears in the same task queue, not in a separate lifecycle. When a projected task carries Hive routing metadata, the list marks it as a `Network Task` or `Alpha Task`, shows the linked project id, and the detail Overview includes a small `Hive routed` panel. The panel is informational only. Accept, refuse, submit, verification, reward, and forensics all remain the normal PFTL task path.
+Network-pushed work appears in the same task queue, not in a separate lifecycle. Visible task labels are intentionally limited to `Personal`, `Network`, or `Alpha`; implementation categories such as engineering are not shown as task types. Project/routing metadata stays in the backing payload and forensics, while the list and detail page focus on the normal task lifecycle: accept or refuse, submit, verify, reward, and audit.
 
 ## List And Detail State Consistency
 
@@ -389,7 +389,9 @@ When changing Tasks, verify:
 11. Existing projected tasks preserve the steps from the chain offer payload rather than falling back to the submission requirement as a fake one-step task.
 12. `npm run data-architecture-audit` reports no P0/P1 findings for current task/cache state.
 13. If a detail page looks stale, `forensics.integrity.projectionBehindCachedPointer` explains the lag and `task-replay-repair` can rebuild the projection from cache rows.
-14. In `verification_requested`, the detail overview uses the mock-driven compact layout: original task summary collapsed, current verification ask visible, and Submit focused on one response draft.
+14. In `verification_requested`, the detail overview uses the compact layout: original task summary collapsed, current verification ask visible, and Submit focused on one response draft.
+15. The shared wallet unlock entry point must not lock an already-unlocked vault. Locking is an explicit wallet action; task signing flows should only open or unlock the wallet.
+16. Visible task type labels are `Personal`, `Network`, or `Alpha`.
 
 ## Reviewer To Do List
 

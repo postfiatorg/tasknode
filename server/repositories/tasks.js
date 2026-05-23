@@ -106,6 +106,7 @@ function publicTask(row) {
   const networkTask = safeObject(generatedTask.network_task);
   const taskClass = safeText(generatedTask.task_class || networkTask.task_class, 80);
   const isNetworkTask = taskClass === "network" || taskClass === "alpha" || objectKeyCount(networkTask) > 0;
+  const taskKindLabel = taskClass === "alpha" ? "Alpha" : isNetworkTask ? "Network" : "Personal";
   const verification = safeObject(row.verification_policy_json);
   const acceptBy = toIso(row.accept_by);
   const deadlineAt = toIso(row.deadline_at);
@@ -117,7 +118,7 @@ function publicTask(row) {
     fullId: row.task_id,
     taskId: row.task_id,
     title: row.title || "Untitled task",
-    kind: isNetworkTask ? (taskClass === "alpha" ? "Alpha Task" : "Network Task") : titleCase(row.task_kind || "task"),
+    kind: taskKindLabel,
     originalKind: titleCase(row.task_kind || "task"),
     taskClass,
     isNetworkTask,

@@ -216,37 +216,11 @@ function TaskRewardOutcome({ outcome }) {
   );
 }
 
-function TaskNetworkRoutePanel({ task }) {
-  if (!task?.isNetworkTask) return null;
-  const metadata = task.metadata || {};
-  const networkTask = metadata.networkTask || {};
-  const projectId = metadata.networkProjectId || networkTask.project_id || "";
-  const taskClass = task.taskClass || networkTask.task_class || "network";
-  const projectNeed = networkTask.project_need_summary || networkTask.projectNeedSummary || "";
-  const routingReason = networkTask.routing_reason || networkTask.routingReason || "";
-  const rows = [
-    projectId ? ["Project", projectId] : null,
-    taskClass ? ["Class", taskClass === "alpha" ? "Alpha Task" : "Network Task"] : null,
-  ].filter(Boolean);
+function TaskDetailLoadingPanel() {
   return (
-    <section className="task-network-route">
-      <div>
-        <span>Hive routed</span>
-        <strong>{taskClass === "alpha" ? "Alpha Task" : "Network Task"}</strong>
-      </div>
-      {rows.length > 0 && (
-        <dl>
-          {rows.map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      {(projectNeed || routingReason) && (
-        <p>{projectNeed || routingReason}</p>
-      )}
+    <section className="task-detail-loading" aria-live="polite">
+      <span />
+      <p>Loading task detail</p>
     </section>
   );
 }
@@ -298,7 +272,6 @@ function TaskOriginalContext({ displayTask, expanded, onToggle, steps, verificat
       </p>
       {expanded && (
         <div className="task-original-context-body">
-        <TaskNetworkRoutePanel task={displayTask} />
         <TaskSection title="Description">
           <p>{displayTask.description}</p>
         </TaskSection>
@@ -401,7 +374,6 @@ function TaskOverviewPanel({
             walletUnlockPending={walletUnlockPending}
             walletVault={walletVault}
           />
-          <TaskNetworkRoutePanel task={displayTask} />
           <TaskSection title="Description">
             <p>{displayTask.description}</p>
           </TaskSection>
@@ -1262,7 +1234,9 @@ export function TaskDetailModal({
             ))}
           </div>
 
-          {activeTab === "overview" && (
+          {detailState.loading && !detailState.data ? (
+            <TaskDetailLoadingPanel />
+          ) : activeTab === "overview" && (
             <TaskOverviewPanel
               accountId={accountId}
               detail={detailState.data}
@@ -1279,7 +1253,7 @@ export function TaskDetailModal({
               walletVault={walletVault}
             />
           )}
-          {activeTab === "submit" && (
+          {!(detailState.loading && !detailState.data) && activeTab === "submit" && (
             <TaskSubmitPanel
               accountId={accountId}
               detail={detailState.data}
@@ -1296,7 +1270,7 @@ export function TaskDetailModal({
               walletVault={walletVault}
             />
           )}
-          {activeTab === "forensics" && (
+          {!(detailState.loading && !detailState.data) && activeTab === "forensics" && (
             <TaskForensicsPanel
               copiedValue={copiedValue}
               detail={detailState.data}

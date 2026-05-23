@@ -28,12 +28,6 @@ export function TaskRow({ isFirst, onClick, task }) {
           <span className="task-title">{task.title}</span>
           <span className="task-meta">
             <strong>{task.kind}</strong>
-            {task.isNetworkTask && (
-              <>
-                <TaskDot />
-                <span>{task.metadata?.networkProjectId || "Hive routed"}</span>
-              </>
-            )}
             <TaskDot />
             <span className="task-status-text" style={{ color: task.statusColor || taskStatusColor(task.statusKey) }}>
               {task.status}
