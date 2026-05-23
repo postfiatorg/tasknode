@@ -18,6 +18,7 @@ import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
 import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
+import styleGuide from "../../../docs/wiki/architecture/style-guide.md?raw";
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import agentManagedAboutPanels from "../../../docs/wiki/plans/agent-managed-about-panels.md?raw";
@@ -474,6 +475,12 @@ export const DOC_GROUPS = [
         title: "Execution Mandate",
         summary: "Verification rules for repo work and claims of completion.",
         markdown: executionMandate,
+      },
+      {
+        slug: "style-guide",
+        title: "Style Guide",
+        summary: "Visual system, colors, typography, and surface-level UX rules.",
+        markdown: styleGuide,
       },
       {
         slug: "task-lifecycle",
