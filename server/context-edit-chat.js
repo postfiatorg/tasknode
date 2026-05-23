@@ -71,6 +71,7 @@ export async function executeContextEditChat({
   contextDocument,
   memoryContext,
   taskContext,
+  contextStatus,
 } = {}) {
   const status = chatExecutionStatus(contextEditChatMode);
   if (!status.enabled) {
@@ -129,6 +130,11 @@ export async function executeContextEditChat({
       })
     : null;
   const assistantBody = parsed.response || (storedProposal ? "I prepared one context edit." : "I need one clarification.");
+  const resolvedContextStatus = {
+    ...(contextStatus || {}),
+    contextMode: contextEditMode,
+    jobsRetrieval: contextStatus?.jobsRetrieval || { state: "skipped", included: false, reason: "context_edit" },
+  };
   const persisted = await appendChatTurn({
     accountId,
     conversationId,
@@ -151,7 +157,7 @@ export async function executeContextEditChat({
         proposal: proposalMetadata(storedProposal),
       },
     },
-    runMetadata: { contextMode: contextEditMode },
+    runMetadata: { contextMode: contextEditMode, contextStatus: resolvedContextStatus },
     attachments,
     usage: result.usage,
   });
@@ -160,6 +166,7 @@ export async function executeContextEditChat({
     ...result,
     text: assistantBody,
     ...persisted,
+    contextStatus: resolvedContextStatus,
   };
 }
 

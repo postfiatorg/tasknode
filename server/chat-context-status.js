@@ -61,15 +61,15 @@ export function buildJobsRetrievalStatus(result = null) {
   if (!result) {
     return { state: "skipped", included: false };
   }
+  if (result.reason === "jobs_retrieval_timeout") {
+    return { state: "timeout", included: false, reason: result.reason };
+  }
   if (result.skipped) {
     return {
       state: "skipped",
       included: false,
       reason: result.reason || "skipped",
     };
-  }
-  if (result.ok === false && result.reason === "jobs_retrieval_timeout") {
-    return { state: "timeout", included: false, reason: result.reason };
   }
   if (result.ok === false) {
     return {

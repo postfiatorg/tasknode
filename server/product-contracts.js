@@ -792,6 +792,7 @@ export async function chatSend(payload, method) {
           contextDocument,
           memoryContext,
           taskContext,
+          contextStatus,
         })
       : await executeChat({
           accountId,
