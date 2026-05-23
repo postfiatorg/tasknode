@@ -68,7 +68,7 @@ Clicking a task opens a task detail popout with three tabs:
 | Submit | One signed evidence path containing up to two evidence artifacts. The browser encrypts the evidence locally, pins it to IPFS, and signs a PFTL `TASK_SUBMISSION` pointer from the linked wallet. |
 | Forensics | Chain audit view: pointer transactions, CIDs, decrypted payload fields, raw payload, and replay integrity. |
 
-On desktop the task detail renders as a contained popout card inside the Tasks workspace, not as a separate app screen. The sidebar and the task queue remain visible behind it so the user keeps their place in the Task Node. On narrow mobile screens the same detail surface expands to the full viewport because there is not enough horizontal room for a pane.
+On desktop the task detail covers the Tasks workspace as a smooth in-place pane, not as a separate app screen. The left app shell remains visible so the user keeps their place in the Task Node, and the close pill returns to the task queue. On narrow mobile screens the same detail surface expands to the full viewport because there is not enough horizontal room for a pane.
 
 ## Copy Task Flow
 

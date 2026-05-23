@@ -5,7 +5,8 @@
   bottom: 0;
   left: 260px;
   z-index: 70;
-  pointer-events: none;
+  background: #faf9f6;
+  pointer-events: auto;
 }
 
 .app-shell.sidebar-collapsed .task-modal-layer { left: 56px; }
@@ -14,24 +15,21 @@
 
 .task-modal {
   position: absolute;
-  top: 64px;
-  right: 24px;
-  bottom: 24px;
-  left: auto;
+  inset: 0;
   display: flex;
-  width: min(780px, calc(100vw - 336px));
-  max-width: calc(100% - 48px);
-  min-width: min(560px, calc(100% - 48px));
-  height: auto;
+  width: 100%;
+  max-width: none;
+  height: 100%;
   overflow: hidden;
   flex-direction: column;
-  border: 1px solid #e8e6df;
-  border-radius: 18px;
-  background: #ffffff;
-  box-shadow: 0 24px 70px rgba(13, 13, 13, 0.16);
+  border: 0;
+  border-left: 1px solid #e8e6df;
+  border-radius: 0;
+  background: #faf9f6;
+  box-shadow: none;
   opacity: 0;
   pointer-events: auto;
-  transform: translateX(18px) scale(0.992);
+  transform: translateX(18px);
   transform-origin: right center;
   transition:
     opacity 140ms ease,
@@ -40,12 +38,12 @@
 
 .task-modal.is-mounted {
   opacity: 1;
-  transform: translateX(0) scale(1);
+  transform: translateX(0);
 }
 
 .task-modal-header {
-  display: flex; align-items: center; flex: 0 0 auto; gap: 12px; width: 100%;
-  margin: 0; padding: 22px 24px 16px; justify-content: space-between; border-bottom: 1px solid #e8e6df;
+  display: flex; align-items: center; flex: 0 0 auto; gap: 12px; width: min(820px, 100%);
+  margin: 0 auto; padding: 28px 24px 18px; justify-content: space-between; border-bottom: 1px solid #e8e6df;
 }
 
 .task-modal-kicker,
@@ -55,13 +53,14 @@
 }
 
 .task-modal-close {
-  gap: 6px; min-height: 28px; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 400; text-transform: none;
+  gap: 6px; min-height: 32px; padding: 4px 12px; border: 1px solid #e8e6df;
+  border-radius: 999px; background: #ffffff; font-size: 13px; font-weight: 500; text-transform: none;
 }
 
-.task-modal-close:hover { background: rgba(0, 0, 0, 0.05); }
+.task-modal-close:hover { background: #f4f3ee; }
 
 .task-modal-body {
-  width: 100%; min-height: 0; margin: 0; flex: 1; overflow: auto; padding: 26px 24px 48px;
+  width: min(820px, 100%); min-height: 0; margin: 0 auto; flex: 1; overflow: auto; padding: 32px 24px 64px;
 }
 
 .task-modal h2 { margin: 0; color: #1b1b19; font-size: 24px; font-weight: 500; line-height: 1.25; }
