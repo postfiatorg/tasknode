@@ -78,6 +78,27 @@ export function taskEventExpectation({ status = "", timeline = [] } = {}) {
   const rewardDecision = events.find((event) => eventSchema(event) === "pf.task.reward_decision.v1");
 
   if (
+    cleanText(status, 120) === "submitted" &&
+    lastSchema === "pf.task.submission.v1" &&
+    !events.some((event) => {
+      if (eventSchema(event) !== "pf.task.update.v1") return false;
+      const transition = cleanText(
+        event?.rawPayload?.transition || event?.rawPayload?.status_after || event?.rawPayload?.status,
+        120
+      );
+      return transition === "verification_requested";
+    })
+  ) {
+    return {
+      severity: "warning",
+      label: "Awaiting authority review",
+      body:
+        "Initial evidence is indexed. The task authority has not published a verification request or reward decision yet. The next canonical step is usually pf.task.update.v1 with transition verification_requested, or pf.task.reward_decision.v1 after review.",
+      missingSchemas: ["pf.task.update.v1", "pf.task.reward_decision.v1"],
+    };
+  }
+
+  if (
     cleanText(status, 120) === "verification_response_submitted" &&
     lastSchema === "pf.task.verification_response.v1" &&
     !schemas.has("pf.task.reward_decision.v1") &&

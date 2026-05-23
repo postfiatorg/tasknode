@@ -355,6 +355,9 @@ async function submitTaskSubmission({ payload, session }) {
   const resolved = await requireSessionTask({ payload, session });
   if (resolved.error) return resolved.error;
 
+  const allowed = validateSubmissionAllowed(resolved.task);
+  if (allowed.error) return allowed.error;
+
   const submit = await submitSignedPftTransaction({
     signedTxBlob: payload?.signedTxBlob || payload?.signed_tx_blob,
     expectedAccount: resolved.wallet.address,
