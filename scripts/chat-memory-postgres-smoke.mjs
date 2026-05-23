@@ -250,10 +250,49 @@ await completeDeepMemoryJob({
 });
 
 const memory = await listChatMemory({ accountId });
-assert.equal(memory.entries.length, deepMemoryBlockSize + 2);
-const deepEntries = memory.entries.filter((entry) => entry.kind === "deep_memory");
-assert.equal(deepEntries.length, 1);
-assert.match(deepEntries[0].memoryText, /Retry-stable concise planning style/);
+assert.equal(memory.deepMemories.length, 1);
+assert.equal(memory.memories.length, 36);
+assert.equal(memory.entries.length, 37);
+assert.match(memory.deepMemories[0].memoryText, /Retry-stable concise planning style/);
+assert.equal(memory.queue.turnJobs.total >= 0, true);
+
+for (let overflowIndex = 0; overflowIndex < 80; overflowIndex += 1) {
+  await query(
+    `
+      INSERT INTO chat_memory_entries (
+        id,
+        account_id,
+        conversation_id,
+        conversation_title,
+        user_message_id,
+        assistant_message_id,
+        user_request_summary,
+        system_response_summary,
+        memory_text,
+        kind,
+        created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'turn_memory', now() - ($10::int * interval '1 minute'))
+    `,
+    [
+      `mem_overflow_${suffix}_${overflowIndex}`,
+      accountId,
+      conversationId,
+      "Overflow turn",
+      `msg_${suffix}_overflow_user_${overflowIndex}`,
+      `msg_${suffix}_overflow_assistant_${overflowIndex}`,
+      `Overflow user summary ${overflowIndex}.`,
+      `Overflow assistant summary ${overflowIndex}.`,
+      `Overflow memory text ${overflowIndex}.`,
+      overflowIndex + 1,
+    ]
+  );
+}
+
+const overflowList = await listChatMemory({ accountId });
+assert.equal(overflowList.deepMemories.length, 1);
+assert.equal(overflowList.memories.length, 36);
+assert.match(overflowList.deepMemories[0].memoryText, /Retry-stable concise planning style/);
 
 const context = await getChatMemoryContext({ accountId, deepLimit: 3, turnLimit: 36 });
 assert.equal(context.deepMemories.length, 1);

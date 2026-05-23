@@ -12,6 +12,9 @@ function formatMemoryDate(value) {
 
 export function MemoryView({ session }) {
   const [entries, setEntries] = useState([]);
+  const [deepMemories, setDeepMemories] = useState([]);
+  const [turnMemories, setTurnMemories] = useState([]);
+  const [queueHealth, setQueueHealth] = useState(null);
   const [networkProfile, setNetworkProfile] = useState(null);
   const [networkStatus, setNetworkStatus] = useState("idle");
   const [networkMessage, setNetworkMessage] = useState("");
@@ -19,8 +22,14 @@ export function MemoryView({ session }) {
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
   const signedIn = isSignedInSession(session);
-  const deepEntries = entries.filter((entry) => entry.kind === "deep_memory").slice(0, 3);
-  const memoryEntries = entries.filter((entry) => entry.kind !== "deep_memory").slice(0, 36);
+  const deepEntries = deepMemories.length > 0
+    ? deepMemories
+    : entries.filter((entry) => entry.kind === "deep_memory").slice(0, 3);
+  const memoryEntries = turnMemories.length > 0
+    ? turnMemories
+    : entries.filter((entry) => entry.kind !== "deep_memory").slice(0, 36);
+  const failedJobCount =
+    Number(queueHealth?.turnJobs?.failed || 0) + Number(queueHealth?.deepJobs?.failed || 0);
 
   const loadNetworkProfile = useCallback(({ refresh = false } = {}) => {
     if (!signedIn) return undefined;
@@ -65,6 +74,9 @@ export function MemoryView({ session }) {
           throw new Error(result.body?.message || `Memory returned HTTP ${result.status}.`);
         }
         setEntries(result.body?.entries || []);
+        setDeepMemories(result.body?.deepMemories || []);
+        setTurnMemories(result.body?.memories || []);
+        setQueueHealth(result.body?.queue || null);
         setMessage("");
         setStatus("ready");
       })
@@ -84,7 +96,13 @@ export function MemoryView({ session }) {
     loadNetworkProfile();
   }, [loadMemory, loadNetworkProfile]);
 
-  useEffect(() => loadAll(), [loadAll]);
+  useEffect(() => {
+    if (!signedIn) return undefined;
+    const handle = window.setTimeout(() => loadMemory(query), query.trim() ? 300 : 0);
+    return () => window.clearTimeout(handle);
+  }, [loadMemory, query, signedIn]);
+
+  useEffect(() => loadNetworkProfile(), [loadNetworkProfile]);
 
   if (!signedIn) {
     return (
@@ -122,17 +140,24 @@ export function MemoryView({ session }) {
         />
       </div>
 
+      {failedJobCount > 0 && (
+        <div className="memory-status error" role="status">
+          {failedJobCount} background memory job{failedJobCount === 1 ? "" : "s"} failed after retries.
+          New chat memory may be missing until an operator requeues failed jobs.
+        </div>
+      )}
+
       {message && <div className="memory-status error">{message}</div>}
       {networkMessage && <div className="memory-status error">{networkMessage}</div>}
       {status === "loading" && entries.length === 0 && <div className="memory-status">Loading memory</div>}
-      {status !== "loading" && networkStatus !== "loading" && entries.length === 0 && !message && !networkProfile && (
+      {status !== "loading" && networkStatus !== "loading" && deepEntries.length === 0 && memoryEntries.length === 0 && !message && !networkProfile && (
         <section className="memory-empty">
           <strong>No memory yet</strong>
           <p>Completed chat responses will appear here after background compression.</p>
         </section>
       )}
 
-      {(entries.length > 0 || networkProfile) && (
+      {(deepEntries.length > 0 || memoryEntries.length > 0 || networkProfile) && (
         <div className="memory-sections" aria-label="Chat memory records">
           {networkProfile && (
             <NetworkTaskProfileCard
