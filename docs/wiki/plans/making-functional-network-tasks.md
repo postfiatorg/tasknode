@@ -16,6 +16,50 @@ The project-detail shape in the `PFT distribution v3` mock is the reference layo
 
 The current correction is that "scoping" is not a project. Scoping can be a phase, a status, or a reason to create information-gathering Network Tasks. It should not appear as the project title. A project title should name the durable workstream, such as `Post Fiat L1`, `Capital Deployment Protocol`, or `Task Node Product`, with `phase_label = Scoping` when the system is still gathering information.
 
+## Network Task Boundary
+
+Network Tasks are system-pushed tasks. They are not manually authored in the Hive UI, and the Board Manager should not write the finished task offer text itself.
+
+The boundary is:
+
+1. The Board Manager decides whether a project needs work pushed to one or more contributors.
+2. The Board Manager chooses `initiate_network_task` with the project, candidate user or candidate set, task class, reward band, and routing reason.
+3. A network-task generation worker builds the concrete task using the same task generation standards as personal task generation.
+4. The concrete task is published through the normal PFTL task lifecycle.
+5. The user sees a network-pushed task card in the Tasks UX and can accept or refuse it.
+
+This keeps the agent from inventing a second workflow. The Board Manager is the allocator. The task engine is the author and publisher. PFTL remains the canonical task state.
+
+There are two v1 task classes:
+
+| Class | Purpose | Typical projects |
+| --- | --- | --- |
+| `network` | Protocol, product, validation, application, marketing, and coordination work that advances a Hive project. | Protocol Development, Protocol Applications, Protocol Marketing, Network Validation |
+| `alpha` | Market, trading, alternative-data, research, and capital-opportunity work that advances the network's capital edge. | Alpha Generation, Capital Deployment Protocol |
+
+Both classes use the same task lifecycle after publication: proposed, accepted/refused, submitted, verification requested when needed, verification response, reward decision, and reward payment or zero-reward close.
+
+## Cadence And Reward Policy
+
+Network task generation must be cadence controlled. The system should prefer a few high-quality routed tasks over spraying work at every contributor.
+
+Initial policy:
+
+- one Board Manager run may initiate at most one network-task generation action;
+- per-account network-pushed task load must respect active task caps and refusal history;
+- per-project generation should have a cooldown so one project cannot dominate the board;
+- Alpha Tasks may have a separate cadence from general Network Tasks because they may require faster response windows;
+- generated tasks should expire if the user does not accept them inside the configured accept window.
+
+Default reward policy:
+
+- default offer range: `10,000` to `50,000` PFT per task;
+- exact reward is selected by the task generation worker from project importance, urgency, task difficulty, evidence burden, expected network value, and candidate fit;
+- the Board Manager may suggest a reward band but should not embed the final task offer content;
+- rewards outside the default range require explicit policy metadata in the generation job.
+
+The high reward range is intentional: Network Tasks should feel like material network allocations, not small personal productivity tasks.
+
 ## Project Types
 
 Network projects use a small fixed project-type enum in v1:
@@ -133,9 +177,14 @@ Fields:
 - `candidate_account_id`
 - `candidate_wallet_address`
 - `allocation_status`: `candidate`, `proposed`, `accepted`, `refused`, `expired`, `rerouted`, or `completed`.
+- `task_class`: `network` or `alpha`.
+- `reward_min_pft`: proposed lower bound for the generation worker.
+- `reward_max_pft`: proposed upper bound for the generation worker.
 - `network_diagnostic_report_id`
 - `network_diagnostic_report_digest`
 - `allocation_reason_summary`
+- `project_need_summary`
+- `cadence_policy_snapshot`
 - `expires_at`
 - `created_at`
 - `updated_at`
@@ -152,6 +201,12 @@ Fields:
 - `project_id`
 - `system_run_id`
 - `trigger`: `network_snapshot`, `project_gap`, `allocation_retry`, or `task_state_change`
+- `task_class`: `network` or `alpha`
+- `candidate_account_id`
+- `candidate_wallet_address`
+- `network_task_allocation_id`
+- `reward_min_pft`
+- `reward_max_pft`
 - `source_payload_digest`
 - `provider`
 - `model`
@@ -165,6 +220,19 @@ Fields:
 - `error`
 - `created_at`
 - `updated_at`
+
+The job source packet should include:
+
+- project row and current product document;
+- Hive Secretary report and relevant Hive Context excerpts;
+- current project task refs and recent project activity;
+- candidate list from live Network Diagnostic Reports;
+- the selected candidate's public profile summary and routing-relevant private diagnostic fields;
+- current outstanding, refused, and rewarded tasks for that candidate;
+- task class and reward band;
+- supported evidence surfaces and task-generation policy from the personal task engine.
+
+It should not include raw private memory unless that field is already part of the user's Network Diagnostic Report packet and needed for routing.
 
 ## PFTL Boundary
 
@@ -324,6 +392,8 @@ Routing should use it this way:
 3. Task fit:
    - match the concrete task need to the report in plain-language terms.
 4. Allocation:
+   - build a candidate list from eligible Network Diagnostic Reports;
+   - include public profile summary and private routing summary, not raw hidden memory, in the allocation packet;
    - create `network_task_allocations` rows for the best candidate accounts;
    - publish a PFTL task offer only when the system is ready to push a concrete task to a user.
 
@@ -336,21 +406,28 @@ The expected Board Manager flow is:
 1. A Board Manager run claims the global Hive lease.
 2. The manager evaluates network state and identifies whether any action is needed.
 3. If needed, the manager creates or updates a durable `network_project`, selects an existing active project, refreshes a project document, asks for follow-up, researches, or does nothing.
-4. If a concrete task should exist, the task generation action builds a source packet:
+4. If a concrete task should exist, the Board Manager selects `initiate_network_task`. The action records:
+   - project id;
+   - task class: `network` or `alpha`;
+   - candidate user, candidate set, or allocation criteria;
+   - reward band, normally `10,000` to `50,000` PFT;
+   - why the route fits the contributor's Network Diagnostic Report;
+   - cadence reason, for example project gap, stale project, urgent alpha window, or allocation retry.
+5. The network-task generation worker builds a source packet:
    - project title, type, objective, and current status;
    - relevant Hive Context entries;
    - recent task refs already attached to the project;
    - the system-detected network need;
    - candidate Network Diagnostic Reports;
    - current task engine reward and evidence policy.
-5. The task generator creates a concrete Network Task proposal for a selected account.
-6. The app publishes a PFTL task request/offer carrying project metadata.
-7. The cache/reducer indexes the task into `task_projections`.
-8. `network_project_task_refs` links the task to the project.
-9. The user's Tasks page shows a proposed Network Task.
-10. If accepted, it becomes outstanding. If refused or expired, allocation status updates and the worker can reroute.
-11. Submission, verification, reward, zero-reward, or cancellation follows the existing task lifecycle.
-12. Hive updates project tasks, contributors, routed PFT, and activity from projections.
+6. The task generator creates a concrete Network Task proposal for a selected account using the same output discipline as personal task generation.
+7. The app publishes a PFTL task request/offer carrying project metadata.
+8. The cache/reducer indexes the task into `task_projections`.
+9. `network_project_task_refs` links the task to the project.
+10. The user's Tasks page shows a proposed Network Task.
+11. If accepted, it becomes outstanding. If refused or expired, allocation status updates and the worker can reroute.
+12. Submission, verification, reward, zero-reward, or cancellation follows the existing task lifecycle.
+13. Hive updates project tasks, contributors, routed PFT, and activity from projections.
 
 A Network Task is created by the system. The Hive page can display the project and the resulting task, but it is not the authoring surface for manually creating Network Tasks.
 
@@ -358,6 +435,8 @@ A Network Task is created by the system. The Hive page can display the project a
 
 When a Network Task is routed to a user, the Tasks page should show a proposed task card similar to the Hive mock:
 
+- special network-pushed container so it is visually distinct from user-requested personal tasks;
+- task class badge: `Network Task` or `Alpha Task`;
 - project type badge;
 - project link, for example `PFT distribution v3`;
 - task title and objective;
@@ -405,8 +484,9 @@ Needed workers/action handlers:
 - Hive Secretary handler: refreshes the Secretary report when the Board Manager chooses `refresh_hive_secretary`.
 - active project handler: creates, updates, pauses, or archives durable project rows when the Board Manager chooses project actions.
 - product document handler: refreshes the expandable project document when the Board Manager chooses `refresh_project_document`.
-- network allocation handler: selects eligible candidates from Network Diagnostic Reports.
-- network task generation handler: creates concrete tasks and publishes PFTL offers.
+- network allocation handler: selects eligible candidate accounts from Network Diagnostic Reports, user availability settings, active task load, wallet readiness, refusal history, and project fit.
+- network task generation handler: consumes a Board Manager `initiate_network_task` decision plus allocation rows, creates concrete tasks, and publishes PFTL offers through the existing task engine.
+- network cadence handler: enforces per-account, per-project, and per-class throttles before generation jobs publish user-visible offers.
 - allocation expiration handler: marks proposed tasks expired and reroutes when needed.
 - evidence review handler: reviews project-linked evidence through the existing task review and reward path.
 
@@ -439,9 +519,9 @@ The harness runs this prompt through a persistent Codex Exec session and default
 
 For `refresh_project_document`, the Board Manager writes `payload.project_document` directly. Core Hive artifacts should not call a secondary model unless the Board Manager explicitly chooses a future delegated research or subagent tool.
 
-The generation prompt should consume project context, task history, candidate diagnostic profile, and task engine policy. It should not invent evidence types the app cannot submit.
+The generation prompt should consume project context, task history, candidate diagnostic profile, task class, reward band, and task engine policy. It should be conformant with personal task generation. It should not invent evidence types the app cannot submit.
 
-The allocation prompt may help explain fit, but deterministic filters must still enforce availability, load, and wallet state.
+The allocation prompt may help explain fit, but deterministic filters must still enforce availability, load, cadence, reward policy, and wallet state.
 
 ## What Not To Build Yet
 
@@ -454,6 +534,8 @@ Do not expose raw Network Diagnostic Reports publicly.
 Do not put project assignment logic in frontend components.
 
 Do not let the AI directly route tasks without deterministic availability and load filters.
+
+Do not let the Board Manager author the final task text directly. It initiates generation; the network-task generation worker produces the concrete PFTL task offer.
 
 Do not generate tasks that ask for unsupported evidence such as video unless the app supports that evidence surface.
 
@@ -504,6 +586,8 @@ Done when the `PFT distribution v3` detail card can be populated with real tasks
 - Each task can be traced back to its project from the Hive UI.
 - Contributors are derived from task participation, not manually typed mock rows.
 - Routing uses the Network Diagnostic Report plus deterministic availability/load filters.
+- Routing distinguishes `network` tasks from `alpha` tasks and applies cadence controls before publication.
+- Default project-pushed reward offers come from the `10,000` to `50,000` PFT policy band unless explicit policy metadata says otherwise.
 - The user can see why a Network Task was proposed to them.
 - Accepting, refusing, submitting, verifying, and rewarding a Network Task use the existing PFTL task lifecycle.
 - No Hive read model can make task state disagree with task forensics.
