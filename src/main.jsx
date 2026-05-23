@@ -4269,7 +4269,7 @@ function themeLabel(theme) {
 
 function LoginDialog({ session, onClose, onSessionChange }) {
   const providers = (session?.accountLinks || []).filter((provider) =>
-    ["telegram", "discord", "x", "github"].includes(provider.id)
+    ["telegram", "discord", "x", "github"].includes(provider.id) && provider.enabled
   );
   const emailProvider = (session?.accountLinks || []).find((provider) => provider.id === "email");
   const devAuth = session?.devAuth;
