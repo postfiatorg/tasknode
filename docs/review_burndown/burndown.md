@@ -1,6 +1,6 @@
 # Code Review Burndown
 
-Updated: 2026-05-18
+Updated: 2026-05-23
 
 This is the queue for reviewing app-visible Help docs against implementation.
 Every row links one visible doc page to a review brief. `Code review complete`
@@ -25,7 +25,7 @@ recorded; most entries begin as `no`.
 | 1 | Task Lifecycle Replay | `docs/wiki/architecture/task-lifecycle.md` | `reviews/architecture-task-lifecycle.md` | `review_ready` | no |
 | 1 | Task Async Engine | `docs/wiki/architecture/task-async-engine.md` | `reviews/architecture-task-async-engine.md` | `review_ready` | no |
 | 2 | Wallet | `docs/wiki/surfaces/wallet.md` | `reviews/surface-wallet.md` | `review_ready` | no |
-| 2 | PFTL Transaction Cache | `docs/wiki/architecture/pftl-transaction-cache.md` | `reviews/architecture-pftl-transaction-cache.md` | `review_ready` | no |
+| 2 | PFTL Transaction Cache | `docs/wiki/architecture/pftl-transaction-cache.md` | `reviews/architecture-pftl-transaction-cache.md` | `complete` | yes |
 | 2 | PFTL Usage | `docs/wiki/architecture/pftl.md` | `reviews/architecture-pftl.md` | `review_ready` | no |
 | 2 | Database | `docs/wiki/architecture/database.md` | `reviews/architecture-database.md` | `review_ready` | no |
 | 2 | Context | `docs/wiki/surfaces/context.md` | `reviews/surface-context.md` | `review_ready` | no |
