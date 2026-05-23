@@ -60,13 +60,15 @@ After publication, the Board Manager is out of the lifecycle. Status comes from 
 
 When a browser request publish succeeds, `POST /api/tasks/request` records the durable row and immediately schedules a one-shot generation tick. The periodic worker remains as a backstop, but the normal browser path does not wait for the next polling interval before generation starts. The Tasks page refreshes while a request is in flight so a queued receipt is replaced by the projected task card as soon as the offer pointer is indexed.
 
-Clicking a task opens a full-screen task detail surface with three tabs:
+Clicking a task opens a task detail popout with three tabs:
 
 | Detail tab | Purpose |
 | --- | --- |
 | Overview | Human-readable task contract, current status, reward outcome, and stop action when the task is not terminal. |
 | Submit | One signed evidence path containing up to two evidence artifacts. The browser encrypts the evidence locally, pins it to IPFS, and signs a PFTL `TASK_SUBMISSION` pointer from the linked wallet. |
 | Forensics | Chain audit view: pointer transactions, CIDs, decrypted payload fields, raw payload, and replay integrity. |
+
+On desktop the task detail renders as a contained popout card inside the Tasks workspace, not as a separate app screen. The sidebar and the task queue remain visible behind it so the user keeps their place in the Task Node. On narrow mobile screens the same detail surface expands to the full viewport because there is not enough horizontal room for a pane.
 
 ## Copy Task Flow
 
