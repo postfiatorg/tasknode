@@ -58,6 +58,8 @@ Network Tasks and Alpha Tasks reuse this same prompt and worker. The network-tas
 
 After publication, the Board Manager is out of the lifecycle. Status comes from signed PFTL task pointers reduced into `task_projections`. Hive/project rows mirror that status through `syncNetworkTaskProjection`; they do not decide task state.
 
+When a project-linked Network Task reaches `rewarded`, `syncNetworkTaskProjection` schedules a Board Manager follow-up job for two minutes after the reward event. That job is only a Hive board inspection trigger. It is idempotent by task and last reward transaction, and the worker skips it if any Board Manager run has already completed after the reward timestamp.
+
 When a browser request publish succeeds, `POST /api/tasks/request` records the durable row and immediately schedules a one-shot generation tick. The periodic worker remains as a backstop, but the normal browser path does not wait for the next polling interval before generation starts. The Tasks page refreshes while a request is in flight so a queued receipt is replaced by the projected task card as soon as the offer pointer is indexed.
 
 Clicking a task opens a task detail popout with three tabs:

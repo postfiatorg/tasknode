@@ -28,6 +28,12 @@ function timestampValue(value = null, fallback = new Date()) {
   return Number.isFinite(parsed.getTime()) ? parsed : fallback;
 }
 
+function nullableTimestampValue(value = null) {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
 export async function ensureBoardManagerScope({
   scope = "global_hive",
   status = "enabled",
@@ -172,6 +178,54 @@ export async function enqueueBoardManagerJob({
     );
     return { ok: true, queued: false, reason: "idempotent_job_exists", job: existing.rows[0] || null };
   }
+}
+
+export async function findCompletedBoardManagerRunSince({
+  scope = "global_hive",
+  since = null,
+} = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const normalizedScope = safeText(scope, 120) || "global_hive";
+  const sinceAt = nullableTimestampValue(since);
+  if (!sinceAt) return { ok: false, skipped: true, reason: "since_missing" };
+  const result = await query(
+    `
+      SELECT id, scope, trigger, selected_action, completed_at
+      FROM board_manager_runs
+      WHERE scope = $1
+        AND status = 'completed'
+        AND completed_at >= $2
+      ORDER BY completed_at DESC, id DESC
+      LIMIT 1
+    `,
+    [normalizedScope, sinceAt]
+  );
+  return {
+    ok: true,
+    run: result.rows[0] || null,
+    since: sinceAt.toISOString(),
+  };
+}
+
+export async function shouldSkipBoardManagerJobForRecentRun({ job = {} } = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const metadata = job?.metadata_json && typeof job.metadata_json === "object"
+    ? job.metadata_json
+    : {};
+  const since = metadata.skip_if_completed_after || metadata.state_changed_at || "";
+  if (!since) return { ok: true, skip: false, reason: "recent_run_boundary_missing" };
+  const recent = await findCompletedBoardManagerRunSince({
+    scope: job.scope || "global_hive",
+    since,
+  });
+  if (!recent.ok) return { ok: true, skip: false, reason: recent.reason || "recent_run_check_failed" };
+  return {
+    ok: true,
+    skip: Boolean(recent.run),
+    reason: recent.run ? "recent_board_manager_run_after_trigger" : "no_recent_run_after_trigger",
+    run: recent.run,
+    since: recent.since,
+  };
 }
 
 export async function enqueueDueBoardManagerTicks({ scope = "", limit = 5 } = {}) {

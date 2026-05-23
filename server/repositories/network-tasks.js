@@ -1,17 +1,14 @@
 import { databaseEnabled, query, transaction } from "../db/pool.js";
+import { enqueueNetworkTaskRewardFollowup } from "./network-task-reward-followup.js";
 import {
-  activeAllocationStatuses, allocationStatusForTaskStatus, compactCandidate,
-  compactNetworkTaskContent, compactProductDoc, compactProject, digestJson,
-  groupNetworkTaskContentText, isCompletedNetworkTask, isOutstandingNetworkTask,
-  isStoppedNetworkTask, jsonValue, numeric, rewardBand, safeObject, safeText,
+  activeAllocationStatuses, allocationStatusForTaskStatus, compactCandidate, compactNetworkTaskContent,
+  compactProductDoc, compactProject, digestJson, groupNetworkTaskContentText, isCompletedNetworkTask,
+  isOutstandingNetworkTask, isStoppedNetworkTask, jsonValue, numeric, rewardBand, safeObject, safeText,
   taskClass, toIso,
 } from "./network-tasks-utils.js";
 
 export { networkTaskRewardPolicy, normalizeNetworkTaskRewardBand } from "./network-tasks-utils.js";
-
-function useDatabase() {
-  return databaseEnabled();
-}
+function useDatabase() { return databaseEnabled(); }
 
 export async function getNetworkTaskContentSnapshot({
   completedLimit = 5,
@@ -120,12 +117,10 @@ export async function getNetworkTaskContentSnapshot({
     `,
     [normalizedCompletedLimit + normalizedOutstandingLimit + normalizedStoppedLimit + 50]
   );
-
   const tasks = taskResult.rows.map(compactNetworkTaskContent);
   const completed = tasks.filter(isCompletedNetworkTask).slice(0, normalizedCompletedLimit);
   const outstanding = tasks.filter(isOutstandingNetworkTask).slice(0, normalizedOutstandingLimit);
   const stopped = tasks.filter(isStoppedNetworkTask).slice(0, normalizedStoppedLimit);
-
   const pendingResult = normalizedPendingLimit > 0
     ? await query(
         `
@@ -168,7 +163,6 @@ export async function getNetworkTaskContentSnapshot({
     ...compactNetworkTaskContent(row),
     state: safeText(row.generation_job_status || row.allocation_status || "queued", 80).toLowerCase(),
   }));
-
   const text = [
     "NETWORK TASK CONTENT SNAPSHOT",
     "",
@@ -181,7 +175,6 @@ export async function getNetworkTaskContentSnapshot({
     "",
     groupNetworkTaskContentText("Pending Network Task Generation", pendingGeneration),
   ].join("\n");
-
   return {
     schema: "pf.hive.network_task_content_snapshot.v1",
     generatedAt: new Date().toISOString(),
@@ -198,7 +191,6 @@ export async function getNetworkTaskContentSnapshot({
     text,
   };
 }
-
 export async function listEligibleNetworkTaskCandidates({ limit = 12 } = {}) {
   if (!useDatabase()) return [];
   const result = await query(
@@ -238,7 +230,6 @@ export async function listEligibleNetworkTaskCandidates({ limit = 12 } = {}) {
   );
   return result.rows.map(compactCandidate);
 }
-
 async function projectById(projectId = "") {
   const result = await query(
     `
@@ -866,7 +857,7 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
   const projectionResult = await query(
     `
       SELECT task_id, status, title, subject_wallet, reward_offer_pft, reward_actual_pft,
-             last_event_tx_hash, last_event_cid, updated_at
+             last_event_tx_hash, last_event_cid, last_event_at, updated_at
       FROM task_projections
       WHERE task_id = $1
       LIMIT 1
@@ -904,6 +895,7 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
         source_of_truth: "task_projections",
         task_projection_status: canonicalStatus,
         task_projection_updated_at: toIso(projection.updated_at),
+        task_projection_last_event_at: toIso(projection.last_event_at),
         last_event_tx_hash: safeText(projection.last_event_tx_hash, 180),
         last_event_cid: safeText(projection.last_event_cid, 180),
       }),
@@ -926,6 +918,7 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
         source_of_truth: "task_projections",
         task_projection_status: canonicalStatus,
         task_projection_updated_at: toIso(projection.updated_at),
+        task_projection_last_event_at: toIso(projection.last_event_at),
       }),
     ]
   );
@@ -954,6 +947,18 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
       [projectId]
     );
   }
+  const boardManagerFollowup = canonicalStatus === "rewarded"
+    ? await enqueueNetworkTaskRewardFollowup({
+      taskId: normalizedTaskId,
+      projectIds,
+      projection,
+      rewardPft,
+    }).catch((error) => ({
+      ok: false,
+      queued: false,
+      error: error?.message || String(error),
+    }))
+    : { ok: true, queued: false, skipped: true, reason: "status_not_rewarded" };
 
   return {
     ok: true,
@@ -963,6 +968,7 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
     taskRefsUpdated: refResult.rowCount || 0,
     allocationsUpdated: allocationResult.rowCount || 0,
     projectIds,
+    boardManagerFollowup,
   };
 }
 

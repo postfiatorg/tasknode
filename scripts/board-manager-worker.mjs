@@ -11,6 +11,7 @@ import {
   enqueueBoardManagerJob,
   enqueueDueBoardManagerTicks,
   ensureBoardManagerScope,
+  shouldSkipBoardManagerJobForRecentRun,
 } from "../server/repositories/board-manager-scheduler.js";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
@@ -150,6 +151,29 @@ async function processOneJob({ turn }) {
 
   const job = claimed.job;
   try {
+    const recentRunSkip = await shouldSkipBoardManagerJobForRecentRun({ job });
+    if (recentRunSkip.skip) {
+      await completeBoardManagerJob({
+        jobId: job.id,
+        runId: "",
+        result: {
+          ok: true,
+          skipped: true,
+          reason: recentRunSkip.reason,
+          recent_run_id: recentRunSkip.run?.id || "",
+          since: recentRunSkip.since || "",
+        },
+      });
+      return {
+        claimed: true,
+        ok: true,
+        skipped: true,
+        jobId: job.id,
+        action: "skipped_recent_run",
+        reason: recentRunSkip.reason,
+      };
+    }
+
     const output = await runCodexOneShot({ job });
     const followup = await enqueueFollowupIfNeeded({ job, output });
     await completeBoardManagerJob({
