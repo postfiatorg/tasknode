@@ -645,40 +645,146 @@ export async function failDeepMemoryJob(job, error) {
   return { ok: true, retry: !finalFailure };
 }
 
-export async function listChatMemory({ accountId = "", q = "", limit = 100 } = {}) {
-  if (!useDatabase()) return { entries: [], durable: false, storePath: "runtime" };
-  const normalizedLimit = Math.min(Math.max(Number(limit) || 100, 1), maxListLimit);
-  const normalizedAccountId = safeAccountId(accountId);
-  const normalizedQuery = safeText(q, 120);
-  const params = [normalizedAccountId, normalizedLimit];
-  let searchSql = "";
-
-  if (normalizedQuery) {
-    params.push(`%${normalizedQuery}%`);
-    searchSql = `
-      AND (
-        conversation_title ILIKE $3
-        OR user_request_summary ILIKE $3
-        OR system_response_summary ILIKE $3
-        OR memory_text ILIKE $3
-      )
-    `;
+export async function getChatMemoryQueueHealth({ accountId = "" } = {}) {
+  const emptyCounts = { pending: 0, processing: 0, failed: 0, total: 0 };
+  if (!useDatabase()) {
+    return { turnJobs: { ...emptyCounts }, deepJobs: { ...emptyCounts }, durable: false, storePath: "runtime" };
   }
 
-  const result = await query(
-    `
-      SELECT *
-      FROM chat_memory_entries
-      WHERE account_id = $1
-      ${searchSql}
-      ORDER BY created_at DESC, id DESC
-      LIMIT $2
-    `,
-    params
-  );
+  const normalizedAccountId = safeAccountId(accountId);
+  if (!normalizedAccountId) {
+    return { turnJobs: { ...emptyCounts }, deepJobs: { ...emptyCounts }, durable: true, storePath: "postgres" };
+  }
+
+  const summarize = (rows = []) => {
+    const counts = { pending: 0, processing: 0, failed: 0, total: 0 };
+    for (const row of rows) {
+      const status = safeText(row.status, 40).toLowerCase();
+      const count = Number(row.count || 0);
+      if (status in counts) counts[status] = count;
+      counts.total += count;
+    }
+    return counts;
+  };
+
+  const [turnResult, deepResult] = await Promise.all([
+    query(
+      `
+        SELECT status, count(*)::int AS count
+        FROM chat_memory_jobs
+        WHERE account_id = $1
+        GROUP BY status
+      `,
+      [normalizedAccountId]
+    ),
+    query(
+      `
+        SELECT status, count(*)::int AS count
+        FROM chat_deep_memory_jobs
+        WHERE account_id = $1
+        GROUP BY status
+      `,
+      [normalizedAccountId]
+    ),
+  ]);
 
   return {
-    entries: result.rows.map(publicEntry),
+    turnJobs: summarize(turnResult.rows),
+    deepJobs: summarize(deepResult.rows),
+    durable: true,
+    storePath: "postgres",
+  };
+}
+
+export async function listChatMemory({
+  accountId = "",
+  q = "",
+  limit = 100,
+  deepLimit = 3,
+  turnLimit = 36,
+} = {}) {
+  if (!useDatabase()) {
+    return {
+      entries: [],
+      deepMemories: [],
+      memories: [],
+      queue: await getChatMemoryQueueHealth({ accountId }),
+      durable: false,
+      storePath: "runtime",
+    };
+  }
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedQuery = safeText(q, 120);
+  const normalizedDeepLimit = Math.min(Math.max(Number(deepLimit) || 3, 0), maxContextDeepLimit);
+  const normalizedTurnLimit = Math.min(Math.max(Number(turnLimit) || 36, 0), maxContextTurnLimit);
+  const queue = await getChatMemoryQueueHealth({ accountId: normalizedAccountId });
+
+  if (!normalizedQuery) {
+    const context = await getChatMemoryContext({
+      accountId: normalizedAccountId,
+      deepLimit: normalizedDeepLimit,
+      turnLimit: normalizedTurnLimit,
+    });
+    return {
+      entries: [...context.deepMemories, ...context.memories],
+      deepMemories: context.deepMemories,
+      memories: context.memories,
+      queue,
+      durable: true,
+      storePath: "postgres",
+    };
+  }
+
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 100, 1), maxListLimit);
+  const searchPattern = `%${normalizedQuery}%`;
+  const searchClause = `
+    AND (
+      conversation_title ILIKE $3
+      OR user_request_summary ILIKE $3
+      OR system_response_summary ILIKE $3
+      OR memory_text ILIKE $3
+    )
+  `;
+
+  const [deepResult, turnResult] = await Promise.all([
+    normalizedDeepLimit > 0
+      ? query(
+          `
+            SELECT *
+            FROM chat_memory_entries
+            WHERE account_id = $1
+              AND kind = 'deep_memory'
+              ${searchClause}
+            ORDER BY created_at DESC, id DESC
+            LIMIT $2
+          `,
+          [normalizedAccountId, normalizedDeepLimit, searchPattern]
+        )
+      : { rows: [] },
+    normalizedTurnLimit > 0
+      ? query(
+          `
+            SELECT *
+            FROM chat_memory_entries
+            WHERE account_id = $1
+              AND kind = 'turn_memory'
+              ${searchClause}
+            ORDER BY created_at DESC, id DESC
+            LIMIT $2
+          `,
+          [normalizedAccountId, Math.min(normalizedTurnLimit, normalizedLimit), searchPattern]
+        )
+      : { rows: [] },
+  ]);
+  const deepMemories = deepResult.rows.map(publicEntry);
+  const memories = turnResult.rows.map(publicEntry);
+  const entries = [...deepMemories, ...memories];
+
+  return {
+    entries,
+    deepMemories,
+    memories,
+    queue,
     durable: true,
     storePath: "postgres",
   };

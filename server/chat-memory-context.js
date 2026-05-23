@@ -5,26 +5,17 @@ import { formatChatTaskContext } from "./chat-task-context.js";
 import { formatChatSpiritContext, isChatSpiritEnabled } from "./chat-spirit-context.js";
 import { buildMemoryContextStatus, memoryContextIsEmpty } from "./chat-context-status.js";
 
-const memoryContextDeepLimit = Math.min(
-  Math.max(Number(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_DEEP_LIMIT) || 3, 0),
-  10
-);
-const memoryContextTurnLimit = Math.min(
-  Math.max(Number(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_TURN_LIMIT) || 36, 0),
-  72
-);
-const memoryContextTimeoutMs = Math.min(
-  Math.max(Number(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_TIMEOUT_MS) || 250, 50),
-  2500
-);
-const memoryContextTurnMaxChars = Math.min(
-  Math.max(Number(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_TURN_MAX_CHARS) || 1200, 200),
-  2400
-);
-const memoryContextDeepMaxChars = Math.min(
-  Math.max(Number(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_DEEP_MAX_CHARS) || 1800, 300),
-  3000
-);
+function boundedEnvInt(value, fallback, min, max) {
+  const parsed = Number(value);
+  const base = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(Math.max(base, min), max);
+}
+
+const memoryContextDeepLimit = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_DEEP_LIMIT, 3, 0, 10);
+const memoryContextTurnLimit = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_TURN_LIMIT, 36, 0, 72);
+const memoryContextTimeoutMs = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_TIMEOUT_MS, 250, 50, 2500);
+const memoryContextTurnMaxChars = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_TURN_MAX_CHARS, 1200, 200, 2400);
+const memoryContextDeepMaxChars = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_DEEP_MAX_CHARS, 1800, 300, 3000);
 const taskNodeInstructionsPrompt = loadPrompt("chat/task_node_instructions_v1.md");
 const accountMemoryContextPrompt = loadPrompt("chat/account_memory_context_v1.md");
 
