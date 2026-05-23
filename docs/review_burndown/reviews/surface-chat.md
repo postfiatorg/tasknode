@@ -129,7 +129,29 @@ checklist verification results.
 3. ~~`chat-context-status`~~ — implemented on `review/chat-code-review`.
 4. `chat-provider-history-fixtures` — still open (P3).
 
-## Evidence Captured — 2026-05-23
+### Fixed in follow-up commit (review feedback)
+
+**P1 — Jobs timeout reported as skipped**
+
+- `buildJobsRetrievalStatus` now checks `reason === "jobs_retrieval_timeout"` before
+  the generic `skipped` flag.
+
+**P1 — Context Refine missing contextStatus audit trail**
+
+- `executeContextEditChat` accepts preflight `contextStatus` and persists it in
+  `runMetadata.contextStatus` alongside `contextMode`.
+
+**P2 — Smoke did not prove Postgres persistence**
+
+- `chat-context-status-smoke` now accepts `DATABASE_URL` and asserts
+  `chat_model_runs.metadata_json.contextStatus` after `appendChatTurn`.
+
+**Merge — rebased onto `origin/main`**
+
+- Resolved `docs/wiki/surfaces/chat.md` conflict (kept contextStatus failure mode
+  and completed Reviewer To Do List checkboxes).
+
+## Evidence Captured — 2026-05-23 (updated)
 
 Worktree: `/home/pfrpc/repos/worktrees/tasknodeofficial/chat-code-review`
 
@@ -137,9 +159,12 @@ Commands:
 
 ```bash
 npm ci --ignore-scripts
-node scripts/chat-context-status-smoke.mjs   # passed
-node scripts/security-smoke.mjs              # passed
-node scripts/chat-attachment-smoke.mjs       # passed
+npm run quality
+node scripts/chat-context-status-smoke.mjs
+DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial node scripts/chat-context-status-smoke.mjs
+node scripts/security-smoke.mjs
+node scripts/chat-attachment-smoke.mjs
+git diff --check origin/main...HEAD
 ```
 
 Code paths reviewed:
