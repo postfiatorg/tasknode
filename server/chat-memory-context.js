@@ -3,6 +3,7 @@ import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
 import { formatChatContextDocument } from "./chat-account-context.js";
 import { formatChatTaskContext } from "./chat-task-context.js";
 import { formatChatSpiritContext, isChatSpiritEnabled } from "./chat-spirit-context.js";
+import { buildMemoryContextStatus, memoryContextIsEmpty } from "./chat-context-status.js";
 
 const memoryContextDeepLimit = Math.min(
   Math.max(Number(process.env.TASKNODE_CHAT_MEMORY_CONTEXT_DEEP_LIMIT) || 3, 0),
@@ -125,8 +126,13 @@ export function taskNodeInstructions({
     .join("\n\n");
 }
 
-export async function chatMemoryContextForAccount(accountId = "") {
-  if (!accountId) return null;
+export async function chatMemoryContextLoadForAccount(accountId = "") {
+  if (!accountId) {
+    return {
+      context: null,
+      status: buildMemoryContextStatus({ state: "skipped" }),
+    };
+  }
 
   const contextPromise = getChatMemoryContext({
     accountId,
@@ -145,12 +151,26 @@ export async function chatMemoryContextForAccount(accountId = "") {
       contextPromise.catch((error) => {
         console.warn(`chat memory context load failed after timeout: ${error?.message || error}`);
       });
-      return null;
+      return {
+        context: null,
+        status: buildMemoryContextStatus({ state: "timeout" }),
+      };
     }
-    return result;
+    const state = memoryContextIsEmpty(result) ? "empty" : "included";
+    return {
+      context: result,
+      status: buildMemoryContextStatus({ context: result, state }),
+    };
   } catch (error) {
     if (timeoutId) clearTimeout(timeoutId);
     console.warn(`chat memory context load failed: ${error?.message || error}`);
-    return null;
+    return {
+      context: null,
+      status: buildMemoryContextStatus({ state: "error", error: error?.message || String(error) }),
+    };
   }
+}
+
+export async function chatMemoryContextForAccount(accountId = "") {
+  return (await chatMemoryContextLoadForAccount(accountId)).context;
 }

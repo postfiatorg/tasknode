@@ -5,17 +5,19 @@ App doc group: Surfaces
 App doc slug: `chat`
 Review status: complete
 Code review complete: yes
-Owner: unassigned
-Last updated: 2026-05-18
+Owner: agent
+Last updated: 2026-05-23
+Worktree branch: `review/chat-code-review`
 
 ## Important App Surfaces
 
 - `src/main.jsx` / `ChatSurface`
 - `src/features/chat/chat-turns.js`, `src/features/chat/chat-markdown.js`
 - `server/product-contracts.js` / chat preflight and estimate
-- `server/chat-router.js`, `server/chat-search-tools.js`
-- `server/chat-memory-context.js`, `server/chat-task-context.js`
+- `server/chat-router.js`, `server/chat-context-load.js`, `server/chat-context-status.js`
+- `server/chat-memory-context.js`, `server/chat-task-context.js`, `server/chat-account-context.js`
 - `server/repositories/chat-billing.js`, `server/repositories/chat-memory.js`, `server/repositories/tasks.js`
+- `server/jobs-corpus.js` / Jobs pgvector retrieval
 - `server/db/migrations/001_chat_billing.sql`, `002_chat_attachments.sql`
 
 ## What Could Go Wrong
@@ -28,6 +30,7 @@ Last updated: 2026-05-18
   task/memory context behavior.
 - Attachments appear accepted in the UI but fail silently or are not represented
   in provider input/persistence.
+- Memory/task/context loaders fail open without any response metadata.
 
 ## Best Practices To Check
 
@@ -39,23 +42,26 @@ Last updated: 2026-05-18
   included/excluded context.
 - User-visible errors are explicit for provider, billing, attachment, and
   persistence failures.
+- Context inclusion/skips/timeouts are auditable in API responses and model-run metadata.
 
 ## Code Review Plan
 
 1. Trace `/api/chat/send` and `/api/chat/stream` from route policy to response.
-2. Compare `chatEstimate` inputs to `openAiResponseRequest` and `openRouterChatRequest`.
+2. Compare `chatEstimate` inputs to provider request builders.
 3. Verify history, memory, task context, and attachments are account scoped.
 4. Review OpenAI/OpenRouter request bodies for mode, tools, attachments, and
    usage settings.
 5. Check persistence and ledger writes for both stream and non-stream success.
-6. Review smoke coverage and add missing edge cases.
+6. Verify Reviewer To Do List items in `docs/wiki/surfaces/chat.md`.
+7. Review smoke coverage and add missing edge cases.
 
 ## Evidence To Capture
 
 - `npm run runtime-smoke`
 - `npm run chat-attachment-smoke`
-- A request-body fixture for each provider/mode family.
-- A failure case for provider timeout or provider error.
+- `npm run chat-context-status-smoke`
+- `npm run security-smoke`
+- A request-body fixture for each provider/mode family (still open).
 
 ## Completion Checklist
 
@@ -68,220 +74,82 @@ Last updated: 2026-05-18
 
 ## Review Findings
 
-### Summary
+### Summary — 2026-05-23 pass
 
-No P0 was found in this pass.
+No P0 findings.
 
-The main issue is not model behavior. It is basic conversation ownership:
-history reads are not consistently account-scoped below the route layer. That
-should be the first fix bundle because it protects UI history, provider context,
-and future internal callers at the same boundary.
+Prior P1 history-ownership and P2 attachment-validation fixes are present on
+`main` at review time: `/api/chat/history` requires login, `getChatMessages`
+requires `accountId`, and `validateChatAttachments` rejects bad payloads before
+estimate/execution.
 
-### P1 - Chat history reads are not account-owned at the repository boundary
+This pass closed the remaining P2 **context visibility** gap and recorded
+checklist verification results.
 
-Surfaces:
+### Fixed in `review/chat-code-review`
 
-- `server/index.js` / `/api/chat/history`
-- `server/runtime-store.js` / `conversationIdForSession`
-- `server/repositories/chat-billing.js` / `getChatMessages`
-- `server/chat-router.js` / `executeChat`, `executeChatStream`
-- `server/app-state.js` / signed-in seed messages
+**P2 — Memory/task/context fail-open behavior was not visible in responses**
 
-Current behavior:
+- Added `server/chat-context-status.js` and `server/chat-context-load.js`.
+- Loaders now distinguish `included`, `empty`, `timeout`, `error`, `disabled`,
+  and `skipped` states for context document, memory, and task context.
+- Preflight, dry-run, credit-denied, send, and stream responses now include
+  `contextStatus`.
+- Jobs retrieval status merged at execution time and persisted in
+  `chat_model_runs.metadata_json.contextStatus`.
+- Regression: `npm run chat-context-status-smoke`.
 
-- `/api/chat/history` is an optional-auth route and calls
-  `conversationIdForSession(session, requestedConversationId)` before
-  `getChatMessages(conversationId)`.
-- `conversationIdForSession` scopes requested IDs for signed-in users, but for
-  no session it returns the requested ID. That means a signed-out request can ask
-  for a known `account_...` conversation ID and reach `getChatMessages`.
-- `getChatMessages` only filters by `conversation_id`. It does not accept or
-  enforce `accountId`.
-- `executeChat` and `executeChatStream` load history by conversation ID before
-  `appendChatTurn` performs its owner check. Normal public send/stream routes
-  currently scope the ID first, but the lower-level execution path is still
-  fragile.
+### Verified — no code change required
 
-Why this matters:
+| Checklist area | Result |
+| --- | --- |
+| Memory efficiency | History capped at 200 messages (`maxMessageLimit`); default load 30; Jobs retrieval top-3 with timeout; task refused/reward caps 10/12; context doc clip via `TASKNODE_CHAT_CONTEXT_DOCUMENT_MAX_CHARS`; memory worker queued post-turn. |
+| Code quality | Mode matrix matches `chatModePrices`; unknown modes reject; Context Refine staleness enforced in context-edit route; billing preflight shares estimate path. |
+| Coherence | Private OpenRouter ZDR + deny collection; Frontier OpenAI `store=false`; web search Frontier-only; task request requires wallet; Context Refine does not. |
+| Security | Account-scoped history reads; attachment validation before send; seeds stay client-side for wallet actions. |
 
-- A predictable or leaked conversation ID is enough for an unauthenticated caller
-  to attempt a history read.
-- A future internal caller can accidentally pass a mismatched account and
-  conversation ID, causing another account's history to be sent to a provider
-  before persistence rejects the append.
+### Still open — P3 backlog
 
-Proposed fix:
+**OpenAI history is flattened differently than OpenRouter history**
 
-1. Change `getChatMessages` to require account context for account-owned
-   conversations. Suggested shape:
-   `getChatMessages({ accountId, conversationId, limit })`.
-2. In Postgres, join or check `chat_conversations` with
-   `chat_conversations.account_id = $accountId` and `status = 'active'`.
-3. In runtime store, route reads through the same ownership helper already used
-   by rename/delete.
-4. Make `/api/chat/history` return `401` for no session instead of returning a
-   requested conversation. Signed-out app state should return an empty chat seed.
-5. Update `appState`, `executeChat`, and `executeChatStream` to call the
-   account-scoped history API.
-6. Add regression coverage:
-   - signed-out `/api/chat/history?conversationId=account_someone_default`
-     returns `401`;
-   - account A cannot read account B history;
-   - account A cannot execute chat with account B history in provider input;
-   - signed-out `/api/app-state` has no shared `dev` seed messages in production
-     mode.
+- `server/chat-provider-message-builders.js` still uses role-labeled messages for
+  OpenRouter and a single transcript blob for OpenAI Frontier.
+- Proposed: shared history helper + request-body fixture tests (`chat-provider-history-fixtures` bundle).
 
-### P2 - Invalid or oversized attachments are silently dropped server-side
+**Live Docker UX verification not re-run in this pass**
 
-Surfaces:
-
-- `src/main.jsx` / `ChatSurface.attachFiles`, paste/drop handling
-- `src/chat-attachments.js`
-- `server/product-contracts.js` / `chatPayload`, `chatExecutionPreflight`
-- `server/chat-attachment-utils.js` / `normalizeChatAttachments`
-- `server/chat-router.js` / provider request builders
-- `server/repositories/chat-billing.js` / attachment persistence
-
-Current behavior:
-
-- The UI enforces max count and file size for normal upload/drop flows.
-- The server slices attachments to four and uses `normalizeChatAttachments`.
-- `normalizeChatAttachments` returns `null` for malformed data URLs or data URLs
-  over the server byte limit, then filters them out.
-- Preflight, estimate, provider request construction, and persistence continue
-  with the reduced attachment list and no explicit user-visible error.
-
-Why this matters:
-
-- A client can believe an attachment was submitted while the provider and
-  persisted transcript silently omit it.
-- The Help doc says attachment parsing failures should be visible before the
-  request; the server path does not currently enforce that contract.
-
-Proposed fix:
-
-1. Add a server validator that returns structured attachment errors before
-   estimate/provider execution. Keep normalization as a pure transform after
-   validation.
-2. Reject too many attachments, malformed data URLs, oversized data URLs,
-   unsupported/empty MIME where relevant, and decode failures for text
-   attachments with `400` or `413`.
-3. Return attachment names and reason codes in the response body so the composer
-   can show the exact failed item.
-4. Add smoke coverage for malformed data URL, too many attachments, oversized
-   attachment, and text decode failure.
-
-### P2 - Memory/task context fail-open behavior is not visible in responses
-
-Surfaces:
-
-- `server/product-contracts.js` / chat preflight
-- `server/chat-memory-context.js`
-- `server/chat-task-context.js`
-- `server/chat-estimate.js`
-- `server/chat-router.js`
-
-Current behavior:
-
-- Memory and task context are fetched before credit check and then passed into
-  execution, which keeps estimate and actual provider input aligned when the
-  fetch succeeds.
-- The context fetchers intentionally fail open on timeout or failure.
-- The response estimate shows memory/task token counts when context is present,
-  but the response does not explicitly say whether memory/task context was
-  included, skipped because empty, or skipped because the context loader failed.
-
-Why this matters:
-
-- Users and support cannot tell why a response ignored known memory or task
-  state.
-- Debugging provider output becomes guesswork even though the app has enough
-  information to report context inclusion status.
-
-Proposed fix:
-
-1. Return a `contextStatus` block from preflight and final responses:
-   memory included/skipped/error, task context included/skipped/error,
-   character counts, and timeout flags.
-2. Persist the same status in model run metadata for later audit.
-3. Keep chat execution fail-open for memory failures, but make task context
-   failure policy explicit in code and docs.
-4. Add a timeout/failure smoke that proves chat still runs and reports skipped
-   context accurately.
-
-### P3 - OpenAI history is flattened differently than OpenRouter history
-
-Surfaces:
-
-- `server/chat-router.js` / `openAiInput`, `openRouterMessages`
-
-Current behavior:
-
-- OpenRouter receives a system message plus recent history as separate
-  role-labeled messages.
-- OpenAI receives recent history as a single `input_text` transcript inside the
-  current user input.
-
-Why this matters:
-
-- The two provider families get materially different conversation structure.
-- This makes cross-mode behavior harder to reason about and can degrade reply
-  quality on longer conversations.
-
-Proposed fix:
-
-1. Introduce one shared history-to-provider-input helper that preserves role
-   boundaries for both provider families.
-2. Keep attachment handling provider-specific, but keep history ordering,
-   truncation, and transcript text shared.
-3. Add request-body fixture tests for OpenAI Frontier and OpenRouter Private
-   modes so future edits do not drift.
+- Smokes run in-process against JSON runtime store (no second Docker stack).
+- Running stack on ports 5174/8080/5436 was left untouched to avoid conflicting
+  with other agents on this machine.
 
 ## Proposed Fix Bundles
 
-1. `chat-history-ownership`
-   - Scope history reads by `accountId`.
-   - Require session for `/api/chat/history`.
-   - Update app-state, send, stream, runtime store, and Postgres repository
-     call sites.
-   - Add account A/account B regression coverage.
+1. ~~`chat-history-ownership`~~ — shipped on main before this branch.
+2. ~~`chat-attachment-validation`~~ — shipped on main before this branch.
+3. ~~`chat-context-status`~~ — implemented on `review/chat-code-review`.
+4. `chat-provider-history-fixtures` — still open (P3).
 
-2. `chat-attachment-validation`
-   - Add server-side validation before estimate and execution.
-   - Return explicit user-visible attachment errors.
-   - Add attachment failure smokes.
+## Evidence Captured — 2026-05-23
 
-3. `chat-context-status`
-   - Add context inclusion/error status to estimate, responses, and run
-     metadata.
-   - Add failure-open visibility tests.
+Worktree: `/home/pfrpc/repos/worktrees/tasknodeofficial/chat-code-review`
 
-4. `chat-provider-history-fixtures`
-   - Normalize provider history construction.
-   - Add request fixture tests for Frontier and Private modes.
+Commands:
 
-## Evidence Captured
+```bash
+npm ci --ignore-scripts
+node scripts/chat-context-status-smoke.mjs   # passed
+node scripts/security-smoke.mjs              # passed
+node scripts/chat-attachment-smoke.mjs       # passed
+```
 
 Code paths reviewed:
 
-- `docs/wiki/surfaces/chat.md`
-- `src/main.jsx` / `ChatSurface`
-- `src/chat-attachments.js`
-- `server/index.js`
-- `server/product-contracts.js`
-- `server/runtime-store.js`
-- `server/chat-estimate.js`
-- `server/chat-router.js`
+- `docs/wiki/surfaces/chat.md` Reviewer To Do List
+- `server/product-contracts.js` / `chatExecutionPreflight`, `chatSend`, `chatStreamStart`
+- `server/chat-router.js` / `executeChat`, `executeChatStream`
+- `server/chat-context-load.js`, `server/chat-context-status.js`
 - `server/chat-attachment-utils.js`
-- `server/chat-memory-context.js`
-- `server/chat-task-context.js`
+- `server/chat-memory-context.js`, `server/chat-task-context.js`, `server/chat-account-context.js`
+- `server/jobs-corpus.js`
 - `server/repositories/chat-billing.js`
-- `server/repositories/chat-memory.js`
-- `scripts/security-smoke.mjs`
-- `scripts/chat-attachment-smoke.mjs`
-
-Verification run on 2026-05-18:
-
-- `npm run runtime-smoke` - passed
-- `npm run chat-attachment-smoke` - passed
-- `npm run security-smoke` - passed
+- `scripts/security-smoke.mjs`, `scripts/chat-attachment-smoke.mjs`

@@ -1,6 +1,7 @@
 import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
 import { getContextDocument } from "./repositories/context.js";
 import { contextBodyText } from "./context-line-map.js";
+import { buildContextDocumentStatus, contextDocumentIsEmpty } from "./chat-context-status.js";
 
 const accountContextPrompt = loadPrompt("chat/account_context_document_v1.md");
 const contextDocumentMaxChars = Math.min(
@@ -30,8 +31,13 @@ export function formatChatContextDocument(document = null) {
   });
 }
 
-export async function chatContextDocumentForAccount(accountId = "") {
-  if (!accountId) return null;
+export async function chatContextDocumentLoadForAccount(accountId = "") {
+  if (!accountId) {
+    return {
+      context: null,
+      status: buildContextDocumentStatus({ state: "skipped" }),
+    };
+  }
 
   const documentPromise = getContextDocument({ accountId });
   let timeoutId = null;
@@ -46,12 +52,26 @@ export async function chatContextDocumentForAccount(accountId = "") {
       documentPromise.catch((error) => {
         console.warn(`chat context document load failed after timeout: ${error?.message || error}`);
       });
-      return null;
+      return {
+        context: null,
+        status: buildContextDocumentStatus({ state: "timeout" }),
+      };
     }
-    return result;
+    const state = contextDocumentIsEmpty(result) ? "empty" : "included";
+    return {
+      context: result,
+      status: buildContextDocumentStatus({ context: result, state }),
+    };
   } catch (error) {
     if (timeoutId) clearTimeout(timeoutId);
     console.warn(`chat context document load failed: ${error?.message || error}`);
-    return null;
+    return {
+      context: null,
+      status: buildContextDocumentStatus({ state: "error", error: error?.message || String(error) }),
+    };
   }
+}
+
+export async function chatContextDocumentForAccount(accountId = "") {
+  return (await chatContextDocumentLoadForAccount(accountId)).context;
 }

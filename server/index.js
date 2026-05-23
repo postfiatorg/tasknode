@@ -690,6 +690,7 @@ async function routeApi(req, url, res) {
           estimated: result.usage.estimated === true,
         },
         ledgerEntry: result.ledgerEntry,
+        contextStatus: result.contextStatus || started.chat.contextStatus,
       });
     } catch (error) {
       if (error?.status !== 499) {

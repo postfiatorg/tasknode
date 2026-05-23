@@ -43,9 +43,7 @@ import {
   chatBillingStatus,
   usageSummary,
 } from "./repositories/chat-billing.js";
-import { chatMemoryContextForAccount } from "./chat-memory-context.js";
-import { chatContextDocumentForAccount } from "./chat-account-context.js";
-import { taskContextForAccount } from "./chat-task-context.js";
+import { loadChatExecutionContext } from "./chat-context-load.js";
 import { validateChatAttachments } from "./chat-attachment-utils.js";
 import {
   getContextHistory,
@@ -669,12 +667,12 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
   estimate = chatEstimate(estimatePayload);
 
   if (chat.dryRun) {
-    const [contextDocument, memoryContext, taskContext] = await Promise.all([
-      chatContextDocumentForAccount(chat.accountId),
-      chatMemoryContextForAccount(chat.accountId),
-      taskContextForAccount(chat.accountId),
-    ]);
-    estimate = chatEstimate(estimatePayload, { contextDocument, memoryContext, taskContext });
+    const executionContext = await loadChatExecutionContext(chat.accountId);
+    estimate = chatEstimate(estimatePayload, {
+      contextDocument: executionContext.contextDocument,
+      memoryContext: executionContext.memoryContext,
+      taskContext: executionContext.taskContext,
+    });
     return {
       ok: false,
       status: 200,
@@ -687,8 +685,15 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
           ? "Chat execution is configured. Dry run skipped the provider call."
           : "Chat execution is not configured for this mode. Dry run skipped the provider call.",
         estimate,
+        contextStatus: executionContext.contextStatus,
       },
-      chat: { ...chat, contextDocument, memoryContext, taskContext },
+      chat: {
+        ...chat,
+        contextDocument: executionContext.contextDocument,
+        memoryContext: executionContext.memoryContext,
+        taskContext: executionContext.taskContext,
+        contextStatus: executionContext.contextStatus,
+      },
       estimate,
     };
   }
@@ -713,12 +718,12 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
     };
   }
 
-  const [contextDocument, memoryContext, taskContext] = await Promise.all([
-    chatContextDocumentForAccount(chat.accountId),
-    chatMemoryContextForAccount(chat.accountId),
-    taskContextForAccount(chat.accountId),
-  ]);
-  estimate = chatEstimate(estimatePayload, { contextDocument, memoryContext, taskContext });
+  const executionContext = await loadChatExecutionContext(chat.accountId);
+  estimate = chatEstimate(estimatePayload, {
+    contextDocument: executionContext.contextDocument,
+    memoryContext: executionContext.memoryContext,
+    taskContext: executionContext.taskContext,
+  });
 
   const usage = await usageSummary({ accountId: chat.accountId, conversationId: chat.conversationId });
   if (Number(usage.availableCreditUsd || 0) < Number(estimate.estimatedUsd || 0)) {
@@ -732,6 +737,7 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
         message: "Available chat credit is too low for this request.",
         actionRequired: "Top up the account balance or use an account with available credit.",
         estimate,
+        contextStatus: executionContext.contextStatus,
         usage: {
           billingModel: "usage_based",
           currency: "USD",
@@ -749,7 +755,13 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
   return {
     ok: true,
     status: 200,
-    chat: { ...chat, contextDocument, memoryContext, taskContext },
+    chat: {
+      ...chat,
+      contextDocument: executionContext.contextDocument,
+      memoryContext: executionContext.memoryContext,
+      taskContext: executionContext.taskContext,
+      contextStatus: executionContext.contextStatus,
+    },
     estimate,
   };
 }
@@ -765,6 +777,7 @@ export async function chatSend(payload, method) {
     contextDocument,
     memoryContext,
     taskContext,
+    contextStatus,
   } = preflight.chat;
   const { estimate } = preflight;
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
@@ -789,6 +802,7 @@ export async function chatSend(payload, method) {
           contextDocument,
           memoryContext,
           taskContext,
+          contextStatus,
         });
     return {
       status: 200,
@@ -804,6 +818,7 @@ export async function chatSend(payload, method) {
         user: result.user,
         assistant: result.assistant,
         estimate,
+        contextStatus: result.contextStatus || contextStatus,
         usage: {
           billingModel: "usage_based",
           currency: "USD",
@@ -867,6 +882,7 @@ export async function chatStreamStart(payload, method) {
       provider: preflight.estimate.provider,
       model: preflight.estimate.model,
       estimate: preflight.estimate,
+      contextStatus: preflight.chat.contextStatus,
     },
   };
 }

@@ -1,6 +1,7 @@
 import { getLinkedWallet } from "./runtime-store.js";
 import { listTaskState } from "./repositories/tasks.js";
 import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
+import { buildTaskContextStatus, taskContextIsEmpty } from "./chat-context-status.js";
 
 const taskContextPrompt = loadPrompt("chat/account_tasks_context_v1.md");
 const taskContextTimeoutMs = Math.min(
@@ -76,8 +77,14 @@ export function formatChatTaskContext(taskContext = null) {
   });
 }
 
-export async function taskContextForAccount(accountId = "") {
-  if (!accountId || process.env.TASKNODE_CHAT_TASK_CONTEXT_ENABLED === "false") return null;
+export async function chatTaskContextLoadForAccount(accountId = "") {
+  if (!accountId || process.env.TASKNODE_CHAT_TASK_CONTEXT_ENABLED === "false") {
+    return {
+      context: null,
+      status: buildTaskContextStatus({ state: "disabled" }),
+    };
+  }
+
   const contextPromise = (async () => {
     const linkedWallet = getLinkedWallet({ accountId });
     return listTaskState({
@@ -97,12 +104,26 @@ export async function taskContextForAccount(accountId = "") {
       contextPromise.catch((error) => {
         console.warn(`chat task context load failed after timeout: ${error?.message || error}`);
       });
-      return null;
+      return {
+        context: null,
+        status: buildTaskContextStatus({ state: "timeout" }),
+      };
     }
-    return result;
+    const state = taskContextIsEmpty(result) ? "empty" : "included";
+    return {
+      context: result,
+      status: buildTaskContextStatus({ context: result, state }),
+    };
   } catch (error) {
     if (timeoutId) clearTimeout(timeoutId);
     console.warn(`chat task context load failed: ${error?.message || error}`);
-    return null;
+    return {
+      context: null,
+      status: buildTaskContextStatus({ state: "error", error: error?.message || String(error) }),
+    };
   }
+}
+
+export async function taskContextForAccount(accountId = "") {
+  return (await chatTaskContextLoadForAccount(accountId)).context;
 }

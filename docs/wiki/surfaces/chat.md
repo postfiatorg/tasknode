@@ -211,43 +211,44 @@ sequenceDiagram
 - Billing failure should not silently show stale credit.
 - Attachment parsing failure should be visible before the request is sent.
 - Memory failure should not fail the chat.
+- Successful chat responses include `contextStatus` describing whether context document, memory, task, and Jobs retrieval were included, empty, timed out, or skipped.
 
 ## Reviewer To Do List
 
 Review implementation against this document (chat). Mark each item when verified.
 
 ### Memory Efficiency
-- [ ] List and detail views read Postgres caches with documented caps or pagination.
-- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
-- [ ] Review chat history load boundaries (`chat-billing.js`) for conversation/message caps and pagination.
-- [ ] Verify Jobs pgvector retrieval timeout and top-k=3 limit; empty slot fallback must not block chat.
-- [ ] Confirm task context caps (refused 10, rewarded 12) and context document clip (`TASKNODE_CHAT_CONTEXT_DOCUMENT_MAX_CHARS`).
-- [ ] Ensure memory worker runs post-response and never holds provider streams open.
+- [x] List and detail views read Postgres caches with documented caps or pagination.
+- [x] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
+- [x] Review chat history load boundaries (`chat-billing.js`) for conversation/message caps and pagination.
+- [x] Verify Jobs pgvector retrieval timeout and top-k=3 limit; empty slot fallback must not block chat.
+- [x] Confirm task context caps (refused 10, rewarded 12) and context document clip (`TASKNODE_CHAT_CONTEXT_DOCUMENT_MAX_CHARS`).
+- [x] Ensure memory worker runs post-response and never holds provider streams open.
 
 ### Code Quality
-- [ ] Code references in doc resolve to existing modules and routes.
-- [ ] Failure modes documented here have matching user-visible error handling.
-- [ ] Mode routing in `server/chat-router.js` matches the documented mode matrix; unknown modes reject cleanly.
-- [ ] Context Refine staleness checks (`base_context_revision`, `base_body_sha256`) enforced on apply.
-- [ ] Billing preflight and post-execution ledger writes share one cost-estimation path.
+- [x] Code references in doc resolve to existing modules and routes.
+- [x] Failure modes documented here have matching user-visible error handling.
+- [x] Mode routing in `server/chat-router.js` matches the documented mode matrix; unknown modes reject cleanly.
+- [x] Context Refine staleness checks (`base_context_revision`, `base_body_sha256`) enforced on apply.
+- [x] Billing preflight and post-execution ledger writes share one cost-estimation path.
 
 ### Coherence
-- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
-- [ ] Hidden/not-exposed features labeled honestly if mentioned.
-- [ ] Doc claims for Private ZDR and Frontier `store=false` match provider request payloads.
-- [ ] Task request mode, Context Refine, and ordinary chat share documented boundaries (wallet required vs not).
-- [ ] Web search policy in prompt matches Frontier-only server tool exposure.
+- [x] Surface behavior matches Architecture docs for cache vs canonical state.
+- [x] Hidden/not-exposed features labeled honestly if mentioned.
+- [x] Doc claims for Private ZDR and Frontier `store=false` match provider request payloads.
+- [x] Task request mode, Context Refine, and ordinary chat share documented boundaries (wallet required vs not).
+- [x] Web search policy in prompt matches Frontier-only server tool exposure.
 
 ### Bloat
-- [ ] Surface does not duplicate logic owned by shared modules or workers.
-- [ ] UI state not duplicated in unrelated caches without invalidation rules.
-- [ ] Instruction payload assembly happens once via `taskNodeInstructions`; no duplicate context blocks.
-- [ ] Attachments: extracted text stored once in `chat_attachments`, not re-parsed per turn.
+- [x] Surface does not duplicate logic owned by shared modules or workers.
+- [x] UI state not duplicated in unrelated caches without invalidation rules.
+- [x] Instruction payload assembly happens once via `taskNodeInstructions`; no duplicate context blocks.
+- [x] Attachments: extracted text stored once in `chat_attachments`, not re-parsed per turn.
 
 ### Security
-- [ ] Account scoping enforced on all read/write API paths for this surface.
-- [ ] Wallet-bound actions require linked unlocked wallet as documented.
-- [ ] Private modes enforce provider allowlist and `data_collection=deny`; no accidental OpenRouter web search.
-- [ ] Frontier chat uses app Postgres history, not provider-hosted conversation state.
-- [ ] Context document is user background, not a privilege-escalation channel; prompt enforces that.
-- [ ] Attachment parsing failures surface before send; no silent drop of user files.
+- [x] Account scoping enforced on all read/write API paths for this surface.
+- [x] Wallet-bound actions require linked unlocked wallet as documented.
+- [x] Private modes enforce provider allowlist and `data_collection=deny`; no accidental OpenRouter web search.
+- [x] Frontier chat uses app Postgres history, not provider-hosted conversation state.
+- [x] Context document is user background, not a privilege-escalation channel; prompt enforces that.
+- [x] Attachment parsing failures surface before send; no silent drop of user files.

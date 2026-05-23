@@ -20,6 +20,7 @@ export {
   normalizeChatAttachments,
 } from "./chat-attachment-utils.js";
 import { normalizeChatAttachments } from "./chat-attachment-utils.js";
+import { buildChatContextStatus } from "./chat-context-status.js";
 import {
   openAiInput,
   openRouterMessages,
@@ -791,6 +792,7 @@ export async function executeChat({
   contextDocument,
   memoryContext,
   taskContext,
+  contextStatus,
   jobsEssence,
 }) {
   const normalizedMode = normalizedChatMode(mode);
@@ -810,14 +812,24 @@ export async function executeChat({
     memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
     taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
   ]);
-  const resolvedJobsEssence = jobsEssence === undefined
-    ? (await jobsRetrievalForChat({
+  const jobsResult = jobsEssence === undefined
+    ? await jobsRetrievalForChat({
         message,
         contextDocument: resolvedContextDocument,
         memoryContext: resolvedMemoryContext,
         taskContext: resolvedTaskContext,
-      })).text
-    : jobsEssence;
+      })
+    : { ok: true, text: jobsEssence, chunks: [] };
+  const resolvedJobsEssence = jobsEssence === undefined ? jobsResult.text : jobsEssence;
+  const resolvedContextStatus = buildChatContextStatus({
+    contextDocument: resolvedContextDocument,
+    memoryContext: resolvedMemoryContext,
+    taskContext: resolvedTaskContext,
+    contextDocumentStatus: contextStatus?.contextDocument,
+    memoryStatus: contextStatus?.memory,
+    taskStatus: contextStatus?.tasks,
+    jobsRetrieval: jobsResult,
+  });
   const result =
     status.provider === "openai"
       ? await executeOpenAi({
@@ -863,12 +875,14 @@ export async function executeChat({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
+    runMetadata: { contextStatus: resolvedContextStatus },
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
 
   return {
     ...result,
     ...persisted,
+    contextStatus: resolvedContextStatus,
   };
 }
 
@@ -881,6 +895,7 @@ export async function executeChatStream({
   contextDocument,
   memoryContext,
   taskContext,
+  contextStatus,
   jobsEssence,
   onDelta,
   signal,
@@ -902,14 +917,24 @@ export async function executeChatStream({
     memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
     taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
   ]);
-  const resolvedJobsEssence = jobsEssence === undefined
-    ? (await jobsRetrievalForChat({
+  const jobsResult = jobsEssence === undefined
+    ? await jobsRetrievalForChat({
         message,
         contextDocument: resolvedContextDocument,
         memoryContext: resolvedMemoryContext,
         taskContext: resolvedTaskContext,
-      })).text
-    : jobsEssence;
+      })
+    : { ok: true, text: jobsEssence, chunks: [] };
+  const resolvedJobsEssence = jobsEssence === undefined ? jobsResult.text : jobsEssence;
+  const resolvedContextStatus = buildChatContextStatus({
+    contextDocument: resolvedContextDocument,
+    memoryContext: resolvedMemoryContext,
+    taskContext: resolvedTaskContext,
+    contextDocumentStatus: contextStatus?.contextDocument,
+    memoryStatus: contextStatus?.memory,
+    taskStatus: contextStatus?.tasks,
+    jobsRetrieval: jobsResult,
+  });
   const result =
     status.provider === "openai"
       ? await streamOpenAi({
@@ -959,11 +984,13 @@ export async function executeChatStream({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
+    runMetadata: { contextStatus: resolvedContextStatus },
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
 
   return {
     ...result,
     ...persisted,
+    contextStatus: resolvedContextStatus,
   };
 }
