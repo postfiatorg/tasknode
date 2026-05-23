@@ -1,6 +1,6 @@
 # Board Manager
 
-Status: v0 persistent Codex Exec agent implemented with first action hooks
+Status: v0 persistent Codex Exec agent implemented with first action hooks and a durable worker architecture
 
 This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, archive projects, refresh project documents, route tasks, or do nothing.
 
@@ -43,21 +43,22 @@ The default v1 posture is conservative. Most ticks should do nothing unless ther
 
 The current `npm run board-manager:loop -- --execute` path is a local development harness. It is useful for proving decisions and action hooks, but it is not the production architecture. Production should not depend on tmux, an SSH session, a manually watched shell, or every web instance running the manager.
 
-The production target is a Fly-managed worker process with a Postgres lease and durable job queue.
+The production target is a Fly-managed worker process with a Postgres lease and durable job queue. The first production-shaped implementation now exists.
 
-Process split:
+Implemented process split:
 
-- `web`: serves the API and app. It may enqueue Board Manager jobs, but it must not run the Board Manager loop.
-- `worker`: runs ordinary app workers such as task generation, task review, PFTL cache sync, Hive Secretary, and network-task generation.
-- `board-manager`: runs only the Board Manager scheduler/executor. It can be scaled for failover, but only one process per scope may hold the lease and act.
+- `web`: serves the API and app. It may enqueue Board Manager jobs, but it does not run background workers when `TASKNODE_PROCESS_ROLE=web`.
+- `worker`: runs ordinary app workers such as task generation, task review, PFTL cache sync, Hive Secretary, and network-task generation when `TASKNODE_PROCESS_ROLE=worker`.
+- `board-manager`: runs only the Board Manager scheduler/executor through `npm run start:board-manager`.
 
-The app should gate worker startup by explicit process role. A web instance should not accidentally start board-manager work because `server/index.js` imported a worker module. The intended shape is either separate entrypoints such as `server/start-web.js`, `server/start-worker.js`, and `server/start-board-manager.js`, or a single entrypoint with strict `TASKNODE_PROCESS_ROLE` checks.
+`server/process-role.js` owns the role policy. `server/index.js` now starts HTTP and ordinary workers according to `TASKNODE_PROCESS_ROLE` / `FLY_PROCESS_GROUP`, preserving the local default `all` role while allowing Fly to split `web` and `worker`.
 
 Fly deployment target:
 
-- define Fly process groups for `web`, `worker`, and `board-manager`;
-- set `TASKNODE_BOARD_MANAGER_ENABLED=true` only on the `board-manager` process;
-- run one `board-manager` machine by default;
+- `fly.toml` defines process groups for `app`, `worker`, and `board-manager`;
+- `start:board-manager` sets `TASKNODE_BOARD_MANAGER_ENABLED=true` for the dedicated process;
+- the production Docker image installs `@openai/codex@0.132.0` so the Board Manager process can run `codex exec`;
+- run one `board-manager` machine by default with Fly process scaling;
 - allow a second standby machine later, relying on the Postgres lease to prevent duplicate actions;
 - keep Codex credentials and provider keys in Fly secrets, not in Postgres;
 - write all decisions, action results, and summaries to Postgres so the Hive UI remains the audit surface.
@@ -66,13 +67,15 @@ Fly deployment target:
 
 The Board Manager needs durable trigger records, not a shell sleep loop.
 
-Planned tables:
+Implemented tables:
 
 - `board_manager_scopes`: enabled scopes such as `global_hive`, cadence, pause flag, max actions per hour, and next due timestamp.
 - `board_manager_jobs`: durable trigger queue with `scope`, `trigger`, `reason`, `idempotency_key`, `run_after`, `attempt_count`, `claimed_at`, `completed_at`, and `failed_at`.
 - `board_manager_leases`: existing lease table, hardened with heartbeat and owner instance tracking.
 - `board_manager_runs`: existing run table, retained as the durable decision log.
 - `board_manager_action_results`: existing action-result table, retained as the durable mutation/audit log.
+
+Migration `server/db/migrations/042_board_manager_scheduler.sql` creates `board_manager_scopes` and `board_manager_jobs` and seeds the `global_hive` scope.
 
 Job sources:
 
@@ -87,7 +90,7 @@ Job sources:
 
 Every job should carry an idempotency key. Repeated triggers for the same state change should coalesce instead of generating duplicate runs.
 
-Worker loop:
+Implemented worker loop:
 
 1. poll for due `board_manager_jobs`;
 2. claim one job with an atomic Postgres transaction;
@@ -99,6 +102,10 @@ Worker loop:
 8. write `board_manager_runs`, `board_manager_action_results`, and the micro summary;
 9. schedule the next tick from scope cadence and action outcome;
 10. release or heartbeat the lease.
+
+The worker entrypoint is `scripts/board-manager-worker.mjs`. It uses `enqueueDueBoardManagerTicks`, `claimBoardManagerJob`, and the existing `scripts/board-manager-codex-exec.mjs` one-shot executor. It does not duplicate the Codex decision logic.
+
+The scheduler repository is `server/repositories/board-manager-scheduler.js`. The source-packet/run repository remains `server/repositories/board-manager.js`.
 
 Backoff rules:
 
@@ -155,7 +162,15 @@ Required controls:
 - view last successful run, last failed run, and last selected action;
 - view recent micro summaries in the Hive Mind Agent feed.
 
-These controls can start as scripts and read-only API endpoints. They should later become a small internal operator page.
+Implemented script controls:
+
+- `npm run board-manager:ops -- status`
+- `npm run board-manager:ops -- enqueue --reason "Manual check"`
+- `npm run board-manager:ops -- pause`
+- `npm run board-manager:ops -- resume`
+- `npm run board-manager:ops -- ensure-scope`
+
+These are script-level controls today. They should later become a small internal operator page.
 
 ## Observability
 
@@ -188,18 +203,18 @@ The Hive Mind Agent tab is the product-facing audit surface. It should show `do_
 
 ## Implementation Burndown
 
-1. Add process-role gates so web/API instances cannot run the Board Manager loop.
-2. Add durable `board_manager_scopes` and `board_manager_jobs` tables.
-3. Convert `scripts/board-manager-loop.mjs` into a production-safe worker entrypoint, for example `scripts/board-manager-worker.mjs`.
-4. Make the worker claim jobs and leases through Postgres transactions.
-5. Add idempotency keys for `message_user`, `create_project`, `archive_project`, `assign_contributor`, `refresh_project_document`, and `initiate_network_task`.
-6. Add smoke tests for two workers racing on the same job and proving only one action executes.
-7. Add a packet-size smoke that reports the byte size of each source-packet section before each run.
-8. Add operator scripts for pause, resume, enqueue, lease inspect, and stale lease recovery.
-9. Update Fly process configuration for `web`, `worker`, and `board-manager`.
-10. Run local Docker with two board-manager workers and confirm lease exclusion.
-11. Deploy to Fly with one `board-manager` process and confirm a manual trigger writes exactly one run.
-12. Enable periodic production cadence only after manual trigger, failover, and idempotency tests pass.
+1. Done: add process-role gates so web/API instances cannot run ordinary background workers.
+2. Done: add durable `board_manager_scopes` and `board_manager_jobs` tables.
+3. Done: add `scripts/board-manager-worker.mjs` as the production-safe worker entrypoint.
+4. Done: make the worker claim jobs through Postgres transactions and run the existing one-shot executor, which still claims the Board Manager lease.
+5. Partial: add job idempotency keys and active-job coalescing. Action-hook-level idempotency should still be tightened for each mutating hook before multi-machine production scale.
+6. Done: add `scripts/board-manager-scheduler-smoke.mjs` for process-role policy, job idempotency, and two-worker job claiming.
+7. Pending: add packet-size reporting by source-packet section before each run.
+8. Partial: add operator scripts for status, enqueue, pause, resume, and ensure-scope. Stale lease recovery should be added before unattended production operation.
+9. Done: update Fly process configuration for `app`, `worker`, and `board-manager`.
+10. Pending: run local Docker with two board-manager workers and confirm lease exclusion against the full Codex Exec path.
+11. Pending: deploy to Fly with one `board-manager` process and confirm a manual trigger writes exactly one run.
+12. Pending: enable periodic production cadence only after manual trigger, failover, and idempotency tests pass.
 
 Done means:
 
@@ -226,11 +241,14 @@ Implemented v0 pieces:
 - `server/db/migrations/038_network_project_product_docs.sql` adds current/superseded product documents for Hive projects.
 - `server/db/migrations/039_network_task_allocations.sql` adds Network Task allocation and generation job tables.
 - `server/db/migrations/041_board_manager_run_micro_summaries.sql` adds the durable per-run micro summary artifact.
+- `server/db/migrations/042_board_manager_scheduler.sql` adds the durable scheduler scope/job tables.
 - `npm run board-manager:codex -- --trigger <name>` runs one dry-run Board Manager decision.
 - `npm run board-manager:codex -- --trigger <name> --execute` runs one Board Manager decision and executes supported action hooks.
 - `npm run board-manager:codex -- --trigger <name> --fresh-session` starts a new persistent Codex session for the scope.
 - `npm run board-manager:codex -- --packet-only` prints the source packet without calling Codex.
 - `npm run board-manager:loop -- --execute` runs the continuous local Board Manager loop for development.
+- `npm run board-manager:worker -- --execute` runs the durable job-driven Board Manager worker.
+- `npm run board-manager:ops -- status` shows the scope, lease, and recent jobs.
 
 The default remains dry-run for app mutations. It is not ephemeral. The Codex conversation persists, and execution of app hooks still requires the explicit `--execute` flag.
 

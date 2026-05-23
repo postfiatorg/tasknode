@@ -48,6 +48,7 @@ const migrations = [
   "039_network_task_allocations.sql",
   "040_network_task_idempotency_and_status.sql",
   "041_board_manager_run_micro_summaries.sql",
+  "042_board_manager_scheduler.sql",
 ];
 
 let migrated = false;

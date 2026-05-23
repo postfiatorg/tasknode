@@ -4,14 +4,10 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
+import { startBackgroundWorkers } from "./background-workers.js";
 import { fetchPftBalance } from "./pftl-balance.js";
-import { startPftlCacheRetentionWorker } from "./pftl-cache-maintenance.js";
-import { startPftlCacheReducerWorker } from "./pftl-cache-reducer.js";
-import { startPftlArchiveWorker, startPftlCacheWorker } from "./pftl-cache-sync.js";
-import { startPftlCacheWatcher } from "./pftl-cache-watcher.js";
 import { handlePftlCacheRoute } from "./pftl-cache-route.js";
 import { fetchWalletTransactions } from "./pftl-transactions.js";
-import { startTaskGenerationWorker } from "./task-generation-worker.js";
 import {
   authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart, chatEstimateStart,
   chatModes, chatSend, chatStreamStart, contextActionStart, contextActions, contextEditSave,
@@ -21,10 +17,6 @@ import {
 } from "./product-contracts.js";
 import { executeChatStream } from "./chat-router.js";
 import { conversationIdForChatWrite, explicitConversationId } from "./chat-conversation-ids.js";
-import { startMemoryWorker } from "./chat-memory-worker.js";
-import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
-import { startHiveProjectWorker } from "./hive-project-worker.js";
-import { startNetworkTaskGenerationWorker } from "./network-task-generation-worker.js";
 import {
   conversationIdForSession,
   destroySession,
@@ -46,11 +38,11 @@ import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
 import { handleTaskReadRoute } from "./task-routes.js";
-import { startTaskReviewWorker } from "./task-review-worker.js";
 import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
 import { handleMemoryRoute } from "./memory-routes.js";
 import { handleHiveRoute } from "./hive-routes.js";
+import { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole } from "./process-role.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -975,20 +967,18 @@ const server = createServer((req, res) => {
     });
 });
 
-assertStartupSecurity();
-await migrateDatabase();
-startMemoryWorker();
-startHiveSecretaryWorker();
-startHiveProjectWorker();
-startNetworkTaskGenerationWorker();
-startPftlCacheWorker();
-startPftlArchiveWorker();
-startPftlCacheWatcher();
-startPftlCacheReducerWorker();
-startPftlCacheRetentionWorker();
-startTaskGenerationWorker();
-startTaskReviewWorker();
+const processRole = tasknodeProcessRole();
+const httpEnabled = shouldStartHttpServer(processRole);
+const backgroundWorkersEnabled = shouldStartBackgroundWorkers(processRole);
 
-server.listen(port, "0.0.0.0", () => {
-  console.log(`tasknodeofficial listening on :${port}`);
-});
+if (httpEnabled) assertStartupSecurity();
+await migrateDatabase();
+if (backgroundWorkersEnabled) startBackgroundWorkers();
+
+if (httpEnabled) {
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`tasknodeofficial listening on :${port} role=${processRole}`);
+  });
+} else {
+  console.log(`tasknodeofficial background process started role=${processRole}`);
+}

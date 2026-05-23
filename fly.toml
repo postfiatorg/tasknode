@@ -4,6 +4,11 @@ primary_region = "ewr"
 [build]
   dockerfile = "Dockerfile"
 
+[processes]
+  app = "npm run start:web"
+  worker = "npm run start:worker"
+  board-manager = "npm run start:board-manager"
+
 [env]
   PORT = "8080"
   NODE_ENV = "production"
