@@ -369,3 +369,31 @@ If historical PFT context does not appear:
   mapping looks suspect;
 - remember the cache stores pointer metadata only. Decrypted CID plaintext
   requires browser-local wallet unlock.
+
+## Reviewer To Do List
+
+Review implementation against this document (BOOTUP). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
+- [ ] Docker dev stack resource expectations documented (Postgres, Vite, API).
+- [ ] Smoke tests run bounded scenarios, not full corpus ingests by default.
+
+### Code Quality
+- [ ] Commands, env vars, and file paths verified against repo.
+- [ ] Commands copy-paste accurate for current `package.json` scripts.
+- [ ] Prerequisites match Dockerfile and `.npmrc` constraints.
+
+### Coherence
+- [ ] Doc aligns with wiki and spec docs for same topic.
+- [ ] Ports and URLs align with `DEPLOYMENT.md` and execution mandate.
+- [ ] Env var names match server config loaders.
+
+### Bloat
+- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
+- [ ] Bootup stays shortest path; deep architecture deferred to other docs.
+
+### Security
+- [ ] No secrets committed; custody boundaries explicit.
+- [ ] Secrets inventory lists env vars without example secret values.
+- [ ] Public startup guardrails prevent serving with dangerous default secrets.

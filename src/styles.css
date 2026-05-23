@@ -2563,6 +2563,14 @@ h1 {
   box-shadow: none;
 }
 
+.task-entry.is-network-task {
+  background: linear-gradient(90deg, rgba(31, 84, 61, 0.07), rgba(255, 255, 255, 0) 34%);
+}
+
+.task-entry.is-network-task:hover {
+  background: linear-gradient(90deg, rgba(31, 84, 61, 0.1), rgba(13, 13, 13, 0.018) 42%);
+}
+
 .task-entry-signal {
   display: flex;
   align-items: center;

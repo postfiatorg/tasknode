@@ -552,3 +552,27 @@ from the live PFTL/IPFS harness, not hand-created product rows.
 ## Immediate Next Step
 
 Implement either Phase 0 or Phase 1 next. Phase 0 is acceptable first if it only creates request-mode correlation metadata and loading/error UX. Phase 1 remains the protocol gate: build and run the goodalexander Python scenario against `task_sample`, `ga_seed2.txt`, live PFTL, live IPFS, and real rewards before replacing the Tasks surface data.
+
+## Reviewer To Do List
+
+Review implementation against this document (getting tasks over line). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Plan phases avoid loading unbounded history or corpus into single jobs.
+- [ ] Derived read models prefer projections over duplicate materialized stores.
+
+### Code Quality
+- [ ] Done criteria map to testable checks or smoke commands.
+- [ ] Status (implemented vs planned) accurate on every section.
+
+### Coherence
+- [ ] Plan does not contradict shipped behavior in Surfaces/Architecture docs.
+- [ ] Dependencies on other plans explicitly named and still valid.
+
+### Bloat
+- [ ] Plan scoped to stated phase; future work not implied as shipped.
+- [ ] Avoid duplicating full surface doc content; link instead.
+
+### Security
+- [ ] New tables/routes in plan include account ownership and encryption notes.
+- [ ] Operator-only actions identified with audit requirements.

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { deriveAddress, deriveKeypair, generateSeed } from "ripple-keypairs";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
@@ -7,6 +8,7 @@ process.env.TASKNODE_HIVE_SECRETARY_ENABLED = "false";
 
 const { databaseEnabled, query } = await import("../server/db/pool.js");
 const { closePool } = await import("../server/db/pool.js");
+const { migrateDatabase } = await import("../server/db/migrate.js");
 const {
   appendChatTurn,
   getChatMessages,
@@ -60,6 +62,18 @@ function payload(overrides = {}) {
       load: 0,
       sort_order: 0,
     },
+    network_task: {
+      task_class: "",
+      candidate_account_id: "",
+      candidate_wallet_address: "",
+      project_need_summary: "",
+      routing_reason: "",
+      cadence_reason: "",
+      reward_min_pft: 10000,
+      reward_max_pft: 50000,
+      accept_window_hours: 24,
+      allow_over_capacity: false,
+    },
     ...overrides,
   };
 }
@@ -69,6 +83,7 @@ async function main() {
     console.log("board manager action hooks smoke skipped: database not configured");
     return;
   }
+  await migrateDatabase();
 
   const sourcePacket = await buildBoardManagerSourcePacket({
     trigger: "board_manager_action_hooks_smoke",
@@ -85,10 +100,15 @@ async function main() {
   });
   const runId = run.run.id;
   const projectId = "board_manager_action_smoke_project";
-  const wallet = "rBoardManagerSmokeWallet111111111111111111";
+  const wallet = deriveAddress(deriveKeypair(generateSeed()).publicKey);
   const smokeAccountId = "acct_board_manager_smoke";
   const smokeConversationId = "conversation_board_manager_smoke";
   const smokeHiveEntryId = "hivectx_board_manager_smoke";
+  const smokeProfileId = "nettaskprofile_board_manager_smoke";
+
+  await query("DELETE FROM network_projects WHERE id = $1", [projectId]);
+  await query("DELETE FROM pftl_sync_wallets WHERE account_id = $1", [smokeAccountId]);
+  await query("DELETE FROM board_manager_user_messages WHERE account_id = $1", [smokeAccountId]);
 
   await appendChatTurn({
     accountId: smokeAccountId,
@@ -116,6 +136,55 @@ async function main() {
       createdAt: new Date().toISOString(),
     }],
   });
+  await query(
+    `
+      INSERT INTO pftl_sync_wallets (wallet_address, account_id, role, status, priority, last_hot_sync_at, metadata_json)
+      VALUES ($1, $2, 'user', 'active', 10, now(), '{}'::jsonb)
+      ON CONFLICT (wallet_address) DO UPDATE SET
+        account_id = EXCLUDED.account_id,
+        role = EXCLUDED.role,
+        status = EXCLUDED.status,
+        priority = EXCLUDED.priority,
+        last_hot_sync_at = now(),
+        updated_at = now()
+    `,
+    [wallet, smokeAccountId]
+  );
+  await query(
+    `
+      INSERT INTO network_task_profiles (
+        id,
+        account_id,
+        status,
+        source_packet_digest,
+        source_packet_json,
+        source_packet_text,
+        output_json,
+        output_text,
+        provider,
+        model,
+        prompt_version,
+        completed_at
+      )
+      VALUES ($1, $2, 'completed', 'smoke_digest', '{}'::jsonb, 'smoke source', $3::jsonb, $4, 'smoke', 'smoke', 'network_task_profile_v2', now())
+      ON CONFLICT (id) DO UPDATE SET
+        output_json = EXCLUDED.output_json,
+        output_text = EXCLUDED.output_text,
+        completed_at = now(),
+        superseded_at = NULL
+    `,
+    [
+      smokeProfileId,
+      smokeAccountId,
+      JSON.stringify({
+        profile_title: "Smoke Network Operator",
+        current_focus: ["Verifying Board Manager action hooks."],
+        primary_contribution_ability: ["Can validate network task routing plumbing."],
+        domain_expertise: ["Task Node smoke testing."],
+      }),
+      "Smoke Network Operator\n\nCurrent focus:\n- Verifying Board Manager action hooks.",
+    ]
+  );
 
   await executeBoardManagerDecision({
     runId,
@@ -146,6 +215,62 @@ async function main() {
       }),
     },
   });
+
+  const networkTaskDecision = {
+    action: "initiate_network_task",
+    target_type: "network_project",
+    target_id: projectId,
+    reason: "Smoke verifies network task allocation and generation job creation.",
+    confidence: 1,
+    payload: payload({
+      summary: "Queue a smoke Network Task generation job.",
+      next_steps: ["Create a queued allocation.", "Create a queued generation job."],
+      network_task: {
+        task_class: "network",
+        candidate_account_id: smokeAccountId,
+        candidate_wallet_address: wallet,
+        project_need_summary: "Verify the Board Manager can initiate a project-linked Network Task without writing the final task offer.",
+        routing_reason: "The smoke operator has a Network Diagnostic Report and an active wallet.",
+        cadence_reason: "Action hook smoke only.",
+        reward_min_pft: 10000,
+        reward_max_pft: 50000,
+        accept_window_hours: 24,
+        allow_over_capacity: true,
+      },
+    }),
+  };
+  await executeBoardManagerDecision({
+    runId,
+    sourcePacket,
+    dryRun: false,
+    decision: networkTaskDecision,
+  });
+  const idempotentNetworkTask = await executeBoardManagerDecision({
+    runId,
+    sourcePacket,
+    dryRun: false,
+    decision: networkTaskDecision,
+  });
+  assert.equal(idempotentNetworkTask.result?.idempotent, true);
+
+  await assert.rejects(
+    () => executeBoardManagerDecision({
+      runId: "",
+      sourcePacket,
+      dryRun: false,
+      decision: {
+        ...networkTaskDecision,
+        payload: payload({
+          network_task: {
+            ...networkTaskDecision.payload.network_task,
+            candidate_account_id: "acct_board_manager_missing_candidate",
+            candidate_wallet_address: deriveAddress(deriveKeypair(generateSeed()).publicKey),
+          },
+        }),
+      },
+    }),
+    /network_task_candidate_not_eligible/
+  );
 
   await executeBoardManagerDecision({
     runId,
@@ -236,7 +361,7 @@ async function main() {
     },
   });
 
-  const [project, contributor, productDoc, message, actions] = await Promise.all([
+  const [project, contributor, productDoc, networkJob, networkJobCount, message, actions] = await Promise.all([
     query("SELECT status, metadata_json->>'operator_archived' AS operator_archived FROM network_projects WHERE id = $1", [projectId]),
     query("SELECT status FROM network_project_contributors WHERE project_id = $1 AND wallet_address = $2", [projectId, wallet]),
     query(
@@ -250,6 +375,8 @@ async function main() {
       `,
       [projectId]
     ),
+    query("SELECT id, status, task_class, candidate_account_id FROM network_task_generation_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1", [projectId]),
+    query("SELECT count(*)::int AS count FROM network_task_generation_jobs WHERE project_id = $1 AND candidate_account_id = $2", [projectId, smokeAccountId]),
     query("SELECT id, metadata_json->>'chat_message_id' AS chat_message_id FROM board_manager_user_messages WHERE run_id = $1 AND account_id = $2", [runId, smokeAccountId]),
     query("SELECT count(*)::int AS count FROM board_manager_action_results WHERE run_id = $1", [runId]),
   ]);
@@ -261,19 +388,58 @@ async function main() {
   assert.equal(productDoc.rows[0]?.provider, "codex_exec");
   assert.equal(productDoc.rows[0]?.model, "smoke");
   assert.equal(productDoc.rows[0]?.prompt_version, "board_manager_v1");
+  assert.ok(networkJob.rows[0]?.id);
+  assert.equal(networkJob.rows[0]?.status, "queued");
+  assert.equal(networkJob.rows[0]?.task_class, "network");
+  assert.equal(networkJob.rows[0]?.candidate_account_id, smokeAccountId);
+  assert.equal(networkJobCount.rows[0]?.count, 1);
   assert.ok(message.rows[0]?.id);
   assert.ok(message.rows[0]?.chat_message_id);
   const chatMessages = await getChatMessages({ accountId: smokeAccountId, conversationId: smokeConversationId, limit: 10 });
   assert.ok(chatMessages.some((item) => item.role === "assistant" && item.body === "Board Manager action hook smoke message."));
-  assert.equal(actions.rows[0]?.count, 5);
+  assert.equal(actions.rows[0]?.count, 7);
   const publicFeed = await getBoardManagerAgentFeed({ limit: 20 });
   assert.equal(publicFeed.some((entry) => entry.runId === runId), false);
   const feed = await getBoardManagerAgentFeed({ limit: 20, includeInternal: true });
   const runFeed = feed.find((entry) => entry.runId === runId);
   assert.ok(runFeed);
-  assert.equal(runFeed.actionResults.length, 5);
+  assert.equal(runFeed.actionResults.length, 6);
   assert.ok(runFeed.actionResults.some((entry) => entry.action === "refresh_project_document"));
+  assert.ok(runFeed.actionResults.some((entry) => entry.action === "initiate_network_task"));
   assert.ok(runFeed.actionResults.some((entry) => entry.action === "archive_project"));
+  await query(
+    `
+      UPDATE network_task_generation_jobs
+      SET status = 'failed',
+          last_error = 'board manager action hook smoke complete',
+          locked_at = NULL,
+          updated_at = now()
+      WHERE project_id = $1
+        AND board_manager_run_id = $2
+        AND status IN ('queued', 'running', 'generated')
+    `,
+    [projectId, runId]
+  );
+  await query(
+    `
+      UPDATE network_task_allocations
+      SET allocation_status = 'failed',
+          metadata_json = metadata_json || '{"smoke_complete": true}'::jsonb,
+          updated_at = now()
+      WHERE project_id = $1
+        AND metadata_json->>'board_manager_run_id' = $2
+        AND allocation_status IN ('candidate', 'queued', 'proposed', 'accepted')
+    `,
+    [projectId, runId]
+  );
+  await query(
+    "DELETE FROM network_project_contributors WHERE project_id = $1 AND wallet_address = $2",
+    [projectId, wallet]
+  );
+  await query(
+    "DELETE FROM pftl_sync_wallets WHERE account_id = $1 AND wallet_address = $2",
+    [smokeAccountId, wallet]
+  );
   console.log(JSON.stringify({ ok: true, runId, projectId, actionResults: actions.rows[0]?.count }, null, 2));
 }
 

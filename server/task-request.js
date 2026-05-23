@@ -202,7 +202,7 @@ function queueProjection(tasks = {}) {
   };
 }
 
-async function buildRequestBundle({ accountId, walletAddress, request, authorityWallet }) {
+export async function buildRequestBundle({ accountId, walletAddress, request, authorityWallet }) {
   const [context, memoryContext, recentChat, taskState] = await Promise.all([
     getContextDocument({ accountId }),
     getChatMemoryContext({ accountId, deepLimit: 3, turnLimit: 36 }),

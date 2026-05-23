@@ -45,6 +45,9 @@ const migrations = [
   "036_board_manager_persistent_sessions.sql",
   "037_hive_input_ack_copy.sql",
   "038_network_project_product_docs.sql",
+  "039_network_task_allocations.sql",
+  "040_network_task_idempotency_and_status.sql",
+  "041_board_manager_run_micro_summaries.sql",
 ];
 
 let migrated = false;

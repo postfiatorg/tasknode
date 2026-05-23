@@ -12,6 +12,10 @@ import {
   markTaskRequestFailed,
   markTaskRequestProposed,
 } from "./repositories/task-requests.js";
+import {
+  completeNetworkTaskOfferFromTaskRequest,
+  markNetworkTaskOfferLinkFailed,
+} from "./repositories/network-tasks.js";
 import { encryptTasknodePayload, fetchAndDecryptTasknodePayload } from "./task-payloads.js";
 
 const TASK_POINTER_SCHEMA = 1;
@@ -97,6 +101,10 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function objectKeyCount(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).length : 0;
+}
+
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
   if (value && typeof value === "object") {
@@ -166,6 +174,7 @@ function projectTaskgenInput(bundle = {}, { bundleCid = "", bundleDigest = "" } 
       recent_memory: Array.isArray(bundle.memory?.recent_memory) ? bundle.memory.recent_memory : [],
     },
     task_queue: bundle.task_queue || {},
+    network_task: bundle.network_task || null,
     wallet: bundle.wallet || {},
     policy: bundle.policy || {},
   };
@@ -175,13 +184,18 @@ function parseJsonObject(text = "") {
   return JSON.parse(String(text || "").trim());
 }
 
-function normalizeReward(value) {
+function normalizeReward(value, policy = {}) {
+  const min = Number(policy.reward_offer_min_pft ?? policy.rewardOfferMinPft ?? 0.5);
+  const max = Number(policy.reward_offer_max_pft ?? policy.rewardOfferMaxPft ?? 5);
+  const safeMin = Number.isFinite(min) ? Math.max(0.5, min) : 0.5;
+  const safeMax = Number.isFinite(max) ? Math.max(safeMin, max) : Math.max(safeMin, 5);
+  const fallback = safeMax > 5 ? safeMin : 3.2;
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0.5 || parsed > 5) return "3.20";
+  if (!Number.isFinite(parsed) || parsed < safeMin || parsed > safeMax) return fallback.toFixed(2);
   return parsed.toFixed(2);
 }
 
-function validateTaskgenOutput(output = {}) {
+function validateTaskgenOutput(output = {}, policy = {}) {
   const required = ["title", "description", "task_kind", "submission_requirement", "verification_policy", "reward_offer", "deadline"];
   const missing = required.filter((key) => output[key] === undefined || output[key] === null);
   if (missing.length) throw new Error(`taskgen_output_missing:${missing.join(",")}`);
@@ -211,7 +225,7 @@ function validateTaskgenOutput(output = {}) {
       verification_type: safeText(verification.verification_type, 80),
     },
     reward_offer: {
-      amount_estimate_pft: normalizeReward(reward.amount_estimate_pft),
+      amount_estimate_pft: normalizeReward(reward.amount_estimate_pft, policy),
     },
     deadline: {
       accept_by: safeText(output.deadline?.accept_by, 80) || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
@@ -247,7 +261,7 @@ async function generateTaskWithOpenAi(taskInput) {
   const bodyText = await response.text();
   if (!response.ok) throw new Error(`taskgen_openai_http_${response.status}:${bodyText.slice(0, 500)}`);
   const body = JSON.parse(bodyText);
-  const output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""));
+  const output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
   return {
     output,
     metadata: {
@@ -278,6 +292,7 @@ async function publishOffer({ request, requestBundle, taskgen, tasknodeKey, auth
     output: taskgen.output,
   });
   const contextDoc = safeObject(requestBundle.context?.primary_context_doc);
+  const networkTask = safeObject(requestBundle.network_task);
   const offerPayload = {
     schema: "pf.task.offer.v1",
     protocol: "tasknode.pftl",
@@ -304,6 +319,12 @@ async function publishOffer({ request, requestBundle, taskgen, tasknodeKey, auth
     context_refs: contextDoc.cid
       ? [{ context_id: contextDoc.context_id || "", cid: contextDoc.cid, digest: contextDoc.digest || "" }]
       : [],
+    network_task: objectKeyCount(networkTask) ? networkTask : null,
+    network_project_id: safeText(networkTask.project_id, 180),
+    network_project_type: safeText(networkTask.project_type, 80),
+    network_allocation_id: safeText(networkTask.allocation_id, 180),
+    routing_profile_digest: safeText(networkTask.routing_profile_digest, 180),
+    task_class: safeText(networkTask.task_class, 80),
     generation: {
       ...taskgen.metadata,
       request_bundle_cid: requestBundleCid,
@@ -407,9 +428,29 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
         metadata: {
           offerCid: offer.offerCid,
           offerTxHash: offer.txHash,
+          generatedTask: offer.offerPayload,
           taskgen: taskgen.metadata,
           sync,
         },
+      });
+      await completeNetworkTaskOfferFromTaskRequest({
+        requestId: request.requestId,
+        taskId: offer.taskId,
+        subjectWallet: offer.subjectWallet,
+        offerCid: offer.offerCid,
+        offerTxHash: offer.txHash,
+        generatedTask: offer.offerPayload,
+      }).catch(async (error) => {
+        await markNetworkTaskOfferLinkFailed({
+          requestId: request.requestId,
+          taskId: offer.taskId,
+          error: error?.message || String(error),
+        }).catch(() => null);
+        logger.warn?.("network_task_link_update_failed", {
+          requestId: request.requestId,
+          taskId: offer.taskId,
+          error: error?.message || String(error),
+        });
       });
       results.push({ ok: true, requestId: request.requestId, taskId: offer.taskId, txHash: offer.txHash });
     } catch (error) {

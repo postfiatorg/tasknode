@@ -31,6 +31,14 @@ import {
   readEvidenceFile,
 } from "./task-submission-actions.js";
 import { buildTaskCopyPayloads } from "./task-copy-format.js";
+import {
+  addUserRequestedEvidenceDraft,
+  evidenceFileForDraft,
+  evidenceMethodFromContract,
+  evidenceValueForDraft,
+  MAX_TASK_EVIDENCE_ITEMS,
+  resetEvidenceDrafts,
+} from "./task-evidence-drafts.js";
 import { TaskForensicsPanel } from "./TaskForensicsPanel.jsx";
 import "./task-detail.css";
 
@@ -141,6 +149,41 @@ function TaskRewardOutcome({ outcome }) {
   );
 }
 
+function TaskNetworkRoutePanel({ task }) {
+  if (!task?.isNetworkTask) return null;
+  const metadata = task.metadata || {};
+  const networkTask = metadata.networkTask || {};
+  const projectId = metadata.networkProjectId || networkTask.project_id || "";
+  const taskClass = task.taskClass || networkTask.task_class || "network";
+  const projectNeed = networkTask.project_need_summary || networkTask.projectNeedSummary || "";
+  const routingReason = networkTask.routing_reason || networkTask.routingReason || "";
+  const rows = [
+    projectId ? ["Project", projectId] : null,
+    taskClass ? ["Class", taskClass === "alpha" ? "Alpha Task" : "Network Task"] : null,
+  ].filter(Boolean);
+  return (
+    <section className="task-network-route">
+      <div>
+        <span>Hive routed</span>
+        <strong>{taskClass === "alpha" ? "Alpha Task" : "Network Task"}</strong>
+      </div>
+      {rows.length > 0 && (
+        <dl>
+          {rows.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {(projectNeed || routingReason) && (
+        <p>{projectNeed || routingReason}</p>
+      )}
+    </section>
+  );
+}
+
 function TaskOverviewPanel({
   detail,
   displayTask,
@@ -163,6 +206,7 @@ function TaskOverviewPanel({
         walletVault={walletVault}
       />
       <TaskRewardOutcome outcome={detail?.rewardOutcome} />
+      <TaskNetworkRoutePanel task={displayTask} />
       <TaskSection title="Description">
         <p>{displayTask.description}</p>
       </TaskSection>
@@ -184,65 +228,6 @@ function TaskOverviewPanel({
       </TaskSection>
     </>
   );
-}
-
-const evidenceMethodByStructuredType = {
-  code: "code",
-  file: "file",
-  github_commit: "commit",
-  mixed: "text",
-  screenshot: "screenshot",
-  text: "text",
-  url: "url",
-};
-
-const MAX_TASK_EVIDENCE_ITEMS = 2;
-
-function createEvidenceDraft(method = "text") {
-  return {
-    id: globalThis.crypto?.randomUUID?.() || `evidence-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    code: "",
-    commit: "",
-    file: null,
-    fileName: "",
-    method,
-    screenshotFile: null,
-    screenshot: "",
-    text: "",
-    url: "",
-  };
-}
-
-function evidenceMethodFromContract(task = {}, verification = {}) {
-  const structuredTypes = [
-    task?.submissionRequirement?.type,
-    task?.submission_type,
-    task?.submissionType,
-    task?.metadata?.submissionType,
-    verification?.submissionRequirement?.type,
-    verification?.policy?.verification_type,
-    verification?.policy?.type,
-  ];
-  for (const value of structuredTypes) {
-    const method = evidenceMethodByStructuredType[String(value || "").trim()];
-    if (method) return method;
-  }
-  return "text";
-}
-
-function evidenceValueForDraft(draft = {}) {
-  return {
-    code: draft.code,
-    commit: draft.commit,
-    file: draft.fileName,
-    screenshot: draft.screenshot,
-    text: draft.text,
-    url: draft.url,
-  }[draft.method] || "";
-}
-
-function evidenceFileForDraft(draft = {}) {
-  return draft.method === "screenshot" ? draft.screenshotFile : draft.method === "file" ? draft.file : null;
 }
 
 function submitClosedCopy(task = {}) {
@@ -404,7 +389,7 @@ function TaskSubmitPanel({
 }) {
   const defaultEvidenceMethod = evidenceMethodFromContract(task, verification);
   const taskId = task?.taskId || task?.fullId || task?.id || detail?.task?.taskId || detail?.task?.fullId || "";
-  const [evidenceDrafts, setEvidenceDrafts] = useState(() => [createEvidenceDraft(defaultEvidenceMethod)]);
+  const [evidenceDrafts, setEvidenceDrafts] = useState(() => resetEvidenceDrafts(defaultEvidenceMethod));
   const [confirmed, setConfirmed] = useState(false);
   const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "" });
   const [notes, setNotes] = useState("");
@@ -427,6 +412,7 @@ function TaskSubmitPanel({
     value: evidenceValueForDraft(draft),
   }));
   const readyEvidenceItems = evidenceItems.filter((item) => item.value.trim());
+  const firstEvidenceReady = Boolean(evidenceItems[0]?.value?.trim());
   const canPrepareEvidence = Boolean(
     readyEvidenceItems.length > 0 &&
       !loading &&
@@ -450,7 +436,7 @@ function TaskSubmitPanel({
   ];
 
   useEffect(() => {
-    setEvidenceDrafts([createEvidenceDraft(defaultEvidenceMethod)]);
+    setEvidenceDrafts(resetEvidenceDrafts(defaultEvidenceMethod));
     setNotes("");
     setConfirmed(false);
     setState({ error: "", pending: false, pendingLabel: "", result: "" });
@@ -458,17 +444,16 @@ function TaskSubmitPanel({
 
   function updateEvidenceDraft(id, key, value) {
     setState({ error: "", pending: false, pendingLabel: "", result: "" });
+    setConfirmed(false);
     setEvidenceDrafts((current) =>
       current.map((draft) => (draft.id === id ? { ...draft, [key]: value } : draft))
     );
   }
 
   function addEvidenceDraft() {
-    setEvidenceDrafts((current) =>
-      current.length >= MAX_TASK_EVIDENCE_ITEMS
-        ? current
-        : [...current, createEvidenceDraft(defaultEvidenceMethod)]
-    );
+    if (!firstEvidenceReady) return;
+    setEvidenceDrafts((current) => addUserRequestedEvidenceDraft(current, "text"));
+    setConfirmed(false);
     setState({ error: "", pending: false, pendingLabel: "", result: "" });
   }
 
@@ -477,6 +462,7 @@ function TaskSubmitPanel({
       if (current.length <= 1) return current;
       return current.filter((draft) => draft.id !== id);
     });
+    setConfirmed(false);
     setState({ error: "", pending: false, pendingLabel: "", result: "" });
   }
 
@@ -508,6 +494,7 @@ function TaskSubmitPanel({
             : draft
         )
       );
+      setConfirmed(false);
       setState({
         error: "",
         pending: false,
@@ -558,7 +545,7 @@ function TaskSubmitPanel({
         pendingLabel: "",
         result: result?.txHash ? `Published ${truncateCid(result.txHash)}` : "Evidence published",
       });
-      setEvidenceDrafts([createEvidenceDraft(defaultEvidenceMethod)]);
+      setEvidenceDrafts(resetEvidenceDrafts(defaultEvidenceMethod));
       setNotes("");
       setConfirmed(false);
       Promise.resolve(onEvidenceSubmitted?.(result)).catch(() => {});
@@ -726,9 +713,15 @@ function TaskSubmitPanel({
       </div>
 
       {evidenceDrafts.length < MAX_TASK_EVIDENCE_ITEMS && (
-        <button className="light-pill task-add-evidence" onClick={addEvidenceDraft} type="button">
+        <button
+          className="light-pill task-add-evidence"
+          disabled={!firstEvidenceReady || state.pending}
+          onClick={addEvidenceDraft}
+          title={firstEvidenceReady ? "Add one more evidence item." : "Add Evidence 1 before adding a second item."}
+          type="button"
+        >
           <Plus size={14} strokeWidth={2} />
-          Add evidence
+          Add second evidence
         </button>
       )}
 

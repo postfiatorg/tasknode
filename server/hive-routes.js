@@ -56,20 +56,12 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
     return true;
   }
 
-  if (!session?.accountId) {
-    json(res, 401, {
-      ok: false,
-      error: "hive_context_login_required",
-      message: "Sign in before writing or reading Hive Context.",
-    });
-    return true;
-  }
-
   if (req.method === "GET") {
+    const accountId = session?.accountId || "";
     const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
-    if (linkedWallet?.address) {
+    if (accountId && linkedWallet?.address) {
       const validated = await markHiveContextEntriesWalletValidated({
-        accountId: session.accountId,
+        accountId,
         walletAddress: linkedWallet.address,
       });
       if (validated.updated > 0) {
@@ -88,8 +80,17 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       secretary: await getHiveSecretaryState(),
       boardManager: {
         feed: await getBoardManagerAgentFeed({ limit: 20 }),
-        messages: await getBoardManagerUserMessages({ accountId: session.accountId, limit: 12 }),
+        messages: accountId ? await getBoardManagerUserMessages({ accountId, limit: 12 }) : [],
       },
+    });
+    return true;
+  }
+
+  if (!session?.accountId) {
+    json(res, 401, {
+      ok: false,
+      error: "hive_context_login_required",
+      message: "Sign in before writing Hive Context.",
     });
     return true;
   }

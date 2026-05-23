@@ -17,6 +17,8 @@ The top summary shows outstanding count, PFT in flight, chain-indexed projection
 
 `GET /api/tasks` also returns task sync integrity from the cache layer. The sync status can be `ready`, `empty`, `indexing_lag`, or `reducer_attention`. `indexing_lag` means the cache has a newer task pointer than the projected row has consumed. `reducer_attention` means failed reducer work exists for one or more visible tasks. The UI should treat these as indexing states, not as final lifecycle states.
 
+Network-pushed work appears in the same task queue, not in a separate lifecycle. When a projected task carries Hive routing metadata, the list marks it as a `Network Task` or `Alpha Task`, shows the linked project id, and the detail Overview includes a small `Hive routed` panel. The panel is informational only. Accept, refuse, submit, verification, reward, and forensics all remain the normal PFTL task path.
+
 ## List And Detail State Consistency
 
 The task list, tab counts, and task detail page must agree because they read the same projected lifecycle. If the detail page says a task is rewarded, the list must not keep showing that task under Verification.
@@ -51,6 +53,10 @@ Generated offers must match the browser UX. The task-generation prompt in `promp
 | Step count | New generated tasks must contain 2 to 5 concrete steps. One-step and zero-step generated tasks fail worker validation. |
 | Public repository proof | `github_commit` should be used only when the user explicitly provides or requests a public commit or repository evidence path. Private/local work should use screenshot, text, file, or mixed evidence. |
 | Canonical source | The generated task is written into the encrypted `pf.task.offer.v1` IPFS payload and anchored by the authority wallet PFTL pointer. Postgres only projects it for fast reads. |
+
+Network Tasks and Alpha Tasks reuse this same prompt and worker. The network-task generation worker injects a `network_task` block into the request bundle with project id, task class, routing reason, diagnostic profile digest, and reward band. The Board Manager does not author the concrete task. It queues the allocation and records why the system is routing work to the contributor; `server/task-generation-worker.js` still generates the title, steps, submission requirement, and verification policy.
+
+After publication, the Board Manager is out of the lifecycle. Status comes from signed PFTL task pointers reduced into `task_projections`. Hive/project rows mirror that status through `syncNetworkTaskProjection`; they do not decide task state.
 
 When a browser request publish succeeds, `POST /api/tasks/request` records the durable row and immediately schedules a one-shot generation tick. The periodic worker remains as a backstop, but the normal browser path does not wait for the next polling interval before generation starts. The Tasks page refreshes while a request is in flight so a queued receipt is replaced by the projected task card as soon as the offer pointer is indexed.
 
@@ -128,7 +134,7 @@ After submission, the server does a best-effort wallet sync and reducer pass so 
 
 The Submit tab has one primary button when the current task state accepts evidence: `Submit evidence`. If the task is already `Submitted`, `Awaiting review`, `Rewarded`, or otherwise closed to evidence, the Submit tab shows a read-only state card instead of the evidence form. This prevents the user from seeing an old task prompt while the authority is reviewing an indexed submission.
 
-A user can include one or two artifacts in the same signed packet, which covers common verification asks such as text plus screenshot or code plus terminal output. The second artifact is opt-in through `Add evidence`; new tasks and new submission phases start with one empty artifact so stale draft fields do not carry from initial submission into verification response. Empty optional artifact drafts are ignored rather than blocking submission, so a user does not have to remove an accidental second evidence slot before submitting the filled artifact.
+A user can include one or two artifacts in the same signed packet, which covers common verification asks such as text plus screenshot or code plus terminal output. The second artifact is opt-in through `Add second evidence`; the button stays disabled until Evidence 1 has content, and the second draft starts as a blank text artifact. New tasks and new submission phases start with one empty artifact so stale draft fields do not carry from initial submission into verification response.
 
 Screenshot and file uploads use a Task Node styled picker, not the native browser `Choose File` control. The browser route is:
 
@@ -262,6 +268,8 @@ The app should never invent a task card. Durable task cards come from `task_proj
 | Task submission route | `server/task-submission.js` |
 | Task request route | `server/task-request.js` |
 | Task request repository | `server/repositories/task-requests.js` |
+| Network Task allocation repository | `server/repositories/network-tasks.js` |
+| Network Task generation worker | `server/network-task-generation-worker.js` |
 | Task product configuration | `server/task-product-config.js` |
 | Task offer worker | `server/task-generation-worker.js` |
 | Task review and reward worker | `server/task-review-worker.js` |
@@ -309,6 +317,9 @@ Tasks currently rely on the PFTL cache and projection tables:
 | Table | Role |
 | --- | --- |
 | `task_requests` | Durable request receipt and task-generation worker claim table. Proposed/completed receipts are not shown as primary task UX. |
+| `network_task_allocations` | Project-linked allocation/routing mirror for system-pushed Network Tasks and Alpha Tasks before/after a concrete task offer exists. After task publication, it follows projection state for load/cadence reads and does not override task state. |
+| `network_task_generation_jobs` | Durable worker job that converts a Board Manager allocation into a normal encrypted task request bundle. |
+| `network_project_task_refs` | Project/Hive display mirror for tasks. Its `state` is reconciled from `task_projections.status` once a concrete task exists, and Hive derives project task rows, routing feed, allotted operators, and routed PFT from it when explicit rollup tables are empty. |
 | `pftl_transactions` | Raw wallet transaction mirror. |
 | `pftl_wallet_transactions` | Wallet-scoped transaction feed used by Wallet and cache consumers. |
 | `pftl_pointer_memos` | Decoded pointer memos with kind, CID, task ID, context ID, and memo index. |
@@ -339,7 +350,10 @@ Outstanding and pending verification tasks are uncapped in chat context. Refused
 ## Current Limits
 
 - Browser task request publishing is live for the Tasks modal and chat request mode.
+- Board Manager `initiate_network_task` queueing is implemented. It writes `network_task_allocations` and `network_task_generation_jobs`; fake smoke jobs are marked failed after verification so the live worker does not process test data.
 - The local Docker API starts `server/task-generation-worker.js`, which claims `task_requests` rows and emits real `pf.task.offer.v1` pointers. Browser publishes also schedule an immediate generation tick; the 5 second worker interval is the backstop. Production should keep this controlled by `TASKNODE_TASK_GENERATION_WORKER_ENABLED`.
+- The local Docker API starts `server/network-task-generation-worker.js` with `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true`, 5 second interval, and batch size 1. It creates a normal encrypted task request bundle from a queued network allocation and schedules the existing task-generation worker.
+- Local Docker live Network Task smoke: Board Manager run `boardrun_6e436673-14aa-4568-b7a1-fe2874d4ad7a` queued generation job `nettaskjob_2d863a1a-0d57-47c2-9b33-52787ad8d37c`; the worker created request `req_net_c73fe62037a9cf201d51b32bdefa69ca`; task generation published `task_01af1624fcb74e41d902ca32b126f27d` with offer transaction `E6C86781C0D53A68F2E7740AA8751E19616B9732489D9EA8C4330A692AC1A931`; the user completed the normal submission/review/reward loop; `task_projections` shows status `rewarded`; `network_project_task_refs` mirrors `rewarded`; `network_task_allocations` mirrors `completed`.
 - Browser accept/refuse/cancel task updates are live through `POST /api/tasks/action`.
 - Browser evidence and verification-response submission are live through `POST /api/tasks/submission`, including up to two compact artifacts in one signed packet.
 - The local Docker API starts `server/task-review-worker.js`, controlled by `TASKNODE_TASK_REVIEW_WORKER_ENABLED`. It publishes verification requests, reward decisions, and positive reward payments from configured service/reward seeds.
@@ -360,8 +374,46 @@ When changing Tasks, verify:
 6. Forensics rows show CIDs, transaction hashes, schema, and decrypted payload details when the service key can read them.
 7. Chat task context still treats task state as read-only projection data.
 8. Task deadlines render without `12:00 AM`, while real event rows still show exact times.
-9. A new verification response draft starts with one empty evidence artifact unless the user explicitly adds a second artifact.
+9. A new verification response draft starts with one empty evidence artifact unless the user explicitly clicks `Add second evidence`.
 10. Newly generated tasks contain 2 to 5 steps and do not ask for unsupported evidence such as video or screen recording.
 11. Existing projected tasks preserve the steps from the chain offer payload rather than falling back to the submission requirement as a fake one-step task.
 12. `npm run data-architecture-audit` reports no P0/P1 findings for current task/cache state.
 13. If a detail page looks stale, `forensics.integrity.projectionBehindCachedPointer` explains the lag and `task-replay-repair` can rebuild the projection from cache rows.
+
+## Reviewer To Do List
+
+Review implementation against this document (tasks). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] List and detail views read Postgres caches with documented caps or pagination.
+- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
+- [ ] Task list reads projection cache only; no per-row IPFS fetch on list load.
+- [ ] Polling driven by `shared/task-lifecycle.js` `requiresRefresh`; terminal states stop polling.
+- [ ] Forensics hydration is detail-scoped; list endpoint stays lightweight.
+
+### Code Quality
+- [ ] Code references in doc resolve to existing modules and routes.
+- [ ] Failure modes documented here have matching user-visible error handling.
+- [ ] Generated task validation enforces 2–5 steps and supported evidence surfaces in worker.
+- [ ] Stop-action policy (`task-lifecycle-policy.js`) matches documented refuse/cancel matrix.
+- [ ] Reward outcome derivation reads decision payload fields, not hard-coded copy.
+
+### Coherence
+- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
+- [ ] Hidden/not-exposed features labeled honestly if mentioned.
+- [ ] List tabs, detail modal, and chat task context agree on lifecycle state names.
+- [ ] Network Task badges are informational; lifecycle remains normal PFTL path.
+- [ ] Timestamp rules (deadline date-only vs event datetime) match `shared/task-time-format.js`.
+
+### Bloat
+- [ ] Surface does not duplicate logic owned by shared modules or workers.
+- [ ] UI state not duplicated in unrelated caches without invalidation rules.
+- [ ] Evidence payloads stay compact (max 2 artifacts); screenshot bytes processed server-side, not pinned raw.
+- [ ] Task copy brief formatting isolated in `task-copy-format.js`; UI does not embed export logic inline.
+
+### Security
+- [ ] Account scoping enforced on all read/write API paths for this surface.
+- [ ] Wallet-bound actions require linked unlocked wallet as documented.
+- [ ] Seed never sent to server; browser signs locally for actions, submissions, and requests.
+- [ ] Encrypted IPFS payloads validated for TaskNode recipient shard before publish acceptance.
+- [ ] Forensics decrypt only when service key is an intended recipient.

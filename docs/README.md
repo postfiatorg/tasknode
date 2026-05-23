@@ -73,3 +73,29 @@ These docs are intentionally a first spine, not a completed handbook.
 - `API_CONTRACTS.md`: endpoint-by-endpoint request/response contracts.
 - `SECURITY.md`: broader seed handling, OAuth, email login, provider keys,
   retention, logging, and supply-chain policy.
+
+## Doc Review Checklists
+
+Every wiki page, engineering doc, and prompt file under `docs/` and `prompts/`
+ends with a **Reviewer To Do List** checklist covering memory efficiency, code
+quality, coherence, bloat, and security. Use these when verifying implementation
+against doc claims.
+
+## Reviewer To Do List
+
+Review implementation against this document (README). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
+
+### Code Quality
+- [ ] Commands, env vars, and file paths verified against repo.
+
+### Coherence
+- [ ] Doc aligns with wiki and spec docs for same topic.
+
+### Bloat
+- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
+
+### Security
+- [ ] No secrets committed; custody boundaries explicit.

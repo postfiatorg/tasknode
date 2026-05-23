@@ -338,3 +338,36 @@ The Tasks surface should read `task_projections`. The chat surface may show tran
 3. Expose worker failure and retry state directly in task detail.
 4. Add operator monitoring around request generation, review, scoring, reward payout, and projection lag.
 5. Scale authority and allocation wallets only after single-wallet correctness remains stable.
+
+## Reviewer To Do List
+
+Review implementation against this document (task async engine). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Hot paths use bounded queries, checkpoints, or projection tables.
+- [ ] Background workers dedupe and lock jobs to prevent duplicate work.
+- [ ] Workers claim rows with locks; idle polling intervals documented (e.g., 5s backstop).
+- [ ] Immediate generation tick on browser publish avoids unnecessary queue latency without busy-wait.
+
+### Code Quality
+- [ ] Architecture claims map to migrations, repositories, and smoke scripts.
+- [ ] Failure modes have operator-visible signals or health endpoints.
+- [ ] Worker enable flags (`TASKNODE_*_WORKER_ENABLED`) honored at startup.
+- [ ] Failure state persisted on request/generation rows for operator audit.
+
+### Coherence
+- [ ] Canonical vs cache boundaries consistent with wiki index.
+- [ ] Cross-links to related architecture pages remain accurate.
+- [ ] Wallet roles (user, authority, allocation, treasury) match task engine spec.
+- [ ] Network task generation reuses standard task-generation worker after bundle creation.
+
+### Bloat
+- [ ] No parallel implementations of the same protocol concern.
+- [ ] Retention policies drop queue noise without losing audit tx rows.
+- [ ] Separate workers for generation, review, network bridge; no monolithic task daemon.
+
+### Security
+- [ ] Encryption and wallet-role rules enforced at trust boundaries.
+- [ ] Secrets and seeds remain server-side or browser-local as designed.
+- [ ] Service/reward seeds server-only; workers sign with configured roles only.
+- [ ] Task request bundle decrypted only inside generation worker boundary.

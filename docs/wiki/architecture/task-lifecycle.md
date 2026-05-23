@@ -80,3 +80,35 @@ sequenceDiagram
 - User stop actions must be signed by the linked wallet and must not mutate the task projection directly before chain replay confirms the update.
 - Date-only deadlines must render as dates, while PFTL events and review timestamps must render as exact times with timezone.
 - If the cache lags after a submit, the UI should show the submitted transaction and poll projection state rather than pretending the task did not change.
+
+## Reviewer To Do List
+
+Review implementation against this document (task lifecycle). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Hot paths use bounded queries, checkpoints, or projection tables.
+- [ ] Background workers dedupe and lock jobs to prevent duplicate work.
+- [ ] Replay rebuilds projection from cached pointers, not live chain scan per UI request.
+
+### Code Quality
+- [ ] Architecture claims map to migrations, repositories, and smoke scripts.
+- [ ] Failure modes have operator-visible signals or health endpoints.
+- [ ] State machine in doc matches `shared/task-lifecycle.js` and reducer transitions.
+- [ ] Review-loop refresh contract implemented for `verification_requested`.
+
+### Coherence
+- [ ] Canonical vs cache boundaries consistent with wiki index.
+- [ ] Cross-links to related architecture pages remain accurate.
+- [ ] Browser and Python reference paths emit same schema versions.
+- [ ] Terminal `rewarded` includes zero-reward outcomes consistently.
+
+### Bloat
+- [ ] No parallel implementations of the same protocol concern.
+- [ ] Retention policies drop queue noise without losing audit tx rows.
+- [ ] Event types normalized once in `task_events`, not duplicated per consumer.
+
+### Security
+- [ ] Encryption and wallet-role rules enforced at trust boundaries.
+- [ ] Secrets and seeds remain server-side or browser-local as designed.
+- [ ] Lifecycle transitions require signed pointers from appropriate wallet roles.
+- [ ] Authority/reward wallets configured via env; not user-editable.

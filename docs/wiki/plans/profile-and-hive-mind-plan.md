@@ -701,3 +701,27 @@ Hive Mind v1 is done when a member can:
 - see suggested members and required skills;
 - disable their own network/alpha task availability;
 - receive task proposals from board cards through the normal task lifecycle.
+
+## Reviewer To Do List
+
+Review implementation against this document (profile and hive mind plan). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Plan phases avoid loading unbounded history or corpus into single jobs.
+- [ ] Derived read models prefer projections over duplicate materialized stores.
+
+### Code Quality
+- [ ] Done criteria map to testable checks or smoke commands.
+- [ ] Status (implemented vs planned) accurate on every section.
+
+### Coherence
+- [ ] Plan does not contradict shipped behavior in Surfaces/Architecture docs.
+- [ ] Dependencies on other plans explicitly named and still valid.
+
+### Bloat
+- [ ] Plan scoped to stated phase; future work not implied as shipped.
+- [ ] Avoid duplicating full surface doc content; link instead.
+
+### Security
+- [ ] New tables/routes in plan include account ownership and encryption notes.
+- [ ] Operator-only actions identified with audit requirements.

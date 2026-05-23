@@ -29,6 +29,7 @@ import dailyAirdropMigrationPlan from "../../../docs/wiki/plans/daily-airdrop-mi
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
 import jobsChatSpirit from "../../../docs/wiki/plans/jobs-chat-spirit.md?raw";
 import makingFunctionalNetworkTasks from "../../../docs/wiki/plans/making-functional-network-tasks.md?raw";
+import networkTaskAgenticObjects from "../../../docs/wiki/plans/network-task-agentic-objects.md?raw";
 import networkTaskProfileMemoryPlan from "../../../docs/wiki/plans/network-task-profile-memory-plan.md?raw";
 import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
 import profileAndHiveMindPlan from "../../../docs/wiki/plans/profile-and-hive-mind-plan.md?raw";
@@ -209,6 +210,7 @@ const PROMPT_SOURCES = [
       "docs/wiki/plans/board-manager.md",
       "scripts/board-manager-codex-exec.mjs",
       "server/repositories/board-manager.js::formatBoardManagerCodexPrompt",
+      "server/board-manager-actions.js::executeBoardManagerDecision",
     ],
     content: boardManagerPrompt,
   },
@@ -242,10 +244,11 @@ const PROMPT_SOURCES = [
     family: "Task Engine",
     title: "Task Generation",
     path: "prompts/task_engine/taskgen_minimal_v1.md",
-    summary: "Generates one concise PFTL task from request, context, memory, chat, wallet, and policy blocks.",
-    status: "Active app worker and Python reference",
+    summary: "Generates one concise PFTL task from request, context, memory, chat, wallet, policy, and optional network_task routing blocks.",
+    status: "Active app worker, Network Task worker handoff, and Python reference",
     usedBy: [
       "server/task-generation-worker.js::generateTaskWithOpenAi",
+      "server/network-task-generation-worker.js::createTaskRequestForNetworkJob",
       "reference_clients/python/tasknode_pftl/taskgen.py::generate_task",
       "reference_clients/python/tasknode_pftl/taskgen.py::benchmark_taskgen",
       "reference_clients/python/tasknode_pftl/taskgen.py::TASKGEN_RESPONSE_FORMAT",
@@ -503,7 +506,7 @@ export const DOC_GROUPS = [
       {
         slug: "board-manager",
         title: "Board Manager",
-        summary: "Plan for the leased Codex Exec manager that owns Hive actions and replaces independent Hive crons.",
+        summary: "Leased Codex Exec manager, action hooks, project docs, user replies, and network task initiation.",
         markdown: boardManager,
       },
       {
@@ -551,8 +554,14 @@ export const DOC_GROUPS = [
       {
         slug: "making-functional-network-tasks",
         title: "Making Functional Network Tasks",
-        summary: "Plan for Hive projects, project-linked PFTL tasks, routing allocations, and Network Diagnostic Report matching.",
+        summary: "Current Network Task bridge from Board Manager allocation to PFTL task offer, reward, and Hive projection.",
         markdown: makingFunctionalNetworkTasks,
+      },
+      {
+        slug: "network-task-agentic-objects",
+        title: "Network Task Agentic Objects",
+        summary: "Decision-ready specification for persistent agentic Network Tasks, state, actions, examples, and routing effects.",
+        markdown: networkTaskAgenticObjects,
       },
       {
         slug: "network-task-profile-memory-plan",

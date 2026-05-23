@@ -423,6 +423,56 @@
   border-top: 1px solid rgba(232, 230, 223, 0.8);
 }
 
+.task-network-route {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 16px 18px;
+  border: 1px solid rgba(31, 84, 61, 0.16);
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(31, 84, 61, 0.055), rgba(255, 255, 255, 0));
+}
+
+.task-network-route > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.task-network-route span,
+.task-network-route dt {
+  color: #6b6b66;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.task-network-route strong {
+  color: #0d0d0d;
+  font-size: 14.5px;
+  font-weight: 650;
+}
+
+.task-network-route dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  margin: 0;
+}
+
+.task-network-route dd {
+  margin: 3px 0 0;
+  color: #0d0d0d;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.task-network-route p {
+  margin: 0;
+  color: #3d3d38;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
 .task-modal .dark-pill:disabled,
 .task-modal .light-pill:disabled {
   cursor: not-allowed;

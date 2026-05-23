@@ -31,6 +31,7 @@ Planned ownership model:
 - A process can claim the lease only when it is expired or explicitly released.
 - The lease records `manager_id`, `owner_instance`, `scope`, `claimed_at`, `heartbeat_at`, and `expires_at`.
 - Each run records a durable `board_manager_runs` row with source packet digest, selected action, outcome, and errors.
+- Each completed run also records a micro summary artifact in `board_manager_runs.micro_summary_json` and `board_manager_runs.micro_summary_text`.
 - `board_manager_sessions` stores the persistent Codex session id for each scope.
 - Each tick resumes that session with `codex exec resume <session_id>` unless an operator explicitly starts a fresh session.
 - The first scope is `global_hive`.
@@ -44,7 +45,7 @@ Implemented v0 pieces:
 
 - `server/repositories/board-manager.js` builds the current Hive source packet and validates the returned action.
 - `server/repositories/board-manager.js` formats a Hive Mind Agent feed from `board_manager_runs` and `board_manager_action_results`.
-- `schemas/board-manager-action.schema.json` constrains the Codex Exec output, including action-specific `project`, `contributor`, `message_text`, and `archive_reason` payload fields.
+- `schemas/board-manager-action.schema.json` constrains the Codex Exec output, including action-specific `project`, `contributor`, `network_task`, `message_text`, and `archive_reason` payload fields.
 - `scripts/board-manager-codex-exec.mjs` runs Codex Exec with `gpt-5.5` and `model_reasoning_effort = xhigh`, creating or resuming the persistent session for the Board Manager scope.
 - `server/board-manager-actions.js` executes the first supported actions, including project-document refresh.
 - `server/db/migrations/033_board_manager_v0.sql` adds lease, run, and action-result tables.
@@ -52,12 +53,25 @@ Implemented v0 pieces:
 - `server/db/migrations/035_board_manager_action_hooks.sql` adds user-visible Board Manager messages.
 - `server/db/migrations/036_board_manager_persistent_sessions.sql` adds persistent Codex session tracking.
 - `server/db/migrations/038_network_project_product_docs.sql` adds current/superseded product documents for Hive projects.
+- `server/db/migrations/039_network_task_allocations.sql` adds Network Task allocation and generation job tables.
+- `server/db/migrations/041_board_manager_run_micro_summaries.sql` adds the durable per-run micro summary artifact.
 - `npm run board-manager:codex -- --trigger <name>` runs one dry-run Board Manager decision.
 - `npm run board-manager:codex -- --trigger <name> --execute` runs one Board Manager decision and executes supported action hooks.
 - `npm run board-manager:codex -- --trigger <name> --fresh-session` starts a new persistent Codex session for the scope.
 - `npm run board-manager:codex -- --packet-only` prints the source packet without calling Codex.
+- `npm run board-manager:loop -- --execute` runs the continuous local Board Manager loop.
 
 The default remains dry-run for app mutations. It is not ephemeral. The Codex conversation persists, and execution of app hooks still requires the explicit `--execute` flag.
+
+At the end of each recorded run, the app now writes a small Board Manager Run Summary artifact. It contains the run id, trigger, selected action, target, result, reason, next steps, source packet digest, session mode, and a compact list of action results. This is the durable artifact future runs should read instead of replaying full historical `decision_json`, `action_payload_json`, and action-result payloads.
+
+The source packet still preserves enough run history for continuity, but it passes recent Board Manager runs as micro summaries. This prevents a persistent Codex session from accumulating full prior source packets and large project-document decisions until it hits the model context window.
+
+The continuous loop is implemented by `scripts/board-manager-loop.mjs`. It repeatedly invokes the one-shot Codex executor instead of duplicating Board Manager logic. Each tick still claims the normal lease, resumes the stored Codex session, records a run row, writes the micro summary, and executes only supported action hooks. If the selected action is `do_nothing`, the loop waits two minutes by default before the next tick. If the selected action mutates the board, it waits only the shorter action delay so the manager can observe the resulting state.
+
+The Board Manager does not manage task lifecycle status. It may decide that a project should route work to a contributor, but after the task offer exists, status comes from signed PFTL task events and the `task_projections` read model. Hive project task refs and allocation rows mirror that projection for display and routing load; they are not a second source of truth.
+
+The current Hive board also derives Routing Feed and Allotted Operator rows from `network_project_task_refs` when explicit contributor/activity rows are empty. This keeps the board visible after a live project-linked task exists without letting the Board Manager invent task status. The chain-backed path is `task_projections -> network_project_task_refs -> Hive read model`.
 
 Implemented action hooks:
 
@@ -68,6 +82,7 @@ Implemented action hooks:
 - `archive_project`: archives the project and applies an operator archive lock. This is the delete-project hook; hard delete is intentionally not available.
 - `assign_contributor`: upserts a project contributor row using the project id and wallet address in `payload.contributor`.
 - `refresh_project_document`: persists the Board Manager's own `payload.project_document`, supersedes the prior current document, and writes a new `network_project_product_docs` row.
+- `initiate_network_task`: creates a project-linked allocation and queued generation job from `payload.network_task`; the worker later hands that job to the normal task-generation engine.
 
 Hive page visibility:
 
@@ -81,7 +96,6 @@ Not yet implemented action hooks:
 - `research`
 - `update_project`
 - `remove_contributor`
-- `initiate_network_task`
 - `review_evidence_packet`
 
 ## Trigger Policy
@@ -113,14 +127,20 @@ Inputs:
 - active, paused, and recently archived network projects;
 - project product documents and age;
 - project-linked tasks and reward state;
+- compact Network Task content snapshot;
 - pending evidence packets;
 - Network Diagnostic Reports for eligible users;
 - user availability and network-task settings;
 - recent Board Manager runs and actions;
+- recent Board Manager micro summaries;
 - reward budget and rate-limit policy;
 - allowed action registry.
 
 The packet should avoid raw private data unless the action requires it. Public profile summaries and Network Diagnostic Reports are better routing inputs than raw chat memory.
+
+The implemented packet includes `networkTaskContent`, built by `server/repositories/network-tasks.js::getNetworkTaskContentSnapshot`. This gives the Board Manager enough task substance to make project decisions without reading full forensics. It includes the last five rewarded Network Tasks with descriptions, steps, submission requirements, paid reward, state, and reward summary. It also includes outstanding project-linked Network Tasks and queued/running/generated network-task jobs that do not have a projected task yet.
+
+This matters because the Board Manager should not merely know that a task was rewarded. It needs to know what the task asked for, what state it reached, and what reward outcome occurred before it updates a project document or allocates follow-on work.
 
 ## Action Registry
 
@@ -324,7 +344,20 @@ Default reward policy:
 - the exact offer is chosen by the generation worker from project importance, urgency, difficulty, evidence burden, and expected network value;
 - the Board Manager may suggest a reward band but should not hard-code the exact task payload.
 
-This action should create a durable allocation/generation job and publish a PFTL task offer only through the normal task engine. It should not create a separate task lifecycle. The user sees the result as a special network-pushed task card in the Tasks UX, with Accept and Refuse actions backed by the standard PFTL task update path.
+Current implementation:
+
+- Action hook: `server/board-manager-actions.js::executeInitiateNetworkTask`
+- Allocation and job repository: `server/repositories/network-tasks.js`
+- Worker: `server/network-task-generation-worker.js`
+- Tables: `network_task_allocations`, `network_task_generation_jobs`
+- Task engine handoff: `task_requests` and `server/task-generation-worker.js`
+- Prompt input: `prompts/task_engine/taskgen_minimal_v1.md` receives a `network_task` block.
+
+This action creates a durable allocation/generation job and publishes a PFTL task offer only through the normal task engine when the gated worker is enabled. It does not create a separate task lifecycle. The user sees the result as a network-pushed task inside the Tasks UX, with Accept and Refuse actions backed by the standard PFTL task update path.
+
+Local Docker status: enabled. `docker-compose.dev.yml` starts `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true` with a 5 second interval and batch size 1. A May 23, 2026 local Docker run created task `task_01af1624fcb74e41d902ca32b126f27d` for project `task_node` through the standard `task_requests` and `pf.task.offer.v1` path, then completed through reward. The project-linked rows were reconciled from `task_projections`: task ref `rewarded`, allocation `completed`.
+
+That same run now populates the Hive project board from live read models: the project task row shows `rewarded`, the routing feed shows the rewarded transition and 10,000 PFT, the allotted operator row shows the assignee wallet, and the assignee badge uses the wallet's profile NFT image when available.
 
 ### `review_evidence_packet`
 
@@ -353,7 +386,7 @@ The Board Manager owns the timing and action choice. Hive Secretary, Active Proj
 
 ## Data Model
 
-Planned tables:
+Implemented and planned tables:
 
 ### `board_manager_leases`
 
@@ -388,7 +421,7 @@ Fields:
 - `completed_at`
 - `error`
 
-### `board_manager_context_docs`
+### `board_manager_context_docs` planned
 
 The manager's own context document.
 
@@ -434,6 +467,64 @@ Fields:
 
 The actual visible response lives in `chat_messages`, not in this table.
 
+### `network_task_allocations`
+
+Project-linked allocation state for system-pushed Network Tasks and Alpha Tasks.
+
+Fields:
+
+- `id`
+- `project_id`
+- `task_class`
+- `allocation_status`
+- `task_request_id`
+- `generated_task_id`
+- `candidate_account_id`
+- `candidate_wallet_address`
+- `candidate_profile_id`
+- `candidate_profile_digest`
+- `allocation_reason_summary`
+- `project_need_summary`
+- `reward_min_pft`
+- `reward_max_pft`
+- `cadence_policy_json`
+- `metadata_json`
+- `expires_at`
+
+### `network_task_generation_jobs`
+
+Durable async job that turns a Board Manager allocation into a normal task-generation request.
+
+Fields:
+
+- `id`
+- `allocation_id`
+- `project_id`
+- `task_class`
+- `candidate_account_id`
+- `candidate_wallet_address`
+- `reward_min_pft`
+- `reward_max_pft`
+- `status`
+- `trigger`
+- `board_manager_run_id`
+- `request_id`
+- `source_payload_digest`
+- `source_payload_json`
+- `source_payload_text`
+- `provider`
+- `model`
+- `prompt_version`
+- `request_bundle_cid`
+- `generated_task_payload`
+- `task_id`
+- `offer_cid`
+- `offer_tx_hash`
+- `attempt_count`
+- `next_attempt_at`
+- `locked_at`
+- `last_error`
+
 ## Prompt And Skill Boundary
 
 The Board Manager needs an operating prompt or skill-like instruction set that lists the action registry, source packet shape, and constraints.
@@ -455,6 +546,7 @@ The prompt should never contain one-off examples as rules. Concrete examples are
 - Project creation must use durable project names, not "scoping" cards.
 - Reward assignment must pass deterministic reward caps and funding policy.
 - Task assignment must use the normal PFTL task lifecycle.
+- Task status must come from `task_projections`, not from a Board Manager action result.
 - Evidence review must use the existing task review/reward engine.
 - Web research should update context or product docs before it changes projects or tasks.
 - User follow-up messages must be specific, minimal, and tied to a Hive Input or project.
@@ -498,7 +590,38 @@ Done when the Board Manager can create a durable project and attach a readable p
 ### Phase 5: Allocation And Review Actions
 
 - Implement contributor assignment. Done for direct project contributor assignment.
-- Implement project-linked Network Task initiation.
+- Implement project-linked Network Task initiation. Done for allocation/job queue creation, task-engine handoff, local Docker PFTL offer publication, and projection sync through reward.
 - Implement evidence review through the existing task engine.
 
 Done when the Board Manager can move from network context to project to task to review without creating a second task lifecycle.
+
+## Reviewer To Do List
+
+Review implementation against this document (board manager). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Plan phases avoid loading unbounded history or corpus into single jobs.
+- [ ] Derived read models prefer projections over duplicate materialized stores.
+- [ ] Single global lease prevents parallel Codex Exec runs across Fly instances.
+- [ ] Persistent session resume avoids re-sending full history each tick.
+
+### Code Quality
+- [ ] Done criteria map to testable checks or smoke commands.
+- [ ] Status (implemented vs planned) accurate on every section.
+- [ ] Action hooks map 1:1 to `board-manager-actions.js` executors.
+
+### Coherence
+- [ ] Plan does not contradict shipped behavior in Surfaces/Architecture docs.
+- [ ] Dependencies on other plans explicitly named and still valid.
+- [ ] Implemented vs Phase 5 future actions labeled accurately.
+
+### Bloat
+- [ ] Plan scoped to stated phase; future work not implied as shipped.
+- [ ] Avoid duplicating full surface doc content; link instead.
+- [ ] Micro-summaries replace full prior decision reinjection.
+
+### Security
+- [ ] New tables/routes in plan include account ownership and encryption notes.
+- [ ] Operator-only actions identified with audit requirements.
+- [ ] `message_user` audited; Hive Input source entry stored for routing.
+- [ ] Dry-run mode cannot mutate production project state unintentionally.

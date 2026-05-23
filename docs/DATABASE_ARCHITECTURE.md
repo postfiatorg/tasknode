@@ -902,3 +902,31 @@ Importer requirements:
 6. What is the required backup/PITR window for billing and chat?
 7. Do we need row-level security in Postgres now, or is strict repository-level
    scoping sufficient for the first implementation?
+
+## Reviewer To Do List
+
+Review implementation against this document (DATABASE ARCHITECTURE). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
+- [ ] Target schema avoids storing redundant full payloads where CID + projection suffices.
+- [ ] pgvector indexes planned for retrieval workloads, not sequential scan.
+
+### Code Quality
+- [ ] Commands, env vars, and file paths verified against repo.
+- [ ] Migration phases ordered and testable.
+- [ ] Non-negotiable invariants have corresponding repository enforcement.
+
+### Coherence
+- [ ] Doc aligns with wiki and spec docs for same topic.
+- [ ] Target architecture aligns with live wiki database inventory.
+- [ ] JSON runtime store migration path matches CURRENT_SYSTEM enabled features.
+
+### Bloat
+- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
+- [ ] Proposal doc distinguish target vs implemented tables clearly.
+
+### Security
+- [ ] No secrets committed; custody boundaries explicit.
+- [ ] Account isolation and session ownership invariants stated and enforced.
+- [ ] Retention and deletion policies address chat, memory, and billing data.

@@ -33,6 +33,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - Board Manager action hooks: `server/db/migrations/035_board_manager_action_hooks.sql`
 - Board Manager persistent sessions: `server/db/migrations/036_board_manager_persistent_sessions.sql`
 - Hive project product documents: `server/db/migrations/038_network_project_product_docs.sql`
+- Network task allocations and generation jobs: `server/db/migrations/039_network_task_allocations.sql`
 
 ## Table Inventory
 
@@ -60,13 +61,15 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `hive_project_planning_jobs` | Async queue rows for turning the latest Hive Secretary report into active project records with OpenAI `gpt-5.5-pro`. | Hive Active Projects worker, Hive project diagnostics. | `031_hive_project_planning.sql` |
 | `hive_project_generations` | Completed active-project generations with source report, structured OpenAI output, provider/model/prompt metadata, response id, and usage JSON. | Hive active project audit, project registry rebuilds, future network task allocation. | `031_hive_project_planning.sql` |
 | `network_projects` | Active Hive project records that exist before task allocation. Stores type, title, summary, objective/about text, phase, priority, planned route budget, scoped task target, target contributor count, and latest Hive Secretary input reference. Operator-archived rows carry an archive lock so generated project planning cannot silently reactivate rejected cards. | Hive active project cards, Hive project detail, future network task allocation. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql`, `032_archive_rejected_hive_scoping_projects.sql`, `034_lock_operator_archived_hive_projects.sql` |
-| `network_project_contributors` | Project-scoped contributor/operator rollups. Empty until live project-linked tasks allocate to real wallets and rewards accrue. | Hive contributor previews, allotted operators, project detail contributors. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
-| `network_project_task_refs` | Project-scoped task rows. Empty until the allocation worker creates or links concrete PFTL tasks to a project. | Hive project task board, future project-to-PFTL task linking. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
-| `network_project_activity` | Project-scoped activity feed rows. Empty until project-linked tasks produce live state changes. | Hive routing feed and project activity section. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
+| `network_project_contributors` | Optional materialized contributor/operator rollups. The current Hive read model can derive operator rows from `network_project_task_refs` when this table is empty. | Hive contributor previews, allotted operators, project detail contributors. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
+| `network_project_task_refs` | Project-scoped task refs linking concrete PFTL tasks to Hive projects. Current rows mirror `task_projections.status`, reward, assignee wallet, and task title for fast Hive reads. | Hive project task board, routing feed derivation, allotted operator derivation, profile NFT assignee badges. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
+| `network_project_activity` | Optional materialized project activity feed rows. The current Hive read model can derive routing-feed rows from `network_project_task_refs` and `task_projections` when this table is empty. | Hive routing feed and project activity section. | `029_hive_network_projects.sql`, `030_hive_project_seed_cleanup.sql` |
 | `network_project_product_docs` | Current and superseded agent-written project documents linked to `network_projects`. Stores Project Status, key points, blockers, next actions, source packet, prompt/provider metadata, and Board Manager run id. | Hive project About `Project Status`, Board Manager `refresh_project_document`, future project-linked task generation inputs. | `038_network_project_product_docs.sql` |
+| `network_task_allocations` | Durable project-linked allocation rows for system-pushed Network Tasks and Alpha Tasks before and after a concrete PFTL task offer exists. Stores project id, task class, candidate account/wallet, candidate diagnostic profile digest, routing reason, project need, reward band, accept window, request id, generated task id, and allocation status. After publication, allocation status mirrors the task projection lifecycle, for example `completed` after a rewarded task. | Board Manager `initiate_network_task`, Hive allocated-operator view, network-pushed task routing audit, project-linked task reconciliation. | `039_network_task_allocations.sql` |
+| `network_task_generation_jobs` | Durable async jobs that convert a Board Manager allocation decision into a normal task-generation request bundle. Stores allocation id, project id, candidate account/wallet, reward band, source packet digest/text/json, request bundle CID, generated task payload, task id, offer CID/tx hash, attempts, and failure state. | Network task generation worker, Board Manager action hook smoke, future operator job monitor, project-linked task creation. | `039_network_task_allocations.sql` |
 | `board_manager_leases` | One lease per manager scope, starting with `global_hive`, so only one Board Manager runs across Fly instances. | Board Manager executor, future Hive manager loop, operator diagnostics. | `033_board_manager_v0.sql` |
 | `board_manager_sessions` | One persistent Codex session per Board Manager scope. Stores the session id/path, model, reasoning effort, and latest run id so future ticks resume the same agent instead of starting over. | Board Manager Codex Exec resume path, Hive Mind Agent continuity, operator diagnostics. | `036_board_manager_persistent_sessions.sql` |
-| `board_manager_runs` | Durable Board Manager run log with trigger, source packet digest, selected action, action payload, decision JSON, Codex model, reasoning effort, dry-run flag, status, and errors. Runs with `do_nothing` or no selected action still render in the Hive Mind Agent feed. | Board Manager Codex Exec audit, Hive Mind Agent feed, future Hive manager UI/operator controls. | `033_board_manager_v0.sql` |
+| `board_manager_runs` | Durable Board Manager run log with trigger, source packet digest, selected action, action payload, decision JSON, Codex model, reasoning effort, dry-run flag, status, errors, and the compact `micro_summary_json` / `micro_summary_text` artifact generated at the end of each run. Runs with `do_nothing` or no selected action still render in the Hive Mind Agent feed. Future Board Manager source packets read the micro summaries instead of reinjecting full prior decisions. | Board Manager Codex Exec audit, Hive Mind Agent feed, future Hive manager UI/operator controls, Board Manager source-packet continuity. | `033_board_manager_v0.sql`, `041_board_manager_run_micro_summaries.sql` |
 | `board_manager_action_results` | Audit log for executed manager actions. Current hooks record message-user, Secretary refresh, project create/archive, project-document refresh, contributor assignment, and do-nothing results. | Hive Mind Agent feed, project action history, operator diagnostics. | `033_board_manager_v0.sql` |
 | `board_manager_user_messages` | Delivery audit for Board Manager `message_user` actions keyed by account and run id. Metadata stores the source Hive Context entry, destination conversation id, and inserted chat message id. The visible user response is appended to `chat_messages`. | Board Manager message delivery audit, Hive Mind Agent action diagnostics, future notification surfaces. | `035_board_manager_action_hooks.sql` |
 | `pftl_task_sync_runs` | One row per task replay/import run with account, wallet, source, status, task count, pointer event count, and metadata. | Tasks replay diagnostics, operator recovery, Python replay imports. | `006_task_projections.sql` |
@@ -84,7 +87,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `pftl_cache_maintenance_runs` | Recent archive/retention/maintenance run summaries with status, optional wallet, metrics JSON, and errors. | Operator health, retention diagnostics, cache operations audit. | `010_pftl_cache_operations.sql` |
 | `jobs_corpus_sources` | Source manifest for the Jobs reference corpus, including raw URL, raw SHA-256, byte size, label, fetch time, and metadata. | Chat Jobs spirit retrieval, operator ingestion audit, future prompt source diagnostics. | `014_jobs_corpus_pgvector.sql` |
 | `jobs_corpus_chunks` | Chunked Jobs reference text with stable chunk index, content hash, embedding model/provider, 1536-dimension pgvector embedding, and metadata. | Chat Jobs spirit retrieval through `server/jobs-corpus.js`, future prompt diagnostics. | `014_jobs_corpus_pgvector.sql` |
-| `profile_nfts` | Account-scoped profile NFT records with generated image CID, prompt/template digests, OpenAI model metadata, mint status, XLS-24 metadata CID, prepared `NFTokenMint` JSON, tx hash, and token id. The private prompt body is not stored. | Profile Studio, NFT gallery, profile NFT mint flow, future public profile avatar selection. | `018_profile_nfts.sql` |
+| `profile_nfts` | Account-scoped profile NFT records with generated image CID, prompt/template digests, OpenAI model metadata, mint status, XLS-24 metadata CID, prepared `NFTokenMint` JSON, tx hash, and token id. The private prompt body is not stored. | Profile Studio, NFT gallery, profile NFT mint flow, public profile avatar selection, Hive assignee/operator profile badges. | `018_profile_nfts.sql` |
 | `profile_daily_airdrop_runs` | Account-scoped daily airdrop scoring rows with dry-run/production mode, scenario id, model output fields, contributor reasoning, identity-cloud input snapshot, deterministic recipient metadata, alignment numerator/denominator, provider/model/prompt metadata, and status timestamps. | Profile Daily Airdrop panel, dry-run scoring audit, future live issuance worker, operator review. | `019_profile_daily_airdrop.sql` |
 | `profile_daily_airdrop_issuances` | Submitted daily airdrop payments with source wallet, recipient wallet, PFT amount, payload digest, pointer CID, tx hash, ledger index, and account/day uniqueness. | Private Profile paid airdrop display, reward history chart, public profile lifetime earned PFT. | `020_profile_daily_airdrop_issuance.sql` |
 | `profile_public_snapshots` | Account-scoped public profile role snapshots with deterministic input snapshot/fingerprint, DeepSeek output fields, provider/model/prompt metadata, status, and completion timestamps. Numeric scores and NFT state are not model-generated. | Public Profile role title, summary, skills, archetype, useful-to copy, profile snapshot audit. | `021_profile_public_snapshots.sql` |
@@ -96,6 +99,18 @@ These tables are still planned. The v0 lease/run/session tables and project-docu
 | Table | Description | App surfaces that rely on it | Source |
 | --- | --- | --- | --- |
 | `board_manager_context_docs` | Versioned Board Manager context document used by the manager to retain network-level assumptions, unresolved questions, and decisions. | Hive Context, Board Manager source packet, future project/task generation. | Planned |
+
+## Hive Derived Read Models
+
+The current Hive board has one canonical chain-backed task path:
+
+```text
+PFTL task pointers -> task_projections -> network_project_task_refs -> Hive project tasks/routing/operators
+```
+
+`network_project_contributors` and `network_project_activity` are available for future materialized rollups, but the current UI does not require those tables to be populated before it can show real project-linked work. `server/repositories/hive-projects.js` derives contributor/operator rows and routing-feed rows from `network_project_task_refs` when explicit rows are absent.
+
+This matters because task lifecycle state is not owned by the Hive agent. The Board Manager can allocate a task and record why it was routed, but after the offer exists the status is owned by signed PFTL task events reduced into `task_projections`. `server/repositories/network-tasks.js` reconciles project task refs and allocation rows from that projection so Hive cannot show `proposed` after a task has already been rewarded.
 
 ## Known Gaps
 
@@ -132,6 +147,10 @@ flowchart TB
   BoardManager --> HivePlanner[Hive Project Generations]
   HivePlanner --> HiveProjects[Network Projects]
   BoardManager --> ProductDocs[Project Product Docs]
+  BoardManager --> NetworkAllocations[Network Task Allocations]
+  NetworkAllocations --> NetworkJobs[Network Task Generation Jobs]
+  NetworkJobs --> TaskRequests[Task Request Queue]
+  TaskRequests --> TaskCache
   Account --> Wallet[Wallet Link Metadata]
   Jobs[Jobs Corpus pgvector] --> Chat
   PFTL[PFTL Events] --> TaskCache[Task Projection Cache]
@@ -146,3 +165,38 @@ flowchart TB
 - Cache refresh should not mutate canonical chain state.
 - JSON blobs should migrate into typed tables when a feature becomes real.
 - Future chat retrieval should use `pgvector` over typed cached text.
+
+## Reviewer To Do List
+
+Review implementation against this document (database). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Hot paths use bounded queries, checkpoints, or projection tables.
+- [ ] Background workers dedupe and lock jobs to prevent duplicate work.
+- [ ] Table inventory matches migrations; no orphan hot paths reading JSON runtime store when Postgres enabled.
+- [ ] Reducer/watcher queues dedupe events; failed rows visible, not silently retried forever.
+- [ ] pgvector Jobs corpus uses indexed cosine search, not linear scan at chat time.
+
+### Code Quality
+- [ ] Architecture claims map to migrations, repositories, and smoke scripts.
+- [ ] Failure modes have operator-visible signals or health endpoints.
+- [ ] Repository modules own table access; routes stay thin.
+- [ ] Migration numbering sequential; new tables documented in inventory.
+
+### Coherence
+- [ ] Canonical vs cache boundaries consistent with wiki index.
+- [ ] Cross-links to related architecture pages remain accurate.
+- [ ] Each table row lists consuming app surfaces; verify those surfaces still exist.
+- [ ] Cache vs canonical boundaries consistent with wiki index and task docs.
+
+### Bloat
+- [ ] No parallel implementations of the same protocol concern.
+- [ ] Retention policies drop queue noise without losing audit tx rows.
+- [ ] Derived Hive read models prefer projection sources over duplicate rollup writes when empty.
+- [ ] Avoid storing full provider payloads where digest + excerpt suffices.
+
+### Security
+- [ ] Encryption and wallet-role rules enforced at trust boundaries.
+- [ ] Secrets and seeds remain server-side or browser-local as designed.
+- [ ] Account ownership enforced on all user-data tables in repository queries.
+- [ ] Billing ledger append-only; no silent balance mutation outside ledger path.

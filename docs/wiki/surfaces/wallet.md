@@ -73,3 +73,38 @@ flowchart LR
 - Delinking should not delete context.
 - Existing linked wallet conflicts should be resolved at the account-link boundary.
 - Balance reads should show loading or error, never `NaN`, `undefined`, or fake freshness.
+
+## Reviewer To Do List
+
+Review implementation against this document (wallet). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] List and detail views read Postgres caches with documented caps or pagination.
+- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
+- [ ] Balance reads use configured RPC endpoints with sane caching; no full ledger scan per page view.
+- [ ] Transaction history reads Postgres cache (`pftl_wallet_transactions`), not live chain on every scroll.
+
+### Code Quality
+- [ ] Code references in doc resolve to existing modules and routes.
+- [ ] Failure modes documented here have matching user-visible error handling.
+- [ ] Link vs unlock vs proof boundaries match `AUTH_WALLET_BOUNDARY.md`.
+- [ ] Initiation grant and faucet paths are idempotent and auditable.
+
+### Coherence
+- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
+- [ ] Hidden/not-exposed features labeled honestly if mentioned.
+- [ ] UI lock/unlock state matches server expectations for signing routes.
+- [ ] Top-up rail docs align with `ETHEREUM_TOP_UPS.md` custody model.
+
+### Bloat
+- [ ] Surface does not duplicate logic owned by shared modules or workers.
+- [ ] UI state not duplicated in unrelated caches without invalidation rules.
+- [ ] Wallet view does not duplicate task or context surfaces.
+- [ ] Historical context restore triggered by cache workers, not manual user import buttons.
+
+### Security
+- [ ] Account scoping enforced on all read/write API paths for this surface.
+- [ ] Wallet-bound actions require linked unlocked wallet as documented.
+- [ ] Seed vault stays browser-local; server never receives mnemonic or private keys.
+- [ ] Wallet proof required only for wallet-bound actions, not ordinary login.
+- [ ] Ethereum deposit addresses are account-scoped; operator xpub custody boundaries documented.

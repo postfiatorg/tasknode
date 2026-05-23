@@ -1,0 +1,259 @@
+import { createHash } from "node:crypto";
+import { pinContextIpfsJson } from "./context-ipfs.js";
+import { resolveTasknodeEncryptionKey } from "./context-publish.js";
+import { encryptTasknodePayload } from "./task-payloads.js";
+import { buildRequestBundle } from "./task-request.js";
+import { scheduleTaskGenerationQueue } from "./task-generation-worker.js";
+import { upsertTaskRequest } from "./repositories/task-requests.js";
+import {
+  claimNetworkTaskGenerationJobs,
+  markNetworkTaskGenerationJobFailed,
+  markNetworkTaskGenerationJobGenerated,
+  normalizeNetworkTaskRewardBand,
+  repairNetworkTaskOfferLinks,
+} from "./repositories/network-tasks.js";
+
+let timer = null;
+let immediateTimer = null;
+let immediateRunning = false;
+
+function safeText(value = "", max = 4000) {
+  return String(value || "").trim().slice(0, max);
+}
+
+function safeObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sha256(value = "") {
+  return createHash("sha256").update(typeof value === "string" ? value : stableJson(value), "utf8").digest("hex");
+}
+
+function requestTextForJob({ source = {}, job = {} } = {}) {
+  const networkTask = safeObject(source.networkTask);
+  const project = safeObject(source.project);
+  const candidate = safeObject(source.candidate);
+  const reward = normalizeNetworkTaskRewardBand({
+    min: job.reward_min_pft || networkTask.rewardMinPft,
+    max: job.reward_max_pft || networkTask.rewardMaxPft,
+  });
+  return [
+    `Generate a ${job.task_class || networkTask.taskClass || "network"} task for the selected contributor.`,
+    "",
+    `Project: ${project.title || job.project_id}`,
+    `Project ID: ${project.id || job.project_id}`,
+    `Need: ${networkTask.projectNeedSummary || ""}`,
+    `Routing reason: ${networkTask.allocationReasonSummary || ""}`,
+    `Candidate account: ${candidate.accountId || job.candidate_account_id}`,
+    `Candidate wallet: ${candidate.walletAddress || job.candidate_wallet_address}`,
+    `Reward band: ${reward.min} to ${reward.max} PFT`,
+    "",
+    "Use the normal Task Node task generation rules. Create a concrete, verifiable task with supported evidence only.",
+  ].join("\n").trim();
+}
+
+async function createTaskRequestForNetworkJob(job = {}) {
+  const source = safeObject(job.source_payload_json);
+  const reward = normalizeNetworkTaskRewardBand({
+    min: job.reward_min_pft,
+    max: job.reward_max_pft,
+  });
+  const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
+  if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
+  const requestId = safeText(job.request_id, 180) || `req_net_${sha256(job.id).slice(0, 32)}`;
+  const bundleId = `bundle_net_${sha256(`${job.id}:${job.source_payload_digest}`).slice(0, 32)}`;
+  const request = {
+    requestId,
+    bundleId,
+    requestText: "Network Task",
+    userDetailText: requestTextForJob({ source, job }),
+    requestedTaskKind: safeText(job.task_class, 80) || "network",
+    source: "network_task",
+    sourceConversationTitle: `Hive: ${source.project?.title || job.project_id}`,
+    conversationId: "",
+    attachments: [],
+  };
+  const requestBundle = await buildRequestBundle({
+    accountId: job.candidate_account_id,
+    walletAddress: job.candidate_wallet_address,
+    request,
+    authorityWallet: tasknodeKey.serviceAddress || "",
+  });
+  requestBundle.network_task = {
+    schema: "pf.hive.network_task_request.v1",
+    allocation_id: job.allocation_id,
+    generation_job_id: job.id,
+    project_id: job.project_id,
+    project_type: source.project?.type || "",
+    task_class: job.task_class,
+    source_payload_digest: job.source_payload_digest,
+    routing_profile_digest: source.candidate?.profileDigest || "",
+    reward_band_pft: {
+      min: reward.min,
+      max: reward.max,
+    },
+    project_need_summary: source.networkTask?.projectNeedSummary || "",
+    routing_reason: source.networkTask?.allocationReasonSummary || "",
+  };
+  requestBundle.policy = {
+    ...safeObject(requestBundle.policy),
+    task_policy_version: "task-policy-network-v1",
+    reward_policy_version: "network-reward-policy-v1",
+    generation_policy_version: "taskgen-policy-network-v1",
+    task_class: job.task_class,
+    reward_offer_min_pft: reward.min,
+    reward_offer_max_pft: reward.max,
+    supported_evidence_types: ["text", "url", "github_commit", "screenshot", "file", "mixed"],
+  };
+  const plaintext = stableJson(requestBundle);
+  const encryptedPayload = await encryptTasknodePayload({
+    plaintext,
+    recipientPublicKeys: [tasknodeKey.publicKey],
+  });
+  const pin = await pinContextIpfsJson({
+    payload: encryptedPayload,
+    name: `tasknode-network-task-request-bundle-${sha256(requestId).slice(0, 16)}`,
+    keyvalues: {
+      app: "tasknodeofficial",
+      content_kind: "TASK",
+      schema: "pf.task.request_bundle.v1",
+      source: "network_task",
+      request_id: requestId,
+      project_id: job.project_id,
+      task_class: job.task_class,
+    },
+  });
+  const visibleRequest = await upsertTaskRequest({
+    requestId,
+    bundleId,
+    accountId: job.candidate_account_id,
+    subjectWallet: job.candidate_wallet_address,
+    source: "network_task",
+    sourceConversationTitle: request.sourceConversationTitle,
+    requestText: request.requestText,
+    userDetailText: request.userDetailText,
+    requestedTaskKind: job.task_class,
+    requestBundleCid: pin.cid,
+    status: "queued",
+    metadata: {
+      networkTask: requestBundle.network_task,
+      sourcePayloadDigest: job.source_payload_digest,
+      allocationId: job.allocation_id,
+      generationJobId: job.id,
+      pin: {
+        cid: pin.cid,
+        sha256: pin.sha256,
+        sizeBytes: pin.sizeBytes,
+      },
+    },
+  });
+  await markNetworkTaskGenerationJobGenerated({
+    jobId: job.id,
+    requestId,
+    requestBundleCid: pin.cid,
+    metadata: {
+      request_id: requestId,
+      request_bundle_cid: pin.cid,
+      request_bundle_digest: `sha256:${pin.sha256}`,
+      task_request_status: visibleRequest?.request?.status || "queued",
+    },
+  });
+  const generationScheduled = scheduleTaskGenerationQueue({
+    delayMs: 250,
+    limit: 3,
+    reason: "network_task_request_generated",
+  });
+  return { requestId, bundleId, requestBundleCid: pin.cid, generationScheduled };
+}
+
+export async function processNetworkTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) {
+  await repairNetworkTaskOfferLinks({ limit }).catch((error) => {
+    logger.warn?.("network_task_offer_link_repair_failed", { error: error?.message || String(error) });
+  });
+  const jobs = await claimNetworkTaskGenerationJobs({ limit });
+  const results = [];
+  for (const job of jobs) {
+    try {
+      const result = await createTaskRequestForNetworkJob(job);
+      results.push({ ok: true, jobId: job.id, ...result });
+    } catch (error) {
+      const message = safeText(error?.message || error, 1000);
+      await markNetworkTaskGenerationJobFailed({ jobId: job.id, error: message }).catch(() => null);
+      logger.warn?.("network_task_generation_job_failed", { jobId: job.id, error: message });
+      results.push({ ok: false, jobId: job.id, error: message });
+    }
+  }
+  return { ok: true, claimed: jobs.length, results };
+}
+
+export function scheduleNetworkTaskGenerationQueue({
+  delayMs = 250,
+  enabled = process.env.TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED === "true",
+  limit = 2,
+  logger = console,
+  reason = "network_task_queued",
+} = {}) {
+  if (!enabled) return { scheduled: false, reason: "disabled" };
+  if (immediateTimer) return { scheduled: false, reason: "already_scheduled" };
+  const safeDelay = Math.min(Math.max(Number(delayMs || 0), 0), 60_000);
+  const safeLimit = Math.min(Math.max(Number(limit || 1), 1), 5);
+  immediateTimer = setTimeout(async () => {
+    immediateTimer = null;
+    if (immediateRunning) {
+      scheduleNetworkTaskGenerationQueue({
+        delayMs: 1000,
+        limit: safeLimit,
+        logger,
+        reason: "network_task_generation_already_running",
+      });
+      return;
+    }
+    immediateRunning = true;
+    try {
+      await processNetworkTaskGenerationQueueOnce({ limit: safeLimit, logger });
+    } catch (error) {
+      logger.warn?.("network_task_generation_immediate_tick_failed", {
+        error: error?.message || String(error),
+        reason,
+      });
+    } finally {
+      immediateRunning = false;
+    }
+  }, safeDelay);
+  if (typeof immediateTimer.unref === "function") immediateTimer.unref();
+  return { scheduled: true, delayMs: safeDelay, limit: safeLimit, reason };
+}
+
+export function startNetworkTaskGenerationWorker({
+  enabled = process.env.TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED === "true",
+  intervalMs = Number(process.env.TASKNODE_NETWORK_TASK_GENERATION_WORKER_INTERVAL_MS || 15000),
+  batchLimit = Number(process.env.TASKNODE_NETWORK_TASK_GENERATION_WORKER_BATCH_LIMIT || 1),
+  logger = console,
+} = {}) {
+  if (timer || !enabled) return { started: false, reason: timer ? "already_started" : "disabled" };
+  const safeInterval = Math.min(Math.max(intervalMs || 15000, 5000), 3_600_000);
+  const safeBatch = Math.min(Math.max(batchLimit || 1, 1), 5);
+  let running = false;
+  const runOnce = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await processNetworkTaskGenerationQueueOnce({ limit: safeBatch, logger });
+    } catch (error) {
+      logger.warn?.("network_task_generation_worker_tick_failed", { error: error?.message || String(error) });
+    } finally {
+      running = false;
+    }
+  };
+  timer = setInterval(runOnce, safeInterval);
+  runOnce();
+  return { started: true, intervalMs: safeInterval, batchLimit: safeBatch };
+}

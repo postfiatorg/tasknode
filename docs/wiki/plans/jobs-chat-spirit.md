@@ -348,3 +348,27 @@ Failure behavior:
 Phase 1 is done when the running app has one shared Jobs prompt loader, all four chat modes use it through the same instruction assembly path, Help shows the prompt source, and live or request-builder smoke tests prove no duplicate prompt injection.
 
 Phase 2 is locally implemented when the gist corpus is in pgvector, top-3 retrieval is injected into the Jobs prompt slot, local Docker reads from shared Postgres, and chat remains operational when retrieval is empty or degraded.
+
+## Reviewer To Do List
+
+Review implementation against this document (jobs chat spirit). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Plan phases avoid loading unbounded history or corpus into single jobs.
+- [ ] Derived read models prefer projections over duplicate materialized stores.
+
+### Code Quality
+- [ ] Done criteria map to testable checks or smoke commands.
+- [ ] Status (implemented vs planned) accurate on every section.
+
+### Coherence
+- [ ] Plan does not contradict shipped behavior in Surfaces/Architecture docs.
+- [ ] Dependencies on other plans explicitly named and still valid.
+
+### Bloat
+- [ ] Plan scoped to stated phase; future work not implied as shipped.
+- [ ] Avoid duplicating full surface doc content; link instead.
+
+### Security
+- [ ] New tables/routes in plan include account ownership and encryption notes.
+- [ ] Operator-only actions identified with audit requirements.

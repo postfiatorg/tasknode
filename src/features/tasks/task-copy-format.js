@@ -48,6 +48,8 @@ export function buildTaskCopyPayloads(task = {}, detail = {}) {
   const steps = taskSteps(task);
   const verification = taskVerificationText(task);
   const requestId = cleanText(task.metadata?.requestId || "");
+  const networkProjectId = cleanText(task.metadata?.networkProjectId || "");
+  const networkAllocationId = cleanText(task.metadata?.networkAllocationId || "");
   const currentVerificationRequest = currentVerificationRequestText(detail);
 
   const titlePayload = title;
@@ -65,6 +67,8 @@ export function buildTaskCopyPayloads(task = {}, detail = {}) {
       `Task: ${title}`,
       id ? `Task ID: ${id}` : "",
       requestId ? `Request ID: ${requestId}` : "",
+      networkProjectId ? `Network Project: ${networkProjectId}` : "",
+      networkAllocationId ? `Network Allocation: ${networkAllocationId}` : "",
       kind ? `Kind: ${kind}` : "",
       status ? `Status: ${status}` : "",
       `Reward: ${taskReward(task)}`,
@@ -94,6 +98,8 @@ export function buildTaskCopyPayloads(task = {}, detail = {}) {
       `Title: ${title}`,
       id ? `Task ID: ${id}` : "",
       requestId ? `Request ID: ${requestId}` : "",
+      networkProjectId ? `Network Project: ${networkProjectId}` : "",
+      networkAllocationId ? `Network Allocation: ${networkAllocationId}` : "",
       kind ? `Kind: ${kind}` : "",
       status ? `Status: ${status}` : "",
       `Reward: ${taskReward(task)}`,

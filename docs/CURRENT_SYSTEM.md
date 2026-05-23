@@ -309,3 +309,31 @@ P1 context:
 - Before expanding scope, update `full_spec.md` and this map.
 - If the whip causes scope drift or unsafe automation, pause it using
   `whip_context.md`.
+
+## Reviewer To Do List
+
+Review implementation against this document (CURRENT SYSTEM). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
+- [ ] Enabled vs disabled features accurately reflect what loads at runtime.
+- [ ] Postgres vs JSON fallback paths documented to avoid accidental double writes.
+
+### Code Quality
+- [ ] Commands, env vars, and file paths verified against repo.
+- [ ] Repo layout matches actual tree; stale paths removed.
+- [ ] API contract section matches live routes in `server/index.js`.
+
+### Coherence
+- [ ] Doc aligns with wiki and spec docs for same topic.
+- [ ] Product boundary rules align with wiki index and full_spec.
+- [ ] Near-term build path priorities still current.
+
+### Bloat
+- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
+- [ ] System map summarizes; endpoint-by-endpoint detail belongs in future API_CONTRACTS.md.
+
+### Security
+- [ ] No secrets committed; custody boundaries explicit.
+- [ ] Wallet proof boundaries match AUTH_WALLET_BOUNDARY.md.
+- [ ] Disabled actions listed so engineers do not expose them accidentally.

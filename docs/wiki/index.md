@@ -51,3 +51,32 @@ flowchart LR
 - `server/repositories/context.js`
 - `server/repositories/chat-memory.js`
 - `reference_clients/python/tasknode_pftl/`
+
+## Reviewer To Do List
+
+Review implementation against this document (index). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
+- [ ] Confirm the product map names only surfaces that exist or are explicitly marked hidden/TBD.
+- [ ] Verify the system diagram does not imply unbounded in-memory fan-out (e.g., full chain replay on every page load).
+
+### Code Quality
+- [ ] Commands, env vars, and file paths verified against repo.
+- [ ] Cross-check Primary Code References against current entry points; remove dead paths.
+- [ ] Ensure canonical-vs-cache rules are stated once and not contradicted by linked surface docs.
+
+### Coherence
+- [ ] Doc aligns with wiki and spec docs for same topic.
+- [ ] Every surface in the product map links to an existing wiki page or is labeled not exposed.
+- [ ] Diagram arrows match actual data flow described in Architecture docs.
+
+### Bloat
+- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
+- [ ] Index stays overview-level; deep implementation detail belongs in surface/architecture pages.
+- [ ] Avoid duplicating full mode matrices or table inventories here.
+
+### Security
+- [ ] No secrets committed; custody boundaries explicit.
+- [ ] Canonical rules state wallet requirements and encryption expectations without overstating guarantees.
+- [ ] No secrets, seed examples, or operator keys in the index doc.

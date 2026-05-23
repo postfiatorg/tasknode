@@ -19,7 +19,7 @@ function TaskDot() {
 
 export function TaskRow({ isFirst, onClick, task }) {
   return (
-    <article className={`task-row task-entry${isFirst ? " is-first" : ""}`}>
+    <article className={`task-row task-entry${isFirst ? " is-first" : ""}${task.isNetworkTask ? " is-network-task" : ""}`}>
       <button className="task-entry-open" onClick={onClick} type="button">
         <span className="task-entry-signal">
           <TaskStatusGlyph task={task} />
@@ -28,6 +28,12 @@ export function TaskRow({ isFirst, onClick, task }) {
           <span className="task-title">{task.title}</span>
           <span className="task-meta">
             <strong>{task.kind}</strong>
+            {task.isNetworkTask && (
+              <>
+                <TaskDot />
+                <span>{task.metadata?.networkProjectId || "Hive routed"}</span>
+              </>
+            )}
             <TaskDot />
             <span className="task-status-text" style={{ color: task.statusColor || taskStatusColor(task.statusKey) }}>
               {task.status}

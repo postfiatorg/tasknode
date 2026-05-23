@@ -8,22 +8,29 @@ import {
 } from "./hive-context.js";
 import { latestHiveProjectPlanningState } from "./hive-project-planning.js";
 import { getHiveProjectsDocument } from "./hive-projects.js";
+import {
+  getNetworkTaskContentSnapshot,
+  listEligibleNetworkTaskCandidates,
+  normalizeNetworkTaskRewardBand,
+} from "./network-tasks.js";
+import {
+  buildBoardManagerRunMicroSummary,
+  compactBoardManagerRunForSourcePacket,
+  formatBoardManagerAgentRun,
+} from "./board-manager-run-summary.js";
+
+export { formatBoardManagerAgentRun } from "./board-manager-run-summary.js";
 
 export const boardManagerPromptVersion = "board_manager_v1";
 export const boardManagerActions = Object.freeze([
   "do_nothing",
-  "update_board_context",
   "refresh_hive_secretary",
-  "research",
   "message_user",
   "create_project",
-  "update_project",
   "archive_project",
   "refresh_project_document",
   "assign_contributor",
-  "remove_contributor",
   "initiate_network_task",
-  "review_evidence_packet",
 ]);
 
 const actionSet = new Set(boardManagerActions);
@@ -68,6 +75,18 @@ const emptyBoardManagerPayload = Object.freeze({
     load: 0,
     sort_order: 0,
   },
+  network_task: {
+    task_class: "",
+    candidate_account_id: "",
+    candidate_wallet_address: "",
+    project_need_summary: "",
+    routing_reason: "",
+    cadence_reason: "",
+    reward_min_pft: 10000,
+    reward_max_pft: 50000,
+    accept_window_hours: 24,
+    allow_over_capacity: false,
+  },
 });
 
 function useDatabase() {
@@ -95,6 +114,11 @@ function normalizePayload(payload = {}) {
   const project = safeObject(input.project);
   const projectDocument = safeObject(input.project_document || input.projectDocument);
   const contributor = safeObject(input.contributor);
+  const networkTask = safeObject(input.network_task || input.networkTask);
+  const rewardBand = normalizeNetworkTaskRewardBand({
+    min: networkTask.reward_min_pft ?? networkTask.rewardMinPft,
+    max: networkTask.reward_max_pft ?? networkTask.rewardMaxPft,
+  });
   return {
     summary: safeText(input.summary, 2000),
     next_steps: safeArray(input.next_steps || input.nextSteps).slice(0, 8).map((item) => safeText(item, 500)).filter(Boolean),
@@ -135,6 +159,21 @@ function normalizePayload(payload = {}) {
       cap: Math.max(0, Math.round(Number(contributor.cap || 0) || 0)),
       load: Math.max(0, Math.round(Number(contributor.load || 0) || 0)),
       sort_order: Math.max(0, Math.round(Number(contributor.sort_order ?? contributor.sortOrder ?? 0) || 0)),
+    },
+    network_task: {
+      task_class: safeText(networkTask.task_class || networkTask.taskClass, 40),
+      candidate_account_id: safeText(networkTask.candidate_account_id || networkTask.candidateAccountId, 180),
+      candidate_wallet_address: safeText(networkTask.candidate_wallet_address || networkTask.candidateWalletAddress, 120),
+      project_need_summary: safeText(networkTask.project_need_summary || networkTask.projectNeedSummary, 2000),
+      routing_reason: safeText(networkTask.routing_reason || networkTask.routingReason, 1800),
+      cadence_reason: safeText(networkTask.cadence_reason || networkTask.cadenceReason, 700),
+      reward_min_pft: rewardBand.min,
+      reward_max_pft: rewardBand.max,
+      accept_window_hours: Math.min(
+        336,
+        Math.max(1, Math.round(Number(networkTask.accept_window_hours ?? networkTask.acceptWindowHours ?? 24) || 24))
+      ),
+      allow_over_capacity: Boolean(networkTask.allow_over_capacity || networkTask.allowOverCapacity),
     },
   };
 }
@@ -338,7 +377,8 @@ async function recentBoardManagerRuns({ limit = 12, includeInternal = false } = 
       SELECT id, scope, manager_id, trigger, status, source_packet_digest,
              selected_action, action_payload_json, decision_json, dry_run,
              model, reasoning_effort, error, codex_session_id, codex_session_path,
-             session_mode, started_at, completed_at
+             session_mode, micro_summary_json, micro_summary_text,
+             started_at, completed_at
       FROM board_manager_runs
       WHERE 1 = 1
         ${internalRunFilterSql(includeInternal)}
@@ -381,6 +421,8 @@ async function recentBoardManagerRuns({ limit = 12, includeInternal = false } = 
     selectedAction: row.selected_action,
     actionPayload: safeObject(row.action_payload_json),
     decision: safeObject(row.decision_json),
+    microSummary: safeObject(row.micro_summary_json),
+    microSummaryText: safeText(row.micro_summary_text, 3000),
     dryRun: Boolean(row.dry_run),
     model: row.model,
     reasoningEffort: row.reasoning_effort,
@@ -392,83 +434,6 @@ async function recentBoardManagerRuns({ limit = 12, includeInternal = false } = 
     startedAt: iso(row.started_at),
     completedAt: iso(row.completed_at),
   }));
-}
-
-function boardManagerActionLabel(action = "") {
-  const labels = {
-    archive_project: "Archived project",
-    assign_contributor: "Assigned contributor",
-    create_project: "Created project",
-    do_nothing: "No decision",
-    initiate_network_task: "Initiated network task",
-    message_user: "Messaged user",
-    refresh_hive_secretary: "Updated Hive Secretary",
-    refresh_project_document: "Refreshed project document",
-    remove_contributor: "Removed contributor",
-    research: "Research",
-    review_evidence_packet: "Reviewed evidence",
-    update_board_context: "Updated board context",
-    update_project: "Updated project",
-  };
-  return labels[action] || "No decision";
-}
-
-function boardManagerRunSummary(run = {}, action = "", primaryResult = null) {
-  const payload = safeObject(run.actionPayload);
-  const decision = safeObject(run.decision);
-  const result = safeObject(primaryResult?.result);
-  if (run.status === "failed") return run.error || "The Board Manager run failed before completing a decision.";
-  if (!action || action === "no_decision") return "The Board Manager run did not record a selected action.";
-  if (action === "do_nothing") return payload.summary || decision.reason || "The agent reviewed current Hive state and chose not to change the board.";
-  return payload.summary || decision.reason || result.messagePreview || result.archiveReason || "The agent selected an action for the Hive board.";
-}
-
-function boardManagerRunState({ action, primaryResult, run }) {
-  const result = safeObject(primaryResult?.result);
-  if (run.status === "failed") return "failed";
-  if (run.dryRun) return "dry_run";
-  if (result.executed) return "executed";
-  if (!action || action === "no_decision" || action === "do_nothing") return "no_decision";
-  return "recorded";
-}
-
-export function formatBoardManagerAgentRun(run = {}) {
-  const results = safeArray(run.actionResults);
-  const primaryResult = results[0] || null;
-  const selectedAction = safeText(run.selectedAction, 80);
-  const fallbackAction = safeText(primaryResult?.action, 80);
-  const action = selectedAction || fallbackAction || "no_decision";
-  return {
-    id: safeText(run.id, 180),
-    runId: safeText(run.id, 180),
-    action,
-    label: boardManagerActionLabel(action),
-    state: boardManagerRunState({ action, primaryResult, run }),
-    status: safeText(run.status, 80),
-    dryRun: Boolean(run.dryRun),
-    summary: boardManagerRunSummary(run, action, primaryResult),
-    reason: safeText(run.decision?.reason || run.error || "", 2000),
-    confidence: Number(run.decision?.confidence || 0),
-    targetType: safeText(run.targetType || run.decision?.target_type || primaryResult?.targetType, 120),
-    targetId: safeText(run.targetId || run.decision?.target_id || primaryResult?.targetId, 240),
-    trigger: safeText(run.trigger, 160),
-    model: safeText(run.model, 120),
-    reasoningEffort: safeText(run.reasoningEffort, 40),
-    codexSessionId: safeText(run.codexSessionId, 120),
-    sessionMode: safeText(run.sessionMode, 80),
-    sourcePacketDigest: safeText(run.sourcePacketDigest, 120),
-    actionResults: results.slice(0, 6).map((result) => ({
-      id: safeText(result.id, 180),
-      action: safeText(result.action, 80),
-      targetType: safeText(result.targetType, 120),
-      targetId: safeText(result.targetId, 240),
-      executed: Boolean(result.result?.executed),
-      error: safeText(result.result?.error, 1000),
-      createdAt: result.createdAt || null,
-    })),
-    startedAt: run.startedAt || null,
-    completedAt: run.completedAt || null,
-  };
 }
 
 export async function getBoardManagerAgentFeed({ limit = 20, includeInternal = false } = {}) {
@@ -600,6 +565,8 @@ export async function buildBoardManagerSourcePacket({
     projectRegistry,
     taskState,
     taskRequests,
+    networkTaskContent,
+    networkTaskCandidates,
     recentRuns,
   ] = await Promise.all([
     getHiveContextDocument({ limit }),
@@ -610,6 +577,8 @@ export async function buildBoardManagerSourcePacket({
     currentProjectRegistry(),
     currentTaskState(),
     currentTaskRequests(),
+    getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 25, pendingLimit: 10 }).catch(() => null),
+    listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
     recentBoardManagerRuns(),
   ]);
 
@@ -633,7 +602,9 @@ export async function buildBoardManagerSourcePacket({
     projectRegistry,
     taskState,
     taskRequests,
-    recentBoardManagerRuns: recentRuns,
+    networkTaskContent,
+    networkTaskCandidates,
+    recentBoardManagerRuns: recentRuns.map(compactBoardManagerRunForSourcePacket),
     executionPolicy: {
       dryRunDefault: true,
       implementedActionHooks: [
@@ -644,9 +615,11 @@ export async function buildBoardManagerSourcePacket({
         "archive_project",
         "refresh_project_document",
         "assign_contributor",
+        "initiate_network_task",
       ],
       projectDeletionPolicy: "archive_project hides the project from the active Hive board; hard delete is not a v0 action.",
       taskLifecyclePolicy: "Network tasks must use the existing PFTL task lifecycle.",
+      networkTaskPolicy: "Board Manager initiates allocation/generation jobs only. The network task generation worker writes concrete task offers through the existing task engine. Default reward band is 10000-50000 PFT.",
       userResponsePolicy: "Hive Context entries are inbound user messages. message_user responses must target a hive_context_entry when possible and are delivered back to that entry's sourceConversationId as a chat assistant message.",
     },
   };
@@ -722,7 +695,87 @@ export async function recordBoardManagerActionResult({
       jsonValue(result),
     ]
   );
-  return { ok: true, result: inserted.rows[0] };
+  const refreshed = await refreshBoardManagerRunMicroSummary({ runId }).catch(() => null);
+  return {
+    ok: true,
+    result: inserted.rows[0],
+    microSummary: refreshed?.microSummary || null,
+  };
+}
+
+export async function refreshBoardManagerRunMicroSummary({ runId = "" } = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const normalizedRunId = safeText(runId, 180);
+  if (!normalizedRunId) return { ok: false, skipped: true, reason: "run_id_required" };
+  const runResult = await query(
+    `
+      SELECT id, scope, manager_id, trigger, status, source_packet_digest,
+             selected_action, action_payload_json, decision_json, dry_run,
+             model, reasoning_effort, error, codex_session_id, codex_session_path,
+             session_mode, started_at, completed_at
+      FROM board_manager_runs
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [normalizedRunId]
+  );
+  const row = runResult.rows[0];
+  if (!row) return { ok: false, skipped: true, reason: "run_not_found" };
+  const actionRows = await query(
+    `
+      SELECT id, action, target_type, target_id, result_json, created_at
+      FROM board_manager_action_results
+      WHERE run_id = $1
+      ORDER BY created_at DESC, id DESC
+    `,
+    [normalizedRunId]
+  );
+  const run = {
+    id: row.id,
+    scope: row.scope,
+    managerId: row.manager_id,
+    trigger: row.trigger,
+    status: row.status,
+    sourcePacketDigest: row.source_packet_digest,
+    selectedAction: row.selected_action,
+    actionPayload: safeObject(row.action_payload_json),
+    decision: safeObject(row.decision_json),
+    dryRun: Boolean(row.dry_run),
+    model: row.model,
+    reasoningEffort: row.reasoning_effort,
+    codexSessionId: row.codex_session_id,
+    codexSessionPath: row.codex_session_path,
+    sessionMode: row.session_mode,
+    error: row.error,
+    actionResults: actionRows.rows.map((actionRow) => ({
+      id: actionRow.id,
+      action: actionRow.action,
+      targetType: actionRow.target_type,
+      targetId: actionRow.target_id,
+      result: safeObject(actionRow.result_json),
+      createdAt: iso(actionRow.created_at),
+    })),
+    startedAt: iso(row.started_at),
+    completedAt: iso(row.completed_at),
+  };
+  const summary = buildBoardManagerRunMicroSummary(run);
+  const updated = await query(
+    `
+      UPDATE board_manager_runs
+      SET micro_summary_json = $2::jsonb,
+          micro_summary_text = $3,
+          updated_at = now()
+      WHERE id = $1
+      RETURNING id, micro_summary_json, micro_summary_text
+    `,
+    [normalizedRunId, jsonValue(summary.json), summary.text]
+  );
+  return {
+    ok: true,
+    run: updated.rows[0] || null,
+    microSummary: summary.json,
+    microSummaryText: summary.text,
+  };
 }
 
 export async function getBoardManagerUserMessages({ accountId = "", limit = 12 } = {}) {
@@ -901,5 +954,14 @@ export async function completeBoardManagerRun({
       safeText(error, 2000),
     ]
   );
-  return { ok: true, run: result.rows[0] || null, decision: normalizedDecision };
+  const completedRun = result.rows[0] || null;
+  const refreshed = completedRun
+    ? await refreshBoardManagerRunMicroSummary({ runId: completedRun.id }).catch(() => null)
+    : null;
+  return {
+    ok: true,
+    run: completedRun,
+    decision: normalizedDecision,
+    microSummary: refreshed?.microSummary || null,
+  };
 }

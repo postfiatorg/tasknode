@@ -15,6 +15,7 @@ import {
 import { taskProductConfig } from "../task-product-config.js";
 import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
+import { syncNetworkTaskProjection } from "./network-tasks.js";
 import { emptyTaskRequestState, listTaskRequests } from "./task-requests.js";
 import { normalizeTaskStatus, taskLifecycleActions, taskRefreshMetadata, taskStatusInfo, taskStatusLabel, taskStatusTab } from "../../shared/task-lifecycle.js";
 import { formatTaskDeadline, formatTaskTimestamp } from "../../shared/task-time-format.js";
@@ -102,6 +103,9 @@ function publicTask(row) {
   const pft = statusKey === "rewarded" && actualRewardRecorded ? rewardActual : rewardOffer;
   const metadata = safeObject(row.metadata_json);
   const generatedTask = safeObject(metadata.generatedTask);
+  const networkTask = safeObject(generatedTask.network_task);
+  const taskClass = safeText(generatedTask.task_class || networkTask.task_class, 80);
+  const isNetworkTask = taskClass === "network" || taskClass === "alpha" || objectKeyCount(networkTask) > 0;
   const verification = safeObject(row.verification_policy_json);
   const acceptBy = toIso(row.accept_by);
   const deadlineAt = toIso(row.deadline_at);
@@ -113,7 +117,10 @@ function publicTask(row) {
     fullId: row.task_id,
     taskId: row.task_id,
     title: row.title || "Untitled task",
-    kind: titleCase(row.task_kind || "task"),
+    kind: isNetworkTask ? (taskClass === "alpha" ? "Alpha Task" : "Network Task") : titleCase(row.task_kind || "task"),
+    originalKind: titleCase(row.task_kind || "task"),
+    taskClass,
+    isNetworkTask,
     status: taskStatusLabel(statusKey),
     statusKey,
     statusTone: statusInfo.tone,
@@ -160,6 +167,10 @@ function publicTask(row) {
       requestId: row.request_id || undefined, eventCount: Number(row.event_count || 0),
       sourceRunId: metadata.runId || undefined, openaiResponseId: metadata.taskgen?.openai_response_id || undefined,
       model: metadata.taskgen?.model || undefined,
+      networkTask: objectKeyCount(networkTask) ? networkTask : undefined,
+      networkProjectId: generatedTask.network_project_id || networkTask.project_id || undefined,
+      networkAllocationId: generatedTask.network_allocation_id || networkTask.allocation_id || undefined,
+      routingProfileDigest: generatedTask.routing_profile_digest || networkTask.routing_profile_digest || undefined,
     },
   };
 }
@@ -966,6 +977,8 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
       ]
     );
   });
+
+  await syncNetworkTaskProjection({ taskId: projection.taskId }).catch(() => null);
 
   return {
     ok: true,

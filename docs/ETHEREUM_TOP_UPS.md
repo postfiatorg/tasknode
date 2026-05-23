@@ -118,3 +118,28 @@ deposit.
 - Warn that wrong-chain deposits may not be recoverable.
 - Treat the internal usage ledger as the app spend balance; chain balances are
   the funding source, not the app authorization layer.
+
+## Reviewer To Do List
+
+Review implementation against this document (ETHEREUM TOP UPS). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
+- [ ] Sync endpoint processes bounded address batch per account.
+
+### Code Quality
+- [ ] Commands, env vars, and file paths verified against repo.
+- [ ] xpub derivation scripts match server address generation.
+
+### Coherence
+- [ ] Doc aligns with wiki and spec docs for same topic.
+- [ ] Custody model aligns with wallet surface and AUTH boundary docs.
+
+### Bloat
+- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
+- [ ] Top-up rail separate from PFT wallet linkage flows.
+
+### Security
+- [ ] No secrets committed; custody boundaries explicit.
+- [ ] Operator custody; no user MetaMask signing for deposits.
+- [ ] Wrong-chain deposits warned; no automatic credit without confirmation depth.

@@ -32,6 +32,10 @@ const fmtDateLabel = (value = "") => {
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
+const dateKeyUtc = (value = "") => {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+};
 const fmtDateTime = (value = "") => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -440,18 +444,23 @@ function TodaysBriefing({ airdrop, error = "", loading = false, rewardHistory })
   const taskCount = Number(rewardHistory?.totals?.taskCount || 0);
   const airdropCount = Number(rewardHistory?.totals?.airdropCount || 0);
   const paidAirdrop = airdrop?.issuance?.status === "submitted" ? airdrop.issuance : null;
-  const amount = Number(paidAirdrop?.amountPft || airdrop?.dailyAirdropPft || 0);
+  const airdropAmount = Number(paidAirdrop?.amountPft || airdrop?.dailyAirdropPft || 0);
   const alignmentPct = Math.round(Number(airdrop?.alignmentScore7d || 0) * 100);
-  const runDate = fmtDateLabel(paidAirdrop?.submittedAt || airdrop?.completedAt || airdrop?.runDate);
+  const airdropDateSource = paidAirdrop?.submittedAt || airdrop?.completedAt || airdrop?.runDate;
+  const runDate = fmtDateLabel(airdropDateSource);
+  const isTodaysAirdrop = Boolean(airdropDateSource) && dateKeyUtc(airdropDateSource) === dateKeyUtc(new Date());
+  const airdropTitle = `${isTodaysAirdrop ? "Today's" : "Latest"} airdrop${runDate ? ` · ${runDate}` : ""}`;
+  const headlineLabel = paidAirdrop ? "Daily airdrop paid" : "Daily airdrop score";
   const rewardedTasks = Number(airdrop?.rewardTotals?.rewarded_task_count || 0);
   const hasReasoning = Boolean(String(airdrop?.reasoningText || "").trim());
-  const previousSeven = points.slice(Math.max(0, points.length - 8), Math.max(0, points.length - 1));
+  const airdropPointIndex = points.findIndex((point) => point.date === dateKeyUtc(airdropDateSource));
+  const airdropPointWindowEnd = airdropPointIndex >= 0 ? airdropPointIndex : points.length - 1;
+  const previousSeven = points.slice(Math.max(0, airdropPointWindowEnd - 7), Math.max(0, airdropPointWindowEnd));
   const previousSevenAverage = previousSeven.length
-    ? previousSeven.reduce((sum, point) => sum + Number(point.total || 0), 0) / previousSeven.length
+    ? previousSeven.reduce((sum, point) => sum + Number(point.airdropPft || 0), 0) / previousSeven.length
     : 0;
-  const todayTotal = totals[totals.length - 1] || amount;
   const deltaVs7d = previousSevenAverage > 0
-    ? ((todayTotal - previousSevenAverage) / previousSevenAverage) * 100
+    ? ((airdropAmount - previousSevenAverage) / previousSevenAverage) * 100
     : null;
   const sparkW = 260;
   const sparkH = 56;
@@ -510,7 +519,7 @@ function TodaysBriefing({ airdrop, error = "", loading = false, rewardHistory })
     <section style={{ paddingTop: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 28 }}>
         <div style={{ fontSize: 13, color: C.ink3 }}>
-          Today's airdrop{runDate ? ` · ${runDate}` : ""}
+          {airdropTitle}
         </div>
         {hasReasoning && (
           <button
@@ -527,10 +536,10 @@ function TodaysBriefing({ airdrop, error = "", loading = false, rewardHistory })
       <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 56, alignItems: "flex-end", marginBottom: 36 }}>
         <div>
           <div style={{ fontSize: 13.5, color: C.ink3, marginBottom: 6 }}>
-            The network paid you
+            {headlineLabel}
           </div>
           <div className="tn-bigNum" style={{ fontSize: 88, lineHeight: 0.95, color: C.ink, marginBottom: 16 }}>
-            {fmtPft(amount)}<span style={{ fontSize: 24, color: C.ink4, fontWeight: 500, marginLeft: 12, letterSpacing: 0 }}>PFT</span>
+            {fmtPft(airdropAmount)}<span style={{ fontSize: 24, color: C.ink4, fontWeight: 500, marginLeft: 12, letterSpacing: 0 }}>PFT</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13.5, color: C.ink3, flexWrap: "wrap" }}>
             {deltaVs7d !== null && (

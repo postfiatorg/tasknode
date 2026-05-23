@@ -120,7 +120,7 @@ Runtime endpoints:
 - `GET /api/profile/daily-airdrop`
 - `GET /api/profile/reward-history?range=7d|28d|90d`
 
-The airdrop hero reads the latest completed `profile_daily_airdrop_runs` row for the signed-in `account_id`.
+The airdrop hero reads the latest completed `profile_daily_airdrop_runs` row for the signed-in `account_id`. The large headline is the latest daily airdrop amount only. It is labeled `Today's airdrop` only when the paid/scored airdrop date is the current UTC date; otherwise it is labeled `Latest airdrop`. Total earned PFT, including task rewards plus submitted daily drops, belongs in the adjacent range chart and summary line.
 
 Visible fields:
 
@@ -137,7 +137,7 @@ Visible fields:
 
 The private profile does not display labels such as `High retention` unless a backend field explicitly supports that label. The current UI displays the numeric retention value instead.
 
-The top chart and PFT generation chart read actual earned PFT rows. They aggregate task rewards from `task_projections.reward_actual_pft > 0` and daily drops from `profile_daily_airdrop_issuances.status = 'submitted'`. Until reward categories exist as first-class data, the chart is a single earned-PFT series rather than fabricated personal/network/alpha layers.
+The top chart and PFT generation chart read actual earned PFT rows. They aggregate task rewards from `task_projections.reward_actual_pft > 0` and daily drops from `profile_daily_airdrop_issuances.status = 'submitted'`. Until reward categories exist as first-class data, the chart is a single earned-PFT series rather than fabricated personal/network/alpha layers. The daily airdrop headline must not reuse the chart's total-earned number or imply that task rewards are the same thing as the airdrop payout.
 
 ### Evidence Packet
 
@@ -334,3 +334,36 @@ Observed packet:
 ### Live Issuance Boundary
 
 Live issuance currently runs through `scripts/profile-daily-airdrop-issue.mjs`. It converts a completed scoring row into exactly one account/day issuance row, then pays from the configured reward/faucet wallet to the deterministic identity-cloud recipient wallet.
+
+## Reviewer To Do List
+
+Review implementation against this document (profile). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] List and detail views read Postgres caches with documented caps or pagination.
+- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
+- [ ] Public profile reads snapshot table; regeneration is async, not on every page load.
+- [ ] NFT gallery paginated or capped; no unbounded metadata fetch.
+
+### Code Quality
+- [ ] Code references in doc resolve to existing modules and routes.
+- [ ] Failure modes documented here have matching user-visible error handling.
+- [ ] Deterministic metrics separated from model-generated role copy.
+- [ ] Contribution tier calculation documented and test-covered.
+
+### Coherence
+- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
+- [ ] Hidden/not-exposed features labeled honestly if mentioned.
+- [ ] Public fields match `public-profile-real-data-plan.md`; mocks removed where claimed.
+- [ ] Daily airdrop private panel aligns with `daily-airdrop.md` scoring rules.
+
+### Bloat
+- [ ] Surface does not duplicate logic owned by shared modules or workers.
+- [ ] UI state not duplicated in unrelated caches without invalidation rules.
+- [ ] Profile view does not embed full task forensics or chat history.
+
+### Security
+- [ ] Account scoping enforced on all read/write API paths for this surface.
+- [ ] Wallet-bound actions require linked unlocked wallet as documented.
+- [ ] Public profile exposes only intended fields; private memory/diagnostic data excluded.
+- [ ] NFT prompt series uses private ASSET pointers; production prompt path not in repo.

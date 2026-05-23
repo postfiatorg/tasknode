@@ -191,3 +191,27 @@ fly deploy -a tasknodeofficial-dev -c fly.toml --remote-only
 
 Local Docker dev is for rapid iteration. Fly deploys are for release candidates
 that need remote machine testing.
+
+## Reviewer To Do List
+
+Review implementation against this document (DOCKER DEV). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
+- [ ] Hot reload paths do not reload entire Postgres or corpus on every file save.
+
+### Code Quality
+- [ ] Commands, env vars, and file paths verified against repo.
+- [ ] Compose service names match execution mandate container names.
+
+### Coherence
+- [ ] Doc aligns with wiki and spec docs for same topic.
+- [ ] Postgres-enabled paths match DATABASE wiki inventory.
+
+### Bloat
+- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
+- [ ] Dev loop doc scoped to iteration; production detail in DEPLOYMENT.
+
+### Security
+- [ ] No secrets committed; custody boundaries explicit.
+- [ ] Local dev secrets via env files gitignored; GitHub OAuth callback URLs documented.

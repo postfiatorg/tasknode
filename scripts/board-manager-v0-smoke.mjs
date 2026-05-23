@@ -15,6 +15,9 @@ const { loadPrompt } = await import("../server/prompt-registry.js");
 assert.ok(boardManagerActions.includes("do_nothing"));
 assert.ok(boardManagerActions.includes("archive_project"));
 assert.ok(boardManagerActions.includes("initiate_network_task"));
+assert.equal(boardManagerActions.includes("research"), false);
+assert.equal(boardManagerActions.includes("update_project"), false);
+assert.equal(boardManagerActions.includes("review_evidence_packet"), false);
 
 const packet = await buildBoardManagerSourcePacket({
   trigger: "board_manager_smoke",
@@ -56,6 +59,30 @@ assert.deepEqual(decision.payload.next_steps, ["Run the secretary refresh action
 assert.equal(decision.payload.project.title, "");
 assert.equal(decision.payload.contributor.wallet_address, "");
 
+const networkDecision = normalizeBoardManagerDecision({
+  action: "initiate_network_task",
+  target_type: "network_project",
+  target_id: "capital_deployment_protocol",
+  reason: "Route one explicit eligible contributor.",
+  confidence: 0.8,
+  payload: {
+    network_task: {
+      task_class: "network",
+      candidate_account_id: "acct_candidate",
+      candidate_wallet_address: "rCandidate",
+      project_need_summary: "Need a concrete network task.",
+      routing_reason: "Candidate is eligible.",
+      cadence_reason: "No active task in this class.",
+      reward_min_pft: 1,
+      reward_max_pft: 100000000,
+      accept_window_hours: 24,
+      allow_over_capacity: false,
+    },
+  },
+});
+assert.equal(networkDecision.payload.network_task.reward_min_pft, 10000);
+assert.equal(networkDecision.payload.network_task.reward_max_pft, 50000);
+
 assert.throws(
   () => normalizeBoardManagerDecision({ action: "delete_everything", reason: "bad", payload: {} }),
   /board_manager_invalid_action/
@@ -72,7 +99,7 @@ const doNothingFeedItem = formatBoardManagerAgentRun({
   startedAt: "2026-05-22T00:00:00.000Z",
   completedAt: "2026-05-22T00:00:02.000Z",
 });
-assert.equal(doNothingFeedItem.label, "No decision");
+assert.equal(doNothingFeedItem.label, "No board change");
 assert.equal(doNothingFeedItem.state, "executed");
 assert.equal(doNothingFeedItem.summary, "State reviewed; no board mutation is needed.");
 

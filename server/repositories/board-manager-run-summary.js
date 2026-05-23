@@ -1,0 +1,197 @@
+function safeText(value = "", max = 1000) {
+  return String(value || "").trim().slice(0, max);
+}
+
+function safeObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+export function boardManagerRunState({ action, primaryResult, run }) {
+  const result = safeObject(primaryResult?.result);
+  if (run.status === "failed") return "failed";
+  if (run.dryRun) return "dry_run";
+  if (result.executed) return "executed";
+  if (!action || action === "no_decision" || action === "do_nothing") return "no_decision";
+  return "recorded";
+}
+
+function actionLabel(action = "") {
+  return {
+    archive_project: "Archived project",
+    assign_contributor: "Assigned contributor",
+    create_project: "Created project",
+    do_nothing: "No board change",
+    initiate_network_task: "Initiated network task",
+    message_user: "Messaged user",
+    refresh_hive_secretary: "Updated Hive Secretary",
+    refresh_project_document: "Refreshed project document",
+  }[action] || "No decision";
+}
+
+function runSummary(run = {}, action = "", primaryResult = null) {
+  const payload = safeObject(run.actionPayload);
+  const decision = safeObject(run.decision);
+  const result = safeObject(primaryResult?.result);
+  if (run.status === "failed") return run.error || "The Board Manager run failed before completing a decision.";
+  if (!action || action === "no_decision") return "The Board Manager run did not record a selected action.";
+  if (action === "do_nothing") {
+    return payload.summary || decision.reason || "The agent reviewed current Hive state and chose not to change the board.";
+  }
+  return payload.summary || decision.reason || result.messagePreview || result.archiveReason || "The agent selected an action for the Hive board.";
+}
+
+export function formatBoardManagerAgentRun(run = {}) {
+  const results = safeArray(run.actionResults);
+  const primaryResult = results[0] || null;
+  const action = safeText(run.selectedAction, 80) || safeText(primaryResult?.action, 80) || "no_decision";
+  return {
+    id: safeText(run.id, 180),
+    runId: safeText(run.id, 180),
+    action,
+    label: actionLabel(action),
+    state: boardManagerRunState({ action, primaryResult, run }),
+    status: safeText(run.status, 80),
+    dryRun: Boolean(run.dryRun),
+    summary: runSummary(run, action, primaryResult),
+    reason: safeText(run.decision?.reason || run.error || "", 2000),
+    confidence: Number(run.decision?.confidence || 0),
+    targetType: safeText(run.targetType || run.decision?.target_type || primaryResult?.targetType, 120),
+    targetId: safeText(run.targetId || run.decision?.target_id || primaryResult?.targetId, 240),
+    trigger: safeText(run.trigger, 160),
+    model: safeText(run.model, 120),
+    reasoningEffort: safeText(run.reasoningEffort, 40),
+    codexSessionId: safeText(run.codexSessionId, 120),
+    sessionMode: safeText(run.sessionMode, 80),
+    sourcePacketDigest: safeText(run.sourcePacketDigest, 120),
+    actionResults: results.slice(0, 6).map((result) => ({
+      id: safeText(result.id, 180),
+      action: safeText(result.action, 80),
+      targetType: safeText(result.targetType, 120),
+      targetId: safeText(result.targetId, 240),
+      executed: Boolean(result.result?.executed),
+      error: safeText(result.result?.error, 1000),
+      summary: resultSummary({ action: safeText(result.action, 80), result: result.result }),
+      createdAt: result.createdAt || null,
+    })),
+    microSummaryText: safeText(run.microSummaryText, 1800),
+    startedAt: run.startedAt || null,
+    completedAt: run.completedAt || null,
+  };
+}
+
+function resultSummary({ action = "", result = {} } = {}) {
+  const data = safeObject(result);
+  if (data.error) return `failed: ${safeText(data.error, 240)}`;
+  if (data.dryRun) return "dry run only; no app mutation executed";
+  if (action === "do_nothing") return "reviewed state and made no board mutation";
+  if (action === "message_user") {
+    return `sent Hive response to ${safeText(data.accountId, 80) || "user"} in ${safeText(data.conversationId, 80) || "chat"}`;
+  }
+  if (action === "refresh_hive_secretary") {
+    return data.queued ? `queued Hive Secretary job ${safeText(data.jobId, 120)}` : "checked Hive Secretary freshness";
+  }
+  if (action === "create_project") return `created or updated project ${safeText(data.projectId, 120) || "unknown_project"}`;
+  if (action === "archive_project") return `archived project ${safeText(data.projectId, 120) || "unknown_project"}`;
+  if (action === "refresh_project_document") {
+    return `refreshed project document ${safeText(data.productDocId, 120) || "unknown_doc"}`;
+  }
+  if (action === "assign_contributor") {
+    return `assigned ${safeText(data.walletAddress, 80) || "contributor"} to ${safeText(data.projectId, 120) || "project"}`;
+  }
+  if (action === "initiate_network_task") {
+    const allocation = safeText(data.allocationId, 120);
+    const job = safeText(data.jobId, 120);
+    return `queued Network Task allocation${allocation ? ` ${allocation}` : ""}${job ? ` and generation job ${job}` : ""}`;
+  }
+  if (data.executed === false) return "action did not execute";
+  return data.executed ? "action executed" : "action recorded";
+}
+
+function compactActionResult(result = {}) {
+  const data = safeObject(result.result);
+  const action = safeText(result.action, 80);
+  return {
+    id: safeText(result.id, 180),
+    action,
+    targetType: safeText(result.targetType, 120),
+    targetId: safeText(result.targetId, 240),
+    executed: Boolean(data.executed),
+    dryRun: Boolean(data.dryRun),
+    error: safeText(data.error, 500),
+    summary: resultSummary({ action, result: data }),
+    createdAt: result.createdAt || null,
+  };
+}
+
+export function buildBoardManagerRunMicroSummary(run = {}) {
+  const decision = safeObject(run.decision);
+  const payload = safeObject(run.actionPayload);
+  const results = safeArray(run.actionResults).slice(0, 4).map(compactActionResult);
+  const action = safeText(run.selectedAction || decision.action || results[0]?.action, 80) || "no_decision";
+  const resultText = results[0]?.summary || resultSummary({ action, result: {} });
+  const summary = run.status === "failed"
+    ? safeText(run.error, 1000) || "The Board Manager run failed before completing a decision."
+    : safeText(payload.summary, 1000) || safeText(decision.reason, 1000) || resultText;
+  const nextSteps = safeArray(payload.next_steps).slice(0, 3).map((item) => safeText(item, 240)).filter(Boolean);
+  const micro = {
+    schema: "pf.hive.board_manager.run_summary.v1",
+    runId: safeText(run.id, 180),
+    trigger: safeText(run.trigger, 160),
+    scope: safeText(run.scope, 120),
+    status: safeText(run.status, 80),
+    action,
+    targetType: safeText(decision.target_type || results[0]?.targetType, 120),
+    targetId: safeText(decision.target_id || results[0]?.targetId, 240),
+    state: boardManagerRunState({ action, primaryResult: run.actionResults?.[0] || null, run }),
+    dryRun: Boolean(run.dryRun),
+    confidence: Number(decision.confidence || 0),
+    summary,
+    reason: safeText(decision.reason || run.error, 1000),
+    result: resultText,
+    nextSteps,
+    results,
+    sourcePacketDigest: safeText(run.sourcePacketDigest, 120),
+    sessionMode: safeText(run.sessionMode, 80),
+    model: safeText(run.model, 120),
+    reasoningEffort: safeText(run.reasoningEffort, 40),
+    completedAt: run.completedAt || null,
+  };
+  const text = [
+    "Board Manager Run Summary",
+    `Run: ${micro.runId || "unknown"}`,
+    `Action: ${micro.action}${micro.targetId ? ` -> ${micro.targetId}` : ""}`,
+    `Result: ${micro.result}`,
+    `Why: ${micro.reason || micro.summary}`,
+    nextSteps.length ? `Next: ${nextSteps.join(" | ")}` : "",
+  ].filter(Boolean).join("\n");
+  return { json: micro, text: safeText(text, 1800) };
+}
+
+export function compactBoardManagerRunForSourcePacket(run = {}) {
+  const stored = safeObject(run.microSummary);
+  const fallback = buildBoardManagerRunMicroSummary(run);
+  const micro = Object.keys(stored).length ? stored : fallback.json;
+  return {
+    id: safeText(run.id, 180),
+    trigger: safeText(run.trigger, 160),
+    status: safeText(run.status, 80),
+    action: safeText(micro.action || run.selectedAction, 80),
+    targetType: safeText(micro.targetType, 120),
+    targetId: safeText(micro.targetId, 240),
+    state: safeText(micro.state, 80),
+    dryRun: Boolean(run.dryRun),
+    confidence: Number(micro.confidence || 0),
+    summary: safeText(micro.summary, 1000),
+    result: safeText(micro.result, 600),
+    reason: safeText(micro.reason, 1000),
+    nextSteps: safeArray(micro.nextSteps).slice(0, 3).map((item) => safeText(item, 240)).filter(Boolean),
+    microSummaryText: safeText(run.microSummaryText || fallback.text, 1800),
+    sourcePacketDigest: safeText(run.sourcePacketDigest, 120),
+    sessionMode: safeText(run.sessionMode, 80),
+    completedAt: run.completedAt || null,
+  };
+}

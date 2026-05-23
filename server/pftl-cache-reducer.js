@@ -446,6 +446,12 @@ function receiptForProjection({
         reward_offer: offerPayload.reward_offer || {},
         submission_requirement: offerPayload.submission_requirement || {},
         verification_policy: offerPayload.verification_policy || {},
+        network_task: offerPayload.network_task || null,
+        network_project_id: offerPayload.network_project_id || "",
+        network_project_type: offerPayload.network_project_type || "",
+        network_allocation_id: offerPayload.network_allocation_id || "",
+        task_class: offerPayload.task_class || "",
+        routing_profile_digest: offerPayload.routing_profile_digest || "",
         deadline: {
           accept_by: offerPayload.accept_by || null,
           deadline_at: offerPayload.deadline_at || null,

@@ -8,10 +8,12 @@ import {
   recordBoardManagerActionResult,
 } from "./repositories/board-manager.js";
 import { scheduleHiveSecretaryQueue } from "./hive-secretary-worker.js";
+import { scheduleNetworkTaskGenerationQueue } from "./network-task-generation-worker.js";
 import {
   buildHiveProjectProductDocSourcePacket,
   completeHiveProjectProductDoc,
 } from "./repositories/hive-project-product-docs.js";
+import { enqueueNetworkTaskGenerationFromBoardDecision } from "./repositories/network-tasks.js";
 
 const projectTypes = new Set([
   "protocol_marketing",
@@ -442,6 +444,23 @@ async function executeRefreshProjectDocument({ runId, decision, sourcePacket }) 
   };
 }
 
+async function executeInitiateNetworkTask({ runId, decision, sourcePacket }) {
+  const enqueued = await enqueueNetworkTaskGenerationFromBoardDecision({
+    runId,
+    decision,
+    sourcePacket,
+  });
+  const scheduled = scheduleNetworkTaskGenerationQueue({
+    delayMs: 250,
+    limit: 2,
+    reason: "board_manager_initiate_network_task",
+  });
+  return {
+    ...enqueued,
+    workerScheduled: scheduled,
+  };
+}
+
 export async function executeBoardManagerDecision({
   runId = "",
   decision = {},
@@ -479,6 +498,13 @@ export async function executeBoardManagerDecision({
         break;
       case "refresh_project_document":
         result = await executeRefreshProjectDocument({
+          runId,
+          decision: normalizedDecision,
+          sourcePacket,
+        });
+        break;
+      case "initiate_network_task":
+        result = await executeInitiateNetworkTask({
           runId,
           decision: normalizedDecision,
           sourcePacket,

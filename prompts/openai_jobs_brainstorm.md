@@ -269,3 +269,27 @@ One-line promise: Can the whole idea fit into a concrete phrase like “1,000 so
 Craft: What hidden part would still make us proud?
 
 That is the core Jobs pattern from the corpus: make the future feel obvious, humane, beautifully integrated, and already inevitable.
+
+## Reviewer To Do List
+
+Review implementation against this document (openai jobs brainstorm). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Prompt input blocks bounded; large context clipped or digested before call.
+- [ ] Prompt output schema minimal for downstream storage.
+
+### Code Quality
+- [ ] Prompt version recorded when output persisted to DB or PFTL payload.
+- [ ] Structured output prompts match parser validation in caller.
+
+### Coherence
+- [ ] Prompt policy matches surface doc behavior (e.g., evidence types, mode rules).
+- [ ] Used-by call sites in docs-content.js still accurate.
+
+### Bloat
+- [ ] Prompt text avoids redundant restatement of data already in input blocks.
+- [ ] No duplicate prompt files for same behavior without version bump.
+
+### Security
+- [ ] Prompt instructs model not to invent hidden state or exfiltrate secrets.
+- [ ] Private/user data handling matches provider privacy mode for caller.

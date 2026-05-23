@@ -23,7 +23,7 @@
   margin: 0 auto;
   max-width: 1180px;
   min-height: 100%;
-  padding: 28px 56px 96px;
+  padding: 28px 56px 88px;
   width: 100%;
 }
 
@@ -33,7 +33,7 @@
   flex-wrap: wrap;
   gap: 24px;
   justify-content: space-between;
-  margin-bottom: 36px;
+  margin-bottom: 32px;
 }
 
 .hive-header.is-detail {
@@ -108,14 +108,14 @@
 }
 
 .hive-section {
-  margin-bottom: 44px;
+  margin-bottom: 34px;
 }
 
 .hive-section-heading {
   align-items: baseline;
   display: flex;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .hive-section h2 {
@@ -161,6 +161,7 @@
   display: flex;
   flex-direction: column;
   font-family: inherit;
+  min-height: 180px;
   padding: 16px 20px;
   text-align: left;
   transition: border-color 0.15s ease;
@@ -192,7 +193,7 @@
   flex: 1;
   font-size: 12.5px;
   line-height: 1.5;
-  margin: 8px 0 14px;
+  margin: 8px 0 12px;
   min-height: 36px;
 }
 
@@ -202,7 +203,8 @@
   display: flex;
   font-size: 11.5px;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  min-height: 24px;
 }
 
 .hive-badge-stack {
@@ -223,7 +225,8 @@
   font-size: 11.5px;
   gap: 18px;
   margin-top: auto;
-  padding-top: 12px;
+  min-height: 30px;
+  padding-top: 10px;
 }
 
 .hive-project-card-foot .hive-pft {
@@ -240,8 +243,9 @@
   display: flex;
   font-size: 13px;
   gap: 12px;
+  min-height: 48px;
   min-width: 0;
-  padding: 11px 16px;
+  padding: 9px 16px;
 }
 
 .hive-feed-row.is-last,
@@ -291,7 +295,12 @@
 }
 
 .hive-action.is-refused,
-.hive-action.is-paid {
+.hive-action.is-cancelled,
+.hive-action.is-rejected,
+.hive-action.is-expired,
+.hive-action.is-paid,
+.hive-action.is-reward_decided,
+.hive-action.is-rewarded {
   color: var(--hive-muted);
 }
 
@@ -307,7 +316,7 @@
 .hive-feed-copy small {
   color: var(--hive-muted);
   font-size: 11.5px;
-  margin-left: 8px;
+  margin-left: 6px;
 }
 
 .hive-feed-copy em {
@@ -334,6 +343,16 @@
   border-radius: 4px;
   display: block;
   flex-shrink: 0;
+}
+
+.hive-profile-badge {
+  aspect-ratio: 1 / 1;
+  background: var(--hive-card);
+  border: 1px solid var(--hive-rule);
+  border-radius: 4px;
+  display: block;
+  flex-shrink: 0;
+  object-fit: cover;
 }
 
 .hive-context-panel {
@@ -604,6 +623,36 @@
   font-size: 12.5px;
   line-height: 1.5;
   margin: 0;
+}
+
+.hive-agent-audit-block {
+  background: rgba(255, 255, 255, 0.72);
+  border-left: 2px solid rgba(91, 138, 85, 0.28);
+  margin-top: 9px;
+  padding: 8px 10px;
+}
+
+.hive-agent-audit-block span {
+  color: var(--hive-muted);
+  display: block;
+  font-size: 10.5px;
+  font-weight: 500;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+}
+
+.hive-agent-audit-block p {
+  color: var(--hive-ink);
+  font-size: 12px;
+}
+
+.hive-agent-audit-row {
+  color: var(--hive-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 10.8px;
+  gap: 7px;
+  margin-top: 8px;
 }
 
 .hive-agent-run footer {

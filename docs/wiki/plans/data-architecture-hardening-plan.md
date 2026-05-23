@@ -577,3 +577,32 @@ This architecture is robust when:
 4. Worker retries are idempotent and auditable.
 5. Projection failures are visible, repairable, and tested.
 6. A new engineer can run one audit command and understand whether the app data model is trustworthy.
+
+## Reviewer To Do List
+
+Review implementation against this document (data architecture hardening plan). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Plan phases avoid loading unbounded history or corpus into single jobs.
+- [ ] Derived read models prefer projections over duplicate materialized stores.
+- [ ] Audit script (`data-architecture-audit`) bounded; no full table scan without indexes.
+
+### Code Quality
+- [ ] Done criteria map to testable checks or smoke commands.
+- [ ] Status (implemented vs planned) accurate on every section.
+- [ ] P0 items map to migrations 023+ and reducer repair paths.
+
+### Coherence
+- [ ] Plan does not contradict shipped behavior in Surfaces/Architecture docs.
+- [ ] Dependencies on other plans explicitly named and still valid.
+- [ ] Release gate matches execution mandate verification commands.
+
+### Bloat
+- [ ] Plan scoped to stated phase; future work not implied as shipped.
+- [ ] Avoid duplicating full surface doc content; link instead.
+- [ ] Manual SQL repair discouraged; `task-replay-repair` documented as canonical fix.
+
+### Security
+- [ ] New tables/routes in plan include account ownership and encryption notes.
+- [ ] Operator-only actions identified with audit requirements.
+- [ ] Pointer observation bridge prevents cross-wallet task ID confusion.

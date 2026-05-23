@@ -1,6 +1,6 @@
 # Making Functional Network Tasks
 
-Status: planning
+Status: first implementation slice live in code; local Docker protocol smoke completed through reward.
 
 This plan supersedes the earlier broad Hive Mind planning for Network Tasks. The Board Manager plan now supersedes the direct-worker cadence described in earlier versions of this document. The current Hive UX remains the starting point for the product ontology, but the Board Manager owns when the system updates context, creates projects, refreshes project documents, assigns contributors, and initiates Network Tasks.
 
@@ -29,6 +29,56 @@ The boundary is:
 5. The user sees a network-pushed task card in the Tasks UX and can accept or refuse it.
 
 This keeps the agent from inventing a second workflow. The Board Manager is the allocator. The task engine is the author and publisher. PFTL remains the canonical task state.
+
+Task status is not managed by the Board Manager. After a Network Task has a concrete `task_id`, lifecycle state comes only from signed task pointers indexed into `task_projections`. Hive/project tables mirror that projection for fast reads; they do not decide whether a task is proposed, accepted, submitted, verification-requested, rewarded, refused, cancelled, or expired.
+
+## Current Implementation Slice
+
+The implemented slice creates the durable bridge from Board Manager action to the normal task engine:
+
+1. `prompts/hive/board_manager_v1.md` can select `initiate_network_task`.
+2. `schemas/board-manager-action.schema.json` validates `payload.network_task`.
+3. `server/board-manager-actions.js` executes that action.
+4. `server/repositories/network-tasks.js` creates a `network_task_allocations` row and a `network_task_generation_jobs` row.
+5. `server/network-task-generation-worker.js`, when enabled, converts the generation job into a normal `task_requests` row with an encrypted request bundle containing `network_task` metadata.
+6. `server/task-generation-worker.js` consumes that request through the existing task-generation path and emits the normal encrypted `pf.task.offer.v1` pointer.
+7. `server/repositories/network-tasks.js` links the published offer back to `network_project_task_refs`.
+8. `server/repositories/tasks.js`, `TaskRow`, and task copy formatting surface the task as `Network Task` or `Alpha Task` when the projection contains project metadata.
+9. As later task events are indexed, `server/repositories/tasks.js` calls `syncNetworkTaskProjection`, and Hive reads also call `syncNetworkTaskProjections`. These functions mirror `task_projections.status` into the project task ref and allocation rows. This is a read-model sync, not agent state management.
+10. `server/repositories/hive-projects.js` derives the Hive project task row, Routing Feed entry, Allotted Operator row, routed PFT, and assignee profile badge from project task refs when explicit contributor/activity rows are absent.
+
+The Board Manager does not write final task titles, steps, verification requirements, or evidence rules. It only records project, candidate, reward band, task class, project need, routing reason, and cadence reason. The task generator still writes the concrete task offer.
+
+What is verified now:
+
+- migration `039_network_task_allocations.sql` applies in local Postgres;
+- `npm run board-manager-action-hooks-smoke` with Postgres enabled creates and audits an `initiate_network_task` job, then marks the smoke job failed so live workers do not process fake data;
+- the network task worker module imports cleanly;
+- local Docker now enables `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true` with a 5 second interval and batch size 1;
+- a bounded local Docker live test generated a real project-linked task offer through the normal task engine.
+
+Local Docker live test from May 23, 2026:
+
+- Board Manager run: `boardrun_6e436673-14aa-4568-b7a1-fe2874d4ad7a`
+- Allocation: `netalloc_66cc6446-8ff3-4cb3-9049-a23e75e44ba8`
+- Generation job: `nettaskjob_2d863a1a-0d57-47c2-9b33-52787ad8d37c`
+- Project: `task_node`
+- Candidate wallet: `rhwiJxkiTkxTC65MrmLG7WiUkbiCyw2TaE`
+- Request: `req_net_c73fe62037a9cf201d51b32bdefa69ca`
+- Request bundle CID: `QmadMNu3u8cCxNGX6FJDHRNE2jDrbYAsz6dQvAu9Laz4rE`
+- Generated task: `task_01af1624fcb74e41d902ca32b126f27d`
+- Offer transaction: `E6C86781C0D53A68F2E7740AA8751E19616B9732489D9EA8C4330A692AC1A931`
+- Final projection status after user submission and review: `rewarded`
+- Project task ref after projection sync: `rewarded`
+- Allocation status after projection sync: `completed`
+- Reward offer: `10000 PFT`
+
+The first attempt hit Pinata's 10-key metadata limit. The worker now pins network task request bundles with fewer Pinata key values and keeps the full allocation/request metadata inside the encrypted bundle and Postgres job row.
+
+What is not yet claimed as done:
+
+- allocation expiration, rerouting, persisted contributor/activity materialization, richer project activity history, and operator monitoring are not implemented;
+- the Hive mock's large network-push card has not been fully ported. The current Tasks UX has a subtle routed-task row state and a detail-level Hive routed panel when a projected task carries network metadata.
 
 There are two v1 task classes:
 
@@ -148,7 +198,9 @@ Fields:
 - `linked_at`
 - `source`: `system_generated`, `task_request`, `migration`, or `system_backfill`
 
-The authoritative task state still comes from PFTL task events and `task_projections` after allocation. Before allocation, this table can hold apriori project task rows so a project board can exist before concrete tasks are pushed to users. It is still not a second canonical task state machine.
+The authoritative task state still comes from PFTL task events and `task_projections` after allocation. Before allocation, this table can hold apriori project task rows so a project board can exist before concrete tasks are pushed to users. Once `task_id` exists, `state` is a mirror of `task_projections.status`.
+
+The repair path is code-level synchronization, not manual SQL. `syncNetworkTaskProjection({ taskId })` updates this row from the current projection, and `syncNetworkTaskProjections()` reconciles stale rows before Hive reads. The Board Manager never sets terminal task state.
 
 ### `network_project_contributors`
 
@@ -165,6 +217,14 @@ Fields:
 - `last_task_at`
 - `role_label`: optional derived label such as `lead`, `contributor`, or `reviewer`.
 
+The current Hive route does not require this table to be populated before showing operators. If explicit contributor rows are absent, `GET /api/hive/projects` derives operator cards from project task refs, assignee wallets, and projection reward state. Persisting those rollups remains an optimization and monitoring task, not the canonical source.
+
+### `network_project_activity`
+
+Optional materialized activity feed for fast Hive reads. It can be rebuilt from project task refs, task projections, allocation rows, and task event history.
+
+The current Hive route derives the Routing Feed from live project-linked task refs when this table is empty. The user-facing feed should therefore follow actual task state even before a separate activity materializer exists.
+
 ### `network_task_allocations`
 
 Tracks network-pushed tasks before and during user acceptance.
@@ -173,23 +233,25 @@ Fields:
 
 - `id`
 - `project_id`
-- `task_id`: nullable until a concrete task offer exists.
+- `task_request_id`: empty until the network generation job creates a normal task request row.
+- `generated_task_id`: empty until the concrete `pf.task.offer.v1` pointer is published and linked.
 - `candidate_account_id`
 - `candidate_wallet_address`
 - `allocation_status`: `candidate`, `proposed`, `accepted`, `refused`, `expired`, `rerouted`, or `completed`.
 - `task_class`: `network` or `alpha`.
 - `reward_min_pft`: proposed lower bound for the generation worker.
 - `reward_max_pft`: proposed upper bound for the generation worker.
-- `network_diagnostic_report_id`
-- `network_diagnostic_report_digest`
+- `candidate_profile_id`
+- `candidate_profile_digest`
 - `allocation_reason_summary`
 - `project_need_summary`
-- `cadence_policy_snapshot`
+- `cadence_policy_json`
+- `metadata_json`
 - `expires_at`
 - `created_at`
 - `updated_at`
 
-This table powers the "network pushed this to you" experience. It must never override chain task state. It explains routing and tracks allocation lifecycle.
+This table powers the "network pushed this to you" experience. It must never override chain task state. It explains routing and tracks allocation lifecycle. After task publication, allocation status is derived from the task projection: active states map to `accepted`, `rewarded` maps to `completed`, stopped states map to `refused` or `expired`.
 
 ### `network_task_generation_jobs`
 
@@ -198,26 +260,32 @@ Durable async jobs that convert a project need into concrete task offers.
 Fields:
 
 - `id`
+- `allocation_id`
 - `project_id`
-- `system_run_id`
-- `trigger`: `network_snapshot`, `project_gap`, `allocation_retry`, or `task_state_change`
+- `trigger`: currently `board_manager`
+- `board_manager_run_id`
 - `task_class`: `network` or `alpha`
 - `candidate_account_id`
 - `candidate_wallet_address`
-- `network_task_allocation_id`
 - `reward_min_pft`
 - `reward_max_pft`
 - `source_payload_digest`
+- `source_payload_json`
+- `source_payload_text`
 - `provider`
 - `model`
 - `prompt_version`
 - `status`: `queued`, `running`, `generated`, `published`, or `failed`.
+- `request_id`
+- `request_bundle_cid`
 - `generated_task_payload`
 - `task_id`
-- `request_id`
 - `offer_cid`
 - `offer_tx_hash`
-- `error`
+- `attempt_count`
+- `next_attempt_at`
+- `locked_at`
+- `last_error`
 - `created_at`
 - `updated_at`
 
@@ -259,7 +327,7 @@ Source:
 
 - `network_projects`
 - task counts from `network_projects` and `network_project_task_refs`
-- contributor previews from `network_project_contributors`
+- contributor previews from `network_project_contributors` when materialized, otherwise derived from `network_project_task_refs`
 - PFT routed from the current project snapshot, later replaced by reward events in `task_projections` / reward projections
 
 Behavior:
@@ -268,7 +336,7 @@ Behavior:
 - clicking a project opens the project board;
 - show a copyable project id in the project card or detail header;
 - `PFT distribution v3` remains the visual reference for project detail cards.
-- The seeded project row may expose planned/scoped metrics, but contributor cards, task rows, and routing feed rows must come from real project-linked allocation rows.
+- The seeded project row may expose planned/scoped metrics, but contributor cards, task rows, and routing feed rows must come from real project-linked allocation rows or task refs derived from those allocations.
 - projects are read from `GET /api/hive/projects`, not from React mock data.
 - do not show generated cards whose project title is a discovery activity such as "scoping". Scoping belongs in `phase_label` or in the product document status.
 
@@ -298,12 +366,13 @@ Source:
 - task state changes from `task_projections`
 - allocation status changes from `network_task_allocations`
 - reward/refusal/completion events scoped to `network_project_task_refs`
+- derived feed rows from live project task refs when explicit `network_project_activity` rows are not present
 
 Behavior:
 
 - show recent project-scoped transitions in plain English;
-- include the project name, task name, operator, state, time, and PFT when relevant;
-- do not show raw CIDs or transaction hashes in the feed. Those belong in task forensics.
+- include the project name, task name, operator, state, time, and PFT only when those fields make the row easier to scan;
+- do not show raw request IDs, task IDs, CIDs, transaction hashes, or indexing placeholders in the feed. Those belong in task forensics or operator logs.
 
 ### Allocated Operators
 
@@ -314,6 +383,7 @@ Source:
 - active task load from task projections;
 - recent reward/refusal history;
 - network task allocation rows.
+- derived operator rows from live project task refs and assignee wallets when explicit `network_project_contributors` rows are not present.
 
 Behavior:
 
@@ -350,7 +420,7 @@ Implemented pieces:
 - `prompts/hive/hive_secretary_v1.md` defines the Secretary output.
 - `GET /api/hive/projects` returns Postgres-backed active project records.
 - `PFT distribution v3` is seeded as an apriori project row with About text, target metrics, and latest Hive Secretary input reference.
-- Mock-only contributors, task rows, and activity rows were removed; those sections remain empty until the allocation worker links real PFTL task activity to the project.
+- Mock-only contributors, task rows, and activity rows were removed. Once the allocation worker links real PFTL task activity to a project, the Hive read model derives tasks, contributors/operators, routing feed, and routed PFT from `network_project_task_refs` plus `task_projections`.
 - `server/hive-project-worker.js` uses OpenAI `gpt-5.5-pro` through the Responses API to turn the latest Hive Secretary report into the active project set.
 - `prompts/hive/hive_active_projects_v1.md` defines the active project output contract.
 
@@ -425,7 +495,7 @@ The expected Board Manager flow is:
 8. The cache/reducer indexes the task into `task_projections`.
 9. `network_project_task_refs` links the task to the project.
 10. The user's Tasks page shows a proposed Network Task.
-11. If accepted, it becomes outstanding. If refused or expired, allocation status updates and the worker can reroute.
+11. If accepted, it becomes outstanding. If refused or expired, the projection sync updates the allocation mirror and the worker can reroute in a later version.
 12. Submission, verification, reward, zero-reward, or cancellation follows the existing task lifecycle.
 13. Hive updates project tasks, contributors, routed PFT, and activity from projections.
 
@@ -452,15 +522,12 @@ Accept/refuse should publish normal PFTL task updates. The allocation row follow
 
 ### Database
 
-Add migrations for:
+Implemented migrations:
 
-- `network_projects`
-- `network_project_task_refs`
-- `network_project_contributors`
-- `network_task_allocations`
-- `network_task_generation_jobs`
+- `network_projects`, `network_project_task_refs`, `network_project_contributors`, and `network_project_activity`: `server/db/migrations/029_hive_network_projects.sql`
+- Network Task allocation and generation job tables: `server/db/migrations/039_network_task_allocations.sql`
 
-Every table should be account/project keyed and rebuildable where possible. Avoid embedding raw memory or raw evidence in Hive tables.
+Every table is account/project keyed and should remain rebuildable where possible. Avoid embedding raw memory or raw evidence in Hive tables.
 
 ### APIs
 
@@ -473,7 +540,7 @@ Initial endpoints:
 
 These endpoints should return read models shaped for the existing Hive UX, not raw database rows.
 
-Task generation should run through durable internal workers invoked by Board Manager actions, not a public frontend route. A future operator control can inspect or pause Board Manager runs, but it should not manually author Network Tasks.
+Task generation runs through durable internal workers invoked by Board Manager actions, not a public frontend route. A future operator control can inspect or pause Board Manager runs, but it should not manually author Network Tasks.
 
 ### Workers
 
@@ -484,8 +551,8 @@ Needed workers/action handlers:
 - Hive Secretary handler: refreshes the Secretary report when the Board Manager chooses `refresh_hive_secretary`.
 - active project handler: creates, updates, pauses, or archives durable project rows when the Board Manager chooses project actions.
 - product document handler: refreshes the expandable project document when the Board Manager chooses `refresh_project_document`.
-- network allocation handler: selects eligible candidate accounts from Network Diagnostic Reports, user availability settings, active task load, wallet readiness, refusal history, and project fit.
-- network task generation handler: consumes a Board Manager `initiate_network_task` decision plus allocation rows, creates concrete tasks, and publishes PFTL offers through the existing task engine.
+- network allocation handler: currently selects an explicit candidate from the Board Manager payload or falls back to the latest eligible Network Diagnostic Report with an active user wallet; future versions should add availability settings, refusal history, and richer project fit.
+- network task generation handler: implemented as `server/network-task-generation-worker.js`. It consumes a Board Manager `initiate_network_task` decision plus allocation rows, creates an encrypted normal task request bundle, and schedules the existing task-generation worker to publish the PFTL offer.
 - network cadence handler: enforces per-account, per-project, and per-class throttles before generation jobs publish user-visible offers.
 - allocation expiration handler: marks proposed tasks expired and reroutes when needed.
 - evidence review handler: reviews project-linked evidence through the existing task review and reward path.
@@ -498,8 +565,8 @@ Existing and planned prompt files:
 
 - `prompts/hive/hive_active_projects_v1.md` exists now.
 - `prompts/hive/board_manager_v1.md` exists now as the planned operating prompt for the manager action registry.
-- `prompts/hive/network_task_generation_v1.md` is planned with the network task generation worker.
-- `prompts/hive/network_task_allocation_v1.md` is planned with the allocation worker.
+- Network Task generation currently reuses `prompts/task_engine/taskgen_minimal_v1.md` with a populated `network_task` block and authoritative reward-band policy. A separate prompt should be added only if reuse creates a concrete product problem.
+- `prompts/hive/network_task_allocation_v1.md` remains planned only if candidate selection needs a separate model step. The current selector is deterministic: explicit Board Manager candidate first, otherwise the latest eligible Network Diagnostic Report with an active user wallet.
 
 `board_manager_v1` is the planned policy boundary. It chooses one action per run from a finite registry.
 
@@ -513,7 +580,7 @@ The harness runs this prompt through a persistent Codex Exec session and default
 - schema: `schemas/board-manager-action.schema.json`;
 - source packet: Hive Context, Hive Secretary state, active/project registry, task state, task requests, and recent Board Manager runs.
 - session table: `board_manager_sessions`; subsequent ticks use `codex exec resume <session_id>`.
-- implemented hooks: message a user, refresh Hive Secretary, create a project, archive a project, refresh a project document, and assign a contributor.
+- implemented hooks: message a user, refresh Hive Secretary, create a project, archive a project, refresh a project document, assign a contributor, and initiate a Network Task generation job.
 
 `hive_active_projects_v1` currently decides which durable projects exist. In the Board Manager architecture it becomes an action helper, not an independent decision loop.
 
@@ -543,39 +610,40 @@ Do not generate tasks that ask for unsupported evidence such as video unless the
 
 ### Phase 1: Data Ontology And Read Model
 
-- Create project/task/allocation tables.
-- Seed one real active project matching `PFT distribution v3` shape.
-- Link existing task projections to a project through refs.
-- Add project metadata fields to new task request/offer payloads.
-- Replace `src/features/hive/hive-data.js` static data with API data.
+- Create project/task/allocation tables. Done.
+- Seed one real active project matching `PFT distribution v3` shape. Done.
+- Link task projections to projects through refs. Done for new network tasks.
+- Add project metadata fields to new task request/offer payloads. Done for the network-task worker path.
+- Replace `src/features/hive/hive-data.js` static data with API data. Done.
+- Derive project tasks, operators, routing feed, routed PFT, and profile badges from real project-linked task refs. Done for the current read model.
 
 Done when Hive active projects, project detail tasks, contributors, and routing feed render from Postgres read models.
 
 ### Phase 2: Allocation Without Auto-Publish
 
-- Build candidate selection using Network Diagnostic Reports.
-- Store `network_task_allocations` as `candidate` rows.
-- Show proposed routing internally without publishing PFTL offers.
-- Verify operator eligibility and refusal/load handling.
+- Build candidate selection using Network Diagnostic Reports. Partial: explicit Board Manager candidate first, with latest eligible Network Diagnostic Report fallback.
+- Store `network_task_allocations` as candidate/queued rows. Done.
+- Show proposed routing internally without publishing PFTL offers. Superseded for the current local Docker path, which publishes when the gated worker is enabled.
+- Verify operator eligibility and refusal/load handling. Partial: wallet/profile availability exists; full load, refusal, and cadence filters remain open.
 
 Done when the system can explain which users would receive a project task and why, without creating user-visible tasks yet.
 
 ### Phase 3: Network-Pushed Task Offers
 
-- Generate one concrete task for one selected user from a project.
-- Publish a PFTL task offer with project metadata.
-- Show it in Tasks as a proposed Network Task.
-- Accept/refuse from the normal task flow.
-- Update Hive project board from the resulting task projection.
+- Generate one concrete task for one selected user from a project. Done in local Docker.
+- Publish a PFTL task offer with project metadata. Done in local Docker.
+- Show it in Tasks as a proposed Network Task. Done in local Docker.
+- Accept/refuse from the normal task flow. Accept and downstream lifecycle verified; refusal remains the same standard task path.
+- Update Hive project board from the resulting task projection. Done through projection sync and derived Hive read model.
 
 Done when a user can accept or refuse a network-pushed task and Hive reflects the state without manual refresh or stale categories.
 
 ### Phase 4: Submission, Verification, Reward, And Project Rollup
 
-- Complete the full task lifecycle for project-linked tasks.
-- Roll rewarded tasks into project PFT totals and contributor cards.
-- Show zero-reward and refused outcomes clearly.
-- Keep task forensics as the proof surface for CIDs and transactions.
+- Complete the full task lifecycle for project-linked tasks. Done for one local Docker Network Task through reward.
+- Roll rewarded tasks into project PFT totals and contributor cards. Done for the derived read model from project task refs; persisted rollup rows remain open.
+- Show zero-reward and refused outcomes clearly. Reuses the normal task detail reward/refusal surfaces.
+- Keep task forensics as the proof surface for CIDs and transactions. Done through the normal task detail Forensics tab.
 
 Done when the `PFT distribution v3` detail card can be populated with real tasks, contributors, activity, and routed PFT without mock seed rows.
 
@@ -591,3 +659,32 @@ Done when the `PFT distribution v3` detail card can be populated with real tasks
 - The user can see why a Network Task was proposed to them.
 - Accepting, refusing, submitting, verifying, and rewarding a Network Task use the existing PFTL task lifecycle.
 - No Hive read model can make task state disagree with task forensics.
+
+## Reviewer To Do List
+
+Review implementation against this document (making functional network tasks). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Plan phases avoid loading unbounded history or corpus into single jobs.
+- [ ] Derived read models prefer projections over duplicate materialized stores.
+- [ ] Network generation worker batch size 1; allocation status mirrors projection.
+
+### Code Quality
+- [ ] Done criteria map to testable checks or smoke commands.
+- [ ] Status (implemented vs planned) accurate on every section.
+- [ ] Live smoke IDs in doc still valid or marked historical.
+
+### Coherence
+- [ ] Plan does not contradict shipped behavior in Surfaces/Architecture docs.
+- [ ] Dependencies on other plans explicitly named and still valid.
+- [ ] Board Manager allocates; task-generation worker authors; PFTL owns lifecycle.
+
+### Bloat
+- [ ] Plan scoped to stated phase; future work not implied as shipped.
+- [ ] Avoid duplicating full surface doc content; link instead.
+- [ ] Hive mirrors task state; does not duplicate reducer logic.
+
+### Security
+- [ ] New tables/routes in plan include account ownership and encryption notes.
+- [ ] Operator-only actions identified with audit requirements.
+- [ ] Fake smoke jobs marked failed so live worker skips test data.

@@ -42,3 +42,31 @@ sequenceDiagram
 - Never save automatically.
 - Show diff or preview before overwrite.
 
+## Reviewer To Do List
+
+Review implementation against this document (refine context). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] List and detail views read Postgres caches with documented caps or pagination.
+- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
+- [ ] Legacy refine path superseded by Chat Context Refine; no duplicate proposal storage.
+
+### Code Quality
+- [ ] Code references in doc resolve to existing modules and routes.
+- [ ] Failure modes documented here have matching user-visible error handling.
+- [ ] If legacy code remains, it routes through `context-edit-chat.js` or is unreachable.
+
+### Coherence
+- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
+- [ ] Hidden/not-exposed features labeled honestly if mentioned.
+- [ ] Doc states Chat Context Refine is production path.
+
+### Bloat
+- [ ] Surface does not duplicate logic owned by shared modules or workers.
+- [ ] UI state not duplicated in unrelated caches without invalidation rules.
+- [ ] Remove or gate legacy modal refine if still in bundle unused.
+
+### Security
+- [ ] Account scoping enforced on all read/write API paths for this surface.
+- [ ] Wallet-bound actions require linked unlocked wallet as documented.
+- [ ] Context edits account-scoped; proposals require signed-in account.

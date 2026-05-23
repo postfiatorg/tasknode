@@ -80,3 +80,27 @@ harness.
   every evidence packet.
 - Treat databases as caches. The replayable source remains the encrypted IPFS
   payload referenced by PFTL pointer events.
+
+## Reviewer To Do List
+
+Review implementation against this document (PFTL VERIFICATION EVIDENCE). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
+- [ ] Evidence readers stream/process files; no unbounded base64 in memory.
+
+### Code Quality
+- [ ] Commands, env vars, and file paths verified against repo.
+- [ ] Supported evidence matrix matches task submission UI and workers.
+
+### Coherence
+- [ ] Doc aligns with wiki and spec docs for same topic.
+- [ ] Python reference paths align with server evidence processing.
+
+### Bloat
+- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
+- [ ] Readers shared between reference and app where possible.
+
+### Security
+- [ ] No secrets committed; custody boundaries explicit.
+- [ ] Boundary rules: no seed/key in readers, public URL only where stated.

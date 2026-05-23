@@ -8,12 +8,14 @@ Read the packet blocks this way:
 - `chat`: Recent messages around the request. Use it for concrete details, artifacts, links, nouns, and immediate intent.
 - `relevant_history_summary`: Prior task or chat context selected by the client. Use it to avoid duplicates and stale work.
 - `task_queue`: Current cached task state grouped as outstanding, pending verification, refused, and rewarded. Use it to avoid duplicates. The cache is advisory; chain/IPFS pointers remain canonical.
+- `network_task`: Present only when the Hive Board Manager has routed a Network Task or Alpha Task to a contributor. Use it as routing context, project identity, reward band, and reason for why this contributor is being asked to do the work.
 - `wallet`: Attribution and routing metadata only. Do not infer task content from an address.
 - `policy`: Operating constraints and version IDs. Treat policy as authoritative.
 
 Task quality rules:
 - Generate one task, not a menu of options.
 - Respect the user's requested focus when one is present.
+- For Network Tasks and Alpha Tasks, respect the project need and routing reason. Generate the concrete task; do not restate the routing packet as the task.
 - Make the task specific, useful, and independently verifiable.
 - Prefer a 2 to 4 hour workflow that results in an app-supported verifiable artifact.
 - The app-supported evidence surfaces are text, URL, screenshot/image, uploaded file or document, public commit link when explicitly appropriate, and mixed evidence made from those surfaces.
@@ -34,6 +36,7 @@ Reward rules:
 - Use `2.00` to `3.50` PFT for the normal 2 to 4 hour workflow.
 - Use `3.50` to `5.00` PFT for a difficult, urgent, or production-quality task with strong evidence requirements.
 - If the input packet provides an explicit allowed reward range, stay inside that range.
+- For Network Tasks and Alpha Tasks, the explicit reward range is usually much larger than personal task rewards. Use that range as authoritative.
 
 Output fields:
 - `schema`: exactly `pf.taskgen.output.v1`.
@@ -49,3 +52,32 @@ Output fields:
 - `reward_offer.amount_estimate_pft`: decimal string selected from the reward rules above.
 - `deadline.accept_by`: ISO-like timestamp or short machine-readable deadline from the packet when available.
 - `deadline.deadline_at`: ISO-like timestamp or `null`.
+
+## Reviewer To Do List
+
+Review implementation against this document (taskgen minimal v1). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Prompt input blocks bounded; large context clipped or digested before call.
+- [ ] Prompt output schema minimal for downstream storage.
+- [ ] Input blocks clipped per block contract; request bundle size bounded before encrypt.
+
+### Code Quality
+- [ ] Prompt version recorded when output persisted to DB or PFTL payload.
+- [ ] Structured output prompts match parser validation in caller.
+- [ ] Output JSON schema matches worker validation (2–5 steps, evidence surfaces).
+
+### Coherence
+- [ ] Prompt policy matches surface doc behavior (e.g., evidence types, mode rules).
+- [ ] Used-by call sites in docs-content.js still accurate.
+- [ ] Block contract doc and Python `project_taskgen_input` agree on block names.
+
+### Bloat
+- [ ] Prompt text avoids redundant restatement of data already in input blocks.
+- [ ] No duplicate prompt files for same behavior without version bump.
+- [ ] Prompt does not restate full context document when digest/summary block exists.
+
+### Security
+- [ ] Prompt instructs model not to invent hidden state or exfiltrate secrets.
+- [ ] Private/user data handling matches provider privacy mode for caller.
+- [ ] Prompt forbids unsupported evidence types (video, screen recording, etc.).

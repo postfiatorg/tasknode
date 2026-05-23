@@ -37,3 +37,21 @@ flowchart LR
 - Low-confidence suggestions should be labeled as suggestions.
 - Empty context should produce questions, not filler copy.
 
+## Reviewer To Do List
+
+Review implementation against this document (brainstorming context). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Hidden tool paths not loaded in default UI bundle if still unshipped.
+
+### Code Quality
+- [ ] If code remains, it shares chat-router boundaries and is feature-flagged or unreachable.
+
+### Coherence
+- [ ] Doc states not exposed; no app nav advertises this surface.
+
+### Bloat
+- [ ] Consider removing dead UI entry points if tool remains deferred.
+
+### Security
+- [ ] Unreachable surfaces cannot be invoked via API without auth checks.

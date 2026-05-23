@@ -1353,3 +1353,29 @@ PFTL pointer events + encrypted IPFS payloads = canonical state
 database/cache/index = fast projection
 web app / Codex / CLI = clients
 ```
+
+## Reviewer To Do List
+
+Review implementation against this document (PFTL TASK ENGINE SPEC). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
+- [ ] Cache/index strategy keeps UI reads O(projection) not O(chain history).
+
+### Code Quality
+- [ ] Commands, env vars, and file paths verified against repo.
+- [ ] Event schemas versioned (`pf.task.*.v1`); parser rejects unknown versions safely.
+
+### Coherence
+- [ ] Doc aligns with wiki and spec docs for same topic.
+- [ ] Spec recommendation (DB projection only) reflected in implemented architecture docs.
+- [ ] Lifecycle diagram matches task-lifecycle wiki and shared module.
+
+### Bloat
+- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
+- [ ] PFTasks deprecation rationale concise; avoid duplicating full old system docs.
+
+### Security
+- [ ] No secrets committed; custody boundaries explicit.
+- [ ] Wallet-native signing model preserved; no server-side user seed handling.
+- [ ] Encrypted IPFS mandatory for task payloads.

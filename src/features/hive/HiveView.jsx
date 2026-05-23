@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { requestJson } from "../../api";
 import "./hive.css";
@@ -145,7 +145,7 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
         </div>
       </Section>
 
-      <Section title="Allotted operators" subtitle="Full-time nodes the hive routes to first">
+      <Section title="Allotted operators" subtitle="Operators currently routed by live project tasks">
         <div className="hive-card">
           {Object.entries(projectDocument?.operators || {})
             .filter(([, operator]) => operator.allotted)
@@ -412,7 +412,11 @@ function ProjectCard({ operators, project, onClick }) {
           <span className="hive-badge-stack">
             {previewWallets.map((wallet, index) => (
               <span className="hive-badge-wrap" key={wallet} style={{ marginLeft: index === 0 ? 0 : -8 }}>
-                <NftBadge size={22} variant={operatorForWallet(wallet, operators).badge} />
+                <HiveProfileBadge
+                  nft={operatorForWallet(wallet, operators).nft}
+                  size={22}
+                  variant={operatorForWallet(wallet, operators).badge}
+                />
               </span>
             ))}
           </span>
@@ -436,21 +440,23 @@ function ProjectCard({ operators, project, onClick }) {
 
 function FeedRow({ entry, last = false, operators = {} }) {
   const operator = operatorForWallet(entry.wallet, operators);
+  const walletLabel = compactWallet(entry.wallet);
+  const timeLabel = String(entry.time || "").trim();
+  const showTime = timeLabel && timeLabel.toLowerCase() !== "indexed";
   return (
     <div className={`hive-feed-row ${last ? "is-last" : ""}`}>
-      <NftBadge size={24} variant={operator.badge} />
+      <HiveProfileBadge nft={operator.nft} size={24} variant={operator.badge} />
       <span className="hive-feed-operator">
         <strong>{operator.codename}</strong>
-        <small>{entry.wallet}</small>
+        {operator.codename !== walletLabel && <small>{walletLabel}</small>}
       </span>
       <span className={`hive-action is-${entry.action}`}>{actionLabel(entry.action)}</span>
       <span className="hive-feed-copy">
         {entry.task}
         <small>· {entry.project}</small>
-        {entry.routing && <em>{entry.routing}</em>}
       </span>
       {entry.pft !== null && entry.pft !== undefined && <span className="hive-pft">+{formatPft(entry.pft)} PFT</span>}
-      <time>{entry.time}</time>
+      {showTime && <time>{timeLabel}</time>}
     </div>
   );
 }
@@ -459,13 +465,14 @@ function AllottedOperatorRow({ wallet, operator, last = false }) {
   const resolvedOperator = operator || operatorForWallet(wallet);
   const loadPercent = resolvedOperator.cap ? Math.round((resolvedOperator.load / resolvedOperator.cap) * 100) : 0;
   const active = resolvedOperator.status === "active";
+  const walletLabel = compactWallet(wallet);
 
   return (
     <div className={`hive-operator-row ${last ? "is-last" : ""}`}>
-      <NftBadge size={26} variant={resolvedOperator.badge} />
+      <HiveProfileBadge nft={resolvedOperator.nft} size={26} variant={resolvedOperator.badge} />
       <span className="hive-operator-id">
         <strong>{resolvedOperator.codename}</strong>
-        <small>{wallet}</small>
+        {resolvedOperator.codename !== walletLabel && <small>{walletLabel}</small>}
       </span>
       <span className={`hive-presence ${active ? "is-active" : "is-quiet"}`} />
       <span className="hive-operator-role">{resolvedOperator.archetype}</span>
@@ -484,7 +491,7 @@ function AllottedOperatorRow({ wallet, operator, last = false }) {
 function ContributorCard({ contributor }) {
   return (
     <div className="hive-contributor-card">
-      <NftBadge size={36} variant={contributor.badge} />
+      <HiveProfileBadge nft={contributor.nft} size={36} variant={contributor.badge} />
       <div className="hive-contributor-main">
         <span>
           <strong>{contributor.codename || "Operator"}</strong>
@@ -507,6 +514,8 @@ function ContributorCard({ contributor }) {
 function ProjectTaskRow({ task, last = false, operators = {} }) {
   const state = taskState(task.state);
   const operator = task.assignee ? operatorForWallet(task.assignee, operators) : null;
+  const age = String(task.age || "").trim();
+  const assigneeLabel = operator?.codename || compactWallet(task.assignee);
 
   return (
     <div className={`hive-task-row ${last ? "is-last" : ""} ${state.dim ? "is-dim" : ""}`}>
@@ -514,15 +523,15 @@ function ProjectTaskRow({ task, last = false, operators = {} }) {
       <span className="hive-task-main">
         <strong>{task.title}</strong>
         <small>
-          <span className={`hive-action is-${task.state}`}>{state.label}</span>
-          · {task.age}
+          <span className={`hive-action is-${state.key}`}>{state.label}</span>
+          {age ? <> · {age}</> : null}
         </small>
       </span>
       <span className="hive-task-assignee">
-        {operator ? (
+        {task.assignee ? (
           <>
-            <NftBadge size={20} variant={operator.badge} />
-            <span>{operator.codename}</span>
+            <HiveProfileBadge nft={task.assigneeNft} size={20} variant={operator?.badge || 0} />
+            <span>{assigneeLabel}</span>
           </>
         ) : (
           <em>unassigned</em>
@@ -536,12 +545,47 @@ function ProjectTaskRow({ task, last = false, operators = {} }) {
   );
 }
 
+function imageCandidatesForNft(nft = {}) {
+  const candidates = [nft.imageDataUrl, nft.imageGatewayUrl];
+  if (nft.imageCid) {
+    candidates.push(`https://dweb.link/ipfs/${encodeURIComponent(nft.imageCid)}`);
+    candidates.push(`https://ipfs.io/ipfs/${encodeURIComponent(nft.imageCid)}`);
+  }
+  return candidates
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .filter((value, index, list) => list.indexOf(value) === index);
+}
+
+function HiveProfileBadge({ nft = null, size = 20, variant = 0 }) {
+  const imageCandidates = useMemo(() => imageCandidatesForNft(nft || {}), [nft]);
+  const [imageIndex, setImageIndex] = useState(0);
+  const imageSrc = imageCandidates[imageIndex] || "";
+
+  useEffect(() => {
+    setImageIndex(0);
+  }, [imageCandidates]);
+
+  if (!imageSrc) return <NftBadge size={size} variant={variant} />;
+
+  return (
+    <img
+      alt={nft?.title || "Profile NFT"}
+      className="hive-profile-badge"
+      height={size}
+      onError={() => setImageIndex((index) => index + 1)}
+      src={imageSrc}
+      width={size}
+    />
+  );
+}
+
 function ActivityRow({ entry, last = false, operators = {} }) {
   const operator = operatorForWallet(entry.wallet, operators);
 
   return (
     <div className={`hive-activity-row ${last ? "is-last" : ""}`}>
-      <NftBadge size={22} variant={operator.badge} />
+      <HiveProfileBadge nft={operator.nft} size={22} variant={operator.badge} />
       <span className="hive-feed-operator">
         <strong>{operator.codename}</strong>
         <small>{entry.wallet}</small>
@@ -739,6 +783,8 @@ function HiveMindAgentPanel({ boardManager }) {
 function HiveAgentRun({ entry }) {
   const target = [entry.targetType, entry.targetId].filter(Boolean).join(" · ");
   const resultCount = entry.actionResults?.length || 0;
+  const decisionReason = entry.reason && entry.reason !== entry.summary ? entry.reason : "";
+  const resultSummary = entry.actionResults?.find((result) => result.summary || result.error)?.summary || "";
   return (
     <article className={`hive-agent-run is-${entry.state || "recorded"}`}>
       <div className="hive-agent-run-top">
@@ -746,6 +792,24 @@ function HiveAgentRun({ entry }) {
         <time>{formatContextTime(entry.completedAt || entry.startedAt)}</time>
       </div>
       <p>{entry.summary || entry.reason || "No summary recorded."}</p>
+      {decisionReason && (
+        <div className="hive-agent-audit-block">
+          <span>Decision reason</span>
+          <p>{decisionReason}</p>
+        </div>
+      )}
+      {resultSummary && (
+        <div className="hive-agent-audit-block">
+          <span>Action result</span>
+          <p>{resultSummary}</p>
+        </div>
+      )}
+      <div className="hive-agent-audit-row">
+        {Number.isFinite(entry.confidence) && entry.confidence > 0 && <span>Confidence {Math.round(entry.confidence * 100)}%</span>}
+        {entry.runId && <span>Run {shortId(entry.runId)}</span>}
+        {entry.sourcePacketDigest && <span>Source {shortHash(entry.sourcePacketDigest)}</span>}
+        {entry.sessionMode && <span>{entry.sessionMode}</span>}
+      </div>
       <footer>
         {target && <span>{target}</span>}
         {entry.dryRun && <span>dry run</span>}
@@ -780,7 +844,25 @@ function projectTypeLabel(value = "") {
 }
 
 function operatorForWallet(wallet, operators = {}) {
-  return operators[wallet] || { codename: "—", archetype: "", badge: 0, allotted: false, cap: 0, load: 0, status: "quiet" };
+  return operators[wallet] || { codename: compactWallet(wallet), archetype: "", badge: 0, allotted: false, cap: 0, load: 0, status: "quiet", nft: null };
+}
+
+function compactWallet(wallet = "") {
+  const normalized = String(wallet || "").trim();
+  if (normalized.length <= 12) return normalized || "unassigned";
+  return `${normalized.slice(0, 6)}...${normalized.slice(-5)}`;
+}
+
+function shortId(value = "") {
+  const normalized = String(value || "").trim();
+  if (normalized.length <= 18) return normalized || "-";
+  return `${normalized.slice(0, 10)}...${normalized.slice(-6)}`;
+}
+
+function shortHash(value = "") {
+  const normalized = String(value || "").trim();
+  if (normalized.length <= 16) return normalized || "-";
+  return `${normalized.slice(0, 8)}...${normalized.slice(-6)}`;
 }
 
 function formatPft(value) {
@@ -906,31 +988,45 @@ function DotGrid({ fill }) {
 }
 
 function actionLabel(action) {
+  const normalized = String(action || "").trim().toLowerCase();
   return (
     {
       proposed: "proposed",
       accepted: "accepted",
       submitted: "submitted",
       verification_requested: "v. requested",
+      verification_response_submitted: "awaiting review",
       verification_response: "v. response",
       v_requested: "v. requested",
       v_response: "v. response",
+      reward_decided: "reward decided",
+      rewarded: "rewarded",
       paid: "paid",
+      cancelled: "cancelled",
+      rejected: "rejected",
+      expired: "expired",
       refused: "refused",
-    }[action] || action
+    }[normalized] || normalized || "recorded"
   );
 }
 
 function taskState(state) {
+  const normalized = String(state || "").trim().toLowerCase();
   return (
     {
-      proposed: { label: "proposed", tone: "amber", ring: true, dim: false },
-      accepted: { label: "accepted", tone: "green", ring: false, dim: false },
-      submitted: { label: "submitted", tone: "green", ring: false, dim: false },
-      verification_requested: { label: "v. requested", tone: "amber", ring: false, dim: false },
-      verification_response: { label: "v. response", tone: "green", ring: false, dim: false },
-      paid: { label: "paid", tone: "muted", ring: false, dim: true },
-      refused: { label: "refused", tone: "muted", ring: true, dim: true },
-    }[state] || { label: "proposed", tone: "amber", ring: true, dim: false }
+      proposed: { key: "proposed", label: "proposed", tone: "amber", ring: true, dim: false },
+      accepted: { key: "accepted", label: "accepted", tone: "green", ring: false, dim: false },
+      submitted: { key: "submitted", label: "submitted", tone: "green", ring: false, dim: false },
+      verification_requested: { key: "verification_requested", label: "v. requested", tone: "amber", ring: false, dim: false },
+      verification_response_submitted: { key: "verification_response_submitted", label: "awaiting review", tone: "green", ring: false, dim: false },
+      verification_response: { key: "verification_response", label: "v. response", tone: "green", ring: false, dim: false },
+      reward_decided: { key: "reward_decided", label: "reward decided", tone: "muted", ring: false, dim: true },
+      rewarded: { key: "rewarded", label: "rewarded", tone: "muted", ring: false, dim: true },
+      paid: { key: "paid", label: "paid", tone: "muted", ring: false, dim: true },
+      refused: { key: "refused", label: "refused", tone: "muted", ring: true, dim: true },
+      cancelled: { key: "cancelled", label: "cancelled", tone: "muted", ring: true, dim: true },
+      rejected: { key: "rejected", label: "rejected", tone: "muted", ring: true, dim: true },
+      expired: { key: "expired", label: "expired", tone: "muted", ring: true, dim: true },
+    }[normalized] || { key: "unknown", label: normalized || "unknown", tone: "muted", ring: true, dim: true }
   );
 }

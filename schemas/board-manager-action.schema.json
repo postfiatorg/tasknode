@@ -9,18 +9,13 @@
       "type": "string",
       "enum": [
         "do_nothing",
-        "update_board_context",
         "refresh_hive_secretary",
-        "research",
         "message_user",
         "create_project",
-        "update_project",
         "archive_project",
         "refresh_project_document",
         "assign_contributor",
-        "remove_contributor",
-        "initiate_network_task",
-        "review_evidence_packet"
+        "initiate_network_task"
       ]
     },
     "target_type": {
@@ -51,7 +46,8 @@
         "archive_reason",
         "project",
         "project_document",
-        "contributor"
+        "contributor",
+        "network_task"
       ],
       "properties": {
         "summary": {
@@ -272,6 +268,66 @@
               "type": "integer",
               "minimum": 0,
               "maximum": 10000
+            }
+          }
+        },
+        "network_task": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "task_class",
+            "candidate_account_id",
+            "candidate_wallet_address",
+            "project_need_summary",
+            "routing_reason",
+            "cadence_reason",
+            "reward_min_pft",
+            "reward_max_pft",
+            "accept_window_hours",
+            "allow_over_capacity"
+          ],
+          "properties": {
+            "task_class": {
+              "type": "string",
+              "enum": ["", "network", "alpha"]
+            },
+            "candidate_account_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "candidate_wallet_address": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "project_need_summary": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "routing_reason": {
+              "type": "string",
+              "maxLength": 1800
+            },
+            "cadence_reason": {
+              "type": "string",
+              "maxLength": 700
+            },
+            "reward_min_pft": {
+              "type": "number",
+              "minimum": 10000,
+              "maximum": 50000
+            },
+            "reward_max_pft": {
+              "type": "number",
+              "minimum": 10000,
+              "maximum": 50000
+            },
+            "accept_window_hours": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 336
+            },
+            "allow_over_capacity": {
+              "type": "boolean"
             }
           }
         }

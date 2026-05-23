@@ -40,3 +40,32 @@ flowchart LR
 - If task cache is stale, the result should say so and allow replay.
 - Search should not block the app on a production RPC scan.
 
+## Reviewer To Do List
+
+Review implementation against this document (search). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] List and detail views read Postgres caches with documented caps or pagination.
+- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
+- [ ] Search queries Postgres caches with limits; no full-table scans without indexes.
+- [ ] Future pgvector path must use top-k retrieval, not load entire corpus.
+
+### Code Quality
+- [ ] Code references in doc resolve to existing modules and routes.
+- [ ] Failure modes documented here have matching user-visible error handling.
+- [ ] Partial implementation honestly labeled; no fake semantic search claims.
+
+### Coherence
+- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
+- [ ] Hidden/not-exposed features labeled honestly if mentioned.
+- [ ] Search scope matches indexed sources (chat, context, memory) documented here.
+
+### Bloat
+- [ ] Surface does not duplicate logic owned by shared modules or workers.
+- [ ] UI state not duplicated in unrelated caches without invalidation rules.
+- [ ] Results dedupe across tables; avoid returning duplicate chat + memory hits for same content.
+
+### Security
+- [ ] Account scoping enforced on all read/write API paths for this surface.
+- [ ] Wallet-bound actions require linked unlocked wallet as documented.
+- [ ] Search results account-scoped; no cross-tenant leakage.

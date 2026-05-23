@@ -142,3 +142,38 @@ sequenceDiagram
 - Memory failure should be logged and retryable.
 - User-derived memory should be presented as memory context, not as app policy.
 - Users should be able to inspect memory entries for trust.
+
+## Reviewer To Do List
+
+Review implementation against this document (memory). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] List and detail views read Postgres caches with documented caps or pagination.
+- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
+- [ ] Turn memory jobs are async with retry/lock fields; chat path not blocked.
+- [ ] Deep memory triggers every 36 entries, not on every turn.
+- [ ] Network Task Profile refresh cadence (24h) prevents redundant model calls.
+
+### Code Quality
+- [ ] Code references in doc resolve to existing modules and routes.
+- [ ] Failure modes documented here have matching user-visible error handling.
+- [ ] Memory worker prompt version and digest recorded on completion rows.
+- [ ] Deep memory source snapshots preserve audit trail (`013_deep_memory_snapshots.sql`).
+
+### Coherence
+- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
+- [ ] Hidden/not-exposed features labeled honestly if mentioned.
+- [ ] Memory injection caps and formatting match chat doc and prompt templates.
+- [ ] Network Diagnostic Report labeled private; not exposed on public profile.
+
+### Bloat
+- [ ] Surface does not duplicate logic owned by shared modules or workers.
+- [ ] UI state not duplicated in unrelated caches without invalidation rules.
+- [ ] Memory page shows summaries, not full chat transcripts duplicated from Postgres.
+- [ ] Network Context Inputs packet bounded; no unbounded hive/context dump in one job.
+
+### Security
+- [ ] Account scoping enforced on all read/write API paths for this surface.
+- [ ] Wallet-bound actions require linked unlocked wallet as documented.
+- [ ] Memory rows account-scoped; no cross-account leakage in repository queries.
+- [ ] Network Task Profile stays private by default; routing use documented.

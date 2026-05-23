@@ -40,3 +40,27 @@ Return raw JSON only with these exact keys:
 Keep current_focus to 3 to 6 bullets.
 Keep primary_contribution_ability to 3 to 6 bullets.
 Keep domain_expertise to 5 to 10 bullets.
+
+## Reviewer To Do List
+
+Review implementation against this document (network task profile v2). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Prompt input blocks bounded; large context clipped or digested before call.
+- [ ] Prompt output schema minimal for downstream storage.
+
+### Code Quality
+- [ ] Prompt version recorded when output persisted to DB or PFTL payload.
+- [ ] Structured output prompts match parser validation in caller.
+
+### Coherence
+- [ ] Prompt policy matches surface doc behavior (e.g., evidence types, mode rules).
+- [ ] Used-by call sites in docs-content.js still accurate.
+
+### Bloat
+- [ ] Prompt text avoids redundant restatement of data already in input blocks.
+- [ ] No duplicate prompt files for same behavior without version bump.
+
+### Security
+- [ ] Prompt instructs model not to invent hidden state or exfiltrate secrets.
+- [ ] Private/user data handling matches provider privacy mode for caller.

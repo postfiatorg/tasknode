@@ -24,6 +24,7 @@ import { conversationIdForChatWrite, explicitConversationId } from "./chat-conve
 import { startMemoryWorker } from "./chat-memory-worker.js";
 import { startHiveSecretaryWorker } from "./hive-secretary-worker.js";
 import { startHiveProjectWorker } from "./hive-project-worker.js";
+import { startNetworkTaskGenerationWorker } from "./network-task-generation-worker.js";
 import {
   conversationIdForSession,
   destroySession,
@@ -978,6 +979,7 @@ await migrateDatabase();
 startMemoryWorker();
 startHiveSecretaryWorker();
 startHiveProjectWorker();
+startNetworkTaskGenerationWorker();
 startPftlCacheWorker();
 startPftlArchiveWorker();
 startPftlCacheWatcher();

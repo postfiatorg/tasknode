@@ -237,3 +237,27 @@ curl http://127.0.0.1:8080/health
   chat logs.
 - Do not point historical context restore at a shallow current-balance RPC. Use
   `PFTL_HISTORY_WSS_URL` for full-history `account_tx` discovery.
+
+## Reviewer To Do List
+
+Review implementation against this document (DEPLOYMENT). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
+- [ ] Fly and Docker topologies document resource expectations per service.
+
+### Code Quality
+- [ ] Commands, env vars, and file paths verified against repo.
+- [ ] Deploy commands match `fly.toml`, Dockerfile, and compose files.
+
+### Coherence
+- [ ] Doc aligns with wiki and spec docs for same topic.
+- [ ] Three run paths (dev Docker, prod Docker, Fly) boundaries consistent with BOOTUP.
+
+### Bloat
+- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
+- [ ] Deployment doc avoids duplicating full env inventory from BOOTUP.
+
+### Security
+- [ ] No secrets committed; custody boundaries explicit.
+- [ ] Important Boundaries section: no secrets in docs, archive RPC for history only.

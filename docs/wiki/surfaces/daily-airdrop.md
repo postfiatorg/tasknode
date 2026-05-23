@@ -6,7 +6,7 @@ Current status: scoring and operator-triggered live issuance are implemented. A 
 
 ### Private Profile Read Path
 
-The private profile top section reads the latest completed run through `GET /api/profile/daily-airdrop`.
+The private profile top section reads the latest completed run through `GET /api/profile/daily-airdrop`. The large headline is the daily airdrop amount only. It says `Today's airdrop` only when that airdrop was scored or paid on the current UTC date; otherwise it says `Latest airdrop`.
 
 Displayed airdrop values come from:
 
@@ -24,7 +24,7 @@ Displayed airdrop values come from:
 - `input_snapshot.airdrop_recipient`;
 - `input_snapshot.reward_totals`.
 
-The adjacent reward chart uses `GET /api/profile/reward-history?range=7d|28d|90d`. It is based on actual positive `reward_actual_pft` task projections, submitted daily airdrop issuances, and reward event timestamps. It intentionally renders one earned-PFT series until task reward categories are real data.
+The adjacent reward chart uses `GET /api/profile/reward-history?range=7d|28d|90d`. It is based on actual positive `reward_actual_pft` task projections, submitted daily airdrop issuances, and reward event timestamps. It intentionally renders one earned-PFT series until task reward categories are real data. The chart total can be much larger than the daily airdrop headline because it includes task rewards; the UI must keep those labels separate.
 
 ### Evidence Packet
 
@@ -184,3 +184,36 @@ Observed packet:
 ### Live Issuance Boundary
 
 Live issuance currently runs through `scripts/profile-daily-airdrop-issue.mjs`. It converts a completed scoring row into exactly one account/day issuance row, then pays from the configured reward/faucet wallet to the deterministic identity-cloud recipient wallet.
+
+## Reviewer To Do List
+
+Review implementation against this document (daily airdrop). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] List and detail views read Postgres caches with documented caps or pagination.
+- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
+- [ ] Scoring uses bounded 7-day task-reward packet, not full wallet history.
+- [ ] Issuance idempotency keys prevent duplicate payouts on retry.
+
+### Code Quality
+- [ ] Code references in doc resolve to existing modules and routes.
+- [ ] Failure modes documented here have matching user-visible error handling.
+- [ ] Alignment score formula matches implementation in `profile-daily-airdrop.js`.
+- [ ] Dry-run vs production modes clearly separated in scripts and API.
+
+### Coherence
+- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
+- [ ] Hidden/not-exposed features labeled honestly if mentioned.
+- [ ] Identity cloud recipient selection deterministic and documented.
+- [ ] Scoring prompt output shape matches parser expectations.
+
+### Bloat
+- [ ] Surface does not duplicate logic owned by shared modules or workers.
+- [ ] UI state not duplicated in unrelated caches without invalidation rules.
+- [ ] Run records stored in dedicated tables; not duplicated across profile and wallet caches.
+
+### Security
+- [ ] Account scoping enforced on all read/write API paths for this surface.
+- [ ] Wallet-bound actions require linked unlocked wallet as documented.
+- [ ] Reward pool wallets operator-controlled; no user-supplied payout addresses.
+- [ ] No-double-pay invariants enforced before on-chain issuance.

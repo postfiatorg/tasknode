@@ -53,3 +53,36 @@ sequenceDiagram
 - Restore must make overwrite behavior explicit.
 - Historical previews should load per document, distinguish queued/loading/error states, and never present failed or idle previews as still loading.
 - Context Refine proposals must not overwrite newer manual edits; stale proposals fail before save.
+
+## Reviewer To Do List
+
+Review implementation against this document (context). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] List and detail views read Postgres caches with documented caps or pagination.
+- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
+- [ ] Current draft stored in `context_revisions`; history from pointer projection, not unbounded revision rows.
+- [ ] Chat grounding clips body to configured max chars before provider send.
+
+### Code Quality
+- [ ] Code references in doc resolve to existing modules and routes.
+- [ ] Failure modes documented here have matching user-visible error handling.
+- [ ] Native editor saves update draft row in place; publish is separate PFTL path.
+- [ ] Context Refine proposals carry revision/body hash for staleness detection.
+
+### Coherence
+- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
+- [ ] Hidden/not-exposed features labeled honestly if mentioned.
+- [ ] Postgres draft vs PFTL published history distinction clear in UI and API.
+- [ ] Context available without wallet; publish requires linked unlocked wallet.
+
+### Bloat
+- [ ] Surface does not duplicate logic owned by shared modules or workers.
+- [ ] UI state not duplicated in unrelated caches without invalidation rules.
+- [ ] Rich-text HTML stripped for chat injection; no duplicate markup in prompts.
+
+### Security
+- [ ] Account scoping enforced on all read/write API paths for this surface.
+- [ ] Wallet-bound actions require linked unlocked wallet as documented.
+- [ ] Publish encrypts to user + TaskNode recipients; server rejects missing service shard.
+- [ ] Context history restore is account/wallet scoped via cache projection.

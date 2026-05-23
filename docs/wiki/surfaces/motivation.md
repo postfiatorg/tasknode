@@ -38,3 +38,21 @@ flowchart LR
 - Motivation output should not invent goals.
 - Tool execution should not mutate context unless the user explicitly saves it.
 
+## Reviewer To Do List
+
+Review implementation against this document (motivation). Mark each item when verified.
+
+### Memory Efficiency
+- [ ] Hidden tool paths not loaded in default UI bundle if still unshipped.
+
+### Code Quality
+- [ ] If code remains, it shares chat-router boundaries and is feature-flagged or unreachable.
+
+### Coherence
+- [ ] Doc states not exposed; no app nav advertises this surface.
+
+### Bloat
+- [ ] Consider removing dead UI entry points if tool remains deferred.
+
+### Security
+- [ ] Unreachable surfaces cannot be invoked via API without auth checks.
