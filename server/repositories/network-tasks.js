@@ -1,22 +1,10 @@
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import {
-  activeAllocationStatuses,
-  allocationStatusForTaskStatus,
-  compactCandidate,
-  compactNetworkTaskContent,
-  compactProductDoc,
-  compactProject,
-  digestJson,
-  groupNetworkTaskContentText,
-  isCompletedNetworkTask,
-  isOutstandingNetworkTask,
-  jsonValue,
-  numeric,
-  rewardBand,
-  safeObject,
-  safeText,
-  taskClass,
-  toIso,
+  activeAllocationStatuses, allocationStatusForTaskStatus, compactCandidate,
+  compactNetworkTaskContent, compactProductDoc, compactProject, digestJson,
+  groupNetworkTaskContentText, isCompletedNetworkTask, isOutstandingNetworkTask,
+  isStoppedNetworkTask, jsonValue, numeric, rewardBand, safeObject, safeText,
+  taskClass, toIso,
 } from "./network-tasks-utils.js";
 
 export { networkTaskRewardPolicy, normalizeNetworkTaskRewardBand } from "./network-tasks-utils.js";
@@ -29,19 +17,22 @@ export async function getNetworkTaskContentSnapshot({
   completedLimit = 5,
   outstandingLimit = 25,
   pendingLimit = 10,
+  stoppedLimit = 10,
 } = {}) {
   const normalizedCompletedLimit = Math.min(Math.max(Number(completedLimit || 5), 1), 25);
   const normalizedOutstandingLimit = Math.min(Math.max(Number(outstandingLimit || 25), 1), 100);
   const normalizedPendingLimit = Math.min(Math.max(Number(pendingLimit || 10), 0), 50);
+  const normalizedStoppedLimit = Math.min(Math.max(Number(stoppedLimit || 10), 0), 50);
   if (!useDatabase()) {
     return {
       schema: "pf.hive.network_task_content_snapshot.v1",
       generatedAt: new Date().toISOString(),
       completed: [],
       outstanding: [],
+      stopped: [],
       pendingGeneration: [],
-      counts: { completed: 0, outstanding: 0, pendingGeneration: 0 },
-      text: "NETWORK TASK CONTENT SNAPSHOT\n\nCompleted Network Tasks (0)\nNone\n\nOutstanding Network Tasks (0)\nNone\n\nPending Network Task Generation (0)\nNone",
+      counts: { completed: 0, outstanding: 0, stopped: 0, pendingGeneration: 0 },
+      text: "NETWORK TASK CONTENT SNAPSHOT\n\nCompleted Network Tasks (0)\nNone\n\nOutstanding Network Tasks (0)\nNone\n\nStopped Network Tasks (0)\nNone\n\nPending Network Task Generation (0)\nNone",
     };
   }
 
@@ -127,12 +118,13 @@ export async function getNetworkTaskContentSnapshot({
                refs.id DESC
       LIMIT $1
     `,
-    [normalizedCompletedLimit + normalizedOutstandingLimit + 50]
+    [normalizedCompletedLimit + normalizedOutstandingLimit + normalizedStoppedLimit + 50]
   );
 
   const tasks = taskResult.rows.map(compactNetworkTaskContent);
   const completed = tasks.filter(isCompletedNetworkTask).slice(0, normalizedCompletedLimit);
   const outstanding = tasks.filter(isOutstandingNetworkTask).slice(0, normalizedOutstandingLimit);
+  const stopped = tasks.filter(isStoppedNetworkTask).slice(0, normalizedStoppedLimit);
 
   const pendingResult = normalizedPendingLimit > 0
     ? await query(
@@ -185,6 +177,8 @@ export async function getNetworkTaskContentSnapshot({
     "",
     groupNetworkTaskContentText("Outstanding Network Tasks", outstanding),
     "",
+    groupNetworkTaskContentText("Stopped Network Tasks", stopped),
+    "",
     groupNetworkTaskContentText("Pending Network Task Generation", pendingGeneration),
   ].join("\n");
 
@@ -193,10 +187,12 @@ export async function getNetworkTaskContentSnapshot({
     generatedAt: new Date().toISOString(),
     completed,
     outstanding,
+    stopped,
     pendingGeneration,
     counts: {
       completed: completed.length,
       outstanding: outstanding.length,
+      stopped: stopped.length,
       pendingGeneration: pendingGeneration.length,
     },
     text,

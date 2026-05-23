@@ -10,6 +10,7 @@ const {
   formatBoardManagerCodexPrompt,
   normalizeBoardManagerDecision,
 } = await import("../server/repositories/board-manager.js");
+const { buildBoardManagerActionPressure } = await import("../server/repositories/board-manager-health.js");
 const { loadPrompt } = await import("../server/prompt-registry.js");
 
 assert.ok(boardManagerActions.includes("do_nothing"));
@@ -32,6 +33,84 @@ assert.ok(packet.executionPolicy.implementedActionHooks.includes("message_user")
 assert.ok(packet.executionPolicy.implementedActionHooks.includes("create_project"));
 assert.ok(packet.sourcePacketDigest.length >= 40);
 assert.deepEqual(packet.actionRegistry, boardManagerActions);
+assert.equal(packet.boardActionPressure.schema, "pf.hive.board_action_pressure.v1");
+assert.equal(packet.boardActionPressure.policy.emptyActiveProjectRequiresAction, true);
+
+const stalledBoard = buildBoardManagerActionPressure({
+  hiveProjects: {
+    projects: {
+      empty_protocol_project: {
+        id: "empty_protocol_project",
+        title: "Empty Protocol Project",
+        status: "active",
+        taskCount: 2,
+        contributorCount: 1,
+        tasks: [],
+        contributors: [],
+      },
+    },
+  },
+  networkTaskContent: { completed: [], outstanding: [], stopped: [], pendingGeneration: [] },
+  networkTaskCandidates: [{ accountId: "acct_candidate", walletAddress: "rCandidate" }],
+  recentBoardManagerRuns: [],
+});
+assert.equal(stalledBoard.summary.requiresAction, true);
+assert.equal(stalledBoard.summary.projectsWithoutLiveTasks, 1);
+assert.equal(stalledBoard.summary.eligibleCandidateCount, 1);
+assert.equal(stalledBoard.signals[0].pressure, "empty_or_stalled_active_project");
+assert.ok(stalledBoard.signals[0].allowedNextActions.includes("initiate_network_task"));
+
+const busyCandidateBoard = buildBoardManagerActionPressure({
+  hiveProjects: {
+    projects: {
+      empty_protocol_project: {
+        id: "empty_protocol_project",
+        title: "Empty Protocol Project",
+        status: "active",
+        taskCount: 2,
+        contributorCount: 1,
+        tasks: [],
+        contributors: [],
+      },
+    },
+  },
+  networkTaskContent: {
+    completed: [],
+    outstanding: [{ projectId: "other_project", candidateWalletAddress: "rCandidate" }],
+    stopped: [],
+    pendingGeneration: [],
+  },
+  networkTaskCandidates: [{ accountId: "acct_candidate", walletAddress: "rCandidate" }],
+  recentBoardManagerRuns: [],
+});
+assert.equal(busyCandidateBoard.summary.eligibleCandidateCount, 0);
+assert.equal(busyCandidateBoard.signals[0].allowedNextActions.includes("initiate_network_task"), false);
+
+const movingBoard = buildBoardManagerActionPressure({
+  hiveProjects: {
+    projects: {
+      moving_protocol_project: {
+        id: "moving_protocol_project",
+        title: "Moving Protocol Project",
+        status: "active",
+        taskCount: 1,
+        contributorCount: 1,
+        tasks: [{ taskId: "task_live" }],
+        contributors: [{ walletAddress: "rCandidate" }],
+      },
+    },
+  },
+  networkTaskContent: {
+    completed: [],
+    outstanding: [{ projectId: "moving_protocol_project" }],
+    stopped: [],
+    pendingGeneration: [],
+  },
+  networkTaskCandidates: [{ accountId: "acct_candidate", walletAddress: "rCandidate" }],
+  recentBoardManagerRuns: [],
+});
+assert.equal(movingBoard.summary.requiresAction, false);
+assert.equal(movingBoard.signals.length, 0);
 
 const prompt = formatBoardManagerCodexPrompt({
   prompt: loadPrompt("hive/board_manager_v1.md"),

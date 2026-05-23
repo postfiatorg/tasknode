@@ -174,6 +174,7 @@ async function main() {
       trigger: "board_manager_source_packet_smoke",
       scope: "global_hive",
     });
+    assert.ok(Buffer.byteLength(JSON.stringify(packet)) < 100_000);
 
     assert.equal(packet.networkTaskContent.schema, "pf.hive.network_task_content_snapshot.v1");
     assert.ok(packet.networkTaskContent.completed.some((task) => (
@@ -193,8 +194,6 @@ async function main() {
       task.projectNeedSummary.includes("Pending project need")
     )));
     assert.match(packet.networkTaskContent.text, /Completed task description/);
-    assert.match(packet.networkTaskContent.text, /Outstanding task description/);
-    assert.match(packet.networkTaskContent.text, /Pending project need/);
 
     console.log("board manager source packet smoke ok");
   } finally {

@@ -39,6 +39,24 @@ Planned ownership model:
 
 The default v1 posture is conservative. Most ticks should do nothing unless there is stale state, new validated input, a blocked project, pending evidence, or a clear task allocation opportunity.
 
+## Board Action Pressure
+
+The Board Manager source packet now includes `boardActionPressure`, a deterministic health summary built before Codex chooses an action. This exists because an active board can look superficially stable while actually being stalled.
+
+The pressure signal treats these conditions as action-required:
+
+- an active project has scoped task counts but no live project task rows;
+- an active project has contributor targets but no live contributor rows;
+- an active project has no outstanding Network Task and no pending Network Task generation;
+- a project-linked Network Task was refused, cancelled, rejected, expired, failed, or rerouted without a replacement or closure decision;
+- the Hive Secretary report is stale.
+
+Planned counts are not live work. A project card saying "3 scoped tasks" or "2 target contributors" does not count as motion unless the corresponding task refs, allocation rows, contributors, pending generation jobs, or outstanding Network Tasks exist.
+
+When `boardActionPressure.summary.requiresAction` is true, `do_nothing` is not a valid Board Manager outcome unless a recent run is already handling the same project and the decision reason names that in-flight action. Empty active projects should move toward one of four outcomes: initiate a Network Task, assign a contributor, ask a specific user for the smallest missing decision input, or archive the project when it cannot be managed now.
+
+`eligibleCandidateCount` in this health block means candidates available after current outstanding and pending Network Tasks are accounted for. The Board Manager should not keep assigning the same contributor while they already have a live Network Task unless it explicitly chooses an over-capacity exception. If a stale follow-up run races with a just-created allocation, the action hook records `network_task_candidate_at_capacity` as a skipped result instead of retrying the same invalid mutation.
+
 ## Production Architecture Plan
 
 The current `npm run board-manager:loop -- --execute` path is a local development harness. It is useful for proving decisions and action hooks, but it is not the production architecture. Production should not depend on tmux, an SSH session, a manually watched shell, or every web instance running the manager.
@@ -125,6 +143,7 @@ The design should still allow production failover:
 - only the machine holding the lease for `global_hive` can execute;
 - all other machines remain idle or process other scopes later;
 - action hooks must be idempotent so a retry cannot duplicate a user message, project, or Network Task.
+- `board_manager_scopes.max_actions_per_hour` is enforced before the worker claims another job. Completed non-dry-run actions other than `do_nothing` count against the cap. When the cap is reached the worker logs `action_rate_limited` and leaves due jobs untouched until the rolling hour clears.
 
 Later scaling can add project-scoped managers:
 
@@ -143,7 +162,8 @@ Rules:
 - `board_manager_sessions` stores the current Codex session id for each scope.
 - Each run resumes the session unless an operator deliberately rotates it.
 - Each run includes compact Board Manager micro summaries rather than full prior source packets.
-- If the source packet or Codex session becomes too large, the manager writes a checkpoint summary and starts a fresh session linked to the prior session id.
+- The source packet is compacted before Codex sees it. Project rows, task request rows, task projection rows, Network Task content, and recent Board Manager runs are bounded and summarized so stale history cannot blow up the Codex Exec context window.
+- If the stored Codex session becomes too large, `scripts/board-manager-codex-exec.mjs` detects the context-window failure, retries once with a fresh session, and stores the new session with `session_mode = rotated_after_context_overflow` plus the previous session id in metadata.
 - The packet must continue to include the compact Network Task content snapshot, project documents, Hive Secretary summary, recent validated Hive Inputs, eligible contributor profiles, and recent Board Manager summaries.
 - Raw private user data should stay out of the packet unless the selected action requires it and the user has provided it through a validated Hive path.
 
@@ -328,9 +348,9 @@ Inputs:
 
 The packet should avoid raw private data unless the action requires it. Public profile summaries and Network Diagnostic Reports are better routing inputs than raw chat memory.
 
-The implemented packet includes `networkTaskContent`, built by `server/repositories/network-tasks.js::getNetworkTaskContentSnapshot`. This gives the Board Manager enough task substance to make project decisions without reading full forensics. It includes the last five rewarded Network Tasks with descriptions, steps, submission requirements, paid reward, state, and reward summary. It also includes outstanding project-linked Network Tasks and queued/running/generated network-task jobs that do not have a projected task yet.
+The implemented packet includes `networkTaskContent`, built by `server/repositories/network-tasks.js::getNetworkTaskContentSnapshot`. This gives the Board Manager enough task substance to make project decisions without reading full forensics. It includes the last five rewarded Network Tasks with descriptions, steps, submission requirements, paid reward, state, and reward summary. It also includes outstanding project-linked Network Tasks, stopped project-linked Network Tasks, and queued/running/generated network-task jobs that do not have a projected task yet.
 
-This matters because the Board Manager should not merely know that a task was rewarded. It needs to know what the task asked for, what state it reached, and what reward outcome occurred before it updates a project document or allocates follow-on work.
+This matters because the Board Manager should not merely know that a task was rewarded. It needs to know what the task asked for, what state it reached, whether it stopped through refusal/cancel/failure, and what reward outcome occurred before it updates a project document or allocates follow-on work.
 
 ## Action Registry
 

@@ -445,11 +445,23 @@ async function executeRefreshProjectDocument({ runId, decision, sourcePacket }) 
 }
 
 async function executeInitiateNetworkTask({ runId, decision, sourcePacket }) {
-  const enqueued = await enqueueNetworkTaskGenerationFromBoardDecision({
-    runId,
-    decision,
-    sourcePacket,
-  });
+  let enqueued;
+  try {
+    enqueued = await enqueueNetworkTaskGenerationFromBoardDecision({
+      runId,
+      decision,
+      sourcePacket,
+    });
+  } catch (error) {
+    if (error?.message === "network_task_candidate_at_capacity") {
+      return {
+        executed: false,
+        skipped: true,
+        reason: "network_task_candidate_at_capacity",
+      };
+    }
+    throw error;
+  }
   const scheduled = scheduleNetworkTaskGenerationQueue({
     delayMs: 250,
     limit: 2,

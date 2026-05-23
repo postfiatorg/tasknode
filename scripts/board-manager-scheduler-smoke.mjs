@@ -104,6 +104,21 @@ async function main() {
     assert.equal(status.scope.scope, scope);
     assert.ok(status.jobs.length >= 2);
 
+    await ensureBoardManagerScope({
+      scope,
+      status: "enabled",
+      maxActionsPerHour: 0,
+    });
+    await enqueueBoardManagerJob({
+      scope,
+      trigger: "rate_limit_smoke",
+      reason: "Verify action cap blocks job claiming.",
+      idempotencyKey: `board_scheduler_rate_limit_${suffix}`,
+    });
+    const capped = await claimBoardManagerJob({ scope, managerId: "worker_rate_limited" });
+    assert.equal(capped.claimed, false);
+    assert.equal(capped.reason, "action_rate_limited");
+
     console.log("board manager scheduler smoke ok");
   } finally {
     await cleanup();

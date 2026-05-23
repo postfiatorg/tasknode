@@ -145,7 +145,7 @@ async function processOneJob({ turn }) {
   await enqueueDueBoardManagerTicks({ scope: config.scope, limit: config.jobLimit });
   const claimed = await claimBoardManagerJob({ scope: config.scope, managerId: config.managerId });
   if (!claimed.claimed || !claimed.job) {
-    return { claimed: false };
+    return { claimed: false, reason: claimed.reason || "" };
   }
 
   const job = claimed.job;

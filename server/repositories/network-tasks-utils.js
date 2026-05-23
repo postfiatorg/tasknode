@@ -209,6 +209,10 @@ export function isCompletedNetworkTask(task = {}) {
   return task.state === "rewarded";
 }
 
+export function isStoppedNetworkTask(task = {}) {
+  return ["refused", "cancelled", "rejected", "expired", "failed", "rerouted"].includes(task.state);
+}
+
 export function isOutstandingNetworkTask(task = {}) {
   return [
     "candidate",

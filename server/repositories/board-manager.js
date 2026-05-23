@@ -18,6 +18,14 @@ import {
   compactBoardManagerRunForSourcePacket,
   formatBoardManagerAgentRun,
 } from "./board-manager-run-summary.js";
+import { buildBoardManagerActionPressure } from "./board-manager-health.js";
+import {
+  compactHiveProjectsForBoardManager,
+  compactNetworkTaskContentForBoardManager,
+  compactProjectRegistryForBoardManager,
+  compactTaskRequestsForBoardManager,
+  compactTaskStateForBoardManager,
+} from "./board-manager-source-compact.js";
 
 export { formatBoardManagerAgentRun } from "./board-manager-run-summary.js";
 
@@ -574,15 +582,27 @@ export async function buildBoardManagerSourcePacket({
     getHiveSecretaryState(),
     getHiveProjectsDocument(),
     latestHiveProjectPlanningState().catch(() => null),
-    currentProjectRegistry(),
-    currentTaskState(),
-    currentTaskRequests(),
-    getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 25, pendingLimit: 10 }).catch(() => null),
+    currentProjectRegistry({ limit: 20 }),
+    currentTaskState({ limit: 12 }),
+    currentTaskRequests({ limit: 8 }),
+    getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 12, stoppedLimit: 6, pendingLimit: 6 }).catch(() => null),
     listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
-    recentBoardManagerRuns(),
+    recentBoardManagerRuns({ limit: 8 }),
   ]);
 
   const generatedAt = new Date().toISOString();
+  const freshness = {
+    hiveSecretaryAgeMs: ageMs(hiveSecretaryState?.report?.completedAt),
+    latestProjectGenerationAgeMs: ageMs(projectPlanning?.generation?.completedAt),
+  };
+  const compactRecentRuns = recentRuns.map(compactBoardManagerRunForSourcePacket);
+  const boardActionPressure = buildBoardManagerActionPressure({
+    hiveProjects,
+    networkTaskContent,
+    networkTaskCandidates,
+    recentBoardManagerRuns: compactRecentRuns,
+    freshness,
+  });
   const packetCore = {
     schema: "pf.hive.board_manager.source.v0",
     scope: safeText(scope, 120) || "global_hive",
@@ -590,21 +610,19 @@ export async function buildBoardManagerSourcePacket({
     generatedAt,
     database: databaseStatus(),
     actionRegistry: boardManagerActions,
-    freshness: {
-      hiveSecretaryAgeMs: ageMs(hiveSecretaryState?.report?.completedAt),
-      latestProjectGenerationAgeMs: ageMs(projectPlanning?.generation?.completedAt),
-    },
+    freshness,
+    boardActionPressure,
     hiveContext: compactContextDocument(hiveContext),
     hiveSecretarySource: compactSecretarySourcePacket(hiveSecretarySource),
     hiveSecretary: hiveSecretaryState,
-    hiveProjects,
+    hiveProjects: compactHiveProjectsForBoardManager(hiveProjects),
     projectPlanning,
-    projectRegistry,
-    taskState,
-    taskRequests,
-    networkTaskContent,
+    projectRegistry: compactProjectRegistryForBoardManager(projectRegistry),
+    taskState: compactTaskStateForBoardManager(taskState),
+    taskRequests: compactTaskRequestsForBoardManager(taskRequests),
+    networkTaskContent: compactNetworkTaskContentForBoardManager(networkTaskContent),
     networkTaskCandidates,
-    recentBoardManagerRuns: recentRuns.map(compactBoardManagerRunForSourcePacket),
+    recentBoardManagerRuns: compactRecentRuns,
     executionPolicy: {
       dryRunDefault: true,
       implementedActionHooks: [

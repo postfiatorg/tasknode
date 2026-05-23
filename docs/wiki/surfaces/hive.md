@@ -75,9 +75,12 @@ The Board Manager source packet now includes a `networkTaskContent` snapshot. Th
 
 - the last five rewarded Network Tasks, with title, description, steps, submission requirement, state, actual reward, and reward summary;
 - current outstanding Network Tasks, including proposed, accepted, submitted, verification, reward-decision, and repairable generation-link states;
+- recent stopped Network Tasks, including refused, cancelled, rejected, expired, failed, or rerouted states;
 - queued/running/generated network-task generation jobs that do not have a projected task yet.
 
 This snapshot is intentionally not the full forensics view. It does not carry raw CIDs, transactions, every metadata field, or full uploaded artifacts. The purpose is to let the Board Manager understand what work happened and what work is still active before it refreshes a project document, messages a user, or allocates another Network Task.
+
+The source packet also includes `boardActionPressure`, a deterministic health summary. This is the guard against passive Hive decisions. If active projects have no live tasks, no contributors, no pending generation, or a recent stopped Network Task with no follow-up, the packet marks the board as action-required. In that state the manager should route work, assign an eligible contributor, ask for the smallest missing decision input, refresh the project document with a concrete blocker, or archive the project. `eligibleCandidateCount` means candidates still available after outstanding and pending Network Tasks are accounted for, so a busy contributor is not counted as free capacity. `do_nothing` is acceptable only when the board already has live motion or the same issue was just handled by a recent run.
 
 The Hive project task row renders canonical task statuses directly, including `rewarded`, `reward_decided`, `verification_response_submitted`, and stopped states. Unknown statuses are shown as unknown, not silently downgraded to `proposed`.
 
@@ -161,6 +164,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/hive-secretary-worker.js` processes validated Hive Inputs through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action handler.
 - `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
+- `server/repositories/board-manager-health.js` computes `boardActionPressure`, including empty active project and stopped Network Task pressure.
 - `server/repositories/board-manager-scheduler.js` owns the durable Board Manager scheduler helpers: scope setup, job enqueue, due tick enqueue, job claiming, job completion, and deferred/failed retries.
 - `server/board-manager-actions.js` executes the first Board Manager action hooks.
 - `server/process-role.js` separates `web`, `worker`, and local `all` startup roles so Fly web instances do not accidentally run background workers.

@@ -248,6 +248,36 @@ export async function claimBoardManagerJob({
   const normalizedScope = safeText(scope, 120);
   const normalizedManagerId = safeText(managerId, 180) || `board_manager_worker_${randomUUID()}`;
   return transaction(async (client) => {
+    const scopeResult = await client.query(
+      `
+        SELECT scope, max_actions_per_hour
+        FROM board_manager_scopes
+        WHERE ($1 = '' OR scope = $1)
+          AND status = 'enabled'
+        ORDER BY scope ASC
+        LIMIT 1
+      `,
+      [normalizedScope]
+    );
+    const scopeRow = scopeResult.rows[0];
+    const maxActionsPerHour = Number(scopeRow?.max_actions_per_hour ?? 4);
+    if (scopeRow && maxActionsPerHour >= 0) {
+      const recentActions = await client.query(
+        `
+          SELECT count(*)::int AS count
+          FROM board_manager_runs
+          WHERE scope = $1
+            AND status = 'completed'
+            AND dry_run = false
+            AND selected_action NOT IN ('', 'do_nothing')
+            AND completed_at > now() - interval '1 hour'
+        `,
+        [scopeRow.scope]
+      );
+      if (Number(recentActions.rows[0]?.count || 0) >= maxActionsPerHour) {
+        return { ok: true, claimed: false, job: null, reason: "action_rate_limited" };
+      }
+    }
     const selected = await client.query(
       `
         SELECT *
@@ -375,4 +405,3 @@ export async function listBoardManagerSchedulerStatus({ scope = "global_hive", l
     jobs: jobs.rows,
   };
 }
-

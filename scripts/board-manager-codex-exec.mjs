@@ -200,6 +200,25 @@ async function runCodexExec({ prompt, model, reasoningEffort, resumeSessionId = 
   }
 }
 
+function isContextWindowError(error) {
+  const text = [error?.message, error?.stdout, error?.stderr].filter(Boolean).join("\n").toLowerCase();
+  return text.includes("context window") || text.includes("ran out of room");
+}
+
+async function runCodexExecWithSessionFallback({ prompt, model, reasoningEffort, resumeSessionId = "", allowFreshFallback = true }) {
+  try {
+    return await runCodexExec({ prompt, model, reasoningEffort, resumeSessionId });
+  } catch (error) {
+    if (!resumeSessionId || !allowFreshFallback || !isContextWindowError(error)) throw error;
+    const result = await runCodexExec({ prompt, model, reasoningEffort, resumeSessionId: "" });
+    return {
+      ...result,
+      sessionMode: "rotated_after_context_overflow",
+      previousSessionId: resumeSessionId,
+    };
+  }
+}
+
 async function main() {
   if (hasArg("--help") || hasArg("-h")) {
     console.log(usage());
@@ -269,7 +288,13 @@ async function main() {
       run = started.run;
     }
 
-    const result = await runCodexExec({ prompt, model, reasoningEffort, resumeSessionId });
+    const result = await runCodexExecWithSessionFallback({
+      prompt,
+      model,
+      reasoningEffort,
+      resumeSessionId,
+      allowFreshFallback: !explicitResumeSessionId,
+    });
     const activeSession = result.session || storedSession || null;
     if (activeSession?.id) {
       await upsertBoardManagerSession({
@@ -282,6 +307,7 @@ async function main() {
         metadata: {
           trigger,
           session_mode: result.sessionMode || sessionMode,
+          previous_session_id: result.previousSessionId || "",
           source_packet_digest: sourcePacket.sourcePacketDigest,
         },
       }).catch(() => null);
