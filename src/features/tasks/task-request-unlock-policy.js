@@ -8,12 +8,31 @@ export const TASK_REQUEST_UNLOCK_STATES = Object.freeze({
   UNLOCKED: "unlocked",
 });
 
+const DEFAULT_MESSAGES = Object.freeze({
+  needs_session: "Sign in before requesting a task.",
+  needs_wallet: "Link a PFT wallet before requesting a task.",
+  needs_local_vault: "Restore the local wallet vault before requesting a task.",
+  unlock_pending: "Finish unlocking the linked wallet before publishing the task request.",
+  locked: "Unlock the linked wallet before publishing the task request.",
+  invalid_unlock: "Unlocked wallet state does not match the linked wallet. Unlock the linked wallet again.",
+});
+
+const TASK_SIGNING_MESSAGES = Object.freeze({
+  needs_session: "Sign in before signing a task update.",
+  needs_wallet: "Link a PFT wallet before signing task updates.",
+  needs_local_vault: "Restore the local wallet vault on the Wallet page before signing.",
+  unlock_pending: "Finish unlocking the linked wallet before signing.",
+  locked: "Unlock the linked wallet before signing this task update.",
+  invalid_unlock: "Unlocked wallet state does not match the linked wallet. Unlock the linked wallet again.",
+});
+
 export function evaluateTaskRequestUnlockPolicy({
   accountId = "",
   linkedWalletAddress = "",
   walletSecret = null,
   walletVault = {},
   unlockPending = false,
+  messages = DEFAULT_MESSAGES,
 } = {}) {
   const normalizedAccountId = String(accountId || "").trim();
   const normalizedWallet = String(linkedWalletAddress || "").trim();
@@ -27,7 +46,7 @@ export function evaluateTaskRequestUnlockPolicy({
     return {
       action: "login",
       allowed: false,
-      message: "Sign in before requesting a task.",
+      message: messages.needs_session,
       state: TASK_REQUEST_UNLOCK_STATES.NEEDS_SESSION,
     };
   }
@@ -36,7 +55,7 @@ export function evaluateTaskRequestUnlockPolicy({
     return {
       action: "open_wallet",
       allowed: false,
-      message: "Link a PFT wallet before requesting a task.",
+      message: messages.needs_wallet,
       state: TASK_REQUEST_UNLOCK_STATES.NEEDS_WALLET,
     };
   }
@@ -45,7 +64,7 @@ export function evaluateTaskRequestUnlockPolicy({
     return {
       action: "wait",
       allowed: false,
-      message: "Finish unlocking the linked wallet before publishing the task request.",
+      message: messages.unlock_pending,
       state: TASK_REQUEST_UNLOCK_STATES.UNLOCK_PENDING,
     };
   }
@@ -54,7 +73,7 @@ export function evaluateTaskRequestUnlockPolicy({
     return {
       action: "open_wallet",
       allowed: false,
-      message: "Restore the local wallet vault before requesting a task.",
+      message: messages.needs_local_vault,
       state: TASK_REQUEST_UNLOCK_STATES.NEEDS_LOCAL_VAULT,
     };
   }
@@ -63,7 +82,7 @@ export function evaluateTaskRequestUnlockPolicy({
     return {
       action: "unlock",
       allowed: false,
-      message: "Unlock the linked wallet before publishing the task request.",
+      message: messages.locked,
       state: TASK_REQUEST_UNLOCK_STATES.LOCKED,
     };
   }
@@ -72,7 +91,7 @@ export function evaluateTaskRequestUnlockPolicy({
     return {
       action: "unlock",
       allowed: false,
-      message: "Unlocked wallet state does not match the linked wallet. Unlock the linked wallet again.",
+      message: messages.invalid_unlock,
       state: TASK_REQUEST_UNLOCK_STATES.INVALID_UNLOCK,
     };
   }
@@ -83,4 +102,11 @@ export function evaluateTaskRequestUnlockPolicy({
     message: "",
     state: TASK_REQUEST_UNLOCK_STATES.UNLOCKED,
   };
+}
+
+export function evaluateTaskSigningUnlockPolicy(props = {}) {
+  return evaluateTaskRequestUnlockPolicy({
+    ...props,
+    messages: TASK_SIGNING_MESSAGES,
+  });
 }

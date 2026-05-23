@@ -1160,6 +1160,7 @@ function App() {
           onWalletUnlock={openWalletVaultControl}
           task={selectedTask}
           walletSecret={walletSecretRef.current}
+          walletUnlockPending={walletUnlockOpen}
           walletVault={walletVaultStatus}
         />
       )}

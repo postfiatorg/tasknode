@@ -67,6 +67,7 @@ try {
     usageActions,
     walletActionStart,
     walletCreateStart,
+    walletLinkStart,
     walletLinkVerify,
     usageTopUpStart,
     usageTopUpSync,
@@ -665,6 +666,20 @@ try {
     retryWithoutFaucet.body?.initiationGift?.reason !== "faucet_not_configured"
   ) {
     throw new Error(`Initiation retry should report faucet configuration without relinking: ${JSON.stringify(retryWithoutFaucet)}`);
+  }
+
+  const linkFlowAccount = getOrCreateProviderAccount({ provider: "github", providerUserId: "runtime-smoke-link-gh", username: "runtime-smoke-link" });
+  const linkFlowSession = createAccountSession(linkFlowAccount, { provider: "github", assurance: "medium" });
+  const linkStart = walletLinkStart("POST", linkFlowSession.session);
+  const linkProof = signWalletChallenge(generateTaskNodeMnemonic(), linkStart.body.challenge.message);
+  const linkVerify = await walletLinkVerify({ challengeId: linkStart.body.challenge.id, address: linkProof.address, publicKey: linkProof.publicKey, signature: linkProof.signature }, "POST", linkFlowSession.session);
+  const linkLinkedWallet = getLinkedWallet({ accountId: linkFlowAccount.id });
+  if (linkStart.status !== 200 || linkStart.body.challenge.purpose !== "wallet_link" || linkVerify.status !== 200 || linkLinkedWallet.status !== "linked" || linkLinkedWallet.address !== linkProof.address) {
+    throw new Error(`Link wallet flow did not persist linked proof: ${JSON.stringify({ linkStart, linkVerify, linkLinkedWallet })}`);
+  }
+  const retryAfterLink = await walletActionStart("/api/wallet/initiation/retry", "POST", linkFlowSession.session);
+  if (retryAfterLink.status !== 409 || retryAfterLink.body?.initiationGift?.reason !== "wallet_create_proof_required") {
+    throw new Error(`Initiation retry must reject linked-only wallets: ${JSON.stringify(retryAfterLink)}`);
   }
   const emailAccount = getOrCreateEmailAccount({
     email: "runtime-smoke@example.com",

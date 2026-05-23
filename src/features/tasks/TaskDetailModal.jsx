@@ -40,7 +40,30 @@ import {
   resetEvidenceDrafts,
 } from "./task-evidence-drafts.js";
 import { TaskForensicsPanel } from "./TaskForensicsPanel.jsx";
+import {
+  evaluateTaskSigningUnlockPolicy,
+  TASK_REQUEST_UNLOCK_STATES,
+} from "./task-request-unlock-policy.js";
 import "./task-detail.css";
+
+function signingButtonLabel(
+  policy,
+  { ready = "Continue", locked = "Unlock wallet", vault = "Open wallet", pending = "Unlocking" } = {}
+) {
+  if (policy.state === TASK_REQUEST_UNLOCK_STATES.UNLOCK_PENDING) return pending;
+  if (policy.allowed) return ready;
+  if (
+    policy.state === TASK_REQUEST_UNLOCK_STATES.NEEDS_LOCAL_VAULT ||
+    policy.state === TASK_REQUEST_UNLOCK_STATES.NEEDS_WALLET
+  ) {
+    return vault;
+  }
+  return locked;
+}
+
+function handleSigningUnlockAction(policy, onWalletUnlock) {
+  if (["unlock", "open_wallet", "wait"].includes(policy.action)) onWalletUnlock?.();
+}
 
 async function copyText(text) {
   const value = String(text || "");
@@ -185,13 +208,17 @@ function TaskNetworkRoutePanel({ task }) {
 }
 
 function TaskOverviewPanel({
+  accountId,
   detail,
   displayTask,
+  linkedWalletAddress,
   loading,
   onLifecycleAction,
   onWalletUnlock,
   steps,
   verification,
+  walletSecret,
+  walletUnlockPending,
   walletVault,
 }) {
   const actions = detail?.actions || {};
@@ -199,10 +226,14 @@ function TaskOverviewPanel({
     <>
       <div className="task-modal-divider" />
       <TaskLifecycleActionPanel
+        accountId={accountId}
         actions={actions}
+        linkedWalletAddress={linkedWalletAddress}
         loading={loading}
         onLifecycleAction={onLifecycleAction}
         onWalletUnlock={onWalletUnlock}
+        walletSecret={walletSecret}
+        walletUnlockPending={walletUnlockPending}
         walletVault={walletVault}
       />
       <TaskRewardOutcome outcome={detail?.rewardOutcome} />
@@ -268,41 +299,52 @@ function submitClosedCopy(task = {}) {
 }
 
 function TaskLifecycleActionPanel({
+  accountId,
   actions,
+  linkedWalletAddress,
   loading,
   onLifecycleAction,
   onWalletUnlock,
+  walletSecret,
+  walletUnlockPending = false,
   walletVault,
 }) {
   const [reason, setReason] = useState("");
   const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "" });
   if (!actions?.canAccept && !actions?.canStop) return null;
 
-  const vaultUnlocked = Boolean(walletVault?.unlocked);
+  const unlockPolicy = evaluateTaskSigningUnlockPolicy({
+    accountId,
+    linkedWalletAddress,
+    walletSecret,
+    walletVault,
+    unlockPending: walletUnlockPending,
+  });
+  const signingReady = unlockPolicy.allowed;
   const actionLabel = actions.stopLabel || "Cancel task";
   const helper = actions.canAccept
     ? "Accepting signs a PFTL task update and puts this task on your plate. Refusing closes the offer."
-    : vaultUnlocked
+    : signingReady
       ? "Publishes a signed TASK_UPDATE pointer. The task will move after the chain cache indexes it."
-      : "Unlock the local seed vault to sign this task update. The seed stays in this browser.";
+      : unlockPolicy.message;
   const stopDisabled = loading || state.pending;
   const acceptDisabled = stopDisabled;
-  const stopCopy = vaultUnlocked ? actionLabel : "Unlock wallet";
-  const acceptCopy = vaultUnlocked ? "Accept task" : "Unlock wallet";
+  const stopCopy = signingButtonLabel(unlockPolicy, { ready: actionLabel, locked: "Unlock wallet", vault: "Open wallet" });
+  const acceptCopy = signingButtonLabel(unlockPolicy, { ready: "Accept task", locked: "Unlock wallet", vault: "Open wallet" });
   const title = actions.canAccept ? "Accept or refuse task" : actionLabel;
   const resultAction = state.resultAction ? `${state.resultAction}: ` : "";
   const pendingAction = state.pendingAction || "";
   const stopPending = state.pending && pendingAction !== "accept";
   const acceptPending = state.pending && pendingAction === "accept";
-  const showStopButton = Boolean(actions.canStop && (vaultUnlocked || !actions.canAccept));
+  const showStopButton = Boolean(actions.canStop && (signingReady || !actions.canAccept));
   const reasonLabel = actions.canAccept ? "Refusal note" : "Reason";
   const reasonPlaceholder = actions.canAccept
     ? "Optional note if you refuse this task."
     : "Optional note for the task audit trail.";
 
   async function submitLifecycleAction(taskAction) {
-    if (!vaultUnlocked) {
-      onWalletUnlock?.();
+    if (!signingReady) {
+      handleSigningUnlockAction(unlockPolicy, onWalletUnlock);
       return;
     }
     setState({ error: "", pending: true, pendingAction: taskAction, result: "", resultAction: "" });
@@ -385,6 +427,7 @@ function TaskSubmitPanel({
   task,
   verification,
   walletSecret,
+  walletUnlockPending = false,
   walletVault,
 }) {
   const defaultEvidenceMethod = evidenceMethodFromContract(task, verification);
@@ -404,7 +447,14 @@ function TaskSubmitPanel({
       : `closed:${task?.statusKey || task?.status || taskId}`;
   const summaries = Array.isArray(detail?.submission?.summaries) ? detail.submission.summaries : [];
   const signingEnabled = Boolean(actions.browserSubmissionEnabled);
-  const vaultUnlocked = Boolean(walletVault?.unlocked);
+  const unlockPolicy = evaluateTaskSigningUnlockPolicy({
+    accountId,
+    linkedWalletAddress,
+    walletSecret,
+    walletVault,
+    unlockPending: walletUnlockPending,
+  });
+  const signingReady = unlockPolicy.allowed;
   const evidenceItems = evidenceDrafts.map((draft) => ({
     file: evidenceFileForDraft(draft),
     method: draft.method,
@@ -422,9 +472,9 @@ function TaskSubmitPanel({
       confirmed
   );
   const helperText = signingEnabled
-    ? vaultUnlocked
+    ? signingReady
       ? "Evidence is encrypted in this browser, pinned to IPFS, and published as a signed PFTL task pointer."
-      : "Unlock the local seed vault to sign evidence. The seed stays in this browser."
+      : unlockPolicy.message
     : "This task state is not accepting evidence right now.";
   const methods = [
     { key: "text", label: "Text", icon: FileText },
@@ -512,8 +562,8 @@ function TaskSubmitPanel({
   }
 
   async function submitEvidence() {
-    if (!vaultUnlocked) {
-      onWalletUnlock?.();
+    if (!signingReady) {
+      handleSigningUnlockAction(unlockPolicy, onWalletUnlock);
       return;
     }
     setState({ error: "", pending: true, pendingLabel: "Publishing evidence", result: "" });
@@ -746,7 +796,7 @@ function TaskSubmitPanel({
         onClick={submitEvidence}
         type="button"
       >
-        {state.pending ? state.pendingLabel || "Working" : vaultUnlocked ? "Submit evidence" : "Unlock wallet"}
+        {state.pending ? state.pendingLabel || "Working" : signingButtonLabel(unlockPolicy, { ready: "Submit evidence", locked: "Unlock wallet", vault: "Open wallet" })}
         <ArrowRight size={14} strokeWidth={2} />
       </button>
       {signingEnabled && (
@@ -780,6 +830,7 @@ export function TaskDetailModal({
   onWalletUnlock,
   task,
   walletSecret = null,
+  walletUnlockPending = false,
   walletVault = null,
 }) {
   const [mounted, setMounted] = useState(false);
@@ -1040,13 +1091,17 @@ export function TaskDetailModal({
 
           {activeTab === "overview" && (
             <TaskOverviewPanel
+              accountId={accountId}
               detail={detailState.data}
               displayTask={displayTask}
+              linkedWalletAddress={linkedWalletAddress}
               loading={detailState.loading}
               onLifecycleAction={handleLifecycleAction}
               onWalletUnlock={onWalletUnlock}
               steps={steps}
               verification={verification}
+              walletSecret={walletSecret}
+              walletUnlockPending={walletUnlockPending}
               walletVault={walletVault}
             />
           )}
@@ -1063,6 +1118,7 @@ export function TaskDetailModal({
               task={displayTask}
               verification={verification}
               walletSecret={walletSecret}
+              walletUnlockPending={walletUnlockPending}
               walletVault={walletVault}
             />
           )}
