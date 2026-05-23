@@ -21,6 +21,36 @@ function normalizeText(value) {
   return String(value).trim();
 }
 
+function jsonObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+export function publicPftlCacheSyncState(checkpoint, { transactionCount = 0 } = {}) {
+  const archiveMarker = jsonObject(checkpoint?.archive_marker);
+  const lastHotSyncAt = checkpoint?.last_hot_sync_at || null;
+  const lastArchiveSyncAt = checkpoint?.last_archive_sync_at || null;
+  const lastError = checkpoint?.last_error || null;
+  const archiveComplete = archiveMarker.complete === true;
+  const hasCachedTransactions = Number(transactionCount || 0) > 0;
+
+  let status = "syncing";
+  if (lastError) {
+    status = "error";
+  } else if (!archiveComplete && (hasCachedTransactions || lastHotSyncAt || lastArchiveSyncAt)) {
+    status = "archive_incomplete";
+  } else if (archiveComplete || lastHotSyncAt || lastArchiveSyncAt) {
+    status = "ready";
+  }
+
+  return {
+    status,
+    archiveComplete,
+    lastHotSyncAt,
+    lastArchiveSyncAt,
+    lastError,
+  };
+}
+
 function clampInteger(value, fallback, min, max) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
@@ -412,7 +442,9 @@ export async function readCachedAccountTx({
   }
 
   const checkpoint = await getPftlSyncWallet({ walletAddress: wallet });
-  const stale = checkpoint?.last_error || (!checkpoint?.last_hot_sync_at && cached.transactions.length === 0);
+  const syncState = publicPftlCacheSyncState(checkpoint, {
+    transactionCount: cached.transactions.length,
+  });
 
   return {
     ok: true,
@@ -422,10 +454,7 @@ export async function readCachedAccountTx({
     transactions: cached.transactions,
     count: cached.transactions.length,
     sync: {
-      status: stale ? "syncing" : "ready",
-      lastHotSyncAt: checkpoint?.last_hot_sync_at || null,
-      lastArchiveSyncAt: checkpoint?.last_archive_sync_at || null,
-      lastError: checkpoint?.last_error || null,
+      ...syncState,
       attempted: sync ? {
         ok: Boolean(sync.ok),
         scannedTransactions: sync.scannedTransactions || 0,

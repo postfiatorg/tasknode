@@ -376,8 +376,13 @@ async function publishOffer({ request, requestBundle, taskgen, tasknodeKey, auth
   };
 }
 
-async function syncOfferProjection({ accountId = "", subjectWallet = "", authorityWallet = "" } = {}) {
-  const [authoritySync, subjectSync] = await Promise.all([
+async function syncOfferProjection({
+  accountId = "",
+  subjectWallet = "",
+  authorityWallet = "",
+  allocationWallet = "",
+} = {}) {
+  const syncJobs = [
     syncPftlWalletTransactions({
       walletAddress: authorityWallet,
       accountId,
@@ -394,9 +399,28 @@ async function syncOfferProjection({ accountId = "", subjectWallet = "", authori
       maxPages: 1,
       syncKind: "task_offer_subject_refresh",
     }),
-  ]);
+  ];
+  const normalizedAllocationWallet = safeText(allocationWallet, 120);
+  if (normalizedAllocationWallet) {
+    syncJobs.push(
+      syncPftlWalletTransactions({
+        walletAddress: normalizedAllocationWallet,
+        accountId,
+        role: "allocation_reward",
+        limit: 80,
+        maxPages: 1,
+        syncKind: "task_offer_allocation_refresh",
+      })
+    );
+  }
+  const syncResults = await Promise.all(syncJobs);
   const reduced = await runPftlCacheReducerOnce({ batchLimit: 20, logger: console });
-  return { authoritySync, subjectSync, reduced };
+  return {
+    authoritySync: syncResults[0],
+    subjectSync: syncResults[1],
+    allocationSync: syncResults[2] || null,
+    reduced,
+  };
 }
 
 export async function processTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) {
@@ -420,6 +444,7 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
         accountId: request.accountId,
         subjectWallet: offer.subjectWallet,
         authorityWallet: authorityWallet.classicAddress,
+        allocationWallet: offer.offerPayload?.allocation_wallet || "",
       });
       await markTaskRequestProposed({
         requestId: request.requestId,

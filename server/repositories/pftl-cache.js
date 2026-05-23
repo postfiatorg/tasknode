@@ -407,7 +407,7 @@ export async function upsertPftlTransactionBatch({
               WHEN EXCLUDED.decoded_json = '{}'::jsonb THEN pftl_pointer_memos.decoded_json
               ELSE EXCLUDED.decoded_json
             END,
-            decode_error = COALESCE(EXCLUDED.decode_error, pftl_pointer_memos.decode_error)
+            decode_error = EXCLUDED.decode_error
         `,
         [
           pointer.txHash,

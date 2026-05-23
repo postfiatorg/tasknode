@@ -396,7 +396,7 @@ export function WalletView({
         message: "",
         fetchedAt: result.body.fetchedAt || new Date().toISOString(),
         scannedTransactions: Number(result.body.scannedTransactions || 0),
-        complete: result.body.complete !== false,
+        complete: result.body.sync?.archiveComplete === true,
       });
     } catch (error) {
       setTxFeed((current) => ({

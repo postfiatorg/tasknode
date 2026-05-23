@@ -25,7 +25,7 @@ recorded; most entries begin as `no`.
 | 1 | Task Lifecycle Replay | `docs/wiki/architecture/task-lifecycle.md` | `reviews/architecture-task-lifecycle.md` | `complete` | yes |
 | 1 | Task Async Engine | `docs/wiki/architecture/task-async-engine.md` | `reviews/architecture-task-async-engine.md` | `review_ready` | no |
 | 2 | Wallet | `docs/wiki/surfaces/wallet.md` | `reviews/surface-wallet.md` | `complete` | yes |
-| 2 | PFTL Transaction Cache | `docs/wiki/architecture/pftl-transaction-cache.md` | `reviews/architecture-pftl-transaction-cache.md` | `review_ready` | no |
+| 2 | PFTL Transaction Cache | `docs/wiki/architecture/pftl-transaction-cache.md` | `reviews/architecture-pftl-transaction-cache.md` | `complete` | yes |
 | 2 | PFTL Usage | `docs/wiki/architecture/pftl.md` | `reviews/architecture-pftl.md` | `review_ready` | no |
 | 2 | Database | `docs/wiki/architecture/database.md` | `reviews/architecture-database.md` | `review_ready` | no |
 | 2 | Context | `docs/wiki/surfaces/context.md` | `reviews/surface-context.md` | `complete` | yes |
