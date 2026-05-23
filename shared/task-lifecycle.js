@@ -177,6 +177,15 @@ export function taskIsReviewLoop(status = "") {
   return Boolean(taskStatusInfo(status).reviewLoop);
 }
 
+export function parseRewardPftAmount(value = "") {
+  const parsed = Number(String(value ?? "").trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function statusFromRewardAmount(rewardPft = "") {
+  return parseRewardPftAmount(rewardPft) > 0 ? TASK_STATUS.rewardDecided : TASK_STATUS.rewarded;
+}
+
 export function taskLifecycleActions(status = "") {
   const info = taskStatusInfo(status);
   const canSubmitInitialEvidence = Boolean(info.canSubmitInitialEvidence);

@@ -7,6 +7,7 @@ import {
   decryptTasknodeServicePayload,
   tasknodeServiceIdentityFromEnv,
 } from "./task-payloads.js";
+import { statusFromRewardAmount, taskIsTerminal } from "../shared/task-lifecycle.js";
 
 const TASK_POINTER_KINDS = ["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"];
 const TASK_PAYLOAD_SCHEMAS = new Set([
@@ -339,6 +340,48 @@ function recognizedTaskPayloadSchema(schema = "") {
   return TASK_PAYLOAD_SCHEMAS.has(normalizeText(schema));
 }
 
+function hydratedEventSortKey(event = {}) {
+  const pointer = safeJson(event.pointer);
+  const ledger = event.ledger_index ?? pointer.ledger_index;
+  return [
+    ledger == null ? 1 : 0,
+    Number(ledger || 0),
+    normalizeText(event.tx_hash),
+    Number(event.memo_index ?? pointer.memo_index ?? 0),
+  ];
+}
+
+function orderedUniqueHydratedEvents(hydratedEvents = []) {
+  const seen = new Set();
+  const sorted = [...hydratedEvents].sort((left, right) => {
+    const leftKey = hydratedEventSortKey(left);
+    const rightKey = hydratedEventSortKey(right);
+    for (let index = 0; index < leftKey.length; index += 1) {
+      if (leftKey[index] < rightKey[index]) return -1;
+      if (leftKey[index] > rightKey[index]) return 1;
+    }
+    return 0;
+  });
+  return sorted.filter((event) => {
+    const pointer = safeJson(event.pointer);
+    const dedupeKey = [
+      normalizeText(event.tx_hash),
+      Number(event.memo_index ?? pointer.memo_index ?? 0),
+      normalizeText(pointer.cid),
+    ].join(":");
+    if (seen.has(dedupeKey)) return false;
+    seen.add(dedupeKey);
+    return true;
+  });
+}
+
+function applyProjectionStatus(projection, nextStatus) {
+  const normalizedStatus = normalizeText(nextStatus);
+  if (!normalizedStatus) return;
+  if (taskIsTerminal(projection.status) && !taskIsTerminal(normalizedStatus)) return;
+  projection.status = normalizedStatus;
+}
+
 function reduceHydratedTaskEvents(hydratedEvents) {
   const projections = new Map();
   const offerPayloads = new Map();
@@ -360,7 +403,7 @@ function reduceHydratedTaskEvents(hydratedEvents) {
     return projections.get(taskId);
   }
 
-  for (const hydrated of hydratedEvents) {
+  for (const hydrated of orderedUniqueHydratedEvents(hydratedEvents)) {
     const payload = safeJson(hydrated.payload);
     const pointer = safeJson(hydrated.pointer);
     const schema = normalizeText(payload.schema);
@@ -378,31 +421,35 @@ function reduceHydratedTaskEvents(hydratedEvents) {
 
     if (schema === "pf.task.offer.v1") {
       offerPayloads.set(taskId, payload);
-      projection.status = "proposed";
+      applyProjectionStatus(projection, "proposed");
       projection.title = normalizeText(payload.title);
       projection.description = normalizeText(payload.description);
       projection.task_kind = normalizeText(payload.task_kind);
       projection.reward_offer_pft = normalizeText(payload.reward_offer?.amount_estimate_pft);
       projection.request_bundle_cid = normalizeText(payload.generation?.request_bundle_cid);
     } else if (schema === "pf.task.update.v1") {
-      projection.status = statusFromTaskUpdate(payload) || projection.status;
+      applyProjectionStatus(projection, statusFromTaskUpdate(payload));
     } else if (schema === "pf.task.submission.v1") {
-      projection.status = payload.phase === "verification_response"
-        ? "verification_response_submitted"
-        : "submitted";
+      applyProjectionStatus(
+        projection,
+        payload.phase === "verification_response" ? "verification_response_submitted" : "submitted"
+      );
     } else if (schema === "pf.task.verification_response.v1") {
-      projection.status = "verification_response_submitted";
+      applyProjectionStatus(projection, "verification_response_submitted");
     } else if (schema === "pf.task.reward_decision.v1") {
-      projection.status = "rewarded";
-      projection.reward_actual_pft = rewardAmountFromDecision(payload);
+      const rewardAmount = rewardAmountFromDecision(payload);
+      applyProjectionStatus(projection, statusFromRewardAmount(rewardAmount));
+      projection.reward_actual_pft = rewardAmount;
     } else if (schema === "pf.reward.v1") {
-      projection.status = "rewarded";
+      applyProjectionStatus(projection, "rewarded");
       projection.reward_actual_pft = normalizeText(payload.reward_pft);
     }
   }
 
   return { projections, offerPayloads };
 }
+
+export { reduceHydratedTaskEvents };
 
 function receiptForProjection({
   projection,
