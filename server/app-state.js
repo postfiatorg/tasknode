@@ -24,6 +24,7 @@ import {
   getContextHistory,
 } from "./repositories/context.js";
 import { listTaskState } from "./repositories/tasks.js";
+import { refreshLinkedWalletTaskProjection } from "./task-projection-refresh.js";
 
 function sessionState(session, providers, runtimeReadiness, linkedWallet) {
   const base = {
@@ -56,7 +57,7 @@ function sessionState(session, providers, runtimeReadiness, linkedWallet) {
   };
 }
 
-export async function appState(session = null) {
+export async function appState(session = null, { refreshTaskProjection = false } = {}) {
   const providers = authProviders();
   const runtimeReadiness = await readiness();
   const modes = chatModes();
@@ -74,6 +75,13 @@ export async function appState(session = null) {
     accountId,
     walletAddress: walletLinked ? linkedWallet.address : "",
   });
+  if (refreshTaskProjection && walletLinked) {
+    await refreshLinkedWalletTaskProjection({
+      accountId,
+      walletAddress: linkedWallet.address,
+      syncKind: "task_list_refresh",
+    });
+  }
   const tasks = await listTaskState({
     accountId,
     walletAddress: walletLinked ? linkedWallet.address : "",

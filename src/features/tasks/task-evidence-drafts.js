@@ -2,7 +2,7 @@ const evidenceMethodByStructuredType = {
   code: "code",
   file: "file",
   github_commit: "commit",
-  mixed: "text",
+  mixed: "mixed",
   screenshot: "screenshot",
   text: "text",
   url: "url",
@@ -26,13 +26,19 @@ export function createEvidenceDraft(method = "text") {
 }
 
 export function resetEvidenceDrafts(method = "text") {
+  if (method === "mixed") {
+    return [createEvidenceDraft("text"), createEvidenceDraft("screenshot")];
+  }
   return [createEvidenceDraft(method)];
 }
 
 export function addUserRequestedEvidenceDraft(current = [], method = "text") {
   const drafts = Array.isArray(current) && current.length > 0 ? current : resetEvidenceDrafts(method);
   if (drafts.length >= MAX_TASK_EVIDENCE_ITEMS) return drafts;
-  return [...drafts, createEvidenceDraft(method)];
+  const nextMethod = method === "mixed"
+    ? (drafts.some((draft) => draft.method === "screenshot") ? "text" : "screenshot")
+    : method;
+  return [...drafts, createEvidenceDraft(nextMethod)];
 }
 
 export function evidenceMethodFromContract(task = {}, verification = {}) {

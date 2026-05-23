@@ -403,7 +403,11 @@ async function claimSubmittedTasks({ limit = 1 } = {}) {
         SELECT *
         FROM task_projections
         WHERE status = 'submitted'
-          AND COALESCE(metadata_json->'workers'->'verification_request'->>'published', '') <> 'true'
+          AND (
+            COALESCE(metadata_json->'workers'->'verification_request'->>'published', '') <> 'true'
+            OR NULLIF(metadata_json->'workers'->'verification_request'->>'published_at', '')::timestamptz
+                 < now() - ($1::int * interval '1 second')
+          )
           AND (
             COALESCE(metadata_json->'workers'->'verification_request'->>'processing', '') <> 'true'
             OR NULLIF(metadata_json->'workers'->'verification_request'->>'claimed_at', '')::timestamptz
@@ -433,6 +437,7 @@ async function claimSubmittedTasks({ limit = 1 } = {}) {
           JSON.stringify({
             processing: "true",
             claimed_at: new Date().toISOString(),
+            published: "false",
           }),
         ]
       );
@@ -449,7 +454,11 @@ async function claimVerificationResponses({ limit = 1 } = {}) {
         SELECT *
         FROM task_projections
         WHERE status = 'verification_response_submitted'
-          AND COALESCE(metadata_json->'workers'->'reward_scoring'->>'published', '') <> 'true'
+          AND (
+            COALESCE(metadata_json->'workers'->'reward_scoring'->>'published', '') <> 'true'
+            OR NULLIF(metadata_json->'workers'->'reward_scoring'->>'published_at', '')::timestamptz
+                 < now() - ($1::int * interval '1 second')
+          )
           AND (
             COALESCE(metadata_json->'workers'->'reward_scoring'->>'processing', '') <> 'true'
             OR NULLIF(metadata_json->'workers'->'reward_scoring'->>'claimed_at', '')::timestamptz
@@ -479,6 +488,7 @@ async function claimVerificationResponses({ limit = 1 } = {}) {
           JSON.stringify({
             processing: "true",
             claimed_at: new Date().toISOString(),
+            published: "false",
           }),
         ]
       );
@@ -487,7 +497,7 @@ async function claimVerificationResponses({ limit = 1 } = {}) {
   });
 }
 
-async function clearWorkerClaim({ taskId, workerName, error = "" }) {
+async function clearWorkerClaim({ taskId, workerName, error = "", reclaimPublished = false }) {
   await query(
     `
       UPDATE task_projections
@@ -505,6 +515,7 @@ async function clearWorkerClaim({ taskId, workerName, error = "" }) {
       ["workers", workerName],
       JSON.stringify({
         processing: "false",
+        ...(reclaimPublished ? { published: "false" } : {}),
         last_error: safeText(error, 1000),
         updated_at: new Date().toISOString(),
       }),
@@ -537,6 +548,52 @@ async function markWorkerPublished({ taskId, workerName, published = {} }) {
       }),
     ]
   );
+}
+
+async function finalizeWorkerPublish({
+  taskId,
+  workerName,
+  published = {},
+  expectedStatuses = [],
+  accountId = "",
+  subjectWallet = "",
+  authorityWallet = "",
+  allocationWallet = "",
+  phase = "",
+  logger = console,
+}) {
+  await syncTaskWallets({
+    accountId,
+    subjectWallet,
+    authorityWallet,
+    allocationWallet,
+  });
+  const statusResult = await query(
+    "SELECT status FROM task_projections WHERE task_id = $1 LIMIT 1",
+    [taskId]
+  );
+  const status = safeText(statusResult.rows[0]?.status, 80).toLowerCase();
+  const expected = expectedStatuses.map((value) => safeText(value, 80).toLowerCase()).filter(Boolean);
+  if (expected.includes(status)) {
+    await markWorkerPublished({ taskId, workerName, published });
+    logger.info?.("task_worker_publish_confirmed", { taskId, workerName, phase, status });
+    return { ok: true, status };
+  }
+
+  await clearWorkerClaim({
+    taskId,
+    workerName,
+    error: `projection_status_${status || "unknown"}_expected_${expected.join("|") || "unknown"}`,
+    reclaimPublished: true,
+  });
+  logger.warn?.("task_worker_publish_projection_lag", {
+    taskId,
+    workerName,
+    phase,
+    status,
+    expectedStatuses: expected,
+  });
+  return { ok: false, status, expectedStatuses: expected };
 }
 
 async function processSubmittedTask(row, { logger = console } = {}) {
@@ -598,12 +655,18 @@ async function processSubmittedTask(row, { logger = console } = {}) {
     signerWallet: authorityWallet,
     tasknodeKey,
   });
-  await markWorkerPublished({
+  await finalizeWorkerPublish({
     taskId: row.task_id,
     workerName: "verification_request",
     published,
+    expectedStatuses: ["verification_requested"],
+    accountId: row.account_id,
+    subjectWallet: row.subject_wallet,
+    authorityWallet: authorityWallet.classicAddress,
+    phase: "verification_request",
+    logger,
   });
-  const sync = scheduleTaskWalletSync({
+  scheduleTaskWalletSync({
     accountId: row.account_id,
     subjectWallet: row.subject_wallet,
     authorityWallet: authorityWallet.classicAddress,
@@ -616,7 +679,7 @@ async function processSubmittedTask(row, { logger = console } = {}) {
     txHash: published.txHash,
     cid: published.cid,
   });
-  return { ok: true, taskId: row.task_id, published, sync };
+  return { ok: true, taskId: row.task_id, published };
 }
 
 function normalizeRewardScore(output = {}, offerPft = 0) {
@@ -733,15 +796,22 @@ async function processVerificationResponse(row, { logger = console } = {}) {
       amountDrops: pftToDrops(rewardPft),
     });
   }
-  await markWorkerPublished({
+  await finalizeWorkerPublish({
     taskId: row.task_id,
     workerName: "reward_scoring",
     published: {
       txHash: reward?.txHash || decision.txHash,
       cid: reward?.cid || decision.cid,
     },
+    expectedStatuses: ["reward_decided", "rewarded"],
+    accountId: row.account_id,
+    subjectWallet: row.subject_wallet,
+    authorityWallet: authorityWallet.classicAddress,
+    allocationWallet: rewardWallet.classicAddress,
+    phase: "reward_scoring",
+    logger,
   });
-  const sync = scheduleTaskWalletSync({
+  scheduleTaskWalletSync({
     accountId: row.account_id,
     subjectWallet: row.subject_wallet,
     authorityWallet: authorityWallet.classicAddress,
@@ -756,7 +826,7 @@ async function processVerificationResponse(row, { logger = console } = {}) {
     rewardTxHash: reward?.txHash || "",
     rewardPft: score.reward_pft,
   });
-  return { ok: true, taskId: row.task_id, decision, reward, sync };
+  return { ok: true, taskId: row.task_id, decision, reward };
 }
 
 export async function processTaskReviewQueueOnce({ limit = 1, logger = console } = {}) {

@@ -7,7 +7,7 @@ Review status: complete
 Code review complete: yes
 Owner: agent
 Last updated: 2026-05-23
-Branch: `review/tasks-evidence-reward` (Phase 1 pass; findings-only on `origin/main`)
+Branch: `review/tasks-forensics-submit-guards` (Phase 1 fixes implemented)
 
 ## Scope
 
@@ -150,13 +150,14 @@ Branch: `review/tasks-evidence-reward` (Phase 1 pass; findings-only on `origin/m
 
 ## Actionable fix bundles (recommended order)
 
-1. **`tasks-sync-on-poll`** — Surface `sync.status` in UI; optional bounded sync when `indexing_lag` (P1 #1).
-2. **`tasks-reducer-reward-decided`** — Map decision → `reward_decided`, payment → `rewarded` (P1 #2).
-3. **`tasks-worker-reclaim`** — Reclaim or defer `published` until projection catches up (P1 #3).
-4. **`tasks-forensics-gaps`** — Submitted-awaiting-review expectation + schema fix (P1 #4, P2 #6).
-5. **`tasks-submit-validate`** — Re-validate on submit phase (P2 #5).
+1. **`tasks-sync-on-poll`** — **Fixed** in `review/tasks-forensics-submit-guards`: Tasks UI banner for `indexing_lag` / `reducer_attention`; poll triggers bounded wallet sync + reducer via `GET /api/app-state?taskProjectionRefresh=1`.
+2. **`tasks-reducer-reward-decided`** — **Fixed**: `pf.task.reward_decision.v1` → `reward_decided`; `pf.reward.v1` → `rewarded`. Postgres reducer smoke updated.
+3. **`tasks-worker-reclaim`** — **Fixed**: `finalizeWorkerPublish` confirms projection before `published=true`; stale published reclaim in claim queries; claim resets `published` on reclaim.
+4. **`tasks-forensics-gaps`** — **Fixed**: submitted-awaiting-review expectation (prior commit) + schema-based verification meaning (`pf.task.verification_response.v1`); integrity strip in forensics panel.
+5. **`tasks-submit-validate`** — **Fixed** (prior commit): `validateSubmissionAllowed` on submit phase.
+6. **P2 mixed evidence** — **Fixed**: `mixed` contract type seeds text + screenshot dual drafts.
 
-No broad fixes implemented in this pass (findings-only per Phase 1 scope).
+All Phase 1 fix bundles implemented on branch `review/tasks-forensics-submit-guards`.
 
 ---
 
@@ -164,13 +165,14 @@ No broad fixes implemented in this pass (findings-only per Phase 1 scope).
 
 **Base:** `origin/main` (review read against main tree at 2026-05-23)
 
-**Commands run** (all exit 0; stdout not captured in review environment):
+**Commands run** (exit 0 on branch `review/tasks-forensics-submit-guards`):
 
 ```bash
-npm run task-lifecycle-smoke
-npm run task-evidence-drafts-smoke
-npm run task-copy-payload-smoke
-git diff --check origin/main...HEAD   # N/A — no product diff in findings-only pass
+npm run quality
+node scripts/task-event-expectation-smoke.mjs
+node scripts/task-lifecycle-smoke.mjs
+node scripts/task-evidence-drafts-smoke.mjs
+node scripts/task-copy-payload-smoke.mjs
 ```
 
 **Not verified this pass:**

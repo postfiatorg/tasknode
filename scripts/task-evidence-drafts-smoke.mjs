@@ -24,7 +24,11 @@ const capped = addUserRequestedEvidenceDraft(withSecond, "url");
 assert.equal(capped.length, MAX_TASK_EVIDENCE_ITEMS);
 assert.deepEqual(capped, withSecond);
 
-assert.equal(evidenceMethodFromContract({ submissionRequirement: { type: "mixed" } }), "text");
+assert.equal(evidenceMethodFromContract({ submissionRequirement: { type: "mixed" } }), "mixed");
+const mixedDrafts = resetEvidenceDrafts("mixed");
+assert.equal(mixedDrafts.length, 2);
+assert.equal(mixedDrafts[0].method, "text");
+assert.equal(mixedDrafts[1].method, "screenshot");
 assert.equal(evidenceMethodFromContract({ submissionRequirement: { type: "github_commit" } }), "commit");
 assert.equal(evidenceMethodFromContract({}, { policy: { verification_type: "screenshot" } }), "screenshot");
 

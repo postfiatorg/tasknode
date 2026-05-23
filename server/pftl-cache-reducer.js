@@ -393,7 +393,7 @@ function reduceHydratedTaskEvents(hydratedEvents) {
     } else if (schema === "pf.task.verification_response.v1") {
       projection.status = "verification_response_submitted";
     } else if (schema === "pf.task.reward_decision.v1") {
-      projection.status = "rewarded";
+      projection.status = "reward_decided";
       projection.reward_actual_pft = rewardAmountFromDecision(payload);
     } else if (schema === "pf.reward.v1") {
       projection.status = "rewarded";

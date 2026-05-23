@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { taskEventExpectation } from "../server/task-event-meaning.js";
+import { taskEventExpectation, taskEventMeaning } from "../server/task-event-meaning.js";
 
 const submittedAwaitingReview = taskEventExpectation({
   status: "submitted",
@@ -35,5 +35,14 @@ const verificationResponseAwaitingReview = taskEventExpectation({
   ],
 });
 assert.equal(verificationResponseAwaitingReview?.label, "Awaiting Task Node review");
+
+assert.equal(
+  taskEventMeaning("pf.task.verification_response.v1", {}),
+  "The user responded to the verification request."
+);
+assert.equal(
+  taskEventMeaning("pf.task.submission.v1", { phase: "verification_response" }),
+  "The user submitted initial task evidence."
+);
 
 console.log("task event expectation smoke ok");

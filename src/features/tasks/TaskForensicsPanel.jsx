@@ -134,6 +134,28 @@ function ProofAnchors({ copiedValue, forensics, onCopy, timeline }) {
   );
 }
 
+function TaskForensicsIntegrityNotice({ integrity = {} }) {
+  if (!integrity.projectionBehindCachedPointer) return null;
+  const latest = integrity.latestCachedPointer || {};
+  const projection = integrity.projectionLastEvent || {};
+  return (
+    <div className="task-forensics-notice is-amber">
+      <strong>Projection behind chain pointer</strong>
+      <p>
+        The indexed projection has not caught up to the newest cached PFTL pointer yet.
+        {latest.txHash || latest.cid ? " The chain cache already has a newer proof anchor than the forensics timeline shows." : ""}
+        {projection.status ? ` Current projection status: ${projection.status}.` : ""}
+      </p>
+      {(latest.txHash || latest.cid) && (
+        <div className="task-missing-schemas">
+          {latest.txHash && <code>{latest.txHash}</code>}
+          {latest.cid && <code>{latest.cid}</code>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TaskForensicsNotice({ state }) {
   const missingSchemas = Array.isArray(state?.missingSchemas) ? state.missingSchemas : [];
   return (
@@ -338,6 +360,7 @@ export function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy
     <div className="task-forensics-panel">
       <Lifecycle timeline={timeline} />
       <ProofAnchors copiedValue={copiedValue} forensics={forensics} onCopy={onCopy} timeline={timeline} />
+      <TaskForensicsIntegrityNotice integrity={integrity} />
       {forensics.reviewState && <TaskForensicsNotice state={forensics.reviewState} />}
       <div className="task-forensics-note">
         <strong>How to read this</strong>

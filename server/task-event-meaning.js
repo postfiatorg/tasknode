@@ -40,9 +40,7 @@ export function taskEventMeaning(schema = "", payload = {}) {
     }[transition] || `The task state changed${transition ? ` to ${humanize(transition)}` : ""}.`;
   }
   if (normalized === "pf.task.submission.v1") {
-    return payload?.phase === "verification_response"
-      ? "The user submitted verification evidence."
-      : "The user submitted initial task evidence.";
+    return "The user submitted initial task evidence.";
   }
   if (normalized === "pf.task.verification_response.v1") {
     return "The user responded to the verification request.";
