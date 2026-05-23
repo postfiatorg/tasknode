@@ -323,7 +323,7 @@ try {
     [taskId]
   );
   assert.equal(projectionRows.rows.length, 1);
-  assert.equal(projectionRows.rows[0].status, "reward_decided");
+  assert.equal(projectionRows.rows[0].status, "rewarded");
   assert.equal(projectionRows.rows[0].title, "Reducer smoke projected task");
   assert.equal(projectionRows.rows[0].reward_offer_pft, "12.500000");
   assert.equal(projectionRows.rows[0].reward_actual_pft, "0.000000");

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   TASK_STATUS,
   TASK_TABS,
+  statusFromRewardAmount,
   taskLifecycleActions,
   taskRefreshMetadata,
   taskRequiresRefresh,
@@ -16,6 +17,8 @@ assert.equal(taskLifecycleActions(TASK_STATUS.proposed).canRefuse, true);
 assert.equal(taskLifecycleActions(TASK_STATUS.proposed).canStop, true);
 assert.equal(taskLifecycleActions(TASK_STATUS.proposed).stopAction, "refuse");
 assert.equal(taskLifecycleActions(TASK_STATUS.proposed).stopLabel, "Refuse task");
+assert.equal(statusFromRewardAmount("2.50"), TASK_STATUS.rewardDecided);
+assert.equal(statusFromRewardAmount("0"), TASK_STATUS.rewarded);
 
 const activeReview = taskRefreshMetadata({
   tasks: [
@@ -28,6 +31,12 @@ const activeReview = taskRefreshMetadata({
 assert.equal(activeReview.requiresRefresh, true);
 assert.equal(activeReview.refreshReason, "task_review_active");
 assert.deepEqual(activeReview.refreshTaskIds, ["task_review_loop"]);
+
+const rewardDecidedLoop = taskRefreshMetadata({
+  tasks: [{ taskId: "task_reward_decided", statusKey: TASK_STATUS.rewardDecided }],
+});
+assert.equal(rewardDecidedLoop.requiresRefresh, true);
+assert.deepEqual(rewardDecidedLoop.refreshTaskIds, ["task_reward_decided"]);
 
 const terminalReward = taskRefreshMetadata({
   tasks: [

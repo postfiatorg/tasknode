@@ -19,6 +19,14 @@ def event_sort_key(event: dict[str, Any]) -> tuple:
     )
 
 
+def status_from_reward_amount(reward_pft: str) -> str:
+    try:
+        amount = float(str(reward_pft or "0").strip())
+    except ValueError:
+        amount = 0.0
+    return "reward_decided" if amount > 0 else "rewarded"
+
+
 @dataclass
 class ReplayEvent:
     pointer: dict[str, Any]
@@ -121,9 +129,10 @@ def reduce_task_events(events: list[ReplayEvent]) -> dict[str, TaskProjection]:
         elif schema == "pf.task.verification_response.v1":
             projection.status = "verification_response_submitted"
         elif schema == "pf.task.reward_decision.v1":
-            projection.status = "rewarded"
             score = payload.get("score") or {}
-            projection.reward_actual_pft = str(score.get("reward_pft") or payload.get("reward_pft") or "0")
+            reward_pft = str(score.get("reward_pft") or payload.get("reward_pft") or "0")
+            projection.status = status_from_reward_amount(reward_pft)
+            projection.reward_actual_pft = reward_pft
         elif schema == "pf.reward.v1":
             projection.status = "rewarded"
             projection.reward_actual_pft = str(payload.get("reward_pft") or "")

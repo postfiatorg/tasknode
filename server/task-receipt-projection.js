@@ -1,4 +1,4 @@
-const terminalRewardSchemas = new Set(["pf.task.reward_decision.v1", "pf.reward.v1"]);
+import { statusFromRewardAmount } from "../shared/task-lifecycle.js";
 
 function cleanText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -34,15 +34,19 @@ export function canonicalReceiptProjection({ projection = {}, hydratedEvents = [
     ...projectedEvents.map(eventSchema),
     ...hydratedEvents.map(eventSchema),
   ].filter(Boolean));
-  const hasTerminalRewardDecision = [...schemas].some((schema) => terminalRewardSchemas.has(schema));
-  const status = hasTerminalRewardDecision
-    ? "rewarded"
-    : cleanText(projection.status || "unknown", 80);
+  const hasRewardPayment = schemas.has("pf.reward.v1");
+  const hasRewardDecision = schemas.has("pf.task.reward_decision.v1");
   const rewardActualPft = cleanText(projection.reward_actual_pft, 80) ||
     rewardFromHydratedEvents(hydratedEvents) ||
-    (status === "rewarded" ? "0" : "");
+    "";
+  let status = cleanText(projection.status || "unknown", 80);
+  if (hasRewardPayment) {
+    status = "rewarded";
+  } else if (hasRewardDecision) {
+    status = statusFromRewardAmount(rewardActualPft);
+  }
   return {
     status,
-    rewardActualPft,
+    rewardActualPft: rewardActualPft || (status === "rewarded" ? "0" : ""),
   };
 }

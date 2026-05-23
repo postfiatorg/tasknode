@@ -22,7 +22,7 @@ recorded; most entries begin as `no`.
 | 1 | AI Providers | `docs/wiki/architecture/ai-providers.md` | `reviews/architecture-ai-providers.md` | `complete` | yes |
 | 1 | Tasks | `docs/wiki/surfaces/tasks.md` | `reviews/surface-tasks.md` | `complete` | yes |
 | 1 | Memory | `docs/wiki/surfaces/memory.md` | `reviews/surface-memory.md` | `complete` | yes |
-| 1 | Task Lifecycle Replay | `docs/wiki/architecture/task-lifecycle.md` | `reviews/architecture-task-lifecycle.md` | `review_ready` | no |
+| 1 | Task Lifecycle Replay | `docs/wiki/architecture/task-lifecycle.md` | `reviews/architecture-task-lifecycle.md` | `complete` | yes |
 | 1 | Task Async Engine | `docs/wiki/architecture/task-async-engine.md` | `reviews/architecture-task-async-engine.md` | `review_ready` | no |
 | 2 | Wallet | `docs/wiki/surfaces/wallet.md` | `reviews/surface-wallet.md` | `complete` | yes |
 | 2 | PFTL Transaction Cache | `docs/wiki/architecture/pftl-transaction-cache.md` | `reviews/architecture-pftl-transaction-cache.md` | `review_ready` | no |
