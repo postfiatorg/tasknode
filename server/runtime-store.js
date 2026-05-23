@@ -1720,10 +1720,6 @@ export function consumeWalletChallenge({ accountId = "", challengeId = "", purpo
   if (!challenge) {
     return { ok: false, status: 400, error: "wallet_challenge_invalid" };
   }
-
-  delete state.walletChallenges[id];
-  saveState();
-
   const allowedPurposes = Array.isArray(purpose) ? purpose : [purpose];
   if (challenge.accountId !== normalizedAccountId || !allowedPurposes.includes(challenge.purpose)) {
     return { ok: false, status: 400, error: "wallet_challenge_mismatch" };
@@ -1732,6 +1728,9 @@ export function consumeWalletChallenge({ accountId = "", challengeId = "", purpo
   if ((Date.parse(challenge.expiresAt || "") || 0) <= Date.now()) {
     return { ok: false, status: 400, error: "wallet_challenge_expired" };
   }
+
+  delete state.walletChallenges[id];
+  saveState();
 
   return { ok: true, challenge };
 }
@@ -1913,6 +1912,7 @@ export function getLinkedWallet({ accountId = "" } = {}) {
     status: wallet.status || "linked",
     address: wallet.address,
     publicKey: wallet.publicKey,
+    proofPurpose: wallet.proof?.purpose || null,
     custody: wallet.custody || "local_seed_required",
     linkedAt: wallet.linkedAt,
     updatedAt: wallet.updatedAt,

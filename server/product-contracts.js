@@ -1440,6 +1440,19 @@ export function walletCreateStart(method, session = null) {
 
 async function claimWalletCreateInitiationGift({ accountId = "", walletAddress = "" } = {}) {
   const eligibility = walletInitiationGrantStatus({ accountId, walletAddress });
+  const linkedWallet = getLinkedWallet({ accountId });
+  if (linkedWallet.proofPurpose !== "wallet_create") {
+    return {
+      ok: false,
+      status: "not_eligible",
+      reason: "wallet_create_proof_required",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: "The wallet initiation gift is only available for wallets created in this account, not linked or relinked wallets.",
+      grant: eligibility.grant || null,
+    };
+  }
+
   if (!eligibility.eligible) {
     return {
       ok: false,

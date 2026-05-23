@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   evaluateTaskRequestUnlockPolicy,
+  evaluateTaskSigningUnlockPolicy,
   TASK_REQUEST_UNLOCK_STATES,
 } from "../src/features/tasks/task-request-unlock-policy.js";
 
@@ -57,5 +58,22 @@ assert.equal(missingVault.state, TASK_REQUEST_UNLOCK_STATES.NEEDS_LOCAL_VAULT);
 assert.equal(missingVault.allowed, false);
 assert.equal(missingVault.action, "open_wallet");
 
+const signingLocked = evaluateTaskSigningUnlockPolicy({
+  accountId,
+  linkedWalletAddress: wallet,
+  walletVault: { available: true, address: wallet, unlocked: false },
+  walletSecret: null,
+});
+assert.equal(signingLocked.state, TASK_REQUEST_UNLOCK_STATES.LOCKED);
+assert.match(signingLocked.message, /signing/i);
+
+const signingUnlocked = evaluateTaskSigningUnlockPolicy({
+  accountId,
+  linkedWalletAddress: wallet,
+  walletVault: { available: true, address: wallet, unlocked: true },
+  walletSecret: { accountId, address: wallet, mnemonic },
+});
+assert.equal(signingUnlocked.allowed, true);
+
 console.log("task request unlock policy smoke ok");
-console.log(JSON.stringify({ locked, unlockPending, unlocked, invalidUnlock, missingVault }, null, 2));
+console.log(JSON.stringify({ locked, unlockPending, unlocked, invalidUnlock, missingVault, signingLocked, signingUnlocked }, null, 2));
