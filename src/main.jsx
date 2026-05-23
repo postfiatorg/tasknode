@@ -688,9 +688,9 @@ function App() {
     };
   }, [signedIn, walletAccountId]);
 
-  async function refreshAppState() {
+  async function refreshAppState({ taskProjectionRefresh = false } = {}) {
     try {
-      const state = await fetchAppState();
+      const state = await fetchAppState({ taskProjectionRefresh });
       setAppState((current) => mergeAppStateWithClientWalletBalance(current, state));
       const nextAccountId = isSignedInSession(state?.session) ? state.session.accountId || "" : "";
       await refreshWalletVaultStatus({ preserveUnlock: true, accountId: nextAccountId });
@@ -2555,7 +2555,9 @@ function TasksView({
   const requests = taskRequestArray(tasks);
   const activeRequests = activeTaskRequests(requests);
   const taskSync = tasks?.sync || {};
+  const taskSyncStatus = String(taskSync.status || "ready");
   const shouldRefreshTaskState = Boolean(taskSync.requiresRefresh || activeRequests.length || needsLegacyTaskRefresh(tasks));
+  const shouldRefreshTaskProjection = taskSyncStatus === "indexing_lag" || taskSyncStatus === "reducer_attention";
   const taskRefreshMs = Math.min(Math.max(Number(taskSync.nextPollMs || 2500), 1000), 30000);
   const currentTabTasks = {
     outstanding,
@@ -2583,10 +2585,21 @@ function TasksView({
   useEffect(() => {
     if (!shouldRefreshTaskState || typeof onRequestSettled !== "function") return undefined;
     const refresh = window.setInterval(() => {
-      Promise.resolve(onRequestSettled()).catch(() => null);
+      Promise.resolve(onRequestSettled({ taskProjectionRefresh: shouldRefreshTaskProjection })).catch(() => null);
     }, taskRefreshMs);
     return () => window.clearInterval(refresh);
-  }, [onRequestSettled, shouldRefreshTaskState, taskRefreshMs]);
+  }, [onRequestSettled, shouldRefreshTaskProjection, shouldRefreshTaskState, taskRefreshMs]);
+
+  const taskSyncNotice = {
+    indexing_lag: {
+      label: "Chain indexing in progress",
+      body: `Task Node has newer on-chain pointers than the list projection has consumed${taskSync.indexingLagCount ? ` (${taskSync.indexingLagCount} task${taskSync.indexingLagCount === 1 ? "" : "s"})` : ""}. Tabs refresh automatically while sync catches up.`,
+    },
+    reducer_attention: {
+      label: "Projection reducer needs attention",
+      body: `Some task pointers failed to reduce${taskSync.failedReducerCount ? ` (${taskSync.failedReducerCount} failed)` : ""}. The list may lag until reducer work succeeds.`,
+    },
+  }[taskSyncStatus];
 
   const emptyCopy = {
     outstanding: {
@@ -2642,6 +2655,13 @@ function TasksView({
         </div>
 
         <TaskRequestQueue requests={activeRequests} />
+
+        {taskSyncNotice && (
+          <div className="tasks-sync-notice" role="status">
+            <strong>{taskSyncNotice.label}</strong>
+            <p>{taskSyncNotice.body}</p>
+          </div>
+        )}
 
         <div className="tab-row tasks-copy-tabs">
           {tabs.map((tab) => {

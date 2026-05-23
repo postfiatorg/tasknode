@@ -405,7 +405,10 @@ async function routeApi(req, url, res) {
   const session = currentSession(req);
   let statePromise = null;
   const getState = () => {
-    if (!statePromise) statePromise = appState(session);
+    if (!statePromise) {
+      const refreshTaskProjection = url.searchParams.get("taskProjectionRefresh") === "1";
+      statePromise = appState(session, { refreshTaskProjection });
+    }
     return statePromise;
   };
   const parts = url.pathname.split("/").filter(Boolean);

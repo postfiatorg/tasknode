@@ -1,4 +1,5 @@
 import { getTaskDetail, listTaskState } from "./repositories/tasks.js";
+import { refreshLinkedWalletTaskProjection } from "./task-projection-refresh.js";
 import { listTaskRequests } from "./repositories/task-requests.js";
 import { conversationIdForSession } from "./runtime-store.js";
 import { taskLifecycleAction } from "./task-actions.js";
@@ -8,9 +9,17 @@ import { taskSubmissionAction } from "./task-submission.js";
 export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
   if (url.pathname === "/api/tasks") {
     const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
+    const walletAddress = linkedWallet.status === "linked" ? linkedWallet.address || "" : "";
+    if (url.searchParams.get("refreshProjection") === "1" && walletAddress) {
+      await refreshLinkedWalletTaskProjection({
+        accountId: session?.accountId || "",
+        walletAddress,
+        syncKind: "task_list_refresh",
+      });
+    }
     json(res, 200, await listTaskState({
       accountId: session?.accountId || "",
-      walletAddress: linkedWallet.status === "linked" ? linkedWallet.address || "" : "",
+      walletAddress,
     }));
     return true;
   }

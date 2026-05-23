@@ -2328,6 +2328,27 @@ h1 {
   padding-top: 48px;
 }
 
+.tasks-sync-notice {
+  margin: 0 0 24px;
+  padding: 14px 16px;
+  border: 1px solid #d9c27a;
+  border-radius: 12px;
+  background: #fff9ea;
+  color: #5b4a1f;
+}
+
+.tasks-sync-notice strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.tasks-sync-notice p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .tasks-copy-header {
   display: flex;
   align-items: flex-start;

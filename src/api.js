@@ -91,6 +91,7 @@ export function fetchRuntimeConfig() {
   return fetchJson("/runtime-config.json");
 }
 
-export function fetchAppState() {
-  return fetchJson("/api/app-state");
+export function fetchAppState({ taskProjectionRefresh = false } = {}) {
+  const query = taskProjectionRefresh ? "?taskProjectionRefresh=1" : "";
+  return fetchJson(`/api/app-state${query}`);
 }
