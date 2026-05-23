@@ -39,6 +39,177 @@ Planned ownership model:
 
 The default v1 posture is conservative. Most ticks should do nothing unless there is stale state, new validated input, a blocked project, pending evidence, or a clear task allocation opportunity.
 
+## Production Architecture Plan
+
+The current `npm run board-manager:loop -- --execute` path is a local development harness. It is useful for proving decisions and action hooks, but it is not the production architecture. Production should not depend on tmux, an SSH session, a manually watched shell, or every web instance running the manager.
+
+The production target is a Fly-managed worker process with a Postgres lease and durable job queue.
+
+Process split:
+
+- `web`: serves the API and app. It may enqueue Board Manager jobs, but it must not run the Board Manager loop.
+- `worker`: runs ordinary app workers such as task generation, task review, PFTL cache sync, Hive Secretary, and network-task generation.
+- `board-manager`: runs only the Board Manager scheduler/executor. It can be scaled for failover, but only one process per scope may hold the lease and act.
+
+The app should gate worker startup by explicit process role. A web instance should not accidentally start board-manager work because `server/index.js` imported a worker module. The intended shape is either separate entrypoints such as `server/start-web.js`, `server/start-worker.js`, and `server/start-board-manager.js`, or a single entrypoint with strict `TASKNODE_PROCESS_ROLE` checks.
+
+Fly deployment target:
+
+- define Fly process groups for `web`, `worker`, and `board-manager`;
+- set `TASKNODE_BOARD_MANAGER_ENABLED=true` only on the `board-manager` process;
+- run one `board-manager` machine by default;
+- allow a second standby machine later, relying on the Postgres lease to prevent duplicate actions;
+- keep Codex credentials and provider keys in Fly secrets, not in Postgres;
+- write all decisions, action results, and summaries to Postgres so the Hive UI remains the audit surface.
+
+## Production Scheduler
+
+The Board Manager needs durable trigger records, not a shell sleep loop.
+
+Planned tables:
+
+- `board_manager_scopes`: enabled scopes such as `global_hive`, cadence, pause flag, max actions per hour, and next due timestamp.
+- `board_manager_jobs`: durable trigger queue with `scope`, `trigger`, `reason`, `idempotency_key`, `run_after`, `attempt_count`, `claimed_at`, `completed_at`, and `failed_at`.
+- `board_manager_leases`: existing lease table, hardened with heartbeat and owner instance tracking.
+- `board_manager_runs`: existing run table, retained as the durable decision log.
+- `board_manager_action_results`: existing action-result table, retained as the durable mutation/audit log.
+
+Job sources:
+
+- periodic scope tick;
+- new validated Hive Input;
+- stale Hive Secretary report;
+- stale or missing project product document;
+- project has unresolved status or no next action;
+- pending Network Task allocation window;
+- pending evidence/review work that the Board Manager is allowed to inspect;
+- manual operator trigger.
+
+Every job should carry an idempotency key. Repeated triggers for the same state change should coalesce instead of generating duplicate runs.
+
+Worker loop:
+
+1. poll for due `board_manager_jobs`;
+2. claim one job with an atomic Postgres transaction;
+3. claim the scope lease or defer the job if another manager owns it;
+4. build the source packet;
+5. resume the persistent Codex session for the scope;
+6. validate the selected action against `schemas/board-manager-action.schema.json`;
+7. execute at most one supported action hook;
+8. write `board_manager_runs`, `board_manager_action_results`, and the micro summary;
+9. schedule the next tick from scope cadence and action outcome;
+10. release or heartbeat the lease.
+
+Backoff rules:
+
+- `do_nothing`: schedule the next periodic tick using the normal scope cadence, not an aggressive tight loop.
+- mutation succeeded: schedule a shorter follow-up check so the manager can observe the resulting state.
+- recoverable failure: retry with exponential backoff and a bounded attempt count.
+- validation failure: record the run as rejected, do not execute an action, and enqueue an operator-visible failure.
+- stuck lease: a later worker may claim only after `expires_at` passes.
+
+## Scaling Model
+
+V1 should be logically single-threaded with one scope: `global_hive`.
+
+The design should still allow production failover:
+
+- multiple Fly machines can run the `board-manager` process;
+- only the machine holding the lease for `global_hive` can execute;
+- all other machines remain idle or process other scopes later;
+- action hooks must be idempotent so a retry cannot duplicate a user message, project, or Network Task.
+
+Later scaling can add project-scoped managers:
+
+- `global_hive` keeps network-level context and decides which project scopes need work;
+- `project:<project_id>` scopes refresh project documents, contributor assignments, and Network Task allocations for one project;
+- each scope has its own lease, session, cadence, and rate limits.
+
+Do not add project-scoped managers until the single `global_hive` manager is stable in production.
+
+## Session And Context Control
+
+The Board Manager should remain agentic. It should not start from scratch every tick, but it also cannot grow the session forever.
+
+Rules:
+
+- `board_manager_sessions` stores the current Codex session id for each scope.
+- Each run resumes the session unless an operator deliberately rotates it.
+- Each run includes compact Board Manager micro summaries rather than full prior source packets.
+- If the source packet or Codex session becomes too large, the manager writes a checkpoint summary and starts a fresh session linked to the prior session id.
+- The packet must continue to include the compact Network Task content snapshot, project documents, Hive Secretary summary, recent validated Hive Inputs, eligible contributor profiles, and recent Board Manager summaries.
+- Raw private user data should stay out of the packet unless the selected action requires it and the user has provided it through a validated Hive path.
+
+## Operator Controls
+
+The production system needs explicit controls so the manager is observable and stoppable without SSHing into tmux.
+
+Required controls:
+
+- pause or resume a scope;
+- enqueue a manual dry-run;
+- enqueue a manual execute run;
+- inspect current lease owner, heartbeat, and expiry;
+- inspect queued/running/failed jobs;
+- force-expire a stale lease after confirming no worker is alive;
+- view last successful run, last failed run, and last selected action;
+- view recent micro summaries in the Hive Mind Agent feed.
+
+These controls can start as scripts and read-only API endpoints. They should later become a small internal operator page.
+
+## Observability
+
+Every production run needs enough data for a human to answer what happened.
+
+Log fields:
+
+- `scope`
+- `job_id`
+- `run_id`
+- `lease_id`
+- `session_id`
+- `trigger`
+- `source_packet_digest`
+- `selected_action`
+- `target_type`
+- `target_id`
+- `execution_status`
+
+UI/audit fields:
+
+- selected action;
+- plain-English decision reason;
+- action result;
+- whether the action mutated state;
+- next planned check;
+- error summary if validation or execution failed.
+
+The Hive Mind Agent tab is the product-facing audit surface. It should show `do_nothing` decisions with reasons, not hide them as absence of activity.
+
+## Implementation Burndown
+
+1. Add process-role gates so web/API instances cannot run the Board Manager loop.
+2. Add durable `board_manager_scopes` and `board_manager_jobs` tables.
+3. Convert `scripts/board-manager-loop.mjs` into a production-safe worker entrypoint, for example `scripts/board-manager-worker.mjs`.
+4. Make the worker claim jobs and leases through Postgres transactions.
+5. Add idempotency keys for `message_user`, `create_project`, `archive_project`, `assign_contributor`, `refresh_project_document`, and `initiate_network_task`.
+6. Add smoke tests for two workers racing on the same job and proving only one action executes.
+7. Add a packet-size smoke that reports the byte size of each source-packet section before each run.
+8. Add operator scripts for pause, resume, enqueue, lease inspect, and stale lease recovery.
+9. Update Fly process configuration for `web`, `worker`, and `board-manager`.
+10. Run local Docker with two board-manager workers and confirm lease exclusion.
+11. Deploy to Fly with one `board-manager` process and confirm a manual trigger writes exactly one run.
+12. Enable periodic production cadence only after manual trigger, failover, and idempotency tests pass.
+
+Done means:
+
+- no tmux or manual shell is required for production Board Manager operation;
+- web instances do not run Board Manager work;
+- a crashed manager recovers through lease expiry and durable jobs;
+- duplicate Fly machines cannot duplicate actions;
+- every action and `do_nothing` decision is auditable in Postgres and visible through the Hive Mind Agent feed;
+- Network Task lifecycle state still comes from PFTL/task projections, not from the Board Manager.
+
 ## V0 Codex Exec Harness
 
 Implemented v0 pieces:
@@ -59,7 +230,7 @@ Implemented v0 pieces:
 - `npm run board-manager:codex -- --trigger <name> --execute` runs one Board Manager decision and executes supported action hooks.
 - `npm run board-manager:codex -- --trigger <name> --fresh-session` starts a new persistent Codex session for the scope.
 - `npm run board-manager:codex -- --packet-only` prints the source packet without calling Codex.
-- `npm run board-manager:loop -- --execute` runs the continuous local Board Manager loop.
+- `npm run board-manager:loop -- --execute` runs the continuous local Board Manager loop for development.
 
 The default remains dry-run for app mutations. It is not ephemeral. The Codex conversation persists, and execution of app hooks still requires the explicit `--execute` flag.
 
@@ -67,7 +238,7 @@ At the end of each recorded run, the app now writes a small Board Manager Run Su
 
 The source packet still preserves enough run history for continuity, but it passes recent Board Manager runs as micro summaries. This prevents a persistent Codex session from accumulating full prior source packets and large project-document decisions until it hits the model context window.
 
-The continuous loop is implemented by `scripts/board-manager-loop.mjs`. It repeatedly invokes the one-shot Codex executor instead of duplicating Board Manager logic. Each tick still claims the normal lease, resumes the stored Codex session, records a run row, writes the micro summary, and executes only supported action hooks. If the selected action is `do_nothing`, the loop waits two minutes by default before the next tick. If the selected action mutates the board, it waits only the shorter action delay so the manager can observe the resulting state.
+The local continuous loop is implemented by `scripts/board-manager-loop.mjs`. It repeatedly invokes the one-shot Codex executor instead of duplicating Board Manager logic. Each tick still claims the normal lease, resumes the stored Codex session, records a run row, writes the micro summary, and executes only supported action hooks. If the selected action is `do_nothing`, the loop waits two minutes by default before the next tick. If the selected action mutates the board, it waits only the shorter action delay so the manager can observe the resulting state. This local harness is not the Fly production architecture; production should use the durable scheduler and process split described above.
 
 The Board Manager does not manage task lifecycle status. It may decide that a project should route work to a contributor, but after the task offer exists, status comes from signed PFTL task events and the `task_projections` read model. Hive project task refs and allocation rows mirror that projection for display and routing load; they are not a second source of truth.
 

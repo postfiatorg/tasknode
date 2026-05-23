@@ -47,7 +47,9 @@ The Board Manager is the planned system operator for Hive. It is a Codex Exec fu
 
 V0 exists as a persistent Codex Exec harness. It builds the current Hive source packet, calls Codex Exec using `gpt-5.5` with `xhigh` reasoning, validates the returned action against a JSON schema, and records the decision in `board_manager_runs` when Postgres is enabled. It stores one Codex session id per manager scope in `board_manager_sessions`; later ticks call `codex exec resume <session_id>` instead of starting over. It defaults to dry-run for app mutations, and executes supported action hooks only when the executor is run with `--execute`.
 
-The local continuous runner is `npm run board-manager:loop -- --execute`. It calls the same one-shot Board Manager executor repeatedly. If the manager selects `do_nothing`, the loop sleeps for two minutes before the next tick. If the manager changes the board, it waits only the shorter action delay and then rechecks the resulting Hive state. The loop is a foreground process or an explicit operator-started shell/tmux process; it is not a cron.
+The local continuous runner is `npm run board-manager:loop -- --execute`. It calls the same one-shot Board Manager executor repeatedly. If the manager selects `do_nothing`, the loop sleeps for two minutes before the next tick. If the manager changes the board, it waits only the shorter action delay and then rechecks the resulting Hive state. This is a development harness, not the production deployment model.
+
+The production target is a Fly-managed `board-manager` process group with a Postgres-backed job queue and lease. Web/API instances enqueue Board Manager jobs but do not run the loop. A dedicated Board Manager worker claims one due job, claims the scope lease, resumes the persistent Codex session, executes at most one validated action, writes the run/action/micro-summary audit rows, and schedules the next tick. Multiple Fly machines can exist for failover, but only the lease holder can act. The full migration plan is in `Plans -> Board Manager`.
 
 Allowed actions include:
 
@@ -210,6 +212,7 @@ Deprecated target:
 - Do not keep adding independent cron-like workers for every Hive behavior.
 - Do not let each Fly instance run a Board Manager loop.
 - Do not let Active Projects, Product Documents, task assignment, and review each become separate overactive schedulers.
+- Do not rely on tmux, SSH sessions, or manually watched shells for production Board Manager execution.
 
 Board Manager target:
 
@@ -218,6 +221,7 @@ Board Manager target:
 - Existing workers are called only as action handlers.
 - Product Documents refresh when the manager decides a project is stale or materially changed.
 - If a Product Document identifies missing information, the manager can research, ask follow-up questions, or initiate information-gathering Network Tasks under the existing project.
+- Production runs come from a durable Fly worker process with `board_manager_jobs`, `board_manager_leases`, and auditable `board_manager_runs`, not from local tmux.
 - In local Docker, `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true` is enabled. The worker consumes `network_task_generation_jobs`, creates normal encrypted task request bundles, and schedules the existing task-generation worker. A May 23, 2026 local Docker test produced task `task_01af1624fcb74e41d902ca32b126f27d` for project `task_node` with offer transaction `E6C86781C0D53A68F2E7740AA8751E19616B9732489D9EA8C4330A692AC1A931`.
 - Outside local Docker, a live PFTL network-task offer still requires the network worker, task-generation worker, service encryption key, IPFS, and PFTL submit credentials to be enabled.
 
