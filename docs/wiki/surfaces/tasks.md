@@ -134,7 +134,7 @@ After submission, the server does a best-effort wallet sync and reducer pass so 
 
 The Submit tab has one primary button when the current task state accepts evidence: `Submit evidence`. If the task is already `Submitted`, `Awaiting review`, `Rewarded`, or otherwise closed to evidence, the Submit tab shows a read-only state card instead of the evidence form. This prevents the user from seeing an old task prompt while the authority is reviewing an indexed submission.
 
-A user can include one or two artifacts in the same signed packet, which covers common verification asks such as text plus screenshot or code plus terminal output. The second artifact is opt-in through `Add second evidence`; the button stays disabled until Evidence 1 has content, and the second draft starts as a blank text artifact. New tasks and new submission phases start with one empty artifact so stale draft fields do not carry from initial submission into verification response.
+A user can include one or two artifacts in the same signed packet, which covers common verification asks such as text plus screenshot or code plus terminal output. The second artifact is opt-in through `Add second evidence`; clicking it immediately adds a second draft without requiring Evidence 1 to be filled first. Mixed evidence tasks start with one text draft, and the second draft defaults to screenshot so the user can intentionally build a text-plus-screenshot packet. New tasks and new submission phases start with one empty artifact so stale draft fields do not carry from initial submission into verification response.
 
 Screenshot and file uploads use a Task Node styled picker, not the native browser `Choose File` control. The browser route is:
 
@@ -306,7 +306,7 @@ When a task is proposed or accepted, the overview shows the original task offer:
 
 When a task enters `verification_requested`, the detail view uses the compact verification layout from `mocks/verify.jsx`. The overview shows a short `Original task` summary so the user knows what work the verification belongs to, but the full offer, steps, and Hive routing context stay behind a `Show` toggle. The active `Verification requested` ask appears directly below that summary, followed by a `Respond in Submit` action. Cancel controls stay secondary behind `Cancel task` so they do not compete with the current verification requirement.
 
-The Submit tab repeats the current verification request in a collapsible block, then focuses on the user's response. It starts with one evidence item. A second item is available only after Evidence 1 contains content and the user clicks `Add second evidence`; mixed evidence requirements do not auto-open a second blank card.
+The Submit tab repeats the current verification request in a collapsible block, then focuses on the user's response. It starts with one evidence item. A second item appears only when the user clicks `Add second evidence`; mixed evidence requirements do not auto-open a second blank card.
 
 ## Timestamp Rules
 

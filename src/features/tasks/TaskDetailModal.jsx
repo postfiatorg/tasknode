@@ -629,7 +629,6 @@ function TaskSubmitPanel({
     value: evidenceValueForDraft(draft),
   }));
   const readyEvidenceItems = evidenceItems.filter((item) => item.value.trim());
-  const firstEvidenceReady = Boolean(evidenceItems[0]?.value?.trim());
   const canPrepareEvidence = Boolean(
     readyEvidenceItems.length > 0 &&
       !loading &&
@@ -668,8 +667,7 @@ function TaskSubmitPanel({
   }
 
   function addEvidenceDraft() {
-    if (!firstEvidenceReady) return;
-    setEvidenceDrafts((current) => addUserRequestedEvidenceDraft(current, "text"));
+    setEvidenceDrafts((current) => addUserRequestedEvidenceDraft(current, defaultEvidenceMethod));
     setConfirmed(false);
     setState({ error: "", pending: false, pendingLabel: "", result: "" });
   }
@@ -939,9 +937,9 @@ function TaskSubmitPanel({
       {evidenceDrafts.length < MAX_TASK_EVIDENCE_ITEMS && (
         <button
           className="light-pill task-add-evidence"
-          disabled={!firstEvidenceReady || state.pending}
+          disabled={state.pending}
           onClick={addEvidenceDraft}
-          title={firstEvidenceReady ? "Add one more evidence item." : "Add Evidence 1 before adding a second item."}
+          title="Add one more evidence item."
           type="button"
         >
           <Plus size={14} strokeWidth={2} />
