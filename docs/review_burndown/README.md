@@ -10,6 +10,8 @@ The briefs are not completed code reviews. They are the review queue.
 ## Folder Layout
 
 - `burndown.md` - queue, status, and suggested review order.
+- `composer_full_codebase_review_plan_2026-05-23.md` - ramp and operating plan
+  for a full-codebase composer review agent.
 - `reviews/` - one review-plan brief per app-visible doc page.
 - `templates/review_plan_template.md` - format for new review briefs.
 
