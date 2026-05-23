@@ -28,7 +28,7 @@ recorded; most entries begin as `no`.
 | 2 | PFTL Transaction Cache | `docs/wiki/architecture/pftl-transaction-cache.md` | `reviews/architecture-pftl-transaction-cache.md` | `review_ready` | no |
 | 2 | PFTL Usage | `docs/wiki/architecture/pftl.md` | `reviews/architecture-pftl.md` | `review_ready` | no |
 | 2 | Database | `docs/wiki/architecture/database.md` | `reviews/architecture-database.md` | `review_ready` | no |
-| 2 | Context | `docs/wiki/surfaces/context.md` | `reviews/surface-context.md` | `review_ready` | no |
+| 2 | Context | `docs/wiki/surfaces/context.md` | `reviews/surface-context.md` | `complete` | yes |
 | 3 | Search | `docs/wiki/surfaces/search.md` | `reviews/surface-search.md` | `review_ready` | no |
 | 3 | Motivation | `docs/wiki/surfaces/motivation.md` | `reviews/surface-motivation.md` | `review_ready` | no |
 | 3 | Brainstorming Context | `docs/wiki/surfaces/brainstorming-context.md` | `reviews/surface-brainstorming-context.md` | `review_ready` | no |

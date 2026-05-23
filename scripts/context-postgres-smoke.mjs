@@ -157,5 +157,68 @@ const pointerCount = await query(
 assert.equal(revisionCount.rows[0].count, 1);
 assert.equal(pointerCount.rows[0].count, 2);
 
+const publishReducerTx = `CTX_PUBLISH_REDUCER_${suffix}`;
+const publishReducerCid = `bafyContextPublishReducer${suffix}`;
+const publishTimestamp = "2026-05-16T12:00:00.000Z";
+const ledgerTimestamp = "2026-05-16T12:05:00.000Z";
+
+await saveContextHistoryProjection({
+  accountId,
+  projection: {
+    source: "tasknodeofficial_context_publish",
+    walletAddress,
+    contextRevisions: [
+      {
+        id: `pftl:${publishReducerTx}:0`,
+        cid: publishReducerCid,
+        tx_hash: publishReducerTx,
+        tx_timestamp: publishTimestamp,
+        memo_index: 0,
+        context_version: "draft-revision-99",
+        source: "pftl_cache.context_publish",
+        word_count: 11,
+      },
+    ],
+  },
+});
+
+await saveContextHistoryProjection({
+  accountId,
+  projection: {
+    source: "pftl_cache.context_pointer",
+    walletAddress,
+    contextRevisions: [
+      {
+        id: `pftl:${publishReducerTx}:0`,
+        cid: publishReducerCid,
+        tx_hash: publishReducerTx,
+        tx_timestamp: ledgerTimestamp,
+        ledger_index: 424242,
+        memo_index: 0,
+        context_version: "pf.context.v1",
+        source: "pftl_cache.context_pointer",
+        word_count: 24,
+      },
+    ],
+  },
+});
+
+const publishReducerRow = await query(
+  `
+    SELECT pointer_created_at, version, word_count, source, ledger_index
+    FROM context_history_pointers
+    WHERE account_id = $1
+      AND wallet_address = $2
+      AND tx_hash = $3
+  `,
+  [accountId, walletAddress, publishReducerTx]
+);
+assert.equal(publishReducerRow.rows.length, 1);
+assert.equal(publishReducerRow.rows[0].source, "pftl_cache.context_pointer");
+assert.equal(publishReducerRow.rows[0].version, "pf.context.v1");
+assert.equal(Number(publishReducerRow.rows[0].word_count), 24);
+assert.equal(String(publishReducerRow.rows[0].ledger_index), "424242");
+assert.equal(new Date(publishReducerRow.rows[0].pointer_created_at).toISOString(), ledgerTimestamp);
+
 console.log(`context postgres smoke ok: ${accountId}`);
 await closePool();

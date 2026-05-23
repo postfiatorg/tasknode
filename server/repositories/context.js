@@ -675,7 +675,50 @@ async function insertPointer({
         $20, $21, $22, $23, $24, $25, $26, $27, $28,
         $29, $30
       )
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (id) DO UPDATE SET
+        import_id = EXCLUDED.import_id,
+        pointer_created_at = CASE
+          WHEN EXCLUDED.source LIKE 'pftl_cache.%'
+            AND context_history_pointers.source = 'pftl_cache.context_publish'
+            THEN EXCLUDED.pointer_created_at
+          WHEN context_history_pointers.pointer_created_at IS NULL THEN EXCLUDED.pointer_created_at
+          ELSE context_history_pointers.pointer_created_at
+        END,
+        ledger_index = CASE
+          WHEN EXCLUDED.source LIKE 'pftl_cache.%'
+            AND context_history_pointers.source = 'pftl_cache.context_publish'
+            THEN EXCLUDED.ledger_index
+          WHEN context_history_pointers.ledger_index IS NULL THEN EXCLUDED.ledger_index
+          ELSE context_history_pointers.ledger_index
+        END,
+        memo_index = CASE
+          WHEN EXCLUDED.source LIKE 'pftl_cache.%'
+            AND context_history_pointers.source = 'pftl_cache.context_publish'
+            THEN EXCLUDED.memo_index
+          WHEN context_history_pointers.memo_index IS NULL THEN EXCLUDED.memo_index
+          ELSE context_history_pointers.memo_index
+        END,
+        version = CASE
+          WHEN EXCLUDED.source LIKE 'pftl_cache.%'
+            AND context_history_pointers.source = 'pftl_cache.context_publish'
+            THEN EXCLUDED.version
+          WHEN context_history_pointers.version IS NULL THEN EXCLUDED.version
+          ELSE context_history_pointers.version
+        END,
+        word_count = CASE
+          WHEN EXCLUDED.source LIKE 'pftl_cache.%'
+            AND context_history_pointers.source = 'pftl_cache.context_publish'
+            THEN EXCLUDED.word_count
+          WHEN context_history_pointers.word_count IS NULL THEN EXCLUDED.word_count
+          ELSE context_history_pointers.word_count
+        END,
+        source = CASE
+          WHEN EXCLUDED.source LIKE 'pftl_cache.%' THEN EXCLUDED.source
+          ELSE context_history_pointers.source
+        END,
+        schema = COALESCE(EXCLUDED.schema, context_history_pointers.schema),
+        destination_address = COALESCE(EXCLUDED.destination_address, context_history_pointers.destination_address),
+        direction = COALESCE(EXCLUDED.direction, context_history_pointers.direction)
       RETURNING id
     `,
     [

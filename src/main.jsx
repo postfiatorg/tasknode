@@ -121,6 +121,7 @@ import { WalletUnlockModal } from "./features/wallet/WalletUnlockModal";
 import { formatCreditUsd, formatUsageUsd } from "./formatters";
 import { isSignedInSession } from "./session";
 import { escapeContextHtml, looksLikeContextHtml, sanitizeContextHtml } from "../shared/context-html";
+import { contextLineCount as countContextLines } from "../shared/context-line-map.js";
 import { taskRequiresRefresh } from "../shared/task-lifecycle";
 import "./styles.css";
 import "./features/context/context.css";
@@ -2860,16 +2861,6 @@ function contextBodyToHtml(value) {
   return looksLikeContextHtml(text) ? sanitizeContextHtml(text) : contextTextToHtml(text);
 }
 
-function contextLineCountFromHtml(value = "") {
-  const text = String(value || "")
-    .replace(/<\s*br\s*\/?>/gi, "\n")
-    .replace(/<\s*\/(p|div|h[1-6]|li|blockquote|pre|tr|table|ul|ol)\s*>/gi, "\n")
-    .replace(/<[^>]*>/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return Math.max(1, text ? text.split("\n").length : 1);
-}
-
 function contextEditorLineRows(editor) {
   if (!editor) return [];
   const editorTop = editor.getBoundingClientRect().top;
@@ -2948,7 +2939,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [contextLineCount, setContextLineCount] = useState(() =>
-    contextLineCountFromHtml(contextBodyToHtml(initialDocument.body || ""))
+    countContextLines(contextBodyToHtml(initialDocument.body || ""))
   );
   const [contextLineRows, setContextLineRows] = useState([]);
   const [copied, setCopied] = useState(false);
@@ -2990,6 +2981,8 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const tableWrapRef = useRef(null);
   const previewHydrationRunRef = useRef(0);
   const dirtyRef = useRef(false);
+  const savingRef = useRef(false);
+  const saveContextRef = useRef(async () => false);
   const titleRef = useRef(initialDocument.title || "Task Node Context");
   const lastSavedHtmlRef = useRef(contextBodyToHtml(initialDocument.body || ""));
 
@@ -3016,7 +3009,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       setTitle(nextTitle);
       titleRef.current = nextTitle;
       if (editorRef.current) editorRef.current.innerHTML = nextHtml;
-      const nextLineCount = contextLineCountFromHtml(nextHtml);
+      const nextLineCount = countContextLines(nextHtml);
       setContextLineCount(nextLineCount);
       refreshContextLineRows(nextLineCount);
       setDirty(false);
@@ -3027,6 +3020,10 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   useEffect(() => {
     dirtyRef.current = dirty;
   }, [dirty]);
+
+  useEffect(() => {
+    savingRef.current = saving;
+  }, [saving]);
 
   useEffect(() => {
     titleRef.current = title;
@@ -3292,16 +3289,25 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   }, [canEdit, onContextChange, savePath, saving, title]);
 
   useEffect(() => {
+    saveContextRef.current = saveContext;
+  }, [saveContext]);
+
+  useEffect(() => {
     if (!dirty || saving || !canEdit) return undefined;
     const timeout = window.setTimeout(() => {
       saveContext();
     }, 900);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(timeout);
+      if (dirtyRef.current && canEdit && !savingRef.current) {
+        void saveContextRef.current();
+      }
+    };
   }, [canEdit, dirty, saveContext, saving]);
 
   const handleEditorInput = () => {
     setSaveMessage("");
-    const nextLineCount = contextLineCountFromHtml(editorRef.current?.innerHTML || "");
+    const nextLineCount = countContextLines(editorRef.current?.innerHTML || "");
     setContextLineCount(nextLineCount);
     refreshContextLineRows(nextLineCount);
     recomputeDirty();
@@ -3525,7 +3531,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     setTitle(hydratedContext.title || "Historical PFT Context");
     const hydratedHtml = contextBodyToHtml(hydratedContext.text);
     if (editorRef.current) editorRef.current.innerHTML = hydratedHtml;
-    const nextLineCount = contextLineCountFromHtml(hydratedHtml);
+    const nextLineCount = countContextLines(hydratedHtml);
     setContextLineCount(nextLineCount);
     refreshContextLineRows(nextLineCount);
     setHydratedContext(null);
@@ -3582,7 +3588,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     if (version.type === "current") {
       setTitle(savedTitle);
       if (editorRef.current) editorRef.current.innerHTML = lastSavedHtmlRef.current;
-      const nextLineCount = contextLineCountFromHtml(lastSavedHtmlRef.current);
+      const nextLineCount = countContextLines(lastSavedHtmlRef.current);
       setContextLineCount(nextLineCount);
       refreshContextLineRows(nextLineCount);
       setDirty(false);
