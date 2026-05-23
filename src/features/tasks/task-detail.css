@@ -428,9 +428,9 @@
   gap: 12px;
   margin-top: 20px;
   padding: 16px 18px;
-  border: 1px solid rgba(31, 84, 61, 0.16);
+  border: 1px solid #e8e6df;
   border-radius: 12px;
-  background: linear-gradient(90deg, rgba(31, 84, 61, 0.055), rgba(255, 255, 255, 0));
+  background: #ffffff;
 }
 
 .task-network-route > div:first-child {
