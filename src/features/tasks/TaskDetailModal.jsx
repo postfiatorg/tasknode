@@ -125,6 +125,17 @@ function formatReviewMetric(value) {
   return String(value);
 }
 
+function taskVersionKey(task = {}) {
+  return [
+    task.taskId || task.fullId || task.id || "",
+    task.statusKey || task.status || "",
+    task.updatedAt || "",
+    task.lastEventAt || "",
+    task.txHash || "",
+    task.metadata?.eventCount || "",
+  ].join("|");
+}
+
 function TaskRewardOutcome({ outcome }) {
   if (!outcome) return null;
   const rewardPft = Number(outcome.rewardPft || 0);
@@ -844,6 +855,7 @@ export function TaskDetailModal({
   const verification = displayTask.verification || {};
   const rewardPft = Number(displayTask.pft || 0);
   const taskId = displayTask.taskId || displayTask.fullId || task.taskId || task.fullId || task.id || "";
+  const taskVersion = taskVersionKey(task);
   const taskBriefPayload = buildTaskCopyPayloads(displayTask, detailState.data).codex;
   const forensicsCount = detailState.data?.forensics?.timeline?.length || displayTask.metadata?.eventCount || 0;
 
@@ -914,7 +926,7 @@ export function TaskDetailModal({
     return () => {
       active = false;
     };
-  }, [detailRefreshKey, taskId]);
+  }, [detailRefreshKey, taskId, taskVersion]);
 
   function applyOptimisticEvidenceState(result = {}) {
     const schema = result?.submissionPayload?.schema || "";

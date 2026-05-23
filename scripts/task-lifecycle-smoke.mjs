@@ -38,6 +38,14 @@ const rewardDecidedLoop = taskRefreshMetadata({
 assert.equal(rewardDecidedLoop.requiresRefresh, true);
 assert.deepEqual(rewardDecidedLoop.refreshTaskIds, ["task_reward_decided"]);
 
+const acceptedOpenLoop = taskRefreshMetadata({
+  tasks: [{ taskId: "task_accepted", statusKey: TASK_STATUS.accepted }],
+});
+assert.equal(acceptedOpenLoop.requiresRefresh, true);
+assert.equal(acceptedOpenLoop.nextPollMs, 10000);
+assert.equal(acceptedOpenLoop.refreshReason, "task_state_active");
+assert.deepEqual(acceptedOpenLoop.refreshTaskIds, ["task_accepted"]);
+
 const terminalReward = taskRefreshMetadata({
   tasks: [
     {

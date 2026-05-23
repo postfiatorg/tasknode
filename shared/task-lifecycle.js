@@ -223,19 +223,35 @@ export function taskRefreshMetadata({ tasks = [], activeRequestCount = 0 } = {})
     .filter((task) => taskRequiresRefresh(task?.statusKey || task?.status))
     .map((task) => task?.taskId || task?.fullId || task?.id || "")
     .filter(Boolean);
+  const activeTasks = tasks
+    .filter((task) => {
+      const status = normalizeTaskStatus(task?.statusKey || task?.status);
+      return [
+        TASK_STATUS.accepted,
+        TASK_STATUS.submitted,
+        TASK_STATUS.verificationRequested,
+        TASK_STATUS.verificationResponseSubmitted,
+        TASK_STATUS.rewardDecided,
+      ].includes(status);
+    })
+    .map((task) => task?.taskId || task?.fullId || task?.id || "")
+    .filter(Boolean);
   const requestCount = Number(activeRequestCount || 0);
-  const requiresRefresh = requestCount > 0 || refreshTasks.length > 0;
+  const refreshTaskIds = [...new Set([...refreshTasks, ...activeTasks])];
+  const requiresRefresh = requestCount > 0 || refreshTaskIds.length > 0;
 
   return {
     requiresRefresh,
-    nextPollMs: requiresRefresh ? 2500 : null,
+    nextPollMs: requiresRefresh ? (requestCount > 0 || refreshTasks.length > 0 ? 2500 : 10000) : null,
     refreshReason: requestCount > 0
       ? "task_requests_active"
       : refreshTasks.length > 0
         ? "task_review_active"
+        : activeTasks.length > 0
+          ? "task_state_active"
         : "",
     activeRequestCount: requestCount,
-    refreshTaskIds: refreshTasks,
+    refreshTaskIds,
   };
 }
 
