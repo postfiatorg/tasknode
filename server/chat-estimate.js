@@ -3,10 +3,12 @@ import {
   chatExecutionStatus,
   chatInputCharacterEstimate,
   chatModeConfig,
-  defaultChatMode,
+  effectiveDefaultChatMode,
   isKnownChatMode,
   normalizedChatMode,
 } from "./chat-router.js";
+import { effectiveDefaultChatMode as defaultChatModeForEstimate } from "./chat-mode-defaults.js";
+import { chatHistoryCharacterEstimate } from "./chat-provider-message-builders.js";
 import {
   chatMemoryContextForAccount,
   formatChatMemoryContext,
@@ -30,11 +32,13 @@ import {
   contextEditPromptText,
   renderContextEditPrompt,
 } from "./context-edit-prompts.js";
+import { getActiveContextEditProposal } from "./repositories/context-edit.js";
+import { getChatMessages } from "./repositories/chat-billing.js";
 
 function estimatePayload(payload) {
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
   const requestedMode = typeof payload?.mode === "string" ? payload.mode.trim() : "";
-  const mode = requestedMode || defaultChatMode;
+  const mode = requestedMode || defaultChatModeForEstimate();
   const attachments = Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 4) : [];
   const contextMode = payload?.contextMode === "context_edit" || mode === "context_edit" ? "context_edit" : "";
   const effectiveMode = contextMode ? "Frontier Thinking" : mode;
@@ -47,10 +51,22 @@ function estimatePayload(payload) {
   return { message, mode: normalizedChatMode(effectiveMode), attachments, contextMode };
 }
 
-export function chatEstimate(payload, { contextDocument = null, memoryContext = null, taskContext = null } = {}) {
+export function chatEstimate(
+  payload,
+  {
+    contextDocument = null,
+    memoryContext = null,
+    taskContext = null,
+    historyMessages = null,
+    activeProposal = null,
+  } = {}
+) {
   const { message, mode, attachments, contextMode } = estimatePayload(payload);
   const modeConfig = chatModeConfig(mode);
   const baseInputCharacters = chatInputCharacterEstimate({ message, attachments });
+  const historyCharacters = contextMode === "context_edit" || !Array.isArray(historyMessages) || historyMessages.length === 0
+    ? 0
+    : chatHistoryCharacterEstimate(historyMessages, { provider: modeConfig.provider });
   const contextDocumentCharacters = formatChatContextDocument(contextDocument).length;
   const memoryContextCharacters = formatChatMemoryContext(memoryContext).length;
   const taskContextCharacters = formatChatTaskContext(taskContext).length;
@@ -61,6 +77,8 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
         contextDocument,
         memoryContext,
         taskContext,
+        historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
+        activeProposal,
         userRequest: message,
       }).length
     : taskNodeInstructions({
@@ -81,13 +99,14 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
       taskContextCharacters -
       jobsRetrievalCharacters
   );
-  const inputCharacters = baseInputCharacters + instructionCharacters;
+  const inputCharacters = baseInputCharacters + historyCharacters + instructionCharacters;
   const inputTokens = Math.max(1, Math.ceil(inputCharacters / 4));
-  const baseInputTokens = Math.max(1, Math.ceil(baseInputCharacters / 4));
+  const baseInputTokens = Math.max(1, Math.ceil((baseInputCharacters + historyCharacters) / 4));
   const contextDocumentInputTokens = contextDocumentCharacters > 0 ? Math.ceil(contextDocumentCharacters / 4) : 0;
   const memoryInputTokens = memoryContextCharacters > 0 ? Math.ceil(memoryContextCharacters / 4) : 0;
   const taskInputTokens = taskContextCharacters > 0 ? Math.ceil(taskContextCharacters / 4) : 0;
   const jobsRetrievalInputTokens = jobsRetrievalCharacters > 0 ? Math.ceil(jobsRetrievalCharacters / 4) : 0;
+  const historyInputTokens = historyCharacters > 0 ? Math.ceil(historyCharacters / 4) : 0;
   const instructionInputTokens = Math.max(1, Math.ceil(instructionCharacters / 4));
   const baseInstructionInputTokens =
     baseInstructionCharacters > 0 ? Math.ceil(baseInstructionCharacters / 4) : 0;
@@ -119,6 +138,8 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
     memoryInputTokens,
     taskInputTokens,
     jobsRetrievalInputTokens,
+    historyInputTokens,
+    historyCharacters,
     instructionCharacters,
     baseInstructionCharacters,
     contextDocumentCharacters,
@@ -140,12 +161,28 @@ export function chatEstimate(payload, { contextDocument = null, memoryContext = 
 }
 
 export async function chatEstimateForAccount(payload, accountId = "") {
-  const [contextDocument, memoryContext, taskContext] = accountId
-    ? await Promise.all([
-        chatContextDocumentForAccount(accountId),
-        chatMemoryContextForAccount(accountId),
-        taskContextForAccount(accountId),
-      ])
-    : [null, null, null];
-  return chatEstimate(payload, { contextDocument, memoryContext, taskContext });
+  const conversationId = typeof payload?.conversationId === "string" ? payload.conversationId.trim() : "";
+  const contextMode = payload?.contextMode === "context_edit" || payload?.mode === "context_edit"
+    ? "context_edit"
+    : "";
+
+  const [contextDocument, memoryContext, taskContext, historyMessages, activeProposal] = await Promise.all([
+    accountId ? chatContextDocumentForAccount(accountId) : null,
+    accountId ? chatMemoryContextForAccount(accountId) : null,
+    accountId ? taskContextForAccount(accountId) : null,
+    accountId && conversationId
+      ? getChatMessages({ accountId, conversationId, limit: 12 }).catch(() => [])
+      : [],
+    accountId && conversationId && contextMode
+      ? getActiveContextEditProposal({ accountId, conversationId }).catch(() => null)
+      : null,
+  ]);
+
+  return chatEstimate(payload, {
+    contextDocument,
+    memoryContext,
+    taskContext,
+    historyMessages,
+    activeProposal,
+  });
 }

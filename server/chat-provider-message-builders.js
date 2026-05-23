@@ -27,6 +27,22 @@ function messageTranscriptText(message) {
   return [message?.body || "", attachmentTranscriptText(message)].filter(Boolean).join("\n\n");
 }
 
+export function chatHistoryCharacterEstimate(historyMessages = [], { provider = "openai" } = {}) {
+  const messages = Array.isArray(historyMessages) ? historyMessages.slice(-12) : [];
+  if (messages.length === 0) return 0;
+
+  if (provider === "openrouter") {
+    return messages.reduce((total, message) => {
+      return total + messageTranscriptText(message).length + 24;
+    }, 0);
+  }
+
+  const history = messages
+    .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${messageTranscriptText(message)}`)
+    .join("\n");
+  return `Recent conversation:\n${history}\n\n`.length;
+}
+
 function recentTranscriptFromMessages(messages, currentMessage) {
   const history = messages
     .slice(-12)

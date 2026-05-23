@@ -204,7 +204,14 @@ export function textAttachmentPrompt(attachment) {
 export function chatInputCharacterEstimate({ message = "", attachments = [] } = {}) {
   const attachmentCharacters = normalizeChatAttachments(attachments).reduce((total, attachment) => {
     if (attachment.kind === "text") return total + textAttachmentPrompt(attachment).length;
-    return total + `Attached ${attachment.kind}: ${attachment.name} ${attachment.mimeType}`.length;
+    const dataUrlLength = String(attachment.dataUrl || "").length;
+    if (attachment.kind === "image") {
+      return total + Math.max(4000, Math.ceil(dataUrlLength * 0.15));
+    }
+    if (attachment.kind === "pdf" || attachment.kind === "file") {
+      return total + Math.max(2000, Math.ceil(dataUrlLength * 0.1));
+    }
+    return total + Math.max(256, `Attached ${attachment.kind}: ${attachment.name} ${attachment.mimeType}`.length);
   }, 0);
 
   return String(message || "").length + attachmentCharacters;

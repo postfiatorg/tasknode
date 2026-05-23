@@ -3,11 +3,12 @@ import {
   anyChatProviderEnabled,
   chatExecutionStatus,
   chatModePrices,
-  defaultChatMode,
+  chatProviderConfigured,
   executeChat,
   isKnownChatMode,
   normalizedChatMode,
 } from "./chat-router.js";
+import { effectiveDefaultChatMode } from "./chat-mode-defaults.js";
 import {
   contextEditMode,
   executeContextEditChat,
@@ -41,6 +42,7 @@ import {
 import {
   appendUsageCredit,
   chatBillingStatus,
+  getChatMessages,
   usageSummary,
 } from "./repositories/chat-billing.js";
 import { loadChatExecutionContext } from "./chat-context-load.js";
@@ -49,6 +51,7 @@ import {
   getContextHistory,
   saveContextDocument,
 } from "./repositories/context.js";
+import { getActiveContextEditProposal } from "./repositories/context-edit.js";
 import { fetchContextIpfsJson, normalizeContextCid } from "./context-ipfs.js";
 import { contextPublishStatus } from "./context-publish.js";
 export { contextManifestInk } from "./context-publish.js";
@@ -503,7 +506,7 @@ function chatPayload(payload) {
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
   const contextMode = isContextEditPayload(payload) ? contextEditMode : "";
   const requestedMode = typeof payload?.mode === "string" ? payload.mode.trim() : "";
-  const mode = contextMode ? "Frontier Thinking" : requestedMode || defaultChatMode;
+  const mode = contextMode ? "Frontier Thinking" : requestedMode || effectiveDefaultChatMode();
   const conversationId =
     typeof payload?.conversationId === "string" && payload.conversationId.trim()
       ? payload.conversationId.trim().slice(0, 160)
@@ -667,11 +670,21 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
   estimate = chatEstimate(estimatePayload);
 
   if (chat.dryRun) {
-    const executionContext = await loadChatExecutionContext(chat.accountId);
+    const [executionContext, historyMessages, activeProposal] = await Promise.all([
+      loadChatExecutionContext(chat.accountId),
+      chat.accountId && chat.conversationId
+        ? getChatMessages({ accountId: chat.accountId, conversationId: chat.conversationId, limit: 12 }).catch(() => [])
+        : [],
+      chat.accountId && chat.conversationId && chat.contextMode === contextEditMode
+        ? getActiveContextEditProposal({ accountId: chat.accountId, conversationId: chat.conversationId }).catch(() => null)
+        : null,
+    ]);
     estimate = chatEstimate(estimatePayload, {
       contextDocument: executionContext.contextDocument,
       memoryContext: executionContext.memoryContext,
       taskContext: executionContext.taskContext,
+      historyMessages,
+      activeProposal,
     });
     return {
       ok: false,
@@ -719,10 +732,20 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
   }
 
   const executionContext = await loadChatExecutionContext(chat.accountId);
+  const [historyMessages, activeProposal] = await Promise.all([
+    chat.accountId && chat.conversationId
+      ? getChatMessages({ accountId: chat.accountId, conversationId: chat.conversationId, limit: 12 }).catch(() => [])
+      : [],
+    chat.accountId && chat.conversationId && chat.contextMode === contextEditMode
+      ? getActiveContextEditProposal({ accountId: chat.accountId, conversationId: chat.conversationId }).catch(() => null)
+      : null,
+  ]);
   estimate = chatEstimate(estimatePayload, {
     contextDocument: executionContext.contextDocument,
     memoryContext: executionContext.memoryContext,
     taskContext: executionContext.taskContext,
+    historyMessages,
+    activeProposal,
   });
 
   const usage = await usageSummary({ accountId: chat.accountId, conversationId: chat.conversationId });
@@ -2718,7 +2741,7 @@ export async function readiness() {
     },
     llm: {
       openaiConfigured: hasAll(["OPENAI_API_KEY"]),
-      openrouterConfigured: hasAll(["OPENROUTER_API_KEY"]),
+      openrouterConfigured: chatProviderConfigured("openrouter"),
       aiGatewayConfigured: hasAll(["VERCEL_AI_GATEWAY_API_KEY"]),
     },
   };

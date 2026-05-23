@@ -11,6 +11,12 @@ import { chatContextDocumentForAccount } from "./chat-account-context.js";
 import { jobsRetrievalForChat } from "./jobs-corpus.js";
 import { taskContextForAccount } from "./chat-task-context.js";
 import {
+  fallbackUsage,
+  openAiUsage,
+  openRouterUsage,
+} from "./chat-provider-usage.js";
+import { effectiveDefaultChatMode, fallbackChatModeLabel } from "./chat-mode-defaults.js";
+import {
   maxOpenAiWebSearchToolCalls,
   openAiTools,
   webSearchUsdPerCall,
@@ -69,7 +75,8 @@ export const chatModePrices = {
     reasoningEffort: "high",
   },
 };
-export const defaultChatMode = "Private Instant";
+export { effectiveDefaultChatMode, fallbackChatModeLabel };
+export const defaultChatMode = fallbackChatModeLabel;
 
 function hasOpenAi() {
   return Boolean(process.env.OPENAI_API_KEY);
@@ -119,7 +126,7 @@ export function chatModeConfig(mode) {
 
 export function normalizedChatMode(mode) {
   const normalized = String(mode || "").trim();
-  if (!normalized) return defaultChatMode;
+  if (!normalized) return effectiveDefaultChatMode();
   return isKnownChatMode(normalized) ? normalized : "";
 }
 
@@ -269,7 +276,12 @@ export function openAiResponseRequest({
   return {
     model,
     instructions: instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence }),
-    input: openAiInput({ conversationId, message, attachments, historyMessages }),
+    input: openAiInput({
+      conversationId,
+      message,
+      attachments,
+      historyMessages: instructionsOverride ? [] : historyMessages,
+    }),
     max_output_tokens: config.maxOutputTokens,
     reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
     text: responseFormat ? { format: responseFormat } : undefined,
@@ -436,58 +448,6 @@ function outputTextFromOpenRouter(body) {
       .trim();
   }
   return "";
-}
-
-function countOpenAiOutputItems(body, type) {
-  return (body?.output || []).filter((item) => item?.type === type).length;
-}
-
-function openAiUsage(body, mode) {
-  const usage = body?.usage || {};
-  const inputTokens = Number(usage.input_tokens || 0);
-  const outputTokens = Number(usage.output_tokens || 0);
-  const webSearchCalls = countOpenAiOutputItems(body, "web_search_call");
-  const tokenCostUsd = actualChatCost(mode, { inputTokens, outputTokens });
-  const toolCostUsd = Number((webSearchCalls * webSearchUsdPerCall).toFixed(6));
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens: Number(usage.total_tokens || inputTokens + outputTokens),
-    webSearchCalls,
-    toolCostUsd,
-    costUsd: Number((tokenCostUsd + toolCostUsd).toFixed(6)),
-  };
-}
-
-function openRouterUsage(body, mode) {
-  const usage = body?.usage || {};
-  const inputTokens = Number(usage.prompt_tokens || usage.input_tokens || 0);
-  const outputTokens = Number(usage.completion_tokens || usage.output_tokens || 0);
-  const providerCost = Number(usage.cost || 0);
-  const webSearchCalls = Number(usage.server_tool_use?.web_search_requests || 0);
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens: Number(usage.total_tokens || inputTokens + outputTokens),
-    webSearchCalls,
-    toolCostUsd: 0,
-    costUsd: Number(
-      (providerCost || actualChatCost(mode, { inputTokens, outputTokens })).toFixed(6)
-    ),
-  };
-}
-
-function fallbackUsage({ mode, message, text }) {
-  const inputTokens = Math.max(1, Math.ceil(String(message || "").length / 4));
-  const outputTokens = Math.max(1, Math.ceil(String(text || "").length / 4));
-
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens: inputTokens + outputTokens,
-    costUsd: actualChatCost(mode, { inputTokens, outputTokens }),
-    estimated: true,
-  };
 }
 
 function enqueueMemoryForTurn({ accountId, conversationId, persisted }) {
