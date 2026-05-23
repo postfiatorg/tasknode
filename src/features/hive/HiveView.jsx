@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Activity, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { requestJson } from "../../api";
 import "./hive.css";
@@ -56,28 +56,50 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
   const [hiveContextStatus, setHiveContextStatus] = useState("loading");
   const stats = projectDocument?.stats || {};
 
+  const loadHiveContext = useCallback(async ({ showLoading = false, shouldApply = () => true } = {}) => {
+    if (showLoading && shouldApply()) {
+      setHiveContextStatus("loading");
+    }
+    try {
+      const result = await requestJson("/api/hive/context?limit=120");
+      if (!shouldApply()) return;
+      if (!result.ok) throw new Error(result.body?.message || `Hive Context returned HTTP ${result.status}.`);
+      setHiveContext(result.body?.context || null);
+      setHiveSecretary(result.body?.secretary || null);
+      setBoardManager(result.body?.boardManager || null);
+      setHiveContextStatus("ready");
+    } catch {
+      if (!shouldApply()) return;
+      setHiveContext(null);
+      setBoardManager(null);
+      setHiveContextStatus("error");
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    setHiveContextStatus("loading");
-    requestJson("/api/hive/context?limit=120")
-      .then((result) => {
-        if (cancelled) return;
-        if (!result.ok) throw new Error(result.body?.message || `Hive Context returned HTTP ${result.status}.`);
-        setHiveContext(result.body?.context || null);
-        setHiveSecretary(result.body?.secretary || null);
-        setBoardManager(result.body?.boardManager || null);
-        setHiveContextStatus("ready");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setHiveContext(null);
-        setBoardManager(null);
-        setHiveContextStatus("error");
-      });
+    loadHiveContext({ showLoading: true, shouldApply: () => !cancelled });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadHiveContext]);
+
+  useEffect(() => {
+    if (!hiveContextOpen) return undefined;
+    loadHiveContext();
+    const intervalId = window.setInterval(() => {
+      loadHiveContext();
+    }, 10000);
+    return () => window.clearInterval(intervalId);
+  }, [hiveContextOpen, loadHiveContext]);
+
+  const toggleHiveContext = useCallback(() => {
+    setHiveContextOpen((open) => {
+      const nextOpen = !open;
+      if (nextOpen) loadHiveContext();
+      return nextOpen;
+    });
+  }, [loadHiveContext]);
 
   return (
     <div className="hive-shell">
@@ -147,7 +169,7 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
         <HiveContextPanel
           context={hiveContext}
           expanded={hiveContextOpen}
-          onToggle={() => setHiveContextOpen((open) => !open)}
+          onToggle={toggleHiveContext}
           status={hiveContextStatus}
           secretary={hiveSecretary}
           boardManager={boardManager}
