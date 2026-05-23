@@ -19,7 +19,7 @@ recorded; most entries begin as `no`.
 | Priority | App Doc | Source | Review Brief | Status | Code Review Complete |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Chat | `docs/wiki/surfaces/chat.md` | `reviews/surface-chat.md` | `complete` | yes |
-| 1 | AI Providers | `docs/wiki/architecture/ai-providers.md` | `reviews/architecture-ai-providers.md` | `review_ready` | no |
+| 1 | AI Providers | `docs/wiki/architecture/ai-providers.md` | `reviews/architecture-ai-providers.md` | `complete` | yes |
 | 1 | Memory | `docs/wiki/surfaces/memory.md` | `reviews/surface-memory.md` | `review_ready` | no |
 | 1 | Tasks | `docs/wiki/surfaces/tasks.md` | `reviews/surface-tasks.md` | `review_ready` | no |
 | 1 | Task Lifecycle Replay | `docs/wiki/architecture/task-lifecycle.md` | `reviews/architecture-task-lifecycle.md` | `review_ready` | no |
