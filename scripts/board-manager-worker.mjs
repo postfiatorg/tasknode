@@ -46,8 +46,8 @@ function usage() {
     "  --execute                   Execute supported action hooks. Default is dry-run.",
     "  --poll-ms <ms>              Delay between polls. Default: 15000",
     "  --max-turns <n>             Stop after n worker turns. Default: unlimited",
-    "  --model <model>             Codex model. Default: gpt-5.5",
-    "  --reasoning <effort>        Codex reasoning effort. Default: xhigh",
+    "  --model <model>             OpenAI model. Default: gpt-5.5-pro",
+    "  --reasoning <effort>        OpenAI reasoning effort. Default: high",
     "  --job-limit <n>             Due scope ticks to enqueue per pass. Default: 5",
     "  --action-delay-ms <ms>      Follow-up delay after mutating action. Default: 5000",
     "  --error-delay-ms <ms>       Retry delay after failed job. Default: 300000",
@@ -79,9 +79,9 @@ function parseJsonOutput(stdout = "") {
   }
 }
 
-async function runCodexOneShot({ job }) {
+async function runBoardManagerDecision({ job }) {
   const args = [
-    path.join(repoRoot, "scripts", "board-manager-codex-exec.mjs"),
+    path.join(repoRoot, "scripts", "board-manager-model-exec.mjs"),
     "--trigger",
     job.trigger || "board_manager_job",
     "--scope",
@@ -116,7 +116,7 @@ async function runCodexOneShot({ job }) {
     child.on("close", resolve);
   });
   if (code !== 0) {
-    const error = new Error(`board_manager_codex_job_failed:${code}`);
+    const error = new Error(`board_manager_model_job_failed:${code}`);
     error.stdout = stdout;
     error.stderr = stderr;
     throw error;
@@ -174,7 +174,7 @@ async function processOneJob({ turn }) {
       };
     }
 
-    const output = await runCodexOneShot({ job });
+    const output = await runBoardManagerDecision({ job });
     const followup = await enqueueFollowupIfNeeded({ job, output });
     await completeBoardManagerJob({
       jobId: job.id,
@@ -185,6 +185,7 @@ async function processOneJob({ turn }) {
         dry_run: !config.execute,
         action: output?.decision?.action || "",
         source_packet_digest: output?.sourcePacketDigest || "",
+        source_packet_bytes: output?.sourcePacketBytes || 0,
         followup_job_id: followup?.job?.id || "",
       },
     });
@@ -219,8 +220,8 @@ async function processOneJob({ turn }) {
 const config = {
   scope: argValue("--scope", process.env.TASKNODE_BOARD_MANAGER_SCOPE || "global_hive"),
   managerId: argValue("--manager-id", `board_worker_${randomUUID()}`),
-  model: argValue("--model", process.env.TASKNODE_BOARD_MANAGER_CODEX_MODEL || "gpt-5.5"),
-  reasoning: argValue("--reasoning", process.env.TASKNODE_BOARD_MANAGER_CODEX_REASONING || "xhigh"),
+  model: argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || "gpt-5.5-pro"),
+  reasoning: argValue("--reasoning", process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT || "high"),
   pollMs: numberArg("--poll-ms", Number(process.env.TASKNODE_BOARD_MANAGER_WORKER_POLL_MS || 15000), { min: 1000 }),
   actionDelayMs: numberArg("--action-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS || 5000), { min: 0 }),
   errorDelayMs: numberArg("--error-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ERROR_DELAY_MS || 300000), { min: 5000 }),

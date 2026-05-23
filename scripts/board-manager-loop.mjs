@@ -32,14 +32,13 @@ function usage() {
     "Options:",
     "  --scope <scope>             Manager scope. Default: global_hive",
     "  --trigger-prefix <name>     Trigger prefix for each tick. Default: board_manager_loop",
-    "  --model <model>             Codex model. Default: gpt-5.5",
-    "  --reasoning <effort>        Codex reasoning effort. Default: xhigh",
+    "  --model <model>             OpenAI model. Default: gpt-5.5-pro",
+    "  --reasoning <effort>        OpenAI reasoning effort. Default: high",
     "  --idle-delay-ms <ms>        Delay after do_nothing/no board change. Default: 120000",
     "  --action-delay-ms <ms>      Delay after a mutating action. Default: 5000",
     "  --error-delay-ms <ms>       Delay after an error. Default: 120000",
     "  --max-turns <n>             Stop after n turns. Default: unlimited",
     "  --dry-run                  Do not execute action hooks.",
-    "  --fresh-session             Pass through to the first one-shot run.",
     "  --no-lease                  Pass through to one-shot runs.",
   ].join("\n");
 }
@@ -71,7 +70,7 @@ function parseJsonOutput(stdout = "") {
 async function runOneTurn({ turn, firstTurn }) {
   const trigger = `${config.triggerPrefix}_${String(turn).padStart(4, "0")}_${Date.now()}`;
   const args = [
-    path.join(repoRoot, "scripts", "board-manager-codex-exec.mjs"),
+    path.join(repoRoot, "scripts", "board-manager-model-exec.mjs"),
     "--trigger",
     trigger,
     "--scope",
@@ -83,7 +82,6 @@ async function runOneTurn({ turn, firstTurn }) {
     "--json",
   ];
   if (!config.dryRun) args.push("--execute");
-  if (firstTurn && config.freshSession) args.push("--fresh-session");
   if (config.noLease) args.push("--no-lease");
 
   const child = spawn(process.execPath, args, {
@@ -120,14 +118,13 @@ async function runOneTurn({ turn, firstTurn }) {
 const config = {
   scope: argValue("--scope", "global_hive"),
   triggerPrefix: argValue("--trigger-prefix", process.env.TASKNODE_BOARD_MANAGER_LOOP_TRIGGER_PREFIX || "board_manager_loop"),
-  model: argValue("--model", process.env.TASKNODE_BOARD_MANAGER_CODEX_MODEL || "gpt-5.5"),
-  reasoning: argValue("--reasoning", process.env.TASKNODE_BOARD_MANAGER_CODEX_REASONING || "xhigh"),
+  model: argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || "gpt-5.5-pro"),
+  reasoning: argValue("--reasoning", process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT || "high"),
   idleDelayMs: numberArg("--idle-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_IDLE_DELAY_MS || 120000), { min: 1000 }),
   actionDelayMs: numberArg("--action-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS || 5000), { min: 0 }),
   errorDelayMs: numberArg("--error-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ERROR_DELAY_MS || 120000), { min: 1000 }),
   maxTurns: numberArg("--max-turns", Number(process.env.TASKNODE_BOARD_MANAGER_MAX_TURNS || 0), { min: 0 }),
   dryRun: hasArg("--dry-run"),
-  freshSession: hasArg("--fresh-session"),
   noLease: hasArg("--no-lease"),
 };
 

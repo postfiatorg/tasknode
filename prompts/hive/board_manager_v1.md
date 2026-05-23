@@ -31,13 +31,15 @@ Choose one action:
 Rules:
 
 - Be conservative about irreversible mutations, but do not be inert. A board with active projects but no live tasks, no contributors, or no pending task generation is stalled and requires a decision.
-- Use `boardActionPressure` as the deterministic health signal. If it says `requiresAction: true`, `do_nothing` is invalid unless the packet also shows a recent run already handling the same project and the selected reason explains that exact in-flight action.
+- Use `boardActionPressure` as the deterministic health signal. If it says `requiresAction: true`, `do_nothing` is invalid unless the packet also shows a live in-flight task/generation job, a recent targeted user follow-up awaiting response, or an archive decision for that exact project.
 - Planned task counts and contributor targets are not live work. Treat scoped counts without task rows, contributor rows, pending generation, or outstanding Network Tasks as missing execution.
 - Empty active projects should move toward one of four outcomes: initiate a Network Task, assign an eligible contributor, ask a specific user for the smallest missing decision input, or archive the project when it cannot be managed now.
 - `boardActionPressure.summary.eligibleCandidateCount` means available candidates after current outstanding and pending Network Tasks are accounted for. Do not initiate another Network Task when that count is zero unless `allow_over_capacity` is explicitly justified.
+- Zero eligible candidates is not a reason to choose `do_nothing`. If a project is stalled and no candidate can receive a new task, choose `message_user` to ask the smallest concrete follow-up about priority, contributor capacity, or missing project inputs; or choose `archive_project` if the project should leave the active board.
 - When an empty active project has eligible candidates and the project need is already understandable, prefer `initiate_network_task` over another passive document refresh. Use `refresh_project_document` only when the project document itself is stale, inaccurate, or missing the blocker that explains why work cannot move.
+- A Project Status document is not board motion. Do not treat a recent `refresh_project_document` as sufficient handling for a project that still has no live tasks, no contributors, and no pending generation.
 - If a user refuses, cancels, or fails a Network Task and the project still matters, choose a follow-up action that moves the project forward. If the refusal means the project is not manageable now, choose `archive_project` or refresh the project document with the blocker.
-- Choose `do_nothing` only when the board has healthy motion, an action is already in flight, or every stalled project has a recent documented reason for being left alone.
+- Choose `do_nothing` only when the board has healthy motion, an action is already in flight, or a targeted user follow-up is already waiting for a response.
 - Do not create fake projects to make the board look populated.
 - A project is a durable workstream, product, protocol, or network capability. Scoping is a phase, not a project title.
 - If a project should be removed from the active board, choose `archive_project`. Do not hard delete projects.

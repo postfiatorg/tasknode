@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 
 process.env.TASKNODE_DATABASE_DISABLED = "true";
 process.env.TASKNODE_POSTGRES_DISABLED = "true";
+process.env.OPENAI_API_KEY = "board-manager-smoke-openai-key";
+delete process.env.TASKNODE_BOARD_MANAGER_MODEL;
+delete process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT;
 
 const {
   boardManagerActions,
@@ -11,6 +14,7 @@ const {
   normalizeBoardManagerDecision,
 } = await import("../server/repositories/board-manager.js");
 const { buildBoardManagerActionPressure } = await import("../server/repositories/board-manager-health.js");
+const { fetchBoardManagerDecision } = await import("../server/board-manager-decision-provider.js");
 const { loadPrompt } = await import("../server/prompt-registry.js");
 
 assert.ok(boardManagerActions.includes("do_nothing"));
@@ -85,6 +89,35 @@ const busyCandidateBoard = buildBoardManagerActionPressure({
 });
 assert.equal(busyCandidateBoard.summary.eligibleCandidateCount, 0);
 assert.equal(busyCandidateBoard.signals[0].allowedNextActions.includes("initiate_network_task"), false);
+assert.equal(busyCandidateBoard.signals[0].allowedNextActions.includes("message_user"), true);
+assert.equal(busyCandidateBoard.signals[0].preferredNextAction, "message_user");
+
+const documentRefreshOnlyBoard = buildBoardManagerActionPressure({
+  hiveProjects: {
+    projects: {
+      empty_protocol_project: {
+        id: "empty_protocol_project",
+        title: "Empty Protocol Project",
+        status: "active",
+        taskCount: 2,
+        contributorCount: 1,
+        tasks: [],
+        contributors: [],
+      },
+    },
+  },
+  networkTaskContent: { completed: [], outstanding: [], stopped: [], pendingGeneration: [] },
+  networkTaskCandidates: [],
+  recentBoardManagerRuns: [
+    {
+      selectedAction: "refresh_project_document",
+      targetId: "empty_protocol_project",
+      actionResults: [{ targetId: "empty_protocol_project" }],
+    },
+  ],
+});
+assert.equal(documentRefreshOnlyBoard.summary.requiresAction, true);
+assert.equal(documentRefreshOnlyBoard.signals[0].requiresAction, true);
 
 const movingBoard = buildBoardManagerActionPressure({
   hiveProjects: {
@@ -119,6 +152,101 @@ const prompt = formatBoardManagerCodexPrompt({
 assert.match(prompt, /BOARD MANAGER SOURCE PACKET/);
 assert.match(prompt, /Do not mutate database state/);
 assert.match(prompt, /pf\.hive\.board_manager\.source\.v0/);
+
+let capturedDecisionBody = null;
+const directDecision = await fetchBoardManagerDecision({
+  sourcePacket: packet,
+  fetchImpl: async (_url, options = {}) => {
+    capturedDecisionBody = JSON.parse(options.body);
+    return {
+      ok: true,
+      async text() {
+        return JSON.stringify({
+          id: "resp_board_manager_smoke",
+          model: "gpt-5.5-pro-2026-04-23",
+          output_text: JSON.stringify({
+            action: "message_user",
+            target_type: "account",
+            target_id: "acct_candidate",
+            reason: "The board is stalled and no contributor capacity is available, so ask for the smallest decision input.",
+            confidence: 0.74,
+            payload: {
+              summary: "Ask the contributor for the smallest useful project input.",
+              next_steps: ["Wait for the contributor response before routing another task."],
+              message_text: "What is the smallest concrete decision input that would unblock this project?",
+              archive_reason: "",
+              project: {
+                id: "",
+                type: "",
+                title: "",
+                summary: "",
+                objective: "",
+                about: "",
+                priority: 0,
+                phase_label: "",
+                phase_current: 0,
+                phase_total: 0,
+                pft_routed: 0,
+                task_count: 0,
+                contributor_count: 0,
+              },
+              project_document: {
+                title: "",
+                summary: "",
+                project_status: "",
+                key_points: [],
+                blocked_or_unclear: [],
+                next_actions: [],
+              },
+              contributor: {
+                project_id: "",
+                account_id: "",
+                wallet_address: "",
+                codename: "",
+                archetype: "",
+                role_label: "",
+                status: "",
+                allotted: false,
+                cap: 0,
+                load: 0,
+                sort_order: 0,
+              },
+              network_task: {
+                task_class: "",
+                candidate_account_id: "",
+                candidate_wallet_address: "",
+                project_need_summary: "",
+                routing_reason: "",
+                cadence_reason: "",
+                reward_min_pft: 10000,
+                reward_max_pft: 50000,
+                accept_window_hours: 24,
+                allow_over_capacity: false,
+              },
+            },
+          }),
+          usage: {
+            input_tokens: 100,
+            output_tokens: 50,
+            total_tokens: 150,
+            output_tokens_details: { reasoning_tokens: 25 },
+          },
+        });
+      },
+    };
+  },
+});
+assert.equal(capturedDecisionBody.model, "gpt-5.5-pro");
+assert.equal(capturedDecisionBody.reasoning.effort, "high");
+assert.equal(capturedDecisionBody.text.format.type, "json_schema");
+assert.equal(capturedDecisionBody.text.format.name, "board_manager_action");
+assert.ok(capturedDecisionBody.text.format.schema.properties.payload.properties.project.properties.title);
+assert.equal(capturedDecisionBody.store, false);
+assert.equal(capturedDecisionBody.metadata.prompt_version, "board_manager_v1");
+assert.equal(directDecision.provider, "openai");
+assert.equal(directDecision.model, "gpt-5.5-pro-2026-04-23");
+assert.equal(directDecision.decision.action, "message_user");
+assert.equal(directDecision.usage.reasoningTokens, 25);
 
 const decision = normalizeBoardManagerDecision({
   action: "refresh_hive_secretary",

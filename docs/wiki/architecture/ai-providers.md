@@ -62,26 +62,30 @@ Jobs retrieval uses OpenAI `/v1/embeddings` through `server/embedding-provider.j
 
 Hive planning workers are not user chat modes and are not billed to the user's chat balance. They are async internal coordination jobs.
 
-The target architecture is Board Manager centered. The Board Manager is a leased Codex Exec function that chooses one scoped Hive action per run. Hive Secretary, Hive Active Projects, Product Documents, contributor assignment, Network Task assignment, and evidence review should become action handlers behind that manager instead of independent overactive cron loops.
+The target architecture is Board Manager centered. The Board Manager is a leased OpenAI Responses decision worker that chooses one scoped Hive action per run. Hive Secretary, Hive Active Projects, Product Documents, contributor assignment, Network Task assignment, and evidence review should become action handlers behind that manager instead of independent overactive cron loops.
 
 | Worker | Provider | API path | Default model | Reasoning | Output | Privacy policy |
 | --- | --- | --- | --- | --- | --- | --- |
-| Board Manager | Codex Exec | `codex exec` / `codex exec resume` | `gpt-5.5` | `xhigh` | One action from registry | Internal run log |
+| Board Manager | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | One action from registry | `store=false` |
 | Hive Secretary | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON report | `store=false` |
 | Hive Active Projects | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON project set | `store=false` |
 
 The model ID comes from OpenAI's GPT-5.5 pro model page: `gpt-5.5-pro`. OpenAI's reasoning guidance positions GPT-5.5 pro as the higher-intelligence option for harder asynchronous reasoning work and recommends the Responses API for reasoning models. Task Node therefore uses `gpt-5.5-pro` for project determination, not OpenRouter DeepSeek.
 
-Hive Project Product Documents are not a separate provider job. When the Board Manager chooses `refresh_project_document`, Codex Exec writes the document in `payload.project_document`; the action hook validates and persists it to `network_project_product_docs`. This keeps core Hive management inside the Board Manager instead of delegating ordinary project-definition work to another model.
+Hive Project Product Documents are not a separate provider job. When the Board Manager chooses `refresh_project_document`, the Board Manager decision model writes the document in `payload.project_document`; the action hook validates and persists it to `network_project_product_docs`. This keeps core Hive management inside the Board Manager instead of delegating ordinary project-definition work to another model.
 
 Current Hive Secretary and Active Projects workers still exist, but the planning direction is to stop treating them as the decision loop. The Board Manager owns whether a Secretary refresh, project update, product-doc refresh, research action, user follow-up, task allocation, or evidence review should happen.
 
-The Board Manager harness defaults to dry-run for app mutations, but it is not ephemeral. `scripts/board-manager-codex-exec.mjs` builds the live Hive source packet, creates or resumes the persistent Codex session stored in `board_manager_sessions`, calls Codex with `gpt-5.5` and `model_reasoning_effort="xhigh"` against `schemas/board-manager-action.schema.json`, and records the selected action in `board_manager_runs` when Postgres is enabled. When run with `--execute`, it dispatches supported hooks through `server/board-manager-actions.js`: `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, `refresh_project_document`, and `assign_contributor`. `message_user` appends an assistant response to the original Hive Input chat conversation and records `board_manager_user_messages` only as delivery audit; it does not bill the user.
+The Board Manager harness defaults to dry-run for app mutations. `scripts/board-manager-model-exec.mjs` builds the live Hive source packet, calls OpenAI Responses with `gpt-5.5-pro` and `reasoning.effort="high"` against `schemas/board-manager-action.schema.json`, and records the selected action in `board_manager_runs` when Postgres is enabled. When run with `--execute`, it dispatches supported hooks through `server/board-manager-actions.js`: `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, `refresh_project_document`, `assign_contributor`, and `initiate_network_task`. `message_user` appends an assistant response to the original Hive Input chat conversation and records `board_manager_user_messages` only as delivery audit; it does not bill the user.
+
+Board Manager source packets consume compact user routing profiles from `network_task_profiles`. Those profiles are generated asynchronously by the memory worker through the DeepSeek Flash ZDR route, so the Board Manager does not need raw user context documents, full chat history, or full memory bundles for each decision.
 
 Environment overrides:
 
 - `TASKNODE_HIVE_SECRETARY_MODEL`
 - `TASKNODE_HIVE_SECRETARY_REASONING_EFFORT`
+- `TASKNODE_BOARD_MANAGER_MODEL`
+- `TASKNODE_BOARD_MANAGER_REASONING_EFFORT`
 - `TASKNODE_HIVE_PROJECT_MODEL`
 - `TASKNODE_HIVE_PROJECT_REASONING_EFFORT`
 The default reasoning effort is `high`. These workers use structured outputs rather than prompt-only JSON parsing so invalid project shapes fail the job instead of silently changing the UI.
@@ -166,7 +170,7 @@ Review implementation against this document (ai providers). Mark each item when 
 - [ ] Hot paths use bounded queries, checkpoints, or projection tables.
 - [ ] Background workers dedupe and lock jobs to prevent duplicate work.
 - [ ] Provider calls stream where supported; full responses not buffered twice.
-- [ ] Board Manager Codex Exec runs bounded by lease; batch size 1 for network task generation.
+- [ ] Board Manager decision worker runs bounded by lease; batch size 1 for network task generation.
 
 ### Code Quality
 - [ ] Architecture claims map to migrations, repositories, and smoke scripts.

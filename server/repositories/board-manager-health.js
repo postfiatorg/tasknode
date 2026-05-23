@@ -61,7 +61,7 @@ function hasRecentProjectHandling({ projectId = "", recentBoardManagerRuns = [] 
     const action = safeText(run.selectedAction || run.action, 80);
     const targetId = safeText(run.targetId || run.target_id || run.decision?.target_id, 240);
     const resultTargetId = safeArray(run.actionResults).some((result) => safeText(result.targetId || result.target_id, 240) === normalizedProjectId);
-    return ["initiate_network_task", "assign_contributor", "archive_project", "refresh_project_document"].includes(action)
+    return ["initiate_network_task", "assign_contributor", "archive_project", "message_user"].includes(action)
       && (targetId === normalizedProjectId || resultTargetId);
   });
 }
@@ -104,10 +104,13 @@ function projectPressureSignal({
 
   if (!reasons.length) return null;
 
-  const allowedNextActions = ["refresh_project_document", "message_user", "archive_project"];
+  const allowedNextActions = ["message_user", "refresh_project_document", "archive_project"];
   if (eligibleCandidateCount > 0) {
     allowedNextActions.unshift("initiate_network_task", "assign_contributor");
   }
+  const preferredNextAction = eligibleCandidateCount > 0
+    ? "initiate_network_task"
+    : "message_user";
 
   return {
     projectId,
@@ -118,6 +121,7 @@ function projectPressureSignal({
     pressure: "empty_or_stalled_active_project",
     reasons,
     allowedNextActions: [...new Set(allowedNextActions)],
+    preferredNextAction,
     plannedTaskCount,
     liveTaskCount,
     plannedContributorCount,
@@ -193,6 +197,8 @@ export function buildBoardManagerActionPressure({
       plannedCountsAreNotLiveWork: true,
       emptyActiveProjectRequiresAction: true,
       stoppedOrRefusedNetworkTaskRequiresFollowup: true,
+      documentRefreshIsNotLiveMotion: true,
+      zeroEligibleCandidatesRequiresFollowup: true,
       doNothingRequiresHealthyMotionOrRecentHandling: true,
       acceptableResolutions: [
         "initiate a network task for an eligible contributor",

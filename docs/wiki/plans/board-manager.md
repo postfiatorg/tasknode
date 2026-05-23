@@ -1,6 +1,6 @@
 # Board Manager
 
-Status: v0 persistent Codex Exec agent implemented with first action hooks and a durable worker architecture
+Status: v0 OpenAI Responses decision worker implemented with first action hooks and a durable worker architecture
 
 This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, archive projects, refresh project documents, route tasks, or do nothing.
 
@@ -8,7 +8,7 @@ This plan supersedes the earlier idea that Hive should be driven by a set of ind
 
 The Board Manager manages the Hive page and Hive interactions across the Post Fiat Task Node app.
 
-It is a Codex Exec function with a bounded action registry. It is not a chat bot, not a public user, and not a frontend component. It is the system operator for the network board.
+It is an OpenAI `gpt-5.5-pro` high-reasoning decision worker with a bounded action registry. It is not a chat bot, not a public user, and not a frontend component. It is the system operator for the network board.
 
 The Board Manager should answer:
 
@@ -32,8 +32,6 @@ Planned ownership model:
 - The lease records `manager_id`, `owner_instance`, `scope`, `claimed_at`, `heartbeat_at`, and `expires_at`.
 - Each run records a durable `board_manager_runs` row with source packet digest, selected action, outcome, and errors.
 - Each completed run also records a micro summary artifact in `board_manager_runs.micro_summary_json` and `board_manager_runs.micro_summary_text`.
-- `board_manager_sessions` stores the persistent Codex session id for each scope.
-- Each tick resumes that session with `codex exec resume <session_id>` unless an operator explicitly starts a fresh session.
 - The first scope is `global_hive`.
 - Later scopes can be project-specific, for example `project:pft_distribution_v3`, if the network becomes too large for one global manager.
 
@@ -41,7 +39,7 @@ The default v1 posture is conservative. Most ticks should do nothing unless ther
 
 ## Board Action Pressure
 
-The Board Manager source packet now includes `boardActionPressure`, a deterministic health summary built before Codex chooses an action. This exists because an active board can look superficially stable while actually being stalled.
+The Board Manager source packet now includes `boardActionPressure`, a deterministic health summary built before the model chooses an action. This exists because an active board can look superficially stable while actually being stalled.
 
 The pressure signal treats these conditions as action-required:
 
@@ -75,10 +73,10 @@ Fly deployment target:
 
 - `fly.toml` defines process groups for `app`, `worker`, and `board-manager`;
 - `start:board-manager` sets `TASKNODE_BOARD_MANAGER_ENABLED=true` for the dedicated process;
-- the production Docker image installs `@openai/codex@0.132.0` so the Board Manager process can run `codex exec`;
+- the production image provides OpenAI credentials to the `board-manager` process group;
 - run one `board-manager` machine by default with Fly process scaling;
 - allow a second standby machine later, relying on the Postgres lease to prevent duplicate actions;
-- keep Codex credentials and provider keys in Fly secrets, not in Postgres;
+- keep provider keys in Fly secrets, not in Postgres;
 - write all decisions, action results, and summaries to Postgres so the Hive UI remains the audit surface.
 
 ## Production Scheduler
@@ -114,14 +112,14 @@ Implemented worker loop:
 2. claim one job with an atomic Postgres transaction;
 3. claim the scope lease or defer the job if another manager owns it;
 4. build the source packet;
-5. resume the persistent Codex session for the scope;
+5. call OpenAI Responses with the compact source packet;
 6. validate the selected action against `schemas/board-manager-action.schema.json`;
 7. execute at most one supported action hook;
 8. write `board_manager_runs`, `board_manager_action_results`, and the micro summary;
 9. schedule the next tick from scope cadence and action outcome;
 10. release or heartbeat the lease.
 
-The worker entrypoint is `scripts/board-manager-worker.mjs`. It uses `enqueueDueBoardManagerTicks`, `claimBoardManagerJob`, and the existing `scripts/board-manager-codex-exec.mjs` one-shot executor. It does not duplicate the Codex decision logic.
+The worker entrypoint is `scripts/board-manager-worker.mjs`. It uses `enqueueDueBoardManagerTicks`, `claimBoardManagerJob`, and the existing `scripts/board-manager-model-exec.mjs` one-shot executor. It does not duplicate the model decision logic.
 
 The scheduler repository is `server/repositories/board-manager-scheduler.js`. The source-packet/run repository remains `server/repositories/board-manager.js`.
 
@@ -153,17 +151,15 @@ Later scaling can add project-scoped managers:
 
 Do not add project-scoped managers until the single `global_hive` manager is stable in production.
 
-## Session And Context Control
+## Context Control
 
-The Board Manager should remain agentic. It should not start from scratch every tick, but it also cannot grow the session forever.
+The Board Manager should remain state-aware without relying on an ever-growing model session.
 
 Rules:
 
-- `board_manager_sessions` stores the current Codex session id for each scope.
-- Each run resumes the session unless an operator deliberately rotates it.
 - Each run includes compact Board Manager micro summaries rather than full prior source packets.
-- The source packet is compacted before Codex sees it. Project rows, task request rows, task projection rows, Network Task content, and recent Board Manager runs are bounded and summarized so stale history cannot blow up the Codex Exec context window.
-- If the stored Codex session becomes too large, `scripts/board-manager-codex-exec.mjs` detects the context-window failure, retries once with a fresh session, and stores the new session with `session_mode = rotated_after_context_overflow` plus the previous session id in metadata.
+- The source packet is compacted before the model sees it. Project rows, task request rows, task projection rows, Network Task content, eligible user profiles, and recent Board Manager runs are bounded and summarized so stale history cannot blow up the decision context.
+- Eligible user context comes from `network_task_profiles`, generated asynchronously by the DeepSeek Flash ZDR memory route, rather than raw context documents or chat history.
 - The packet must continue to include the compact Network Task content snapshot, project documents, Hive Secretary summary, recent validated Hive Inputs, eligible contributor profiles, and recent Board Manager summaries.
 - Raw private user data should stay out of the packet unless the selected action requires it and the user has provided it through a validated Hive path.
 
@@ -232,7 +228,7 @@ The Hive Mind Agent tab is the product-facing audit surface. It should show `do_
 7. Pending: add packet-size reporting by source-packet section before each run.
 8. Partial: add operator scripts for status, enqueue, pause, resume, and ensure-scope. Stale lease recovery should be added before unattended production operation.
 9. Done: update Fly process configuration for `app`, `worker`, and `board-manager`.
-10. Pending: run local Docker with two board-manager workers and confirm lease exclusion against the full Codex Exec path.
+10. Pending: run local Docker with two board-manager workers and confirm lease exclusion against the full OpenAI decision path.
 11. Pending: deploy to Fly with one `board-manager` process and confirm a manual trigger writes exactly one run.
 12. Pending: enable periodic production cadence only after manual trigger, failover, and idempotency tests pass.
 
@@ -245,39 +241,40 @@ Done means:
 - every action and `do_nothing` decision is auditable in Postgres and visible through the Hive Mind Agent feed;
 - Network Task lifecycle state still comes from PFTL/task projections, not from the Board Manager.
 
-## V0 Codex Exec Harness
+## V0 OpenAI Decision Harness
 
 Implemented v0 pieces:
 
 - `server/repositories/board-manager.js` builds the current Hive source packet and validates the returned action.
 - `server/repositories/board-manager.js` formats a Hive Mind Agent feed from `board_manager_runs` and `board_manager_action_results`.
-- `schemas/board-manager-action.schema.json` constrains the Codex Exec output, including action-specific `project`, `contributor`, `network_task`, `message_text`, and `archive_reason` payload fields.
-- `scripts/board-manager-codex-exec.mjs` runs Codex Exec with `gpt-5.5` and `model_reasoning_effort = xhigh`, creating or resuming the persistent session for the Board Manager scope.
+- `server/board-manager-decision-provider.js` calls OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false`.
+- `schemas/board-manager-action.schema.json` constrains the model output, including action-specific `project`, `contributor`, `network_task`, `message_text`, and `archive_reason` payload fields.
+- `scripts/board-manager-model-exec.mjs` runs one OpenAI Board Manager decision and records the selected action.
+- `scripts/board-manager-codex-exec.mjs` remains available as a manual repo-aware operator path, not the production Board Manager default.
 - `server/board-manager-actions.js` executes the first supported actions, including project-document refresh.
 - `server/db/migrations/033_board_manager_v0.sql` adds lease, run, and action-result tables.
 - `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks operator-archived Hive projects so the project planner cannot silently reactivate rejected cards.
 - `server/db/migrations/035_board_manager_action_hooks.sql` adds user-visible Board Manager messages.
-- `server/db/migrations/036_board_manager_persistent_sessions.sql` adds persistent Codex session tracking.
+- `server/db/migrations/036_board_manager_persistent_sessions.sql` remains for historical Codex operator sessions; the default OpenAI decision path is stateless and uses run summaries for continuity.
 - `server/db/migrations/038_network_project_product_docs.sql` adds current/superseded product documents for Hive projects.
 - `server/db/migrations/039_network_task_allocations.sql` adds Network Task allocation and generation job tables.
 - `server/db/migrations/041_board_manager_run_micro_summaries.sql` adds the durable per-run micro summary artifact.
 - `server/db/migrations/042_board_manager_scheduler.sql` adds the durable scheduler scope/job tables.
-- `npm run board-manager:codex -- --trigger <name>` runs one dry-run Board Manager decision.
-- `npm run board-manager:codex -- --trigger <name> --execute` runs one Board Manager decision and executes supported action hooks.
-- `npm run board-manager:codex -- --trigger <name> --fresh-session` starts a new persistent Codex session for the scope.
-- `npm run board-manager:codex -- --packet-only` prints the source packet without calling Codex.
+- `npm run board-manager:model -- --trigger <name>` runs one dry-run Board Manager decision.
+- `npm run board-manager:model -- --trigger <name> --execute` runs one Board Manager decision and executes supported action hooks.
+- `npm run board-manager:model -- --packet-only` prints the source packet without calling OpenAI.
 - `npm run board-manager:loop -- --execute` runs the continuous local Board Manager loop for development.
 - `npm run board-manager:worker -- --execute` runs the durable job-driven Board Manager worker.
 - `npm run board-manager:ops -- status` shows the scope, lease, and recent jobs.
-- local Docker has a dedicated `board-manager` service in `docker-compose.dev.yml`; it runs the durable worker continuously, mounts `CODEX_HOME`, and is separate from the API/web containers.
+- local Docker has a dedicated `board-manager` service in `docker-compose.dev.yml`; it runs the durable worker continuously and is separate from the API/web containers.
 
-The default remains dry-run for app mutations. It is not ephemeral. The Codex conversation persists, and execution of app hooks still requires the explicit `--execute` flag.
+The default remains dry-run for app mutations. Execution of app hooks still requires the explicit `--execute` flag.
 
 At the end of each recorded run, the app now writes a small Board Manager Run Summary artifact. It contains the run id, trigger, selected action, target, result, reason, next steps, source packet digest, session mode, and a compact list of action results. This is the durable artifact future runs should read instead of replaying full historical `decision_json`, `action_payload_json`, and action-result payloads.
 
-The source packet still preserves enough run history for continuity, but it passes recent Board Manager runs as micro summaries. This prevents a persistent Codex session from accumulating full prior source packets and large project-document decisions until it hits the model context window.
+The source packet still preserves enough run history for continuity, but it passes recent Board Manager runs as micro summaries. User routing context is compacted through `network_task_profiles`, generated asynchronously by the DeepSeek Flash ZDR memory route. This prevents each decision call from receiving full user context documents, chat history, or raw memory bundles.
 
-The local continuous loop is implemented by `scripts/board-manager-loop.mjs`. It repeatedly invokes the one-shot Codex executor instead of duplicating Board Manager logic. Each tick still claims the normal lease, resumes the stored Codex session, records a run row, writes the micro summary, and executes only supported action hooks. If the selected action is `do_nothing`, the loop waits two minutes by default before the next tick. If the selected action mutates the board, it waits only the shorter action delay so the manager can observe the resulting state. This local harness is not the Fly production architecture; production should use the durable scheduler and process split described above.
+The local continuous loop is implemented by `scripts/board-manager-loop.mjs`. It repeatedly invokes the one-shot executor instead of duplicating Board Manager logic. Each tick still claims the normal lease, records a run row, writes the micro summary, and executes only supported action hooks. If the selected action is `do_nothing`, the loop waits two minutes by default before the next tick. If the selected action mutates the board, it waits only the shorter action delay so the manager can observe the resulting state. This local harness is not the Fly production architecture; production should use the durable scheduler and process split described above.
 
 The Board Manager does not manage task lifecycle status. It may decide that a project should route work to a contributor, but after the task offer exists, status comes from signed PFTL task events and the `task_projections` read model. Hive project task refs and allocation rows mirror that projection for display and routing load; they are not a second source of truth.
 
@@ -489,7 +486,7 @@ The product document should answer:
 
 This action owns the agent-managed Project Status blob shown inside a Hive project About section. The static project description stays in `network_projects.about`; the changing execution briefing belongs in a versioned product document row so the agent can update status without overwriting project identity. The UI renders this document collapsed by default, with the summary visible and the detailed status, key points, blockers, next actions, and model metadata behind an expand control.
 
-This is a single-agent path for core Hive work. Codex Exec is the Board Manager, and it writes the project document inside `payload.project_document` when it chooses `refresh_project_document`. The action hook validates and persists that document. It does not call DeepSeek, OpenRouter, or any other secondary writer model.
+This is a single-agent path for core Hive work. The Board Manager decision model writes the project document inside `payload.project_document` when it chooses `refresh_project_document`. The action hook validates and persists that document. It does not call DeepSeek, OpenRouter, or any other secondary writer model.
 
 Current implementation:
 
@@ -812,8 +809,8 @@ Review implementation against this document (board manager). Mark each item when
 ### Memory Efficiency
 - [ ] Plan phases avoid loading unbounded history or corpus into single jobs.
 - [ ] Derived read models prefer projections over duplicate materialized stores.
-- [ ] Single global lease prevents parallel Codex Exec runs across Fly instances.
-- [ ] Persistent session resume avoids re-sending full history each tick.
+- [ ] Single global lease prevents parallel decision-worker runs across Fly instances.
+- [ ] Compact micro summaries and network task profiles avoid re-sending full history each tick.
 
 ### Code Quality
 - [ ] Done criteria map to testable checks or smoke commands.

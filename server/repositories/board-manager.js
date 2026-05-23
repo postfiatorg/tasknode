@@ -587,7 +587,7 @@ export async function buildBoardManagerSourcePacket({
     currentTaskRequests({ limit: 8 }),
     getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 12, stoppedLimit: 6, pendingLimit: 6 }).catch(() => null),
     listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
-    recentBoardManagerRuns({ limit: 8 }),
+    recentBoardManagerRuns({ limit: 5 }),
   ]);
 
   const generatedAt = new Date().toISOString();

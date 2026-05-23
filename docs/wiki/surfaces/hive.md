@@ -43,13 +43,13 @@ The Hive Mind Agent card renders that decision audit directly. A run should show
 
 ## Board Manager Target
 
-The Board Manager is the planned system operator for Hive. It is a Codex Exec function with a bounded action registry. It should run periodically or after meaningful state changes, claim a single `global_hive` lease, inspect the current board state, and choose one action.
+The Board Manager is the planned system operator for Hive. It is a leased OpenAI Responses decision worker with a bounded action registry. It should run periodically or after meaningful state changes, claim a single `global_hive` lease, inspect the current board state, and choose one action.
 
-V0 exists as a persistent Codex Exec harness. It builds the current Hive source packet, calls Codex Exec using `gpt-5.5` with `xhigh` reasoning, validates the returned action against a JSON schema, and records the decision in `board_manager_runs` when Postgres is enabled. It stores one Codex session id per manager scope in `board_manager_sessions`; later ticks call `codex exec resume <session_id>` instead of starting over. It defaults to dry-run for app mutations, and executes supported action hooks only when the executor is run with `--execute`.
+V0 now builds the current Hive source packet, calls OpenAI Responses using `gpt-5.5-pro` with `high` reasoning, validates the returned action against `schemas/board-manager-action.schema.json`, and records the decision in `board_manager_runs` when Postgres is enabled. It defaults to dry-run for app mutations, and executes supported action hooks only when the executor is run with `--execute`. Codex Exec remains available as a manual repo/operator tool, but it is no longer the normal Board Manager decision engine.
 
 The local continuous runner is `npm run board-manager:loop -- --execute`. It calls the same one-shot Board Manager executor repeatedly. If the manager selects `do_nothing`, the loop sleeps for two minutes before the next tick. If the manager changes the board, it waits only the shorter action delay and then rechecks the resulting Hive state. This is a development harness, not the production deployment model.
 
-The production target is a Fly-managed `board-manager` process group with a Postgres-backed job queue and lease. The first implementation is now in place. Web/API instances can enqueue Board Manager jobs but do not run background workers when started with `TASKNODE_PROCESS_ROLE=web`. The dedicated Board Manager worker claims one due job, calls the existing one-shot Codex Exec path, claims the scope lease inside that one-shot run, resumes the persistent Codex session, executes at most one validated action, writes the run/action/micro-summary audit rows, and schedules follow-up work when the action mutates state. Multiple Fly machines can exist for failover, but only claimed jobs and the Board Manager lease holder can act. The full migration plan is in `Plans -> Board Manager`.
+The production target is a Fly-managed `board-manager` process group with a Postgres-backed job queue and lease. The first implementation is now in place. Web/API instances can enqueue Board Manager jobs but do not run background workers when started with `TASKNODE_PROCESS_ROLE=web`. The dedicated Board Manager worker claims one due job, calls the one-shot OpenAI decision path, claims the scope lease inside that one-shot run, executes at most one validated action, writes the run/action/micro-summary audit rows, and schedules follow-up work when the action mutates state. Multiple Fly machines can exist for failover, but only claimed jobs and the Board Manager lease holder can act. The full migration plan is in `Plans -> Board Manager`.
 
 Allowed actions include:
 
@@ -82,7 +82,9 @@ The Board Manager source packet now includes a `networkTaskContent` snapshot. Th
 
 This snapshot is intentionally not the full forensics view. It does not carry raw CIDs, transactions, every metadata field, or full uploaded artifacts. The purpose is to let the Board Manager understand what work happened and what work is still active before it refreshes a project document, messages a user, or allocates another Network Task.
 
-The source packet also includes `boardActionPressure`, a deterministic health summary. This is the guard against passive Hive decisions. If active projects have no live tasks, no contributors, no pending generation, or a recent stopped Network Task with no follow-up, the packet marks the board as action-required. In that state the manager should route work, assign an eligible contributor, ask for the smallest missing decision input, refresh the project document with a concrete blocker, or archive the project. `eligibleCandidateCount` means candidates still available after outstanding and pending Network Tasks are accounted for, so a busy contributor is not counted as free capacity. `do_nothing` is acceptable only when the board already has live motion or the same issue was just handled by a recent run.
+User routing context is also compacted before it reaches the Board Manager. `network_task_profiles` are generated asynchronously by the memory worker through the DeepSeek Flash ZDR route, and `listEligibleNetworkTaskCandidates` passes only those small diagnostic profiles plus the active wallet. The Board Manager does not receive full user context documents, full chat history, or raw memory bundles in the normal decision packet.
+
+The source packet also includes `boardActionPressure`, a deterministic health summary. This is the guard against passive Hive decisions. If active projects have no live tasks, no contributors, no pending generation, or a recent stopped Network Task with no follow-up, the packet marks the board as action-required. In that state the manager should route work, assign an eligible contributor, ask for the smallest missing decision input, refresh the project document with a concrete blocker, or archive the project. `eligibleCandidateCount` means candidates still available after outstanding and pending Network Tasks are accounted for, so a busy contributor is not counted as free capacity. If `eligibleCandidateCount` is zero, the expected fallback is `message_user`, not `do_nothing`. A Project Status refresh is not live board motion; it cannot by itself clear an empty project. `do_nothing` is acceptable only when the board already has live motion, a matching task/generation job is in flight, or a targeted user follow-up is waiting for a response.
 
 The Hive project task row renders canonical task statuses directly, including `rewarded`, `reward_decided`, `verification_response_submitted`, and stopped states. Unknown statuses are shown as unknown, not silently downgraded to `proposed`.
 
@@ -166,6 +168,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/hive-secretary-worker.js` processes validated Hive Inputs through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action handler.
 - `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
+- `server/board-manager-decision-provider.js` calls OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false` for Board Manager decisions.
 - `server/repositories/board-manager-health.js` computes `boardActionPressure`, including empty active project and stopped Network Task pressure.
 - `server/repositories/board-manager-scheduler.js` owns the durable Board Manager scheduler helpers: scope setup, job enqueue, due tick enqueue, job claiming, job completion, and deferred/failed retries.
 - `server/board-manager-actions.js` executes the first Board Manager action hooks.
@@ -175,10 +178,11 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/repositories/network-tasks.js::getNetworkTaskContentSnapshot` builds the Board Manager's compact task-content snapshot from `network_project_task_refs`, `task_projections`, `network_task_generation_jobs`, `network_task_allocations`, and latest task reward/update events.
 - `server/network-task-generation-worker.js` consumes queued network-task generation jobs and hands them to the existing task-generation worker through `task_requests`.
 - `server/repositories/chat-assistant-messages.js` appends Board Manager `message_user` responses to existing account-owned chat conversations without creating a billed model run.
-- `scripts/board-manager-codex-exec.mjs` runs one persistent Codex Exec Board Manager tick or, with `--execute`, dispatches supported action hooks.
+- `scripts/board-manager-model-exec.mjs` runs one OpenAI Responses Board Manager tick or, with `--execute`, dispatches supported action hooks.
+- `scripts/board-manager-codex-exec.mjs` remains a manual operator path for repo-aware Codex work, not the production Board Manager default.
 - `scripts/board-manager-worker.mjs` is the durable job-driven Board Manager worker entrypoint for Fly or local production-like runs.
 - `scripts/board-manager-ops.mjs` provides operator commands for status, enqueue, pause, resume, and scope setup.
-- `schemas/board-manager-action.schema.json` constrains the Codex Exec output.
+- `schemas/board-manager-action.schema.json` constrains the Board Manager model output.
 - `server/repositories/hive-context.js` persists raw Hive Context entries, Secretary jobs, and Secretary reports.
 - `server/repositories/hive-projects.js` reads active network projects, links the latest Secretary report as a project input, and derives routing feed/operator rollups from project task refs when explicit contributor/activity rows are absent. The routing feed, project tasks, and project activity sort by event/update timestamp descending before rendering. Contributor, operator, task-assignee, and activity rows use the selected profile NFT/PFP from `profile_nfts` when available, falling back to the generated badge only when no image exists.
 - `server/repositories/hive-project-product-docs.js` builds a single-project source packet, reads the current product document, and inserts a new current product document while superseding the old one.
@@ -192,7 +196,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/db/migrations/033_board_manager_v0.sql` adds Board Manager lease/run/action-result tables.
 - `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks archived project rows so rejected projects do not reappear after a later planner run.
 - `server/db/migrations/035_board_manager_action_hooks.sql` adds user-visible Board Manager messages.
-- `server/db/migrations/036_board_manager_persistent_sessions.sql` adds persistent Codex session tracking.
+- `server/db/migrations/036_board_manager_persistent_sessions.sql` remains for manual Codex operator-session tracking; the default Board Manager decision path is stateless OpenAI Responses.
 - `server/db/migrations/038_network_project_product_docs.sql` adds versioned current/superseded product documents for Hive projects.
 - `server/db/migrations/039_network_task_allocations.sql` adds Network Task allocation and generation job tables.
 - `server/db/migrations/041_board_manager_run_micro_summaries.sql` adds compact Board Manager run artifacts for agent continuity and source-packet size control.
@@ -201,7 +205,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `prompts/hive/hive_active_projects_v1.md` is the source-controlled active-project prompt.
 - `prompts/hive/board_manager_v1.md` is the Board Manager operating prompt and includes the `payload.project_document` shape for `refresh_project_document` plus the `payload.network_task` shape for `initiate_network_task`.
 
-The Board Manager is the agentic writer for core Hive artifacts. It reads Hive state, preserves session context, chooses one action, and for `refresh_project_document` writes the document directly. External models are reserved for explicit tools such as user-facing task generation, profile analysis, or future subagent work, not for routine project-document authorship.
+The Board Manager is the agentic writer for core Hive artifacts. It reads Hive state, chooses one action, and for `refresh_project_document` writes the document directly. Secondary models are reserved for explicit tools such as user-facing task generation, profile analysis, compression, or future subagent work, not for routine project-document authorship.
 
 ## Current Data Boundary
 
@@ -233,7 +237,7 @@ Board Manager target:
 - Product Documents refresh when the manager decides a project is stale or materially changed.
 - If a Product Document identifies missing information, the manager can research, ask follow-up questions, or initiate information-gathering Network Tasks under the existing project.
 - Production runs come from a durable Fly worker process with `board_manager_jobs`, `board_manager_leases`, and auditable `board_manager_runs`, not from local tmux. The runnable entrypoints are `npm run start:web`, `npm run start:worker`, and `npm run start:board-manager`.
-- Local Docker now has a dedicated `board-manager` service. It runs `npm run board-manager:worker -- --execute`, mounts the local Codex home at `/codex_home`, and consumes `board_manager_jobs` separately from the API process.
+- Local Docker now has a dedicated `board-manager` service. It runs `npm run board-manager:worker -- --execute`, uses the OpenAI credentials from the app environment, and consumes `board_manager_jobs` separately from the API process.
 - In local Docker, `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true` is enabled. The worker consumes `network_task_generation_jobs`, creates normal encrypted task request bundles, and schedules the existing task-generation worker. A May 23, 2026 local Docker test produced task `task_01af1624fcb74e41d902ca32b126f27d` for project `task_node` with offer transaction `E6C86781C0D53A68F2E7740AA8751E19616B9732489D9EA8C4330A692AC1A931`.
 - Outside local Docker, a live PFTL network-task offer still requires the network worker, task-generation worker, service encryption key, IPFS, and PFTL submit credentials to be enabled.
 
@@ -283,7 +287,7 @@ Review implementation against this document (hive). Mark each item when verified
 - [ ] List and detail views read Postgres caches with documented caps or pagination.
 - [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
 - [ ] Hive read models derive from projections when rollup tables empty; avoid N+1 task fetches.
-- [ ] Board Manager runs single leased scope; no parallel Codex Exec storms.
+- [ ] Board Manager runs single leased scope; no parallel decision-worker storms.
 
 ### Code Quality
 - [ ] Code references in doc resolve to existing modules and routes.
