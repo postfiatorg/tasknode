@@ -27,7 +27,7 @@ export function createEvidenceDraft(method = "text") {
 
 export function resetEvidenceDrafts(method = "text") {
   if (method === "mixed") {
-    return [createEvidenceDraft("text"), createEvidenceDraft("screenshot")];
+    return [createEvidenceDraft("text")];
   }
   return [createEvidenceDraft(method)];
 }

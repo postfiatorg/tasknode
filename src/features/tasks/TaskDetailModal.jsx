@@ -3,6 +3,8 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
+  ChevronDown,
+  ChevronUp,
   Copy,
   ExternalLink,
   Eye,
@@ -108,6 +110,37 @@ function TaskSection({ children, last, title }) {
       <h3>{title}</h3>
       {children}
     </section>
+  );
+}
+
+function TaskDot() {
+  return <span className="task-meta-dot" aria-hidden="true">.</span>;
+}
+
+function SectionLabel({ title, meta, action }) {
+  return (
+    <div className="task-section-label">
+      <div>
+        <span>{title}</span>
+        {meta && (
+          <>
+            <TaskDot />
+            <small>{meta}</small>
+          </>
+        )}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function ToggleTextButton({ expanded, onClick }) {
+  const Icon = expanded ? ChevronUp : ChevronDown;
+  return (
+    <button className="task-text-toggle" onClick={onClick} type="button">
+      {expanded ? "Hide" : "Show"}
+      <Icon size={12} strokeWidth={1.5} />
+    </button>
   );
 }
 
@@ -228,7 +261,7 @@ function TaskCurrentVerificationPanel({ request }) {
   return (
     <section className="task-current-requirement">
       <div className="task-current-requirement-head">
-        <span>Current requirement</span>
+        <span>Verification requested</span>
         <strong>Submit verification evidence</strong>
       </div>
       {request.body && <p>{request.body}</p>}
@@ -252,14 +285,19 @@ function TaskCurrentVerificationPanel({ request }) {
   );
 }
 
-function TaskOriginalContext({ displayTask, steps, verification }) {
+function TaskOriginalContext({ displayTask, expanded, onToggle, steps, verification }) {
   return (
-    <details className="task-original-context">
-      <summary>
-        <span>Original task context</span>
-        <small>Offer, routing, steps, and initial evidence requirement</small>
-      </summary>
-      <div className="task-original-context-body">
+    <section className="task-original-context">
+      <SectionLabel
+        title="Original task"
+        meta={displayTask.lastEventAtDisplay || displayTask.updatedAtDisplay || ""}
+        action={<ToggleTextButton expanded={expanded} onClick={onToggle} />}
+      />
+      <p className="task-original-summary">
+        {displayTask.description || "Original task details are indexed in the task offer."}
+      </p>
+      {expanded && (
+        <div className="task-original-context-body">
         <TaskNetworkRoutePanel task={displayTask} />
         <TaskSection title="Description">
           <p>{displayTask.description}</p>
@@ -281,7 +319,8 @@ function TaskOriginalContext({ displayTask, steps, verification }) {
           <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
         </TaskSection>
       </div>
-    </details>
+      )}
+    </section>
   );
 }
 
@@ -292,6 +331,7 @@ function TaskOverviewPanel({
   linkedWalletAddress,
   loading,
   onLifecycleAction,
+  onSelectTab,
   onWalletUnlock,
   steps,
   verification,
@@ -299,24 +339,42 @@ function TaskOverviewPanel({
   walletUnlockPending,
   walletVault,
 }) {
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const actions = detail?.actions || {};
   const currentVerificationRequest = detail?.currentVerificationRequest || null;
   const verificationRequestActive = Boolean(actions.canSubmitVerificationEvidence && currentVerificationRequest);
   return (
     <>
       <div className="task-modal-divider" />
-      {verificationRequestActive && (
-        <TaskCurrentVerificationPanel request={currentVerificationRequest} />
-      )}
       <TaskRewardOutcome outcome={detail?.rewardOutcome} />
       {verificationRequestActive ? (
         <>
-          <TaskOriginalContext displayTask={displayTask} steps={steps} verification={verification} />
-          <details className="task-secondary-action">
-            <summary>
-              <span>Task controls</span>
-              <small>Cancel this task if it should no longer continue</small>
-            </summary>
+          <TaskOriginalContext
+            displayTask={displayTask}
+            expanded={showOriginal}
+            onToggle={() => setShowOriginal((value) => !value)}
+            steps={steps}
+            verification={verification}
+          />
+          <div className="task-soft-divider" />
+          <TaskCurrentVerificationPanel request={currentVerificationRequest} />
+          <div className="task-overview-actions">
+            <button className="dark-pill" onClick={() => onSelectTab?.("submit")} type="button">
+              Respond in Submit
+              <ArrowRight size={14} strokeWidth={2} />
+            </button>
+            {actions.canStop && (
+              <button
+                className="task-muted-action"
+                onClick={() => setShowControls((value) => !value)}
+                type="button"
+              >
+                {showControls ? "Hide task controls" : "Cancel task"}
+              </button>
+            )}
+          </div>
+          {showControls && (
             <TaskLifecycleActionPanel
               accountId={accountId}
               actions={actions}
@@ -328,7 +386,7 @@ function TaskOverviewPanel({
               walletUnlockPending={walletUnlockPending}
               walletVault={walletVault}
             />
-          </details>
+          )}
         </>
       ) : (
         <>
@@ -542,6 +600,7 @@ function TaskSubmitPanel({
   const taskId = task?.taskId || task?.fullId || task?.id || detail?.task?.taskId || detail?.task?.fullId || "";
   const [evidenceDrafts, setEvidenceDrafts] = useState(() => resetEvidenceDrafts(defaultEvidenceMethod));
   const [confirmed, setConfirmed] = useState(false);
+  const [showVerificationRequest, setShowVerificationRequest] = useState(true);
   const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "" });
   const [notes, setNotes] = useState("");
   const actions = detail?.actions || {};
@@ -719,31 +778,34 @@ function TaskSubmitPanel({
 
   return (
     <div className="task-submit-panel">
-      <div className="task-submit-head">
-        <div>
-          <h3>
-            {submissionOpen
-              ? actions.canSubmitVerificationEvidence
-                ? "Submit verification evidence"
-                : "Submit task evidence"
-              : closedCopy.title}
-          </h3>
-          <p>
-            {submissionOpen
-              ? actions.canSubmitVerificationEvidence
-                ? verificationRequest?.body || "Respond to the indexed verification request."
-                : verification.body || "Submit evidence that satisfies this task."
-              : closedCopy.body}
-          </p>
-          {actions.canSubmitVerificationEvidence && verificationRequest?.reason && (
-            <small>{verificationRequest.reason}</small>
-          )}
-          {!submissionOpen && <small>{closedCopy.detail}</small>}
+      {!actions.canSubmitVerificationEvidence && (
+        <div className="task-submit-head">
+          <div>
+            <h3>{submissionOpen ? "Submit task evidence" : closedCopy.title}</h3>
+            <p>{submissionOpen ? verification.body || "Submit evidence that satisfies this task." : closedCopy.body}</p>
+            {!submissionOpen && <small>{closedCopy.detail}</small>}
+          </div>
+          <span className={submissionOpen ? "task-submit-state is-open" : "task-submit-state"}>
+            {submissionOpen ? "Open" : task.status}
+          </span>
         </div>
-        <span className={submissionOpen ? "task-submit-state is-open" : "task-submit-state"}>
-          {submissionOpen ? "Open" : task.status}
-        </span>
-      </div>
+      )}
+
+      {submissionOpen && actions.canSubmitVerificationEvidence && verificationRequest?.body && (
+        <section className="task-submit-request">
+          <SectionLabel
+            title="Verification request"
+            action={
+              <ToggleTextButton
+                expanded={showVerificationRequest}
+                onClick={() => setShowVerificationRequest((value) => !value)}
+              />
+            }
+          />
+          {showVerificationRequest && <p>{verificationRequest.body}</p>}
+          {showVerificationRequest && verificationRequest.reason && <small>{verificationRequest.reason}</small>}
+        </section>
+      )}
 
       {summaries.length > 0 && (
         <div className="task-submission-history">
@@ -759,6 +821,10 @@ function TaskSubmitPanel({
 
       {submissionOpen && (
         <>
+      <SectionLabel
+        title="Your response"
+        meta={`${readyEvidenceItems.length || evidenceDrafts.length} item${(readyEvidenceItems.length || evidenceDrafts.length) === 1 ? "" : "s"}`}
+      />
       <div className="task-evidence-list">
         {evidenceDrafts.map((draft, index) => (
           <div className="task-evidence-card" key={draft.id}>
@@ -885,7 +951,7 @@ function TaskSubmitPanel({
 
       <div className="task-evidence-card">
         <label className="task-evidence-notes">
-          Notes
+          <span>Notes for the verifier</span>
           <textarea
             onChange={(event) => {
               setNotes(event.target.value);
@@ -1206,6 +1272,7 @@ export function TaskDetailModal({
               linkedWalletAddress={linkedWalletAddress}
               loading={detailState.loading}
               onLifecycleAction={handleLifecycleAction}
+              onSelectTab={setActiveTab}
               onWalletUnlock={onWalletUnlock}
               steps={steps}
               verification={verification}

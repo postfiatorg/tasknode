@@ -304,7 +304,9 @@ The detail modal is state-specific.
 
 When a task is proposed or accepted, the overview shows the original task offer: description, steps, evidence requirement, and any Hive routing context. This helps the user decide what work is being requested.
 
-When a task enters `verification_requested`, the overview leads with the current verification requirement from the latest indexed verification request. The original task offer, steps, and Hive routing context move into an expandable `Original task context` block. Cancel controls move into an expandable `Task controls` block. The user should first see what evidence is required now, not a duplicate of the initial task packet.
+When a task enters `verification_requested`, the detail view uses the compact verification layout from `mocks/verify.jsx`. The overview shows a short `Original task` summary so the user knows what work the verification belongs to, but the full offer, steps, and Hive routing context stay behind a `Show` toggle. The active `Verification requested` ask appears directly below that summary, followed by a `Respond in Submit` action. Cancel controls stay secondary behind `Cancel task` so they do not compete with the current verification requirement.
+
+The Submit tab repeats the current verification request in a collapsible block, then focuses on the user's response. It starts with one evidence item. A second item is available only after Evidence 1 contains content and the user clicks `Add second evidence`; mixed evidence requirements do not auto-open a second blank card.
 
 ## Timestamp Rules
 
@@ -387,7 +389,7 @@ When changing Tasks, verify:
 11. Existing projected tasks preserve the steps from the chain offer payload rather than falling back to the submission requirement as a fake one-step task.
 12. `npm run data-architecture-audit` reports no P0/P1 findings for current task/cache state.
 13. If a detail page looks stale, `forensics.integrity.projectionBehindCachedPointer` explains the lag and `task-replay-repair` can rebuild the projection from cache rows.
-14. In `verification_requested`, the detail overview puts the current verification ask first and collapses the original task/Hive routing context.
+14. In `verification_requested`, the detail overview uses the mock-driven compact layout: original task summary collapsed, current verification ask visible, and Submit focused on one response draft.
 
 ## Reviewer To Do List
 
