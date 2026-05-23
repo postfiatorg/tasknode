@@ -473,6 +473,72 @@
   line-height: 1.5;
 }
 
+.task-current-requirement {
+  display: grid; gap: 14px; margin-top: 20px; padding: 20px;
+  border: 1px solid rgba(91, 75, 138, 0.18); border-radius: 14px;
+  background: #fbfaf7; box-shadow: inset 3px 0 0 #5b4b8a;
+}
+
+.task-current-requirement-head { display: grid; gap: 5px; }
+
+.task-current-requirement-head span,
+.task-current-requirement-reason span,
+.task-current-requirement dt {
+  color: #6b6b66; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+}
+
+.task-current-requirement-head strong { color: #0d0d0d; font-size: 15.5px; font-weight: 650; }
+
+.task-current-requirement p { margin: 0; color: #161614; font-size: 14px; line-height: 1.62; }
+
+.task-current-requirement-reason {
+  display: grid; gap: 7px; padding-top: 12px; border-top: 1px solid rgba(232, 230, 223, 0.86);
+}
+
+.task-current-requirement-reason p { color: #4a4741; font-size: 13.5px; }
+
+.task-current-requirement dl { display: flex; flex-wrap: wrap; gap: 12px 22px; margin: 0; }
+
+.task-current-requirement dd {
+  max-width: 260px; margin: 4px 0 0; overflow: hidden; color: #0d0d0d;
+  font-size: 12.5px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.task-original-context,
+.task-secondary-action {
+  margin-top: 16px; border: 1px solid #e8e6df; border-radius: 12px; background: #ffffff;
+}
+
+.task-original-context summary,
+.task-secondary-action summary {
+  display: flex; align-items: center; min-height: 54px; padding: 0 16px; cursor: pointer;
+  gap: 12px; justify-content: space-between; list-style: none;
+}
+
+.task-original-context summary::-webkit-details-marker,
+.task-secondary-action summary::-webkit-details-marker { display: none; }
+
+.task-original-context summary::after,
+.task-secondary-action summary::after { color: #8a867c; content: "+"; font-size: 18px; font-weight: 500; }
+
+.task-original-context[open] summary::after,
+.task-secondary-action[open] summary::after { content: "-"; }
+
+.task-original-context summary span,
+.task-secondary-action summary span { color: #0d0d0d; font-size: 13.5px; font-weight: 650; }
+
+.task-original-context summary small,
+.task-secondary-action summary small { color: #6b6b66; font-size: 12px; }
+
+.task-original-context-body { padding: 0 16px 16px; border-top: 1px solid #efede6; }
+
+.task-original-context-body .task-network-route { margin-top: 16px; }
+
+.task-secondary-action .task-lifecycle-action {
+  margin: 0; border-right: 0; border-bottom: 0; border-left: 0;
+  border-radius: 0 0 12px 12px; background: #fbfaf7;
+}
+
 .task-modal .dark-pill:disabled,
 .task-modal .light-pill:disabled {
   cursor: not-allowed;

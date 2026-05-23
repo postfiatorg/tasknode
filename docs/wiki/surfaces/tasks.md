@@ -298,6 +298,14 @@ Endpoints:
 | `POST /api/tasks/request` | Configures, pins, prepares, or submits a signed on-chain task request. |
 | `POST /api/tasks/request-intent` | Records the hidden app-side task request cache entry after chain submit, and records chat-sourced request mode turns. |
 
+## Task Detail UX
+
+The detail modal is state-specific.
+
+When a task is proposed or accepted, the overview shows the original task offer: description, steps, evidence requirement, and any Hive routing context. This helps the user decide what work is being requested.
+
+When a task enters `verification_requested`, the overview leads with the current verification requirement from the latest indexed verification request. The original task offer, steps, and Hive routing context move into an expandable `Original task context` block. Cancel controls move into an expandable `Task controls` block. The user should first see what evidence is required now, not a duplicate of the initial task packet.
+
 ## Timestamp Rules
 
 Task date/time rendering uses `shared/task-time-format.js`.
@@ -379,6 +387,7 @@ When changing Tasks, verify:
 11. Existing projected tasks preserve the steps from the chain offer payload rather than falling back to the submission requirement as a fake one-step task.
 12. `npm run data-architecture-audit` reports no P0/P1 findings for current task/cache state.
 13. If a detail page looks stale, `forensics.integrity.projectionBehindCachedPointer` explains the lag and `task-replay-repair` can rebuild the projection from cache rows.
+14. In `verification_requested`, the detail overview puts the current verification ask first and collapses the original task/Hive routing context.
 
 ## Reviewer To Do List
 

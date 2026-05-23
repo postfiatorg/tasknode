@@ -218,6 +218,73 @@ function TaskNetworkRoutePanel({ task }) {
   );
 }
 
+function TaskCurrentVerificationPanel({ request }) {
+  if (!request?.body && !request?.reason) return null;
+  const rows = [
+    request.type ? ["Evidence type", request.type] : null,
+    request.assessment ? ["Assessment", request.assessment] : null,
+    request.eventId ? ["Request event", request.eventId] : null,
+  ].filter(Boolean);
+  return (
+    <section className="task-current-requirement">
+      <div className="task-current-requirement-head">
+        <span>Current requirement</span>
+        <strong>Submit verification evidence</strong>
+      </div>
+      {request.body && <p>{request.body}</p>}
+      {request.reason && (
+        <div className="task-current-requirement-reason">
+          <span>Why this was requested</span>
+          <p>{request.reason}</p>
+        </div>
+      )}
+      {rows.length > 0 && (
+        <dl>
+          {rows.map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
+  );
+}
+
+function TaskOriginalContext({ displayTask, steps, verification }) {
+  return (
+    <details className="task-original-context">
+      <summary>
+        <span>Original task context</span>
+        <small>Offer, routing, steps, and initial evidence requirement</small>
+      </summary>
+      <div className="task-original-context-body">
+        <TaskNetworkRoutePanel task={displayTask} />
+        <TaskSection title="Description">
+          <p>{displayTask.description}</p>
+        </TaskSection>
+        {steps.length > 0 && (
+          <TaskSection title="Steps">
+            <ol>
+              {steps.map((step, index) => (
+                <li key={`${index}-${step}`}>
+                  <span>{index + 1}</span>
+                  <p>{step}</p>
+                </li>
+              ))}
+            </ol>
+          </TaskSection>
+        )}
+        <TaskSection last title="Initial evidence requirement">
+          <strong>{verification.title || "Submit evidence"}</strong>
+          <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
+        </TaskSection>
+      </div>
+    </details>
+  );
+}
+
 function TaskOverviewPanel({
   accountId,
   detail,
@@ -233,41 +300,71 @@ function TaskOverviewPanel({
   walletVault,
 }) {
   const actions = detail?.actions || {};
+  const currentVerificationRequest = detail?.currentVerificationRequest || null;
+  const verificationRequestActive = Boolean(actions.canSubmitVerificationEvidence && currentVerificationRequest);
   return (
     <>
       <div className="task-modal-divider" />
-      <TaskLifecycleActionPanel
-        accountId={accountId}
-        actions={actions}
-        linkedWalletAddress={linkedWalletAddress}
-        loading={loading}
-        onLifecycleAction={onLifecycleAction}
-        onWalletUnlock={onWalletUnlock}
-        walletSecret={walletSecret}
-        walletUnlockPending={walletUnlockPending}
-        walletVault={walletVault}
-      />
-      <TaskRewardOutcome outcome={detail?.rewardOutcome} />
-      <TaskNetworkRoutePanel task={displayTask} />
-      <TaskSection title="Description">
-        <p>{displayTask.description}</p>
-      </TaskSection>
-      {steps.length > 0 && (
-        <TaskSection title="Steps">
-          <ol>
-            {steps.map((step, index) => (
-              <li key={`${index}-${step}`}>
-                <span>{index + 1}</span>
-                <p>{step}</p>
-              </li>
-            ))}
-          </ol>
-        </TaskSection>
+      {verificationRequestActive && (
+        <TaskCurrentVerificationPanel request={currentVerificationRequest} />
       )}
-      <TaskSection last title="Verification">
-        <strong>{verification.title || "Submit evidence"}</strong>
-        <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
-      </TaskSection>
+      <TaskRewardOutcome outcome={detail?.rewardOutcome} />
+      {verificationRequestActive ? (
+        <>
+          <TaskOriginalContext displayTask={displayTask} steps={steps} verification={verification} />
+          <details className="task-secondary-action">
+            <summary>
+              <span>Task controls</span>
+              <small>Cancel this task if it should no longer continue</small>
+            </summary>
+            <TaskLifecycleActionPanel
+              accountId={accountId}
+              actions={actions}
+              linkedWalletAddress={linkedWalletAddress}
+              loading={loading}
+              onLifecycleAction={onLifecycleAction}
+              onWalletUnlock={onWalletUnlock}
+              walletSecret={walletSecret}
+              walletUnlockPending={walletUnlockPending}
+              walletVault={walletVault}
+            />
+          </details>
+        </>
+      ) : (
+        <>
+          <TaskLifecycleActionPanel
+            accountId={accountId}
+            actions={actions}
+            linkedWalletAddress={linkedWalletAddress}
+            loading={loading}
+            onLifecycleAction={onLifecycleAction}
+            onWalletUnlock={onWalletUnlock}
+            walletSecret={walletSecret}
+            walletUnlockPending={walletUnlockPending}
+            walletVault={walletVault}
+          />
+          <TaskNetworkRoutePanel task={displayTask} />
+          <TaskSection title="Description">
+            <p>{displayTask.description}</p>
+          </TaskSection>
+          {steps.length > 0 && (
+            <TaskSection title="Steps">
+              <ol>
+                {steps.map((step, index) => (
+                  <li key={`${index}-${step}`}>
+                    <span>{index + 1}</span>
+                    <p>{step}</p>
+                  </li>
+                ))}
+              </ol>
+            </TaskSection>
+          )}
+          <TaskSection last title="Verification">
+            <strong>{verification.title || "Submit evidence"}</strong>
+            <p>{verification.body || "Submit evidence that satisfies the task requirement."}</p>
+          </TaskSection>
+        </>
+      )}
     </>
   );
 }
