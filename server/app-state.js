@@ -15,6 +15,7 @@ import {
   walletInitiationGrantStatus,
 } from "./runtime-store.js";
 import {
+  getHiveConversation,
   getChatMessages,
   listChatConversations,
   usageSummary,
@@ -95,6 +96,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       conversationsPath: "/api/chat/conversations",
       historyPath: "/api/chat/history",
       recents: accountId ? await listChatConversations({ accountId }) : [],
+      hiveConversation: accountId ? await getHiveConversation({ accountId }) : null,
       defaultMode: enabledMode?.label || "Private Instant",
       modes,
       seedMessages: accountId ? await getChatMessages({ accountId, conversationId }) : [],

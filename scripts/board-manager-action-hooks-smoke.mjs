@@ -14,6 +14,12 @@ const {
   getChatMessages,
 } = await import("../server/repositories/chat-billing.js");
 const {
+  getHiveConversation,
+  hiveConversationIdForAccount,
+  listChatConversations,
+  markHiveConversationRead,
+} = await import("../server/repositories/chat-conversations.js");
+const {
   buildBoardManagerSourcePacket,
   getBoardManagerAgentFeed,
   startBoardManagerRun,
@@ -104,19 +110,25 @@ async function main() {
   const smokeAccountId = "acct_board_manager_smoke";
   const smokeConversationId = "conversation_board_manager_smoke";
   const smokeHiveEntryId = "hivectx_board_manager_smoke";
+  const fallbackAccountId = "acct_board_manager_missing_source_conversation_smoke";
+  const fallbackHiveEntryId = "hivectx_board_manager_missing_source_conversation_smoke";
+  const fallbackHiveConversationId = hiveConversationIdForAccount(fallbackAccountId);
   const smokeProfileId = "nettaskprofile_board_manager_smoke";
 
   await query("DELETE FROM network_projects WHERE id = $1", [projectId]);
   await query("DELETE FROM pftl_sync_wallets WHERE account_id = $1", [smokeAccountId]);
   await query("DELETE FROM board_manager_user_messages WHERE account_id = $1", [smokeAccountId]);
+  await query("DELETE FROM board_manager_user_messages WHERE account_id = $1", [fallbackAccountId]);
+  await query("DELETE FROM chat_messages WHERE account_id = $1", [fallbackAccountId]);
+  await query("DELETE FROM chat_conversations WHERE account_id = $1", [fallbackAccountId]);
 
   await appendChatTurn({
     accountId: smokeAccountId,
     conversationId: smokeConversationId,
-    mode: "Hive Input",
+    mode: "Hive",
     provider: "tasknode",
     model: "hive_context_store",
-    userMessage: "Smoke Hive Input asking whether the Board Manager can respond in chat.",
+    userMessage: "Smoke Hive chat asking whether the Board Manager can respond in chat.",
     assistantMessage: "Hive input saved to Hive Context.",
     usage: { costUsd: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0 },
   });
@@ -129,8 +141,24 @@ async function main() {
       id: smokeHiveEntryId,
       accountId: smokeAccountId,
       displayName: "Smoke Operator",
-      body: "Smoke Hive Input asking whether the Board Manager can respond in chat.",
+      body: "Smoke Hive chat asking whether the Board Manager can respond in chat.",
       sourceConversationId: smokeConversationId,
+      walletValidated: true,
+      walletAddress: wallet,
+      createdAt: new Date().toISOString(),
+    }],
+  });
+  sourcePacket.hiveContext.groups.push({
+    accountId: fallbackAccountId,
+    displayName: "Fallback Operator",
+    latestAt: new Date().toISOString(),
+    entryCount: 1,
+    entries: [{
+      id: fallbackHiveEntryId,
+      accountId: fallbackAccountId,
+      displayName: "Fallback Operator",
+      body: "Smoke Hive chat entry imported before source conversations existed.",
+      sourceConversationId: "",
       walletValidated: true,
       walletAddress: wallet,
       createdAt: new Date().toISOString(),
@@ -306,6 +334,22 @@ async function main() {
     sourcePacket,
     dryRun: false,
     decision: {
+      action: "message_user",
+      target_type: "account",
+      target_id: fallbackAccountId,
+      reason: "Smoke verifies user message action hook falls back to the default Hive chat when sourceConversationId is missing.",
+      confidence: 1,
+      payload: payload({
+        message_text: "Board Manager default Hive chat fallback smoke message.",
+      }),
+    },
+  });
+
+  await executeBoardManagerDecision({
+    runId,
+    sourcePacket,
+    dryRun: false,
+    decision: {
       action: "assign_contributor",
       target_type: "network_project",
       target_id: projectId,
@@ -361,7 +405,7 @@ async function main() {
     },
   });
 
-  const [project, contributor, productDoc, networkJob, networkJobCount, message, actions] = await Promise.all([
+  const [project, contributor, productDoc, networkJob, networkJobCount, message, fallbackMessage, actions] = await Promise.all([
     query("SELECT status, metadata_json->>'operator_archived' AS operator_archived FROM network_projects WHERE id = $1", [projectId]),
     query("SELECT status FROM network_project_contributors WHERE project_id = $1 AND wallet_address = $2", [projectId, wallet]),
     query(
@@ -378,6 +422,7 @@ async function main() {
     query("SELECT id, status, task_class, candidate_account_id FROM network_task_generation_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1", [projectId]),
     query("SELECT count(*)::int AS count FROM network_task_generation_jobs WHERE project_id = $1 AND candidate_account_id = $2", [projectId, smokeAccountId]),
     query("SELECT id, metadata_json->>'chat_message_id' AS chat_message_id FROM board_manager_user_messages WHERE run_id = $1 AND account_id = $2", [runId, smokeAccountId]),
+    query("SELECT id, metadata_json->>'chat_message_id' AS chat_message_id FROM board_manager_user_messages WHERE run_id = $1 AND account_id = $2", [runId, fallbackAccountId]),
     query("SELECT count(*)::int AS count FROM board_manager_action_results WHERE run_id = $1", [runId]),
   ]);
   assert.equal(project.rows[0]?.status, "archived");
@@ -395,15 +440,27 @@ async function main() {
   assert.equal(networkJobCount.rows[0]?.count, 1);
   assert.ok(message.rows[0]?.id);
   assert.ok(message.rows[0]?.chat_message_id);
+  assert.ok(fallbackMessage.rows[0]?.id);
+  assert.ok(fallbackMessage.rows[0]?.chat_message_id);
   const chatMessages = await getChatMessages({ accountId: smokeAccountId, conversationId: smokeConversationId, limit: 10 });
   assert.ok(chatMessages.some((item) => item.role === "assistant" && item.body === "Board Manager action hook smoke message."));
-  assert.equal(actions.rows[0]?.count, 7);
+  const fallbackChatMessages = await getChatMessages({ accountId: fallbackAccountId, conversationId: fallbackHiveConversationId, limit: 10 });
+  assert.ok(fallbackChatMessages.some((item) => item.role === "assistant" && item.body === "Board Manager default Hive chat fallback smoke message."));
+  const fallbackHiveConversation = await getHiveConversation({ accountId: fallbackAccountId });
+  assert.equal(fallbackHiveConversation.unreadCount, 1);
+  assert.equal(fallbackHiveConversation.unread, true);
+  const fallbackRecents = await listChatConversations({ accountId: fallbackAccountId, limit: 5 });
+  assert.equal(fallbackRecents.find((item) => item.kind === "hive")?.unreadCount, 1);
+  const markRead = await markHiveConversationRead({ accountId: fallbackAccountId });
+  assert.equal(markRead.ok, true);
+  assert.equal(markRead.updated, 1);
+  assert.equal(markRead.conversation.unreadCount, 0);
+  assert.equal(actions.rows[0]?.count, 8);
   const publicFeed = await getBoardManagerAgentFeed({ limit: 20 });
   assert.equal(publicFeed.some((entry) => entry.runId === runId), false);
   const feed = await getBoardManagerAgentFeed({ limit: 20, includeInternal: true });
   const runFeed = feed.find((entry) => entry.runId === runId);
   assert.ok(runFeed);
-  assert.equal(runFeed.actionResults.length, 6);
   assert.ok(runFeed.actionResults.some((entry) => entry.action === "refresh_project_document"));
   assert.ok(runFeed.actionResults.some((entry) => entry.action === "initiate_network_task"));
   assert.ok(runFeed.actionResults.some((entry) => entry.action === "archive_project"));

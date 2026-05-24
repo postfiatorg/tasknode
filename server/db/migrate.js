@@ -5,6 +5,7 @@ import { databaseEnabled, query, transaction } from "./pool.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(__dirname, "migrations");
+const migrationsTable = "tasknode_schema_migrations";
 
 const migrations = [
   "001_chat_billing.sql",
@@ -50,6 +51,7 @@ const migrations = [
   "041_board_manager_run_micro_summaries.sql",
   "042_board_manager_scheduler.sql",
   "043_board_manager_secretary_packets.sql",
+  "044_board_manager_action_budget.sql",
 ];
 
 let migrated = false;
@@ -63,23 +65,23 @@ export async function migrateDatabase({ force = false } = {}) {
   }
 
   await query(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
+    CREATE TABLE IF NOT EXISTS ${migrationsTable} (
       name text PRIMARY KEY,
       applied_at timestamptz NOT NULL DEFAULT now()
     )
   `);
 
-  const applied = await query("SELECT name FROM schema_migrations");
+  const applied = await query(`SELECT name FROM ${migrationsTable}`);
   const appliedNames = new Set(applied.rows.map((row) => row.name));
   const appliedNow = [];
 
   for (const name of migrations) {
     if (appliedNames.has(name)) continue;
-    const sql = await readFile(path.join(migrationsDir, name), "utf8");
-    await transaction(async (client) => {
-      await client.query(sql);
-      await client.query("INSERT INTO schema_migrations (name) VALUES ($1)", [name]);
-    });
+      const sql = await readFile(path.join(migrationsDir, name), "utf8");
+      await transaction(async (client) => {
+        await client.query(sql);
+        await client.query(`INSERT INTO ${migrationsTable} (name) VALUES ($1)`, [name]);
+      });
     appliedNow.push(name);
   }
 

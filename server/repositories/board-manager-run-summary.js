@@ -25,6 +25,7 @@ function actionLabel(action = "") {
     assign_contributor: "Assigned contributor",
     create_project: "Created project",
     do_nothing: "No board change",
+    daily_airdrop: "Daily airdrop",
     initiate_network_task: "Initiated network task",
     message_user: "Messaged user",
     refresh_hive_secretary: "Updated Hive Secretary",
@@ -88,6 +89,12 @@ function resultSummary({ action = "", result = {} } = {}) {
   if (data.error) return `failed: ${safeText(data.error, 240)}`;
   if (data.dryRun) return "dry run only; no app mutation executed";
   if (action === "do_nothing") return "reviewed state and made no board mutation";
+  if (action === "daily_airdrop") {
+    if (data.summary) return safeText(data.summary, 500);
+    const total = Number(data.totalPft || 0);
+    const users = Number(data.userCount || 0);
+    return `Dispensed ${total.toLocaleString("en-US", { maximumFractionDigits: 6 })} PFT to ${users.toLocaleString("en-US")} ${users === 1 ? "user" : "users"} as part of daily airdrop.`;
+  }
   if (action === "message_user") {
     return `sent Hive response to ${safeText(data.accountId, 80) || "user"} in ${safeText(data.conversationId, 80) || "chat"}`;
   }

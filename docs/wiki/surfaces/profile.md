@@ -109,7 +109,7 @@ Prompt privacy remains unchanged: the image prompt body is never returned to the
 
 Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT drop plus a short explanation of what raised the score, what lowered it, and what to improve tomorrow.
 
-Current status: scoring and operator-triggered live issuance are implemented. A scoring run writes `profile_daily_airdrop_runs`; issuance writes exactly one `profile_daily_airdrop_issuances` row and submits a PFTL payment pointer.
+Current status: recurring scoring and live issuance are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance writes exactly one `profile_daily_airdrop_issuances` row and submits a PFTL payment pointer. Each actual worker run also creates a Hive Mind Agent card that says how much PFT was dispensed and to how many users.
 
 ### Private Profile Rendering
 
@@ -206,7 +206,10 @@ The prompt is `prompts/profile/daily_airdrop_v1.md`.
 Runtime call sites:
 
 - `server/profile-daily-airdrop.js::runDailyAirdropScore`
+- `server/profile-daily-airdrop-worker.js::runDailyAirdropWorkerOnce`
+- `server/profile-daily-airdrop-worker.js::startDailyAirdropWorker`
 - `scripts/profile-daily-airdrop-score.mjs`
+- `scripts/profile-daily-airdrop-worker.mjs`
 
 Provider policy:
 
@@ -333,7 +336,7 @@ Observed packet:
 
 ### Live Issuance Boundary
 
-Live issuance currently runs through `scripts/profile-daily-airdrop-issue.mjs`. It converts a completed scoring row into exactly one account/day issuance row, then pays from the configured reward/faucet wallet to the deterministic identity-cloud recipient wallet.
+Live issuance is owned by `server/profile-daily-airdrop-worker.js` when the worker is enabled. It claims a single `daily_airdrop` lease, scores eligible account/day packets, pays positive drops through the existing issuance path, and writes a Hive Mind Agent audit card. `scripts/profile-daily-airdrop-issue.mjs` remains available as a manual operator command for a specific completed run.
 
 ## Reviewer To Do List
 

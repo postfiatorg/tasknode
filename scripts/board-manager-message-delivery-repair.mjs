@@ -74,7 +74,7 @@ async function repairUndeliveredMessages({ apply = false, limit = 25 } = {}) {
         await appendAssistantMessage({
           accountId: row.account_id,
           conversationId: target.conversationId,
-          mode: "Hive Input",
+          mode: "Hive",
           provider: "tasknode",
           model: "board_manager",
           responseId: row.run_id,

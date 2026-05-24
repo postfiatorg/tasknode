@@ -22,6 +22,13 @@ function clampInt(value, fallback, min, max) {
   return Math.min(max, Math.max(min, intValue(value, fallback)));
 }
 
+const defaultBoardManagerMaxActionsPerHour = 8;
+const boardManagerRateLimitExclusions = Object.freeze([
+  "",
+  "do_nothing",
+  "daily_airdrop",
+]);
+
 function timestampValue(value = null, fallback = new Date()) {
   if (!value) return fallback;
   const parsed = value instanceof Date ? value : new Date(value);
@@ -38,7 +45,7 @@ export async function ensureBoardManagerScope({
   scope = "global_hive",
   status = "enabled",
   cadenceSeconds = 900,
-  maxActionsPerHour = 4,
+  maxActionsPerHour = defaultBoardManagerMaxActionsPerHour,
   nextRunAt = null,
   metadata = {},
 } = {}) {
@@ -70,7 +77,7 @@ export async function ensureBoardManagerScope({
       normalizedScope,
       normalizedStatus,
       clampInt(cadenceSeconds, 900, 60, 86400),
-      clampInt(maxActionsPerHour, 4, 0, 200),
+      clampInt(maxActionsPerHour, defaultBoardManagerMaxActionsPerHour, 0, 200),
       timestampValue(nextRunAt),
       jsonValue(metadata),
       hasNextRunAt,
@@ -314,7 +321,7 @@ export async function claimBoardManagerJob({
       [normalizedScope]
     );
     const scopeRow = scopeResult.rows[0];
-    const maxActionsPerHour = Number(scopeRow?.max_actions_per_hour ?? 4);
+    const maxActionsPerHour = Number(scopeRow?.max_actions_per_hour ?? defaultBoardManagerMaxActionsPerHour);
     if (scopeRow && maxActionsPerHour >= 0) {
       const recentActions = await client.query(
         `
@@ -323,10 +330,10 @@ export async function claimBoardManagerJob({
           WHERE scope = $1
             AND status = 'completed'
             AND dry_run = false
-            AND selected_action NOT IN ('', 'do_nothing')
+            AND NOT (selected_action = ANY($2::text[]))
             AND completed_at > now() - interval '1 hour'
         `,
-        [scopeRow.scope]
+        [scopeRow.scope, boardManagerRateLimitExclusions]
       );
       if (Number(recentActions.rows[0]?.count || 0) >= maxActionsPerHour) {
         return { ok: true, claimed: false, job: null, reason: "action_rate_limited" };
@@ -363,6 +370,51 @@ export async function claimBoardManagerJob({
     );
     return { ok: true, claimed: true, managerId: normalizedManagerId, job: updated.rows[0] };
   });
+}
+
+export async function recoverStaleBoardManagerJobs({
+  scope = "",
+  staleSeconds = 900,
+  limit = 10,
+} = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const normalizedScope = safeText(scope, 120);
+  const normalizedStaleSeconds = clampInt(staleSeconds, 900, 60, 86400);
+  const normalizedLimit = clampInt(limit, 10, 1, 100);
+  const result = await query(
+    `
+      WITH stale_jobs AS (
+        SELECT id
+        FROM board_manager_jobs
+        WHERE ($1 = '' OR scope = $1)
+          AND status = 'running'
+          AND COALESCE(claimed_at, updated_at, created_at) <= now() - ($2::text || ' seconds')::interval
+        ORDER BY COALESCE(claimed_at, updated_at, created_at) ASC, id ASC
+        LIMIT $3
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE board_manager_jobs j
+      SET status = CASE WHEN j.attempt_count >= j.max_attempts THEN 'failed' ELSE 'deferred' END,
+          run_after = CASE WHEN j.attempt_count >= j.max_attempts THEN j.run_after ELSE now() END,
+          failed_at = CASE WHEN j.attempt_count >= j.max_attempts THEN now() ELSE j.failed_at END,
+          last_error = $4,
+          updated_at = now()
+      FROM stale_jobs
+      WHERE j.id = stale_jobs.id
+      RETURNING j.*
+    `,
+    [
+      normalizedScope,
+      String(normalizedStaleSeconds),
+      normalizedLimit,
+      `stale_board_manager_job_recovered_after_${normalizedStaleSeconds}s`,
+    ]
+  );
+  return {
+    ok: true,
+    recovered: result.rows.length,
+    jobs: result.rows,
+  };
 }
 
 export async function completeBoardManagerJob({ jobId = "", runId = "", result = {} } = {}) {

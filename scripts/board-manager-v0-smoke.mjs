@@ -67,8 +67,43 @@ const stalledBoard = buildBoardManagerActionPressure({
 assert.equal(stalledBoard.summary.requiresAction, true);
 assert.equal(stalledBoard.summary.projectsWithoutLiveTasks, 1);
 assert.equal(stalledBoard.summary.eligibleCandidateCount, 1);
+assert.equal(stalledBoard.candidateCapacity.policy.personalTasksDoNotAffectNetworkTaskEligibility, true);
+assert.equal(stalledBoard.candidateCapacity.policy.candidateCapacityIsConsumedOnlyByOutstandingOrPendingNetworkTasks, true);
 assert.equal(stalledBoard.signals[0].pressure, "empty_or_stalled_active_project");
 assert.ok(stalledBoard.signals[0].allowedNextActions.includes("initiate_network_task"));
+
+const personalTaskContextBoard = buildBoardManagerActionPressure({
+  hiveProjects: {
+    projects: {
+      empty_protocol_project: {
+        id: "empty_protocol_project",
+        title: "Empty Protocol Project",
+        status: "active",
+        taskCount: 2,
+        contributorCount: 1,
+        tasks: [],
+        contributors: [],
+      },
+    },
+  },
+  networkTaskContent: { completed: [], outstanding: [], stopped: [], pendingGeneration: [] },
+  networkTaskCandidates: [{ accountId: "acct_candidate", walletAddress: "rCandidate" }],
+  taskState: {
+    recent: [
+      {
+        taskId: "task_personal_context_only",
+        taskKind: "personal",
+        status: "accepted",
+        title: "Accepted personal task should not consume Network Task capacity",
+      },
+    ],
+  },
+  recentBoardManagerRuns: [],
+});
+assert.equal(personalTaskContextBoard.summary.eligibleCandidateCount, 1);
+assert.equal(personalTaskContextBoard.candidateCapacity.ignoredForCapacity.taskStateRecentCount, 1);
+assert.equal(personalTaskContextBoard.candidateCapacity.eligibleCandidates[0].accountId, "acct_candidate");
+assert.ok(personalTaskContextBoard.signals[0].allowedNextActions.includes("initiate_network_task"));
 
 const busyCandidateBoard = buildBoardManagerActionPressure({
   hiveProjects: {
@@ -94,6 +129,9 @@ const busyCandidateBoard = buildBoardManagerActionPressure({
   recentBoardManagerRuns: [],
 });
 assert.equal(busyCandidateBoard.summary.eligibleCandidateCount, 0);
+assert.equal(busyCandidateBoard.summary.activeNetworkTaskCapacityBlockerCount, 1);
+assert.equal(busyCandidateBoard.candidateCapacity.activeNetworkTaskCapacityBlockers[0].source, "outstanding_network_task");
+assert.equal(busyCandidateBoard.candidateCapacity.activeNetworkTaskCapacityBlockers[0].candidateWalletAddress, "rCandidate");
 assert.equal(busyCandidateBoard.signals[0].allowedNextActions.includes("initiate_network_task"), false);
 assert.equal(busyCandidateBoard.signals[0].allowedNextActions.includes("message_user"), true);
 assert.equal(busyCandidateBoard.signals[0].preferredNextAction, "message_user");
@@ -308,7 +346,7 @@ const decision = normalizeBoardManagerDecision({
   action: "refresh_hive_secretary",
   target_type: "hive_secretary_report",
   target_id: "latest",
-  reason: "The report is stale relative to validated Hive Inputs.",
+  reason: "The report is stale relative to validated Hive Context entries.",
   confidence: 0.72,
   payload: {
     summary: "Refresh the Hive Secretary report because validated inputs changed.",

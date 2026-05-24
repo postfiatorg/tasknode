@@ -23,11 +23,15 @@ The project detail page is layered as:
 
 Project IDs are part of the product surface. The project detail header should expose the stable `network_projects.id` so operators can refer to a project in tasks, docs, and chat without ambiguity.
 
-## Hive Input
+## Hive Chat
 
-Chat has a `Hive Input` mode in the composer `+` menu. It is a persistence action, not a model call and not a billed chat response.
+Every signed-in user gets one default `Hive Chat` conversation in the chat sidebar. The main coordination page remains `Hive`. `Hive Chat` is not a temporary composer mode and it is not selected from the chat `+` menu. It is a durable conversation dedicated to talking to the network coordination layer.
 
-When the user selects `Hive Input`, the composer changes mode and the next message is saved to `Hive Context`. The server also records the user message and a muted italic acknowledgement in chat history so the conversation remains understandable after navigation. The acknowledgement says the Hive may respond in the same chat if the Board Manager decides a reply is important.
+When the user sends a message in `Hive Chat`, `POST /api/hive/context` saves the user message to `Hive Context` and records that user message in chat history. This is a persistence action, not a model call and not a billed chat response. The app shows a lightweight grey italic saved-status row locally; it does not persist repeated assistant acknowledgements such as `Hive input saved...`. The Hive speaks back in the same chat only when the Board Manager chooses `message_user`.
+
+`Hive Chat` is visually pinned and labeled differently from normal user-created chats. It cannot be renamed. If the user disables it from the chat action menu, the app warns that this removes the default Hive conversation and stops new Hive discussion there until it is re-enabled from Settings -> Data controls. Disabling Hive Chat changes the conversation status to `hive_disabled`; it does not hard-delete Hive Context entries.
+
+Board Manager replies create unread Hive notifications. `message_user` writes a `sent` row in `board_manager_user_messages` with `read_at = NULL`; `GET /api/app-state`, `GET /api/hive/chat`, and the chat recents list expose the unread count. The left navigation Hive item and pinned Hive recent row show that count until the user opens the Hive chat. Opening Hive calls `PATCH /api/hive/chat`, marks those Board Manager messages `read`, and clears the badge. This is account-scoped notification state, not a global Hive feed count.
 
 `Hive Context` is a network context document built from user-submitted entries. It is grouped by user and shown collapsed on the Hive page.
 
@@ -36,6 +40,8 @@ Each Hive Context entry keeps the sender account, display-name snapshot, validat
 Expanding the section shows tabs. `Hive Context` shows the current `Hive Secretary` report first. Raw user inputs are behind a second collapsible `Raw inputs` control so the page reads like a network report by default instead of a transcript dump. Raw inputs show contributor, timestamp, body, and whether the entry came from a validated linked wallet. Source chat title is intentionally not displayed because it is usually not useful network context.
 
 `Hive Mind Agent` shows the Board Manager feed. This feed reads durable `board_manager_runs` plus `board_manager_action_results` and includes runs where the selected action is `do_nothing` or no selected action was recorded. It refreshes when the Hive Context panel opens and polls while the panel remains open, so later Board Manager runs appear without a full page refresh. It is an audit feed, not the user response surface. Internal smoke/test runs stay in Postgres for verification but are excluded from this normal user-facing feed.
+
+Daily airdrop worker runs also appear in this feed. They are recorded as internal `daily_airdrop` actions, not model-selected Board Manager decisions. The card summary is intentionally plain: `Dispensed X PFT to Y users as part of daily airdrop.` The card links the payout loop to the same inspectable Hive agent surface as project, message, and task-routing actions.
 
 Every recorded Board Manager run writes a micro summary artifact at completion. The artifact is stored as structured JSON plus a short plain-text report on the run row. It says what action was selected, why, what target was touched, what executed, and what should happen next. Future Board Manager source packets use these micro summaries for recent-run memory instead of injecting full prior decisions and action payloads.
 
@@ -67,11 +73,13 @@ Allowed actions include:
 - initiate project-linked Network Tasks with rewards
 - review evidence packets through the existing task engine
 
-Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, `refresh_project_document`, `assign_contributor`, and `initiate_network_task`. `archive_project` is the delete-project behavior; the row is hidden from the active board but not hard deleted. `message_user` writes an assistant message into the user's original Hive Input chat conversation and records a delivery audit row in `board_manager_user_messages`; the Hive Mind Agent tab itself stays focused on the agent run/action feed. `refresh_project_document` writes the agent-managed Project Status shown inside a Hive project About section.
+Implemented hooks today are `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, `refresh_project_document`, `assign_contributor`, and `initiate_network_task`. `archive_project` is the delete-project behavior; the row is hidden from the active board but not hard deleted. `message_user` writes an assistant message into the user's default Hive chat conversation and records a delivery audit row in `board_manager_user_messages`; the Hive Mind Agent tab itself stays focused on the agent run/action feed. `refresh_project_document` writes the agent-managed Project Status shown inside a Hive project About section.
 
 `initiate_network_task` does not let the Board Manager write the final task offer. It creates a project-linked allocation row and a durable generation job. The gated `server/network-task-generation-worker.js` then turns that job into a normal task request bundle and schedules the existing task-generation worker. The resulting offer is still a normal encrypted `pf.task.offer.v1` task pointer from the task engine, with project metadata attached for Hive reads.
 
 After a Network Task exists, Hive does not let the Board Manager manage status. The task lifecycle is read from `task_projections`, which is rebuilt from signed PFTL task events. `network_project_task_refs` and `network_task_allocations` are display/routing mirrors; `server/repositories/network-tasks.js` reconciles them from `task_projections` after projection imports and before Hive project reads.
+
+Network Task restart recovery is implemented in `server/network-task-recovery.js`. It reloads active project-linked Network Tasks from `task_projections`, repairs the Hive mirrors, preserves latest evidence CIDs/transactions from `task_events`, and reports the next valid action. Accepted tasks wait for user evidence. Submitted tasks resume verification-request generation unless that worker already published. Verification-response-submitted tasks resume reward scoring unless that worker already published. Recovery never signs accept/refuse/cancel or evidence-submission transitions for the user.
 
 Rewarded Network Tasks now create a delayed Board Manager inspection trigger. When `syncNetworkTaskProjection` sees a project-linked task reach `rewarded`, it enqueues `network_task_rewarded_followup` due two minutes after the reward event. If a Board Manager run already completed after that reward timestamp, or completes before the delayed job is claimed, the follow-up is skipped. This keeps task state canonical in PFTL while still prompting the Hive board to react when completed work changes project context.
 
@@ -86,7 +94,7 @@ This snapshot is intentionally not the full forensics view. It does not carry ra
 
 User routing context is also compacted before it reaches the Board Manager. `network_task_profiles` are generated asynchronously by the memory worker through the DeepSeek Flash ZDR route, and `listEligibleNetworkTaskCandidates` passes only those small diagnostic profiles plus the active wallet. The Board Manager does not receive full user context documents, full chat history, or raw memory bundles in the normal decision packet.
 
-The source packet also includes `boardActionPressure`, a deterministic health summary. This is the guard against passive Hive decisions. If active projects have no live tasks, no contributors, no pending generation, or a recent stopped Network Task with no follow-up, the packet marks the board as action-required. In that state the manager should route work, assign an eligible contributor, ask for the smallest missing decision input, refresh the project document with a concrete blocker, or archive the project. `eligibleCandidateCount` means candidates still available after outstanding and pending Network Tasks are accounted for, so a busy contributor is not counted as free capacity. If `eligibleCandidateCount` is zero, the expected fallback is `message_user`, not `do_nothing`. A Project Status refresh is not live board motion; it cannot by itself clear an empty project. `do_nothing` is acceptable only when the board already has live motion, a matching task/generation job is in flight, or a targeted user follow-up is waiting for a response.
+The source packet also includes `boardActionPressure`, a deterministic health summary. This is the guard against passive Hive decisions. If active projects have no live tasks, no contributors, no pending generation, or a recent stopped Network Task with no follow-up, the packet marks the board as action-required. In that state the manager should route work, assign an eligible contributor, ask for the smallest missing decision input, refresh the project document with a concrete blocker, or archive the project. `eligibleCandidateCount` means candidates still available after outstanding and pending Network Tasks are accounted for, so a busy contributor is not counted as free capacity. Personal and engineering tasks are context only; they do not make a contributor ineligible for a Network Task. When capacity is unavailable, the packet includes the exact outstanding Network Task or pending generation job consuming that capacity in `boardActionPressure.candidateCapacity.activeNetworkTaskCapacityBlockers`. If `eligibleCandidateCount` is zero, the expected fallback is `message_user`, not `do_nothing`. A Project Status refresh is not live board motion; it cannot by itself clear an empty project. `do_nothing` is acceptable only when the board already has live motion, a matching task/generation job is in flight, or a targeted user follow-up is waiting for a response.
 
 The Hive project task row renders canonical task statuses directly, including `rewarded`, `reward_decided`, `verification_response_submitted`, and stopped states. Unknown statuses are shown as unknown, not silently downgraded to `proposed`.
 
@@ -110,7 +118,7 @@ The old direct cascade where Hive Secretary automatically drives active projects
 
 ## Hive Secretary And Active Projects
 
-When a signed-in user posts a Hive Input:
+When a signed-in user posts in the Hive chat:
 
 1. `POST /api/hive/context` stores the raw input.
 2. The route checks the account's linked wallet through `getLinkedWallet`.
@@ -133,7 +141,7 @@ Hive Secretary uses `prompts/hive/hive_secretary_v1.md`. The prompt returns stri
 - `open_questions`
 - `next_system_focus`
 
-The Secretary worker is source-bound: it summarizes validated Hive Inputs and classifies project signals into the current Hive project types. It does not create tasks.
+The Secretary worker is source-bound: it summarizes validated Hive chat entries and classifies project signals into the current Hive project types. It does not create tasks.
 
 Hive Active Projects uses `prompts/hive/hive_active_projects_v1.md`. That prompt decides which projects should be active based on the latest Secretary report and current project registry. It can preserve an existing project, create a new project, or pause generated/seeded projects that are no longer supported by the report. It still does not create tasks, contributors, wallets, payments, or activity rows.
 
@@ -153,11 +161,14 @@ The Product Document appears as a collapsible `Project Status` section inside Ab
 
 If no current product document exists, the About section shows the static project description plus the empty state `Project status has not been generated yet.` It does not show filler copy.
 
-Current endpoint:
+Current endpoints:
 
 - `GET /api/hive/projects` returns active network projects, project task rows, contributor rollups, activity rows, and the latest Hive Secretary input reference.
 - `GET /api/hive/context` returns the grouped Hive Context document, Hive Secretary report/job state, and public Board Manager action feed. If the viewer is signed in, it also includes that account's private Board Manager messages.
-- `POST /api/hive/context` stores one signed-in user's Hive Input entry, records the chat acknowledgement, and queues Hive Secretary when the user has a linked wallet.
+- `POST /api/hive/context` stores one signed-in user's Hive chat entry, records the user message in the Hive conversation, and queues Hive Secretary when the user has a linked wallet.
+- `GET /api/hive/chat` returns the signed-in account's Hive chat state.
+- `PATCH /api/hive/chat` marks the signed-in account's unread Board Manager Hive messages as read.
+- `POST /api/hive/chat` re-enables the default Hive chat after a user disables it.
 
 ## Technical Architecture
 
@@ -167,9 +178,10 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `src/features/hive/hive.css` contains the isolated styling for the surface.
 - `src/main.jsx` registers `#hive`, adds the sidebar entry, and lazy-loads the view.
 - `server/hive-routes.js` serves Hive project, Hive Context, and Hive Secretary reads and writes.
-- `server/hive-secretary-worker.js` processes validated Hive Inputs through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action handler.
+- `server/hive-secretary-worker.js` processes validated Hive chat entries through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action handler.
 - `server/hive-project-worker.js` determines active network projects through OpenAI `gpt-5.5-pro`; this is planned to become a Board Manager action helper instead of an independent cascade.
 - `server/repositories/board-manager.js` builds the Board Manager source packet, validates action decisions, records runs, records action results, formats the Hive Mind Agent feed, and reads manager message delivery audit rows.
+- `server/profile-daily-airdrop-worker.js` runs recurring Daily Airdrop scoring/issuance when enabled and records internal `daily_airdrop` cards into the Hive Mind Agent feed.
 - `server/board-manager-decision-provider.js` calls OpenRouter Chat Completions with `qwen/qwen3.7-max`, `reasoning.effort = high`, structured JSON output, and `data_collection = deny` by default for Board Manager decisions. It can still call OpenAI Responses when `TASKNODE_BOARD_MANAGER_PROVIDER=openai`.
 - `server/repositories/board-manager-health.js` computes `boardActionPressure`, including empty active project and stopped Network Task pressure.
 - `server/repositories/board-manager-scheduler.js` owns the durable Board Manager scheduler helpers: scope setup, job enqueue, due tick enqueue, job claiming, job completion, and deferred/failed retries.
@@ -178,6 +190,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `server/repositories/network-tasks.js` creates project-linked Network Task and Alpha Task allocations, claims generation jobs, and links published offers back to Hive projects.
 - `server/repositories/network-tasks.js` also reconciles project task refs and allocation rows from `task_projections`; this prevents the Board Manager's initial allocation state from becoming stale after a user accepts, submits, refuses, cancels, or is rewarded.
 - `server/repositories/network-tasks.js::getNetworkTaskContentSnapshot` builds the Board Manager's compact task-content snapshot from `network_project_task_refs`, `task_projections`, `network_task_generation_jobs`, `network_task_allocations`, and latest task reward/update events.
+- `server/network-task-recovery.js` runs the restart recovery loop for active Network Tasks and exposes operator logs through `npm run network-task-recovery`.
 - `server/network-task-generation-worker.js` consumes queued network-task generation jobs and hands them to the existing task-generation worker through `task_requests`.
 - `server/repositories/chat-assistant-messages.js` appends Board Manager `message_user` responses to existing account-owned chat conversations without creating a billed model run.
 - `scripts/board-manager-model-exec.mjs` runs one provider-backed Board Manager tick or, with `--execute`, dispatches supported action hooks.
@@ -215,11 +228,11 @@ Active projects and project detail now read from Postgres. `PFT distribution v3`
 
 The project seed is intentionally not a fake live network. A project can carry planned/scoped metrics such as scoped task target, target contributors, and route budget, but live task rows must come from project-linked allocation data. Once `network_project_task_refs` contains a real linked task, the current Hive read model derives the project task row, contributor/operator row, routing-feed entry, and routed PFT summary from that task ref and its synced `task_projections` state. Explicit `network_project_contributors` and `network_project_activity` rows can be added later as materialized rollups, but the visible board is not allowed to go blank when the canonical task ref exists.
 
-Hive Context is live Postgres-backed app data. It is not on-chain. Hive Secretary and Hive Active Projects are also Postgres-backed and regenerate from validated-wallet Hive Inputs after new entries arrive.
+Hive Context is live Postgres-backed app data. It is not on-chain. Hive Secretary and Hive Active Projects are also Postgres-backed and regenerate from validated-wallet Hive chat entries after new entries arrive.
 
 Cadence today:
 
-- Hive Input saves immediately.
+- Hive chat input saves immediately.
 - Validated-wallet input queues Hive Secretary immediately.
 - A completed Secretary report queues Hive Active Projects immediately.
 - Active project rows update after that worker completes.
@@ -239,7 +252,7 @@ Board Manager target:
 - Product Documents refresh when the manager decides a project is stale or materially changed.
 - If a Product Document identifies missing information, the manager can research, ask follow-up questions, or initiate information-gathering Network Tasks under the existing project.
 - Production runs come from a durable Fly worker process with `board_manager_jobs`, `board_manager_leases`, and auditable `board_manager_runs`, not from local tmux. The runnable entrypoints are `npm run start:web`, `npm run start:worker`, and `npm run start:board-manager`.
-- Local Docker now has a dedicated `board-manager` service. It runs `npm run board-manager:worker -- --execute`, uses the configured Board Manager provider credentials from the app environment, and consumes `board_manager_jobs` separately from the API process.
+- Local Docker now has a dedicated `board-manager` service. It runs `npm run board-manager:worker -- --execute`, uses the configured Board Manager provider credentials from the app environment, and consumes `board_manager_jobs` separately from the API process. Its useful board-mutation budget defaults to 8 actions per rolling hour. Internal audit cards such as daily airdrop payout reports appear in Hive Mind Agent but do not consume that budget. Running jobs older than the configured stale-job threshold are recovered for retry so a killed worker cannot leave the Hive agent stuck.
 - In local Docker, `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true` is enabled. The worker consumes `network_task_generation_jobs`, creates normal encrypted task request bundles, and schedules the existing task-generation worker. A May 23, 2026 local Docker test produced task `task_01af1624fcb74e41d902ca32b126f27d` for project `task_node` with offer transaction `E6C86781C0D53A68F2E7740AA8751E19616B9732489D9EA8C4330A692AC1A931`.
 - Outside local Docker, a live PFTL network-task offer still requires the network worker, task-generation worker, service encryption key, IPFS, and PFTL submit credentials to be enabled.
 
@@ -253,7 +266,7 @@ flowchart LR
   Profiles[Profile snapshots] --> Cache
   Cache --> HiveAPI[Hive API projection]
   HiveAPI --> HiveUI[Hive route]
-  HiveInput[Chat Hive Input] --> HiveContext[Hive Context Entries]
+  HiveInput[Default Hive Chat] --> HiveContext[Hive Context Entries]
   HiveContext --> Manager[Board Manager]
   Manager --> Chat[Source Chat Conversation]
   Secretary[Hive Secretary Worker] --> Manager
@@ -311,5 +324,5 @@ Review implementation against this document (hive). Mark each item when verified
 ### Security
 - [ ] Account scoping enforced on all read/write API paths for this surface.
 - [ ] Wallet-bound actions require linked unlocked wallet as documented.
-- [ ] Hive Input requires validated-wallet flag before Secretary consumption.
-- [ ] Board Manager `message_user` deliveries audited with destination conversation id.
+- [ ] Hive chat entries require validated-wallet flag before Secretary consumption.
+- [ ] Board Manager `message_user` deliveries audited with destination conversation id and unread/read state.

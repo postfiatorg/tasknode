@@ -18,13 +18,14 @@ async function cleanup() {
   await query("DELETE FROM board_manager_jobs WHERE idempotency_key LIKE $1", [`network_task_rewarded_followup:task_reward_followup_${suffix}%`]);
   await query("DELETE FROM board_manager_jobs WHERE idempotency_key LIKE $1", [`network_task_rewarded_followup:task_reward_followup_recent_${suffix}%`]);
   await query("DELETE FROM board_manager_runs WHERE id LIKE $1", [`boardrun_reward_followup_${suffix}%`]);
+  await query("DELETE FROM task_events WHERE task_id IN ($1, $2)", [taskId, duplicateTaskId]);
   await query("DELETE FROM network_task_allocations WHERE project_id = $1", [projectId]);
   await query("DELETE FROM network_project_task_refs WHERE project_id = $1", [projectId]);
   await query("DELETE FROM network_projects WHERE id = $1", [projectId]);
   await query("DELETE FROM task_projections WHERE task_id IN ($1, $2)", [taskId, duplicateTaskId]);
 }
 
-async function insertProjectTask({ targetTaskId, txHash, eventAt }) {
+async function insertProjectTask({ targetTaskId, txHash, eventAt, projectionLastEventAt = eventAt }) {
   await query(
     `
       INSERT INTO network_projects (
@@ -70,7 +71,32 @@ async function insertProjectTask({ targetTaskId, txHash, eventAt }) {
         10000, 7500, $3, $4, $5, $5, 'smoke'
       )
     `,
-    [targetTaskId, wallet, txHash, `cid_${targetTaskId}`, eventAt]
+    [targetTaskId, wallet, txHash, `cid_${targetTaskId}`, projectionLastEventAt]
+  );
+  await query(
+    `
+      INSERT INTO task_events (
+        id, task_id, account_id, wallet_address, event_type,
+        source_tx_hash, source_cid, payload_json, occurred_at, created_at
+      )
+      VALUES (
+        $1, $2, 'acct_reward_followup_smoke', $3, 'pf.reward.v1',
+        $4, $5, $6::jsonb, $7, $7
+      )
+    `,
+    [
+      `taskevt_reward_followup_${targetTaskId}`,
+      targetTaskId,
+      wallet,
+      txHash,
+      `cid_${targetTaskId}`,
+      JSON.stringify({
+        schema: "pf.reward.v1",
+        task_id: targetTaskId,
+        reward_pft: "7500",
+      }),
+      eventAt,
+    ]
   );
 }
 
@@ -85,7 +111,13 @@ async function main() {
 
   try {
     const eventAt = new Date(Date.now() - 30_000);
-    await insertProjectTask({ targetTaskId: taskId, txHash: `tx_reward_followup_${suffix}`, eventAt });
+    const staleProjectionLastEventAt = new Date(eventAt.getTime() - 30 * 60_000);
+    await insertProjectTask({
+      targetTaskId: taskId,
+      txHash: `tx_reward_followup_${suffix}`,
+      eventAt,
+      projectionLastEventAt: staleProjectionLastEventAt,
+    });
 
     const synced = await syncNetworkTaskProjection({ taskId });
     assert.equal(synced.ok, true);
@@ -97,6 +129,7 @@ async function main() {
     const metadata = job.metadata_json || {};
     assert.equal(metadata.task_id, taskId);
     assert.equal(metadata.skip_if_completed_after, eventAt.toISOString());
+    assert.equal(metadata.state_changed_source, "pf.reward.v1");
     assert.deepEqual(metadata.project_ids, [projectId]);
 
     const runAfterMs = new Date(job.run_after).getTime();

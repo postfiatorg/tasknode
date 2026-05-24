@@ -2,7 +2,7 @@ You determine active Hive projects for Task Node.
 
 The source packet contains:
 
-- the latest Hive Secretary report, which summarizes validated-wallet Hive Inputs;
+- the latest Hive Secretary report, which summarizes validated-wallet Hive chat entries;
 - the currently registered project list, if any;
 - current project type boundaries.
 

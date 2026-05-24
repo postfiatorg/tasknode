@@ -13,6 +13,27 @@ function dateOrNow(value = null) {
   return Number.isFinite(parsed.getTime()) ? parsed : new Date();
 }
 
+async function latestRewardEventForTask(taskId = "") {
+  const normalizedTaskId = safeText(taskId, 180);
+  if (!normalizedTaskId) return null;
+  const result = await query(
+    `
+      SELECT event_type, source_tx_hash, source_cid, occurred_at, created_at
+      FROM task_events
+      WHERE task_id = $1
+        AND event_type IN ('pf.reward.v1', 'pf.task.reward_decision.v1')
+      ORDER BY
+        CASE WHEN event_type = 'pf.reward.v1' THEN 0 ELSE 1 END,
+        occurred_at DESC,
+        created_at DESC,
+        id DESC
+      LIMIT 1
+    `,
+    [normalizedTaskId]
+  );
+  return result.rows[0] || null;
+}
+
 export async function enqueueNetworkTaskRewardFollowup({
   taskId = "",
   projectIds = [],
@@ -25,7 +46,13 @@ export async function enqueueNetworkTaskRewardFollowup({
     return { ok: true, queued: false, skipped: true, reason: "not_project_linked" };
   }
 
-  const stateChangedAt = dateOrNow(projection.last_event_at || projection.updated_at);
+  const rewardEvent = await latestRewardEventForTask(normalizedTaskId);
+  const stateChangedAt = dateOrNow(
+    rewardEvent?.occurred_at ||
+    rewardEvent?.created_at ||
+    projection.updated_at ||
+    projection.last_event_at
+  );
   const stateChangedIso = stateChangedAt.toISOString();
   const recentRun = await findCompletedBoardManagerRunSince({
     scope: "global_hive",
@@ -41,11 +68,12 @@ export async function enqueueNetworkTaskRewardFollowup({
     };
   }
 
-  const lastEventTxHash = safeText(projection.last_event_tx_hash, 180);
+  const lastEventTxHash = safeText(rewardEvent?.source_tx_hash || projection.last_event_tx_hash, 180);
+  const lastEventCid = safeText(rewardEvent?.source_cid || projection.last_event_cid, 180);
   const idempotencyKey = [
     "network_task_rewarded_followup",
     normalizedTaskId,
-    lastEventTxHash || safeText(projection.last_event_cid, 180) || stateChangedIso,
+    lastEventTxHash || lastEventCid || stateChangedIso,
   ].join(":");
   const existing = await query(
     `
@@ -82,9 +110,10 @@ export async function enqueueNetworkTaskRewardFollowup({
       project_ids: activeProjectIds,
       reward_pft: rewardPft,
       state_changed_at: stateChangedIso,
+      state_changed_source: rewardEvent?.event_type || "task_projection",
       skip_if_completed_after: stateChangedIso,
       last_event_tx_hash: lastEventTxHash,
-      last_event_cid: safeText(projection.last_event_cid, 180),
+      last_event_cid: lastEventCid,
       delay_seconds: Math.round(networkTaskRewardFollowupDelayMs / 1000),
     },
   });

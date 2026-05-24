@@ -12,6 +12,9 @@ The briefs are not completed code reviews. They are the review queue.
 - `burndown.md` - queue, status, and suggested review order.
 - `composer_full_codebase_review_plan_2026-05-23.md` - ramp and operating plan
   for a full-codebase composer review agent.
+- `recent_work_pr_review_spec_2026-05-24.md` - current PR-by-PR review plan for
+  the recent auth, Fly-data, Hive, Board Manager, network-task, profile,
+  airdrop, task UX, chat/memory, database, docs, and prompt work.
 - `reviews/` - one review-plan brief per app-visible doc page.
 - `templates/review_plan_template.md` - format for new review briefs.
 

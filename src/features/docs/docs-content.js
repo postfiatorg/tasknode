@@ -11,11 +11,13 @@ import search from "../../../docs/wiki/surfaces/search.md?raw";
 import tasks from "../../../docs/wiki/surfaces/tasks.md?raw";
 import wallet from "../../../docs/wiki/surfaces/wallet.md?raw";
 import aiProviders from "../../../docs/wiki/architecture/ai-providers.md?raw";
+import authAndConnectedAccounts from "../../../docs/wiki/architecture/auth-and-connected-accounts.md?raw";
 import database from "../../../docs/wiki/architecture/database.md?raw";
 import encryption from "../../../docs/wiki/architecture/encryption.md?raw";
 import executionMandate from "../../../docs/wiki/architecture/execution-mandate.md?raw";
 import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
 import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
+import networkTaskRecovery from "../../../docs/wiki/architecture/network-task-recovery.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
 import styleGuide from "../../../docs/wiki/architecture/style-guide.md?raw";
@@ -234,7 +236,7 @@ const PROMPT_SOURCES = [
     family: "Hive",
     title: "Hive Secretary",
     path: "prompts/hive/hive_secretary_v1.md",
-    summary: "Updates the network context report from validated-wallet Hive Input entries.",
+    summary: "Updates the network context report from validated-wallet Hive chat entries.",
     status: "Active async worker",
     usedBy: [
       "server/hive-secretary-worker.js::fetchHiveSecretaryReport",
@@ -478,6 +480,12 @@ export const DOC_GROUPS = [
         markdown: aiProviders,
       },
       {
+        slug: "auth-and-connected-accounts",
+        title: "Auth And Connected Accounts",
+        summary: "Email, Telegram, Discord, and provider linking.",
+        markdown: authAndConnectedAccounts,
+      },
+      {
         slug: "encryption",
         title: "Encryption",
         summary: "MessageKey and encrypted payloads.",
@@ -502,6 +510,12 @@ export const DOC_GROUPS = [
         title: "Task Lifecycle",
         summary: "Replayable task state machine.",
         markdown: taskLifecycle,
+      },
+      {
+        slug: "network-task-recovery",
+        title: "Network Task Recovery",
+        summary: "Restart recovery for active Network Tasks and Hive mirrors.",
+        markdown: networkTaskRecovery,
       },
       {
         slug: "task-async-engine",

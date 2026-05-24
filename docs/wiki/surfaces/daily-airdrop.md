@@ -2,7 +2,7 @@
 
 Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT drop plus a short explanation of what raised the score, what lowered it, and what to improve tomorrow.
 
-Current status: scoring and operator-triggered live issuance are implemented. A scoring run writes `profile_daily_airdrop_runs`; issuance writes exactly one `profile_daily_airdrop_issuances` row and submits a PFTL payment pointer.
+Current status: recurring scoring and live issuance are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance writes exactly one `profile_daily_airdrop_issuances` row and submits a PFTL payment pointer. The worker also writes a `Hive Mind Agent` audit card summarizing how much PFT was dispensed and to how many users.
 
 ### Private Profile Read Path
 
@@ -93,7 +93,10 @@ The prompt is `prompts/profile/daily_airdrop_v1.md`.
 Runtime call sites:
 
 - `server/profile-daily-airdrop.js::runDailyAirdropScore`
+- `server/profile-daily-airdrop-worker.js::runDailyAirdropWorkerOnce`
+- `server/profile-daily-airdrop-worker.js::startDailyAirdropWorker`
 - `scripts/profile-daily-airdrop-score.mjs`
+- `scripts/profile-daily-airdrop-worker.mjs`
 
 Provider policy:
 
@@ -164,7 +167,7 @@ Important fields:
 
 The production uniqueness boundary is one production scoring row per account per UTC day. Dry runs can be repeated for prompt and packet testing.
 
-`profile_daily_airdrop_issuances` stores live payment submissions. It is keyed by `run_id` and prevents more than one submitted issuance per account/day.
+`profile_daily_airdrop_issuances` stores live payment submissions. It is keyed by `run_id` and prevents more than one submitted issuance per account/day. The recurring worker also treats any pending, submitted, or failed issuance for an account/day as a stop sign so retries do not blindly double-pay after a partial chain failure.
 
 ### Current Goodalexander Dry Run
 
@@ -181,9 +184,30 @@ Observed packet:
 - transaction: `B16678C024C0780D12227E9CC9FA4CCB1FA2BA3EC65341BFFAE40FC978FC6AB2`;
 - pointer CID: `QmPyxEi3Sk9AXc6QCPJK2M11fb5okTmTuR21VXkxbTuaLo`.
 
-### Live Issuance Boundary
+### Recurring Worker
 
-Live issuance currently runs through `scripts/profile-daily-airdrop-issue.mjs`. It converts a completed scoring row into exactly one account/day issuance row, then pays from the configured reward/faucet wallet to the deterministic identity-cloud recipient wallet.
+The recurring worker is `server/profile-daily-airdrop-worker.js`. It is started by `server/background-workers.js` when `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`; local Docker enables it in `docker-compose.dev.yml`.
+
+Each tick:
+
+1. claims a Postgres-backed `daily_airdrop` lease using the same lease table as Board Manager so multiple app instances do not run the payout loop at the same time;
+2. selects accounts with positive rewarded task work inside the trailing seven-day task packet and no production/pending/submitted/failed airdrop for the current UTC day;
+3. runs the existing DeepSeek/OpenRouter daily airdrop scorer in dry-run mode to create a completed scoring row;
+4. issues the specific scoring run through `issueLatestDailyAirdrop` when the proposed amount is positive;
+5. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.`
+
+The manual operator command remains available:
+
+```bash
+npm run profile-daily-airdrop-worker -- --json
+```
+
+The older direct commands remain useful for diagnosis:
+
+```bash
+npm run profile-daily-airdrop-score -- --account-id <account_id> --run-mode dry_run
+npm run profile-daily-airdrop-issue -- --account-id=<account_id> --run-id=<run_id>
+```
 
 ## Reviewer To Do List
 

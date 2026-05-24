@@ -141,8 +141,9 @@ const CHAT_SCROLL_BOTTOM_THRESHOLD = 96;
 const TASK_REQUEST_CANONICAL_TEXT =
   "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.";
 const TASK_REQUEST_PLACEHOLDER = "Add any relevant details for your task request";
-const HIVE_INPUT_MODE = "hive_input";
-const HIVE_INPUT_PLACEHOLDER = "Add context for Hive";
+const HIVE_CHAT_PLACEHOLDER = "Talk to Hive Chat";
+const HIVE_CHAT_TITLE = "Hive Chat";
+const HIVE_CHAT_NOTIFICATION_REFRESH_MS = 20000;
 const CHAT_ATTACHMENT_ACCEPT = [
   "image/png",
   "image/jpeg",
@@ -371,6 +372,7 @@ function App() {
 
   const recentChats = buildRecentChats(appState?.chat?.recents || []);
   const activeChatId = activeChat?.conversationId || activeChat?.id || "";
+  const hiveUnreadCount = hiveUnreadCountFromAppState(appState);
   const pftBalance = formatPftBalance(appState?.wallet);
   const chatCredit = formatCreditUsd(appState?.usage?.availableCreditUsd || 0);
   const session = appState?.session;
@@ -664,6 +666,33 @@ function App() {
   }, [signedIn, linkedWalletAddress]);
 
   useEffect(() => {
+    if (!signedIn || !session?.accountId) return undefined;
+    let active = true;
+    const hiveChatOpen = view === "chat" && activeChat?.kind === "hive";
+
+    async function refreshHiveNotificationState() {
+      try {
+        const result = await requestJson("/api/hive/chat", {
+          method: hiveChatOpen ? "PATCH" : "GET",
+        });
+        if (!active || !result.ok || !result.body?.ok) return;
+        setAppState((current) =>
+          mergeHiveConversationIntoAppState(current, result.body.conversation)
+        );
+      } catch {
+        // Hive notifications are non-blocking; app-state will surface hard failures.
+      }
+    }
+
+    refreshHiveNotificationState();
+    const timer = window.setInterval(refreshHiveNotificationState, HIVE_CHAT_NOTIFICATION_REFRESH_MS);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [activeChat?.kind, activeChatId, session?.accountId, signedIn, view]);
+
+  useEffect(() => {
     let active = true;
     if (!signedIn || !walletAccountId) {
       setProfileAvatarNft(null);
@@ -813,6 +842,7 @@ function App() {
           />
           <SidebarButton
             active={view === "hive"}
+            badge={hiveUnreadCount > 0 ? formatUnreadCount(hiveUnreadCount) : undefined}
             icon={Activity}
             label="Hive"
             onClick={() => navigateToView("hive")}
@@ -876,9 +906,15 @@ function App() {
               recentChats.map((item) => {
                 const itemId = item.conversationId || item.id;
                 const menuOpen = chatActionMenu?.id === item.id;
+                const rowClassName = [
+                  "recent-chat-row",
+                  activeChatId === itemId ? "active" : "",
+                  item.kind === "hive" ? "is-hive" : "",
+                  item.unread ? "has-unread" : "",
+                ].filter(Boolean).join(" ");
                 return (
                   <div
-                    className={activeChatId === itemId ? "recent-chat-row active" : "recent-chat-row"}
+                    className={rowClassName}
                     key={item.id}
                   >
                     <button
@@ -887,8 +923,16 @@ function App() {
                       title={item.title}
                       type="button"
                     >
+                      {item.kind === "hive" && <Network size={13} strokeWidth={1.8} />}
                       <span>{item.title}</span>
-                      {item.unread && <i aria-hidden="true" />}
+                      {item.unread && (
+                        <small
+                          aria-label={`${item.unreadCount || 1} unread Hive message${(item.unreadCount || 1) === 1 ? "" : "s"}`}
+                          className="recent-chat-unread-badge"
+                        >
+                          {formatUnreadCount(item.unreadCount || 1)}
+                        </small>
+                      )}
                     </button>
                     <button
                       aria-label={`Chat actions for ${item.title}`}
@@ -1143,6 +1187,7 @@ function App() {
       )}
       {settingsOpen && (
         <SettingsModal
+          chat={appState?.chat}
           onAppStateChange={refreshAppState}
           onClose={() => setSettingsOpen(false)}
           session={session}
@@ -1175,6 +1220,7 @@ function App() {
       )}
       {chatActionMenu && sidebarOpen && (
         <ChatItemActionMenu
+          chat={chatActionMenu}
           menuRef={chatActionRef}
           onDelete={() => {
             setChatDeleteTarget(chatActionMenu);
@@ -1213,13 +1259,13 @@ function ChatSurface({
   const modes = chat?.modes || [];
   const messages = chat?.seedMessages || [];
   const defaultMode = chat?.defaultMode || "Private Instant";
+  const isHiveChat = activeChat?.kind === "hive";
   const [turns, setTurns] = useState(() => normalizeChatMessages(messages));
   const [selectedMode, setSelectedMode] = useState(defaultMode);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [taskRequestMode, setTaskRequestMode] = useState(false);
   const [contextEditMode, setContextEditMode] = useState(false);
-  const [hiveInputMode, setHiveInputMode] = useState(false);
   const [contextEditSavingId, setContextEditSavingId] = useState("");
   const [input, setInput] = useState("");
   const [sendMessage, setSendMessage] = useState("");
@@ -1284,7 +1330,6 @@ function ChatSurface({
     setAttachments([]);
     setTaskRequestMode(false);
     setContextEditMode(false);
-    setHiveInputMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -1299,7 +1344,6 @@ function ChatSurface({
     clearedChatRef.current = false;
     setTaskRequestMode(false);
     setContextEditMode(false);
-    setHiveInputMode(false);
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
@@ -1411,15 +1455,15 @@ function ChatSurface({
     const startedAt = Date.now();
     const requestedConversationId = activeChat?.conversationId || activeChat?.id || draftConversationId;
     const isTaskRequest = taskRequestMode;
-    const isContextEdit = contextEditMode && !isTaskRequest && !hiveInputMode;
-    const isHiveInput = hiveInputMode && !isTaskRequest && !isContextEdit;
+    const isContextEdit = contextEditMode && !isTaskRequest;
+    const isHiveContext = isHiveChat && !isTaskRequest && !isContextEdit;
     const requestId = isTaskRequest ? newClientCorrelationId("req") : "";
     const bundleId = isTaskRequest ? newClientCorrelationId("bundle") : "";
     const taskRequestMessageId = requestId ? `msg_${requestId}_request_user`.slice(0, 180) : "";
     const taskRequestAssistantId = requestId ? `msg_${requestId}_request_assistant`.slice(0, 180) : "";
-    const hiveInputMessageId = isHiveInput ? `msg_${newClientCorrelationId("hive")}_user`.slice(0, 180) : "";
-    const hiveInputAssistantId = isHiveInput ? `${hiveInputMessageId}_assistant`.slice(0, 180) : "";
-    const pendingId = taskRequestAssistantId || hiveInputAssistantId || `assistant-pending-${startedAt}`;
+    const hiveContextMessageId = isHiveContext ? `msg_${newClientCorrelationId("hive")}_user`.slice(0, 180) : "";
+    const hiveContextAssistantId = isHiveContext ? `${hiveContextMessageId}_assistant`.slice(0, 180) : "";
+    const pendingId = taskRequestAssistantId || (isHiveContext ? "" : hiveContextAssistantId) || `assistant-pending-${startedAt}`;
     const submittedAttachments = attachments;
     const fallbackPrompt = promptForAttachments(submittedAttachments);
     const submittedText = message || fallbackPrompt;
@@ -1440,15 +1484,15 @@ function ChatSurface({
         }
       : undefined;
     const contextEditMetadata = isContextEdit ? { kind: CONTEXT_EDIT_MODE } : undefined;
-    const hiveInputMetadata = isHiveInput
+    const hiveContextMetadata = isHiveContext
       ? {
-          kind: HIVE_INPUT_MODE,
-          source: "user_chat",
+          kind: "hive_context_entry",
+          source: "hive_chat",
           conversationId: requestedConversationId,
-          sourceConversationTitle: activeChat?.title || titleFromTurns(turns) || "New chat",
-        }
+          sourceConversationTitle: HIVE_CHAT_TITLE,
+      }
       : undefined;
-    const turnMetadata = taskRequestMetadata || contextEditMetadata || hiveInputMetadata;
+    const turnMetadata = taskRequestMetadata || contextEditMetadata || hiveContextMetadata;
 
     if (isTaskRequest && !walletReady) {
       if (["unlock", "open_wallet"].includes(taskRequestUnlockPolicy.action)) onWalletUnlock?.();
@@ -1463,22 +1507,24 @@ function ChatSurface({
     setStatusTone("muted");
     setInput("");
     setAttachments([]);
-    setTurns((current) => [
-      ...current,
-        createUserTurn(
+    const submittedUserTurn = createUserTurn(
         submittedText,
-        taskRequestMessageId || hiveInputMessageId || `user-local-${startedAt}`,
+        taskRequestMessageId || hiveContextMessageId || `user-local-${startedAt}`,
         submittedAttachments,
         turnMetadata
-      ),
-      createPendingAssistantTurn(pendingId, startedAt, turnMetadata),
-    ]);
+      );
+    setTurns((current) => (
+      isHiveContext
+        ? [...current, submittedUserTurn]
+        : [...current, submittedUserTurn, createPendingAssistantTurn(pendingId, startedAt, turnMetadata)]
+    ));
     if (!activeChat) {
       onActiveChatChange?.({
         id: requestedConversationId,
         conversationId: requestedConversationId,
         source: "live",
-        title: isTaskRequest ? "Task request" : isHiveInput ? "Hive input" : chatTitleFromPrompt(message),
+        kind: isHiveContext ? "hive" : undefined,
+        title: isTaskRequest ? "Task request" : isHiveContext ? HIVE_CHAT_TITLE : chatTitleFromPrompt(message),
       });
     }
 
@@ -1529,17 +1575,17 @@ function ChatSurface({
         return;
       }
 
-      if (isHiveInput) {
+      if (isHiveContext) {
         const result = await requestJson("/api/hive/context", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            body: submittedText,
-            conversationId: requestedConversationId,
-            conversationTitle: activeChat?.title || titleFromTurns(turns) || "New chat",
-            attachments: serializeChatAttachments(submittedAttachments),
-            userMessageId: hiveInputMessageId,
-            assistantMessageId: hiveInputAssistantId,
+            body: JSON.stringify({
+              body: submittedText,
+              conversationId: requestedConversationId,
+              conversationTitle: HIVE_CHAT_TITLE,
+              attachments: serializeChatAttachments(submittedAttachments),
+              userMessageId: hiveContextMessageId,
+              assistantMessageId: hiveContextAssistantId,
           }),
         });
 
@@ -1547,17 +1593,34 @@ function ChatSurface({
           throw new Error(result.body?.message || `Hive Context returned HTTP ${result.status}.`);
         }
 
-        const assistantTurn = normalizeChatMessage(result.body.assistant, pendingId);
-        setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
-        setHiveInputMode(false);
-        setSendMessage(result.body.message || "Hive input saved.");
+        if (result.body.assistant) {
+          const assistantTurn = normalizeChatMessage(result.body.assistant, pendingId);
+          setTurns((current) => [...current, { ...assistantTurn, id: pendingId }]);
+        } else {
+          setTurns((current) => [
+            ...current,
+            {
+              id: `hive-status-${result.body.entry.id || startedAt}`,
+              role: "assistant",
+              metadata: { kind: "hive_context_status", hiveContextEntryId: result.body.entry.id },
+              blocks: [
+                {
+                  type: "p",
+                  inline: [{ text: result.body.message || "Saved to Hive Context. Hive may respond here if useful." }],
+                },
+              ],
+            },
+          ]);
+        }
+        setSendMessage("");
         setStatusTone("muted");
-        setDraftConversationId(result.body?.assistant?.conversationId || requestedConversationId);
+        setDraftConversationId(result.body?.user?.conversationId || requestedConversationId);
         onActiveChatChange?.({
           id: requestedConversationId,
           conversationId: requestedConversationId,
           source: "live",
-          title: activeChat?.title || "Hive input",
+          kind: "hive",
+          title: HIVE_CHAT_TITLE,
         });
         await onChatSettled?.();
         return;
@@ -1642,7 +1705,7 @@ function ChatSurface({
           createErrorAssistantTurn(pendingId, failureMessage, startedAt)
         )
       );
-      if (isTaskRequest || isContextEdit || isHiveInput) {
+      if (isTaskRequest || isContextEdit || isHiveContext) {
         setInput(message);
         setAttachments(submittedAttachments);
       }
@@ -1806,7 +1869,6 @@ function ChatSurface({
 
   function handleContextEditRevise(proposal) {
     setContextEditMode(true);
-    setHiveInputMode(false);
     setInput(`Revise this context edit: ${proposal?.rationale || ""}`.trim());
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -1818,6 +1880,9 @@ function ChatSurface({
     tone: statusTone,
     turns,
   });
+  const showComposerStatus =
+    composerStatus &&
+    !(isHiveChat && composerStatus.text === "Task Node can make mistakes. Check important info.");
 
   const chatTitle = activeChat?.title || titleFromTurns(turns);
   const hasPromptInput = input.trim().length > 0 || attachments.length > 0;
@@ -1826,21 +1891,21 @@ function ChatSurface({
     ? TASK_REQUEST_PLACEHOLDER
     : contextEditMode
       ? CONTEXT_EDIT_PLACEHOLDER
-      : hiveInputMode
-        ? HIVE_INPUT_PLACEHOLDER
+      : isHiveChat
+        ? HIVE_CHAT_PLACEHOLDER
         : "Ask anything";
   const composerClassName = [
     "composer",
     composerDragActive ? "is-drag-active" : "",
     taskRequestMode ? "is-task-request" : "",
     contextEditMode ? "is-context-edit" : "",
-    hiveInputMode ? "is-hive-input" : "",
+    isHiveChat ? "is-hive-input" : "",
   ].filter(Boolean).join(" ");
-  const modelPickerDisabled = contextEditMode || hiveInputMode;
+  const modelPickerDisabled = contextEditMode || isHiveChat;
   const modelPickerLabel = contextEditMode
     ? "Thinking carefully"
-    : hiveInputMode
-      ? "Saving to Hive"
+    : isHiveChat
+      ? HIVE_CHAT_TITLE
       : formatModeLabel(selectedMode);
   const composer = (
     <div className="composer-shell">
@@ -1876,13 +1941,10 @@ function ChatSurface({
             </button>
           </div>
         )}
-        {hiveInputMode && (
+        {isHiveChat && (
           <div className="composer-mode-chip">
             <Network size={13} strokeWidth={1.9} />
-            <span>Hive Input</span>
-            <button aria-label="Exit Hive Input" onClick={() => setHiveInputMode(false)} type="button">
-              <X size={12} strokeWidth={2} />
-            </button>
+            <span>{HIVE_CHAT_TITLE}</span>
           </div>
         )}
         <div className={composerExpanded ? "composer-grid is-expanded" : "composer-grid is-compact"}>
@@ -1916,7 +1978,6 @@ function ChatSurface({
                     setPlusMenuOpen(false);
                     setTaskRequestMode(false);
                     setContextEditMode(true);
-                    setHiveInputMode(false);
                     setSendMessage("");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1929,20 +1990,6 @@ function ChatSurface({
                     setPlusMenuOpen(false);
                     setTaskRequestMode(true);
                     setContextEditMode(false);
-                    setHiveInputMode(false);
-                    setSendMessage("");
-                    setStatusTone("muted");
-                    window.setTimeout(() => inputRef.current?.focus(), 0);
-                  }}
-                />
-                <ToolMenuRow
-                  icon={Network}
-                  label="Hive Input"
-                  onClick={() => {
-                    setPlusMenuOpen(false);
-                    setTaskRequestMode(false);
-                    setContextEditMode(false);
-                    setHiveInputMode(true);
                     setSendMessage("");
                     setStatusTone("muted");
                     window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -2027,9 +2074,9 @@ function ChatSurface({
           </div>
         </div>
       </form>
-      {composerStatus && (
-        <div className={`chat-composer-note ${composerStatus.tone}`}>
-          {composerStatus.text}
+      {showComposerStatus && (
+        <div className={`chat-composer-note ${composerStatus.tone}${isHiveChat ? " is-hive-note" : ""}`}>
+          {isHiveChat ? <em>{composerStatus.text}</em> : composerStatus.text}
         </div>
       )}
     </div>
@@ -2039,7 +2086,7 @@ function ChatSurface({
     <div className={turns.length === 0 ? "chat-surface empty" : "chat-surface"}>
       {turns.length === 0 ? (
         <div className="chat-empty">
-          <h1>What are you working on?</h1>
+          <h1>{isHiveChat ? HIVE_CHAT_TITLE : "What are you working on?"}</h1>
           {composer}
         </div>
       ) : (
@@ -2132,7 +2179,7 @@ function chatComposerStatus({ actualUsage, message, sending, tone, turns }) {
       text: `Billed ${formatUsageUsd(actualUsage.costUsd)} · ${actualUsage.totalTokens} tokens`,
     };
   }
-  if (message && tone === "error") return { tone: "error", text: message };
+  if (message) return { tone: tone === "error" ? "error" : "muted", text: message };
   if (turns.length > 0) {
     return { tone: "muted", text: "Task Node can make mistakes. Check important info." };
   }
@@ -2154,21 +2201,76 @@ function buildRecentChats(serverRecents) {
 
     const conversationId = String(recent.conversationId || recent.id || "").trim();
     const title = String(recent.title || recent.lastMessagePreview || "New chat").trim();
+    const unreadCount = Math.max(0, Math.round(Number(recent.unreadCount || 0)));
     const key = conversationId || title;
     if (!key || seen.has(key)) continue;
     seen.add(key);
     rows.push({
       id: conversationId || `server-${slugify(title) || index}`,
       conversationId: conversationId || "",
+      kind: recent.kind || "",
+      virtual: Boolean(recent.virtual),
       source: "server",
       title,
       lastMessagePreview: recent.lastMessagePreview || "",
       messageCount: recent.messageCount || 0,
       updatedAt: recent.updatedAt || recent.lastMessageAt || "",
+      unreadCount,
+      unread: Boolean(recent.unread || unreadCount > 0),
     });
   }
 
   return rows;
+}
+
+function formatUnreadCount(count = 0) {
+  const normalized = Math.max(0, Math.round(Number(count) || 0));
+  if (normalized > 99) return "99+";
+  return String(normalized);
+}
+
+function hiveUnreadCountFromAppState(state) {
+  const direct = Number(state?.chat?.hiveConversation?.unreadCount || 0);
+  if (direct > 0) return Math.round(direct);
+  const recentHive = (state?.chat?.recents || []).find((item) => item?.kind === "hive");
+  return Math.max(0, Math.round(Number(recentHive?.unreadCount || 0)));
+}
+
+function mergeHiveConversationIntoAppState(current, conversation) {
+  if (!current?.chat || !conversation) return current;
+  const normalizedConversation = {
+    ...conversation,
+    unreadCount: Math.max(0, Math.round(Number(conversation.unreadCount || 0))),
+    unread: Boolean(conversation.unread || Number(conversation.unreadCount || 0) > 0),
+  };
+  const hiveId = normalizedConversation.conversationId || normalizedConversation.id;
+  const existingRecents = Array.isArray(current.chat.recents) ? current.chat.recents : [];
+  let found = false;
+  const nextRecents = existingRecents
+    .map((item) => {
+      const itemId = item?.conversationId || item?.id || "";
+      const itemIsHive = item?.kind === "hive" || (hiveId && itemId === hiveId);
+      if (!itemIsHive) return item;
+      found = true;
+      return {
+        ...item,
+        ...normalizedConversation,
+      };
+    })
+    .filter((item) => item?.kind !== "hive" || normalizedConversation.disabled !== true);
+
+  if (!found && normalizedConversation.disabled !== true) {
+    nextRecents.unshift(normalizedConversation);
+  }
+
+  return {
+    ...current,
+    chat: {
+      ...current.chat,
+      hiveConversation: normalizedConversation,
+      recents: nextRecents,
+    },
+  };
 }
 
 function chatActionMenuPosition(anchor) {
@@ -2192,28 +2294,33 @@ function chatActionMenuPosition(anchor) {
   return { left, top };
 }
 
-function ChatItemActionMenu({ menuRef, onRename, onDelete, style }) {
+function ChatItemActionMenu({ chat, menuRef, onRename, onDelete, style }) {
+  const isHive = chat?.kind === "hive";
   return (
     <div className="chat-action-menu" ref={menuRef} role="menu" style={style}>
-      <button
-        aria-disabled="true"
-        className="chat-action-menu-item is-muted"
-        onClick={(event) => event.preventDefault()}
-        role="menuitem"
-        type="button"
-      >
-        <Share size={17} strokeWidth={1.75} />
-        <span>Share</span>
-        <small>Coming soon</small>
-      </button>
-      <button className="chat-action-menu-item" onClick={onRename} role="menuitem" type="button">
-        <Pencil size={17} strokeWidth={1.75} />
-        <span>Rename</span>
-      </button>
-      <div className="chat-action-menu-divider" />
+      {!isHive && (
+        <>
+          <button
+            aria-disabled="true"
+            className="chat-action-menu-item is-muted"
+            onClick={(event) => event.preventDefault()}
+            role="menuitem"
+            type="button"
+          >
+            <Share size={17} strokeWidth={1.75} />
+            <span>Share</span>
+            <small>Coming soon</small>
+          </button>
+          <button className="chat-action-menu-item" onClick={onRename} role="menuitem" type="button">
+            <Pencil size={17} strokeWidth={1.75} />
+            <span>Rename</span>
+          </button>
+          <div className="chat-action-menu-divider" />
+        </>
+      )}
       <button className="chat-action-menu-item danger" onClick={onDelete} role="menuitem" type="button">
         <Trash2 size={17} strokeWidth={1.75} />
-        <span>Delete</span>
+        <span>{isHive ? "Disable Hive Chat" : "Delete"}</span>
       </button>
     </div>
   );
@@ -2283,6 +2390,7 @@ function RenameChatModal({ chat, onClose, onSave }) {
 function DeleteChatModal({ chat, onClose, onDelete }) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  const isHive = chat?.kind === "hive";
 
   async function submitDelete() {
     setDeleting(true);
@@ -2305,13 +2413,22 @@ function DeleteChatModal({ chat, onClose, onDelete }) {
         role="dialog"
       >
         <header>
-          <h2 id="delete-chat-title">Delete chat?</h2>
+          <h2 id="delete-chat-title">{isHive ? "Disable Hive Chat?" : "Delete chat?"}</h2>
           <button aria-label="Close delete" className="chat-edit-close" onClick={onClose} type="button">
             <X size={18} strokeWidth={1.75} />
           </button>
         </header>
         <p className="chat-delete-copy">
-          This removes <strong>{chat?.title || "this chat"}</strong> from your chat history.
+          {isHive ? (
+            <>
+              This permanently removes your ability to talk to <strong>Hive Chat</strong> from the sidebar
+              unless you re-enable it in Settings. Existing Hive Context entries stay saved.
+            </>
+          ) : (
+            <>
+              This removes <strong>{chat?.title || "this chat"}</strong> from your chat history.
+            </>
+          )}
         </p>
         {error && <p className="chat-edit-error">{error}</p>}
         <footer>
@@ -2320,7 +2437,7 @@ function DeleteChatModal({ chat, onClose, onDelete }) {
           </button>
           <button className="danger-button" disabled={deleting} onClick={submitDelete} type="button">
             <Trash2 size={16} strokeWidth={2} />
-            Delete
+            {isHive ? "Disable Hive Chat" : "Delete"}
           </button>
         </footer>
       </section>
@@ -4015,7 +4132,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
 }
 
 
-function SettingsModal({ onAppStateChange, onClose, session, setTheme, theme }) {
+function SettingsModal({ chat, onAppStateChange, onClose, session, setTheme, theme }) {
   const [page, setPage] = useState("general");
   const activePage = SETTINGS_PAGES.find((item) => item.key === page) || SETTINGS_PAGES[0];
 
@@ -4050,7 +4167,7 @@ function SettingsModal({ onAppStateChange, onClose, session, setTheme, theme }) 
           <div className="settings-page">
             {page === "general" && <GeneralSettings setTheme={setTheme} theme={theme} />}
             {page === "security" && <SecuritySettings session={session} />}
-            {page === "data" && <DataSettings />}
+            {page === "data" && <DataSettings chat={chat} onAppStateChange={onAppStateChange} />}
             {page === "billing" && <BillingSettings onAppStateChange={onAppStateChange} />}
           </div>
         </div>
@@ -4182,10 +4299,46 @@ function linkedAccountStatus(provider) {
   return "Linked";
 }
 
-function DataSettings() {
+function DataSettings({ chat, onAppStateChange }) {
+  const hiveConversation = chat?.hiveConversation || null;
+  const hiveDisabled = hiveConversation?.disabled === true || hiveConversation?.enabled === false;
+  const [hivePending, setHivePending] = useState(false);
+  const [hiveMessage, setHiveMessage] = useState("");
+
+  async function enableHiveChat() {
+    setHivePending(true);
+    setHiveMessage("");
+    try {
+      const result = await requestJson("/api/hive/chat", { method: "POST" });
+      if (!result.ok || !result.body?.ok) {
+        throw new Error(result.body?.message || result.body?.error || "Hive Chat could not be enabled.");
+      }
+      setHiveMessage("Hive Chat enabled.");
+      await onAppStateChange?.();
+    } catch (error) {
+      setHiveMessage(error?.message || "Hive Chat could not be enabled.");
+    } finally {
+      setHivePending(false);
+    }
+  }
+
   return (
     <>
       <SettingsLine desc="Allow your content to be used to improve Task Node." label="Improve the model for everyone" right={<ToggleSwitch initial />} />
+      <SettingsLine
+        desc={hiveDisabled ? "Restore the default Hive conversation in your chat sidebar." : "The default Hive conversation is active."}
+        label="Hive Chat"
+        right={
+          hiveDisabled ? (
+            <SmallPill disabled={hivePending} onClick={enableHiveChat}>
+              {hivePending ? "Enabling" : "Re-enable"}
+            </SmallPill>
+          ) : (
+            <SmallPill disabled>Enabled</SmallPill>
+          )
+        }
+      />
+      {hiveMessage && <div className="inline-message">{hiveMessage}</div>}
       <SettingsLine desc="Manage links you've shared from chats." label="Shared links" right={<SmallPill>Manage</SmallPill>} />
       <SettingsLine desc="Receive a copy of your conversations and PFT history." label="Export data" right={<SmallPill>Export</SmallPill>} />
       <SettingsLine desc="How Task Node handles your data." label="Privacy Policy" right={<SmallPill>View <ExternalLink size={11} /></SmallPill>} />
@@ -4238,9 +4391,9 @@ function CycleButton({ onClick, value }) {
   );
 }
 
-function SmallPill({ children, danger }) {
+function SmallPill({ children, danger, disabled, onClick }) {
   return (
-    <button className={danger ? "small-pill danger" : "small-pill"} type="button">
+    <button className={danger ? "small-pill danger" : "small-pill"} disabled={disabled} onClick={onClick} type="button">
       {children}
     </button>
   );

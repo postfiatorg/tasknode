@@ -11,6 +11,7 @@ import {
   enqueueBoardManagerJob,
   enqueueDueBoardManagerTicks,
   ensureBoardManagerScope,
+  recoverStaleBoardManagerJobs,
   shouldSkipBoardManagerJobForRecentRun,
 } from "../server/repositories/board-manager-scheduler.js";
 
@@ -50,6 +51,8 @@ function usage() {
     "  --model <model>             Provider model. Default: qwen/qwen3.7-max for OpenRouter, gpt-5.5-pro for OpenAI",
     "  --reasoning <effort>        Provider reasoning effort. Default: high",
     "  --job-limit <n>             Due scope ticks to enqueue per pass. Default: 5",
+    "  --max-actions-per-hour <n>  Scope action budget. Default: 8",
+    "  --stale-job-seconds <n>     Recover running jobs older than this. Default: 900",
     "  --action-delay-ms <ms>      Follow-up delay after mutating action. Default: 5000",
     "  --error-delay-ms <ms>       Retry delay after failed job. Default: 300000",
     "  --force                     Run even when TASKNODE_BOARD_MANAGER_ENABLED is not true.",
@@ -154,10 +157,15 @@ async function enqueueFollowupIfNeeded({ job, output }) {
 }
 
 async function processOneJob({ turn }) {
+  const recovered = await recoverStaleBoardManagerJobs({
+    scope: config.scope,
+    staleSeconds: config.staleJobSeconds,
+    limit: config.jobLimit,
+  });
   await enqueueDueBoardManagerTicks({ scope: config.scope, limit: config.jobLimit });
   const claimed = await claimBoardManagerJob({ scope: config.scope, managerId: config.managerId });
   if (!claimed.claimed || !claimed.job) {
-    return { claimed: false, reason: claimed.reason || "" };
+    return { claimed: false, reason: claimed.reason || "", recovered: recovered.recovered || 0 };
   }
 
   const job = claimed.job;
@@ -182,6 +190,7 @@ async function processOneJob({ turn }) {
         jobId: job.id,
         action: "skipped_recent_run",
         reason: recentRunSkip.reason,
+        recovered: recovered.recovered || 0,
       };
     }
 
@@ -207,6 +216,7 @@ async function processOneJob({ turn }) {
       runId: output.runId || "",
       action: output?.decision?.action || "",
       followupQueued: Boolean(followup?.queued),
+      recovered: recovered.recovered || 0,
     };
   } catch (error) {
     const message = [
@@ -224,6 +234,7 @@ async function processOneJob({ turn }) {
       jobId: job.id,
       status: deferred?.job?.status || "unknown",
       error: message.slice(0, 2000),
+      recovered: recovered.recovered || 0,
     };
   }
 }
@@ -238,6 +249,16 @@ const config = {
   actionDelayMs: numberArg("--action-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS || 5000), { min: 0 }),
   errorDelayMs: numberArg("--error-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ERROR_DELAY_MS || 300000), { min: 5000 }),
   jobLimit: numberArg("--job-limit", Number(process.env.TASKNODE_BOARD_MANAGER_TICK_JOB_LIMIT || 5), { min: 1, max: 25 }),
+  maxActionsPerHour: numberArg(
+    "--max-actions-per-hour",
+    Number(process.env.TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR || 8),
+    { min: 0, max: 200 }
+  ),
+  staleJobSeconds: numberArg(
+    "--stale-job-seconds",
+    Number(process.env.TASKNODE_BOARD_MANAGER_STALE_JOB_SECONDS || 900),
+    { min: 60, max: 86400 }
+  ),
   maxTurns: numberArg("--max-turns", Number(process.env.TASKNODE_BOARD_MANAGER_WORKER_MAX_TURNS || 0), { min: 0 }),
   execute: hasArg("--execute"),
   force: hasArg("--force"),
@@ -269,7 +290,10 @@ process.on("SIGTERM", () => abort.abort());
 
 try {
   await migrateDatabase();
-  await ensureBoardManagerScope({ scope: config.scope });
+  await ensureBoardManagerScope({
+    scope: config.scope,
+    maxActionsPerHour: config.maxActionsPerHour,
+  });
 
   console.log(JSON.stringify({
     event: "board_manager_worker_started",
@@ -279,6 +303,8 @@ try {
     model: config.model,
     dryRun: !config.execute,
     pollMs: config.pollMs,
+    maxActionsPerHour: config.maxActionsPerHour,
+    staleJobSeconds: config.staleJobSeconds,
     maxTurns: config.maxTurns || "unlimited",
   }, null, 2));
 

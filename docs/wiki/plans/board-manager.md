@@ -55,7 +55,7 @@ Planned counts are not live work. A project card saying "3 scoped tasks" or "2 t
 
 When `boardActionPressure.summary.requiresAction` is true, `do_nothing` is not a valid Board Manager outcome unless a recent run is already handling the same project and the decision reason names that in-flight action. Empty active projects should move toward one of four outcomes: initiate a Network Task, assign a contributor, ask a specific user for the smallest missing decision input, or archive the project when it cannot be managed now.
 
-`eligibleCandidateCount` in this health block means candidates available after current outstanding and pending Network Tasks are accounted for. The Board Manager should not keep assigning the same contributor while they already have a live Network Task unless it explicitly chooses an over-capacity exception. If a stale follow-up run races with a just-created allocation, the action hook records `network_task_candidate_at_capacity` as a skipped result instead of retrying the same invalid mutation.
+`eligibleCandidateCount` in this health block means candidates available after current outstanding and pending Network Tasks are accounted for. Personal tasks and engineering tasks are not capacity blockers; they are only routing context. If a contributor is unavailable, `boardActionPressure.candidateCapacity.activeNetworkTaskCapacityBlockers` names the outstanding Network Task or pending generation job consuming that contributor's capacity. The Board Manager should not keep assigning the same contributor while they already have a live Network Task unless it explicitly chooses an over-capacity exception. If a stale follow-up run races with a just-created allocation, the action hook records `network_task_candidate_at_capacity` as a skipped result instead of retrying the same invalid mutation.
 
 ## Production Architecture Plan
 
@@ -98,7 +98,7 @@ Migration `server/db/migrations/042_board_manager_scheduler.sql` creates `board_
 Job sources:
 
 - periodic scope tick;
-- new validated Hive Input;
+- new validated Hive chat entry;
 - stale Hive Secretary report;
 - stale or missing project product document;
 - project has unresolved status or no next action;
@@ -143,7 +143,8 @@ The design should still allow production failover:
 - only the machine holding the lease for `global_hive` can execute;
 - all other machines remain idle or process other scopes later;
 - action hooks must be idempotent so a retry cannot duplicate a user message, project, or Network Task.
-- `board_manager_scopes.max_actions_per_hour` is enforced before the worker claims another job. Completed non-dry-run actions other than `do_nothing` count against the cap. When the cap is reached the worker logs `action_rate_limited` and leaves due jobs untouched until the rolling hour clears.
+- `board_manager_scopes.max_actions_per_hour` is enforced before the worker claims another job. The default active budget is 8 model-selected mutations per hour for `global_hive`. Completed non-dry-run actions other than `do_nothing` count against the cap. Internal audit cards such as `daily_airdrop` do not count against this budget because they are worker reports, not Board Manager decisions. When the cap is reached the worker logs `action_rate_limited` and leaves due jobs untouched until the rolling hour clears.
+- Running jobs older than `TASKNODE_BOARD_MANAGER_STALE_JOB_SECONDS` are recovered by the worker before each claim. The default is 900 seconds. Recovery moves the stale row back to `deferred` for retry, or to `failed` if it already exhausted attempts, so a killed Docker/Fly process cannot leave Hive permanently stuck on an abandoned claim.
 
 Later scaling can add project-scoped managers:
 
@@ -165,7 +166,7 @@ Rules:
 - Each run includes compact Board Manager micro summaries rather than full prior source packets.
 - The source packet is compacted before the model sees it. Project rows, task request rows, task projection rows, Network Task content, eligible user profiles, and recent Board Manager runs are bounded and summarized so stale history cannot blow up the decision context.
 - Eligible user context comes from `network_task_profiles`, generated asynchronously by the DeepSeek Flash ZDR memory route, rather than raw context documents or chat history.
-- The packet must continue to include the compact Network Task content snapshot, project documents, Hive Secretary summary, recent validated Hive Inputs, eligible contributor profiles, and recent Board Manager summaries.
+- The packet must continue to include the compact Network Task content snapshot, project documents, Hive Secretary summary, recent validated Hive chat entries, eligible contributor profiles, and recent Board Manager summaries.
 - Raw private user data should stay out of the packet unless the selected action requires it and the user has provided it through a validated Hive path.
 
 ## Operator Controls
@@ -275,7 +276,7 @@ Implemented v0 pieces:
 - `npm run board-manager:loop -- --execute` runs the continuous local Board Manager loop for development.
 - `npm run board-manager:worker -- --execute` runs the durable job-driven Board Manager worker.
 - `npm run board-manager:ops -- status` shows the scope, lease, and recent jobs.
-- local Docker has a dedicated `board-manager` service in `docker-compose.dev.yml`; it runs the durable worker continuously and is separate from the API/web containers.
+- local Docker has a dedicated `board-manager` service in `docker-compose.dev.yml`; it runs the durable worker continuously and is separate from the API/web containers. It reads `TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR` and defaults to 8 useful board mutations per rolling hour. It also reads `TASKNODE_BOARD_MANAGER_STALE_JOB_SECONDS` and defaults to 900 seconds before recovering an abandoned running job.
 
 The default remains dry-run for app mutations. Execution of app hooks still requires the explicit `--execute` flag.
 
@@ -292,13 +293,14 @@ The current Hive board also derives Routing Feed and Allotted Operator rows from
 Implemented action hooks:
 
 - `do_nothing`: records an action result with no mutation.
-- `message_user`: writes an assistant response into the user's original Hive Input chat conversation and records a delivery audit row in `board_manager_user_messages`.
+- `message_user`: writes an assistant response into the user's default Hive chat conversation and records a delivery audit row in `board_manager_user_messages`.
 - `refresh_hive_secretary`: queues a Hive Secretary job from the current validated Hive Context packet.
 - `create_project`: creates or updates an active `network_projects` row from `payload.project`.
 - `archive_project`: archives the project and applies an operator archive lock. This is the delete-project hook; hard delete is intentionally not available.
 - `assign_contributor`: upserts a project contributor row using the project id and wallet address in `payload.contributor`.
 - `refresh_project_document`: persists the Board Manager's own `payload.project_document`, supersedes the prior current document, and writes a new `network_project_product_docs` row.
 - `initiate_network_task`: creates a project-linked allocation and queued generation job from `payload.network_task`; the worker later hands that job to the normal task-generation engine.
+- `daily_airdrop`: internal audit action written by the Daily Airdrop worker after it scores/issues daily drops. The Board Manager model should not select this action; it exists so Hive Mind Agent can display payout runs in the same inspectable feed.
 
 Hive page visibility:
 
@@ -321,7 +323,7 @@ The Board Manager should be triggered by logical timing and state changes, not b
 Initial triggers:
 
 - periodic tick, likely every 15 to 60 minutes;
-- new validated-wallet Hive Input;
+- new validated-wallet Hive chat entry;
 - Hive Secretary report older than the freshness threshold;
 - project product document missing or stale;
 - project has unclear next steps;
@@ -378,7 +380,7 @@ Update the Board Manager context document.
 
 Use when:
 
-- validated Hive Inputs add durable network context;
+- validated Hive chat entries add durable network context;
 - the manager needs to preserve a decision, unresolved question, or operating assumption.
 
 Output:
@@ -393,7 +395,7 @@ Update the Hive Secretary report if it is stale or missing.
 
 Use when:
 
-- new validated Hive Input exists;
+- new validated Hive chat entry exists;
 - the report is older than the freshness threshold;
 - the Board Manager context changed enough to require a fresh summary.
 
@@ -421,7 +423,7 @@ Respond to or speak with a specific user who initiated Hive conversation and ask
 
 Use when:
 
-- a user submitted Hive Input but the project or action is unclear;
+- a user submitted a Hive chat entry but the project or action is unclear;
 - the missing information is best resolved by the user;
 - the user is already involved in that conversation or project.
 
@@ -435,12 +437,12 @@ Current implementation resolves the target from the Hive Context input repositor
 - The response is tagged with chat metadata `kind = hive_manager_response`.
 - `board_manager_user_messages` remains the delivery audit table; it is not the primary user-facing response surface.
 
-The Hive Mind Agent tab shows that the action happened. The user sees the actual response in Chat, in the conversation where the Hive Input was submitted.
+The Hive Mind Agent tab shows that the action happened. The user sees the actual response in the default Hive chat.
 
 Repair path:
 
 - `npm run board-manager-message-repair` lists older `message_user` audit rows that have no delivered `chat_messages` row.
-- `npm run board-manager-message-repair -- --apply` appends those responses into the latest source Hive Input conversation for the same account before the message was created, then writes `metadata_json.chat_message_id` and `metadata_json.conversation_id` back to `board_manager_user_messages`.
+- `npm run board-manager-message-repair -- --apply` appends those responses into the latest source Hive chat conversation for the same account before the message was created, then writes `metadata_json.chat_message_id` and `metadata_json.conversation_id` back to `board_manager_user_messages`.
 - Internal smoke/test runs are excluded from repair by default.
 
 ### `create_project`
@@ -591,7 +593,7 @@ This action should use the existing task review and reward path. It should not c
 
 The old planning model was:
 
-1. Hive Input queues Hive Secretary.
+1. A Hive chat entry queues Hive Secretary.
 2. Hive Secretary queues Hive Active Projects.
 3. Active Projects directly mutates `network_projects`.
 4. Product docs refresh on their own cadence.
@@ -765,7 +767,7 @@ The prompt should never contain one-off examples as rules. Concrete examples are
 - Task status must come from `task_projections`, not from a Board Manager action result.
 - Evidence review must use the existing task review/reward engine.
 - Web research should update context or product docs before it changes projects or tasks.
-- User follow-up messages must be specific, minimal, and tied to a Hive Input or project.
+- User follow-up messages must be specific, minimal, and tied to a Hive chat entry or project.
 - Every mutation needs a durable run id and action result id.
 
 ## Milestones
@@ -839,5 +841,5 @@ Review implementation against this document (board manager). Mark each item when
 ### Security
 - [ ] New tables/routes in plan include account ownership and encryption notes.
 - [ ] Operator-only actions identified with audit requirements.
-- [ ] `message_user` audited; Hive Input source entry stored for routing.
+- [ ] `message_user` audited; Hive chat source entry stored for routing.
 - [ ] Dry-run mode cannot mutate production project state unintentionally.

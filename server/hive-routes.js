@@ -1,4 +1,10 @@
-import { appendChatTurn } from "./repositories/chat-billing.js";
+import {
+  appendChatUserMessage,
+  enableHiveConversation,
+  getHiveConversation,
+  hiveConversationIdForAccount,
+  markHiveConversationRead,
+} from "./repositories/chat-billing.js";
 import { scheduleHiveSecretaryQueue } from "./hive-secretary-worker.js";
 import { getBoardManagerAgentFeed, getBoardManagerUserMessages } from "./repositories/board-manager.js";
 import { getHiveProjectsDocument } from "./repositories/hive-projects.js";
@@ -38,7 +44,7 @@ function linkedWalletForSession({ getLinkedWallet, session }) {
 }
 
 export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
-  if (!["/api/hive/context", "/api/hive/projects"].includes(url.pathname)) return false;
+  if (!["/api/hive/context", "/api/hive/projects", "/api/hive/chat"].includes(url.pathname)) return false;
 
   if (url.pathname === "/api/hive/projects") {
     if (req.method !== "GET") {
@@ -53,6 +59,40 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       ok: true,
       document: await getHiveProjectsDocument(),
     });
+    return true;
+  }
+
+  if (url.pathname === "/api/hive/chat") {
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "hive_chat_login_required",
+        message: "Sign in before enabling Hive chat.",
+      });
+      return true;
+    }
+    if (req.method === "GET") {
+      json(res, 200, {
+        ok: true,
+        conversation: await getHiveConversation({ accountId: session.accountId }),
+      });
+      return true;
+    }
+    if (req.method === "PATCH") {
+      const result = await markHiveConversationRead({ accountId: session.accountId });
+      json(res, result.ok ? 200 : result.status || 400, result);
+      return true;
+    }
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "hive_chat_method_not_allowed",
+        message: "Hive chat supports GET, POST, and PATCH.",
+      });
+      return true;
+    }
+    const result = await enableHiveConversation({ accountId: session.accountId });
+    json(res, result.ok ? 200 : result.status || 400, result);
     return true;
   }
 
@@ -106,7 +146,10 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
 
   const payload = await readJson(req, 8 * 1024 * 1024);
   const body = safeText(payload?.body || payload?.message || "", 24_000);
-  const sourceConversationId = safeText(payload?.conversationId || "", 180);
+  const sourceConversationId = safeText(
+    payload?.conversationId || hiveConversationIdForAccount(session.accountId),
+    180
+  );
   const sourceConversationTitle = safeText(payload?.conversationTitle || "", 160);
   const attachments = safeAttachments(payload?.attachments || []);
   const hiveContextAttachments = attachments.map(({ name, mimeType, size, source }) => ({
@@ -140,40 +183,24 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
   if (secretary?.queued) {
     scheduleHiveSecretaryQueue({ delayMs: 250 });
   }
-  const assistantMessage = "Hive input saved to Hive Context. Hive may respond here if important.";
   let chatTurn = null;
   let chatHistoryWarning = "";
   if (sourceConversationId) {
     try {
-      chatTurn = await appendChatTurn({
+      chatTurn = await appendChatUserMessage({
         accountId: session.accountId,
         conversationId: sourceConversationId,
-        mode: "Hive Input",
+        mode: "Hive",
         provider: "tasknode",
         model: "hive_context_store",
         userMessage: body,
-        assistantMessage,
         userMessageId: safeText(payload?.userMessageId || "", 180),
-        assistantMessageId: safeText(payload?.assistantMessageId || "", 180),
+        conversationTitle: "Hive",
         userMetadata: {
           kind: "hive_input",
           hiveContextEntryId: entry.id,
         },
-        assistantMetadata: {
-          kind: "hive_input_ack",
-          hiveContextEntryId: entry.id,
-        },
-        runMetadata: {
-          kind: "hive_input",
-          hiveContextEntryId: entry.id,
-        },
         attachments,
-        usage: {
-          costUsd: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-        },
       });
     } catch (error) {
       chatHistoryWarning = error?.message || "chat_history_write_failed";
@@ -182,19 +209,11 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
 
   json(res, 200, {
     ok: true,
-    message: assistantMessage,
+    message: "Saved to Hive Context. Hive may respond here if useful.",
     entry,
     chatHistoryWarning,
     user: chatTurn?.user || null,
-    assistant: chatTurn?.assistant || {
-      id: safeText(payload?.assistantMessageId || "", 180) || `hive-input-ack-${Date.now()}`,
-      role: "assistant",
-      body: assistantMessage,
-      metadata: {
-        kind: "hive_input_ack",
-        hiveContextEntryId: entry.id,
-      },
-    },
+    assistant: null,
     context: await getHiveContextDocument({ limit: 120 }),
     secretary: await getHiveSecretaryState(),
     boardManager: {

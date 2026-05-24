@@ -2,10 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   appendChatTurn as appendRuntimeChatTurn,
   appendUsageCredit as appendRuntimeUsageCredit,
-  deleteChatConversation as deleteRuntimeChatConversation,
   getChatMessages as getRuntimeChatMessages,
-  listChatConversations as listRuntimeChatConversations,
-  renameChatConversation as renameRuntimeChatConversation,
   usageLedger as runtimeUsageLedger,
   usageSummary as runtimeUsageSummary,
 } from "../runtime-store.js";
@@ -15,10 +12,19 @@ import {
 } from "../chat-attachment-utils.js";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
 import { hydrateContextEditProposalMetadata } from "./context-edit-chat-metadata.js";
+export {
+  appendChatUserMessage,
+  deleteChatConversation,
+  enableHiveConversation,
+  getHiveConversation,
+  hiveConversationIdForAccount,
+  listChatConversations,
+  markHiveConversationRead,
+  renameChatConversation,
+} from "./chat-conversations.js";
 
 const creditKinds = new Set(["account_credit", "top_up_credit", "reward_credit", "refund_credit"]);
 const maxLedgerLimit = 200;
-const maxConversationLimit = 100;
 const maxMessageLimit = 200;
 
 function useDatabase() {
@@ -180,19 +186,6 @@ function publicAttachment(row) {
     attachment.textContent = row.text_content;
   }
   return attachment;
-}
-
-function publicConversation(row) {
-  return {
-    id: row.id,
-    conversationId: row.id,
-    title: row.title || "New chat",
-    createdAt: toIso(row.created_at),
-    updatedAt: toIso(row.updated_at),
-    lastMessageAt: toIso(row.last_message_at || row.updated_at),
-    lastMessagePreview: row.last_message_preview || "",
-    messageCount: Number(row.message_count || 0),
-  };
 }
 
 function publicLedgerEntry(row, extra = {}) {
@@ -793,82 +786,6 @@ export async function getChatMessages(input = "dev", options = {}) {
     }
     throw error;
   }
-}
-
-export async function listChatConversations({ accountId = "", limit = 30 } = {}) {
-  if (!useDatabase()) return listRuntimeChatConversations({ accountId, limit });
-
-  const normalizedLimit = Math.min(Math.max(Number(limit) || 30, 1), maxConversationLimit);
-  const normalizedAccountId = safeAccountId(accountId);
-  try {
-    const rows = await query(
-      `
-        SELECT *
-        FROM chat_conversations
-        WHERE account_id = $1
-          AND status = 'active'
-        ORDER BY updated_at DESC, id DESC
-        LIMIT $2
-      `,
-      [normalizedAccountId, normalizedLimit]
-    );
-    return rows.rows.map(publicConversation);
-  } catch (error) {
-    if (process.env.TASKNODE_POSTGRES_STRICT === "false") {
-      return listRuntimeChatConversations({ accountId, limit });
-    }
-    throw error;
-  }
-}
-
-export async function renameChatConversation({ accountId = "", conversationId = "", title = "" } = {}) {
-  if (!useDatabase()) return renameRuntimeChatConversation({ accountId, conversationId, title });
-
-  const normalizedTitle = cleanTitle(title);
-  if (!normalizedTitle) return { ok: false, status: 400, error: "chat_title_required" };
-
-  const rows = await query(
-    `
-      UPDATE chat_conversations
-      SET title = $3,
-          updated_at = now()
-      WHERE id = $1
-        AND account_id = $2
-        AND status = 'active'
-      RETURNING *
-    `,
-    [safeConversationId(conversationId), safeAccountId(accountId), normalizedTitle]
-  );
-  if (!rows.rows[0]) return { ok: false, status: 404, error: "chat_conversation_not_found" };
-
-  return {
-    ok: true,
-    conversation: publicConversation(rows.rows[0]),
-  };
-}
-
-export async function deleteChatConversation({ accountId = "", conversationId = "" } = {}) {
-  if (!useDatabase()) return deleteRuntimeChatConversation({ accountId, conversationId });
-
-  const rows = await query(
-    `
-      UPDATE chat_conversations
-      SET status = 'deleted',
-          deleted_at = now(),
-          updated_at = now()
-      WHERE id = $1
-        AND account_id = $2
-        AND status = 'active'
-      RETURNING *
-    `,
-    [safeConversationId(conversationId), safeAccountId(accountId)]
-  );
-  if (!rows.rows[0]) return { ok: false, status: 404, error: "chat_conversation_not_found" };
-
-  return {
-    ok: true,
-    conversationId: rows.rows[0].id,
-  };
 }
 
 async function aggregateUsage({ accountId = "", conversationId = "" } = {}) {

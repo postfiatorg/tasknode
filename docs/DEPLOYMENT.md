@@ -172,10 +172,60 @@ fly secrets set TASKNODE_DEV_AUTH_ENABLED=false -a tasknodeofficial-dev
 fly secrets set TASKNODE_ENV=production -a tasknodeofficial-dev
 ```
 
-Until auth/account/wallet state is fully Postgres-backed, a public deployment
-also needs a reviewed durable runtime-store path and
-`TASKNODE_RUNTIME_STORE_DURABLE=true`, or an explicit reviewed override. Do not
-use the override as a production durability substitute.
+The Fly dev release mounts `tasknodeofficial_data` at `/data` for the web
+process and stores runtime auth/account state at `/data/runtime-store.json`.
+The deploy env must keep these enabled:
+
+```text
+TASKNODE_DATABASE_ENABLED=true
+TASKNODE_STORE_PATH=/data/runtime-store.json
+TASKNODE_RUNTIME_STORE_DURABLE=true
+```
+
+The app database for `tasknodeofficial-dev` is the `tasknodeofficial` database
+inside the `tasknodex-db` managed Postgres cluster. Do not point
+`tasknodeofficial-dev` at any PFTasks database. If the managed database does not
+have `pgvector` installed by an operator, the Jobs corpus migration skips the
+vector chunk table and chat falls back to an empty Jobs retrieval slot until
+`pgvector` is provisioned.
+
+Local Docker can be run against that same Fly dev database through the Fly dev
+data bridge:
+
+```bash
+npm run docker:dev:fly-data
+```
+
+This is the expected mode for local QA when Fly dev is the source of truth. It
+keeps Docker and Fly on the same Postgres rows for chats, memory, tasks,
+profiles, Hive, PFTL cache, and task projections. The helper writes only a
+gitignored local env file, starts `fly mpg proxy`, and runs the local API/web
+containers on host networking so they can reach the proxy at `127.0.0.1:16432`.
+It must never be retargeted to PFTasks. Browser wallet vaults remain
+origin-local, so a wallet seed imported on `localhost:5174` is still separate
+from the encrypted browser vault on `tasknodeofficial-dev.fly.dev`.
+
+Telegram login only works on a stable BotFather-approved HTTPS host. For the
+dev Fly app, BotFather `/setdomain` must be:
+
+```text
+tasknodeofficial-dev.fly.dev
+```
+
+The Fly app must also carry the same runtime hostname:
+
+```bash
+fly secrets set TELEGRAM_AUTH_WIDGET_DOMAIN=tasknodeofficial-dev.fly.dev -a tasknodeofficial-dev
+fly secrets set TELEGRAM_AUTH_BOT_USERNAME=<bot username> -a tasknodeofficial-dev
+fly secrets set DISCORD_REDIRECT_URI=https://tasknodeofficial-dev.fly.dev/api/auth/callback/discord -a tasknodeofficial-dev
+```
+
+After deploy, verify `/api/auth/providers` reports Telegram and Discord as
+`ready` before testing account linking in Settings.
+
+Until auth/account/wallet state is fully Postgres-backed, keep the Fly volume
+mounted for the web process. Do not use `TASKNODE_ALLOW_PUBLIC_EPHEMERAL_STORE`
+as a production durability substitute.
 
 If local production Docker was tested, also run:
 

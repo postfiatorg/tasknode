@@ -40,7 +40,6 @@ export function getPool() {
       max: maxConnections,
       connectionTimeoutMillis: connectionTimeoutMs,
       idleTimeoutMillis: Math.max(1000, Number(process.env.DATABASE_IDLE_TIMEOUT_MS || 30000)),
-      statement_timeout: statementTimeoutMs,
       query_timeout: statementTimeoutMs,
       application_name: process.env.TASKNODE_APP_NAME || "tasknodeofficial",
     });

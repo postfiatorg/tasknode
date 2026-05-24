@@ -303,7 +303,7 @@ Avoid by default:
 - unrelated wallet transaction history;
 - private files or attachments.
 
-If the Board Manager needs private context, it should message the user for a concise Hive Input rather than reading more private material silently.
+If the Board Manager needs private context, it should message the user for a concise Hive chat update rather than reading more private material silently.
 
 ## Downstream Propagation
 

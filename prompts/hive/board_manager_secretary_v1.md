@@ -16,6 +16,8 @@ Rules:
 - If the board is stalled, say exactly why.
 - If the board can safely do nothing, explain why.
 - If attention is required, identify the smallest concrete target the downstream Board Manager should inspect or act on.
+- Personal tasks and engineering tasks are context only. Do not summarize them as hard capacity blockers for Network Tasks.
+- Network Task eligibility is blocked only by outstanding Network Tasks or pending Network Task generation jobs in the deterministic `boardActionPressure.candidateCapacity` block.
 - Never include private keys, seeds, passwords, OAuth tokens, or raw encrypted payload plaintext. If such material appears, replace it with `[redacted]` and increment `redaction_count`.
 
 Return this JSON shape:

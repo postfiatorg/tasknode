@@ -32,6 +32,8 @@ This keeps the agent from inventing a second workflow. The Board Manager is the 
 
 Task status is not managed by the Board Manager. After a Network Task has a concrete `task_id`, lifecycle state comes only from signed task pointers indexed into `task_projections`. Hive/project tables mirror that projection for fast reads; they do not decide whether a task is proposed, accepted, submitted, verification-requested, rewarded, refused, cancelled, or expired.
 
+Restart recovery now has a concrete operator path. `npm run network-task-recovery` reloads active project-linked Network Tasks from persisted `task_projections`, calls the same projection-to-Hive mirror sync, preserves latest evidence CIDs/transactions from `task_events`, and prints the next valid action. Accepted tasks remain user-owned and wait for evidence. Submitted tasks are eligible for the verification-request worker unless that worker already published. Verification-response-submitted tasks are eligible for reward scoring unless that worker already published. Recovery never emits duplicate accept, evidence, or reward transitions.
+
 ## Current Implementation Slice
 
 The implemented slice creates the durable bridge from Board Manager action to the normal task engine:
@@ -397,7 +399,7 @@ Hive Context is the first live input surface for the future system worker. Hive 
 
 Source:
 
-- `hive_context_entries`, written from Chat `+` menu `Hive Input` mode.
+- `hive_context_entries`, written from the default `Hive` chat.
 - `hive_secretary_reports`, written by the async Hive Secretary worker from validated-wallet entries.
 
 Behavior:
@@ -414,7 +416,7 @@ The Board Manager should consume Hive Secretary as one source of network need, a
 
 Implemented pieces:
 
-- `POST /api/hive/context` stores Hive Input and queues Hive Secretary when the account has a linked wallet.
+- `POST /api/hive/context` stores a Hive chat entry and queues Hive Secretary when the account has a linked wallet.
 - `GET /api/hive/context` returns grouped raw context plus latest Secretary report/job state.
 - `server/hive-secretary-worker.js` calls OpenAI `gpt-5.5-pro` through the Responses API.
 - `prompts/hive/hive_secretary_v1.md` defines the Secretary output.
@@ -431,7 +433,7 @@ Current cleanup:
 
 Deprecated cadence:
 
-1. A validated-wallet Hive Input saves.
+1. A validated-wallet Hive chat entry saves.
 2. Hive Secretary queues immediately.
 3. Hive Active Projects queues directly after Hive Secretary.
 4. Product documents refresh on their own schedule.

@@ -9,6 +9,7 @@ import {
   enqueueDueBoardManagerTicks,
   ensureBoardManagerScope,
   listBoardManagerSchedulerStatus,
+  recoverStaleBoardManagerJobs,
   setBoardManagerScopeStatus,
 } from "../server/repositories/board-manager-scheduler.js";
 import { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole } from "../server/process-role.js";
@@ -103,6 +104,52 @@ async function main() {
     const status = await listBoardManagerSchedulerStatus({ scope });
     assert.equal(status.scope.scope, scope);
     assert.ok(status.jobs.length >= 2);
+
+    await ensureBoardManagerScope({
+      scope,
+      status: "enabled",
+      maxActionsPerHour: 1,
+    });
+    await query(
+      `INSERT INTO board_manager_runs (
+         id, scope, status, selected_action, dry_run, completed_at
+       )
+       VALUES ($1, $2, 'completed', 'daily_airdrop', false, now())`,
+      [`boardrun_scheduler_daily_airdrop_${suffix}`, scope]
+    );
+    await enqueueBoardManagerJob({
+      scope,
+      trigger: "rate_limit_exclusion_smoke",
+      reason: "Verify internal daily airdrop audit cards do not consume Board Manager action budget.",
+      idempotencyKey: `board_scheduler_rate_limit_exclusion_${suffix}`,
+    });
+    const excluded = await claimBoardManagerJob({ scope, managerId: "worker_daily_airdrop_excluded" });
+    assert.equal(excluded.claimed, true);
+    const excludedCompleted = await completeBoardManagerJob({
+      jobId: excluded.job.id,
+      runId: "boardrun_scheduler_daily_airdrop_excluded_claim",
+      result: { action: "do_nothing" },
+    });
+    assert.equal(excludedCompleted.job.status, "completed");
+
+    await enqueueBoardManagerJob({
+      scope,
+      trigger: "stale_recovery_smoke",
+      reason: "Verify stale running jobs are returned to the queue.",
+      idempotencyKey: `board_scheduler_stale_recovery_${suffix}`,
+    });
+    const staleClaim = await claimBoardManagerJob({ scope, managerId: "worker_stale_recovery" });
+    assert.equal(staleClaim.claimed, true);
+    await query(
+      `UPDATE board_manager_jobs
+       SET claimed_at = now() - interval '120 seconds',
+           updated_at = now() - interval '120 seconds'
+       WHERE id = $1`,
+      [staleClaim.job.id]
+    );
+    const recovered = await recoverStaleBoardManagerJobs({ scope, staleSeconds: 60 });
+    assert.equal(recovered.recovered, 1);
+    assert.equal(recovered.jobs[0].status, "deferred");
 
     await ensureBoardManagerScope({
       scope,

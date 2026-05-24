@@ -160,8 +160,19 @@ export function AssistantMessage({
   const body = plainTextFromBlocks(message.blocks);
   const hasThinking = Boolean(message.thinking);
   const isHiveInputAck = message.metadata?.kind === "hive_input_ack";
-  const showToolbar = !message.pending && !message.error && !isHiveInputAck;
+  const isHiveContextStatus = message.metadata?.kind === "hive_context_status";
+  const showToolbar = !message.pending && !message.error && !isHiveInputAck && !isHiveContextStatus;
   const proposal = message.metadata?.contextEdit?.proposal || null;
+
+  if (isHiveInputAck) return null;
+
+  if (isHiveContextStatus) {
+    return (
+      <article className="hive-context-status-message">
+        <em>{body}</em>
+      </article>
+    );
+  }
 
   return (
     <article

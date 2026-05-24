@@ -24,24 +24,70 @@ function taskProjectIds(tasks = []) {
   return new Set(safeArray(tasks).map((task) => safeText(task.projectId || task.project_id, 180)).filter(Boolean));
 }
 
+function candidateKeys(candidate = {}) {
+  const keys = new Set();
+  const accountId = safeText(candidate.accountId || candidate.account_id || candidate.candidateAccountId || candidate.candidate_account_id, 180);
+  const walletAddress = safeText(candidate.walletAddress || candidate.wallet_address || candidate.candidateWalletAddress || candidate.candidate_wallet_address, 120);
+  if (accountId) keys.add(`account:${accountId}`);
+  if (walletAddress) keys.add(`wallet:${walletAddress}`);
+  return keys;
+}
+
 function activeCandidateKeys(tasks = []) {
   const keys = new Set();
   for (const task of safeArray(tasks)) {
-    const accountId = safeText(task.candidateAccountId || task.candidate_account_id, 180);
-    const walletAddress = safeText(task.candidateWalletAddress || task.candidate_wallet_address, 120);
-    if (accountId) keys.add(`account:${accountId}`);
-    if (walletAddress) keys.add(`wallet:${walletAddress}`);
+    for (const key of candidateKeys(task)) keys.add(key);
   }
   return keys;
 }
 
-function availableCandidateCount(candidates = [], activeKeys = new Set()) {
+function availableCandidates(candidates = [], activeKeys = new Set()) {
   return safeArray(candidates).filter((candidate) => {
-    const accountId = safeText(candidate.accountId || candidate.account_id, 180);
-    const walletAddress = safeText(candidate.walletAddress || candidate.wallet_address, 120);
-    return !(accountId && activeKeys.has(`account:${accountId}`)) &&
-      !(walletAddress && activeKeys.has(`wallet:${walletAddress}`));
-  }).length;
+    for (const key of candidateKeys(candidate)) {
+      if (activeKeys.has(key)) return false;
+    }
+    return true;
+  });
+}
+
+function activeNetworkTaskCapacityBlockers({
+  outstanding = [],
+  pendingGeneration = [],
+} = {}) {
+  const blockerRows = [
+    ...safeArray(outstanding).map((task) => ({ task, source: "outstanding_network_task" })),
+    ...safeArray(pendingGeneration).map((task) => ({ task, source: "pending_network_task_generation" })),
+  ];
+  return blockerRows.map(({ task, source }) => ({
+    source,
+    taskId: safeText(task.taskId || task.task_id || task.generatedTaskId || task.generated_task_id, 180),
+    generationJobId: safeText(task.generationJobId || task.generation_job_id, 180),
+    allocationId: safeText(task.allocationId || task.allocation_id, 180),
+    requestId: safeText(task.requestId || task.request_id, 180),
+    projectId: safeText(task.projectId || task.project_id, 180),
+    title: safeText(task.title || task.name || task.projectNeedSummary || task.project_need_summary, 240),
+    state: safeText(task.state || task.status || task.allocationStatus || task.allocation_status, 80),
+    candidateAccountId: safeText(task.candidateAccountId || task.candidate_account_id, 180),
+    candidateWalletAddress: safeText(task.candidateWalletAddress || task.candidate_wallet_address, 120),
+  })).filter((blocker) => blocker.candidateAccountId || blocker.candidateWalletAddress);
+}
+
+function candidateCapacityRows(candidates = [], blockers = []) {
+  return safeArray(candidates).map((candidate) => {
+    const keys = candidateKeys(candidate);
+    const matchingBlockers = safeArray(blockers).filter((blocker) => {
+      for (const key of candidateKeys(blocker)) {
+        if (keys.has(key)) return true;
+      }
+      return false;
+    });
+    return {
+      accountId: safeText(candidate.accountId || candidate.account_id, 180),
+      walletAddress: safeText(candidate.walletAddress || candidate.wallet_address, 120),
+      availableForNetworkTask: matchingBlockers.length === 0,
+      capacityBlockers: matchingBlockers.slice(0, 3),
+    };
+  });
 }
 
 function projectLiveCount(project = {}, key = "") {
@@ -73,6 +119,7 @@ function projectPressureSignal({
   completedProjectIds,
   stoppedProjectIds,
   eligibleCandidateCount = 0,
+  candidateCount = 0,
   recentBoardManagerRuns = [],
 } = {}) {
   const projectId = safeText(project.id, 180);
@@ -97,6 +144,9 @@ function projectPressureSignal({
   }
   if (!liveContributorCount && eligibleCandidateCount > 0) {
     reasons.push("active project has no assigned contributors despite eligible candidates");
+  }
+  if (!eligibleCandidateCount && candidateCount > 0 && !hasOutstandingNetworkTask && !hasPendingNetworkTaskGeneration) {
+    reasons.push("all candidate capacity is consumed by other outstanding or pending Network Tasks");
   }
   if (hasStoppedNetworkTask && !hasOutstandingNetworkTask && !hasPendingNetworkTaskGeneration) {
     reasons.push("recent network task stopped without a replacement or closure decision");
@@ -138,6 +188,7 @@ export function buildBoardManagerActionPressure({
   hiveProjects = {},
   networkTaskContent = {},
   networkTaskCandidates = [],
+  taskState = {},
   recentBoardManagerRuns = [],
   freshness = {},
 } = {}) {
@@ -150,8 +201,14 @@ export function buildBoardManagerActionPressure({
     ...safeArray(networkTaskContent.outstanding),
     ...safeArray(networkTaskContent.pendingGeneration),
   ]);
+  const capacityBlockers = activeNetworkTaskCapacityBlockers({
+    outstanding: networkTaskContent.outstanding,
+    pendingGeneration: networkTaskContent.pendingGeneration,
+  });
   const candidateCount = safeArray(networkTaskCandidates).length;
-  const eligibleCandidateCount = availableCandidateCount(networkTaskCandidates, activeKeys);
+  const eligibleCandidates = availableCandidates(networkTaskCandidates, activeKeys);
+  const eligibleCandidateCount = eligibleCandidates.length;
+  const unavailableCandidateCount = Math.max(0, candidateCount - eligibleCandidateCount);
   const staleHiveSecretary = numeric(freshness.hiveSecretaryAgeMs, 0) > 60 * 60 * 1000;
   const activeProjects = projects.filter((project) => safeText(project.status, 80).toLowerCase() === "active");
   const signals = activeProjects
@@ -163,6 +220,7 @@ export function buildBoardManagerActionPressure({
         completedProjectIds,
         stoppedProjectIds,
         eligibleCandidateCount,
+        candidateCount,
         recentBoardManagerRuns,
       })
     )
@@ -190,7 +248,27 @@ export function buildBoardManagerActionPressure({
       stoppedNetworkTaskCount: safeArray(networkTaskContent.stopped).length,
       candidateCount,
       eligibleCandidateCount,
+      unavailableCandidateCount,
+      activeNetworkTaskCapacityBlockerCount: capacityBlockers.length,
       staleHiveSecretary,
+    },
+    candidateCapacity: {
+      policy: {
+        personalTasksDoNotAffectNetworkTaskEligibility: true,
+        engineeringTasksDoNotAffectNetworkTaskEligibility: true,
+        candidateCapacityIsConsumedOnlyByOutstandingOrPendingNetworkTasks: true,
+        personalAndEngineeringTasksAreContextOnly: true,
+      },
+      ignoredForCapacity: {
+        taskStateRecentCount: safeArray(taskState.recent).length,
+        reason: "Personal and engineering tasks can inform routing judgment, but they do not hard-block Network Task eligibility.",
+      },
+      eligibleCandidates: eligibleCandidates.slice(0, 8).map((candidate) => ({
+        accountId: safeText(candidate.accountId || candidate.account_id, 180),
+        walletAddress: safeText(candidate.walletAddress || candidate.wallet_address, 120),
+      })),
+      candidates: candidateCapacityRows(networkTaskCandidates, capacityBlockers).slice(0, 12),
+      activeNetworkTaskCapacityBlockers: capacityBlockers.slice(0, 12),
     },
     signals,
     policy: {
@@ -200,6 +278,8 @@ export function buildBoardManagerActionPressure({
       documentRefreshIsNotLiveMotion: true,
       zeroEligibleCandidatesRequiresFollowup: true,
       doNothingRequiresHealthyMotionOrRecentHandling: true,
+      personalTasksDoNotAffectNetworkTaskEligibility: true,
+      candidateCapacityIsConsumedOnlyByOutstandingOrPendingNetworkTasks: true,
       acceptableResolutions: [
         "initiate a network task for an eligible contributor",
         "assign a contributor when the project has live work",

@@ -9,7 +9,7 @@ import { fetchPftBalance } from "./pftl-balance.js";
 import { handlePftlCacheRoute } from "./pftl-cache-route.js";
 import { fetchWalletTransactions } from "./pftl-transactions.js";
 import {
-  authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart, chatEstimateStart,
+  authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart, authTelegramAuthorize, chatEstimateStart,
   chatModes, chatSend, chatStreamStart, contextActionStart, contextActions, contextEditSave,
   contextManifestInk, contextHistoryIpfsFetch, devAuthStatus, readiness, taskRequestIntentStart,
   usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync, walletActionStart, walletActions,
@@ -37,6 +37,7 @@ import { chatConversationExistsForAccount } from "./repositories/chat-conversati
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
+import { telegramAuthHeaders } from "./auth-connected-accounts.js";
 import { handleTaskReadRoute } from "./task-routes.js";
 import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
@@ -478,6 +479,18 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/auth/providers") {
     json(res, 200, { providers: authProviders() });
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/telegram/authorize") {
+    if (req.method !== "GET") {
+      json(res, 405, { ok: false, error: "telegram_authorize_method_not_allowed", message: "Telegram authorization requires GET.", actionRequired: "Start Telegram auth again from Task Node." });
+      return true;
+    }
+
+    const result = authTelegramAuthorize(Object.fromEntries(url.searchParams.entries()), { origin: requestOrigin(req) });
+    res.writeHead(result.status, telegramAuthHeaders());
+    res.end(result.body);
     return true;
   }
 

@@ -26,6 +26,7 @@ export const apiRoutePolicies = [
   },
   { id: "auth_logout", path: "/api/auth/logout", methods: ["POST"], auth: "optional" },
   { id: "auth_providers", path: "/api/auth/providers", methods: ["GET"], auth: "none" },
+  { id: "auth_telegram_authorize", path: "/api/auth/telegram/authorize", methods: ["GET"], auth: "oauth_state" },
   { id: "auth_start_provider", pattern: /^\/api\/auth\/start\/[^/]+$/, methods: ["GET"], auth: "optional" },
   { id: "auth_callback_provider", pattern: /^\/api\/auth\/callback\/[^/]+$/, methods: ["GET"], auth: "oauth_state" },
   { id: "auth_provider_start", pattern: /^\/api\/auth\/[^/]+\/start$/, methods: ["GET"], auth: "optional" },
@@ -71,6 +72,7 @@ export const apiRoutePolicies = [
   { id: "network_task_profile", path: "/api/memory/network-task-profile", methods: ["GET", "POST"], auth: "session" },
   { id: "hive_projects", path: "/api/hive/projects", methods: ["GET"], auth: "optional" },
   { id: "hive_context", path: "/api/hive/context", methods: ["GET", "POST"], auth: "handler" },
+  { id: "hive_chat", path: "/api/hive/chat", methods: ["GET", "POST", "PATCH"], auth: "session" },
   { id: "profile_daily_airdrop", path: "/api/profile/daily-airdrop", methods: ["GET"], auth: "session" },
   { id: "profile_public", path: "/api/profile/public", methods: ["GET"], auth: "session" },
   {

@@ -18,7 +18,7 @@ const result = await fetchHiveActiveProjects(
           {
             project_type: "protocol_development",
             signal: "Task Node needs a reliable task allocation surface.",
-            reason: "Validated Hive Input named it as a key product.",
+            reason: "Validated Hive Context entry named it as a key product.",
             input_refs: ["hivectx_smoke"],
           },
         ],

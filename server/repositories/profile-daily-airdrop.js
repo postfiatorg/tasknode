@@ -308,6 +308,83 @@ export async function getProfileRewardHistory({ accountId, range = "28d" } = {})
   };
 }
 
+export async function listDailyAirdropCandidateAccounts({
+  runDate = dateOnly(),
+  lookbackDays = 7,
+  limit = 10,
+} = {}) {
+  if (!databaseEnabled()) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
+  const safeLookbackDays = Math.min(Math.max(Number(lookbackDays) || 7, 1), 30);
+  const result = await query(
+    `WITH bounds AS (
+       SELECT
+         $1::date AS run_day,
+         (($1::date + interval '1 day') AT TIME ZONE 'UTC')::timestamptz AS run_day_end,
+         (($1::date + interval '1 day' - ($2::integer * interval '1 day')) AT TIME ZONE 'UTC')::timestamptz AS lookback_start
+     ),
+     reward_events AS (
+       SELECT DISTINCT ON (task_id)
+              task_id,
+              occurred_at
+         FROM task_events
+        WHERE event_type = 'pf.reward.v1'
+        ORDER BY task_id, occurred_at DESC
+     ),
+     eligible_accounts AS (
+       SELECT p.account_id,
+              COUNT(p.task_id)::integer AS rewarded_task_count,
+              COALESCE(SUM(p.reward_actual_pft), 0)::numeric AS reward_actual_pft,
+              MAX(COALESCE(r.occurred_at, p.last_event_at, p.updated_at)) AS last_reward_at
+         FROM task_projections p
+         LEFT JOIN reward_events r ON r.task_id = p.task_id
+         CROSS JOIN bounds b
+        WHERE p.account_id <> ''
+          AND p.reward_actual_pft > 0
+          AND COALESCE(r.occurred_at, p.last_event_at, p.updated_at) >= b.lookback_start
+          AND COALESCE(r.occurred_at, p.last_event_at, p.updated_at) < b.run_day_end
+        GROUP BY p.account_id
+     )
+     SELECT e.account_id,
+            e.rewarded_task_count,
+            e.reward_actual_pft::text AS reward_actual_pft,
+            e.last_reward_at
+       FROM eligible_accounts e
+       CROSS JOIN bounds b
+      WHERE NOT EXISTS (
+              SELECT 1
+                FROM profile_daily_airdrop_issuances i
+               WHERE i.account_id = e.account_id
+                 AND i.run_date = b.run_day
+                 AND i.status IN ('pending', 'submitted', 'failed')
+            )
+        AND EXISTS (
+              SELECT 1
+                FROM pftl_sync_wallets sw
+               WHERE sw.account_id = e.account_id
+                 AND sw.status = 'active'
+                 AND sw.role = 'user'
+            )
+        AND NOT EXISTS (
+              SELECT 1
+                FROM profile_daily_airdrop_runs r
+               WHERE r.account_id = e.account_id
+                 AND r.run_date = b.run_day
+                 AND r.run_mode = 'production'
+                 AND r.status IN ('running', 'completed')
+            )
+      ORDER BY e.last_reward_at DESC NULLS LAST, e.reward_actual_pft DESC, e.account_id ASC
+      LIMIT $3`,
+    [dateOnly(runDate), safeLookbackDays, safeLimit]
+  );
+  return result.rows.map((row) => ({
+    accountId: row.account_id,
+    rewardedTaskCount: Number(row.rewarded_task_count || 0),
+    rewardActualPft: Number(row.reward_actual_pft || 0),
+    lastRewardAt: toIso(row.last_reward_at),
+  }));
+}
+
 export async function createDailyAirdropRun({
   id = `airdrop_${randomUUID()}`,
   accountId,

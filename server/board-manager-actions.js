@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "./db/pool.js";
 import { appendAssistantMessage } from "./repositories/chat-assistant-messages.js";
+import {
+  ensureHiveConversation,
+  hiveConversationIdForAccount,
+} from "./repositories/chat-conversations.js";
 import { enqueueHiveSecretaryJob } from "./repositories/hive-context.js";
 import {
   boardManagerPromptVersion,
@@ -102,7 +106,7 @@ function resolveMessageTarget({ decision, sourcePacket }) {
     if (!entry) throw new Error("board_manager_message_user_hive_input_not_found");
     return {
       accountId: safeText(entry.accountId, 180),
-      conversationId: safeText(entry.sourceConversationId, 180),
+      conversationId: safeText(entry.sourceConversationId, 180) || hiveConversationIdForAccount(entry.accountId),
       hiveContextEntryId: safeText(entry.id, 180),
       displayName: safeText(entry.displayName, 120),
     };
@@ -112,7 +116,7 @@ function resolveMessageTarget({ decision, sourcePacket }) {
   const entry = latestHiveInputForAccount({ accountId, sourcePacket });
   return {
     accountId,
-    conversationId: safeText(entry?.sourceConversationId, 180),
+    conversationId: safeText(entry?.sourceConversationId, 180) || hiveConversationIdForAccount(accountId),
     hiveContextEntryId: safeText(entry?.id, 180),
     displayName: safeText(entry?.displayName, 120) || displayNameForAccount(sourcePacket, accountId),
   };
@@ -132,11 +136,19 @@ async function recordResult({ runId, decision, result }) {
 async function executeMessageUser({ runId, decision, sourcePacket }) {
   const target = resolveMessageTarget({ decision, sourcePacket });
   const accountId = target.accountId;
-  const conversationId = target.conversationId;
+  let conversationId = target.conversationId;
   const messageText = safeText(decision.payload.message_text || decision.payload.summary, 4000);
   if (!accountId) throw new Error("board_manager_message_user_missing_account");
+  if (!conversationId) conversationId = hiveConversationIdForAccount(accountId);
   if (!conversationId) throw new Error("board_manager_message_user_missing_conversation");
   if (!messageText) throw new Error("board_manager_message_user_missing_message");
+  if (conversationId === hiveConversationIdForAccount(accountId)) {
+    const hiveConversation = await ensureHiveConversation({ accountId });
+    if (!hiveConversation.ok) {
+      throw new Error(`board_manager_message_user_${hiveConversation.error || "hive_chat_unavailable"}`);
+    }
+    conversationId = hiveConversation.conversation?.conversationId || hiveConversation.conversation?.id || conversationId;
+  }
   const messageId = `boardmsg_${randomUUID()}`;
   const assistantMessageId = `msg_${messageId}_assistant`.slice(0, 180);
   const inserted = await query(
@@ -174,7 +186,7 @@ async function executeMessageUser({ runId, decision, sourcePacket }) {
   const chatTurn = await appendAssistantMessage({
     accountId,
     conversationId,
-    mode: "Hive Input",
+    mode: "Hive",
     provider: "tasknode",
     model: "board_manager",
     responseId: safeText(runId, 180),

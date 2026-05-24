@@ -1,0 +1,23 @@
+services:
+  api:
+    network_mode: host
+    ports: !reset []
+    extra_hosts: !reset []
+    depends_on: !reset []
+    environment:
+      DATABASE_URL: ${TASKNODE_DATABASE_URL}
+
+  board-manager:
+    network_mode: host
+    ports: !reset []
+    extra_hosts: !reset []
+    depends_on: !reset []
+    environment:
+      DATABASE_URL: ${TASKNODE_DATABASE_URL}
+
+  web:
+    network_mode: host
+    ports: !reset []
+    depends_on: !reset []
+    environment:
+      TASKNODE_API_ORIGIN: http://127.0.0.1:8080

@@ -41,7 +41,11 @@ export const boardManagerActions = Object.freeze([
   "initiate_network_task",
 ]);
 
-const actionSet = new Set(boardManagerActions);
+export const boardManagerInternalActions = Object.freeze([
+  "daily_airdrop",
+]);
+
+const actionSet = new Set([...boardManagerActions, ...boardManagerInternalActions]);
 const emptyBoardManagerPayload = Object.freeze({
   summary: "",
   next_steps: [],
@@ -600,6 +604,7 @@ export async function buildBoardManagerSourcePacket({
     hiveProjects,
     networkTaskContent,
     networkTaskCandidates,
+    taskState,
     recentBoardManagerRuns: compactRecentRuns,
     freshness,
   });

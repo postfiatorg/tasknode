@@ -67,7 +67,7 @@ Do not introduce new surface tints without adding them here. A one-off tan, blue
 
 ### Chat
 
-Chat is the primary working surface. It should feel conversational but operational. Copy controls are subtle. Markdown must render lists, paragraphs, code, and tables cleanly. The composer owns action modes such as Context Refine, Hive Input, and Request Task without creating separate decorative surfaces.
+Chat is the primary working surface. It should feel conversational but operational. Copy controls are subtle. Markdown must render lists, paragraphs, code, and tables cleanly. The composer owns action modes such as Context Refine and Request Task without creating separate decorative surfaces. Hive is a dedicated default chat, not a temporary `+` menu mode.
 
 ### Tasks
 
@@ -109,4 +109,3 @@ Use this checklist before shipping visible UI:
 - [ ] Text fits at desktop and mobile widths.
 - [ ] Screenshots were taken for the changed surface.
 - [ ] The relevant docs page was updated when behavior changed.
-

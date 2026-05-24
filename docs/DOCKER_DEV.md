@@ -37,6 +37,52 @@ billing use this Postgres path because compose sets
 runtime store still backs auth/session/context/wallet records until those
 surfaces are cut over.
 
+## Fly Dev Data Bridge
+
+For app QA against the same data as `https://tasknodeofficial-dev.fly.dev`, run
+Docker with the Fly dev data bridge instead of the isolated local Postgres
+database:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial
+npm run docker:dev:fly-data
+```
+
+That command:
+
+- starts a local `fly mpg proxy` to the Task Node Official managed Postgres
+  cluster;
+- writes the gitignored `.env.tasknodeofficial-fly-dev-data` file with a proxy
+  `TASKNODE_DATABASE_URL`;
+- starts Docker with `docker-compose.fly-data.yml`, which runs the API, web, and
+  board-manager containers on host networking so they can reach the local Fly
+  proxy at `127.0.0.1:16432`.
+
+Use this mode when you need local UI testing to see the same chats, memory,
+tasks, Hive rows, task projections, and PFTL cache rows as Fly dev. Do not point
+Docker at PFTasks databases.
+
+Useful bridge commands:
+
+```bash
+npm run fly-dev:data:status
+npm run fly-dev:data:pull
+npm run fly-dev:data:push
+```
+
+`status` compares key table counts and runtime-store summaries. `pull` copies
+Fly dev Postgres data into the local Docker database and copies the Fly runtime
+store into the local API volume. `push` copies local Docker Postgres data back
+to Fly dev after first writing a Fly backup under `/tmp`.
+
+If the host restarts or the Fly proxy dies, rerun `npm run docker:dev:fly-data`.
+The local app will not reach the Fly dev database unless the proxy is running.
+
+The browser wallet vault is still origin-local: `localhost:5174` and
+`tasknodeofficial-dev.fly.dev` cannot share the encrypted seed stored in
+browser localStorage. If the Fly-backed Docker UI asks to unlock or import a
+wallet, use the same seed for the same wallet address.
+
 The API container reads `.env.tasknodeofficial-dev` when that ignored local file
 exists, then compose overrides the public app URL back to localhost. Keep
 `OPENAI_API_KEY` there or export it before starting Docker. Frontier Instant is

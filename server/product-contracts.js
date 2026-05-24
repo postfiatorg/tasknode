@@ -19,18 +19,14 @@ export { chatEstimate, chatEstimateForAccount } from "./chat-estimate.js";
 import {
   consumeWalletChallenge,
   consumeEmailChallenge,
-  consumeOAuthState,
   createWalletChallenge,
   createAccountSession,
   createDevSession,
   createEmailChallenge,
-  createOAuthState,
   delinkWalletFromAccount,
   findAccountByEmail,
   getEmailChallenge,
   getOrCreateEmailAccount,
-  getOrCreateProviderAccount,
-  linkProviderToAccount,
   linkWalletToAccount,
   completeWalletInitiationGrant,
   failWalletInitiationGrant,
@@ -39,6 +35,13 @@ import {
   reserveWalletInitiationGrant,
   walletInitiationGrantStatus,
 } from "./runtime-store.js";
+import {
+  authTelegramAuthorize,
+  oauthAuthCallback,
+  oauthAuthProviders,
+  oauthAuthStart,
+} from "./auth-connected-accounts.js";
+export { authTelegramAuthorize } from "./auth-connected-accounts.js";
 import {
   appendUsageCredit,
   chatBillingStatus,
@@ -282,155 +285,6 @@ function actionResponse({ status, error, action, message, actionRequired }) {
       actionRequired,
     },
   };
-}
-
-function provider({ id, label, kind, requiredEnv, note, enabled = false, status, actionRequired }) {
-  const configured = hasAll(requiredEnv);
-  const startPath = `/api/auth/start/${id}`;
-  const callbackPath = `/api/auth/callback/${id}`;
-
-  return {
-    id,
-    label,
-    kind,
-    configured,
-    enabled: configured && enabled,
-    status: status || (configured ? (enabled ? "ready" : "configured") : "missing_config"),
-    startPath,
-    callbackPath,
-    actionRequired: configured
-      ? (actionRequired || "Implement callback handling, account merge rules, and launch review before enabling this provider")
-      : `Configure ${requiredEnv.join(", ")}`,
-    note,
-  };
-}
-
-function publicOrigin(requestMeta = {}) {
-  const explicit = process.env.TASKNODE_PUBLIC_URL || process.env.VITE_SITE_ORIGIN || "";
-  if (explicit) {
-    try {
-      return new URL(explicit).origin;
-    } catch {
-      // Fall through to request metadata when configured origin is invalid.
-    }
-  }
-
-  if (requestMeta.origin) {
-    try {
-      return new URL(requestMeta.origin).origin;
-    } catch {
-      // Public origin is optional; callers handle an empty value.
-    }
-  }
-
-  return "";
-}
-
-function githubRedirectUri(requestMeta = {}) {
-  const origin = publicOrigin(requestMeta);
-  if (!origin) return "";
-  return new URL("/api/auth/callback/github", origin).toString();
-}
-
-function safeRedirectPath(value) {
-  const raw = String(value || "/").trim();
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
-  return raw.slice(0, 200);
-}
-
-function selectGithubEmail(emails) {
-  if (!Array.isArray(emails) || emails.length === 0) return null;
-  const sorted = [...emails]
-    .filter((item) => item?.email)
-    .sort((left, right) => {
-      const leftScore = (left.verified ? 2 : 0) + (left.primary ? 1 : 0);
-      const rightScore = (right.verified ? 2 : 0) + (right.primary ? 1 : 0);
-      return rightScore - leftScore;
-    });
-  const best = sorted[0];
-  if (!best?.email) return null;
-  return {
-    email: best.email,
-    verified: best.verified === true,
-    primary: best.primary === true,
-  };
-}
-
-async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    const body = await response.json().catch(() => null);
-    return { response, body };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function fetchGithubToken({ code, state, redirectUri }) {
-  const { response, body } = await fetchJsonWithTimeout(
-    "https://github.com/login/oauth/access_token",
-    {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        client_id: process.env.GITHUB_CLIENT_ID,
-        client_secret: process.env.GITHUB_CLIENT_SECRET,
-        code,
-        state,
-        redirect_uri: redirectUri,
-      }),
-    }
-  );
-
-  if (!response.ok || body?.error || !body?.access_token) {
-    const error = new Error(body?.error_description || "GitHub token exchange failed.");
-    error.status = 502;
-    throw error;
-  }
-
-  return body.access_token;
-}
-
-async function fetchGithubUser(accessToken) {
-  const { response, body } = await fetchJsonWithTimeout(
-    "https://api.github.com/user",
-    {
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${accessToken}`,
-        "user-agent": "tasknodeofficial",
-      },
-    }
-  );
-
-  if (!response.ok || !body?.id) {
-    const error = new Error("GitHub user fetch failed.");
-    error.status = 502;
-    throw error;
-  }
-
-  return body;
-}
-
-async function fetchGithubEmails(accessToken) {
-  const { response, body } = await fetchJsonWithTimeout(
-    "https://api.github.com/user/emails",
-    {
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${accessToken}`,
-        "user-agent": "tasknodeofficial",
-      },
-    }
-  );
-
-  if (!response.ok || !Array.isArray(body)) return [];
-  return body;
 }
 
 function emailProvider() {
@@ -930,43 +784,29 @@ export function chatModes() {
 
 export function authProviders() {
   return [
-    provider({
-      id: "telegram",
-      label: "Telegram",
-      kind: "bot_account_link",
-      requiredEnv: ["TELEGRAM_AUTH_BOT_TOKEN"],
-      note:
-        "Preferred mobile account-link path. The bot token is enough for readiness, but the account callback is not wired yet.",
-    }),
-    provider({
-      id: "discord",
-      label: "Discord",
-      kind: "oauth",
-      requiredEnv: ["DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET", "DISCORD_REDIRECT_URI"],
-      note:
-        "Required for Discord chat continuity and bot consolidation. OAuth callback wiring is the next implementation step.",
-    }),
-    provider({
-      id: "x",
-      label: "X",
-      kind: "oauth",
-      requiredEnv: ["X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI"],
-      note:
-        "Useful for pseudonymous identity and public profile continuity. OAuth callback wiring is not active yet.",
-    }),
-    provider({
-      id: "github",
-      label: "GitHub",
-      kind: "oauth",
-      requiredEnv: ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"],
-      enabled: true,
-      actionRequired:
-        "Configure the GitHub OAuth App callback URL to /api/auth/callback/github for this Task Node deployment.",
-      note:
-        "Required for legacy PFTasks account continuity. Exact GitHub identity resumes the same Task Node account.",
-    }),
+    ...oauthAuthProviders(),
     emailProvider(),
   ];
+}
+
+function authLaunchBlockers(providers, emailStatus) {
+  const blockers = [];
+  for (const provider of providers) {
+    if (provider.id === "email") continue;
+    if (!provider.configured) {
+      blockers.push(`${provider.label} is missing required configuration.`);
+      continue;
+    }
+    if (!provider.enabled) {
+      blockers.push(`${provider.label} is configured but not enabled.`);
+      continue;
+    }
+    if (provider.status && provider.status !== "ready") {
+      blockers.push(`${provider.label} status is ${provider.status}.`);
+    }
+  }
+  if (!emailStatus.enabled) blockers.push(emailStatus.actionRequired);
+  return blockers;
 }
 
 export function devAuthStatus() {
@@ -2139,296 +1979,16 @@ export async function usageAdminCredit(payload, method, authorizationHeader = ""
   };
 }
 
-const initialProviderCreditProviders = new Set(["github", "x", "telegram", "discord"]);
-
-function initialProviderCreditUsd() {
-  const amount = Number(process.env.TASKNODE_INITIAL_PROVIDER_CREDIT_USD || 5);
-  if (!Number.isFinite(amount) || amount <= 0) return 0;
-  return Number(Math.min(amount, 100).toFixed(2));
-}
-
-async function grantInitialProviderCredit(account, provider) {
-  const normalizedProvider = String(provider || "").trim().toLowerCase();
-  if (!account?.id || !initialProviderCreditProviders.has(normalizedProvider)) return null;
-
-  const amountUsd = initialProviderCreditUsd();
-  if (amountUsd <= 0) return null;
-
-  return appendUsageCredit({
-    accountId: account.id,
-    amountUsd,
-    source: "initial_provider_credit",
-    note: `Initial Task Node chat credit for ${normalizedProvider} account login.`,
-    createdBy: "system",
-    uniqueKey: `initial_provider_credit:${account.id}`,
-  });
-}
-
 export function authProviderById(providerId) {
   return authProviders().find((providerItem) => providerItem.id === providerId) || null;
 }
 
 export function authStart(providerId, requestMeta = {}) {
-  const providerItem = authProviderById(providerId);
-
-  if (!providerItem) {
-    return {
-      status: 404,
-      body: {
-        ok: false,
-        error: "unknown_auth_provider",
-        provider: providerId,
-        message: "Unknown auth provider.",
-      },
-    };
-  }
-
-  if (!providerItem.configured) {
-    return {
-      status: 409,
-      body: {
-        ok: false,
-        error: "auth_provider_not_configured",
-        provider: providerItem.id,
-        message: `${providerItem.label} is not configured for this environment.`,
-        actionRequired: providerItem.actionRequired,
-      },
-    };
-  }
-
-  if (providerItem.id === "github") {
-    const redirectUri = githubRedirectUri(requestMeta);
-    if (!redirectUri) {
-      return actionResponse({
-        status: 409,
-        error: "auth_redirect_origin_missing",
-        action: "github_auth_start",
-        message: "GitHub login needs a public Task Node origin.",
-        actionRequired:
-          "Configure TASKNODE_PUBLIC_URL or call the start route from the deployed app origin.",
-      });
-    }
-
-    const stateRow = createOAuthState({
-      provider: "github",
-      redirectPath: safeRedirectPath(requestMeta.redirectPath),
-      redirectUri,
-      linkAccountId: requestMeta.session?.accountId || "",
-      expiresInSeconds: 600,
-    });
-    const linkingAccount = Boolean(requestMeta.session?.accountId);
-    const authorizeUrl = new URL("https://github.com/login/oauth/authorize");
-    authorizeUrl.searchParams.set("client_id", process.env.GITHUB_CLIENT_ID);
-    authorizeUrl.searchParams.set("redirect_uri", redirectUri);
-    authorizeUrl.searchParams.set("scope", "user:email");
-    authorizeUrl.searchParams.set("state", stateRow.id);
-    authorizeUrl.searchParams.set("allow_signup", "true");
-
-    return {
-      status: 200,
-      oauthState: {
-        provider: "github",
-        value: stateRow.id,
-        maxAgeSeconds: 600,
-      },
-      body: {
-        ok: true,
-        action: linkingAccount ? "github_account_link_start" : "github_auth_start",
-        provider: "github",
-        mode: linkingAccount ? "account_link" : "sign_in",
-        redirectUrl: authorizeUrl.toString(),
-        redirectUri,
-        expiresAt: stateRow.expiresAt,
-      },
-    };
-  }
-
-  return {
-    status: 503,
-    body: {
-      ok: false,
-      error: "auth_provider_disabled",
-      provider: providerItem.id,
-      message: `${providerItem.label} auth is configured but disabled until callback handling and account merge rules are implemented.`,
-      actionRequired: providerItem.actionRequired,
-    },
-  };
+  return oauthAuthStart(providerId, requestMeta);
 }
 
 export async function authCallback(providerId, query = {}, requestMeta = {}) {
-  const providerItem = authProviderById(providerId);
-
-  if (!providerItem) {
-    return {
-      status: 404,
-      body: {
-        ok: false,
-        error: "unknown_auth_provider",
-        provider: providerId,
-        message: "Unknown auth provider.",
-      },
-    };
-  }
-
-  if (providerItem.id === "github") {
-    const code = String(query?.code || "").trim();
-    const stateId = String(query?.state || "").trim();
-    const callbackCookieState = String(requestMeta.oauthState || "").trim();
-
-    if (query?.error) {
-      return actionResponse({
-        status: 400,
-        error: "github_auth_denied",
-        action: "github_auth_callback",
-        message: String(query.error_description || query.error || "GitHub authorization failed."),
-        actionRequired: "Start GitHub login again if you intended to authorize Task Node.",
-      });
-    }
-
-    if (!code || !stateId || !callbackCookieState || stateId !== callbackCookieState) {
-      return actionResponse({
-        status: 400,
-        error: "oauth_state_invalid",
-        action: "github_auth_callback",
-        message: "GitHub login state is invalid or expired.",
-        actionRequired: "Start GitHub login again from the Task Node login modal.",
-      });
-    }
-
-    const stateRow = consumeOAuthState({ provider: "github", stateId });
-    if (!stateRow) {
-      return actionResponse({
-        status: 400,
-        error: "oauth_state_invalid",
-        action: "github_auth_callback",
-        message: "GitHub login state is invalid or expired.",
-        actionRequired: "Start GitHub login again from the Task Node login modal.",
-      });
-    }
-
-    try {
-      const accessToken = await fetchGithubToken({
-        code,
-        state: stateId,
-        redirectUri: stateRow.redirectUri,
-      });
-      const [profile, emails] = await Promise.all([
-        fetchGithubUser(accessToken),
-        fetchGithubEmails(accessToken),
-      ]);
-      const emailInfo = selectGithubEmail(emails);
-      const linkedResult = stateRow.linkAccountId
-        ? linkProviderToAccount({
-            accountId: stateRow.linkAccountId,
-            provider: "github",
-            providerUserId: String(profile.id),
-            username: profile.login || "",
-            displayName: profile.name || profile.login || "GitHub",
-            profileUrl: profile.html_url || "",
-            emailInfo,
-          })
-        : null;
-
-      if (linkedResult && !linkedResult.ok) {
-        const conflict = linkedResult.error === "provider_identity_conflict" || linkedResult.error === "provider_email_conflict";
-        recordAuthEvent({
-          accountId: stateRow.linkAccountId,
-          eventType: "github_oauth_link_failed",
-          provider: "github",
-          email: emailInfo?.email ? maskEmail(emailInfo.email) : "",
-          decision: linkedResult.error,
-          metadata: {
-            username: profile.login || "",
-            providerUserId: String(profile.id),
-          },
-        });
-        return actionResponse({
-          status: conflict ? 409 : 400,
-          error: linkedResult.error,
-          action: "github_account_link",
-          message: conflict
-            ? "That GitHub identity is already linked to another Task Node account."
-            : "GitHub could not be linked to this Task Node account.",
-          actionRequired: conflict
-            ? "Sign in with the existing linked account or contact support before attempting an account merge."
-            : "Start GitHub linking again from Settings.",
-        });
-      }
-
-      const account = linkedResult?.account || getOrCreateProviderAccount({
-        provider: "github",
-        providerUserId: String(profile.id),
-        username: profile.login || "",
-        displayName: profile.name || profile.login || "GitHub",
-        profileUrl: profile.html_url || "",
-        emailInfo,
-      });
-      const initialCredit = await grantInitialProviderCredit(account, "github");
-      const created = createAccountSession(account, { provider: "github", assurance: "medium" });
-
-      recordAuthEvent({
-        accountId: account.id,
-        eventType: stateRow.linkAccountId ? "github_oauth_linked" : "github_oauth_verified",
-        provider: "github",
-        email: emailInfo?.email ? maskEmail(emailInfo.email) : "",
-        decision: "session_issued",
-        metadata: {
-          username: profile.login || "",
-          providerUserId: String(profile.id),
-          emailVerified: emailInfo?.verified === true,
-          initialCreditUsd: initialCredit?.idempotentReplay ? 0 : Number(initialCredit?.amountUsd || 0),
-          initialCreditIdempotentReplay: Boolean(initialCredit?.idempotentReplay),
-        },
-      });
-
-      return {
-        status: 302,
-        sessionId: created.sessionId,
-        clearOAuthState: {
-          provider: "github",
-        },
-        redirectLocation: safeRedirectPath(stateRow.redirectPath || "/"),
-        body: {
-          ok: true,
-          action: "github_auth_callback",
-          message: stateRow.linkAccountId ? "GitHub linked." : "Signed in with GitHub.",
-          session: created.session,
-          initialCredit: initialCredit
-            ? {
-                amountUsd: Number(initialCredit.amountUsd || 0),
-                alreadyRecorded: Boolean(initialCredit.idempotentReplay),
-              }
-            : null,
-        },
-      };
-    } catch (error) {
-      recordAuthEvent({
-        eventType: "github_oauth_failed",
-        provider: "github",
-        decision: error?.message || "github_callback_failed",
-      });
-      return actionResponse({
-        status: error?.status || 502,
-        error: "github_callback_failed",
-        action: "github_auth_callback",
-        message: "GitHub login could not be completed.",
-        actionRequired:
-          error?.message || "Check GitHub OAuth app callback configuration and retry.",
-      });
-    }
-  }
-
-  return {
-    status: 501,
-    body: {
-      ok: false,
-      error: "auth_callback_not_implemented",
-      provider: providerItem.id,
-      message: `${providerItem.label} callback handling is not implemented yet.`,
-      actionRequired:
-        "Implement callback verification, account merge rules, and session issuance before enabling login.",
-    },
-  };
+  return oauthAuthCallback(providerId, query, requestMeta);
 }
 
 export async function authEmailStart(payload, method, requestMeta = {}) {
@@ -2683,6 +2243,7 @@ export async function readiness() {
   const chatBilling = chatBillingStatus();
   const chatExecutionReady = anyChatProviderEnabled();
   const emailStatus = emailDeliveryStatus();
+  const authBlockers = authLaunchBlockers(providers, emailStatus);
   const ethDeposits = ethereumDepositConfigStatus();
   const publishStatus = await contextPublishStatus();
   return {
@@ -2692,12 +2253,8 @@ export async function readiness() {
       devSessionReady: devAuthEnabled(),
       emailLoginReady: emailStatus.enabled,
       emailDeliveryMode: emailStatus.mode,
-      launchReady: false,
-      blockers: [
-        "Telegram, Discord, X, and bot callback handlers are not implemented",
-        "Canonical account merge rules are not implemented",
-        ...(emailStatus.enabled ? [] : [emailStatus.actionRequired]),
-      ],
+      launchReady: authBlockers.length === 0,
+      blockers: authBlockers,
     },
     wallet: {
       pftlRpcConfigured: hasAny(["PFTL_RPC_URL", "PFTL_RPC_URL_FALLBACKS"]),

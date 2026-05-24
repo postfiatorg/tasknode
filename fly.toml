@@ -14,9 +14,14 @@ primary_region = "ewr"
   NODE_ENV = "production"
   TASKNODE_ENV = "production"
   TASKNODE_DEV_AUTH_ENABLED = "false"
+  TASKNODE_DATABASE_ENABLED = "true"
   TASKNODE_APP_NAME = "tasknodeofficial-dev"
   TASKNODE_PUBLIC_URL = "https://tasknodeofficial-dev.fly.dev"
   VITE_SITE_ORIGIN = "https://tasknodeofficial-dev.fly.dev"
+  TELEGRAM_AUTH_WIDGET_DOMAIN = "tasknodeofficial-dev.fly.dev"
+  DISCORD_REDIRECT_URI = "https://tasknodeofficial-dev.fly.dev/api/auth/callback/discord"
+  TASKNODE_STORE_PATH = "/data/runtime-store.json"
+  TASKNODE_RUNTIME_STORE_DURABLE = "true"
   VITE_BUILD_ID = "dev"
   VITE_DEBUG_MODE = "true"
   VITE_PFTL_EXPLORER_URL = "https://explorer.testnet.postfiat.org"
@@ -69,3 +74,8 @@ primary_region = "ewr"
   cpu_kind = "shared"
   cpus = 1
   memory_mb = 512
+
+[mounts]
+  source = "tasknodeofficial_data"
+  destination = "/data"
+  processes = ["app"]

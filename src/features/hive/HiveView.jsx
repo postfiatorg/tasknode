@@ -614,7 +614,7 @@ function HiveContextPanel({ boardManager, context, expanded, onToggle, status, s
       ? "Could not load"
       : hasEntries
         ? `${entryCount} ${entryCount === 1 ? "entry" : "entries"} from ${userCount} ${userCount === 1 ? "user" : "users"}`
-        : "No Hive Input yet";
+        : "No Hive chat entries yet";
 
   return (
     <div className="hive-card hive-context-panel">
@@ -684,7 +684,7 @@ function HiveContextInputs({
   return (
     <>
       {!hasEntries && status !== "loading" && (
-        <p className="hive-context-empty">Use Hive Input from Chat to add network context.</p>
+        <p className="hive-context-empty">Use the default Hive chat to add network context.</p>
       )}
       {(report || pending || hasEntries) && (
         <section className="hive-secretary">
@@ -720,7 +720,7 @@ function HiveContextInputs({
             </div>
           ) : (
             <p className="hive-context-empty">
-              The Secretary report is generated asynchronously from linked-wallet Hive Inputs.
+              The Secretary report is generated asynchronously from linked-wallet Hive chat entries.
             </p>
           )}
         </section>

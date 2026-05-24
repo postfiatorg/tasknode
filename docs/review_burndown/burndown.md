@@ -1,6 +1,6 @@
 # Code Review Burndown
 
-Updated: 2026-05-23
+Updated: 2026-05-24
 
 This is the queue for reviewing app-visible Help docs against implementation.
 Every row links one visible doc page to a review brief. `Code review complete`
@@ -9,10 +9,40 @@ recorded; most entries begin as `no`.
 
 ## Review Order
 
-1. Chat, AI Providers, Memory, Tasks, Task Lifecycle, Task Async Engine.
-2. Wallet, PFTL Transaction Cache, PFTL Usage, Database, Context.
-3. Prompt pages and specialized tools.
-4. Nostr, plans, and lower-risk docs.
+The current second-eyes review should first run the recent-work PR series in
+`recent_work_pr_review_spec_2026-05-24.md`. That series covers the work that has
+moved fastest since the original doc queue was written: auth, Fly data, Hive,
+Board Manager, network tasks, profile, daily airdrop, task UX, chat/memory, DB,
+and public-readiness.
+
+After the PR series, continue the older app-doc queue:
+
+1. Task Async Engine, PFTL Usage, Database.
+2. Prompt pages and specialized tools.
+3. Nostr, plans, and lower-risk docs.
+
+## Recent-Work Review PR Series
+
+Each row is intended to become one small review PR. The second agent should work
+top to bottom and merge one at a time.
+
+Review work must happen in separate worktrees under
+`/home/pfrpc/repos/worktrees/tasknodeofficial/`, one branch per row. The main
+checkout should remain clean except when checkpointing or merging reviewed
+work.
+
+| Order | Proposed PR | Branch | Spec Section | Status |
+| --- | --- | --- | --- | --- |
+| 1 | Auth and connected accounts | `review/01-auth-connected-accounts` | `recent_work_pr_review_spec_2026-05-24.md#pr-01-auth-and-connected-accounts` | `review_ready` |
+| 2 | Deployment and Docker/Fly data bridge | `review/02-deploy-docker-fly-data` | `recent_work_pr_review_spec_2026-05-24.md#pr-02-deployment-dockerfly-data-bridge-and-config-safety` | `review_ready` |
+| 3 | Board Manager worker and actions | `review/03-board-manager-worker` | `recent_work_pr_review_spec_2026-05-24.md#pr-03-board-manager-worker-leases-actions-and-audit` | `review_ready` |
+| 4 | Hive surface and routing | `review/04-hive-surface-routing` | `recent_work_pr_review_spec_2026-05-24.md#pr-04-hive-surface-hive-chat-context-projects-and-routing-feed` | `review_ready` |
+| 5 | Network task lifecycle and recovery | `review/05-network-task-lifecycle` | `recent_work_pr_review_spec_2026-05-24.md#pr-05-network-task-lifecycle-recovery-reward-follow-up-and-projections` | `review_ready` |
+| 6 | Task UX, evidence, copy, unlock | `review/06-task-ux-evidence` | `recent_work_pr_review_spec_2026-05-24.md#pr-06-task-detail-evidence-copy-unlock-and-verification-ux` | `review_ready` |
+| 7 | Profile, daily airdrop, NFT | `review/07-profile-airdrop-nft` | `recent_work_pr_review_spec_2026-05-24.md#pr-07-profile-daily-airdrop-nft-and-public-profile-data` | `review_ready` |
+| 8 | Chat, context, Jobs, memory packets | `review/08-chat-context-memory` | `recent_work_pr_review_spec_2026-05-24.md#pr-08-chat-context-refine-jobs-prompt-pgvector-and-memory-packets` | `review_ready` |
+| 9 | Database and repositories | `review/09-database-repositories` | `recent_work_pr_review_spec_2026-05-24.md#pr-09-database-migrations-ownership-constraints-and-repository-consistency` | `review_ready` |
+| 10 | Docs, prompts, public readiness | `review/10-docs-prompts-public-readiness` | `recent_work_pr_review_spec_2026-05-24.md#pr-10-docs-prompts-public-readiness-and-legacy-cleanup` | `review_ready` |
 
 ## Queue
 
