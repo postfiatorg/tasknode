@@ -14,6 +14,11 @@ import {
   boardManagerReasoningEffort,
   fetchBoardManagerDecision,
 } from "../server/board-manager-decision-provider.js";
+import {
+  boardManagerSecretaryEnabled,
+  buildBoardManagerSecretaryDecisionPacket,
+  ensureBoardManagerSecretaryPacket,
+} from "../server/board-manager-secretary-packets.js";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
@@ -40,6 +45,7 @@ function usage() {
     "  --reasoning <effort>   Provider reasoning effort. Default: high",
     "  --packet-only          Build and print the source packet without calling the model provider.",
     "  --prompt-only          Build and print the prompt packet without calling the model provider.",
+    "  --no-secretary         Skip DeepSeek secretary packet compression and send the full source packet.",
     "  --execute              Execute supported action hooks after the model chooses an action.",
     "  --no-record           Do not write board_manager_runs.",
     "  --no-lease            Do not claim board_manager_leases.",
@@ -51,6 +57,33 @@ function packetSectionBytes(packet = {}) {
   return Object.fromEntries(
     Object.entries(packet).map(([key, value]) => [key, Buffer.byteLength(JSON.stringify(value))])
   );
+}
+
+async function buildDecisionSourcePacket({ rawSourcePacket, scope, noSecretary = false } = {}) {
+  if (noSecretary || !boardManagerSecretaryEnabled()) {
+    return {
+      sourcePacket: rawSourcePacket,
+      secretary: null,
+      sourceMode: "full_source_packet",
+    };
+  }
+  const secretary = await ensureBoardManagerSecretaryPacket({
+    sourcePacket: rawSourcePacket,
+    scope,
+    packetType: "board_triage",
+  });
+  if (!secretary.ok || !secretary.packet) {
+    throw new Error(`board_manager_secretary_packet_unavailable:${secretary.reason || "unknown"}`);
+  }
+  return {
+    sourcePacket: buildBoardManagerSecretaryDecisionPacket({
+      sourcePacket: rawSourcePacket,
+      secretaryPacket: secretary.packet,
+      reused: secretary.reused,
+    }),
+    secretary,
+    sourceMode: "deepseek_secretary_packet",
+  };
 }
 
 async function main() {
@@ -66,24 +99,36 @@ async function main() {
   const reasoningEffort = argValue("--reasoning", boardManagerReasoningEffort());
   const packetOnly = hasArg("--packet-only");
   const promptOnly = hasArg("--prompt-only");
+  const noSecretary = hasArg("--no-secretary");
   const execute = hasArg("--execute");
   const record = !hasArg("--no-record");
   const useLease = !hasArg("--no-lease");
   const json = hasArg("--json");
 
-  const sourcePacket = await buildBoardManagerSourcePacket({ trigger, scope });
-  const sourcePacketBytes = Buffer.byteLength(JSON.stringify(sourcePacket));
-  const sourcePacketSectionBytes = packetSectionBytes(sourcePacket);
+  const rawSourcePacket = await buildBoardManagerSourcePacket({ trigger, scope });
+  const rawSourcePacketBytes = Buffer.byteLength(JSON.stringify(rawSourcePacket));
+  const rawSourcePacketSectionBytes = packetSectionBytes(rawSourcePacket);
   if (packetOnly) {
-    console.log(JSON.stringify({ ok: true, sourcePacketBytes, sourcePacketSectionBytes, packet: sourcePacket }, null, 2));
+    console.log(JSON.stringify({
+      ok: true,
+      sourceMode: "full_source_packet",
+      sourcePacketBytes: rawSourcePacketBytes,
+      sourcePacketSectionBytes: rawSourcePacketSectionBytes,
+      packet: rawSourcePacket,
+    }, null, 2));
     await closePool();
     return;
   }
   if (promptOnly) {
-    console.log(JSON.stringify(boardManagerDecisionInput({ sourcePacket }), null, 2));
+    console.log(JSON.stringify(boardManagerDecisionInput({ sourcePacket: rawSourcePacket }), null, 2));
     await closePool();
     return;
   }
+
+  const decisionSource = await buildDecisionSourcePacket({ rawSourcePacket, scope, noSecretary });
+  const sourcePacket = decisionSource.sourcePacket;
+  const sourcePacketBytes = Buffer.byteLength(JSON.stringify(sourcePacket));
+  const sourcePacketSectionBytes = packetSectionBytes(sourcePacket);
 
   let lease = null;
   let run = null;
@@ -92,7 +137,17 @@ async function main() {
       lease = await claimBoardManagerLease({
         scope,
         ttlSeconds: Number(process.env.TASKNODE_BOARD_MANAGER_LEASE_SECONDS || 900),
-        metadata: { trigger, provider, model, reasoningEffort, dry_run: !execute, engine: provider === "openai" ? "openai_responses" : "openrouter_chat_completions" },
+        metadata: {
+          trigger,
+          provider,
+          model,
+          reasoningEffort,
+          dry_run: !execute,
+          engine: provider === "openai" ? "openai_responses" : "openrouter_chat_completions",
+          source_mode: decisionSource.sourceMode,
+          raw_source_packet_digest: rawSourcePacket.sourcePacketDigest,
+          secretary_packet_id: decisionSource.secretary?.packet?.id || "",
+        },
       });
       if (!lease.ok) {
         throw new Error(`board_manager_lease_unavailable:${JSON.stringify(lease.active || {})}`);
@@ -108,7 +163,11 @@ async function main() {
         dryRun: !execute,
         model,
         reasoningEffort,
-        sessionMode: provider === "openai" ? "stateless_openai_responses" : "stateless_openrouter_chat",
+        sessionMode: decisionSource.sourceMode === "deepseek_secretary_packet"
+          ? `secretary_${provider}`
+          : provider === "openai"
+            ? "stateless_openai_responses"
+            : "stateless_openrouter_chat",
       });
       run = started.run;
     }
@@ -139,9 +198,23 @@ async function main() {
       model: result.model,
       reasoningEffort,
       responseId: result.responseId,
+      sourceMode: decisionSource.sourceMode,
       sourcePacketDigest: sourcePacket.sourcePacketDigest,
+      rawSourcePacketDigest: rawSourcePacket.sourcePacketDigest,
+      rawSourcePacketBytes,
       sourcePacketBytes,
       sourcePacketSectionBytes,
+      secretaryPacket: decisionSource.secretary
+        ? {
+            id: decisionSource.secretary.packet?.id || "",
+            reused: Boolean(decisionSource.secretary.reused),
+            packetDigest: decisionSource.secretary.packet?.packetDigest || "",
+            sourceDigest: decisionSource.secretary.packet?.sourceDigest || "",
+            provider: decisionSource.secretary.packet?.provider || "",
+            model: decisionSource.secretary.packet?.model || "",
+            usage: decisionSource.secretary.packet?.usage || {},
+          }
+        : null,
       decision: result.decision,
       usage: result.usage,
       actionResult,
@@ -150,6 +223,7 @@ async function main() {
       "board manager model exec ok",
       `run: ${output.runId || "not recorded"}`,
       `engine: ${output.engine}`,
+      `source mode: ${output.sourceMode}`,
       `model: ${output.model}`,
       `source: ${output.sourcePacketDigest}`,
       `action: ${result.decision.action}`,

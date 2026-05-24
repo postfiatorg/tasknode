@@ -1,10 +1,21 @@
 # Board Manager DeepSeek Secretary Packets
 
-Status: proposal only; not implemented
+Status: v1 implemented for Board Triage packets
 
-This milestone proposes a two-stage Board Manager architecture that uses direct DeepSeek API `deepseek-v4-pro` as a secretary/workhorse to condense large Hive state into compact action-ready packets, then uses OpenRouter `qwen/qwen3.7-max` as the Board Manager decision model.
+This milestone implements the first two-stage Board Manager architecture: direct DeepSeek API `deepseek-v4-pro` acts as a secretary/workhorse that condenses the full Hive state into a compact Board Triage packet, then OpenRouter `qwen/qwen3.7-max` acts as the Board Manager decision model.
 
 The goal is to reduce recurring Board Manager cost and improve decision quality without weakening the existing action-hook boundary.
+
+What exists now:
+
+- prompt: `prompts/hive/board_manager_secretary_v1.md`;
+- provider/repository boundary: `server/board-manager-secretary-packets.js`;
+- migration: `server/db/migrations/043_board_manager_secretary_packets.sql`;
+- one-shot executor integration: `scripts/board-manager-model-exec.mjs`;
+- smoke: `scripts/board-manager-secretary-packet-smoke.mjs`;
+- docs prompt registry: Prompts -> Board Manager Secretary Packet.
+
+The current implementation only creates `board_triage` packets. Project focus, contributor focus, and network-task evidence packets remain planned follow-ups.
 
 ## Problem
 
@@ -35,7 +46,7 @@ When the board is quiet, most of that context is not needed. A recurring agent s
 
 ## Core Design
 
-The Board Manager should run as two coordinated model calls only when needed:
+The Board Manager now runs as two coordinated model calls when the secretary path is enabled:
 
 1. **Secretary packet builder**: direct DeepSeek API `deepseek-v4-pro`.
 2. **Board decision model**: OpenRouter `qwen/qwen3.7-max`.
@@ -186,11 +197,13 @@ Output fields:
 
 1. Worker claims a due Board Manager job.
 2. Server builds raw deterministic health data.
-3. If no material state changed since the last secretary digest, reuse the latest Board Triage Packet.
+3. If no material state changed since the last secretary digest, reuse the latest Board Triage Packet from `board_manager_secretary_packets`.
 4. Qwen receives only the Board Triage Packet.
 5. If Qwen chooses `do_nothing`, stop.
 
 This is the expected common path.
+
+The secretary source digest is semantic rather than clock-based. It ignores trigger labels, generated timestamps, exact age counters, generated lines in source text, and churn from no-op Board Manager runs. It still changes when board pressure, project state, task state, candidate state, Hive Context, or material Board Manager actions change.
 
 ### Targeted Action Tick
 
@@ -216,9 +229,9 @@ Some events should enqueue a targeted secretary refresh without waiting for peri
 - candidate capacity changed;
 - Board Manager action failed.
 
-## Database Proposal
+## Database
 
-Add a table such as `board_manager_secretary_packets`.
+`server/db/migrations/043_board_manager_secretary_packets.sql` adds `board_manager_secretary_packets`.
 
 Suggested fields:
 
@@ -241,7 +254,7 @@ Suggested fields:
 | `created_at` | Creation time. |
 | `superseded_at` | Replacement time. |
 
-The table should make it easy to answer: what did the secretary compress, from what source, at what cost, and what did Qwen rely on?
+The table answers: what did the secretary compress, from what source, at what cost, and what did Qwen rely on?
 
 ## Prompt Proposal
 
@@ -286,52 +299,60 @@ Expected practical outcome:
 
 The exact DeepSeek cost depends on the final direct API pricing at the time of implementation. As of the checked DeepSeek docs, `deepseek-v4-pro` is listed in the API pricing page and the docs note a 75% discount window extended until 2026-05-31 15:59 UTC.
 
-## Implementation Plan
+## Implementation Status
 
 ### Phase 1: packet contracts
 
-- Add secretary packet schema files.
-- Add prompt file `prompts/hive/board_manager_secretary_v1.md`.
-- Add deterministic raw-source builders for each packet type.
-- Add digest tests proving the same input creates the same source digest.
+- Done for Board Triage. The prompt file is `prompts/hive/board_manager_secretary_v1.md`.
+- The source digest smoke proves unchanged board state does not regenerate a secretary packet when only generated timestamps, triggers, freshness ages, source-text generated lines, or no-op runs changed.
+- Targeted packet source builders for Project Focus, Contributor Focus, and Network Task Evidence are not implemented yet.
 
 ### Phase 2: DeepSeek direct API provider
 
-- Add `server/deepseek-provider.js` or a Hive-specific provider wrapper.
-- Use `DEEPSEEK_API_KEY` and `DEEPSEEK_BASE_URL`.
-- Default model: `deepseek-v4-pro`.
-- Store provider response id, usage, latency, and raw output text.
-- Fail closed if output is invalid JSON.
+- Done in `server/board-manager-secretary-packets.js`.
+- Uses `DEEPSEEK_API_KEY` or `DEEPSEEK`, with optional `DEEPSEEK_BASE_URL`.
+- Default model is `deepseek-v4-pro`.
+- Stores provider response id, usage, latency, prompt version, prompt digest, packet digest, and normalized JSON/text output.
+- Invalid JSON fails closed before Qwen sees the packet.
 
 ### Phase 3: secretary packet persistence
 
-- Add `board_manager_secretary_packets` migration.
-- Add repository helpers:
-  - `getCurrentSecretaryPacket`;
-  - `upsertSecretaryPacket`;
-  - `supersedeSecretaryPacket`;
-  - `listSecretaryPacketsForRun`;
-  - `packetNeedsRefresh`.
+- Done for current-packet reuse and supersession.
+- Current helpers are `getCurrentBoardManagerSecretaryPacket`, `ensureBoardManagerSecretaryPacket`, and the internal insert/supersede transaction.
+- Listing packets by run is not implemented yet.
 
 ### Phase 4: Qwen targeted decision path
 
-- Change Board Manager source packet builder to support:
-  - `mode=full_debug`;
-  - `mode=triage`;
-  - `mode=targeted`.
-- Default production path should be `triage`.
-- Only build targeted packets when triage identifies a target.
-- Keep current full packet mode for debugging and comparison.
+- Done for triage mode through `scripts/board-manager-model-exec.mjs`.
+- `--no-secretary` forces the old full-source path for debugging.
+- `--packet-only` still prints the full raw source without calling providers.
+- `--prompt-only` prints the full-source prompt today; a secretary prompt-only mode should be added if needed.
+- Targeted packet chaining after triage is not implemented yet.
 
 ### Phase 5: audit UI
 
-- Hive Mind Agent feed should show:
-  - selected action;
-  - decision reason;
-  - secretary packet ids used;
-  - source packet digest;
-  - packet cost;
-  - whether the secretary packet was reused or regenerated.
+- Partial. Recorded Board Manager runs store source packet data and run summaries. The one-shot executor prints secretary packet id, source digest, reuse flag, provider, model, and usage.
+- Hive Mind Agent does not yet render secretary packet id/reuse/cost as first-class fields.
+
+## Live Verification
+
+Local Docker was tested against the same API container environment used by the app.
+
+Fresh secretary run:
+
+- raw source packet: about `87.8 KB`;
+- Qwen decision packet after secretary compression: about `16.6 KB`;
+- DeepSeek secretary usage: `26,162` input tokens, `4,154` output tokens, `2,423` reasoning tokens, `78.2s` latency;
+- Qwen usage after compression: `7,706` input tokens, `1,621` output tokens, `1,083` reasoning tokens, about `$0.031`.
+
+Immediate reuse run:
+
+- reused packet id: `bmsec_0aac387c-b371-49f9-94a8-38e76261df98`;
+- `secretaryPacket.reused = true`;
+- no new DeepSeek call;
+- Qwen compact source remained about `16.6 KB`.
+
+Compared with the earlier full-source Qwen run, Qwen input dropped from roughly `31.5k` tokens to roughly `7.7k` tokens on the measured board state.
 
 This keeps agentic efficiency visible and debuggable.
 
@@ -348,12 +369,12 @@ This keeps agentic efficiency visible and debuggable.
 
 ## Done Criteria
 
-- A dry-run command can build a Board Triage Packet through direct DeepSeek API and store it.
-- Qwen can run from the stored packet and produce a schema-valid action.
-- Quiet ticks do not send the full `88 KB` source packet to Qwen.
-- Hive Mind Agent shows which secretary packet drove the decision.
-- A smoke test covers packet reuse, packet refresh, invalid DeepSeek output, and Qwen action validation.
-- Docs describe that this DeepSeek route is not ZDR and should not receive private raw chat/context/secret data.
+- Done: a dry-run command can build a Board Triage Packet through direct DeepSeek API and store it.
+- Done: Qwen can run from the stored packet and produce a schema-valid action.
+- Done: quiet ticks can reuse a stored secretary packet instead of sending the full `88 KB` source packet to Qwen.
+- Partial: Hive Mind Agent does not yet show secretary packet id/reuse/cost directly in the UI.
+- Partial: smoke covers request shape, output normalization, decision packet construction, semantic digest reuse, and material-state refresh. Invalid DeepSeek output and persisted DB reuse should receive additional smoke coverage.
+- Done: docs state that this DeepSeek route is not ZDR and should not receive private raw chat/context/secret data.
 
 ## Source References
 

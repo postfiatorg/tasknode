@@ -47,6 +47,7 @@ import chatMemoryPrompt from "../../../prompts/memory/chat_memory_v1.md?raw";
 import deepMemoryPrompt from "../../../prompts/memory/deep_memory_v1.md?raw";
 import networkTaskProfilePrompt from "../../../prompts/memory/network_task_profile_v2.md?raw";
 import boardManagerPrompt from "../../../prompts/hive/board_manager_v1.md?raw";
+import boardManagerSecretaryPrompt from "../../../prompts/hive/board_manager_secretary_v1.md?raw";
 import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw";
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
@@ -215,6 +216,19 @@ const PROMPT_SOURCES = [
       "server/board-manager-actions.js::executeBoardManagerDecision",
     ],
     content: boardManagerPrompt,
+  },
+  {
+    family: "Hive",
+    title: "Board Manager Secretary Packet",
+    path: "prompts/hive/board_manager_secretary_v1.md",
+    summary: "Direct DeepSeek V4 Pro prompt that compresses raw Hive board state into compact packets for Qwen Board Manager decisions.",
+    status: "Active for Board Manager secretary packet generation",
+    usedBy: [
+      "server/board-manager-secretary-packets.js::fetchBoardManagerSecretaryPacket",
+      "server/board-manager-secretary-packets.js::ensureBoardManagerSecretaryPacket",
+      "scripts/board-manager-model-exec.mjs",
+    ],
+    content: boardManagerSecretaryPrompt,
   },
   {
     family: "Hive",
@@ -520,7 +534,7 @@ export const DOC_GROUPS = [
       {
         slug: "board-manager-deepseek-secretary-packets",
         title: "Board Manager DeepSeek Secretary Packets",
-        summary: "Proposal for DeepSeek V4 Pro secretary packets feeding smaller Qwen Board Manager decisions.",
+        summary: "Implemented Board Triage secretary packets that let direct DeepSeek V4 Pro compress Hive state before Qwen Board Manager decisions.",
         markdown: boardManagerDeepseekSecretaryPackets,
       },
       {

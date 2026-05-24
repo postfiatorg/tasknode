@@ -66,11 +66,14 @@ The target architecture is Board Manager centered. The Board Manager is a leased
 
 | Worker | Provider | API path | Default model | Reasoning | Output | Privacy policy |
 | --- | --- | --- | --- | --- | --- | --- |
+| Board Manager Secretary | DeepSeek direct API | `/chat/completions` | `deepseek-v4-pro` | `high` | Compact Board Triage packet | Not ZDR; internal Hive state only; no raw private chat/context/secrets |
 | Board Manager | OpenRouter | `/api/v1/chat/completions` | `qwen/qwen3.7-max` | `high` | One action from registry | `data_collection="deny"`, structured output |
 | Hive Secretary | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON report | `store=false` |
 | Hive Active Projects | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON project set | `store=false` |
 
 The Board Manager model default comes from OpenRouter's `qwen/qwen3.7-max` route. The model page/API report a 1M context window, structured-output support, and pricing of $2.50 per 1M input tokens and $7.50 per 1M output tokens. OpenAI `gpt-5.5-pro` remains available as an explicit override when the operator needs the older higher-cost path: set `TASKNODE_BOARD_MANAGER_PROVIDER=openai` and `TASKNODE_BOARD_MANAGER_MODEL=gpt-5.5-pro`.
+
+Before Qwen runs, the default path now asks the direct DeepSeek API to build a reusable Board Manager Secretary packet when `DEEPSEEK_API_KEY` is present and `TASKNODE_BOARD_MANAGER_SECRETARY_ENABLED` is not `false`. That packet is stored in `board_manager_secretary_packets` and keyed by a semantic source digest. If only generated timestamps, trigger names, freshness age counters, source-text generated lines, or no-op Board Manager runs changed, the stored packet is reused and DeepSeek is not called again. Operators can force the old full-source path with `--no-secretary`.
 
 Hive Project Product Documents are not a separate provider job. When the Board Manager chooses `refresh_project_document`, the Board Manager decision model writes the document in `payload.project_document`; the action hook validates and persists it to `network_project_product_docs`. This keeps core Hive management inside the Board Manager instead of delegating ordinary project-definition work to another model.
 
@@ -87,6 +90,12 @@ Environment overrides:
 - `TASKNODE_BOARD_MANAGER_PROVIDER` (`openrouter` by default, `openai` for the override route)
 - `TASKNODE_BOARD_MANAGER_MODEL`
 - `TASKNODE_BOARD_MANAGER_REASONING_EFFORT`
+- `TASKNODE_BOARD_MANAGER_SECRETARY_ENABLED`
+- `TASKNODE_BOARD_MANAGER_SECRETARY_MODEL`
+- `TASKNODE_BOARD_MANAGER_SECRETARY_REASONING_EFFORT`
+- `TASKNODE_BOARD_MANAGER_SECRETARY_TIMEOUT_MS`
+- `DEEPSEEK_API_KEY` or `DEEPSEEK`
+- `DEEPSEEK_BASE_URL`
 - `TASKNODE_HIVE_PROJECT_MODEL`
 - `TASKNODE_HIVE_PROJECT_REASONING_EFFORT`
 The default reasoning effort is `high`. These workers use structured outputs rather than prompt-only JSON parsing so invalid project shapes fail the job instead of silently changing the UI.

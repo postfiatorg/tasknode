@@ -1,6 +1,6 @@
 # Board Manager
 
-Status: v0 OpenRouter Qwen decision worker implemented with first action hooks and a durable worker architecture
+Status: v0 OpenRouter Qwen decision worker implemented with first action hooks, durable worker architecture, and DeepSeek secretary packet compression
 
 This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, archive projects, refresh project documents, route tasks, or do nothing.
 
@@ -9,6 +9,8 @@ This plan supersedes the earlier idea that Hive should be driven by a set of ind
 The Board Manager manages the Hive page and Hive interactions across the Post Fiat Task Node app.
 
 It is a high-reasoning decision worker with a bounded action registry. The default provider is OpenRouter `qwen/qwen3.7-max`; OpenAI `gpt-5.5-pro` is an override route, not the default. It is not a chat bot, not a public user, and not a frontend component. It is the system operator for the network board.
+
+The current default decision path uses direct DeepSeek API `deepseek-v4-pro` as a secretary packet builder before Qwen. DeepSeek reads the full deterministic Hive source packet and writes a compact Board Triage packet into `board_manager_secretary_packets`. Qwen then chooses one validated Board Manager action from that compact packet. This keeps Qwen decisions much cheaper while preserving a human-auditable source digest and packet digest.
 
 The Board Manager should answer:
 
@@ -157,6 +159,9 @@ The Board Manager should remain state-aware without relying on an ever-growing m
 
 Rules:
 
+- The default Qwen decision source is a compact DeepSeek secretary packet when `DEEPSEEK_API_KEY` is configured and `TASKNODE_BOARD_MANAGER_SECRETARY_ENABLED` is not `false`.
+- `--no-secretary` on `scripts/board-manager-model-exec.mjs` forces the old full-source packet for debugging and comparison.
+- Secretary packet reuse is keyed by a semantic source digest. Generated timestamps, trigger labels, freshness age counters, source-text generated lines, and no-op run churn do not force a new DeepSeek call. Material board state changes still do.
 - Each run includes compact Board Manager micro summaries rather than full prior source packets.
 - The source packet is compacted before the model sees it. Project rows, task request rows, task projection rows, Network Task content, eligible user profiles, and recent Board Manager runs are bounded and summarized so stale history cannot blow up the decision context.
 - Eligible user context comes from `network_task_profiles`, generated asynchronously by the DeepSeek Flash ZDR memory route, rather than raw context documents or chat history.
@@ -248,6 +253,7 @@ Implemented v0 pieces:
 - `server/repositories/board-manager.js` builds the current Hive source packet and validates the returned action.
 - `server/repositories/board-manager.js` formats a Hive Mind Agent feed from `board_manager_runs` and `board_manager_action_results`.
 - `server/board-manager-decision-provider.js` calls OpenRouter Chat Completions with `qwen/qwen3.7-max`, `reasoning.effort = high`, structured JSON output, `provider.data_collection = "deny"`, and `usage.include = true` by default.
+- `server/board-manager-secretary-packets.js` calls direct DeepSeek API `deepseek-v4-pro`, normalizes the JSON Board Triage packet, persists it, and reuses it when the semantic source digest has not changed.
 - The same provider boundary can call OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false` when `TASKNODE_BOARD_MANAGER_PROVIDER=openai`.
 - `schemas/board-manager-action.schema.json` constrains the model output, including action-specific `project`, `contributor`, `network_task`, `message_text`, and `archive_reason` payload fields.
 - `scripts/board-manager-model-exec.mjs` runs one Board Manager decision through the configured provider and records the selected action.
@@ -261,9 +267,11 @@ Implemented v0 pieces:
 - `server/db/migrations/039_network_task_allocations.sql` adds Network Task allocation and generation job tables.
 - `server/db/migrations/041_board_manager_run_micro_summaries.sql` adds the durable per-run micro summary artifact.
 - `server/db/migrations/042_board_manager_scheduler.sql` adds the durable scheduler scope/job tables.
+- `server/db/migrations/043_board_manager_secretary_packets.sql` adds reusable DeepSeek secretary packets for Board Manager decisions.
 - `npm run board-manager:model -- --trigger <name>` runs one dry-run Board Manager decision.
 - `npm run board-manager:model -- --trigger <name> --execute` runs one Board Manager decision and executes supported action hooks.
 - `npm run board-manager:model -- --packet-only` prints the source packet without calling the model provider.
+- `npm run board-manager:model -- --trigger <name> --no-secretary` runs the old full-source decision path.
 - `npm run board-manager:loop -- --execute` runs the continuous local Board Manager loop for development.
 - `npm run board-manager:worker -- --execute` runs the durable job-driven Board Manager worker.
 - `npm run board-manager:ops -- status` shows the scope, lease, and recent jobs.

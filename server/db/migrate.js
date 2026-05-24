@@ -49,6 +49,7 @@ const migrations = [
   "040_network_task_idempotency_and_status.sql",
   "041_board_manager_run_micro_summaries.sql",
   "042_board_manager_scheduler.sql",
+  "043_board_manager_secretary_packets.sql",
 ];
 
 let migrated = false;
