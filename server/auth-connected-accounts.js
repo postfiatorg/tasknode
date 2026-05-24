@@ -701,10 +701,25 @@ async function completeTelegramCallback(query = {}, requestMeta = {}) {
   }
 }
 
+function invalidTelegramAuthorizeStateResponse() {
+  return {
+    status: 400,
+    body: telegramAuthorizeErrorHtml({
+      title: "Telegram Sign In Expired",
+      message: "Telegram login state is invalid or expired.",
+      actionRequired: "Start Telegram sign in again from Task Node Settings or the login dialog.",
+    }),
+  };
+}
+
 export function authTelegramAuthorize(query = {}, requestMeta = {}) {
   const stateId = readScalar(query?.state);
+  const callbackCookieState = String(requestMeta.oauthState || "").trim();
   if (!/^[A-Za-z0-9._~-]{8,200}$/.test(stateId)) {
     return { status: 400, body: "Invalid Telegram auth state." };
+  }
+  if (!callbackCookieState || stateId !== callbackCookieState || !consumeOAuthState({ provider: "telegram", stateId, peek: true })) {
+    return invalidTelegramAuthorizeStateResponse();
   }
   const botUsername = telegramBotUsername();
   if (!botUsername || !process.env.TELEGRAM_AUTH_BOT_TOKEN) {

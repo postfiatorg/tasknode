@@ -107,6 +107,7 @@ The deterministic fixture covers these states:
 | Telegram invalid signature | `telegram_auth_signature_invalid`, no session |
 | Telegram expired payload | `telegram_auth_expired`, no session |
 | Telegram widget domain mismatch | `telegram_widget_domain_mismatch`, no widget rendered |
+| Telegram authorize stale state | HTML error page, no widget rendered |
 | OAuth stale state | `oauth_state_invalid`, no session |
 | Discord valid OAuth callback | session issued or linked |
 | Logout | session destroyed |

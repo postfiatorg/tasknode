@@ -28,6 +28,7 @@ const {
   authEmailVerify,
   authProviders,
   authStart,
+  authTelegramAuthorize,
 } = product;
 const { destroySession, getSession } = runtime;
 
@@ -139,6 +140,12 @@ record("email.success", {
 const telegramStart = authStart("telegram", { origin, redirectPath: "/settings", session: null });
 const telegramState = stateFromStart(telegramStart);
 assertOk(telegramStart.body.redirectUrl.includes("/api/auth/telegram/authorize"), "telegram start should use authorize page");
+const telegramAuthorize = authTelegramAuthorize({ state: telegramState }, { origin, oauthState: telegramState });
+assert.equal(telegramAuthorize.status, 200);
+assertOk(String(telegramAuthorize.body).includes("data-telegram-login=\"TaskNodeFixtureBot\""), "telegram authorize should render configured bot username");
+const telegramAuthorizeStale = authTelegramAuthorize({ state: telegramState }, { origin, oauthState: "different-state" });
+assert.equal(telegramAuthorizeStale.status, 400);
+assertOk(String(telegramAuthorizeStale.body).includes("Telegram Sign In Expired"), "telegram authorize should reject stale oauth cookie");
 const telegramPayload = signedTelegramPayload({
   id: "987654321",
   first_name: "Telegram",

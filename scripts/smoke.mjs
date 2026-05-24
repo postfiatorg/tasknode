@@ -725,7 +725,7 @@ await check("/api/auth/providers", (response, text) => {
   if (!response.ok) return false;
   const body = JSON.parse(text);
   const nonEmailProviders = body.providers.filter((provider) => provider.id !== "email");
-  const disabledProviderIds = new Set(["telegram", "discord", "x"]);
+  const disabledWhenConfiguredProviderIds = new Set(["x"]);
   return (
     Array.isArray(body.providers) &&
     body.providers.some((provider) => provider.id === "telegram") &&
@@ -733,16 +733,30 @@ await check("/api/auth/providers", (response, text) => {
     body.providers.some((provider) => provider.id === "email" && provider.startPath === "/api/auth/email/start" && provider.verifyPath === "/api/auth/email/verify") &&
     nonEmailProviders.every((provider) => provider.startPath && provider.callbackPath) &&
     nonEmailProviders
-      .filter((provider) => disabledProviderIds.has(provider.id))
+      .filter((provider) => disabledWhenConfiguredProviderIds.has(provider.id))
       .every((provider) => provider.enabled === false)
   );
 });
 
 await check("/api/auth/start/telegram", (response, text) => {
   const body = JSON.parse(text);
+  if (response.ok) {
+    return (
+      body.ok === true &&
+      body.provider === "telegram" &&
+      body.redirectUrl?.includes("/api/auth/telegram/authorize") &&
+      body.redirectUri?.includes("/api/auth/callback/telegram")
+    );
+  }
   return (
     [409, 503].includes(response.status) &&
-    ["auth_provider_not_configured", "auth_provider_disabled"].includes(body.error)
+    [
+      "auth_provider_not_configured",
+      "auth_provider_disabled",
+      "telegram_widget_domain_missing",
+      "telegram_widget_domain_mismatch",
+      "auth_redirect_origin_missing",
+    ].includes(body.error)
   );
 });
 
@@ -769,7 +783,8 @@ await check("/api/auth/callback/github", (response, text) => {
 
 await check("/api/auth/callback/telegram", (response, text) => {
   const body = JSON.parse(text);
-  return response.status === 501 && body.error === "auth_callback_not_implemented";
+  if (response.status === 409 && body.error === "auth_provider_not_configured") return true;
+  return response.status === 400 && body.error === "oauth_state_invalid";
 });
 
 await check("/api/readiness", (response, text) => {
