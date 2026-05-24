@@ -3,7 +3,6 @@ import {
   consumeOAuthState,
   createAccountSession,
   createOAuthState,
-  getOAuthState,
   getOrCreateProviderAccount,
   linkProviderToAccount,
   recordAuthEvent,
@@ -719,7 +718,7 @@ export function authTelegramAuthorize(query = {}, requestMeta = {}) {
   if (!/^[A-Za-z0-9._~-]{8,200}$/.test(stateId)) {
     return { status: 400, body: "Invalid Telegram auth state." };
   }
-  if (!callbackCookieState || stateId !== callbackCookieState || !getOAuthState({ provider: "telegram", stateId })) {
+  if (!callbackCookieState || stateId !== callbackCookieState || !consumeOAuthState({ provider: "telegram", stateId, peek: true })) {
     return invalidTelegramAuthorizeStateResponse();
   }
   const botUsername = telegramBotUsername();

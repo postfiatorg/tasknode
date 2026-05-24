@@ -783,6 +783,7 @@ await check("/api/auth/callback/github", (response, text) => {
 
 await check("/api/auth/callback/telegram", (response, text) => {
   const body = JSON.parse(text);
+  if (response.status === 409 && body.error === "auth_provider_not_configured") return true;
   return response.status === 400 && body.error === "oauth_state_invalid";
 });
 

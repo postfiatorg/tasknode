@@ -37,6 +37,7 @@ import { chatConversationExistsForAccount } from "./repositories/chat-conversati
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
+import { oauthStateCookieName, responseHeadersForAuthResult } from "./auth-oauth-http.js";
 import { telegramAuthHeaders } from "./auth-connected-accounts.js";
 import { handleTaskReadRoute } from "./task-routes.js";
 import { contextEditProposalAction } from "./context-edit-actions.js";
@@ -273,20 +274,6 @@ function expiredSessionCookie(req) {
   return `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
 }
 
-function oauthStateCookieName(provider) {
-  return `tasknode_oauth_state_${String(provider || "").replace(/[^a-z0-9_-]/gi, "_").toLowerCase()}`;
-}
-
-function oauthStateCookie(req, provider, value, maxAgeSeconds = 600) {
-  const secure = secureCookie(req) ? "; Secure" : "";
-  return `${oauthStateCookieName(provider)}=${encodeURIComponent(value)}; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=${maxAgeSeconds}${secure}`;
-}
-
-function expiredOAuthStateCookie(req, provider) {
-  const secure = secureCookie(req) ? "; Secure" : "";
-  return `${oauthStateCookieName(provider)}=; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=0${secure}`;
-}
-
 function requestOrigin(req) {
   const forwardedHost = req.headers["x-forwarded-host"];
   const host = forwardedHost || req.headers.host;
@@ -341,29 +328,6 @@ function assertStartupSecurity() {
       "refusing_public_startup_with_ephemeral_runtime_store: configure durable auth/account storage and TASKNODE_RUNTIME_STORE_DURABLE=true, or set an explicit reviewed override"
     );
   }
-}
-
-function responseHeadersForAuthResult(req, result) {
-  const headers = {};
-  const cookies = [];
-
-  if (result.sessionId) cookies.push(sessionCookie(req, result.sessionId));
-  if (result.oauthState?.provider && result.oauthState?.value) {
-    cookies.push(oauthStateCookie(
-      req,
-      result.oauthState.provider,
-      result.oauthState.value,
-      result.oauthState.maxAgeSeconds || 600
-    ));
-  }
-  if (result.clearOAuthState?.provider) {
-    cookies.push(expiredOAuthStateCookie(req, result.clearOAuthState.provider));
-  }
-  if (cookies.length === 1) headers["set-cookie"] = cookies[0];
-  if (cookies.length > 1) headers["set-cookie"] = cookies;
-  if (result.redirectLocation) headers.location = result.redirectLocation;
-
-  return headers;
 }
 
 function isInsideDist(filePath) {
