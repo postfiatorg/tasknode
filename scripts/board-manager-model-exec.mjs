@@ -10,6 +10,7 @@ import {
 import {
   boardManagerDecisionInput,
   boardManagerModel,
+  boardManagerProvider,
   boardManagerReasoningEffort,
   fetchBoardManagerDecision,
 } from "../server/board-manager-decision-provider.js";
@@ -34,10 +35,11 @@ function usage() {
     "Options:",
     "  --trigger <name>       Run trigger label. Default: manual_model_exec",
     "  --scope <scope>        Manager scope. Default: global_hive",
-    "  --model <model>        OpenAI model. Default: gpt-5.5-pro",
-    "  --reasoning <effort>   OpenAI reasoning effort. Default: high",
-    "  --packet-only          Build and print the source packet without calling OpenAI.",
-    "  --prompt-only          Build and print the prompt packet without calling OpenAI.",
+    "  --provider <provider>  Decision provider: openrouter or openai. Default: openrouter",
+    "  --model <model>        Provider model. Default: qwen/qwen3.7-max for OpenRouter, gpt-5.5-pro for OpenAI",
+    "  --reasoning <effort>   Provider reasoning effort. Default: high",
+    "  --packet-only          Build and print the source packet without calling the model provider.",
+    "  --prompt-only          Build and print the prompt packet without calling the model provider.",
     "  --execute              Execute supported action hooks after the model chooses an action.",
     "  --no-record           Do not write board_manager_runs.",
     "  --no-lease            Do not claim board_manager_leases.",
@@ -59,7 +61,8 @@ async function main() {
 
   const trigger = argValue("--trigger", "manual_model_exec");
   const scope = argValue("--scope", "global_hive");
-  const model = argValue("--model", boardManagerModel());
+  const provider = argValue("--provider", boardManagerProvider()).toLowerCase() === "openai" ? "openai" : "openrouter";
+  const model = argValue("--model", boardManagerModel(provider));
   const reasoningEffort = argValue("--reasoning", boardManagerReasoningEffort());
   const packetOnly = hasArg("--packet-only");
   const promptOnly = hasArg("--prompt-only");
@@ -89,7 +92,7 @@ async function main() {
       lease = await claimBoardManagerLease({
         scope,
         ttlSeconds: Number(process.env.TASKNODE_BOARD_MANAGER_LEASE_SECONDS || 900),
-        metadata: { trigger, model, reasoningEffort, dry_run: !execute, engine: "openai_responses" },
+        metadata: { trigger, provider, model, reasoningEffort, dry_run: !execute, engine: provider === "openai" ? "openai_responses" : "openrouter_chat_completions" },
       });
       if (!lease.ok) {
         throw new Error(`board_manager_lease_unavailable:${JSON.stringify(lease.active || {})}`);
@@ -105,12 +108,12 @@ async function main() {
         dryRun: !execute,
         model,
         reasoningEffort,
-        sessionMode: "stateless_openai_responses",
+        sessionMode: provider === "openai" ? "stateless_openai_responses" : "stateless_openrouter_chat",
       });
       run = started.run;
     }
 
-    const result = await fetchBoardManagerDecision({ sourcePacket, model, reasoningEffort });
+    const result = await fetchBoardManagerDecision({ sourcePacket, provider, model, reasoningEffort });
     if (record && run?.id) {
       await completeBoardManagerRun({
         runId: run.id,
@@ -131,7 +134,7 @@ async function main() {
       ok: true,
       dryRun: !execute,
       runId: run?.id || "",
-      engine: "openai_responses",
+      engine: provider === "openai" ? "openai_responses" : "openrouter_chat_completions",
       provider: result.provider,
       model: result.model,
       reasoningEffort,

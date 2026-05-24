@@ -62,21 +62,21 @@ Jobs retrieval uses OpenAI `/v1/embeddings` through `server/embedding-provider.j
 
 Hive planning workers are not user chat modes and are not billed to the user's chat balance. They are async internal coordination jobs.
 
-The target architecture is Board Manager centered. The Board Manager is a leased OpenAI Responses decision worker that chooses one scoped Hive action per run. Hive Secretary, Hive Active Projects, Product Documents, contributor assignment, Network Task assignment, and evidence review should become action handlers behind that manager instead of independent overactive cron loops.
+The target architecture is Board Manager centered. The Board Manager is a leased decision worker that chooses one scoped Hive action per run. It now defaults to OpenRouter `qwen/qwen3.7-max` through Chat Completions because that model supports the long source packet and structured JSON output at lower cost than the prior OpenAI Pro route. Hive Secretary, Hive Active Projects, Product Documents, contributor assignment, Network Task assignment, and evidence review should become action handlers behind that manager instead of independent overactive cron loops.
 
 | Worker | Provider | API path | Default model | Reasoning | Output | Privacy policy |
 | --- | --- | --- | --- | --- | --- | --- |
-| Board Manager | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | One action from registry | `store=false` |
+| Board Manager | OpenRouter | `/api/v1/chat/completions` | `qwen/qwen3.7-max` | `high` | One action from registry | `data_collection="deny"`, structured output |
 | Hive Secretary | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON report | `store=false` |
 | Hive Active Projects | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON project set | `store=false` |
 
-The model ID comes from OpenAI's GPT-5.5 pro model page: `gpt-5.5-pro`. OpenAI's reasoning guidance positions GPT-5.5 pro as the higher-intelligence option for harder asynchronous reasoning work and recommends the Responses API for reasoning models. Task Node therefore uses `gpt-5.5-pro` for project determination, not OpenRouter DeepSeek.
+The Board Manager model default comes from OpenRouter's `qwen/qwen3.7-max` route. The model page/API report a 1M context window, structured-output support, and pricing of $2.50 per 1M input tokens and $7.50 per 1M output tokens. OpenAI `gpt-5.5-pro` remains available as an explicit override when the operator needs the older higher-cost path: set `TASKNODE_BOARD_MANAGER_PROVIDER=openai` and `TASKNODE_BOARD_MANAGER_MODEL=gpt-5.5-pro`.
 
 Hive Project Product Documents are not a separate provider job. When the Board Manager chooses `refresh_project_document`, the Board Manager decision model writes the document in `payload.project_document`; the action hook validates and persists it to `network_project_product_docs`. This keeps core Hive management inside the Board Manager instead of delegating ordinary project-definition work to another model.
 
 Current Hive Secretary and Active Projects workers still exist, but the planning direction is to stop treating them as the decision loop. The Board Manager owns whether a Secretary refresh, project update, product-doc refresh, research action, user follow-up, task allocation, or evidence review should happen.
 
-The Board Manager harness defaults to dry-run for app mutations. `scripts/board-manager-model-exec.mjs` builds the live Hive source packet, calls OpenAI Responses with `gpt-5.5-pro` and `reasoning.effort="high"` against `schemas/board-manager-action.schema.json`, and records the selected action in `board_manager_runs` when Postgres is enabled. When run with `--execute`, it dispatches supported hooks through `server/board-manager-actions.js`: `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, `refresh_project_document`, `assign_contributor`, and `initiate_network_task`. `message_user` appends an assistant response to the original Hive Input chat conversation and records `board_manager_user_messages` only as delivery audit; it does not bill the user.
+The Board Manager harness defaults to dry-run for app mutations. `scripts/board-manager-model-exec.mjs` builds the live Hive source packet, calls the configured decision provider with `reasoning.effort="high"` against `schemas/board-manager-action.schema.json`, and records the selected action in `board_manager_runs` when Postgres is enabled. The default provider path is OpenRouter Chat Completions with `qwen/qwen3.7-max`, `response_format=json_schema`, `provider.data_collection="deny"`, and `usage.include=true`. When run with `--execute`, it dispatches supported hooks through `server/board-manager-actions.js`: `message_user`, `refresh_hive_secretary`, `create_project`, `archive_project`, `refresh_project_document`, `assign_contributor`, and `initiate_network_task`. `message_user` appends an assistant response to the original Hive Input chat conversation and records `board_manager_user_messages` only as delivery audit; it does not bill the user.
 
 Board Manager source packets consume compact user routing profiles from `network_task_profiles`. Those profiles are generated asynchronously by the memory worker through the DeepSeek Flash ZDR route, so the Board Manager does not need raw user context documents, full chat history, or full memory bundles for each decision.
 
@@ -84,6 +84,7 @@ Environment overrides:
 
 - `TASKNODE_HIVE_SECRETARY_MODEL`
 - `TASKNODE_HIVE_SECRETARY_REASONING_EFFORT`
+- `TASKNODE_BOARD_MANAGER_PROVIDER` (`openrouter` by default, `openai` for the override route)
 - `TASKNODE_BOARD_MANAGER_MODEL`
 - `TASKNODE_BOARD_MANAGER_REASONING_EFFORT`
 - `TASKNODE_HIVE_PROJECT_MODEL`
@@ -152,6 +153,8 @@ flowchart LR
 - [OpenRouter provider routing](https://openrouter.ai/docs/guides/routing/provider-selection)
 - [OpenRouter PDF inputs](https://openrouter.ai/docs/guides/overview/multimodal/pdfs)
 - [OpenRouter web search server tool](https://openrouter.ai/docs/guides/features/server-tools/web-search)
+- [OpenRouter Qwen3.7 Max model page](https://openrouter.ai/qwen/qwen3.7-max)
+- [OpenRouter model metadata API](https://openrouter.ai/api/v1/models)
 
 ## Failure Modes
 

@@ -1,6 +1,6 @@
 # Board Manager
 
-Status: v0 OpenAI Responses decision worker implemented with first action hooks and a durable worker architecture
+Status: v0 OpenRouter Qwen decision worker implemented with first action hooks and a durable worker architecture
 
 This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, archive projects, refresh project documents, route tasks, or do nothing.
 
@@ -8,7 +8,7 @@ This plan supersedes the earlier idea that Hive should be driven by a set of ind
 
 The Board Manager manages the Hive page and Hive interactions across the Post Fiat Task Node app.
 
-It is an OpenAI `gpt-5.5-pro` high-reasoning decision worker with a bounded action registry. It is not a chat bot, not a public user, and not a frontend component. It is the system operator for the network board.
+It is a high-reasoning decision worker with a bounded action registry. The default provider is OpenRouter `qwen/qwen3.7-max`; OpenAI `gpt-5.5-pro` is an override route, not the default. It is not a chat bot, not a public user, and not a frontend component. It is the system operator for the network board.
 
 The Board Manager should answer:
 
@@ -73,7 +73,7 @@ Fly deployment target:
 
 - `fly.toml` defines process groups for `app`, `worker`, and `board-manager`;
 - `start:board-manager` sets `TASKNODE_BOARD_MANAGER_ENABLED=true` for the dedicated process;
-- the production image provides OpenAI credentials to the `board-manager` process group;
+- the production image provides the selected Board Manager provider credentials to the `board-manager` process group;
 - run one `board-manager` machine by default with Fly process scaling;
 - allow a second standby machine later, relying on the Postgres lease to prevent duplicate actions;
 - keep provider keys in Fly secrets, not in Postgres;
@@ -112,7 +112,7 @@ Implemented worker loop:
 2. claim one job with an atomic Postgres transaction;
 3. claim the scope lease or defer the job if another manager owns it;
 4. build the source packet;
-5. call OpenAI Responses with the compact source packet;
+5. call the configured Board Manager decision provider with the compact source packet;
 6. validate the selected action against `schemas/board-manager-action.schema.json`;
 7. execute at most one supported action hook;
 8. write `board_manager_runs`, `board_manager_action_results`, and the micro summary;
@@ -228,7 +228,7 @@ The Hive Mind Agent tab is the product-facing audit surface. It should show `do_
 7. Pending: add packet-size reporting by source-packet section before each run.
 8. Partial: add operator scripts for status, enqueue, pause, resume, and ensure-scope. Stale lease recovery should be added before unattended production operation.
 9. Done: update Fly process configuration for `app`, `worker`, and `board-manager`.
-10. Pending: run local Docker with two board-manager workers and confirm lease exclusion against the full OpenAI decision path.
+10. Pending: run local Docker with two board-manager workers and confirm lease exclusion against the full configured-provider decision path.
 11. Pending: deploy to Fly with one `board-manager` process and confirm a manual trigger writes exactly one run.
 12. Pending: enable periodic production cadence only after manual trigger, failover, and idempotency tests pass.
 
@@ -241,28 +241,29 @@ Done means:
 - every action and `do_nothing` decision is auditable in Postgres and visible through the Hive Mind Agent feed;
 - Network Task lifecycle state still comes from PFTL/task projections, not from the Board Manager.
 
-## V0 OpenAI Decision Harness
+## V0 Decision Harness
 
 Implemented v0 pieces:
 
 - `server/repositories/board-manager.js` builds the current Hive source packet and validates the returned action.
 - `server/repositories/board-manager.js` formats a Hive Mind Agent feed from `board_manager_runs` and `board_manager_action_results`.
-- `server/board-manager-decision-provider.js` calls OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false`.
+- `server/board-manager-decision-provider.js` calls OpenRouter Chat Completions with `qwen/qwen3.7-max`, `reasoning.effort = high`, structured JSON output, `provider.data_collection = "deny"`, and `usage.include = true` by default.
+- The same provider boundary can call OpenAI Responses with `gpt-5.5-pro`, `reasoning.effort = high`, structured JSON output, and `store = false` when `TASKNODE_BOARD_MANAGER_PROVIDER=openai`.
 - `schemas/board-manager-action.schema.json` constrains the model output, including action-specific `project`, `contributor`, `network_task`, `message_text`, and `archive_reason` payload fields.
-- `scripts/board-manager-model-exec.mjs` runs one OpenAI Board Manager decision and records the selected action.
+- `scripts/board-manager-model-exec.mjs` runs one Board Manager decision through the configured provider and records the selected action.
 - `scripts/board-manager-codex-exec.mjs` remains available as a manual repo-aware operator path, not the production Board Manager default.
 - `server/board-manager-actions.js` executes the first supported actions, including project-document refresh.
 - `server/db/migrations/033_board_manager_v0.sql` adds lease, run, and action-result tables.
 - `server/db/migrations/034_lock_operator_archived_hive_projects.sql` locks operator-archived Hive projects so the project planner cannot silently reactivate rejected cards.
 - `server/db/migrations/035_board_manager_action_hooks.sql` adds user-visible Board Manager messages.
-- `server/db/migrations/036_board_manager_persistent_sessions.sql` remains for historical Codex operator sessions; the default OpenAI decision path is stateless and uses run summaries for continuity.
+- `server/db/migrations/036_board_manager_persistent_sessions.sql` remains for historical Codex operator sessions; the default provider decision path is stateless and uses run summaries for continuity.
 - `server/db/migrations/038_network_project_product_docs.sql` adds current/superseded product documents for Hive projects.
 - `server/db/migrations/039_network_task_allocations.sql` adds Network Task allocation and generation job tables.
 - `server/db/migrations/041_board_manager_run_micro_summaries.sql` adds the durable per-run micro summary artifact.
 - `server/db/migrations/042_board_manager_scheduler.sql` adds the durable scheduler scope/job tables.
 - `npm run board-manager:model -- --trigger <name>` runs one dry-run Board Manager decision.
 - `npm run board-manager:model -- --trigger <name> --execute` runs one Board Manager decision and executes supported action hooks.
-- `npm run board-manager:model -- --packet-only` prints the source packet without calling OpenAI.
+- `npm run board-manager:model -- --packet-only` prints the source packet without calling the model provider.
 - `npm run board-manager:loop -- --execute` runs the continuous local Board Manager loop for development.
 - `npm run board-manager:worker -- --execute` runs the durable job-driven Board Manager worker.
 - `npm run board-manager:ops -- status` shows the scope, lease, and recent jobs.
@@ -486,7 +487,7 @@ The product document should answer:
 
 This action owns the agent-managed Project Status blob shown inside a Hive project About section. The static project description stays in `network_projects.about`; the changing execution briefing belongs in a versioned product document row so the agent can update status without overwriting project identity. The UI renders this document collapsed by default, with the summary visible and the detailed status, key points, blockers, next actions, and model metadata behind an expand control.
 
-This is a single-agent path for core Hive work. The Board Manager decision model writes the project document inside `payload.project_document` when it chooses `refresh_project_document`. The action hook validates and persists that document. It does not call DeepSeek, OpenRouter, or any other secondary writer model.
+This is a single-agent path for core Hive work. The Board Manager decision model writes the project document inside `payload.project_document` when it chooses `refresh_project_document`. The action hook validates and persists that document. It does not call a second writer model after the Board Manager chooses the action.
 
 Current implementation:
 

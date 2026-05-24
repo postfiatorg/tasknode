@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 process.env.TASKNODE_DATABASE_DISABLED = "true";
 process.env.TASKNODE_POSTGRES_DISABLED = "true";
 process.env.OPENAI_API_KEY = "board-manager-smoke-openai-key";
+process.env.OPENROUTER_API_KEY = "board-manager-smoke-openrouter-key";
+delete process.env.TASKNODE_BOARD_MANAGER_PROVIDER;
 delete process.env.TASKNODE_BOARD_MANAGER_MODEL;
 delete process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT;
 
@@ -14,7 +16,11 @@ const {
   normalizeBoardManagerDecision,
 } = await import("../server/repositories/board-manager.js");
 const { buildBoardManagerActionPressure } = await import("../server/repositories/board-manager-health.js");
-const { fetchBoardManagerDecision } = await import("../server/board-manager-decision-provider.js");
+const {
+  boardManagerModel,
+  boardManagerProvider,
+  fetchBoardManagerDecision,
+} = await import("../server/board-manager-decision-provider.js");
 const { loadPrompt } = await import("../server/prompt-registry.js");
 
 assert.ok(boardManagerActions.includes("do_nothing"));
@@ -153,78 +159,128 @@ assert.match(prompt, /BOARD MANAGER SOURCE PACKET/);
 assert.match(prompt, /Do not mutate database state/);
 assert.match(prompt, /pf\.hive\.board_manager\.source\.v0/);
 
-let capturedDecisionBody = null;
-const directDecision = await fetchBoardManagerDecision({
+const smokeDecisionOutput = {
+  action: "message_user",
+  target_type: "account",
+  target_id: "acct_candidate",
+  reason: "The board is stalled and no contributor capacity is available, so ask for the smallest decision input.",
+  confidence: 0.74,
+  payload: {
+    summary: "Ask the contributor for the smallest useful project input.",
+    next_steps: ["Wait for the contributor response before routing another task."],
+    message_text: "What is the smallest concrete decision input that would unblock this project?",
+    archive_reason: "",
+    project: {
+      id: "",
+      type: "",
+      title: "",
+      summary: "",
+      objective: "",
+      about: "",
+      priority: 0,
+      phase_label: "",
+      phase_current: 0,
+      phase_total: 0,
+      pft_routed: 0,
+      task_count: 0,
+      contributor_count: 0,
+    },
+    project_document: {
+      title: "",
+      summary: "",
+      project_status: "",
+      key_points: [],
+      blocked_or_unclear: [],
+      next_actions: [],
+    },
+    contributor: {
+      project_id: "",
+      account_id: "",
+      wallet_address: "",
+      codename: "",
+      archetype: "",
+      role_label: "",
+      status: "",
+      allotted: false,
+      cap: 0,
+      load: 0,
+      sort_order: 0,
+    },
+    network_task: {
+      task_class: "",
+      candidate_account_id: "",
+      candidate_wallet_address: "",
+      project_need_summary: "",
+      routing_reason: "",
+      cadence_reason: "",
+      reward_min_pft: 10000,
+      reward_max_pft: 50000,
+      accept_window_hours: 24,
+      allow_over_capacity: false,
+    },
+  },
+};
+
+assert.equal(boardManagerProvider(), "openrouter");
+assert.equal(boardManagerModel(), "qwen/qwen3.7-max");
+
+let capturedOpenRouterUrl = "";
+let capturedOpenRouterBody = null;
+const openRouterDecision = await fetchBoardManagerDecision({
   sourcePacket: packet,
+  fetchImpl: async (url, options = {}) => {
+    capturedOpenRouterUrl = url;
+    capturedOpenRouterBody = JSON.parse(options.body);
+    assert.match(options.headers.authorization, /^Bearer /);
+    return {
+      ok: true,
+      async text() {
+        return JSON.stringify({
+          id: "or_board_manager_smoke",
+          model: "qwen/qwen3.7-max",
+          choices: [{ message: { content: JSON.stringify(smokeDecisionOutput) } }],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            reasoning_tokens: 25,
+            cost: 0.000625,
+          },
+        });
+      },
+    };
+  },
+});
+assert.match(capturedOpenRouterUrl, /\/chat\/completions$/);
+assert.equal(capturedOpenRouterBody.model, "qwen/qwen3.7-max");
+assert.equal(capturedOpenRouterBody.reasoning.effort, "high");
+assert.equal(capturedOpenRouterBody.response_format.type, "json_schema");
+assert.equal(capturedOpenRouterBody.response_format.json_schema.name, "board_manager_action");
+assert.ok(capturedOpenRouterBody.response_format.json_schema.schema.properties.payload.properties.project.properties.title);
+assert.equal(capturedOpenRouterBody.provider.data_collection, "deny");
+assert.equal(capturedOpenRouterBody.provider.require_parameters, true);
+assert.equal(capturedOpenRouterBody.usage.include, true);
+assert.equal(capturedOpenRouterBody.metadata.prompt_version, "board_manager_v1");
+assert.equal(openRouterDecision.provider, "openrouter");
+assert.equal(openRouterDecision.model, "qwen/qwen3.7-max");
+assert.equal(openRouterDecision.decision.action, "message_user");
+assert.equal(openRouterDecision.usage.reasoningTokens, 25);
+assert.equal(openRouterDecision.usage.costUsd, 0.000625);
+
+let capturedOpenAiBody = null;
+const openAiDecision = await fetchBoardManagerDecision({
+  sourcePacket: packet,
+  provider: "openai",
+  model: "gpt-5.5-pro",
   fetchImpl: async (_url, options = {}) => {
-    capturedDecisionBody = JSON.parse(options.body);
+    capturedOpenAiBody = JSON.parse(options.body);
     return {
       ok: true,
       async text() {
         return JSON.stringify({
           id: "resp_board_manager_smoke",
           model: "gpt-5.5-pro-2026-04-23",
-          output_text: JSON.stringify({
-            action: "message_user",
-            target_type: "account",
-            target_id: "acct_candidate",
-            reason: "The board is stalled and no contributor capacity is available, so ask for the smallest decision input.",
-            confidence: 0.74,
-            payload: {
-              summary: "Ask the contributor for the smallest useful project input.",
-              next_steps: ["Wait for the contributor response before routing another task."],
-              message_text: "What is the smallest concrete decision input that would unblock this project?",
-              archive_reason: "",
-              project: {
-                id: "",
-                type: "",
-                title: "",
-                summary: "",
-                objective: "",
-                about: "",
-                priority: 0,
-                phase_label: "",
-                phase_current: 0,
-                phase_total: 0,
-                pft_routed: 0,
-                task_count: 0,
-                contributor_count: 0,
-              },
-              project_document: {
-                title: "",
-                summary: "",
-                project_status: "",
-                key_points: [],
-                blocked_or_unclear: [],
-                next_actions: [],
-              },
-              contributor: {
-                project_id: "",
-                account_id: "",
-                wallet_address: "",
-                codename: "",
-                archetype: "",
-                role_label: "",
-                status: "",
-                allotted: false,
-                cap: 0,
-                load: 0,
-                sort_order: 0,
-              },
-              network_task: {
-                task_class: "",
-                candidate_account_id: "",
-                candidate_wallet_address: "",
-                project_need_summary: "",
-                routing_reason: "",
-                cadence_reason: "",
-                reward_min_pft: 10000,
-                reward_max_pft: 50000,
-                accept_window_hours: 24,
-                allow_over_capacity: false,
-              },
-            },
-          }),
+          output_text: JSON.stringify(smokeDecisionOutput),
           usage: {
             input_tokens: 100,
             output_tokens: 50,
@@ -236,17 +292,17 @@ const directDecision = await fetchBoardManagerDecision({
     };
   },
 });
-assert.equal(capturedDecisionBody.model, "gpt-5.5-pro");
-assert.equal(capturedDecisionBody.reasoning.effort, "high");
-assert.equal(capturedDecisionBody.text.format.type, "json_schema");
-assert.equal(capturedDecisionBody.text.format.name, "board_manager_action");
-assert.ok(capturedDecisionBody.text.format.schema.properties.payload.properties.project.properties.title);
-assert.equal(capturedDecisionBody.store, false);
-assert.equal(capturedDecisionBody.metadata.prompt_version, "board_manager_v1");
-assert.equal(directDecision.provider, "openai");
-assert.equal(directDecision.model, "gpt-5.5-pro-2026-04-23");
-assert.equal(directDecision.decision.action, "message_user");
-assert.equal(directDecision.usage.reasoningTokens, 25);
+assert.equal(capturedOpenAiBody.model, "gpt-5.5-pro");
+assert.equal(capturedOpenAiBody.reasoning.effort, "high");
+assert.equal(capturedOpenAiBody.text.format.type, "json_schema");
+assert.equal(capturedOpenAiBody.text.format.name, "board_manager_action");
+assert.ok(capturedOpenAiBody.text.format.schema.properties.payload.properties.project.properties.title);
+assert.equal(capturedOpenAiBody.store, false);
+assert.equal(capturedOpenAiBody.metadata.prompt_version, "board_manager_v1");
+assert.equal(openAiDecision.provider, "openai");
+assert.equal(openAiDecision.model, "gpt-5.5-pro-2026-04-23");
+assert.equal(openAiDecision.decision.action, "message_user");
+assert.equal(openAiDecision.usage.reasoningTokens, 25);
 
 const decision = normalizeBoardManagerDecision({
   action: "refresh_hive_secretary",

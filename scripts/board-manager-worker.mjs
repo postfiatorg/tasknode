@@ -46,13 +46,22 @@ function usage() {
     "  --execute                   Execute supported action hooks. Default is dry-run.",
     "  --poll-ms <ms>              Delay between polls. Default: 15000",
     "  --max-turns <n>             Stop after n worker turns. Default: unlimited",
-    "  --model <model>             OpenAI model. Default: gpt-5.5-pro",
-    "  --reasoning <effort>        OpenAI reasoning effort. Default: high",
+    "  --provider <provider>       Decision provider: openrouter or openai. Default: openrouter",
+    "  --model <model>             Provider model. Default: qwen/qwen3.7-max for OpenRouter, gpt-5.5-pro for OpenAI",
+    "  --reasoning <effort>        Provider reasoning effort. Default: high",
     "  --job-limit <n>             Due scope ticks to enqueue per pass. Default: 5",
     "  --action-delay-ms <ms>      Follow-up delay after mutating action. Default: 5000",
     "  --error-delay-ms <ms>       Retry delay after failed job. Default: 300000",
     "  --force                     Run even when TASKNODE_BOARD_MANAGER_ENABLED is not true.",
   ].join("\n");
+}
+
+function normalizeProvider(value = "openrouter") {
+  return String(value || "").toLowerCase() === "openai" ? "openai" : "openrouter";
+}
+
+function defaultBoardManagerModel(provider = "openrouter") {
+  return provider === "openai" ? "gpt-5.5-pro" : "qwen/qwen3.7-max";
 }
 
 function sleep(ms, signal) {
@@ -86,6 +95,8 @@ async function runBoardManagerDecision({ job }) {
     job.trigger || "board_manager_job",
     "--scope",
     job.scope || config.scope,
+    "--provider",
+    config.provider,
     "--model",
     config.model,
     "--reasoning",
@@ -220,7 +231,8 @@ async function processOneJob({ turn }) {
 const config = {
   scope: argValue("--scope", process.env.TASKNODE_BOARD_MANAGER_SCOPE || "global_hive"),
   managerId: argValue("--manager-id", `board_worker_${randomUUID()}`),
-  model: argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || "gpt-5.5-pro"),
+  provider: normalizeProvider(argValue("--provider", process.env.TASKNODE_BOARD_MANAGER_PROVIDER || "openrouter")),
+  model: "",
   reasoning: argValue("--reasoning", process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT || "high"),
   pollMs: numberArg("--poll-ms", Number(process.env.TASKNODE_BOARD_MANAGER_WORKER_POLL_MS || 15000), { min: 1000 }),
   actionDelayMs: numberArg("--action-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS || 5000), { min: 0 }),
@@ -230,6 +242,7 @@ const config = {
   execute: hasArg("--execute"),
   force: hasArg("--force"),
 };
+config.model = argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || defaultBoardManagerModel(config.provider));
 
 if (hasArg("--help") || hasArg("-h")) {
   console.log(usage());
@@ -262,6 +275,8 @@ try {
     event: "board_manager_worker_started",
     scope: config.scope,
     managerId: config.managerId,
+    provider: config.provider,
+    model: config.model,
     dryRun: !config.execute,
     pollMs: config.pollMs,
     maxTurns: config.maxTurns || "unlimited",

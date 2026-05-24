@@ -32,8 +32,9 @@ function usage() {
     "Options:",
     "  --scope <scope>             Manager scope. Default: global_hive",
     "  --trigger-prefix <name>     Trigger prefix for each tick. Default: board_manager_loop",
-    "  --model <model>             OpenAI model. Default: gpt-5.5-pro",
-    "  --reasoning <effort>        OpenAI reasoning effort. Default: high",
+    "  --provider <provider>       Decision provider: openrouter or openai. Default: openrouter",
+    "  --model <model>             Provider model. Default: qwen/qwen3.7-max for OpenRouter, gpt-5.5-pro for OpenAI",
+    "  --reasoning <effort>        Provider reasoning effort. Default: high",
     "  --idle-delay-ms <ms>        Delay after do_nothing/no board change. Default: 120000",
     "  --action-delay-ms <ms>      Delay after a mutating action. Default: 5000",
     "  --error-delay-ms <ms>       Delay after an error. Default: 120000",
@@ -41,6 +42,14 @@ function usage() {
     "  --dry-run                  Do not execute action hooks.",
     "  --no-lease                  Pass through to one-shot runs.",
   ].join("\n");
+}
+
+function normalizeProvider(value = "openrouter") {
+  return String(value || "").toLowerCase() === "openai" ? "openai" : "openrouter";
+}
+
+function defaultBoardManagerModel(provider = "openrouter") {
+  return provider === "openai" ? "gpt-5.5-pro" : "qwen/qwen3.7-max";
 }
 
 function sleep(ms, signal) {
@@ -75,6 +84,8 @@ async function runOneTurn({ turn, firstTurn }) {
     trigger,
     "--scope",
     config.scope,
+    "--provider",
+    config.provider,
     "--model",
     config.model,
     "--reasoning",
@@ -118,7 +129,8 @@ async function runOneTurn({ turn, firstTurn }) {
 const config = {
   scope: argValue("--scope", "global_hive"),
   triggerPrefix: argValue("--trigger-prefix", process.env.TASKNODE_BOARD_MANAGER_LOOP_TRIGGER_PREFIX || "board_manager_loop"),
-  model: argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || "gpt-5.5-pro"),
+  provider: normalizeProvider(argValue("--provider", process.env.TASKNODE_BOARD_MANAGER_PROVIDER || "openrouter")),
+  model: "",
   reasoning: argValue("--reasoning", process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT || "high"),
   idleDelayMs: numberArg("--idle-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_IDLE_DELAY_MS || 120000), { min: 1000 }),
   actionDelayMs: numberArg("--action-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS || 5000), { min: 0 }),
@@ -127,6 +139,7 @@ const config = {
   dryRun: hasArg("--dry-run"),
   noLease: hasArg("--no-lease"),
 };
+config.model = argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || defaultBoardManagerModel(config.provider));
 
 if (hasArg("--help") || hasArg("-h")) {
   console.log(usage());
@@ -142,6 +155,8 @@ console.log(JSON.stringify({
   event: "board_manager_loop_started",
   scope: config.scope,
   triggerPrefix: config.triggerPrefix,
+  provider: config.provider,
+  model: config.model,
   dryRun: config.dryRun,
   idleDelayMs: config.idleDelayMs,
   actionDelayMs: config.actionDelayMs,
