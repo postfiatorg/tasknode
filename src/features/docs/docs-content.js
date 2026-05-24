@@ -23,6 +23,7 @@ import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.m
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import agentManagedAboutPanels from "../../../docs/wiki/plans/agent-managed-about-panels.md?raw";
 import boardManager from "../../../docs/wiki/plans/board-manager.md?raw";
+import boardManagerDeepseekSecretaryPackets from "../../../docs/wiki/plans/board-manager-deepseek-secretary-packets.md?raw";
 import codeReviewBurndown from "../../../docs/wiki/plans/code-review-burndown.md?raw";
 import contextEditChatMode from "../../../docs/wiki/plans/context-edit-chat-mode.md?raw";
 import dataArchitectureHardeningPlan from "../../../docs/wiki/plans/data-architecture-hardening-plan.md?raw";
@@ -515,6 +516,12 @@ export const DOC_GROUPS = [
         title: "Board Manager",
         summary: "Leased Codex Exec manager, action hooks, project docs, user replies, and network task initiation.",
         markdown: boardManager,
+      },
+      {
+        slug: "board-manager-deepseek-secretary-packets",
+        title: "Board Manager DeepSeek Secretary Packets",
+        summary: "Proposal for DeepSeek V4 Pro secretary packets feeding smaller Qwen Board Manager decisions.",
+        markdown: boardManagerDeepseekSecretaryPackets,
       },
       {
         slug: "code-review-burndown",
