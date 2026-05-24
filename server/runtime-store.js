@@ -996,13 +996,20 @@ export function createOAuthState({
   return stateRow;
 }
 
-export function consumeOAuthState({ provider, stateId }) {
+export function getOAuthState({ provider, stateId }) {
   pruneExpiredOAuthStates();
 
   const row = state.oauthStates[String(stateId || "")];
   if (!row || row.provider !== String(provider || "").trim().toLowerCase()) {
     return null;
   }
+
+  return row;
+}
+
+export function consumeOAuthState({ provider, stateId }) {
+  const row = getOAuthState({ provider, stateId });
+  if (!row) return null;
 
   delete state.oauthStates[row.id];
   saveState();

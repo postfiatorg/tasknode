@@ -488,7 +488,10 @@ async function routeApi(req, url, res) {
       return true;
     }
 
-    const result = authTelegramAuthorize(Object.fromEntries(url.searchParams.entries()), { origin: requestOrigin(req) });
+    const result = authTelegramAuthorize(Object.fromEntries(url.searchParams.entries()), {
+      origin: requestOrigin(req),
+      oauthState: cookieValue(req, oauthStateCookieName("telegram")),
+    });
     res.writeHead(result.status, telegramAuthHeaders());
     res.end(result.body);
     return true;
