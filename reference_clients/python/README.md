@@ -70,6 +70,20 @@ cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
 python3 -m unittest discover -s tests
 ```
 
+Run the minimal deterministic Network Task lifecycle fixture:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial
+PYTHONPATH=reference_clients/python \
+python3 -m tasknode_pftl.scenarios.network_task_replay_fixture
+```
+
+This local fixture uses committed JSON artifacts under
+`tasknode_pftl/fixtures/network_task_lifecycle_replay/` to validate a canonical
+Network Task path: offered, accepted, submitted, reviewed, and rewarded. It is
+the reusable lightweight acceptance check for future lifecycle transition
+changes.
+
 Run the live lifecycle:
 
 ```bash

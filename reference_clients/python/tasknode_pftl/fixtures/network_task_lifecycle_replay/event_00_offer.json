@@ -1,0 +1,45 @@
+{
+  "stage": "offered",
+  "payload": {
+    "schema": "pf.task.offer.v1",
+    "event_id": "evt_net_replay_offer_0001",
+    "task_id": "task_net_replay_000000000000000000000001",
+    "request_id": "req_net_replay_000000000000000000000001",
+    "task_kind": "network",
+    "title": "Build deterministic network task replay fixture",
+    "description": "Create one minimal replayable fixture that proves a Network Task moves deterministically from offer through review outcome.",
+    "steps": [
+      "Define the canonical lifecycle sequence.",
+      "Create deterministic JSON artifacts for each state transition.",
+      "Run the verifier and record the final projection."
+    ],
+    "submission_requirement": {
+      "type": "mixed",
+      "text": "Submit the fixture files, replay command, and terminal output showing successful validation."
+    },
+    "reward_offer": {
+      "amount_estimate_pft": "12000",
+      "unit": "PFT"
+    },
+    "generation": {
+      "request_bundle_cid": "cid_request_bundle_network_fixture_001",
+      "provider": "fixture",
+      "model": "deterministic"
+    },
+    "network_project": {
+      "project_id": "task_node",
+      "allocation_id": "netalloc_replay_fixture_001",
+      "task_class": "network"
+    },
+    "created_at": "2026-05-24T00:00:00Z"
+  },
+  "pointer": {
+    "kind": "TASK",
+    "cid": "cid_network_lifecycle_offer_001",
+    "task_id": "task_net_replay_000000000000000000000001",
+    "request_id": "req_net_replay_000000000000000000000001",
+    "tx_hash": "TX_NET_REPLAY_OFFER_0001",
+    "ledger_index": 5100001,
+    "memo_index": 0
+  }
+}
