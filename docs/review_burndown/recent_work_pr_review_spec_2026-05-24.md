@@ -86,6 +86,68 @@ Then run the PR-specific checks listed below. If a rebase conflicts, stop and
 report the exact conflicted files. Do not resolve by deleting other agents'
 work.
 
+## Merge Protocol
+
+The review author does not merge their own PR. A separate reviewer or the
+integration owner merges after re-review.
+
+Before requesting merge, the review author must provide:
+
+- PR URL and branch name.
+- Exact commit SHA reviewed.
+- Files changed.
+- Findings by severity.
+- Fixes included.
+- Commands run and whether they passed.
+- Any skipped checks and why they were skipped.
+- Manual app evidence when UI, auth, Docker/Fly, wallet, or task flows changed.
+- Residual risks and a clear merge recommendation.
+
+The integration reviewer must re-run the checks that matter for that PR. At
+minimum:
+
+```bash
+git fetch origin main
+git status --short --branch
+gh pr view <number> --json mergeStateStatus,isDraft,headRefName,baseRefName
+git -C /home/pfrpc/repos/worktrees/tasknodeofficial/<worktree> diff --check origin/main...HEAD
+```
+
+Also run the PR-specific commands in this spec. If the PR edits a script, run
+that script. If the PR edits `package.json`, smoke commands, auth, routes, or
+deployment config, run `npm run quality` and the changed route/smoke script.
+
+Only merge when:
+
+- GitHub reports the PR is clean or locally verified as rebaseable.
+- The main checkout is clean.
+- The review worktree is clean except for intentional committed PR changes.
+- Required checks pass.
+- Findings in the review doc still match current reality.
+- No secret values are staged, logged, or added to docs.
+
+Merge command:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial
+gh pr merge <number> --merge --delete-branch
+git fetch origin main --prune
+git merge --ff-only origin/main
+git status --short --branch
+```
+
+After merge, remove the review worktree:
+
+```bash
+git worktree remove /home/pfrpc/repos/worktrees/tasknodeofficial/<worktree>
+git worktree prune
+git worktree list --porcelain
+```
+
+If merge fails, stop and report the exact reason. Do not squash, force-push,
+reset, or manually resolve a merge in the integration checkout unless the user
+explicitly asks for that path.
+
 ## Review Cadence
 
 Open and merge one PR at a time in this order unless a P0 blocks deployment:

@@ -31,6 +31,12 @@ Review work must happen in separate worktrees under
 checkout should remain clean except when checkpointing or merging reviewed
 work.
 
+Merging is a separate step from authoring the review. The review author should
+push the branch and provide checks/evidence; a separate reviewer or integration
+owner re-runs the relevant checks, merges with a GitHub merge commit, fast-
+forwards local `main`, and removes the review worktree. If the PR conflicts or
+checks fail, do not merge it.
+
 | Order | Proposed PR | Branch | Spec Section | Status |
 | --- | --- | --- | --- | --- |
 | 1 | Auth and connected accounts | `review/01-auth-connected-accounts` | `recent_work_pr_review_spec_2026-05-24.md#pr-01-auth-and-connected-accounts` | `review_ready` |

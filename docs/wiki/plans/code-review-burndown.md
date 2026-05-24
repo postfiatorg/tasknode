@@ -59,6 +59,20 @@ review agent works.
 - Do not print secrets. Redact Telegram tokens, wallet seeds, provider keys, and
   database URLs in all evidence.
 
+## Merge Rules
+
+- Review authors do not merge their own PRs. A separate reviewer or integration
+  owner merges after re-review.
+- Before merge, re-run the commands that matter for the PR. If a PR edits a
+  script, run that script. If it edits auth, routes, package scripts, smoke
+  checks, or deployment config, run `npm run quality`.
+- Do not merge while `/home/pfrpc/repos/tasknodeofficial` is dirty.
+- Use GitHub merge commits for review PRs unless explicitly told otherwise.
+- After merging, fast-forward local `main` to `origin/main`, then remove the
+  review worktree and prune stale worktree metadata.
+- If a merge conflicts, stop and report exact files. Do not resolve conflicts by
+  deleting other agents' work.
+
 ## Legacy App-Doc Queue
 
 The original doc-to-code queue remains useful after the current PR series. It
