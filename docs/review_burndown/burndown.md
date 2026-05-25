@@ -1,6 +1,6 @@
 # Code Review Burndown
 
-Updated: 2026-05-24
+Updated: 2026-05-25
 
 This is the queue for reviewing app-visible Help docs against implementation.
 Every row links one visible doc page to a review brief. `Code review complete`
@@ -43,7 +43,7 @@ checks fail, do not merge it.
 | 2 | Deploy / Docker / Fly data | `review/02-deploy-docker-fly-data` | `recent_work_pr_review_spec_2026-05-24.md#pr-02-deployment-dockerfly-data-bridge-and-config-safety` | `review_ready` |
 | 3 | Board Manager worker and actions | `review/03-board-manager-worker` | `recent_work_pr_review_spec_2026-05-24.md#pr-03-board-manager-worker-leases-actions-and-audit` | `review_ready` |
 | 4 | Hive surface and routing | `review/04-hive-surface-routing` | `recent_work_pr_review_spec_2026-05-24.md#pr-04-hive-surface-hive-chat-context-projects-and-routing-feed` | `review_ready` |
-| 5 | Network task lifecycle and recovery | `review/05-network-task-lifecycle` | `recent_work_pr_review_spec_2026-05-24.md#pr-05-network-task-lifecycle-recovery-reward-follow-up-and-projections` | `review_ready` |
+| 5 | Network task lifecycle and recovery | `review/05-network-task-lifecycle` | `recent_work_pr_review_spec_2026-05-24.md#pr-05-network-task-lifecycle-recovery-reward-follow-up-and-projections` | `review_ready` — findings in `reviews/pr-05-network-task-lifecycle.md` |
 | 6 | Task UX, evidence, copy, unlock | `review/06-task-ux-evidence` | `recent_work_pr_review_spec_2026-05-24.md#pr-06-task-detail-evidence-copy-unlock-and-verification-ux` | `review_ready` |
 | 7 | Profile, daily airdrop, NFT | `review/07-profile-airdrop-nft` | `recent_work_pr_review_spec_2026-05-24.md#pr-07-profile-daily-airdrop-nft-and-public-profile-data` | `review_ready` |
 | 8 | Chat, context, Jobs, memory packets | `review/08-chat-context-memory` | `recent_work_pr_review_spec_2026-05-24.md#pr-08-chat-context-refine-jobs-prompt-pgvector-and-memory-packets` | `review_ready` |
