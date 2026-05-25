@@ -1,6 +1,6 @@
 # Code Review Burndown
 
-Updated: 2026-05-24
+Updated: 2026-05-25
 
 This is the queue for reviewing app-visible Help docs against implementation.
 Every row links one visible doc page to a review brief. `Code review complete`
@@ -40,7 +40,7 @@ checks fail, do not merge it.
 | Order | Proposed PR | Branch | Spec Section | Status |
 | --- | --- | --- | --- | --- |
 | 1 | Auth and connected accounts | `review/01-auth-connected-accounts` | `recent_work_pr_review_spec_2026-05-24.md#pr-01-auth-and-connected-accounts` | `merged` |
-| 2 | Deploy / Docker / Fly data | `review/02-deploy-docker-fly-data` | `recent_work_pr_review_spec_2026-05-24.md#pr-02-deployment-dockerfly-data-bridge-and-config-safety` | `review_ready` |
+| 2 | Deploy / Docker / Fly data | `review/02-deploy-docker-fly-data` | `recent_work_pr_review_spec_2026-05-24.md#pr-02-deployment-dockerfly-data-bridge-and-config-safety` | `merged` |
 | 3 | Board Manager worker and actions | `review/03-board-manager-worker` | `recent_work_pr_review_spec_2026-05-24.md#pr-03-board-manager-worker-leases-actions-and-audit` | `review_ready` |
 | 4 | Hive surface and routing | `review/04-hive-surface-routing` | `recent_work_pr_review_spec_2026-05-24.md#pr-04-hive-surface-hive-chat-context-projects-and-routing-feed` | `review_ready` |
 | 5 | Network task lifecycle and recovery | `review/05-network-task-lifecycle` | `recent_work_pr_review_spec_2026-05-24.md#pr-05-network-task-lifecycle-recovery-reward-follow-up-and-projections` | `review_ready` |
@@ -48,7 +48,9 @@ checks fail, do not merge it.
 | 7 | Profile, daily airdrop, NFT | `review/07-profile-airdrop-nft` | `recent_work_pr_review_spec_2026-05-24.md#pr-07-profile-daily-airdrop-nft-and-public-profile-data` | `review_ready` |
 | 8 | Chat, context, Jobs, memory packets | `review/08-chat-context-memory` | `recent_work_pr_review_spec_2026-05-24.md#pr-08-chat-context-refine-jobs-prompt-pgvector-and-memory-packets` | `review_ready` |
 | 9 | Database and repositories | `review/09-database-repositories` | `recent_work_pr_review_spec_2026-05-24.md#pr-09-database-migrations-ownership-constraints-and-repository-consistency` | `review_ready` |
-| 10 | Docs, prompts, public readiness | `review/10-docs-prompts-public-readiness` | `recent_work_pr_review_spec_2026-05-24.md#pr-10-docs-prompts-public-readiness-and-legacy-cleanup` | `review_ready` |
+| 10 | Docs, prompts, public readiness | `review/10-docs-prompts-public-readiness` | `recent_work_pr_review_spec_2026-05-24.md#pr-10-docs-prompts-public-readiness-and-legacy-cleanup` | `complete` (findings in `reviews/pr-10-docs-prompts-public-readiness.md`) |
+
+PR series progress: rows 1–2 merged on `main`; rows 3–9 have review branches/worktrees with findings recorded separately; row 10 review complete on this branch. Merging review PRs remains a separate integration step.
 
 ## Queue
 
