@@ -252,6 +252,13 @@ function decimalAmount(raw, decimals) {
   return Number(formatUnits(raw, decimals));
 }
 
+function hasSyncedAssetBalance(account, symbol) {
+  return Boolean(
+    account?.observedBalances?.[symbol] ||
+    account?.creditedBalances?.[symbol]
+  );
+}
+
 async function creditDelta({ account, asset, currentRaw, creditedRaw }) {
   const deltaRaw = currentRaw - creditedRaw;
   if (deltaRaw <= 0n) return null;
@@ -328,7 +335,13 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
         pendingBalance = null;
       }
 
+      const firstAssetSync = !hasSyncedAssetBalance(account, asset.symbol);
       const creditedRaw = BigInt(account.creditedBalances?.[asset.symbol]?.raw || "0");
+      if (firstAssetSync && balance.raw > 0n) {
+        creditedBalances[asset.symbol] = formattedBalance(balance);
+        continue;
+      }
+
       let entry = null;
       try {
         entry = await creditDelta({

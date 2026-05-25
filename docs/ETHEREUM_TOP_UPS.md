@@ -108,6 +108,13 @@ USDC and USDT. It stores observed balances and credited balances separately so a
 later sweep does not create a negative credit or double-count a previous
 deposit.
 
+On the first successful sync for a newly assigned address, any balance already
+present on that address is treated as the account baseline, not as a new user
+top-up. Only balance increases after that first account-scoped observation
+create billing ledger credit. This prevents a pre-funded derived address from
+being assigned to a fresh account and credited as if the new account made the
+old deposit.
+
 ## Operator Rules
 
 - Never show an address unless `ETH_DEPOSIT_XPUB` is configured for the intended

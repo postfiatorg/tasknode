@@ -574,6 +574,7 @@ try {
   }
 
   const originalFetch = global.fetch;
+  let usdcRaw = 12_340_000n;
   global.fetch = async (url, options = {}) => {
     const payload = JSON.parse(options.body || "{}");
     if (payload.method === "eth_getBalance") {
@@ -582,21 +583,31 @@ try {
     if (payload.method === "eth_call") {
       const target = String(payload.params?.[0]?.to || "").toLowerCase();
       const usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
-      const result = target === usdc ? "0xbc4b20" : "0x0";
+      const result = target === usdc ? `0x${usdcRaw.toString(16)}` : "0x0";
       return new Response(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result }), { status: 200 });
     }
     return originalFetch(url, options);
   };
+  let firstSyncedTopUp = null;
   let syncedTopUp = null;
   try {
+    firstSyncedTopUp = await usageTopUpSync({}, "POST", { accountId: "acct_eth_smoke" });
+    usdcRaw = 18_340_000n;
     syncedTopUp = await usageTopUpSync({}, "POST", { accountId: "acct_eth_smoke" });
   } finally {
     global.fetch = originalFetch;
   }
   if (
+    firstSyncedTopUp.status !== 200 ||
+    firstSyncedTopUp.body?.creditedEntries?.length !== 0 ||
+    firstSyncedTopUp.body?.usage?.availableCreditUsd !== 0
+  ) {
+    throw new Error(`Ethereum top-up first sync should baseline pre-existing balances: ${JSON.stringify(firstSyncedTopUp)}`);
+  }
+  if (
     syncedTopUp.status !== 200 ||
-    syncedTopUp.body?.creditedEntries?.[0]?.amountUsd !== 12.34 ||
-    syncedTopUp.body?.usage?.availableCreditUsd !== 12.34
+    syncedTopUp.body?.creditedEntries?.[0]?.amountUsd !== 6 ||
+    syncedTopUp.body?.usage?.availableCreditUsd !== 6
   ) {
     throw new Error(`Ethereum top-up sync did not credit USDC delta: ${JSON.stringify(syncedTopUp)}`);
   }

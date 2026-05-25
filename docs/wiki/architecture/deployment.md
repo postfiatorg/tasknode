@@ -124,6 +124,8 @@ ETH_DEPOSIT_START_INDEX
 
 If `/api/usage/top-up/start` returns `usage_top_up_login_required`, top-up is configured but the caller is signed out. If it returns `Ethereum deposit addresses are not configured for this environment`, Fly is missing `ETH_DEPOSIT_XPUB`.
 
+When a deposit address is first assigned, the first successful balance sync establishes the account baseline. Any ETH, USDC, or USDT already sitting on that derived address is recorded as observed/credited balance but does not create a billing ledger credit. Later increases above that baseline are credited. This keeps historical test funding on a derived address from becoming a new account's usage balance.
+
 ## PFTL And IPFS
 
 PFTL is the canonical protocol layer for task requests, task updates, evidence pointers, rewards, context pointers, and wallet-linked activity. Postgres caches the readable projection, but the replayable anchors are CIDs, transaction hashes, wallet addresses, and PFTL memos.
