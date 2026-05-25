@@ -270,6 +270,78 @@ function packetText(packet = {}) {
   ].join("\n").trim();
 }
 
+function buildActionTargetRegistry(sourcePacket = {}) {
+  const accounts = new Map();
+  const hiveContextEntries = [];
+  const contributorCandidates = new Map();
+
+  const addAccount = ({ accountId = "", displayName = "", latestHiveContextEntryId = "", latestSourceConversationId = "" } = {}) => {
+    const normalizedAccount = safeText(accountId, 180);
+    if (!normalizedAccount) return;
+    const existing = accounts.get(normalizedAccount) || {};
+    accounts.set(normalizedAccount, {
+      accountId: normalizedAccount,
+      displayName: safeText(displayName || existing.displayName, 120),
+      latestHiveContextEntryId: safeText(latestHiveContextEntryId || existing.latestHiveContextEntryId, 180),
+      latestSourceConversationId: safeText(latestSourceConversationId || existing.latestSourceConversationId, 180),
+    });
+  };
+
+  const addContributor = ({ accountId = "", displayName = "", walletAddress = "" } = {}) => {
+    const normalizedWallet = safeText(walletAddress, 120);
+    if (!normalizedWallet) return;
+    const normalizedAccount = safeText(accountId, 180);
+    const key = `${normalizedAccount}:${normalizedWallet}`;
+    if (contributorCandidates.has(key)) return;
+    contributorCandidates.set(key, {
+      accountId: normalizedAccount,
+      displayName: safeText(displayName, 120),
+      walletAddress: normalizedWallet,
+    });
+  };
+
+  for (const group of safeArray(sourcePacket?.hiveContext?.groups)) {
+    const groupAccountId = safeText(group.accountId, 180);
+    const groupDisplayName = safeText(group.displayName, 120);
+    addAccount({ accountId: groupAccountId, displayName: groupDisplayName });
+    for (const entry of safeArray(group.entries)) {
+      const accountId = safeText(entry.accountId || groupAccountId, 180);
+      const displayName = safeText(entry.displayName || groupDisplayName, 120);
+      const item = {
+        id: safeText(entry.id, 180),
+        accountId,
+        displayName,
+        sourceConversationId: safeText(entry.sourceConversationId, 180),
+        walletValidated: Boolean(entry.walletValidated),
+        walletAddress: safeText(entry.walletAddress, 120),
+        createdAt: entry.createdAt || null,
+      };
+      if (item.id) hiveContextEntries.push(item);
+      addAccount({
+        accountId,
+        displayName,
+        latestHiveContextEntryId: item.id,
+        latestSourceConversationId: item.sourceConversationId,
+      });
+      if (item.walletValidated) addContributor(item);
+    }
+  }
+
+  for (const candidate of safeArray(sourcePacket?.networkTaskCandidates)) {
+    const accountId = safeText(candidate.accountId || candidate.account_id, 180);
+    const displayName = safeText(candidate.displayName || candidate.display_name, 120);
+    const walletAddress = safeText(candidate.walletAddress || candidate.wallet_address, 120);
+    addAccount({ accountId, displayName });
+    addContributor({ accountId, displayName, walletAddress });
+  }
+
+  return {
+    accounts: [...accounts.values()].slice(0, 48),
+    hiveContextEntries: hiveContextEntries.slice(0, 96),
+    contributorCandidates: [...contributorCandidates.values()].slice(0, 48),
+  };
+}
+
 function deepSeekUsage(body = {}) {
   const usage = body.usage || {};
   return {
@@ -527,6 +599,7 @@ export function buildBoardManagerSecretaryDecisionPacket({
     rawSourcePacketDigest: safeText(sourcePacket.sourcePacketDigest, 120),
     secretarySourceDigest: safeText(secretaryPacket.sourceDigest, 120),
     boardActionPressure: safeObject(sourcePacket.boardActionPressure),
+    actionTargetRegistry: buildActionTargetRegistry(sourcePacket),
     secretaryPacket: {
       id: safeText(secretaryPacket.id, 180),
       packetType: safeText(secretaryPacket.packetType || "board_triage", 80),

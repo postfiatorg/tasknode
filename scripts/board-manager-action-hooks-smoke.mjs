@@ -24,6 +24,9 @@ const {
   getBoardManagerAgentFeed,
   startBoardManagerRun,
 } = await import("../server/repositories/board-manager.js");
+const {
+  buildBoardManagerSecretaryDecisionPacket,
+} = await import("../server/board-manager-secretary-packets.js");
 const { executeBoardManagerDecision } = await import("../server/board-manager-actions.js");
 
 function payload(overrides = {}) {
@@ -164,6 +167,28 @@ async function main() {
       createdAt: new Date().toISOString(),
     }],
   });
+  const compressedActionSourcePacket = buildBoardManagerSecretaryDecisionPacket({
+    sourcePacket,
+    secretaryPacket: {
+      id: "bmsec_board_manager_action_hooks_smoke",
+      sourceDigest: "bmsec_source_digest",
+      packetDigest: "bmsec_packet_digest",
+      packetJson: {
+        motion_state: "needs_attention",
+        requires_attention: true,
+        do_nothing_allowed: false,
+        board_summary: "Compressed packet smoke.",
+        reason_summary: "Verify action targets survive secretary compression.",
+      },
+      packetText: "Compressed packet smoke.",
+      provider: "deepseek",
+      model: "smoke",
+      promptVersion: "board_manager_secretary_v1",
+    },
+  });
+  assert.equal(compressedActionSourcePacket.hiveContext, undefined);
+  assert.ok(compressedActionSourcePacket.actionTargetRegistry.hiveContextEntries.some((entry) => entry.id === smokeHiveEntryId));
+  assert.ok(compressedActionSourcePacket.actionTargetRegistry.contributorCandidates.some((entry) => entry.walletAddress === wallet));
   await query(
     `
       INSERT INTO pftl_sync_wallets (wallet_address, account_id, role, status, priority, last_hot_sync_at, metadata_json)
@@ -349,7 +374,7 @@ async function main() {
 
   await executeBoardManagerDecision({
     runId,
-    sourcePacket,
+    sourcePacket: compressedActionSourcePacket,
     dryRun: false,
     decision: {
       action: "message_user",
@@ -390,7 +415,7 @@ async function main() {
 
   await executeBoardManagerDecision({
     runId,
-    sourcePacket,
+    sourcePacket: compressedActionSourcePacket,
     dryRun: false,
     decision: {
       action: "assign_contributor",
@@ -418,7 +443,7 @@ async function main() {
 
   await executeBoardManagerDecision({
     runId,
-    sourcePacket,
+    sourcePacket: compressedActionSourcePacket,
     dryRun: false,
     decision: {
       action: "message_user",

@@ -58,6 +58,32 @@ const rawSourcePacket = {
       "Task Node needs motion.",
     ].join("\n"),
   },
+  hiveContext: {
+    groups: [
+      {
+        accountId: "acct_1",
+        displayName: "goodalexander",
+        entries: [
+          {
+            id: "hivectx_1",
+            accountId: "acct_1",
+            displayName: "goodalexander",
+            sourceConversationId: "conv_hive_1",
+            walletValidated: true,
+            walletAddress: "rHiveValidatedWallet",
+            createdAt: "2026-05-24T00:30:00.000Z",
+          },
+        ],
+      },
+    ],
+  },
+  networkTaskCandidates: [
+    {
+      accountId: "acct_1",
+      displayName: "goodalexander",
+      walletAddress: "rHiveValidatedWallet",
+    },
+  ],
   hiveProjects: {
     generatedAt: "2026-05-24T01:00:00.000Z",
     projects: {
@@ -270,6 +296,9 @@ assert.equal(decisionPacket.sourceMode, "deepseek_secretary_packet");
 assert.equal(decisionPacket.rawSourcePacketDigest, rawSourcePacket.sourcePacketDigest);
 assert.equal(decisionPacket.secretarySourceDigest, boardManagerSecretarySourceDigest(rawSourcePacket));
 assert.equal(decisionPacket.secretaryPacket.packetJson.motion_state, "needs_attention");
+assert.equal(decisionPacket.actionTargetRegistry.accounts[0]?.accountId, "acct_1");
+assert.equal(decisionPacket.actionTargetRegistry.hiveContextEntries[0]?.sourceConversationId, "conv_hive_1");
+assert.equal(decisionPacket.actionTargetRegistry.contributorCandidates[0]?.walletAddress, "rHiveValidatedWallet");
 assert.ok(decisionPacket.sourcePacketDigest.length >= 40);
 assert.ok(JSON.stringify(decisionPacket).length < JSON.stringify(rawSourcePacket).length + result.packetText.length + 2000);
 

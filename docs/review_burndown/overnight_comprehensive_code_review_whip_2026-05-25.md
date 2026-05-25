@@ -380,6 +380,7 @@ Update this section as you work. Do not leave it blank.
 - `2026-05-25 03:34 UTC` Reviewed task generation/review prompts and worker contracts. Patched task-kind taxonomy drift and server-side URL evidence SSRF boundary; `npm run task-lifecycle-smoke` and quiet lint passed.
 - `2026-05-25 03:34 UTC` Reviewed Board Manager action hooks. Patched `message_user` so account targets must exist in the current source packet; local Docker `board-manager-action-hooks-smoke` passed.
 - `2026-05-25 21:19 UTC` Continued Board Manager action-hook review. Found `assign_contributor` still trusted model-supplied contributor wallets; patched it to require the wallet to appear in the current source packet as a validated Hive Context wallet or eligible Network Task candidate. Local Docker `board-manager-action-hooks-smoke` passed.
+- `2026-05-25 21:48 UTC` Found a second Board Manager compressed-packet boundary bug: the default DeepSeek secretary packet removed the Hive Context/candidate target lists that action hooks need for validation. Patched secretary packets to include a small action-target registry and taught action hooks to validate against it. `board-manager-secretary-packet-smoke` and local Docker `board-manager-action-hooks-smoke` passed.
 - `[time]` Completed ramp:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
@@ -399,7 +400,7 @@ Keep a coverage ledger by directory. Add counts or notes as you complete each se
 - [x] deploy/data bridge sample reviewed and patched: Fly dev bridge push now has a confirmation guard before any proxy/database work.
 - [x] high-risk server task worker duplicate-publish path reviewed and patched.
 - [x] task generation/review prompt and worker sample reviewed and patched: task-kind taxonomy plus URL evidence SSRF guard.
-- [x] Hive/Board Manager action-hook sample reviewed and patched: message recipients and contributor assignments are constrained to current source-packet accounts, validated Hive Context wallets, or eligible Network Task candidates.
+- [x] Hive/Board Manager action-hook sample reviewed and patched: message recipients and contributor assignments are constrained to current source-packet accounts, validated Hive Context wallets, or eligible Network Task candidates; the compressed secretary packet now carries a small action-target registry so production secretary mode keeps the same validation boundary.
 - [ ] `server/repositories/**` reviewed
 - [ ] `server/db/migrations/**` reviewed
 - [ ] `src/**` reviewed
@@ -527,6 +528,16 @@ Use this format for every finding:
 - Fix status: fixed in this review patch.
 - Tests needed: passed local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`, `npm run quality`, and `git diff --check`.
 
+#### P1: Board Manager secretary compression stripped action-hook target state
+
+- Files: `server/board-manager-secretary-packets.js`, `server/board-manager-actions.js`, `scripts/board-manager-secretary-packet-smoke.mjs`, `scripts/board-manager-action-hooks-smoke.mjs`, `docs/wiki/surfaces/hive.md`
+- Boundary: Hive | agent action hooks | packet compression | account/message routing
+- What breaks: the normal Board Manager model path uses a DeepSeek secretary packet before the downstream decision model. That compressed packet did not include the Hive Context entry IDs, source conversation IDs, validated wallets, or eligible contributor wallets that `message_user` and `assign_contributor` need for source-packet validation. Valid model actions could therefore fail after model selection even though the raw source packet had the needed state.
+- Why it matters: this is a production-path reliability bug for the Hive agent. The agent can decide to respond or assign a contributor, but execution fails because compression dropped the allowed target registry. It also creates pressure to bypass validation, which would be the wrong fix.
+- Evidence: `buildBoardManagerSecretaryDecisionPacket()` returned only secretary summary state. `executeBoardManagerDecision()` receives that compressed packet in the default secretary path, while `resolveMessageTarget()` and `sourceContributorCandidates()` looked only at `hiveContext` and `networkTaskCandidates`.
+- Fix status: fixed in this review patch.
+- Tests needed: passed `npm run board-manager-secretary-packet-smoke`, local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`, `npm run quality`, and `git diff --check`.
+
 ### Code Changes Made
 
 For every code change, add:
@@ -608,6 +619,13 @@ For every code change, add:
 - Tests already run: `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`.
 - Tests still needed manually: run one Board Manager turn that assigns a real eligible contributor to a real active project and confirm the Hive project contributor list updates without introducing unrelated accounts.
 
+- Commit: this review patch
+- Files changed: `server/board-manager-secretary-packets.js`, `server/board-manager-actions.js`, `scripts/board-manager-secretary-packet-smoke.mjs`, `scripts/board-manager-action-hooks-smoke.mjs`, `docs/wiki/surfaces/hive.md`
+- Why changed: preserve a minimal action-target registry through DeepSeek secretary packet compression so `message_user` and `assign_contributor` can execute in the normal compressed-packet path without accepting arbitrary model-supplied targets.
+- Risk: low to moderate. The compressed packet is slightly larger and exposes only routing IDs/conversation IDs/wallets needed for action validation, not the full raw packet. The benefit is that production secretary mode and uncompressed mode share the same hook boundary.
+- Tests already run: `npm run board-manager-secretary-packet-smoke`; `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`; `npm run quality`; `git diff --check`.
+- Tests still needed manually: run one secretary-enabled Board Manager turn that sends a Hive Chat response and confirm the message lands in the originating Hive Chat conversation.
+
 ### Testing List For The Integration Owner
 
 If you changed code, list functionality that must be tested before accepting the branch.
@@ -652,6 +670,10 @@ If you changed code, list functionality that must be tested before accepting the
   - Why: patched `assign_contributor` to reject wallets that are not present in the Board Manager source packet.
   - How: run the action-hook smoke and manually allow one Board Manager run to assign a real eligible contributor to a project.
   - Expected result: the smoke records the rejected invented-wallet action, and the manual assignment only adds a contributor from validated Hive Context or eligible Network Task candidates.
+- [ ] Board Manager secretary compressed-packet action path:
+  - Why: patched compressed secretary packets to preserve minimal action-target state for hooks.
+  - How: run one secretary-enabled Board Manager turn with `--execute` that chooses `message_user` or `assign_contributor`.
+  - Expected result: the action validates against the compressed packet's action-target registry and executes without bypassing the source-packet boundary.
 
 ### Dependency And Supply-Chain Risks
 

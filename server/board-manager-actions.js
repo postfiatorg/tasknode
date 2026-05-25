@@ -73,6 +73,9 @@ function reportInput(sourcePacket = {}) {
 }
 
 function displayNameForAccount(sourcePacket = {}, accountId = "") {
+  for (const account of sourcePacket?.actionTargetRegistry?.accounts || []) {
+    if (account.accountId === accountId) return safeText(account.displayName, 120);
+  }
   for (const group of sourcePacket?.hiveContext?.groups || []) {
     if (group.accountId === accountId) return safeText(group.displayName, 120);
   }
@@ -80,14 +83,34 @@ function displayNameForAccount(sourcePacket = {}, accountId = "") {
 }
 
 function flattenHiveContextEntries(sourcePacket = {}) {
+  const byId = new Map();
+  for (const entry of sourcePacket?.actionTargetRegistry?.hiveContextEntries || []) {
+    const id = safeText(entry.id, 180);
+    if (!id) continue;
+    byId.set(id, {
+      id,
+      accountId: safeText(entry.accountId, 180),
+      displayName: safeText(entry.displayName, 120),
+      sourceConversationId: safeText(entry.sourceConversationId, 180),
+      walletValidated: Boolean(entry.walletValidated),
+      walletAddress: safeText(entry.walletAddress, 120),
+      createdAt: entry.createdAt || null,
+    });
+  }
   const groups = Array.isArray(sourcePacket?.hiveContext?.groups) ? sourcePacket.hiveContext.groups : [];
-  return groups.flatMap((group) => (
-    Array.isArray(group.entries) ? group.entries.map((entry) => ({
-      ...entry,
-      accountId: safeText(entry.accountId || group.accountId, 180),
-      displayName: safeText(entry.displayName || group.displayName, 120),
-    })) : []
-  ));
+  for (const group of groups) {
+    for (const entry of Array.isArray(group.entries) ? group.entries : []) {
+      const id = safeText(entry.id, 180);
+      if (!id) continue;
+      byId.set(id, {
+        ...entry,
+        id,
+        accountId: safeText(entry.accountId || group.accountId, 180),
+        displayName: safeText(entry.displayName || group.displayName, 120),
+      });
+    }
+  }
+  return [...byId.values()];
 }
 
 function latestHiveInputForAccount({ accountId = "", sourcePacket = {} } = {}) {
@@ -99,6 +122,14 @@ function latestHiveInputForAccount({ accountId = "", sourcePacket = {} } = {}) {
 
 function sourceAccountIds(sourcePacket = {}) {
   const ids = new Set();
+  for (const account of sourcePacket?.actionTargetRegistry?.accounts || []) {
+    const accountId = safeText(account.accountId || account.account_id, 180);
+    if (accountId) ids.add(accountId);
+  }
+  for (const entry of sourcePacket?.actionTargetRegistry?.hiveContextEntries || []) {
+    const accountId = safeText(entry.accountId || entry.account_id, 180);
+    if (accountId) ids.add(accountId);
+  }
   for (const group of sourcePacket?.hiveContext?.groups || []) {
     const accountId = safeText(group.accountId, 180);
     if (accountId) ids.add(accountId);
@@ -126,6 +157,23 @@ function sourceContributorCandidates(sourcePacket = {}) {
       displayName: safeText(displayName, 120),
     });
   };
+
+  for (const candidate of sourcePacket?.actionTargetRegistry?.contributorCandidates || []) {
+    addCandidate({
+      accountId: candidate.accountId || candidate.account_id,
+      displayName: candidate.displayName || candidate.display_name,
+      walletAddress: candidate.walletAddress || candidate.wallet_address,
+    });
+  }
+
+  for (const entry of sourcePacket?.actionTargetRegistry?.hiveContextEntries || []) {
+    if (!entry?.walletValidated) continue;
+    addCandidate({
+      accountId: entry.accountId || entry.account_id,
+      displayName: entry.displayName || entry.display_name,
+      walletAddress: entry.walletAddress || entry.wallet_address,
+    });
+  }
 
   for (const group of sourcePacket?.hiveContext?.groups || []) {
     const groupAccountId = safeText(group.accountId, 180);
