@@ -226,14 +226,14 @@ After deploy, verify `/api/auth/providers` reports Telegram and Discord as
 Email signup on Fly dev uses Resend. The current dev sender is:
 
 ```text
-Task Node <onboarding@resend.dev>
+Task Node <login@agti.net>
 ```
 
 Configure it with:
 
 ```bash
 fly secrets set EMAIL_DELIVERY_PROVIDER=resend -a tasknodeofficial-dev
-fly secrets set EMAIL_FROM='Task Node <onboarding@resend.dev>' -a tasknodeofficial-dev
+fly secrets set EMAIL_FROM='Task Node <login@agti.net>' -a tasknodeofficial-dev
 fly secrets set RESEND_API_KEY=<resend api key> -a tasknodeofficial-dev
 ```
 

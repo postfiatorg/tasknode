@@ -90,7 +90,7 @@ RESEND_API_KEY
 Fly dev currently uses Resend with:
 
 ```text
-EMAIL_FROM=Task Node <onboarding@resend.dev>
+EMAIL_FROM=Task Node <login@agti.net>
 ```
 
 The Resend API key is a secret. Keep it in Fly secrets and the gitignored local
