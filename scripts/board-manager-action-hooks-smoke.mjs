@@ -328,6 +328,24 @@ async function main() {
       }),
     },
   });
+  await assert.rejects(
+    () => executeBoardManagerDecision({
+      runId,
+      sourcePacket,
+      dryRun: false,
+      decision: {
+        action: "message_user",
+        target_type: "account",
+        target_id: "acct_board_manager_not_in_source_packet",
+        reason: "Smoke verifies message_user cannot invent an account outside the source packet.",
+        confidence: 1,
+        payload: payload({
+          message_text: "This message should not be delivered.",
+        }),
+      },
+    }),
+    /board_manager_message_user_account_not_in_source_packet/
+  );
 
   await executeBoardManagerDecision({
     runId,
@@ -405,7 +423,7 @@ async function main() {
     },
   });
 
-  const [project, contributor, productDoc, networkJob, networkJobCount, message, fallbackMessage, actions] = await Promise.all([
+  const [project, contributor, productDoc, networkJob, networkJobCount, message, fallbackMessage, actions, actionRows] = await Promise.all([
     query("SELECT status, metadata_json->>'operator_archived' AS operator_archived FROM network_projects WHERE id = $1", [projectId]),
     query("SELECT status FROM network_project_contributors WHERE project_id = $1 AND wallet_address = $2", [projectId, wallet]),
     query(
@@ -424,6 +442,7 @@ async function main() {
     query("SELECT id, metadata_json->>'chat_message_id' AS chat_message_id FROM board_manager_user_messages WHERE run_id = $1 AND account_id = $2", [runId, smokeAccountId]),
     query("SELECT id, metadata_json->>'chat_message_id' AS chat_message_id FROM board_manager_user_messages WHERE run_id = $1 AND account_id = $2", [runId, fallbackAccountId]),
     query("SELECT count(*)::int AS count FROM board_manager_action_results WHERE run_id = $1", [runId]),
+    query("SELECT action, result_json FROM board_manager_action_results WHERE run_id = $1", [runId]),
   ]);
   assert.equal(project.rows[0]?.status, "archived");
   assert.equal(project.rows[0]?.operator_archived, "true");
@@ -455,15 +474,19 @@ async function main() {
   assert.equal(markRead.ok, true);
   assert.equal(markRead.updated, 1);
   assert.equal(markRead.conversation.unreadCount, 0);
-  assert.equal(actions.rows[0]?.count, 8);
+  assert.equal(actions.rows[0]?.count, 9);
   const publicFeed = await getBoardManagerAgentFeed({ limit: 20 });
   assert.equal(publicFeed.some((entry) => entry.runId === runId), false);
   const feed = await getBoardManagerAgentFeed({ limit: 20, includeInternal: true });
   const runFeed = feed.find((entry) => entry.runId === runId);
   assert.ok(runFeed);
-  assert.ok(runFeed.actionResults.some((entry) => entry.action === "refresh_project_document"));
-  assert.ok(runFeed.actionResults.some((entry) => entry.action === "initiate_network_task"));
-  assert.ok(runFeed.actionResults.some((entry) => entry.action === "archive_project"));
+  assert.ok(actionRows.rows.some((entry) => entry.action === "refresh_project_document"));
+  assert.ok(actionRows.rows.some((entry) => entry.action === "initiate_network_task"));
+  assert.ok(actionRows.rows.some((entry) => entry.action === "archive_project"));
+  assert.ok(actionRows.rows.some((entry) => (
+    entry.action === "message_user" &&
+    entry.result_json?.error === "board_manager_message_user_account_not_in_source_packet"
+  )));
   await query(
     `
       UPDATE network_task_generation_jobs

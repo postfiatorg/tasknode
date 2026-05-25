@@ -15,7 +15,7 @@ Required output fields:
 - `schema`
 - `title`
 - `description`
-- `task_kind`
+- `task_kind`: exactly `personal`, `network`, or `alpha`
 - `steps`
 - `submission_requirement`
 - `verification_policy`

@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { Wallet } from "xrpl";
 import { pinContextIpfsJson } from "./context-ipfs.js";
 import { resolveTasknodeEncryptionKey } from "./context-publish.js";
@@ -165,21 +167,118 @@ function latestVerificationRequestPayload(payloads = []) {
   return null;
 }
 
+function hostnameValue(value = "") {
+  return safeText(value, 260).toLowerCase().replace(/^\[|\]$/g, "");
+}
+
+function isPrivateIpv4(address = "") {
+  const parts = String(address || "").split(".").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function isPrivateIpv6(address = "") {
+  const normalized = hostnameValue(address);
+  if (!normalized || normalized === "::" || normalized === "::1") return true;
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+  if (normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb")) {
+    return true;
+  }
+  if (normalized.startsWith("ff")) return true;
+  const mappedIpv4 = normalized.match(/(?:^|:)ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+  return mappedIpv4 ? isPrivateIpv4(mappedIpv4) : false;
+}
+
+function isPrivateIpAddress(address = "") {
+  const family = isIP(hostnameValue(address));
+  if (family === 4) return isPrivateIpv4(address);
+  if (family === 6) return isPrivateIpv6(address);
+  return false;
+}
+
+export function isSafeEvidenceUrlLiteral(url = "") {
+  try {
+    const parsed = new URL(safeText(url, 1000));
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return { ok: false, reason: "unsupported_protocol" };
+    }
+    if (parsed.username || parsed.password) {
+      return { ok: false, reason: "credentials_not_allowed" };
+    }
+    const hostname = hostnameValue(parsed.hostname);
+    if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost")) {
+      return { ok: false, reason: "localhost_not_allowed" };
+    }
+    if (isIP(hostname) && isPrivateIpAddress(hostname)) {
+      return { ok: false, reason: "private_ip_not_allowed" };
+    }
+    return { ok: true, url: parsed };
+  } catch {
+    return { ok: false, reason: "invalid_url" };
+  }
+}
+
+async function resolveSafeEvidenceUrl(url = "") {
+  const literal = isSafeEvidenceUrlLiteral(url);
+  if (!literal.ok) return literal;
+  const hostname = hostnameValue(literal.url.hostname);
+  if (!isIP(hostname)) {
+    try {
+      const addresses = await lookup(hostname, { all: true });
+      if (!addresses.length) return { ok: false, reason: "dns_no_addresses" };
+      if (addresses.some((entry) => isPrivateIpAddress(entry.address))) {
+        return { ok: false, reason: "dns_private_ip_not_allowed" };
+      }
+    } catch {
+      return { ok: false, reason: "dns_lookup_failed" };
+    }
+  }
+  return literal;
+}
+
 async function fetchUrlExcerpt(url = "") {
   const value = safeText(url, 1000);
   if (!value) return null;
+  const safety = await resolveSafeEvidenceUrl(value);
+  if (!safety.ok) {
+    return {
+      status: "blocked",
+      url: value,
+      error: safety.reason || "evidence_url_not_allowed",
+    };
+  }
+  let timerId = null;
   try {
     const controller = new AbortController();
-    const timerId = setTimeout(() => controller.abort(), 8000);
-    const response = await fetch(value, {
+    timerId = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(safety.url.href, {
       headers: { "user-agent": "TaskNodeOfficialTaskReview/0.1" },
+      redirect: "manual",
       signal: controller.signal,
     });
+    if (response.status >= 300 && response.status < 400) {
+      return {
+        status: "redirect_not_followed",
+        url: safety.url.href,
+        http_status: response.status,
+        location: safeText(response.headers.get("location") || "", 1000),
+      };
+    }
     const text = await response.text();
-    clearTimeout(timerId);
     return {
       status: response.ok ? "extracted" : "http_error",
-      url: value,
+      url: safety.url.href,
       http_status: response.status,
       excerpt: safeText(text.replace(/\s+/g, " "), 6000),
     };
@@ -189,6 +288,8 @@ async function fetchUrlExcerpt(url = "") {
       url: value,
       error: safeText(error?.message || error, 500),
     };
+  } finally {
+    if (timerId) clearTimeout(timerId);
   }
 }
 

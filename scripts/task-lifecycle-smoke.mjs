@@ -8,6 +8,8 @@ import {
   taskRequiresRefresh,
   taskStatusTab,
 } from "../shared/task-lifecycle.js";
+import { validateTaskgenOutput } from "../server/task-generation-worker.js";
+import { isSafeEvidenceUrlLiteral } from "../server/task-review-worker.js";
 
 assert.equal(taskStatusTab(TASK_STATUS.verificationRequested), TASK_TABS.verification);
 assert.equal(taskRequiresRefresh(TASK_STATUS.verificationRequested), true);
@@ -19,6 +21,27 @@ assert.equal(taskLifecycleActions(TASK_STATUS.proposed).stopAction, "refuse");
 assert.equal(taskLifecycleActions(TASK_STATUS.proposed).stopLabel, "Refuse task");
 assert.equal(statusFromRewardAmount("2.50"), TASK_STATUS.rewardDecided);
 assert.equal(statusFromRewardAmount("0"), TASK_STATUS.rewarded);
+
+const taskgenBase = {
+  schema: "pf.taskgen.output.v1",
+  title: "Build deterministic task taxonomy check",
+  description: "Produce a compact artifact showing task type normalization.",
+  task_kind: "engineering",
+  steps: ["Create the fixture.", "Run the check."],
+  submission_requirement: { type: "text", criteria: "Submit the result." },
+  verification_policy: { followup_required: true, mode: "standard_followup", verification_type: "text" },
+  reward_offer: { amount_estimate_pft: "3.2" },
+  deadline: { accept_by: "2026-05-26T00:00:00.000Z", deadline_at: null },
+};
+assert.equal(validateTaskgenOutput(taskgenBase).task_kind, "personal");
+assert.equal(validateTaskgenOutput({ ...taskgenBase, task_kind: "alpha" }).task_kind, "alpha");
+assert.equal(validateTaskgenOutput(taskgenBase, { task_class: "network" }).task_kind, "network");
+assert.equal(isSafeEvidenceUrlLiteral("https://example.com/proof").ok, true);
+assert.equal(isSafeEvidenceUrlLiteral("file:///etc/passwd").reason, "unsupported_protocol");
+assert.equal(isSafeEvidenceUrlLiteral("http://localhost:5174").reason, "localhost_not_allowed");
+assert.equal(isSafeEvidenceUrlLiteral("http://127.0.0.1:5174").reason, "private_ip_not_allowed");
+assert.equal(isSafeEvidenceUrlLiteral("http://169.254.169.254/latest/meta-data").reason, "private_ip_not_allowed");
+assert.equal(isSafeEvidenceUrlLiteral("https://user:pass@example.com").reason, "credentials_not_allowed");
 
 const activeReview = taskRefreshMetadata({
   tasks: [

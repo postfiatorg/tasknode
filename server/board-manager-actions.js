@@ -97,6 +97,19 @@ function latestHiveInputForAccount({ accountId = "", sourcePacket = {} } = {}) {
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0] || null;
 }
 
+function sourceAccountIds(sourcePacket = {}) {
+  const ids = new Set();
+  for (const group of sourcePacket?.hiveContext?.groups || []) {
+    const accountId = safeText(group.accountId, 180);
+    if (accountId) ids.add(accountId);
+  }
+  for (const candidate of sourcePacket?.networkTaskCandidates || []) {
+    const accountId = safeText(candidate.accountId || candidate.account_id, 180);
+    if (accountId) ids.add(accountId);
+  }
+  return ids;
+}
+
 function resolveMessageTarget({ decision, sourcePacket }) {
   const targetType = safeText(decision.target_type, 120);
   const targetId = safeText(decision.target_id, 180);
@@ -113,6 +126,9 @@ function resolveMessageTarget({ decision, sourcePacket }) {
   }
 
   const accountId = targetId;
+  if (!sourceAccountIds(sourcePacket).has(accountId)) {
+    throw new Error("board_manager_message_user_account_not_in_source_packet");
+  }
   const entry = latestHiveInputForAccount({ accountId, sourcePacket });
   return {
     accountId,

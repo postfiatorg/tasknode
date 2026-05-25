@@ -377,6 +377,8 @@ Update this section as you work. Do not leave it blank.
 - `2026-05-25 04:55 UTC` Entry-point/config review continued. `.github/` is absent in this repo. Route policy sample and top-up route handlers match handler-enforced auth. Ethereum top-up smoke path and docs reviewed; no new P0/P1 found in that pass.
 - `2026-05-25 05:00 UTC` Removed one stale PFTasks wording reference from the GitHub connected-account provider note. This is a product-copy cleanup, not a behavior change. `npm run auth-login-state-fixture`, `npm run runtime-smoke`, `npm run route-smoke`, and `git diff --check` passed after the change.
 - `2026-05-25 05:12 UTC` Confirmed and patched P1 destructive bridge risk: `fly-dev:data:push` can no longer truncate and reload Fly dev data unless it targets `tasknodeofficial-dev` and the operator passes an explicit confirmation flag/env var.
+- `2026-05-25 03:34 UTC` Reviewed task generation/review prompts and worker contracts. Patched task-kind taxonomy drift and server-side URL evidence SSRF boundary; `npm run task-lifecycle-smoke` and quiet lint passed.
+- `2026-05-25 03:34 UTC` Reviewed Board Manager action hooks. Patched `message_user` so account targets must exist in the current source packet; local Docker `board-manager-action-hooks-smoke` passed.
 - `[time]` Completed ramp:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
@@ -395,6 +397,8 @@ Keep a coverage ledger by directory. Add counts or notes as you complete each se
 - [x] Ethereum top-up/account funding sample reviewed: handler-enforced login, clean-address probe, account-scoped deposit address, deposit-credit ledger idempotency, and docs.
 - [x] deploy/data bridge sample reviewed and patched: Fly dev bridge push now has a confirmation guard before any proxy/database work.
 - [x] high-risk server task worker duplicate-publish path reviewed and patched.
+- [x] task generation/review prompt and worker sample reviewed and patched: task-kind taxonomy plus URL evidence SSRF guard.
+- [x] Hive/Board Manager action-hook sample reviewed and patched: message recipients are constrained to source-packet accounts or Hive Context entries.
 - [ ] `server/repositories/**` reviewed
 - [ ] `server/db/migrations/**` reviewed
 - [ ] `src/**` reviewed
@@ -482,6 +486,36 @@ Use this format for every finding:
 - Fix status: fixed in this commit.
 - Tests needed: direct guard checks passed: unconfirmed `node scripts/fly-dev-data-bridge.mjs push` exits before proxy/database work, and `TASKNODE_ALLOW_FLY_DEV_DATA_PUSH=true TASKNODE_FLY_APP=not-tasknodeofficial-dev node scripts/fly-dev-data-bridge.mjs push` is refused.
 
+#### P2: Task generation taxonomy still allowed implementation categories
+
+- Files: `server/task-generation-worker.js`, `prompts/task_engine/taskgen_minimal_v1.md`, `prompts/task_engine/block_contract_v1.md`, `prompts/task_engine/taskgen_repair_v1.md`, `scripts/task-lifecycle-smoke.mjs`
+- Boundary: task generation | prompt contract | UI taxonomy
+- What breaks: Tasks docs and UX now treat task type as `Personal`, `Network`, or `Alpha`, but the task-generation prompt and structured schema still allowed `engineering` and `system`. Those values could persist into generated payload metadata and downstream task/profile summaries even when the visible list normalized them.
+- Why it matters: not a canonical-state corruption bug, but it reintroduces confusing implementation categories into user-facing and downstream LLM context.
+- Evidence: `taskgen_minimal_v1.md` listed `system` and `engineering`; `taskgenResponseFormat` accepted any string for `task_kind`.
+- Fix status: fixed in commit `9272ac6`.
+- Tests needed: passed `npm run task-lifecycle-smoke`.
+
+#### P1: URL evidence review worker could fetch private network targets
+
+- Files: `server/task-review-worker.js`, `scripts/task-lifecycle-smoke.mjs`, `docs/wiki/surfaces/tasks.md`
+- Boundary: task evidence | provider/review worker | network security
+- What breaks: URL evidence was fetched server-side by the review worker without checking the scheme, credentials, localhost/private IP ranges, cloud metadata IPs, DNS resolution, or redirects.
+- Why it matters: A user-controlled evidence URL could make the server request internal services or metadata endpoints during task review.
+- Evidence: `processedEvidenceFromPayload()` passed URL evidence directly to `fetchUrlExcerpt()`, which called `fetch(value)` with the default redirect behavior.
+- Fix status: fixed in commit `9272ac6`.
+- Tests needed: passed `npm run task-lifecycle-smoke` literal URL safety assertions.
+
+#### P1: Board Manager `message_user` could target an account outside its source packet
+
+- Files: `server/board-manager-actions.js`, `scripts/board-manager-action-hooks-smoke.mjs`, `docs/wiki/surfaces/hive.md`
+- Boundary: Hive | agent action hooks | account/message routing
+- What breaks: For `target_type: "account"`, `message_user` used the model-supplied `target_id` as an account id and would create/use that account's Hive chat even if the account was not present in the live Board Manager source packet.
+- Why it matters: Action hooks are the trust boundary between model output and app mutation. A malformed or prompt-injected decision should not be able to address arbitrary accounts.
+- Evidence: `resolveMessageTarget()` validated `hive_context_entry` targets against the packet, but accepted arbitrary account targets.
+- Fix status: fixed in commit `9272ac6`.
+- Tests needed: passed local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`.
+
 ### Code Changes Made
 
 For every code change, add:
@@ -535,6 +569,27 @@ For every code change, add:
 - Tests already run: direct guard commands for missing confirmation and wrong app target; `npm run route-smoke`.
 - Tests still needed manually: an intentional `fly-dev:data:push` dry operator rehearsal with a disposable Fly dev backup, using `--confirm-dev-push`, before relying on the push command for real recovery.
 
+- Commit: `9272ac6`
+- Files changed: `server/task-generation-worker.js`, `prompts/task_engine/taskgen_minimal_v1.md`, `prompts/task_engine/block_contract_v1.md`, `prompts/task_engine/taskgen_repair_v1.md`, `scripts/task-lifecycle-smoke.mjs`
+- Why changed: align future generated task payloads with the product taxonomy of `personal`, `network`, or `alpha` instead of leaking implementation categories such as `engineering`.
+- Risk: low. Existing tasks are not rewritten; future malformed or legacy `engineering` output normalizes to `personal` unless a network/alpha policy is present.
+- Tests already run: `npm run task-lifecycle-smoke`.
+- Tests still needed manually: request one personal task and one Network Task in the running app before declaring the full generation path verified.
+
+- Commit: `9272ac6`
+- Files changed: `server/task-review-worker.js`, `scripts/task-lifecycle-smoke.mjs`, `docs/wiki/surfaces/tasks.md`
+- Why changed: fail closed on URL evidence extraction before the review worker can fetch localhost, private IP ranges, metadata addresses, credentialed URLs, unsafe schemes, DNS names resolving to private addresses, or redirects.
+- Risk: moderate. Some public evidence URLs that only work through redirects may no longer be auto-extracted; the user can still submit text, screenshots, files, or a direct public URL.
+- Tests already run: `npm run task-lifecycle-smoke`.
+- Tests still needed manually: submit one public URL evidence task and one blocked local/private URL in local Docker to confirm user-facing review behavior and forensics wording are clear.
+
+- Commit: `9272ac6`
+- Files changed: `server/board-manager-actions.js`, `scripts/board-manager-action-hooks-smoke.mjs`, `docs/wiki/surfaces/hive.md`
+- Why changed: constrain Board Manager chat replies to source-packet accounts or concrete Hive Context entries, instead of trusting a model-supplied arbitrary account id.
+- Risk: low. Valid Hive Context replies and source-packet candidate/account replies still work; invented account targets now fail and are recorded as failed action results.
+- Tests already run: `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`.
+- Tests still needed manually: send a Hive Chat message, run one Board Manager turn, and confirm any reply lands in that same Hive Chat thread.
+
 ### Testing List For The Integration Owner
 
 If you changed code, list functionality that must be tested before accepting the branch.
@@ -563,6 +618,18 @@ If you changed code, list functionality that must be tested before accepting the
   - Why: patched a P1 destructive data-bridge workflow.
   - How: run `node scripts/fly-dev-data-bridge.mjs push` without confirmation and with `TASKNODE_ALLOW_FLY_DEV_DATA_PUSH=true TASKNODE_FLY_APP=not-tasknodeofficial-dev`.
   - Expected result: both commands fail before any Fly proxy or database mutation.
+- [ ] Task generation taxonomy:
+  - Why: patched prompt/schema validation so future generated tasks stay in the `personal` / `network` / `alpha` taxonomy.
+  - How: run `npm run task-lifecycle-smoke`, then manually request one personal task and one Network Task in the app.
+  - Expected result: generated task metadata uses `personal` for user-requested work and `network` or `alpha` only when that routing context is present.
+- [ ] URL evidence safety:
+  - Why: patched server-side evidence extraction to avoid SSRF-style private network fetches.
+  - How: submit URL evidence using a direct public URL, then test a localhost/private URL in a non-production account.
+  - Expected result: public URL extraction works or reports a normal public fetch error; localhost/private/metadata URLs produce a blocked extraction artifact and do not get fetched.
+- [ ] Board Manager message recipient boundary:
+  - Why: patched `message_user` to reject account targets not present in the current source packet.
+  - How: run the action-hook smoke and manually send one Hive Chat input followed by a Board Manager turn.
+  - Expected result: the smoke records the rejected invented-account action, and the manual reply appears only in the source user's Hive Chat.
 
 ### Dependency And Supply-Chain Risks
 

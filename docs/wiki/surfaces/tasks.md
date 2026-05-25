@@ -52,6 +52,7 @@ Generated offers must match the browser UX. The task-generation prompt in `promp
 | Unsupported evidence | Video, screen recording, audio, live calls, calendar invites, or any other proof type the app cannot submit must not be requested. Before/after proof should use screenshots plus text, code excerpt, URL, or file evidence. |
 | Step count | New generated tasks must contain 2 to 5 concrete steps. One-step and zero-step generated tasks fail worker validation. |
 | Public repository proof | `github_commit` should be used only when the user explicitly provides or requests a public commit or repository evidence path. Private/local work should use screenshot, text, file, or mixed evidence. |
+| URL evidence safety | The review worker may extract public URL evidence, but it does not fetch unsupported schemes, credentialed URLs, localhost, private IP ranges, metadata IPs, or DNS names that resolve to private addresses. Redirects are not followed during evidence extraction. |
 | Canonical source | The generated task is written into the encrypted `pf.task.offer.v1` IPFS payload and anchored by the authority wallet PFTL pointer. Postgres only projects it for fast reads. |
 
 Network Tasks and Alpha Tasks reuse this same prompt and worker. The network-task generation worker injects a `network_task` block into the request bundle with project id, task class, routing reason, diagnostic profile digest, and reward band. The Board Manager does not author the concrete task. It queues the allocation and records why the system is routing work to the contributor; `server/task-generation-worker.js` still generates the title, steps, submission requirement, and verification policy.
@@ -403,6 +404,7 @@ When changing Tasks, verify:
 14. In `verification_requested`, the detail overview uses the compact layout: original task summary collapsed, current verification ask visible, and Submit focused on one response draft.
 15. The shared wallet unlock entry point must not lock an already-unlocked vault. Locking is an explicit wallet action; task signing flows should only open or unlock the wallet.
 16. Visible task type labels are `Personal`, `Network`, or `Alpha`.
+17. URL evidence extraction rejects localhost, private IP ranges, metadata addresses, credentialed URLs, and redirects before the review worker fetches content.
 
 ## Reviewer To Do List
 

@@ -42,7 +42,7 @@ Output fields:
 - `schema`: exactly `pf.taskgen.output.v1`.
 - `title`: 5 to 12 words, imperative when natural.
 - `description`: 2 to 4 concise sentences describing the scope and expected artifact.
-- `task_kind`: short category such as `personal`, `network`, `alpha`, `system`, or `engineering`.
+- `task_kind`: exactly one of `personal`, `network`, or `alpha`. Use `personal` for user-requested work unless the packet includes Network Task or Alpha Task routing context.
 - `steps`: 2 to 5 short checkable steps. Never return one step or an empty array.
 - `submission_requirement.type`: one of `text`, `url`, `github_commit`, `screenshot`, `file`, or `mixed`.
 - `submission_requirement.criteria`: 1 to 3 sentences describing exactly what evidence is acceptable.

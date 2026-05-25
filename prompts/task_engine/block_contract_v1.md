@@ -38,6 +38,7 @@ Task generation should return one task, not a long plan. The task should contain
 
 - a short title;
 - a compact description;
+- a task kind of `personal`, `network`, or `alpha`;
 - 2 to 5 concrete steps;
 - a single submission requirement;
 - a verification policy;

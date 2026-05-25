@@ -34,7 +34,7 @@ const taskgenResponseFormat = {
         schema: { type: "string", enum: ["pf.taskgen.output.v1"] },
         title: { type: "string" },
         description: { type: "string" },
-        task_kind: { type: "string" },
+        task_kind: { type: "string", enum: ["personal", "network", "alpha"] },
         steps: { type: "array", items: { type: "string" } },
         submission_requirement: {
           type: "object",
@@ -195,7 +195,15 @@ function normalizeReward(value, policy = {}) {
   return parsed.toFixed(2);
 }
 
-function validateTaskgenOutput(output = {}, policy = {}) {
+function normalizeTaskKind(value = "", policy = {}) {
+  const policyTaskClass = safeText(policy.task_class ?? policy.taskClass, 80).toLowerCase();
+  if (policyTaskClass === "network" || policyTaskClass === "alpha") return policyTaskClass;
+  const normalized = safeText(value, 80).toLowerCase();
+  if (normalized === "network" || normalized === "alpha") return normalized;
+  return "personal";
+}
+
+export function validateTaskgenOutput(output = {}, policy = {}) {
   const required = ["title", "description", "task_kind", "submission_requirement", "verification_policy", "reward_offer", "deadline"];
   const missing = required.filter((key) => output[key] === undefined || output[key] === null);
   if (missing.length) throw new Error(`taskgen_output_missing:${missing.join(",")}`);
@@ -213,7 +221,7 @@ function validateTaskgenOutput(output = {}, policy = {}) {
     ...output,
     title: safeText(output.title, 240),
     description: safeText(output.description, 8000),
-    task_kind: safeText(output.task_kind, 80),
+    task_kind: normalizeTaskKind(output.task_kind, policy),
     steps,
     submission_requirement: {
       type: safeText(requirement.type, 80),
