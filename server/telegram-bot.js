@@ -231,6 +231,21 @@ function billingSummaryText(summary = {}) {
   ].join("\n");
 }
 
+async function safeUsageSummaryForBot({ accountId = "", usageReader = usageSummary } = {}) {
+  try {
+    return await usageReader({ accountId });
+  } catch (error) {
+    console.warn(`telegram bot billing summary failed: ${error?.message || error}`);
+    return {
+      currentSpendUsd: 0,
+      currentCreditUsd: 0,
+      availableCreditUsd: 0,
+      ledgerEntryCount: 0,
+      unavailable: true,
+    };
+  }
+}
+
 function telegramCommand(body = "") {
   const normalized = String(body || "").trim().toLowerCase();
   if (!normalized) return "";
@@ -333,7 +348,7 @@ function failureText(result) {
 }
 
 async function sendModeHelp({ accountId = "", chatId = "", mode = "", sendTelegramMessage, usageReader = usageSummary, fetchImpl = fetch } = {}) {
-  const summary = await usageReader({ accountId });
+  const summary = await safeUsageSummaryForBot({ accountId, usageReader });
   const currentMode = knownModeLabel(mode) || defaultTelegramMode();
   return sendTelegramMessage({
     chatId,
@@ -348,7 +363,7 @@ async function sendModeHelp({ accountId = "", chatId = "", mode = "", sendTelegr
 }
 
 async function sendBalance({ accountId = "", chatId = "", mode = "", sendTelegramMessage, usageReader = usageSummary, fetchImpl = fetch } = {}) {
-  const summary = await usageReader({ accountId });
+  const summary = await safeUsageSummaryForBot({ accountId, usageReader });
   const currentMode = knownModeLabel(mode) || defaultTelegramMode();
   return sendTelegramMessage({
     chatId,
@@ -358,6 +373,19 @@ async function sendBalance({ accountId = "", chatId = "", mode = "", sendTelegra
     ].join("\n"),
     replyMarkup: modeKeyboard(currentMode),
   }, { fetchImpl });
+}
+
+async function sendChatAcknowledgement({ chatId = "", mode = "", sendTelegramMessage, fetchImpl = fetch } = {}) {
+  const currentMode = knownModeLabel(mode) || defaultTelegramMode();
+  const sent = await sendTelegramMessage({
+    chatId,
+    text: `Working in ${currentMode}. I will send the answer here when it is ready.`,
+    replyMarkup: modeKeyboard(currentMode),
+  }, { fetchImpl });
+  if (sent?.ok === false) {
+    console.warn(`telegram bot acknowledgement send failed: ${sent.error || "send_failed"}`);
+  }
+  return sent;
 }
 
 export async function processTelegramBotUpdate(update = {}, {
@@ -512,6 +540,13 @@ export async function processTelegramBotUpdate(update = {}, {
     message: message.body,
   };
 
+  await sendChatAcknowledgement({
+    chatId: message.chatId,
+    mode: currentMode,
+    sendTelegramMessage,
+    fetchImpl,
+  });
+
   const result = await chatExecutor(payload, "POST");
   const replyText = result?.body?.ok ? assistantTextFromChatResult(result) : failureText(result);
   const sent = await sendTelegramMessage({
@@ -519,6 +554,9 @@ export async function processTelegramBotUpdate(update = {}, {
     text: replyText,
     replyMarkup: modeKeyboard(currentMode),
   }, { fetchImpl });
+  if (sent?.ok === false) {
+    console.warn(`telegram bot response send failed: ${sent.error || "send_failed"}`);
+  }
 
   return {
     ok: result?.body?.ok === true && sent?.ok !== false,
