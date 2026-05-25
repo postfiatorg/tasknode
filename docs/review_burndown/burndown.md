@@ -1,6 +1,6 @@
 # Code Review Burndown
 
-Updated: 2026-05-24
+Updated: 2026-05-25
 
 This is the queue for reviewing app-visible Help docs against implementation.
 Every row links one visible doc page to a review brief. `Code review complete`
