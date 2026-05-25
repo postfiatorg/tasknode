@@ -105,6 +105,12 @@ async function main() {
     assert.equal(status.scope.scope, scope);
     assert.ok(status.jobs.length >= 2);
 
+    const preservePaused = await ensureBoardManagerScope({
+      scope,
+      maxActionsPerHour: 1,
+    });
+    assert.equal(preservePaused.scope.status, "paused");
+
     await ensureBoardManagerScope({
       scope,
       status: "enabled",

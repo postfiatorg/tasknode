@@ -43,7 +43,7 @@ function nullableTimestampValue(value = null) {
 
 export async function ensureBoardManagerScope({
   scope = "global_hive",
-  status = "enabled",
+  status = null,
   cadenceSeconds = 900,
   maxActionsPerHour = defaultBoardManagerMaxActionsPerHour,
   nextRunAt = null,
@@ -51,7 +51,8 @@ export async function ensureBoardManagerScope({
 } = {}) {
   if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
   const normalizedScope = safeText(scope, 120) || "global_hive";
-  const normalizedStatus = ["enabled", "paused", "disabled"].includes(status) ? status : "enabled";
+  const hasStatus = ["enabled", "paused", "disabled"].includes(status);
+  const normalizedStatus = hasStatus ? status : "enabled";
   const hasNextRunAt = Boolean(nextRunAt);
   const result = await query(
     `
@@ -65,7 +66,7 @@ export async function ensureBoardManagerScope({
       )
       VALUES ($1, $2, $3, $4, $5, $6::jsonb)
       ON CONFLICT (scope) DO UPDATE SET
-        status = EXCLUDED.status,
+        status = CASE WHEN $8 THEN EXCLUDED.status ELSE board_manager_scopes.status END,
         cadence_seconds = EXCLUDED.cadence_seconds,
         max_actions_per_hour = EXCLUDED.max_actions_per_hour,
         next_run_at = CASE WHEN $7 THEN EXCLUDED.next_run_at ELSE board_manager_scopes.next_run_at END,
@@ -81,6 +82,7 @@ export async function ensureBoardManagerScope({
       timestampValue(nextRunAt),
       jsonValue(metadata),
       hasNextRunAt,
+      hasStatus,
     ]
   );
   return { ok: true, scope: result.rows[0] };

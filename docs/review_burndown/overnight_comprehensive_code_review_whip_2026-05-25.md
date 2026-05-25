@@ -369,6 +369,7 @@ Update this section as you work. Do not leave it blank.
 - `2026-05-25 03:17 UTC` Verification passed for the usage ledger patch: `npm run security-smoke`, `npm run runtime-smoke`, `npm run quality`, `npm run db:chat-billing-smoke` with local Docker `DATABASE_URL`, `npm run route-smoke`, `npm run smoke`, and `git diff --check`.
 - `2026-05-25 03:31 UTC` Confirmed and patched P0 duplicate-publish risk in `server/task-review-worker.js`: stale processing leases remain retryable, but successful worker publications are no longer reclaimable for another verification request or reward scoring/payment.
 - `2026-05-25 03:35 UTC` Expanded `network-task-recovery-smoke` to cover already-published verification/reward worker states and verified local Docker DB recovery logs show `will_publish=false` for those states.
+- `2026-05-25 03:50 UTC` Confirmed and patched Board Manager scope-status durability bug: worker startup can no longer convert a paused or disabled scope back to enabled unless status is explicitly provided.
 - `[time]` Completed ramp:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
@@ -429,6 +430,16 @@ Use this format for every finding:
 - Fix status: fixed in this commit.
 - Tests needed: passed `npm run quality`, local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run network-task-recovery-smoke`, and `git diff --check`.
 
+#### P1: Board Manager worker startup could undo an operator pause
+
+- Files: `server/repositories/board-manager-scheduler.js`, `scripts/board-manager-scheduler-smoke.mjs`, `docs/wiki/surfaces/hive.md`
+- Boundary: Hive | worker scheduling | operator controls
+- What breaks: `ensureBoardManagerScope()` defaulted `status` to `enabled` and used that value on conflict. `scripts/board-manager-worker.mjs` calls the helper on startup without an explicit status, so restarting the worker could flip a paused or disabled `board_manager_scopes` row back to enabled.
+- Why it matters: An operator pause is the production kill switch for Board Manager actioning. If a restart silently re-enables it, the agent can resume mutating projects, messages, or Network Task allocations after the operator intentionally stopped it.
+- Evidence: direct code path from worker startup to `ensureBoardManagerScope({ scope, maxActionsPerHour })`, with `status = "enabled"` as the helper default and `status = EXCLUDED.status` in the upsert.
+- Fix status: fixed in this commit.
+- Tests needed: passed local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-scheduler-smoke`, `npm run quality`, and `git diff --check`.
+
 ### Code Changes Made
 
 For every code change, add:
@@ -454,6 +465,13 @@ For every code change, add:
 - Tests already run: `npm run quality`; `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run network-task-recovery-smoke`; `git diff --check`.
 - Tests still needed manually: inspect any active `submitted` or `verification_response_submitted` tasks with `metadata_json.workers.*.published=true` and confirm the board/task UI shows indexing lag instead of creating another update/payment.
 
+- Commit: this commit
+- Files changed: `server/repositories/board-manager-scheduler.js`, `scripts/board-manager-scheduler-smoke.mjs`, `docs/wiki/surfaces/hive.md`
+- Why changed: make Board Manager pause/disable state durable across worker restarts.
+- Risk: low. Existing callers that need to enable the scope must pass `status: "enabled"` explicitly; worker startup only ensures the row and updates cadence/budget.
+- Tests already run: `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-scheduler-smoke`; `npm run quality`; `git diff --check`.
+- Tests still needed manually: pause the live `global_hive` scope, restart the board-manager container, and confirm it remains paused.
+
 ### Testing List For The Integration Owner
 
 If you changed code, list functionality that must be tested before accepting the branch.
@@ -466,6 +484,10 @@ If you changed code, list functionality that must be tested before accepting the
   - Why: patched a P0 path that could republish reward scoring/payment after projection lag.
   - How: use the recovery smoke output and inspect a task whose worker metadata says `published=true`.
   - Expected result: recovery says `will_publish=false`; worker does not issue another verification request or reward payment for that worker.
+- [ ] Board Manager pause durability:
+  - Why: patched worker startup so it cannot silently re-enable a paused/disabled Board Manager scope.
+  - How: set `board_manager_scopes.status = 'paused'`, restart the board-manager worker, and read scheduler status.
+  - Expected result: status remains `paused` until an explicit operator command sets it back to `enabled`.
 
 ### Dependency And Supply-Chain Risks
 
