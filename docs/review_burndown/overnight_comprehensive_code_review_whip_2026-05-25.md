@@ -382,6 +382,7 @@ Update this section as you work. Do not leave it blank.
 - `2026-05-25 21:19 UTC` Continued Board Manager action-hook review. Found `assign_contributor` still trusted model-supplied contributor wallets; patched it to require the wallet to appear in the current source packet as a validated Hive Context wallet or eligible Network Task candidate. Local Docker `board-manager-action-hooks-smoke` passed.
 - `2026-05-25 21:48 UTC` Found a second Board Manager compressed-packet boundary bug: the default DeepSeek secretary packet removed the Hive Context/candidate target lists that action hooks need for validation. Patched secretary packets to include a small action-target registry and taught action hooks to validate against it. `board-manager-secretary-packet-smoke` and local Docker `board-manager-action-hooks-smoke` passed.
 - `2026-05-25 22:05 UTC` Reviewed Hive project frontend data refresh. Found the active project board loaded `/api/hive/projects` only once on mount, which can leave Network Task rows stale after task projection updates. Patched the route to refresh project state quietly while Hive is open and documented the refresh behavior.
+- `2026-05-25 22:20 UTC` Ran a route-policy consistency scan across `server/route-policies.js`, `server/index.js`, and route modules. Optional routes reviewed in this pass are public/product-state reads or handler-scoped paths; no additional concrete P0/P1 found in this scan.
 - `[time]` Completed ramp:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
@@ -720,10 +721,10 @@ Record behavior that exists in code but is missing or stale in docs:
 
 Before stopping, write what you did not finish. Do not imply full coverage if it did not happen.
 
-- Not reviewed:
-- Reviewed lightly:
-- Needs deeper follow-up:
-- Reasons:
+- Not reviewed: full every-file pass is not complete. Remaining broad areas include complete migration review, remaining frontend feature modules outside Hive/Tasks/Chat/Profile samples, every script, every prompt, and every docs page.
+- Reviewed lightly: route-policy consistency scan, Hive frontend, Board Manager secretary/action path, startup/background worker boundaries, profile/airdrop samples, auth/deposit samples, chat/context samples, task worker samples.
+- Needs deeper follow-up: full database migration idempotency audit; full docs parity audit; full frontend visual pass in browser; production/Fly process-group smoke; manual Board Manager secretary-enabled action run; manual Hive project state transition refresh test.
+- Reasons: the review is being run incrementally while fixing concrete P0/P1 issues as found. Current commits fix the highest-risk reachable issues discovered so far, but this file should not be treated as a claim that all 535 tracked files have been exhaustively reviewed.
 
 ## Minimum Handoff Standard
 
