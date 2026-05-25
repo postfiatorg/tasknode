@@ -109,7 +109,10 @@ settlement can override `ETH_DEPOSIT_BALANCE_BLOCK_TAG=safe` or `finalized`.
 The sync path uses `eth_getBalance` for ETH and ERC-20 `balanceOf(address)` for
 USDC and USDT. It stores observed balances and credited balances separately so a
 later sweep does not create a negative credit or double-count a previous
-deposit.
+deposit. A stored balance only counts as app credit when a billing ledger entry
+with source `ethereum_deposit` is tied to that specific deposit account. Admin
+credits, onboarding credits, or chat spend are not proof that historical funds
+on a derived address belong to the account.
 
 The address returned by the app must already have an account-scoped zero-balance
 baseline. If an older account has a pre-fix address whose first observation
@@ -117,6 +120,10 @@ contains historical funds but no billing credit, the next start or sync retires
 that address and allocates a clean one. This prevents a pre-funded derived
 address from becoming a new account's top-up address and prevents historical
 test funding from being shown as usable balance.
+
+Top-up start fails closed if any supported asset balance cannot be checked. The
+app should not show a deposit address unless ETH, USDC, and USDT were all probed
+for that address.
 
 ## Operator Rules
 

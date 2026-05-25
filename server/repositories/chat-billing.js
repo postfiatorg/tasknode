@@ -447,6 +447,49 @@ export async function appendUsageCredit(options = {}) {
   }
 }
 
+export async function hasUsageCreditForSource({
+  accountId = "",
+  source = "",
+  metadata = {},
+  uniqueKeyPrefix = "",
+} = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedSource = String(source || "").trim().slice(0, 80);
+  const prefix = String(uniqueKeyPrefix || "").trim().slice(0, 180);
+  const metadataEntries = Object.entries(metadata).filter(([, value]) => value);
+  if (!normalizedAccountId || !normalizedSource) return false;
+
+  if (!useDatabase()) {
+    const ledger = runtimeUsageLedger({ accountId: normalizedAccountId, limit: maxLedgerLimit });
+    return (ledger.entries || []).some((entry) => {
+      if (entry.source !== normalizedSource) return false;
+      if (prefix && String(entry.uniqueKey || "").startsWith(prefix)) return true;
+      return metadataEntries.every(([key, value]) => String(entry.metadata?.[key] || "") === String(value));
+    });
+  }
+
+  const clauses = ["account_id = $1", "source = $2", "kind = ANY($3)"];
+  const params = [normalizedAccountId, normalizedSource, Array.from(creditKinds)];
+  if (prefix || metadataEntries.length > 0) {
+    const identityClauses = [];
+    if (prefix) {
+      params.push(`${prefix}%`);
+      identityClauses.push(`idempotency_key LIKE $${params.length}`);
+    }
+    for (const [key, value] of metadataEntries) {
+      params.push(key, String(value));
+      identityClauses.push(`metadata_json ->> $${params.length - 1} = $${params.length}`);
+    }
+    clauses.push(`(${identityClauses.join(" OR ")})`);
+  }
+
+  const result = await query(
+    `SELECT 1 FROM billing_ledger_entries WHERE ${clauses.join(" AND ")} LIMIT 1`,
+    params
+  );
+  return Boolean(result.rows[0]);
+}
+
 export async function appendChatTurn({
   accountId = "",
   conversationId = "dev",

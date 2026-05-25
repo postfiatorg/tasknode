@@ -1401,7 +1401,7 @@ export function updateEthereumDepositSync({
     lastSyncStatus: syncStatus,
     lastSyncError: syncError || "",
     lastSyncBlockTag: blockTag || existing.lastSyncBlockTag || "",
-    lastCreditedLedgerIds: creditedEntries.map((entry) => entry.id).filter(Boolean),
+    lastCreditedLedgerIds: [...new Set([...(existing.lastCreditedLedgerIds || []), ...creditedEntries.map((entry) => entry.id).filter(Boolean)])].slice(-50),
     updatedAt: now,
   };
 

@@ -234,13 +234,17 @@ function shortEthereumAddress(address = "") {
 }
 
 function formatDepositAssetBalance(deposit, symbol) {
-  const balance = deposit?.observedBalances?.[symbol];
+  const credited = deposit?.creditedBalances?.[symbol];
+  const observed = deposit?.observedBalances?.[symbol];
   const pending = deposit?.pendingBalances?.[symbol];
-  if (balance?.amount && Number(balance.amount) > 0) {
-    return formatDepositAmount(balance.amount, symbol);
+  if (credited?.amount && Number(credited.amount) > 0) {
+    return `Credited ${formatDepositAmount(credited.amount, symbol)}`;
   }
   if (pending?.amount && Number(pending.amount) > 0) {
     return `Pending ${formatDepositAmount(pending.amount, symbol)}`;
+  }
+  if (observed?.amount && Number(observed.amount) > 0) {
+    return `Seen ${formatDepositAmount(observed.amount, symbol)}, not credited`;
   }
   return "Not seen";
 }

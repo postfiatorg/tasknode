@@ -14,6 +14,7 @@ import {
 } from "./runtime-store.js";
 import {
   appendUsageCredit,
+  hasUsageCreditForSource,
   usageSummary,
 } from "./repositories/chat-billing.js";
 
@@ -146,18 +147,19 @@ export async function getOrCreateVerifiedEthereumTopUpAccount({ accountId = "" }
     if (!result.ok) return result;
 
     const account = getEthereumDepositAccount({ accountId });
-    const usage = await usageSummary({ accountId });
-    const hasRecordedCredit = Number(usage.currentCreditUsd || 0) > 0;
+    const hasDepositCredit = await accountHasDepositCredit(account);
     const syncedBefore = Boolean(account?.lastSyncAt || Object.keys(account?.observedBalances || {}).length > 0);
-    const baselineOnly = syncedBefore && hasStoredPositiveBalance(account) && !hasRecordedCredit;
+    const baselineOnly = syncedBefore && hasStoredPositiveBalance(account) && !hasDepositCredit;
     if (syncedBefore && !baselineOnly) return result;
 
     const probe = await readAddressBalances(account.address);
-    if (probe.errors.length === ethereumDepositAssets.length) {
+    if (probe.errors.length > 0) {
       return {
-        ...result,
-        depositAccount: publicDepositAccount(account),
-        syncErrors: probe.errors,
+        ok: false,
+        status: 503,
+        error: "deposit_balance_probe_failed",
+        message: "Could not verify deposit address balances. Retry when Ethereum RPC is available.",
+        config: status,
       };
     }
 
@@ -233,6 +235,16 @@ function positiveBalanceSymbols(balances = {}) {
 function hasStoredPositiveBalance(account) {
   return positiveBalanceSymbols(account?.observedBalances).length > 0 ||
     positiveBalanceSymbols(account?.creditedBalances).length > 0;
+}
+
+async function accountHasDepositCredit(account) {
+  if ((account?.lastCreditedLedgerIds || []).length > 0) return true;
+  return hasUsageCreditForSource({
+    accountId: account?.accountId || "",
+    source: "ethereum_deposit",
+    metadata: { depositAccountId: account?.id || "" },
+    uniqueKeyPrefix: account?.id ? `ethereum_deposit:${account.id}:` : "",
+  });
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {

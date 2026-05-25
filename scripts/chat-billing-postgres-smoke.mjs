@@ -6,6 +6,7 @@ import {
   appendUsageCredit,
   deleteChatConversation,
   getChatMessages,
+  hasUsageCreditForSource,
   listChatConversations,
   renameChatConversation,
   usageLedger,
@@ -47,6 +48,40 @@ const replay = await appendUsageCredit({
 
 if (!credit?.id || replay?.id !== credit.id || replay?.idempotentReplay !== true) {
   throw new Error(`Credit idempotency failed: ${JSON.stringify({ credit, replay })}`);
+}
+
+const unrelatedDepositCredit = await hasUsageCreditForSource({
+  accountId,
+  source: "ethereum_deposit",
+  metadata: { depositAccountId: `ethdep_${suffix}` },
+  uniqueKeyPrefix: `ethereum_deposit:ethdep_${suffix}:`,
+});
+if (unrelatedDepositCredit) {
+  throw new Error("Admin credit must not satisfy Ethereum deposit credit lookup.");
+}
+
+await appendUsageCredit({
+  accountId,
+  amountUsd: 7,
+  source: "ethereum_deposit",
+  note: "Postgres smoke deposit",
+  uniqueKey: `ethereum_deposit:ethdep_${suffix}:USDC:7000000`,
+  metadata: { depositAccountId: `ethdep_${suffix}` },
+});
+const exactDepositCredit = await hasUsageCreditForSource({
+  accountId,
+  source: "ethereum_deposit",
+  metadata: { depositAccountId: `ethdep_${suffix}` },
+  uniqueKeyPrefix: `ethereum_deposit:ethdep_${suffix}:`,
+});
+const wrongDepositCredit = await hasUsageCreditForSource({
+  accountId,
+  source: "ethereum_deposit",
+  metadata: { depositAccountId: `ethdep_wrong_${suffix}` },
+  uniqueKeyPrefix: `ethereum_deposit:ethdep_wrong_${suffix}:`,
+});
+if (!exactDepositCredit || wrongDepositCredit) {
+  throw new Error(`Deposit credit lookup failed: ${JSON.stringify({ exactDepositCredit, wrongDepositCredit })}`);
 }
 
 const chat = await appendChatTurn({
@@ -132,9 +167,9 @@ if (
   messages[1]?.metadata?.contextEdit?.proposal?.savedContextRevision !== 2 ||
   messages[0]?.attachments?.[0]?.textContent !== 'const ok = "persisted code";' ||
   messages[0]?.attachments?.[0]?.source !== "paste" ||
-  summary.currentCreditUsd !== 5 ||
+  summary.currentCreditUsd !== 12 ||
   summary.currentSpendUsd !== 0.0011 ||
-  summary.availableCreditUsd !== 4.9989 ||
+  summary.availableCreditUsd !== 11.9989 ||
   ledger.entries.length < 2 ||
   !conversations.some((item) => item.conversationId === conversationId) ||
   !renamed.ok ||

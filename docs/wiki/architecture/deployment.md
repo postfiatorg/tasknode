@@ -124,7 +124,7 @@ ETH_DEPOSIT_START_INDEX
 
 If `/api/usage/top-up/start` returns `usage_top_up_login_required`, top-up is configured but the caller is signed out. If it returns `Ethereum deposit addresses are not configured for this environment`, Fly is missing `ETH_DEPOSIT_XPUB`.
 
-Top-up start verifies a derived address is empty before returning it to the user. If a candidate address already has ETH, USDC, or USDT, the app retires that candidate and advances to the next derivation index. Older pre-fix addresses that only contain historical observed funds and no billing credit are retired on the next start or sync. The displayed address should therefore be clean, and only later balance increases become usage credit.
+Top-up start verifies a derived address is empty before returning it to the user. If any supported asset probe fails, the app does not show the address. If a candidate address already has ETH, USDC, or USDT, the app retires that candidate and advances to the next derivation index. Older pre-fix addresses that only contain historical observed funds and no `ethereum_deposit` ledger credit for that exact deposit account are retired on the next start or sync. Admin credits and chat spend are not deposit ownership proof. The displayed address should therefore be clean, and only later balance increases become usage credit.
 
 ## PFTL And IPFS
 
