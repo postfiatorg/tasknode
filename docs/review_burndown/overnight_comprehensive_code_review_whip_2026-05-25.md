@@ -374,6 +374,8 @@ Update this section as you work. Do not leave it blank.
 - `2026-05-25 04:26 UTC` Tracked-secret/public-readiness scan completed without printing secret values. Real local env files are gitignored/untracked. Tracked hits for API-key/env names are docs placeholders, test env names, package scripts, or ordinary `task-...` strings, not committed live credentials.
 - `2026-05-25 04:39 UTC` Confirmed and patched daily airdrop no-double-pay gap: issuance rows now move to `processing` before signing, concurrent claims fail closed, and post-submit uncertainty stays non-retryable until reconciliation/operator review.
 - `2026-05-25 04:46 UTC` Verification passed for the daily airdrop issuance patch: local Docker DB `profile-daily-airdrop-issuance-smoke`, idempotent DB migration, `profile-daily-airdrop-worker-smoke`, `npm run quality`, and `git diff --check`.
+- `2026-05-25 04:55 UTC` Entry-point/config review continued. `.github/` is absent in this repo. Route policy sample and top-up route handlers match handler-enforced auth. Ethereum top-up smoke path and docs reviewed; no new P0/P1 found in that pass.
+- `2026-05-25 05:00 UTC` Removed one stale PFTasks wording reference from the GitHub connected-account provider note. This is a product-copy cleanup, not a behavior change. `npm run auth-login-state-fixture`, `npm run runtime-smoke`, `npm run route-smoke`, and `git diff --check` passed after the change.
 - `[time]` Completed ramp:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
@@ -385,10 +387,11 @@ Keep a coverage ledger by directory. Add counts or notes as you complete each se
 
 - [ ] root config files reviewed
 - [x] root config files inventory started: `README.md`, `package.json`, `docker-compose.dev.yml`, `fly.toml` read for ramp.
-- [ ] `.github/**` reviewed
+- [x] `.github/**` reviewed: directory is absent in this checkout.
 - [ ] `server/**` reviewed
 - [x] high-risk server billing/auth route sample reviewed: usage ledger, app state, memory, profile, Hive, wallet balance/transactions, PFTL cache.
 - [x] auth/account linking sample reviewed: email challenge, Telegram signed callback, Discord OAuth link, provider conflict rules, stale OAuth state, logout.
+- [x] Ethereum top-up/account funding sample reviewed: handler-enforced login, clean-address probe, account-scoped deposit address, deposit-credit ledger idempotency, and docs.
 - [x] high-risk server task worker duplicate-publish path reviewed and patched.
 - [ ] `server/repositories/**` reviewed
 - [ ] `server/db/migrations/**` reviewed
@@ -457,6 +460,16 @@ Use this format for every finding:
 - Fix status: fixed in this commit.
 - Tests needed: passed local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run profile-daily-airdrop-issuance-smoke`, idempotent `node server/db/migrate.js`, `npm run profile-daily-airdrop-worker-smoke`, `npm run quality`, and `git diff --check`.
 
+#### P2: GitHub provider note still referenced PFTasks continuity
+
+- Files: `server/auth-connected-accounts.js`
+- Boundary: auth | product copy | public readiness
+- What breaks: the GitHub provider note described the login as "legacy PFTasks account continuity" even though this repo and product surface are Task Node Official.
+- Why it matters: not a security or state bug, but stale product copy undermines the repo boundary and the user's explicit requirement that this app not present itself as PFTasks.
+- Evidence: `oauthAuthProviders()` returned the stale note for the enabled GitHub provider.
+- Fix status: fixed in this commit.
+- Tests needed: passed `npm run auth-login-state-fixture`, `npm run runtime-smoke`, `npm run route-smoke`, and `git diff --check`.
+
 ### Code Changes Made
 
 For every code change, add:
@@ -495,6 +508,13 @@ For every code change, add:
 - Risk: moderate. A submission timeout after signing now leaves the row in `processing` for reconciliation/operator review instead of immediate retry. That can delay a payout, but it is the correct money-safe failure mode.
 - Tests already run: `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run profile-daily-airdrop-issuance-smoke`; idempotent `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true node server/db/migrate.js`; `npm run profile-daily-airdrop-worker-smoke`; `npm run quality`; `git diff --check`.
 - Tests still needed manually: inspect any live `profile_daily_airdrop_issuances.status = 'processing'` rows before retrying payout; reconcile against PFTL/cache by source wallet, destination wallet, amount, pointer CID, payload digest, and tx hash where available.
+
+- Commit: this commit
+- Files changed: `server/auth-connected-accounts.js`
+- Why changed: remove stale PFTasks product wording from the enabled GitHub provider note.
+- Risk: low. Product copy only.
+- Tests already run: `npm run auth-login-state-fixture`; `npm run runtime-smoke`; `npm run route-smoke`; `git diff --check`.
+- Tests still needed manually: none.
 
 ### Testing List For The Integration Owner
 

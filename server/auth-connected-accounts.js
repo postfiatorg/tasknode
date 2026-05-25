@@ -516,7 +516,7 @@ export function oauthAuthProviders() {
       requiredEnv: ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"],
       enabled: true,
       actionRequired: "Configure the GitHub OAuth App callback URL to /api/auth/callback/github for this Task Node deployment.",
-      note: "Required for legacy PFTasks account continuity. Exact GitHub identity resumes the same Task Node account.",
+      note: "Required for GitHub-based account continuity. Exact GitHub identity resumes the same Task Node account.",
     }),
   ];
 }
