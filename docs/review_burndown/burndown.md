@@ -1,6 +1,6 @@
 # Code Review Burndown
 
-Updated: 2026-05-24
+Updated: 2026-05-25
 
 This is the queue for reviewing app-visible Help docs against implementation.
 Every row links one visible doc page to a review brief. `Code review complete`
@@ -47,7 +47,7 @@ checks fail, do not merge it.
 | 6 | Task UX, evidence, copy, unlock | `review/06-task-ux-evidence` | `recent_work_pr_review_spec_2026-05-24.md#pr-06-task-detail-evidence-copy-unlock-and-verification-ux` | `review_ready` |
 | 7 | Profile, daily airdrop, NFT | `review/07-profile-airdrop-nft` | `recent_work_pr_review_spec_2026-05-24.md#pr-07-profile-daily-airdrop-nft-and-public-profile-data` | `review_ready` |
 | 8 | Chat, context, Jobs, memory packets | `review/08-chat-context-memory` | `recent_work_pr_review_spec_2026-05-24.md#pr-08-chat-context-refine-jobs-prompt-pgvector-and-memory-packets` | `review_ready` |
-| 9 | Database and repositories | `review/09-database-repositories` | `recent_work_pr_review_spec_2026-05-24.md#pr-09-database-migrations-ownership-constraints-and-repository-consistency` | `review_ready` |
+| 9 | Database and repositories | `review/09-database-repositories` | `recent_work_pr_review_spec_2026-05-24.md#pr-09-database-migrations-ownership-constraints-and-repository-consistency` | `review_ready` — findings in `reviews/pr-09-database-repositories.md` |
 | 10 | Docs, prompts, public readiness | `review/10-docs-prompts-public-readiness` | `recent_work_pr_review_spec_2026-05-24.md#pr-10-docs-prompts-public-readiness-and-legacy-cleanup` | `review_ready` |
 
 ## Queue
