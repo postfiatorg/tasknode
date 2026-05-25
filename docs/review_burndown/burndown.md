@@ -45,7 +45,7 @@ checks fail, do not merge it.
 | 4 | Hive surface and routing | `review/04-hive-surface-routing` | `recent_work_pr_review_spec_2026-05-24.md#pr-04-hive-surface-hive-chat-context-projects-and-routing-feed` | `review_ready` |
 | 5 | Network task lifecycle and recovery | `review/05-network-task-lifecycle` | `recent_work_pr_review_spec_2026-05-24.md#pr-05-network-task-lifecycle-recovery-reward-follow-up-and-projections` | `review_ready` |
 | 6 | Task UX, evidence, copy, unlock | `review/06-task-ux-evidence` | `recent_work_pr_review_spec_2026-05-24.md#pr-06-task-detail-evidence-copy-unlock-and-verification-ux` | `review_ready` |
-| 7 | Profile, daily airdrop, NFT | `review/07-profile-airdrop-nft` | `recent_work_pr_review_spec_2026-05-24.md#pr-07-profile-daily-airdrop-nft-and-public-profile-data` | `review_ready` |
+| 7 | Profile, daily airdrop, NFT | `review/07-profile-airdrop-nft` | `recent_work_pr_review_spec_2026-05-24.md#pr-07-profile-daily-airdrop-nft-and-public-profile-data` | `review_ready` (findings in `reviews/pr-07-profile-airdrop-nft.md`) |
 | 8 | Chat, context, Jobs, memory packets | `review/08-chat-context-memory` | `recent_work_pr_review_spec_2026-05-24.md#pr-08-chat-context-refine-jobs-prompt-pgvector-and-memory-packets` | `review_ready` |
 | 9 | Database and repositories | `review/09-database-repositories` | `recent_work_pr_review_spec_2026-05-24.md#pr-09-database-migrations-ownership-constraints-and-repository-consistency` | `review_ready` |
 | 10 | Docs, prompts, public readiness | `review/10-docs-prompts-public-readiness` | `recent_work_pr_review_spec_2026-05-24.md#pr-10-docs-prompts-public-readiness-and-legacy-cleanup` | `review_ready` |

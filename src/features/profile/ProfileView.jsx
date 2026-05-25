@@ -1089,25 +1089,8 @@ function NFTTile({ nft }) {
   );
 }
 
-const CONNECTIONS = [
-  {
-    addr: "rDVKRN...tyjB", match: 95, palette: "green", kind: "topology",
-    body: "Strong synergy between your deterministic reward composers and their deterministic task-generation parser and verification policy fixes.",
-    tags: ["Task-generation parser", "Verification policy", "DB-backed constraints"],
-  },
-  {
-    addr: "rDep8S...EQKu", match: 88, palette: "gold", kind: "sunburst",
-    body: "Direct alignment in building deterministic Python reducers and handling task-generation logic with regression-style scoring.",
-    tags: ["Python reducers", "Dependency-light validators", "Prompt escaping"],
-  },
-  {
-    addr: "rGu432...Dcw9", match: 85, palette: "blue", kind: "flow",
-    body: "Overlap in deterministic tools and verification workflows with CLI-first JSON scoring and auditable triage.",
-    tags: ["CLI JSON scoring", "Triage packet design", "Sim engineering"],
-  },
-];
-
 function ConnectionsCard() {
+  const connections = [];
   return (
     <section style={{ paddingTop: 64 }}>
       <SectionHead
@@ -1115,8 +1098,19 @@ function ConnectionsCard() {
         sub="Members whose work overlaps yours this week"
       />
 
+      {connections.length === 0 ? (
+        <div style={{
+          borderTop: `1px solid ${C.ruleSoft}`,
+          color: C.ink3,
+          fontSize: 13.5,
+          lineHeight: 1.55,
+          paddingTop: 18,
+        }}>
+          No recommended connections yet. Overlap suggestions will appear here once the network-task profile matcher is wired.
+        </div>
+      ) : (
       <div>
-        {CONNECTIONS.map((c, i) => (
+        {connections.map((c, i) => (
           <div key={i} style={{
             display: "grid", gridTemplateColumns: "48px 1fr auto",
             gap: 20, alignItems: "flex-start",
@@ -1149,6 +1143,7 @@ function ConnectionsCard() {
           </div>
         ))}
       </div>
+      )}
     </section>
   );
 }
@@ -1256,7 +1251,7 @@ function PrivateProfile({
         onRangeChange={setRewardRange}
         range={rewardRange}
       />
-      <NFTGallery minted={profileNfts.length ? profileNfts : NFT_DATA} />
+      <NFTGallery minted={profileNfts} allowMockFallback={false} />
       <ConnectionsCard />
     </div>
   );
