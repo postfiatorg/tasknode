@@ -75,6 +75,18 @@ Fly dev Postgres data into the local Docker database and copies the Fly runtime
 store into the local API volume. `push` copies local Docker Postgres data back
 to Fly dev after first writing a Fly backup under `/tmp`.
 
+`push` is intentionally guarded because it truncates and reloads Fly dev tables.
+It only targets `tasknodeofficial-dev`, and it refuses to run unless the operator
+passes an explicit confirmation:
+
+```bash
+TASKNODE_ALLOW_FLY_DEV_DATA_PUSH=true npm run fly-dev:data:push
+# or
+npm run fly-dev:data:push -- --confirm-dev-push
+```
+
+Use `push` only when local Docker is the intended source of truth for Fly dev.
+
 If the host restarts or the Fly proxy dies, rerun `npm run docker:dev:fly-data`.
 The local app will not reach the Fly dev database unless the proxy is running.
 

@@ -205,6 +205,12 @@ It must never be retargeted to PFTasks. Browser wallet vaults remain
 origin-local, so a wallet seed imported on `localhost:5174` is still separate
 from the encrypted browser vault on `tasknodeofficial-dev.fly.dev`.
 
+The bridge also has a destructive `fly-dev:data:push` helper for replacing Fly
+dev data with local Docker data. It truncates and reloads Fly dev tables, so it
+is guarded: it only targets `tasknodeofficial-dev` and requires either
+`TASKNODE_ALLOW_FLY_DEV_DATA_PUSH=true` or `--confirm-dev-push`. Use it only
+when local Docker is intentionally the source of truth.
+
 Telegram login only works on a stable BotFather-approved HTTPS host. For the
 dev Fly app, BotFather `/setdomain` must be:
 

@@ -174,6 +174,13 @@ Important constraints:
 - Browser wallet vaults are origin-local. `localhost:5174` and `tasknodeofficial-dev.fly.dev` do not share encrypted browser seed storage.
 - Runtime auth/account state is still partly JSON-backed. Use the documented bridge helpers for runtime-store copies instead of hand-editing JSON.
 
+The bridge has a destructive `fly-dev:data:push` helper for the rare case where
+local Docker data must replace Fly dev data. That helper truncates and reloads
+Fly dev tables, so it is guarded. It only runs against `tasknodeofficial-dev`
+and requires `TASKNODE_ALLOW_FLY_DEV_DATA_PUSH=true` or `--confirm-dev-push`.
+Do not use it as a normal deploy path; normal deploys use git, Fly build, and
+migrations.
+
 ## Deployment Command
 
 Deploy from `main` after checks pass:

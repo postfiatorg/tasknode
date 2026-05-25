@@ -376,6 +376,7 @@ Update this section as you work. Do not leave it blank.
 - `2026-05-25 04:46 UTC` Verification passed for the daily airdrop issuance patch: local Docker DB `profile-daily-airdrop-issuance-smoke`, idempotent DB migration, `profile-daily-airdrop-worker-smoke`, `npm run quality`, and `git diff --check`.
 - `2026-05-25 04:55 UTC` Entry-point/config review continued. `.github/` is absent in this repo. Route policy sample and top-up route handlers match handler-enforced auth. Ethereum top-up smoke path and docs reviewed; no new P0/P1 found in that pass.
 - `2026-05-25 05:00 UTC` Removed one stale PFTasks wording reference from the GitHub connected-account provider note. This is a product-copy cleanup, not a behavior change. `npm run auth-login-state-fixture`, `npm run runtime-smoke`, `npm run route-smoke`, and `git diff --check` passed after the change.
+- `2026-05-25 05:12 UTC` Confirmed and patched P1 destructive bridge risk: `fly-dev:data:push` can no longer truncate and reload Fly dev data unless it targets `tasknodeofficial-dev` and the operator passes an explicit confirmation flag/env var.
 - `[time]` Completed ramp:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
@@ -392,6 +393,7 @@ Keep a coverage ledger by directory. Add counts or notes as you complete each se
 - [x] high-risk server billing/auth route sample reviewed: usage ledger, app state, memory, profile, Hive, wallet balance/transactions, PFTL cache.
 - [x] auth/account linking sample reviewed: email challenge, Telegram signed callback, Discord OAuth link, provider conflict rules, stale OAuth state, logout.
 - [x] Ethereum top-up/account funding sample reviewed: handler-enforced login, clean-address probe, account-scoped deposit address, deposit-credit ledger idempotency, and docs.
+- [x] deploy/data bridge sample reviewed and patched: Fly dev bridge push now has a confirmation guard before any proxy/database work.
 - [x] high-risk server task worker duplicate-publish path reviewed and patched.
 - [ ] `server/repositories/**` reviewed
 - [ ] `server/db/migrations/**` reviewed
@@ -470,6 +472,16 @@ Use this format for every finding:
 - Fix status: fixed in this commit.
 - Tests needed: passed `npm run auth-login-state-fixture`, `npm run runtime-smoke`, `npm run route-smoke`, and `git diff --check`.
 
+#### P1: Fly dev data bridge push could overwrite Fly dev data without confirmation
+
+- Files: `scripts/fly-dev-data-bridge.mjs`, `docs/DOCKER_DEV.md`, `docs/DEPLOYMENT.md`, `docs/wiki/architecture/deployment.md`
+- Boundary: deployment | persistence | operator workflow
+- What breaks: `npm run fly-dev:data:push` truncates reloadable Fly dev Postgres tables and restores local Docker data into Fly dev. Before this patch it did not require an explicit destructive-operation confirmation before starting the Fly proxy and touching databases.
+- Why it matters: even though this is a dev deployment, Fly dev is currently the shared source of truth for local/Fly QA. An accidental push can wipe or replace current chats, memory, tasks, Hive, profile, billing, and PFTL cache rows.
+- Evidence: `push()` immediately started the Fly proxy, dumped local data, called `truncateReloadableTables(flyDb)`, and restored local data with no confirmation gate.
+- Fix status: fixed in this commit.
+- Tests needed: direct guard checks passed: unconfirmed `node scripts/fly-dev-data-bridge.mjs push` exits before proxy/database work, and `TASKNODE_ALLOW_FLY_DEV_DATA_PUSH=true TASKNODE_FLY_APP=not-tasknodeofficial-dev node scripts/fly-dev-data-bridge.mjs push` is refused.
+
 ### Code Changes Made
 
 For every code change, add:
@@ -516,6 +528,13 @@ For every code change, add:
 - Tests already run: `npm run auth-login-state-fixture`; `npm run runtime-smoke`; `npm run route-smoke`; `git diff --check`.
 - Tests still needed manually: none.
 
+- Commit: this commit
+- Files changed: `scripts/fly-dev-data-bridge.mjs`, `docs/DOCKER_DEV.md`, `docs/DEPLOYMENT.md`, `docs/wiki/architecture/deployment.md`
+- Why changed: prevent accidental destructive replacement of Fly dev data from local Docker.
+- Risk: low to moderate. Operators now need one explicit confirmation when intentionally pushing local data to Fly dev.
+- Tests already run: direct guard commands for missing confirmation and wrong app target; `npm run route-smoke`.
+- Tests still needed manually: an intentional `fly-dev:data:push` dry operator rehearsal with a disposable Fly dev backup, using `--confirm-dev-push`, before relying on the push command for real recovery.
+
 ### Testing List For The Integration Owner
 
 If you changed code, list functionality that must be tested before accepting the branch.
@@ -540,6 +559,10 @@ If you changed code, list functionality that must be tested before accepting the
   - Why: patched a P0 payment retry risk in live daily airdrop issuance.
   - How: run `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run profile-daily-airdrop-issuance-smoke`.
   - Expected result: first claim moves to `processing`, second claim rejects with `daily_airdrop_issuance_in_progress`, post-submit failure remains non-retryable, pre-submit failure can be reclaimed, and submitted replay returns `alreadySubmitted`.
+- [ ] Fly dev bridge push guard:
+  - Why: patched a P1 destructive data-bridge workflow.
+  - How: run `node scripts/fly-dev-data-bridge.mjs push` without confirmation and with `TASKNODE_ALLOW_FLY_DEV_DATA_PUSH=true TASKNODE_FLY_APP=not-tasknodeofficial-dev`.
+  - Expected result: both commands fail before any Fly proxy or database mutation.
 
 ### Dependency And Supply-Chain Risks
 

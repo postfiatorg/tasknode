@@ -18,6 +18,27 @@ const dataTablesToExclude = [
   "public.tasknode_schema_migrations",
 ];
 
+function hasArg(name) {
+  return process.argv.includes(name);
+}
+
+function requireFlyDevPushConfirmation() {
+  if (appName !== "tasknodeofficial-dev") {
+    throw new Error(
+      `Refusing destructive data push to ${appName}. The Fly data bridge push command is only allowed for tasknodeofficial-dev.`
+    );
+  }
+  if (
+    process.env.TASKNODE_ALLOW_FLY_DEV_DATA_PUSH === "true" ||
+    hasArg("--confirm-dev-push")
+  ) {
+    return;
+  }
+  throw new Error(
+    "Refusing destructive Fly dev data push without confirmation. Re-run with TASKNODE_ALLOW_FLY_DEV_DATA_PUSH=true or --confirm-dev-push after verifying local data is the intended source of truth."
+  );
+}
+
 function accessToken() {
   if (process.env.FLY_ACCESS_TOKEN) return process.env.FLY_ACCESS_TOKEN;
   const configPath = path.join(os.homedir(), ".fly", "config.yml");
@@ -326,6 +347,7 @@ async function pull() {
 }
 
 async function push() {
+  requireFlyDevPushConfirmation();
   await startProxy({ daemon: true });
   const flyDb = proxyDatabaseUrl();
   const backupDir = backup(flyDb, "fly-before-local-push");
