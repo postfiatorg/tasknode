@@ -223,6 +223,32 @@ fly secrets set DISCORD_REDIRECT_URI=https://tasknodeofficial-dev.fly.dev/api/au
 After deploy, verify `/api/auth/providers` reports Telegram and Discord as
 `ready` before testing account linking in Settings.
 
+Email signup on Fly dev uses Resend. The current dev sender is:
+
+```text
+Task Node <onboarding@resend.dev>
+```
+
+Configure it with:
+
+```bash
+fly secrets set EMAIL_DELIVERY_PROVIDER=resend -a tasknodeofficial-dev
+fly secrets set EMAIL_FROM='Task Node <onboarding@resend.dev>' -a tasknodeofficial-dev
+fly secrets set RESEND_API_KEY=<resend api key> -a tasknodeofficial-dev
+```
+
+The API key can also live in the gitignored local `.env.tasknodeofficial-dev`
+file for Docker. Do not commit the key or `resend_key.txt`.
+
+Verify email readiness and delivery with:
+
+```bash
+curl -sS https://tasknodeofficial-dev.fly.dev/api/auth/providers
+curl -sS -X POST https://tasknodeofficial-dev.fly.dev/api/auth/email/start \
+  -H 'content-type: application/json' \
+  --data '{"email":"you@example.com"}'
+```
+
 Until auth/account/wallet state is fully Postgres-backed, keep the Fly volume
 mounted for the web process. Do not use `TASKNODE_ALLOW_PUBLIC_EPHEMERAL_STORE`
 as a production durability substitute.
