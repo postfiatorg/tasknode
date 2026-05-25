@@ -83,8 +83,11 @@ npm run eth-deposit-verify -- --index 12
 
 ## Sync
 
-The sync endpoint reads the configured Ethereum balance tag and credits only
-positive balance deltas:
+The start endpoint derives candidate addresses and verifies the selected address
+is empty before returning it to the UI. If a candidate already has ETH, USDC, or
+USDT on it, the account retires that candidate and advances to the next
+derivation index. The sync endpoint reads the configured Ethereum balance tag
+and credits only positive balance deltas after assignment:
 
 ```text
 POST /api/usage/top-up/start
@@ -108,12 +111,12 @@ USDC and USDT. It stores observed balances and credited balances separately so a
 later sweep does not create a negative credit or double-count a previous
 deposit.
 
-On the first successful sync for a newly assigned address, any balance already
-present on that address is treated as the account baseline, not as a new user
-top-up. Only balance increases after that first account-scoped observation
-create billing ledger credit. This prevents a pre-funded derived address from
-being assigned to a fresh account and credited as if the new account made the
-old deposit.
+The address returned by the app must already have an account-scoped zero-balance
+baseline. If an older account has a pre-fix address whose first observation
+contains historical funds but no billing credit, the next start or sync retires
+that address and allocates a clean one. This prevents a pre-funded derived
+address from becoming a new account's top-up address and prevents historical
+test funding from being shown as usable balance.
 
 ## Operator Rules
 

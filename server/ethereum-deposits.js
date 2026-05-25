@@ -9,6 +9,7 @@ import {
 import {
   getEthereumDepositAccount,
   getOrCreateEthereumDepositAccount,
+  retireEthereumDepositAccount,
   updateEthereumDepositSync,
 } from "./runtime-store.js";
 import {
@@ -131,6 +132,68 @@ export function getOrCreateEthereumTopUpAccount({ accountId = "" } = {}) {
   };
 }
 
+export async function getOrCreateVerifiedEthereumTopUpAccount({ accountId = "" } = {}) {
+  const status = ethereumDepositConfigStatus();
+  if (!accountId) {
+    return { ok: false, status: 401, error: "deposit_login_required" };
+  }
+  if (!status.enabled) {
+    return { ok: false, status: 409, error: "eth_deposit_not_configured", config: status };
+  }
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const result = getOrCreateEthereumTopUpAccount({ accountId });
+    if (!result.ok) return result;
+
+    const account = getEthereumDepositAccount({ accountId });
+    const usage = await usageSummary({ accountId });
+    const hasRecordedCredit = Number(usage.currentCreditUsd || 0) > 0;
+    const syncedBefore = Boolean(account?.lastSyncAt || Object.keys(account?.observedBalances || {}).length > 0);
+    const baselineOnly = syncedBefore && hasStoredPositiveBalance(account) && !hasRecordedCredit;
+    if (syncedBefore && !baselineOnly) return result;
+
+    const probe = await readAddressBalances(account.address);
+    if (probe.errors.length === ethereumDepositAssets.length) {
+      return {
+        ...result,
+        depositAccount: publicDepositAccount(account),
+        syncErrors: probe.errors,
+      };
+    }
+
+    if (probe.positiveSymbols.length > 0 || baselineOnly) {
+      const symbols = probe.positiveSymbols.length > 0
+        ? probe.positiveSymbols.join(",")
+        : positiveBalanceSymbols(account?.observedBalances).join(",");
+      retireEthereumDepositAccount({
+        accountId,
+        status: "retired_prefunded",
+        reason: `prefunded_before_assignment:${symbols || "unknown"}`,
+      });
+      continue;
+    }
+
+    const updated = updateEthereumDepositSync({
+      accountId,
+      observedBalances: probe.observedBalances,
+      pendingBalances: Object.fromEntries(ethereumDepositAssets.map((asset) => [asset.symbol, null])),
+      creditedBalances: {},
+      syncStatus: probe.errors.length > 0 ? "partial" : "ready",
+      syncError: probe.errors.join("; "),
+      blockTag: balanceBlockTag,
+      creditedEntries: [],
+    });
+
+    return {
+      ...result,
+      depositAccount: publicDepositAccount(updated || account),
+      syncErrors: probe.errors,
+    };
+  }
+
+  return { ok: false, status: 409, error: "deposit_clean_address_unavailable", config: status };
+}
+
 export function publicDepositAccount(account) {
   if (!account) return null;
   return {
@@ -153,6 +216,23 @@ export function publicDepositAccount(account) {
     lastSyncError: account.lastSyncError || "",
     assets: ethereumDepositAssets,
   };
+}
+
+function positiveBalanceSymbols(balances = {}) {
+  return Object.entries(balances)
+    .filter(([, balance]) => {
+      try {
+        return BigInt(balance?.raw || "0") > 0n;
+      } catch {
+        return Number(balance?.amount || 0) > 0;
+      }
+    })
+    .map(([symbol]) => symbol);
+}
+
+function hasStoredPositiveBalance(account) {
+  return positiveBalanceSymbols(account?.observedBalances).length > 0 ||
+    positiveBalanceSymbols(account?.creditedBalances).length > 0;
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
@@ -238,6 +318,24 @@ async function readAssetBalance(asset, address, blockTag = balanceBlockTag) {
   };
 }
 
+async function readAddressBalances(address, blockTag = balanceBlockTag) {
+  const observedBalances = {};
+  const errors = [];
+  for (const asset of ethereumDepositAssets) {
+    try {
+      const balance = await readAssetBalance(asset, address, blockTag);
+      observedBalances[asset.symbol] = formattedBalance(balance, blockTag);
+    } catch (error) {
+      errors.push(`${asset.symbol}: ${error?.message || "balance_unavailable"}`);
+    }
+  }
+  return {
+    observedBalances,
+    positiveSymbols: positiveBalanceSymbols(observedBalances),
+    errors,
+  };
+}
+
 function formattedBalance(balance, blockTag = balanceBlockTag) {
   return {
     raw: balance.raw.toString(),
@@ -297,7 +395,7 @@ async function creditDelta({ account, asset, currentRaw, creditedRaw }) {
 }
 
 export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
-  const setup = getOrCreateEthereumTopUpAccount({ accountId });
+  const setup = await getOrCreateVerifiedEthereumTopUpAccount({ accountId });
   if (!setup.ok) return setup;
 
   const account = getEthereumDepositAccount({ accountId });

@@ -1283,8 +1283,19 @@ export function appendUsageCredit({
 export function getEthereumDepositAccount({ accountId = "" } = {}) {
   const normalizedAccountId = typeof accountId === "string" ? accountId.trim().slice(0, 160) : "";
   if (!normalizedAccountId) return null;
-  const account = state.ethereumDepositAccounts[normalizedAccountId] || null;
-  return account ? structuredClone(account) : null;
+  return state.ethereumDepositAccounts[normalizedAccountId] ? structuredClone(state.ethereumDepositAccounts[normalizedAccountId]) : null;
+}
+
+export function retireEthereumDepositAccount({ accountId = "", reason = "operator_retired", status = "retired" } = {}) {
+  const normalizedAccountId = typeof accountId === "string" ? accountId.trim().slice(0, 160) : "";
+  if (!normalizedAccountId) return { ok: false, status: 401, error: "deposit_login_required" };
+  const existing = state.ethereumDepositAccounts[normalizedAccountId];
+  if (!existing?.address) return { ok: false, status: 404, error: "deposit_account_not_found" };
+  const now = new Date().toISOString();
+  state.ethereumDepositRetiredAccounts.push({ ...existing, status, retiredAt: now, retireReason: reason });
+  delete state.ethereumDepositAddressIndex[String(existing.address || "").toLowerCase()]; delete state.ethereumDepositAccounts[normalizedAccountId];
+  saveState();
+  return { ok: true, account: structuredClone(existing), retiredAt: now };
 }
 
 export function getOrCreateEthereumDepositAccount({
@@ -1310,19 +1321,10 @@ export function getOrCreateEthereumDepositAccount({
   if (existing?.address && existingIndex >= normalizedStartIndex) {
     return { ok: true, account: structuredClone(existing), created: false };
   }
-
   const now = new Date().toISOString();
   if (existing?.address) {
-    state.ethereumDepositRetiredAccounts.push({
-      ...existing,
-      status: "retired_reserved_index",
-      retiredAt: now,
-      retireReason: `derivation_index_below_start:${normalizedStartIndex}`,
-    });
-    delete state.ethereumDepositAddressIndex[String(existing.address || "").toLowerCase()];
-    delete state.ethereumDepositAccounts[normalizedAccountId];
+    retireEthereumDepositAccount({ accountId: normalizedAccountId, status: "retired_reserved_index", reason: `derivation_index_below_start:${normalizedStartIndex}` });
   }
-
   const allocationStartIndex = Math.max(normalizedStartIndex, Number(state.ethereumDepositCursor || 0));
   for (let offset = 0; offset < 1000; offset += 1) {
     const derivationIndex = allocationStartIndex + offset;

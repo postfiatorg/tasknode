@@ -869,7 +869,7 @@ async function routeApi(req, url, res) {
 
   if (url.pathname === "/api/usage/top-up/start") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
-    const result = usageTopUpStart(payload, req.method, session);
+    const result = await usageTopUpStart(payload, req.method, session);
     json(res, result.status, result.body);
     return true;
   }

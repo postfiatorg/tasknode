@@ -62,7 +62,7 @@ export { taskLifecycleAction } from "./task-actions.js";
 export { taskRequestAction } from "./task-request.js";
 import {
   ethereumDepositConfigStatus,
-  getOrCreateEthereumTopUpAccount,
+  getOrCreateVerifiedEthereumTopUpAccount,
   syncEthereumTopUpAccount,
 } from "./ethereum-deposits.js";
 import {
@@ -1766,7 +1766,7 @@ export function usageActionStart(pathname, method) {
   });
 }
 
-export function usageTopUpStart(payload, method, session = null) {
+export async function usageTopUpStart(payload, method, session = null) {
   const action = usageActionByPath("/api/usage/top-up/start");
 
   if (method !== action.method) {
@@ -1790,7 +1790,7 @@ export function usageTopUpStart(payload, method, session = null) {
     });
   }
 
-  const result = getOrCreateEthereumTopUpAccount({ accountId });
+  const result = await getOrCreateVerifiedEthereumTopUpAccount({ accountId });
   if (!result.ok) {
     return actionResponse({
       status: result.status || 409,
