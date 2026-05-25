@@ -39,8 +39,8 @@ checks fail, do not merge it.
 
 | Order | Proposed PR | Branch | Spec Section | Status |
 | --- | --- | --- | --- | --- |
-| 1 | Auth and connected accounts | `review/01-auth-connected-accounts` | `recent_work_pr_review_spec_2026-05-24.md#pr-01-auth-and-connected-accounts` | `review_ready` |
-| 2 | Deployment and Docker/Fly data bridge | `review/02-deploy-docker-fly-data` | `recent_work_pr_review_spec_2026-05-24.md#pr-02-deployment-dockerfly-data-bridge-and-config-safety` | `review_ready` |
+| 1 | Auth and connected accounts | `review/01-auth-connected-accounts` | `recent_work_pr_review_spec_2026-05-24.md#pr-01-auth-and-connected-accounts` | `merged` |
+| 2 | Deploy / Docker / Fly data | `review/02-deploy-docker-fly-data` | `recent_work_pr_review_spec_2026-05-24.md#pr-02-deployment-dockerfly-data-bridge-and-config-safety` | `review_ready` |
 | 3 | Board Manager worker and actions | `review/03-board-manager-worker` | `recent_work_pr_review_spec_2026-05-24.md#pr-03-board-manager-worker-leases-actions-and-audit` | `review_ready` |
 | 4 | Hive surface and routing | `review/04-hive-surface-routing` | `recent_work_pr_review_spec_2026-05-24.md#pr-04-hive-surface-hive-chat-context-projects-and-routing-feed` | `review_ready` |
 | 5 | Network task lifecycle and recovery | `review/05-network-task-lifecycle` | `recent_work_pr_review_spec_2026-05-24.md#pr-05-network-task-lifecycle-recovery-reward-follow-up-and-projections` | `review_ready` |

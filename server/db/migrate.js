@@ -77,11 +77,11 @@ export async function migrateDatabase({ force = false } = {}) {
 
   for (const name of migrations) {
     if (appliedNames.has(name)) continue;
-      const sql = await readFile(path.join(migrationsDir, name), "utf8");
-      await transaction(async (client) => {
-        await client.query(sql);
-        await client.query(`INSERT INTO ${migrationsTable} (name) VALUES ($1)`, [name]);
-      });
+    const sql = await readFile(path.join(migrationsDir, name), "utf8");
+    await transaction(async (client) => {
+      await client.query(sql);
+      await client.query(`INSERT INTO ${migrationsTable} (name) VALUES ($1)`, [name]);
+    });
     appliedNow.push(name);
   }
 

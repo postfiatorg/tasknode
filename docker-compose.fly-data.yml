@@ -6,6 +6,7 @@ services:
     depends_on: !reset []
     environment:
       DATABASE_URL: ${TASKNODE_DATABASE_URL}
+      TASKNODE_FLY_DEV_DATA_BRIDGE: "true"
 
   board-manager:
     network_mode: host
@@ -14,6 +15,7 @@ services:
     depends_on: !reset []
     environment:
       DATABASE_URL: ${TASKNODE_DATABASE_URL}
+      TASKNODE_FLY_DEV_DATA_BRIDGE: "true"
 
   web:
     network_mode: host
