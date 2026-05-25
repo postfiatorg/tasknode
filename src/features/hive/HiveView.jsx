@@ -224,6 +224,7 @@ function ProjectDetail({ onBack, operators, project, status }) {
         <div>
           <div className="hive-project-meta">
             <span>{project.type}</span>
+            {project.id && <code className="hive-project-id">{project.id}</code>}
             {project.phase && <small>phase {project.phase}</small>}
           </div>
           <h1>{project.name}</h1>
@@ -405,6 +406,7 @@ function ProjectCard({ operators, project, onClick }) {
   return (
     <button className="hive-project-card" onClick={onClick} type="button">
       <span className="hive-project-card-title">{project.name}</span>
+      {project.id && <code className="hive-project-id">{project.id}</code>}
       <span className="hive-project-type">{project.type}</span>
       <p>{project.summary}</p>
       <span className="hive-card-contributors">

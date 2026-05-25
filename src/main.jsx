@@ -1597,6 +1597,12 @@ function ChatSurface({
           const assistantTurn = normalizeChatMessage(result.body.assistant, pendingId);
           setTurns((current) => [...current, { ...assistantTurn, id: pendingId }]);
         } else {
+          const hiveStatusMessage = [
+            result.body.message || "Saved to Hive Context. Hive may respond here if useful.",
+            result.body.chatHistoryWarning ? `Chat history was not updated (${result.body.chatHistoryWarning}).` : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
           setTurns((current) => [
             ...current,
             {
@@ -1606,7 +1612,7 @@ function ChatSurface({
               blocks: [
                 {
                   type: "p",
-                  inline: [{ text: result.body.message || "Saved to Hive Context. Hive may respond here if useful." }],
+                  inline: [{ text: hiveStatusMessage }],
                 },
               ],
             },
