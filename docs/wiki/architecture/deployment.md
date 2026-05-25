@@ -223,6 +223,7 @@ Signed-out callers should receive `usage_top_up_login_required` once Ethereum de
 - Do not call a protocol path end-to-end unless the user-facing route and projection were actually verified.
 - After a Fly secret change, retest the affected route because Fly rolls machines.
 - After a worker or Board Manager change, confirm process state with `fly status`; HTTP health only proves the app process is up.
+- The app CSP allows WebAssembly compilation with `script-src 'self' 'wasm-unsafe-eval'` because wallet and encryption libraries compile WASM in the browser. Do not replace this with broad JavaScript `unsafe-eval` unless a reviewed dependency forces it.
 
 ## Reviewer To Do List
 

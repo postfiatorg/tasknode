@@ -806,5 +806,10 @@ await check("/api/readiness", (response, text) => {
 });
 
 await check("/", (response, text) => {
-  return response.ok && text.includes("Task Node");
+  const csp = response.headers.get("content-security-policy") || "";
+  return (
+    response.ok &&
+    text.includes("Task Node") &&
+    (!csp || csp.includes("script-src 'self' 'wasm-unsafe-eval'"))
+  );
 });
