@@ -223,11 +223,26 @@ The Fly app must also carry the same runtime hostname:
 ```bash
 fly secrets set TELEGRAM_AUTH_WIDGET_DOMAIN=tasknodeofficial-dev.fly.dev -a tasknodeofficial-dev
 fly secrets set TELEGRAM_AUTH_BOT_USERNAME=<bot username> -a tasknodeofficial-dev
+fly secrets set TELEGRAM_BOT_WEBHOOK_SECRET=<random webhook secret> -a tasknodeofficial-dev
 fly secrets set DISCORD_REDIRECT_URI=https://tasknodeofficial-dev.fly.dev/api/auth/callback/discord -a tasknodeofficial-dev
 ```
 
 After deploy, verify `/api/auth/providers` reports Telegram and Discord as
 `ready` before testing account linking in Settings.
+
+Telegram bot chat for linked accounts uses this webhook:
+
+```text
+https://tasknodeofficial-dev.fly.dev/api/integrations/telegram/webhook
+```
+
+Register it with Telegram using the same secret token:
+
+```bash
+curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -H "content-type: application/json" \
+  -d '{"url":"https://tasknodeofficial-dev.fly.dev/api/integrations/telegram/webhook","secret_token":"<random webhook secret>","allowed_updates":["message","edited_message"]}'
+```
 
 Email signup on Fly dev uses Resend. The current dev sender is:
 

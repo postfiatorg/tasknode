@@ -45,6 +45,7 @@ import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
 import { handleMemoryRoute } from "./memory-routes.js";
 import { handleHiveRoute } from "./hive-routes.js";
+import { handleTelegramBotRoute } from "./telegram-bot.js";
 import { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole } from "./process-role.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -537,6 +538,8 @@ async function routeApi(req, url, res) {
   }
 
   if (await handleTaskReadRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
+
+  if (await handleTelegramBotRoute({ json, readJson, req, res, url })) return true;
 
   if (url.pathname === "/api/chat/estimate") {
     const payload = req.method === "POST" ? await readJson(req) : {};

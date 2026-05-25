@@ -25,6 +25,7 @@ import resettableSignupTesting from "../../../docs/wiki/architecture/resettable-
 import styleGuide from "../../../docs/wiki/architecture/style-guide.md?raw";
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
+import telegramBotChat from "../../../docs/wiki/architecture/telegram-bot-chat.md?raw";
 import agentManagedAboutPanels from "../../../docs/wiki/plans/agent-managed-about-panels.md?raw";
 import boardManager from "../../../docs/wiki/plans/board-manager.md?raw";
 import boardManagerDeepseekSecretaryPackets from "../../../docs/wiki/plans/board-manager-deepseek-secretary-packets.md?raw";
@@ -493,6 +494,12 @@ export const DOC_GROUPS = [
         title: "Resettable Signup Testing",
         summary: "QA reset workflow for reusable email signup and funded wallet tests.",
         markdown: resettableSignupTesting,
+      },
+      {
+        slug: "telegram-bot-chat",
+        title: "Telegram Bot Chat",
+        summary: "Linked Telegram identity webhook chat path.",
+        markdown: telegramBotChat,
       },
       {
         slug: "deployment",

@@ -46,6 +46,7 @@ OPENAI_API_KEY
 OPENROUTER_API_KEY
 GITHUB_CLIENT_SECRET
 TELEGRAM_AUTH_BOT_TOKEN
+TELEGRAM_BOT_WEBHOOK_SECRET
 RESEND_API_KEY
 ETH_DEPOSIT_XPUB
 ```
@@ -64,6 +65,7 @@ EMAIL_DELIVERY_PROVIDER=resend
 EMAIL_FROM=Task Node <login@agti.net>
 TELEGRAM_AUTH_BOT_USERNAME=pftasknodebot
 TELEGRAM_AUTH_WIDGET_DOMAIN=tasknodeofficial-dev.fly.dev
+TELEGRAM_BOT_CHAT_MODE=<optional chat mode>
 DISCORD_REDIRECT_URI=https://tasknodeofficial-dev.fly.dev/api/auth/callback/discord
 ```
 
@@ -101,6 +103,14 @@ The Fly app must use the matching widget domain and bot username:
 TELEGRAM_AUTH_WIDGET_DOMAIN=tasknodeofficial-dev.fly.dev
 TELEGRAM_AUTH_BOT_USERNAME=pftasknodebot
 ```
+
+Telegram bot chat uses the same linked Telegram identity. The bot webhook is:
+
+```text
+https://tasknodeofficial-dev.fly.dev/api/integrations/telegram/webhook
+```
+
+Production requires `TELEGRAM_BOT_WEBHOOK_SECRET`; register the webhook with Telegram using the same `secret_token`. `TELEGRAM_AUTH_BOT_TOKEN` can be reused as the bot token if the login widget and chat bot are the same bot.
 
 GitHub OAuth can attach a verified GitHub email to an account cloud. That means a later email login can resolve to an account originally created by GitHub if GitHub supplied the same verified email.
 

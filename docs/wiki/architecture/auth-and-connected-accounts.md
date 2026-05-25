@@ -61,7 +61,7 @@ The rules are:
 4. Callback handlers do not trust query parameters for account ownership; they consume the state row and state cookie.
 5. A successful provider link issues a fresh session whose `linkedProviders` list reflects the updated account cloud.
 
-This is the boundary validated messaging will use later: Telegram or Discord proves that a chat/message sender owns a provider identity already attached to the Task Node account.
+This is now the boundary Telegram bot chat uses: Telegram proves the sender with `message.from.id`, and Task Node only runs account-scoped chat when that Telegram identity is already attached to a Task Node account.
 
 ## Provider Configuration
 
@@ -71,10 +71,13 @@ Telegram requires:
 TELEGRAM_AUTH_BOT_TOKEN
 TELEGRAM_AUTH_BOT_USERNAME
 TELEGRAM_AUTH_WIDGET_DOMAIN
+TELEGRAM_BOT_WEBHOOK_SECRET
 TASKNODE_PUBLIC_URL or a request origin from the running app
 ```
 
 `TELEGRAM_AUTH_WIDGET_DOMAIN` must be the hostname configured in BotFather. `TASKNODE_PUBLIC_URL` must resolve to that same hostname for Telegram login to work. If they differ, Settings should not treat Telegram as usable.
+
+Telegram bot chat accepts webhooks at `/api/integrations/telegram/webhook`. Production webhook calls must include `X-Telegram-Bot-Api-Secret-Token` matching `TELEGRAM_BOT_WEBHOOK_SECRET`.
 
 Discord requires:
 

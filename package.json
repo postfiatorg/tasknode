@@ -22,6 +22,7 @@
     "mock-boundary-check": "node scripts/mock-boundary-check.mjs",
     "chat-markdown-smoke": "node scripts/chat-markdown-smoke.mjs",
     "chat-spirit-prompt-smoke": "node scripts/chat-spirit-prompt-smoke.mjs",
+    "telegram-bot-webhook-smoke": "node scripts/telegram-bot-webhook-smoke.mjs",
     "context-edit-smoke": "node scripts/context-edit-smoke.mjs",
     "context-line-map-parity-smoke": "node scripts/context-line-map-parity-smoke.mjs",
     "profile-nft-prompt-smoke": "node scripts/profile-nft-prompt-smoke.mjs",
