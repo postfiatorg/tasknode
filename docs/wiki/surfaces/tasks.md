@@ -171,6 +171,13 @@ The IPFS payload limit is intentionally small enough to catch bad evidence archi
 - if the model returns a positive reward, the reward wallet publishes `pf.reward.v1` and transfers PFT;
 - if the model returns zero, the task is terminal `rewarded` with `0 PFT` and no payment pointer is expected.
 
+Worker publication is one-way. Once the worker gets a transaction hash or CID
+back from PFTL, `metadata_json.workers.<worker>.published` stays true even if
+the projection has not caught up yet. A stale processing lease can be retried,
+but a stale published marker cannot be reclaimed for another publication. This
+prevents duplicate verification requests and duplicate reward payments during
+cache or reducer lag.
+
 The browser path has now exercised zero, partial, and positive reward outcomes. The task projection treats each as terminal `rewarded`; the reward panel explains whether a separate `pf.reward.v1` payment pointer exists.
 
 ## Forensics

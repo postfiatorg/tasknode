@@ -65,7 +65,7 @@ Recovery also checks worker metadata before asking a worker to continue:
 - `metadata_json.workers.verification_request.published = true` means the verification request was already published, so recovery waits for projection instead of publishing another request.
 - `metadata_json.workers.reward_scoring.published = true` means the reward decision or reward payment path already published, so recovery waits for projection instead of scoring again.
 
-The task review worker still owns the actual verification and reward publications. Its claim queries are idempotent and stale-claim aware. Recovery only reconstructs what should happen next and makes the project mirrors accurate.
+The task review worker still owns the actual verification and reward publications. Its claim queries are idempotent and stale-claim aware: processing leases can expire and be retried, but published markers are terminal for that worker. Recovery only reconstructs what should happen next and makes the project mirrors accurate.
 
 ## Evidence References
 

@@ -39,6 +39,17 @@ const tasks = [
     txHash: `TX_RECOVERY_SUBMISSION_${suffix}`,
   },
   {
+    key: "submitted_published",
+    taskId: `task_network_recovery_submitted_published_${suffix}`,
+    status: "submitted",
+    refState: "submitted",
+    allocationStatus: "submitted",
+    expectedNext: "await_verification_request_projection",
+    expectedWorker: "verification_request",
+    expectedWillPublish: false,
+    publishedWorker: "verification_request",
+  },
+  {
     key: "review_pending",
     taskId: `task_network_recovery_review_${suffix}`,
     status: "verification_response_submitted",
@@ -50,6 +61,17 @@ const tasks = [
     phase: "verification_response",
     cid: `QmRecoveryVerification${suffix}`,
     txHash: `TX_RECOVERY_VERIFICATION_${suffix}`,
+  },
+  {
+    key: "review_published",
+    taskId: `task_network_recovery_review_published_${suffix}`,
+    status: "verification_response_submitted",
+    refState: "verification_response_submitted",
+    allocationStatus: "verification_response_submitted",
+    expectedNext: "await_reward_projection",
+    expectedWorker: "reward_scoring",
+    expectedWillPublish: false,
+    publishedWorker: "reward_scoring",
   },
 ];
 
@@ -63,11 +85,22 @@ async function cleanup() {
   await query("DELETE FROM task_projections WHERE task_id = ANY($1::text[])", [ids]);
 }
 
-function workerMetadata(status) {
-  if (status === "submitted") {
+function workerMetadata(task) {
+  if (task.publishedWorker) {
+    return {
+      workers: {
+        [task.publishedWorker]: {
+          processing: "false",
+          published: "true",
+          published_at: "2026-05-01T00:00:00.000Z",
+        },
+      },
+    };
+  }
+  if (task.status === "submitted") {
     return { workers: { verification_request: { processing: "false", published: "false" } } };
   }
-  if (status === "verification_response_submitted") {
+  if (task.status === "verification_response_submitted") {
     return { workers: { reward_scoring: { processing: "false", published: "false" } } };
   }
   return { workers: {} };
@@ -132,7 +165,7 @@ async function seedTask(task, index) {
       `Fixture task for ${task.status} restart recovery.`,
       task.txHash || `TX_RECOVERY_${task.key}_${suffix}`,
       task.cid || `QmRecovery${task.key}${suffix}`,
-      JSON.stringify(workerMetadata(task.status)),
+      JSON.stringify(workerMetadata(task)),
     ]
   );
   if (task.eventType) {
@@ -203,7 +236,7 @@ async function main() {
       logger: { info() {}, warn: console.warn, error: console.error },
     });
     assert.equal(result.ok, true);
-    assert.equal(result.checked, 3);
+    assert.equal(result.checked, 5);
 
     const byId = new Map(result.tasks.map((task) => [task.taskId, task]));
     for (const task of tasks) {
@@ -212,6 +245,7 @@ async function main() {
       assert.equal(recovered.state, task.status);
       assert.equal(recovered.nextAction, task.expectedNext);
       assert.equal(recovered.workerName, task.expectedWorker);
+      assert.equal(recovered.willPublish, task.expectedWillPublish ?? Boolean(task.expectedWorker));
       assert.equal(recovered.duplicateGuard.recoverySignsUserAcceptance, false);
       assert.equal(recovered.duplicateGuard.recoverySubmitsUserEvidence, false);
       if (task.cid) {

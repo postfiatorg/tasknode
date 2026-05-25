@@ -367,6 +367,8 @@ Update this section as you work. Do not leave it blank.
 - `2026-05-25 02:58 UTC` Confirmed first P1: no-scope usage ledger reads could return account billing rows. Runtime proof created an account credit, then `usageLedger({ accountId: "", conversationId: "" })` returned that account ID.
 - `2026-05-25 03:04 UTC` Patched usage ledger boundary: `/api/usage/ledger` now requires session, app state returns zero usage for signed-out users, and repository ledger helpers return an empty ledger for no-scope calls.
 - `2026-05-25 03:17 UTC` Verification passed for the usage ledger patch: `npm run security-smoke`, `npm run runtime-smoke`, `npm run quality`, `npm run db:chat-billing-smoke` with local Docker `DATABASE_URL`, `npm run route-smoke`, `npm run smoke`, and `git diff --check`.
+- `2026-05-25 03:31 UTC` Confirmed and patched P0 duplicate-publish risk in `server/task-review-worker.js`: stale processing leases remain retryable, but successful worker publications are no longer reclaimable for another verification request or reward scoring/payment.
+- `2026-05-25 03:35 UTC` Expanded `network-task-recovery-smoke` to cover already-published verification/reward worker states and verified local Docker DB recovery logs show `will_publish=false` for those states.
 - `[time]` Completed ramp:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
@@ -380,6 +382,8 @@ Keep a coverage ledger by directory. Add counts or notes as you complete each se
 - [x] root config files inventory started: `README.md`, `package.json`, `docker-compose.dev.yml`, `fly.toml` read for ramp.
 - [ ] `.github/**` reviewed
 - [ ] `server/**` reviewed
+- [x] high-risk server billing/auth route sample reviewed: usage ledger, app state, memory, profile, Hive, wallet balance/transactions, PFTL cache.
+- [x] high-risk server task worker duplicate-publish path reviewed and patched.
 - [ ] `server/repositories/**` reviewed
 - [ ] `server/db/migrations/**` reviewed
 - [ ] `src/**` reviewed
@@ -412,8 +416,18 @@ Use this format for every finding:
 - What breaks: `/api/usage/ledger` was an optional-auth route. When no session was present, it passed empty account and conversation scope to `usageLedger`. Both runtime and Postgres repository paths treated empty scope as aggregate scope, so a signed-out caller could receive recent billing ledger rows across accounts.
 - Why it matters: Billing ledger rows include account IDs, credit/debit metadata, provider/model cost records, and operational usage details. That is account data and must not be readable without a session.
 - Evidence: Runtime proof used a temp store, credited `acct_private_leak_check`, then `usageLedger({ accountId: "", conversationId: "", limit: 5 })` returned `unscopedAccountIds: ["acct_private_leak_check"]`.
-- Fix status: patched locally; commit pending.
+- Fix status: fixed in commit `a53f9a1`.
 - Tests needed: passed `npm run security-smoke`, `npm run runtime-smoke`, `npm run quality`, local Docker `npm run db:chat-billing-smoke`, `npm run route-smoke`, `npm run smoke`, and `git diff --check`.
+
+#### P0: Task review worker could republish stale reward work after projection lag
+
+- Files: `server/task-review-worker.js`, `scripts/network-task-recovery-smoke.mjs`, `docs/wiki/surfaces/tasks.md`, `docs/wiki/architecture/network-task-recovery.md`
+- Boundary: tasks | PFTL | rewards | persistence
+- What breaks: review-worker claim queries treated `published=true` as stale after `published_at` aged past the worker stale timeout. `finalizeWorkerPublish` also cleared `published` when the task projection had not yet advanced to the expected status. If PFTL accepted a reward decision/payment but cache projection lagged, the same `verification_response_submitted` task could be claimed again and publish another reward path.
+- Why it matters: positive reward scoring sends a PFT payment. Republished reward scoring can double-pay a task. Republished verification requests also create duplicate task state updates and confusing forensics.
+- Evidence: code path in `claimVerificationResponses` selected rows where `metadata_json.workers.reward_scoring.published = true` if `published_at` was stale; `processVerificationResponse` publishes the reward before `finalizeWorkerPublish` checks projection status.
+- Fix status: fixed in this commit.
+- Tests needed: passed `npm run quality`, local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run network-task-recovery-smoke`, and `git diff --check`.
 
 ### Code Changes Made
 
@@ -426,12 +440,19 @@ For every code change, add:
 - Tests already run:
 - Tests still needed manually:
 
-- Commit: pending
+- Commit: `a53f9a1`
 - Files changed: `server/index.js`, `server/route-policies.js`, `server/app-state.js`, `server/runtime-store.js`, `server/repositories/chat-billing.js`, `scripts/smoke.mjs`, `scripts/security-smoke.mjs`, `docs/CURRENT_SYSTEM.md`
 - Why changed: close the signed-out/no-scope usage ledger leakage class and document that ledger reads are account-scoped session reads.
 - Risk: low to moderate. Signed-out ledger calls now return `401`; the app should rely on signed-out app state for zero balance and signed-in ledger for detailed rows.
 - Tests already run: direct runtime proof after patch confirmed scoped ledger still returns one row and unscoped ledger returns zero rows; `npm run security-smoke`; `npm run runtime-smoke`; `npm run quality`; `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run db:chat-billing-smoke`; `npm run route-smoke`; `npm run smoke`; `git diff --check`.
 - Tests still needed manually: browser billing page spot-check if this moves through a PR, because detailed ledger visibility is UI-only after login.
+
+- Commit: this commit
+- Files changed: `server/task-review-worker.js`, `scripts/network-task-recovery-smoke.mjs`, `docs/wiki/surfaces/tasks.md`, `docs/wiki/architecture/network-task-recovery.md`
+- Why changed: prevent duplicate verification-request publications and duplicate reward scoring/payment when PFTL publication succeeds but projection lags.
+- Risk: moderate. If a publication succeeds but projection never catches up, the task will wait for cache/reducer repair instead of republishing. That is the correct failure mode for money and on-chain state.
+- Tests already run: `npm run quality`; `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run network-task-recovery-smoke`; `git diff --check`.
+- Tests still needed manually: inspect any active `submitted` or `verification_response_submitted` tasks with `metadata_json.workers.*.published=true` and confirm the board/task UI shows indexing lag instead of creating another update/payment.
 
 ### Testing List For The Integration Owner
 
@@ -441,6 +462,10 @@ If you changed code, list functionality that must be tested before accepting the
   - Why: patched a P1 account data exposure in no-scope ledger reads.
   - How: call `/api/app-state` signed out and `/api/usage/ledger` signed out; then call `/api/usage/ledger` with a signed-in session.
   - Expected result: signed-out app state has zero usage totals; signed-out ledger is `401 usage_ledger_login_required`; signed-in ledger returns only the caller account's rows.
+- [ ] Task review duplicate-publish boundary:
+  - Why: patched a P0 path that could republish reward scoring/payment after projection lag.
+  - How: use the recovery smoke output and inspect a task whose worker metadata says `published=true`.
+  - Expected result: recovery says `will_publish=false`; worker does not issue another verification request or reward payment for that worker.
 
 ### Dependency And Supply-Chain Risks
 

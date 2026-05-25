@@ -403,11 +403,7 @@ async function claimSubmittedTasks({ limit = 1 } = {}) {
         SELECT *
         FROM task_projections
         WHERE status = 'submitted'
-          AND (
-            COALESCE(metadata_json->'workers'->'verification_request'->>'published', '') <> 'true'
-            OR NULLIF(metadata_json->'workers'->'verification_request'->>'published_at', '')::timestamptz
-                 < now() - ($1::int * interval '1 second')
-          )
+          AND COALESCE(metadata_json->'workers'->'verification_request'->>'published', '') <> 'true'
           AND (
             COALESCE(metadata_json->'workers'->'verification_request'->>'processing', '') <> 'true'
             OR NULLIF(metadata_json->'workers'->'verification_request'->>'claimed_at', '')::timestamptz
@@ -454,11 +450,7 @@ async function claimVerificationResponses({ limit = 1 } = {}) {
         SELECT *
         FROM task_projections
         WHERE status = 'verification_response_submitted'
-          AND (
-            COALESCE(metadata_json->'workers'->'reward_scoring'->>'published', '') <> 'true'
-            OR NULLIF(metadata_json->'workers'->'reward_scoring'->>'published_at', '')::timestamptz
-                 < now() - ($1::int * interval '1 second')
-          )
+          AND COALESCE(metadata_json->'workers'->'reward_scoring'->>'published', '') <> 'true'
           AND (
             COALESCE(metadata_json->'workers'->'reward_scoring'->>'processing', '') <> 'true'
             OR NULLIF(metadata_json->'workers'->'reward_scoring'->>'claimed_at', '')::timestamptz
@@ -497,7 +489,7 @@ async function claimVerificationResponses({ limit = 1 } = {}) {
   });
 }
 
-async function clearWorkerClaim({ taskId, workerName, error = "", reclaimPublished = false }) {
+async function clearWorkerClaim({ taskId, workerName, error = "" }) {
   await query(
     `
       UPDATE task_projections
@@ -515,7 +507,6 @@ async function clearWorkerClaim({ taskId, workerName, error = "", reclaimPublish
       ["workers", workerName],
       JSON.stringify({
         processing: "false",
-        ...(reclaimPublished ? { published: "false" } : {}),
         last_error: safeText(error, 1000),
         updated_at: new Date().toISOString(),
       }),
@@ -568,6 +559,7 @@ async function finalizeWorkerPublish({
     authorityWallet,
     allocationWallet,
   });
+  await markWorkerPublished({ taskId, workerName, published });
   const statusResult = await query(
     "SELECT status FROM task_projections WHERE task_id = $1 LIMIT 1",
     [taskId]
@@ -575,17 +567,10 @@ async function finalizeWorkerPublish({
   const status = safeText(statusResult.rows[0]?.status, 80).toLowerCase();
   const expected = expectedStatuses.map((value) => safeText(value, 80).toLowerCase()).filter(Boolean);
   if (expected.includes(status)) {
-    await markWorkerPublished({ taskId, workerName, published });
     logger.info?.("task_worker_publish_confirmed", { taskId, workerName, phase, status });
     return { ok: true, status };
   }
 
-  await clearWorkerClaim({
-    taskId,
-    workerName,
-    error: `projection_status_${status || "unknown"}_expected_${expected.join("|") || "unknown"}`,
-    reclaimPublished: true,
-  });
   logger.warn?.("task_worker_publish_projection_lag", {
     taskId,
     workerName,
