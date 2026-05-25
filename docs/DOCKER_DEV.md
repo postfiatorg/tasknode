@@ -97,7 +97,36 @@ wallet, use the same seed for the same wallet address.
 
 The API container reads `.env.tasknodeofficial-dev` when that ignored local file
 exists, then compose overrides the public app URL back to localhost. Keep
-`OPENAI_API_KEY` there or export it before starting Docker. Frontier Instant is
+`OPENAI_API_KEY` there or export it before starting Docker.
+
+## Email Login
+
+Fly dev sends real sign-in codes through Resend. Local Docker can use the same
+path when the gitignored `.env.tasknodeofficial-dev` file includes:
+
+```text
+EMAIL_DELIVERY_PROVIDER=resend
+EMAIL_FROM=Task Node <login@agti.net>
+RESEND_API_KEY=<resend api key>
+TASKNODE_AUTH_SECRET=<session signing secret>
+```
+
+When Resend is configured, local Docker sends email even though compose sets
+`NODE_ENV=development`. The UI will not show a development code.
+
+To force on-screen development codes instead (no email send), set:
+
+```text
+TASKNODE_EMAIL_DEV_DELIVERY=true
+```
+
+Verify readiness:
+
+```bash
+curl -sS http://localhost:8080/api/auth/providers | jq '.providers[] | select(.id=="email")'
+```
+
+Expect `"deliveryMode": "resend"` for real email testing. Frontier Instant is
 the first OpenAI route and defaults to `chat-latest` through the direct OpenAI
 API, not OpenRouter. Frontier Thinking uses direct OpenAI `gpt-5.5` with high
 reasoning.

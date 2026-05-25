@@ -196,7 +196,10 @@ Common env names:
 Current behavior:
 
 - dev auth is enabled by default outside production;
-- email code login can use development delivery outside production;
+- email code login uses Resend when configured (including local Docker via
+  `.env.tasknodeofficial-dev`); otherwise non-production can fall back to
+  development code delivery, or you can force it with
+  `TASKNODE_EMAIL_DEV_DELIVERY=true`;
 - GitHub OAuth is enabled when configured;
 - Telegram, Discord, and X are visible contract surfaces but not fully enabled;
 - seed-wallet account linking uses browser-only 24-word BIP39 validation, PFTL

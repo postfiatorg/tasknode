@@ -7,12 +7,17 @@ import {
   usageActions,
   walletActions,
 } from "./product-contracts.js";
-import { ethereumDepositConfigStatus, publicDepositAccount } from "./ethereum-deposits.js";
+import {
+  ethereumDepositConfigStatus,
+  publicDepositAccount,
+  usdcTopUpGrantThresholdUsd,
+} from "./ethereum-deposits.js";
 import {
   conversationIdForSession,
   getEthereumDepositAccount,
+  getAccountIdentityProfile,
   getLinkedWallet,
-  walletInitiationGrantStatus,
+  resolveWalletInitiationGrantStatus,
 } from "./runtime-store.js";
 import {
   getHiveConversation,
@@ -34,7 +39,7 @@ const signedOutUsageSummary = Object.freeze({
   ledgerEntryCount: 0,
 });
 
-function sessionState(session, providers, runtimeReadiness, linkedWallet) {
+function sessionState(session, providers, runtimeReadiness, linkedWallet, identityProfile = null) {
   const base = {
     accountLinks: providers,
     devAuth: devAuthStatus(),
@@ -62,6 +67,10 @@ function sessionState(session, providers, runtimeReadiness, linkedWallet) {
     ...base,
     ...session,
     status: "signed_in",
+    displayName: identityProfile?.displayName || session.displayName,
+    hiveHandle: identityProfile?.hiveHandle || session.hiveHandle || "",
+    publicDisplayName: identityProfile?.publicDisplayName || session.publicDisplayName || "",
+    identityProfile,
   };
 }
 
@@ -80,11 +89,32 @@ export async function appState(session = null, { refreshTaskProjection = false }
   const linkedWallet = getLinkedWallet({ accountId });
   const ethDepositStatus = ethereumDepositConfigStatus();
   const ethDepositAccount = getEthereumDepositAccount({ accountId });
+  const usdcGrantThresholdUsd = usdcTopUpGrantThresholdUsd();
+  const creditedUsdcUsd = Number(ethDepositAccount?.creditedBalances?.USDC?.amount || 0);
   const walletLinked = linkedWallet.status === "linked" && Boolean(linkedWallet.address);
-  const initiationGift = walletInitiationGrantStatus({
+  const initiationGift = await resolveWalletInitiationGrantStatus({
     accountId,
     walletAddress: walletLinked ? linkedWallet.address : "",
   });
+  const usdcTopUpGrantStatus = walletLinked
+    ? await resolveWalletInitiationGrantStatus({ accountId, walletAddress: linkedWallet.address, source: "usdc_top_up" })
+    : {
+        eligible: false,
+        reason: walletLinked ? null : "wallet_not_linked",
+        amountPft: initiationGift.amountPft,
+        amountDrops: initiationGift.amountDrops,
+        message: "Create and link a wallet before the USDC top-up grant can be sent.",
+      };
+  const usdcTopUpInitiationGift = usdcTopUpGrantStatus.eligible && creditedUsdcUsd <= usdcGrantThresholdUsd
+    ? {
+        ...usdcTopUpGrantStatus,
+        eligible: false,
+        reason: "usdc_top_up_required",
+        creditedUsdcUsd,
+        thresholdUsd: usdcGrantThresholdUsd,
+        message: `Credit more than $${usdcGrantThresholdUsd.toLocaleString("en-US")} USDC before sending the PFT initiation grant.`,
+      }
+    : { ...usdcTopUpGrantStatus, creditedUsdcUsd, thresholdUsd: usdcGrantThresholdUsd };
   if (refreshTaskProjection && walletLinked) {
     await refreshLinkedWalletTaskProjection({
       accountId,
@@ -96,10 +126,11 @@ export async function appState(session = null, { refreshTaskProjection = false }
     accountId,
     walletAddress: walletLinked ? linkedWallet.address : "",
   });
+  const identityProfile = accountId ? getAccountIdentityProfile({ accountId }) : null;
 
   return {
     generatedAt: new Date().toISOString(),
-    session: sessionState(session, providers, runtimeReadiness, linkedWallet),
+    session: sessionState(session, providers, runtimeReadiness, linkedWallet, identityProfile),
     chat: {
       conversationId,
       conversationsPath: "/api/chat/conversations",
@@ -137,6 +168,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       },
       actions: walletActions(),
       initiationGift,
+      usdcTopUpInitiationGift,
       chatCreditUsd: usage.availableCreditUsd,
       fundingRails: [
         {

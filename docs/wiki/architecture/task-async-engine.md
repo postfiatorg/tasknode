@@ -66,6 +66,10 @@ The current engine is a set of small modules inside the Node API process. The bo
 | Review and reward worker | `server/task-review-worker.js` | Publish verification requests, reward decisions, and positive reward payments. | Authority/reward wallet PFTL pointers. | Worker metadata, PFTL cache, `task_projections`. |
 | Projection reducer | `server/pftl-cache-reducer.js` | Hydrate/decrypt task pointers and rebuild current task state. | PFTL plus encrypted IPFS. | `pftl_task_pointer_events`, `task_events`, `task_projections`. |
 
+Projection ownership is anchored to the durable `task_requests` row when a
+`request_id` is present. Authority-wallet replays can update status and payload
+fields, but they must not move a user-requested task into the authority account.
+
 The task-generation evidence contract is intentionally the same contract exposed by the browser evidence modal: text, URL, screenshot/image, uploaded file or document, public commit link when explicitly appropriate, and mixed evidence made from those surfaces. Unsupported proof types such as video or screen recording are not part of the app contract. The reducer preserves offer steps from `pf.task.offer.v1` into projection metadata so the task UI renders the model's actual 2 to 5 step plan instead of replacing it with the submission requirement.
 
 ## Stage B Speedrun

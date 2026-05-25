@@ -9,8 +9,12 @@ The current UI surface is Settings -> Connected accounts. The backend contract i
 Email login is implemented as an 8-digit code flow:
 
 1. `POST /api/auth/email/start` creates an email challenge.
-2. Local/dev returns the code only when `TASKNODE_EMAIL_DEV_DELIVERY=true`.
-3. Production email delivery uses Resend when configured.
+2. Resend is used whenever `EMAIL_DELIVERY_PROVIDER=resend`, `EMAIL_FROM`, and
+   `RESEND_API_KEY` are configured — including local Docker with
+   `.env.tasknodeofficial-dev`.
+3. Development code delivery is used only when Resend is not configured and the
+   environment is non-production, or when `TASKNODE_EMAIL_DEV_DELIVERY=true`
+   explicitly forces it.
 4. `POST /api/auth/email/verify` consumes the challenge and issues a Task Node session.
 5. Email accounts are low assurance. They do not prove wallet or legacy provider ownership.
 
@@ -34,9 +38,16 @@ Discord login and linking are implemented through OAuth:
 3. `/api/auth/callback/discord` exchanges the code, fetches `/users/@me`, and verifies state.
 4. If the browser already has a Task Node session, the Discord identity links to that account. Otherwise it creates or resumes a Discord-backed account.
 
-GitHub remains implemented through the same start/callback contract.
+X login and linking are implemented through OAuth2 authorization code with PKCE:
 
-X still appears as a planned provider. Its callback is not implemented.
+1. `GET /api/auth/start/x` creates an OAuth state row and state cookie.
+2. The state row stores the short-lived PKCE verifier server-side.
+3. The route redirects to X OAuth with `users.read tweet.read` by default.
+4. `/api/auth/callback/x` verifies state, exchanges the code with the PKCE verifier, and fetches `/2/users/me`.
+5. X does not provide email through this flow, so the stable X user id is the account identity.
+6. If the browser already has a Task Node session, the X identity links to that account. Otherwise it creates or resumes an X-backed account.
+
+GitHub remains implemented through the same start/callback contract.
 
 ## Linking Rules
 
@@ -71,6 +82,22 @@ Discord requires:
 DISCORD_CLIENT_ID
 DISCORD_CLIENT_SECRET
 DISCORD_REDIRECT_URI optional; otherwise Task Node derives /api/auth/callback/discord from the current origin
+```
+
+X requires:
+
+```text
+X_CLIENT_ID
+X_CLIENT_SECRET
+X_REDIRECT_URI optional; otherwise Task Node derives /api/auth/callback/x from TASKNODE_PUBLIC_URL or the current origin
+X_OAUTH_SCOPES optional; defaults to users.read tweet.read
+X_OAUTH_CLIENT_TYPE optional; defaults to confidential, set to public only if the X App type is Native App or Single Page App
+```
+
+For Fly dev, configure the X App callback as:
+
+```text
+https://tasknodeofficial-dev.fly.dev/api/auth/callback/x
 ```
 
 Email requires one of:
@@ -119,16 +146,17 @@ The deterministic fixture covers these states:
 | Telegram authorize stale state | HTML error page, no widget rendered |
 | OAuth stale state | `oauth_state_invalid`, no session |
 | Discord valid OAuth callback | session issued or linked |
+| X valid OAuth2 PKCE callback | session issued or linked |
 | Logout | session destroyed |
 
 ## Broken States Fixed
 
 The previous implementation had four concrete failures:
 
-1. Telegram and Discord appeared in Connected accounts, but backend start/callback routes returned disabled or not implemented responses.
+1. Telegram, Discord, and X appeared in Connected accounts, but backend start/callback routes returned disabled or not implemented responses.
 2. Telegram readiness checked only `TELEGRAM_AUTH_BOT_TOKEN`; the Login Widget also needs `TELEGRAM_AUTH_BOT_USERNAME` and a BotFather domain.
-3. Email-only accounts could not attach Telegram or Discord identities for validated messaging.
-4. There was no repeatable fixture for invalid auth, stale state, reconnect, and logout transitions.
+3. Email-only accounts could not attach Telegram, Discord, or X identities for validated messaging.
+4. There was no repeatable fixture for invalid auth, stale state, PKCE callbacks, reconnect, and logout transitions.
 
 ## Verification
 
@@ -138,19 +166,20 @@ Run:
 npm run auth-login-state-fixture
 ```
 
-The fixture uses a temporary runtime store and mocked Discord API responses. It does not call external providers.
+The fixture uses a temporary runtime store and mocked Discord and X API responses. It does not call external providers.
 
 Expected final line:
 
 ```text
-auth_login_state_fixture_passed transitions=13
+auth_login_state_fixture_passed transitions=14
 ```
 
-The script is intentionally part of `npm run quality` so future auth changes cannot silently break email, Telegram, Discord linking, stale state rejection, or logout.
+The script is intentionally part of `npm run quality` so future auth changes cannot silently break email, Telegram, Discord, X linking, stale state rejection, or logout.
 
 ## Code References
 
-- `server/product-contracts.js`: auth provider readiness, start routes, callback verification, Telegram HMAC verification, Discord OAuth exchange.
+- `server/product-contracts.js`: auth provider route contracts.
+- `server/auth-connected-accounts.js`: auth provider readiness, start routes, callback verification, Telegram HMAC verification, Discord OAuth exchange, and X OAuth2 PKCE exchange.
 - `server/index.js`: HTTP auth routes, session cookies, Telegram authorize page headers.
 - `server/runtime-store.js`: account/session store, linked provider rules, OAuth state rows.
 - `src/main.jsx`: Login dialog and Settings -> Connected accounts UI.

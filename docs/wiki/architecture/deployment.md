@@ -126,6 +126,12 @@ If `/api/usage/top-up/start` returns `usage_top_up_login_required`, top-up is co
 
 Top-up start verifies a derived address is empty before returning it to the user. If any supported asset probe fails, the app does not show the address. If a candidate address already has ETH, USDC, or USDT, the app retires that candidate and advances to the next derivation index. Older pre-fix addresses that only contain historical observed funds and no `ethereum_deposit` ledger credit for that exact deposit account are retired on the next start or sync. Admin credits and chat spend are not deposit ownership proof. The displayed address should therefore be clean, and only later balance increases become usage credit.
 
+When sync records USDC credit and the credited USDC balance is greater than
+`$10`, a newly created linked PFT wallet can receive the one-time `12 PFT`
+initiation grant from the configured PFTL faucet. The USDC credit remains
+account billing state; the PFT grant is a separate PFTL payment to the linked
+wallet and is idempotent by account and wallet.
+
 ## PFTL And IPFS
 
 PFTL is the canonical protocol layer for task requests, task updates, evidence pointers, rewards, context pointers, and wallet-linked activity. Postgres caches the readable projection, but the replayable anchors are CIDs, transaction hashes, wallet addresses, and PFTL memos.

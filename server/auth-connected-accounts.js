@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   consumeOAuthState,
   createAccountSession,
@@ -306,6 +306,98 @@ async function fetchDiscordUser(accessToken) {
   return body;
 }
 
+function base64Url(buffer) {
+  return Buffer.from(buffer)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function xOauthScopes() {
+  return String(process.env.X_OAUTH_SCOPES || "users.read tweet.read")
+    .split(/\s+/)
+    .map((scope) => scope.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function createXCodeChallenge(verifier) {
+  return base64Url(createHash("sha256").update(verifier).digest());
+}
+
+function xEndpointList(envKey, primary, fallback) {
+  const configured = String(process.env[envKey] || "").trim();
+  if (configured) return [configured];
+  return [primary, fallback].filter(Boolean);
+}
+
+function xOauthClientType() {
+  const value = String(process.env.X_OAUTH_CLIENT_TYPE || "confidential").trim().toLowerCase();
+  return value === "public" ? "public" : "confidential";
+}
+
+function xTokenError(body, fallbackMessage) {
+  const message = body?.error_description || body?.error || fallbackMessage;
+  const error = new Error(message);
+  error.status = 502;
+  error.code =
+    body?.error === "unauthorized_client" && /authorization header/i.test(message)
+      ? "x_client_credentials_rejected"
+      : "x_callback_failed";
+  if (error.code === "x_client_credentials_rejected") {
+    error.message = "X rejected the OAuth2 Client ID/Secret for this app.";
+  }
+  return error;
+}
+
+async function fetchXToken({ code, redirectUri, codeVerifier }) {
+  const clientType = xOauthClientType();
+  const credentials = Buffer.from(`${process.env.X_CLIENT_ID}:${process.env.X_CLIENT_SECRET}`).toString("base64");
+  const form = new URLSearchParams();
+  form.set("grant_type", "authorization_code");
+  form.set("code", code);
+  form.set("redirect_uri", redirectUri);
+  form.set("code_verifier", codeVerifier);
+  if (clientType === "public") form.set("client_id", process.env.X_CLIENT_ID);
+
+  let lastBody = null;
+  for (const endpoint of xEndpointList("X_TOKEN_URL", "https://api.x.com/2/oauth2/token", "https://api.twitter.com/2/oauth2/token")) {
+    const { response, body } = await fetchJsonWithTimeout(endpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        ...(clientType === "confidential" ? { Authorization: `Basic ${credentials}` } : {}),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+    });
+    lastBody = body;
+    if (response.ok && !body?.error && body?.access_token) return body.access_token;
+  }
+
+  throw xTokenError(lastBody, "X token exchange failed.");
+}
+
+async function fetchXUser(accessToken) {
+  let lastBody = null;
+  for (const endpoint of xEndpointList("X_USER_URL", "https://api.x.com/2/users/me", "https://api.twitter.com/2/users/me")) {
+    const url = new URL(endpoint);
+    url.searchParams.set("user.fields", "profile_image_url,verified,verified_type");
+    const { response, body } = await fetchJsonWithTimeout(url.toString(), {
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${accessToken}`,
+        "user-agent": "tasknodeofficial",
+      },
+    });
+    lastBody = body;
+    if (response.ok && body?.data?.id) return body.data;
+  }
+
+  throw xTokenError(lastBody, "X user fetch failed.");
+}
+
 function readScalar(value) {
   const raw = Array.isArray(value) ? value[0] : value;
   return String(raw ?? "").trim();
@@ -506,8 +598,10 @@ export function oauthAuthProviders() {
       id: "x",
       label: "X",
       kind: "oauth",
-      requiredEnv: ["X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI"],
-      note: "Useful for pseudonymous identity and public profile continuity. OAuth callback wiring is not active yet.",
+      requiredEnv: ["X_CLIENT_ID", "X_CLIENT_SECRET"],
+      enabled: true,
+      actionRequired: "Configure the X App callback URL to /api/auth/callback/x for this Task Node deployment.",
+      note: "Useful for pseudonymous identity and public profile continuity. X OAuth2 PKCE login and account linking are wired through the shared connected-account boundary.",
     }),
     provider({
       id: "github",
@@ -546,6 +640,7 @@ export function oauthAuthStart(providerId, requestMeta = {}) {
   if (!providerItem.configured) return unconfiguredProviderResponse(providerItem);
   if (providerItem.id === "github") return startGithubAuth(requestMeta);
   if (providerItem.id === "discord") return startDiscordAuth(requestMeta);
+  if (providerItem.id === "x") return startXAuth(requestMeta);
   if (providerItem.id === "telegram") return startTelegramAuth(requestMeta);
   return {
     status: 503,
@@ -590,6 +685,32 @@ function startDiscordAuth(requestMeta = {}) {
   authorizeUrl.searchParams.set("state", stateRow.id);
   authorizeUrl.searchParams.set("prompt", "consent");
   return oauthStartResponse({ providerId: "discord", stateRow, linkingAccount, redirectUrl: authorizeUrl.toString(), redirectUri });
+}
+
+function startXAuth(requestMeta = {}) {
+  const redirectUri = providerRedirectUri("x", requestMeta, "X_REDIRECT_URI");
+  if (!redirectUri) {
+    return actionResponse({ status: 409, error: "auth_redirect_origin_missing", action: "x_auth_start", message: "X login needs a Task Node origin.", actionRequired: "Configure TASKNODE_PUBLIC_URL or call the start route from the deployed app origin." });
+  }
+  const codeVerifier = base64Url(randomBytes(32));
+  const stateRow = createOAuthState({
+    provider: "x",
+    redirectPath: safeRedirectPath(requestMeta.redirectPath),
+    redirectUri,
+    linkAccountId: requestMeta.session?.accountId || "",
+    expiresInSeconds: 600,
+    metadata: { codeVerifier },
+  });
+  const linkingAccount = Boolean(requestMeta.session?.accountId);
+  const authorizeUrl = new URL(String(process.env.X_AUTHORIZE_URL || "https://x.com/i/oauth2/authorize"));
+  authorizeUrl.searchParams.set("response_type", "code");
+  authorizeUrl.searchParams.set("client_id", process.env.X_CLIENT_ID);
+  authorizeUrl.searchParams.set("redirect_uri", redirectUri);
+  authorizeUrl.searchParams.set("scope", xOauthScopes());
+  authorizeUrl.searchParams.set("state", stateRow.id);
+  authorizeUrl.searchParams.set("code_challenge", createXCodeChallenge(codeVerifier));
+  authorizeUrl.searchParams.set("code_challenge_method", "S256");
+  return oauthStartResponse({ providerId: "x", stateRow, linkingAccount, redirectUrl: authorizeUrl.toString(), redirectUri });
 }
 
 function startTelegramAuth(requestMeta = {}) {
@@ -638,6 +759,7 @@ export async function oauthAuthCallback(providerId, query = {}, requestMeta = {}
   if (!providerItem.configured) return unconfiguredProviderResponse(providerItem);
   if (providerItem.id === "github") return completeGithubCallback(query, requestMeta);
   if (providerItem.id === "discord") return completeDiscordCallback(query, requestMeta);
+  if (providerItem.id === "x") return completeXCallback(query, requestMeta);
   if (providerItem.id === "telegram") return completeTelegramCallback(query, requestMeta);
   return { status: 501, body: { ok: false, error: "auth_callback_not_implemented", provider: providerItem.id, message: `${providerItem.label} callback handling is not implemented yet.`, actionRequired: "Implement callback verification, account merge rules, and session issuance before enabling login." } };
 }
@@ -683,6 +805,48 @@ async function completeDiscordCallback(query = {}, requestMeta = {}) {
   } catch (error) {
     recordAuthEvent({ eventType: "discord_oauth_failed", provider: "discord", decision: error?.message || "discord_callback_failed" });
     return actionResponse({ status: error?.status || 502, error: error?.code || "discord_callback_failed", action: "discord_auth_callback", message: "Discord login could not be completed.", actionRequired: error?.message || "Check Discord OAuth app callback configuration and retry." });
+  }
+}
+
+async function completeXCallback(query = {}, requestMeta = {}) {
+  const code = String(query?.code || "").trim();
+  if (query?.error) return actionResponse({ status: 400, error: "x_auth_denied", action: "x_auth_callback", message: String(query.error_description || query.error || "X authorization failed."), actionRequired: "Start X login again if you intended to authorize Task Node." });
+  if (!code) return invalidOAuthState("x", "X");
+  const stateRow = consumeCallbackState("x", query, requestMeta);
+  if (!stateRow) return invalidOAuthState("x", "X");
+  const codeVerifier = String(stateRow.metadata?.codeVerifier || "").trim();
+  if (!codeVerifier) return invalidOAuthState("x", "X");
+  try {
+    const accessToken = await fetchXToken({ code, redirectUri: stateRow.redirectUri, codeVerifier });
+    const profile = await fetchXUser(accessToken);
+    const username = String(profile.username || "").trim();
+    return completeProviderAuth({
+      providerId: "x",
+      label: "X",
+      stateRow,
+      providerUserId: String(profile.id),
+      username,
+      displayName: String(profile.name || username || "X").trim(),
+      profileUrl: username ? `https://x.com/${encodeURIComponent(username)}` : "",
+      emailInfo: null,
+      metadata: {
+        verified: profile.verified === true,
+        verifiedType: profile.verified_type || "",
+        profileImageUrl: profile.profile_image_url || "",
+      },
+    });
+  } catch (error) {
+    recordAuthEvent({ eventType: "x_oauth_failed", provider: "x", decision: error?.message || "x_callback_failed" });
+    return actionResponse({
+      status: error?.status || 502,
+      error: error?.code || "x_callback_failed",
+      action: "x_auth_callback",
+      message: "X login could not be completed.",
+      actionRequired:
+        error?.code === "x_client_credentials_rejected"
+          ? "Copy the OAuth 2.0 Client ID and Client Secret from the same X App into X_CLIENT_ID and X_CLIENT_SECRET, then restart the Task Node API. App IDs and API keys are not the OAuth2 Client Secret."
+          : error?.message || "Check X OAuth app callback configuration and retry.",
+    });
   }
 }
 

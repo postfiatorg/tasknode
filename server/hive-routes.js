@@ -15,6 +15,7 @@ import {
   markHiveContextEntriesWalletValidated,
   saveHiveContextEntry,
 } from "./repositories/hive-context.js";
+import { getAccountIdentityProfile } from "./runtime-store.js";
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -159,9 +160,15 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
     source,
   }));
   const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
+  const identityProfile = getAccountIdentityProfile({ accountId: session.accountId }) || {};
   const entry = await saveHiveContextEntry({
     accountId: session.accountId,
-    displayName: session.displayName || session.primaryProvider || session.accountId,
+    displayName:
+      identityProfile.displayName ||
+      (identityProfile.hiveHandle ? `@${identityProfile.hiveHandle}` : "") ||
+      session.displayName ||
+      session.primaryProvider ||
+      session.accountId,
     body,
     sourceConversationId,
     sourceConversationTitle,

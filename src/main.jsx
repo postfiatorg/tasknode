@@ -88,6 +88,7 @@ import {
   transcriptTextFromThread,
 } from "./features/chat/chat-turns";
 import { BillingSettings } from "./features/billing/BillingSettings";
+import { IdentityHandleDialog, IdentitySettings } from "./features/identity/IdentityControls.jsx";
 import {
   applyContextEditProposal,
   CONTEXT_EDIT_MODE,
@@ -267,6 +268,7 @@ function App() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [identityPromptDismissed, setIdentityPromptDismissed] = useState(false);
   const [theme, setTheme] = useState("auto");
   const [profileTab, setProfileTab] = useState("private");
   const [profilePublic, setProfilePublic] = useState(true);
@@ -390,6 +392,11 @@ function App() {
   const walletVaultAvailable = Boolean(walletVaultStatus?.available && walletVaultStatus?.address === linkedWalletAddress);
   const walletVaultUnlocked = Boolean(walletVaultAvailable && walletVaultStatus?.unlocked);
   const vaultDisplay = walletVaultDisplayState(walletVaultStatus, linkedWalletAddress);
+  const identityHandleRequired = signedIn && session?.identityProfile?.handleRequired === true;
+
+  useEffect(() => {
+    setIdentityPromptDismissed(false);
+  }, [session?.accountId]);
 
   const lockWalletVault = useCallback(() => {
     walletSecretRef.current = null;
@@ -1160,9 +1167,11 @@ function App() {
               accountId={walletAccountId}
               linkedWalletAddress={linkedWalletAddress}
               onProfileAvatarChange={setProfileAvatarNft}
+              onProfileIdentityChange={refreshAppState}
               onWalletUnlock={openWalletVaultControl}
               profilePublic={profilePublic}
               profileTab={profileTab}
+              session={appState?.session}
               setProfilePublic={setProfilePublic}
               setProfileTab={setProfileTab}
               walletSecret={walletSecretRef.current}
@@ -1193,6 +1202,13 @@ function App() {
           session={session}
           setTheme={setTheme}
           theme={theme}
+        />
+      )}
+      {identityHandleRequired && !identityPromptDismissed && !loginOpen && (
+        <IdentityHandleDialog
+          onClose={() => setIdentityPromptDismissed(true)}
+          onSaved={refreshAppState}
+          session={session}
         />
       )}
       {selectedTask && (
@@ -2545,13 +2561,17 @@ function modeDescription(mode = {}) {
 }
 
 function profileDisplayName(session) {
+  if (session?.identityProfile?.displayName) return session.identityProfile.displayName;
+  if (session?.hiveHandle) return `@${session.hiveHandle}`;
   if (session?.displayName) return session.displayName;
   return "Log in or sign up";
 }
 
 function profileAvatarText(session) {
-  if (!session?.displayName) return "TN";
-  return session.displayName
+  const displayName = profileDisplayName(session);
+  if (!displayName || displayName === "Log in or sign up") return "TN";
+  return displayName
+    .replace(/^@+/, "")
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -2561,6 +2581,7 @@ function profileAvatarText(session) {
 
 function profileSessionText(session) {
   if (!isSignedInSession(session)) return "Account";
+  if (session?.hiveHandle) return `@${session.hiveHandle}`;
   const provider = sessionProviderLabel(session);
   return provider ? `Signed in with ${provider}` : "Signed in";
 }
@@ -4166,8 +4187,8 @@ function SettingsModal({ chat, onAppStateChange, onClose, session, setTheme, the
           </header>
           <div className="settings-page">
             {page === "general" && <GeneralSettings setTheme={setTheme} theme={theme} />}
-            {page === "security" && <SecuritySettings session={session} />}
-            {page === "data" && <DataSettings chat={chat} onAppStateChange={onAppStateChange} />}
+            {page === "security" && <SecuritySettings onAppStateChange={onAppStateChange} session={session} />}
+            {page === "data" && <DataSettings chat={chat} onAccountDeleted={onClose} onAppStateChange={onAppStateChange} session={session} />}
             {page === "billing" && <BillingSettings onAppStateChange={onAppStateChange} />}
           </div>
         </div>
@@ -4188,7 +4209,7 @@ function GeneralSettings({ setTheme, theme }) {
   );
 }
 
-function SecuritySettings({ session }) {
+function SecuritySettings({ onAppStateChange, session }) {
   const signedIn = isSignedInSession(session);
   const linkedProviders = session?.linkedProviders || [];
   const providers = (session?.accountLinks || []).filter((provider) =>
@@ -4230,6 +4251,7 @@ function SecuritySettings({ session }) {
   return (
     <>
       <MfaCallout />
+      <IdentitySettings onAppStateChange={onAppStateChange} session={session} />
       {providers.length > 0 && (
         <section className="connected-accounts">
           <div className="connected-heading">
@@ -4299,11 +4321,13 @@ function linkedAccountStatus(provider) {
   return "Linked";
 }
 
-function DataSettings({ chat, onAppStateChange }) {
+function DataSettings({ chat, onAccountDeleted, onAppStateChange, session }) {
   const hiveConversation = chat?.hiveConversation || null;
   const hiveDisabled = hiveConversation?.disabled === true || hiveConversation?.enabled === false;
   const [hivePending, setHivePending] = useState(false);
   const [hiveMessage, setHiveMessage] = useState("");
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteMessage, setDeleteMessage] = useState("");
 
   async function enableHiveChat() {
     setHivePending(true);
@@ -4319,6 +4343,34 @@ function DataSettings({ chat, onAppStateChange }) {
       setHiveMessage(error?.message || "Hive Chat could not be enabled.");
     } finally {
       setHivePending(false);
+    }
+  }
+
+  async function deleteAccount() {
+    if (!isSignedInSession(session)) {
+      setDeleteMessage("Sign in before deleting an account.");
+      return;
+    }
+    const confirmed = window.confirm("Delete this Task Node account? This signs you out and releases the Hive handle.");
+    if (!confirmed) return;
+
+    setDeletePending(true);
+    setDeleteMessage("");
+    try {
+      const result = await requestJson("/api/account/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true, reason: "data_controls_delete_account" }),
+      });
+      if (!result.ok || !result.body?.ok) {
+        throw new Error(result.body?.message || result.body?.error || "Account deletion failed.");
+      }
+      await onAppStateChange?.();
+      onAccountDeleted?.();
+    } catch (error) {
+      setDeleteMessage(error?.message || "Account deletion failed.");
+    } finally {
+      setDeletePending(false);
     }
   }
 
@@ -4342,7 +4394,8 @@ function DataSettings({ chat, onAppStateChange }) {
       <SettingsLine desc="Manage links you've shared from chats." label="Shared links" right={<SmallPill>Manage</SmallPill>} />
       <SettingsLine desc="Receive a copy of your conversations and PFT history." label="Export data" right={<SmallPill>Export</SmallPill>} />
       <SettingsLine desc="How Task Node handles your data." label="Privacy Policy" right={<SmallPill>View <ExternalLink size={11} /></SmallPill>} />
-      <SettingsLine danger desc="Permanently remove your account and all associated data." label="Delete account" right={<SmallPill danger>Delete</SmallPill>} />
+      <SettingsLine danger desc="Permanently remove your account and all associated data." label="Delete account" right={<SmallPill danger disabled={deletePending} onClick={deleteAccount}>{deletePending ? "Deleting" : "Delete"}</SmallPill>} />
+      {deleteMessage && <div className="inline-message">{deleteMessage}</div>}
     </>
   );
 }
@@ -4399,10 +4452,24 @@ function SmallPill({ children, danger, disabled, onClick }) {
   );
 }
 
-function ToggleSwitch({ initial }) {
+function ToggleSwitch({ checked, disabled = false, initial, onChange }) {
+  const controlled = checked !== undefined;
   const [on, setOn] = useState(Boolean(initial));
+  const value = controlled ? Boolean(checked) : on;
+  function toggle() {
+    if (disabled) return;
+    const nextValue = !value;
+    if (!controlled) setOn(nextValue);
+    onChange?.(nextValue);
+  }
   return (
-    <button className={on ? "toggle-switch on" : "toggle-switch"} onClick={() => setOn((value) => !value)} type="button" aria-pressed={on}>
+    <button
+      aria-pressed={value}
+      className={value ? "toggle-switch on" : "toggle-switch"}
+      disabled={disabled}
+      onClick={toggle}
+      type="button"
+    >
       <span />
     </button>
   );

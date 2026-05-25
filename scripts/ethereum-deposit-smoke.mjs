@@ -3,6 +3,8 @@ export async function runEthereumDepositSmoke({
   appendUsageCredit,
   depositReceiveNode,
   getEthereumDepositAccount,
+  getOrCreateEmailAccount,
+  linkWalletToAccount,
   updateEthereumDepositSync,
   usageActions,
   usageTopUpStart,
@@ -90,6 +92,73 @@ export async function runEthereumDepositSmoke({
       syncedTopUp.body?.usage?.availableCreditUsd !== 18.34
     ) {
       throw new Error(`Ethereum top-up sync did not credit USDC delta: ${JSON.stringify(syncedTopUp)}`);
+    }
+
+    const emailGrantAccount = getOrCreateEmailAccount({
+      email: "eth-smoke-usdc-grant@example.com",
+      canonicalEmail: "eth-smoke-usdc-grant@example.com",
+      maskedEmail: "e***@example.com",
+    });
+    linkWalletToAccount({
+      accountId: emailGrantAccount.id,
+      address: "rEthSmokeUsdcTopUpGrant11111111111",
+      publicKey: "eth-smoke-usdc-topup-grant-pubkey",
+      challengeId: "eth-smoke-usdc-topup-grant-challenge",
+      signature: "eth-smoke-usdc-topup-grant-signature",
+      proofPurpose: "wallet_create",
+    });
+    const emailGrantTopUp = await usageTopUpStart({}, "POST", { accountId: emailGrantAccount.id });
+    const emailGrantAddress = emailGrantTopUp.body?.depositAccount?.address;
+    usdcBalancesByAddress.set(String(emailGrantAddress || "").toLowerCase(), 6_000_000n);
+    const emailGrantPartialSync = await usageTopUpSync({}, "POST", { accountId: emailGrantAccount.id });
+    usdcBalancesByAddress.set(String(emailGrantAddress || "").toLowerCase(), 12_340_000n);
+    const emailGrantSync = await usageTopUpSync({}, "POST", { accountId: emailGrantAccount.id });
+    if (
+      emailGrantPartialSync.status !== 200 ||
+      emailGrantPartialSync.body?.creditedEntries?.[0]?.amountUsd !== 6 ||
+      emailGrantPartialSync.body?.pftGrant !== null
+    ) {
+      throw new Error(`Email USDC top-up should wait until credited USDC crosses the grant threshold: ${JSON.stringify(emailGrantPartialSync)}`);
+    }
+    if (
+      emailGrantSync.status !== 200 ||
+      emailGrantSync.body?.creditedEntries?.[0]?.amountUsd !== 6.34 ||
+      emailGrantSync.body?.pftGrant?.status !== "not_configured" ||
+      emailGrantSync.body?.pftGrant?.reason !== "faucet_not_configured"
+    ) {
+      throw new Error(`Email USDC top-up sync should automatically attempt the PFT grant after threshold: ${JSON.stringify(emailGrantSync)}`);
+    }
+
+    const preWalletGrantAccount = getOrCreateEmailAccount({
+      email: "eth-smoke-usdc-grant-pre-wallet@example.com",
+      canonicalEmail: "eth-smoke-usdc-grant-pre-wallet@example.com",
+      maskedEmail: "e***@example.com",
+    });
+    const preWalletGrantTopUp = await usageTopUpStart({}, "POST", { accountId: preWalletGrantAccount.id });
+    const preWalletGrantAddress = preWalletGrantTopUp.body?.depositAccount?.address;
+    usdcBalancesByAddress.set(String(preWalletGrantAddress || "").toLowerCase(), 13_940_000n);
+    const preWalletGrantSync = await usageTopUpSync({}, "POST", { accountId: preWalletGrantAccount.id });
+    if (
+      preWalletGrantSync.status !== 200 ||
+      preWalletGrantSync.body?.usage?.availableCreditUsd !== 13.94 ||
+      preWalletGrantSync.body?.pftGrant !== null
+    ) {
+      throw new Error(`USDC top-up before wallet creation should credit without sending the PFT grant: ${JSON.stringify(preWalletGrantSync)}`);
+    }
+    linkWalletToAccount({
+      accountId: preWalletGrantAccount.id,
+      address: "rEthSmokeUsdcTopUpPreWallet111111111",
+      publicKey: "eth-smoke-usdc-pre-wallet-pubkey",
+      challengeId: "eth-smoke-usdc-pre-wallet-challenge",
+      signature: "eth-smoke-usdc-pre-wallet-signature",
+      proofPurpose: "wallet_create",
+    });
+    const preWalletGrantClaim = await (await import("../server/ethereum-deposits.js")).maybeClaimUsdcTopUpInitiationGift({ accountId: preWalletGrantAccount.id });
+    if (
+      preWalletGrantClaim?.status !== "not_configured" ||
+      preWalletGrantClaim?.reason !== "faucet_not_configured"
+    ) {
+      throw new Error(`USDC top-up grant should be claimable after wallet creation once credited USDC exceeds the threshold: ${JSON.stringify(preWalletGrantClaim)}`);
     }
 
     appendChatTurn({

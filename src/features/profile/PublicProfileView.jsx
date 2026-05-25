@@ -99,6 +99,9 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
   const identity = profile?.identity || {};
   const metrics = profile?.metrics || {};
   const displayWallet = identity.displayWallet || identity.primaryWallet || "";
+  const displayHandle = identity.hiveHandle ? `@${identity.hiveHandle}` : "";
+  const displayName = identity.displayName || displayHandle || "Hive contributor";
+  const publicAliases = Array.isArray(identity.publicAliases) ? identity.publicAliases : [];
   const totalPft = metrics.lifetimeTotalPft || 0;
   const taskPft = metrics.lifetimeTaskRewardPft || 0;
   const airdropPft = metrics.lifetimeAirdropPft || 0;
@@ -109,17 +112,22 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
         <ProfileAvatar nft={profile?.heroNft || null} size={120} />
 
         <div>
-          <div className="tn-eyebrow" style={{ marginBottom: 6 }}>Wallet</div>
+          <div className="tn-eyebrow" style={{ marginBottom: 6 }}>Hive profile</div>
           <div style={{ alignItems: "center", display: "flex", gap: 12, marginBottom: 12 }}>
-            <span className="tn-mono" style={{ color: C.ink, fontSize: 18, fontWeight: 500, letterSpacing: "-0.005em" }}>
-              {loading ? "Loading wallet..." : displayWallet || "No public wallet linked"}
+            <span style={{ color: C.ink, fontSize: 22, fontWeight: 600 }}>
+              {loading ? "Loading profile..." : displayName}
             </span>
-            {displayWallet && (
+            {displayHandle && displayHandle !== displayName && (
+              <span className="tn-mono" style={{ color: C.ink3, fontSize: 14 }}>
+                {displayHandle}
+              </span>
+            )}
+            {displayHandle && (
               <button
                 className="tn-btn"
-                onClick={() => navigator.clipboard?.writeText(displayWallet).catch(() => null)}
+                onClick={() => navigator.clipboard?.writeText(displayHandle).catch(() => null)}
                 style={{ padding: 4 }}
-                title="Copy address"
+                title="Copy handle"
                 type="button"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -129,11 +137,27 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
               </button>
             )}
           </div>
-          <div style={{ alignItems: "center", color: C.ink3, display: "flex", fontSize: 13, gap: 14 }}>
+          <div style={{ alignItems: "center", color: C.ink3, display: "flex", flexWrap: "wrap", fontSize: 13, gap: 12 }}>
             <span style={{ alignItems: "center", color: profilePublic ? C.success : C.ink4, display: "inline-flex", fontWeight: 500, gap: 7 }}>
               <span className="tn-pulseGreen" />
               {profilePublic ? "Public profile enabled" : "Public profile hidden"}
             </span>
+            {displayWallet && (
+              <>
+                <span style={{ color: C.ink5 }}>·</span>
+                <span className="tn-mono">{displayWallet}</span>
+              </>
+            )}
+            {publicAliases.map((alias) => (
+              <React.Fragment key={`${alias.provider}-${alias.handle || alias.label}`}>
+                <span style={{ color: C.ink5 }}>·</span>
+                <span>
+                  {alias.label}
+                  {alias.handle ? ` @${alias.handle}` : ""}
+                  {alias.verified ? " verified" : ""}
+                </span>
+              </React.Fragment>
+            ))}
             {snapshot?.completedAt && (
               <>
                 <span style={{ color: C.ink5 }}>·</span>

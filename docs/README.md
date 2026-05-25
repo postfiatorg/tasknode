@@ -52,7 +52,11 @@ is intentionally not live yet.
    Concrete implementation guardrails for wallet auth UX, session refresh,
    wallet proof, local vault state, and regression coverage.
 
-13. `../whip_context.md`
+13. `wiki/architecture/resettable-signup-testing.md`
+   Repeatable QA workflow for email signup, identity reset, faucet eligibility,
+   and top-up state preservation.
+
+14. `../whip_context.md`
    Automation handoff instructions and whip shutdown guardrails.
 
 ## Source Of Truth Rules

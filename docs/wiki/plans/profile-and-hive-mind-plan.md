@@ -35,6 +35,11 @@ PFTasks also had patterns we should not carry forward:
 
 The Task Node Official version should keep the durable concepts and drop the excess.
 
+Identity namespace and privacy rules are specified in
+`docs/wiki/plans/pseudonymous-identity-and-namespace-plan.md`. Public Hive
+handles are the routing namespace; linked provider identities are verified
+aliases that remain private by default.
+
 ## Product Shape
 
 ### Private Profile

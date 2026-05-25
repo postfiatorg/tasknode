@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { requestJson } from "../../api";
+import { ProfileIdentityCard } from "./ProfileIdentityCard.jsx";
 import { PublicProfile } from "./PublicProfileView.jsx";
 
 const C = {
@@ -1166,8 +1167,10 @@ function MatchScore({ pct }) {
 function PrivateProfile({
   accountId = "",
   linkedWalletAddress = "",
+  onProfileIdentityChange,
   onProfileAvatarChange,
   onWalletUnlock,
+  session = null,
   walletSecret = null,
   walletVault = {},
 } = {}) {
@@ -1240,6 +1243,10 @@ function PrivateProfile({
         loading={airdropState.loading}
         rewardHistory={rewardHistoryState.history}
       />
+      <ProfileIdentityCard
+        onProfileIdentityChange={onProfileIdentityChange}
+        session={session}
+      />
       <ProfileStudio
         accountId={accountId}
         linkedWalletAddress={linkedWalletAddress}
@@ -1265,10 +1272,12 @@ function PrivateProfile({
 export function ProfileView({
   accountId = "",
   linkedWalletAddress = "",
+  onProfileIdentityChange,
   onProfileAvatarChange,
   onWalletUnlock,
   profilePublic = true,
   profileTab = "private",
+  session = null,
   setProfilePublic,
   setProfileTab,
   walletSecret = null,
@@ -1332,8 +1341,10 @@ export function ProfileView({
             <PrivateProfile
               accountId={accountId}
               linkedWalletAddress={linkedWalletAddress}
+              onProfileIdentityChange={onProfileIdentityChange}
               onProfileAvatarChange={onProfileAvatarChange}
               onWalletUnlock={onWalletUnlock}
+              session={session}
               walletSecret={walletSecret}
               walletVault={walletVault}
             />

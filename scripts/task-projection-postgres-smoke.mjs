@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { migrateDatabase } from "../server/db/migrate.js";
-import { closePool } from "../server/db/pool.js";
+import { closePool, query } from "../server/db/pool.js";
 import { getTaskDetail, importTaskReplayReceipt, listTaskState } from "../server/repositories/tasks.js";
+import { upsertTaskRequest } from "../server/repositories/task-requests.js";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required for task projection Postgres smoke.");
@@ -17,12 +18,13 @@ const suffix = randomUUID().slice(0, 8);
 const accountId = `acct_task_pg_smoke_${suffix}`;
 const walletAddress = `rTaskSmoke${suffix}`;
 const taskId = `task_smoke_${suffix}`;
+const requestId = `req_smoke_${suffix}`;
 const receipt = {
   run_id: `task_projection_smoke_${suffix}`,
   task_id: taskId,
   fixture: {
     account_id: accountId,
-    request_id: `req_smoke_${suffix}`,
+    request_id: requestId,
   },
   wallets: [
     { role: "user", address: walletAddress },
@@ -154,4 +156,74 @@ assert.equal(detail.forensics.cids.some((entry) => entry.cid === `QmBundleSmoke$
 assert.equal(detail.forensics.cids.some((entry) => entry.cid === `QmOfferSmoke${suffix}`), true);
 
 console.log(`task projection postgres smoke ok: ${taskId}`);
+
+const ownerTaskId = `task_owner_smoke_${suffix}`;
+const ownerRequestId = `req_owner_smoke_${suffix}`;
+const ownerAccountId = `acct_owner_smoke_${suffix}`;
+const staleAccountId = `acct_stale_authority_${suffix}`;
+const ownerWallet = `rOwnerSmoke${suffix}`;
+await upsertTaskRequest({
+  requestId: ownerRequestId,
+  accountId: ownerAccountId,
+  subjectWallet: ownerWallet,
+  requestText: "Verify durable task ownership.",
+  requestBundleCid: `QmOwnerBundle${suffix}`,
+  requestEventCid: `QmOwnerRequest${suffix}`,
+  requestTxHash: `OWNER_REQUEST_TX_${suffix}`,
+  status: "proposed",
+  generatedTaskId: ownerTaskId,
+});
+await importTaskReplayReceipt({
+  run_id: `task_projection_owner_smoke_${suffix}`,
+  task_id: ownerTaskId,
+  fixture: { account_id: staleAccountId, request_id: ownerRequestId },
+  wallets: [
+    { role: "user", address: ownerWallet },
+    { role: "task_authority", address: `rOwnerAuthority${suffix}` },
+  ],
+  cids: { request_bundle: `QmOwnerBundle${suffix}` },
+  generated_task: {
+    title: "Keep projection on durable request owner",
+    description: "Authority replay must not steal task ownership.",
+    task_kind: "personal",
+    reward_offer: { amount_estimate_pft: "1.00" },
+    submission_requirement: { type: "text", criteria: "Submit owner smoke evidence." },
+    verification_policy: { mode: "manual_review" },
+  },
+  hydrated_events: [{
+    schema: "pf.task.offer.v1",
+    task_id: ownerTaskId,
+    tx_hash: `OWNER_OFFER_TX_${suffix}`,
+    cid: `QmOwnerOffer${suffix}`,
+    payload: {
+      schema: "pf.task.offer.v1",
+      task_id: ownerTaskId,
+      request_id: ownerRequestId,
+      subject_wallet: ownerWallet,
+      title: "Keep projection on durable request owner",
+    },
+  }],
+  projection: {
+    [ownerTaskId]: {
+      status: "proposed",
+      title: "Keep projection on durable request owner",
+      task_kind: "personal",
+      reward_offer_pft: "1.00",
+      request_bundle_cid: `QmOwnerBundle${suffix}`,
+      events: [{}],
+    },
+  },
+}, {
+  source: "task_projection_owner_smoke",
+  sourceRef: "authority-replay-owner-smoke",
+});
+const ownerState = await listTaskState({ accountId: ownerAccountId, walletAddress: ownerWallet });
+assert.equal(ownerState.outstanding.some((task) => task.taskId === ownerTaskId), true);
+const hiddenFromStale = await listTaskState({ accountId: staleAccountId, walletAddress: ownerWallet });
+assert.equal(hiddenFromStale.outstanding.some((task) => task.taskId === ownerTaskId), false);
+const ownerRow = await query("SELECT account_id, subject_wallet, metadata_json FROM task_projections WHERE task_id = $1", [ownerTaskId]);
+assert.equal(ownerRow.rows[0]?.account_id, ownerAccountId);
+assert.equal(ownerRow.rows[0]?.subject_wallet, ownerWallet);
+assert.equal(ownerRow.rows[0]?.metadata_json?.fixture?.account_id, ownerAccountId);
+console.log(`task projection owner smoke ok: ${ownerTaskId}`);
 await closePool();
