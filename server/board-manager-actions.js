@@ -110,6 +110,47 @@ function sourceAccountIds(sourcePacket = {}) {
   return ids;
 }
 
+function sourceContributorCandidates(sourcePacket = {}) {
+  const candidates = [];
+  const seen = new Set();
+  const addCandidate = ({ accountId = "", walletAddress = "", displayName = "" } = {}) => {
+    const normalizedWallet = safeText(walletAddress, 120);
+    if (!normalizedWallet) return;
+    const normalizedAccount = safeText(accountId, 180);
+    const key = `${normalizedAccount}:${normalizedWallet}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({
+      accountId: normalizedAccount,
+      walletAddress: normalizedWallet,
+      displayName: safeText(displayName, 120),
+    });
+  };
+
+  for (const group of sourcePacket?.hiveContext?.groups || []) {
+    const groupAccountId = safeText(group.accountId, 180);
+    const groupDisplayName = safeText(group.displayName, 120);
+    for (const entry of Array.isArray(group.entries) ? group.entries : []) {
+      if (!entry?.walletValidated) continue;
+      addCandidate({
+        accountId: entry.accountId || groupAccountId,
+        displayName: entry.displayName || groupDisplayName,
+        walletAddress: entry.walletAddress,
+      });
+    }
+  }
+
+  for (const candidate of sourcePacket?.networkTaskCandidates || []) {
+    addCandidate({
+      accountId: candidate.accountId || candidate.account_id,
+      displayName: candidate.displayName || candidate.display_name,
+      walletAddress: candidate.walletAddress || candidate.wallet_address,
+    });
+  }
+
+  return candidates;
+}
+
 function resolveMessageTarget({ decision, sourcePacket }) {
   const targetType = safeText(decision.target_type, 120);
   const targetId = safeText(decision.target_id, 180);
@@ -372,10 +413,19 @@ async function executeAssignContributor({ runId, decision, sourcePacket }) {
   const contributor = safeObject(decision.payload.contributor);
   const projectId = safeText(contributor.project_id || decision.target_id, 180);
   const walletAddress = safeText(contributor.wallet_address, 120);
+  const accountId = safeText(contributor.account_id, 180);
   if (!projectId) throw new Error("board_manager_assign_contributor_missing_project");
   if (!walletAddress) throw new Error("board_manager_assign_contributor_missing_wallet");
   const exists = await query("SELECT id FROM network_projects WHERE id = $1 AND status <> 'archived'", [projectId]);
   if (!exists.rows[0]) throw new Error("board_manager_assign_contributor_project_not_found");
+  const candidates = sourceContributorCandidates(sourcePacket);
+  const sourceCandidate = candidates.find((candidate) => (
+    candidate.walletAddress === walletAddress &&
+    (!accountId || !candidate.accountId || candidate.accountId === accountId)
+  ));
+  if (!sourceCandidate) {
+    throw new Error("board_manager_assign_contributor_not_in_source_packet");
+  }
   const result = await query(
     `
       INSERT INTO network_project_contributors (
@@ -408,7 +458,7 @@ async function executeAssignContributor({ runId, decision, sourcePacket }) {
     [
       projectId,
       walletAddress,
-      safeText(contributor.codename, 120) || safeText(contributor.account_id, 120) || "Operator",
+      safeText(contributor.codename, 120) || sourceCandidate.displayName || accountId || "Operator",
       safeText(contributor.archetype, 180),
       Boolean(contributor.allotted),
       intValue(contributor.cap),
@@ -417,7 +467,7 @@ async function executeAssignContributor({ runId, decision, sourcePacket }) {
       safeText(contributor.role_label, 80),
       intValue(contributor.sort_order, 100),
       jsonValue({
-        account_id: safeText(contributor.account_id, 180),
+        account_id: accountId || sourceCandidate.accountId,
         board_manager_run_id: safeText(runId, 180),
         board_manager_reason: decision.reason,
         source_packet_digest: safeText(sourcePacket.sourcePacketDigest, 120),

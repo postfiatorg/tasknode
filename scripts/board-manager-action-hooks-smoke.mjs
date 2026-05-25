@@ -363,6 +363,31 @@ async function main() {
     },
   });
 
+  await assert.rejects(
+    () => executeBoardManagerDecision({
+      runId,
+      sourcePacket,
+      dryRun: false,
+      decision: {
+        action: "assign_contributor",
+        target_type: "network_project",
+        target_id: projectId,
+        reason: "Smoke verifies contributor assignment cannot invent a wallet outside the source packet.",
+        confidence: 1,
+        payload: payload({
+          contributor: {
+            project_id: projectId,
+            account_id: "acct_board_manager_not_in_source_packet",
+            wallet_address: deriveAddress(deriveKeypair(generateSeed()).publicKey),
+            codename: "Invented Operator",
+            status: "active",
+          },
+        }),
+      },
+    }),
+    /board_manager_assign_contributor_not_in_source_packet/
+  );
+
   await executeBoardManagerDecision({
     runId,
     sourcePacket,
@@ -474,7 +499,7 @@ async function main() {
   assert.equal(markRead.ok, true);
   assert.equal(markRead.updated, 1);
   assert.equal(markRead.conversation.unreadCount, 0);
-  assert.equal(actions.rows[0]?.count, 9);
+  assert.equal(actions.rows[0]?.count, 10);
   const publicFeed = await getBoardManagerAgentFeed({ limit: 20 });
   assert.equal(publicFeed.some((entry) => entry.runId === runId), false);
   const feed = await getBoardManagerAgentFeed({ limit: 20, includeInternal: true });
@@ -486,6 +511,10 @@ async function main() {
   assert.ok(actionRows.rows.some((entry) => (
     entry.action === "message_user" &&
     entry.result_json?.error === "board_manager_message_user_account_not_in_source_packet"
+  )));
+  assert.ok(actionRows.rows.some((entry) => (
+    entry.action === "assign_contributor" &&
+    entry.result_json?.error === "board_manager_assign_contributor_not_in_source_packet"
   )));
   await query(
     `

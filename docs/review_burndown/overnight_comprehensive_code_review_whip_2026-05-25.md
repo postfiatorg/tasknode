@@ -379,6 +379,7 @@ Update this section as you work. Do not leave it blank.
 - `2026-05-25 05:12 UTC` Confirmed and patched P1 destructive bridge risk: `fly-dev:data:push` can no longer truncate and reload Fly dev data unless it targets `tasknodeofficial-dev` and the operator passes an explicit confirmation flag/env var.
 - `2026-05-25 03:34 UTC` Reviewed task generation/review prompts and worker contracts. Patched task-kind taxonomy drift and server-side URL evidence SSRF boundary; `npm run task-lifecycle-smoke` and quiet lint passed.
 - `2026-05-25 03:34 UTC` Reviewed Board Manager action hooks. Patched `message_user` so account targets must exist in the current source packet; local Docker `board-manager-action-hooks-smoke` passed.
+- `2026-05-25 21:19 UTC` Continued Board Manager action-hook review. Found `assign_contributor` still trusted model-supplied contributor wallets; patched it to require the wallet to appear in the current source packet as a validated Hive Context wallet or eligible Network Task candidate. Local Docker `board-manager-action-hooks-smoke` passed.
 - `[time]` Completed ramp:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
@@ -398,7 +399,7 @@ Keep a coverage ledger by directory. Add counts or notes as you complete each se
 - [x] deploy/data bridge sample reviewed and patched: Fly dev bridge push now has a confirmation guard before any proxy/database work.
 - [x] high-risk server task worker duplicate-publish path reviewed and patched.
 - [x] task generation/review prompt and worker sample reviewed and patched: task-kind taxonomy plus URL evidence SSRF guard.
-- [x] Hive/Board Manager action-hook sample reviewed and patched: message recipients are constrained to source-packet accounts or Hive Context entries.
+- [x] Hive/Board Manager action-hook sample reviewed and patched: message recipients and contributor assignments are constrained to current source-packet accounts, validated Hive Context wallets, or eligible Network Task candidates.
 - [ ] `server/repositories/**` reviewed
 - [ ] `server/db/migrations/**` reviewed
 - [ ] `src/**` reviewed
@@ -516,6 +517,16 @@ Use this format for every finding:
 - Fix status: fixed in commit `9272ac6`.
 - Tests needed: passed local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`.
 
+#### P1: Board Manager `assign_contributor` could assign a wallet outside its source packet
+
+- Files: `server/board-manager-actions.js`, `scripts/board-manager-action-hooks-smoke.mjs`, `docs/wiki/surfaces/hive.md`
+- Boundary: Hive | agent action hooks | contributor/project routing
+- What breaks: `assign_contributor` accepted the model-supplied `wallet_address` and `account_id` after checking only that the project existed. A malformed model decision could add an arbitrary wallet as a project contributor even if that wallet was not part of the current Hive Context, source-packet candidate list, or eligible Network Task routing set.
+- Why it matters: contributor assignment changes the visible Hive board and the routing context for future Network Task work. Action hooks must constrain model mutations to the actual state packet the agent was authorized to inspect.
+- Evidence: `executeAssignContributor()` read `decision.payload.contributor.wallet_address`, checked `network_projects`, then inserted into `network_project_contributors` without validating the wallet against `sourcePacket`.
+- Fix status: fixed in this review patch.
+- Tests needed: passed local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`, `npm run quality`, and `git diff --check`.
+
 ### Code Changes Made
 
 For every code change, add:
@@ -587,8 +598,15 @@ For every code change, add:
 - Files changed: `server/board-manager-actions.js`, `scripts/board-manager-action-hooks-smoke.mjs`, `docs/wiki/surfaces/hive.md`
 - Why changed: constrain Board Manager chat replies to source-packet accounts or concrete Hive Context entries, instead of trusting a model-supplied arbitrary account id.
 - Risk: low. Valid Hive Context replies and source-packet candidate/account replies still work; invented account targets now fail and are recorded as failed action results.
-- Tests already run: `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`.
+- Tests already run: `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`; `npm run quality`; `git diff --check`.
 - Tests still needed manually: send a Hive Chat message, run one Board Manager turn, and confirm any reply lands in that same Hive Chat thread.
+
+- Commit: this review patch
+- Files changed: `server/board-manager-actions.js`, `scripts/board-manager-action-hooks-smoke.mjs`, `docs/wiki/surfaces/hive.md`
+- Why changed: constrain Board Manager contributor assignments to wallets present in the current source packet as validated Hive Context wallets or eligible Network Task candidates.
+- Risk: low. Legitimate assignments from current source context still work; invented contributor wallets now fail and are recorded as failed action results.
+- Tests already run: `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`.
+- Tests still needed manually: run one Board Manager turn that assigns a real eligible contributor to a real active project and confirm the Hive project contributor list updates without introducing unrelated accounts.
 
 ### Testing List For The Integration Owner
 
@@ -630,6 +648,10 @@ If you changed code, list functionality that must be tested before accepting the
   - Why: patched `message_user` to reject account targets not present in the current source packet.
   - How: run the action-hook smoke and manually send one Hive Chat input followed by a Board Manager turn.
   - Expected result: the smoke records the rejected invented-account action, and the manual reply appears only in the source user's Hive Chat.
+- [ ] Board Manager contributor assignment boundary:
+  - Why: patched `assign_contributor` to reject wallets that are not present in the Board Manager source packet.
+  - How: run the action-hook smoke and manually allow one Board Manager run to assign a real eligible contributor to a project.
+  - Expected result: the smoke records the rejected invented-wallet action, and the manual assignment only adds a contributor from validated Hive Context or eligible Network Task candidates.
 
 ### Dependency And Supply-Chain Risks
 
