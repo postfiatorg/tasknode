@@ -13,6 +13,7 @@ import wallet from "../../../docs/wiki/surfaces/wallet.md?raw";
 import aiProviders from "../../../docs/wiki/architecture/ai-providers.md?raw";
 import authAndConnectedAccounts from "../../../docs/wiki/architecture/auth-and-connected-accounts.md?raw";
 import database from "../../../docs/wiki/architecture/database.md?raw";
+import deployment from "../../../docs/wiki/architecture/deployment.md?raw";
 import encryption from "../../../docs/wiki/architecture/encryption.md?raw";
 import executionMandate from "../../../docs/wiki/architecture/execution-mandate.md?raw";
 import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
@@ -484,6 +485,12 @@ export const DOC_GROUPS = [
         title: "Auth And Connected Accounts",
         summary: "Email, Telegram, Discord, and provider linking.",
         markdown: authAndConnectedAccounts,
+      },
+      {
+        slug: "deployment",
+        title: "Deployment",
+        summary: "Fly dev, Docker, data stores, secrets, auth, top-up, and verification commands.",
+        markdown: deployment,
       },
       {
         slug: "encryption",
