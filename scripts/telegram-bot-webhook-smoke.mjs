@@ -165,6 +165,34 @@ try {
   assert.match(sentMessages.at(-1).text, /Available credit:/);
   assert.equal(chatCalls.length, 2);
 
+  const bareModeResult = await processTelegramBotUpdate({
+    update_id: 7,
+    message: {
+      message_id: 16,
+      from: { id: 12345, is_bot: false, username: "linked_user" },
+      chat: { id: 12345, type: "private" },
+      text: "mode",
+    },
+  }, { chatExecutor, sendTelegramMessage });
+
+  assert.equal(bareModeResult.action, "telegram_bot_help");
+  assert.match(sentMessages.at(-1).text, /Current mode: Frontier Thinking/);
+  assert.equal(chatCalls.length, 2);
+
+  const bareBalanceResult = await processTelegramBotUpdate({
+    update_id: 8,
+    message: {
+      message_id: 17,
+      from: { id: 12345, is_bot: false, username: "linked_user" },
+      chat: { id: 12345, type: "private" },
+      text: "balance",
+    },
+  }, { chatExecutor, sendTelegramMessage });
+
+  assert.equal(bareBalanceResult.action, "telegram_bot_balance");
+  assert.match(sentMessages.at(-1).text, /Available credit:/);
+  assert.equal(chatCalls.length, 2);
+
   console.log(JSON.stringify({
     ok: true,
     accountId: account.id,

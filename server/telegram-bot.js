@@ -231,6 +231,18 @@ function billingSummaryText(summary = {}) {
   ].join("\n");
 }
 
+function telegramCommand(body = "") {
+  const normalized = String(body || "").trim().toLowerCase();
+  if (!normalized) return "";
+
+  const firstToken = normalized.split(/\s+/)[0] || "";
+  const commandToken = firstToken.startsWith("/") ? firstToken.slice(1).split("@")[0] : firstToken;
+  if (["start", "help", "mode", "modes"].includes(commandToken)) return "mode";
+  if (["balance", "bal", "credit"].includes(commandToken)) return "balance";
+  if (firstToken.startsWith("/")) return "unknown";
+  return "";
+}
+
 function webhookAuthorized(headers = {}) {
   const expected = telegramWebhookSecret();
   if (!expected) {
@@ -451,7 +463,9 @@ export async function processTelegramBotUpdate(update = {}, {
 
   const currentMode = modeForTelegramChat({ accountId: account.id, chatId: message.chatId, preferenceReader });
 
-  if (!message.body || /^\/(start|help|mode)(\s|$)/i.test(message.body)) {
+  const command = telegramCommand(message.body);
+
+  if (!message.body || command === "mode") {
     await sendModeHelp({
       accountId: account.id,
       chatId: message.chatId,
@@ -463,7 +477,7 @@ export async function processTelegramBotUpdate(update = {}, {
     return { ok: true, action: "telegram_bot_help", linked: true, accountId: account.id };
   }
 
-  if (/^\/balance(\s|$)/i.test(message.body)) {
+  if (command === "balance") {
     await sendBalance({
       accountId: account.id,
       chatId: message.chatId,
@@ -475,7 +489,7 @@ export async function processTelegramBotUpdate(update = {}, {
     return { ok: true, action: "telegram_bot_balance", linked: true, accountId: account.id, mode: currentMode };
   }
 
-  if (message.body.startsWith("/")) {
+  if (command === "unknown") {
     await sendModeHelp({
       accountId: account.id,
       chatId: message.chatId,
