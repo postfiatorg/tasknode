@@ -10,10 +10,23 @@ Task Node can accept private Telegram bot messages from Telegram accounts that a
 4. The webhook validates `X-Telegram-Bot-Api-Secret-Token` against `TELEGRAM_BOT_WEBHOOK_SECRET`.
 5. The webhook records the Telegram `update_id` in a short in-process duplicate guard and acknowledges Telegram immediately.
 6. The background handler resolves `message.from.id` through the linked Telegram identity.
-7. The message is sent through the existing account-scoped chat path.
+7. The message is sent through the existing account-scoped chat path with the Telegram chat's selected mode.
 8. The assistant response is sent back to the same private Telegram chat with `sendMessage`.
 
 Group chats are rejected with a privacy message. This prevents a linked account chat from leaking into a shared Telegram room.
+
+## Modes And Billing
+
+Telegram exposes the same chat modes as the web chat surface:
+
+- Private Instant
+- Private Thinking
+- Frontier Instant
+- Frontier Thinking
+
+The bot sends an inline keyboard with these modes. Selecting a mode stores a per-account, per-Telegram-chat preference in the runtime store, then future Telegram messages use that mode.
+
+The bot calls the same `chatSend` path as the web UI. That means model execution is billed against the Task Node account balance, and low-balance requests are rejected before provider execution. `/balance` or the Balance button returns current credit, spend, and available credit.
 
 ## Environment
 
@@ -35,7 +48,7 @@ For Fly dev:
 fly secrets set TELEGRAM_BOT_WEBHOOK_SECRET=<random secret> -a tasknodeofficial-dev
 curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -H "content-type: application/json" \
-  -d '{"url":"https://tasknodeofficial-dev.fly.dev/api/integrations/telegram/webhook","secret_token":"<random secret>","allowed_updates":["message"]}'
+  -d '{"url":"https://tasknodeofficial-dev.fly.dev/api/integrations/telegram/webhook","secret_token":"<random secret>","allowed_updates":["message","callback_query"]}'
 ```
 
 Check readiness:

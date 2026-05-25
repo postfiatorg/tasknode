@@ -241,7 +241,7 @@ Register it with Telegram using the same secret token:
 ```bash
 curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -H "content-type: application/json" \
-  -d '{"url":"https://tasknodeofficial-dev.fly.dev/api/integrations/telegram/webhook","secret_token":"<random webhook secret>","allowed_updates":["message"]}'
+  -d '{"url":"https://tasknodeofficial-dev.fly.dev/api/integrations/telegram/webhook","secret_token":"<random webhook secret>","allowed_updates":["message","callback_query"]}'
 ```
 
 Email signup on Fly dev uses Resend. The current dev sender is:

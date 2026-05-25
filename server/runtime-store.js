@@ -41,6 +41,7 @@ const defaultState = {
   accountEmails: {},
   accountIdentities: {},
   accountWallets: {},
+  telegramBotPreferences: {},
   walletInitiationGrants: [],
   ethereumDepositAccounts: {},
   ethereumDepositRetiredAccounts: [],
@@ -98,6 +99,10 @@ function loadState() {
       accountWallets:
         parsed.accountWallets && typeof parsed.accountWallets === "object" && !Array.isArray(parsed.accountWallets)
           ? parsed.accountWallets
+          : {},
+      telegramBotPreferences:
+        parsed.telegramBotPreferences && typeof parsed.telegramBotPreferences === "object" && !Array.isArray(parsed.telegramBotPreferences)
+          ? parsed.telegramBotPreferences
           : {},
       walletInitiationGrants: Array.isArray(parsed.walletInitiationGrants)
         ? parsed.walletInitiationGrants
@@ -673,6 +678,41 @@ export function setAccountAliasVisibility({
   syncAccountSessions(result.account);
   saveState();
   return { ...result, account: accountPayload(result.account) };
+}
+
+function telegramBotPreferenceKey({ accountId = "", chatId = "" } = {}) {
+  const normalizedAccountId = safeId(accountId, "account");
+  const normalizedChatId = safeId(chatId, "chat");
+  return `${normalizedAccountId}:${normalizedChatId}`;
+}
+
+export function getTelegramBotPreferences({ accountId = "", chatId = "" } = {}) {
+  const key = telegramBotPreferenceKey({ accountId, chatId });
+  const value = state.telegramBotPreferences?.[key] || {};
+  return {
+    mode: typeof value.mode === "string" ? value.mode : "",
+    updatedAt: value.updatedAt || "",
+  };
+}
+
+export function setTelegramBotModePreference({ accountId = "", chatId = "", mode = "" } = {}) {
+  const normalizedAccountId = String(accountId || "").trim();
+  const normalizedChatId = String(chatId || "").trim();
+  const normalizedMode = String(mode || "").trim();
+  if (!normalizedAccountId || !normalizedChatId || !normalizedMode) {
+    return { ok: false, status: 400, error: "telegram_bot_preference_invalid" };
+  }
+
+  const key = telegramBotPreferenceKey({ accountId: normalizedAccountId, chatId: normalizedChatId });
+  const preference = {
+    accountId: normalizedAccountId,
+    chatId: normalizedChatId,
+    mode: normalizedMode,
+    updatedAt: new Date().toISOString(),
+  };
+  state.telegramBotPreferences[key] = preference;
+  saveState();
+  return { ok: true, preference: structuredClone(preference) };
 }
 
 export function findAccountByEmail(canonicalEmail) {

@@ -22,7 +22,12 @@ try {
   });
 
   const sentMessages = [];
+  const answeredCallbacks = [];
   const chatCalls = [];
+  const answerCallbackQuery = async (answer) => {
+    answeredCallbacks.push(answer);
+    return { ok: true };
+  };
   const sendTelegramMessage = async (message) => {
     sentMessages.push(message);
     return { ok: true, messageId: sentMessages.length };
@@ -57,9 +62,11 @@ try {
   assert.equal(chatCalls.length, 1);
   assert.equal(chatCalls[0].method, "POST");
   assert.equal(chatCalls[0].payload.accountId, account.id);
+  assert.equal(chatCalls[0].payload.mode, "Private Instant");
   assert.equal(chatCalls[0].payload.message, "hello from telegram");
   assert.equal(sentMessages.at(-1).chatId, "12345");
   assert.equal(sentMessages.at(-1).text, "reply:hello from telegram");
+  assert.ok(sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat()?.some((button) => button.callback_data === "tn_mode:ft"));
 
   const duplicateResult = await processTelegramBotUpdate({
     update_id: 1,
@@ -104,12 +111,67 @@ try {
   assert.equal(chatCalls.length, 1);
   assert.match(sentMessages.at(-1).text, /private Telegram chat/);
 
+  const modeSetResult = await processTelegramBotUpdate({
+    update_id: 4,
+    callback_query: {
+      id: "callback_1",
+      from: { id: 12345, is_bot: false, username: "linked_user" },
+      message: {
+        message_id: 13,
+        chat: { id: 12345, type: "private" },
+      },
+      data: "tn_mode:ft",
+    },
+  }, { answerCallbackQuery, chatExecutor, sendTelegramMessage });
+
+  assert.equal(modeSetResult.action, "telegram_bot_mode_set");
+  assert.equal(modeSetResult.mode, "Frontier Thinking");
+  assert.equal(answeredCallbacks.at(-1).callbackQueryId, "callback_1");
+  assert.match(answeredCallbacks.at(-1).text, /Frontier Thinking/);
+  assert.match(sentMessages.at(-1).text, /Current mode: Frontier Thinking/);
+  assert.ok(sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat()?.some((button) => button.text.includes("[x] Frontier Thinking")));
+  assert.equal(chatCalls.length, 1);
+
+  const selectedModeResult = await processTelegramBotUpdate({
+    update_id: 5,
+    message: {
+      message_id: 14,
+      from: { id: 12345, is_bot: false, username: "linked_user" },
+      chat: { id: 12345, type: "private" },
+      text: "use selected mode",
+    },
+  }, { chatExecutor, sendTelegramMessage });
+
+  assert.equal(selectedModeResult.action, "telegram_bot_chat");
+  assert.equal(selectedModeResult.mode, "Frontier Thinking");
+  assert.equal(chatCalls.length, 2);
+  assert.equal(chatCalls[1].payload.mode, "Frontier Thinking");
+  assert.equal(chatCalls[1].payload.message, "use selected mode");
+
+  const balanceResult = await processTelegramBotUpdate({
+    update_id: 6,
+    callback_query: {
+      id: "callback_2",
+      from: { id: 12345, is_bot: false, username: "linked_user" },
+      message: {
+        message_id: 15,
+        chat: { id: 12345, type: "private" },
+      },
+      data: "tn_balance",
+    },
+  }, { answerCallbackQuery, chatExecutor, sendTelegramMessage });
+
+  assert.equal(balanceResult.action, "telegram_bot_balance");
+  assert.match(sentMessages.at(-1).text, /Available credit:/);
+  assert.equal(chatCalls.length, 2);
+
   console.log(JSON.stringify({
     ok: true,
     accountId: account.id,
     conversationId: linkedResult.conversationId,
     chatCalls: chatCalls.length,
     sentMessages: sentMessages.length,
+    answeredCallbacks: answeredCallbacks.length,
   }));
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
