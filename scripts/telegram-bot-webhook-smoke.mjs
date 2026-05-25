@@ -61,6 +61,20 @@ try {
   assert.equal(sentMessages.at(-1).chatId, "12345");
   assert.equal(sentMessages.at(-1).text, "reply:hello from telegram");
 
+  const duplicateResult = await processTelegramBotUpdate({
+    update_id: 1,
+    message: {
+      message_id: 10,
+      from: { id: 12345, is_bot: false, username: "linked_user" },
+      chat: { id: 12345, type: "private" },
+      text: "hello from telegram",
+    },
+  }, { chatExecutor, sendTelegramMessage });
+
+  assert.equal(duplicateResult.ignored, true);
+  assert.equal(duplicateResult.reason, "duplicate_update");
+  assert.equal(chatCalls.length, 1);
+
   const unlinkedResult = await processTelegramBotUpdate({
     update_id: 2,
     message: {

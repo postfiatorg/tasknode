@@ -8,6 +8,8 @@ import {
 const webhookPath = "/api/integrations/telegram/webhook";
 const statusPath = "/api/integrations/telegram/status";
 const telegramTextLimit = 4096;
+const recentUpdateTtlMs = 10 * 60_000;
+const recentUpdateIds = new Map();
 
 function currentEnvironment() {
   return process.env.TASKNODE_ENV || process.env.NODE_ENV || "development";
@@ -148,7 +150,7 @@ function webhookAuthorized(headers = {}) {
 }
 
 function incomingMessage(update = {}) {
-  const message = update.message || update.edited_message || null;
+  const message = update.message || null;
   if (!message) return null;
   const from = message.from || {};
   const chat = message.chat || {};
@@ -163,6 +165,20 @@ function incomingMessage(update = {}) {
     chatType: chat.type || "",
     body,
   };
+}
+
+function markTelegramUpdate(updateId) {
+  const id = String(updateId ?? "").trim();
+  if (!id) return { duplicate: false };
+
+  const now = Date.now();
+  for (const [key, seenAt] of recentUpdateIds.entries()) {
+    if (now - seenAt > recentUpdateTtlMs) recentUpdateIds.delete(key);
+  }
+
+  if (recentUpdateIds.has(id)) return { duplicate: true };
+  recentUpdateIds.set(id, now);
+  return { duplicate: false };
 }
 
 function assistantTextFromChatResult(result) {
@@ -189,6 +205,9 @@ export async function processTelegramBotUpdate(update = {}, {
   sendTelegramMessage = defaultSendTelegramMessage,
   fetchImpl = fetch,
 } = {}) {
+  const marker = markTelegramUpdate(update.update_id);
+  if (marker.duplicate) return { ok: true, ignored: true, reason: "duplicate_update" };
+
   const message = incomingMessage(update);
   if (!message) return { ok: true, ignored: true, reason: "no_message" };
   if (message.fromIsBot) return { ok: true, ignored: true, reason: "bot_sender" };
@@ -276,8 +295,14 @@ export async function handleTelegramBotRoute({ json, readJson, req, res, url } =
   }
 
   const update = req.method === "POST" ? await readJson(req, 1024 * 1024) : {};
-  const result = await processTelegramBotUpdate(update);
-  json(res, 200, result);
+  processTelegramBotUpdate(update).catch((error) => {
+    console.warn(`telegram bot update failed: ${error?.message || error}`);
+  });
+  json(res, 200, {
+    ok: true,
+    action: "telegram_bot_webhook",
+    accepted: true,
+  });
   return true;
 }
 
