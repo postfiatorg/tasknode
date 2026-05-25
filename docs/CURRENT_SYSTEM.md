@@ -174,7 +174,8 @@ address and are hidden when no wallet is linked or a different wallet is linked.
 Usage/billing:
 
 - `GET /api/usage/actions`
-- `GET /api/usage/ledger`
+- `GET /api/usage/ledger` requires a signed-in session and returns only the
+  caller account's ledger rows.
 - `POST /api/usage/top-up/start`
 - `POST /api/usage/top-up/sync`
 - `POST /api/usage/credit/admin`

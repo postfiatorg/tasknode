@@ -889,14 +889,16 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/usage/ledger") {
+    if (!session?.accountId) {
+      json(res, 401, { error: "usage_ledger_login_required" });
+      return true;
+    }
     const requestedConversationId = url.searchParams.get("conversationId") || "";
     const conversationId = requestedConversationId
       ? await resolveChatWriteConversationId(session, requestedConversationId)
-      : session
-        ? conversationIdForSession(session)
-        : "";
+      : conversationIdForSession(session);
     json(res, 200, await usageLedger({
-      accountId: session?.accountId || "",
+      accountId: session.accountId,
       conversationId,
       limit: url.searchParams.get("limit") || 50,
     }));

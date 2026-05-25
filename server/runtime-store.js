@@ -1443,10 +1443,12 @@ export function usageSummary(scope = {}) {
 
 export function usageLedger({ accountId, conversationId, limit = 50 } = {}) {
   const normalizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  if (!accountId && !conversationId) {
+    return { billingModel: "usage_based", currency: "USD", accountId: null, conversationId: null, currentSpendUsd: 0, currentCreditUsd: 0, availableCreditUsd: 0, ledgerEntryCount: 0, durable: !storePath.startsWith("/tmp/"), entries: [] };
+  }
   const filteredEntries = ledgerEntriesForScope({ accountId, conversationId });
   const entries = filteredEntries.slice(-normalizedLimit).reverse();
   const summary = usageSummary({ accountId, conversationId });
-
   return {
     billingModel: "usage_based",
     currency: "USD",
@@ -1463,12 +1465,10 @@ export function usageLedger({ accountId, conversationId, limit = 50 } = {}) {
 
 function defaultContextBody() {
   return [
-    "# Task Node Context",
-    "",
+    "# Task Node Context", "",
     "## Current Focus",
     "",
-    "## Preferences",
-    "",
+    "## Preferences", "",
     "## Active Projects",
     "",
     "## Notes",

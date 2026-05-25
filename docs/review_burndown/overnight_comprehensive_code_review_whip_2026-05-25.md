@@ -361,9 +361,13 @@ Update this section as you work. Do not leave it blank.
 
 ### Timeline
 
-- `[time]` Started review:
+- `2026-05-25 02:36 UTC` Started review in the existing `tasknofficial` session. Integration checkout is `main` at `f201ffe`, matching `origin/main`; only pre-existing untracked `.review_shell_out.txt` is present.
+- `2026-05-25 02:36 UTC` Completed initial file inventory: `git ls-files` reports 535 tracked files. Inventory written to `/tmp/tasknodeofficial_all_files.txt`.
+- `2026-05-25 02:36 UTC` Ramp docs partially read: workspace `AGENTS.md`, `tasknodeofficial` skill, `README.md`, `package.json`, `docker-compose.dev.yml`, `fly.toml`, wiki index, review burndown README, recent PR review spec, Ethereum top-up doc, and database architecture doc.
+- `2026-05-25 02:58 UTC` Confirmed first P1: no-scope usage ledger reads could return account billing rows. Runtime proof created an account credit, then `usageLedger({ accountId: "", conversationId: "" })` returned that account ID.
+- `2026-05-25 03:04 UTC` Patched usage ledger boundary: `/api/usage/ledger` now requires session, app state returns zero usage for signed-out users, and repository ledger helpers return an empty ledger for no-scope calls.
+- `2026-05-25 03:17 UTC` Verification passed for the usage ledger patch: `npm run security-smoke`, `npm run runtime-smoke`, `npm run quality`, `npm run db:chat-billing-smoke` with local Docker `DATABASE_URL`, `npm run route-smoke`, `npm run smoke`, and `git diff --check`.
 - `[time]` Completed ramp:
-- `[time]` Completed file inventory:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
 - `[time]` Final handoff:
@@ -373,6 +377,7 @@ Update this section as you work. Do not leave it blank.
 Keep a coverage ledger by directory. Add counts or notes as you complete each section.
 
 - [ ] root config files reviewed
+- [x] root config files inventory started: `README.md`, `package.json`, `docker-compose.dev.yml`, `fly.toml` read for ramp.
 - [ ] `.github/**` reviewed
 - [ ] `server/**` reviewed
 - [ ] `server/repositories/**` reviewed
@@ -400,6 +405,16 @@ Use this format for every finding:
 - Tests needed:
 ```
 
+#### P1: Signed-out usage ledger could expose account billing rows
+
+- Files: `server/index.js`, `server/repositories/chat-billing.js`, `server/runtime-store.js`, `server/app-state.js`, `server/route-policies.js`, `scripts/smoke.mjs`, `scripts/security-smoke.mjs`, `docs/CURRENT_SYSTEM.md`
+- Boundary: auth | billing | persistence
+- What breaks: `/api/usage/ledger` was an optional-auth route. When no session was present, it passed empty account and conversation scope to `usageLedger`. Both runtime and Postgres repository paths treated empty scope as aggregate scope, so a signed-out caller could receive recent billing ledger rows across accounts.
+- Why it matters: Billing ledger rows include account IDs, credit/debit metadata, provider/model cost records, and operational usage details. That is account data and must not be readable without a session.
+- Evidence: Runtime proof used a temp store, credited `acct_private_leak_check`, then `usageLedger({ accountId: "", conversationId: "", limit: 5 })` returned `unscopedAccountIds: ["acct_private_leak_check"]`.
+- Fix status: patched locally; commit pending.
+- Tests needed: passed `npm run security-smoke`, `npm run runtime-smoke`, `npm run quality`, local Docker `npm run db:chat-billing-smoke`, `npm run route-smoke`, `npm run smoke`, and `git diff --check`.
+
 ### Code Changes Made
 
 For every code change, add:
@@ -411,14 +426,21 @@ For every code change, add:
 - Tests already run:
 - Tests still needed manually:
 
+- Commit: pending
+- Files changed: `server/index.js`, `server/route-policies.js`, `server/app-state.js`, `server/runtime-store.js`, `server/repositories/chat-billing.js`, `scripts/smoke.mjs`, `scripts/security-smoke.mjs`, `docs/CURRENT_SYSTEM.md`
+- Why changed: close the signed-out/no-scope usage ledger leakage class and document that ledger reads are account-scoped session reads.
+- Risk: low to moderate. Signed-out ledger calls now return `401`; the app should rely on signed-out app state for zero balance and signed-in ledger for detailed rows.
+- Tests already run: direct runtime proof after patch confirmed scoped ledger still returns one row and unscoped ledger returns zero rows; `npm run security-smoke`; `npm run runtime-smoke`; `npm run quality`; `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run db:chat-billing-smoke`; `npm run route-smoke`; `npm run smoke`; `git diff --check`.
+- Tests still needed manually: browser billing page spot-check if this moves through a PR, because detailed ledger visibility is UI-only after login.
+
 ### Testing List For The Integration Owner
 
 If you changed code, list functionality that must be tested before accepting the branch.
 
-- [ ] Item:
-  - Why:
-  - How:
-  - Expected result:
+- [ ] Signed-out billing boundaries:
+  - Why: patched a P1 account data exposure in no-scope ledger reads.
+  - How: call `/api/app-state` signed out and `/api/usage/ledger` signed out; then call `/api/usage/ledger` with a signed-in session.
+  - Expected result: signed-out app state has zero usage totals; signed-out ledger is `401 usage_ledger_login_required`; signed-in ledger returns only the caller account's rows.
 
 ### Dependency And Supply-Chain Risks
 

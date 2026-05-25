@@ -917,6 +917,20 @@ export async function usageLedger({ accountId, conversationId, limit = 50 } = {}
   const normalizedLimit = Math.min(Math.max(Number(limit) || 50, 1), maxLedgerLimit);
   const normalizedAccountId = safeAccountId(accountId);
   const normalizedConversationId = conversationId ? safeConversationId(conversationId) : "";
+  if (!normalizedAccountId && !normalizedConversationId) {
+    return {
+      billingModel: "usage_based",
+      currency: "USD",
+      accountId: null,
+      conversationId: null,
+      currentSpendUsd: 0,
+      currentCreditUsd: 0,
+      availableCreditUsd: 0,
+      ledgerEntryCount: 0,
+      durable: true,
+      entries: [],
+    };
+  }
   let where = "";
   let params = [];
 
@@ -926,8 +940,6 @@ export async function usageLedger({ accountId, conversationId, limit = 50 } = {}
   } else if (normalizedConversationId) {
     where = "WHERE conversation_id = $1";
     params = [normalizedConversationId, normalizedLimit];
-  } else {
-    params = [normalizedLimit];
   }
 
   const rows = await query(

@@ -27,6 +27,7 @@ try {
   const {
     appendChatTurn,
     getChatMessages,
+    usageLedger,
   } = await import("../server/repositories/chat-billing.js");
   const { checkRateLimit, resetRateLimitsForTests } = await import("../server/rate-limit.js");
   const { sanitizeContextHtml } = await import("../shared/context-html.js");
@@ -211,6 +212,10 @@ try {
   const signedOutState = await appState(null);
   assert.deepEqual(signedOutState.chat.seedMessages, []);
   assert.deepEqual(signedOutState.chat.recents, []);
+  assert.equal(signedOutState.usage.currentSpendUsd, 0);
+  assert.equal(signedOutState.usage.currentCreditUsd, 0);
+  assert.equal(signedOutState.usage.availableCreditUsd, 0);
+  assert.equal(signedOutState.usage.ledgerEntryCount, 0);
 
   const adminNoIdempotency = await usageAdminCredit(
     {
@@ -223,6 +228,15 @@ try {
   );
   assert.equal(adminNoIdempotency.status, 400);
   assert.equal(adminNoIdempotency.body.error, "usage_credit_idempotency_required");
+
+  const scopedLedger = await usageLedger({ accountId: lowCreditAccount, limit: 5 });
+  assert.equal(scopedLedger.accountId, lowCreditAccount);
+  assert.equal(scopedLedger.entries.length >= 1, true);
+  const unscopedLedger = await usageLedger({ accountId: "", conversationId: "", limit: 5 });
+  assert.equal(unscopedLedger.accountId, null);
+  assert.equal(unscopedLedger.conversationId, null);
+  assert.equal(unscopedLedger.ledgerEntryCount, 0);
+  assert.deepEqual(unscopedLedger.entries, []);
 
   const sanitized = sanitizeContextHtml(`
     <h1 onclick="steal()">Title</h1>

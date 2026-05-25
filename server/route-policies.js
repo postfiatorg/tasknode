@@ -169,7 +169,7 @@ export const apiRoutePolicies = [
     auth: "admin_bearer",
     rateLimit: { limit: 20, windowMs: tenMinutes },
   },
-  { id: "usage_ledger", path: "/api/usage/ledger", methods: ["GET"], auth: "optional" },
+  { id: "usage_ledger", path: "/api/usage/ledger", methods: ["GET"], auth: "session" },
 ];
 
 export function routePolicyForPath(pathname) {

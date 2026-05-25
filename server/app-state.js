@@ -27,6 +27,13 @@ import {
 import { listTaskState } from "./repositories/tasks.js";
 import { refreshLinkedWalletTaskProjection } from "./task-projection-refresh.js";
 
+const signedOutUsageSummary = Object.freeze({
+  currentSpendUsd: 0,
+  currentCreditUsd: 0,
+  availableCreditUsd: 0,
+  ledgerEntryCount: 0,
+});
+
 function sessionState(session, providers, runtimeReadiness, linkedWallet) {
   const base = {
     accountLinks: providers,
@@ -67,7 +74,9 @@ export async function appState(session = null, { refreshTaskProjection = false }
     modes.find((mode) => mode.label === "Frontier Instant" && mode.enabled) ||
     modes.find((mode) => mode.enabled);
   const conversationId = conversationIdForSession(session);
-  const usage = await usageSummary({ accountId, conversationId });
+  const usage = accountId
+    ? await usageSummary({ accountId, conversationId })
+    : signedOutUsageSummary;
   const linkedWallet = getLinkedWallet({ accountId });
   const ethDepositStatus = ethereumDepositConfigStatus();
   const ethDepositAccount = getEthereumDepositAccount({ accountId });

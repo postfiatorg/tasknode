@@ -535,19 +535,8 @@ await check("/api/chat/conversations", (response, text) => {
 });
 
 await check("/api/usage/ledger", (response, text) => {
-  if (!response.ok) return false;
   const body = JSON.parse(text);
-  return (
-    body.billingModel === "usage_based" &&
-    body.currency === "USD" &&
-    body.accountId === null &&
-    typeof body.currentSpendUsd === "number" &&
-    typeof body.currentCreditUsd === "number" &&
-    typeof body.availableCreditUsd === "number" &&
-    typeof body.ledgerEntryCount === "number" &&
-    typeof body.durable === "boolean" &&
-    Array.isArray(body.entries)
-  );
+  return response.status === 401 && body.error === "usage_ledger_login_required";
 });
 
 await check("/api/usage/actions", (response, text) => {
