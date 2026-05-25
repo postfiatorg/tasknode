@@ -14,6 +14,8 @@ The Hive route is available at `#hive` from the primary sidebar. The surface con
 - project detail pages for active `network_projects` rows
 - a collapsed `Hive Context` section at the bottom of the page with two tabs: `Hive Context` for Secretary/raw inputs and `Hive Mind Agent` for Board Manager actions
 
+While the Hive route is open, the active project document quietly refreshes from `/api/hive/projects` on a short interval. Project-linked task rows, contributor state, and routing feed entries therefore catch up after PFTL/task projection updates without requiring a full browser reload.
+
 The project detail page is layered as:
 
 1. About

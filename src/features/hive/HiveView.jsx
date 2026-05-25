@@ -8,25 +8,32 @@ export function HiveView() {
   const [projectDocument, setProjectDocument] = useState(null);
   const [projectStatus, setProjectStatus] = useState("loading");
 
+  const loadProjectDocument = useCallback(async ({ showLoading = false, shouldApply = () => true } = {}) => {
+    if (showLoading && shouldApply()) setProjectStatus("loading");
+    try {
+      const result = await requestJson("/api/hive/projects");
+      if (!shouldApply()) return;
+      if (!result.ok) throw new Error(result.body?.message || `Hive projects returned HTTP ${result.status}.`);
+      setProjectDocument(result.body?.document || null);
+      setProjectStatus("ready");
+    } catch {
+      if (!shouldApply()) return;
+      setProjectDocument(null);
+      setProjectStatus("error");
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    setProjectStatus("loading");
-    requestJson("/api/hive/projects")
-      .then((result) => {
-        if (cancelled) return;
-        if (!result.ok) throw new Error(result.body?.message || `Hive projects returned HTTP ${result.status}.`);
-        setProjectDocument(result.body?.document || null);
-        setProjectStatus("ready");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setProjectDocument(null);
-        setProjectStatus("error");
-      });
+    loadProjectDocument({ showLoading: true, shouldApply: () => !cancelled });
+    const intervalId = window.setInterval(() => {
+      loadProjectDocument({ shouldApply: () => !cancelled });
+    }, 10000);
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
     };
-  }, []);
+  }, [loadProjectDocument]);
 
   return (
     <div className="route-scroll hive-route">

@@ -381,6 +381,7 @@ Update this section as you work. Do not leave it blank.
 - `2026-05-25 03:34 UTC` Reviewed Board Manager action hooks. Patched `message_user` so account targets must exist in the current source packet; local Docker `board-manager-action-hooks-smoke` passed.
 - `2026-05-25 21:19 UTC` Continued Board Manager action-hook review. Found `assign_contributor` still trusted model-supplied contributor wallets; patched it to require the wallet to appear in the current source packet as a validated Hive Context wallet or eligible Network Task candidate. Local Docker `board-manager-action-hooks-smoke` passed.
 - `2026-05-25 21:48 UTC` Found a second Board Manager compressed-packet boundary bug: the default DeepSeek secretary packet removed the Hive Context/candidate target lists that action hooks need for validation. Patched secretary packets to include a small action-target registry and taught action hooks to validate against it. `board-manager-secretary-packet-smoke` and local Docker `board-manager-action-hooks-smoke` passed.
+- `2026-05-25 22:05 UTC` Reviewed Hive project frontend data refresh. Found the active project board loaded `/api/hive/projects` only once on mount, which can leave Network Task rows stale after task projection updates. Patched the route to refresh project state quietly while Hive is open and documented the refresh behavior.
 - `[time]` Completed ramp:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
@@ -404,6 +405,7 @@ Keep a coverage ledger by directory. Add counts or notes as you complete each se
 - [ ] `server/repositories/**` reviewed
 - [ ] `server/db/migrations/**` reviewed
 - [ ] `src/**` reviewed
+- [x] Hive frontend sample reviewed and patched: project document now refreshes while the Hive route is open instead of requiring a full reload after task projection changes.
 - [ ] `shared/**` reviewed
 - [ ] `scripts/**` reviewed
 - [ ] `prompts/**` reviewed
@@ -538,6 +540,16 @@ Use this format for every finding:
 - Fix status: fixed in this review patch.
 - Tests needed: passed `npm run board-manager-secretary-packet-smoke`, local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`, `npm run quality`, and `git diff --check`.
 
+#### P1: Hive project board could show stale Network Task state until reload
+
+- Files: `src/features/hive/HiveView.jsx`, `docs/wiki/surfaces/hive.md`
+- Boundary: Hive | UI state | task projection
+- What breaks: `HiveView` loaded `/api/hive/projects` only once when the route mounted. If a project-linked Network Task changed state after the page loaded, the project detail task rows, routing feed, and contributor/task counts could remain stale until the user manually reloaded the app.
+- Why it matters: Hive is the coordination surface for Network Tasks. Showing a task as proposed/accepted after the task projection has advanced to submitted/rewarded is a user-visible state mismatch and undermines trust in the board.
+- Evidence: the only `/api/hive/projects` call lived in a one-shot `useEffect(..., [])`; the existing polling loop refreshed only `/api/hive/context`.
+- Fix status: fixed in this review patch.
+- Tests needed: passed `npm run quality`, `npm run build`, and `git diff --check`. Manual browser check still needed with a live project-linked task transition.
+
 ### Code Changes Made
 
 For every code change, add:
@@ -626,6 +638,13 @@ For every code change, add:
 - Tests already run: `npm run board-manager-secretary-packet-smoke`; `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-action-hooks-smoke`; `npm run quality`; `git diff --check`.
 - Tests still needed manually: run one secretary-enabled Board Manager turn that sends a Hive Chat response and confirm the message lands in the originating Hive Chat conversation.
 
+- Commit: this review patch
+- Files changed: `src/features/hive/HiveView.jsx`, `docs/wiki/surfaces/hive.md`
+- Why changed: keep the Hive project board synchronized with server-side project/task projections while the route is open.
+- Risk: low. The route now polls `/api/hive/projects` every 10 seconds without resetting the loading state; this adds a small read load while Hive is mounted.
+- Tests already run: `npm run quality`; `npm run build`; `git diff --check`.
+- Tests still needed manually: open Hive on a project-linked Network Task, move the task through a state transition, and confirm the project row updates without a browser reload.
+
 ### Testing List For The Integration Owner
 
 If you changed code, list functionality that must be tested before accepting the branch.
@@ -674,6 +693,10 @@ If you changed code, list functionality that must be tested before accepting the
   - Why: patched compressed secretary packets to preserve minimal action-target state for hooks.
   - How: run one secretary-enabled Board Manager turn with `--execute` that chooses `message_user` or `assign_contributor`.
   - Expected result: the action validates against the compressed packet's action-target registry and executes without bypassing the source-packet boundary.
+- [ ] Hive project board refresh:
+  - Why: patched one-shot Hive project loading so Network Task state changes are reflected while the page is open.
+  - How: keep `#hive` open on a project detail, move a project-linked task through a task lifecycle transition, and wait for the next project refresh.
+  - Expected result: the task row, project counts, and routing feed reflect the server state without a full reload.
 
 ### Dependency And Supply-Chain Risks
 
