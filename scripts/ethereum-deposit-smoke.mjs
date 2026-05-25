@@ -131,7 +131,11 @@ export async function runEthereumDepositSmoke({
 
     failUsdcProbe = true;
     const failedProbeTopUp = await usageTopUpStart({}, "POST", { accountId: "acct_eth_probe_fail_smoke" });
-    if (failedProbeTopUp.status !== 503 || failedProbeTopUp.body?.error !== "deposit_balance_probe_failed") {
+    if (
+      failedProbeTopUp.status !== 503 ||
+      failedProbeTopUp.body?.error !== "deposit_balance_probe_failed" ||
+      !String(failedProbeTopUp.body?.message || "").includes("Could not verify deposit address balances")
+    ) {
       throw new Error(`Ethereum top-up start should fail closed on partial balance probe failure: ${JSON.stringify(failedProbeTopUp)}`);
     }
   } finally {

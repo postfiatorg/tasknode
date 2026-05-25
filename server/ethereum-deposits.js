@@ -159,6 +159,7 @@ export async function getOrCreateVerifiedEthereumTopUpAccount({ accountId = "" }
         status: 503,
         error: "deposit_balance_probe_failed",
         message: "Could not verify deposit address balances. Retry when Ethereum RPC is available.",
+        actionRequired: "Retry top-up after the Ethereum balance RPC is healthy. Operators should check ETH_DEPOSIT_RPC_URL before exposing deposit addresses again.",
         config: status,
       };
     }

@@ -1796,8 +1796,8 @@ export async function usageTopUpStart(payload, method, session = null) {
       status: result.status || 409,
       error: result.error || "usage_top_up_unavailable",
       action: action.id,
-      message: "Ethereum deposit addresses are not configured for this environment.",
-      actionRequired: result.config?.actionRequired || action.actionRequired,
+      message: result.message || "Ethereum deposit addresses are not configured for this environment.",
+      actionRequired: result.actionRequired || result.config?.actionRequired || action.actionRequired,
     });
   }
 
