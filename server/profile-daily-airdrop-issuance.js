@@ -114,7 +114,7 @@ function airdropPayload({ run, issuance, sourceWallet, recipientWallet, amountPf
   };
 }
 
-async function claimIssuance({ accountId, runId = "" } = {}) {
+export async function claimDailyAirdropIssuanceForPublish({ accountId, runId = "" } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("daily_airdrop_account_required");
   const rewardWallet = walletFromSeed(rewardSeed(), "daily_airdrop_reward_seed_missing");
@@ -140,14 +140,14 @@ async function claimIssuance({ accountId, runId = "" } = {}) {
     if (!recipientWallet) throw new Error("daily_airdrop_recipient_missing");
 
     const existing = await client.query(
-      "SELECT * FROM profile_daily_airdrop_issuances WHERE run_id = $1 LIMIT 1",
+      "SELECT * FROM profile_daily_airdrop_issuances WHERE run_id = $1 LIMIT 1 FOR UPDATE",
       [run.id]
     );
     if (existing.rows[0]?.status === "submitted") {
       return { run, issuance: existing.rows[0], rewardWallet, alreadySubmitted: true };
     }
-    if (existing.rows[0]?.status === "pending") {
-      return { run, issuance: existing.rows[0], rewardWallet, alreadySubmitted: false };
+    if (existing.rows[0]?.status === "processing") {
+      throw new Error("daily_airdrop_issuance_in_progress");
     }
 
     await client.query(
@@ -162,27 +162,49 @@ async function claimIssuance({ accountId, runId = "" } = {}) {
     run.is_canonical = true;
 
     const issuanceId = `airdrop_issue_${sha256({ runId: run.id, recipientWallet, amountPft }).slice(0, 24)}`;
-    const inserted = await client.query(
-      `INSERT INTO profile_daily_airdrop_issuances (
-         id, account_id, run_id, run_date, source_wallet, recipient_wallet,
-         amount_pft, amount_drops, status
-       )
-       VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, 'pending')
-       ON CONFLICT (run_id) DO UPDATE
-         SET updated_at = now()
-       RETURNING *`,
-      [
-        issuanceId,
-        normalizedAccount,
-        run.id,
-        dateOnly(run.run_date),
-        rewardWallet.classicAddress,
-        recipientWallet,
-        amountPft,
-        pftToDrops(amountPft),
-      ]
-    );
-    return { run, issuance: inserted.rows[0], rewardWallet, alreadySubmitted: false };
+    const params = [
+      existing.rows[0]?.id || issuanceId,
+      normalizedAccount,
+      run.id,
+      dateOnly(run.run_date),
+      rewardWallet.classicAddress,
+      recipientWallet,
+      amountPft,
+      pftToDrops(amountPft),
+    ];
+    const claimed = existing.rows[0]
+      ? await client.query(
+        `UPDATE profile_daily_airdrop_issuances
+            SET source_wallet = $2,
+                recipient_wallet = $3,
+                amount_pft = $4,
+                amount_drops = $5,
+                status = 'processing',
+                source_cid = '',
+                tx_hash = '',
+                ledger_index = NULL,
+                payload_digest = '',
+                error_message = NULL,
+                submitted_at = NULL,
+                completed_at = NULL,
+                updated_at = now()
+          WHERE id = $1
+            AND status IN ('pending', 'failed')
+          RETURNING *`,
+        [params[0], params[4], params[5], params[6], params[7]]
+      )
+      : await client.query(
+        `INSERT INTO profile_daily_airdrop_issuances (
+           id, account_id, run_id, run_date, source_wallet, recipient_wallet,
+           amount_pft, amount_drops, status
+         )
+         VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, 'processing')
+         RETURNING *`,
+        params
+      );
+    const issuance = claimed.rows[0] || null;
+    if (!issuance) throw new Error("daily_airdrop_issuance_claim_failed");
+    return { run, issuance, rewardWallet, alreadySubmitted: false };
   });
 }
 
@@ -205,20 +227,38 @@ async function markIssuanceSubmitted({ issuanceId, cid, digest, txHash, ledgerIn
   return normalizeIssuance(result.rows[0] || null);
 }
 
-async function markIssuanceFailed({ issuanceId, error } = {}) {
+export async function markDailyAirdropIssuancePublishFailure({
+  issuanceId,
+  error,
+  submissionAttempted = false,
+} = {}) {
+  const message = safeText(error?.message || error || "daily_airdrop_issuance_failed", 1200);
+  if (submissionAttempted) {
+    await query(
+      `UPDATE profile_daily_airdrop_issuances
+          SET status = 'processing',
+              error_message = $2,
+              updated_at = now()
+        WHERE id = $1
+          AND status = 'processing'`,
+      [issuanceId, message]
+    );
+    return;
+  }
   await query(
     `UPDATE profile_daily_airdrop_issuances
         SET status = 'failed',
             error_message = $2,
             updated_at = now(),
             completed_at = now()
-      WHERE id = $1`,
-    [issuanceId, safeText(error?.message || error || "daily_airdrop_issuance_failed", 1200)]
+      WHERE id = $1
+        AND status = 'processing'`,
+    [issuanceId, message]
   );
 }
 
 export async function issueLatestDailyAirdrop({ accountId, runId = "" } = {}) {
-  const claim = await claimIssuance({ accountId, runId });
+  const claim = await claimDailyAirdropIssuanceForPublish({ accountId, runId });
   if (claim.alreadySubmitted) {
     return {
       ok: true,
@@ -240,6 +280,7 @@ export async function issueLatestDailyAirdrop({ accountId, runId = "" } = {}) {
     amountPft,
   });
 
+  let submissionAttempted = false;
   try {
     const encryptedPayload = await encryptTasknodePayload({
       plaintext: stableJson(payload),
@@ -271,6 +312,7 @@ export async function issueLatestDailyAirdrop({ accountId, runId = "" } = {}) {
       amountDrops: pftToDrops(amountPft),
     });
     const signed = claim.rewardWallet.sign(prepared.txJson);
+    submissionAttempted = true;
     const submitted = await submitSignedPftTransaction({
       signedTxBlob: signed.tx_blob,
       expectedAccount: claim.rewardWallet.classicAddress,
@@ -309,7 +351,11 @@ export async function issueLatestDailyAirdrop({ accountId, runId = "" } = {}) {
       payload,
     };
   } catch (error) {
-    await markIssuanceFailed({ issuanceId: claim.issuance.id, error }).catch(() => null);
+    await markDailyAirdropIssuancePublishFailure({
+      issuanceId: claim.issuance.id,
+      error,
+      submissionAttempted,
+    }).catch(() => null);
     throw error;
   }
 }

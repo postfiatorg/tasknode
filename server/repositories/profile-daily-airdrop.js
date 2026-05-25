@@ -356,7 +356,7 @@ export async function listDailyAirdropCandidateAccounts({
                 FROM profile_daily_airdrop_issuances i
                WHERE i.account_id = e.account_id
                  AND i.run_date = b.run_day
-                 AND i.status IN ('pending', 'submitted', 'failed')
+                 AND i.status IN ('pending', 'processing', 'submitted', 'failed')
             )
         AND EXISTS (
               SELECT 1

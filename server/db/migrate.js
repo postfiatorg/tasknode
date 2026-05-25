@@ -52,6 +52,7 @@ const migrations = [
   "042_board_manager_scheduler.sql",
   "043_board_manager_secretary_packets.sql",
   "044_board_manager_action_budget.sql",
+  "045_profile_daily_airdrop_processing_status.sql",
 ];
 
 let migrated = false;

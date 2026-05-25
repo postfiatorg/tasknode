@@ -2,7 +2,7 @@
 
 Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT drop plus a short explanation of what raised the score, what lowered it, and what to improve tomorrow.
 
-Current status: recurring scoring and live issuance are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance writes exactly one `profile_daily_airdrop_issuances` row and submits a PFTL payment pointer. The worker also writes a `Hive Mind Agent` audit card summarizing how much PFT was dispensed and to how many users.
+Current status: recurring scoring and live issuance are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance claims exactly one `profile_daily_airdrop_issuances` row, marks it `processing` before any PFT signing work, and then submits a PFTL payment pointer. The worker also writes a `Hive Mind Agent` audit card summarizing how much PFT was dispensed and to how many users.
 
 ### Private Profile Read Path
 
@@ -167,7 +167,13 @@ Important fields:
 
 The production uniqueness boundary is one production scoring row per account per UTC day. Dry runs can be repeated for prompt and packet testing.
 
-`profile_daily_airdrop_issuances` stores live payment submissions. It is keyed by `run_id` and prevents more than one submitted issuance per account/day. The recurring worker also treats any pending, submitted, or failed issuance for an account/day as a stop sign so retries do not blindly double-pay after a partial chain failure.
+`profile_daily_airdrop_issuances` stores live payment submissions. It is keyed by `run_id` and prevents more than one submitted issuance per account/day. The recurring worker treats any pending, processing, submitted, or failed issuance for an account/day as a stop sign so retries do not blindly double-pay after a partial chain failure.
+
+Issuance state is intentionally conservative:
+
+- `processing`: a worker has claimed the run for publication. No other worker may publish it. If a PFT submission has been attempted and the process times out or cannot persist the tx result, the row stays `processing` with an error message until a reconciliation/operator path proves whether payment happened.
+- `submitted`: the PFTL payment and pointer are persisted with transaction hash, pointer CID, payload digest, and ledger index.
+- `failed`: no PFT submission was attempted. This can be reclaimed by a manual retry because no on-chain payment risk exists yet.
 
 ### Current Goodalexander Dry Run
 
@@ -195,6 +201,8 @@ Each tick:
 3. runs the existing DeepSeek/OpenRouter daily airdrop scorer in dry-run mode to create a completed scoring row;
 4. issues the specific scoring run through `issueLatestDailyAirdrop` when the proposed amount is positive;
 5. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.`
+
+`issueLatestDailyAirdrop` is fail-closed for money. It claims a row as `processing` before signing. If failure occurs before a PFT submission is attempted, the row is marked `failed` and can be retried. If failure occurs after submission is attempted, the row remains `processing` so a retry cannot sign another payment until reconciliation has inspected the chain/cache.
 
 The manual operator command remains available:
 

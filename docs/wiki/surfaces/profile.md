@@ -109,7 +109,7 @@ Prompt privacy remains unchanged: the image prompt body is never returned to the
 
 Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT drop plus a short explanation of what raised the score, what lowered it, and what to improve tomorrow.
 
-Current status: recurring scoring and live issuance are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance writes exactly one `profile_daily_airdrop_issuances` row and submits a PFTL payment pointer. Each actual worker run also creates a Hive Mind Agent card that says how much PFT was dispensed and to how many users.
+Current status: recurring scoring and live issuance are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance claims exactly one `profile_daily_airdrop_issuances` row as `processing` before any PFT signing work, then submits a PFTL payment pointer. Each actual worker run also creates a Hive Mind Agent card that says how much PFT was dispensed and to how many users.
 
 ### Private Profile Rendering
 
@@ -280,7 +280,7 @@ Important fields:
 
 The production uniqueness boundary is one production scoring row per account per UTC day. Dry runs can be repeated for prompt and packet testing.
 
-`profile_daily_airdrop_issuances` stores submitted payments.
+`profile_daily_airdrop_issuances` stores live payment submissions.
 
 Important fields:
 
@@ -297,7 +297,7 @@ Important fields:
 - `ledger_index`;
 - `payload_digest`.
 
-The issuance uniqueness boundary is one submitted issuance per `run_id` and one submitted issuance per account/day.
+The issuance uniqueness boundary is one issuance row per `run_id` and one submitted issuance per account/day.
 
 `profile_public_snapshots` stores public role snapshots.
 
@@ -337,6 +337,8 @@ Observed packet:
 ### Live Issuance Boundary
 
 Live issuance is owned by `server/profile-daily-airdrop-worker.js` when the worker is enabled. It claims a single `daily_airdrop` lease, scores eligible account/day packets, pays positive drops through the existing issuance path, and writes a Hive Mind Agent audit card. `scripts/profile-daily-airdrop-issue.mjs` remains available as a manual operator command for a specific completed run.
+
+Issuance is fail-closed: after a run is claimed as `processing`, another worker cannot publish it. If a failure happens before PFT submission is attempted, the row becomes `failed` and can be retried. If a failure happens after PFT submission is attempted, the row stays `processing` until reconciliation or operator review proves whether a payment happened.
 
 ## Reviewer To Do List
 

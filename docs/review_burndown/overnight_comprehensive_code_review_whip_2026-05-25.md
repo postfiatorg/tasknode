@@ -370,6 +370,10 @@ Update this section as you work. Do not leave it blank.
 - `2026-05-25 03:31 UTC` Confirmed and patched P0 duplicate-publish risk in `server/task-review-worker.js`: stale processing leases remain retryable, but successful worker publications are no longer reclaimable for another verification request or reward scoring/payment.
 - `2026-05-25 03:35 UTC` Expanded `network-task-recovery-smoke` to cover already-published verification/reward worker states and verified local Docker DB recovery logs show `will_publish=false` for those states.
 - `2026-05-25 03:50 UTC` Confirmed and patched Board Manager scope-status durability bug: worker startup can no longer convert a paused or disabled scope back to enabled unless status is explicitly provided.
+- `2026-05-25 04:18 UTC` Auth/account-linking sample reviewed. Email, Telegram, Discord, GitHub provider-link boundaries are documented in `docs/wiki/architecture/auth-and-connected-accounts.md`; replay fixture passed with email invalid/success, Telegram valid/reconnect/invalid/expired/stale-state, Discord link, and logout transitions.
+- `2026-05-25 04:26 UTC` Tracked-secret/public-readiness scan completed without printing secret values. Real local env files are gitignored/untracked. Tracked hits for API-key/env names are docs placeholders, test env names, package scripts, or ordinary `task-...` strings, not committed live credentials.
+- `2026-05-25 04:39 UTC` Confirmed and patched daily airdrop no-double-pay gap: issuance rows now move to `processing` before signing, concurrent claims fail closed, and post-submit uncertainty stays non-retryable until reconciliation/operator review.
+- `2026-05-25 04:46 UTC` Verification passed for the daily airdrop issuance patch: local Docker DB `profile-daily-airdrop-issuance-smoke`, idempotent DB migration, `profile-daily-airdrop-worker-smoke`, `npm run quality`, and `git diff --check`.
 - `[time]` Completed ramp:
 - `[time]` First P0/P1 finding:
 - `[time]` First patch:
@@ -384,6 +388,7 @@ Keep a coverage ledger by directory. Add counts or notes as you complete each se
 - [ ] `.github/**` reviewed
 - [ ] `server/**` reviewed
 - [x] high-risk server billing/auth route sample reviewed: usage ledger, app state, memory, profile, Hive, wallet balance/transactions, PFTL cache.
+- [x] auth/account linking sample reviewed: email challenge, Telegram signed callback, Discord OAuth link, provider conflict rules, stale OAuth state, logout.
 - [x] high-risk server task worker duplicate-publish path reviewed and patched.
 - [ ] `server/repositories/**` reviewed
 - [ ] `server/db/migrations/**` reviewed
@@ -393,6 +398,8 @@ Keep a coverage ledger by directory. Add counts or notes as you complete each se
 - [ ] `prompts/**` reviewed
 - [ ] `schemas/**` reviewed
 - [ ] `docs/**` reviewed
+- [x] tracked-secret/public-readiness sample reviewed: no tracked local env files or live provider secrets found in the scanned patterns; gitignored local env files remain present on disk and must stay unprinted.
+- [x] profile/daily-airdrop payment boundary reviewed and patched: scoring, issuance claim, retry state, candidate selection, docs, and DB smoke.
 
 ### Findings
 
@@ -440,6 +447,16 @@ Use this format for every finding:
 - Fix status: fixed in this commit.
 - Tests needed: passed local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-scheduler-smoke`, `npm run quality`, and `git diff --check`.
 
+#### P0: Daily airdrop issuance could become retryable after uncertain PFT submission
+
+- Files: `server/profile-daily-airdrop-issuance.js`, `server/repositories/profile-daily-airdrop.js`, `server/db/migrations/045_profile_daily_airdrop_processing_status.sql`, `scripts/profile-daily-airdrop-issuance-smoke.mjs`, `docs/wiki/surfaces/daily-airdrop.md`, `docs/wiki/surfaces/profile.md`
+- Boundary: profile | airdrop | wallet | PFTL | persistence
+- What breaks: a completed daily airdrop run could be claimed by more than one caller because the issuance row remained `pending` until after the PFTL path ran. Errors after a PFT submission attempt could also mark the row `failed`, making a retry capable of signing another payment for the same run.
+- Why it matters: daily airdrop issuance is a real PFT payment. Any retryable state after a possible submission is a double-pay risk.
+- Evidence: `claimIssuance()` returned existing `pending` rows as publishable work and `issueLatestDailyAirdrop()` marked all caught errors as `failed`, including failures that could happen after `submitSignedPftTransaction()` was attempted.
+- Fix status: fixed in this commit.
+- Tests needed: passed local Docker `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run profile-daily-airdrop-issuance-smoke`, idempotent `node server/db/migrate.js`, `npm run profile-daily-airdrop-worker-smoke`, `npm run quality`, and `git diff --check`.
+
 ### Code Changes Made
 
 For every code change, add:
@@ -472,6 +489,13 @@ For every code change, add:
 - Tests already run: `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run board-manager-scheduler-smoke`; `npm run quality`; `git diff --check`.
 - Tests still needed manually: pause the live `global_hive` scope, restart the board-manager container, and confirm it remains paused.
 
+- Commit: this commit
+- Files changed: `server/profile-daily-airdrop-issuance.js`, `server/repositories/profile-daily-airdrop.js`, `server/db/migrate.js`, `server/db/migrations/045_profile_daily_airdrop_processing_status.sql`, `scripts/profile-daily-airdrop-issuance-smoke.mjs`, `package.json`, `docs/wiki/surfaces/daily-airdrop.md`, `docs/wiki/surfaces/profile.md`
+- Why changed: prevent duplicate daily airdrop payment attempts by claiming issuance rows as `processing` before signing and keeping post-submit uncertainty non-retryable.
+- Risk: moderate. A submission timeout after signing now leaves the row in `processing` for reconciliation/operator review instead of immediate retry. That can delay a payout, but it is the correct money-safe failure mode.
+- Tests already run: `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run profile-daily-airdrop-issuance-smoke`; idempotent `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true node server/db/migrate.js`; `npm run profile-daily-airdrop-worker-smoke`; `npm run quality`; `git diff --check`.
+- Tests still needed manually: inspect any live `profile_daily_airdrop_issuances.status = 'processing'` rows before retrying payout; reconcile against PFTL/cache by source wallet, destination wallet, amount, pointer CID, payload digest, and tx hash where available.
+
 ### Testing List For The Integration Owner
 
 If you changed code, list functionality that must be tested before accepting the branch.
@@ -488,6 +512,14 @@ If you changed code, list functionality that must be tested before accepting the
   - Why: patched worker startup so it cannot silently re-enable a paused/disabled Board Manager scope.
   - How: set `board_manager_scopes.status = 'paused'`, restart the board-manager worker, and read scheduler status.
   - Expected result: status remains `paused` until an explicit operator command sets it back to `enabled`.
+- [ ] Auth connected-account smoke:
+  - Why: reviewed as a high-risk account merge/link boundary.
+  - How: run `npm run auth-login-state-fixture` after any auth/provider changes.
+  - Expected result: fixture ends with `auth_login_state_fixture_passed transitions=13`.
+- [ ] Daily airdrop no-double-pay boundary:
+  - Why: patched a P0 payment retry risk in live daily airdrop issuance.
+  - How: run `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run profile-daily-airdrop-issuance-smoke`.
+  - Expected result: first claim moves to `processing`, second claim rejects with `daily_airdrop_issuance_in_progress`, post-submit failure remains non-retryable, pre-submit failure can be reclaimed, and submitted replay returns `alreadySubmitted`.
 
 ### Dependency And Supply-Chain Risks
 
