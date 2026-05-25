@@ -12,6 +12,10 @@ The briefs are not completed code reviews. They are the review queue.
 - `burndown.md` - queue, status, and suggested review order.
 - `composer_full_codebase_review_plan_2026-05-23.md` - ramp and operating plan
   for a full-codebase composer review agent.
+- `overnight_comprehensive_code_review_whip_2026-05-25.md` - strict overnight
+  review whip requiring every-file coverage, continuous notes, P0/P1 fix
+  authority, docs parity review, and a testing handoff list for any code
+  changes.
 - `recent_work_pr_review_spec_2026-05-24.md` - current PR-by-PR review plan for
   the recent auth, Fly-data, Hive, Board Manager, network-task, profile,
   airdrop, task UX, chat/memory, database, docs, and prompt work.
