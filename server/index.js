@@ -955,7 +955,16 @@ const httpEnabled = shouldStartHttpServer(processRole);
 const backgroundWorkersEnabled = shouldStartBackgroundWorkers(processRole);
 
 if (httpEnabled) assertStartupSecurity();
-await migrateDatabase();
+try {
+  await migrateDatabase();
+} catch (error) {
+  if (process.env.TASKNODE_FLY_DEV_DATA_BRIDGE === "true") {
+    throw new Error(
+      "Fly dev data bridge is enabled but Postgres is unreachable. Rerun `npm run docker:dev:fly-data` or start the proxy with `npm run fly-dev:data:proxy`."
+    );
+  }
+  throw error;
+}
 if (backgroundWorkersEnabled) startBackgroundWorkers();
 
 if (httpEnabled) {
