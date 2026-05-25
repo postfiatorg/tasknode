@@ -722,10 +722,7 @@ function projectionForReceipt(receipt) {
     requestBundleCid: safeText(projection.request_bundle_cid || receipt?.cids?.request_bundle || "", 180),
     contextCid: safeText(receipt?.cids?.context_doc || "", 180),
     submissionType: safeText(submissionRequirement.type || "", 120),
-    submissionRequirementText: safeText(
-      submissionRequirement.criteria || submissionRequirement.description || "",
-      4000
-    ),
+    submissionRequirementText: safeText(submissionRequirement.criteria || submissionRequirement.description || "", 4000),
     verificationPolicy: generatedTask.verification_policy || {},
     acceptBy: toIso(generatedTask?.deadline?.accept_by),
     deadlineAt: toIso(generatedTask?.deadline?.deadline_at),
@@ -744,6 +741,31 @@ function pointerKindForSchema(schema = "") {
   return "TASK";
 }
 
+async function projectionWithDurableOwner(projection = {}) {
+  const requestId = safeText(projection.requestId, 180);
+  const subjectWallet = safeText(projection.subjectWallet, 120);
+  if (!requestId && !subjectWallet) return projection;
+
+  const result = await query(
+    `SELECT account_id, subject_wallet, request_id
+       FROM task_requests
+      WHERE ($1::text <> '' AND request_id = $1)
+         OR ($1::text = '' AND $2::text <> '' AND subject_wallet = $2)
+      ORDER BY CASE WHEN request_id = $1 THEN 0 ELSE 1 END, updated_at DESC
+      LIMIT 1`,
+    [requestId, subjectWallet]
+  );
+  const row = result.rows[0];
+  if (!row?.account_id) return projection;
+
+  const ownerAccountId = safeText(row.account_id, 180);
+  const ownerWallet = safeText(row.subject_wallet || subjectWallet, 120);
+  const ownerRequestId = safeText(row.request_id || requestId, 180);
+  const metadata = safeObject(projection.metadata);
+  const fixture = { ...safeObject(metadata.fixture), account_id: ownerAccountId, request_id: ownerRequestId };
+  return { ...projection, accountId: ownerAccountId, subjectWallet: ownerWallet || projection.subjectWallet, requestId: ownerRequestId, metadata: { ...metadata, fixture } };
+}
+
 export async function importTaskReplayReceipt(receipt, { sourceRef = "", source = "pftl_replay_receipt" } = {}) {
   if (!databaseEnabled()) {
     const error = new Error("database_not_configured");
@@ -751,27 +773,18 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
     throw error;
   }
 
-  const projection = projectionForReceipt(receipt);
+  const projection = await projectionWithDurableOwner(projectionForReceipt(receipt));
   if (!projection.taskId) throw new Error("receipt_missing_task_id");
   if (!projection.subjectWallet) throw new Error("receipt_missing_subject_wallet");
 
   const syncRunId = `task_sync_${randomUUID()}`;
   await transaction(async (client) => {
     await client.query(
-      `
-        INSERT INTO pftl_task_sync_runs (
-          id,
-          account_id,
-          wallet_address,
-          source,
-          source_ref,
-          status,
-          task_count,
-          pointer_event_count,
-          metadata_json
-        )
-        VALUES ($1, $2, $3, $4, $5, 'completed', 1, $6, $7::jsonb)
-      `,
+      `INSERT INTO pftl_task_sync_runs (
+         id, account_id, wallet_address, source, source_ref, status, task_count,
+         pointer_event_count, metadata_json
+       )
+       VALUES ($1, $2, $3, $4, $5, 'completed', 1, $6, $7::jsonb)`,
       [
         syncRunId,
         projection.accountId,
@@ -779,11 +792,7 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
         source,
         sourceRef,
         projection.hydratedEvents.length,
-        JSON.stringify({
-          runId: receipt?.run_id || "",
-          taskId: projection.taskId,
-          importedFrom: sourceRef,
-        }),
+        JSON.stringify({ runId: receipt?.run_id || "", taskId: projection.taskId, importedFrom: sourceRef }),
       ]
     );
 
@@ -796,12 +805,7 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
       const cid = safeText(event.cid || "", 180);
       if (!txHash || !cid) continue;
       const eventPayload = safeObject(event.payload);
-      const pointerEnvelope = {
-        schema: eventSchema,
-        task_id: eventTaskId,
-        tx_hash: txHash,
-        cid,
-      };
+      const pointerEnvelope = { schema: eventSchema, task_id: eventTaskId, tx_hash: txHash, cid };
       const payloadJson = objectKeyCount(eventPayload) > objectKeyCount(pointerEnvelope)
         ? eventPayload
         : pointerEnvelope;
@@ -869,6 +873,8 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
             ON CONFLICT (task_id, event_type, source_tx_hash, source_cid)
             DO UPDATE SET
+              account_id = EXCLUDED.account_id,
+              wallet_address = EXCLUDED.wallet_address,
               event_digest = EXCLUDED.event_digest,
               payload_json = EXCLUDED.payload_json,
               pointer_json = EXCLUDED.pointer_json

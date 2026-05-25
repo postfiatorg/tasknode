@@ -7,11 +7,22 @@ import {
 } from "./repositories/profile-daily-airdrop.js";
 import { listProfileNfts } from "./repositories/profile-nfts.js";
 import { getPublicProfile } from "./repositories/profile-public.js";
+import {
+  checkHiveHandleAvailability,
+  getAccountIdentityProfile,
+  setAccountAliasVisibility,
+  setAccountHiveHandle,
+  suggestHiveHandles,
+} from "./runtime-store.js";
 
 export async function handleProfileRoute({ getState, json, readJson, req, res, session, url }) {
   if (
     ![
       "/api/profile/daily-airdrop",
+      "/api/profile/handle",
+      "/api/profile/handle/availability",
+      "/api/profile/identity",
+      "/api/profile/identity/alias",
       "/api/profile/public",
       "/api/profile/public/regenerate",
       "/api/profile/reward-history",
@@ -21,6 +32,121 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
     ].includes(url.pathname)
   ) {
     return false;
+  }
+
+  if (url.pathname === "/api/profile/identity") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_identity_method_not_allowed",
+        message: "Profile identity requires GET.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_identity_login_required",
+        message: "Sign in before editing profile identity.",
+      });
+      return true;
+    }
+    json(res, 200, {
+      ok: true,
+      identityProfile: getAccountIdentityProfile({ accountId: session.accountId }),
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/handle/availability") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_handle_availability_method_not_allowed",
+        message: "Handle availability requires GET.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_handle_availability_login_required",
+        message: "Sign in before checking profile handles.",
+      });
+      return true;
+    }
+    const handle = url.searchParams.get("handle") || "";
+    const availability = checkHiveHandleAvailability({ handle, accountId: session.accountId });
+    json(res, 200, {
+      ok: true,
+      availability,
+      suggestions: availability.available
+        ? []
+        : suggestHiveHandles({ accountId: session.accountId, base: handle }),
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/handle") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_handle_method_not_allowed",
+        message: "Saving a Hive handle requires POST.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_handle_login_required",
+        message: "Sign in before saving a Hive handle.",
+      });
+      return true;
+    }
+    const payload = await readJson(req, 8192);
+    const result = setAccountHiveHandle({
+      accountId: session.accountId,
+      handle: payload.handle,
+      displayName: payload.displayName,
+    });
+    json(res, result.ok ? 200 : result.status || 400, {
+      ok: result.ok,
+      ...result,
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/identity/alias") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_identity_alias_method_not_allowed",
+        message: "Saving provider alias visibility requires POST.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_identity_alias_login_required",
+        message: "Sign in before editing provider aliases.",
+      });
+      return true;
+    }
+    const payload = await readJson(req, 8192);
+    const result = setAccountAliasVisibility({
+      accountId: session.accountId,
+      provider: payload.provider,
+      visibility: payload.visibility,
+      discloseHandle: payload.discloseHandle,
+      discloseVerifiedBadge: payload.discloseVerifiedBadge,
+    });
+    json(res, result.ok ? 200 : result.status || 400, {
+      ok: result.ok,
+      ...result,
+    });
+    return true;
   }
 
   if (url.pathname === "/api/profile/daily-airdrop") {

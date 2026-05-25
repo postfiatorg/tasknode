@@ -123,17 +123,10 @@ export async function runEthereumDepositSmoke({
     if (
       emailGrantSync.status !== 200 ||
       emailGrantSync.body?.creditedEntries?.[0]?.amountUsd !== 6.34 ||
-      emailGrantSync.body?.pftGrant !== null
+      emailGrantSync.body?.pftGrant?.status !== "not_configured" ||
+      emailGrantSync.body?.pftGrant?.reason !== "faucet_not_configured"
     ) {
-      throw new Error(`Email USDC top-up sync should credit without auto-sending the PFT grant: ${JSON.stringify(emailGrantSync)}`);
-    }
-    const { maybeClaimUsdcTopUpInitiationGift } = await import("../server/ethereum-deposits.js");
-    const emailGrantClaim = await maybeClaimUsdcTopUpInitiationGift({ accountId: emailGrantAccount.id });
-    if (
-      emailGrantClaim?.status !== "not_configured" ||
-      emailGrantClaim?.reason !== "faucet_not_configured"
-    ) {
-      throw new Error(`Email USDC top-up should qualify for explicit PFT grant claim after threshold: ${JSON.stringify(emailGrantClaim)}`);
+      throw new Error(`Email USDC top-up sync should automatically attempt the PFT grant after threshold: ${JSON.stringify(emailGrantSync)}`);
     }
 
     const preWalletGrantAccount = getOrCreateEmailAccount({
@@ -160,8 +153,7 @@ export async function runEthereumDepositSmoke({
       signature: "eth-smoke-usdc-pre-wallet-signature",
       proofPurpose: "wallet_create",
     });
-    const { maybeClaimUsdcTopUpInitiationGift: claimPreWalletGrant } = await import("../server/ethereum-deposits.js");
-    const preWalletGrantClaim = await claimPreWalletGrant({ accountId: preWalletGrantAccount.id });
+    const preWalletGrantClaim = await (await import("../server/ethereum-deposits.js")).maybeClaimUsdcTopUpInitiationGift({ accountId: preWalletGrantAccount.id });
     if (
       preWalletGrantClaim?.status !== "not_configured" ||
       preWalletGrantClaim?.reason !== "faucet_not_configured"

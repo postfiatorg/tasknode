@@ -40,6 +40,7 @@ import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.
 import { oauthStateCookieName, responseHeadersForAuthResult } from "./auth-oauth-http.js";
 import { telegramAuthHeaders } from "./auth-connected-accounts.js";
 import { handleTaskReadRoute } from "./task-routes.js";
+import { handleAccountRoute } from "./account-routes.js";
 import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
 import { handleMemoryRoute } from "./memory-routes.js";
@@ -367,7 +368,8 @@ async function serveStatic(url, res) {
 }
 
 async function routeApi(req, url, res) {
-  const session = currentSession(req);
+  const sessionId = cookieValue(req, sessionCookieName);
+  const session = getSession(sessionId);
   let statePromise = null;
   const getState = () => {
     if (!statePromise) {
@@ -602,6 +604,17 @@ async function routeApi(req, url, res) {
   }
 
   if (await handleMemoryRoute({ json, req, res, session, url })) return true;
+
+  if (await handleAccountRoute({
+    expiredSessionCookie: () => expiredSessionCookie(req),
+    json,
+    readJson,
+    req,
+    res,
+    session,
+    sessionId,
+    url,
+  })) return true;
 
   if (await handleProfileRoute({ getState, json, readJson, req, res, session, url })) return true;
 

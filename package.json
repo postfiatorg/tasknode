@@ -64,6 +64,7 @@
     "chat-attachment-smoke": "node scripts/chat-attachment-smoke.mjs",
     "chat-context-status-smoke": "node scripts/chat-context-status-smoke.mjs",
     "auth-login-state-fixture": "node scripts/auth-login-state-fixture.mjs",
+    "signup-reset": "node scripts/reset-signup-test-account.mjs",
     "task-time-format-smoke": "node scripts/task-time-format-smoke.mjs",
     "security-smoke": "node scripts/security-smoke.mjs",
     "check": "npm run quality && npm run wallet-state-regression && npm run runtime-smoke && npm run chat-attachment-smoke && npm run pftl-cache-smoke && npm run pftl-cache-watcher-smoke && npm run security-smoke && npm run build && npm run route-smoke",

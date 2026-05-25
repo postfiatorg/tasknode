@@ -592,7 +592,7 @@ try {
     username: "runtime-smoke-create",
   });
   const createFlowSession = createAccountSession(createFlowAccount, { provider: "github", assurance: "medium" });
-  const createStart = walletCreateStart("POST", createFlowSession.session);
+  const createStart = await walletCreateStart("POST", createFlowSession.session);
   const createMnemonic = generateTaskNodeMnemonic();
   const createProof = signWalletChallenge(createMnemonic, createStart.body.challenge.message);
   const createVerify = await walletLinkVerify({
@@ -637,55 +637,21 @@ try {
   if (retryAfterLink.status !== 409 || retryAfterLink.body?.initiationGift?.reason !== "wallet_create_proof_required") {
     throw new Error(`Initiation retry must reject linked-only wallets: ${JSON.stringify(retryAfterLink)}`);
   }
-  const emailAccount = getOrCreateEmailAccount({
-    email: "runtime-smoke@example.com",
-    canonicalEmail: "runtime-smoke@example.com",
-    maskedEmail: "r***@example.com",
-  });
+  const emailAccount = getOrCreateEmailAccount({ email: "runtime-smoke@example.com", canonicalEmail: "runtime-smoke@example.com", maskedEmail: "r***@example.com" });
   const emailGift = walletInitiationGrantStatus({ accountId: emailAccount.id });
   if (emailGift.eligible || emailGift.reason !== "email_ineligible") {
     throw new Error(`Email-only accounts must not be initiation-gift eligible: ${JSON.stringify(emailGift)}`);
   }
-  const emailTopUpGrantAccount = getOrCreateEmailAccount({
-    email: "runtime-smoke-usdc-grant@example.com",
-    canonicalEmail: "runtime-smoke-usdc-grant@example.com",
-    maskedEmail: "r***@example.com",
-  });
-  linkWalletToAccount({
-    accountId: emailTopUpGrantAccount.id,
-    address: "rRuntimeSmokeUsdcTopUpGrant1111111",
-    publicKey: "runtime-smoke-usdc-topup-pubkey",
-    challengeId: "runtime-smoke-usdc-topup-challenge",
-    signature: "runtime-smoke-usdc-topup-signature",
-    proofPurpose: "wallet_create",
-  });
-  const emailTopUpGift = walletInitiationGrantStatus({
-    accountId: emailTopUpGrantAccount.id,
-    walletAddress: "rRuntimeSmokeUsdcTopUpGrant1111111",
-    source: "usdc_top_up",
-  });
+  const emailTopUpGrantAccount = getOrCreateEmailAccount({ email: "runtime-smoke-usdc-grant@example.com", canonicalEmail: "runtime-smoke-usdc-grant@example.com", maskedEmail: "r***@example.com" });
+  linkWalletToAccount({ accountId: emailTopUpGrantAccount.id, address: "rRuntimeSmokeUsdcTopUpGrant1111111", publicKey: "runtime-smoke-usdc-topup-pubkey", challengeId: "runtime-smoke-usdc-topup-challenge", signature: "runtime-smoke-usdc-topup-signature", proofPurpose: "wallet_create" });
+  const emailTopUpGift = walletInitiationGrantStatus({ accountId: emailTopUpGrantAccount.id, walletAddress: "rRuntimeSmokeUsdcTopUpGrant1111111", source: "usdc_top_up" });
   if (!emailTopUpGift.eligible || emailTopUpGift.amountPft !== 12) {
     throw new Error(`Email account with a created wallet should be USDC top-up grant eligible: ${JSON.stringify(emailTopUpGift)}`);
   }
-  linkWalletToAccount({
-    accountId: emailTopUpGrantAccount.id,
-    address: "rRuntimeSmokeUsdcTopUpGrant1111111",
-    publicKey: "runtime-smoke-usdc-topup-relink-pubkey",
-    challengeId: "runtime-smoke-usdc-topup-relink-challenge",
-    signature: "runtime-smoke-usdc-topup-relink-signature",
-    proofPurpose: "wallet_relink",
-  });
+  linkWalletToAccount({ accountId: emailTopUpGrantAccount.id, address: "rRuntimeSmokeUsdcTopUpGrant1111111", publicKey: "runtime-smoke-usdc-topup-relink-pubkey", challengeId: "runtime-smoke-usdc-topup-relink-challenge", signature: "runtime-smoke-usdc-topup-relink-signature", proofPurpose: "wallet_relink" });
   const relinkedWallet = getLinkedWallet({ accountId: emailTopUpGrantAccount.id });
-  const relinkedTopUpGift = walletInitiationGrantStatus({
-    accountId: emailTopUpGrantAccount.id,
-    walletAddress: relinkedWallet.address,
-    source: "usdc_top_up",
-  });
-  if (
-    relinkedWallet.walletCreatedInAccount !== true ||
-    !relinkedTopUpGift.eligible ||
-    relinkedTopUpGift.amountPft !== 12
-  ) {
+  const relinkedTopUpGift = walletInitiationGrantStatus({ accountId: emailTopUpGrantAccount.id, walletAddress: relinkedWallet.address, source: "usdc_top_up" });
+  if (relinkedWallet.walletCreatedInAccount !== true || !relinkedTopUpGift.eligible || relinkedTopUpGift.amountPft !== 12) {
     throw new Error(`Relinked created wallet should remain USDC top-up grant eligible: ${JSON.stringify({ relinkedWallet, relinkedTopUpGift })}`);
   }
   const reservedTopUpGift = await reserveWalletInitiationGrant({
@@ -709,16 +675,8 @@ try {
   ) {
     throw new Error(`USDC top-up grant was not reserved for an email account: ${JSON.stringify(reservedTopUpGift)}`);
   }
-  await completeWalletInitiationGrant({
-    grantId: reservedTopUpGift.internalGrant.id,
-    txHash: "RUNTIME_SMOKE_USDC_TOPUP_INIT_TX",
-    faucetAddress: "rRuntimeSmokeFaucet",
-  });
-  const replayTopUpGift = walletInitiationGrantStatus({
-    accountId: emailTopUpGrantAccount.id,
-    walletAddress: "rRuntimeSmokeUsdcTopUpGrant1111111",
-    source: "usdc_top_up",
-  });
+  await completeWalletInitiationGrant({ grantId: reservedTopUpGift.internalGrant.id, txHash: "RUNTIME_SMOKE_USDC_TOPUP_INIT_TX", faucetAddress: "rRuntimeSmokeFaucet" });
+  const replayTopUpGift = walletInitiationGrantStatus({ accountId: emailTopUpGrantAccount.id, walletAddress: "rRuntimeSmokeUsdcTopUpGrant1111111", source: "usdc_top_up" });
   if (replayTopUpGift.eligible || replayTopUpGift.reason !== "account_registered") {
     throw new Error(`USDC top-up grant must be account-idempotent: ${JSON.stringify(replayTopUpGift)}`);
   }
@@ -729,7 +687,7 @@ try {
   if (!firstGiftStatus.eligible || firstGiftStatus.amountPft !== 12) {
     throw new Error(`OAuth account should be eligible for one wallet initiation gift: ${JSON.stringify(firstGiftStatus)}`);
   }
-  const reservedGift = reserveWalletInitiationGrant({
+  const reservedGift = await reserveWalletInitiationGrant({
     accountId: oauthAccount.id,
     walletAddress: "rRuntimeSmokeWalletInit1111111111111",
     amountDrops: firstGiftStatus.amountDrops,
@@ -738,7 +696,7 @@ try {
   if (!reservedGift.ok || reservedGift.grant.status !== "processing") {
     throw new Error(`Wallet initiation grant was not reserved: ${JSON.stringify(reservedGift)}`);
   }
-  const completedGift = completeWalletInitiationGrant({
+  const completedGift = await completeWalletInitiationGrant({
     grantId: reservedGift.internalGrant.id,
     txHash: "RUNTIME_SMOKE_INIT_TX",
     faucetAddress: "rRuntimeSmokeFaucet",

@@ -18,6 +18,8 @@ process.env.TELEGRAM_AUTH_BOT_USERNAME = "TaskNodeFixtureBot";
 process.env.TELEGRAM_AUTH_WIDGET_DOMAIN = "localhost";
 process.env.DISCORD_CLIENT_ID = "discord-fixture-client";
 process.env.DISCORD_CLIENT_SECRET = "discord-fixture-secret";
+process.env.X_CLIENT_ID = "x-fixture-client";
+process.env.X_CLIENT_SECRET = "x-fixture-secret";
 
 const product = await import("../server/product-contracts.js");
 const runtime = await import("../server/runtime-store.js");
@@ -30,7 +32,14 @@ const {
   authStart,
   authTelegramAuthorize,
 } = product;
-const { destroySession, getSession } = runtime;
+const {
+  checkHiveHandleAvailability,
+  destroySession,
+  getAccountIdentityProfile,
+  getSession,
+  setAccountAliasVisibility,
+  setAccountHiveHandle,
+} = runtime;
 
 const origin = "http://localhost:5174";
 const logs = [];
@@ -98,6 +107,44 @@ function installDiscordFetchMock() {
   };
 }
 
+function installXFetchMock() {
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options = {}) => {
+    const target = String(url);
+    if (target === "https://api.x.com/2/oauth2/token") {
+      const body = new URLSearchParams(String(options.body || ""));
+      assert.equal(body.get("grant_type"), "authorization_code");
+      assert.equal(body.get("code"), "x-oauth-code");
+      assert.equal(body.get("redirect_uri"), `${origin}/api/auth/callback/x`);
+      assert.equal(body.has("client_id"), false);
+      assertOk(body.get("code_verifier"), "X token exchange should include the PKCE verifier");
+      assertOk(String(options.headers?.Authorization || "").startsWith("Basic "), "X token exchange should use client credentials");
+      return new Response(JSON.stringify({ access_token: "x-fixture-token" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (target.startsWith("https://api.x.com/2/users/me?")) {
+      return new Response(JSON.stringify({
+        data: {
+          id: "1357924680",
+          username: "x_fixture",
+          name: "X Fixture",
+          profile_image_url: "https://x.example/avatar.jpg",
+          verified: false,
+        },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return originalFetch(url, options);
+  };
+  return () => {
+    global.fetch = originalFetch;
+  };
+}
+
 const providers = authProviders();
 record("providers.ready", {
   enabled: providers
@@ -108,6 +155,7 @@ record("providers.ready", {
 assertOk(providers.find((provider) => provider.id === "email")?.enabled, "email provider should be enabled");
 assertOk(providers.find((provider) => provider.id === "telegram")?.enabled, "telegram provider should be enabled");
 assertOk(providers.find((provider) => provider.id === "discord")?.enabled, "discord provider should be enabled");
+assertOk(providers.find((provider) => provider.id === "x")?.enabled, "x provider should be enabled");
 
 const emailStart = await authEmailStart({ email: "Fixture.User@example.com" }, "POST", {
   ip: "127.0.0.1",
@@ -268,6 +316,33 @@ try {
   restoreFetch();
 }
 
+const restoreXFetch = installXFetchMock();
+let xLinkedSession = null;
+try {
+  const xStart = authStart("x", { origin, redirectPath: "/settings", session: telegramLinked.body.session });
+  const xState = stateFromStart(xStart);
+  const xAuthorizeUrl = new URL(xStart.body.redirectUrl);
+  assert.equal(xAuthorizeUrl.origin + xAuthorizeUrl.pathname, "https://x.com/i/oauth2/authorize");
+  assert.equal(xAuthorizeUrl.searchParams.get("response_type"), "code");
+  assert.equal(xAuthorizeUrl.searchParams.get("redirect_uri"), `${origin}/api/auth/callback/x`);
+  assert.equal(xAuthorizeUrl.searchParams.get("code_challenge_method"), "S256");
+  assertOk(xAuthorizeUrl.searchParams.get("code_challenge"), "X auth start should include a PKCE challenge");
+  const xLinked = await authCallback("x", { code: "x-oauth-code", state: xState }, {
+    origin,
+    oauthState: xState,
+  });
+  assert.equal(xLinked.status, 302);
+  assert.equal(xLinked.body.session.accountId, emailSession.accountId);
+  assertOk(linkedProviderIds(xLinked.body.session).includes("x"), "email account should link x");
+  xLinkedSession = xLinked.body.session;
+  record("x.linked_to_email_account", {
+    accountId: xLinked.body.session.accountId,
+    linkedProviders: linkedProviderIds(xLinked.body.session),
+  });
+} finally {
+  restoreXFetch();
+}
+
 const staleState = await authCallback("telegram", { ...telegramPayload, state: "stale-state" }, {
   origin,
   oauthState: "different-state",
@@ -277,6 +352,40 @@ assert.equal(staleState.body.error, "oauth_state_invalid");
 record("oauth.stale_state_rejected", {
   status: staleState.status,
   error: staleState.body.error,
+});
+
+const identityBefore = getAccountIdentityProfile({ accountId: emailSession.accountId });
+const xAliasBefore = identityBefore.aliases.find((alias) => alias.provider === "x");
+assert.equal(identityBefore.handleRequired, true);
+assertOk(xAliasBefore, "linked X should be present as a private alias");
+assert.equal(xAliasBefore.visibility, "private");
+const handleAvailability = checkHiveHandleAvailability({
+  accountId: emailSession.accountId,
+  handle: "x_fixture",
+});
+assert.equal(handleAvailability.available, true);
+const handleSaved = setAccountHiveHandle({
+  accountId: emailSession.accountId,
+  handle: "x_fixture",
+  displayName: "Fixture Pseudonym",
+});
+assert.equal(handleSaved.ok, true);
+assert.equal(handleSaved.identityProfile.hiveHandle, "x_fixture");
+const aliasPublished = setAccountAliasVisibility({
+  accountId: emailSession.accountId,
+  provider: "x",
+  visibility: "public",
+  discloseHandle: true,
+  discloseVerifiedBadge: true,
+});
+assert.equal(aliasPublished.ok, true);
+assert.equal(aliasPublished.identityProfile.publicAliases[0]?.handle, "x_fixture");
+assert.equal(getSession(emailVerified.sessionId)?.identityProfile?.hiveHandle, "x_fixture");
+assert.equal(getSession(xLinkedSession?.id)?.identityProfile?.publicAliases[0]?.handle, "x_fixture");
+record("identity.namespace_saved", {
+  accountId: emailSession.accountId,
+  handle: handleSaved.identityProfile.hiveHandle,
+  publicAliases: aliasPublished.identityProfile.publicAliases.length,
 });
 
 assert.equal(Boolean(getSession(emailVerified.sessionId)), true);
@@ -290,9 +399,10 @@ record("logout.session_destroyed", {
 record("summary.discovered_prior_failures", {
   failures: [
     "Telegram and Discord appeared in Connected accounts, but the backend returned disabled/not implemented responses.",
+    "X appeared as configured, but /api/auth/start/x returned auth_provider_disabled.",
     "Telegram readiness only checked the bot token; the Login Widget also requires a bot username and an authorize page.",
-    "Email-only accounts could not attach Telegram or Discord identities for later validated messaging.",
-    "No deterministic fixture covered invalid auth, stale OAuth state, reconnect, and logout behavior for these providers.",
+    "Email-only accounts could not attach Telegram, Discord, or X identities for later validated messaging.",
+    "No deterministic fixture covered invalid auth, stale OAuth state, PKCE provider callbacks, reconnect, and logout behavior for these providers.",
   ],
 });
 

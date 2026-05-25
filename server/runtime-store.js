@@ -1,17 +1,34 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
+import {
+  accountIdentityProfile as buildAccountIdentityProfile,
+  applyAccountAliasVisibility,
+  applyAccountHiveHandle,
+  checkHiveHandleAvailability as checkHiveHandleAvailabilityForAccounts,
+  normalizeHiveHandle,
+  providerAliasDefaults,
+  suggestHiveHandles as suggestHiveHandlesForAccounts,
+} from "./account-identity.js";
+import { deleteRuntimeAccountDataForState } from "./account-deletion-state.js";
 import { normalizeContextHistoryProjection } from "./context-history.js";
 import {
   mergeWalletInitiationGrantStatus,
   reserveWalletInitiationGrantRecord,
   updateWalletInitiationGrantRecord,
 } from "./wallet-initiation-grants-db.js";
+import {
+  publicWalletInitiationGrant,
+  walletInitiationAmountDrops,
+  walletInitiationAmountPft,
+  walletInitiationGrantStatusForState,
+} from "./wallet-initiation-eligibility.js";
 
 const defaultStorePath = path.join("/tmp", "tasknodeofficial-runtime-store.json");
 export const sessionCookieName = "tasknode_session";
 export const sessionTtlSeconds = 60 * 60 * 24 * 7;
 const storePath = process.env.TASKNODE_STORE_PATH || defaultStorePath;
+export { normalizeHiveHandle } from "./account-identity.js";
 const defaultState = {
   version: 1,
   conversations: {
@@ -331,14 +348,40 @@ export function deleteChatConversation({ accountId = "", conversationId = "" } =
   };
 }
 
+function accountIdentityProfile(account = null, options = {}) {
+  return buildAccountIdentityProfile(account, {
+    accounts: state.accounts || {},
+    ...options,
+  });
+}
+
+export function checkHiveHandleAvailability(params = {}) {
+  return checkHiveHandleAvailabilityForAccounts({
+    ...params,
+    accounts: state.accounts || {},
+  });
+}
+
+export function suggestHiveHandles(params = {}) {
+  return suggestHiveHandlesForAccounts({
+    ...params,
+    accounts: state.accounts || {},
+  });
+}
+
 function sessionPayload(session) {
   if (!session) return null;
+  const account = state.accounts[session.accountId] || null;
+  const identityProfile = accountIdentityProfile(account);
 
   return {
     id: session.id,
     accountId: session.accountId,
     status: "signed_in",
-    displayName: session.displayName,
+    displayName: identityProfile?.displayName || session.displayName,
+    hiveHandle: identityProfile?.hiveHandle || session.hiveHandle || "",
+    publicDisplayName: identityProfile?.publicDisplayName || session.publicDisplayName || "",
+    identityProfile,
     primaryProvider: session.primaryProvider,
     linkedProviders: session.linkedProviders || [],
     assurance: session.assurance || "low",
@@ -408,11 +451,14 @@ function displayNameFromEmail(email) {
 
 function accountPayload(account) {
   if (!account) return null;
+  const identityProfile = accountIdentityProfile(account, { includeSuggestions: false });
 
   return {
     id: account.id,
     status: account.status || "active",
-    displayName: account.displayName,
+    displayName: identityProfile?.displayName || account.displayName,
+    hiveHandle: identityProfile?.hiveHandle || "",
+    publicDisplayName: identityProfile?.publicDisplayName || "",
     primaryProvider: account.primaryProvider || "email",
     linkedProviders: account.linkedProviders || [],
     assurance: account.assurance || "low",
@@ -443,21 +489,23 @@ function linkedProvider({
   provider,
   providerUserId,
   username,
+  displayName = "",
   profileUrl,
   email,
   emailVerified = false,
 }) {
-  return {
+  return providerAliasDefaults({
     id: provider,
     label: providerLabel(provider),
     kind: "oauth",
     status: "linked",
     providerUserId,
     username: username || null,
+    displayName: displayName || null,
     profileUrl: profileUrl || null,
     email: email || null,
     emailVerified: Boolean(emailVerified),
-  };
+  });
 }
 
 function devProvider() {
@@ -471,178 +519,37 @@ function devProvider() {
 
 function mergeLinkedProvider(account, providerPayload) {
   const existing = Array.isArray(account.linkedProviders) ? account.linkedProviders : [];
+  const prior = existing.find((item) => item?.id === providerPayload.id) || {};
+  const merged = providerAliasDefaults({
+    ...prior,
+    ...providerPayload,
+    aliasVisibility: prior.aliasVisibility || providerPayload.aliasVisibility,
+    discloseHandle: prior.discloseHandle === true || providerPayload.discloseHandle === true,
+    discloseVerifiedBadge: prior.discloseVerifiedBadge === true || providerPayload.discloseVerifiedBadge === true,
+    linkedAt: prior.linkedAt || new Date().toISOString(),
+  });
   account.linkedProviders = existing
     .filter((item) => item?.id !== providerPayload.id)
-    .concat(providerPayload);
+    .concat(merged);
 }
 
-function walletInitiationAmountPft() {
-  const amount = Number(process.env.TASKNODE_WALLET_INITIATION_PFT || 12);
-  if (!Number.isFinite(amount) || amount <= 0) return 12;
-  return Math.min(amount, 100);
-}
-
-function walletInitiationAmountDrops() {
-  return String(Math.round(walletInitiationAmountPft() * 1_000_000));
-}
-
-function walletInitiationIdentityHash(provider, providerUserId) {
-  return stableId(`${String(provider || "").toLowerCase()}:${String(providerUserId || "")}`, "identity");
-}
-
-function walletInitiationIdentities(account) {
-  const linked = Array.isArray(account?.linkedProviders) ? account.linkedProviders : [];
-  return linked
-    .filter((provider) => {
-      const id = String(provider?.id || "").trim().toLowerCase();
-      if (!id || id === "email" || id === "dev" || id === "wallet") return false;
-      return provider?.kind === "oauth" && provider?.providerUserId;
-    })
-    .map((provider) => ({
-      provider: String(provider.id || "").trim().toLowerCase(),
-      providerUserId: String(provider.providerUserId || "").trim(),
-      providerUserIdHash: walletInitiationIdentityHash(provider.id, provider.providerUserId),
-      username: provider.username || null,
-    }));
-}
-
-function activeWalletInitiationGrants() {
-  return (state.walletInitiationGrants || []).filter((grant) => (
-    grant && ["processing", "completed", "unknown"].includes(grant.status)
-  ));
-}
-
-function latestWalletInitiationGrantForAccount(accountId) {
-  const normalizedAccountId = safeId(accountId, "account");
-  return (state.walletInitiationGrants || [])
-    .filter((grant) => grant?.accountId === normalizedAccountId)
-    .sort((left, right) => (Date.parse(right.updatedAt || right.createdAt || "") || 0) - (Date.parse(left.updatedAt || left.createdAt || "") || 0))[0] || null;
-}
-
-function publicWalletInitiationGrant(grant) {
-  if (!grant) return null;
-  return {
-    id: grant.id,
-    status: grant.status,
-    accountId: grant.accountId,
-    walletAddress: grant.walletAddress,
-    amountPft: grant.amountPft,
-    amountDrops: grant.amountDrops,
-    source: grant.source || "wallet_create",
-    txHash: grant.txHash || null,
-    provider: grant.provider || null,
-    trigger: grant.trigger && typeof grant.trigger === "object" && !Array.isArray(grant.trigger) ? grant.trigger : undefined,
-    createdAt: grant.createdAt,
-    updatedAt: grant.updatedAt,
-    error: grant.error || null,
-  };
-}
-
-export async function resolveWalletInitiationGrantStatus(params = {}) {
-  return mergeWalletInitiationGrantStatus(walletInitiationGrantStatus(params), params);
-}
+export async function resolveWalletInitiationGrantStatus(params = {}) { return mergeWalletInitiationGrantStatus(walletInitiationGrantStatus(params), params); }
 
 export function walletInitiationGrantStatus({ accountId = "", walletAddress = "", source = "wallet_create" } = {}) {
-  const normalizedAccountId = accountId ? safeId(accountId, "account") : "";
-  const normalizedWalletAddress = String(walletAddress || "").trim();
-  const normalizedSource = String(source || "wallet_create").trim().toLowerCase();
-  const amountPft = walletInitiationAmountPft();
-  const amountDrops = walletInitiationAmountDrops();
-  const unavailable = (reason, message, extra = {}) => ({ eligible: false, reason, amountPft, amountDrops, message, ...extra });
-  const available = (extra = {}) => ({ eligible: true, reason: null, amountPft, amountDrops, ...extra });
-
-  if (!normalizedAccountId) {
-    return unavailable(
-      "login_required",
-      "Sign in with GitHub, X, Telegram, or Discord before claiming the wallet initiation gift."
-    );
-  }
-
-  const account = state.accounts[normalizedAccountId];
-  if (!account) {
-    return unavailable("account_not_found", "The signed-in account was not found.");
-  }
-
-  const latestAccountGrant = latestWalletInitiationGrantForAccount(normalizedAccountId);
-  if (latestAccountGrant && ["processing", "completed", "unknown"].includes(latestAccountGrant.status)) {
-    const message = latestAccountGrant.status === "completed"
-      ? "This account already received its wallet initiation gift."
-      : "This account already has a wallet initiation gift in progress.";
-    return unavailable("account_registered", message, { grant: publicWalletInitiationGrant(latestAccountGrant) });
-  }
-
-  const activeGrants = activeWalletInitiationGrants();
-  const walletRegistered = (address) => {
-    const walletGrant = activeGrants.find((grant) => grant.walletAddress === address);
-    return walletGrant
-      ? unavailable("wallet_registered", "This wallet address is already registered for a wallet initiation gift.", { grant: publicWalletInitiationGrant(walletGrant) })
-      : null;
-  };
-  if (normalizedSource === "usdc_top_up") {
-    const linkedWallet = state.accountWallets[normalizedAccountId] || null;
-    if (!linkedWallet?.address || linkedWallet.status !== "linked") {
-      return unavailable("wallet_not_linked", "Create and link a PFT wallet before the USDC top-up grant can be sent.");
-    }
-    if (normalizedWalletAddress && linkedWallet.address !== normalizedWalletAddress) {
-      return unavailable("wallet_mismatch", "The linked wallet does not match the wallet selected for the USDC top-up grant.");
-    }
-    if (linkedWallet.proof?.purpose !== "wallet_create" && !walletCreatedInAccountForRecord(normalizedAccountId, linkedWallet)) {
-      return unavailable("wallet_create_proof_required", "The USDC top-up PFT grant is only available for wallets created in this account.");
-    }
-    const walletBlock = walletRegistered(linkedWallet.address);
-    if (walletBlock) return walletBlock;
-    return available({
-      source: "usdc_top_up",
-      provider: "ethereum_usdc_top_up",
-      identities: [],
-      message: `${amountPft.toLocaleString("en-US")} PFT grant available after a qualifying USDC top-up.`,
-    });
-  }
-
-  const identities = walletInitiationIdentities(account);
-  if (identities.length === 0) {
-    const reason = account.primaryProvider === "email" ? "email_ineligible" : "provider_required";
-    const message = account.primaryProvider === "email"
-      ? "Email-only accounts can receive the PFT wallet initiation gift after creating a wallet and crediting more than $10 USDC."
-      : "Sign in with GitHub, X, Telegram, or Discord before claiming the wallet initiation gift.";
-    return unavailable(reason, message);
-  }
-
-  if (normalizedWalletAddress) {
-    const walletBlock = walletRegistered(normalizedWalletAddress);
-    if (walletBlock) return walletBlock;
-  }
-  const identityHashSet = new Set(identities.map((identity) => identity.providerUserIdHash));
-  const providerGrant = activeGrants.find((grant) => (
-    Array.isArray(grant.providerUserIdHashes) &&
-    grant.providerUserIdHashes.some((hash) => identityHashSet.has(hash))
-  ));
-  if (providerGrant) {
-    return unavailable("provider_identity_registered", "This sign-in identity already received a wallet initiation gift.", { grant: publicWalletInitiationGrant(providerGrant) });
-  }
-
-  return available({
-    provider: identities[0].provider,
-    identities,
-    message: `${amountPft.toLocaleString("en-US")} PFT initiation gift available after creating a new wallet.`,
+  return walletInitiationGrantStatusForState({
+    accountId,
+    walletAddress,
+    source,
+    state,
+    safeId,
+    walletCreatedInAccountForRecord,
   });
 }
 
-export async function reserveWalletInitiationGrant({
-  accountId = "",
-  walletAddress = "",
-  amountDrops = walletInitiationAmountDrops(),
-  amountPft = walletInitiationAmountPft(),
-  source = "wallet_create",
-  trigger = null,
-} = {}) {
+export async function reserveWalletInitiationGrant({ accountId = "", walletAddress = "", amountDrops = walletInitiationAmountDrops(), amountPft = walletInitiationAmountPft(), source = "wallet_create", trigger = null } = {}) {
   const normalizedAccountId = safeId(accountId, "account");
   const normalizedWalletAddress = String(walletAddress || "").trim();
-  const eligibility = await resolveWalletInitiationGrantStatus({
-    accountId: normalizedAccountId,
-    walletAddress: normalizedWalletAddress,
-    source,
-  });
+  const eligibility = await resolveWalletInitiationGrantStatus({ accountId: normalizedAccountId, walletAddress: normalizedWalletAddress, source });
   if (!eligibility.eligible) {
     return { ok: false, status: 409, error: eligibility.reason || "wallet_initiation_not_eligible", eligibility };
   }
@@ -660,11 +567,7 @@ export async function reserveWalletInitiationGrant({
     source: normalizedSource,
     provider: eligibility.provider || identities[0]?.provider || "",
     providerUserIdHashes: identities.map((identity) => identity.providerUserIdHash),
-    providers: identities.map((identity) => ({
-      provider: identity.provider,
-      providerUserIdHash: identity.providerUserIdHash,
-      username: identity.username || null,
-    })),
+    providers: identities.map((identity) => ({ provider: identity.provider, providerUserIdHash: identity.providerUserIdHash, username: identity.username || null })),
     createdAt: now,
     updatedAt: now,
   };
@@ -672,16 +575,12 @@ export async function reserveWalletInitiationGrant({
 
   const durable = await reserveWalletInitiationGrantRecord(grant);
   if (!durable.ok) {
+    const reason = durable.error || eligibility.reason || "wallet_initiation_not_eligible";
     return {
       ok: false,
       status: 409,
-      error: durable.error || "wallet_initiation_not_eligible",
-      eligibility: {
-        ...eligibility,
-        eligible: false,
-        reason: durable.error || eligibility.reason,
-        grant: durable.grant || eligibility.grant || null,
-      },
+      error: reason,
+      eligibility: { ...eligibility, eligible: false, reason, grant: durable.grant || eligibility.grant || null },
     };
   }
 
@@ -702,12 +601,7 @@ export async function completeWalletInitiationGrant({ grantId = "", txHash = "",
   grant.error = "";
   grant.updatedAt = now;
   saveState();
-  await updateWalletInitiationGrantRecord({
-    grantId,
-    status: "completed",
-    txHash: grant.txHash || "",
-    faucetAddress: grant.faucetAddress || "",
-  });
+  await updateWalletInitiationGrantRecord({ grantId, status: "completed", txHash: grant.txHash || "", faucetAddress: grant.faucetAddress || "" });
 
   return { ok: true, grant: publicWalletInitiationGrant(grant) };
 }
@@ -721,17 +615,64 @@ export async function failWalletInitiationGrant({ grantId = "", error = "", unkn
   grant.error = String(error || "wallet_initiation_failed").slice(0, 240);
   grant.updatedAt = now;
   saveState();
-  await updateWalletInitiationGrantRecord({
-    grantId,
-    status: grant.status,
-    error: grant.error,
-  });
+  await updateWalletInitiationGrantRecord({ grantId, status: grant.status, error: grant.error });
 
   return { ok: true, grant: publicWalletInitiationGrant(grant) };
 }
 
 export function getAccount(accountId) {
   return accountPayload(state.accounts[accountId] || null);
+}
+
+function syncAccountSessions(account) {
+  if (!account?.id) return;
+  const identityProfile = accountIdentityProfile(account);
+  for (const session of Object.values(state.sessions || {})) {
+    if (session?.accountId !== account.id) continue;
+    session.displayName = identityProfile?.displayName || account.displayName;
+    session.hiveHandle = identityProfile?.hiveHandle || "";
+    session.publicDisplayName = identityProfile?.publicDisplayName || "";
+    session.linkedProviders = account.linkedProviders || [];
+  }
+}
+
+export function getAccountIdentityProfile({ accountId = "" } = {}) {
+  return accountIdentityProfile(state.accounts[String(accountId || "").trim()] || null);
+}
+
+export function deleteAccountRuntimeData({ accountId = "", reason = "user_requested_account_delete", actorSessionId = "", archiveId = "" } = {}) {
+  const result = deleteRuntimeAccountDataForState({ state, accountId, reason, actorSessionId, archiveId, safeId });
+  saveState();
+  return result;
+}
+
+export function setAccountHiveHandle({ accountId = "", handle = "", displayName } = {}) {
+  const result = applyAccountHiveHandle({ accounts: state.accounts, accountId, handle, displayName });
+  if (!result.ok) return result;
+  syncAccountSessions(result.account);
+  saveState();
+  return { ...result, account: accountPayload(result.account) };
+}
+
+export function setAccountAliasVisibility({
+  accountId = "",
+  provider = "",
+  visibility = "private",
+  discloseHandle = false,
+  discloseVerifiedBadge = false,
+} = {}) {
+  const result = applyAccountAliasVisibility({
+    accounts: state.accounts,
+    accountId,
+    provider,
+    visibility,
+    discloseHandle,
+    discloseVerifiedBadge,
+  });
+  if (!result.ok) return result;
+  syncAccountSessions(result.account);
+  saveState();
+  return { ...result, account: accountPayload(result.account) };
 }
 
 export function findAccountByEmail(canonicalEmail) {
@@ -804,6 +745,7 @@ export function getOrCreateProviderAccount({
     provider: normalizedProvider,
     providerUserId: normalizedProviderUserId,
     username,
+    displayName,
     profileUrl,
     email,
     emailVerified,
@@ -853,6 +795,7 @@ export function getOrCreateProviderAccount({
 
   state.accounts[accountId] = account;
   state.accountIdentities[key] = accountId;
+  syncAccountSessions(account);
   saveState();
 
   return accountPayload(account);
@@ -902,6 +845,7 @@ export function linkProviderToAccount({
       provider: normalizedProvider,
       providerUserId: normalizedProviderUserId,
       username,
+      displayName,
       profileUrl,
       email,
       emailVerified,
@@ -925,6 +869,7 @@ export function linkProviderToAccount({
 
   state.accounts[targetAccountId] = account;
   state.accountIdentities[key] = targetAccountId;
+  syncAccountSessions(account);
   saveState();
 
   return { ok: true, account: accountPayload(account) };
@@ -935,10 +880,13 @@ export function createAccountSession(account, { provider = "email", assurance = 
 
   const now = new Date();
   const sessionId = randomUUID();
+  const identityProfile = accountIdentityProfile(account);
   const session = {
     id: sessionId,
     accountId: account.id,
-    displayName: account.displayName,
+    displayName: identityProfile?.displayName || account.displayName,
+    hiveHandle: identityProfile?.hiveHandle || "",
+    publicDisplayName: identityProfile?.publicDisplayName || "",
     primaryProvider: provider,
     linkedProviders: account.linkedProviders || [],
     assurance,
@@ -985,10 +933,13 @@ export function createDevSession({ email = "dev@tasknode.local" } = {}) {
   state.accounts[accountId] = account;
 
   const sessionId = randomUUID();
+  const identityProfile = accountIdentityProfile(account);
   const session = {
     id: sessionId,
     accountId,
-    displayName: account.displayName,
+    displayName: identityProfile?.displayName || account.displayName,
+    hiveHandle: identityProfile?.hiveHandle || "",
+    publicDisplayName: identityProfile?.publicDisplayName || "",
     primaryProvider: "dev",
     linkedProviders: account.linkedProviders || [devProvider()],
     createdAt: now.toISOString(),
@@ -1009,6 +960,7 @@ export function createOAuthState({
   redirectPath = "/",
   redirectUri = "",
   linkAccountId = "",
+  metadata = {},
   expiresInSeconds = 600,
 } = {}) {
   pruneExpiredOAuthStates();
@@ -1021,6 +973,7 @@ export function createOAuthState({
     redirectPath: String(redirectPath || "/").startsWith("/") ? String(redirectPath || "/") : "/",
     redirectUri,
     linkAccountId: String(linkAccountId || "").trim(),
+    metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata) ? { ...metadata } : {},
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
   };
@@ -1946,24 +1899,11 @@ function walletCreatedInAccountForRecord(accountId = "", wallet = null) {
 }
 
 export function getLinkedWallet({ accountId = "" } = {}) {
-  if (!accountId) {
-    return {
-      status: "not_linked",
-      address: null,
-      publicKey: null,
-      custody: "local_seed_required",
-    };
-  }
+  const unlinked = { status: "not_linked", address: null, publicKey: null, custody: "local_seed_required" };
+  if (!accountId) return unlinked;
 
   const wallet = state.accountWallets[safeId(accountId, "account")];
-  if (!wallet) {
-    return {
-      status: "not_linked",
-      address: null,
-      publicKey: null,
-      custody: "local_seed_required",
-    };
-  }
+  if (!wallet) return unlinked;
 
   return {
     status: wallet.status || "linked",

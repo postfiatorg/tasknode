@@ -21,6 +21,7 @@ import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import networkTaskRecovery from "../../../docs/wiki/architecture/network-task-recovery.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
+import resettableSignupTesting from "../../../docs/wiki/architecture/resettable-signup-testing.md?raw";
 import styleGuide from "../../../docs/wiki/architecture/style-guide.md?raw";
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
@@ -38,6 +39,7 @@ import networkTaskAgenticObjects from "../../../docs/wiki/plans/network-task-age
 import networkTaskProfileMemoryPlan from "../../../docs/wiki/plans/network-task-profile-memory-plan.md?raw";
 import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
 import profileAndHiveMindPlan from "../../../docs/wiki/plans/profile-and-hive-mind-plan.md?raw";
+import pseudonymousIdentityAndNamespacePlan from "../../../docs/wiki/plans/pseudonymous-identity-and-namespace-plan.md?raw";
 import publicProfileRealDataPlan from "../../../docs/wiki/plans/public-profile-real-data-plan.md?raw";
 import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-engine-speedrun.md?raw";
 import taskEngineUxIntegrationPlan from "../../../docs/wiki/plans/task-engine-ux-integration-plan.md?raw";
@@ -487,6 +489,12 @@ export const DOC_GROUPS = [
         markdown: authAndConnectedAccounts,
       },
       {
+        slug: "resettable-signup-testing",
+        title: "Resettable Signup Testing",
+        summary: "QA reset workflow for reusable email signup and funded wallet tests.",
+        markdown: resettableSignupTesting,
+      },
+      {
         slug: "deployment",
         title: "Deployment",
         summary: "Fly dev, Docker, data stores, secrets, auth, top-up, and verification commands.",
@@ -599,6 +607,12 @@ export const DOC_GROUPS = [
         title: "Profile and Hive Mind Plan",
         summary: "Plan for member profiles, discoverability, recommendation jobs, and deterministic hive priorities.",
         markdown: profileAndHiveMindPlan,
+      },
+      {
+        slug: "pseudonymous-identity-and-namespace-plan",
+        title: "Pseudonymous Identity And Namespace Plan",
+        summary: "Plan for independent Hive handles, verified aliases, namespace collisions, and opt-in disclosure.",
+        markdown: pseudonymousIdentityAndNamespacePlan,
       },
       {
         slug: "making-functional-network-tasks",

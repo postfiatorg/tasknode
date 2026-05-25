@@ -15,7 +15,6 @@ import {
   retireEthereumDepositAccount,
   reserveWalletInitiationGrant,
   updateEthereumDepositSync,
-  walletInitiationGrantStatus,
   resolveWalletInitiationGrantStatus,
 } from "./runtime-store.js";
 import {
@@ -83,7 +82,7 @@ function depositStartIndex() {
   return Number.isSafeInteger(value) && value >= 0 ? value : defaultDepositStartIndex;
 }
 
-function usdcTopUpGrantThresholdUsd() {
+export function usdcTopUpGrantThresholdUsd() {
   const value = Number(process.env.TASKNODE_USDC_TOPUP_PFT_GRANT_THRESHOLD_USD || defaultUsdcTopUpGrantThresholdUsd);
   return Number.isFinite(value) && value >= 0 ? value : defaultUsdcTopUpGrantThresholdUsd;
 }
@@ -757,14 +756,17 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
     const pendingSymbols = Object.entries(pendingBalances)
       .filter(([, balance]) => balance?.amount && Number(balance.amount) > 0)
       .map(([symbol]) => symbol);
+    const usdcEntry = creditedEntries.find((entry) => String(entry?.metadata?.asset || "").toUpperCase() === "USDC") || null;
+    const pftGrant = await claimUsdcTopUpInitiationGift({ account: updated || account, entry: usdcEntry });
+    const pftGrants = pftGrant ? [pftGrant] : [];
     return {
       ok: true,
       action: "top_up_sync",
-      message: topUpSyncMessage({ creditedEntries, pendingSymbols, syncErrors, pftGrant: null }),
+      message: topUpSyncMessage({ creditedEntries, pendingSymbols, syncErrors, pftGrant }),
       depositAccount: publicDepositAccount(updated || account),
       creditedEntries,
-      pftGrant: null,
-      pftGrants: [],
+      pftGrant,
+      pftGrants,
       syncErrors,
       pendingBalances,
       usage: {

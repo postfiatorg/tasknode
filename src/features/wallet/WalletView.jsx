@@ -162,12 +162,7 @@ export function WalletView({
     walletLinked &&
     linkedWallet.walletCreatedInAccount === true &&
     usdcTopUpGift.eligible === true;
-  const mayClaimUsdcGrant =
-    signedIn &&
-    walletLinked &&
-    linkedWallet.walletCreatedInAccount === true &&
-    visibleChatCreditUsd > 10;
-  const showGrantClaimRow = (canClaimUsdcGrant || mayClaimUsdcGrant) && !grantAlreadySent;
+  const showGrantClaimRow = canClaimUsdcGrant && !grantAlreadySent;
   const showEmailTopUpGrantHint =
     showsEmailTopUpGrantHint({
       initiationGift,
@@ -687,9 +682,8 @@ export function WalletView({
         {showGrantClaimRow && (
           <div className="wallet-grant-claim-row">
             <p className="wallet-email-topup-hint">
-              {canClaimUsdcGrant
-                ? `Your account qualifies for the ${Number(usdcTopUpGift.amountPft || 12).toLocaleString("en-US")} PFT initiation grant.`
-                : `Your balance is above $10. Send the ${Number(usdcTopUpGift.amountPft || 12).toLocaleString("en-US")} PFT initiation grant to this wallet.`}
+              Your account qualifies for the{" "}
+              {Number(usdcTopUpGift.amountPft || 12).toLocaleString("en-US")} PFT initiation grant.
             </p>
             <button
               className="wallet-mini-action"
@@ -931,11 +925,6 @@ function WalletCreationResultModal({ onClose, onRetry, onTopUp, result, retrying
           <button className="light-pill" onClick={onClose} type="button">
             Done
           </button>
-          {!giftOk && needsUsdcTopUp && onRetry && (
-            <button className="light-pill" disabled={retrying} onClick={onRetry} type="button">
-              {retrying ? "Sending..." : "Send 12 PFT grant"}
-            </button>
-          )}
           {!giftOk && needsUsdcTopUp && onTopUp && (
             <button className="dark-pill" onClick={onTopUp} type="button">
               Top up USDC

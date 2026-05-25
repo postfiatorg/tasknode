@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, isUniqueViolation, query } from "../db/pool.js";
 import { getAccountWalletCloud } from "../account-wallet-cloud.js";
+import { getAccountIdentityProfile } from "../runtime-store.js";
 import { listProfileNfts } from "./profile-nfts.js";
 
 const runtimeSnapshots = new Map();
@@ -401,9 +402,35 @@ export function publicProfileFromParts({
   const tier = packet.contribution_tier || contributionTier();
   const nftRows = nfts.length ? nfts : [];
   const heroNft = latestNftImage(nftRows);
+  const identityAccountId = safeText(accountId || packet.account_id, 180);
+  const identityProfile = getAccountIdentityProfile({ accountId: identityAccountId }) || {};
+  const publicAliases = Array.isArray(identityProfile.publicAliases)
+    ? identityProfile.publicAliases
+    : Array.isArray(packet.identity?.public_aliases)
+      ? packet.identity.public_aliases
+      : [];
+  const publicTrustBadges = Array.isArray(identityProfile.publicTrustBadges)
+    ? identityProfile.publicTrustBadges
+    : Array.isArray(packet.identity?.public_trust_badges)
+      ? packet.identity.public_trust_badges
+      : [];
   return {
     identity: {
-      accountId: safeText(accountId || packet.account_id, 180),
+      accountId: identityAccountId,
+      hiveHandle: safeText(identityProfile.hiveHandle || packet.identity?.hive_handle, 80),
+      displayName: safeText(identityProfile.displayName || packet.identity?.display_name, 120),
+      publicAliases: publicAliases.map((alias) => ({
+        provider: safeText(alias.provider, 40),
+        label: safeText(alias.label, 80),
+        handle: safeText(alias.handle, 120),
+        profileUrl: safeText(alias.profileUrl, 400),
+        verified: alias.verified === true,
+        linkedAt: safeText(alias.linkedAt, 80),
+      })),
+      publicTrustBadges: publicTrustBadges.map((badge) => ({
+        provider: safeText(badge.provider, 40),
+        label: safeText(badge.label, 80),
+      })),
       primaryWallet: safeText(packet.identity?.primary_wallet, 160),
       activeWallet: safeText(packet.identity?.active_wallet, 160),
       displayWallet: safeText(packet.identity?.primary_wallet || packet.identity?.active_wallet, 160),

@@ -33,6 +33,7 @@ import {
   recordAuthEvent,
   getLinkedWallet,
   reserveWalletInitiationGrant,
+  resolveWalletInitiationGrantStatus,
   walletInitiationGrantStatus,
 } from "./runtime-store.js";
 import {
@@ -1216,7 +1217,7 @@ export function walletLinkStart(method, session = null) {
   };
 }
 
-export function walletCreateStart(method, session = null) {
+export async function walletCreateStart(method, session = null) {
   const action = walletActionByPath("/api/wallet/create/start");
 
   if (method !== action.method) {
@@ -1254,7 +1255,7 @@ export function walletCreateStart(method, session = null) {
     });
   }
 
-  const gift = walletInitiationGrantStatus({ accountId: session.accountId });
+  const gift = await resolveWalletInitiationGrantStatus({ accountId: session.accountId });
 
   return {
     status: 200,
@@ -1281,7 +1282,7 @@ export function walletCreateStart(method, session = null) {
 }
 
 async function claimWalletCreateInitiationGift({ accountId = "", walletAddress = "" } = {}) {
-  const eligibility = walletInitiationGrantStatus({ accountId, walletAddress });
+  const eligibility = await resolveWalletInitiationGrantStatus({ accountId, walletAddress });
   const linkedWallet = getLinkedWallet({ accountId });
   if (linkedWallet.proofPurpose !== "wallet_create") {
     return {
