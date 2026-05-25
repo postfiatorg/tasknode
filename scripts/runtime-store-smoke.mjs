@@ -549,6 +549,8 @@ try {
     appendUsageCredit,
     depositReceiveNode,
     getEthereumDepositAccount,
+    getOrCreateEmailAccount,
+    linkWalletToAccount,
     updateEthereumDepositSync,
     usageActions,
     usageTopUpStart,
@@ -643,6 +645,82 @@ try {
   const emailGift = walletInitiationGrantStatus({ accountId: emailAccount.id });
   if (emailGift.eligible || emailGift.reason !== "email_ineligible") {
     throw new Error(`Email-only accounts must not be initiation-gift eligible: ${JSON.stringify(emailGift)}`);
+  }
+  const emailTopUpGrantAccount = getOrCreateEmailAccount({
+    email: "runtime-smoke-usdc-grant@example.com",
+    canonicalEmail: "runtime-smoke-usdc-grant@example.com",
+    maskedEmail: "r***@example.com",
+  });
+  linkWalletToAccount({
+    accountId: emailTopUpGrantAccount.id,
+    address: "rRuntimeSmokeUsdcTopUpGrant1111111",
+    publicKey: "runtime-smoke-usdc-topup-pubkey",
+    challengeId: "runtime-smoke-usdc-topup-challenge",
+    signature: "runtime-smoke-usdc-topup-signature",
+    proofPurpose: "wallet_create",
+  });
+  const emailTopUpGift = walletInitiationGrantStatus({
+    accountId: emailTopUpGrantAccount.id,
+    walletAddress: "rRuntimeSmokeUsdcTopUpGrant1111111",
+    source: "usdc_top_up",
+  });
+  if (!emailTopUpGift.eligible || emailTopUpGift.amountPft !== 12) {
+    throw new Error(`Email account with a created wallet should be USDC top-up grant eligible: ${JSON.stringify(emailTopUpGift)}`);
+  }
+  linkWalletToAccount({
+    accountId: emailTopUpGrantAccount.id,
+    address: "rRuntimeSmokeUsdcTopUpGrant1111111",
+    publicKey: "runtime-smoke-usdc-topup-relink-pubkey",
+    challengeId: "runtime-smoke-usdc-topup-relink-challenge",
+    signature: "runtime-smoke-usdc-topup-relink-signature",
+    proofPurpose: "wallet_relink",
+  });
+  const relinkedWallet = getLinkedWallet({ accountId: emailTopUpGrantAccount.id });
+  const relinkedTopUpGift = walletInitiationGrantStatus({
+    accountId: emailTopUpGrantAccount.id,
+    walletAddress: relinkedWallet.address,
+    source: "usdc_top_up",
+  });
+  if (
+    relinkedWallet.walletCreatedInAccount !== true ||
+    !relinkedTopUpGift.eligible ||
+    relinkedTopUpGift.amountPft !== 12
+  ) {
+    throw new Error(`Relinked created wallet should remain USDC top-up grant eligible: ${JSON.stringify({ relinkedWallet, relinkedTopUpGift })}`);
+  }
+  const reservedTopUpGift = await reserveWalletInitiationGrant({
+    accountId: emailTopUpGrantAccount.id,
+    walletAddress: "rRuntimeSmokeUsdcTopUpGrant1111111",
+    amountDrops: emailTopUpGift.amountDrops,
+    amountPft: emailTopUpGift.amountPft,
+    source: "usdc_top_up",
+    trigger: {
+      asset: "USDC",
+      amountUsd: 12.34,
+      ledgerEntryId: "ledger_runtime_smoke_usdc_topup",
+      depositAccountId: "ethdep_runtime_smoke_usdc_topup",
+      topUpUniqueKey: "ethereum_deposit:ethdep_runtime_smoke_usdc_topup:USDC:12340000",
+    },
+  });
+  if (
+    !reservedTopUpGift.ok ||
+    reservedTopUpGift.grant.status !== "processing" ||
+    reservedTopUpGift.grant.source !== "usdc_top_up"
+  ) {
+    throw new Error(`USDC top-up grant was not reserved for an email account: ${JSON.stringify(reservedTopUpGift)}`);
+  }
+  await completeWalletInitiationGrant({
+    grantId: reservedTopUpGift.internalGrant.id,
+    txHash: "RUNTIME_SMOKE_USDC_TOPUP_INIT_TX",
+    faucetAddress: "rRuntimeSmokeFaucet",
+  });
+  const replayTopUpGift = walletInitiationGrantStatus({
+    accountId: emailTopUpGrantAccount.id,
+    walletAddress: "rRuntimeSmokeUsdcTopUpGrant1111111",
+    source: "usdc_top_up",
+  });
+  if (replayTopUpGift.eligible || replayTopUpGift.reason !== "account_registered") {
+    throw new Error(`USDC top-up grant must be account-idempotent: ${JSON.stringify(replayTopUpGift)}`);
   }
   const firstGiftStatus = walletInitiationGrantStatus({
     accountId: oauthAccount.id,

@@ -2,6 +2,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { normalizeContextHistoryProjection } from "./context-history.js";
+import {
+  mergeWalletInitiationGrantStatus,
+  reserveWalletInitiationGrantRecord,
+  updateWalletInitiationGrantRecord,
+} from "./wallet-initiation-grants-db.js";
 
 const defaultStorePath = path.join("/tmp", "tasknodeofficial-runtime-store.json");
 export const sessionCookieName = "tasknode_session";
@@ -523,119 +528,120 @@ function publicWalletInitiationGrant(grant) {
     walletAddress: grant.walletAddress,
     amountPft: grant.amountPft,
     amountDrops: grant.amountDrops,
+    source: grant.source || "wallet_create",
     txHash: grant.txHash || null,
     provider: grant.provider || null,
+    trigger: grant.trigger && typeof grant.trigger === "object" && !Array.isArray(grant.trigger) ? grant.trigger : undefined,
     createdAt: grant.createdAt,
     updatedAt: grant.updatedAt,
     error: grant.error || null,
   };
 }
 
-export function walletInitiationGrantStatus({ accountId = "", walletAddress = "" } = {}) {
+export async function resolveWalletInitiationGrantStatus(params = {}) {
+  return mergeWalletInitiationGrantStatus(walletInitiationGrantStatus(params), params);
+}
+
+export function walletInitiationGrantStatus({ accountId = "", walletAddress = "", source = "wallet_create" } = {}) {
   const normalizedAccountId = accountId ? safeId(accountId, "account") : "";
   const normalizedWalletAddress = String(walletAddress || "").trim();
+  const normalizedSource = String(source || "wallet_create").trim().toLowerCase();
   const amountPft = walletInitiationAmountPft();
   const amountDrops = walletInitiationAmountDrops();
+  const unavailable = (reason, message, extra = {}) => ({ eligible: false, reason, amountPft, amountDrops, message, ...extra });
+  const available = (extra = {}) => ({ eligible: true, reason: null, amountPft, amountDrops, ...extra });
 
   if (!normalizedAccountId) {
-    return {
-      eligible: false,
-      reason: "login_required",
-      amountPft,
-      amountDrops,
-      message: "Sign in with GitHub, X, Telegram, or Discord before claiming the wallet initiation gift.",
-    };
+    return unavailable(
+      "login_required",
+      "Sign in with GitHub, X, Telegram, or Discord before claiming the wallet initiation gift."
+    );
   }
 
   const account = state.accounts[normalizedAccountId];
   if (!account) {
-    return {
-      eligible: false,
-      reason: "account_not_found",
-      amountPft,
-      amountDrops,
-      message: "The signed-in account was not found.",
-    };
+    return unavailable("account_not_found", "The signed-in account was not found.");
   }
 
   const latestAccountGrant = latestWalletInitiationGrantForAccount(normalizedAccountId);
   if (latestAccountGrant && ["processing", "completed", "unknown"].includes(latestAccountGrant.status)) {
-    return {
-      eligible: false,
-      reason: "account_registered",
-      amountPft,
-      amountDrops,
-      grant: publicWalletInitiationGrant(latestAccountGrant),
-      message: latestAccountGrant.status === "completed"
-        ? "This account already received its wallet initiation gift."
-        : "This account already has a wallet initiation gift in progress.",
-    };
+    const message = latestAccountGrant.status === "completed"
+      ? "This account already received its wallet initiation gift."
+      : "This account already has a wallet initiation gift in progress.";
+    return unavailable("account_registered", message, { grant: publicWalletInitiationGrant(latestAccountGrant) });
+  }
+
+  const activeGrants = activeWalletInitiationGrants();
+  const walletRegistered = (address) => {
+    const walletGrant = activeGrants.find((grant) => grant.walletAddress === address);
+    return walletGrant
+      ? unavailable("wallet_registered", "This wallet address is already registered for a wallet initiation gift.", { grant: publicWalletInitiationGrant(walletGrant) })
+      : null;
+  };
+  if (normalizedSource === "usdc_top_up") {
+    const linkedWallet = state.accountWallets[normalizedAccountId] || null;
+    if (!linkedWallet?.address || linkedWallet.status !== "linked") {
+      return unavailable("wallet_not_linked", "Create and link a PFT wallet before the USDC top-up grant can be sent.");
+    }
+    if (normalizedWalletAddress && linkedWallet.address !== normalizedWalletAddress) {
+      return unavailable("wallet_mismatch", "The linked wallet does not match the wallet selected for the USDC top-up grant.");
+    }
+    if (linkedWallet.proof?.purpose !== "wallet_create" && !walletCreatedInAccountForRecord(normalizedAccountId, linkedWallet)) {
+      return unavailable("wallet_create_proof_required", "The USDC top-up PFT grant is only available for wallets created in this account.");
+    }
+    const walletBlock = walletRegistered(linkedWallet.address);
+    if (walletBlock) return walletBlock;
+    return available({
+      source: "usdc_top_up",
+      provider: "ethereum_usdc_top_up",
+      identities: [],
+      message: `${amountPft.toLocaleString("en-US")} PFT grant available after a qualifying USDC top-up.`,
+    });
   }
 
   const identities = walletInitiationIdentities(account);
   if (identities.length === 0) {
-    return {
-      eligible: false,
-      reason: account.primaryProvider === "email" ? "email_ineligible" : "provider_required",
-      amountPft,
-      amountDrops,
-      message: "Email-only accounts do not receive the PFT wallet initiation gift.",
-    };
+    const reason = account.primaryProvider === "email" ? "email_ineligible" : "provider_required";
+    const message = account.primaryProvider === "email"
+      ? "Email-only accounts can receive the PFT wallet initiation gift after creating a wallet and crediting more than $10 USDC."
+      : "Sign in with GitHub, X, Telegram, or Discord before claiming the wallet initiation gift.";
+    return unavailable(reason, message);
   }
 
-  const activeGrants = activeWalletInitiationGrants();
   if (normalizedWalletAddress) {
-    const walletGrant = activeGrants.find((grant) => grant.walletAddress === normalizedWalletAddress);
-    if (walletGrant) {
-      return {
-        eligible: false,
-        reason: "wallet_registered",
-        amountPft,
-        amountDrops,
-        grant: publicWalletInitiationGrant(walletGrant),
-        message: "This wallet address is already registered for a wallet initiation gift.",
-      };
-    }
+    const walletBlock = walletRegistered(normalizedWalletAddress);
+    if (walletBlock) return walletBlock;
   }
-
   const identityHashSet = new Set(identities.map((identity) => identity.providerUserIdHash));
   const providerGrant = activeGrants.find((grant) => (
     Array.isArray(grant.providerUserIdHashes) &&
     grant.providerUserIdHashes.some((hash) => identityHashSet.has(hash))
   ));
   if (providerGrant) {
-    return {
-      eligible: false,
-      reason: "provider_identity_registered",
-      amountPft,
-      amountDrops,
-      grant: publicWalletInitiationGrant(providerGrant),
-      message: "This sign-in identity already received a wallet initiation gift.",
-    };
+    return unavailable("provider_identity_registered", "This sign-in identity already received a wallet initiation gift.", { grant: publicWalletInitiationGrant(providerGrant) });
   }
 
-  return {
-    eligible: true,
-    reason: null,
-    amountPft,
-    amountDrops,
+  return available({
     provider: identities[0].provider,
     identities,
     message: `${amountPft.toLocaleString("en-US")} PFT initiation gift available after creating a new wallet.`,
-  };
+  });
 }
 
-export function reserveWalletInitiationGrant({
+export async function reserveWalletInitiationGrant({
   accountId = "",
   walletAddress = "",
   amountDrops = walletInitiationAmountDrops(),
   amountPft = walletInitiationAmountPft(),
+  source = "wallet_create",
+  trigger = null,
 } = {}) {
   const normalizedAccountId = safeId(accountId, "account");
   const normalizedWalletAddress = String(walletAddress || "").trim();
-  const eligibility = walletInitiationGrantStatus({
+  const eligibility = await resolveWalletInitiationGrantStatus({
     accountId: normalizedAccountId,
     walletAddress: normalizedWalletAddress,
+    source,
   });
   if (!eligibility.eligible) {
     return { ok: false, status: 409, error: eligibility.reason || "wallet_initiation_not_eligible", eligibility };
@@ -643,6 +649,7 @@ export function reserveWalletInitiationGrant({
 
   const now = new Date().toISOString();
   const identities = Array.isArray(eligibility.identities) ? eligibility.identities : [];
+  const normalizedSource = eligibility.source || String(source || "wallet_create").trim().toLowerCase() || "wallet_create";
   const grant = {
     id: `wallet_init_${randomUUID()}`,
     status: "processing",
@@ -650,7 +657,8 @@ export function reserveWalletInitiationGrant({
     walletAddress: normalizedWalletAddress,
     amountDrops: String(amountDrops),
     amountPft: Number(Number(amountPft).toFixed(6)),
-    provider: identities[0]?.provider || "",
+    source: normalizedSource,
+    provider: eligibility.provider || identities[0]?.provider || "",
     providerUserIdHashes: identities.map((identity) => identity.providerUserIdHash),
     providers: identities.map((identity) => ({
       provider: identity.provider,
@@ -660,6 +668,22 @@ export function reserveWalletInitiationGrant({
     createdAt: now,
     updatedAt: now,
   };
+  if (trigger && typeof trigger === "object" && !Array.isArray(trigger)) grant.trigger = trigger;
+
+  const durable = await reserveWalletInitiationGrantRecord(grant);
+  if (!durable.ok) {
+    return {
+      ok: false,
+      status: 409,
+      error: durable.error || "wallet_initiation_not_eligible",
+      eligibility: {
+        ...eligibility,
+        eligible: false,
+        reason: durable.error || eligibility.reason,
+        grant: durable.grant || eligibility.grant || null,
+      },
+    };
+  }
 
   state.walletInitiationGrants.push(grant);
   saveState();
@@ -667,7 +691,7 @@ export function reserveWalletInitiationGrant({
   return { ok: true, grant: publicWalletInitiationGrant(grant), internalGrant: structuredClone(grant) };
 }
 
-export function completeWalletInitiationGrant({ grantId = "", txHash = "", faucetAddress = "" } = {}) {
+export async function completeWalletInitiationGrant({ grantId = "", txHash = "", faucetAddress = "" } = {}) {
   const grant = (state.walletInitiationGrants || []).find((item) => item?.id === grantId);
   if (!grant) return { ok: false, status: 404, error: "wallet_initiation_grant_not_found" };
 
@@ -678,11 +702,17 @@ export function completeWalletInitiationGrant({ grantId = "", txHash = "", fauce
   grant.error = "";
   grant.updatedAt = now;
   saveState();
+  await updateWalletInitiationGrantRecord({
+    grantId,
+    status: "completed",
+    txHash: grant.txHash || "",
+    faucetAddress: grant.faucetAddress || "",
+  });
 
   return { ok: true, grant: publicWalletInitiationGrant(grant) };
 }
 
-export function failWalletInitiationGrant({ grantId = "", error = "", unknown = false } = {}) {
+export async function failWalletInitiationGrant({ grantId = "", error = "", unknown = false } = {}) {
   const grant = (state.walletInitiationGrants || []).find((item) => item?.id === grantId);
   if (!grant) return { ok: false, status: 404, error: "wallet_initiation_grant_not_found" };
 
@@ -691,6 +721,11 @@ export function failWalletInitiationGrant({ grantId = "", error = "", unknown = 
   grant.error = String(error || "wallet_initiation_failed").slice(0, 240);
   grant.updatedAt = now;
   saveState();
+  await updateWalletInitiationGrantRecord({
+    grantId,
+    status: grant.status,
+    error: grant.error,
+  });
 
   return { ok: true, grant: publicWalletInitiationGrant(grant) };
 }
@@ -1797,6 +1832,11 @@ export function linkWalletToAccount({
   }
 
   const previousWallet = state.accountWallets[normalizedAccountId] || null;
+  const walletCreatedInAccount = walletCreatedInAccountForRecord(normalizedAccountId, {
+    ...(previousWallet || {}),
+    address: normalizedAddress,
+    proof: { purpose: proofPurpose },
+  }) || proofPurpose === "wallet_create";
   const wallet = {
     accountId: normalizedAccountId,
     status: "linked",
@@ -1806,6 +1846,7 @@ export function linkWalletToAccount({
     linkedAt: previousWallet?.linkedAt || now,
     relinkedAt: previousWallet ? now : undefined,
     updatedAt: now,
+    walletCreatedInAccount,
     proof: {
       challengeId,
       purpose: proofPurpose,
@@ -1888,6 +1929,22 @@ export function delinkWalletFromAccount({
   return { ok: true, wallet: previousWallet };
 }
 
+function walletCreatedInAccountForRecord(accountId = "", wallet = null) {
+  if (!wallet?.address) return false;
+  if (wallet.walletCreatedInAccount === true) return true;
+  if (wallet.proof?.purpose === "wallet_create") return true;
+
+  const normalizedAccountId = safeId(accountId, "account");
+  for (const event of [...(state.authEvents || [])].reverse()) {
+    if (event?.accountId !== normalizedAccountId) continue;
+    if (!["wallet_linked", "wallet_relinked"].includes(String(event.eventType || ""))) continue;
+    if (String(event.metadata?.walletAddress || "") !== String(wallet.address || "")) continue;
+    if (event.metadata?.proofPurpose === "wallet_create") return true;
+  }
+
+  return false;
+}
+
 export function getLinkedWallet({ accountId = "" } = {}) {
   if (!accountId) {
     return {
@@ -1913,6 +1970,7 @@ export function getLinkedWallet({ accountId = "" } = {}) {
     address: wallet.address,
     publicKey: wallet.publicKey,
     proofPurpose: wallet.proof?.purpose || null,
+    walletCreatedInAccount: walletCreatedInAccountForRecord(safeId(accountId, "account"), wallet),
     custody: wallet.custody || "local_seed_required",
     linkedAt: wallet.linkedAt,
     updatedAt: wallet.updatedAt,

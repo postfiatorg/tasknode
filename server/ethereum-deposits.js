@@ -7,22 +7,34 @@ import {
   zeroPadValue,
 } from "ethers";
 import {
+  completeWalletInitiationGrant,
+  failWalletInitiationGrant,
   getEthereumDepositAccount,
+  getLinkedWallet,
   getOrCreateEthereumDepositAccount,
   retireEthereumDepositAccount,
+  reserveWalletInitiationGrant,
   updateEthereumDepositSync,
+  walletInitiationGrantStatus,
+  resolveWalletInitiationGrantStatus,
 } from "./runtime-store.js";
 import {
   appendUsageCredit,
   hasUsageCreditForSource,
+  usageLedger,
   usageSummary,
 } from "./repositories/chat-billing.js";
+import {
+  pftInitiationFaucetStatus,
+  sendPftInitiationGift,
+} from "./pftl-faucet.js";
 
 const defaultEthereumRpcUrl = "https://ethereum.publicnode.com";
 const ethereumMainnetChainId = 1;
 const defaultReceivePath = "m/44'/60'/0'/0";
 const defaultDepositStartIndex = 1;
 const defaultBalanceBlockTag = "latest";
+const defaultUsdcTopUpGrantThresholdUsd = 10;
 const balanceBlockTag = process.env.ETH_DEPOSIT_BALANCE_BLOCK_TAG || defaultBalanceBlockTag;
 const pendingBalanceBlockTag = process.env.ETH_DEPOSIT_PENDING_BLOCK_TAG || "latest";
 const balanceOfSelector = keccakId("balanceOf(address)").slice(0, 10);
@@ -69,6 +81,11 @@ function receivePathPrefix() {
 function depositStartIndex() {
   const value = Number(process.env.ETH_DEPOSIT_START_INDEX || defaultDepositStartIndex);
   return Number.isSafeInteger(value) && value >= 0 ? value : defaultDepositStartIndex;
+}
+
+function usdcTopUpGrantThresholdUsd() {
+  const value = Number(process.env.TASKNODE_USDC_TOPUP_PFT_GRANT_THRESHOLD_USD || defaultUsdcTopUpGrantThresholdUsd);
+  return Number.isFinite(value) && value >= 0 ? value : defaultUsdcTopUpGrantThresholdUsd;
 }
 
 export function ethereumDepositConfigStatus() {
@@ -381,6 +398,7 @@ async function creditDelta({ account, asset, currentRaw, creditedRaw }) {
     chainId: ethereumMainnetChainId,
     network: "Ethereum mainnet",
     asset: asset.symbol,
+    decimals: asset.decimals,
     depositAddress: account.address,
     depositAccountId: account.id,
     rawAmount: deltaRaw.toString(),
@@ -405,6 +423,252 @@ async function creditDelta({ account, asset, currentRaw, creditedRaw }) {
     uniqueKey: `ethereum_deposit:${account.id}:${asset.symbol}:${currentRaw.toString()}`,
     metadata,
   });
+}
+
+function parseUsdAmount(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function usdcTopUpGrantThresholdMet(totalUsd) {
+  return parseUsdAmount(totalUsd) > usdcTopUpGrantThresholdUsd();
+}
+
+function usdcCreditedUsdFromDepositAccount(account) {
+  return parseUsdAmount(account?.creditedBalances?.USDC?.amount);
+}
+
+async function totalUsdcDepositCreditUsd({ accountId = "", depositAccount = null } = {}) {
+  const account = depositAccount || getEthereumDepositAccount({ accountId });
+  const normalizedAccountId = String(account?.accountId || accountId || "").trim();
+  if (!normalizedAccountId) return 0;
+
+  const fromDeposit = usdcCreditedUsdFromDepositAccount(account);
+  const ledger = await usageLedger({ accountId: normalizedAccountId, limit: 200 });
+  let ledgerTotal = 0;
+  for (const entry of ledger.entries || []) {
+    if (entry?.source !== "ethereum_deposit") continue;
+    if (String(entry?.metadata?.asset || "").toUpperCase() !== "USDC") continue;
+    ledgerTotal += parseUsdAmount(entry.amountUsd);
+  }
+
+  return Number(Math.max(fromDeposit, ledgerTotal).toFixed(6));
+}
+
+async function findLatestUsdcDepositLedgerEntry(accountId = "") {
+  const ledger = await usageLedger({ accountId, limit: 200 });
+  return (ledger.entries || []).find((entry) => (
+    entry?.source === "ethereum_deposit" &&
+    String(entry?.metadata?.asset || "").toUpperCase() === "USDC"
+  )) || null;
+}
+
+function buildUsdcTopUpGrantTrigger({ account, entry = null, totalUsd = 0 } = {}) {
+  const normalizedTotalUsd = Number(parseUsdAmount(totalUsd).toFixed(6));
+  if (entry) {
+    return {
+      asset: "USDC",
+      amountUsd: Number(parseUsdAmount(entry.amountUsd).toFixed(6)),
+      totalCreditedUsd: normalizedTotalUsd,
+      ledgerEntryId: String(entry.id || "").slice(0, 180),
+      depositAccountId: String(account.id || "").slice(0, 180),
+      topUpUniqueKey: String(entry.uniqueKey || "").slice(0, 180),
+    };
+  }
+
+  return {
+    asset: "USDC",
+    amountUsd: normalizedTotalUsd,
+    totalCreditedUsd: normalizedTotalUsd,
+    depositAccountId: String(account.id || "").slice(0, 180),
+    source: "usdc_balance_threshold",
+  };
+}
+
+async function resolveUsdcTopUpGrantQualification({ account, entry = null } = {}) {
+  if (!account?.accountId) return null;
+
+  const totalUsd = await totalUsdcDepositCreditUsd({
+    accountId: account.accountId,
+    depositAccount: account,
+  });
+  if (entry && qualifyingUsdcTopUpEntry(entry)) {
+    return {
+      totalUsd: Number(Math.max(totalUsd, parseUsdAmount(entry.amountUsd)).toFixed(6)),
+      entry,
+    };
+  }
+  if (!usdcTopUpGrantThresholdMet(totalUsd)) return null;
+
+  const ledgerEntry = entry && !entry.idempotentReplay
+    ? entry
+    : await findLatestUsdcDepositLedgerEntry(account.accountId);
+  return { totalUsd, entry: ledgerEntry };
+}
+
+function qualifyingUsdcTopUpEntry(entry) {
+  const thresholdUsd = usdcTopUpGrantThresholdUsd();
+  const amountUsd = Number(entry?.amountUsd || 0);
+  if (entry?.idempotentReplay) return false;
+  if (entry?.source !== "ethereum_deposit") return false;
+  if (String(entry?.metadata?.asset || "").toUpperCase() !== "USDC") return false;
+  if (Number.isFinite(amountUsd) && amountUsd > thresholdUsd) return true;
+  try {
+    const rawTotal = BigInt(String(entry?.metadata?.creditedBalanceRaw || "0"));
+    const decimals = Number(entry?.metadata?.decimals || 6);
+    const creditedUsd = Number(formatUnits(rawTotal, Number.isSafeInteger(decimals) ? decimals : 6));
+    return Number.isFinite(creditedUsd) && creditedUsd > thresholdUsd;
+  } catch {
+    return false;
+  }
+}
+
+function publicTopUpGrantResult(result, extra = {}) {
+  if (!result) return null;
+  return {
+    ok: Boolean(result.ok),
+    status: result.status || (result.ok ? "completed" : "not_eligible"),
+    reason: result.reason || null,
+    amountPft: result.amountPft,
+    amountDrops: result.amountDrops,
+    txHash: result.txHash || null,
+    faucetAddress: result.faucetAddress || null,
+    message: result.message || "",
+    actionRequired: result.actionRequired || undefined,
+    grant: result.grant || null,
+    thresholdUsd: usdcTopUpGrantThresholdUsd(),
+    ...extra,
+  };
+}
+
+async function claimUsdcTopUpInitiationGift({ account = null, entry = null, accountId = "" } = {}) {
+  const depositAccount = account || getEthereumDepositAccount({ accountId });
+  if (!depositAccount?.accountId) return null;
+
+  const qualification = await resolveUsdcTopUpGrantQualification({ account: depositAccount, entry });
+  if (!qualification) return null;
+
+  const linkedWallet = getLinkedWallet({ accountId: depositAccount.accountId });
+  if (linkedWallet.status !== "linked" || !linkedWallet.address) return null;
+  if (!linkedWallet.walletCreatedInAccount) return null;
+
+  const eligibility = await resolveWalletInitiationGrantStatus({
+    accountId: depositAccount.accountId,
+    walletAddress: linkedWallet.address,
+    source: "usdc_top_up",
+  });
+
+  if (!eligibility.eligible) {
+    if (["account_registered", "wallet_registered"].includes(eligibility.reason)) return null;
+    return publicTopUpGrantResult({
+      ok: false,
+      status: "not_eligible",
+      reason: eligibility.reason || "usdc_top_up_grant_not_eligible",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: eligibility.message,
+      grant: eligibility.grant || null,
+    });
+  }
+
+  const faucet = pftInitiationFaucetStatus();
+  if (!faucet.configured) {
+    return publicTopUpGrantResult({
+      ok: false,
+      status: "not_configured",
+      reason: "faucet_not_configured",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: `USDC top-up qualifies for a ${eligibility.amountPft.toLocaleString("en-US")} PFT grant, but the PFT faucet is not configured.`,
+      actionRequired: faucet.actionRequired,
+    });
+  }
+
+  const trigger = buildUsdcTopUpGrantTrigger({
+    account: depositAccount,
+    entry: qualification.entry,
+    totalUsd: qualification.totalUsd,
+  });
+
+  const reserved = await reserveWalletInitiationGrant({
+    accountId: depositAccount.accountId,
+    walletAddress: linkedWallet.address,
+    amountDrops: eligibility.amountDrops,
+    amountPft: eligibility.amountPft,
+    source: "usdc_top_up",
+    trigger,
+  });
+  if (!reserved.ok) {
+    const status = reserved.eligibility || {};
+    if (["account_registered", "wallet_registered"].includes(status.reason)) return null;
+    return publicTopUpGrantResult({
+      ok: false,
+      status: "not_eligible",
+      reason: reserved.error || status.reason || "usdc_top_up_grant_not_eligible",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: status.message || "USDC top-up PFT grant is not eligible.",
+      grant: status.grant || null,
+    });
+  }
+
+  try {
+    const sent = await sendPftInitiationGift({
+      destination: linkedWallet.address,
+      amountDrops: eligibility.amountDrops,
+      memo: `Task Node USDC top-up grant for ${depositAccount.accountId}`,
+    });
+    const completed = await completeWalletInitiationGrant({
+      grantId: reserved.internalGrant.id,
+      txHash: sent.txHash,
+      faucetAddress: sent.faucetAddress,
+    });
+    return publicTopUpGrantResult({
+      ok: true,
+      status: "completed",
+      amountPft: sent.amountPft,
+      amountDrops: sent.amountDrops,
+      txHash: sent.txHash,
+      faucetAddress: sent.faucetAddress,
+      message: `${sent.amountPft.toLocaleString("en-US")} PFT USDC top-up grant sent.`,
+      grant: completed.grant || reserved.grant,
+    });
+  } catch (error) {
+    const failed = await failWalletInitiationGrant({
+      grantId: reserved.internalGrant.id,
+      error: error?.message || "usdc_top_up_grant_failed",
+      unknown: Boolean(error?.submitted),
+    });
+    return publicTopUpGrantResult({
+      ok: false,
+      status: failed.grant?.status || "failed",
+      reason: error?.message || "usdc_top_up_grant_failed",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: "USDC top-up credited, but the PFT grant could not be sent yet.",
+      grant: failed.grant || reserved.grant,
+    });
+  }
+}
+
+export async function maybeClaimUsdcTopUpInitiationGift({ accountId = "" } = {}) {
+  return claimUsdcTopUpInitiationGift({ accountId });
+}
+
+function topUpSyncMessage({ creditedEntries, pendingSymbols, syncErrors, pftGrant }) {
+  const depositMessage = creditedEntries.length > 0
+    ? "Deposit credit recorded."
+    : pendingSymbols.length > 0
+      ? `${pendingSymbols.join(", ")} deposit detected. Waiting for the configured confirmation policy before crediting.`
+      : syncErrors.length > 0
+        ? "Deposit sync completed with partial data."
+        : "No new deposit balance found.";
+
+  if (!pftGrant) return depositMessage;
+  if (pftGrant.ok) return `${depositMessage} ${pftGrant.message}`;
+  if (pftGrant.status === "not_configured") return `${depositMessage} ${pftGrant.message}`;
+  if (pftGrant.status === "failed" || pftGrant.status === "unknown") return `${depositMessage} ${pftGrant.message}`;
+  return depositMessage;
 }
 
 export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
@@ -496,15 +760,11 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
     return {
       ok: true,
       action: "top_up_sync",
-      message: creditedEntries.length > 0
-        ? "Deposit credit recorded."
-        : pendingSymbols.length > 0
-          ? `${pendingSymbols.join(", ")} deposit detected. Waiting for the configured confirmation policy before crediting.`
-        : syncErrors.length > 0
-          ? "Deposit sync completed with partial data."
-          : "No new deposit balance found.",
+      message: topUpSyncMessage({ creditedEntries, pendingSymbols, syncErrors, pftGrant: null }),
       depositAccount: publicDepositAccount(updated || account),
       creditedEntries,
+      pftGrant: null,
+      pftGrants: [],
       syncErrors,
       pendingBalances,
       usage: {

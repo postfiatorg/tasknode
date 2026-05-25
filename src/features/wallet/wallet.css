@@ -54,7 +54,7 @@
   align-items: center;
   gap: 6px;
   margin-top: 12px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .wallet-delta strong,
@@ -162,7 +162,7 @@
 .profile-card-heading p {
   margin: 3px 0 0;
   color: #6b6b66;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .link-button {
@@ -172,7 +172,7 @@
   border: 0;
   background: transparent;
   color: #6b6b66;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .activity-row {
@@ -277,6 +277,20 @@
 .wallet-redesign {
   gap: 0;
   color: #0d0d0d;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wallet-redesign .wallet-page-kicker,
+.wallet-redesign .wallet-balance-top > span:first-child,
+.wallet-redesign .wallet-activity-head > div > span,
+.wallet-redesign .wallet-tx-group-label span:first-child {
+  color: #8e8e8e;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .wallet-page-head {
@@ -289,7 +303,6 @@
 
 .wallet-page-kicker {
   color: #8e8e8e;
-  font-size: 13px;
 }
 
 .wallet-page-head h1,
@@ -316,7 +329,7 @@
   border-radius: 999px;
   background: #ffffff;
   color: #0d0d0d;
-  font-size: 12.5px;
+  font-size: 13px;
   transition: background 140ms ease, border-color 140ms ease, opacity 140ms ease;
 }
 
@@ -356,11 +369,10 @@
 
 .wallet-balance-top > span:first-child,
 .wallet-activity-head > div > span {
-  color: #8e8e8e;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
 }
 
 .wallet-network-state {
@@ -398,7 +410,7 @@
   overflow-wrap: anywhere;
   color: #0d0d0d;
   font-size: clamp(54px, 8vw, 82px);
-  font-weight: 650;
+  font-weight: 600;
   line-height: 0.95;
   letter-spacing: 0;
 }
@@ -526,8 +538,8 @@
   grid-column: 1 / 2;
   padding-left: 24px;
   color: #8e8e8e;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12.5px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .wallet-management-card.is-active small {
@@ -594,7 +606,7 @@
   background: #ffffff;
   color: #0d0d0d;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .wallet-seed-word-grid em {
@@ -637,7 +649,56 @@
 
 .wallet-credit-note strong {
   color: #0d0d0d;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.wallet-email-topup-hint {
+  margin: -10px 0 28px;
+  padding: 0 2px;
+  color: #8a8780;
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.wallet-grant-claim-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -10px 0 28px;
+  padding: 12px 14px;
+  border: 1px solid #c7d7fe;
+  border-radius: 12px;
+  background: #f5f8ff;
+}
+
+.wallet-grant-claim-row .wallet-email-topup-hint {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.wallet-grant-sent-row {
+  display: grid;
+  gap: 4px;
+  margin: -10px 0 28px;
+  padding: 12px 14px;
+  border: 1px solid #cfe8d8;
+  border-radius: 12px;
+  background: #f5fbf7;
+  color: #166534;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.wallet-grant-sent-row small {
+  color: #15803d;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
 }
 
 .wallet-mini-action {
@@ -700,7 +761,7 @@
 .wallet-creation-result-state strong {
   color: #0d0d0d;
   font-size: 28px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.1;
 }
 
@@ -726,6 +787,15 @@
 
 .wallet-creation-result-state.is-warning span {
   color: #8a5b0a;
+}
+
+.wallet-creation-result-state.is-info {
+  border-color: #c7d7fe;
+  background: #f5f8ff;
+}
+
+.wallet-creation-result-state.is-info span {
+  color: #1d4ed8;
 }
 
 .wallet-activity-section {
@@ -767,10 +837,10 @@
 }
 
 .wallet-tx-group-label span:first-child {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
 }
 
 .wallet-tx-group-label span:last-child {
@@ -839,7 +909,7 @@
 
 .wallet-tx-copy strong {
   color: #0d0d0d;
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -862,7 +932,7 @@
 
 .wallet-tx-amount strong {
   color: #8e8e8e;
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -898,5 +968,5 @@
   padding: 13px 20px;
   border-top: 1px solid #f4f4f4;
   color: #8e8e8e;
-  font-size: 12.5px;
+  font-size: 13px;
 }

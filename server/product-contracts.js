@@ -63,6 +63,7 @@ export { taskRequestAction } from "./task-request.js";
 import {
   ethereumDepositConfigStatus,
   getOrCreateVerifiedEthereumTopUpAccount,
+  maybeClaimUsdcTopUpInitiationGift,
   syncEthereumTopUpAccount,
 } from "./ethereum-deposits.js";
 import {
@@ -124,15 +125,6 @@ function emailCodeHash({ challengeId, canonicalEmail, code }) {
   return authHmac(`email-code:${challengeId}:${canonicalEmail}:${String(code || "").trim()}`);
 }
 
-function emailDevDeliveryEnabled() {
-  if (process.env.TASKNODE_EMAIL_DEV_DELIVERY === "true") return true;
-  if (process.env.TASKNODE_EMAIL_DEV_DELIVERY === "false") return false;
-  return (
-    process.env.NODE_ENV !== "production" &&
-    !["prod", "production"].includes(currentEnvironment().toLowerCase())
-  );
-}
-
 function emailDeliveryProvider() {
   return String(process.env.EMAIL_DELIVERY_PROVIDER || "").trim().toLowerCase();
 }
@@ -146,9 +138,19 @@ function resendConfigured() {
   );
 }
 
+function emailDevDeliveryEnabled({ resendReady = resendConfigured() } = {}) {
+  if (process.env.TASKNODE_EMAIL_DEV_DELIVERY === "true") return true;
+  if (process.env.TASKNODE_EMAIL_DEV_DELIVERY === "false") return false;
+  if (resendReady) return false;
+  return (
+    process.env.NODE_ENV !== "production" &&
+    !["prod", "production"].includes(currentEnvironment().toLowerCase())
+  );
+}
+
 function emailDeliveryStatus() {
-  const devDelivery = emailDevDeliveryEnabled();
   const resendReady = resendConfigured();
+  const devDelivery = emailDevDeliveryEnabled({ resendReady });
   const configured = authSecretReady() && (devDelivery || resendReady);
   const mode = devDelivery ? "development" : resendReady ? "resend" : "unconfigured";
 
@@ -832,7 +834,7 @@ export function walletActions() {
       note:
         "Generates a new 24-word seed wallet in the browser, links it by proof, and attempts the one-time OAuth initiation grant.",
       actionRequired:
-        "Sign in with GitHub, X, Telegram, or Discord, save the generated phrase locally, and verify the wallet proof.",
+        "OAuth accounts can receive the grant immediately after wallet creation. Email accounts can qualify after creating a wallet and crediting more than $10 USDC.",
     }),
     walletAction({
       id: "link_start",
@@ -954,7 +956,7 @@ export function usageActions() {
       enabled: ethDeposits.enabled && ethDeposits.rpcConfigured,
       status: ethDeposits.enabled && ethDeposits.rpcConfigured ? "ready" : ethDeposits.status,
       note:
-        "Reads the account deposit address on Ethereum mainnet and credits configured ETH, USDC, and USDT balance increases.",
+        "Reads the account deposit address on Ethereum mainnet, credits configured ETH, USDC, and USDT balance increases, and sends the one-time PFT grant after a qualifying USDC top-up for a newly created linked wallet.",
       actionRequired: ethDeposits.rpcConfigured
         ? ethDeposits.actionRequired
         : "Configure ETH_DEPOSIT_RPC_URL or ETHEREUM_RPC_URL for deposit balance sync.",
@@ -1317,7 +1319,7 @@ async function claimWalletCreateInitiationGift({ accountId = "", walletAddress =
     };
   }
 
-  const reserved = reserveWalletInitiationGrant({
+  const reserved = await reserveWalletInitiationGrant({
     accountId,
     walletAddress,
     amountDrops: eligibility.amountDrops,
@@ -1341,7 +1343,7 @@ async function claimWalletCreateInitiationGift({ accountId = "", walletAddress =
       amountDrops: eligibility.amountDrops,
       memo: `Task Node initiation gift for ${accountId}`,
     });
-    const completed = completeWalletInitiationGrant({
+    const completed = await completeWalletInitiationGrant({
       grantId: reserved.internalGrant.id,
       txHash: sent.txHash,
       faucetAddress: sent.faucetAddress,
@@ -1357,7 +1359,7 @@ async function claimWalletCreateInitiationGift({ accountId = "", walletAddress =
       grant: completed.grant || reserved.grant,
     };
   } catch (error) {
-    const failed = failWalletInitiationGrant({
+    const failed = await failWalletInitiationGrant({
       grantId: reserved.internalGrant.id,
       error: error?.message || "wallet_initiation_failed",
       unknown: Boolean(error?.submitted),
@@ -1408,10 +1410,14 @@ export async function walletInitiationRetry(method, session = null) {
     });
   }
 
-  const initiationGift = await claimWalletCreateInitiationGift({
+  let initiationGift = await claimWalletCreateInitiationGift({
     accountId: session.accountId,
     walletAddress: linkedWallet.address,
   });
+  if (!initiationGift.ok && linkedWallet.walletCreatedInAccount) {
+    const usdcGift = await maybeClaimUsdcTopUpInitiationGift({ accountId: session.accountId });
+    if (usdcGift) initiationGift = usdcGift;
+  }
 
   return {
     status: initiationGift.ok ? 200 : initiationGift.status === "not_eligible" ? 409 : 502,
@@ -1519,6 +1525,10 @@ export async function walletLinkVerify(payload, method, session = null) {
     ? await claimWalletCreateInitiationGift({
         accountId: session.accountId,
         walletAddress: result.wallet.address,
+      }).then(async (gift) => {
+        if (gift.ok) return gift;
+        const usdcGift = await maybeClaimUsdcTopUpInitiationGift({ accountId: session.accountId });
+        return usdcGift || gift;
       })
     : null;
   const message = isCreate

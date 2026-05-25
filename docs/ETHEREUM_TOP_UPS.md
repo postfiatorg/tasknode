@@ -17,6 +17,19 @@ withdraw from it through the app.
     observes the token balance increase.
   - ETH is converted to USD using the configured or fetched ETH/USD price when
     the configured balance sync credits the deposit.
+- PFT grant:
+  - If the account has a newly created linked PFT wallet and total credited USDC
+    from the deposit rail is strictly greater than `$10`, Task Node attempts the
+    one-time `12 PFT` wallet initiation grant automatically.
+  - The grant is attempted on every top-up sync, after wallet creation, and on
+    initiation-gift retry, so a user who topped up before creating a wallet still
+    receives the grant once both conditions are met.
+  - This is intentionally account-and-wallet idempotent. A wallet or account
+    that already has a processing, completed, or unknown initiation grant does
+    not receive another grant.
+  - Email-only accounts can qualify through this USDC top-up path after
+    creating a local wallet. OAuth accounts can still qualify through the
+    immediate wallet-create path.
 - Withdrawals: disabled. Funds are operator custody once deposited.
 - Sweeping: deferred. Deposit balances can remain at per-account addresses until
   a separate sweep service is built.
@@ -113,6 +126,13 @@ deposit. A stored balance only counts as app credit when a billing ledger entry
 with source `ethereum_deposit` is tied to that specific deposit account. Admin
 credits, onboarding credits, or chat spend are not proof that historical funds
 on a derived address belong to the account.
+
+When the credited asset is USDC and the credited USDC balance is more than
+`$10`, the same sync attempts the PFT initiation grant if the account's linked
+wallet was created through the app. The PFT grant is sent from the configured
+PFTL faucet and is not a withdrawal from the Ethereum deposit address. If the
+faucet is not configured, the USD top-up still credits normally and the response
+reports that the PFT grant could not be sent.
 
 The address returned by the app must already have an account-scoped zero-balance
 baseline. If an older account has a pre-fix address whose first observation

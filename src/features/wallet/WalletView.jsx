@@ -38,6 +38,18 @@ import {
 
 const WALLET_TX_REFRESH_MS = 60000;
 const ETH_TOP_UP_SYNC_INITIAL_DELAY_MS = 1200;
+const OAUTH_LINK_PROVIDER_IDS = new Set(["github", "telegram", "discord", "x"]);
+
+function hasLinkedOAuthProvider(linkedProviders = []) {
+  return linkedProviders.some((provider) =>
+    OAUTH_LINK_PROVIDER_IDS.has(String(provider?.id || "").trim().toLowerCase())
+  );
+}
+
+function showsEmailTopUpGrantHint({ initiationGift, linkedProviders, signedIn }) {
+  if (!signedIn || initiationGift?.reason !== "email_ineligible") return false;
+  return !hasLinkedOAuthProvider(linkedProviders);
+}
 
 function shortWalletAddress(address) {
   const text = String(address || "");
@@ -78,6 +90,7 @@ export function WalletView({
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [creationResult, setCreationResult] = useState(null);
   const [creationRetrying, setCreationRetrying] = useState(false);
+  const [grantClaiming, setGrantClaiming] = useState(false);
   const [topUpState, setTopUpState] = useState({
     status: wallet?.ethereumDeposit ? "ready" : "idle",
     data: wallet?.ethereumDeposit ? { depositAccount: wallet.ethereumDeposit } : null,
@@ -106,6 +119,7 @@ export function WalletView({
   const vaultDisplay = walletVaultDisplayState(walletVault, linkedWallet.address);
   const signedIn = isSignedInSession(session);
   const initiationGift = wallet?.initiationGift || {};
+  const usdcTopUpGift = wallet?.usdcTopUpInitiationGift || {};
   const pftBalance = formatPftBalance(wallet);
   const balanceStatusLabel = walletLinked ? walletBalanceStatusLabel(wallet) : "";
   const balanceError = walletLinked && wallet?.pftBalanceError;
@@ -138,6 +152,29 @@ export function WalletView({
     usage?.availableCreditUsd ??
     wallet?.chatCreditUsd ??
     0;
+  const grantAlreadySent =
+    usdcTopUpGift.reason === "account_registered" ||
+    usdcTopUpGift.grant?.status === "completed";
+  const completedUsdcGrant =
+    usdcTopUpGift.grant?.status === "completed" ? usdcTopUpGift.grant : null;
+  const canClaimUsdcGrant =
+    signedIn &&
+    walletLinked &&
+    linkedWallet.walletCreatedInAccount === true &&
+    usdcTopUpGift.eligible === true;
+  const mayClaimUsdcGrant =
+    signedIn &&
+    walletLinked &&
+    linkedWallet.walletCreatedInAccount === true &&
+    visibleChatCreditUsd > 10;
+  const showGrantClaimRow = (canClaimUsdcGrant || mayClaimUsdcGrant) && !grantAlreadySent;
+  const showEmailTopUpGrantHint =
+    showsEmailTopUpGrantHint({
+      initiationGift,
+      linkedProviders: session?.linkedProviders,
+      signedIn,
+    }) &&
+    !grantAlreadySent;
 
   useEffect(() => {
     if (!signedIn) return;
@@ -258,41 +295,63 @@ export function WalletView({
     await syncTopUpDeposits({ silent: false });
   }
 
-  async function retryInitiationGift() {
-    if (!signedIn || creationRetrying) return;
-    setCreationRetrying(true);
-    setCreationResult((current) => ({
-      ...(current || {}),
-      retrying: true,
-      message: "Retrying the 12 PFT initiation gift.",
-    }));
+  async function claimInitiationGrant({ openResultModal = false } = {}) {
+    if (!signedIn || grantClaiming || creationRetrying) return;
+    setGrantClaiming(true);
+    setMessage("Sending the 12 PFT initiation grant.");
+
+    if (openResultModal) {
+      setCreationRetrying(true);
+      setCreationResult((current) => ({
+        ...(current || {}),
+        retrying: true,
+        message: "Sending the 12 PFT initiation grant.",
+      }));
+    }
 
     try {
       const result = await requestJson(initiationRetryAction?.path || "/api/wallet/initiation/retry", {
         method: initiationRetryAction?.method || "POST",
       });
-      setCreationResult({
+      const nextResult = {
         ok: result.body?.ok === true,
-        message: result.body?.message || result.body?.initiationGift?.message || "Initiation gift retry finished.",
+        message: result.body?.message || result.body?.initiationGift?.message || "Initiation grant request finished.",
         initiationGift: result.body?.initiationGift || null,
-        wallet: result.body?.wallet || creationResult?.wallet || null,
-      });
+        wallet: result.body?.wallet || creationResult?.wallet || linkedWallet,
+      };
+      setMessage(nextResult.message);
+      if (openResultModal) {
+        setCreationResult(nextResult);
+      }
       await onAppStateChange?.();
     } catch (error) {
-      setCreationResult((current) => ({
-        ...(current || {}),
-        ok: false,
-        initiationGift: {
-          ...(current?.initiationGift || {}),
+      const failureMessage = error?.message || "Initiation grant request failed.";
+      setMessage(failureMessage);
+      if (openResultModal) {
+        setCreationResult((current) => ({
+          ...(current || {}),
           ok: false,
-          status: "failed",
-          message: error?.message || "Initiation gift retry failed.",
-        },
-        message: error?.message || "Initiation gift retry failed.",
-      }));
+          initiationGift: {
+            ...(current?.initiationGift || {}),
+            ok: false,
+            status: "failed",
+            message: failureMessage,
+          },
+          message: failureMessage,
+          wallet: current?.wallet || linkedWallet,
+        }));
+      }
     } finally {
-      setCreationRetrying(false);
+      setGrantClaiming(false);
+      if (openResultModal) {
+        setCreationRetrying(false);
+        setCreationResult((current) => (current ? { ...current, retrying: false } : current));
+      }
     }
+  }
+
+  async function retryInitiationGift() {
+    await claimInitiationGrant({ openResultModal: true });
   }
 
   async function startWalletAction(action) {
@@ -539,7 +598,7 @@ export function WalletView({
             {initiationGift.eligible
               ? `${Number(initiationGift.amountPft).toLocaleString("en-US")} PFT initiation gift available for eligible OAuth accounts.`
               : initiationGift.reason === "email_ineligible"
-                ? "Email-only accounts can create wallets, but do not receive the PFT initiation gift."
+                ? "Email-only accounts can receive the PFT gift after creating a wallet and crediting more than $10 USDC."
                 : initiationGift.message || "Wallet initiation gift eligibility will be checked after sign-in."}
           </div>
         )}
@@ -604,6 +663,44 @@ export function WalletView({
             Top up
           </button>
         </div>
+
+        {showEmailTopUpGrantHint && !showGrantClaimRow && !grantAlreadySent && (
+          <p className="wallet-email-topup-hint">
+            Email sign-in accounts receive the{" "}
+            {Number(initiationGift.amountPft || 12).toLocaleString("en-US")} PFT initiation grant after topping up
+            more than $10 USDC.
+          </p>
+        )}
+
+        {grantAlreadySent && completedUsdcGrant && (
+          <div className="wallet-grant-sent-row" role="status">
+            <p>
+              {Number(completedUsdcGrant.amountPft || 12).toLocaleString("en-US")} PFT initiation grant sent to this
+              wallet.
+            </p>
+            {completedUsdcGrant.txHash && (
+              <small>Tx {shortWalletAddress(completedUsdcGrant.txHash)}</small>
+            )}
+          </div>
+        )}
+
+        {showGrantClaimRow && (
+          <div className="wallet-grant-claim-row">
+            <p className="wallet-email-topup-hint">
+              {canClaimUsdcGrant
+                ? `Your account qualifies for the ${Number(usdcTopUpGift.amountPft || 12).toLocaleString("en-US")} PFT initiation grant.`
+                : `Your balance is above $10. Send the ${Number(usdcTopUpGift.amountPft || 12).toLocaleString("en-US")} PFT initiation grant to this wallet.`}
+            </p>
+            <button
+              className="wallet-mini-action"
+              disabled={grantClaiming}
+              onClick={() => claimInitiationGrant()}
+              type="button"
+            >
+              {grantClaiming ? "Sending..." : "Send 12 PFT grant"}
+            </button>
+          </div>
+        )}
 
         <section className="wallet-activity-section">
           <header className="wallet-activity-head">
@@ -728,6 +825,10 @@ export function WalletView({
         <WalletCreationResultModal
           onClose={() => setCreationResult(null)}
           onRetry={retryInitiationGift}
+          onTopUp={() => {
+            setCreationResult(null);
+            openTopUpFlow();
+          }}
           retrying={creationRetrying}
           result={creationResult}
         />
@@ -754,15 +855,29 @@ function WalletManagementCard({ active = false, disabled = false, icon: Icon, la
   );
 }
 
-function WalletCreationResultModal({ onClose, onRetry, result, retrying = false }) {
+function WalletCreationResultModal({ onClose, onRetry, onTopUp, result, retrying = false }) {
   const gift = result?.initiationGift || {};
   const giftOk = gift.ok === true || gift.status === "completed";
-  const canRetry = !giftOk && gift.status !== "not_eligible" && gift.reason !== "account_registered";
+  const needsUsdcTopUp = gift.reason === "email_ineligible";
+  const canRetry = !giftOk && !needsUsdcTopUp && gift.status !== "not_eligible" && gift.reason !== "account_registered";
   const amountPft = Number(gift.amountPft || 12);
-  const title = giftOk ? "Wallet Created" : "Wallet Created";
+  const title = "Wallet Created";
   const body = giftOk
     ? `${amountPft.toLocaleString("en-US")} PFT initiation gift sent.`
-    : gift.message || result?.message || "The wallet was linked, but the initiation gift did not complete.";
+    : needsUsdcTopUp
+      ? "Your PFT wallet is linked. Email accounts receive the initiation gift after topping up more than $10 USDC."
+      : gift.message || result?.message || "The wallet was linked, but the initiation gift did not complete.";
+  const stateTone = giftOk ? "is-success" : needsUsdcTopUp ? "is-info" : "is-warning";
+  const stateLabel = giftOk
+    ? "Initiation gift sent"
+    : needsUsdcTopUp
+      ? "USDC top-up required"
+      : retrying
+        ? "Retrying gift"
+        : "Gift not completed";
+  const stateValue = needsUsdcTopUp
+    ? `${amountPft.toLocaleString("en-US")} PFT after top-up`
+    : `${amountPft.toLocaleString("en-US")} PFT`;
 
   return (
     <div className="modal-backdrop chat-edit-backdrop" onClick={onClose} role="presentation">
@@ -783,9 +898,9 @@ function WalletCreationResultModal({ onClose, onRetry, result, retrying = false 
           </button>
         </header>
 
-        <div className={`wallet-creation-result-state${giftOk ? " is-success" : " is-warning"}`}>
-          <span>{giftOk ? "Initiation gift sent" : retrying ? "Retrying gift" : "Gift not completed"}</span>
-          <strong>{amountPft.toLocaleString("en-US")} PFT</strong>
+        <div className={`wallet-creation-result-state ${stateTone}`}>
+          <span>{stateLabel}</span>
+          <strong>{stateValue}</strong>
           {gift.txHash && <small>Tx {shortWalletAddress(gift.txHash)}</small>}
         </div>
 
@@ -798,7 +913,15 @@ function WalletCreationResultModal({ onClose, onRetry, result, retrying = false 
           </div>
         )}
 
-        {!giftOk && (
+        {!giftOk && needsUsdcTopUp && (
+          <div className="wallet-link-warning">
+            Email sign-in does not include the PFT gift at wallet creation. Use Top up to deposit USDC on your account.
+            After your credited balance is more than $10 USDC, the {amountPft.toLocaleString("en-US")} PFT grant is sent
+            to this wallet automatically.
+          </div>
+        )}
+
+        {!giftOk && !needsUsdcTopUp && (
           <div className="wallet-link-warning">
             Wallet creation succeeded. The PFT gift is tracked separately and can be retried without creating another wallet.
           </div>
@@ -808,6 +931,16 @@ function WalletCreationResultModal({ onClose, onRetry, result, retrying = false 
           <button className="light-pill" onClick={onClose} type="button">
             Done
           </button>
+          {!giftOk && needsUsdcTopUp && onRetry && (
+            <button className="light-pill" disabled={retrying} onClick={onRetry} type="button">
+              {retrying ? "Sending..." : "Send 12 PFT grant"}
+            </button>
+          )}
+          {!giftOk && needsUsdcTopUp && onTopUp && (
+            <button className="dark-pill" onClick={onTopUp} type="button">
+              Top up USDC
+            </button>
+          )}
           {!giftOk && canRetry && (
             <button className="dark-pill" disabled={retrying} onClick={onRetry} type="button">
               {retrying ? "Retrying" : "Retry 12 PFT gift"}

@@ -9,8 +9,12 @@ The current UI surface is Settings -> Connected accounts. The backend contract i
 Email login is implemented as an 8-digit code flow:
 
 1. `POST /api/auth/email/start` creates an email challenge.
-2. Local/dev returns the code only when `TASKNODE_EMAIL_DEV_DELIVERY=true`.
-3. Production email delivery uses Resend when configured.
+2. Resend is used whenever `EMAIL_DELIVERY_PROVIDER=resend`, `EMAIL_FROM`, and
+   `RESEND_API_KEY` are configured — including local Docker with
+   `.env.tasknodeofficial-dev`.
+3. Development code delivery is used only when Resend is not configured and the
+   environment is non-production, or when `TASKNODE_EMAIL_DEV_DELIVERY=true`
+   explicitly forces it.
 4. `POST /api/auth/email/verify` consumes the challenge and issues a Task Node session.
 5. Email accounts are low assurance. They do not prove wallet or legacy provider ownership.
 

@@ -12,7 +12,7 @@ import {
   conversationIdForSession,
   getEthereumDepositAccount,
   getLinkedWallet,
-  walletInitiationGrantStatus,
+  resolveWalletInitiationGrantStatus,
 } from "./runtime-store.js";
 import {
   getHiveConversation,
@@ -81,10 +81,23 @@ export async function appState(session = null, { refreshTaskProjection = false }
   const ethDepositStatus = ethereumDepositConfigStatus();
   const ethDepositAccount = getEthereumDepositAccount({ accountId });
   const walletLinked = linkedWallet.status === "linked" && Boolean(linkedWallet.address);
-  const initiationGift = walletInitiationGrantStatus({
+  const initiationGift = await resolveWalletInitiationGrantStatus({
     accountId,
     walletAddress: walletLinked ? linkedWallet.address : "",
   });
+  const usdcTopUpInitiationGift = walletLinked
+    ? await resolveWalletInitiationGrantStatus({
+        accountId,
+        walletAddress: linkedWallet.address,
+        source: "usdc_top_up",
+      })
+    : {
+        eligible: false,
+        reason: walletLinked ? null : "wallet_not_linked",
+        amountPft: initiationGift.amountPft,
+        amountDrops: initiationGift.amountDrops,
+        message: "Create and link a wallet before the USDC top-up grant can be sent.",
+      };
   if (refreshTaskProjection && walletLinked) {
     await refreshLinkedWalletTaskProjection({
       accountId,
@@ -137,6 +150,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       },
       actions: walletActions(),
       initiationGift,
+      usdcTopUpInitiationGift,
       chatCreditUsd: usage.availableCreditUsd,
       fundingRails: [
         {
