@@ -1,6 +1,6 @@
 # Daily Airdrop Migration Plan
 
-Status: Phase 1 scoring implemented for dry-run profile scoring. Live PFT issuance is not implemented.
+Status: deprecated implemented v1 plan. Current product truth lives in `Surfaces -> Daily Airdrop`, `Surfaces -> Profile`, and `Architecture -> System Status Runbooks`.
 
 Source references: PFTasks daily airdrop code was reviewed as historical reference only. This plan is for Task Node Official.
 
@@ -17,7 +17,7 @@ The first Task Node Official version should answer four profile questions:
 
 The model should be `deepseek/deepseek-v4-pro` through OpenRouter private routing with ZDR enabled. The prompt can be public. The evidence packet should be only a task reward packet: tasks rewarded with more than 0 PFT from the current timestamp minus 7 days through the current timestamp.
 
-Current Task Node Official status: the scoring table, prompt, packet builder, OpenRouter DeepSeek V4 Pro scorer, and manual dry-run CLI exist. The profile Daily Airdrop surface and live PFT issuance still must be wired before users can see or receive a daily drop in the app.
+Current Task Node Official status: scoring, profile display, live issuance, retryable issuance rows, the recurring worker, and zero-candidate audit runs are implemented. This page is retained as migration history for the PFTasks research and design constraints.
 
 ## PFTasks Research
 

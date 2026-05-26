@@ -194,6 +194,10 @@ Observed packet:
 
 The recurring worker is `server/profile-daily-airdrop-worker.js`. It is started by `server/background-workers.js` when `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`; local Docker enables it in `docker-compose.dev.yml`.
 
+The original migration plan is retained under `Implemented / Deprecated Plans`.
+This page is the current product contract for scoring, issuance, retry, and
+worker audit behavior.
+
 Each tick:
 
 1. claims a Postgres-backed `daily_airdrop` lease using the same lease table as Board Manager so multiple app instances do not run the payout loop at the same time;

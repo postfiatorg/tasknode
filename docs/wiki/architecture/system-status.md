@@ -7,6 +7,9 @@ healthy while work is not actually moving.
 The status rows are read-only. They do not resume workers, repair queues,
 advance tasks, or change Board Manager scheduler state.
 
+Operator repair instructions live in `Architecture -> System Status Runbooks`.
+That runbook page defines green, amber, and red for every row rendered here.
+
 ## Categories
 
 - Hive and Board Agents: Board Manager, Hive Secretary, active project planning,

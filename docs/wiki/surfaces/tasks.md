@@ -2,6 +2,10 @@
 
 Tasks are wallet-backed work objects. The UX is a fast Postgres projection over PFTL pointer history and encrypted IPFS payloads. PFTL/IPFS is the canonical record; Postgres is the read model that lets the app render task queues, detail pages, forensics, chat context, and reward status without scanning wallet history on every page load.
 
+The original task-over-the-line and Python speedrun plans are retained under
+`Implemented / Deprecated Plans`. This page and `Architecture -> Task Async
+Engine` are the current product contract for the app-backed task lifecycle.
+
 ## What The User Sees
 
 The Tasks surface is reached from the left navigation. It shows a compact task queue with four tabs:

@@ -1,5 +1,7 @@
 # Pythonic Task Engine Speedrun
 
+Status: deprecated completed reference milestone. Current product truth lives in `Architecture -> Task Lifecycle`, `Architecture -> Task Async Engine`, and the Python reference client paths named below.
+
 ## Status
 
 Stage A and Stage B are implemented and have been run live against PFTL testnet.

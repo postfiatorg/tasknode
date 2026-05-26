@@ -1,6 +1,6 @@
 # Board Manager
 
-Status: v0 OpenRouter Qwen decision worker implemented with first action hooks, durable worker architecture, and DeepSeek secretary packet compression
+Status: deprecated implemented v0 plan. Current product truth lives in `Surfaces -> Hive`, `Architecture -> AI Providers`, `Architecture -> Deployment`, and `Architecture -> System Status Runbooks`.
 
 This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, archive projects, refresh project documents, route tasks, or do nothing.
 

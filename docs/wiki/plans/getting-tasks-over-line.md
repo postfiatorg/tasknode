@@ -1,5 +1,7 @@
 # Getting Tasks Over The Line
 
+Status: deprecated implemented milestone. Current product truth lives in `Surfaces -> Tasks`, `Architecture -> Task Lifecycle`, and `Architecture -> Task Async Engine`.
+
 ## Objective
 
 Turn the Tasks surface into a wallet-first PFTL task system. The first milestone was proving that the real goodalexander wallet can request tasks from real chat/context data, receive task offers, submit evidence, answer verification, receive real PFT rewards, and then have those events appear in the app from a cache rebuilt from chain-verifiable records.

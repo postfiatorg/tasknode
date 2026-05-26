@@ -22,6 +22,10 @@ Deep-memory jobs are stable snapshots. `chat_deep_memory_jobs.source_entry_ids` 
 
 Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. The prompt is `prompts/memory/network_task_profile_v2.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh. The generated profile is not required for the page to render. Network Context Inputs are built from profile data and routable `task_projections` on every route read and are returned even while a profile job is pending.
 
+The original Network Task Profile implementation plan is retained under
+`Implemented / Deprecated Plans`. This page is the current product contract for
+Memory and Network Diagnostic Report behavior.
+
 ## Network Task Profile
 
 The Memory page shows one task-routing report with two layers:

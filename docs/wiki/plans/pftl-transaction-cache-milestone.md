@@ -1,5 +1,7 @@
 # PFTL Transaction Cache Milestone
 
+Status: deprecated implemented milestone. Current product truth lives in `Architecture -> PFTL Transaction Cache` and `Architecture -> System Status Runbooks`.
+
 ## Objective
 
 Maintain a Postgres-native PFTL transaction cache for linked user wallets and Task Node system wallets. PFTL remains canonical. The cache is a fast projection layer for Wallet, Context, Tasks, and operator monitoring.

@@ -24,6 +24,7 @@ import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transacti
 import resettableSignupTesting from "../../../docs/wiki/architecture/resettable-signup-testing.md?raw";
 import styleGuide from "../../../docs/wiki/architecture/style-guide.md?raw";
 import systemStatus from "../../../docs/wiki/architecture/system-status.md?raw";
+import systemStatusRunbooks from "../../../docs/wiki/architecture/system-status-runbooks.md?raw";
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import telegramBotChat from "../../../docs/wiki/architecture/telegram-bot-chat.md?raw";
@@ -436,7 +437,7 @@ export const DOC_GROUPS = [
     title: "Start",
     pages: [
       {
-        slug: "system-status",
+        slug: "system-status-home",
         title: "System Status",
         summary: "Live audit view for schedulers, workers, and RPC dependencies.",
         markdown: systemStatus,
@@ -524,6 +525,12 @@ export const DOC_GROUPS = [
         component: "system-status",
       },
       {
+        slug: "system-status-runbooks",
+        title: "System Status Runbooks",
+        summary: "Green, amber, red, and repair procedures for every status row.",
+        markdown: systemStatusRunbooks,
+      },
+      {
         slug: "encryption",
         title: "Encryption",
         summary: "MessageKey and encrypted payloads.",
@@ -572,24 +579,6 @@ export const DOC_GROUPS = [
     title: "Plans",
     pages: [
       {
-        slug: "agent-managed-about-panels",
-        title: "Agent-Managed About Panels",
-        summary: "Plan for Board Manager-updated project status and About documents, starting with Hive project detail pages.",
-        markdown: agentManagedAboutPanels,
-      },
-      {
-        slug: "board-manager",
-        title: "Board Manager",
-        summary: "Leased Codex Exec manager, action hooks, project docs, user replies, and network task initiation.",
-        markdown: boardManager,
-      },
-      {
-        slug: "board-manager-deepseek-secretary-packets",
-        title: "Board Manager DeepSeek Secretary Packets",
-        summary: "Implemented Board Triage secretary packets that let direct DeepSeek V4 Pro compress Hive state before Qwen Board Manager decisions.",
-        markdown: boardManagerDeepseekSecretaryPackets,
-      },
-      {
         slug: "hive-board-professionalism-diagnosis",
         title: "Hive Board Professionalism Diagnosis",
         summary: "One-page diagnosis for live board counts, reversible archives, resurrection, and feed clarity.",
@@ -602,12 +591,6 @@ export const DOC_GROUPS = [
         markdown: codeReviewBurndown,
       },
       {
-        slug: "getting-tasks-over-line",
-        title: "Getting Tasks Over The Line",
-        summary: "Plan to make task requests, submissions, rewards, and projections real.",
-        markdown: gettingTasksOverLine,
-      },
-      {
         slug: "task-engine-ux-integration-plan",
         title: "Task Engine UX Integration Plan",
         summary: "Audit plan for porting the backend task engine into the visible app lifecycle.",
@@ -618,18 +601,6 @@ export const DOC_GROUPS = [
         title: "Data Architecture Hardening Plan",
         summary: "Audit and burndown for making PFTL cache, task projections, worker queues, and read models trustworthy.",
         markdown: dataArchitectureHardeningPlan,
-      },
-      {
-        slug: "jobs-chat-spirit",
-        title: "Jobs Chat Spirit",
-        summary: "Plan for the Jobs XML chat prompt and later pgvector retrieval over Jobs notes.",
-        markdown: jobsChatSpirit,
-      },
-      {
-        slug: "context-edit-chat-mode",
-        title: "Context Refine Chat Mode",
-        summary: "Plan for line-numbered Jobs-calibrated context editing inside Chat.",
-        markdown: contextEditChatMode,
       },
       {
         slug: "profile-and-hive-mind-plan",
@@ -655,35 +626,76 @@ export const DOC_GROUPS = [
         summary: "Decision-ready specification for persistent agentic Network Tasks, state, actions, examples, and routing effects.",
         markdown: networkTaskAgenticObjects,
       },
+    ],
+  },
+  {
+    title: "Implemented / Deprecated Plans",
+    pages: [
       {
-        slug: "network-task-profile-memory-plan",
-        title: "Network Task Profile Memory Plan",
-        summary: "Plan for an auditable Memory packet used to route future network tasks.",
-        markdown: networkTaskProfileMemoryPlan,
+        slug: "agent-managed-about-panels",
+        title: "Agent-Managed About Panels",
+        summary: "Deprecated implemented plan; current Hive product documents live in the Hive surface docs.",
+        markdown: agentManagedAboutPanels,
       },
       {
-        slug: "public-profile-real-data-plan",
-        title: "Public Profile Real Data Plan",
-        summary: "Plan to replace public profile mock fields with real profile metrics, NFTs, and DeepSeek-generated role copy.",
-        markdown: publicProfileRealDataPlan,
+        slug: "board-manager",
+        title: "Board Manager",
+        summary: "Deprecated implemented v0 plan; current Board Manager behavior lives in Hive, Deployment, and runbook docs.",
+        markdown: boardManager,
+      },
+      {
+        slug: "board-manager-deepseek-secretary-packets",
+        title: "Board Manager DeepSeek Secretary Packets",
+        summary: "Deprecated implemented milestone for Board Triage packet compression.",
+        markdown: boardManagerDeepseekSecretaryPackets,
+      },
+      {
+        slug: "context-edit-chat-mode",
+        title: "Context Refine Chat Mode",
+        summary: "Deprecated implemented v1 plan; current behavior lives in Chat and Context docs.",
+        markdown: contextEditChatMode,
       },
       {
         slug: "daily-airdrop-migration-plan",
         title: "Daily Airdrop Migration Plan",
-        summary: "PFTasks research and Task Node plan for a DeepSeek V4 Pro daily drop.",
+        summary: "Deprecated implemented v1 plan; current scoring, issuance, and worker behavior lives in Profile and Daily Airdrop docs.",
         markdown: dailyAirdropMigrationPlan,
       },
       {
-        slug: "pythonic-task-engine-speedrun",
-        title: "Pythonic Task Engine Speedrun",
-        summary: "Review plan for the raw Python multi-wallet task lifecycle proof.",
-        markdown: pythonicTaskEngineSpeedrun,
+        slug: "getting-tasks-over-line",
+        title: "Getting Tasks Over The Line",
+        summary: "Deprecated implemented milestone for signed request, projection, and task UX integration.",
+        markdown: gettingTasksOverLine,
+      },
+      {
+        slug: "jobs-chat-spirit",
+        title: "Jobs Chat Spirit",
+        summary: "Deprecated implemented plan for the Jobs XML prompt and pgvector retrieval path.",
+        markdown: jobsChatSpirit,
+      },
+      {
+        slug: "network-task-profile-memory-plan",
+        title: "Network Task Profile Memory Plan",
+        summary: "Deprecated implemented v1 plan; current packet and worker behavior lives in Memory and Hive docs.",
+        markdown: networkTaskProfileMemoryPlan,
       },
       {
         slug: "pftl-transaction-cache-milestone",
         title: "PFTL Transaction Cache Milestone",
-        summary: "Milestone for the wallet transaction mirror, sync workers, and cache consumers.",
+        summary: "Deprecated implemented milestone; current cache behavior lives in PFTL Transaction Cache docs.",
         markdown: pftlTransactionCacheMilestone,
+      },
+      {
+        slug: "public-profile-real-data-plan",
+        title: "Public Profile Real Data Plan",
+        summary: "Deprecated implemented v1 plan; current deterministic profile data lives in Profile docs.",
+        markdown: publicProfileRealDataPlan,
+      },
+      {
+        slug: "pythonic-task-engine-speedrun",
+        title: "Pythonic Task Engine Speedrun",
+        summary: "Deprecated completed reference milestone for the Python task lifecycle proofs.",
+        markdown: pythonicTaskEngineSpeedrun,
       },
     ],
   },

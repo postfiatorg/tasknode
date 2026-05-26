@@ -8,6 +8,10 @@ The profile is account-scoped. Wallets can change over time, but the profile bel
 
 The public profile is now a read model over deterministic account metrics plus one generated profile snapshot.
 
+The original Public Profile Real Data implementation plan is retained under
+`Implemented / Deprecated Plans`. This page is the current product contract for
+public profile data, generated copy, NFT image state, and profile reward facts.
+
 It should not contain mock connections, fake member-since history, Sybil scores, graph language, or placeholder NFT ownership.
 
 Runtime endpoints:

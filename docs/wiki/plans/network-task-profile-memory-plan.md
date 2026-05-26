@@ -1,6 +1,6 @@
 # Network Task Profile Memory Plan
 
-Status: implemented v1
+Status: deprecated implemented v1 plan. Current product truth lives in `Surfaces -> Memory`, `Surfaces -> Hive`, and `Architecture -> System Status Runbooks`.
 
 Objective: add an auditable Memory feature that turns a member's current context, memory, profile, and task state into a clean descriptive packet for routing network tasks.
 

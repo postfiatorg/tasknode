@@ -1,5 +1,7 @@
 # Jobs Chat Spirit
 
+Status: deprecated implemented v1/v2 plan. Current product truth lives in `Surfaces -> Chat`, `Architecture -> AI Providers`, and `Prompts -> Jobs Chat OS`.
+
 ## Objective
 
 Make the spirit of Task Node chat feel like Steve Jobs: direct, product-led, tasteful, allergic to weak premises, and focused on the human consequence of the work. This is not a celebrity impersonation layer. It is a source-controlled chat operating prompt plus, later, a small pgvector retrieval layer over Jobs reference notes.

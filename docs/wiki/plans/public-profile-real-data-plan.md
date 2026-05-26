@@ -1,6 +1,6 @@
 # Public Profile Real Data Plan
 
-Status: implemented v1
+Status: deprecated implemented v1 plan. Current product truth lives in `Surfaces -> Profile` and `Surfaces -> Daily Airdrop`.
 
 Objective: finish the public profile page by replacing mock profile identity, role copy, credentials, and NFT gallery state with account-scoped Postgres reads and one small DeepSeek V4 Pro ZDR profile snapshot job.
 

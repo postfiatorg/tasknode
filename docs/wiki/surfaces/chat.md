@@ -27,6 +27,10 @@ Chat also has an explicit task-request mode from the `+` menu. That mode is diff
 
 Chat also has a Context Refine mode from the `+` menu. That mode stays in the same chat, changes the composer into `Context Refine`, and sends the next message through the dedicated context-edit route. Context Refine is not a modal and does not require a wallet.
 
+The original Jobs Chat Spirit and Context Refine implementation plans are now
+retained under `Implemented / Deprecated Plans`. This page is the current product
+contract for chat prompt assembly, Jobs retrieval, and Context Refine behavior.
+
 The visible tool menus currently expose only file upload, Context Refine, Request a task, and More. Motivation, Brainstorming Context, and Context Rewrite are intentionally hidden until they have production-quality flows.
 
 ## Chat Modes

@@ -1,5 +1,7 @@
 # Context Refine Chat Mode Plan
 
+Status: deprecated implemented v1 plan. Current product truth lives in `Surfaces -> Chat`, `Surfaces -> Context`, and `Architecture -> AI Providers`.
+
 This plan is now the implementation reference for the first working Context Refine pass. The active shipped path is: Chat `+` menu activates `context_edit`, the server uses the dedicated context-edit Jobs XML prompt with structured output, proposals render inline in chat, and accepting a proposal saves a new Postgres Context revision.
 
 The product direction is: context editing happens in Chat, in a dedicated Context Edit mode. There should not be a separate context-edit modal or a second app surface. The user is already in conversation with the system; editing the Context document should be another mode of that conversation.

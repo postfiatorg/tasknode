@@ -1,6 +1,6 @@
 # Board Manager DeepSeek Secretary Packets
 
-Status: v1 implemented for Board Triage packets
+Status: deprecated implemented milestone. Current product truth lives in `Surfaces -> Hive`, `Architecture -> AI Providers`, and `Architecture -> System Status Runbooks`.
 
 This milestone implements the first two-stage Board Manager architecture: direct DeepSeek API `deepseek-v4-pro` acts as a secretary/workhorse that condenses the full Hive state into a compact Board Triage packet, then OpenRouter `qwen/qwen3.7-max` acts as the Board Manager decision model.
 
