@@ -408,10 +408,10 @@ function RewardsChart({ data = [] }) {
             {fmtPft(points[hover].total)} PFT
           </div>
           <div style={{ color: C.ink4 }}>
-            Drops {fmtPft(points[hover].airdropPft || 0)} · Rewards {fmtPft(points[hover].rewardPft || 0)}
+            Airdrops {fmtPft(points[hover].airdropPft || 0)} · Rewards {fmtPft(points[hover].rewardPft || 0)}
           </div>
           <div style={{ color: C.ink4 }}>
-            {fmtN(points[hover].airdropCount || 0)} drop{Number(points[hover].airdropCount || 0) === 1 ? "" : "s"} · {fmtN(points[hover].taskCount)} rewarded task{Number(points[hover].taskCount || 0) === 1 ? "" : "s"}
+            {fmtN(points[hover].airdropCount || 0)} airdrop{Number(points[hover].airdropCount || 0) === 1 ? "" : "s"} · {fmtN(points[hover].taskCount)} rewarded task{Number(points[hover].taskCount || 0) === 1 ? "" : "s"}
           </div>
         </div>
       )}
@@ -632,8 +632,8 @@ function RewardSparkline({
             <circle cx={sparkW} cy={sparkH - (lastTotal / maxSpark) * sparkH + 2} r="3.5" fill={C.rust} />
           </svg>
           <div style={{ color: C.ink4, fontSize: 12, marginTop: 8, textAlign: "right" }}>
-            {fmtPft(earnedTotal || rewardTotal + airdropTotal)} PFT · {fmtPft(airdropTotal)} drops · {fmtPft(rewardTotal)} rewards
-            {airdropCount > 0 ? ` · ${fmtN(airdropCount)} drop${airdropCount === 1 ? "" : "s"}` : ""}
+            {fmtPft(earnedTotal || rewardTotal + airdropTotal)} PFT · {fmtPft(airdropTotal)} airdrops · {fmtPft(rewardTotal)} rewards
+            {airdropCount > 0 ? ` · ${fmtN(airdropCount)} airdrop${airdropCount === 1 ? "" : "s"}` : ""}
             {taskCount > 0 ? ` · ${fmtN(taskCount)} task${taskCount === 1 ? "" : "s"}` : ""}
           </div>
         </>
@@ -964,7 +964,7 @@ function PFTTimeseries({ error = "", history, loading = false, onRangeChange, ra
           <span>
             <span className="tn-bigNum" style={{ fontSize: 18, color: C.ink, letterSpacing: "-0.01em" }}>{fmtPft(grand)}</span>
             <span style={{ color: C.ink4, marginLeft: 6 }}>
-              PFT from {fmtN(airdropCount)} drop{airdropCount === 1 ? "" : "s"} and {fmtN(taskCount)} rewarded task{taskCount === 1 ? "" : "s"} in this range
+              PFT from {fmtN(airdropCount)} airdrop{airdropCount === 1 ? "" : "s"} and {fmtN(taskCount)} rewarded task{taskCount === 1 ? "" : "s"} in this range
             </span>
           </span>
         }

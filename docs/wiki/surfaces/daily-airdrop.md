@@ -1,6 +1,6 @@
 # Daily Airdrop
 
-Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT drop plus a short explanation of what raised the score, what lowered it, and what to improve tomorrow.
+Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT airdrop plus a short explanation of what raised the score, what lowered it, and what to improve tomorrow.
 
 Current status: recurring scoring and live issuance are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance claims exactly one `profile_daily_airdrop_issuances` row, marks it `processing` before any PFT signing work, and then submits a PFTL payment pointer. The worker also writes a `Hive Mind Agent` audit card summarizing how much PFT was dispensed and to how many users.
 
@@ -118,7 +118,7 @@ The model returns:
 - `eligibility_reason`;
 - `reasoning_text`.
 
-`reasoning_text` is contributor reasoning. It explains why the member's task packet merits the proposed drop. Recipient wallet selection is deterministic and separate from contributor reasoning.
+`reasoning_text` is contributor reasoning. It explains why the member's task packet merits the proposed airdrop. Recipient wallet selection is deterministic and separate from contributor reasoning.
 
 ### Alignment Score
 

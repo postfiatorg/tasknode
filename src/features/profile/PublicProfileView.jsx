@@ -172,7 +172,7 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
           <div className="tn-bigNum" style={{ color: C.ink, fontSize: 42, lineHeight: 1 }}>{loading ? "—" : fmtPft(totalPft)}</div>
           <div style={{ color: C.ink4, fontSize: 13, marginTop: 4 }}>
             PFT earned
-            {!loading && <span> · {fmtPft(taskPft)} rewards · {fmtPft(airdropPft)} drops</span>}
+            {!loading && <span> · {fmtPft(taskPft)} rewards · {fmtPft(airdropPft)} airdrops</span>}
           </div>
         </div>
       </div>
