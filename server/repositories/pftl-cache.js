@@ -617,16 +617,20 @@ export async function recordPftlSyncError({ walletAddress = "", error } = {}) {
 export async function markPftlSyncWalletChecked({ walletAddress = "", previousTxnId = "" } = {}) {
   if (!databaseEnabled()) return { ok: false, skipped: true };
   const wallet = normalizeText(walletAddress);
+  const previous = normalizeText(previousTxnId);
   if (!wallet) return { ok: false };
   await query(
     `
       UPDATE pftl_sync_wallets
       SET last_checked_at = now(),
-          metadata_json = metadata_json || $2::jsonb,
+          last_hot_sync_at = now(),
+          last_seen_tx_hash = COALESCE(NULLIF($2, ''), last_seen_tx_hash),
+          last_error = NULL,
+          metadata_json = metadata_json || $3::jsonb,
           updated_at = now()
       WHERE wallet_address = $1
     `,
-    [wallet, { previousTxnId: normalizeText(previousTxnId) }]
+    [wallet, previous, { previousTxnId: previous }]
   );
   return { ok: true };
 }

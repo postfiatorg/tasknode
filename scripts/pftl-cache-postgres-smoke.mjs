@@ -4,6 +4,7 @@ import { readCachedAccountTx } from "../server/pftl-cache-sync.js";
 import { buildPftPointerMemo } from "../server/pftl-pointer.js";
 import {
   listCachedAccountTx,
+  markPftlSyncWalletChecked,
   markPftlSyncWalletInactive,
   registerPftlSyncWallet,
   storePftlAccountTransactions,
@@ -172,6 +173,25 @@ try {
   assert.equal(recoveredRow.rows.length, 1);
   assert.equal(recoveredRow.rows[0].decode_error, null);
   assert.equal(recoveredRow.rows[0].cid, "bafypftlcacherecover");
+
+  await query(
+    `
+      UPDATE pftl_sync_wallets
+      SET last_hot_sync_at = now() - INTERVAL '1 hour',
+          last_error = 'stale_before_check'
+      WHERE wallet_address = $1
+    `,
+    [walletAddress]
+  );
+  const checked = await markPftlSyncWalletChecked({ walletAddress, previousTxnId: recoverTxHash });
+  assert.equal(checked.ok, true);
+  const checkedRow = await query(
+    "SELECT last_hot_sync_at > now() - INTERVAL '5 seconds' AS hot_current, last_seen_tx_hash, last_error FROM pftl_sync_wallets WHERE wallet_address = $1",
+    [walletAddress]
+  );
+  assert.equal(checkedRow.rows[0].hot_current, true);
+  assert.equal(checkedRow.rows[0].last_seen_tx_hash, recoverTxHash);
+  assert.equal(checkedRow.rows[0].last_error, null);
 
   await query(
     `
