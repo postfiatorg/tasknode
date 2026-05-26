@@ -78,7 +78,7 @@ export const apiRoutePolicies = [
   { id: "chat_conversations", path: "/api/chat/conversations", methods: ["GET"], auth: "optional" },
   { id: "chat_conversation", path: "/api/chat/conversation", methods: ["PATCH", "DELETE"], auth: "handler" },
   { id: "chat_history", path: "/api/chat/history", methods: ["GET"], auth: "session" },
-  { id: "memory", path: "/api/memory", methods: ["GET"], auth: "session" },
+  { id: "memory", path: "/api/memory", methods: ["GET", "DELETE"], auth: "session" },
   { id: "network_task_profile", path: "/api/memory/network-task-profile", methods: ["GET", "POST"], auth: "session" },
   { id: "hive_projects", path: "/api/hive/projects", methods: ["GET"], auth: "optional" },
   { id: "hive_context", path: "/api/hive/context", methods: ["GET", "POST"], auth: "handler" },

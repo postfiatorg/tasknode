@@ -626,6 +626,41 @@ export async function getNetworkTaskProfileState({
   };
 }
 
+export async function resetNetworkTaskProfileMemory({ accountId = "" } = {}) {
+  if (!useDatabase()) return { ok: false, status: 503, error: "database_not_configured" };
+  const normalizedAccountId = safeAccountId(accountId);
+  if (!normalizedAccountId) {
+    return { ok: false, status: 400, error: "network_task_profile_reset_missing_account", message: "Sign in before resetting the diagnostic report." };
+  }
+
+  return transaction(async (client) => {
+    const jobs = await client.query(
+      `
+        DELETE FROM network_task_profile_jobs
+        WHERE account_id = $1
+      `,
+      [normalizedAccountId]
+    );
+    const profiles = await client.query(
+      `
+        DELETE FROM network_task_profiles
+        WHERE account_id = $1
+      `,
+      [normalizedAccountId]
+    );
+
+    return {
+      ok: true,
+      action: "reset_network_profile",
+      deleted: {
+        jobs: jobs.rowCount,
+        profiles: profiles.rowCount,
+      },
+      message: "Diagnostic report reset.",
+    };
+  });
+}
+
 export async function claimNetworkTaskProfileJobs({ limit = 1 } = {}) {
   if (!useDatabase()) return [];
   const normalizedLimit = Math.min(Math.max(Number(limit) || 1, 1), maxClaimLimit);

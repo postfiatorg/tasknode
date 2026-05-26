@@ -793,6 +793,68 @@ export async function listChatMemory({
   };
 }
 
+export async function deleteChatMemoryEntry({ accountId = "", entryId = "" } = {}) {
+  if (!useDatabase()) return { ok: false, status: 503, error: "database_not_configured" };
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedEntryId = safeText(entryId, 180);
+  if (!normalizedAccountId || !normalizedEntryId) {
+    return { ok: false, status: 400, error: "memory_delete_missing_entry", message: "Choose a memory to delete." };
+  }
+
+  const result = await query(
+    `
+      DELETE FROM chat_memory_entries
+      WHERE account_id = $1
+        AND id = $2
+      RETURNING id, kind
+    `,
+    [normalizedAccountId, normalizedEntryId]
+  );
+
+  if (!result.rows[0]) {
+    return { ok: false, status: 404, error: "memory_not_found", message: "Memory was already deleted or does not exist." };
+  }
+
+  return {
+    ok: true,
+    action: "delete_entry",
+    deleted: 1,
+    entry: {
+      id: result.rows[0].id,
+      kind: result.rows[0].kind || "turn_memory",
+    },
+    message: "Memory deleted.",
+  };
+}
+
+export async function clearChatMemoryEntriesByKind({ accountId = "", kind = "" } = {}) {
+  if (!useDatabase()) return { ok: false, status: 503, error: "database_not_configured" };
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedKind = safeText(kind, 40);
+  if (!["turn_memory", "deep_memory"].includes(normalizedKind)) {
+    return { ok: false, status: 400, error: "memory_clear_invalid_kind", message: "Choose a valid memory group to clear." };
+  }
+  if (!normalizedAccountId) {
+    return { ok: false, status: 400, error: "memory_clear_missing_account", message: "Sign in before clearing memory." };
+  }
+
+  const result = await query(
+    `
+      DELETE FROM chat_memory_entries
+      WHERE account_id = $1
+        AND kind = $2
+    `,
+    [normalizedAccountId, normalizedKind]
+  );
+
+  return {
+    ok: true,
+    action: normalizedKind === "deep_memory" ? "clear_deep_memory" : "clear_turn_memory",
+    deleted: result.rowCount,
+    message: normalizedKind === "deep_memory" ? "Deep Memory cleared." : "Recent Memory cleared.",
+  };
+}
+
 export async function getChatMemoryContext({
   accountId = "",
   deepLimit = 3,

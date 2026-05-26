@@ -9,12 +9,15 @@ import {
   claimDeepMemoryJobs,
   completeChatMemoryJob,
   completeDeepMemoryJob,
+  clearChatMemoryEntriesByKind,
   deepMemoryBlockSize,
+  deleteChatMemoryEntry,
   deepMemoryJobSource,
   enqueueChatMemoryJob,
   getChatMemoryContext,
   listChatMemory,
 } from "../server/repositories/chat-memory.js";
+import { resetNetworkTaskProfileMemory } from "../server/repositories/network-task-profile.js";
 
 function jsonArray(value) {
   if (Array.isArray(value)) return value;
@@ -301,6 +304,70 @@ assert.match(context.deepMemories[0].userRequestSummary, /remember concise imple
 assert.match(context.deepMemories[0].systemResponseSummary, /acknowledged the concise-plan preference/);
 assert.match(context.deepMemories[0].memoryText, /concise planning style/);
 assert.match(context.memories[0].memoryText, /concrete checkpoints/);
+
+const deletedTurnMemory = await deleteChatMemoryEntry({ accountId, entryId: context.memories[0].id });
+assert.equal(deletedTurnMemory.ok, true);
+assert.equal(deletedTurnMemory.deleted, 1);
+const deletedTurnLookup = await query("SELECT COUNT(*)::int AS count FROM chat_memory_entries WHERE id = $1", [context.memories[0].id]);
+assert.equal(deletedTurnLookup.rows[0].count, 0);
+
+const clearedDeepMemory = await clearChatMemoryEntriesByKind({ accountId, kind: "deep_memory" });
+assert.equal(clearedDeepMemory.ok, true);
+assert.equal(clearedDeepMemory.deleted, 1);
+const clearedDeepLookup = await query(
+  "SELECT COUNT(*)::int AS count FROM chat_memory_entries WHERE account_id = $1 AND kind = 'deep_memory'",
+  [accountId]
+);
+assert.equal(clearedDeepLookup.rows[0].count, 0);
+
+await query(
+  `
+    INSERT INTO network_task_profile_jobs (
+      id,
+      account_id,
+      status,
+      reason,
+      source_packet_digest,
+      source_packet_json,
+      source_packet_text
+    )
+    VALUES ($1, $2, 'pending', 'smoke', $3, '{}'::jsonb, 'smoke source')
+  `,
+  [`nettaskprofilejob_delete_${suffix}`, accountId, `digest_delete_${suffix}`]
+);
+await query(
+  `
+    INSERT INTO network_task_profiles (
+      id,
+      account_id,
+      status,
+      source_packet_digest,
+      source_packet_json,
+      source_packet_text,
+      output_json,
+      output_text,
+      provider,
+      model,
+      prompt_version,
+      completed_at
+    )
+    VALUES ($1, $2, 'completed', $3, '{}'::jsonb, 'smoke source', '{}'::jsonb, 'smoke output', 'smoke', 'smoke', 'network_task_profile_v2', now())
+  `,
+  [`nettaskprofile_delete_${suffix}`, accountId, `digest_delete_${suffix}`]
+);
+const resetProfile = await resetNetworkTaskProfileMemory({ accountId });
+assert.equal(resetProfile.ok, true);
+assert.equal(resetProfile.deleted.jobs, 1);
+assert.equal(resetProfile.deleted.profiles, 1);
+const resetProfileLookup = await query(
+  `
+    SELECT
+      (SELECT COUNT(*)::int FROM network_task_profile_jobs WHERE account_id = $1) AS jobs,
+      (SELECT COUNT(*)::int FROM network_task_profiles WHERE account_id = $1) AS profiles
+  `,
+  [accountId]
+);
+assert.deepEqual(resetProfileLookup.rows[0], { jobs: 0, profiles: 0 });
 
 console.log(`chat memory postgres smoke ok: ${accountId}`);
 await closePool();

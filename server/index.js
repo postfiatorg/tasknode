@@ -609,7 +609,7 @@ async function routeApi(req, url, res) {
     return true;
   }
 
-  if (await handleMemoryRoute({ json, req, res, session, url })) return true;
+  if (await handleMemoryRoute({ json, readJson, req, res, session, url })) return true;
 
   if (await handleAccountRoute({
     expiredSessionCookie: () => expiredSessionCookie(req),
