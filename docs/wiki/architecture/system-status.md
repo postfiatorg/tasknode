@@ -7,6 +7,11 @@ healthy while work is not actually moving.
 The status rows are read-only. They do not resume workers, repair queues,
 advance tasks, or change Board Manager scheduler state.
 
+The top of the live status page also renders Chat Model Pricing. That section is
+not a worker health row. It is an audit snapshot of the current chat-mode
+provider contracts from `server/chat-router.js`, plus cached live OpenRouter
+model metadata from `https://openrouter.ai/api/v1/models`.
+
 Each status row links to the corresponding Architecture page for that system.
 Those pages define how green, amber, red, disabled, and unknown are derived and
 what the operator should inspect or run next. If a row appears here, it must have
@@ -23,6 +28,32 @@ a matching Architecture page.
 - Memory, Retrieval, Profiles, and Airdrops: Jobs pgvector retrieval, turn
   memory, deep memory, Network Task routing profiles, and daily airdrop scoring
   or issuance.
+
+## Chat Model Pricing
+
+The status page pricing block separates three values that are easy to confuse:
+
+- Configured estimate: the per-million-token estimate in `chatModePrices`. This
+  is used for preflight estimates and confirmation thresholds.
+- Live OpenRouter model price: public model metadata returned by OpenRouter for
+  the selected model id. This is useful audit context, but it can describe the
+  cheapest model endpoint rather than the exact endpoint Task Node will use.
+- Live OpenRouter endpoint prices: provider-level endpoint metadata for the
+  current model. For private modes the UI marks endpoints in the Task Node
+  `provider.only` allowlist as allowed, and labels non-allowlisted DeepSeek
+  endpoints as reference prices only.
+
+Actual chat billing prefers provider-returned usage. For OpenRouter this means
+`usage.cost` from the response wins over the configured estimate whenever it is
+present. The pricing block is therefore an audit and preflight aid, not a debit
+source of truth.
+
+Private modes also send `provider.zdr=true` and
+`provider.data_collection="deny"`. A cheap endpoint shown by OpenRouter is not
+automatically a Task Node private route unless it is compatible with that request
+policy. The direct DeepSeek V4 Pro reference price is shown because it explains
+the public `$0.87/M output` headline, but it is not a Task Node private/ZDR chat
+route.
 
 ## Status Rules
 

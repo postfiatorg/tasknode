@@ -22,6 +22,7 @@ import {
   summarizeCategories,
   tableMap,
 } from "./system-status-base.js";
+import { chatPricingStatus } from "./model-pricing-status.js";
 
 const recentFailureWindowMs = 24 * hour;
 
@@ -1043,22 +1044,30 @@ export async function readSystemStatus() {
   const nowMs = generatedAt.getTime();
   const database = databaseStatus();
   if (!databaseEnabled()) {
-    const categories = await categoryItems(new Map(), nowMs);
+    const [categories, chatPricing] = await Promise.all([
+      categoryItems(new Map(), nowMs),
+      chatPricingStatus(),
+    ]);
     return {
       ok: true,
       generatedAt: generatedAt.toISOString(),
       database,
       summary: summarizeCategories(categories),
+      chatPricing,
       categories,
     };
   }
   const tables = await tableMap();
-  const categories = await categoryItems(tables, nowMs);
+  const [categories, chatPricing] = await Promise.all([
+    categoryItems(tables, nowMs),
+    chatPricingStatus(),
+  ]);
   return {
     ok: true,
     generatedAt: generatedAt.toISOString(),
     database,
     summary: summarizeCategories(categories),
+    chatPricing,
     categories,
   };
 }

@@ -448,6 +448,136 @@
   margin-top: 28px;
 }
 
+.system-pricing-panel {
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid #e8e6df;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.system-pricing-heading,
+.system-pricing-card-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.system-pricing-heading h2,
+.system-pricing-card h3 {
+  margin: 0;
+  color: #1f1f1c;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.system-pricing-heading p,
+.system-pricing-card p,
+.system-pricing-references p,
+.system-pricing-notes {
+  margin: 4px 0 0;
+  color: #6b6b66;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.system-pricing-source,
+.system-pricing-card-title span,
+.system-pricing-endpoints span {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #efede7;
+  color: #4f4d47;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.system-pricing-source.is-ok,
+.system-pricing-endpoints span.is-allowed {
+  background: #f2faf2;
+  color: #2f6d37;
+}
+
+.system-pricing-source.is-error,
+.system-pricing-endpoints span.is-reference {
+  background: #fff8e5;
+  color: #7d5a12;
+}
+
+.system-pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.system-pricing-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #eeeae2;
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+
+.system-pricing-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.system-pricing-card dt {
+  color: #8a8880;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.system-pricing-card dd {
+  margin: 2px 0 0;
+  color: #24231f;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.system-pricing-description {
+  margin-top: 12px;
+}
+
+.system-pricing-endpoints,
+.system-pricing-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.system-pricing-references div {
+  min-width: min(100%, 260px);
+  flex: 1 1 260px;
+  padding: 10px;
+  border: 1px solid #eeeae2;
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+
+.system-pricing-references strong,
+.system-pricing-references span {
+  display: block;
+  color: #24231f;
+  font-size: 12px;
+}
+
+.system-pricing-references span {
+  margin-top: 3px;
+  color: #5c5a54;
+}
+
+.system-pricing-notes {
+  padding-left: 18px;
+}
+
 .system-status-jobs {
   display: grid;
   gap: 10px;
@@ -626,7 +756,22 @@
   }
 
   .system-status-summary,
-  .system-status-row dl {
+  .system-status-row dl,
+  .system-pricing-grid {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .system-status-summary,
+  .system-status-row dl,
+  .system-pricing-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-pricing-heading,
+  .system-pricing-card-title {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

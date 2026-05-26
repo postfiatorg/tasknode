@@ -196,6 +196,7 @@ function SystemStatusPage({ onOpenDocPage }) {
           <p className="system-status-db">
             Database: {status.database?.enabled ? "enabled" : "not enabled"} · durable: {status.database?.durable ? "yes" : "no"}
           </p>
+          {status.chatPricing && <SystemPricingPanel pricing={status.chatPricing} />}
           <div className="system-status-categories">
             {status.categories?.map((category) => (
               <section className="system-status-category" key={category.id}>
@@ -213,6 +214,129 @@ function SystemStatusPage({ onOpenDocPage }) {
       )}
     </section>
   );
+}
+
+function SystemPricingPanel({ pricing }) {
+  const modes = Array.isArray(pricing?.modes) ? pricing.modes : [];
+  const references = Array.isArray(pricing?.references) ? pricing.references : [];
+  const live = pricing?.live || {};
+  return (
+    <section className="system-pricing-panel" aria-label="Chat model pricing">
+      <div className="system-pricing-heading">
+        <div>
+          <h2>Chat Model Pricing</h2>
+          <p>
+            Configured estimates, live OpenRouter metadata, and direct-provider reference prices for the current chat modes.
+          </p>
+        </div>
+        <span className={`system-pricing-source is-${live.status || "unknown"}`}>
+          {live.status === "ok"
+            ? `Live ${formatDateTime(live.fetchedAt)}`
+            : live.status === "disabled"
+              ? "Live pricing off"
+              : live.status === "error"
+                ? "Live pricing error"
+                : "Live pricing pending"}
+        </span>
+      </div>
+      {live.error && <p className="system-status-error">{live.error}</p>}
+      <div className="system-pricing-grid">
+        {modes.map((mode) => (
+          <SystemPricingCard key={mode.mode} mode={mode} />
+        ))}
+      </div>
+      {references.length > 0 && (
+        <div className="system-pricing-references">
+          {references.map((reference) => (
+            <div key={reference.id}>
+              <strong>{reference.title}</strong>
+              <span>{reference.provider} · {reference.model}</span>
+              <span>
+                {formatUsdPerMillion(reference.inputUsdPerMillion)} in ·{" "}
+                {formatUsdPerMillion(reference.outputUsdPerMillion)} out
+              </span>
+              <p>{reference.privacyPolicy}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {pricing.notes?.length > 0 && (
+        <ul className="system-pricing-notes">
+          {pricing.notes.map((note, index) => (
+            <li key={index}>{note}</li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function SystemPricingCard({ mode }) {
+  const liveModel = mode.liveModel || {};
+  const endpoints = pricingEndpointsForDisplay(mode);
+  return (
+    <article className="system-pricing-card">
+      <div className="system-pricing-card-title">
+        <h3>{mode.mode}</h3>
+        <span>{mode.provider}</span>
+      </div>
+      <p>{mode.description}</p>
+      <dl>
+        <div>
+          <dt>Model</dt>
+          <dd>{mode.model}</dd>
+        </div>
+        <div>
+          <dt>Configured estimate</dt>
+          <dd>
+            {formatUsdPerMillion(mode.configuredPricing?.inputUsdPerMillion)} in ·{" "}
+            {formatUsdPerMillion(mode.configuredPricing?.outputUsdPerMillion)} out
+          </dd>
+        </div>
+        <div>
+          <dt>Live headline</dt>
+          <dd>
+            {liveModel.inputUsdPerMillion === undefined
+              ? "n/a"
+              : `${formatUsdPerMillion(liveModel.inputUsdPerMillion)} in · ${formatUsdPerMillion(liveModel.outputUsdPerMillion)} out`}
+          </dd>
+        </div>
+        <div>
+          <dt>Context / max output</dt>
+          <dd>
+            {formatCompactNumber(liveModel.contextLength)} /{" "}
+            {formatCompactNumber(liveModel.maxCompletionTokens || mode.maxOutputTokens)}
+          </dd>
+        </div>
+        <div>
+          <dt>Reasoning</dt>
+          <dd>{mode.reasoning || "none"}</dd>
+        </div>
+        <div>
+          <dt>Privacy</dt>
+          <dd>{mode.privacyPolicy}</dd>
+        </div>
+      </dl>
+      {liveModel.description && <p className="system-pricing-description">{liveModel.description}</p>}
+      {endpoints.length > 0 && (
+        <div className="system-pricing-endpoints">
+          {endpoints.map((endpoint) => (
+            <span className={endpoint.allowed ? "is-allowed" : "is-reference"} key={`${mode.mode}-${endpoint.providerSlug}`}>
+              {endpoint.provider} · {formatUsdPerMillion(endpoint.outputUsdPerMillion)} out{" "}
+              {endpoint.allowed ? "allowed" : "reference"}
+            </span>
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function pricingEndpointsForDisplay(mode = {}) {
+  const endpoints = Array.isArray(mode.liveEndpoints) ? mode.liveEndpoints : [];
+  const allowed = endpoints.filter((endpoint) => endpoint.allowed).slice(0, 4);
+  const deepseek = endpoints.find((endpoint) => endpoint.providerSlug === "deepseek" && !endpoint.allowed);
+  return [deepseek, ...allowed].filter(Boolean).slice(0, 5);
 }
 
 function SystemStatusRow({ entry, onOpenDocPage }) {
@@ -297,6 +421,21 @@ function compactLabel(value = "") {
   return String(value || "")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatUsdPerMillion(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "n/a";
+  return `$${numeric.toLocaleString(undefined, {
+    minimumFractionDigits: numeric < 1 ? 3 : 2,
+    maximumFractionDigits: numeric < 1 ? 6 : 3,
+  })}/M`;
+}
+
+function formatCompactNumber(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "n/a";
+  return numeric.toLocaleString();
 }
 
 function formatDateTime(value) {

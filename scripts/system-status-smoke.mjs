@@ -12,6 +12,8 @@ process.env.TASKNODE_TASK_GENERATION_WORKER_ENABLED = "true";
 process.env.TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED = "true";
 process.env.TASKNODE_TASK_REVIEW_WORKER_ENABLED = "true";
 process.env.TASKNODE_DAILY_AIRDROP_WORKER_ENABLED = "true";
+process.env.TASKNODE_SYSTEM_STATUS_LIVE_PRICING_ENABLED = "false";
+process.env.OPENROUTER_API_KEY = "system-status-openrouter-key";
 process.env.PFTL_RPC_URL = "https://user:pass@rpc.example.test/current?api_key=secret#frag";
 process.env.PFTL_HISTORY_RPC_URL = "https://history.example.test/archive?token=secret";
 process.env.ETH_DEPOSIT_XPUB = "xpub_status_smoke";
@@ -24,6 +26,22 @@ const status = await readSystemStatus();
 assert.equal(status.ok, true);
 assert.equal(status.database.enabled, false);
 assert.equal(status.summary.total, 20);
+assert.equal(status.chatPricing.live.enabled, false);
+assert.equal(status.chatPricing.live.status, "disabled");
+
+const pricingModes = new Map(status.chatPricing.modes.map((mode) => [mode.mode, mode]));
+assert.equal(pricingModes.get("Private Instant")?.model, "deepseek/deepseek-v4-flash");
+assert.equal(pricingModes.get("Private Instant")?.maxOutputTokens, 16384);
+assert.equal(pricingModes.get("Private Thinking")?.model, "deepseek/deepseek-v4-pro");
+assert.equal(pricingModes.get("Private Thinking")?.providerOrder.includes("novita"), true);
+assert.equal(
+  status.chatPricing.references.some((reference) => (
+    reference.id === "deepseek_direct_v4_pro" &&
+    reference.outputUsdPerMillion === 0.87 &&
+    reference.privacyPolicy.includes("Not a Task Node private/ZDR chat route")
+  )),
+  true
+);
 
 const categories = new Map(status.categories.map((category) => [category.id, category]));
 assert.deepEqual([...categories.keys()], ["hive", "task_engine", "pftl", "memory"]);

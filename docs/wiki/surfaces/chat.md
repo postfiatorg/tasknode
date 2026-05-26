@@ -52,6 +52,15 @@ Private modes use OpenRouter with `provider.zdr=true` and `provider.data_collect
 
 Frontier modes use the OpenAI Responses API with `store=false`. Task Node passes durable app history from Postgres instead of relying on OpenAI-hosted conversation state. The server exposes the hosted `web_search` tool to Frontier modes and counts observed search calls in usage billing.
 
+## Pricing Visibility
+
+Help -> System Status includes a Chat Model Pricing section. It shows each chat
+mode's configured preflight estimate, live OpenRouter model metadata when
+available, allowed OpenRouter endpoint prices for private modes, and a direct
+DeepSeek V4 Pro reference price. The direct DeepSeek V4 Pro price explains the
+public discounted headline price, but it is not the same as the Task Node
+private/ZDR chat route.
+
 ## Web Search Selection
 
 Web search is prompt-governed. `prompts/chat/task_node_instructions_v1.md` tells Frontier models to use web search only when the user asks for current, external, or source-grounded information that is not already available in the conversation, attachments, context document, memory, or task state. Private modes never add OpenRouter web search.

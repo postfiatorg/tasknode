@@ -140,6 +140,33 @@ The current configured rates live in `chatModePrices`. They are estimates and ca
 
 Because Frontier requests may use OpenAI-hosted web search, preflight reserves the configured maximum search tool budget for Frontier modes. Actual billing still uses provider-returned token usage plus observed `web_search_call` items.
 
+## Pricing Audit
+
+The Help -> System Status page renders a live Chat Model Pricing section from
+`/api/system/status`. The backend snapshot is built in
+`server/model-pricing-status.js` and includes:
+
+- current chat modes, models, configured rates, max output caps, reasoning
+  policy, provider readiness, and privacy policy;
+- cached live OpenRouter model metadata from
+  `https://openrouter.ai/api/v1/models`;
+- cached OpenRouter endpoint prices for the OpenRouter-backed chat models;
+- a direct DeepSeek V4 Pro reference price from DeepSeek's official pricing
+  docs, explicitly marked as non-ZDR for Task Node chat.
+
+Configured rates and live metadata are intentionally both visible. Configured
+rates drive preflight estimates and confirmation thresholds. OpenRouter live
+metadata explains current market/provider pricing. Actual OpenRouter billing uses
+the provider-returned `usage.cost` field when present.
+
+The DeepSeek V4 Pro headline price can be misleading in the private chat
+context. OpenRouter reports the DeepSeek provider endpoint around `$0.435/M`
+input and `$0.87/M` output, matching DeepSeek's direct API docs. That endpoint is
+not the same thing as the Task Node ZDR route. Private Thinking sends
+`provider.zdr=true`, `provider.data_collection="deny"`, and a provider allowlist,
+so eligible endpoints are the OpenRouter ZDR/provider-policy-compatible
+endpoints rather than the cheapest public endpoint.
+
 ## Diagram
 
 ```mermaid
