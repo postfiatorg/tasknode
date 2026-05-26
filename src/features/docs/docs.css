@@ -586,6 +586,25 @@
   overflow-wrap: anywhere;
 }
 
+.system-status-runbook-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0f766e;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.system-status-runbook-link:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 900px) {
   .docs-view {
     grid-template-columns: 1fr;

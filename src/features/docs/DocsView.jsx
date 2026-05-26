@@ -6,12 +6,50 @@ import { DocsDiagram } from "./DocsDiagram";
 import "./docs.css";
 
 const DEFAULT_DOC = "system-status-home";
+const RUNBOOK_PAGE_SLUG = "system-status-runbooks";
+const SYSTEM_STATUS_RUNBOOKS = {
+  board_manager: { anchor: "hive-mind-board-agent", label: "Hive Mind Board Agent runbook" },
+  board_manager_secretary_packets: { anchor: "board-manager-secretary-packet", label: "Board Manager Secretary Packet runbook" },
+  hive_secretary: { anchor: "hive-secretary-worker", label: "Hive Secretary Worker runbook" },
+  hive_active_projects: { anchor: "hive-active-projects-helper", label: "Hive Active Projects Helper runbook" },
+  network_task_generation: { anchor: "network-task-generation-worker", label: "Network Task Generation Worker runbook" },
+  task_generation: { anchor: "task-generation-worker", label: "Task Generation Worker runbook" },
+  task_review: { anchor: "task-review-and-reward-worker", label: "Task Review And Reward Worker runbook" },
+  pftl_hot_sync: { anchor: "pftl-hot-wallet-sync", label: "PFTL Hot Wallet Sync runbook" },
+  pftl_archive_sync: { anchor: "pftl-archive-wallet-sync", label: "PFTL Archive Wallet Sync runbook" },
+  pftl_wss_watcher: { anchor: "pftl-wss-watcher", label: "PFTL WSS Watcher runbook" },
+  pftl_cache_reducer: { anchor: "pftl-cache-reducer", label: "PFTL Cache Reducer runbook" },
+  pftl_cache_retention: { anchor: "pftl-cache-retention", label: "PFTL Cache Retention runbook" },
+  pftl_current_rpc: { anchor: "pftl-current-rpc-and-wss", label: "PFTL Current RPC And WSS runbook" },
+  pftl_history_rpc: { anchor: "pftl-history-rpc-and-archive-wss", label: "PFTL History RPC And Archive WSS runbook" },
+  ethereum_deposit_rpc: { anchor: "ethereum-deposit-rpc", label: "Ethereum Deposit RPC runbook" },
+  chat_turn_memory: { anchor: "turn-memory-worker", label: "Turn Memory Worker runbook" },
+  deep_memory: { anchor: "deep-memory-worker", label: "Deep Memory Worker runbook" },
+  network_task_profile: { anchor: "network-task-profile-worker", label: "Network Task Profile Worker runbook" },
+  daily_airdrop_worker: { anchor: "daily-airdrop-worker", label: "Daily Airdrop Worker runbook" },
+};
 
 export function DocsView() {
   const [selectedSlug, setSelectedSlug] = useState(DEFAULT_DOC);
+  const [pendingAnchor, setPendingAnchor] = useState("");
   const [query, setQuery] = useState("");
   const selectedPage = DOC_PAGES.find((page) => page.slug === selectedSlug) || DOC_PAGES[0];
   const filteredGroups = useMemo(() => filterGroups(DOC_GROUPS, query), [query]);
+
+  function openDocsPage(slug, anchor = "") {
+    setSelectedSlug(slug);
+    setPendingAnchor(anchor);
+    setQuery("");
+  }
+
+  useEffect(() => {
+    if (!pendingAnchor || typeof window === "undefined") return;
+    const anchor = pendingAnchor;
+    window.requestAnimationFrame(() => {
+      document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    setPendingAnchor("");
+  }, [pendingAnchor]);
 
   return (
     <div className="docs-view">
@@ -43,7 +81,7 @@ export function DocsView() {
                 <button
                   className={page.slug === selectedPage.slug ? "active" : ""}
                   key={page.slug}
-                  onClick={() => setSelectedSlug(page.slug)}
+                  onClick={() => openDocsPage(page.slug)}
                   type="button"
                 >
                   <span>
@@ -64,7 +102,7 @@ export function DocsView() {
           <p>{selectedPage.summary}</p>
         </header>
         <MarkdownArticle markdown={selectedPage.markdown} />
-        {selectedPage.component === "system-status" && <SystemStatusPage />}
+        {selectedPage.component === "system-status" && <SystemStatusPage onOpenRunbook={openDocsPage} />}
       </article>
     </div>
   );
@@ -94,7 +132,7 @@ function MarkdownArticle({ markdown }) {
   );
 }
 
-function SystemStatusPage() {
+function SystemStatusPage({ onOpenRunbook }) {
   const [state, setState] = useState({ loading: true, status: null, error: "" });
 
   async function loadStatus() {
@@ -150,7 +188,7 @@ function SystemStatusPage() {
                 <p>{category.summary}</p>
                 <div className="system-status-jobs">
                   {category.items?.map((entry) => (
-                    <SystemStatusRow entry={entry} key={entry.id} />
+                    <SystemStatusRow entry={entry} key={entry.id} onOpenRunbook={onOpenRunbook} />
                   ))}
                 </div>
               </section>
@@ -162,7 +200,8 @@ function SystemStatusPage() {
   );
 }
 
-function SystemStatusRow({ entry }) {
+function SystemStatusRow({ entry, onOpenRunbook }) {
+  const runbook = SYSTEM_STATUS_RUNBOOKS[entry.id];
   return (
     <article className={`system-status-row is-${entry.status || "unknown"}`}>
       <div className="system-status-row-main">
@@ -212,6 +251,19 @@ function SystemStatusRow({ entry }) {
           ))}
         </ul>
       )}
+      {runbook && (
+        <a
+          className="system-status-runbook-link"
+          href={`#${runbook.anchor}`}
+          onClick={(event) => {
+            event.preventDefault();
+            onOpenRunbook?.(RUNBOOK_PAGE_SLUG, runbook.anchor);
+          }}
+        >
+          <BookOpen size={14} strokeWidth={1.8} />
+          <span>{runbook.label}</span>
+        </a>
+      )}
     </article>
   );
 }
@@ -244,8 +296,8 @@ function formatDateTime(value) {
 
 function MarkdownBlock({ block }) {
   if (block.type === "h1") return null;
-  if (block.type === "h2") return <h2>{block.text}</h2>;
-  if (block.type === "h3") return <h3>{block.text}</h3>;
+  if (block.type === "h2") return <h2 id={slugifyHeading(block.text)}>{block.text}</h2>;
+  if (block.type === "h3") return <h3 id={slugifyHeading(block.text)}>{block.text}</h3>;
   if (block.type === "p") return <p>{renderInline(block.text)}</p>;
   if (block.type === "ul") {
     return (
@@ -298,6 +350,15 @@ function MarkdownBlock({ block }) {
     );
   }
   return null;
+}
+
+function slugifyHeading(value = "") {
+  return (
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "section"
+  );
 }
 
 function parseMarkdown(markdown) {
