@@ -1797,6 +1797,23 @@ h1 {
   color: #8a2d22;
 }
 
+.route-error-panel {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+
+.route-error-action {
+  margin-left: 22px;
+  padding: 8px 12px;
+  border: 1px solid #d8d4ca;
+  border-radius: 8px;
+  background: #0d0d0d;
+  color: #faf9f6;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .mode-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

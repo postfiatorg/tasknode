@@ -55,9 +55,9 @@ Date: 2026-05-26
 Environment: Fly dev live app at https://tasknodeofficial-dev.fly.dev plus local operator verification command
 Surface: Login and account cloud
 Status: amber
-Evidence: GitHub login was validated live with the GitHub account @pftchad. The live provider readiness endpoint also reports github configured=true, enabled=true, status=ready, startPath=/api/auth/start/github, and callbackPath=/api/auth/callback/github. This proves the GitHub beta login path is working as a user-facing OAuth flow.
+Evidence: GitHub login was validated live with the GitHub account 0xPostFiatChad. The live runtime store records username 0xPostFiatChad, profileUrl https://github.com/0xPostFiatChad, and a GitHub OAuth session issued at 2026-05-26T23:18:09Z. The live provider readiness endpoint also reports github configured=true, enabled=true, status=ready, startPath=/api/auth/start/github, and callbackPath=/api/auth/callback/github. This proves the GitHub beta login path is working as a user-facing OAuth flow.
 Commands: curl -fsS https://tasknodeofficial-dev.fly.dev/api/auth/providers
-Live user/account tested: GitHub @pftchad
+Live user/account tested: GitHub 0xPostFiatChad; Task Node display name @pftchad
 Remaining blocker: The whole Login surface is not green until Email, Telegram for a non-operator user, and X have matching live beta evidence, and Discord is hidden/disabled or explicitly excluded from the beta provider surface.
 Docs updated: docs/wiki/plans/task-node-production-scope.md
 ```

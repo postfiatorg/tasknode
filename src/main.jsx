@@ -145,6 +145,7 @@ const TASK_REQUEST_PLACEHOLDER = "Add any relevant details for your task request
 const HIVE_CHAT_PLACEHOLDER = "Talk to Hive Chat";
 const HIVE_CHAT_TITLE = "Hive Chat";
 const HIVE_CHAT_NOTIFICATION_REFRESH_MS = 20000;
+const ROUTE_CHUNK_RELOAD_COOLDOWN_MS = 30_000;
 const CHAT_ATTACHMENT_ACCEPT = [
   "image/png",
   "image/jpeg",
@@ -160,6 +161,80 @@ const CHAT_ATTACHMENT_ACCEPT = [
 ].join(",");
 const serializeChatAttachments = (items = []) =>
   items.map(({ name, mimeType, size, source, dataUrl }) => ({ name, mimeType, size, source, dataUrl }));
+
+function routeLoadErrorText(error) {
+  return `${error?.name || ""} ${error?.message || error || ""}`.toLowerCase();
+}
+
+function isRouteChunkLoadError(error) {
+  const text = routeLoadErrorText(error);
+  return (
+    text.includes("chunkloaderror") ||
+    text.includes("failed to fetch dynamically imported module") ||
+    text.includes("error loading dynamically imported module") ||
+    text.includes("importing a module script failed") ||
+    text.includes("loading chunk")
+  );
+}
+
+function shouldReloadForRouteChunkError() {
+  if (typeof window === "undefined") return false;
+  try {
+    const key = "tasknode_route_chunk_reload_at";
+    const lastReloadAt = Number(window.sessionStorage?.getItem(key) || 0);
+    const now = Date.now();
+    if (Number.isFinite(lastReloadAt) && now - lastReloadAt < ROUTE_CHUNK_RELOAD_COOLDOWN_MS) return false;
+    window.sessionStorage?.setItem(key, String(now));
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+class RouteErrorBoundary extends React.Component {
+  state = { error: null };
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    if (isRouteChunkLoadError(error) && shouldReloadForRouteChunkError()) {
+      window.location.reload();
+      return;
+    }
+    console.error("Task Node route render failed", error, info);
+  }
+
+  componentDidUpdate(previousProps) {
+    if (this.state.error && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return <RouteErrorFallback error={this.state.error} />;
+    }
+    return this.props.children;
+  }
+}
+
+function RouteErrorFallback({ error }) {
+  const staleChunk = isRouteChunkLoadError(error);
+  return (
+    <div className="route-error-panel">
+      <StatusBanner tone="error">
+        {staleChunk
+          ? "This page needs the latest Task Node bundle. Refresh the app and try the page again."
+          : "This page hit a client error instead of rendering."}
+      </StatusBanner>
+      <button className="route-error-action" onClick={() => window.location.reload()} type="button">
+        Refresh app
+      </button>
+    </div>
+  );
+}
 
 function profileNftImageCandidates(nft = {}) {
   const record = nft || {};
@@ -1107,91 +1182,97 @@ function App() {
         {loadError && <StatusBanner tone="error">{loadError}</StatusBanner>}
         {!appState && !loadError && <StatusBanner>Loading product state</StatusBanner>}
 
-        {view === "chat" && (
-          <ChatSurface
-            accountId={walletAccountId}
-            activeChat={activeChat}
-            chatResetKey={chatResetKey}
-            chatSelectionKey={chatSelectionKey}
-            chatShareRequestKey={chatShareRequestKey}
-            chat={appState?.chat}
-            linkedWalletAddress={linkedWalletAddress}
-            onActiveChatChange={setActiveChat}
-            onChatSettled={refreshAppState}
-            onWalletUnlock={openWalletVaultControl}
-            usage={appState?.usage}
-            walletSecret={walletSecretRef.current}
-            walletUnlockPending={walletUnlockOpen}
-            walletVault={walletVaultStatus}
-          />
-        )}
-        {view === "tasks" && (
-          <TasksView
-            accountId={walletAccountId}
-            linkedWalletAddress={linkedWalletAddress}
-            onRequestSettled={refreshAppState}
-            onSelectTask={openTaskDetail}
-            onWalletUnlock={openWalletVaultControl}
-            tasks={appState?.tasks}
-            walletSecret={walletSecretRef.current}
-            walletUnlockPending={walletUnlockOpen}
-            walletVault={walletVaultStatus}
-          />
-        )}
-        {view === "hive" && (
-          <Suspense fallback={<StatusBanner>Loading hive</StatusBanner>}>
-            <HiveView />
-          </Suspense>
-        )}
-        {view === "wallet" && (
-          <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
-            <WalletView
-              onAppStateChange={refreshAppState}
-              onLoginRequired={() => setLoginOpen(true)}
-              onWalletVaultChange={() => refreshWalletVaultStatus({ preserveUnlock: true })}
-              onWalletVaultLock={lockWalletVault}
-              onWalletVaultUnlocked={handleWalletVaultUnlocked}
-              session={appState?.session}
-              wallet={appState?.wallet}
-              walletVault={walletVaultStatus}
+        <RouteErrorBoundary resetKey={view}>
+          {view === "chat" && (
+            <ChatSurface
+              accountId={walletAccountId}
+              activeChat={activeChat}
+              chatResetKey={chatResetKey}
+              chatSelectionKey={chatSelectionKey}
+              chatShareRequestKey={chatShareRequestKey}
+              chat={appState?.chat}
+              linkedWalletAddress={linkedWalletAddress}
+              onActiveChatChange={setActiveChat}
+              onChatSettled={refreshAppState}
+              onWalletUnlock={openWalletVaultControl}
               usage={appState?.usage}
+              walletSecret={walletSecretRef.current}
+              walletUnlockPending={walletUnlockOpen}
+              walletVault={walletVaultStatus}
             />
-          </Suspense>
-        )}
-        {view === "context" && (
-          <ContextView
-            context={appState?.context}
-            linkedWalletAddress={linkedWalletAddress}
-            onContextChange={refreshAppState}
-            onHydrateContext={hydrateContextPointer}
-            onPublishContext={publishContextPointer}
-            walletVault={walletVaultStatus}
-          />
-        )}
-        {view === "profile" && (
-          <Suspense fallback={<StatusBanner>Loading profile</StatusBanner>}>
-            <ProfilePage
+          )}
+          {view === "tasks" && (
+            <TasksView
               accountId={walletAccountId}
               linkedWalletAddress={linkedWalletAddress}
-              onProfileAvatarChange={setProfileAvatarNft}
-              onProfileIdentityChange={refreshAppState}
+              onRequestSettled={refreshAppState}
+              onSelectTask={openTaskDetail}
               onWalletUnlock={openWalletVaultControl}
-              profilePublic={profilePublic}
-              profileTab={profileTab}
-              session={appState?.session}
-              setProfilePublic={setProfilePublic}
-              setProfileTab={setProfileTab}
+              tasks={appState?.tasks}
               walletSecret={walletSecretRef.current}
+              walletUnlockPending={walletUnlockOpen}
               walletVault={walletVaultStatus}
             />
-          </Suspense>
-        )}
-        {view === "memory" && (
-          <Suspense fallback={<StatusBanner>Loading memory</StatusBanner>}>
-            <MemoryView session={appState?.session} />
-          </Suspense>
-        )}
-        {view === "docs" && <Suspense fallback={<StatusBanner>Loading docs</StatusBanner>}><DocsView /></Suspense>}
+          )}
+          {view === "hive" && (
+            <Suspense fallback={<StatusBanner>Loading hive</StatusBanner>}>
+              <HiveView />
+            </Suspense>
+          )}
+          {view === "wallet" && (
+            <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
+              <WalletView
+                onAppStateChange={refreshAppState}
+                onLoginRequired={() => setLoginOpen(true)}
+                onWalletVaultChange={() => refreshWalletVaultStatus({ preserveUnlock: true })}
+                onWalletVaultLock={lockWalletVault}
+                onWalletVaultUnlocked={handleWalletVaultUnlocked}
+                session={appState?.session}
+                wallet={appState?.wallet}
+                walletVault={walletVaultStatus}
+                usage={appState?.usage}
+              />
+            </Suspense>
+          )}
+          {view === "context" && (
+            <ContextView
+              context={appState?.context}
+              linkedWalletAddress={linkedWalletAddress}
+              onContextChange={refreshAppState}
+              onHydrateContext={hydrateContextPointer}
+              onPublishContext={publishContextPointer}
+              walletVault={walletVaultStatus}
+            />
+          )}
+          {view === "profile" && (
+            <Suspense fallback={<StatusBanner>Loading profile</StatusBanner>}>
+              <ProfilePage
+                accountId={walletAccountId}
+                linkedWalletAddress={linkedWalletAddress}
+                onProfileAvatarChange={setProfileAvatarNft}
+                onProfileIdentityChange={refreshAppState}
+                onWalletUnlock={openWalletVaultControl}
+                profilePublic={profilePublic}
+                profileTab={profileTab}
+                session={appState?.session}
+                setProfilePublic={setProfilePublic}
+                setProfileTab={setProfileTab}
+                walletSecret={walletSecretRef.current}
+                walletVault={walletVaultStatus}
+              />
+            </Suspense>
+          )}
+          {view === "memory" && (
+            <Suspense fallback={<StatusBanner>Loading memory</StatusBanner>}>
+              <MemoryView session={appState?.session} />
+            </Suspense>
+          )}
+          {view === "docs" && (
+            <Suspense fallback={<StatusBanner>Loading docs</StatusBanner>}>
+              <DocsView />
+            </Suspense>
+          )}
+        </RouteErrorBoundary>
       </section>
 
       {loginOpen && (
