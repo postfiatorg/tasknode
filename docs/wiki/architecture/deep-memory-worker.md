@@ -12,6 +12,16 @@ System Status row: `deep_memory`
 - Prompt: `prompts/memory/deep_memory_v1.md`.
 - Backfill script: `scripts/memory-backfill.mjs`.
 - Runtime smoke: `scripts/chat-memory-postgres-smoke.mjs`.
+- Request-contract smoke: `scripts/chat-memory-worker-request-smoke.mjs`.
+
+## Provider Contract
+
+Deep memory uses the same OpenRouter private memory request contract as turn
+memory: ZDR provider routing, `provider.require_parameters = true`,
+`reasoning.effort = "none"`, `reasoning.exclude = true`,
+`response_format.type = "json_object"`, and usage reporting. The default output
+cap is `TASKNODE_DEEP_MEMORY_MAX_TOKENS` or `12000`, with a floor of `3500`.
+The contract is intentionally JSON-first compression, not reasoning chat.
 
 ## Status Derivation
 
@@ -34,3 +44,7 @@ npm run memory:backfill
 If a row is `processing` with `locked_at IS NULL`, the claim path should recover
 it automatically. If it does not, inspect the deep-memory claim function before
 manual SQL.
+
+If a failed row reports invalid JSON, run the request-contract smoke before
+requeueing. Deep-memory retries should not proceed through a provider route that
+can ignore JSON mode or hidden-reasoning controls.

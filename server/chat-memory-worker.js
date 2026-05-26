@@ -67,6 +67,51 @@ function networkTaskProfileSystemPrompt() {
   return networkTaskProfilePrompt;
 }
 
+function envNumberAtLeast(name, fallback, minimum) {
+  const parsed = Number(process.env[name] || fallback);
+  return Math.max(minimum, Number.isFinite(parsed) ? parsed : fallback);
+}
+
+export function turnMemoryMaxTokens() {
+  return envNumberAtLeast("TASKNODE_MEMORY_MAX_TOKENS", 1200, 900);
+}
+
+export function deepMemoryMaxTokens() {
+  return envNumberAtLeast("TASKNODE_DEEP_MEMORY_MAX_TOKENS", 12000, 3500);
+}
+
+export function networkTaskProfileMaxTokens() {
+  return envNumberAtLeast("TASKNODE_NETWORK_TASK_PROFILE_MAX_TOKENS", 1800, 900);
+}
+
+export function memoryOpenRouterProviderPreferences() {
+  const order = providerOrder();
+  const allowedProviders = order.length > 0 ? order : defaultProviderOrder;
+  return {
+    zdr: true,
+    data_collection: "deny",
+    order: allowedProviders,
+    only: allowedProviders,
+    require_parameters: true,
+  };
+}
+
+export function memoryOpenRouterRequestBody({ messages = [], temperature = 0.1, maxTokens = turnMemoryMaxTokens() } = {}) {
+  return {
+    model: memoryModel(),
+    messages,
+    provider: memoryOpenRouterProviderPreferences(),
+    reasoning: {
+      effort: "none",
+      exclude: true,
+    },
+    response_format: { type: "json_object" },
+    temperature,
+    max_tokens: maxTokens,
+    usage: { include: true },
+  };
+}
+
 function promptDigest(text = "") {
   return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
 }
@@ -182,7 +227,6 @@ function openRouterUsage(body = {}) {
 
 async function fetchMemorySummary(source) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-  const order = providerOrder();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
   const userPayload = {
@@ -202,22 +246,16 @@ async function fetchMemorySummary(source) {
         "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
         "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
       },
-      body: JSON.stringify({
-        model: memoryModel(),
-        messages: [
-          { role: "system", content: memorySystemPrompt() },
-          { role: "user", content: JSON.stringify(userPayload) },
-        ],
-        provider: {
-          zdr: true,
-          data_collection: "deny",
-          order: order.length > 0 ? order : defaultProviderOrder,
-          only: order.length > 0 ? order : defaultProviderOrder,
-        },
-        temperature: 0.1,
-        max_tokens: 700,
-        usage: { include: true },
-      }),
+      body: JSON.stringify(
+        memoryOpenRouterRequestBody({
+          messages: [
+            { role: "system", content: memorySystemPrompt() },
+            { role: "user", content: JSON.stringify(userPayload) },
+          ],
+          temperature: 0.1,
+          maxTokens: turnMemoryMaxTokens(),
+        })
+      ),
     });
   } catch (error) {
     if (error?.name === "AbortError") throw new Error("memory_provider_timeout");
@@ -254,7 +292,6 @@ async function fetchMemorySummary(source) {
 
 async function fetchDeepMemorySummary(source) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-  const order = providerOrder();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
   const memorySummaries = source.entries.map(boundedDeepMemoryEntry);
@@ -270,29 +307,23 @@ async function fetchDeepMemorySummary(source) {
         "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
         "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
       },
-      body: JSON.stringify({
-        model: memoryModel(),
-        messages: [
-          { role: "system", content: deepMemorySystemPrompt() },
-          {
-            role: "user",
-            content: JSON.stringify({
-              deep_memory_block_index: source.block_index,
-              summary_count: memorySummaries.length,
-              memory_summaries: memorySummaries,
-            }),
-          },
-        ],
-        provider: {
-          zdr: true,
-          data_collection: "deny",
-          order: order.length > 0 ? order : defaultProviderOrder,
-          only: order.length > 0 ? order : defaultProviderOrder,
-        },
-        temperature: 0.1,
-        max_tokens: Math.max(3500, Number(process.env.TASKNODE_DEEP_MEMORY_MAX_TOKENS || 12000)),
-        usage: { include: true },
-      }),
+      body: JSON.stringify(
+        memoryOpenRouterRequestBody({
+          messages: [
+            { role: "system", content: deepMemorySystemPrompt() },
+            {
+              role: "user",
+              content: JSON.stringify({
+                deep_memory_block_index: source.block_index,
+                summary_count: memorySummaries.length,
+                memory_summaries: memorySummaries,
+              }),
+            },
+          ],
+          temperature: 0.1,
+          maxTokens: deepMemoryMaxTokens(),
+        })
+      ),
     });
   } catch (error) {
     if (error?.name === "AbortError") throw new Error("deep_memory_provider_timeout");
@@ -328,7 +359,6 @@ async function fetchDeepMemorySummary(source) {
 
 async function fetchNetworkTaskProfile(source) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
-  const order = providerOrder();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
   let response;
@@ -343,22 +373,16 @@ async function fetchNetworkTaskProfile(source) {
         "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
         "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
       },
-      body: JSON.stringify({
-        model: memoryModel(),
-        messages: [
-          { role: "system", content: networkTaskProfileSystemPrompt() },
-          { role: "user", content: compactSourceText(source.source_packet_text, 60000) },
-        ],
-        provider: {
-          zdr: true,
-          data_collection: "deny",
-          order: order.length > 0 ? order : defaultProviderOrder,
-          only: order.length > 0 ? order : defaultProviderOrder,
-        },
-        temperature: 0,
-        max_tokens: Math.max(900, Number(process.env.TASKNODE_NETWORK_TASK_PROFILE_MAX_TOKENS || 1800)),
-        usage: { include: true },
-      }),
+      body: JSON.stringify(
+        memoryOpenRouterRequestBody({
+          messages: [
+            { role: "system", content: networkTaskProfileSystemPrompt() },
+            { role: "user", content: compactSourceText(source.source_packet_text, 60000) },
+          ],
+          temperature: 0,
+          maxTokens: networkTaskProfileMaxTokens(),
+        })
+      ),
     });
   } catch (error) {
     if (error?.name === "AbortError") throw new Error("network_task_profile_provider_timeout");
