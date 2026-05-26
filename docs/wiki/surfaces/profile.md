@@ -162,14 +162,13 @@ Visible fields:
 - run mode: `run_mode`, currently usually `dry_run`;
 - score date: `completed_at` or `run_date`;
 - alignment: `alignment_score_7d * 100`;
-- retention value: `retention_value_score`;
 - rewarded task count from `input_snapshot.reward_totals.rewarded_task_count`;
 - trailing 7-day actual/max PFT: `actual_airdrop_pft_7d` and `max_possible_airdrop_pft_7d`;
 - recipient wallet from `input_snapshot.airdrop_recipient.wallet_address`;
 - paid issuance proof from `profile_daily_airdrop_issuances`;
 - model explanations: `what_raised_today`, `what_kept_it_lower`, `to_improve_tomorrow`, and `reasoning_text`.
 
-The private profile does not display labels such as `High retention` unless a backend field explicitly supports that label. The current UI displays the numeric retention value instead.
+The private profile does not display `retention_value_score`. The backend still stores that model output for audit and future policy review, but it is not part of the private member-facing panel.
 
 The top chart and PFT generation chart read actual earned PFT rows. They aggregate task rewards from `task_projections.reward_actual_pft > 0` and daily drops from `profile_daily_airdrop_issuances.status = 'submitted'`. Until reward categories exist as first-class data, the chart is a single earned-PFT series rather than fabricated personal/network/alpha layers. The daily airdrop headline must not reuse the chart's total-earned number or imply that task rewards are the same thing as the airdrop payout.
 

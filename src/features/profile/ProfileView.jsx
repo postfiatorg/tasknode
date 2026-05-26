@@ -552,8 +552,6 @@ function TodaysBriefing({ airdrop, error = "", loading = false, rewardHistory })
               </>
             )}
             <span>Alignment <strong style={{ color: C.ink, fontWeight: 600 }}>{alignmentPct}</strong><span style={{ color: C.ink5 }}> / 100</span></span>
-            <span style={{ color: C.ink5 }}>·</span>
-            <span>Retention value <strong style={{ color: C.ink, fontWeight: 600 }}>{fmtN(airdrop.retentionValueScore)}</strong><span style={{ color: C.ink5 }}> / 100</span></span>
             {rewardedTasks > 0 && (
               <>
                 <span style={{ color: C.ink5 }}>·</span>

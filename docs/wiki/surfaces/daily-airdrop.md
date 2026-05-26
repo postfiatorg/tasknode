@@ -13,7 +13,6 @@ Displayed airdrop values come from:
 - `daily_airdrop_pft`;
 - `run_mode`;
 - `completed_at`;
-- `retention_value_score`;
 - `actual_airdrop_pft_7d`;
 - `max_possible_airdrop_pft_7d`;
 - `alignment_score_7d`;
