@@ -14,6 +14,7 @@ process.env.TASKNODE_TASK_REVIEW_WORKER_ENABLED = "true";
 process.env.TASKNODE_DAILY_AIRDROP_WORKER_ENABLED = "true";
 process.env.TASKNODE_SYSTEM_STATUS_LIVE_PRICING_ENABLED = "false";
 process.env.OPENROUTER_API_KEY = "system-status-openrouter-key";
+process.env.DEEPSEEK_API_KEY = "system-status-deepseek-key";
 process.env.PFTL_RPC_URL = "https://user:pass@rpc.example.test/current?api_key=secret#frag";
 process.env.PFTL_HISTORY_RPC_URL = "https://history.example.test/archive?token=secret";
 process.env.ETH_DEPOSIT_XPUB = "xpub_status_smoke";
@@ -34,14 +35,11 @@ assert.equal(pricingModes.get("Private Instant")?.model, "deepseek/deepseek-v4-f
 assert.equal(pricingModes.get("Private Instant")?.maxOutputTokens, 16384);
 assert.equal(pricingModes.get("Private Thinking")?.model, "deepseek/deepseek-v4-pro");
 assert.equal(pricingModes.get("Private Thinking")?.providerOrder.includes("novita"), true);
-assert.equal(
-  status.chatPricing.references.some((reference) => (
-    reference.id === "deepseek_direct_v4_pro" &&
-    reference.outputUsdPerMillion === 0.87 &&
-    reference.privacyPolicy.includes("Not a Task Node private/ZDR chat route")
-  )),
-  true
-);
+assert.equal(pricingModes.get("Discount Thinking")?.model, "deepseek-v4-pro");
+assert.equal(pricingModes.get("Discount Thinking")?.providerLabel, "DeepSeek API Direct");
+assert.equal(pricingModes.get("Discount Thinking")?.configuredPricing?.outputUsdPerMillion, 0.87);
+assert.equal(pricingModes.get("Discount Thinking")?.configuredPricing?.inputCacheHitUsdPerMillion, 0.003625);
+assert.match(pricingModes.get("Discount Thinking")?.privacyPolicy || "", /Direct DeepSeek API/);
 
 const categories = new Map(status.categories.map((category) => [category.id, category]));
 assert.deepEqual([...categories.keys()], ["hive", "task_engine", "pftl", "memory"]);

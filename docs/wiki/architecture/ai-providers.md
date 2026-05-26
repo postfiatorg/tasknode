@@ -10,6 +10,7 @@ The code owner for this boundary is `server/chat-router.js`. The product contrac
 | --- | --- | --- | --- | --- | --- | --- |
 | Private Instant | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-flash` | `none`, excluded from response | Disabled | `zdr=true`, `data_collection="deny"`, provider allowlist, `require_parameters=true` |
 | Private Thinking | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-pro` | `high`, excluded from response | Disabled | `zdr=true`, `data_collection="deny"`, provider allowlist, `require_parameters=true` |
+| Discount Thinking | DeepSeek API Direct | `/chat/completions` | `deepseek-v4-pro` | `high` | Disabled | Direct DeepSeek API route; not OpenRouter ZDR; text-only attachments |
 | Frontier Instant | OpenAI | `/v1/responses` | `chat-latest` | `medium` | Prompt-governed | Direct OpenAI route, `store=false` |
 | Frontier Thinking | OpenAI | `/v1/responses` | `gpt-5.5` | `high` | Prompt-governed | Direct OpenAI route, `store=false` |
 
@@ -19,10 +20,14 @@ Mode-specific environment variables always win:
 
 - `CHAT_MODEL_PRIVATE_INSTANT`
 - `CHAT_MODEL_PRIVATE_THINKING`
+- `CHAT_MODEL_DISCOUNT_THINKING`
 - `CHAT_MODEL_FRONTIER_INSTANT`
 - `CHAT_MODEL_FRONTIER_THINKING`
 
-For private modes only, `OPENROUTER_MODEL` is the next fallback. Frontier modes intentionally do not use a broad `OPENAI_MODEL` override; they are pinned to the explicit defaults unless the mode-specific variable is set.
+For OpenRouter private modes only, `OPENROUTER_MODEL` is the next fallback.
+For Discount Thinking, `DEEPSEEK_CHAT_MODEL` is the next fallback. Frontier
+modes intentionally do not use a broad `OPENAI_MODEL` override; they are pinned
+to the explicit defaults unless the mode-specific variable is set.
 
 Unknown mode strings are rejected with `unknown_chat_mode`. On app load, the default mode prefers Frontier Instant when that route is enabled, then falls back to the first enabled configured route.
 
@@ -54,9 +59,28 @@ Private modes call OpenRouter through Chat Completions. Task Node sends:
 
 Image attachments are sent as `image_url` parts. Text attachments are sent as text parts. File and PDF attachments are sent as file parts. PDFs add the OpenRouter `file-parser` plugin and use `OPENROUTER_PDF_ENGINE` or `cloudflare-ai`.
 
+## DeepSeek API Direct Route
+
+Discount Thinking calls DeepSeek directly through the OpenAI-compatible Chat
+Completions API:
+
+- `model=deepseek-v4-pro`.
+- `thinking.type="enabled"` and `reasoning_effort="high"`.
+- `max_tokens=4096`.
+- `stream_options.include_usage=true` for streaming calls so the final chunk
+  includes usage.
+- Text attachments are decoded into the user message. Image, PDF, and binary
+  attachments are not sent to DeepSeek API Direct; the request includes a
+  notice naming the omitted attachment instead.
+
+This route is labeled `DeepSeek API Direct` in user-facing provider/status copy.
+It is not the OpenRouter ZDR route. It exists for lower-cost direct DeepSeek V4
+Pro reasoning when the user does not need ZDR routing or multimodal file
+inspection.
+
 ## Shared Chat Spirit
 
-All four chat modes use one prompt assembly boundary. `prompts/chat/task_node_instructions_v1.md` remains the operational product-truth prompt. `prompts/chat/jobs_chat_os_v1.xml` is then rendered by `server/chat-spirit-context.js` so the model's voice and judgment feel product-led without duplicating provider code. The current user message, history, and attachments remain provider messages; the Jobs XML receives only durable background slots for the context document, task projection, memory context, and pgvector Jobs retrieval.
+All chat modes use one prompt assembly boundary. `prompts/chat/task_node_instructions_v1.md` remains the operational product-truth prompt. `prompts/chat/jobs_chat_os_v1.xml` is then rendered by `server/chat-spirit-context.js` so the model's voice and judgment feel product-led without duplicating provider code. The current user message, history, and attachments remain provider messages; the Jobs XML receives only durable background slots for the context document, task projection, memory context, and pgvector Jobs retrieval.
 
 Jobs retrieval uses OpenAI `/v1/embeddings` through `server/embedding-provider.js`, defaulting to `text-embedding-3-small` with 1536 dimensions. That embedding call is internal retrieval infrastructure; it is not a chat completion provider route and does not enable web search on private modes.
 
@@ -133,10 +157,15 @@ Provider usage is normalized into the app ledger:
 
 - OpenAI usage reads `input_tokens`, `output_tokens`, `total_tokens`, and counts `web_search_call` output items.
 - OpenRouter usage reads `prompt_tokens`, `completion_tokens`, `total_tokens`, provider `cost`, and any `server_tool_use.web_search_requests`.
+- DeepSeek API Direct usage reads `prompt_tokens`, `completion_tokens`,
+  `prompt_cache_hit_tokens`, `prompt_cache_miss_tokens`, and `total_tokens`;
+  cost is computed from the configured direct DeepSeek prices because DeepSeek
+  returns token usage rather than a USD `cost` field.
 - `chat_model_runs` stores provider, model, mode, response ID, tokens, web-search calls, and cost.
 - `billing_ledger_entries` records the actual debit.
 
-The current configured rates live in `chatModePrices`. They are estimates and caps for preflight; provider-returned usage is preferred when available.
+The current configured rates live in `chatModePrices`. They are estimates and
+caps for preflight; provider-returned usage is preferred when available.
 
 Because Frontier requests may use OpenAI-hosted web search, preflight reserves the configured maximum search tool budget for Frontier modes. Actual billing still uses provider-returned token usage plus observed `web_search_call` items.
 
@@ -151,21 +180,20 @@ The Help -> System Status page renders a live Chat Model Pricing section from
 - cached live OpenRouter model metadata from
   `https://openrouter.ai/api/v1/models`;
 - cached OpenRouter endpoint prices for the OpenRouter-backed chat models;
-- a direct DeepSeek V4 Pro reference price from DeepSeek's official pricing
-  docs, explicitly marked as non-ZDR for Task Node chat.
+- direct DeepSeek V4 Pro pricing for Discount Thinking from DeepSeek's official
+  pricing docs, explicitly labeled `DeepSeek API Direct`.
 
 Configured rates and live metadata are intentionally both visible. Configured
 rates drive preflight estimates and confirmation thresholds. OpenRouter live
 metadata explains current market/provider pricing. Actual OpenRouter billing uses
 the provider-returned `usage.cost` field when present.
 
-The DeepSeek V4 Pro headline price can be misleading in the private chat
-context. OpenRouter reports the DeepSeek provider endpoint around `$0.435/M`
-input and `$0.87/M` output, matching DeepSeek's direct API docs. That endpoint is
-not the same thing as the Task Node ZDR route. Private Thinking sends
-`provider.zdr=true`, `provider.data_collection="deny"`, and a provider allowlist,
-so eligible endpoints are the OpenRouter ZDR/provider-policy-compatible
-endpoints rather than the cheapest public endpoint.
+The DeepSeek V4 Pro headline price is now available as Discount Thinking through
+the direct DeepSeek API. It is still not the same thing as the Task Node ZDR
+route. Private Thinking sends `provider.zdr=true`,
+`provider.data_collection="deny"`, and a provider allowlist, so eligible
+endpoints are the OpenRouter ZDR/provider-policy-compatible endpoints rather
+than the cheapest public endpoint.
 
 ## Diagram
 
@@ -177,8 +205,10 @@ flowchart LR
   Preflight --> Router[Chat Router]
   Router --> OpenAI[OpenAI Responses]
   Router --> OpenRouter[OpenRouter Chat Completions]
+  Router --> DeepSeek[DeepSeek API Direct]
   OpenAI --> Ledger[Usage Ledger]
   OpenRouter --> Ledger
+  DeepSeek --> Ledger
   Ledger --> Memory[Async Memory Queue]
 ```
 
@@ -193,12 +223,16 @@ flowchart LR
 - [OpenRouter web search server tool](https://openrouter.ai/docs/guides/features/server-tools/web-search)
 - [OpenRouter Qwen3.7 Max model page](https://openrouter.ai/qwen/qwen3.7-max)
 - [OpenRouter model metadata API](https://openrouter.ai/api/v1/models)
+- [DeepSeek chat completions](https://api-docs.deepseek.com/api/create-chat-completion)
+- [DeepSeek models and pricing](https://api-docs.deepseek.com/quick_start/pricing)
 
 ## Failure Modes
 
 - Missing `OPENAI_API_KEY` disables Frontier modes.
 - Missing `OPENROUTER_API_KEY` or `OPENROUTER` disables Private modes.
+- Missing `DEEPSEEK_API_KEY` or `DEEPSEEK` disables Discount Thinking.
 - `OPENROUTER_CHAT_ENABLED=false` or `TASKNODE_ENABLE_OPENROUTER_CHAT=false` disables OpenRouter chat even when the key exists.
+- `DEEPSEEK_CHAT_ENABLED=false` or `TASKNODE_ENABLE_DEEPSEEK_CHAT=false` disables DeepSeek API Direct chat even when the key exists.
 - Provider timeout returns a provider failure, not a fake assistant answer.
 - Empty provider text is treated as an upstream failure.
 - Attachments that cannot be normalized or parsed should fail visibly before or during chat execution.

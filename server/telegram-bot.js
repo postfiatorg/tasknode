@@ -18,6 +18,7 @@ const recentUpdateIds = new Map();
 const modeOptions = [
   { code: "pi", label: "Private Instant" },
   { code: "pt", label: "Private Thinking" },
+  { code: "dt", label: "Discount Thinking" },
   { code: "fi", label: "Frontier Instant" },
   { code: "ft", label: "Frontier Thinking" },
 ];

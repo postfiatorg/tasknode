@@ -2060,34 +2060,17 @@ function ChatSurface({
               </button>
               {modelMenuOpen && !modelPickerDisabled && (
                 <div className="model-menu">
-                  <ModelGroup label="Private" />
-                  {modes
-                    .filter((mode) => mode.label.startsWith("Private"))
-                    .map((mode) => (
-                      <ModelOption
-                        key={mode.label}
-                        mode={mode}
-                        selected={mode.label === selectedMode}
-                        onClick={() => {
-                          setSelectedMode(mode.label);
-                          setModelMenuOpen(false);
-                        }}
-                      />
-                    ))}
-                  <ModelGroup label="Frontier" />
-                  {modes
-                    .filter((mode) => mode.label.startsWith("Frontier"))
-                    .map((mode) => (
-                      <ModelOption
-                        key={mode.label}
-                        mode={mode}
-                        selected={mode.label === selectedMode}
-                        onClick={() => {
-                          setSelectedMode(mode.label);
-                          setModelMenuOpen(false);
-                        }}
-                      />
-                    ))}
+                  {modes.map((mode) => (
+                    <ModelOption
+                      key={mode.label}
+                      mode={mode}
+                      selected={mode.label === selectedMode}
+                      onClick={() => {
+                        setSelectedMode(mode.label);
+                        setModelMenuOpen(false);
+                      }}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -2538,10 +2521,6 @@ function ShareModal({ onClose, thread, title }) {
   );
 }
 
-function ModelGroup({ label }) {
-  return <div className="model-group">{label}</div>;
-}
-
 function ModelOption({ mode, onClick, selected }) {
   return (
     <button className={`model-option${selected ? " selected" : ""}`} onClick={onClick} type="button">
@@ -2562,6 +2541,7 @@ function modeDescription(mode = {}) {
   const label = String(mode.label || "");
   if (label === "Private Instant") return "ZDR. Open Source. Fast.";
   if (label === "Private Thinking") return "ZDR. Open Source. More reasoning.";
+  if (label === "Discount Thinking") return "DeepSeek API Direct";
   if (label === "Frontier Instant") return "Fast frontier model";
   if (label === "Frontier Thinking") return "Deeper frontier reasoning";
   return mode.latency || mode.privacy || "";

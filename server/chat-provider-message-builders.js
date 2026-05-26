@@ -124,6 +124,45 @@ export function openRouterMessages({
   ];
 }
 
+function deepSeekAttachmentText(attachments = []) {
+  return normalizeChatAttachments(attachments)
+    .map((attachment) => {
+      if (attachment.kind === "text") return textAttachmentPrompt(attachment);
+      return `Attached file not sent to DeepSeek API Direct: ${attachment.name} (${attachment.mimeType || attachment.kind}). Use a multimodal route for image, PDF, or binary file inspection.`;
+    })
+    .join("\n\n");
+}
+
+export function deepSeekMessages({
+  conversationId,
+  message,
+  attachments = [],
+  historyMessages = null,
+  contextDocument = null,
+  memoryContext = null,
+  taskContext = null,
+  jobsEssence = "",
+}) {
+  const sourceHistory = Array.isArray(historyMessages)
+    ? historyMessages
+    : runtimeHistoryForRequestBuilder(conversationId);
+  const history = sourceHistory
+    .slice(-12)
+    .map((item) => ({
+      role: item.role === "assistant" ? "assistant" : "user",
+      content: messageTranscriptText(item),
+    }))
+    .filter((item) => item.content);
+  const attachmentText = deepSeekAttachmentText(attachments);
+  const userContent = [message, attachmentText].filter(Boolean).join("\n\n");
+
+  return [
+    { role: "system", content: taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence }) },
+    ...history,
+    { role: "user", content: userContent },
+  ];
+}
+
 export function openAiInput({ conversationId, message, attachments = [], historyMessages = null }) {
   const sourceHistory = Array.isArray(historyMessages)
     ? historyMessages

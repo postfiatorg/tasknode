@@ -41,6 +41,7 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 | --- | --- | --- | --- | --- | --- |
 | Private Instant | OpenRouter `/chat/completions` | `deepseek/deepseek-v4-flash` | Uses `CHAT_MODEL_PRIVATE_INSTANT` if set, then `OPENROUTER_MODEL`, then the default. Requires `OPENROUTER_API_KEY` or `OPENROUTER`. | Text, image, PDF, and file parts are sent through OpenRouter chat content. PDF parsing uses the `file-parser` plugin with `OPENROUTER_PDF_ENGINE` or `cloudflare-ai`. Sends `max_tokens=16384`, `reasoning.effort="none"`, `reasoning.exclude=true`, and `provider.require_parameters=true` so the fast route spends its answer budget on visible response text. Web search is intentionally disabled. | Fast private open-source chat. |
 | Private Thinking | OpenRouter `/chat/completions` | `deepseek/deepseek-v4-pro` | Uses `CHAT_MODEL_PRIVATE_THINKING` if set, then `OPENROUTER_MODEL`, then the default. Requires `OPENROUTER_API_KEY` or `OPENROUTER`. | Same attachment path as Private Instant. Adds `reasoning.effort="high"` and `provider.require_parameters=true`. Web search is intentionally disabled. | Slower private open-source reasoning. |
+| Discount Thinking | DeepSeek API Direct `/chat/completions` | `deepseek-v4-pro` | Uses `CHAT_MODEL_DISCOUNT_THINKING` if set, then `DEEPSEEK_CHAT_MODEL`, then the default. Requires `DEEPSEEK_API_KEY` or `DEEPSEEK`. | Sends the shared instruction stack, recent history, the user message, and text attachments as plain chat messages. Image, PDF, and binary attachments are not sent to DeepSeek API Direct; the model receives an attachment notice instead. Adds `thinking.type="enabled"`, `reasoning_effort="high"`, and `max_tokens=4096`. Web search is intentionally disabled. | Lower-cost direct DeepSeek reasoning when ZDR routing and multimodal attachments are not required. |
 | Frontier Instant | OpenAI `/responses` | `chat-latest` | Uses `CHAT_MODEL_FRONTIER_INSTANT` if set, otherwise the pinned default. Does not use `OPENAI_MODEL` as a broad override. Requires `OPENAI_API_KEY`. | Text, image, and file inputs are mapped to Responses API input parts. The OpenAI web search tool is available and prompt-governed. | Fast frontier chat with optional web and file understanding. |
 | Frontier Thinking | OpenAI `/responses` | `gpt-5.5` | Uses `CHAT_MODEL_FRONTIER_THINKING` if set, otherwise the pinned default. Requires `OPENAI_API_KEY`. | Same attachment path as Frontier Instant. Adds `reasoning.effort="high"`. The OpenAI web search tool is available and prompt-governed. | Deeper frontier reasoning, especially when web or files matter. |
 
@@ -50,16 +51,16 @@ Unknown mode strings are rejected with `unknown_chat_mode`. The app default pref
 
 Private modes use OpenRouter with `provider.zdr=true` and `provider.data_collection="deny"`. They also set `provider.order` and `provider.only` to the code-defined provider allowlist for the selected mode, so private requests do not route through arbitrary cheapest-provider selection. Private Instant explicitly disables reasoning output; Private Thinking explicitly requests high reasoning and excludes reasoning text from the UI. OpenRouter can support web search through server tools, but Task Node deliberately leaves that off for private modes right now.
 
+Discount Thinking uses the direct DeepSeek API. It is labeled `DeepSeek API Direct` in the model picker/status surfaces. This route is cheaper at the current direct API discount price, but it is not the OpenRouter ZDR route and should not be described as private/ZDR. User billing is calculated from DeepSeek-returned token usage and the configured direct API prices, including DeepSeek cache-hit input pricing when cache-hit tokens are reported.
+
 Frontier modes use the OpenAI Responses API with `store=false`. Task Node passes durable app history from Postgres instead of relying on OpenAI-hosted conversation state. The server exposes the hosted `web_search` tool to Frontier modes and counts observed search calls in usage billing.
 
 ## Pricing Visibility
 
 Help -> System Status includes a Chat Model Pricing section. It shows each chat
 mode's configured preflight estimate, live OpenRouter model metadata when
-available, allowed OpenRouter endpoint prices for private modes, and a direct
-DeepSeek V4 Pro reference price. The direct DeepSeek V4 Pro price explains the
-public discounted headline price, but it is not the same as the Task Node
-private/ZDR chat route.
+available, allowed OpenRouter endpoint prices for private modes, and the direct
+DeepSeek V4 Pro discount price for Discount Thinking.
 
 ## Web Search Selection
 

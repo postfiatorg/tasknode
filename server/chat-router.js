@@ -11,6 +11,7 @@ import { chatContextDocumentForAccount } from "./chat-account-context.js";
 import { jobsRetrievalForChat } from "./jobs-corpus.js";
 import { taskContextForAccount } from "./chat-task-context.js";
 import {
+  deepSeekUsage,
   fallbackUsage,
   openAiUsage,
   openRouterUsage,
@@ -28,16 +29,19 @@ export {
 import { normalizeChatAttachments } from "./chat-attachment-utils.js";
 import { buildChatContextStatus } from "./chat-context-status.js";
 import {
+  deepSeekMessages,
   openAiInput,
   openRouterMessages,
 } from "./chat-provider-message-builders.js";
 export {
+  deepSeekMessages,
   openAiInput,
   openRouterMessages,
 } from "./chat-provider-message-builders.js";
 
 const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
+const defaultDeepSeekBaseUrl = "https://api.deepseek.com";
 const providerTimeoutMs = Number(process.env.CHAT_PROVIDER_TIMEOUT_MS || 45000);
 
 export const chatModePrices = {
@@ -58,6 +62,16 @@ export const chatModePrices = {
     maxOutputTokens: 4096,
     reasoningEffort: "high",
     providerOrder: ["novita", "atlas-cloud", "siliconflow", "deepinfra"],
+  },
+  "Discount Thinking": {
+    inputUsdPerMillion: 0.435,
+    inputCacheHitUsdPerMillion: 0.003625,
+    outputUsdPerMillion: 0.87,
+    provider: "deepseek",
+    providerLabel: "DeepSeek API Direct",
+    defaultModel: "deepseek-v4-pro",
+    maxOutputTokens: 4096,
+    reasoningEffort: "high",
   },
   "Frontier Instant": {
     inputUsdPerMillion: 5,
@@ -87,9 +101,14 @@ function hasOpenRouter() {
   return Boolean(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER);
 }
 
+function hasDeepSeek() {
+  return Boolean(process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK);
+}
+
 export function chatProviderConfigured(provider) {
   if (provider === "openai") return hasOpenAi();
   if (provider === "openrouter") return hasOpenRouter();
+  if (provider === "deepseek") return hasDeepSeek();
   return false;
 }
 
@@ -100,6 +119,12 @@ function chatProviderEnabled(provider) {
       process.env.OPENROUTER_CHAT_ENABLED === "false" ||
       process.env.TASKNODE_ENABLE_OPENROUTER_CHAT === "false";
     return hasOpenRouter() && !explicitlyDisabled;
+  }
+  if (provider === "deepseek") {
+    const explicitlyDisabled =
+      process.env.DEEPSEEK_CHAT_ENABLED === "false" ||
+      process.env.TASKNODE_ENABLE_DEEPSEEK_CHAT === "false";
+    return hasDeepSeek() && !explicitlyDisabled;
   }
   return false;
 }
@@ -141,6 +166,9 @@ export function modelForMode(mode) {
   if (normalizedMode === "Frontier Instant" || normalizedMode === "Frontier Thinking") {
     return config.defaultModel;
   }
+  if (config.provider === "deepseek") {
+    return process.env.DEEPSEEK_CHAT_MODEL || config.defaultModel;
+  }
 
   return (
     (config.provider === "openai" ? process.env.OPENAI_MODEL : process.env.OPENROUTER_MODEL) ||
@@ -157,6 +185,7 @@ export function chatExecutionStatus(mode) {
   return {
     mode: normalizedMode,
     provider: config.provider,
+    providerLabel: config.providerLabel || config.provider,
     model: modelForMode(normalizedMode),
     configured,
     enabled,
@@ -168,8 +197,23 @@ export function actualChatCost(mode, usage) {
   const config = chatModeConfig(mode);
   const inputTokens = Number(usage?.inputTokens || 0);
   const outputTokens = Number(usage?.outputTokens || 0);
+  const promptCacheHitTokens = Math.max(0, Number(usage?.promptCacheHitTokens || 0));
+  const promptCacheMissTokens = Math.max(
+    0,
+    Number(
+      usage?.promptCacheMissTokens ||
+        (promptCacheHitTokens > 0 ? Math.max(0, inputTokens - promptCacheHitTokens) : 0)
+    )
+  );
+  const uncachedInputTokens = promptCacheHitTokens || promptCacheMissTokens
+    ? promptCacheMissTokens
+    : inputTokens;
+  const cachedInputCostUsd = promptCacheHitTokens && config.inputCacheHitUsdPerMillion
+    ? (promptCacheHitTokens * config.inputCacheHitUsdPerMillion) / 1_000_000
+    : 0;
   const costUsd =
-    (inputTokens * config.inputUsdPerMillion) / 1_000_000 +
+    (uncachedInputTokens * config.inputUsdPerMillion) / 1_000_000 +
+    cachedInputCostUsd +
     (outputTokens * config.outputUsdPerMillion) / 1_000_000;
 
   return Number(costUsd.toFixed(6));
@@ -262,6 +306,8 @@ export function logChatProviderError(error, context = {}) {
 
 function openRouterEmptyResponseError({
   body = null,
+  provider = "openrouter",
+  providerLabel = "OpenRouter",
   mode = "",
   model = "",
   responseId = null,
@@ -273,7 +319,7 @@ function openRouterEmptyResponseError({
   const choice = body?.choices?.[0] || {};
   const error = new Error("chat_provider_empty_response");
   error.status = 502;
-  error.provider = "openrouter";
+  error.provider = provider;
   error.mode = mode;
   error.model = model;
   error.responseId = body?.id || responseId || null;
@@ -281,7 +327,7 @@ function openRouterEmptyResponseError({
   error.upstreamProvider = body?.provider || upstreamProvider || "";
   error.finishReason = choice.finish_reason || finishReason || "";
   error.usage = body?.usage || usage || null;
-  error.providerMessage = `OpenRouter returned empty message content${
+  error.providerMessage = `${providerLabel} returned empty message content${
     error.finishReason ? ` with finish_reason=${error.finishReason}` : ""
   }.`;
   return error;
@@ -376,6 +422,44 @@ export function openAiResponseRequest({
       app: "tasknodeofficial",
       mode,
     },
+  };
+}
+
+export function deepSeekChatRequest({
+  mode,
+  model,
+  message,
+  conversationId,
+  attachments = [],
+  stream = false,
+  historyMessages = null,
+  contextDocument = null,
+  memoryContext = null,
+  taskContext = null,
+  jobsEssence = "",
+}) {
+  const config = chatModeConfig(mode);
+  return {
+    model,
+    messages: deepSeekMessages({
+      conversationId,
+      message,
+      attachments,
+      historyMessages,
+      contextDocument,
+      memoryContext,
+      taskContext,
+      jobsEssence,
+    }),
+    thinking: config.reasoningEffort ? { type: "enabled" } : { type: "disabled" },
+    reasoning_effort: config.reasoningEffort || undefined,
+    max_tokens: config.maxOutputTokens,
+    stream: stream || undefined,
+    stream_options: stream
+      ? {
+          include_usage: true,
+        }
+      : undefined,
   };
 }
 
@@ -743,6 +827,60 @@ async function executeOpenRouter({
   };
 }
 
+async function executeDeepSeek({
+  mode,
+  model,
+  message,
+  conversationId,
+  attachments = [],
+  historyMessages = [],
+  memoryContext = null,
+  contextDocument = null,
+  taskContext = null,
+  jobsEssence = "",
+}) {
+  const baseUrl = (process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "");
+  const request = {
+    mode,
+    model,
+    message,
+    conversationId,
+    attachments,
+    historyMessages,
+    contextDocument,
+    memoryContext,
+    taskContext,
+    jobsEssence,
+  };
+  const body = await fetchJson(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(deepSeekChatRequest(request)),
+  });
+  const text = outputTextFromOpenRouter(body);
+  if (!text) {
+    throw openRouterEmptyResponseError({
+      body,
+      provider: "deepseek",
+      providerLabel: "DeepSeek",
+      mode,
+      model,
+      responseModel: body?.model || model,
+    });
+  }
+
+  return {
+    provider: "deepseek",
+    model: body?.model || model,
+    responseId: body?.id || null,
+    text,
+    usage: deepSeekUsage(body, mode),
+  };
+}
+
 async function streamOpenRouter({
   mode,
   model,
@@ -848,6 +986,101 @@ async function streamOpenRouter({
   };
 }
 
+async function streamDeepSeek({
+  mode,
+  model,
+  message,
+  conversationId,
+  attachments = [],
+  historyMessages = [],
+  memoryContext = null,
+  contextDocument = null,
+  taskContext = null,
+  jobsEssence = "",
+  onDelta,
+  signal,
+}) {
+  const baseUrl = (process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "");
+  const request = {
+    mode,
+    model,
+    message,
+    conversationId,
+    attachments,
+    historyMessages,
+    contextDocument,
+    memoryContext,
+    taskContext,
+    jobsEssence,
+  };
+  const stream = await fetchEventStream(
+    `${baseUrl}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK}`,
+        "content-type": "application/json",
+        accept: "text/event-stream",
+      },
+      body: JSON.stringify(deepSeekChatRequest({ ...request, stream: true })),
+    },
+    { signal }
+  );
+
+  let text = "";
+  let responseId = null;
+  let responseModel = model;
+  let finishReason = "";
+  let usage = null;
+  let rawUsage = null;
+
+  await readEventStream(stream, async ({ data }) => {
+    if (!data || data === "[DONE]") return;
+    const chunk = JSON.parse(data);
+    responseId = chunk.id || responseId;
+    responseModel = chunk.model || responseModel;
+    if (chunk.usage) {
+      rawUsage = chunk.usage;
+      usage = deepSeekUsage(chunk, mode);
+    }
+
+    const choice = chunk.choices?.[0] || {};
+    finishReason = choice.finish_reason || finishReason;
+    const delta = choice.delta?.content;
+    if (typeof delta === "string" && delta) {
+      text += delta;
+      await onDelta?.(delta);
+    }
+
+    if (chunk.error) {
+      const error = new Error(chunk.error?.message || "provider_stream_failed");
+      error.status = chunk.error?.code || 502;
+      throw error;
+    }
+  });
+
+  const finalText = text.trim();
+  if (!finalText) {
+    throw openRouterEmptyResponseError({
+      provider: "deepseek",
+      providerLabel: "DeepSeek",
+      mode,
+      model,
+      responseId,
+      responseModel,
+      finishReason,
+      usage: rawUsage || usage,
+    });
+  }
+  return {
+    provider: "deepseek",
+    model: responseModel,
+    responseId,
+    text: finalText,
+    usage: usage || fallbackUsage({ mode, message, text: finalText }),
+  };
+}
+
 export async function executeChat({
   accountId = "",
   mode,
@@ -909,7 +1142,20 @@ export async function executeChat({
           taskContext: resolvedTaskContext,
           jobsEssence: resolvedJobsEssence,
         })
-      : await executeOpenRouter({
+      : status.provider === "deepseek"
+        ? await executeDeepSeek({
+            mode: normalizedMode,
+            model: status.model,
+            message,
+            conversationId,
+            attachments,
+            historyMessages,
+            contextDocument: resolvedContextDocument,
+            memoryContext: resolvedMemoryContext,
+            taskContext: resolvedTaskContext,
+            jobsEssence: resolvedJobsEssence,
+          })
+        : await executeOpenRouter({
           mode: normalizedMode,
           model: status.model,
           message,
@@ -1016,7 +1262,22 @@ export async function executeChatStream({
           onDelta,
           signal,
         })
-      : await streamOpenRouter({
+      : status.provider === "deepseek"
+        ? await streamDeepSeek({
+            mode: normalizedMode,
+            model: status.model,
+            message,
+            conversationId,
+            attachments,
+            historyMessages,
+            contextDocument: resolvedContextDocument,
+            memoryContext: resolvedMemoryContext,
+            taskContext: resolvedTaskContext,
+            jobsEssence: resolvedJobsEssence,
+            onDelta,
+            signal,
+          })
+        : await streamOpenRouter({
           mode: normalizedMode,
           model: status.model,
           message,

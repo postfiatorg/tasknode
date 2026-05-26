@@ -278,7 +278,7 @@ function SystemPricingCard({ mode }) {
     <article className="system-pricing-card">
       <div className="system-pricing-card-title">
         <h3>{mode.mode}</h3>
-        <span>{mode.provider}</span>
+        <span>{mode.providerLabel || mode.provider}</span>
       </div>
       <p>{mode.description}</p>
       <dl>
@@ -291,6 +291,9 @@ function SystemPricingCard({ mode }) {
           <dd>
             {formatUsdPerMillion(mode.configuredPricing?.inputUsdPerMillion)} in ·{" "}
             {formatUsdPerMillion(mode.configuredPricing?.outputUsdPerMillion)} out
+            {mode.configuredPricing?.inputCacheHitUsdPerMillion
+              ? ` · ${formatUsdPerMillion(mode.configuredPricing.inputCacheHitUsdPerMillion)} cache hit`
+              : ""}
           </dd>
         </div>
         <div>
@@ -298,7 +301,11 @@ function SystemPricingCard({ mode }) {
           <dd>
             {liveModel.inputUsdPerMillion === undefined
               ? "n/a"
-              : `${formatUsdPerMillion(liveModel.inputUsdPerMillion)} in · ${formatUsdPerMillion(liveModel.outputUsdPerMillion)} out`}
+              : `${formatUsdPerMillion(liveModel.inputUsdPerMillion)} in · ${formatUsdPerMillion(liveModel.outputUsdPerMillion)} out${
+                  liveModel.cacheReadUsdPerMillion
+                    ? ` · ${formatUsdPerMillion(liveModel.cacheReadUsdPerMillion)} cache hit`
+                    : ""
+                }`}
           </dd>
         </div>
         <div>

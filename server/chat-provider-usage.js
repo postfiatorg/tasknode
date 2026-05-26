@@ -46,6 +46,34 @@ export function openRouterUsage(body, mode) {
   };
 }
 
+export function deepSeekUsage(body, mode) {
+  const usage = body?.usage || {};
+  const inputTokens = Number(usage.prompt_tokens || usage.input_tokens || 0);
+  const outputTokens = Number(usage.completion_tokens || usage.output_tokens || 0);
+  const promptCacheHitTokens = Number(
+    usage.prompt_cache_hit_tokens ||
+      usage.prompt_tokens_details?.cached_tokens ||
+      0
+  );
+  const promptCacheMissTokens = Number(
+    usage.prompt_cache_miss_tokens ||
+      Math.max(0, inputTokens - promptCacheHitTokens)
+  );
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: Number(usage.total_tokens || inputTokens + outputTokens),
+    webSearchCalls: 0,
+    toolCostUsd: 0,
+    costUsd: actualChatCost(mode, {
+      inputTokens,
+      outputTokens,
+      promptCacheHitTokens,
+      promptCacheMissTokens,
+    }),
+  };
+}
+
 export function fallbackUsage({ mode, message, text }) {
   const inputTokens = Math.max(1, Math.ceil(String(message || "").length / 4));
   const outputTokens = Math.max(1, Math.ceil(String(text || "").length / 4));

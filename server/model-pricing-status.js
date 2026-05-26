@@ -19,6 +19,7 @@ let pricingCache = null;
 const modeDescriptions = {
   "Private Instant": "Fast ZDR OpenRouter route using DeepSeek V4 Flash with reasoning disabled.",
   "Private Thinking": "ZDR OpenRouter route using DeepSeek V4 Pro with high reasoning and an explicit provider allowlist.",
+  "Discount Thinking": "Direct DeepSeek API route using DeepSeek V4 Pro high reasoning at the current direct discount price.",
   "Frontier Instant": "OpenAI Responses route for fast frontier chat with prompt-governed web search.",
   "Frontier Thinking": "OpenAI Responses route for deeper frontier reasoning and prompt-governed web search.",
 };
@@ -59,6 +60,7 @@ function usdPerMillion(value) {
 function configuredPricing(config = {}) {
   return {
     inputUsdPerMillion: Number(config.inputUsdPerMillion || 0),
+    inputCacheHitUsdPerMillion: Number(config.inputCacheHitUsdPerMillion || 0) || null,
     outputUsdPerMillion: Number(config.outputUsdPerMillion || 0),
   };
 }
@@ -124,6 +126,21 @@ function modelSummary(model = null) {
   };
 }
 
+function directProviderModelSummary({ model = "", provider = "", config = {} } = {}) {
+  if (provider !== "deepseek") return null;
+  return {
+    id: model,
+    name: "DeepSeek-V4-Pro",
+    description: "Direct DeepSeek API model. The discount price is lower than the OpenRouter ZDR route, but this is not the Task Node private/ZDR provider path.",
+    inputUsdPerMillion: Number(config.inputUsdPerMillion || 0),
+    outputUsdPerMillion: Number(config.outputUsdPerMillion || 0),
+    cacheReadUsdPerMillion: Number(config.inputCacheHitUsdPerMillion || 0) || null,
+    contextLength: 1_000_000,
+    maxCompletionTokens: 384_000,
+    sourceUrl: "https://api-docs.deepseek.com/quick_start/pricing",
+  };
+}
+
 function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
   return Object.keys(chatModePrices).map((mode) => {
     const config = chatModePrices[mode];
@@ -135,10 +152,12 @@ function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
         if (left.allowed !== right.allowed) return left.allowed ? -1 : 1;
         return (left.outputUsdPerMillion ?? Infinity) - (right.outputUsdPerMillion ?? Infinity);
       });
-    const liveModel = modelSummary(liveByModel.get(execution.model));
+    const liveModel = modelSummary(liveByModel.get(execution.model)) ||
+      directProviderModelSummary({ model: execution.model, provider: execution.provider, config });
     return {
       mode,
       provider: execution.provider,
+      providerLabel: execution.providerLabel,
       model: execution.model,
       status: execution.status,
       configured: execution.configured,
@@ -153,7 +172,9 @@ function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
           : "",
       privacyPolicy: execution.provider === "openrouter"
         ? "OpenRouter request sets zdr=true, data_collection=deny, and mode-specific provider allowlist."
-        : "OpenAI Responses request sets store=false; Frontier modes may use prompt-governed web search.",
+        : execution.provider === "deepseek"
+          ? "Direct DeepSeek API route. Not OpenRouter ZDR; no web search; user billing is computed from DeepSeek token usage and configured direct prices."
+          : "OpenAI Responses request sets store=false; Frontier modes may use prompt-governed web search.",
       providerOrder: allowedProviders,
       liveModel,
       liveEndpoints: endpointRows,
@@ -221,20 +242,10 @@ export async function chatPricingStatus({ fetchImpl = fetch } = {}) {
     generatedAt: new Date().toISOString(),
     live,
     modes: baseModeRows(liveByModel, endpointsByModel),
-    references: [
-      {
-        id: "deepseek_direct_v4_pro",
-        title: "DeepSeek direct V4 Pro",
-        provider: "DeepSeek direct API",
-        model: "deepseek-v4-pro",
-        inputUsdPerMillion: 0.435,
-        outputUsdPerMillion: 0.87,
-        privacyPolicy: "Not a Task Node private/ZDR chat route. Used only for internal Board Manager secretary packets when configured.",
-        sourceUrl: "https://api-docs.deepseek.com/quick_start/pricing",
-      },
-    ],
+    references: [],
     notes: [
       "Configured pricing is the preflight estimate in server/chat-router.js; actual OpenRouter billing uses provider-returned usage.cost.",
+      "Direct DeepSeek billing uses the token usage returned by DeepSeek and the configured direct API token prices, including cache-hit pricing when DeepSeek reports cache-hit tokens.",
       "OpenRouter headline model pricing can refer to the cheapest provider endpoint. Task Node private modes also require zdr=true and data_collection=deny, so the cheapest endpoint may not be eligible.",
       "Endpoint metadata is public OpenRouter metadata. ZDR eligibility is enforced by the request body at execution time.",
     ],

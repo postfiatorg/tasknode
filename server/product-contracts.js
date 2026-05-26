@@ -782,11 +782,16 @@ export function chatModes() {
     return {
       label,
       provider: status.provider,
+      providerLabel: status.providerLabel,
       model: status.model,
       configured: status.configured,
       enabled: status.enabled,
       status: status.status,
-      privacy: status.provider === "openrouter" ? "Private provider route" : "Frontier provider route",
+      privacy: status.provider === "openrouter"
+        ? "Private provider route"
+        : status.provider === "deepseek"
+          ? "DeepSeek API Direct"
+          : "Frontier provider route",
       latency: config.reasoningEffort ? "Deep" : "Fast",
     };
   });

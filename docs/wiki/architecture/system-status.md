@@ -42,18 +42,24 @@ The status page pricing block separates three values that are easy to confuse:
   current model. For private modes the UI marks endpoints in the Task Node
   `provider.only` allowlist as allowed, and labels non-allowlisted DeepSeek
   endpoints as reference prices only.
+- DeepSeek API Direct price: the configured direct DeepSeek V4 Pro price for
+  Discount Thinking, including the lower cache-hit input token price when
+  DeepSeek reports cache-hit tokens.
 
 Actual chat billing prefers provider-returned usage. For OpenRouter this means
 `usage.cost` from the response wins over the configured estimate whenever it is
-present. The pricing block is therefore an audit and preflight aid, not a debit
-source of truth.
+present. For DeepSeek API Direct, DeepSeek returns token usage rather than a USD
+cost field, so Task Node computes the debit from `prompt_tokens`,
+`completion_tokens`, `prompt_cache_hit_tokens`, and `prompt_cache_miss_tokens`
+using the configured direct prices. The pricing block is therefore an audit and
+preflight aid, not a debit source of truth.
 
 Private modes also send `provider.zdr=true` and
 `provider.data_collection="deny"`. A cheap endpoint shown by OpenRouter is not
 automatically a Task Node private route unless it is compatible with that request
 policy. The direct DeepSeek V4 Pro reference price is shown because it explains
-the public `$0.87/M output` headline, but it is not a Task Node private/ZDR chat
-route.
+the public `$0.87/M output` headline and backs Discount Thinking. It is not a
+Task Node private/ZDR chat route.
 
 ## Status Rules
 

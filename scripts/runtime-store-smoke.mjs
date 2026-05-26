@@ -10,9 +10,13 @@ delete process.env.CHAT_MODEL_PRIVATE_INSTANT;
 delete process.env.CHAT_MODEL_PRIVATE_THINKING;
 process.env.OPENAI_MODEL = "generic-openai-smoke-model";
 process.env.OPENROUTER_API_KEY = "runtime-smoke-openrouter-key";
+process.env.DEEPSEEK_API_KEY = "runtime-smoke-deepseek-key";
 delete process.env.OPENROUTER_MODEL;
+delete process.env.DEEPSEEK_CHAT_MODEL;
 delete process.env.OPENROUTER_CHAT_ENABLED;
 delete process.env.TASKNODE_ENABLE_OPENROUTER_CHAT;
+delete process.env.DEEPSEEK_CHAT_ENABLED;
+delete process.env.TASKNODE_ENABLE_DEEPSEEK_CHAT;
 delete process.env.TASKNODE_PFT_FAUCET_SEED;
 delete process.env.FAUCET_SEED;
 delete process.env.PFTL_FAUCET_WSS_URL;
@@ -32,11 +36,12 @@ try {
   const {
     actualChatCost,
     chatExecutionStatus,
+    deepSeekChatRequest,
     modelForMode,
     openAiResponseRequest,
     openRouterChatRequest,
   } = await import("../server/chat-router.js");
-  const { openRouterUsage } = await import("../server/chat-provider-usage.js");
+  const { deepSeekUsage, openRouterUsage } = await import("../server/chat-provider-usage.js");
   const {
     appendUsageCredit,
     appendChatTurn,
@@ -96,8 +101,16 @@ try {
     throw new Error("Private Thinking must default to pinned OpenRouter DeepSeek V4 Pro.");
   }
 
+  if (modelForMode("Discount Thinking") !== "deepseek-v4-pro") {
+    throw new Error("Discount Thinking must default to direct DeepSeek V4 Pro.");
+  }
+
   if (!chatExecutionStatus("Private Instant").enabled) {
     throw new Error("Private Instant should be enabled when an OpenRouter key is configured.");
+  }
+
+  if (!chatExecutionStatus("Discount Thinking").enabled) {
+    throw new Error("Discount Thinking should be enabled when a DeepSeek key is configured.");
   }
 
   process.env.OPENROUTER_CHAT_ENABLED = "false";
@@ -112,6 +125,21 @@ try {
 
   if (actualChatCost("Frontier Thinking", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 35) {
     throw new Error("Frontier Thinking gpt-5.5 pricing drifted from the configured OpenAI token rates.");
+  }
+
+  if (actualChatCost("Discount Thinking", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 1.305) {
+    throw new Error("Discount Thinking direct DeepSeek V4 Pro pricing drifted from configured discount token rates.");
+  }
+
+  if (
+    actualChatCost("Discount Thinking", {
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      promptCacheHitTokens: 1_000_000,
+      promptCacheMissTokens: 0,
+    }) !== 0.873625
+  ) {
+    throw new Error("Discount Thinking direct DeepSeek cache-hit pricing drifted from configured discount token rates.");
   }
 
   const frontierSearchEstimate = chatEstimate({
@@ -156,6 +184,19 @@ try {
   }, "Private Instant");
   if (openRouterZeroCostUsage.costUsd !== 0) {
     throw new Error(`OpenRouter usage should preserve provider-returned zero cost: ${JSON.stringify(openRouterZeroCostUsage)}`);
+  }
+
+  const deepSeekDiscountUsage = deepSeekUsage({
+    usage: {
+      prompt_tokens: 1000,
+      prompt_cache_hit_tokens: 200,
+      prompt_cache_miss_tokens: 800,
+      completion_tokens: 2000,
+      total_tokens: 3000,
+    },
+  }, "Discount Thinking");
+  if (deepSeekDiscountUsage.costUsd !== 0.002089) {
+    throw new Error(`DeepSeek direct usage should use cache-aware direct API pricing: ${JSON.stringify(deepSeekDiscountUsage)}`);
   }
 
   const frontierRequest = openAiResponseRequest({
@@ -559,6 +600,38 @@ try {
     openRouterThinkingRequest.max_tokens !== 4096
   ) {
     throw new Error(`Private Thinking must use OpenRouter high reasoning with strict provider routing: ${JSON.stringify(openRouterThinkingRequest)}`);
+  }
+
+  const deepSeekThinkingRequest = deepSeekChatRequest({
+    mode: "Discount Thinking",
+    model: "deepseek-v4-pro",
+    message: "Review the note.",
+    conversationId: "runtime-smoke-deepseek-contract",
+    attachments: [
+      {
+        name: "note.txt",
+        mimeType: "text/plain",
+        size: 11,
+        dataUrl: "data:text/plain;base64,aGVsbG8gd29ybGQ=",
+      },
+      {
+        name: "pixel.png",
+        mimeType: "image/png",
+        size: 68,
+        dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      },
+    ],
+  });
+  const deepSeekUserMessage = deepSeekThinkingRequest.messages.at(-1)?.content || "";
+  if (
+    deepSeekThinkingRequest.model !== "deepseek-v4-pro" ||
+    deepSeekThinkingRequest.thinking?.type !== "enabled" ||
+    deepSeekThinkingRequest.reasoning_effort !== "high" ||
+    deepSeekThinkingRequest.max_tokens !== 4096 ||
+    !deepSeekUserMessage.includes("hello world") ||
+    !deepSeekUserMessage.includes("Attached file not sent to DeepSeek API Direct")
+  ) {
+    throw new Error(`Discount Thinking must use direct DeepSeek high reasoning with text-only attachment handling: ${JSON.stringify(deepSeekThinkingRequest)}`);
   }
 
   const openRouterSearchRequest = openRouterChatRequest({

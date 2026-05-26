@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 process.env.TASKNODE_CHAT_SPIRIT_ENABLED = "true";
 delete process.env.TASKNODE_CHAT_SPIRIT_PROMPT;
 
-const { openAiResponseRequest, openRouterChatRequest } = await import("../server/chat-router.js");
+const { deepSeekChatRequest, openAiResponseRequest, openRouterChatRequest } = await import("../server/chat-router.js");
 const { chatEstimate } = await import("../server/chat-estimate.js");
 const { chatSpiritMetadata } = await import("../server/chat-spirit-context.js");
 
@@ -143,6 +143,21 @@ for (const [mode, model] of [
   assert.equal(request.messages?.at(-1)?.content, userSentinel);
   assert.equal(request.tools, undefined, `${mode} should not enable private-mode web search`);
 }
+
+const deepSeekRequest = deepSeekChatRequest({
+  mode: "Discount Thinking",
+  model: "deepseek-v4-pro",
+  message: userSentinel,
+  conversationId: "jobs-smoke-Discount Thinking",
+  contextDocument,
+  memoryContext,
+  taskContext,
+  jobsEssence,
+});
+const deepSeekInstructions = deepSeekRequest.messages?.[0]?.content || "";
+assertJobsInstructions(deepSeekInstructions, "Discount Thinking");
+assert.equal(deepSeekRequest.messages?.at(-1)?.content, userSentinel);
+assert.equal(deepSeekRequest.reasoning_effort, "high");
 
 const estimate = chatEstimate(
   {
