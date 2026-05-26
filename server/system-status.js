@@ -106,7 +106,7 @@ async function boardManagerSecretaryPacketItem(tables, nowMs) {
   const result = await optionalQuery(
     tables,
     ["board_manager_secretary_packets"],
-    `SELECT id, status, packet_type, provider, model, created_at, superseded_at, last_error
+    `SELECT id, status, packet_type, provider, model, created_at, superseded_at, error
        FROM board_manager_secretary_packets
       WHERE scope = 'global_hive'
       ORDER BY created_at DESC, id DESC
@@ -142,7 +142,7 @@ async function boardManagerSecretaryPacketItem(tables, nowMs) {
     lastSuccessAt: row?.status === "failed" ? null : row?.created_at,
     staleAfterMs: 6 * hour,
     counts: countsFromRows(counts.rows),
-    lastError: row?.last_error || "",
+    lastError: row?.error || "",
     details: [
       row?.id && `packet=${row.id}`,
       row?.packet_type && `type=${row.packet_type}`,
