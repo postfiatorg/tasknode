@@ -1,5 +1,11 @@
-import { databaseEnabled, databaseStatus } from "./db/pool.js";
+import { databaseEnabled, databaseStatus, query } from "./db/pool.js";
 import { ethereumDepositConfigStatus } from "./ethereum-deposits.js";
+import {
+  jobsEffectiveEmbeddingModel,
+  jobsEmbeddingDimensions,
+  jobsEmbeddingModel,
+  jobsEmbeddingProvider,
+} from "./embedding-provider.js";
 import {
   boolEnv,
   countsFromRows,
@@ -760,6 +766,87 @@ async function memoryQueueItem({
   });
 }
 
+async function jobsPgvectorCorpusItem(tables) {
+  const retrievalEnabled = process.env.TASKNODE_JOBS_RETRIEVAL_ENABLED !== "false" &&
+    process.env.TASKNODE_CHAT_SPIRIT_ENABLED !== "false";
+  const expectedProvider = jobsEmbeddingProvider();
+  const expectedModel = jobsEffectiveEmbeddingModel({
+    provider: expectedProvider,
+    model: jobsEmbeddingModel(),
+  });
+  const expectedDimensions = jobsEmbeddingDimensions();
+  const tableReady = tables.get("jobs_corpus_sources") === true && tables.get("jobs_corpus_chunks") === true;
+  const extensionResult = databaseEnabled()
+    ? await query("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS vector_installed")
+    : { rows: [] };
+  const [sourceResult, chunkResult] = await Promise.all([
+    optionalQuery(
+      tables,
+      ["jobs_corpus_sources"],
+      `SELECT count(*)::int AS sources,
+              max(updated_at) AS last_source_at,
+              max(raw_size_bytes)::int AS raw_size_bytes
+         FROM jobs_corpus_sources`
+    ),
+    optionalQuery(
+      tables,
+      ["jobs_corpus_chunks"],
+      `SELECT count(*)::int AS chunks,
+              count(*) FILTER (
+                WHERE embedding_model = $1
+                  AND embedding_dimensions = $2
+              )::int AS expected_chunks,
+              count(DISTINCT embedding_model)::int AS embedding_models,
+              max(updated_at) AS last_chunk_at,
+              string_agg(DISTINCT embedding_model, ', ' ORDER BY embedding_model) AS models
+         FROM jobs_corpus_chunks`,
+      [expectedModel, expectedDimensions]
+    ),
+  ]);
+  const source = sourceResult.rows[0] || {};
+  const chunks = chunkResult.rows[0] || {};
+  const vectorInstalled = extensionResult.rows[0]?.vector_installed === true;
+  const sourceCount = Number(source.sources || 0);
+  const chunkCount = Number(chunks.chunks || 0);
+  const expectedChunkCount = Number(chunks.expected_chunks || 0);
+  let status = { status: "unknown", label: "No corpus status" };
+  if (!retrievalEnabled) status = { status: "disabled", label: "Disabled" };
+  else if (!databaseEnabled()) status = { status: "unknown", label: "Database disabled" };
+  else if (!vectorInstalled) status = { status: "critical", label: "PGVector missing" };
+  else if (!tableReady) status = { status: "critical", label: "Corpus tables missing" };
+  else if (sourceCount === 0 || chunkCount === 0) status = { status: "warning", label: "Corpus empty" };
+  else if (expectedChunkCount === 0) status = { status: "warning", label: "Embedding model mismatch" };
+  else status = { status: "ok", label: "Corpus ready" };
+  const lastUpdated = chunks.last_chunk_at || source.last_source_at || null;
+  return item({
+    id: "jobs_pgvector_corpus",
+    category: "memory",
+    title: "Jobs PGVector Corpus",
+    description: "Postgres pgvector corpus used for Jobs-style chat retrieval context.",
+    owner: "app process and Postgres",
+    trigger: "chat request retrieval and operator ingestion",
+    cadence: "request-time plus operator ingest",
+    status: status.status,
+    statusLabel: status.label,
+    lastRunAt: lastUpdated,
+    lastSuccessAt: status.status === "ok" ? lastUpdated : null,
+    counts: {
+      sources: sourceCount,
+      chunks: chunkCount,
+      expected_model_chunks: expectedChunkCount,
+      embedding_models: Number(chunks.embedding_models || 0),
+    },
+    details: [
+      `pgvector=${vectorInstalled ? "installed" : "missing"}`,
+      `expectedModel=${expectedModel}`,
+      `expectedDimensions=${expectedDimensions}`,
+      `provider=${expectedProvider}`,
+      chunks.models && `models=${chunks.models}`,
+      source.raw_size_bytes && `rawSizeBytes=${source.raw_size_bytes}`,
+    ],
+  });
+}
+
 async function dailyAirdropItem(tables, nowMs) {
   const [latest, runCounts, issuanceCounts] = await Promise.all([
     optionalQuery(
@@ -883,6 +970,7 @@ async function categoryItems(tables, nowMs) {
   ];
 
   const memoryItems = [
+    await jobsPgvectorCorpusItem(tables),
     await memoryQueueItem({
       tables,
       id: "chat_turn_memory",
@@ -943,8 +1031,8 @@ async function categoryItems(tables, nowMs) {
     },
     {
       id: "memory",
-      title: "Memory, Profiles, And Airdrops",
-      summary: "Chat memory, routing profiles, and daily airdrop scoring/issuance.",
+      title: "Memory, Retrieval, Profiles, And Airdrops",
+      summary: "Jobs pgvector retrieval, chat memory, routing profiles, and daily airdrop scoring/issuance.",
       items: memoryItems,
     },
   ];

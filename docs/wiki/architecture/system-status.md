@@ -20,8 +20,9 @@ a matching Architecture page.
   or reward work.
 - PFTL and RPCs: hot wallet sync, archive sync, websocket watcher, reducer,
   retention, current PFTL RPC/WSS, history RPC/WSS, and Ethereum deposit RPC.
-- Memory, Profiles, and Airdrops: turn memory, deep memory, Network Task
-  routing profiles, and daily airdrop scoring or issuance.
+- Memory, Retrieval, Profiles, and Airdrops: Jobs pgvector retrieval, turn
+  memory, deep memory, Network Task routing profiles, and daily airdrop scoring
+  or issuance.
 
 ## Status Rules
 

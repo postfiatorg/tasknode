@@ -24,6 +24,7 @@ import hiveActiveProjectsHelper from "../../../docs/wiki/architecture/hive-activ
 import hiveSecretaryWorker from "../../../docs/wiki/architecture/hive-secretary-worker.md?raw";
 import executionMandate from "../../../docs/wiki/architecture/execution-mandate.md?raw";
 import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
+import jobsPgvectorCorpus from "../../../docs/wiki/architecture/jobs-pgvector-corpus.md?raw";
 import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import networkTaskRecovery from "../../../docs/wiki/architecture/network-task-recovery.md?raw";
 import networkTaskGenerationWorker from "../../../docs/wiki/architecture/network-task-generation-worker.md?raw";
@@ -475,6 +476,7 @@ export const SYSTEM_STATUS_DOC_LINKS = {
     label: "Architecture: PFTL History RPC And Archive WSS",
   },
   ethereum_deposit_rpc: { slug: "ethereum-deposit-rpc", label: "Architecture: Ethereum Deposit RPC" },
+  jobs_pgvector_corpus: { slug: "jobs-pgvector-corpus", label: "Architecture: Jobs PGVector Corpus" },
   chat_turn_memory: { slug: "turn-memory-worker", label: "Architecture: Turn Memory Worker" },
   deep_memory: { slug: "deep-memory-worker", label: "Architecture: Deep Memory Worker" },
   network_task_profile: {
@@ -665,6 +667,12 @@ export const DOC_GROUPS = [
         title: "Ethereum Deposit RPC",
         summary: "Deposit top-up RPC configuration and request-time status.",
         markdown: ethereumDepositRpc,
+      },
+      {
+        slug: "jobs-pgvector-corpus",
+        title: "Jobs PGVector Corpus",
+        summary: "Postgres pgvector retrieval corpus, Fly shape, and repair path.",
+        markdown: jobsPgvectorCorpus,
       },
       {
         slug: "turn-memory-worker",

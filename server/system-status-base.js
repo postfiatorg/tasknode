@@ -18,6 +18,8 @@ const trackedTables = [
   "hive_project_planning_jobs",
   "hive_secretary_jobs",
   "hive_secretary_reports",
+  "jobs_corpus_chunks",
+  "jobs_corpus_sources",
   "network_task_generation_jobs",
   "network_task_profile_jobs",
   "network_task_profiles",

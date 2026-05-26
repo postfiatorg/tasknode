@@ -23,7 +23,7 @@ const { routePolicyForPath } = await import("../server/route-policies.js");
 const status = await readSystemStatus();
 assert.equal(status.ok, true);
 assert.equal(status.database.enabled, false);
-assert.equal(status.summary.total, 19);
+assert.equal(status.summary.total, 20);
 
 const categories = new Map(status.categories.map((category) => [category.id, category]));
 assert.deepEqual([...categories.keys()], ["hive", "task_engine", "pftl", "memory"]);
@@ -40,6 +40,7 @@ for (const id of [
   "pftl_current_rpc",
   "pftl_history_rpc",
   "ethereum_deposit_rpc",
+  "jobs_pgvector_corpus",
   "chat_turn_memory",
   "deep_memory",
   "network_task_profile",
