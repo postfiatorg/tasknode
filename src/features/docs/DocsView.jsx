@@ -641,7 +641,7 @@ function normalizeTableRow(row, count) {
 
 function renderInline(text) {
   const tokens = [];
-  const pattern = /(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*)/g;
+  const pattern = /(\[[^\]]+\]\((?:https?:\/\/|#)[^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*)/g;
   let lastIndex = 0;
   let match;
 
@@ -649,9 +649,13 @@ function renderInline(text) {
     if (match.index > lastIndex) tokens.push(text.slice(lastIndex, match.index));
     const token = match[0];
     if (token.startsWith("[")) {
-      const link = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+      const link = token.match(/^\[([^\]]+)\]\(((?:https?:\/\/|#)[^)\s]+)\)$/);
       tokens.push(
-        link ? (
+        link && link[2].startsWith("#") ? (
+          <a href={link[2]} key={tokens.length}>
+            {link[1]}
+          </a>
+        ) : link ? (
           <a href={link[2]} key={tokens.length} rel="noreferrer" target="_blank">
             {link[1]}
           </a>

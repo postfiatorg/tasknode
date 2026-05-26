@@ -66,6 +66,7 @@ import pseudonymousIdentityAndNamespacePlan from "../../../docs/wiki/plans/pseud
 import publicProfileRealDataPlan from "../../../docs/wiki/plans/public-profile-real-data-plan.md?raw";
 import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-engine-speedrun.md?raw";
 import taskEngineUxIntegrationPlan from "../../../docs/wiki/plans/task-engine-ux-integration-plan.md?raw";
+import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-production-scope.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import jobsChatOsPrompt from "../../../prompts/chat/jobs_chat_os_v1.xml?raw";
 import contextEditJobsPrompt from "../../../prompts/context/context_edit_jobs_v1.xml?raw";
@@ -145,7 +146,7 @@ const PROMPT_SOURCES = [
     family: "Chat",
     title: "Jobs Chat Spirit",
     path: "prompts/chat/jobs_chat_os_v1.xml",
-    summary: "Shared XML operating prompt that gives all four chat modes the Jobs-style product voice while preserving Task Node context, memory, and task awareness.",
+    summary: "Shared XML operating prompt that gives all exposed chat modes the Jobs-style product voice while preserving Task Node context, memory, and task awareness.",
     status: "Active by default; disabled only when TASKNODE_CHAT_SPIRIT_ENABLED=false",
     usedBy: [
       "server/chat-spirit-context.js::formatChatSpiritContext",
@@ -550,7 +551,7 @@ export const DOC_GROUPS = [
       {
         slug: "auth-and-connected-accounts",
         title: "Auth And Connected Accounts",
-        summary: "Email, Telegram, Discord, and provider linking.",
+        summary: "Email, GitHub, Telegram, X, wallet identity, and out-of-scope Discord notes.",
         markdown: authAndConnectedAccounts,
       },
       {
@@ -746,6 +747,12 @@ export const DOC_GROUPS = [
   {
     title: "Plans",
     pages: [
+      {
+        slug: "task-node-production-scope",
+        title: "Task Node Production Scope",
+        summary: "Launch-readiness scope across login, funding, context, chat, Hive, Telegram, tasks, and operations.",
+        markdown: taskNodeProductionScope,
+      },
       {
         slug: "code-review-burndown",
         title: "Code Review Burndown",

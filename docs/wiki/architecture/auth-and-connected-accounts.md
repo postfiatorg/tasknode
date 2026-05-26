@@ -1,6 +1,6 @@
 # Auth And Connected Accounts
 
-Task Node has one account cloud per user. Email, GitHub, Telegram, Discord, wallets, and future providers should attach to that account cloud instead of creating isolated identities.
+Task Node has one account cloud per user. Email, GitHub, Telegram, X, wallets, and future providers should attach to that account cloud instead of creating isolated identities. Discord OAuth code exists as an implemented integration, but Discord is out of the initial production launch scope until the product scope explicitly promotes it.
 
 The current UI surface is Settings -> Connected accounts. The backend contract is `authProviders`, `authStart`, and `authCallback` in `server/product-contracts.js`.
 
@@ -31,7 +31,7 @@ Telegram login and linking are implemented through Telegram Login Widget:
 
 Telegram can only render the Login Widget on the domain configured in BotFather with `/setdomain`. Localhost is not a reliable test domain for the real Telegram widget. If the app runs on `localhost` while BotFather is configured for a public domain, Telegram returns `Bot domain invalid`. Task Node now blocks that path before loading the widget and returns `telegram_widget_domain_mismatch` with the expected domain.
 
-Discord login and linking are implemented through OAuth:
+Discord login and linking are implemented through OAuth, but Discord is out of the initial production launch scope:
 
 1. `GET /api/auth/start/discord` creates an OAuth state row and state cookie.
 2. The route redirects to Discord OAuth with `identify email`.
@@ -76,7 +76,7 @@ The handle boundary is `server/account-identity.js`:
 
 Provider aliases are attached by the auth linking flow but remain private unless the user discloses them through `POST /api/profile/identity/alias`. `applyAccountAliasVisibility` stores per-provider disclosure settings. `accountIdentityProfile` returns all linked aliases to the signed-in user and returns `publicAliases` only for aliases with explicit public visibility and a public handle or verified-badge disclosure.
 
-This means X, GitHub, Telegram, Discord, email, and wallet identity can be used for login, recovery, anti-sybil signals, and operator trust without forcing public correlation. A user who wants public continuity can still choose a matching Hive handle and disclose the verified provider alias.
+This means X, GitHub, Telegram, email, wallet identity, and any explicitly enabled future provider can be used for login, recovery, anti-sybil signals, and operator trust without forcing public correlation. Discord should not be presented as a production launch promise while it remains out of scope. A user who wants public continuity can still choose a matching Hive handle and disclose the verified provider alias.
 
 The old pseudonymous identity plan is retained under `Implemented / Deprecated Plans`. The current product contract is split between this architecture page and `Surfaces -> Profile`.
 

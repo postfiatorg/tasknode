@@ -21,6 +21,7 @@ Telegram exposes the same chat modes as the web chat surface:
 
 - Private Instant
 - Private Thinking
+- Discount Thinking
 - Frontier Instant
 - Frontier Thinking
 
