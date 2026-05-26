@@ -4,6 +4,36 @@ Profile is the member-facing trust surface. It should explain what the system kn
 
 The profile is account-scoped. Wallets can change over time, but the profile belongs to the signup identity cloud, not to a single current wallet.
 
+## Hive Handle And Public Aliases
+
+The pseudonymous identity plan is now retired as a plan. The implemented v1 surface is a small account-level identity control: each signed-in account can choose one public Hive handle and can decide which linked provider aliases are public.
+
+Runtime endpoints:
+
+- `GET /api/profile/identity`
+- `GET /api/profile/handle/availability?handle=<handle>`
+- `POST /api/profile/handle`
+- `POST /api/profile/identity/alias`
+
+The Hive handle is the public routing name for the account. It is normalized by the server, globally unique within Task Node, checked against reserved names, and stored on the internal account record rather than on a wallet. Provider usernames are never copied into the public Hive namespace unless the user explicitly chooses that handle and it is available.
+
+Linked provider aliases remain private by default. The user can make an alias public from the identity controls and can independently choose whether the public alias shows the provider handle and a verified badge. Public profile reads receive only the explicit public alias set from `identity.publicAliases`; private provider identities are excluded from public profile copy, task rows, Hive cards, and Board Manager-facing public display state.
+
+Current UI entry points:
+
+- first-sign-in handle dialog from `src/features/identity/IdentityControls.jsx`;
+- Settings identity controls from the same component;
+- Profile identity card from `src/features/profile/ProfileIdentityCard.jsx`.
+
+Implementation references:
+
+- `server/account-identity.js`: handle normalization, reserved-name checks, availability, suggestions, and alias disclosure shaping;
+- `server/profile-routes.js`: identity, handle, alias, and public profile routes;
+- `server/runtime-store.js`: account-scoped persistence and linked-provider state;
+- `server/repositories/profile-public.js`: public profile packet shaping with explicit public aliases only.
+
+Not implemented in v1: public member search, Hive mention resolution, provider-photo import, and admin impersonation review queues. Those are future product work, not active Plans pages.
+
 ## Public Profile
 
 The public profile is now a read model over deterministic account metrics plus one generated profile snapshot.

@@ -1,6 +1,8 @@
 # Network Task Agentic Objects
 
-Status: decision-ready specification for implementation review.
+Status: archived design reference, not an active plan. Current implementation truth lives in `Surfaces -> Tasks`, `Surfaces -> Hive`, `Architecture -> Network Task Generation Worker`, `Architecture -> Network Task Recovery`, `Architecture -> Task Lifecycle`, and `Architecture -> Task Review And Reward Worker`.
+
+This page is retained as a design reference. Do not use it as the current Network Task contract.
 
 This document defines how Task Node Network Tasks should behave as persistent agentic objects. It is scoped to the current Task Node architecture: the Board Manager allocates work, the network-task generation worker turns that allocation into a normal PFTL task request, the task engine publishes a signed task offer, and task lifecycle state is replayed from PFTL into Postgres projections for fast app reads.
 

@@ -4,7 +4,7 @@ Status: deprecated implemented v0 plan. Current product truth lives in `Surfaces
 
 This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, archive projects, refresh project documents, route tasks, or do nothing.
 
-Current professionalism diagnosis: [Hive Board Professionalism Diagnosis](./hive-board-professionalism-diagnosis.md). That one-pager is the review standard for active board semantics, fake count prevention, reversible archives, and resurrection behavior.
+Historical professionalism diagnosis: [Hive Board Professionalism Diagnosis](./hive-board-professionalism-diagnosis.md). The current review standard for active board semantics, fake count prevention, reversible archives, and resurrection behavior lives in `Surfaces -> Hive` and `Architecture -> Board Manager`.
 
 ## Product Role
 
@@ -512,7 +512,7 @@ Current implementation:
 
 This action does not create tasks. It creates an operator-readable briefing that later task generation can use as input.
 
-Detailed implementation plan: `docs/wiki/plans/agent-managed-about-panels.md`.
+Historical implementation plan: `docs/wiki/plans/agent-managed-about-panels.md`. Current product-document behavior lives in `Surfaces -> Hive`.
 
 ### `assign_contributor`
 
@@ -751,11 +751,12 @@ The Board Manager needs an operating prompt or skill-like instruction set that l
 
 This should live in the repository, not only in an external Codex profile.
 
-Planned files:
+Implemented files:
 
 - `prompts/hive/board_manager_v1.md`: model-facing Board Manager operating prompt.
-- `docs/wiki/plans/board-manager.md`: human-readable product and architecture plan.
-- later, if Codex Exec uses local skills directly, a repo-specific skill can mirror the same action registry.
+- `docs/wiki/architecture/board-manager.md`: current human-readable architecture and operator runbook.
+- `docs/wiki/plans/board-manager.md`: retained historical product and architecture plan.
+- Repo-specific runtime instructions remain outside this user-facing Help surface.
 
 The prompt should never contain one-off examples as rules. Concrete examples are test evidence. The action registry and code validation are the product boundary.
 

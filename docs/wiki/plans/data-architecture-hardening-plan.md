@@ -1,5 +1,9 @@
 # Data Architecture Hardening Plan
 
+Status: deprecated implemented hardening milestone. Current product truth lives in `Architecture -> Database`, `Architecture -> PFTL Transaction Cache`, `Architecture -> PFTL Cache Reducer`, `Architecture -> PFTL Cache Retention`, and `Architecture -> System Status`.
+
+This page is retained as implementation history. Do not use it as the current data architecture contract.
+
 ## Purpose
 
 Task Node Official cannot rely on lucky cache behavior. PFTL and IPFS are the canonical record for wallet-backed work. Postgres is the fast read model. The architecture is only trustworthy if the read model can be rebuilt, audited, repaired, and proven consistent with the chain-derived event stream.

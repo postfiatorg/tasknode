@@ -1,5 +1,7 @@
 # Code Review Burndown
 
+Status: active review queue. This is the only active page in the Plans section because it tracks doc-to-code verification work that is still intentionally open.
+
 The Help docs are product promises. This burndown maps each visible Help page to
 a focused code review plan so the team can review implementation against the
 surface area users can see.

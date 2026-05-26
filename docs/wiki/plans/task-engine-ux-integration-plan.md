@@ -1,5 +1,9 @@
 # Task Engine UX Integration Plan
 
+Status: deprecated implemented v1 plan. Current product truth lives in `Surfaces -> Tasks`, `Architecture -> Task Lifecycle`, `Architecture -> Task Async Engine`, `Architecture -> Task Generation Worker`, and `Architecture -> Task Review And Reward Worker`.
+
+This page is retained as implementation history. Do not use it as the current task-engine contract.
+
 ## Purpose
 
 Make Tasks a real, understandable product surface rather than a collection of hidden protocol events.

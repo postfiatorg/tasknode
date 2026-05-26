@@ -1,8 +1,12 @@
 # Hive Board Professionalism Diagnosis
 
+Status: deprecated implemented guardrail. Current product truth lives in `Surfaces -> Hive`, `Architecture -> Board Manager`, `Architecture -> Hive Active Projects Helper`, and the status-linked architecture pages.
+
 Date: 2026-05-26
 
-This is the current professional bar for the Hive board and Board Manager. The recent failure was not one bad model choice. It was a product-state boundary failure: the system allowed planning language, model-selected archives, and live execution state to collapse into the same visible board semantics.
+This page is retained as the historical diagnosis that drove the current guardrails. Do not use it as the current Hive contract.
+
+This was the diagnosis that established the current professional bar for the Hive board and Board Manager. The failure was not one bad model choice. It was a product-state boundary failure: the system allowed planning language, model-selected archives, and live execution state to collapse into the same visible board semantics.
 
 ## Diagnosis
 

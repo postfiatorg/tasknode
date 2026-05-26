@@ -51,9 +51,9 @@ The Hive Mind Agent card renders that decision audit directly. A run should show
 
 ## Board Manager Target
 
-The Board Manager is the planned system operator for Hive. It is a leased model decision worker with a bounded action registry. It should run periodically or after meaningful state changes, claim a single `global_hive` lease, inspect the current board state, and choose one action.
+The Board Manager is the system operator for Hive. It is a leased model decision worker with a bounded action registry. It runs periodically or after meaningful state changes, claims a single `global_hive` lease, inspects the current board state, and chooses one action.
 
-The active board professionalism standard is documented in [Hive Board Professionalism Diagnosis](../plans/hive-board-professionalism-diagnosis.md). Active board counts must be live execution counts, not planned or scoped counts. Board Manager archives are reversible unless an explicit operator archive lock is present.
+The active board professionalism standard now lives in this Hive surface page, [Architecture -> Board Manager](../architecture/board-manager.md), and [Architecture -> Hive Active Projects Helper](../architecture/hive-active-projects-helper.md). Active board counts must be live execution counts, not planned or scoped counts. Board Manager archives are reversible unless an explicit operator archive lock is present. The original diagnosis is retained only under `Implemented / Deprecated Plans`.
 
 V0 now builds the current Hive source packet, optionally compresses it through a DeepSeek secretary packet, calls the configured decision provider, validates the returned action against `schemas/board-manager-action.schema.json`, and records the decision in `board_manager_runs` when Postgres is enabled. The default local and production-shaped decision model is OpenRouter Chat Completions with `qwen/qwen3.7-max`, `high` reasoning, structured JSON output, `data_collection="deny"`, and usage reporting. OpenAI Responses with `gpt-5.5-pro` remains available through `TASKNODE_BOARD_MANAGER_PROVIDER=openai`. It defaults to dry-run for app mutations, and executes supported action hooks only when the executor is run with `--execute`. Codex Exec remains available as a manual repo/operator tool, but it is no longer the normal Board Manager decision engine.
 

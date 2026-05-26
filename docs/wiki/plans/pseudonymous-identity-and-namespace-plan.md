@@ -1,7 +1,9 @@
 # Pseudonymous Identity And Namespace Plan
 
-Status: planning
+Status: deprecated partially implemented v1 plan. Hive handle selection, handle availability, provider alias privacy defaults, and explicit alias disclosure are implemented and documented in `Surfaces -> Profile` and `Architecture -> Auth And Connected Accounts`. Public search, mention resolution, and admin impersonation review remain future product work and are not active Plans work.
 Source: X login works in local Docker. User concern: public handle collisions and motion detection for large external accounts.
+
+This page is retained as implementation history and future design reference. Do not use it as the current identity contract.
 
 ## Objective
 
@@ -405,35 +407,35 @@ Default for new aliases:
 - Do not use external handles as stable account keys.
 - Do not expose "signed in with X" in public activity.
 
-## Open Questions
+## Future Questions
 
 - Should Hive handles be transferable after a deletion window?
 - Should high-risk impersonation handles require wallet age, reward history, or admin approval?
 - Should public trust badges distinguish `verified identity` from `verified social` without naming the provider?
 - Should a disclosed alias be revocable from old public snapshots immediately or after cache expiry?
 
-## Reviewer To Do List
+## Historical Review Checklist
 
-Review implementation against this document (pseudonymous identity and namespace plan). Mark each item when verified.
+The v1 implementation covers server-side handle normalization, reserved-name checks, uniqueness, provider-user-id auth linking, explicit alias visibility, and public profile alias filtering. The remaining search, mention, rate-limit, and admin-review items below are future product work, not active Plans work.
 
 ### Memory Efficiency
-- [ ] Public snapshots are generated from bounded profile inputs and do not load full provider identity history.
-- [ ] Search and mention indexes use handle/projection tables, not full account scans.
+- Implemented: public snapshots are generated from bounded profile inputs and receive only explicit public aliases.
+- Future: search and mention indexes should use handle/projection tables when those surfaces exist.
 
 ### Code Quality
-- [ ] Hive handle normalization and uniqueness live server-side.
-- [ ] Provider auth uses immutable provider user ids, not mutable handles.
-- [ ] Alias visibility is explicit in the data model and API.
+- Implemented: Hive handle normalization and uniqueness live server-side.
+- Implemented: provider auth uses immutable provider user ids, not mutable handles.
+- Implemented: alias visibility is explicit in the data model and API.
 
 ### Coherence
-- [ ] Signup, Settings, public profile, Hive search, and Board Manager all use the same identity model.
-- [ ] This plan aligns with `docs/wiki/architecture/auth-and-connected-accounts.md` and `docs/wiki/plans/profile-and-hive-mind-plan.md`.
+- Implemented: signup, Settings, public profile, and Board Manager-facing public display use the same identity model.
+- Future: Hive search and mentions should use the same Hive handle model when implemented.
 
 ### Bloat
-- [ ] Public profile renders only necessary identity and trust signals.
-- [ ] Advanced admin-only identity fields do not leak into ordinary UX.
+- Implemented: public profile renders only necessary identity and explicit trust signals.
+- Implemented: advanced admin-only identity fields do not leak into ordinary UX.
 
 ### Security
-- [ ] Private aliases are not returned in public API responses.
-- [ ] Hidden provider handles do not appear in logs, metadata, snapshots, task packets, or search results.
-- [ ] Handle changes are audited and rate-limited.
+- Implemented: private aliases are not returned in public profile API responses.
+- Future: hidden provider handles must stay out of future logs, metadata, snapshots, task packets, and search results.
+- Future: handle changes should gain explicit audit and rate-limit controls before broader public namespace use.

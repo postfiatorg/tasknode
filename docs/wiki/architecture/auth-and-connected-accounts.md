@@ -63,6 +63,23 @@ The rules are:
 
 This is now the boundary Telegram bot chat uses: Telegram proves the sender with `message.from.id`, and Task Node only runs account-scoped chat when that Telegram identity is already attached to a Task Node account.
 
+## Public Hive Handle And Alias Visibility
+
+Auth providers prove account ownership; they are not the public namespace. The public namespace is the account-scoped Hive handle returned by `GET /api/profile/identity` and saved through `POST /api/profile/handle`.
+
+The handle boundary is `server/account-identity.js`:
+
+- `normalizeHiveHandle` lowercases and normalizes user input into the allowed handle character set;
+- `checkHiveHandleAvailability` enforces length, reserved names, uniqueness, and current-account reuse;
+- `suggestHiveHandles` derives available pseudonymous suggestions without automatically claiming a provider username;
+- `applyAccountHiveHandle` writes the chosen handle and optional public display name to the account record.
+
+Provider aliases are attached by the auth linking flow but remain private unless the user discloses them through `POST /api/profile/identity/alias`. `applyAccountAliasVisibility` stores per-provider disclosure settings. `accountIdentityProfile` returns all linked aliases to the signed-in user and returns `publicAliases` only for aliases with explicit public visibility and a public handle or verified-badge disclosure.
+
+This means X, GitHub, Telegram, Discord, email, and wallet identity can be used for login, recovery, anti-sybil signals, and operator trust without forcing public correlation. A user who wants public continuity can still choose a matching Hive handle and disclose the verified provider alias.
+
+The old pseudonymous identity plan is retained under `Implemented / Deprecated Plans`. The current product contract is split between this architecture page and `Surfaces -> Profile`.
+
 ## Provider Configuration
 
 Telegram requires:

@@ -1,7 +1,9 @@
 # Profile and Hive Mind Plan
 
-Status: planning
+Status: deprecated implemented v1 plan. Current product truth lives in `Surfaces -> Profile`, `Surfaces -> Hive`, `Surfaces -> Daily Airdrop`, `Surfaces -> Memory`, `Architecture -> Board Manager`, `Architecture -> Daily Airdrop Worker`, and `Architecture -> Network Task Profile Worker`.
 Source references: PFTasks profile and network context systems were reviewed as historical reference only. This plan is for Task Node Official.
+
+This page is retained as implementation history. Do not use it as the current profile or Hive contract.
 
 ## Objective
 
@@ -35,10 +37,10 @@ PFTasks also had patterns we should not carry forward:
 
 The Task Node Official version should keep the durable concepts and drop the excess.
 
-Identity namespace and privacy rules are specified in
-`docs/wiki/plans/pseudonymous-identity-and-namespace-plan.md`. Public Hive
-handles are the routing namespace; linked provider identities are verified
-aliases that remain private by default.
+Identity namespace and privacy rules are now documented in `Surfaces -> Profile`
+and `Architecture -> Auth And Connected Accounts`. Public Hive handles are the
+routing namespace; linked provider identities are verified aliases that remain
+private by default.
 
 ## Product Shape
 

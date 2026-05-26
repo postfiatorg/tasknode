@@ -1,6 +1,8 @@
 # Making Functional Network Tasks
 
-Status: first implementation slice live in code; local Docker protocol smoke completed through reward.
+Status: deprecated implemented Network Task bridge. Current product truth lives in `Surfaces -> Tasks`, `Surfaces -> Hive`, `Architecture -> Board Manager`, `Architecture -> Network Task Generation Worker`, `Architecture -> Network Task Recovery`, `Architecture -> Task Generation Worker`, and `Architecture -> Task Review And Reward Worker`.
+
+This page is retained as implementation history. Do not use it as the current Network Task contract.
 
 This plan supersedes the earlier broad Hive Mind planning for Network Tasks. The Board Manager plan now supersedes the direct-worker cadence described in earlier versions of this document. The current Hive UX remains the starting point for the product ontology, but the Board Manager owns when the system updates context, creates projects, refreshes project documents, assigns contributors, and initiates Network Tasks.
 
