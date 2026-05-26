@@ -650,6 +650,46 @@ async function claimUsdcTopUpInitiationGift({ account = null, entry = null, acco
   }
 }
 
+async function resolveUsdcTopUpInitiationGiftStatus({ account = null, entry = null, accountId = "" } = {}) {
+  const depositAccount = account || getEthereumDepositAccount({ accountId });
+  if (!depositAccount?.accountId) return null;
+
+  const qualification = await resolveUsdcTopUpGrantQualification({ account: depositAccount, entry });
+  if (!qualification) return null;
+
+  const linkedWallet = getLinkedWallet({ accountId: depositAccount.accountId });
+  if (linkedWallet.status !== "linked" || !linkedWallet.address) return null;
+  if (!linkedWallet.walletCreatedInAccount) return null;
+
+  const eligibility = await resolveWalletInitiationGrantStatus({
+    accountId: depositAccount.accountId,
+    walletAddress: linkedWallet.address,
+    source: "usdc_top_up",
+  });
+
+  if (!eligibility.eligible) {
+    if (["account_registered", "wallet_registered"].includes(eligibility.reason)) return null;
+    return publicTopUpGrantResult({
+      ok: false,
+      status: "not_eligible",
+      reason: eligibility.reason || "usdc_top_up_grant_not_eligible",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: eligibility.message,
+      grant: eligibility.grant || null,
+    });
+  }
+
+  return publicTopUpGrantResult({
+    ok: false,
+    status: "local_vault_required",
+    reason: "local_vault_required",
+    amountPft: eligibility.amountPft,
+    amountDrops: eligibility.amountDrops,
+    message: `${eligibility.amountPft.toLocaleString("en-US")} PFT USDC top-up grant is ready after the matching local seed vault is unlocked.`,
+  });
+}
+
 export async function maybeClaimUsdcTopUpInitiationGift({ accountId = "" } = {}) {
   return claimUsdcTopUpInitiationGift({ accountId });
 }
@@ -665,6 +705,7 @@ function topUpSyncMessage({ creditedEntries, pendingSymbols, syncErrors, pftGran
 
   if (!pftGrant) return depositMessage;
   if (pftGrant.ok) return `${depositMessage} ${pftGrant.message}`;
+  if (pftGrant.status === "local_vault_required") return `${depositMessage} ${pftGrant.message}`;
   if (pftGrant.status === "not_configured") return `${depositMessage} ${pftGrant.message}`;
   if (pftGrant.status === "failed" || pftGrant.status === "unknown") return `${depositMessage} ${pftGrant.message}`;
   return depositMessage;
@@ -757,7 +798,7 @@ export async function syncEthereumTopUpAccount({ accountId = "" } = {}) {
       .filter(([, balance]) => balance?.amount && Number(balance.amount) > 0)
       .map(([symbol]) => symbol);
     const usdcEntry = creditedEntries.find((entry) => String(entry?.metadata?.asset || "").toUpperCase() === "USDC") || null;
-    const pftGrant = await claimUsdcTopUpInitiationGift({ account: updated || account, entry: usdcEntry });
+    const pftGrant = await resolveUsdcTopUpInitiationGiftStatus({ account: updated || account, entry: usdcEntry });
     const pftGrants = pftGrant ? [pftGrant] : [];
     return {
       ok: true,

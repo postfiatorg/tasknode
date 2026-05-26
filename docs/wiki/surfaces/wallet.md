@@ -8,8 +8,8 @@ Wallet is the identity and value surface. It shows PFT balance, local seed vault
 2. The local seed vault is encrypted in the browser with the user's password.
 3. The user can unlock, lock, back up, delink, or relink the wallet.
 4. Wallet activity is fetched from PFTL and displayed without exposing RPC details in the UX.
-5. New eligible OAuth accounts may receive a one-time PFT initiation grant immediately after wallet creation.
-6. Email-only accounts can receive the same one-time grant after creating a wallet and crediting more than `$10` USDC through the account top-up rail. The wallet page shows a subtle italic note under chat credit until that grant path is satisfied.
+5. New eligible OAuth accounts may receive a one-time PFT initiation grant after wallet creation only after the matching encrypted local vault is saved.
+6. Email-only accounts can receive the same one-time grant after creating a wallet, saving/unlocking the matching local vault, and crediting more than `$10` USDC through the account top-up rail. The wallet page shows a subtle italic note under chat credit until that grant path is satisfied.
 
 ## Technical Architecture
 
@@ -51,7 +51,7 @@ If a linked wallet has no saved local vault, the app cannot unlock from the moda
 - Session unlock secret: in-memory browser state only, never persisted server-side.
 - PFT balance and activity: PFTL-derived cache.
 - Ethereum top-ups: generated deposit addresses and observed token deposits.
-- Initiation grant register: one grant per eligible account or wallet, whether it came from OAuth wallet creation or the qualifying USDC top-up path.
+- Initiation grant register: one grant per eligible account or wallet, whether it came from OAuth wallet creation or the qualifying USDC top-up path. Eligibility is server-side, but payout is user-initiated from the browser only after the matching local vault is saved or unlocked.
 
 ## Diagram
 
@@ -76,6 +76,7 @@ flowchart LR
 - Delinking should not delete context.
 - Existing linked wallet conflicts should be resolved at the account-link boundary.
 - Balance reads should show loading or error, never `NaN`, `undefined`, or fake freshness.
+- Wallet creation and USDC top-up sync must not auto-send an initiation grant before the matching local seed vault is saved or unlocked.
 - A qualifying USDC top-up should not create duplicate PFT grants if the account
   or wallet already has a processing, completed, or unknown initiation grant.
 

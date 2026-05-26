@@ -845,9 +845,9 @@ export function walletActions() {
       path: "/api/wallet/create/start",
       enabled: true,
       note:
-        "Generates a new 24-word seed wallet in the browser, links it by proof, and attempts the one-time OAuth initiation grant.",
+        "Generates a new 24-word seed wallet in the browser, links it by proof, saves the local vault, and then attempts the one-time initiation grant.",
       actionRequired:
-        "OAuth accounts can receive the grant immediately after wallet creation. Email accounts can qualify after creating a wallet and crediting more than $10 USDC.",
+        "OAuth accounts can receive the grant after the encrypted local seed vault is saved. Email accounts can qualify after creating a wallet, saving the vault, and crediting more than $10 USDC.",
     }),
     walletAction({
       id: "link_start",
@@ -895,9 +895,9 @@ export function walletActions() {
       path: "/api/wallet/initiation/retry",
       enabled: true,
       note:
-        "Retries the one-time PFT initiation gift for a linked wallet when the prior faucet submit failed.",
+        "Retries the one-time PFT initiation gift for a linked wallet only after the matching local seed vault is confirmed in the browser.",
       actionRequired:
-        "Requires a signed-in OAuth account, a linked wallet, and configured PFTL faucet credentials.",
+        "Requires a signed-in account, a linked wallet, a confirmed local seed vault, and configured PFTL faucet credentials.",
     }),
   ];
 }
@@ -1389,7 +1389,42 @@ async function claimWalletCreateInitiationGift({ accountId = "", walletAddress =
   }
 }
 
-export async function walletInitiationRetry(method, session = null) {
+function localVaultConfirmationRequired({ action }) {
+  return actionResponse({
+    status: 409,
+    error: "local_vault_confirmation_required",
+    action: action.id,
+    message: "Unlock or save the matching local seed vault before sending the PFT initiation grant.",
+    actionRequired: "Open Wallet, unlock the local vault for the linked address, then retry the PFT grant.",
+  });
+}
+
+function walletCreateGrantPendingVault({ accountId = "", walletAddress = "" } = {}) {
+  return resolveWalletInitiationGrantStatus({ accountId, walletAddress }).then((eligibility) => {
+    if (!eligibility.eligible) {
+      return {
+        ok: false,
+        status: "not_eligible",
+        reason: eligibility.reason || "wallet_initiation_not_eligible",
+        amountPft: eligibility.amountPft,
+        amountDrops: eligibility.amountDrops,
+        message: eligibility.message,
+        grant: eligibility.grant || null,
+      };
+    }
+    return {
+      ok: false,
+      status: "local_vault_required",
+      reason: "local_vault_required",
+      amountPft: eligibility.amountPft,
+      amountDrops: eligibility.amountDrops,
+      message: "Seed wallet linked. Save the encrypted local seed vault before sending the PFT initiation gift.",
+      grant: null,
+    };
+  });
+}
+
+export async function walletInitiationRetry(method, session = null, payload = {}) {
   const action = walletActionByPath("/api/wallet/initiation/retry");
 
   if (method !== action.method) {
@@ -1410,6 +1445,10 @@ export async function walletInitiationRetry(method, session = null) {
       message: "Sign in before retrying a wallet initiation gift.",
       actionRequired: "Use the account that owns the linked wallet.",
     });
+  }
+
+  if (payload?.localVaultConfirmed !== true) {
+    return localVaultConfirmationRequired({ action });
   }
 
   const linkedWallet = getLinkedWallet({ accountId: session.accountId });
@@ -1535,19 +1574,13 @@ export async function walletLinkVerify(payload, method, session = null) {
   const reclaimedWalletCount = Number(result.reclaimedWalletCount || 0);
   const isCreate = challengeResult.challenge.purpose === "wallet_create";
   const initiationGift = isCreate
-    ? await claimWalletCreateInitiationGift({
+    ? await walletCreateGrantPendingVault({
         accountId: session.accountId,
         walletAddress: result.wallet.address,
-      }).then(async (gift) => {
-        if (gift.ok) return gift;
-        const usdcGift = await maybeClaimUsdcTopUpInitiationGift({ accountId: session.accountId });
-        return usdcGift || gift;
       })
     : null;
   const message = isCreate
-    ? initiationGift?.ok
-      ? `Seed wallet created. ${initiationGift.message}`
-      : `Seed wallet created. ${initiationGift?.message || "PFT initiation gift was not available."}`
+    ? "Seed wallet created. Save the local vault to send the PFT initiation gift."
     : reclaimedWalletCount
       ? "Seed wallet linked. Prior stale links for this wallet were detached."
       : "Seed wallet linked.";
@@ -1705,7 +1738,7 @@ export async function walletActionStart(pathname, method, session = null, payloa
     return walletCreateStart(method, session);
   }
   if (pathname === "/api/wallet/initiation/retry") {
-    return walletInitiationRetry(method, session);
+    return walletInitiationRetry(method, session, payload);
   }
   if (pathname === "/api/wallet/relink/start") {
     return walletRelinkStart(method, session);

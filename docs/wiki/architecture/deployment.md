@@ -315,7 +315,9 @@ Top-up start verifies a derived address is empty before returning it to the user
 
 When sync records USDC credit and the credited USDC balance is greater than
 `$10`, a newly created linked PFT wallet can receive the one-time `12 PFT`
-initiation grant from the configured PFTL faucet. The USDC credit remains
+initiation grant from the configured PFTL faucet. Sync marks the grant as ready
+but must not auto-send it. The wallet page sends it only after the matching
+local seed vault is saved or unlocked in the browser. The USDC credit remains
 account billing state; the PFT grant is a separate PFTL payment to the linked
 wallet and is idempotent by account and wallet.
 

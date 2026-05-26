@@ -49,8 +49,11 @@ or relinking an existing wallet.
    confirm that it was saved before submitting.
 3. The browser signs the challenge locally and sends only challenge id, address,
    public key, and signature to `/api/wallet/link/verify`.
-4. The server links the wallet exactly like a normal wallet proof, then attempts
-   the one-time initiation gift only for `wallet_create` proofs.
+4. The server links the wallet exactly like a normal wallet proof, but does not
+   pay the one-time initiation gift yet.
+5. The browser saves the encrypted local vault and then calls
+   `/api/wallet/initiation/retry` with local-vault confirmation. Only that path
+   attempts the one-time initiation gift for `wallet_create` proofs.
 
 The initiation gift is 12 PFT by default. Eligibility follows the PFTasks faucet
 shape: one active claim per account, per created wallet address, and per OAuth
@@ -60,9 +63,10 @@ relink, and delink flows must not become faucet claim paths.
 
 The server-side initiation register stores public wallet address, account id,
 provider identity hashes, amount, status, and transaction hash. It never stores
-seed material. Payout requires `TASKNODE_PFT_FAUCET_SEED` or `FAUCET_SEED` plus
-a PFTL WSS endpoint. PFTL transaction signing must include the configured
-network id, defaulting to `PFTL_NETWORK_ID=2025`.
+seed material. Payout requires a matching saved or unlocked browser vault,
+`TASKNODE_PFT_FAUCET_SEED` or `FAUCET_SEED`, and a PFTL WSS endpoint. PFTL
+transaction signing must include the configured network id, defaulting to
+`PFTL_NETWORK_ID=2025`.
 
 If the wallet link succeeds but the faucet submit fails, the wallet remains
 linked and the gift moves to a retryable failure state. Users must see a
@@ -85,6 +89,8 @@ offers a retry without creating or relinking another wallet.
   present or has just been refreshed successfully.
 - The encrypted local vault status is device-local. It can show `Saved`,
   `Locked`, or `Unlocked`, but it must not imply server-side custody or login.
+- A wallet initiation payout must not be sent from wallet proof alone. The
+  browser must save or unlock the matching local vault before requesting payout.
 
 ## Server Rules
 

@@ -710,14 +710,26 @@ try {
     createVerify.status !== 200 ||
     createLinkedWallet.status !== "linked" ||
     createLinkedWallet.address !== createProof.address ||
-    createVerify.body.initiationGift?.status !== "not_configured"
+    createVerify.body.initiationGift?.status !== "local_vault_required"
   ) {
-    throw new Error(`Create wallet flow did not link with a non-faucet fallback: ${JSON.stringify({ createStart, createVerify, createLinkedWallet })}`);
+    throw new Error(`Create wallet flow did not link with a local-vault gate: ${JSON.stringify({ createStart, createVerify, createLinkedWallet })}`);
+  }
+  const retryWithoutVault = await walletActionStart(
+    "/api/wallet/initiation/retry",
+    "POST",
+    createFlowSession.session
+  );
+  if (
+    retryWithoutVault.status !== 409 ||
+    retryWithoutVault.body?.error !== "local_vault_confirmation_required"
+  ) {
+    throw new Error(`Initiation retry should require local vault confirmation: ${JSON.stringify(retryWithoutVault)}`);
   }
   const retryWithoutFaucet = await walletActionStart(
     "/api/wallet/initiation/retry",
     "POST",
-    createFlowSession.session
+    createFlowSession.session,
+    { localVaultConfirmed: true }
   );
   if (
     retryWithoutFaucet.status !== 502 ||
@@ -735,7 +747,7 @@ try {
   if (linkStart.status !== 200 || linkStart.body.challenge.purpose !== "wallet_link" || linkVerify.status !== 200 || linkLinkedWallet.status !== "linked" || linkLinkedWallet.address !== linkProof.address) {
     throw new Error(`Link wallet flow did not persist linked proof: ${JSON.stringify({ linkStart, linkVerify, linkLinkedWallet })}`);
   }
-  const retryAfterLink = await walletActionStart("/api/wallet/initiation/retry", "POST", linkFlowSession.session);
+  const retryAfterLink = await walletActionStart("/api/wallet/initiation/retry", "POST", linkFlowSession.session, { localVaultConfirmed: true });
   if (retryAfterLink.status !== 409 || retryAfterLink.body?.initiationGift?.reason !== "wallet_create_proof_required") {
     throw new Error(`Initiation retry must reject linked-only wallets: ${JSON.stringify(retryAfterLink)}`);
   }

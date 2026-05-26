@@ -123,10 +123,10 @@ export async function runEthereumDepositSmoke({
     if (
       emailGrantSync.status !== 200 ||
       emailGrantSync.body?.creditedEntries?.[0]?.amountUsd !== 6.34 ||
-      emailGrantSync.body?.pftGrant?.status !== "not_configured" ||
-      emailGrantSync.body?.pftGrant?.reason !== "faucet_not_configured"
+      emailGrantSync.body?.pftGrant?.status !== "local_vault_required" ||
+      emailGrantSync.body?.pftGrant?.reason !== "local_vault_required"
     ) {
-      throw new Error(`Email USDC top-up sync should automatically attempt the PFT grant after threshold: ${JSON.stringify(emailGrantSync)}`);
+      throw new Error(`Email USDC top-up sync should wait for local vault confirmation before the PFT grant: ${JSON.stringify(emailGrantSync)}`);
     }
 
     const preWalletGrantAccount = getOrCreateEmailAccount({

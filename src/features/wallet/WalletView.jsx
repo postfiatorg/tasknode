@@ -160,9 +160,17 @@ export function WalletView({
   const canClaimUsdcGrant =
     signedIn &&
     walletLinked &&
+    vaultUnlocked &&
     linkedWallet.walletCreatedInAccount === true &&
     usdcTopUpGift.eligible === true;
   const showGrantClaimRow = canClaimUsdcGrant && !grantAlreadySent;
+  const showGrantVaultRequiredRow =
+    signedIn &&
+    walletLinked &&
+    !vaultUnlocked &&
+    linkedWallet.walletCreatedInAccount === true &&
+    usdcTopUpGift.eligible === true &&
+    !grantAlreadySent;
   const showEmailTopUpGrantHint =
     showsEmailTopUpGrantHint({
       initiationGift,
@@ -290,8 +298,30 @@ export function WalletView({
     await syncTopUpDeposits({ silent: false });
   }
 
-  async function claimInitiationGrant({ openResultModal = false } = {}) {
+  async function claimInitiationGrant({ localVaultConfirmed = vaultUnlocked, openResultModal = false } = {}) {
     if (!signedIn || grantClaiming || creationRetrying) return;
+    if (!localVaultConfirmed) {
+      const vaultMessage = vaultAvailable
+        ? "Unlock the matching local seed vault before sending the PFT initiation grant."
+        : "Save the matching local seed vault before sending the PFT initiation grant.";
+      setMessage(vaultMessage);
+      if (openResultModal) {
+        setCreationResult((current) => ({
+          ...(current || {}),
+          ok: false,
+          initiationGift: {
+            ...(current?.initiationGift || {}),
+            ok: false,
+            status: "local_vault_required",
+            reason: "local_vault_required",
+            message: vaultMessage,
+          },
+          message: vaultMessage,
+          wallet: current?.wallet || linkedWallet,
+        }));
+      }
+      return;
+    }
     setGrantClaiming(true);
     setMessage("Sending the 12 PFT initiation grant.");
 
@@ -307,6 +337,8 @@ export function WalletView({
     try {
       const result = await requestJson(initiationRetryAction?.path || "/api/wallet/initiation/retry", {
         method: initiationRetryAction?.method || "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ localVaultConfirmed: true }),
       });
       const nextResult = {
         ok: result.body?.ok === true,
@@ -679,6 +711,24 @@ export function WalletView({
           </div>
         )}
 
+        {showGrantVaultRequiredRow && (
+          <div className="wallet-grant-claim-row">
+            <p className="wallet-email-topup-hint">
+              Your account qualifies for the{" "}
+              {Number(usdcTopUpGift.amountPft || 12).toLocaleString("en-US")} PFT initiation grant. Unlock the
+              matching local seed vault before sending it.
+            </p>
+            <button
+              className="wallet-mini-action"
+              disabled={!vaultAvailable}
+              onClick={() => setUnlockOpen(true)}
+              type="button"
+            >
+              {vaultAvailable ? "Unlock vault" : "Vault missing"}
+            </button>
+          </div>
+        )}
+
         {showGrantClaimRow && (
           <div className="wallet-grant-claim-row">
             <p className="wallet-email-topup-hint">
@@ -766,6 +816,7 @@ export function WalletView({
       {linkOpen && (
         <WalletLinkModal
           action={walletProofAction || linkAction}
+          initiationRetryAction={initiationRetryAction}
           onAppStateChange={onAppStateChange}
           onWalletVaultChange={onWalletVaultChange}
           onWalletVaultUnlocked={onWalletVaultUnlocked}
@@ -859,7 +910,7 @@ function WalletCreationResultModal({ onClose, onRetry, onTopUp, result, retrying
   const body = giftOk
     ? `${amountPft.toLocaleString("en-US")} PFT initiation gift sent.`
     : needsUsdcTopUp
-      ? "Your PFT wallet is linked. Email accounts receive the initiation gift after topping up more than $10 USDC."
+      ? "Your PFT wallet is linked. Email accounts can receive the initiation gift after topping up more than $10 USDC and unlocking the local vault."
       : gift.message || result?.message || "The wallet was linked, but the initiation gift did not complete.";
   const stateTone = giftOk ? "is-success" : needsUsdcTopUp ? "is-info" : "is-warning";
   const stateLabel = giftOk
@@ -910,8 +961,8 @@ function WalletCreationResultModal({ onClose, onRetry, onTopUp, result, retrying
         {!giftOk && needsUsdcTopUp && (
           <div className="wallet-link-warning">
             Email sign-in does not include the PFT gift at wallet creation. Use Top up to deposit USDC on your account.
-            After your credited balance is more than $10 USDC, the {amountPft.toLocaleString("en-US")} PFT grant is sent
-            to this wallet automatically.
+            After your credited balance is more than $10 USDC, unlock the local vault to send the{" "}
+            {amountPft.toLocaleString("en-US")} PFT grant to this wallet.
           </div>
         )}
 
@@ -986,6 +1037,7 @@ function WalletTransactionRow({ hovered = false, onHover, tx }) {
 
 function WalletLinkModal({
   action,
+  initiationRetryAction,
   onCreateResult,
   onAppStateChange,
   onWalletVaultChange,
@@ -1090,7 +1142,7 @@ function WalletLinkModal({
     }
 
     setLinking(true);
-    setMessage(isCreate ? "Creating wallet and requesting the initiation gift." : "");
+    setMessage(isCreate ? "Creating wallet and preparing the local seed vault." : "");
 
     try {
       const start = await requestJson(action?.path || "/api/wallet/link/start", {
@@ -1142,18 +1194,30 @@ function WalletLinkModal({
         return;
       }
 
+      let finalMessage = verify.body?.message || (isCreate ? "Wallet created." : isRelink ? "Wallet relinked." : "Wallet linked.");
+      let initiationGift = verify.body?.initiationGift || null;
+      if (isCreate) {
+        setMessage("Local vault saved. Sending the PFT initiation gift.");
+        const grant = await requestJson(initiationRetryAction?.path || "/api/wallet/initiation/retry", {
+          method: initiationRetryAction?.method || "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ localVaultConfirmed: true }),
+        });
+        initiationGift = grant.body?.initiationGift || initiationGift;
+        finalMessage = grant.body?.message || initiationGift?.message || finalMessage;
+      }
+
       setMnemonic("");
       setSeedConfirmed(false);
       setVaultPassword("");
       setVaultPasswordConfirm("");
-      const finalMessage = verify.body?.message || (isCreate ? "Wallet created." : isRelink ? "Wallet relinked." : "Wallet linked.");
       setMessage(finalMessage);
       await onAppStateChange?.();
       if (isCreate) {
         onCreateResult?.({
           ok: verify.body?.ok === true,
           message: finalMessage,
-          initiationGift: verify.body?.initiationGift || null,
+          initiationGift,
           wallet: verify.body?.wallet || walletSummary,
         });
       }
@@ -1267,7 +1331,7 @@ function WalletLinkModal({
         </div>
         <div className="wallet-link-warning">
           {isCreate
-            ? "Task Node can link the public wallet address and send an eligible initiation gift, but cannot recover this phrase."
+            ? "Task Node links the public wallet address first, then sends an eligible initiation gift only after the local vault is saved."
             : "The encrypted vault is saved only in this browser. Task Node never receives the phrase or password."}
         </div>
         {message && <div className="inline-message">{message}</div>}
