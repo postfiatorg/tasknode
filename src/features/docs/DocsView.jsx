@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
-import { BookOpen, ChevronRight, Search } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { BookOpen, ChevronRight, RefreshCw, Search } from "lucide-react";
+import { requestJson } from "../../api";
 import { DOC_GROUPS, DOC_PAGES } from "./docs-content";
 import { DocsDiagram } from "./DocsDiagram";
 import "./docs.css";
@@ -63,6 +64,7 @@ export function DocsView() {
           <p>{selectedPage.summary}</p>
         </header>
         <MarkdownArticle markdown={selectedPage.markdown} />
+        {selectedPage.component === "system-status" && <SystemStatusPage />}
       </article>
     </div>
   );
@@ -90,6 +92,154 @@ function MarkdownArticle({ markdown }) {
       ))}
     </div>
   );
+}
+
+function SystemStatusPage() {
+  const [state, setState] = useState({ loading: true, status: null, error: "" });
+
+  async function loadStatus() {
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    const result = await requestJson("/api/system/status");
+    if (!result.ok || !result.body?.ok) {
+      setState({
+        loading: false,
+        status: null,
+        error: result.body?.error || `system_status_http_${result.status}`,
+      });
+      return;
+    }
+    setState({ loading: false, status: result.body, error: "" });
+  }
+
+  useEffect(() => {
+    loadStatus();
+  }, []);
+
+  const status = state.status;
+  const summary = status?.summary || {};
+  return (
+    <section className="system-status-panel" aria-label="Live system status">
+      <div className="system-status-toolbar">
+        <div>
+          <h2>Live Status</h2>
+          <p>{status?.generatedAt ? `Generated ${formatDateTime(status.generatedAt)}` : "Reading scheduler state"}</p>
+        </div>
+        <button className="system-status-refresh" disabled={state.loading} onClick={loadStatus} type="button">
+          <RefreshCw size={15} strokeWidth={1.8} />
+          <span>{state.loading ? "Refreshing" : "Refresh"}</span>
+        </button>
+      </div>
+      {state.error && <p className="system-status-error">{state.error}</p>}
+      {status && (
+        <>
+          <div className="system-status-summary" aria-label="Status summary">
+            {["critical", "warning", "ok", "unknown", "disabled"].map((key) => (
+              <div className={`system-status-summary-cell is-${key}`} key={key}>
+                <strong>{Number(summary[key] || 0)}</strong>
+                <span>{statusLabel(key)}</span>
+              </div>
+            ))}
+          </div>
+          <p className="system-status-db">
+            Database: {status.database?.enabled ? "enabled" : "not enabled"} · durable: {status.database?.durable ? "yes" : "no"}
+          </p>
+          <div className="system-status-categories">
+            {status.categories?.map((category) => (
+              <section className="system-status-category" key={category.id}>
+                <h2>{category.title}</h2>
+                <p>{category.summary}</p>
+                <div className="system-status-jobs">
+                  {category.items?.map((entry) => (
+                    <SystemStatusRow entry={entry} key={entry.id} />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function SystemStatusRow({ entry }) {
+  return (
+    <article className={`system-status-row is-${entry.status || "unknown"}`}>
+      <div className="system-status-row-main">
+        <span className="system-status-dot" aria-hidden="true" />
+        <div>
+          <h3>{entry.title}</h3>
+          <p>{entry.description}</p>
+        </div>
+      </div>
+      <div className="system-status-row-meta">
+        <span>{entry.statusLabel || statusLabel(entry.status)}</span>
+        <span>{entry.owner}</span>
+        <span>{entry.cadence}</span>
+      </div>
+      <dl>
+        <div>
+          <dt>Last run</dt>
+          <dd>{formatDateTime(entry.lastRunAt)}</dd>
+        </div>
+        <div>
+          <dt>Last success</dt>
+          <dd>{formatDateTime(entry.lastSuccessAt)}</dd>
+        </div>
+        <div>
+          <dt>Next run</dt>
+          <dd>{formatDateTime(entry.nextRunAt)}</dd>
+        </div>
+        <div>
+          <dt>Trigger</dt>
+          <dd>{entry.trigger || "n/a"}</dd>
+        </div>
+      </dl>
+      {entry.counts && Object.keys(entry.counts).length > 0 && (
+        <div className="system-status-counts">
+          {Object.entries(entry.counts).map(([key, value]) => (
+            <span key={key}>
+              {compactLabel(key)} <strong>{String(value)}</strong>
+            </span>
+          ))}
+        </div>
+      )}
+      {entry.lastError && <p className="system-status-last-error">{entry.lastError}</p>}
+      {entry.details?.length > 0 && (
+        <ul className="system-status-details">
+          {entry.details.map((detail, index) => (
+            <li key={`${entry.id}-${index}`}>{detail}</li>
+          ))}
+        </ul>
+      )}
+    </article>
+  );
+}
+
+function statusLabel(status = "unknown") {
+  return {
+    critical: "Red",
+    warning: "Amber",
+    ok: "Green",
+    unknown: "Unknown",
+    disabled: "Disabled",
+  }[status] || "Unknown";
+}
+
+function compactLabel(value = "") {
+  return String(value || "")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatDateTime(value) {
+  if (!value) return "n/a";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "n/a";
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function MarkdownBlock({ block }) {

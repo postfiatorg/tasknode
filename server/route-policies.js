@@ -33,6 +33,7 @@ export const apiRoutePolicies = [
   { id: "auth_provider_start", pattern: /^\/api\/auth\/[^/]+\/start$/, methods: ["GET"], auth: "optional" },
   { id: "auth_provider_callback", pattern: /^\/api\/auth\/[^/]+\/callback$/, methods: ["GET"], auth: "oauth_state" },
   { id: "readiness", path: "/api/readiness", methods: ["GET"], auth: "none" },
+  { id: "system_status", path: "/api/system/status", methods: ["GET"], auth: "none" },
   { id: "telegram_bot_status", path: "/api/integrations/telegram/status", methods: ["GET"], auth: "none" },
   {
     id: "telegram_bot_webhook",

@@ -343,6 +343,249 @@
   color: #8a2d22;
 }
 
+.system-status-panel {
+  width: 100%;
+  max-width: 980px;
+  margin-top: 28px;
+}
+
+.system-status-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid #e8e6df;
+}
+
+.system-status-toolbar h2,
+.system-status-category h2 {
+  margin: 0;
+  color: #1f1f1c;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.system-status-toolbar p,
+.system-status-category p,
+.system-status-db {
+  margin: 4px 0 0;
+  color: #6b6b66;
+  font-size: 13px;
+}
+
+.system-status-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid #d9d6cd;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #24231f;
+  font: inherit;
+  font-size: 13px;
+}
+
+.system-status-refresh:disabled {
+  color: #8a8880;
+}
+
+.system-status-error {
+  margin: 14px 0 0;
+  color: #8a2d22;
+  font-size: 13px;
+}
+
+.system-status-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0 8px;
+}
+
+.system-status-summary-cell {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e8e6df;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.system-status-summary-cell strong {
+  display: block;
+  color: #1f1f1c;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.system-status-summary-cell span {
+  display: block;
+  margin-top: 4px;
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.system-status-summary-cell.is-critical {
+  border-color: #e5b8ae;
+  background: #fff4f1;
+}
+
+.system-status-summary-cell.is-warning {
+  border-color: #e4c984;
+  background: #fff8e5;
+}
+
+.system-status-summary-cell.is-ok {
+  border-color: #bad7bd;
+  background: #f2faf2;
+}
+
+.system-status-categories {
+  display: grid;
+  gap: 26px;
+  margin-top: 28px;
+}
+
+.system-status-jobs {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.system-status-row {
+  padding: 14px;
+  border: 1px solid #e8e6df;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.system-status-row.is-critical {
+  border-color: #e5b8ae;
+}
+
+.system-status-row.is-warning {
+  border-color: #e4c984;
+}
+
+.system-status-row.is-ok {
+  border-color: #bad7bd;
+}
+
+.system-status-row-main {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.system-status-dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: #8a8880;
+}
+
+.system-status-row.is-critical .system-status-dot {
+  background: #b23a2d;
+}
+
+.system-status-row.is-warning .system-status-dot {
+  background: #b18121;
+}
+
+.system-status-row.is-ok .system-status-dot {
+  background: #2f7d3b;
+}
+
+.system-status-row-main h3 {
+  margin: 0;
+  color: #1f1f1c;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.system-status-row-main p {
+  margin: 3px 0 0;
+  color: #5c5a54;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.system-status-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 10px 0;
+}
+
+.system-status-row-meta span,
+.system-status-counts span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #efede7;
+  color: #4f4d47;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.system-status-row dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.system-status-row dl div {
+  min-width: 0;
+}
+
+.system-status-row dt {
+  color: #8a8880;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.system-status-row dd {
+  margin: 2px 0 0;
+  color: #24231f;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.system-status-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.system-status-counts strong {
+  margin-left: 4px;
+  color: #1f1f1c;
+}
+
+.system-status-last-error {
+  margin: 12px 0 0;
+  color: #8a2d22;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.system-status-details {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: #5c5a54;
+  font-size: 12px;
+}
+
+.system-status-details li {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 900px) {
   .docs-view {
     grid-template-columns: 1fr;
@@ -356,5 +599,15 @@
 
   .docs-content {
     padding: 26px 18px 48px;
+  }
+
+  .system-status-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .system-status-summary,
+  .system-status-row dl {
+    grid-template-columns: 1fr 1fr;
   }
 }

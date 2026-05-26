@@ -21,7 +21,15 @@ const routes = [
   { hash: "#memory", labels: ["Memory"] },
   {
     hash: "#docs",
-    labels: ["Task Node Docs", "Product and architecture wiki", "Daily Airdrop", "Profile Prompts", "AI Providers", "Task Engine UX Integration Plan"],
+    labels: [
+      "Task Node Docs",
+      "Product and architecture wiki",
+      "Daily Airdrop",
+      "Profile Prompts",
+      "AI Providers",
+      "System Status",
+      "Task Engine UX Integration Plan",
+    ],
     selectors: [".docs-rendered-diagram svg"],
   },
 ];

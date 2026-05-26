@@ -45,6 +45,7 @@ import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
 import { handleMemoryRoute } from "./memory-routes.js";
 import { handleHiveRoute } from "./hive-routes.js";
+import { handleSystemStatusRoute } from "./system-status.js";
 import { handleTelegramBotRoute } from "./telegram-bot.js";
 import { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole } from "./process-role.js";
 
@@ -536,6 +537,8 @@ async function routeApi(req, url, res) {
     json(res, 200, await readiness());
     return true;
   }
+
+  if (await handleSystemStatusRoute({ json, res, url })) return true;
 
   if (await handleTaskReadRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
 

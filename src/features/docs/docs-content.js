@@ -23,6 +23,7 @@ import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
 import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
 import resettableSignupTesting from "../../../docs/wiki/architecture/resettable-signup-testing.md?raw";
 import styleGuide from "../../../docs/wiki/architecture/style-guide.md?raw";
+import systemStatus from "../../../docs/wiki/architecture/system-status.md?raw";
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
 import telegramBotChat from "../../../docs/wiki/architecture/telegram-bot-chat.md?raw";
@@ -507,6 +508,13 @@ export const DOC_GROUPS = [
         title: "Deployment",
         summary: "Fly dev, Docker, data stores, secrets, auth, top-up, and verification commands.",
         markdown: deployment,
+      },
+      {
+        slug: "system-status",
+        title: "System Status",
+        summary: "Live audit view for schedulers, workers, and RPC dependencies.",
+        markdown: systemStatus,
+        component: "system-status",
       },
       {
         slug: "encryption",
