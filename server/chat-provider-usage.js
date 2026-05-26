@@ -29,17 +29,20 @@ export function openRouterUsage(body, mode) {
   const usage = body?.usage || {};
   const inputTokens = Number(usage.prompt_tokens || usage.input_tokens || 0);
   const outputTokens = Number(usage.completion_tokens || usage.output_tokens || 0);
-  const providerCost = Number(usage.cost || 0);
+  const providerCost = usage.cost === undefined || usage.cost === null || usage.cost === ""
+    ? null
+    : Number(usage.cost);
   const webSearchCalls = Number(usage.server_tool_use?.web_search_requests || 0);
+  const costUsd = Number.isFinite(providerCost)
+    ? providerCost
+    : actualChatCost(mode, { inputTokens, outputTokens });
   return {
     inputTokens,
     outputTokens,
     totalTokens: Number(usage.total_tokens || inputTokens + outputTokens),
     webSearchCalls,
     toolCostUsd: 0,
-    costUsd: Number(
-      (providerCost || actualChatCost(mode, { inputTokens, outputTokens })).toFixed(6)
-    ),
+    costUsd: Number(costUsd.toFixed(6)),
   };
 }
 

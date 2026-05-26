@@ -36,6 +36,7 @@ try {
     openAiResponseRequest,
     openRouterChatRequest,
   } = await import("../server/chat-router.js");
+  const { openRouterUsage } = await import("../server/chat-provider-usage.js");
   const {
     appendUsageCredit,
     appendChatTurn,
@@ -131,6 +132,30 @@ try {
   });
   if (privateSearchEstimate.estimatedWebSearchCalls !== 0 || privateSearchEstimate.estimatedToolCostUsd !== 0) {
     throw new Error(`Private modes should not estimate web-search tool cost: ${JSON.stringify(privateSearchEstimate)}`);
+  }
+
+  const openRouterProviderCostUsage = openRouterUsage({
+    usage: {
+      prompt_tokens: 1000,
+      completion_tokens: 2000,
+      total_tokens: 3000,
+      cost: 0.000123,
+    },
+  }, "Private Instant");
+  if (openRouterProviderCostUsage.costUsd !== 0.000123) {
+    throw new Error(`OpenRouter usage should prefer provider-returned cost: ${JSON.stringify(openRouterProviderCostUsage)}`);
+  }
+
+  const openRouterZeroCostUsage = openRouterUsage({
+    usage: {
+      prompt_tokens: 1000,
+      completion_tokens: 2000,
+      total_tokens: 3000,
+      cost: 0,
+    },
+  }, "Private Instant");
+  if (openRouterZeroCostUsage.costUsd !== 0) {
+    throw new Error(`OpenRouter usage should preserve provider-returned zero cost: ${JSON.stringify(openRouterZeroCostUsage)}`);
   }
 
   const frontierRequest = openAiResponseRequest({
