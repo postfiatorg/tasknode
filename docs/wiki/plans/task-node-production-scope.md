@@ -48,6 +48,20 @@ If a feature is implemented but out of launch scope, hide it, label it as out of
 7. Get the task lifecycle and Network Task lifecycle green enough that Hive can route work without inventing fake board motion.
 8. Make System Status green or honestly amber/red with runbook links for every non-green row.
 
+## Evidence Log
+
+```text
+Date: 2026-05-26
+Environment: local repo / deterministic Telegram webhook smoke against Task Node Official code; Fly dev live Telegram behavior operator-reported after the Discount Thinking Telegram rollout
+Surface: Telegram bot
+Status: amber
+Evidence: I ran the Telegram bot webhook smoke and it passed with accountId acct_oauth_de97b03526100b281c9c4333, conversationId account_acct_oauth_de97b03526100b281c9c4333_telegram_12345, chatCalls 3, sentMessages 10, sentChatActions 3, answeredCallbacks 3, and telegramBotEvents 30. That smoke exercises mode selection for Discount Thinking and verifies the next Telegram message routes to Discount Thinking. The operator also repeatedly tested Discount Thinking in live Telegram after the rollout and reported it works.
+Commands: npm run telegram-bot-webhook-smoke
+Live user/account tested: goodalexander linked Telegram account, operator-reported repeated live Discount Thinking chats; deterministic smoke account acct_oauth_de97b03526100b281c9c4333
+Remaining blocker: Telegram bot is not green for production until at least one non-operator Telegram user links successfully and sends a private bot message through the live webhook.
+Docs updated: docs/wiki/plans/task-node-production-scope.md and docs/wiki/architecture/telegram-bot-chat.md
+```
+
 ## Evidence Log Format
 
 Each production-readiness pass should append a dated evidence block using this shape:
