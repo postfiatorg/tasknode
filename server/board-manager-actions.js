@@ -406,9 +406,9 @@ async function executeCreateProject({ runId, decision, sourcePacket }) {
       safeText(project.phase_label, 100),
       intValue(project.phase_current),
       intValue(project.phase_total),
-      numberValue(project.pft_routed),
-      intValue(project.task_count),
-      intValue(project.contributor_count),
+      0,
+      0,
+      0,
       hiveSecretary.report_id,
       hiveSecretary.source_packet_digest,
       jsonValue({
@@ -432,6 +432,17 @@ async function executeArchiveProject({ runId, decision, sourcePacket }) {
   const projectId = safeText(decision.target_id || decision.payload.project?.id, 180);
   if (!projectId) throw new Error("board_manager_archive_project_missing_project");
   const archiveReason = safeText(decision.payload.archive_reason || decision.reason, 1000);
+  const existing = await query(
+    `
+      SELECT id, title, status
+      FROM network_projects
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [projectId]
+  );
+  if (!existing.rows[0]) throw new Error("board_manager_archive_project_not_found");
+
   const result = await query(
     `
       UPDATE network_projects
@@ -444,17 +455,22 @@ async function executeArchiveProject({ runId, decision, sourcePacket }) {
     [
       projectId,
       jsonValue({
-        operator_archived: true,
-        archived_reason: archiveReason,
-        archived_by: "board_manager",
-        archived_run_id: safeText(runId, 180),
-        archived_source_packet_digest: safeText(sourcePacket.sourcePacketDigest, 120),
-        archived_at: new Date().toISOString(),
+        agent_archived: true,
+        agent_archived_reason: archiveReason,
+        agent_archived_by: "board_manager",
+        agent_archived_run_id: safeText(runId, 180),
+        agent_archived_source_packet_digest: safeText(sourcePacket.sourcePacketDigest, 120),
+        agent_archived_at: new Date().toISOString(),
+        resurrection_policy: "planner_may_reactivate_unless_operator_archived_lock_is_present",
       }),
     ]
   );
-  if (!result.rows[0]) throw new Error("board_manager_archive_project_not_found");
-  return { executed: true, projectId, status: result.rows[0].status, archiveReason };
+  return {
+    executed: true,
+    projectId,
+    status: result.rows[0].status,
+    archiveReason,
+  };
 }
 
 async function executeAssignContributor({ runId, decision, sourcePacket }) {

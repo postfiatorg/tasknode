@@ -10,11 +10,21 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-export function boardManagerRunState({ action, primaryResult, run }) {
+function runStatus(run = {}) {
+  return safeText(run.status, 80).toLowerCase();
+}
+
+function isPendingRun(run = {}) {
+  return ["running", "queued", "pending", "processing"].includes(runStatus(run));
+}
+
+export function boardManagerRunState({ action, primaryResult, run = {} }) {
   const result = safeObject(primaryResult?.result);
-  if (run.status === "failed") return "failed";
+  if (runStatus(run) === "failed") return "failed";
+  if (isPendingRun(run)) return "running";
   if (run.dryRun) return "dry_run";
   if (result.executed) return "executed";
+  if (action === "decision_pending") return "running";
   if (!action || action === "no_decision" || action === "do_nothing") return "no_decision";
   return "recorded";
 }
@@ -26,6 +36,7 @@ function actionLabel(action = "") {
     create_project: "Created project",
     do_nothing: "No board change",
     daily_airdrop: "Daily airdrop",
+    decision_pending: "Decision pending",
     initiate_network_task: "Initiated network task",
     message_user: "Messaged user",
     refresh_hive_secretary: "Updated Hive Secretary",
@@ -37,7 +48,8 @@ function runSummary(run = {}, action = "", primaryResult = null) {
   const payload = safeObject(run.actionPayload);
   const decision = safeObject(run.decision);
   const result = safeObject(primaryResult?.result);
-  if (run.status === "failed") return run.error || "The Board Manager run failed before completing a decision.";
+  if (runStatus(run) === "failed") return run.error || "The Board Manager run failed before completing a decision.";
+  if (isPendingRun(run)) return "The Board Manager is evaluating Hive state and has not recorded a decision yet.";
   if (!action || action === "no_decision") return "The Board Manager run did not record a selected action.";
   if (action === "do_nothing") {
     return payload.summary || decision.reason || "The agent reviewed current Hive state and chose not to change the board.";
@@ -48,7 +60,9 @@ function runSummary(run = {}, action = "", primaryResult = null) {
 export function formatBoardManagerAgentRun(run = {}) {
   const results = safeArray(run.actionResults);
   const primaryResult = results[0] || null;
-  const action = safeText(run.selectedAction, 80) || safeText(primaryResult?.action, 80) || "no_decision";
+  const action = safeText(run.selectedAction, 80)
+    || safeText(primaryResult?.action, 80)
+    || (isPendingRun(run) ? "decision_pending" : "no_decision");
   return {
     id: safeText(run.id, 180),
     runId: safeText(run.id, 180),
@@ -82,6 +96,25 @@ export function formatBoardManagerAgentRun(run = {}) {
     startedAt: run.startedAt || null,
     completedAt: run.completedAt || null,
   };
+}
+
+export function formatBoardManagerAgentJob(job = {}) {
+  return formatBoardManagerAgentRun({
+    id: safeText(job.id, 180),
+    scope: safeText(job.scope, 120),
+    managerId: safeText(job.claimedBy || job.claimed_by, 180),
+    trigger: safeText(job.trigger, 160),
+    status: safeText(job.status, 80) || "queued",
+    selectedAction: "",
+    actionPayload: {
+      summary: safeText(job.reason, 1000),
+    },
+    decision: {},
+    dryRun: false,
+    actionResults: [],
+    startedAt: job.claimedAt || job.claimed_at || job.runAfter || job.run_after || job.createdAt || job.created_at || null,
+    completedAt: null,
+  });
 }
 
 function resultSummary({ action = "", result = {} } = {}) {
@@ -138,10 +171,13 @@ export function buildBoardManagerRunMicroSummary(run = {}) {
   const decision = safeObject(run.decision);
   const payload = safeObject(run.actionPayload);
   const results = safeArray(run.actionResults).slice(0, 4).map(compactActionResult);
-  const action = safeText(run.selectedAction || decision.action || results[0]?.action, 80) || "no_decision";
+  const action = safeText(run.selectedAction || decision.action || results[0]?.action, 80)
+    || (isPendingRun(run) ? "decision_pending" : "no_decision");
   const resultText = results[0]?.summary || resultSummary({ action, result: {} });
-  const summary = run.status === "failed"
+  const summary = runStatus(run) === "failed"
     ? safeText(run.error, 1000) || "The Board Manager run failed before completing a decision."
+    : isPendingRun(run)
+      ? "The Board Manager is evaluating Hive state and has not recorded a decision yet."
     : safeText(payload.summary, 1000) || safeText(decision.reason, 1000) || resultText;
   const nextSteps = safeArray(payload.next_steps).slice(0, 3).map((item) => safeText(item, 240)).filter(Boolean);
   const micro = {

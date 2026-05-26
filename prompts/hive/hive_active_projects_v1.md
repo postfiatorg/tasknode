@@ -28,9 +28,9 @@ Project rules:
 - Use plain language titles.
 - The summary should be one sentence.
 - The about text should explain what the project is and why it exists.
-- `task_count` is the planned or scoped task count, not live allocated task rows.
-- `contributor_count` is the target operator count, not live allocated contributors.
-- `pft_routed` is the planned route budget or target, not a confirmed payment total.
+- `task_count` must be `0` unless the source packet includes actual project-linked task rows.
+- `contributor_count` must be `0` unless the source packet includes actual project-linked contributor rows.
+- `pft_routed` must be `0` unless the source packet includes confirmed project-linked task rewards or routed payments.
 - Keep all live fields honest: no fake wallets, no fake task IDs, no fake activity.
 
 ## Reviewer To Do List

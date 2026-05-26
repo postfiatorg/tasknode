@@ -268,6 +268,10 @@ async function main() {
       }),
     },
   });
+  const createdProject = await query("SELECT task_count, contributor_count, pft_routed FROM network_projects WHERE id = $1", [projectId]);
+  assert.equal(Number(createdProject.rows[0]?.task_count || 0), 0);
+  assert.equal(Number(createdProject.rows[0]?.contributor_count || 0), 0);
+  assert.equal(Number(createdProject.rows[0]?.pft_routed || 0), 0);
 
   const networkTaskDecision = {
     action: "initiate_network_task",
@@ -474,7 +478,7 @@ async function main() {
   });
 
   const [project, contributor, productDoc, networkJob, networkJobCount, message, fallbackMessage, actions, actionRows] = await Promise.all([
-    query("SELECT status, metadata_json->>'operator_archived' AS operator_archived FROM network_projects WHERE id = $1", [projectId]),
+    query("SELECT status, metadata_json->>'agent_archived' AS agent_archived, metadata_json->>'operator_archived' AS operator_archived FROM network_projects WHERE id = $1", [projectId]),
     query("SELECT status FROM network_project_contributors WHERE project_id = $1 AND wallet_address = $2", [projectId, wallet]),
     query(
       `
@@ -495,7 +499,8 @@ async function main() {
     query("SELECT action, result_json FROM board_manager_action_results WHERE run_id = $1", [runId]),
   ]);
   assert.equal(project.rows[0]?.status, "archived");
-  assert.equal(project.rows[0]?.operator_archived, "true");
+  assert.equal(project.rows[0]?.agent_archived, "true");
+  assert.equal(project.rows[0]?.operator_archived, null);
   assert.equal(contributor.rows[0]?.status, "active");
   assert.ok(productDoc.rows[0]?.id);
   assert.match(productDoc.rows[0]?.project_status || "", /project/i);

@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { chatModes, chatSend } from "./product-contracts.js";
 import { effectiveDefaultChatMode } from "./chat-mode-defaults.js";
 import { usageSummary } from "./repositories/chat-billing.js";
+import { recordTelegramBotEvent } from "./repositories/telegram-bot-events.js";
 import {
   conversationIdForSession,
   findAccountByIdentity,
@@ -93,7 +94,11 @@ async function defaultSendTelegramMessage({ chatId, text: messageText, replyMark
       }),
     });
     const body = await response.json().catch(() => ({}));
-    sent.push({ status: response.status, ok: response.ok && body?.ok !== false });
+    sent.push({
+      status: response.status,
+      ok: response.ok && body?.ok !== false,
+      messageId: body?.result?.message_id == null ? null : String(body.result.message_id),
+    });
     if (!response.ok || body?.ok === false) {
       return {
         ok: false,
@@ -104,6 +109,25 @@ async function defaultSendTelegramMessage({ chatId, text: messageText, replyMark
   }
 
   return { ok: true, sent };
+}
+
+async function defaultSendTelegramChatAction({ chatId, action = "typing" }, { fetchImpl = fetch } = {}) {
+  const token = telegramBotToken();
+  if (!token) return { ok: false, error: "telegram_bot_token_missing" };
+
+  const response = await fetchImpl(telegramBotApiUrl("sendChatAction"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      action,
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body?.ok === false) {
+    return { ok: false, status: response.status, error: body?.description || `telegram_chat_action_http_${response.status}` };
+  }
+  return { ok: true, status: response.status };
 }
 
 async function defaultAnswerCallbackQuery({ callbackQueryId, text: messageText = "", showAlert = false }, { fetchImpl = fetch } = {}) {
@@ -347,6 +371,165 @@ function failureText(result) {
   return text([body.message, body.actionRequired].filter(Boolean).join("\n"), 1800) || "Task Node could not complete this chat request.";
 }
 
+async function auditTelegramBotEvent(event = {}) {
+  try {
+    await recordTelegramBotEvent(event);
+  } catch (error) {
+    console.warn(`telegram bot event audit failed: ${error?.message || error}`);
+  }
+}
+
+function sendMetadata(result = {}) {
+  return {
+    sent: Array.isArray(result?.sent) ? result.sent : [],
+    messageId: result?.messageId || null,
+  };
+}
+
+function telegramEventContextForMessage(message = {}) {
+  return {
+    updateId: message.updateId == null ? "" : String(message.updateId),
+    messageId: message.messageId == null ? "" : String(message.messageId),
+    providerUserId: message.fromId || "",
+    chatId: message.chatId || "",
+    accountId: "",
+    action: "",
+    mode: "",
+  };
+}
+
+function telegramEventContextForCallback(callback = {}) {
+  return {
+    updateId: callback.updateId == null ? "" : String(callback.updateId),
+    messageId: "",
+    providerUserId: callback.fromId || "",
+    chatId: callback.chatId || "",
+    accountId: "",
+    action: "",
+    mode: "",
+  };
+}
+
+function auditedTelegramSender({ context, sendTelegramMessage, fetchImpl = fetch } = {}) {
+  return async (message, options = {}) => {
+    try {
+      const result = await sendTelegramMessage(message, options || { fetchImpl });
+      await auditTelegramBotEvent({
+        eventType: "send_message",
+        direction: "outbound",
+        accountId: context.accountId,
+        providerUserId: context.providerUserId,
+        chatId: String(message?.chatId || context.chatId || ""),
+        updateId: context.updateId,
+        messageId: context.messageId,
+        action: context.action,
+        mode: context.mode,
+        status: result?.ok === false ? "failed" : "sent",
+        error: result?.ok === false ? result.error || "send_failed" : "",
+        textPreview: message?.text || "",
+        metadata: sendMetadata(result),
+      });
+      return result;
+    } catch (error) {
+      await auditTelegramBotEvent({
+        eventType: "send_message",
+        direction: "outbound",
+        accountId: context.accountId,
+        providerUserId: context.providerUserId,
+        chatId: String(message?.chatId || context.chatId || ""),
+        updateId: context.updateId,
+        messageId: context.messageId,
+        action: context.action,
+        mode: context.mode,
+        status: "threw",
+        error: error?.message || String(error),
+        textPreview: message?.text || "",
+      });
+      throw error;
+    }
+  };
+}
+
+function auditedTelegramChatActionSender({ context, sendTelegramChatAction, fetchImpl = fetch } = {}) {
+  return async (action, options = {}) => {
+    try {
+      const result = await sendTelegramChatAction(action, options || { fetchImpl });
+      await auditTelegramBotEvent({
+        eventType: "send_chat_action",
+        direction: "outbound",
+        accountId: context.accountId,
+        providerUserId: context.providerUserId,
+        chatId: String(action?.chatId || context.chatId || ""),
+        updateId: context.updateId,
+        messageId: context.messageId,
+        action: context.action,
+        mode: context.mode,
+        status: result?.ok === false ? "failed" : "sent",
+        error: result?.ok === false ? result.error || "chat_action_failed" : "",
+        textPreview: action?.action || "typing",
+        metadata: { status: result?.status || null },
+      });
+      return result;
+    } catch (error) {
+      await auditTelegramBotEvent({
+        eventType: "send_chat_action",
+        direction: "outbound",
+        accountId: context.accountId,
+        providerUserId: context.providerUserId,
+        chatId: String(action?.chatId || context.chatId || ""),
+        updateId: context.updateId,
+        messageId: context.messageId,
+        action: context.action,
+        mode: context.mode,
+        status: "threw",
+        error: error?.message || String(error),
+        textPreview: action?.action || "typing",
+      });
+      throw error;
+    }
+  };
+}
+
+function auditedCallbackAnswerer({ context, answerCallbackQuery, fetchImpl = fetch } = {}) {
+  return async (answer, options = {}) => {
+    const result = await answerCallbackQuery(answer, options || { fetchImpl });
+    await auditTelegramBotEvent({
+      eventType: "answer_callback_query",
+      direction: "outbound",
+      accountId: context.accountId,
+      providerUserId: context.providerUserId,
+      chatId: context.chatId,
+      updateId: context.updateId,
+      messageId: context.messageId,
+      action: context.action,
+      mode: context.mode,
+      status: result?.ok === false ? "failed" : "sent",
+      error: result?.ok === false ? result.error || "callback_answer_failed" : "",
+      textPreview: answer?.text || "",
+      metadata: { callbackQueryId: answer?.callbackQueryId || "" },
+    });
+    return result;
+  };
+}
+
+async function auditTelegramProcessResult(context = {}, result = {}) {
+  await auditTelegramBotEvent({
+    eventType: "process_result",
+    direction: "internal",
+    accountId: context.accountId,
+    providerUserId: context.providerUserId,
+    chatId: context.chatId,
+    updateId: context.updateId,
+    messageId: context.messageId,
+    action: result.action || context.action,
+    mode: result.mode || context.mode,
+    status: result.ok === false ? "failed" : result.ignored ? "ignored" : "ok",
+    error: result.error || result.reason || "",
+    metadata: result,
+  });
+  return result;
+}
+
 async function sendModeHelp({ accountId = "", chatId = "", mode = "", sendTelegramMessage, usageReader = usageSummary, fetchImpl = fetch } = {}) {
   const summary = await safeUsageSummaryForBot({ accountId, usageReader });
   const currentMode = knownModeLabel(mode) || defaultTelegramMode();
@@ -371,19 +554,16 @@ async function sendBalance({ accountId = "", chatId = "", mode = "", sendTelegra
       billingSummaryText(summary),
       `Current mode: ${currentMode}`,
     ].join("\n"),
-    replyMarkup: modeKeyboard(currentMode),
   }, { fetchImpl });
 }
 
-async function sendChatAcknowledgement({ chatId = "", mode = "", sendTelegramMessage, fetchImpl = fetch } = {}) {
-  const currentMode = knownModeLabel(mode) || defaultTelegramMode();
-  const sent = await sendTelegramMessage({
+async function sendChatTyping({ chatId = "", sendTelegramChatAction, fetchImpl = fetch } = {}) {
+  const sent = await sendTelegramChatAction({
     chatId,
-    text: `Working in ${currentMode}. I will send the answer here when it is ready.`,
-    replyMarkup: modeKeyboard(currentMode),
+    action: "typing",
   }, { fetchImpl });
   if (sent?.ok === false) {
-    console.warn(`telegram bot acknowledgement send failed: ${sent.error || "send_failed"}`);
+    console.warn(`telegram bot typing action failed: ${sent.error || "send_failed"}`);
   }
   return sent;
 }
@@ -394,139 +574,205 @@ export async function processTelegramBotUpdate(update = {}, {
   chatExecutor = chatSend,
   preferenceReader = getTelegramBotPreferences,
   preferenceWriter = setTelegramBotModePreference,
+  sendTelegramChatAction = defaultSendTelegramChatAction,
   sendTelegramMessage = defaultSendTelegramMessage,
   usageReader = usageSummary,
   fetchImpl = fetch,
 } = {}) {
   const marker = markTelegramUpdate(update.update_id);
-  if (marker.duplicate) return { ok: true, ignored: true, reason: "duplicate_update" };
+  if (marker.duplicate) {
+    return auditTelegramProcessResult(
+      { updateId: update.update_id == null ? "" : String(update.update_id) },
+      { ok: true, ignored: true, reason: "duplicate_update" }
+    );
+  }
 
   const callback = incomingCallback(update);
   if (callback) {
-    if (callback.fromIsBot) return { ok: true, ignored: true, reason: "bot_sender" };
-    if (!callback.callbackQueryId || !callback.chatId || !callback.fromId) return { ok: true, ignored: true, reason: "missing_callback_sender" };
+    const auditContext = telegramEventContextForCallback(callback);
+    const sendBotMessage = auditedTelegramSender({ context: auditContext, sendTelegramMessage, fetchImpl });
+    const answerCallback = auditedCallbackAnswerer({ context: auditContext, answerCallbackQuery, fetchImpl });
+
+    await auditTelegramBotEvent({
+      eventType: "callback_query",
+      direction: "inbound",
+      providerUserId: callback.fromId,
+      chatId: callback.chatId,
+      updateId: auditContext.updateId,
+      status: "received",
+      textPreview: callback.data,
+      metadata: {
+        username: callback.username || "",
+        chatType: callback.chatType || "",
+        callbackQueryId: callback.callbackQueryId || "",
+      },
+    });
+
+    if (callback.fromIsBot) return auditTelegramProcessResult(auditContext, { ok: true, ignored: true, reason: "bot_sender" });
+    if (!callback.callbackQueryId || !callback.chatId || !callback.fromId) {
+      return auditTelegramProcessResult(auditContext, { ok: true, ignored: true, reason: "missing_callback_sender" });
+    }
     if (callback.chatType && callback.chatType !== "private") {
-      await answerCallbackQuery({
+      auditContext.action = "telegram_bot_non_private_callback";
+      await answerCallback({
         callbackQueryId: callback.callbackQueryId,
         text: "Use a private Telegram chat.",
         showAlert: true,
       }, { fetchImpl });
-      return { ok: true, ignored: true, reason: "non_private_callback" };
+      return auditTelegramProcessResult(auditContext, { ok: true, ignored: true, reason: "non_private_callback" });
     }
 
     const account = accountResolver("telegram", callback.fromId);
     const linked = account?.id && account.status !== "deleted";
     if (!linked) {
-      await answerCallbackQuery({
+      auditContext.action = "telegram_bot_link_required";
+      await answerCallback({
         callbackQueryId: callback.callbackQueryId,
         text: "Link Telegram in Task Node first.",
         showAlert: true,
       }, { fetchImpl });
-      await sendTelegramMessage({ chatId: callback.chatId, text: linkedInstructions() }, { fetchImpl });
-      return { ok: true, action: "telegram_bot_link_required", linked: false };
+      await sendBotMessage({ chatId: callback.chatId, text: linkedInstructions() }, { fetchImpl });
+      return auditTelegramProcessResult(auditContext, { ok: true, action: "telegram_bot_link_required", linked: false });
     }
 
+    auditContext.accountId = account.id;
     const currentMode = modeForTelegramChat({ accountId: account.id, chatId: callback.chatId, preferenceReader });
+    auditContext.mode = currentMode;
     if (callback.data === "tn_balance") {
-      await answerCallbackQuery({ callbackQueryId: callback.callbackQueryId, text: "Balance sent." }, { fetchImpl });
+      auditContext.action = "telegram_bot_balance";
+      await answerCallback({ callbackQueryId: callback.callbackQueryId, text: "Balance sent." }, { fetchImpl });
       await sendBalance({
         accountId: account.id,
         chatId: callback.chatId,
         mode: currentMode,
-        sendTelegramMessage,
+        sendTelegramMessage: sendBotMessage,
         usageReader,
         fetchImpl,
       });
-      return { ok: true, action: "telegram_bot_balance", linked: true, accountId: account.id, mode: currentMode };
+      return auditTelegramProcessResult(auditContext, { ok: true, action: "telegram_bot_balance", linked: true, accountId: account.id, mode: currentMode });
     }
 
     if (callback.data.startsWith("tn_mode:")) {
       const selected = modeByCode.get(callback.data.slice("tn_mode:".length)) || "";
       if (!selected) {
-        await answerCallbackQuery({ callbackQueryId: callback.callbackQueryId, text: "Unknown mode.", showAlert: true }, { fetchImpl });
-        return { ok: true, ignored: true, reason: "unknown_mode_callback" };
+        auditContext.action = "telegram_bot_unknown_mode";
+        await answerCallback({ callbackQueryId: callback.callbackQueryId, text: "Unknown mode.", showAlert: true }, { fetchImpl });
+        return auditTelegramProcessResult(auditContext, { ok: true, ignored: true, reason: "unknown_mode_callback" });
       }
+      auditContext.action = "telegram_bot_mode_set";
+      auditContext.mode = selected;
       const saved = preferenceWriter({ accountId: account.id, chatId: callback.chatId, mode: selected });
       if (!saved?.ok) {
-        await answerCallbackQuery({ callbackQueryId: callback.callbackQueryId, text: "Mode could not be saved.", showAlert: true }, { fetchImpl });
-        return { ok: false, action: "telegram_bot_mode_failed", linked: true, accountId: account.id, error: saved?.error || "mode_save_failed" };
+        await answerCallback({ callbackQueryId: callback.callbackQueryId, text: "Mode could not be saved.", showAlert: true }, { fetchImpl });
+        return auditTelegramProcessResult(auditContext, { ok: false, action: "telegram_bot_mode_failed", linked: true, accountId: account.id, error: saved?.error || "mode_save_failed" });
       }
 
-      await answerCallbackQuery({ callbackQueryId: callback.callbackQueryId, text: `Mode set: ${selected}` }, { fetchImpl });
+      await answerCallback({ callbackQueryId: callback.callbackQueryId, text: `Mode set: ${selected}` }, { fetchImpl });
       await sendModeHelp({
         accountId: account.id,
         chatId: callback.chatId,
         mode: selected,
-        sendTelegramMessage,
+        sendTelegramMessage: sendBotMessage,
         usageReader,
         fetchImpl,
       });
-      return { ok: true, action: "telegram_bot_mode_set", linked: true, accountId: account.id, mode: selected };
+      return auditTelegramProcessResult(auditContext, { ok: true, action: "telegram_bot_mode_set", linked: true, accountId: account.id, mode: selected });
     }
 
-    await answerCallbackQuery({ callbackQueryId: callback.callbackQueryId, text: "Unknown action.", showAlert: true }, { fetchImpl });
-    return { ok: true, ignored: true, reason: "unknown_callback" };
+    auditContext.action = "telegram_bot_unknown_callback";
+    await answerCallback({ callbackQueryId: callback.callbackQueryId, text: "Unknown action.", showAlert: true }, { fetchImpl });
+    return auditTelegramProcessResult(auditContext, { ok: true, ignored: true, reason: "unknown_callback" });
   }
 
   const message = incomingMessage(update);
-  if (!message) return { ok: true, ignored: true, reason: "no_message" };
-  if (message.fromIsBot) return { ok: true, ignored: true, reason: "bot_sender" };
-  if (!message.chatId || !message.fromId) return { ok: true, ignored: true, reason: "missing_sender" };
+  if (!message) {
+    return auditTelegramProcessResult(
+      { updateId: update.update_id == null ? "" : String(update.update_id) },
+      { ok: true, ignored: true, reason: "no_message" }
+    );
+  }
+  const auditContext = telegramEventContextForMessage(message);
+  const sendBotMessage = auditedTelegramSender({ context: auditContext, sendTelegramMessage, fetchImpl });
+  const sendBotChatAction = auditedTelegramChatActionSender({ context: auditContext, sendTelegramChatAction, fetchImpl });
+  await auditTelegramBotEvent({
+    eventType: "message",
+    direction: "inbound",
+    providerUserId: message.fromId,
+    chatId: message.chatId,
+    updateId: auditContext.updateId,
+    messageId: auditContext.messageId,
+    status: "received",
+    textPreview: message.body,
+    metadata: {
+      username: message.username || "",
+      chatType: message.chatType || "",
+    },
+  });
+
+  if (message.fromIsBot) return auditTelegramProcessResult(auditContext, { ok: true, ignored: true, reason: "bot_sender" });
+  if (!message.chatId || !message.fromId) return auditTelegramProcessResult(auditContext, { ok: true, ignored: true, reason: "missing_sender" });
 
   if (message.chatType && message.chatType !== "private") {
-    await sendTelegramMessage({
+    auditContext.action = "telegram_bot_non_private_chat";
+    await sendBotMessage({
       chatId: message.chatId,
       text: "For account privacy, message this bot in a private Telegram chat.",
     }, { fetchImpl });
-    return { ok: true, ignored: true, reason: "non_private_chat" };
+    return auditTelegramProcessResult(auditContext, { ok: true, ignored: true, reason: "non_private_chat" });
   }
 
   const account = accountResolver("telegram", message.fromId);
   const linked = account?.id && account.status !== "deleted";
 
   if (!linked) {
-    await sendTelegramMessage({ chatId: message.chatId, text: linkedInstructions() }, { fetchImpl });
-    return { ok: true, action: "telegram_bot_link_required", linked: false };
+    auditContext.action = "telegram_bot_link_required";
+    await sendBotMessage({ chatId: message.chatId, text: linkedInstructions() }, { fetchImpl });
+    return auditTelegramProcessResult(auditContext, { ok: true, action: "telegram_bot_link_required", linked: false });
   }
 
+  auditContext.accountId = account.id;
   const currentMode = modeForTelegramChat({ accountId: account.id, chatId: message.chatId, preferenceReader });
+  auditContext.mode = currentMode;
 
   const command = telegramCommand(message.body);
 
   if (!message.body || command === "mode") {
+    auditContext.action = "telegram_bot_help";
     await sendModeHelp({
       accountId: account.id,
       chatId: message.chatId,
       mode: currentMode,
-      sendTelegramMessage,
+      sendTelegramMessage: sendBotMessage,
       usageReader,
       fetchImpl,
     });
-    return { ok: true, action: "telegram_bot_help", linked: true, accountId: account.id };
+    return auditTelegramProcessResult(auditContext, { ok: true, action: "telegram_bot_help", linked: true, accountId: account.id });
   }
 
   if (command === "balance") {
+    auditContext.action = "telegram_bot_balance";
     await sendBalance({
       accountId: account.id,
       chatId: message.chatId,
       mode: currentMode,
-      sendTelegramMessage,
+      sendTelegramMessage: sendBotMessage,
       usageReader,
       fetchImpl,
     });
-    return { ok: true, action: "telegram_bot_balance", linked: true, accountId: account.id, mode: currentMode };
+    return auditTelegramProcessResult(auditContext, { ok: true, action: "telegram_bot_balance", linked: true, accountId: account.id, mode: currentMode });
   }
 
   if (command === "unknown") {
+    auditContext.action = "telegram_bot_unknown_command";
     await sendModeHelp({
       accountId: account.id,
       chatId: message.chatId,
       mode: currentMode,
-      sendTelegramMessage,
+      sendTelegramMessage: sendBotMessage,
       usageReader,
       fetchImpl,
     });
-    return { ok: true, action: "telegram_bot_unknown_command", linked: true, accountId: account.id, mode: currentMode };
+    return auditTelegramProcessResult(auditContext, { ok: true, action: "telegram_bot_unknown_command", linked: true, accountId: account.id, mode: currentMode });
   }
 
   const conversationId = conversationIdForSession(
@@ -540,25 +786,24 @@ export async function processTelegramBotUpdate(update = {}, {
     message: message.body,
   };
 
-  await sendChatAcknowledgement({
+  auditContext.action = "telegram_bot_chat";
+  await sendChatTyping({
     chatId: message.chatId,
-    mode: currentMode,
-    sendTelegramMessage,
+    sendTelegramChatAction: sendBotChatAction,
     fetchImpl,
   });
 
   const result = await chatExecutor(payload, "POST");
   const replyText = result?.body?.ok ? assistantTextFromChatResult(result) : failureText(result);
-  const sent = await sendTelegramMessage({
+  const sent = await sendBotMessage({
     chatId: message.chatId,
     text: replyText,
-    replyMarkup: modeKeyboard(currentMode),
   }, { fetchImpl });
   if (sent?.ok === false) {
     console.warn(`telegram bot response send failed: ${sent.error || "send_failed"}`);
   }
 
-  return {
+  return auditTelegramProcessResult(auditContext, {
     ok: result?.body?.ok === true && sent?.ok !== false,
     action: "telegram_bot_chat",
     linked: true,
@@ -567,7 +812,7 @@ export async function processTelegramBotUpdate(update = {}, {
     mode: currentMode,
     chatStatus: result?.status || 0,
     sent,
-  };
+  });
 }
 
 export async function handleTelegramBotRoute({ json, readJson, req, res, url } = {}) {

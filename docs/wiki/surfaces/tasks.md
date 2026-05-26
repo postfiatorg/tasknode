@@ -42,6 +42,12 @@ After a successful chain submit, the server records a durable `task_requests` ro
 
 A signed request is not the same thing as a proposed task card. Durable task cards appear after `server/task-generation-worker.js` claims the `task_requests` row, decrypts the request bundle, calls the task-generation prompt/model, emits an encrypted `pf.task.offer.v1` pointer from the authority wallet, syncs PFTL, and the reducer projects the offer into `task_projections`.
 
+On Fly, task generation and review both depend on the `worker` process group.
+Deploys must use `npm run fly:deploy`, which runs `npm run fly:background-guard`
+after the image rollout. If request receipts remain queued, offers do not
+appear, or submitted tasks do not advance to `Verification requested`, verify
+the active Fly `worker` is `started` before treating task data as corrupt.
+
 ## Task Generation Contract
 
 Generated offers must match the browser UX. The task-generation prompt in `prompts/task_engine/taskgen_minimal_v1.md` and the worker validation in `server/task-generation-worker.js` enforce this contract:
@@ -156,6 +162,11 @@ Screenshot and file uploads use a Task Node styled picker, not the native browse
 The task detail modal keeps its own local detail state while it is open. After a successful evidence transaction, the modal updates optimistically to `Submitted` or `Awaiting review` and polls task detail for the submitted transaction hash so the user is not left looking at the old prompt while indexing catches up.
 
 The Tasks page refresh policy is driven by the shared lifecycle contract in `shared/task-lifecycle.js` and the server metadata returned by `GET /api/tasks`. Initial submissions can be advanced by the review worker into `Verification requested`; verification responses can be advanced into `Rewarded` after the authority scores the evidence and, when positive, publishes the reward payment. The list and tab counts should therefore follow the projection cache without a manual browser reload.
+
+The review worker is a production dependency, not an optional enhancement. On
+Fly it runs under `npm run start:worker`; a passing public `/health` check does
+not prove this loop is alive. `npm run fly:worker-guard` is the operator check
+for stuck review-loop states.
 
 Task product flags such as personal/network/alpha task enablement and daily reward cap are read from `server/task-product-config.js`, not embedded in the empty task state.
 
@@ -373,8 +384,8 @@ Outstanding and pending verification tasks are uncapped in chat context. Refused
 
 - Browser task request publishing is live for the Tasks modal and chat request mode.
 - Board Manager `initiate_network_task` queueing is implemented. It writes `network_task_allocations` and `network_task_generation_jobs`; fake smoke jobs are marked failed after verification so the live worker does not process test data.
-- The local Docker API starts `server/task-generation-worker.js`, which claims `task_requests` rows and emits real `pf.task.offer.v1` pointers. Browser publishes also schedule an immediate generation tick; the 5 second worker interval is the backstop. Production should keep this controlled by `TASKNODE_TASK_GENERATION_WORKER_ENABLED`.
-- The local Docker API starts `server/network-task-generation-worker.js` with `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true`, 5 second interval, and batch size 1. It creates a normal encrypted task request bundle from a queued network allocation and schedules the existing task-generation worker.
+- The API worker starts `server/task-generation-worker.js` when `TASKNODE_TASK_GENERATION_WORKER_ENABLED=true`. It claims `task_requests` rows and emits real `pf.task.offer.v1` pointers. Browser publishes also schedule an immediate generation tick; the 5 second worker interval is the backstop.
+- The API worker starts `server/network-task-generation-worker.js` when `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true`. It creates a normal encrypted task request bundle from a queued network allocation and schedules the existing task-generation worker. A queued `network_task_generation_jobs` row is not a visible Network Task until the second worker publishes the offer and `task_projections` contains the task.
 - Local Docker live Network Task smoke: Board Manager run `boardrun_6e436673-14aa-4568-b7a1-fe2874d4ad7a` queued generation job `nettaskjob_2d863a1a-0d57-47c2-9b33-52787ad8d37c`; the worker created request `req_net_c73fe62037a9cf201d51b32bdefa69ca`; task generation published `task_01af1624fcb74e41d902ca32b126f27d` with offer transaction `E6C86781C0D53A68F2E7740AA8751E19616B9732489D9EA8C4330A692AC1A931`; the user completed the normal submission/review/reward loop; `task_projections` shows status `rewarded`; `network_project_task_refs` mirrors `rewarded`; `network_task_allocations` mirrors `completed`.
 - Browser accept/refuse/cancel task updates are live through `POST /api/tasks/action`.
 - Browser evidence and verification-response submission are live through `POST /api/tasks/submission`, including up to two compact artifacts in one signed packet.

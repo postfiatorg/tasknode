@@ -147,8 +147,9 @@ Wallet balance reads:
 - Local Docker defaults to the same rapid PFTL host PFTasks uses on this
   machine: `wss://178.156.143.199:6005` with local self-signed TLS allowed and
   `http://178.156.143.199:5005`, with public PFTL testnet fallbacks. This node
-  is for current balance reads, not historical pulls. Fly uses the public PFTL
-  testnet hosts unless environment or secrets override them.
+  is for current balance reads and transaction submission, not historical
+  pulls. Fly currently uses the same rapid WSS endpoint through explicit
+  environment/secrets and keeps historical pulls on the archive endpoints.
 - `GET /api/wallet/transactions` requires the same account session and linked
   wallet boundary. It scans full-history PFTL `account_tx`, normalizes native
   payment rows involving the linked wallet, labels recognized `pf.ptr/v4`
@@ -225,7 +226,9 @@ Usage/billing:
 - API security headers and focused route rate limits for auth, chat, wallet,
   usage, and admin credit.
 - Runtime, API, and frame-smoke coverage.
-- Fly dev deployment.
+- Fly dev deployment through `npm run fly:deploy`, which includes the
+  post-deploy background guard for the non-HTTP `worker` and `board-manager`
+  process groups.
 
 ## Wired But Not Fully Live
 

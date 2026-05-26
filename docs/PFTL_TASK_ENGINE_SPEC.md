@@ -160,6 +160,12 @@ The protocol must support task issuance without a preceding user request. That
 matters for network tasks, alpha tasks, system-assigned work, and future
 multi-agent allocation.
 
+Task Node Official production note: on Fly, steps 10 and 12 are executed by
+`server/task-review-worker.js` in the non-HTTP `worker` process group, not by
+the public web `app` process. Use `npm run fly:deploy` so the post-deploy worker
+guard starts one worker and sets `restart=always`. A healthy `/health` route is
+not sufficient evidence that the lifecycle worker is running.
+
 ## Canonical State Machine
 
 Recommended canonical states:
@@ -820,6 +826,11 @@ The canonical simulation scenario:
 
 This harness is also where we should run latency measurements before putting
 flows into the UX.
+
+The web app implementation now has the same critical operator dependency as the
+harness: authority and reward transitions need a live worker. For Fly releases,
+the documented deploy command is `npm run fly:deploy`, followed by verification
+with `npm run fly:worker-guard` and `fly status -a tasknodeofficial-dev`.
 
 ## Task Generation Contract
 

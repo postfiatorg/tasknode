@@ -39,10 +39,12 @@ Behavior:
   until auth/session/context/wallet records are migrated.
 - dev auth is enabled.
 - cookies are localhost cookies, not Fly HTTPS cookies.
-- wallet balance reads use the same rapid PFTL host PFTasks uses on this
-  machine by default: `wss://178.156.143.199:6005` first with local
-  self-signed TLS allowed, then `http://178.156.143.199:5005` fallback. This is
-  a current-balance path, not a historical ledger/archive pull path.
+- wallet balance reads and task transaction submission use the rapid PFTL host:
+  `wss://178.156.143.199:6005` first, then `http://178.156.143.199:5005`
+  fallback. Because the rapid websocket currently presents non-public CA TLS,
+  Fly must set `PFTL_WSS_REJECT_UNAUTHORIZED=false` together with
+  `TASKNODE_ALLOW_INSECURE_PFTL_TLS=true`. This is a current-balance and submit
+  path, not a historical ledger/archive pull path.
 - historical context restore uses `PFTL_HISTORY_WSS_URL`, defaulting to
   `wss://ws-archive.testnet.postfiat.org`, so context CID discovery does not
   depend on the rapid balance node's ledger depth. JSON-RPC is fallback only.
@@ -180,7 +182,211 @@ The deploy env must keep these enabled:
 TASKNODE_DATABASE_ENABLED=true
 TASKNODE_STORE_PATH=/data/runtime-store.json
 TASKNODE_RUNTIME_STORE_DURABLE=true
+TASKNODE_TASK_GENERATION_WORKER_ENABLED=true
+TASKNODE_TASK_GENERATION_WORKER_INTERVAL_MS=5000
+TASKNODE_TASK_GENERATION_WORKER_BATCH_LIMIT=1
+TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true
+TASKNODE_NETWORK_TASK_GENERATION_WORKER_INTERVAL_MS=5000
+TASKNODE_NETWORK_TASK_GENERATION_WORKER_BATCH_LIMIT=1
+TASKNODE_BOARD_MANAGER_CADENCE_SECONDS=900
+TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR=60
+TASKNODE_TASK_REVIEW_WORKER_ENABLED=true
+TASKNODE_TASK_REVIEW_WORKER_INTERVAL_MS=5000
+TASKNODE_TASK_REVIEW_WORKER_BATCH_LIMIT=1
 ```
+
+### Background Process Guard
+
+The Fly `app` process group is the only group covered by `[http_service]`.
+`min_machines_running` and HTTP health checks do not keep `worker` or
+`board-manager` alive. The `worker` process owns PFTL cache sync, cache
+reduction, task generation, task review, memory jobs, and other background
+loops. The `board-manager` process owns Hive Board Manager scheduling and
+action execution. A healthy public app can still fail task progression or Hive
+board automation if these background groups are stopped.
+
+Every Fly release must run:
+
+```bash
+npm run fly:background-guard
+```
+
+The guard starts one `worker` machine and one `board-manager` machine if needed,
+sets the active machines to `restart=always`, and exits non-zero if it cannot
+verify both background groups are running. For the `worker` group it also
+verifies the task-generation, Network Task generation, and task-review worker
+enable flags. Treat a guard failure as a failed deploy.
+
+Network Task delivery has two worker hops:
+
+1. `server/network-task-generation-worker.js` consumes
+   `network_task_generation_jobs` and creates normal `task_requests` rows.
+2. `server/task-generation-worker.js` consumes those `task_requests` and
+   publishes the real `pf.task.offer.v1` task pointer.
+
+A queued `network_task_generation_jobs` row is not a visible Network Task. The
+task exists only after the second hop publishes an offer and `task_projections`
+contains the task.
+
+Expected status after deploy:
+
+```text
+app      started
+worker   started
+worker standby stopped         # acceptable
+board-manager started
+board-manager standby stopped  # acceptable
+```
+
+If tasks are stuck in `submitted`, context history is not indexing, or task
+offers are not appearing after request publication, check the worker before
+debugging database rows. If Hive Board Manager runs stop appearing, check
+`board-manager` before debugging project rows.
+
+### Production Ramp-Up And Shutdown
+
+The production system has two layers that must both be correct:
+
+1. Fly machines: `app`, `worker`, and `board-manager` process groups.
+2. Durable Hive scheduler state: `board_manager_scopes.status` for
+   `global_hive`.
+
+A started `board-manager` machine with `global_hive` paused will not mutate the
+Hive board. An enabled `global_hive` scope with the `board-manager` machine
+stopped will also not mutate the Hive board. Always verify both.
+
+#### Ramp Up From A Cold Or Uncertain State
+
+Use this when recovering after machine stops, a deploy, a maintenance window, or
+an operator pause.
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial
+fly status -a tasknodeofficial-dev
+npm run fly:background-guard
+```
+
+Verify the public app is reachable:
+
+```bash
+curl -sS https://tasknodeofficial-dev.fly.dev/health
+```
+
+Verify the Hive Board Manager scope from any running Fly machine:
+
+```bash
+fly ssh console --app tasknodeofficial-dev -C \
+  "sh -lc 'cd /app && npm run board-manager:ops -- status'"
+```
+
+If the scope is intentionally ready to run, ensure the cadence/action budget and
+resume it:
+
+```bash
+fly ssh console --app tasknodeofficial-dev -C \
+  "sh -lc 'cd /app && npm run board-manager:ops -- ensure-scope --cadence-seconds 900 --max-actions-per-hour 60 && npm run board-manager:ops -- resume --reason \"Production ramp-up\"'"
+```
+
+Expected active state:
+
+```text
+fly status:
+  app            started
+  worker         started
+  board-manager  started
+
+board-manager:ops status:
+  scope.status = enabled
+  scope.cadence_seconds = 900
+  scope.max_actions_per_hour = 60
+```
+
+If `scope.status = paused`, Hive will not run even though the machine is up. If
+`board-manager` is stopped, Hive will not run even though `scope.status =
+enabled`.
+
+#### Pause Only The Hive Board
+
+Use this before repairing project rows, task refs, Board Manager prompts, or
+anything else that could be overwritten by a live Board Manager run.
+
+```bash
+fly ssh console --app tasknodeofficial-dev -C \
+  "sh -lc 'cd /app && npm run board-manager:ops -- pause --reason \"Operator maintenance\"'"
+
+fly ssh console --app tasknodeofficial-dev -C \
+  "sh -lc 'cd /app && npm run board-manager:ops -- status'"
+```
+
+Paused Hive does not stop the web app, login, chat, wallet, top-up, or task
+workers. It only prevents new Board Manager job claims and Hive board
+mutations. Do not leave the scope paused after maintenance unless that is the
+explicit operator decision.
+
+Resume Hive:
+
+```bash
+fly ssh console --app tasknodeofficial-dev -C \
+  "sh -lc 'cd /app && npm run board-manager:ops -- resume --reason \"Operator maintenance complete\"'"
+```
+
+#### Full Production Shutdown
+
+Use this only for planned downtime. Do not delete the Fly Postgres cluster,
+Fly volume, or `/data/runtime-store.json`.
+
+1. Pause Hive first so it stops creating or executing board actions:
+
+```bash
+fly ssh console --app tasknodeofficial-dev -C \
+  "sh -lc 'cd /app && npm run board-manager:ops -- pause --reason \"Planned production shutdown\"'"
+```
+
+2. Inspect Board Manager jobs. If a job is running, wait for it to complete or
+   intentionally defer/recover it before stopping the machine:
+
+```bash
+fly ssh console --app tasknodeofficial-dev -C \
+  "sh -lc 'cd /app && npm run board-manager:ops -- status'"
+```
+
+3. Stop the active `board-manager` machine, then the active `worker` machine,
+   then the `app` machine. Use `fly status` to copy the current machine IDs:
+
+```bash
+fly status -a tasknodeofficial-dev
+fly machine stop <board-manager-machine-id> -a tasknodeofficial-dev
+fly machine stop <worker-machine-id> -a tasknodeofficial-dev
+fly machine stop <app-machine-id> -a tasknodeofficial-dev
+```
+
+Stopping `worker` halts task generation, Network Task generation, task review,
+PFTL cache workers, memory workers, and background profile jobs. Stopping
+`app` makes the public site unreachable. Stop `app` last.
+
+4. Confirm stopped state:
+
+```bash
+fly status -a tasknodeofficial-dev
+```
+
+#### Restart After Full Shutdown
+
+Start the app first so HTTP health and SSH access are available, then restore
+background processes and Hive:
+
+```bash
+fly machine start <app-machine-id> -a tasknodeofficial-dev
+npm run fly:background-guard
+curl -sS https://tasknodeofficial-dev.fly.dev/health
+fly ssh console --app tasknodeofficial-dev -C \
+  "sh -lc 'cd /app && npm run board-manager:ops -- ensure-scope --cadence-seconds 900 --max-actions-per-hour 60 && npm run board-manager:ops -- resume --reason \"Production restart\" && npm run board-manager:ops -- status'"
+fly status -a tasknodeofficial-dev
+```
+
+Do not consider production fully ramped until `/health` passes, `worker` and
+`board-manager` are started, and `global_hive` is either intentionally paused
+or explicitly `enabled`.
 
 The app database for `tasknodeofficial-dev` is the `tasknodeofficial` database
 inside the `tasknodex-db` managed Postgres cluster. Do not point
@@ -284,8 +490,14 @@ FRAME_BASE_URL=http://127.0.0.1:8080 npm run frame-smoke
 Deploy:
 
 ```bash
-fly deploy -a tasknodeofficial-dev -c fly.toml --remote-only
+npm run fly:deploy
 ```
+
+`npm run fly:deploy` runs `fly deploy` and then `npm run fly:background-guard`.
+The guard is required because `worker` and `board-manager` are non-HTTP Fly
+process groups; the `http_service.min_machines_running` setting only keeps the
+public `app` process alive. The guard starts one machine for each background
+group if Fly left it stopped and sets those machines to `restart=always`.
 
 Verify:
 
@@ -293,6 +505,7 @@ Verify:
 curl -s https://tasknodeofficial-dev.fly.dev/health
 SMOKE_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run smoke
 FRAME_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run frame-smoke
+npm run fly:background-guard
 fly status -a tasknodeofficial-dev
 ```
 

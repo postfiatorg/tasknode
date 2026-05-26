@@ -62,7 +62,7 @@ function stripVolatileSourceText(value = "") {
 
 function actionAffectsBoardState(run = {}) {
   const action = safeText(run.action || run.selectedAction, 80);
-  if (!action || action === "do_nothing" || action === "no_decision") return false;
+  if (!action || action === "do_nothing" || action === "no_decision" || action === "decision_pending") return false;
   if (run.dryRun) return false;
   return true;
 }

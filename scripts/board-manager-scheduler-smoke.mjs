@@ -101,6 +101,10 @@ async function main() {
     const paused = await setBoardManagerScopeStatus({ scope, status: "paused", reason: "smoke" });
     assert.equal(paused.scope.status, "paused");
 
+    const pausedClaim = await claimBoardManagerJob({ scope, managerId: "worker_paused_scope" });
+    assert.equal(pausedClaim.claimed, false);
+    assert.equal(pausedClaim.reason, "scope_not_enabled");
+
     const status = await listBoardManagerSchedulerStatus({ scope });
     assert.equal(status.scope.scope, scope);
     assert.ok(status.jobs.length >= 2);

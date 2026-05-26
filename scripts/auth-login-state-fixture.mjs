@@ -18,7 +18,7 @@ process.env.TELEGRAM_AUTH_BOT_USERNAME = "TaskNodeFixtureBot";
 process.env.TELEGRAM_AUTH_WIDGET_DOMAIN = "localhost";
 process.env.DISCORD_CLIENT_ID = "discord-fixture-client";
 process.env.DISCORD_CLIENT_SECRET = "discord-fixture-secret";
-process.env.X_CLIENT_ID = "x-fixture-client";
+process.env.X_CLIENT_ID = "x-fixture-client:1:ci";
 process.env.X_CLIENT_SECRET = "x-fixture-secret";
 
 const product = await import("../server/product-contracts.js");
@@ -113,12 +113,19 @@ function installXFetchMock() {
     const target = String(url);
     if (target === "https://api.x.com/2/oauth2/token") {
       const body = new URLSearchParams(String(options.body || ""));
+      const expectedCredentials = Buffer.from(
+        `${encodeURIComponent(process.env.X_CLIENT_ID)}:${encodeURIComponent(process.env.X_CLIENT_SECRET)}`
+      ).toString("base64");
       assert.equal(body.get("grant_type"), "authorization_code");
       assert.equal(body.get("code"), "x-oauth-code");
       assert.equal(body.get("redirect_uri"), `${origin}/api/auth/callback/x`);
       assert.equal(body.has("client_id"), false);
       assertOk(body.get("code_verifier"), "X token exchange should include the PKCE verifier");
-      assertOk(String(options.headers?.Authorization || "").startsWith("Basic "), "X token exchange should use client credentials");
+      assert.equal(
+        String(options.headers?.Authorization || ""),
+        `Basic ${expectedCredentials}`,
+        "X token exchange should percent-encode OAuth2 client credentials before Basic auth"
+      );
       return new Response(JSON.stringify({ access_token: "x-fixture-token" }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -183,6 +190,38 @@ const emailSession = emailVerified.body.session;
 record("email.success", {
   accountId: emailSession.accountId,
   linkedProviders: linkedProviderIds(emailSession),
+});
+
+const emailReplaceStart = await authEmailStart({ email: "fixture.user@example.com" }, "POST", {
+  ip: "127.0.0.1",
+  userAgent: "auth-login-state-fixture",
+});
+assert.equal(emailReplaceStart.status, 200);
+const emailReplacementStart = await authEmailStart({ email: "FIXTURE.USER@example.com" }, "POST", {
+  ip: "127.0.0.1",
+  userAgent: "auth-login-state-fixture",
+});
+assert.equal(emailReplacementStart.status, 200);
+const replacedEmail = authEmailVerify({
+  challengeId: emailReplaceStart.body.challengeId,
+  code: emailReplaceStart.body.delivery.devCode,
+}, "POST");
+assert.equal(replacedEmail.status, 400);
+assert.equal(replacedEmail.body.error, "email_code_invalid");
+record("email.replaced_challenge_rejected", {
+  status: replacedEmail.status,
+  error: replacedEmail.body.error,
+});
+
+const emailReconnect = authEmailVerify({
+  challengeId: emailReplacementStart.body.challengeId,
+  code: emailReplacementStart.body.delivery.devCode,
+}, "POST");
+assert.equal(emailReconnect.status, 200);
+assert.equal(emailReconnect.body.session.accountId, emailSession.accountId);
+record("email.reconnect_same_account", {
+  accountId: emailReconnect.body.session.accountId,
+  linkedProviders: linkedProviderIds(emailReconnect.body.session),
 });
 
 const telegramStart = authStart("telegram", { origin, redirectPath: "/settings", session: null });
@@ -319,6 +358,34 @@ try {
 const restoreXFetch = installXFetchMock();
 let xLinkedSession = null;
 try {
+  const previousXRedirectUri = process.env.X_REDIRECT_URI;
+  const previousPublicUrl = process.env.TASKNODE_PUBLIC_URL;
+  try {
+    process.env.X_REDIRECT_URI = "http://localhost:3001/auth/x/callback";
+    process.env.TASKNODE_PUBLIC_URL = "https://tasknodeofficial-dev.fly.dev";
+    const publicXStart = authStart("x", {
+      origin: "https://tasknodeofficial-dev.fly.dev",
+      redirectPath: "/",
+    });
+    const publicXAuthorizeUrl = new URL(publicXStart.body.redirectUrl);
+    assert.equal(publicXStart.status, 200);
+    assert.equal(publicXStart.body.redirectUri, "https://tasknodeofficial-dev.fly.dev/api/auth/callback/x");
+    assert.equal(
+      publicXAuthorizeUrl.searchParams.get("redirect_uri"),
+      "https://tasknodeofficial-dev.fly.dev/api/auth/callback/x"
+    );
+    record("x.public_origin_ignores_local_redirect_override", {
+      redirectUri: publicXStart.body.redirectUri,
+    });
+  } finally {
+    if (previousXRedirectUri === undefined) {
+      delete process.env.X_REDIRECT_URI;
+    } else {
+      process.env.X_REDIRECT_URI = previousXRedirectUri;
+    }
+    process.env.TASKNODE_PUBLIC_URL = previousPublicUrl;
+  }
+
   const xStart = authStart("x", { origin, redirectPath: "/settings", session: telegramLinked.body.session });
   const xState = stateFromStart(xStart);
   const xAuthorizeUrl = new URL(xStart.body.redirectUrl);

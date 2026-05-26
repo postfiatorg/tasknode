@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createPftBalanceService } from "../server/pftl-balance.js";
+import { pftlWssRejectUnauthorized } from "../server/pftl-wss-tls.js";
 
 const validAddress = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh";
 
@@ -95,9 +96,40 @@ async function testConfigurationAndValidationErrors() {
   assert.equal(invalidAddress.error, "pft_balance_invalid_address");
 }
 
+function testPftlTlsPolicy() {
+  assert.equal(pftlWssRejectUnauthorized({
+    env: { PFTL_WSS_REJECT_UNAUTHORIZED: "false" },
+    url: "wss://178.156.143.199:6005",
+  }), true);
+  assert.equal(pftlWssRejectUnauthorized({
+    env: {
+      PFTL_WSS_REJECT_UNAUTHORIZED: "false",
+      TASKNODE_ALLOW_INSECURE_PFTL_TLS: "true",
+      PFTL_WSS_URL: "wss://178.156.143.199:6005",
+    },
+    url: "wss://178.156.143.199:6005",
+  }), false);
+  assert.equal(pftlWssRejectUnauthorized({
+    env: {
+      PFTL_WSS_REJECT_UNAUTHORIZED: "false",
+      TASKNODE_ALLOW_INSECURE_PFTL_TLS: "true",
+      PFTL_WSS_URL: "wss://178.156.143.199:6005",
+    },
+    url: "wss://ws.testnet.postfiat.org",
+  }), true);
+  assert.equal(pftlWssRejectUnauthorized({
+    env: {
+      PFTL_WSS_REJECT_UNAUTHORIZED: "false",
+      TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS: "true",
+    },
+    url: "wss://127.0.0.1:6005",
+  }), false);
+}
+
 await testWssPrimaryAndCache();
 await testRpcFallback();
 await testMissingAccountIsZero();
 await testConfigurationAndValidationErrors();
+testPftlTlsPolicy();
 
 console.log("wallet balance smoke passed");

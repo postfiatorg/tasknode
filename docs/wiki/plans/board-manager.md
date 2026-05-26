@@ -4,6 +4,8 @@ Status: v0 OpenRouter Qwen decision worker implemented with first action hooks, 
 
 This plan supersedes the earlier idea that Hive should be driven by a set of independent cron-style workers. Hive should be managed by a single Board Manager execution loop that decides when to update context, research, create projects, archive projects, refresh project documents, route tasks, or do nothing.
 
+Current professionalism diagnosis: [Hive Board Professionalism Diagnosis](./hive-board-professionalism-diagnosis.md). That one-pager is the review standard for active board semantics, fake count prevention, reversible archives, and resurrection behavior.
+
 ## Product Role
 
 The Board Manager manages the Hive page and Hive interactions across the Post Fiat Task Node app.
@@ -45,13 +47,13 @@ The Board Manager source packet now includes `boardActionPressure`, a determinis
 
 The pressure signal treats these conditions as action-required:
 
-- an active project has scoped task counts but no live project task rows;
-- an active project has contributor targets but no live contributor rows;
+- an active project has no live project task rows;
+- an active project has no live contributor rows;
 - an active project has no outstanding Network Task and no pending Network Task generation;
 - a project-linked Network Task was refused, cancelled, rejected, expired, failed, or rerouted without a replacement or closure decision;
 - the Hive Secretary report is stale.
 
-Planned counts are not live work. A project card saying "3 scoped tasks" or "2 target contributors" does not count as motion unless the corresponding task refs, allocation rows, contributors, pending generation jobs, or outstanding Network Tasks exist.
+Planned counts are not live work and must not be rendered as task rows, routed PFT, or allocated operators. Motion requires corresponding task refs, allocation rows, contributors, pending generation jobs, or outstanding Network Tasks.
 
 When `boardActionPressure.summary.requiresAction` is true, `do_nothing` is not a valid Board Manager outcome unless a recent run is already handling the same project and the decision reason names that in-flight action. Empty active projects should move toward one of four outcomes: initiate a Network Task, assign a contributor, ask a specific user for the smallest missing decision input, or archive the project when it cannot be managed now.
 
@@ -143,7 +145,7 @@ The design should still allow production failover:
 - only the machine holding the lease for `global_hive` can execute;
 - all other machines remain idle or process other scopes later;
 - action hooks must be idempotent so a retry cannot duplicate a user message, project, or Network Task.
-- `board_manager_scopes.max_actions_per_hour` is enforced before the worker claims another job. The default active budget is 8 model-selected mutations per hour for `global_hive`. Completed non-dry-run actions other than `do_nothing` count against the cap. Internal audit cards such as `daily_airdrop` do not count against this budget because they are worker reports, not Board Manager decisions. When the cap is reached the worker logs `action_rate_limited` and leaves due jobs untouched until the rolling hour clears.
+- `board_manager_scopes.max_actions_per_hour` is enforced before the worker claims another job. The default active budget is 60 model-selected mutations per hour for `global_hive`, allowing manual follow-up jobs without leaving normal activity blocked. Completed non-dry-run actions other than `do_nothing` count against the cap. Internal audit cards such as `daily_airdrop` do not count against this budget because they are worker reports, not Board Manager decisions. When the cap is reached the worker logs `action_rate_limited` and leaves due jobs untouched until the rolling hour clears.
 - Running jobs older than `TASKNODE_BOARD_MANAGER_STALE_JOB_SECONDS` are recovered by the worker before each claim. The default is 900 seconds. Recovery moves the stale row back to `deferred` for retry, or to `failed` if it already exhausted attempts, so a killed Docker/Fly process cannot leave Hive permanently stuck on an abandoned claim.
 
 Later scaling can add project-scoped managers:
@@ -276,7 +278,7 @@ Implemented v0 pieces:
 - `npm run board-manager:loop -- --execute` runs the continuous local Board Manager loop for development.
 - `npm run board-manager:worker -- --execute` runs the durable job-driven Board Manager worker.
 - `npm run board-manager:ops -- status` shows the scope, lease, and recent jobs.
-- local Docker has a dedicated `board-manager` service in `docker-compose.dev.yml`; it runs the durable worker continuously and is separate from the API/web containers. It reads `TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR` and defaults to 8 useful board mutations per rolling hour. It also reads `TASKNODE_BOARD_MANAGER_STALE_JOB_SECONDS` and defaults to 900 seconds before recovering an abandoned running job.
+- local Docker has a dedicated `board-manager` service in `docker-compose.dev.yml`; it runs the durable worker continuously and is separate from the API/web containers. It reads `TASKNODE_BOARD_MANAGER_CADENCE_SECONDS` and defaults to 900 seconds for periodic Board Manager ticks in local and Fly environments. It reads `TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR` and defaults to 60 useful board mutations per rolling hour. It also reads `TASKNODE_BOARD_MANAGER_STALE_JOB_SECONDS` and defaults to 900 seconds before recovering an abandoned running job.
 
 The default remains dry-run for app mutations. Execution of app hooks still requires the explicit `--execute` flag.
 
@@ -296,7 +298,7 @@ Implemented action hooks:
 - `message_user`: writes an assistant response into the user's default Hive chat conversation and records a delivery audit row in `board_manager_user_messages`.
 - `refresh_hive_secretary`: queues a Hive Secretary job from the current validated Hive Context packet.
 - `create_project`: creates or updates an active `network_projects` row from `payload.project`.
-- `archive_project`: archives the project and applies an operator archive lock. This is the delete-project hook; hard delete is intentionally not available.
+- `archive_project`: archives the project as a soft Board Manager archive. Hard delete is intentionally not available. Autonomous archives must be reversible and must not apply the operator archive lock.
 - `assign_contributor`: upserts a project contributor row using the project id and wallet address in `payload.contributor`.
 - `refresh_project_document`: persists the Board Manager's own `payload.project_document`, supersedes the prior current document, and writes a new `network_project_product_docs` row.
 - `initiate_network_task`: creates a project-linked allocation and queued generation job from `payload.network_task`; the worker later hands that job to the normal task-generation engine.
@@ -481,7 +483,7 @@ Use when:
 
 This action should set `network_projects.status = archived`. It should not hard delete a project in v1.
 
-Operator-archived projects are locked. If a project row carries an archive marker, the active-project helper must keep it archived and skip reactivation unless a future explicit operator action removes that lock.
+Operator-archived projects are locked. Board Manager archived projects are not operator-locked by default. If a project row carries explicit operator lock metadata, the active-project helper must keep it archived and skip reactivation unless a future explicit operator action removes that lock. If a project only carries Board Manager `agent_archived` metadata, the planner may resurrect it when live task movement, pending generation, contributor assignment, or current source context supports the same durable project id.
 
 ### `refresh_project_document`
 

@@ -273,11 +273,13 @@ Keep using the production path for deployable releases:
 ```bash
 npm run build
 npm run smoke
-fly deploy -a tasknodeofficial-dev -c fly.toml --remote-only
+npm run fly:deploy
 ```
 
 Local Docker dev is for rapid iteration. Fly deploys are for release candidates
-that need remote machine testing.
+that need remote machine testing. `npm run fly:deploy` is required because it
+also runs the Fly background guard; raw `fly deploy` can leave background
+process groups stopped even when the public web app is healthy.
 
 ## Reviewer To Do List
 

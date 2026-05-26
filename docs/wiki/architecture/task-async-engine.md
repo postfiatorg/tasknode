@@ -29,6 +29,20 @@ Still not implemented:
 
 A task request must not create a fake task card. The card appears only after the authority publishes `pf.task.offer.v1` and the PFTL cache reducer writes `task_projections`.
 
+## Production Worker Requirement
+
+On Fly, the async engine depends on the non-HTTP `worker` process group. A
+healthy `/health` response only proves the public `app` process is running. It
+does not prove task generation, review, PFTL cache sync, or reducer loops are
+alive.
+
+Use `npm run fly:deploy` for releases so the post-deploy `npm run
+fly:worker-guard` step starts one `worker` machine and enforces
+`restart=always`. If a request row is published but no task offer appears, or a
+task reaches `submitted` but no verification request appears, check
+`npm run fly:worker-guard` and `fly status -a tasknodeofficial-dev` before
+editing task rows.
+
 ## Why Async
 
 PFTL transactions are ordered by signing wallet. A single wallet should have one in-flight transaction at a time unless the client has a proven sequence reservation strategy. If a wallet takes 3 to 5 seconds to submit and confirm a transaction, that wallet can only handle roughly 12 to 20 confirmed transactions per minute.

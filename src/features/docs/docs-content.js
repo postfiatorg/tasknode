@@ -34,6 +34,7 @@ import contextEditChatMode from "../../../docs/wiki/plans/context-edit-chat-mode
 import dataArchitectureHardeningPlan from "../../../docs/wiki/plans/data-architecture-hardening-plan.md?raw";
 import dailyAirdropMigrationPlan from "../../../docs/wiki/plans/daily-airdrop-migration-plan.md?raw";
 import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
+import hiveBoardProfessionalismDiagnosis from "../../../docs/wiki/plans/hive-board-professionalism-diagnosis.md?raw";
 import jobsChatSpirit from "../../../docs/wiki/plans/jobs-chat-spirit.md?raw";
 import makingFunctionalNetworkTasks from "../../../docs/wiki/plans/making-functional-network-tasks.md?raw";
 import networkTaskAgenticObjects from "../../../docs/wiki/plans/network-task-agentic-objects.md?raw";
@@ -572,6 +573,12 @@ export const DOC_GROUPS = [
         title: "Board Manager DeepSeek Secretary Packets",
         summary: "Implemented Board Triage secretary packets that let direct DeepSeek V4 Pro compress Hive state before Qwen Board Manager decisions.",
         markdown: boardManagerDeepseekSecretaryPackets,
+      },
+      {
+        slug: "hive-board-professionalism-diagnosis",
+        title: "Hive Board Professionalism Diagnosis",
+        summary: "One-page diagnosis for live board counts, reversible archives, resurrection, and feed clarity.",
+        markdown: hiveBoardProfessionalismDiagnosis,
       },
       {
         slug: "code-review-burndown",

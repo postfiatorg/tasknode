@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 
 const appName = process.env.TASKNODE_FLY_APP || "tasknodeofficial-dev";
-const mpgClusterId = process.env.TASKNODE_FLY_MPG_CLUSTER_ID || "z7y24odj8ymogqd1";
+const mpgClusterId = process.env.TASKNODE_FLY_MPG_CLUSTER_ID || "3x9jv02yd3dr6qp7";
 const proxyPort = Number(process.env.TASKNODE_FLY_MPG_PROXY_PORT || 16432);
 const proxyBindAddress = process.env.TASKNODE_FLY_MPG_PROXY_BIND || "0.0.0.0";
 const envPath = path.resolve(".env.tasknodeofficial-fly-dev-data");

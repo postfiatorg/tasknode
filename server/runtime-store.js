@@ -13,6 +13,12 @@ import {
 import { deleteRuntimeAccountDataForState } from "./account-deletion-state.js";
 import { normalizeContextHistoryProjection } from "./context-history.js";
 import {
+  getTelegramBotPreferencesForState,
+  listRuntimeTelegramBotEventsForState,
+  recordRuntimeTelegramBotEventForState,
+  setTelegramBotModePreferenceForState,
+} from "./runtime-store-telegram-bot.js";
+import {
   mergeWalletInitiationGrantStatus,
   reserveWalletInitiationGrantRecord,
   updateWalletInitiationGrantRecord,
@@ -42,6 +48,7 @@ const defaultState = {
   accountIdentities: {},
   accountWallets: {},
   telegramBotPreferences: {},
+  telegramBotEvents: [],
   walletInitiationGrants: [],
   ethereumDepositAccounts: {},
   ethereumDepositRetiredAccounts: [],
@@ -66,6 +73,10 @@ export function runtimeStoreStatus() {
   };
 }
 
+function plainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
 function loadState() {
   if (!existsSync(storePath)) return structuredClone(defaultState);
 
@@ -75,72 +86,33 @@ function loadState() {
       ...structuredClone(defaultState),
       ...parsed,
       conversations: parsed.conversations || structuredClone(defaultState.conversations),
-      conversationMeta:
-        parsed.conversationMeta && typeof parsed.conversationMeta === "object" && !Array.isArray(parsed.conversationMeta)
-          ? parsed.conversationMeta
-          : {},
+      conversationMeta: plainObject(parsed.conversationMeta),
       ledgerEntries: Array.isArray(parsed.ledgerEntries) ? parsed.ledgerEntries : [],
-      sessions:
-        parsed.sessions && typeof parsed.sessions === "object" && !Array.isArray(parsed.sessions)
-          ? parsed.sessions
-          : {},
-      accounts:
-        parsed.accounts && typeof parsed.accounts === "object" && !Array.isArray(parsed.accounts)
-          ? parsed.accounts
-          : {},
-      accountEmails:
-        parsed.accountEmails && typeof parsed.accountEmails === "object" && !Array.isArray(parsed.accountEmails)
-          ? parsed.accountEmails
-          : {},
-      accountIdentities:
-        parsed.accountIdentities && typeof parsed.accountIdentities === "object" && !Array.isArray(parsed.accountIdentities)
-          ? parsed.accountIdentities
-          : {},
-      accountWallets:
-        parsed.accountWallets && typeof parsed.accountWallets === "object" && !Array.isArray(parsed.accountWallets)
-          ? parsed.accountWallets
-          : {},
-      telegramBotPreferences:
-        parsed.telegramBotPreferences && typeof parsed.telegramBotPreferences === "object" && !Array.isArray(parsed.telegramBotPreferences)
-          ? parsed.telegramBotPreferences
-          : {},
+      sessions: plainObject(parsed.sessions),
+      accounts: plainObject(parsed.accounts),
+      accountEmails: plainObject(parsed.accountEmails),
+      accountIdentities: plainObject(parsed.accountIdentities),
+      accountWallets: plainObject(parsed.accountWallets),
+      telegramBotPreferences: plainObject(parsed.telegramBotPreferences),
+      telegramBotEvents: Array.isArray(parsed.telegramBotEvents)
+        ? parsed.telegramBotEvents
+        : [],
       walletInitiationGrants: Array.isArray(parsed.walletInitiationGrants)
         ? parsed.walletInitiationGrants
         : [],
-      ethereumDepositAccounts:
-        parsed.ethereumDepositAccounts && typeof parsed.ethereumDepositAccounts === "object" && !Array.isArray(parsed.ethereumDepositAccounts)
-          ? parsed.ethereumDepositAccounts
-          : {},
+      ethereumDepositAccounts: plainObject(parsed.ethereumDepositAccounts),
       ethereumDepositRetiredAccounts: Array.isArray(parsed.ethereumDepositRetiredAccounts)
         ? parsed.ethereumDepositRetiredAccounts
         : [],
-      ethereumDepositAddressIndex:
-        parsed.ethereumDepositAddressIndex && typeof parsed.ethereumDepositAddressIndex === "object" && !Array.isArray(parsed.ethereumDepositAddressIndex)
-          ? parsed.ethereumDepositAddressIndex
-          : {},
+      ethereumDepositAddressIndex: plainObject(parsed.ethereumDepositAddressIndex),
       ethereumDepositCursor: Number.isSafeInteger(parsed.ethereumDepositCursor)
         ? parsed.ethereumDepositCursor
         : 0,
-      walletChallenges:
-        parsed.walletChallenges && typeof parsed.walletChallenges === "object" && !Array.isArray(parsed.walletChallenges)
-          ? parsed.walletChallenges
-          : {},
-      contextDocuments:
-        parsed.contextDocuments && typeof parsed.contextDocuments === "object" && !Array.isArray(parsed.contextDocuments)
-          ? parsed.contextDocuments
-          : {},
-      contextHistorySnapshots:
-        parsed.contextHistorySnapshots && typeof parsed.contextHistorySnapshots === "object" && !Array.isArray(parsed.contextHistorySnapshots)
-          ? parsed.contextHistorySnapshots
-          : {},
-      oauthStates:
-        parsed.oauthStates && typeof parsed.oauthStates === "object" && !Array.isArray(parsed.oauthStates)
-          ? parsed.oauthStates
-          : {},
-      emailChallenges:
-        parsed.emailChallenges && typeof parsed.emailChallenges === "object" && !Array.isArray(parsed.emailChallenges)
-          ? parsed.emailChallenges
-          : {},
+      walletChallenges: plainObject(parsed.walletChallenges),
+      contextDocuments: plainObject(parsed.contextDocuments),
+      contextHistorySnapshots: plainObject(parsed.contextHistorySnapshots),
+      oauthStates: plainObject(parsed.oauthStates),
+      emailChallenges: plainObject(parsed.emailChallenges),
       authEvents: Array.isArray(parsed.authEvents) ? parsed.authEvents : [],
     };
   } catch {
@@ -680,39 +652,20 @@ export function setAccountAliasVisibility({
   return { ...result, account: accountPayload(result.account) };
 }
 
-function telegramBotPreferenceKey({ accountId = "", chatId = "" } = {}) {
-  const normalizedAccountId = safeId(accountId, "account");
-  const normalizedChatId = safeId(chatId, "chat");
-  return `${normalizedAccountId}:${normalizedChatId}`;
-}
-
 export function getTelegramBotPreferences({ accountId = "", chatId = "" } = {}) {
-  const key = telegramBotPreferenceKey({ accountId, chatId });
-  const value = state.telegramBotPreferences?.[key] || {};
-  return {
-    mode: typeof value.mode === "string" ? value.mode : "",
-    updatedAt: value.updatedAt || "",
-  };
+  return getTelegramBotPreferencesForState({ state, safeId, accountId, chatId });
 }
 
 export function setTelegramBotModePreference({ accountId = "", chatId = "", mode = "" } = {}) {
-  const normalizedAccountId = String(accountId || "").trim();
-  const normalizedChatId = String(chatId || "").trim();
-  const normalizedMode = String(mode || "").trim();
-  if (!normalizedAccountId || !normalizedChatId || !normalizedMode) {
-    return { ok: false, status: 400, error: "telegram_bot_preference_invalid" };
-  }
+  return setTelegramBotModePreferenceForState({ state, saveState, safeId, accountId, chatId, mode });
+}
 
-  const key = telegramBotPreferenceKey({ accountId: normalizedAccountId, chatId: normalizedChatId });
-  const preference = {
-    accountId: normalizedAccountId,
-    chatId: normalizedChatId,
-    mode: normalizedMode,
-    updatedAt: new Date().toISOString(),
-  };
-  state.telegramBotPreferences[key] = preference;
-  saveState();
-  return { ok: true, preference: structuredClone(preference) };
+export function recordRuntimeTelegramBotEvent(event = {}) {
+  return recordRuntimeTelegramBotEventForState({ state, saveState, event });
+}
+
+export function listRuntimeTelegramBotEvents(options = {}) {
+  return listRuntimeTelegramBotEventsForState({ state, ...options });
 }
 
 export function findAccountByEmail(canonicalEmail) {

@@ -37,6 +37,7 @@ function usage() {
     "  --reason <text>         Human reason for enqueue/pause/resume.",
     "  --idempotency-key <key> Optional enqueue idempotency key.",
     "  --cadence-seconds <n>   Scope cadence for ensure-scope.",
+    "  --max-actions-per-hour <n> Scope action budget for ensure-scope.",
   ].join("\n");
 }
 
@@ -87,6 +88,7 @@ try {
       result = await ensureBoardManagerScope({
         scope,
         cadenceSeconds: Number(argValue("--cadence-seconds", process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS || "900")),
+        maxActionsPerHour: Number(argValue("--max-actions-per-hour", process.env.TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR || "60")),
         metadata: { source: "board_manager_ops" },
       });
       break;
@@ -97,4 +99,3 @@ try {
 } finally {
   await closePool();
 }
-

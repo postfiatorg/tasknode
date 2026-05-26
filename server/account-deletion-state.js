@@ -43,8 +43,10 @@ export function deleteRuntimeAccountDataForState({
     oauthStates: deleteMatchingKeys(state.oauthStates, (id, row) => row?.linkAccountId === normalizedAccountId),
     emailChallenges: deleteMatchingKeys(state.emailChallenges, (id, challenge) => challenge?.canonicalEmail === emailCanonical),
     walletChallenges: deleteMatchingKeys(state.walletChallenges, (id, challenge) => challenge?.accountId === normalizedAccountId),
+    telegramBotPreferences: deleteMatchingKeys(state.telegramBotPreferences, (id, preference) => preference?.accountId === normalizedAccountId || id.startsWith(`${normalizedAccountId}:`)),
     conversations: 0,
     ledgerEntries: 0,
+    telegramBotEvents: 0,
     walletInitiationGrants: 0,
     contextDocuments: 0,
     contextHistorySnapshots: 0,
@@ -73,6 +75,10 @@ export function deleteRuntimeAccountDataForState({
   const beforeLedger = state.ledgerEntries.length;
   state.ledgerEntries = state.ledgerEntries.filter((entry) => entry?.accountId !== normalizedAccountId);
   removed.ledgerEntries = beforeLedger - state.ledgerEntries.length;
+
+  const beforeTelegramBotEvents = state.telegramBotEvents?.length || 0;
+  state.telegramBotEvents = (state.telegramBotEvents || []).filter((event) => event?.accountId !== normalizedAccountId);
+  removed.telegramBotEvents = beforeTelegramBotEvents - state.telegramBotEvents.length;
 
   const beforeGrants = state.walletInitiationGrants.length;
   state.walletInitiationGrants = state.walletInitiationGrants.filter((grant) => (

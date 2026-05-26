@@ -138,10 +138,19 @@ FRAME_BASE_URL=http://127.0.0.1:8080 npm run frame-smoke
 Deploy the dev app:
 
 ```bash
-fly deploy -a tasknodeofficial-dev -c fly.toml --remote-only
+npm run fly:deploy
 SMOKE_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run smoke
 FRAME_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run frame-smoke
+npm run fly:background-guard
 ```
+
+Do not use raw `fly deploy` as the normal release command. Task Node has
+non-HTTP Fly process groups, and Fly's `http_service.min_machines_running`
+setting only keeps the public `app` process alive. `npm run fly:deploy` deploys
+and then verifies `worker` and `board-manager` machines are started with
+`restart=always`. The worker guard also verifies task generation, Network Task
+generation, and task review are enabled, because a running worker process with
+those flags missing will leave queued task rows unprocessed.
 
 The project npm policy disables lifecycle scripts, audit, funding prompts, and
 high-concurrency registry fetches by default. That keeps the current dependency

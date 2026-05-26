@@ -7,8 +7,8 @@ is intentionally not live yet.
 ## Read Order
 
 1. `BOOTUP.md`
-   Local setup, dev server, smoke tests, Fly deploy, env/secrets, and common
-   failure checks.
+   Local setup, dev server, smoke tests, guarded Fly deploy, env/secrets, and
+   common failure checks.
 
 2. `CURRENT_SYSTEM.md`
    Current repo layout, runtime surfaces, API contracts, enabled features,
@@ -36,7 +36,9 @@ is intentionally not live yet.
    verification payloads.
 
 8. `DEPLOYMENT.md`
-   Local Docker dev, local production Docker, and Fly release deployment paths.
+   Local Docker dev, local production Docker, Fly release deployment paths, and
+   the background guard required for non-HTTP worker and Board Manager
+   processes.
 
 9. `ETHEREUM_TOP_UPS.md`
    Account-scoped Ethereum mainnet deposit addresses for ETH, USDC, and USDT

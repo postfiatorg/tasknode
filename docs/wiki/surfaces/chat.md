@@ -157,6 +157,11 @@ The `+` menu can switch the composer into task-request mode. In that state:
 
 This mode requires a linked and unlocked PFT wallet. If the wallet is missing or locked, the request does not become a fake chat-only task.
 
+On Fly, step 5 requires the `worker` process group. Release through `npm run
+fly:deploy`, not raw `fly deploy`, so the post-deploy worker guard starts and
+verifies the background worker. If a chat task request was signed but no task
+card appears, check `npm run fly:worker-guard` before editing request rows.
+
 ## Billing And Persistence
 
 Before execution, `server/product-contracts.js` checks login, provider readiness, estimated cost, and available chat credit. The estimate includes the current context document, task context, memory context, estimated Jobs retrieval context, message text, and attachments. After execution, `server/repositories/chat-billing.js` persists the user message, assistant message, provider, model, response ID, token usage, web-search calls, model cost, tool cost, and ledger entry. Memory summarization is queued afterward and is not billed to the user.

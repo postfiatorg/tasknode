@@ -6,10 +6,14 @@ import path from "node:path";
 const tempDir = mkdtempSync(path.join(tmpdir(), "tasknode-telegram-bot-"));
 process.env.TASKNODE_STORE_PATH = path.join(tempDir, "runtime-store.json");
 process.env.TASKNODE_ENV = "test";
+process.env.TASKNODE_DATABASE_DISABLED = "true";
+process.env.TASKNODE_POSTGRES_DISABLED = "true";
 process.env.TELEGRAM_AUTH_BOT_TOKEN = "123456:tasknode-telegram-secret";
+process.env.TELEGRAM_BOT_CHAT_MODE = "Private Instant";
 
 try {
   const { getOrCreateProviderAccount } = await import("../server/runtime-store.js");
+  const { listTelegramBotEvents } = await import("../server/repositories/telegram-bot-events.js");
   const {
     processTelegramBotUpdate,
   } = await import("../server/telegram-bot.js");
@@ -22,6 +26,7 @@ try {
   });
 
   const sentMessages = [];
+  const sentChatActions = [];
   const answeredCallbacks = [];
   const chatCalls = [];
   const answerCallbackQuery = async (answer) => {
@@ -31,6 +36,10 @@ try {
   const sendTelegramMessage = async (message) => {
     sentMessages.push(message);
     return { ok: true, messageId: sentMessages.length };
+  };
+  const sendTelegramChatAction = async (action) => {
+    sentChatActions.push(action);
+    return { ok: true, status: 200 };
   };
   const chatExecutor = async (payload, method) => {
     chatCalls.push({ payload, method });
@@ -53,7 +62,7 @@ try {
       chat: { id: 12345, type: "private" },
       text: "hello from telegram",
     },
-  }, { chatExecutor, sendTelegramMessage });
+  }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(linkedResult.ok, true);
   assert.equal(linkedResult.action, "telegram_bot_chat");
@@ -64,9 +73,11 @@ try {
   assert.equal(chatCalls[0].payload.accountId, account.id);
   assert.equal(chatCalls[0].payload.mode, "Private Instant");
   assert.equal(chatCalls[0].payload.message, "hello from telegram");
+  assert.equal(sentChatActions.length, 1);
+  assert.deepEqual(sentChatActions.at(-1), { chatId: "12345", action: "typing" });
   assert.equal(sentMessages.at(-1).chatId, "12345");
   assert.equal(sentMessages.at(-1).text, "reply:hello from telegram");
-  assert.ok(sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat()?.some((button) => button.callback_data === "tn_mode:ft"));
+  assert.equal(sentMessages.at(-1).replyMarkup, undefined);
 
   const duplicateResult = await processTelegramBotUpdate({
     update_id: 1,
@@ -76,7 +87,7 @@ try {
       chat: { id: 12345, type: "private" },
       text: "hello from telegram",
     },
-  }, { chatExecutor, sendTelegramMessage });
+  }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(duplicateResult.ignored, true);
   assert.equal(duplicateResult.reason, "duplicate_update");
@@ -90,7 +101,7 @@ try {
       chat: { id: 67890, type: "private" },
       text: "hello",
     },
-  }, { chatExecutor, sendTelegramMessage });
+  }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(unlinkedResult.action, "telegram_bot_link_required");
   assert.equal(chatCalls.length, 1);
@@ -104,7 +115,7 @@ try {
       chat: { id: -100, type: "group" },
       text: "should not leak account chat",
     },
-  }, { chatExecutor, sendTelegramMessage });
+  }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(groupResult.ignored, true);
   assert.equal(groupResult.reason, "non_private_chat");
@@ -122,7 +133,7 @@ try {
       },
       data: "tn_mode:ft",
     },
-  }, { answerCallbackQuery, chatExecutor, sendTelegramMessage });
+  }, { answerCallbackQuery, chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(modeSetResult.action, "telegram_bot_mode_set");
   assert.equal(modeSetResult.mode, "Frontier Thinking");
@@ -140,13 +151,17 @@ try {
       chat: { id: 12345, type: "private" },
       text: "use selected mode",
     },
-  }, { chatExecutor, sendTelegramMessage });
+  }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(selectedModeResult.action, "telegram_bot_chat");
   assert.equal(selectedModeResult.mode, "Frontier Thinking");
   assert.equal(chatCalls.length, 2);
   assert.equal(chatCalls[1].payload.mode, "Frontier Thinking");
   assert.equal(chatCalls[1].payload.message, "use selected mode");
+  assert.equal(sentChatActions.length, 2);
+  assert.deepEqual(sentChatActions.at(-1), { chatId: "12345", action: "typing" });
+  assert.equal(sentMessages.at(-1).text, "reply:use selected mode");
+  assert.equal(sentMessages.at(-1).replyMarkup, undefined);
 
   const balanceResult = await processTelegramBotUpdate({
     update_id: 6,
@@ -159,10 +174,11 @@ try {
       },
       data: "tn_balance",
     },
-  }, { answerCallbackQuery, chatExecutor, sendTelegramMessage });
+  }, { answerCallbackQuery, chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(balanceResult.action, "telegram_bot_balance");
   assert.match(sentMessages.at(-1).text, /Available credit:/);
+  assert.equal(sentMessages.at(-1).replyMarkup, undefined);
   assert.equal(chatCalls.length, 2);
 
   const bareModeResult = await processTelegramBotUpdate({
@@ -173,7 +189,7 @@ try {
       chat: { id: 12345, type: "private" },
       text: "mode",
     },
-  }, { chatExecutor, sendTelegramMessage });
+  }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(bareModeResult.action, "telegram_bot_help");
   assert.match(sentMessages.at(-1).text, /Current mode: Frontier Thinking/);
@@ -187,11 +203,40 @@ try {
       chat: { id: 12345, type: "private" },
       text: "balance",
     },
-  }, { chatExecutor, sendTelegramMessage });
+  }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
 
   assert.equal(bareBalanceResult.action, "telegram_bot_balance");
   assert.match(sentMessages.at(-1).text, /Available credit:/);
+  assert.equal(sentMessages.at(-1).replyMarkup, undefined);
   assert.equal(chatCalls.length, 2);
+
+  const events = await listTelegramBotEvents({
+    providerUserId: "12345",
+    chatId: "12345",
+    limit: 100,
+  });
+  assert.equal(events.ok, true);
+  assert.ok(events.events.some((event) => (
+    event.direction === "inbound" &&
+    event.eventType === "message" &&
+    event.textPreview === "hello from telegram"
+  )));
+  assert.ok(events.events.some((event) => (
+    event.direction === "outbound" &&
+    event.eventType === "send_chat_action" &&
+    event.textPreview === "typing"
+  )));
+  assert.ok(events.events.some((event) => (
+    event.direction === "outbound" &&
+    event.eventType === "send_message" &&
+    event.accountId === account.id &&
+    event.textPreview === "reply:hello from telegram"
+  )));
+  assert.ok(events.events.some((event) => (
+    event.direction === "internal" &&
+    event.eventType === "process_result" &&
+    event.action === "telegram_bot_help"
+  )));
 
   console.log(JSON.stringify({
     ok: true,
@@ -199,7 +244,9 @@ try {
     conversationId: linkedResult.conversationId,
     chatCalls: chatCalls.length,
     sentMessages: sentMessages.length,
+    sentChatActions: sentChatActions.length,
     answeredCallbacks: answeredCallbacks.length,
+    telegramBotEvents: events.events.length,
   }));
 } finally {
   rmSync(tempDir, { recursive: true, force: true });

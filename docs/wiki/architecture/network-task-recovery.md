@@ -67,6 +67,12 @@ Recovery also checks worker metadata before asking a worker to continue:
 
 The task review worker still owns the actual verification and reward publications. Its claim queries are idempotent and stale-claim aware: processing leases can expire and be retried, but published markers are terminal for that worker. Recovery only reconstructs what should happen next and makes the project mirrors accurate.
 
+On Fly, that worker runs in the `worker` process group. If recovery reports
+`resume_verification_request_worker` or `resume_reward_scoring_worker`, first
+run `npm run fly:worker-guard` and verify `fly status -a tasknodeofficial-dev`
+shows an active `worker` machine. Recovery output is a diagnosis and mirror
+repair path; it is not a substitute for the review worker being alive.
+
 ## Evidence References
 
 Recovery reads the latest persisted evidence event from `task_events` for each active Network Task. Operator logs include the latest evidence CID and transaction hash when present. This proves submitted and review-pending tasks did not lose their evidence references during restart.

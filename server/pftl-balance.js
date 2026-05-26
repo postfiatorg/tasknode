@@ -1,5 +1,6 @@
 import WebSocket from "ws";
 import { dropsToXrp, isValidClassicAddress } from "xrpl";
+import { pftlWssRejectUnauthorized } from "./pftl-wss-tls.js";
 
 const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_CACHE_TTL_MS = 15000;
@@ -54,16 +55,6 @@ function hostLabel(value) {
   } catch {
     return "configured-endpoint";
   }
-}
-
-function isLocalOrPrivateHost(hostname = "") {
-  const host = String(hostname || "").trim().toLowerCase();
-  if (host === "localhost" || host === "::1") return true;
-  if (/^127\./.test(host)) return true;
-  if (/^10\./.test(host)) return true;
-  if (/^192\.168\./.test(host)) return true;
-  const match = host.match(/^172\.(\d{1,2})\./);
-  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
 }
 
 function coerceDrops(value) {
@@ -137,22 +128,7 @@ function dropsToPft(drops) {
 }
 
 function wssRejectUnauthorized(env, url) {
-  const configured = String(env.PFTL_WSS_REJECT_UNAUTHORIZED || "").trim().toLowerCase();
-  if (["true", "1", "yes"].includes(configured)) return true;
-
-  try {
-    const hostname = new URL(url).hostname;
-    const explicitlyAllowed =
-      ["false", "0", "no"].includes(configured) &&
-      env.TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS === "true";
-    if (isLocalOrPrivateHost(hostname) && explicitlyAllowed) {
-      return false;
-    }
-  } catch {
-    return true;
-  }
-
-  return true;
+  return pftlWssRejectUnauthorized({ env, url });
 }
 
 function cachedWssKey({ url, apiKey, rejectUnauthorized }) {

@@ -1,5 +1,6 @@
 import https from "node:https";
 import { Client, Wallet, isValidClassicAddress } from "xrpl";
+import { pftlWssRejectUnauthorized } from "./pftl-wss-tls.js";
 
 const DEFAULT_PFTL_NETWORK_ID = 2025;
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -34,16 +35,6 @@ function normalizeWssUrl(value) {
   }
 }
 
-function isLocalOrPrivateHost(hostname = "") {
-  const host = String(hostname || "").trim().toLowerCase();
-  if (host === "localhost" || host === "::1") return true;
-  if (/^127\./.test(host)) return true;
-  if (/^10\./.test(host)) return true;
-  if (/^192\.168\./.test(host)) return true;
-  const match = host.match(/^172\.(\d{1,2})\./);
-  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
-}
-
 function endpointCandidates(env = process.env) {
   const explicit = splitUrls(env.PFTL_FAUCET_WSS_URL || env.PFTL_WSS_URL || env.VITE_PFTL_WSS_URL);
   const fallback = splitUrls(env.PFTL_FAUCET_WSS_URL_FALLBACKS || env.PFTL_WSS_URL_FALLBACKS);
@@ -55,19 +46,8 @@ function endpointCandidates(env = process.env) {
 
 function wssRejectUnauthorized(env, url) {
   const configured = String(env.PFTL_FAUCET_WSS_REJECT_UNAUTHORIZED || env.PFTL_WSS_REJECT_UNAUTHORIZED || "")
-    .trim()
-    .toLowerCase();
-  if (["true", "1", "yes"].includes(configured)) return true;
-
-  try {
-    const hostname = new URL(url).hostname;
-    const explicitlyAllowed =
-      ["false", "0", "no"].includes(configured) &&
-      env.TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS === "true";
-    return !(isLocalOrPrivateHost(hostname) && explicitlyAllowed);
-  } catch {
-    return true;
-  }
+    .trim();
+  return pftlWssRejectUnauthorized({ env, url, configuredValue: configured });
 }
 
 function clientOptionsForEndpoint({ endpoint, index, env, timeoutMs }) {

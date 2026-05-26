@@ -11,6 +11,7 @@ delete process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT;
 const {
   boardManagerActions,
   buildBoardManagerSourcePacket,
+  formatBoardManagerAgentJob,
   formatBoardManagerAgentRun,
   formatBoardManagerCodexPrompt,
   normalizeBoardManagerDecision,
@@ -404,14 +405,48 @@ assert.equal(doNothingFeedItem.label, "No board change");
 assert.equal(doNothingFeedItem.state, "executed");
 assert.equal(doNothingFeedItem.summary, "State reviewed; no board mutation is needed.");
 
-const noDecisionFeedItem = formatBoardManagerAgentRun({
-  id: "boardrun_no_decision",
+const pendingDecisionFeedItem = formatBoardManagerAgentRun({
+  id: "boardrun_pending_decision",
   status: "running",
   selectedAction: "",
   decision: {},
   dryRun: false,
   actionResults: [],
   startedAt: "2026-05-22T00:00:00.000Z",
+});
+assert.equal(pendingDecisionFeedItem.action, "decision_pending");
+assert.equal(pendingDecisionFeedItem.label, "Decision pending");
+assert.equal(pendingDecisionFeedItem.state, "running");
+assert.equal(
+  pendingDecisionFeedItem.summary,
+  "The Board Manager is evaluating Hive state and has not recorded a decision yet."
+);
+
+const pendingJobFeedItem = formatBoardManagerAgentJob({
+  id: "boardjob_pending_decision",
+  scope: "global_hive",
+  trigger: "periodic_tick",
+  reason: "Periodic Board Manager tick due.",
+  status: "running",
+  claimedBy: "worker_smoke",
+  claimedAt: "2026-05-22T00:01:00.000Z",
+});
+assert.equal(pendingJobFeedItem.id, "boardjob_pending_decision");
+assert.equal(pendingJobFeedItem.action, "decision_pending");
+assert.equal(pendingJobFeedItem.label, "Decision pending");
+assert.equal(pendingJobFeedItem.state, "running");
+assert.equal(pendingJobFeedItem.trigger, "periodic_tick");
+assert.equal(pendingJobFeedItem.startedAt, "2026-05-22T00:01:00.000Z");
+
+const noDecisionFeedItem = formatBoardManagerAgentRun({
+  id: "boardrun_no_decision",
+  status: "completed",
+  selectedAction: "",
+  decision: {},
+  dryRun: false,
+  actionResults: [],
+  startedAt: "2026-05-22T00:00:00.000Z",
+  completedAt: "2026-05-22T00:00:02.000Z",
 });
 assert.equal(noDecisionFeedItem.action, "no_decision");
 assert.equal(noDecisionFeedItem.label, "No decision");

@@ -22,7 +22,7 @@ function clampInt(value, fallback, min, max) {
   return Math.min(max, Math.max(min, intValue(value, fallback)));
 }
 
-const defaultBoardManagerMaxActionsPerHour = 8;
+const defaultBoardManagerMaxActionsPerHour = 60;
 const boardManagerRateLimitExclusions = Object.freeze([
   "",
   "do_nothing",
@@ -323,8 +323,9 @@ export async function claimBoardManagerJob({
       [normalizedScope]
     );
     const scopeRow = scopeResult.rows[0];
-    const maxActionsPerHour = Number(scopeRow?.max_actions_per_hour ?? defaultBoardManagerMaxActionsPerHour);
-    if (scopeRow && maxActionsPerHour >= 0) {
+    if (!scopeRow) return { ok: true, claimed: false, job: null, reason: "scope_not_enabled" };
+    const maxActionsPerHour = Number(scopeRow.max_actions_per_hour ?? defaultBoardManagerMaxActionsPerHour);
+    if (maxActionsPerHour >= 0) {
       const recentActions = await client.query(
         `
           SELECT count(*)::int AS count
@@ -346,13 +347,14 @@ export async function claimBoardManagerJob({
         SELECT *
         FROM board_manager_jobs
         WHERE ($1 = '' OR scope = $1)
+          AND scope = $2
           AND status IN ('queued', 'deferred')
           AND run_after <= now()
         ORDER BY run_after ASC, created_at ASC, id ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       `,
-      [normalizedScope]
+      [normalizedScope, scopeRow.scope]
     );
     const job = selected.rows[0];
     if (!job) return { ok: true, claimed: false, job: null };

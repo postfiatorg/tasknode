@@ -50,8 +50,9 @@ function usage() {
     "  --provider <provider>       Decision provider: openrouter or openai. Default: openrouter",
     "  --model <model>             Provider model. Default: qwen/qwen3.7-max for OpenRouter, gpt-5.5-pro for OpenAI",
     "  --reasoning <effort>        Provider reasoning effort. Default: high",
+    "  --cadence-seconds <n>       Periodic scope cadence. Default: 900",
     "  --job-limit <n>             Due scope ticks to enqueue per pass. Default: 5",
-    "  --max-actions-per-hour <n>  Scope action budget. Default: 8",
+    "  --max-actions-per-hour <n>  Scope action budget. Default: 60",
     "  --stale-job-seconds <n>     Recover running jobs older than this. Default: 900",
     "  --action-delay-ms <ms>      Follow-up delay after mutating action. Default: 5000",
     "  --error-delay-ms <ms>       Retry delay after failed job. Default: 300000",
@@ -246,12 +247,17 @@ const config = {
   model: "",
   reasoning: argValue("--reasoning", process.env.TASKNODE_BOARD_MANAGER_REASONING_EFFORT || "high"),
   pollMs: numberArg("--poll-ms", Number(process.env.TASKNODE_BOARD_MANAGER_WORKER_POLL_MS || 15000), { min: 1000 }),
+  cadenceSeconds: numberArg(
+    "--cadence-seconds",
+    Number(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS || 900),
+    { min: 60, max: 86400 }
+  ),
   actionDelayMs: numberArg("--action-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS || 5000), { min: 0 }),
   errorDelayMs: numberArg("--error-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ERROR_DELAY_MS || 300000), { min: 5000 }),
   jobLimit: numberArg("--job-limit", Number(process.env.TASKNODE_BOARD_MANAGER_TICK_JOB_LIMIT || 5), { min: 1, max: 25 }),
   maxActionsPerHour: numberArg(
     "--max-actions-per-hour",
-    Number(process.env.TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR || 8),
+    Number(process.env.TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR || 60),
     { min: 0, max: 200 }
   ),
   staleJobSeconds: numberArg(
@@ -292,6 +298,7 @@ try {
   await migrateDatabase();
   await ensureBoardManagerScope({
     scope: config.scope,
+    cadenceSeconds: config.cadenceSeconds,
     maxActionsPerHour: config.maxActionsPerHour,
   });
 
@@ -303,6 +310,7 @@ try {
     model: config.model,
     dryRun: !config.execute,
     pollMs: config.pollMs,
+    cadenceSeconds: config.cadenceSeconds,
     maxActionsPerHour: config.maxActionsPerHour,
     staleJobSeconds: config.staleJobSeconds,
     maxTurns: config.maxTurns || "unlimited",

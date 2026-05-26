@@ -121,8 +121,8 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
         </div>
         <div className="hive-stats">
           <Stat label="Active projects" value={projectStatus === "ready" ? stats.activeProjects || 0 : "—"} />
-          <Stat label="Scoped tasks" value={projectStatus === "ready" ? stats.tasksInFlight || 0 : "—"} />
-          <Stat label="PFT target" value={projectStatus === "ready" ? formatCompactPft(stats.pftRouted) : "—"} accent />
+          <Stat label="Task rows" value={projectStatus === "ready" ? stats.tasksInFlight || 0 : "—"} />
+          <Stat label="PFT routed" value={projectStatus === "ready" ? formatCompactPft(stats.pftRouted) : "—"} accent />
         </div>
       </header>
 
@@ -237,9 +237,9 @@ function ProjectDetail({ onBack, operators, project, status }) {
           {project.summary && <p>{project.summary}</p>}
         </div>
         <div className="hive-stats">
-          <Stat label="Scoped tasks" value={project.taskCount || project.tasks.length} />
-          <Stat label="Contributor target" value={project.contributorCount || project.contributors?.length || 0} />
-          <Stat label="PFT target" value={formatPft(project.pft)} accent />
+          <Stat label="Task rows" value={project.tasks.length} />
+          <Stat label="Operators" value={project.contributors?.length || 0} />
+          <Stat label="PFT routed" value={formatPft(project.pft)} accent />
         </div>
       </header>
 
@@ -405,8 +405,9 @@ function Section({ title, subtitle, children, layerNumber = "" }) {
 
 function ProjectCard({ operators, project, onClick }) {
   const previewWallets = (project.contributors || []).map((contributor) => contributor.wallet).slice(0, 4);
-  const contributorCount = project.contributorCount || project.contributors?.length || 0;
-  const taskCount = project.taskCount || project.tasks?.length || 0;
+  const contributorCount = project.contributors?.length || 0;
+  const taskCount = project.tasks?.length || 0;
+  const pendingGenerationCount = Number(project.pendingGenerationCount || 0);
   const hasAllocatedContributors = previewWallets.length > 0;
 
   return (
@@ -429,16 +430,17 @@ function ProjectCard({ operators, project, onClick }) {
           </span>
         )}
         <span>
-          {hasAllocatedContributors
-            ? `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"}`
-            : `${contributorCount} contributor target`}
+          {`${contributorCount} ${contributorCount === 1 ? "operator" : "operators"}`}
+          {pendingGenerationCount > 0 && (
+            <small>{pendingGenerationCount} pending generation{pendingGenerationCount === 1 ? "" : "s"}</small>
+          )}
         </span>
       </span>
       <span className="hive-project-card-foot">
         <span>
-          <strong>{taskCount}</strong> scoped tasks
+          <strong>{taskCount}</strong> task {taskCount === 1 ? "row" : "rows"}
         </span>
-        <span className="hive-pft">{formatPft(project.pft)} PFT target</span>
+        <span className="hive-pft">{formatPft(project.pft)} PFT routed</span>
         <ChevronRight size={14} strokeWidth={1.8} />
       </span>
     </button>
@@ -892,18 +894,16 @@ function formatCompactPft(value) {
 
 function contributorsSubtitle(project = {}) {
   const allocated = project.contributors?.length || 0;
-  const target = project.contributorCount || allocated;
   if (allocated) return `${allocated} allocated ${allocated === 1 ? "operator" : "operators"} on this project`;
-  if (target) return `${target} target ${target === 1 ? "contributor" : "contributors"} before live allocation`;
-  return "No contributors allocated yet";
+  return "No operators allocated yet";
 }
 
 function tasksSubtitle(project = {}) {
   const allocated = project.tasks?.length || 0;
-  const scoped = project.taskCount || allocated;
+  const pending = Number(project.pendingGenerationCount || 0);
   if (allocated) return `${allocated} allocated task ${allocated === 1 ? "row" : "rows"} on this project`;
-  if (scoped) return `${scoped} scoped tasks before live allocation`;
-  return "No project tasks allocated yet";
+  if (pending) return `${pending} Network Task generation ${pending === 1 ? "job is" : "jobs are"} queued for this project`;
+  return "No project task rows yet";
 }
 
 function formatContextTime(value = "") {

@@ -1,5 +1,5 @@
 import { databaseEnabled, query, transaction } from "../db/pool.js";
-import { latestHiveProjectPlanningState } from "./hive-project-planning.js";
+import { latestHiveProjectPlanningState, projectHasOperatorArchiveLock } from "./hive-project-planning.js";
 import { getCurrentProjectProductDocs } from "./hive-project-product-docs.js";
 
 function useDatabase() {
@@ -84,12 +84,17 @@ function publicProject(row = {}) {
     phase,
     phaseCurrent: intValue(row.phase_current),
     phaseTotal: intValue(row.phase_total),
-    pft: numeric(row.pft_routed),
-    taskCount: intValue(row.task_count),
-    contributorCount: intValue(row.contributor_count),
+    pft: 0,
+    taskCount: 0,
+    contributorCount: 0,
+    plannedPftTarget: numeric(row.pft_routed),
+    plannedTaskCount: intValue(row.task_count),
+    plannedContributorTarget: intValue(row.contributor_count),
+    pendingGenerationCount: 0,
     sourceHiveSecretaryReportId: safeText(row.source_hive_secretary_report_id, 180),
     sourceHiveSecretaryReportDigest: safeText(row.source_hive_secretary_report_digest, 180),
     sourceInputs: safeObject(row.source_inputs_json),
+    metadata: safeObject(row.metadata_json),
     contributors: [],
     tasks: [],
     activity: [],
@@ -114,6 +119,7 @@ function publicContributor(row = {}) {
 }
 
 function publicTask(row = {}) {
+  const projectedReward = row.projected_reward_pft ?? row.reward_pft;
   const assigneeNft = safeText(row.assignee_nft_image_cid || row.assignee_nft_image_gateway_url, 500)
     ? {
         title: safeText(row.assignee_nft_title, 160),
@@ -126,14 +132,14 @@ function publicTask(row = {}) {
     id: safeText(row.id, 180),
     taskId: safeText(row.task_id, 180),
     requestId: safeText(row.request_id, 180),
-    title: safeText(row.title, 240),
-    state: safeText(row.state, 80) || "proposed",
-    assignee: safeText(row.assignee_wallet, 120),
-    pft: numeric(row.reward_pft),
+    title: safeText(row.projected_title || row.title, 240),
+    state: safeText(row.projected_status || row.state, 80) || "proposed",
+    assignee: safeText(row.projected_subject_wallet || row.assignee_wallet, 120),
+    pft: numeric(projectedReward),
     age: safeText(row.age_label, 80),
     source: safeText(row.source, 100),
     createdAt: toIso(row.created_at),
-    updatedAt: toIso(row.updated_at),
+    updatedAt: toIso(row.projected_updated_at || row.updated_at),
     assigneeNft,
   };
 }
@@ -281,7 +287,40 @@ function populateDerivedProjectRollups(projects = {}) {
       timestampMs(right.updatedAt || right.createdAt) - timestampMs(left.updatedAt || left.createdAt) ||
       safeText(right.id).localeCompare(safeText(left.id))
     );
+    project.taskCount = project.tasks.length;
+    project.contributorCount = project.contributors.length;
+    project.pft = numeric(project.tasks.reduce((sum, task) => sum + numeric(task.pft), 0));
   }
+}
+
+function projectHasOperatorPin(project = {}) {
+  const metadata = safeObject(project.metadata);
+  return Boolean(
+    metadata.operator_pinned === true ||
+    metadata.operator_pin === true ||
+    metadata.board_pinned === true ||
+    metadata.pin_source === "operator"
+  );
+}
+
+function projectHasBoardEvidence(project = {}) {
+  return (
+    safeArray(project.tasks).length > 0 ||
+    safeArray(project.contributors).some((contributor) => safeText(contributor.status, 80) !== "archived") ||
+    intValue(project.pendingGenerationCount) > 0 ||
+    projectHasOperatorPin(project)
+  );
+}
+
+function projectVisibleOnActiveBoard(project = {}) {
+  if (!projectHasBoardEvidence(project)) return false;
+  if (projectHasOperatorArchiveLock({ metadata_json: project.metadata })) return false;
+  return ["active", "paused", "archived"].includes(safeText(project.status, 80));
+}
+
+function visiblePublicProject(project = {}) {
+  const { metadata, ...publicFields } = project;
+  return publicFields;
 }
 
 function documentFromRows({
@@ -289,6 +328,7 @@ function documentFromRows({
   contributorRows = [],
   taskRows = [],
   activityRows = [],
+  pendingGenerationRows = [],
   productDocs = [],
   latestSecretary = null,
   projectPlanning = null,
@@ -310,17 +350,26 @@ function documentFromRows({
     const project = projects[row.project_id];
     if (project) project.activity.push(publicActivity(row));
   }
+  for (const row of pendingGenerationRows) {
+    const project = projects[row.project_id];
+    if (project) project.pendingGenerationCount = intValue(row.pending_generation_count);
+  }
   for (const doc of safeArray(productDocs)) {
     const project = projects[doc.projectId];
     if (project) project.productDocument = doc;
   }
   populateDerivedProjectRollups(projects);
 
-  const projectIds = Object.values(projects)
+  const visibleProjects = Object.fromEntries(
+    Object.values(projects)
+      .filter(projectVisibleOnActiveBoard)
+      .map((project) => [project.id, visiblePublicProject(project)])
+  );
+  const projectIds = Object.values(visibleProjects)
     .sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name))
     .map((project) => project.id);
-  const operators = operatorMap(projects);
-  const routingFeed = Object.values(projects)
+  const operators = operatorMap(visibleProjects);
+  const routingFeed = Object.values(visibleProjects)
     .flatMap((project) =>
       safeArray(project.activity).map((entry) => ({
         ...entry,
@@ -333,13 +382,13 @@ function documentFromRows({
     )
     .slice(0, 12);
   const activeOperators = Object.values(operators).filter((operator) => operator.status === "active").length;
-  const tasksInFlight = Object.values(projects).reduce((sum, project) => sum + (project.taskCount || project.tasks.length), 0);
-  const pftRouted = Object.values(projects).reduce((sum, project) => sum + numeric(project.pft), 0);
+  const tasksInFlight = Object.values(visibleProjects).reduce((sum, project) => sum + safeArray(project.tasks).length, 0);
+  const pftRouted = Object.values(visibleProjects).reduce((sum, project) => sum + numeric(project.pft), 0);
 
   return {
     generatedAt: new Date().toISOString(),
     projectIds,
-    projects,
+    projects: visibleProjects,
     operators,
     routingFeed,
     stats: {
@@ -413,12 +462,39 @@ export async function getHiveProjectsDocument() {
   if (!useDatabase()) {
     return documentFromRows({});
   }
-  const [projectsResult, contributorsResult, tasksResult, activityResult, secretaryResult] = await Promise.all([
+  const [projectsResult, contributorsResult, tasksResult, activityResult, pendingGenerationResult, secretaryResult] = await Promise.all([
     query(
       `
         SELECT *
         FROM network_projects
-        WHERE status = 'active'
+        WHERE status IN ('active', 'paused', 'archived')
+          AND (
+            status = 'active'
+            OR metadata_json->>'operator_pinned' = 'true'
+            OR metadata_json->>'operator_pin' = 'true'
+            OR metadata_json->>'board_pinned' = 'true'
+            OR metadata_json->>'pin_source' = 'operator'
+            OR EXISTS (
+              SELECT 1
+              FROM network_project_contributors contributor
+              WHERE contributor.project_id = network_projects.id
+                AND contributor.status <> 'archived'
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM network_project_task_refs refs
+              JOIN task_projections projection
+                ON projection.task_id = refs.task_id
+              WHERE refs.project_id = network_projects.id
+                AND refs.task_id <> ''
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM network_task_generation_jobs job
+              WHERE job.project_id = network_projects.id
+                AND job.status IN ('queued', 'running', 'generated')
+            )
+          )
         ORDER BY priority ASC, title ASC
       `
     ),
@@ -426,21 +502,32 @@ export async function getHiveProjectsDocument() {
       `
         SELECT *
         FROM network_project_contributors
+        WHERE status <> 'archived'
         ORDER BY project_id ASC, sort_order ASC, wallet_address ASC
       `
     ),
     query(
       `
         SELECT refs.*,
+               projection.status AS projected_status,
+               projection.title AS projected_title,
+               projection.subject_wallet AS projected_subject_wallet,
+               CASE
+                 WHEN projection.status = 'rewarded' THEN projection.reward_actual_pft
+                 ELSE projection.reward_offer_pft
+               END AS projected_reward_pft,
+               projection.updated_at AS projected_updated_at,
                nft.title AS assignee_nft_title,
                nft.status AS assignee_nft_status,
                nft.image_cid AS assignee_nft_image_cid,
                nft.image_gateway_url AS assignee_nft_image_gateway_url
         FROM network_project_task_refs refs
+        JOIN task_projections projection
+          ON projection.task_id = refs.task_id
         LEFT JOIN LATERAL (
           SELECT title, status, image_cid, image_gateway_url, selected, updated_at
           FROM profile_nfts
-          WHERE wallet_address = refs.assignee_wallet
+          WHERE wallet_address = COALESCE(NULLIF(projection.subject_wallet, ''), refs.assignee_wallet)
             AND wallet_address <> ''
             AND status IN ('minted', 'prepared', 'generated')
             AND (
@@ -457,6 +544,7 @@ export async function getHiveProjectsDocument() {
             updated_at DESC
           LIMIT 1
         ) nft ON true
+        WHERE refs.task_id <> ''
         ORDER BY refs.project_id ASC, refs.sort_order ASC, refs.id ASC
       `
     ),
@@ -465,6 +553,15 @@ export async function getHiveProjectsDocument() {
         SELECT *
         FROM network_project_activity
         ORDER BY project_id ASC, sort_order ASC, id ASC
+      `
+    ),
+    query(
+      `
+        SELECT project_id, count(*)::int AS pending_generation_count
+        FROM network_task_generation_jobs
+        WHERE status IN ('queued', 'running', 'generated')
+        GROUP BY project_id
+        ORDER BY project_id ASC
       `
     ),
     query(
@@ -488,8 +585,11 @@ export async function getHiveProjectsDocument() {
     contributorRows: contributorsResult.rows,
     taskRows: tasksResult.rows,
     activityRows: activityResult.rows,
+    pendingGenerationRows: pendingGenerationResult.rows,
     productDocs,
     latestSecretary: secretaryResult.rows[0] || null,
     projectPlanning,
   });
 }
+
+export const hiveProjectsDocumentForTests = documentFromRows;

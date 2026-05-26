@@ -10,6 +10,7 @@ import {
   recordPftlSyncError,
   storePftlAccountTransactions,
 } from "./repositories/pftl-cache.js";
+import { pftlWssRejectUnauthorized } from "./pftl-wss-tls.js";
 
 const DEFAULT_WSS_URL = "wss://ws.testnet.postfiat.org";
 const DEFAULT_REQUEST_TIMEOUT_MS = 8000;
@@ -61,31 +62,8 @@ function normalizeWssUrl(value) {
   }
 }
 
-function isLocalOrPrivateHost(hostname = "") {
-  const host = normalizeText(hostname).toLowerCase();
-  if (host === "localhost" || host === "::1") return true;
-  if (/^127\./.test(host)) return true;
-  if (/^10\./.test(host)) return true;
-  if (/^192\.168\./.test(host)) return true;
-  const match = host.match(/^172\.(\d{1,2})\./);
-  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
-}
-
 function wssRejectUnauthorized(env, url) {
-  const configured = normalizeText(env.PFTL_WSS_REJECT_UNAUTHORIZED).toLowerCase();
-  if (["true", "1", "yes"].includes(configured)) return true;
-
-  try {
-    const hostname = new URL(url).hostname;
-    const explicitlyAllowed =
-      ["false", "0", "no"].includes(configured) &&
-      env.TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS === "true";
-    if (isLocalOrPrivateHost(hostname) && explicitlyAllowed) return false;
-  } catch {
-    return true;
-  }
-
-  return true;
+  return pftlWssRejectUnauthorized({ env, url, configuredValue: normalizeText(env.PFTL_WSS_REJECT_UNAUTHORIZED) });
 }
 
 function safeError(error) {

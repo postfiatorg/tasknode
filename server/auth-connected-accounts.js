@@ -8,6 +8,12 @@ import {
   recordAuthEvent,
 } from "./runtime-store.js";
 import { appendUsageCredit } from "./repositories/chat-billing.js";
+import {
+  hostnameFromOrigin,
+  oauthBasicCredentialPart,
+  providerRedirectUri,
+  publicOrigin,
+} from "./auth-url-policy.js";
 
 function hasAll(keys) {
   return keys.every((key) => Boolean(process.env[key]));
@@ -29,36 +35,6 @@ function provider({ id, label, kind, requiredEnv, note, enabled = false, status,
       : `Configure ${requiredEnv.join(", ")}`,
     note,
   };
-}
-
-function publicOrigin(requestMeta = {}) {
-  const explicit = process.env.TASKNODE_PUBLIC_URL || process.env.VITE_SITE_ORIGIN || "";
-  if (explicit) {
-    try {
-      return new URL(explicit).origin;
-    } catch {
-      // Fall through to request metadata when configured origin is invalid.
-    }
-  }
-  if (requestMeta.origin) {
-    try {
-      return new URL(requestMeta.origin).origin;
-    } catch {
-      // Public origin is optional; callers handle an empty value.
-    }
-  }
-  return "";
-}
-
-function hostnameFromOrigin(value = "") {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  try {
-    const withProtocol = raw.includes("://") ? raw : `https://${raw}`;
-    return new URL(withProtocol).hostname.toLowerCase();
-  } catch {
-    return "";
-  }
 }
 
 function telegramWidgetDomain() {
@@ -101,14 +77,6 @@ function telegramDomainCheck(requestMeta = {}) {
     };
   }
   return { ok: true, actual, expected };
-}
-
-function providerRedirectUri(providerId, requestMeta = {}, envKey = "") {
-  const configured = envKey ? String(process.env[envKey] || "").trim() : "";
-  if (configured) return configured;
-  const origin = publicOrigin(requestMeta);
-  if (!origin) return "";
-  return new URL(`/api/auth/callback/${providerId}`, origin).toString();
 }
 
 function safeRedirectPath(value) {
@@ -353,7 +321,9 @@ function xTokenError(body, fallbackMessage) {
 
 async function fetchXToken({ code, redirectUri, codeVerifier }) {
   const clientType = xOauthClientType();
-  const credentials = Buffer.from(`${process.env.X_CLIENT_ID}:${process.env.X_CLIENT_SECRET}`).toString("base64");
+  const credentials = Buffer.from(
+    `${oauthBasicCredentialPart(process.env.X_CLIENT_ID)}:${oauthBasicCredentialPart(process.env.X_CLIENT_SECRET)}`
+  ).toString("base64");
   const form = new URLSearchParams();
   form.set("grant_type", "authorization_code");
   form.set("code", code);

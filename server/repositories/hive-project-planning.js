@@ -34,7 +34,7 @@ function jsonValue(value) {
 
 export function projectHasOperatorArchiveLock(row = {}) {
   const metadata = safeJson(row.metadata_json);
-  return Boolean(metadata.operator_archived || metadata.archived_reason);
+  return Boolean(metadata.operator_archived === true || metadata.archive_lock_source || metadata.archive_lock_applied_at);
 }
 
 function numberValue(value, fallback = 0) {
@@ -80,12 +80,9 @@ function normalizeProject(project = {}, index = 0) {
     phase_label: phaseLabel,
     phase_current: phaseCurrent,
     phase_total: phaseTotal,
-    pft_routed: numberValue(project.pft_routed ?? project.pftRouted ?? project.pft_target ?? project.pftTarget, 0),
-    task_count: intValue(project.task_count ?? project.taskCount ?? project.scoped_task_count ?? project.scopedTaskCount, 0),
-    contributor_count: intValue(
-      project.contributor_count ?? project.contributorCount ?? project.target_contributor_count ?? project.targetContributorCount,
-      0
-    ),
+    pft_routed: 0,
+    task_count: 0,
+    contributor_count: 0,
     rationale: safeText(project.rationale || project.reason, 1200),
   };
 }

@@ -6,6 +6,7 @@ delete process.env.TASKNODE_HIVE_PROJECT_REASONING_EFFORT;
 
 const { fetchHiveActiveProjects } = await import("../server/hive-project-worker.js");
 const { projectHasOperatorArchiveLock } = await import("../server/repositories/hive-project-planning.js");
+const { hiveProjectsDocumentForTests } = await import("../server/repositories/hive-projects.js");
 
 let capturedBody = null;
 const result = await fetchHiveActiveProjects(
@@ -80,9 +81,113 @@ assert.equal(result.model, "gpt-5.5-pro-2026-04-23");
 assert.equal(result.output.projects.length, 1);
 assert.equal(result.output.projects[0].id, "task_node_reliability");
 assert.equal(result.output.projects[0].type, "protocol_applications");
+assert.equal(result.output.projects[0].task_count, 0);
+assert.equal(result.output.projects[0].contributor_count, 0);
+assert.equal(result.output.projects[0].pft_routed, 0);
 assert.equal(result.usage.reasoningTokens, 25);
-assert.equal(projectHasOperatorArchiveLock({ metadata_json: { archived_reason: "operator_rejected" } }), true);
+assert.equal(projectHasOperatorArchiveLock({ metadata_json: { archived_reason: "agent_archived_without_operator_lock" } }), false);
 assert.equal(projectHasOperatorArchiveLock({ metadata_json: { operator_archived: true } }), true);
+assert.equal(projectHasOperatorArchiveLock({ metadata_json: { archive_lock_source: "migration" } }), true);
 assert.equal(projectHasOperatorArchiveLock({ metadata_json: { rationale: "normal active project" } }), false);
+
+const boardDocument = hiveProjectsDocumentForTests({
+  projectRows: [
+    {
+      id: "empty_active_project",
+      title: "Empty active project",
+      summary: "Planning-only card.",
+      status: "active",
+      priority: 10,
+      metadata_json: {},
+    },
+    {
+      id: "live_project",
+      title: "Live project",
+      summary: "Backed by a task projection.",
+      status: "active",
+      priority: 20,
+      metadata_json: {},
+    },
+    {
+      id: "agent_archived_project",
+      title: "Agent archived project",
+      summary: "Can return when execution evidence exists.",
+      status: "archived",
+      priority: 30,
+      metadata_json: { agent_archived: true },
+    },
+    {
+      id: "operator_archived_project",
+      title: "Operator archived project",
+      summary: "Locked out even with stale rows.",
+      status: "archived",
+      priority: 40,
+      metadata_json: { operator_archived: true },
+    },
+    {
+      id: "pending_generation_project",
+      title: "Pending generation project",
+      summary: "No task row until PFTL projection exists.",
+      status: "active",
+      priority: 50,
+      metadata_json: {},
+    },
+  ],
+  taskRows: [
+    {
+      id: "ref_live",
+      project_id: "live_project",
+      task_id: "task_live",
+      request_id: "req_live",
+      title: "Stale title",
+      state: "proposed",
+      assignee_wallet: "rOld",
+      reward_pft: 100,
+      projected_title: "Projected task",
+      projected_status: "accepted",
+      projected_subject_wallet: "rProjected",
+      projected_reward_pft: 250,
+      created_at: "2026-05-26T00:00:00.000Z",
+      projected_updated_at: "2026-05-26T00:01:00.000Z",
+    },
+    {
+      id: "ref_agent_archived",
+      project_id: "agent_archived_project",
+      task_id: "task_resurrected",
+      title: "Resurrection evidence",
+      state: "accepted",
+      assignee_wallet: "rAgent",
+      reward_pft: 300,
+      created_at: "2026-05-26T00:00:00.000Z",
+      updated_at: "2026-05-26T00:01:00.000Z",
+    },
+    {
+      id: "ref_operator_archived",
+      project_id: "operator_archived_project",
+      task_id: "task_locked",
+      title: "Locked evidence",
+      state: "accepted",
+      assignee_wallet: "rLocked",
+      reward_pft: 300,
+      created_at: "2026-05-26T00:00:00.000Z",
+      updated_at: "2026-05-26T00:01:00.000Z",
+    },
+  ],
+  pendingGenerationRows: [
+    { project_id: "pending_generation_project", pending_generation_count: 1 },
+  ],
+});
+assert.deepEqual(boardDocument.projectIds, ["live_project", "agent_archived_project", "pending_generation_project"]);
+assert.equal(boardDocument.stats.activeProjects, 3);
+assert.equal(boardDocument.stats.tasksInFlight, 2);
+assert.equal(boardDocument.stats.pftRouted, 550);
+assert.equal(boardDocument.projects.empty_active_project, undefined);
+assert.equal(boardDocument.projects.operator_archived_project, undefined);
+assert.equal(boardDocument.projects.live_project.tasks[0].title, "Projected task");
+assert.equal(boardDocument.projects.live_project.tasks[0].state, "accepted");
+assert.equal(boardDocument.projects.live_project.tasks[0].assignee, "rProjected");
+assert.equal(boardDocument.projects.live_project.tasks[0].pft, 250);
+assert.equal(boardDocument.projects.pending_generation_project.pendingGenerationCount, 1);
+assert.equal(boardDocument.projects.pending_generation_project.tasks.length, 0);
 
 console.log("hive project planning smoke ok");

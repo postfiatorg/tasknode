@@ -14,10 +14,12 @@ import {
   normalizeNetworkTaskRewardBand,
 } from "./network-tasks.js";
 import {
+  formatBoardManagerAgentJob,
   buildBoardManagerRunMicroSummary,
   compactBoardManagerRunForSourcePacket,
   formatBoardManagerAgentRun,
 } from "./board-manager-run-summary.js";
+import { activeBoardManagerJobs } from "./board-manager-agent-jobs.js";
 import { buildBoardManagerActionPressure } from "./board-manager-health.js";
 import {
   compactHiveProjectsForBoardManager,
@@ -27,7 +29,7 @@ import {
   compactTaskStateForBoardManager,
 } from "./board-manager-source-compact.js";
 
-export { formatBoardManagerAgentRun } from "./board-manager-run-summary.js";
+export { formatBoardManagerAgentJob, formatBoardManagerAgentRun } from "./board-manager-run-summary.js";
 
 export const boardManagerPromptVersion = "board_manager_v1";
 export const boardManagerActions = Object.freeze([
@@ -449,11 +451,19 @@ async function recentBoardManagerRuns({ limit = 12, includeInternal = false } = 
 }
 
 export async function getBoardManagerAgentFeed({ limit = 20, includeInternal = false } = {}) {
-  const runs = await recentBoardManagerRuns({
-    limit: Math.min(Math.max(Number(limit) || 20, 1), 30),
-    includeInternal,
-  });
-  return runs.map(formatBoardManagerAgentRun);
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 20, 1), 30);
+  const [jobs, runs] = await Promise.all([
+    activeBoardManagerJobs({ limit: Math.min(normalizedLimit, 10), includeInternal }),
+    recentBoardManagerRuns({ limit: normalizedLimit, includeInternal }),
+  ]);
+  return [
+    ...jobs.map(formatBoardManagerAgentJob),
+    ...runs.map(formatBoardManagerAgentRun),
+  ]
+    .sort((left, right) =>
+      (Date.parse(right.startedAt || right.completedAt || "") || 0) - (Date.parse(left.startedAt || left.completedAt || "") || 0)
+    )
+    .slice(0, normalizedLimit);
 }
 
 export async function getBoardManagerSession({ scope = "global_hive" } = {}) {
@@ -640,7 +650,7 @@ export async function buildBoardManagerSourcePacket({
         "assign_contributor",
         "initiate_network_task",
       ],
-      projectDeletionPolicy: "archive_project hides the project from the active Hive board; hard delete is not a v0 action.",
+      projectDeletionPolicy: "archive_project hides a project from the active Hive board without hard deletion. Board Manager archives are soft and reversible; only explicit operator archive locks prevent planner resurrection.",
       taskLifecyclePolicy: "Network tasks must use the existing PFTL task lifecycle.",
       networkTaskPolicy: "Board Manager initiates allocation/generation jobs only. The network task generation worker writes concrete task offers through the existing task engine. Default reward band is 10000-50000 PFT.",
       userResponsePolicy: "Hive Context entries are inbound user messages. message_user responses must target a hive_context_entry when possible and are delivered back to that entry's sourceConversationId as a chat assistant message.",

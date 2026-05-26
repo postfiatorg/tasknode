@@ -257,8 +257,17 @@ https://tasknodeofficial-dev.fly.dev
 Deploy:
 
 ```sh
-fly deploy -a tasknodeofficial-dev -c fly.toml --remote-only
+npm run fly:deploy
 ```
+
+Use the npm wrapper, not raw `fly deploy`. It runs the Fly deploy and then
+executes `npm run fly:background-guard`, which starts the `worker` and
+`board-manager` process groups if Fly left them stopped and enforces
+`restart=always` on the active machines. The guard also verifies the active
+worker has task generation, Network Task generation, and task review enabled.
+The `worker` process owns PFTL cache loops, task generation, task review, and other background jobs. The
+`board-manager` process owns Hive Board Manager runs. A passing `/health` check
+only proves the public `app` process is up.
 
 Health:
 
@@ -276,6 +285,7 @@ Status:
 
 ```sh
 fly status -a tasknodeofficial-dev
+npm run fly:background-guard
 ```
 
 Secrets:
@@ -365,13 +375,24 @@ If historical PFT context does not appear:
 - check `/api/context/history`;
 - confirm the account has a linked wallet;
 - confirm the linked wallet is active in `pftl_sync_wallets`;
-- confirm the PFTL cache and reducer workers are running;
+- run `npm run fly:worker-guard` and confirm the Fly `worker` process is
+  `started` before debugging cache contents;
+- confirm the PFTL cache and reducer worker flags are enabled;
 - confirm `PFTL_HISTORY_WSS_URL` points at a full-history PFTL archive WSS for
   archive backfill, not the machine-local rapid balance node;
 - run `npm run context-history-rpc-smoke` if pointer decoding or account_tx
   mapping looks suspect;
 - remember the cache stores pointer metadata only. Decrypted CID plaintext
   requires browser-local wallet unlock.
+
+If a task stays in `submitted` after evidence was accepted by the API:
+
+- run `npm run fly:worker-guard`;
+- check `fly status -a tasknodeofficial-dev` and verify the active `worker`
+  machine is `started`;
+- query `task_projections.status` and `metadata_json->'workers'` for the task;
+- if the next action is `resume_verification_request_worker`, inspect
+  `server/task-review-worker.js` logs before changing task rows.
 
 ## Reviewer To Do List
 
