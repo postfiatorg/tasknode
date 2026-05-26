@@ -46,7 +46,7 @@ export const chatModePrices = {
     outputUsdPerMillion: 0.28,
     provider: "openrouter",
     defaultModel: "deepseek/deepseek-v4-flash",
-    maxOutputTokens: 700,
+    maxOutputTokens: 16384,
     disableReasoning: true,
     providerOrder: ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"],
   },

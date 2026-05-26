@@ -428,6 +428,7 @@ try {
     openRouterRequest.provider?.only?.includes("akashml") !== true ||
     openRouterRequest.reasoning?.effort !== "none" ||
     openRouterRequest.reasoning?.exclude !== true ||
+    openRouterRequest.max_tokens !== 16384 ||
     openRouterRequest.plugins?.[0]?.pdf?.engine !== "cloudflare-ai" ||
     privateUserContent?.[1]?.type !== "image_url" ||
     privateUserContent?.[2]?.type !== "file" ||

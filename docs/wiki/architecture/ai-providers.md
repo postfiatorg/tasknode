@@ -46,7 +46,8 @@ Private modes call OpenRouter through Chat Completions. Task Node sends:
 - `provider.zdr=true`: restrict to Zero Data Retention endpoints.
 - `provider.data_collection="deny"`: avoid providers that collect data.
 - `provider.order` and `provider.only`: keep routing inside the mode-specific provider allowlist.
-- `reasoning.effort="none"` and `reasoning.exclude=true` on Private Instant so fast chat does not burn its small output budget on returned reasoning text.
+- `max_tokens=16384` on Private Instant, matching OpenRouter's current `deepseek/deepseek-v4-flash` top-provider completion ceiling.
+- `reasoning.effort="none"` and `reasoning.exclude=true` on Private Instant so fast chat spends its answer budget on visible response text instead of returned reasoning text.
 - `reasoning.effort="high"` on Private Thinking.
 - `reasoning.exclude=true` on Private Thinking so reasoning text is not returned to the UI.
 - `provider.require_parameters=true` when reasoning is controlled, so OpenRouter does not silently ignore the reasoning policy.
