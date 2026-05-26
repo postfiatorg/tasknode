@@ -336,7 +336,7 @@ export async function issueLatestDailyAirdrop({ accountId, runId = "" } = {}) {
       syncPftlWalletTransactions({
         walletAddress: recipientWallet,
         accountId: claim.run.account_id,
-        role: "daily_airdrop_recipient",
+        role: "user",
         limit: 80,
         maxPages: 1,
         syncKind: "daily_airdrop_issuance",

@@ -28,6 +28,12 @@ threshold.
 
 ## Debug And Repair
 
+Candidate selection requires a recent positive task reward, no same-day
+production run or issuance stop row, and an active `pftl_sync_wallets` row with
+`role = 'user'`. The recipient payout refresh must not demote that same wallet
+to `daily_airdrop_recipient`; `registerPftlSyncWallet` preserves `user` as the
+canonical role when a wallet also appears in payout sync.
+
 Run the worker and issue script only after checking failed issuance state:
 
 ```bash

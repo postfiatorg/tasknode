@@ -231,7 +231,11 @@ export async function registerPftlSyncWallet({
       ON CONFLICT (wallet_address)
       DO UPDATE SET
         account_id = COALESCE(NULLIF(EXCLUDED.account_id, ''), pftl_sync_wallets.account_id),
-        role = COALESCE(NULLIF(EXCLUDED.role, ''), pftl_sync_wallets.role),
+        role = CASE
+          WHEN EXCLUDED.role = 'user' OR pftl_sync_wallets.role = 'user'
+            THEN 'user'
+          ELSE COALESCE(NULLIF(EXCLUDED.role, ''), pftl_sync_wallets.role)
+        END,
         owner_wallet_address = COALESCE(NULLIF(EXCLUDED.owner_wallet_address, ''), pftl_sync_wallets.owner_wallet_address),
         priority = LEAST(pftl_sync_wallets.priority, EXCLUDED.priority),
         status = EXCLUDED.status,

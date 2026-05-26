@@ -46,6 +46,21 @@ try {
     priority: 1,
     metadata: { smoke: true },
   });
+  await registerPftlSyncWallet({
+    walletAddress,
+    accountId,
+    role: "daily_airdrop_recipient",
+    priority: 50,
+    metadata: { payoutRefresh: true },
+  });
+  const preservedUserRole = await query(
+    "SELECT role, priority, metadata_json FROM pftl_sync_wallets WHERE wallet_address = $1",
+    [walletAddress]
+  );
+  assert.equal(preservedUserRole.rows[0].role, "user");
+  assert.equal(preservedUserRole.rows[0].priority, 1);
+  assert.equal(preservedUserRole.rows[0].metadata_json.payoutRefresh, true);
+
   const stored = await storePftlAccountTransactions({
     walletAddress,
     transactions: [
