@@ -1,6 +1,6 @@
 # Agent-Managed About Panels
 
-Status: deprecated implemented plan. Current product truth lives in `Surfaces -> Hive`, `Architecture -> AI Providers`, and `Architecture -> System Status Runbooks`.
+Status: deprecated implemented plan. Current product truth lives in `Surfaces -> Hive`, `Architecture -> AI Providers`, and `Architecture -> Board Manager`.
 
 This plan defines how the Board Manager should update readable About panels across Task Node surfaces, starting with Hive project detail pages.
 

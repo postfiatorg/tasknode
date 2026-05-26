@@ -7,8 +7,10 @@ healthy while work is not actually moving.
 The status rows are read-only. They do not resume workers, repair queues,
 advance tasks, or change Board Manager scheduler state.
 
-Operator repair instructions live in `Architecture -> System Status Runbooks`.
-That runbook page defines green, amber, and red for every row rendered here.
+Each status row links to the corresponding Architecture page for that system.
+Those pages define how green, amber, red, disabled, and unknown are derived and
+what the operator should inspect or run next. If a row appears here, it must have
+a matching Architecture page.
 
 ## Categories
 

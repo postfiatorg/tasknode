@@ -1,6 +1,6 @@
 # Daily Airdrop Migration Plan
 
-Status: deprecated implemented v1 plan. Current product truth lives in `Surfaces -> Daily Airdrop`, `Surfaces -> Profile`, and `Architecture -> System Status Runbooks`.
+Status: deprecated implemented v1 plan. Current product truth lives in `Surfaces -> Daily Airdrop`, `Surfaces -> Profile`, and `Architecture -> Daily Airdrop Worker`.
 
 Source references: PFTasks daily airdrop code was reviewed as historical reference only. This plan is for Task Node Official.
 

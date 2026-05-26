@@ -238,7 +238,14 @@ function writeViewLocation(nextView, { replace = false } = {}) {
   if (typeof window === "undefined") return;
   const normalizedView = APP_VIEWS.has(nextView) ? nextView : "chat";
   const url = new URL(window.location.href);
-  url.hash = normalizedView === "chat" ? "" : normalizedView;
+  if (normalizedView === "chat") {
+    url.hash = "";
+  } else if (normalizedView === "docs") {
+    const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
+    url.hash = hashPath.toLowerCase().startsWith("docs/") ? hashPath : "docs";
+  } else {
+    url.hash = normalizedView;
+  }
 
   const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   const nextPath = `${url.pathname}${url.search}${url.hash}`;

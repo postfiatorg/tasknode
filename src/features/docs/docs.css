@@ -586,7 +586,7 @@
   overflow-wrap: anywhere;
 }
 
-.system-status-runbook-link {
+.system-status-doc-link {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -601,7 +601,7 @@
   cursor: pointer;
 }
 
-.system-status-runbook-link:hover {
+.system-status-doc-link:hover {
   text-decoration: underline;
 }
 

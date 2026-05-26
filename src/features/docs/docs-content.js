@@ -12,22 +12,40 @@ import tasks from "../../../docs/wiki/surfaces/tasks.md?raw";
 import wallet from "../../../docs/wiki/surfaces/wallet.md?raw";
 import aiProviders from "../../../docs/wiki/architecture/ai-providers.md?raw";
 import authAndConnectedAccounts from "../../../docs/wiki/architecture/auth-and-connected-accounts.md?raw";
+import boardManagerArchitecture from "../../../docs/wiki/architecture/board-manager.md?raw";
+import boardManagerSecretaryPacket from "../../../docs/wiki/architecture/board-manager-secretary-packet.md?raw";
 import database from "../../../docs/wiki/architecture/database.md?raw";
+import dailyAirdropWorker from "../../../docs/wiki/architecture/daily-airdrop-worker.md?raw";
+import deepMemoryWorker from "../../../docs/wiki/architecture/deep-memory-worker.md?raw";
 import deployment from "../../../docs/wiki/architecture/deployment.md?raw";
 import encryption from "../../../docs/wiki/architecture/encryption.md?raw";
+import ethereumDepositRpc from "../../../docs/wiki/architecture/ethereum-deposit-rpc.md?raw";
+import hiveActiveProjectsHelper from "../../../docs/wiki/architecture/hive-active-projects-helper.md?raw";
+import hiveSecretaryWorker from "../../../docs/wiki/architecture/hive-secretary-worker.md?raw";
 import executionMandate from "../../../docs/wiki/architecture/execution-mandate.md?raw";
 import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
 import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import networkTaskRecovery from "../../../docs/wiki/architecture/network-task-recovery.md?raw";
+import networkTaskGenerationWorker from "../../../docs/wiki/architecture/network-task-generation-worker.md?raw";
+import networkTaskProfileWorker from "../../../docs/wiki/architecture/network-task-profile-worker.md?raw";
 import pftl from "../../../docs/wiki/architecture/pftl.md?raw";
+import pftlArchiveWalletSync from "../../../docs/wiki/architecture/pftl-archive-wallet-sync.md?raw";
+import pftlCacheReducer from "../../../docs/wiki/architecture/pftl-cache-reducer.md?raw";
+import pftlCacheRetention from "../../../docs/wiki/architecture/pftl-cache-retention.md?raw";
+import pftlCurrentRpcAndWss from "../../../docs/wiki/architecture/pftl-current-rpc-and-wss.md?raw";
+import pftlHistoryRpcAndArchiveWss from "../../../docs/wiki/architecture/pftl-history-rpc-and-archive-wss.md?raw";
+import pftlHotWalletSync from "../../../docs/wiki/architecture/pftl-hot-wallet-sync.md?raw";
 import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
+import pftlWssWatcher from "../../../docs/wiki/architecture/pftl-wss-watcher.md?raw";
 import resettableSignupTesting from "../../../docs/wiki/architecture/resettable-signup-testing.md?raw";
 import styleGuide from "../../../docs/wiki/architecture/style-guide.md?raw";
 import systemStatus from "../../../docs/wiki/architecture/system-status.md?raw";
-import systemStatusRunbooks from "../../../docs/wiki/architecture/system-status-runbooks.md?raw";
 import taskAsyncEngine from "../../../docs/wiki/architecture/task-async-engine.md?raw";
+import taskGenerationWorker from "../../../docs/wiki/architecture/task-generation-worker.md?raw";
 import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw";
+import taskReviewRewardWorker from "../../../docs/wiki/architecture/task-review-reward-worker.md?raw";
 import telegramBotChat from "../../../docs/wiki/architecture/telegram-bot-chat.md?raw";
+import turnMemoryWorker from "../../../docs/wiki/architecture/turn-memory-worker.md?raw";
 import agentManagedAboutPanels from "../../../docs/wiki/plans/agent-managed-about-panels.md?raw";
 import boardManager from "../../../docs/wiki/plans/board-manager.md?raw";
 import boardManagerDeepseekSecretaryPackets from "../../../docs/wiki/plans/board-manager-deepseek-secretary-packets.md?raw";
@@ -432,6 +450,40 @@ function promptSourceSections(source) {
   ];
 }
 
+export const SYSTEM_STATUS_DOC_LINKS = {
+  board_manager: { slug: "board-manager-architecture", label: "Architecture: Board Manager" },
+  board_manager_secretary_packets: {
+    slug: "board-manager-secretary-packet",
+    label: "Architecture: Board Manager Secretary Packet",
+  },
+  hive_secretary: { slug: "hive-secretary-worker", label: "Architecture: Hive Secretary Worker" },
+  hive_active_projects: { slug: "hive-active-projects-helper", label: "Architecture: Hive Active Projects Helper" },
+  network_task_generation: {
+    slug: "network-task-generation-worker",
+    label: "Architecture: Network Task Generation Worker",
+  },
+  task_generation: { slug: "task-generation-worker", label: "Architecture: Task Generation Worker" },
+  task_review: { slug: "task-review-reward-worker", label: "Architecture: Task Review And Reward Worker" },
+  pftl_hot_sync: { slug: "pftl-hot-wallet-sync", label: "Architecture: PFTL Hot Wallet Sync" },
+  pftl_archive_sync: { slug: "pftl-archive-wallet-sync", label: "Architecture: PFTL Archive Wallet Sync" },
+  pftl_wss_watcher: { slug: "pftl-wss-watcher", label: "Architecture: PFTL WSS Watcher" },
+  pftl_cache_reducer: { slug: "pftl-cache-reducer", label: "Architecture: PFTL Cache Reducer" },
+  pftl_cache_retention: { slug: "pftl-cache-retention", label: "Architecture: PFTL Cache Retention" },
+  pftl_current_rpc: { slug: "pftl-current-rpc-and-wss", label: "Architecture: PFTL Current RPC And WSS" },
+  pftl_history_rpc: {
+    slug: "pftl-history-rpc-and-archive-wss",
+    label: "Architecture: PFTL History RPC And Archive WSS",
+  },
+  ethereum_deposit_rpc: { slug: "ethereum-deposit-rpc", label: "Architecture: Ethereum Deposit RPC" },
+  chat_turn_memory: { slug: "turn-memory-worker", label: "Architecture: Turn Memory Worker" },
+  deep_memory: { slug: "deep-memory-worker", label: "Architecture: Deep Memory Worker" },
+  network_task_profile: {
+    slug: "network-task-profile-worker",
+    label: "Architecture: Network Task Profile Worker",
+  },
+  daily_airdrop_worker: { slug: "daily-airdrop-worker", label: "Architecture: Daily Airdrop Worker" },
+};
+
 export const DOC_GROUPS = [
   {
     title: "Start",
@@ -525,10 +577,118 @@ export const DOC_GROUPS = [
         component: "system-status",
       },
       {
-        slug: "system-status-runbooks",
-        title: "System Status Runbooks",
-        summary: "Green, amber, red, and repair procedures for every status row.",
-        markdown: systemStatusRunbooks,
+        slug: "board-manager-architecture",
+        title: "Board Manager",
+        summary: "Leased Hive decision worker, scheduler state, and repair path.",
+        markdown: boardManagerArchitecture,
+      },
+      {
+        slug: "board-manager-secretary-packet",
+        title: "Board Manager Secretary Packet",
+        summary: "DeepSeek packet compression before Board Manager decisions.",
+        markdown: boardManagerSecretaryPacket,
+      },
+      {
+        slug: "hive-secretary-worker",
+        title: "Hive Secretary Worker",
+        summary: "Structured Hive report generation and worker status derivation.",
+        markdown: hiveSecretaryWorker,
+      },
+      {
+        slug: "hive-active-projects-helper",
+        title: "Hive Active Projects Helper",
+        summary: "Active project derivation, freshness rules, and repair commands.",
+        markdown: hiveActiveProjectsHelper,
+      },
+      {
+        slug: "network-task-generation-worker",
+        title: "Network Task Generation Worker",
+        summary: "Board Manager allocation handoff into the standard task engine.",
+        markdown: networkTaskGenerationWorker,
+      },
+      {
+        slug: "task-generation-worker",
+        title: "Task Generation Worker",
+        summary: "Signed request to PFTL task offer worker path.",
+        markdown: taskGenerationWorker,
+      },
+      {
+        slug: "task-review-reward-worker",
+        title: "Task Review And Reward Worker",
+        summary: "Review, verification, reward progression, and repair path.",
+        markdown: taskReviewRewardWorker,
+      },
+      {
+        slug: "pftl-hot-wallet-sync",
+        title: "PFTL Hot Wallet Sync",
+        summary: "Current-ledger wallet sync status and repair path.",
+        markdown: pftlHotWalletSync,
+      },
+      {
+        slug: "pftl-archive-wallet-sync",
+        title: "PFTL Archive Wallet Sync",
+        summary: "Historical wallet backfill status and repair path.",
+        markdown: pftlArchiveWalletSync,
+      },
+      {
+        slug: "pftl-wss-watcher",
+        title: "PFTL WSS Watcher",
+        summary: "Websocket checkpoint freshness and reconnect checks.",
+        markdown: pftlWssWatcher,
+      },
+      {
+        slug: "pftl-cache-reducer",
+        title: "PFTL Cache Reducer",
+        summary: "Pointer reducer queue health and projection repair.",
+        markdown: pftlCacheReducer,
+      },
+      {
+        slug: "pftl-cache-retention",
+        title: "PFTL Cache Retention",
+        summary: "Cache maintenance freshness and safe cleanup rules.",
+        markdown: pftlCacheRetention,
+      },
+      {
+        slug: "pftl-current-rpc-and-wss",
+        title: "PFTL Current RPC And WSS",
+        summary: "Current ledger endpoint health for submissions and hot sync.",
+        markdown: pftlCurrentRpcAndWss,
+      },
+      {
+        slug: "pftl-history-rpc-and-archive-wss",
+        title: "PFTL History RPC And Archive WSS",
+        summary: "Archive endpoint health for historical backfill and context restore.",
+        markdown: pftlHistoryRpcAndArchiveWss,
+      },
+      {
+        slug: "ethereum-deposit-rpc",
+        title: "Ethereum Deposit RPC",
+        summary: "Deposit top-up RPC configuration and request-time status.",
+        markdown: ethereumDepositRpc,
+      },
+      {
+        slug: "turn-memory-worker",
+        title: "Turn Memory Worker",
+        summary: "Chat turn memory queue health and recovery.",
+        markdown: turnMemoryWorker,
+      },
+      {
+        slug: "deep-memory-worker",
+        title: "Deep Memory Worker",
+        summary: "Deep account memory queue health and recovery.",
+        markdown: deepMemoryWorker,
+      },
+      {
+        slug: "network-task-profile-worker",
+        title: "Network Task Profile Worker",
+        summary: "Routing profile queue health and repair commands.",
+        markdown: networkTaskProfileWorker,
+      },
+      {
+        slug: "daily-airdrop-worker",
+        title: "Daily Airdrop Worker",
+        summary: "Airdrop scoring, issuance status, and money-path recovery.",
+        markdown: dailyAirdropWorker,
       },
       {
         slug: "encryption",
@@ -640,7 +800,7 @@ export const DOC_GROUPS = [
       {
         slug: "board-manager",
         title: "Board Manager",
-        summary: "Deprecated implemented v0 plan; current Board Manager behavior lives in Hive, Deployment, and runbook docs.",
+        summary: "Deprecated implemented v0 plan; current Board Manager behavior lives in Hive, Deployment, and Board Manager architecture docs.",
         markdown: boardManager,
       },
       {

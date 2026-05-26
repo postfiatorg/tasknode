@@ -1,45 +1,25 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronRight, RefreshCw, Search } from "lucide-react";
 import { requestJson } from "../../api";
-import { DOC_GROUPS, DOC_PAGES } from "./docs-content";
+import { DOC_GROUPS, DOC_PAGES, SYSTEM_STATUS_DOC_LINKS } from "./docs-content";
 import { DocsDiagram } from "./DocsDiagram";
 import "./docs.css";
 
 const DEFAULT_DOC = "system-status-home";
-const RUNBOOK_PAGE_SLUG = "system-status-runbooks";
-const SYSTEM_STATUS_RUNBOOKS = {
-  board_manager: { anchor: "hive-mind-board-agent", label: "Hive Mind Board Agent runbook" },
-  board_manager_secretary_packets: { anchor: "board-manager-secretary-packet", label: "Board Manager Secretary Packet runbook" },
-  hive_secretary: { anchor: "hive-secretary-worker", label: "Hive Secretary Worker runbook" },
-  hive_active_projects: { anchor: "hive-active-projects-helper", label: "Hive Active Projects Helper runbook" },
-  network_task_generation: { anchor: "network-task-generation-worker", label: "Network Task Generation Worker runbook" },
-  task_generation: { anchor: "task-generation-worker", label: "Task Generation Worker runbook" },
-  task_review: { anchor: "task-review-and-reward-worker", label: "Task Review And Reward Worker runbook" },
-  pftl_hot_sync: { anchor: "pftl-hot-wallet-sync", label: "PFTL Hot Wallet Sync runbook" },
-  pftl_archive_sync: { anchor: "pftl-archive-wallet-sync", label: "PFTL Archive Wallet Sync runbook" },
-  pftl_wss_watcher: { anchor: "pftl-wss-watcher", label: "PFTL WSS Watcher runbook" },
-  pftl_cache_reducer: { anchor: "pftl-cache-reducer", label: "PFTL Cache Reducer runbook" },
-  pftl_cache_retention: { anchor: "pftl-cache-retention", label: "PFTL Cache Retention runbook" },
-  pftl_current_rpc: { anchor: "pftl-current-rpc-and-wss", label: "PFTL Current RPC And WSS runbook" },
-  pftl_history_rpc: { anchor: "pftl-history-rpc-and-archive-wss", label: "PFTL History RPC And Archive WSS runbook" },
-  ethereum_deposit_rpc: { anchor: "ethereum-deposit-rpc", label: "Ethereum Deposit RPC runbook" },
-  chat_turn_memory: { anchor: "turn-memory-worker", label: "Turn Memory Worker runbook" },
-  deep_memory: { anchor: "deep-memory-worker", label: "Deep Memory Worker runbook" },
-  network_task_profile: { anchor: "network-task-profile-worker", label: "Network Task Profile Worker runbook" },
-  daily_airdrop_worker: { anchor: "daily-airdrop-worker", label: "Daily Airdrop Worker runbook" },
-};
 
 export function DocsView() {
-  const [selectedSlug, setSelectedSlug] = useState(DEFAULT_DOC);
+  const [selectedSlug, setSelectedSlug] = useState(() => docSlugFromLocation());
   const [pendingAnchor, setPendingAnchor] = useState("");
   const [query, setQuery] = useState("");
   const selectedPage = DOC_PAGES.find((page) => page.slug === selectedSlug) || DOC_PAGES[0];
   const filteredGroups = useMemo(() => filterGroups(DOC_GROUPS, query), [query]);
 
   function openDocsPage(slug, anchor = "") {
-    setSelectedSlug(slug);
+    const nextSlug = DOC_PAGES.some((page) => page.slug === slug) ? slug : DEFAULT_DOC;
+    setSelectedSlug(nextSlug);
     setPendingAnchor(anchor);
     setQuery("");
+    writeDocsLocation(nextSlug);
   }
 
   useEffect(() => {
@@ -50,6 +30,21 @@ export function DocsView() {
     });
     setPendingAnchor("");
   }, [pendingAnchor]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    function syncDocsSlug() {
+      setSelectedSlug(docSlugFromLocation());
+    }
+
+    window.addEventListener("popstate", syncDocsSlug);
+    window.addEventListener("hashchange", syncDocsSlug);
+    return () => {
+      window.removeEventListener("popstate", syncDocsSlug);
+      window.removeEventListener("hashchange", syncDocsSlug);
+    };
+  }, []);
 
   return (
     <div className="docs-view">
@@ -102,7 +97,7 @@ export function DocsView() {
           <p>{selectedPage.summary}</p>
         </header>
         <MarkdownArticle markdown={selectedPage.markdown} />
-        {selectedPage.component === "system-status" && <SystemStatusPage onOpenRunbook={openDocsPage} />}
+        {selectedPage.component === "system-status" && <SystemStatusPage onOpenDocPage={openDocsPage} />}
       </article>
     </div>
   );
@@ -122,6 +117,26 @@ function filterGroups(groups, query) {
     .filter((group) => group.pages.length > 0);
 }
 
+function docSlugFromLocation() {
+  if (typeof window === "undefined") return DEFAULT_DOC;
+  const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
+  const parts = hashPath.split("?")[0].split("/").filter(Boolean);
+  const slug = parts[0] === "docs" ? parts[1] || DEFAULT_DOC : DEFAULT_DOC;
+  return DOC_PAGES.some((page) => page.slug === slug) ? slug : DEFAULT_DOC;
+}
+
+function writeDocsLocation(slug) {
+  if (typeof window === "undefined") return;
+  const normalizedSlug = DOC_PAGES.some((page) => page.slug === slug) ? slug : DEFAULT_DOC;
+  const url = new URL(window.location.href);
+  url.hash = normalizedSlug === DEFAULT_DOC ? "docs" : `docs/${normalizedSlug}`;
+
+  const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const nextPath = `${url.pathname}${url.search}${url.hash}`;
+  if (currentPath === nextPath) return;
+  window.history.pushState({ tasknodeView: "docs", docsSlug: normalizedSlug }, "", nextPath);
+}
+
 function MarkdownArticle({ markdown }) {
   return (
     <div className="docs-markdown">
@@ -132,7 +147,7 @@ function MarkdownArticle({ markdown }) {
   );
 }
 
-function SystemStatusPage({ onOpenRunbook }) {
+function SystemStatusPage({ onOpenDocPage }) {
   const [state, setState] = useState({ loading: true, status: null, error: "" });
 
   async function loadStatus() {
@@ -188,7 +203,7 @@ function SystemStatusPage({ onOpenRunbook }) {
                 <p>{category.summary}</p>
                 <div className="system-status-jobs">
                   {category.items?.map((entry) => (
-                    <SystemStatusRow entry={entry} key={entry.id} onOpenRunbook={onOpenRunbook} />
+                    <SystemStatusRow entry={entry} key={entry.id} onOpenDocPage={onOpenDocPage} />
                   ))}
                 </div>
               </section>
@@ -200,8 +215,8 @@ function SystemStatusPage({ onOpenRunbook }) {
   );
 }
 
-function SystemStatusRow({ entry, onOpenRunbook }) {
-  const runbook = SYSTEM_STATUS_RUNBOOKS[entry.id];
+function SystemStatusRow({ entry, onOpenDocPage }) {
+  const docLink = SYSTEM_STATUS_DOC_LINKS[entry.id];
   return (
     <article className={`system-status-row is-${entry.status || "unknown"}`}>
       <div className="system-status-row-main">
@@ -251,17 +266,17 @@ function SystemStatusRow({ entry, onOpenRunbook }) {
           ))}
         </ul>
       )}
-      {runbook && (
+      {docLink && (
         <a
-          className="system-status-runbook-link"
-          href={`#${runbook.anchor}`}
+          className="system-status-doc-link"
+          href={`#docs/${docLink.slug}`}
           onClick={(event) => {
             event.preventDefault();
-            onOpenRunbook?.(RUNBOOK_PAGE_SLUG, runbook.anchor);
+            onOpenDocPage?.(docLink.slug);
           }}
         >
           <BookOpen size={14} strokeWidth={1.8} />
-          <span>{runbook.label}</span>
+          <span>{docLink.label}</span>
         </a>
       )}
     </article>

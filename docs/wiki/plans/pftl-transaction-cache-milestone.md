@@ -1,6 +1,6 @@
 # PFTL Transaction Cache Milestone
 
-Status: deprecated implemented milestone. Current product truth lives in `Architecture -> PFTL Transaction Cache` and `Architecture -> System Status Runbooks`.
+Status: deprecated implemented milestone. Current product truth lives in `Architecture -> PFTL Transaction Cache` and the PFTL status-linked Architecture pages.
 
 ## Objective
 
