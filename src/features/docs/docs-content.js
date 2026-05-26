@@ -436,6 +436,13 @@ export const DOC_GROUPS = [
     title: "Start",
     pages: [
       {
+        slug: "system-status",
+        title: "System Status",
+        summary: "Live audit view for schedulers, workers, and RPC dependencies.",
+        markdown: systemStatus,
+        component: "system-status",
+      },
+      {
         slug: "start",
         title: "Start Here",
         summary: "The product and protocol mental model.",

@@ -5,7 +5,7 @@ import { DOC_GROUPS, DOC_PAGES } from "./docs-content";
 import { DocsDiagram } from "./DocsDiagram";
 import "./docs.css";
 
-const DEFAULT_DOC = "start";
+const DEFAULT_DOC = "system-status";
 
 export function DocsView() {
   const [selectedSlug, setSelectedSlug] = useState(DEFAULT_DOC);
