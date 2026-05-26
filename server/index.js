@@ -15,7 +15,7 @@ import {
   usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync, walletActionStart, walletActions,
   walletLinkStart, walletLinkVerify,
 } from "./product-contracts.js";
-import { executeChatStream } from "./chat-router.js";
+import { executeChatStream, logChatProviderError } from "./chat-router.js";
 import { conversationIdForChatWrite, explicitConversationId } from "./chat-conversation-ids.js";
 import {
   conversationIdForSession,
@@ -688,6 +688,12 @@ async function routeApi(req, url, res) {
       });
     } catch (error) {
       if (error?.status !== 499) {
+        logChatProviderError(error, {
+          action: "chat_stream",
+          mode: started.chat.mode,
+          provider: started.estimate?.provider,
+          model: started.estimate?.model,
+        });
         writeSse(res, "error", {
           ok: false,
           error: error?.message || "chat_provider_error",

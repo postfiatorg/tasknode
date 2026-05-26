@@ -47,6 +47,7 @@ export const chatModePrices = {
     provider: "openrouter",
     defaultModel: "deepseek/deepseek-v4-flash",
     maxOutputTokens: 700,
+    disableReasoning: true,
     providerOrder: ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"],
   },
   "Private Thinking": {
@@ -188,6 +189,24 @@ function openRouterProviderPreferences({ providerOrder = [], requireParameters =
   return provider;
 }
 
+function openRouterReasoningConfig(config = {}) {
+  if (config.reasoningEffort) {
+    return {
+      effort: config.reasoningEffort,
+      exclude: true,
+    };
+  }
+
+  if (config.disableReasoning) {
+    return {
+      effort: "none",
+      exclude: true,
+    };
+  }
+
+  return undefined;
+}
+
 function openRouterPlugins(attachments = []) {
   if (!attachments.some((attachment) => attachment.kind === "pdf")) return undefined;
 
@@ -199,6 +218,73 @@ function openRouterPlugins(attachments = []) {
       },
     },
   ];
+}
+
+function safeLogText(value = "", max = 600) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function loggedUsage(usage = null) {
+  if (!usage || typeof usage !== "object") return undefined;
+  return {
+    promptTokens: Number(usage.prompt_tokens || usage.inputTokens || 0),
+    completionTokens: Number(usage.completion_tokens || usage.outputTokens || 0),
+    totalTokens: Number(usage.total_tokens || usage.totalTokens || 0),
+    reasoningTokens: Number(
+      usage.reasoning_tokens ||
+        usage.completion_tokens_details?.reasoning_tokens ||
+        usage.output_tokens_details?.reasoning_tokens ||
+        usage.reasoningTokens ||
+        0
+    ),
+    cost: Number(usage.cost || usage.costUsd || 0),
+  };
+}
+
+export function logChatProviderError(error, context = {}) {
+  if (!error || error.loggedChatProviderError) return;
+  error.loggedChatProviderError = true;
+  console.warn("chat_provider_failure", {
+    action: safeLogText(context.action, 80),
+    mode: safeLogText(context.mode || error.mode, 80),
+    provider: safeLogText(context.provider || error.provider, 80),
+    model: safeLogText(context.model || error.model, 160),
+    responseModel: safeLogText(error.responseModel, 160),
+    upstreamProvider: safeLogText(error.upstreamProvider, 120),
+    status: Number(error.status || 0),
+    error: safeLogText(error.message || "chat_provider_error", 160),
+    providerMessage: safeLogText(error.providerMessage, 600),
+    finishReason: safeLogText(error.finishReason, 80),
+    responseId: safeLogText(error.responseId, 120),
+    usage: loggedUsage(error.usage),
+  });
+}
+
+function openRouterEmptyResponseError({
+  body = null,
+  mode = "",
+  model = "",
+  responseId = null,
+  responseModel = "",
+  upstreamProvider = "",
+  finishReason = "",
+  usage = null,
+} = {}) {
+  const choice = body?.choices?.[0] || {};
+  const error = new Error("chat_provider_empty_response");
+  error.status = 502;
+  error.provider = "openrouter";
+  error.mode = mode;
+  error.model = model;
+  error.responseId = body?.id || responseId || null;
+  error.responseModel = body?.model || responseModel || model;
+  error.upstreamProvider = body?.provider || upstreamProvider || "";
+  error.finishReason = choice.finish_reason || finishReason || "";
+  error.usage = body?.usage || usage || null;
+  error.providerMessage = `OpenRouter returned empty message content${
+    error.finishReason ? ` with finish_reason=${error.finishReason}` : ""
+  }.`;
+  return error;
 }
 
 export function openRouterChatRequest({
@@ -216,6 +302,7 @@ export function openRouterChatRequest({
 }) {
   const config = chatModeConfig(mode);
   const normalizedAttachments = normalizeChatAttachments(attachments);
+  const reasoning = openRouterReasoningConfig(config);
 
   return {
     model,
@@ -231,14 +318,9 @@ export function openRouterChatRequest({
     }),
     provider: openRouterProviderPreferences({
       providerOrder: config.providerOrder || [],
-      requireParameters: Boolean(config.reasoningEffort),
+      requireParameters: Boolean(reasoning),
     }),
-    reasoning: config.reasoningEffort
-      ? {
-          effort: config.reasoningEffort,
-          exclude: true,
-        }
-      : undefined,
+    reasoning,
     max_tokens: config.maxOutputTokens,
     plugins: openRouterPlugins(normalizedAttachments),
     stream: stream || undefined,
@@ -648,6 +730,9 @@ async function executeOpenRouter({
     body: JSON.stringify(openRouterChatRequest(request)),
   });
   const text = outputTextFromOpenRouter(body);
+  if (!text) {
+    throw openRouterEmptyResponseError({ body, mode, model });
+  }
 
   return {
     provider: "openrouter",
@@ -711,16 +796,25 @@ async function streamOpenRouter({
   let text = "";
   let responseId = null;
   let responseModel = model;
+  let upstreamProvider = "";
+  let finishReason = "";
   let usage = null;
+  let rawUsage = null;
 
   await readEventStream(stream, async ({ data }) => {
     if (!data || data === "[DONE]") return;
     const chunk = JSON.parse(data);
     responseId = chunk.id || responseId;
     responseModel = chunk.model || responseModel;
-    if (chunk.usage) usage = openRouterUsage(chunk, mode);
+    upstreamProvider = chunk.provider || upstreamProvider;
+    if (chunk.usage) {
+      rawUsage = chunk.usage;
+      usage = openRouterUsage(chunk, mode);
+    }
 
-    const delta = chunk.choices?.[0]?.delta?.content;
+    const choice = chunk.choices?.[0] || {};
+    finishReason = choice.finish_reason || finishReason;
+    const delta = choice.delta?.content;
     if (typeof delta === "string" && delta) {
       text += delta;
       await onDelta?.(delta);
@@ -734,6 +828,17 @@ async function streamOpenRouter({
   });
 
   const finalText = text.trim();
+  if (!finalText) {
+    throw openRouterEmptyResponseError({
+      mode,
+      model,
+      responseId,
+      responseModel,
+      upstreamProvider,
+      finishReason,
+      usage: rawUsage || usage,
+    });
+  }
   return {
     provider: "openrouter",
     model: responseModel,

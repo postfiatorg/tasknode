@@ -423,8 +423,11 @@ try {
   if (
     openRouterRequest.provider?.zdr !== true ||
     openRouterRequest.provider?.data_collection !== "deny" ||
+    openRouterRequest.provider?.require_parameters !== true ||
     openRouterRequest.provider?.order?.[0] !== "parasail" ||
     openRouterRequest.provider?.only?.includes("akashml") !== true ||
+    openRouterRequest.reasoning?.effort !== "none" ||
+    openRouterRequest.reasoning?.exclude !== true ||
     openRouterRequest.plugins?.[0]?.pdf?.engine !== "cloudflare-ai" ||
     privateUserContent?.[1]?.type !== "image_url" ||
     privateUserContent?.[2]?.type !== "file" ||

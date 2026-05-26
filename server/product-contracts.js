@@ -6,6 +6,7 @@ import {
   chatProviderConfigured,
   executeChat,
   isKnownChatMode,
+  logChatProviderError,
   normalizedChatMode,
 } from "./chat-router.js";
 import { effectiveDefaultChatMode } from "./chat-mode-defaults.js";
@@ -715,6 +716,12 @@ export async function chatSend(payload, method) {
     };
   } catch (error) {
     const status = error?.status || 502;
+    logChatProviderError(error, {
+      action: "chat_send",
+      mode,
+      provider: estimate?.provider,
+      model: estimate?.model,
+    });
     return {
       status,
       body: {

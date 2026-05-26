@@ -8,7 +8,7 @@ The code owner for this boundary is `server/chat-router.js`. The product contrac
 
 | User-facing mode | Provider | API path | Default model | Reasoning | Web search | Privacy policy |
 | --- | --- | --- | --- | --- | --- | --- |
-| Private Instant | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-flash` | None | Disabled | `zdr=true`, `data_collection="deny"`, provider allowlist |
+| Private Instant | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-flash` | `none`, excluded from response | Disabled | `zdr=true`, `data_collection="deny"`, provider allowlist, `require_parameters=true` |
 | Private Thinking | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-pro` | `high`, excluded from response | Disabled | `zdr=true`, `data_collection="deny"`, provider allowlist, `require_parameters=true` |
 | Frontier Instant | OpenAI | `/v1/responses` | `chat-latest` | `medium` | Prompt-governed | Direct OpenAI route, `store=false` |
 | Frontier Thinking | OpenAI | `/v1/responses` | `gpt-5.5` | `high` | Prompt-governed | Direct OpenAI route, `store=false` |
@@ -46,9 +46,10 @@ Private modes call OpenRouter through Chat Completions. Task Node sends:
 - `provider.zdr=true`: restrict to Zero Data Retention endpoints.
 - `provider.data_collection="deny"`: avoid providers that collect data.
 - `provider.order` and `provider.only`: keep routing inside the mode-specific provider allowlist.
+- `reasoning.effort="none"` and `reasoning.exclude=true` on Private Instant so fast chat does not burn its small output budget on returned reasoning text.
 - `reasoning.effort="high"` on Private Thinking.
 - `reasoning.exclude=true` on Private Thinking so reasoning text is not returned to the UI.
-- `provider.require_parameters=true` when reasoning is requested.
+- `provider.require_parameters=true` when reasoning is controlled, so OpenRouter does not silently ignore the reasoning policy.
 
 Image attachments are sent as `image_url` parts. Text attachments are sent as text parts. File and PDF attachments are sent as file parts. PDFs add the OpenRouter `file-parser` plugin and use `OPENROUTER_PDF_ENGINE` or `cloudflare-ai`.
 
