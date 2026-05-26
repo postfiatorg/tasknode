@@ -193,6 +193,10 @@ try {
 
   assert.equal(bareModeResult.action, "telegram_bot_help");
   assert.match(sentMessages.at(-1).text, /Current mode: Frontier Thinking/);
+  assert.ok(sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat()?.some((button) => (
+    button.text === "Discount Thinking" &&
+    button.callback_data === "tn_mode:dt"
+  )));
   assert.equal(chatCalls.length, 2);
 
   const bareBalanceResult = await processTelegramBotUpdate({
@@ -209,6 +213,45 @@ try {
   assert.match(sentMessages.at(-1).text, /Available credit:/);
   assert.equal(sentMessages.at(-1).replyMarkup, undefined);
   assert.equal(chatCalls.length, 2);
+
+  const discountModeSetResult = await processTelegramBotUpdate({
+    update_id: 9,
+    callback_query: {
+      id: "callback_3",
+      from: { id: 12345, is_bot: false, username: "linked_user" },
+      message: {
+        message_id: 18,
+        chat: { id: 12345, type: "private" },
+      },
+      data: "tn_mode:dt",
+    },
+  }, { answerCallbackQuery, chatExecutor, sendTelegramChatAction, sendTelegramMessage });
+
+  assert.equal(discountModeSetResult.action, "telegram_bot_mode_set");
+  assert.equal(discountModeSetResult.mode, "Discount Thinking");
+  assert.equal(answeredCallbacks.at(-1).callbackQueryId, "callback_3");
+  assert.match(answeredCallbacks.at(-1).text, /Discount Thinking/);
+  assert.match(sentMessages.at(-1).text, /Current mode: Discount Thinking/);
+  assert.ok(sentMessages.at(-1).replyMarkup?.inline_keyboard?.flat()?.some((button) => button.text.includes("[x] Discount Thinking")));
+  assert.equal(chatCalls.length, 2);
+
+  const selectedDiscountModeResult = await processTelegramBotUpdate({
+    update_id: 10,
+    message: {
+      message_id: 19,
+      from: { id: 12345, is_bot: false, username: "linked_user" },
+      chat: { id: 12345, type: "private" },
+      text: "use discount mode",
+    },
+  }, { chatExecutor, sendTelegramChatAction, sendTelegramMessage });
+
+  assert.equal(selectedDiscountModeResult.action, "telegram_bot_chat");
+  assert.equal(selectedDiscountModeResult.mode, "Discount Thinking");
+  assert.equal(chatCalls.length, 3);
+  assert.equal(chatCalls[2].payload.mode, "Discount Thinking");
+  assert.equal(chatCalls[2].payload.message, "use discount mode");
+  assert.equal(sentMessages.at(-1).text, "reply:use discount mode");
+  assert.equal(sentMessages.at(-1).replyMarkup, undefined);
 
   const events = await listTelegramBotEvents({
     providerUserId: "12345",
