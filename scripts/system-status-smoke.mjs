@@ -14,6 +14,7 @@ process.env.TASKNODE_TASK_REVIEW_WORKER_ENABLED = "true";
 process.env.TASKNODE_DAILY_AIRDROP_WORKER_ENABLED = "true";
 process.env.PFTL_RPC_URL = "https://user:pass@rpc.example.test/current?api_key=secret#frag";
 process.env.PFTL_HISTORY_RPC_URL = "https://history.example.test/archive?token=secret";
+process.env.ETH_DEPOSIT_XPUB = "xpub_status_smoke";
 process.env.ETH_DEPOSIT_RPC_URL = "https://ethuser:ethpass@eth.example.test/jsonrpc?x=y";
 
 const { handleSystemStatusRoute, readSystemStatus } = await import("../server/system-status.js");
@@ -51,6 +52,8 @@ const pftlDetails = categories
   .get("pftl")
   .items.flatMap((entry) => entry.details || [])
   .join("\n");
+const ethereumRpc = categories.get("pftl").items.find((entry) => entry.id === "ethereum_deposit_rpc");
+assert.equal(ethereumRpc.status, "ok");
 assert.match(pftlDetails, /https:\/\/rpc\.example\.test\/current/);
 assert.match(pftlDetails, /https:\/\/history\.example\.test\/archive/);
 assert.match(pftlDetails, /https:\/\/eth\.example\.test\/jsonrpc/);

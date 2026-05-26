@@ -433,7 +433,10 @@ export async function claimDeepMemoryJobs({ limit = 1 } = {}) {
             locked_at = NULL,
             updated_at = now()
         WHERE status = 'processing'
-          AND locked_at < now() - interval '5 minutes'
+          AND (
+            locked_at IS NULL
+            OR locked_at < now() - interval '5 minutes'
+          )
       `
     );
 

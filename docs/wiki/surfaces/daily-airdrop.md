@@ -200,7 +200,7 @@ Each tick:
 2. selects accounts with positive rewarded task work inside the trailing seven-day task packet and no production/pending/submitted/failed airdrop for the current UTC day;
 3. runs the existing DeepSeek/OpenRouter daily airdrop scorer in dry-run mode to create a completed scoring row;
 4. issues the specific scoring run through `issueLatestDailyAirdrop` when the proposed amount is positive;
-5. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.`
+5. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.` Zero-candidate ticks are recorded too, so the Help system status page has a durable last-run timestamp.
 
 `issueLatestDailyAirdrop` is fail-closed for money. It claims a row as `processing` before signing. If failure occurs before a PFT submission is attempted, the row is marked `failed` and can be retried. If failure occurs after submission is attempted, the row remains `processing` so a retry cannot sign another payment until reconciliation has inspected the chain/cache.
 

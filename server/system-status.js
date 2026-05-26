@@ -1,9 +1,8 @@
 import { databaseEnabled, databaseStatus } from "./db/pool.js";
+import { ethereumDepositConfigStatus } from "./ethereum-deposits.js";
 import {
   boolEnv,
-  countValue,
   countsFromRows,
-  day,
   endpointList,
   hour,
   intEnv,
@@ -18,9 +17,15 @@ import {
   tableMap,
 } from "./system-status-base.js";
 
+const recentFailureWindowMs = 24 * hour;
+
+const recentFailureStatus = (status, count, label = "Recent failures") => (
+  Number(count || 0) > 0 ? mergeStatus(status, { status: "warning", label }) : status
+);
+
 async function boardManagerItem(tables, nowMs) {
   const cadenceFallback = intEnv(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS, 900, { min: 60, max: 86400 });
-  const [scopeResult, runResult, jobResult, leaseResult] = await Promise.all([
+  const [scopeResult, runResult, successResult, jobResult, leaseResult] = await Promise.all([
     optionalQuery(
       tables,
       ["board_manager_scopes"],
@@ -41,11 +46,23 @@ async function boardManagerItem(tables, nowMs) {
     ),
     optionalQuery(
       tables,
+      ["board_manager_runs"],
+      `SELECT id, status, selected_action, trigger, error, started_at, completed_at
+         FROM board_manager_runs
+        WHERE scope = 'global_hive'
+          AND status = 'completed'
+        ORDER BY completed_at DESC NULLS LAST, started_at DESC, id DESC
+        LIMIT 1`
+    ),
+    optionalQuery(
+      tables,
       ["board_manager_jobs"],
-      `SELECT status, count(*)::int AS count
+      `SELECT status, count(*)::int AS count,
+              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
          FROM board_manager_jobs
         WHERE scope = 'global_hive'
-        GROUP BY status`
+        GROUP BY status`,
+      [recentFailureWindowMs]
     ),
     optionalQuery(
       tables,
@@ -59,10 +76,11 @@ async function boardManagerItem(tables, nowMs) {
   ]);
   const scope = scopeResult.rows[0] || null;
   const run = runResult.rows[0] || null;
+  const successRun = successResult.rows[0] || null;
   const lease = leaseResult.rows[0] || null;
   const counts = countsFromRows(jobResult.rows);
   const cadenceSeconds = Number(scope?.cadence_seconds || cadenceFallback);
-  const lastSuccessAt = run?.status === "completed" ? run.completed_at : null;
+  const lastSuccessAt = successRun?.completed_at || null;
   const freshness = runFreshness({
     enabled: true,
     lastSuccessAt,
@@ -74,8 +92,15 @@ async function boardManagerItem(tables, nowMs) {
   let status = freshness;
   if (!scope) status = { status: "critical", label: "Scope missing" };
   else if (scope.status !== "enabled") status = { status: "critical", label: scope.status === "paused" ? "Paused" : "Not enabled" };
+  if (run?.status === "running") {
+    const runningMs = oldestAgeMs(run.started_at, nowMs);
+    status = runningMs > cadenceSeconds * 2000 + 5 * minute
+      ? { status: "critical", label: "Run stale" }
+      : { status: "ok", label: "Running" };
+  }
   if (run?.status === "failed") status = { status: "critical", label: "Last run failed" };
-  if (countValue(counts, ["failed"]) > 0) status = mergeStatus(status, { status: "warning", label: "Failed jobs" });
+  const recentFailed = jobResult.rows.reduce((sum, row) => sum + Number(row.recent_failed || 0), 0);
+  status = recentFailureStatus(status, recentFailed, "Recent failed jobs");
   return item({
     id: "board_manager",
     category: "hive",
@@ -121,13 +146,11 @@ async function boardManagerSecretaryPacketItem(tables, nowMs) {
       GROUP BY status`
   );
   const row = result.rows[0] || null;
-  const freshness = runFreshness({
-    lastSuccessAt: row?.status === "current" ? row.created_at : row?.created_at,
-    warningAfterMs: 2 * hour,
-    staleAfterMs: 6 * hour,
-    nowMs,
-  });
-  const status = row?.status === "failed" ? { status: "critical", label: "Last packet failed" } : freshness;
+  const status = !row
+    ? { status: "unknown", label: "No packet data" }
+    : row.status === "failed"
+      ? { status: "critical", label: "Last packet failed" }
+      : { status: "ok", label: "Current packet" };
   return item({
     id: "board_manager_secretary_packets",
     category: "hive",
@@ -182,9 +205,11 @@ async function hiveQueueItem({
     optionalQuery(
       tables,
       [jobTable],
-      `SELECT status, count(*)::int AS count
+      `SELECT status, count(*)::int AS count,
+              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
          FROM ${jobTable}
-        GROUP BY status`
+        GROUP BY status`,
+      [recentFailureWindowMs]
     ),
     optionalQuery(
       tables,
@@ -204,7 +229,8 @@ async function hiveQueueItem({
     staleAfterMs: staleResultMs,
     nowMs,
   });
-  if (countValue(queueCounts, ["failed"]) > 0) status = { status: "warning", label: "Failed jobs" };
+  const recentFailed = counts.rows.reduce((sum, row) => sum + Number(row.recent_failed || 0), 0);
+  status = recentFailureStatus(status, recentFailed, "Recent failed jobs");
   const oldest = iso(oldestDue.rows[0]?.oldest_due);
   if (oldest && oldestAgeMs(oldest, nowMs) > staleQueueMs) status = { status: "critical", label: "Queue stale" };
   return item({
@@ -236,8 +262,10 @@ async function taskGenerationItem(tables, nowMs) {
       `SELECT max(worker_completed_at) AS last_completed_at,
               max(updated_at) AS last_seen_at,
               min(updated_at) FILTER (WHERE status IN ('published','queued','generating')) AS oldest_pending_at,
+              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed,
               max(last_error) FILTER (WHERE status = 'failed' AND last_error <> '') AS last_error
-         FROM task_requests`
+         FROM task_requests`,
+      [recentFailureWindowMs]
     ),
     optionalQuery(
       tables,
@@ -256,7 +284,7 @@ async function taskGenerationItem(tables, nowMs) {
     staleAfterMs: null,
     nowMs,
   });
-  if (countValue(queueCounts, ["failed"]) > 0) status = { status: "warning", label: "Failed requests" };
+  status = recentFailureStatus(status, row.recent_failed, "Recent failed requests");
   const oldest = iso(row.oldest_pending_at);
   if (oldest && oldestAgeMs(oldest, nowMs) > 10 * minute) status = { status: "critical", label: "Generation queue stale" };
   return item({
@@ -285,8 +313,10 @@ async function networkTaskGenerationItem(tables, nowMs) {
       `SELECT max(updated_at) FILTER (WHERE status IN ('generated','published')) AS last_completed_at,
               max(updated_at) AS last_seen_at,
               min(COALESCE(next_attempt_at, updated_at, created_at)) FILTER (WHERE status IN ('queued','running')) AS oldest_pending_at,
+              count(*) FILTER (WHERE status IN ('failed','link_failed') AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed,
               max(last_error) FILTER (WHERE status IN ('failed','link_failed') AND last_error <> '') AS last_error
-         FROM network_task_generation_jobs`
+         FROM network_task_generation_jobs`,
+      [recentFailureWindowMs]
     ),
     optionalQuery(
       tables,
@@ -303,7 +333,7 @@ async function networkTaskGenerationItem(tables, nowMs) {
     lastSuccessAt: row.last_completed_at,
     nowMs,
   });
-  if (countValue(queueCounts, ["failed", "link_failed"]) > 0) status = { status: "warning", label: "Failed jobs" };
+  status = recentFailureStatus(status, row.recent_failed, "Recent failed jobs");
   const oldest = iso(row.oldest_pending_at);
   if (oldest && oldestAgeMs(oldest, nowMs) > 10 * minute) status = { status: "critical", label: "Network generation stale" };
   return item({
@@ -381,6 +411,10 @@ async function pftlSyncItems(tables, nowMs) {
             )::int AS hot_stale,
             count(*) FILTER (
               WHERE status = 'active'
+                AND (last_hot_sync_at IS NULL OR last_hot_sync_at < now() - ($3 * interval '1 millisecond'))
+            )::int AS hot_severely_stale,
+            count(*) FILTER (
+              WHERE status = 'active'
                 AND COALESCE(archive_marker @> '{"complete": true}'::jsonb, false) = false
                 AND (last_archive_sync_at IS NULL OR last_archive_sync_at < now() - ($2 * interval '1 millisecond'))
             )::int AS archive_stale,
@@ -392,6 +426,7 @@ async function pftlSyncItems(tables, nowMs) {
     [
       intEnv(process.env.PFTL_CACHE_HOT_STALE_MS, 120000, { min: 10000 }),
       intEnv(process.env.PFTL_CACHE_ARCHIVE_STALE_MS, 900000, { min: 60000 }),
+      intEnv(process.env.PFTL_CACHE_HOT_STALE_MS, 120000, { min: 10000 }) * 3,
     ]
   );
   const row = result.rows[0] || {};
@@ -404,14 +439,17 @@ async function pftlSyncItems(tables, nowMs) {
     staleAfterMs: hotStaleMs * 3,
     nowMs,
   });
-  const archiveFreshness = runFreshness({
-    enabled: boolEnv(process.env.PFTL_CACHE_ARCHIVE_WORKER_ENABLED),
-    lastSuccessAt: row.last_archive_sync_at,
-    warningAfterMs: archiveStaleMs,
-    staleAfterMs: archiveStaleMs * 3,
-    nowMs,
-  });
-  const hotStatus = Number(row.hot_stale || 0) > 0 ? mergeStatus(hotFreshness, { status: "warning", label: "Stale wallets" }) : hotFreshness;
+  const archiveEnabled = boolEnv(process.env.PFTL_CACHE_ARCHIVE_WORKER_ENABLED);
+  const archiveFreshness = archiveEnabled && Number(row.archive_stale || 0) === 0 && (Number(row.active || 0) > 0 || row.last_archive_sync_at)
+    ? { status: "ok", label: "Archive complete" }
+    : runFreshness({
+      enabled: archiveEnabled,
+      lastSuccessAt: row.last_archive_sync_at,
+      warningAfterMs: archiveStaleMs,
+      staleAfterMs: archiveStaleMs * 3,
+      nowMs,
+    });
+  const hotStatus = Number(row.hot_severely_stale || 0) > 0 ? mergeStatus(hotFreshness, { status: "warning", label: "Stale wallets" }) : hotFreshness;
   const archiveStatus = Number(row.archive_stale || 0) > 0 ? mergeStatus(archiveFreshness, { status: "warning", label: "Archive lag" }) : archiveFreshness;
   const counts = {
     active: Number(row.active || 0),
@@ -432,7 +470,7 @@ async function pftlSyncItems(tables, nowMs) {
       lastRunAt: row.last_hot_sync_at || row.last_seen_at,
       lastSuccessAt: row.last_hot_sync_at,
       staleAfterMs: hotStaleMs * 3,
-      counts: { ...counts, hot_stale: Number(row.hot_stale || 0) },
+      counts: { ...counts, hot_stale: Number(row.hot_stale || 0), hot_severely_stale: Number(row.hot_severely_stale || 0) },
       lastError: row.last_error || "",
     }),
     item({
@@ -503,8 +541,10 @@ async function pftlReducerItem(tables, nowMs) {
       `SELECT max(processed_at) FILTER (WHERE status = 'completed') AS last_completed_at,
               max(updated_at) AS last_seen_at,
               min(available_at) FILTER (WHERE status IN ('pending','processing')) AS oldest_pending_at,
+              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed,
               max(last_error) FILTER (WHERE status = 'failed' AND last_error <> '') AS last_error
-         FROM pftl_cache_reducer_events`
+         FROM pftl_cache_reducer_events`,
+      [recentFailureWindowMs]
     ),
     optionalQuery(
       tables,
@@ -521,7 +561,7 @@ async function pftlReducerItem(tables, nowMs) {
     lastSuccessAt: row.last_completed_at,
     nowMs,
   });
-  if (countValue(queueCounts, ["failed"]) > 0) status = { status: "critical", label: "Reducer failures" };
+  if (Number(row.recent_failed || 0) > 0) status = { status: "critical", label: "Recent reducer failures" };
   const oldest = iso(row.oldest_pending_at);
   if (oldest && oldestAgeMs(oldest, nowMs) > 10 * minute) status = { status: "critical", label: "Reducer queue stale" };
   return item({
@@ -592,7 +632,8 @@ function rpcItems(syncItems = []) {
     ...endpointList(process.env.PFTL_HISTORY_RPC_URL),
     ...endpointList(process.env.PFTL_HISTORY_RPC_URL_FALLBACKS),
   ];
-  const ethereumEndpoints = endpointList(process.env.ETH_DEPOSIT_RPC_URL || process.env.VITE_ETH_DEPOSIT_RPC_URL);
+  const ethereumStatus = ethereumDepositConfigStatus();
+  const ethereumEndpoints = endpointList(process.env.ETH_DEPOSIT_RPC_URL || process.env.VITE_ETH_DEPOSIT_RPC_URL || "https://ethereum.publicnode.com");
   const currentStatus = currentEndpoints.length
     ? { status: hot.status || "unknown", label: hot.statusLabel || "Configured" }
     : { status: "critical", label: "Missing endpoint" };
@@ -636,9 +677,12 @@ function rpcItems(syncItems = []) {
       owner: "app process",
       trigger: "top-up sync request",
       cadence: "request-time",
-      status: ethereumEndpoints.length ? "ok" : "disabled",
-      statusLabel: ethereumEndpoints.length ? "Configured" : "Not configured",
-      details: ethereumEndpoints.map((endpoint) => `endpoint=${endpoint}`),
+      status: ethereumStatus.enabled && ethereumStatus.rpcConfigured ? "ok" : "disabled",
+      statusLabel: ethereumStatus.enabled && ethereumStatus.rpcConfigured ? "Configured" : "Not configured",
+      details: [
+        ...ethereumEndpoints.map((endpoint) => `endpoint=${endpoint}`),
+        ethereumStatus.enabled && `chainId=${ethereumStatus.chainId}`,
+      ],
     }),
   ];
 }
@@ -677,9 +721,11 @@ async function memoryQueueItem({
     optionalQuery(
       tables,
       [jobTable],
-      `SELECT status, count(*)::int AS count
+      `SELECT status, count(*)::int AS count,
+              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
          FROM ${jobTable}
-        GROUP BY status`
+        GROUP BY status`,
+      [recentFailureWindowMs]
     ),
     optionalQuery(
       tables,
@@ -693,7 +739,8 @@ async function memoryQueueItem({
   const row = latest.rows[0] || null;
   const queueCounts = countsFromRows(counts.rows);
   let status = runFreshness({ enabled, lastSuccessAt: row?.completed_at || row?.created_at, nowMs });
-  if (countValue(queueCounts, ["failed"]) > 0) status = { status: "warning", label: "Failed jobs" };
+  const recentFailed = counts.rows.reduce((sum, row) => sum + Number(row.recent_failed || 0), 0);
+  status = recentFailureStatus(status, recentFailed, "Recent failed jobs");
   const oldest = iso(oldestDue.rows[0]?.oldest_due);
   if (oldest && oldestAgeMs(oldest, nowMs) > 30 * minute) status = { status: "critical", label: "Queue stale" };
   return item({
@@ -717,25 +764,37 @@ async function dailyAirdropItem(tables, nowMs) {
   const [latest, runCounts, issuanceCounts] = await Promise.all([
     optionalQuery(
       tables,
-      ["profile_daily_airdrop_runs"],
-      `SELECT id, run_date, run_mode, status, completed_at, updated_at
-         FROM profile_daily_airdrop_runs
-        ORDER BY COALESCE(completed_at, updated_at, created_at) DESC, id DESC
+      ["profile_daily_airdrop_runs", "board_manager_runs"],
+      `SELECT id, run_date, run_mode, status, completed_at, updated_at, source
+         FROM (
+           SELECT id, run_date, run_mode, status, completed_at, updated_at, 'score' AS source
+             FROM profile_daily_airdrop_runs
+           UNION ALL
+           SELECT id, NULL::date AS run_date, 'worker' AS run_mode, status, completed_at, updated_at, 'worker' AS source
+             FROM board_manager_runs
+            WHERE manager_id = 'daily_airdrop_worker'
+              AND selected_action = 'daily_airdrop'
+         ) latest
+        ORDER BY COALESCE(completed_at, updated_at) DESC, id DESC
         LIMIT 1`
     ),
     optionalQuery(
       tables,
       ["profile_daily_airdrop_runs"],
-      `SELECT status, count(*)::int AS count
+      `SELECT status, count(*)::int AS count,
+              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
          FROM profile_daily_airdrop_runs
-        GROUP BY status`
+        GROUP BY status`,
+      [recentFailureWindowMs]
     ),
     optionalQuery(
       tables,
       ["profile_daily_airdrop_issuances"],
-      `SELECT status, count(*)::int AS count
+      `SELECT status, count(*)::int AS count,
+              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
          FROM profile_daily_airdrop_issuances
-        GROUP BY status`
+        GROUP BY status`,
+      [recentFailureWindowMs]
     ),
   ]);
   const row = latest.rows[0] || null;
@@ -750,8 +809,12 @@ async function dailyAirdropItem(tables, nowMs) {
     staleAfterMs: 48 * hour,
     nowMs,
   });
-  if (row?.status === "failed") status = { status: "critical", label: "Last run failed" };
-  if (countValue(counts, ["issuances_failed", "runs_failed"]) > 0) status = mergeStatus(status, { status: "warning", label: "Failed records" });
+  if (row?.status === "failed" && Date.parse(row.updated_at || row.completed_at || "") > nowMs - recentFailureWindowMs) {
+    status = { status: "critical", label: "Recent run failed" };
+  }
+  const recentFailed = [...runCounts.rows, ...issuanceCounts.rows]
+    .reduce((sum, failedRow) => sum + Number(failedRow.recent_failed || 0), 0);
+  status = recentFailureStatus(status, recentFailed, "Recent failed records");
   return item({
     id: "daily_airdrop_worker",
     category: "memory",
@@ -766,7 +829,7 @@ async function dailyAirdropItem(tables, nowMs) {
     lastSuccessAt: row?.status === "completed" ? row.completed_at : null,
     staleAfterMs: 48 * hour,
     counts,
-    details: [row?.id && `latest=${row.id}`, row?.run_date && `runDate=${row.run_date}`, row?.run_mode && `mode=${row.run_mode}`],
+    details: [row?.id && `latest=${row.id}`, row?.source && `source=${row.source}`, row?.run_date && `runDate=${row.run_date}`, row?.run_mode && `mode=${row.run_mode}`],
   });
 }
 

@@ -20,7 +20,9 @@ advance tasks, or change Board Manager scheduler state.
 
 ## Status Rules
 
-Red means the row is paused, stale beyond its expected cadence, has failed work,
-or has no required configuration. Amber means it is lagging, has failed records
-that need review, or has stale partial work. Grey means disabled or no durable
-status source is available. Green means the latest observed state is current.
+Red means the row is paused, stale beyond its expected cadence, has recent failed
+work, has a stale active queue, or has no required configuration. Amber means it
+is lagging, has recent failed records that need review, or has stale partial
+work. Grey means disabled or no durable status source is available. Green means
+the latest observed state is current. Historical terminal failures can remain in
+the counts for audit without keeping the row amber forever.

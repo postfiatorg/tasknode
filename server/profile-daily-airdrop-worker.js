@@ -293,7 +293,7 @@ export async function runDailyAirdropWorkerOnce({
         failedCount: failed.length,
       }),
     };
-    if (recordAgentRun && (candidates.length || failed.length || issued.length)) {
+    if (recordAgentRun) {
       result.agentRun = await recordDailyAirdropAgentRun({
         runDate: normalizedRunDate,
         candidates,
