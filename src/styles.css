@@ -772,6 +772,10 @@ button {
   background: #faf9f6;
 }
 
+.mobile-route-nav {
+  display: none;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -4552,6 +4556,63 @@ h1 {
 
   .sidebar {
     display: none;
+  }
+
+  .workspace {
+    padding-bottom: calc(68px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-route-nav {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 70;
+    display: flex;
+    gap: 2px;
+    min-height: calc(64px + env(safe-area-inset-bottom));
+    overflow-x: auto;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    border-top: 1px solid #e8e6df;
+    background: rgba(250, 249, 246, 0.97);
+    scrollbar-width: none;
+  }
+
+  .mobile-route-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-route-nav button {
+    display: grid;
+    flex: 0 0 68px;
+    place-items: center;
+    gap: 3px;
+    min-width: 68px;
+    min-height: 52px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #6b6b66;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  .mobile-route-nav button.active {
+    background: #ebe8df;
+    color: #0d0d0d;
+  }
+
+  .mobile-route-nav button:focus-visible {
+    outline: 2px solid #0d0d0d;
+    outline-offset: 2px;
+  }
+
+  .mobile-route-nav button span {
+    max-width: 64px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .topbar {

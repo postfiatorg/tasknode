@@ -1,12 +1,48 @@
-# Codex Computer Control QA Protocol
+# Browser-Control QA Protocol
 
-This is the release QA protocol for Codex or another computer-control agent testing Task Node through a real browser. It is intentionally stricter than a click-through checklist. The goal is to prove user workflows, observable app state, and the backing system state that makes those workflows trustworthy.
+This is the release QA protocol for a browser automation tester driving Task Node through a real browser. It is intentionally stricter than a click-through checklist. The goal is to prove user workflows, observable app state, and the backing system state that makes those workflows trustworthy.
+
+This document is written for a browser-control tool. It must not require that tool to run `npm`, Python, Docker, Fly CLI, local repo commands, or shell scripts. Repo, deploy, and machine evidence may be supplied by an operator as supporting evidence, but browser QA itself happens in the browser.
 
 A QA run that only clicks routes and reports that pages loaded is a route-render pass, not product QA.
 
+## Capability Contract
+
+The browser automation tester is responsible for:
+
+- opening the requested Task Node URL in the requested browser profile;
+- using a clean, reused, or already-authenticated profile exactly as instructed;
+- completing OAuth/login flows only when credentials and human approval are available;
+- recording the current URL, visible account identity, visible route state, and visible errors;
+- capturing console and network failures from the start of the run when the tool supports DevTools or browser protocol capture;
+- using same-origin browser fetches for `/api/app-state` and `/api/system/status` when authenticated API evidence is needed;
+- taking screenshots or text captures for material user-visible states.
+
+The browser automation tester is not responsible for:
+
+- discovering the local repo path;
+- running `git`, `npm`, Python, Docker, or Fly commands;
+- inspecting server files or local source files;
+- fixing failed background jobs;
+- making money, custody, wallet creation, grant, funding, delete, or delink actions without explicit approval.
+
+If the browser tool cannot use a logged-in profile or complete an auth flow, mark that auth workflow Gray or Amber and state the missing credential/session boundary. Do not replace login QA with shell/API inspection.
+
+## Login Requirement
+
+An internal anonymous browser is not valid for Beta release QA. It can only run a public route-render pass: root load, signed-out state, public docs, public profile routes, and visible auth entry points.
+
+If the requested run includes Chat, Context, Tasks, Hive, Wallet, Memory, Profile private state, billing, Telegram linkage, or System Status as an authenticated surface, the tester must start from one of these:
+
+- a real logged-in browser profile supplied by the user;
+- a reusable browser storage state/session explicitly supplied for QA;
+- a human-assisted OAuth/login flow completed during the run.
+
+If none of those are available, stop after confirming the app is reachable and signed out. Report the run as blocked by missing authenticated browser context. Do not spend the run clicking logged-out blockers for every private surface and do not classify logged-in app behavior from an anonymous browser.
+
 ## What Counts As QA
 
-Valid computer-control QA combines four evidence layers:
+Valid browser-control QA combines four evidence layers:
 
 1. Browser observation: the user-visible path was executed in the target environment.
 2. Console and network capture: DevTools or Chrome DevTools Protocol captured runtime exceptions and failed requests for the whole run.
@@ -16,7 +52,7 @@ Valid computer-control QA combines four evidence layers:
 The following are not enough for Green:
 
 - root HTTP `200` without the relevant UI workflow;
-- `git rev-parse` failure left unresolved;
+- no target URL or build/source evidence when the app/operator can provide it;
 - no console/network capture;
 - a screenshot or visible text from the wrong account;
 - an API/database check without browser observation for a user workflow;
@@ -29,9 +65,10 @@ Pick the run type before starting. Do not silently downgrade scope after beginni
 
 | Run type | Purpose | Required depth |
 | --- | --- | --- |
-| Route render pass | Catch blank screens and layout failures. | Browser route load, console/network capture, desktop and one mobile viewport. |
+| Public route render pass | Catch blank screens and layout failures that are visible without login. | Browser route load, console/network capture, desktop and one mobile viewport. Must stay limited to public/signed-out behavior. |
 | Surface smoke | Prove one user surface works. | Browser workflow, console/network capture, one backing API/state check, evidence block. |
-| Beta release QA | Prove production-readiness across launch scope. | Full matrix below, named account, status/API/log evidence, screenshots for material UX states. |
+| Authenticated surface smoke | Prove one logged-in user surface works. | Requires logged-in profile, supplied storage state, or human-assisted OAuth. Browser workflow, console/network capture, one backing API/state check, evidence block. |
+| Beta release QA | Prove production-readiness across launch scope. | Requires authenticated browser context. Full matrix below, named account, status/API/log evidence, screenshots for material UX states. |
 | Money/custody QA | Prove wallet, funding, grants, or PFT actions. | Explicit user approval, safe test account, before/after balances, idempotency check, chain/deposit evidence. |
 | Regression QA | Prove a specific bug class is fixed. | Reproduce old failure or simulate it, verify generalized boundary, add negative case. |
 
@@ -39,7 +76,7 @@ Pick the run type before starting. Do not silently downgrade scope after beginni
 
 Every Beta release QA run must produce these artifacts or mark the run incomplete:
 
-- command transcript with `pwd`, `git status --short`, `git rev-parse --short HEAD`, target URL, and date;
+- browser automation transcript with target URL, run date, route sequence, and major actions;
 - browser profile type and whether it was clean, incognito, or reused;
 - account identity: Task Node handle plus external provider username or email, with secrets omitted;
 - console/runtime event log for the whole run;
@@ -51,9 +88,9 @@ Every Beta release QA run must produce these artifacts or mark the run incomplet
 
 For Fly dev, also include:
 
-- `npm run fly:background-guard`;
-- current app bundle or build identifier if available;
-- any Fly machine/process state relevant to the surface.
+- visible System Status page state or same-origin `/api/system/status` output;
+- current app bundle, build identifier, or operator-supplied Git SHA if available;
+- operator-supplied Fly machine/process evidence when the surface depends on worker or board-manager health.
 
 ## Status Colors
 
@@ -66,33 +103,30 @@ Use these meanings exactly.
 
 If console/network capture is missing, no browser-tested surface can be Green. It is Amber at best.
 
-## Required Command Preamble
+## Browser Start Preamble
 
-Run and record:
+At the start of a browser-control QA run:
 
-```bash
-date -Is
-pwd
-git status --short
-git rev-parse --short HEAD
-curl -fsSI https://tasknodeofficial-dev.fly.dev/ | sed -n '1,12p'
-```
+1. Open the requested app URL.
+2. Start console and network capture before the first workflow navigation when the tool supports it.
+3. Record browser/profile type: clean, incognito, reused, or already logged in.
+4. Record the visible signed-in account identity, or record that the app is signed out.
+5. Open Help -> System Status, or use same-origin browser fetch for `/api/system/status`, when workers, schedulers, RPCs, memory, Hive, tasks, wallet, or docs are in scope.
+6. Record any build/source identifier surfaced by the app. If the app does not surface one, use operator-supplied build evidence if provided.
 
-If `git rev-parse --short HEAD` fails, stop and fix the working directory. Do not continue with "Git SHA unavailable" unless the environment truly has no repo checkout; in that case record the reason and use a deployed build artifact instead.
+## Optional Operator Support Evidence
 
-For Fly dev:
+Operator support evidence can strengthen a report, but it is not a browser automation requirement. If supplied, paste it into the QA report as "Operator support evidence" and keep it separate from browser observations.
 
-```bash
-npm run fly:background-guard
-curl -fsS https://tasknodeofficial-dev.fly.dev/api/system/status > /tmp/tasknode-system-status.json
-```
+Useful operator evidence includes:
 
-For local Docker:
+- deploy SHA or build identifier;
+- Fly background guard output;
+- `/api/system/status` captured outside the browser;
+- relevant server logs for a worker, scheduler, RPC, or webhook;
+- database/API row summaries for billing, wallet, tasks, Hive, memory, or Telegram.
 
-```bash
-docker compose -f docker-compose.dev.yml ps
-docker compose -f docker-compose.dev.yml logs --tail=200 api
-```
+Missing operator evidence downgrades only the surfaces that require backing-state proof. It should not cause a browser-control tool to run shell commands.
 
 ## Browser Capture Requirement
 
@@ -120,12 +154,12 @@ Run type:
 Tester:
 Environment:
 App URL:
-Repo path:
-Git SHA or deployed build:
+Build/source evidence:
 Account(s):
 Browser/profile:
 Console/network capture:
 System-status capture:
+Operator support evidence:
 Approval scope for money/custody actions:
 ```
 
@@ -160,7 +194,8 @@ Account:
 Browser/profile:
 Surface:
 Status color:
-Commands run:
+Browser actions:
+Operator support commands:
 UI path tested:
 Expected result:
 Observed result:
@@ -180,7 +215,7 @@ The matrix below is the default launch QA scope. A row may be Gray only when the
 
 | ID | Surface | Test | Expected result | Required supporting evidence |
 | --- | --- | --- | --- | --- |
-| PRE-01 | Preflight | Confirm repo, SHA, target URL, background guards, and system status. | No wrong-repo ambiguity; app reachable; worker and board-manager state known. | command transcript, `/api/system/status`, guard output. |
+| PRE-01 | Preflight | Confirm target URL, browser profile, account state, build/source evidence if available, and System Status. | No wrong-target ambiguity; app reachable; account state known; worker and board-manager state known when in scope. | browser transcript, System Status page or `/api/system/status`, operator guard/build evidence if supplied. |
 | NAV-01 | Global navigation | Load root, Chat, Tasks, Hive, Wallet, Context, Profile, Memory, Docs. | No white screen; sidebar persists; each route has meaningful content. | console/network log plus text capture for each route. |
 | NAV-02 | Stale bundle failure | Simulate or observe blocked lazy chunk for one route. | Visible refresh fallback, not blank screen. | DevTools blocked URL or documented simulation. |
 | NAV-03 | Mobile layout | Repeat core route load at mobile viewport. | Page scrolls; no inaccessible primary controls. | viewport size and screenshots/text captures. |
@@ -322,7 +357,10 @@ Every clicked link must land on an existing docs page. Broken docs links are Red
 Use these gates when reviewing a QA report.
 
 - If the report says `Console/network errors: Not captured`, every browser-tested surface is at most Amber.
-- If `git rev-parse` failed because the agent was in the wrong directory, Preflight is Red.
+- If the browser opened the wrong app URL, wrong environment, wrong account, or wrong browser profile, the affected workflow is Red.
+- If the run uses an internal anonymous browser, only public/signed-out route behavior can be tested. Authenticated surfaces must be Gray or blocked, not Amber or Green.
+- If the requested scope is Beta release QA and no authenticated browser context is available, stop after the preflight signed-out observation and report the missing logged-in profile/session as the blocker.
+- If build/source evidence is missing because the app does not surface it and no operator evidence was supplied, Preflight is Amber, not Red.
 - If a provider was already signed in and OAuth was not re-run, that provider auth is not tested.
 - If Chat tested only one mode, Chat is Amber unless scope explicitly said one mode.
 - If Wallet did not create/link/unlock or verify the local-vault gate, Wallet is Amber at best.
@@ -336,10 +374,11 @@ Use these gates when reviewing a QA report.
 
 The example below is how to classify a route-clicking report like:
 
-- one reused X session;
-- one chat mode;
+- internal anonymous browser;
+- no reusable logged-in session;
+- no chat mode exercised because the app was signed out;
 - no console/network capture;
-- no Git SHA because wrong directory;
+- no build/source evidence from the app or operator;
 - wallet/funding/task write paths not exercised;
 - system status viewed but runbook links not clicked.
 
@@ -347,10 +386,11 @@ Correct classification:
 
 | Surface | Correct status |
 | --- | --- |
-| Preflight | Red: wrong repo or unresolved Git SHA. |
-| Global route render | Amber: routes loaded, but no console/network capture. |
-| X session persistence | Amber: reused session retained; fresh OAuth not proven. |
-| Chat | Amber: one mode worked; provider matrix not covered; no console/network capture. |
+| Preflight | Amber: target URL loaded, but build/source evidence and operator worker evidence are missing. |
+| Global route render | Amber: public signed-out routes loaded, but no authenticated route behavior was tested. |
+| Beta release QA | Blocked: no logged-in browser context, reusable session, or human-assisted OAuth. |
+| X session persistence | Gray: no signed-in profile or OAuth flow was available. |
+| Chat | Gray: signed-out browser cannot test logged-in chat behavior. |
 | Wallet | Amber: no-wallet read state only; custody/funding not exercised. |
 | Tasks | Amber: blocker observed only; no task lifecycle. |
 | Context | Amber: read/blocker only; refine/save not exercised. |

@@ -1132,35 +1132,133 @@ function App() {
                     />
                   )}
                   <div className="menu-divider" />
-                  <ToolMenuRow
-                    icon={Network}
-                    label="Directory"
-                    trailing={<span className="menu-count">#16</span>}
-                  />
-                  <ToolMenuRow
-                    icon={SettingsIcon}
-                    label="Settings"
-                    onClick={() => {
-                      setSettingsOpen(true);
-                      setProfileMenuOpen(false);
-                    }}
-                  />
-                  <ToolMenuRow
-                    icon={UserIcon}
-                    label="Profile"
-                    onClick={() => {
-                      navigateToView("profile");
-                    }}
-                  />
-                  <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("docs")} trailing={<ChevronRight size={14} />} />
-                  <div className="menu-divider" />
-                  <ToolMenuRow icon={LogOut} label="Log out" onClick={logOut} />
+                  {signedIn ? (
+                    <>
+                      <ToolMenuRow
+                        icon={Network}
+                        label="Directory"
+                        trailing={<span className="menu-count">#16</span>}
+                      />
+                      <ToolMenuRow
+                        icon={SettingsIcon}
+                        label="Settings"
+                        onClick={() => {
+                          setSettingsOpen(true);
+                          setProfileMenuOpen(false);
+                        }}
+                      />
+                      <ToolMenuRow
+                        icon={UserIcon}
+                        label="Profile"
+                        onClick={() => {
+                          navigateToView("profile");
+                        }}
+                      />
+                      <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("docs")} trailing={<ChevronRight size={14} />} />
+                      <div className="menu-divider" />
+                      <ToolMenuRow icon={LogOut} label="Log out" onClick={logOut} />
+                    </>
+                  ) : (
+                    <>
+                      <ToolMenuRow
+                        icon={Store}
+                        label="Log in or sign up"
+                        onClick={() => {
+                          setLoginOpen(true);
+                          setProfileMenuOpen(false);
+                        }}
+                        trailing={<ChevronRight size={14} />}
+                      />
+                      <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("docs")} trailing={<ChevronRight size={14} />} />
+                    </>
+                  )}
                 </div>
               )}
             </div>
           )}
         </div>
       </aside>
+
+      <nav className="mobile-route-nav" aria-label="Primary mobile navigation">
+        <button
+          aria-current={view === "chat" ? "page" : undefined}
+          className={view === "chat" ? "active" : ""}
+          onClick={startNewChat}
+          type="button"
+        >
+          <SquarePen size={18} strokeWidth={1.75} />
+          <span>Chat</span>
+        </button>
+        <button
+          aria-current={view === "tasks" ? "page" : undefined}
+          className={view === "tasks" ? "active" : ""}
+          onClick={() => navigateToView("tasks")}
+          type="button"
+        >
+          <ListTodo size={18} strokeWidth={1.75} />
+          <span>Tasks</span>
+        </button>
+        <button
+          aria-current={view === "hive" ? "page" : undefined}
+          className={view === "hive" ? "active" : ""}
+          onClick={() => navigateToView("hive")}
+          type="button"
+        >
+          <Activity size={18} strokeWidth={1.75} />
+          <span>Hive</span>
+        </button>
+        <button
+          aria-current={view === "wallet" ? "page" : undefined}
+          className={view === "wallet" ? "active" : ""}
+          onClick={openWalletSummary}
+          type="button"
+        >
+          <Wallet size={18} strokeWidth={1.75} />
+          <span>Wallet</span>
+        </button>
+        <button
+          aria-current={view === "context" ? "page" : undefined}
+          className={view === "context" ? "active" : ""}
+          onClick={() => navigateToView("context")}
+          type="button"
+        >
+          <BookOpen size={18} strokeWidth={1.75} />
+          <span>Context</span>
+        </button>
+        <button
+          aria-current={view === "memory" ? "page" : undefined}
+          className={view === "memory" ? "active" : ""}
+          onClick={() => navigateToView("memory")}
+          type="button"
+        >
+          <MessageSquare size={18} strokeWidth={1.75} />
+          <span>Memory</span>
+        </button>
+        <button
+          aria-current={view === "profile" ? "page" : undefined}
+          className={view === "profile" ? "active" : ""}
+          onClick={() => {
+            if (signedIn) {
+              navigateToView("profile");
+              return;
+            }
+            setLoginOpen(true);
+          }}
+          type="button"
+        >
+          <UserIcon size={18} strokeWidth={1.75} />
+          <span>{signedIn ? "Profile" : "Log in"}</span>
+        </button>
+        <button
+          aria-current={view === "docs" ? "page" : undefined}
+          className={view === "docs" ? "active" : ""}
+          onClick={() => navigateToView("docs")}
+          type="button"
+        >
+          <LifeBuoy size={18} strokeWidth={1.75} />
+          <span>Help</span>
+        </button>
+      </nav>
 
       <section className="workspace">
         <header className="topbar">

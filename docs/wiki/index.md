@@ -40,7 +40,7 @@ flowchart LR
 - Any new surface should name its database cache, canonical protocol record, and failure behavior.
 - Deployment is documented under Architecture -> Deployment. The current public dev app is `tasknodeofficial-dev` on Fly; local Docker can either use isolated local data or the Fly dev data bridge for QA against the same Postgres rows. Fly releases must use `npm run fly:deploy` so the non-HTTP `worker` process group is started and guarded after deploy.
 - Scheduler, worker, and RPC audit state is documented under Architecture -> System Status and rendered live in Help from `/api/system/status`.
-- Browser-control release testing is documented under Architecture -> [Codex Computer Control QA](#docs/codex-computer-control-qa).
+- Browser-control release testing is documented under Architecture -> [Browser-Control QA](#docs/codex-computer-control-qa).
 - Hive board professionalism is documented under Plans -> [Hive Board Professionalism Diagnosis](plans/hive-board-professionalism-diagnosis.md). Active board counts must be live rows, and Board Manager archives must be resurrectable unless explicitly operator-locked.
 - Production launch scope is documented under Plans -> [Task Node Production Scope](#docs/task-node-production-scope). That page is the current checklist for required login, funding, context, chat, Hive, Telegram, task, profile, docs, and deployment surfaces.
 
