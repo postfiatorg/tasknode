@@ -583,7 +583,7 @@ export const DOC_GROUPS = [
       {
         slug: "codex-computer-control-qa",
         title: "Codex Computer Control QA",
-        summary: "Browser-control QA checklist for beta release verification.",
+        summary: "Browser-control QA protocol for beta release verification.",
         markdown: codexComputerControlQa,
       },
       {
