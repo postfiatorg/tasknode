@@ -14,6 +14,7 @@ import aiProviders from "../../../docs/wiki/architecture/ai-providers.md?raw";
 import authAndConnectedAccounts from "../../../docs/wiki/architecture/auth-and-connected-accounts.md?raw";
 import boardManagerArchitecture from "../../../docs/wiki/architecture/board-manager.md?raw";
 import boardManagerSecretaryPacket from "../../../docs/wiki/architecture/board-manager-secretary-packet.md?raw";
+import codexComputerControlQa from "../../../docs/wiki/architecture/codex-computer-control-qa.md?raw";
 import database from "../../../docs/wiki/architecture/database.md?raw";
 import dailyAirdropWorker from "../../../docs/wiki/architecture/daily-airdrop-worker.md?raw";
 import deepMemoryWorker from "../../../docs/wiki/architecture/deep-memory-worker.md?raw";
@@ -578,6 +579,12 @@ export const DOC_GROUPS = [
         summary: "Live audit view for schedulers, workers, and RPC dependencies.",
         markdown: systemStatus,
         component: "system-status",
+      },
+      {
+        slug: "codex-computer-control-qa",
+        title: "Codex Computer Control QA",
+        summary: "Browser-control QA checklist for beta release verification.",
+        markdown: codexComputerControlQa,
       },
       {
         slug: "board-manager-architecture",
