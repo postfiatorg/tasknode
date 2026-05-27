@@ -38,7 +38,22 @@ If the requested run includes Chat, Context, Tasks, Hive, Wallet, Memory, Profil
 - a reusable browser storage state/session explicitly supplied for QA;
 - a human-assisted OAuth/login flow completed during the run.
 
-If none of those are available, stop after confirming the app is reachable and signed out. Report the run as blocked by missing authenticated browser context. Do not spend the run clicking logged-out blockers for every private surface and do not classify logged-in app behavior from an anonymous browser.
+If none of those are available after the no-interrupt auth attempts below, continue with public/signed-out checks and report the authenticated matrix as blocked by missing authenticated browser context. Do not spend the run clicking the same logged-out blocker for every private surface and do not classify logged-in app behavior from an anonymous browser.
+
+## No-Interrupt Mode
+
+Browser QA exists so the user does not have to babysit the run. Do not interrupt the user for login, console setup, credentials, one-off approval, or help deciding what to click. Make one autonomous pass, collect the best evidence available, and report once at the end.
+
+If the app is signed out in an existing Chrome profile:
+
+1. Record the signed-out state.
+2. Open the login dialog.
+3. Try only safe existing-session login paths that do not require typing secrets, solving 2FA, approving a consent screen, or changing account security. Use this default order when visible: GitHub, X, email only if a reusable QA inbox/code is already supplied, Telegram only if a linked QA flow is already available.
+4. If a provider asks for a password, code, captcha, device confirmation, new consent, account creation, or destructive permission, abandon that provider attempt and return to the app. Do not ask the user to intervene mid-run.
+5. If no login path succeeds, continue with the public/signed-out suite: root render, mobile navigation, visible login entry points, public docs, public profile routes when available, System Status if publicly reachable, and representative docs/runbook links.
+6. Mark authenticated surfaces Gray with one shared blocker: `No authenticated browser context available`.
+
+Do not repeat the same blocker per surface. Do not write "you need to log in" as the next step. The useful output is a completed autonomous report plus a single setup gap for a future run, such as "Provide a persistent QA account/session before the next Beta QA run."
 
 ## What Counts As QA
 
@@ -359,7 +374,7 @@ Use these gates when reviewing a QA report.
 - If the report says `Console/network errors: Not captured`, every browser-tested surface is at most Amber.
 - If the browser opened the wrong app URL, wrong environment, wrong account, or wrong browser profile, the affected workflow is Red.
 - If the run uses an internal anonymous browser, only public/signed-out route behavior can be tested. Authenticated surfaces must be Gray or blocked, not Amber or Green.
-- If the requested scope is Beta release QA and no authenticated browser context is available, stop after the preflight signed-out observation and report the missing logged-in profile/session as the blocker.
+- If the requested scope is Beta release QA and no authenticated browser context is available, run the no-interrupt public/signed-out suite, then report the missing logged-in profile/session once as the shared blocker for authenticated surfaces.
 - If build/source evidence is missing because the app does not surface it and no operator evidence was supplied, Preflight is Amber, not Red.
 - If a provider was already signed in and OAuth was not re-run, that provider auth is not tested.
 - If Chat tested only one mode, Chat is Amber unless scope explicitly said one mode.
@@ -376,6 +391,7 @@ The example below is how to classify a route-clicking report like:
 
 - internal anonymous browser;
 - no reusable logged-in session;
+- safe existing-session login attempts did not complete;
 - no chat mode exercised because the app was signed out;
 - no console/network capture;
 - no build/source evidence from the app or operator;
@@ -387,8 +403,8 @@ Correct classification:
 | Surface | Correct status |
 | --- | --- |
 | Preflight | Amber: target URL loaded, but build/source evidence and operator worker evidence are missing. |
-| Global route render | Amber: public signed-out routes loaded, but no authenticated route behavior was tested. |
-| Beta release QA | Blocked: no logged-in browser context, reusable session, or human-assisted OAuth. |
+| Public route render | Amber: public signed-out routes, mobile navigation, docs, and visible login entry points were tested. |
+| Beta release QA | Blocked: one shared blocker, no authenticated browser context after safe no-interrupt login attempts. |
 | X session persistence | Gray: no signed-in profile or OAuth flow was available. |
 | Chat | Gray: signed-out browser cannot test logged-in chat behavior. |
 | Wallet | Amber: no-wallet read state only; custody/funding not exercised. |
