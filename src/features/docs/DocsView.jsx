@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, ChevronRight, RefreshCw, Search } from "lucide-react";
 import { requestJson } from "../../api";
 import { DOC_GROUPS, DOC_PAGES, SYSTEM_STATUS_DOC_LINKS } from "./docs-content";
@@ -11,6 +11,8 @@ export function DocsView() {
   const [selectedSlug, setSelectedSlug] = useState(() => docSlugFromLocation());
   const [pendingAnchor, setPendingAnchor] = useState("");
   const [query, setQuery] = useState("");
+  const activeNavButtonRef = useRef(null);
+  const contentRef = useRef(null);
   const selectedPage = DOC_PAGES.find((page) => page.slug === selectedSlug) || DOC_PAGES[0];
   const filteredGroups = useMemo(() => filterGroups(DOC_GROUPS, query), [query]);
 
@@ -30,6 +32,12 @@ export function DocsView() {
     });
     setPendingAnchor("");
   }, [pendingAnchor]);
+
+  useEffect(() => {
+    if (pendingAnchor) return;
+    contentRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    activeNavButtonRef.current?.scrollIntoView({ block: "nearest" });
+  }, [pendingAnchor, selectedSlug]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -77,6 +85,7 @@ export function DocsView() {
                   className={page.slug === selectedPage.slug ? "active" : ""}
                   key={page.slug}
                   onClick={() => openDocsPage(page.slug)}
+                  ref={page.slug === selectedPage.slug ? activeNavButtonRef : null}
                   type="button"
                 >
                   <span>
@@ -90,7 +99,7 @@ export function DocsView() {
           ))}
         </nav>
       </aside>
-      <article className="docs-content" aria-labelledby="docs-page-title">
+      <article className="docs-content" aria-labelledby="docs-page-title" ref={contentRef}>
         <header className="docs-header">
           <span>{selectedPage.group}</span>
           <h1 id="docs-page-title">{selectedPage.title}</h1>
