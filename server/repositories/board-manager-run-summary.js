@@ -41,6 +41,7 @@ function actionLabel(action = "") {
     message_user: "Messaged user",
     refresh_hive_secretary: "Updated Hive Secretary",
     refresh_project_document: "Refreshed project document",
+    restore_project: "Restored project",
   }[action] || "No decision";
 }
 
@@ -136,6 +137,7 @@ function resultSummary({ action = "", result = {} } = {}) {
   }
   if (action === "create_project") return `created or updated project ${safeText(data.projectId, 120) || "unknown_project"}`;
   if (action === "archive_project") return `archived project ${safeText(data.projectId, 120) || "unknown_project"}`;
+  if (action === "restore_project") return `restored project ${safeText(data.projectId, 120) || "unknown_project"}`;
   if (action === "refresh_project_document") {
     return `refreshed project document ${safeText(data.productDocId, 120) || "unknown_doc"}`;
   }

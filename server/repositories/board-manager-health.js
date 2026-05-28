@@ -115,10 +115,21 @@ function hasRecentProjectHandling({ projectId = "", recentBoardManagerRuns = [] 
 function hasRecentUserFollowup({ recentBoardManagerRuns = [] } = {}) {
   return safeArray(recentBoardManagerRuns).slice(0, 20).some((run) => {
     const action = safeText(run.selectedAction || run.action, 80);
-    const state = safeText(run.state, 80);
+    const state = safeText(run.status || run.state, 80);
     if (action !== "message_user") return false;
     if (run.dryRun === true) return false;
     return !["failed", "skipped", "blocked"].includes(state);
+  });
+}
+
+function hasOpenFollowupForProject({ projectId = "", openFollowups = [] } = {}) {
+  const normalizedProjectId = safeText(projectId, 180);
+  return safeArray(openFollowups).some((followup) => {
+    const status = safeText(followup.status, 80);
+    const followupProjectId = safeText(followup.projectId || followup.project_id, 180);
+    if (status && status !== "open") return false;
+    if (normalizedProjectId && followupProjectId === normalizedProjectId) return true;
+    return !followupProjectId;
   });
 }
 
@@ -132,6 +143,7 @@ function projectPressureSignal({
   candidateCount = 0,
   recentBoardManagerRuns = [],
   recentUserFollowup = false,
+  openFollowups = [],
 } = {}) {
   const projectId = safeText(project.id, 180);
   const status = safeText(project.status, 80).toLowerCase() || "unknown";
@@ -145,7 +157,9 @@ function projectPressureSignal({
   const hasPendingNetworkTaskGeneration = pendingProjectIds.has(projectId);
   const hasCompletedNetworkTask = completedProjectIds.has(projectId);
   const hasStoppedNetworkTask = stoppedProjectIds.has(projectId);
+  const hasOpenFollowup = hasOpenFollowupForProject({ projectId, openFollowups });
   const recentlyHandled = hasRecentProjectHandling({ projectId, recentBoardManagerRuns })
+    || hasOpenFollowup
     || (!eligibleCandidateCount && recentUserFollowup);
   const reasons = [];
 
@@ -192,6 +206,7 @@ function projectPressureSignal({
     hasPendingNetworkTaskGeneration,
     hasCompletedNetworkTask,
     hasStoppedNetworkTask,
+    hasOpenFollowup,
     recentlyHandled,
   };
 }
@@ -202,6 +217,7 @@ export function buildBoardManagerActionPressure({
   networkTaskCandidates = [],
   taskState = {},
   recentBoardManagerRuns = [],
+  openFollowups = [],
   freshness = {},
 } = {}) {
   const projects = projectEntries(hiveProjects);
@@ -236,6 +252,7 @@ export function buildBoardManagerActionPressure({
         candidateCount,
         recentBoardManagerRuns,
         recentUserFollowup,
+        openFollowups,
       })
     )
     .filter(Boolean);
@@ -266,6 +283,7 @@ export function buildBoardManagerActionPressure({
       activeNetworkTaskCapacityBlockerCount: capacityBlockers.length,
       staleHiveSecretary,
       recentUserFollowup,
+      openFollowupCount: safeArray(openFollowups).length,
     },
     candidateCapacity: {
       policy: {
@@ -293,6 +311,7 @@ export function buildBoardManagerActionPressure({
       documentRefreshIsNotLiveMotion: true,
       zeroEligibleCandidatesRequiresFollowup: true,
       doNothingRequiresHealthyMotionOrRecentHandling: true,
+      openFollowupCountsAsRecentHandling: true,
       recentUserFollowupCountsAsRecentHandling: true,
       personalTasksDoNotAffectNetworkTaskEligibility: true,
       candidateCapacityIsConsumedOnlyByOutstandingOrPendingNetworkTasks: true,

@@ -22,6 +22,10 @@ import {
 import { activeBoardManagerJobs } from "./board-manager-agent-jobs.js";
 import { buildBoardManagerActionPressure } from "./board-manager-health.js";
 import {
+  expireOpenBoardManagerFollowups,
+  listOpenBoardManagerFollowups,
+} from "./board-manager-state.js";
+import {
   compactHiveProjectsForBoardManager,
   compactNetworkTaskContentForBoardManager,
   compactProjectRegistryForBoardManager,
@@ -38,6 +42,7 @@ export const boardManagerActions = Object.freeze([
   "message_user",
   "create_project",
   "archive_project",
+  "restore_project",
   "refresh_project_document",
   "assign_contributor",
   "initiate_network_task",
@@ -590,18 +595,22 @@ export async function buildBoardManagerSourcePacket({
     networkTaskContent,
     networkTaskCandidates,
     recentRuns,
+    openFollowups,
   ] = await Promise.all([
     getHiveContextDocument({ limit }),
     buildHiveSecretarySourcePacket({ limit }),
     getHiveSecretaryState(),
     getHiveProjectsDocument(),
     latestHiveProjectPlanningState().catch(() => null),
-    currentProjectRegistry({ limit: 20 }),
+    currentProjectRegistry({ limit: 60 }),
     currentTaskState({ limit: 12 }),
     currentTaskRequests({ limit: 8 }),
     getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 12, stoppedLimit: 6, pendingLimit: 6 }).catch(() => null),
     listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
     recentBoardManagerRuns({ limit: 20 }),
+    expireOpenBoardManagerFollowups()
+      .then(() => listOpenBoardManagerFollowups({ limit: 20 }))
+      .catch(() => []),
   ]);
 
   const generatedAt = new Date().toISOString();
@@ -616,6 +625,7 @@ export async function buildBoardManagerSourcePacket({
     networkTaskCandidates,
     taskState,
     recentBoardManagerRuns: compactRecentRuns,
+    openFollowups,
     freshness,
   });
   const packetCore = {
@@ -637,6 +647,7 @@ export async function buildBoardManagerSourcePacket({
     taskRequests: compactTaskRequestsForBoardManager(taskRequests),
     networkTaskContent: compactNetworkTaskContentForBoardManager(networkTaskContent),
     networkTaskCandidates,
+    openFollowups,
     recentBoardManagerRuns: compactRecentRuns,
     executionPolicy: {
       dryRunDefault: true,
@@ -646,14 +657,15 @@ export async function buildBoardManagerSourcePacket({
         "refresh_hive_secretary",
         "create_project",
         "archive_project",
+        "restore_project",
         "refresh_project_document",
         "assign_contributor",
         "initiate_network_task",
       ],
-      projectDeletionPolicy: "archive_project hides a project from the active Hive board without hard deletion. Board Manager archives are soft and reversible; only explicit operator archive locks prevent planner resurrection.",
+      projectDeletionPolicy: "archive_project hides a project from the active Hive board without hard deletion. restore_project reactivates a non-operator-locked archived project. Board Manager archives are soft and reversible; only explicit operator archive locks prevent planner resurrection.",
       taskLifecyclePolicy: "Network tasks must use the existing PFTL task lifecycle.",
-      networkTaskPolicy: "Board Manager initiates allocation/generation jobs only. The network task generation worker writes concrete task offers through the existing task engine. Default reward band is 10000-50000 PFT.",
-      userResponsePolicy: "Hive Context entries are inbound user messages. message_user responses must target a hive_context_entry when possible and are delivered back to that entry's sourceConversationId as a chat assistant message. A prior message_user response is pending user follow-up; do not send another Hive message until new user input or a materially new blocker appears.",
+      networkTaskPolicy: "Board Manager initiates allocation/generation jobs only. The network task generation worker writes concrete task offers through the existing task engine. Default reward band is 10000-50000 PFT. Repeated task intents for the same project, candidate, class, need hash, and reward band are suppressed before another generation job is queued.",
+      userResponsePolicy: "Hive Context entries are inbound user messages. message_user responses must target a hive_context_entry when possible and are delivered back to that entry's sourceConversationId as a chat assistant message. A message_user action creates an open follow-up row; do not send another Hive message to the same account/project until new user input answers it, it expires, or a materially new blocker appears.",
     },
   };
 

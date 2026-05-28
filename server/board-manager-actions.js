@@ -18,6 +18,10 @@ import {
   completeHiveProjectProductDoc,
 } from "./repositories/hive-project-product-docs.js";
 import { enqueueNetworkTaskGenerationFromBoardDecision } from "./repositories/network-tasks.js";
+import {
+  createBoardManagerFollowup,
+  findOpenBoardManagerFollowup,
+} from "./repositories/board-manager-state.js";
 
 const projectTypes = new Set([
   "protocol_marketing",
@@ -60,6 +64,48 @@ function slug(value = "") {
     .replace(/^_+|_+$/g, "")
     .slice(0, 80);
   return normalized || `project_${randomUUID().slice(0, 12)}`;
+}
+
+function tokenSet(value = "") {
+  return new Set(
+    safeText(value, 600)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(/\s+/)
+      .filter((token) => token.length >= 3)
+  );
+}
+
+function tokenOverlapScore(left = "", right = "") {
+  const leftTokens = tokenSet(left);
+  const rightTokens = tokenSet(right);
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  let shared = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) shared += 1;
+  }
+  return shared / Math.max(leftTokens.size, rightTokens.size);
+}
+
+function projectHasOperatorArchiveLock(project = {}) {
+  const metadata = safeObject(project.metadata_json || project.metadata);
+  return metadata.operator_archived === true ||
+    metadata.operator_archived === "true" ||
+    Boolean(metadata.archive_lock_source) ||
+    Boolean(metadata.archive_lock_applied_at);
+}
+
+function projectIdForDecision(decision = {}) {
+  const payload = safeObject(decision.payload);
+  return safeText(
+    payload.project?.id ||
+      payload.contributor?.project_id ||
+      payload.contributor?.projectId ||
+      payload.network_task?.project_id ||
+      payload.networkTask?.projectId ||
+      (decision.target_type === "network_project" ? decision.target_id : ""),
+    180
+  );
 }
 
 function reportInput(sourcePacket = {}) {
@@ -297,6 +343,7 @@ async function executeMessageUser({ runId, decision, sourcePacket }) {
   const accountId = target.accountId;
   let conversationId = target.conversationId;
   const messageText = safeText(decision.payload.message_text || decision.payload.summary, 4000);
+  const projectId = projectIdForDecision(decision);
   if (!accountId) throw new Error("board_manager_message_user_missing_account");
   if (!conversationId) conversationId = hiveConversationIdForAccount(accountId);
   if (!conversationId) throw new Error("board_manager_message_user_missing_conversation");
@@ -323,6 +370,24 @@ async function executeMessageUser({ runId, decision, sourcePacket }) {
       conversationId,
       hiveContextEntryId: target.hiveContextEntryId,
       messagePreview: safeText(duplicate.message_text, 240),
+    };
+  }
+  const openFollowup = await findOpenBoardManagerFollowup({
+    accountId,
+    projectId,
+  });
+  if (openFollowup) {
+    return {
+      executed: false,
+      skipped: true,
+      reason: "board_manager_message_user_open_followup",
+      followupId: openFollowup.id,
+      accountId,
+      projectId,
+      conversationId,
+      hiveContextEntryId: target.hiveContextEntryId,
+      lastSentAt: openFollowup.lastSentAt,
+      blockerSummary: openFollowup.blockerSummary,
     };
   }
   if (!target.hiveContextEntryId) {
@@ -392,10 +457,31 @@ async function executeMessageUser({ runId, decision, sourcePacket }) {
       reason: decision.reason,
     },
   });
+  const followup = await createBoardManagerFollowup({
+    runId,
+    accountId,
+    projectId,
+    hiveContextEntryId: target.hiveContextEntryId,
+    conversationId,
+    boardMessageId: inserted.rows[0]?.id || messageId,
+    chatMessageId: chatTurn.assistant?.id || assistantMessageId,
+    blockerType: projectId ? "project_blocked_on_user" : "account_followup",
+    blockerSummary: safeText(decision.reason || decision.payload.summary, 1200),
+    expectedResponse: safeText(decision.payload.next_steps?.join("; ") || decision.payload.summary, 1200),
+    sourcePacketDigest: safeText(sourcePacket.sourcePacketDigest, 120),
+    metadata: {
+      target_type: decision.target_type,
+      target_id: decision.target_id,
+      hive_context_entry_id: target.hiveContextEntryId,
+      decision_summary: decision.payload.summary,
+    },
+  }).catch((error) => ({ ok: false, error: error?.message || String(error) }));
   return {
     executed: true,
     messageId: inserted.rows[0]?.id || "",
+    followupId: followup.followup?.id || "",
     accountId,
+    projectId,
     conversationId,
     chatMessageId: chatTurn.assistant?.id || assistantMessageId,
     messagePreview: messageText.slice(0, 240),
@@ -428,6 +514,51 @@ async function executeCreateProject({ runId, decision, sourcePacket }) {
   const id = slug(project.id || decision.target_id || title);
   const type = projectTypes.has(project.type) ? project.type : "protocol_development";
   if (!title || !summary || !objective) throw new Error("board_manager_create_project_missing_required_fields");
+  const registry = await query(
+    `
+      SELECT id, title, summary, objective, status, metadata_json
+      FROM network_projects
+      ORDER BY updated_at DESC, id ASC
+      LIMIT 200
+    `
+  );
+  const exact = registry.rows.find((row) => row.id === id);
+  if (exact?.status === "archived") {
+    return {
+      executed: false,
+      skipped: true,
+      reason: "board_manager_create_project_archived_project_requires_restore",
+      projectId: exact.id,
+      title: exact.title,
+      operatorLocked: projectHasOperatorArchiveLock(exact),
+      recommendedAction: projectHasOperatorArchiveLock(exact) ? "operator_review" : "restore_project",
+    };
+  }
+  const titleSlug = slug(title);
+  const similar = registry.rows.find((row) => {
+    if (row.id === id) return false;
+    const rowTitle = safeText(row.title, 180);
+    if (!rowTitle) return false;
+    if (slug(rowTitle) === titleSlug) return true;
+    if (tokenOverlapScore(`${title} ${summary} ${objective}`, `${row.title} ${row.summary} ${row.objective}`) >= 0.62) {
+      return true;
+    }
+    return false;
+  });
+  if (similar) {
+    return {
+      executed: false,
+      skipped: true,
+      reason: "board_manager_create_project_similar_project_exists",
+      projectId: similar.id,
+      title: similar.title,
+      status: similar.status,
+      operatorLocked: projectHasOperatorArchiveLock(similar),
+      recommendedAction: similar.status === "archived" && !projectHasOperatorArchiveLock(similar)
+        ? "restore_project"
+        : "append_or_refresh_existing_project",
+    };
+  }
   const hiveSecretary = reportInput(sourcePacket);
   const result = await query(
     `
@@ -556,6 +687,72 @@ async function executeArchiveProject({ runId, decision, sourcePacket }) {
     projectId,
     status: result.rows[0].status,
     archiveReason,
+  };
+}
+
+async function executeRestoreProject({ runId, decision, sourcePacket }) {
+  const projectId = safeText(decision.target_id || decision.payload.project?.id, 180);
+  if (!projectId) throw new Error("board_manager_restore_project_missing_project");
+  const restoreReason = safeText(decision.payload.summary || decision.reason, 1000);
+  const existing = await query(
+    `
+      SELECT id, title, status, metadata_json
+      FROM network_projects
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [projectId]
+  );
+  const project = existing.rows[0];
+  if (!project) throw new Error("board_manager_restore_project_not_found");
+  if (projectHasOperatorArchiveLock(project)) {
+    return {
+      executed: false,
+      skipped: true,
+      reason: "board_manager_restore_project_operator_locked",
+      projectId,
+      title: project.title,
+      status: project.status,
+    };
+  }
+  if (project.status !== "archived") {
+    return {
+      executed: false,
+      skipped: true,
+      reason: "board_manager_restore_project_not_archived",
+      projectId,
+      title: project.title,
+      status: project.status,
+    };
+  }
+
+  const result = await query(
+    `
+      UPDATE network_projects
+      SET status = 'active',
+          metadata_json = (COALESCE(metadata_json, '{}'::jsonb) - 'agent_archived') || $2::jsonb,
+          updated_at = now()
+      WHERE id = $1
+      RETURNING id, title, status
+    `,
+    [
+      projectId,
+      jsonValue({
+        agent_archive_restored: true,
+        agent_archive_restored_reason: restoreReason,
+        agent_archive_restored_by: "board_manager",
+        agent_archive_restored_run_id: safeText(runId, 180),
+        agent_archive_restored_source_packet_digest: safeText(sourcePacket.sourcePacketDigest, 120),
+        agent_archive_restored_at: new Date().toISOString(),
+      }),
+    ]
+  );
+  return {
+    executed: true,
+    projectId,
+    title: result.rows[0]?.title || project.title,
+    status: result.rows[0]?.status || "active",
+    restoreReason,
   };
 }
 
@@ -732,6 +929,9 @@ export async function executeBoardManagerDecision({
         break;
       case "archive_project":
         result = await executeArchiveProject({ runId, decision: normalizedDecision, sourcePacket });
+        break;
+      case "restore_project":
+        result = await executeRestoreProject({ runId, decision: normalizedDecision, sourcePacket });
         break;
       case "assign_contributor":
         result = await executeAssignContributor({ runId, decision: normalizedDecision, sourcePacket });

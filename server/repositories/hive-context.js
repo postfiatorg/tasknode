@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
+import { markBoardManagerFollowupsAnsweredForHiveEntry } from "./board-manager-state.js";
 
 const maxBodyLength = 24_000;
 const maxDisplayNameLength = 120;
@@ -243,7 +244,13 @@ export async function saveHiveContextEntry({
       now,
     ]
   );
-  return publicEntry(result.rows[0]);
+  const saved = publicEntry(result.rows[0]);
+  await markBoardManagerFollowupsAnsweredForHiveEntry({
+    accountId: saved.accountId,
+    hiveContextEntryId: saved.id,
+    conversationId: saved.sourceConversationId,
+  }).catch(() => null);
+  return saved;
 }
 
 export async function markHiveContextEntriesWalletValidated({

@@ -57,6 +57,7 @@ const migrations = [
   "047_telegram_bot_events.sql",
   "048_account_deletion_audit.sql",
   "049_board_manager_message_dedupe_index.sql",
+  "050_board_manager_state_guardrails.sql",
 ];
 
 let migrated = false;

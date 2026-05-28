@@ -13,6 +13,7 @@
         "message_user",
         "create_project",
         "archive_project",
+        "restore_project",
         "refresh_project_document",
         "assign_contributor",
         "initiate_network_task"

@@ -599,6 +599,7 @@ export function buildBoardManagerSecretaryDecisionPacket({
     rawSourcePacketDigest: safeText(sourcePacket.sourcePacketDigest, 120),
     secretarySourceDigest: safeText(secretaryPacket.sourceDigest, 120),
     boardActionPressure: safeObject(sourcePacket.boardActionPressure),
+    openFollowups: safeArray(sourcePacket.openFollowups).slice(0, 20),
     actionTargetRegistry: buildActionTargetRegistry(sourcePacket),
     secretaryPacket: {
       id: safeText(secretaryPacket.id, 180),

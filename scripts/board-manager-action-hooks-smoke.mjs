@@ -122,6 +122,8 @@ async function main() {
   await query("DELETE FROM pftl_sync_wallets WHERE account_id = $1", [smokeAccountId]);
   await query("DELETE FROM board_manager_user_messages WHERE account_id = $1", [smokeAccountId]);
   await query("DELETE FROM board_manager_user_messages WHERE account_id = $1", [fallbackAccountId]);
+  await query("DELETE FROM board_manager_followups WHERE account_id = $1", [smokeAccountId]);
+  await query("DELETE FROM board_manager_followups WHERE account_id = $1", [fallbackAccountId]);
   await query("DELETE FROM chat_messages WHERE account_id = $1", [fallbackAccountId]);
   await query("DELETE FROM chat_conversations WHERE account_id = $1", [fallbackAccountId]);
 
@@ -407,7 +409,7 @@ async function main() {
     },
   });
   assert.equal(duplicateFallbackMessage.result?.skipped, true);
-  assert.equal(duplicateFallbackMessage.result?.reason, "board_manager_message_user_recent_account_message");
+  assert.equal(duplicateFallbackMessage.result?.reason, "board_manager_message_user_open_followup");
 
   await assert.rejects(
     () => executeBoardManagerDecision({
@@ -461,6 +463,22 @@ async function main() {
       }),
     },
   });
+  await executeBoardManagerDecision({
+    runId,
+    sourcePacket: compressedActionSourcePacket,
+    dryRun: false,
+    decision: {
+      action: "message_user",
+      target_type: "hive_context_entry",
+      target_id: smokeHiveEntryId,
+      reason: "Smoke verifies user message action hook.",
+      confidence: 1,
+      payload: payload({
+        message_text: "Board Manager action hook smoke message.",
+      }),
+    },
+  });
+
   const duplicateHiveEntryMessage = await executeBoardManagerDecision({
     runId,
     sourcePacket: compressedActionSourcePacket,
@@ -481,16 +499,32 @@ async function main() {
 
   await executeBoardManagerDecision({
     runId,
-    sourcePacket: compressedActionSourcePacket,
+    sourcePacket,
     dryRun: false,
     decision: {
-      action: "message_user",
-      target_type: "hive_context_entry",
-      target_id: smokeHiveEntryId,
-      reason: "Smoke verifies user message action hook.",
+      action: "archive_project",
+      target_type: "network_project",
+      target_id: projectId,
+      reason: "Smoke verifies project archive action hook.",
       confidence: 1,
       payload: payload({
-        message_text: "Board Manager action hook smoke message.",
+        archive_reason: "Board Manager action hook smoke complete.",
+      }),
+    },
+  });
+
+  await executeBoardManagerDecision({
+    runId,
+    sourcePacket,
+    dryRun: false,
+    decision: {
+      action: "restore_project",
+      target_type: "network_project",
+      target_id: projectId,
+      reason: "Smoke verifies project restore action hook.",
+      confidence: 1,
+      payload: payload({
+        summary: "Restore the temporary project after archive verification.",
       }),
     },
   });
@@ -503,10 +537,10 @@ async function main() {
       action: "archive_project",
       target_type: "network_project",
       target_id: projectId,
-      reason: "Smoke verifies project archive action hook.",
+      reason: "Smoke re-archives the restored temporary project.",
       confidence: 1,
       payload: payload({
-        archive_reason: "Board Manager action hook smoke complete.",
+        archive_reason: "Board Manager action hook smoke complete after restore verification.",
       }),
     },
   });
@@ -563,7 +597,7 @@ async function main() {
   assert.equal(markRead.ok, true);
   assert.equal(markRead.updated, 1);
   assert.equal(markRead.conversation.unreadCount, 0);
-  assert.equal(actions.rows[0]?.count, 12);
+  assert.equal(actions.rows[0]?.count, 14);
   const publicFeed = await getBoardManagerAgentFeed({ limit: 20 });
   assert.equal(publicFeed.some((entry) => entry.runId === runId), false);
   const feed = await getBoardManagerAgentFeed({ limit: 20, includeInternal: true });
@@ -572,6 +606,7 @@ async function main() {
   assert.ok(actionRows.rows.some((entry) => entry.action === "refresh_project_document"));
   assert.ok(actionRows.rows.some((entry) => entry.action === "initiate_network_task"));
   assert.ok(actionRows.rows.some((entry) => entry.action === "archive_project"));
+  assert.ok(actionRows.rows.some((entry) => entry.action === "restore_project"));
   assert.ok(actionRows.rows.some((entry) => (
     entry.action === "message_user" &&
     entry.result_json?.error === "board_manager_message_user_account_not_in_source_packet"
