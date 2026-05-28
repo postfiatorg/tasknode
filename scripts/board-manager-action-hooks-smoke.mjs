@@ -391,6 +391,23 @@ async function main() {
       }),
     },
   });
+  const duplicateFallbackMessage = await executeBoardManagerDecision({
+    runId,
+    sourcePacket: compressedActionSourcePacket,
+    dryRun: false,
+    decision: {
+      action: "message_user",
+      target_type: "account",
+      target_id: fallbackAccountId,
+      reason: "Smoke verifies account-target user messages are rate limited.",
+      confidence: 1,
+      payload: payload({
+        message_text: "This duplicate fallback message should be skipped.",
+      }),
+    },
+  });
+  assert.equal(duplicateFallbackMessage.result?.skipped, true);
+  assert.equal(duplicateFallbackMessage.result?.reason, "board_manager_message_user_recent_account_message");
 
   await assert.rejects(
     () => executeBoardManagerDecision({
@@ -444,6 +461,23 @@ async function main() {
       }),
     },
   });
+  const duplicateHiveEntryMessage = await executeBoardManagerDecision({
+    runId,
+    sourcePacket: compressedActionSourcePacket,
+    dryRun: false,
+    decision: {
+      action: "message_user",
+      target_type: "hive_context_entry",
+      target_id: smokeHiveEntryId,
+      reason: "Smoke verifies message_user does not respond twice to the same Hive Context entry.",
+      confidence: 1,
+      payload: payload({
+        message_text: "This duplicate Hive Context response should be skipped.",
+      }),
+    },
+  });
+  assert.equal(duplicateHiveEntryMessage.result?.skipped, true);
+  assert.equal(duplicateHiveEntryMessage.result?.reason, "board_manager_message_user_duplicate_hive_context_entry");
 
   await executeBoardManagerDecision({
     runId,
@@ -529,7 +563,7 @@ async function main() {
   assert.equal(markRead.ok, true);
   assert.equal(markRead.updated, 1);
   assert.equal(markRead.conversation.unreadCount, 0);
-  assert.equal(actions.rows[0]?.count, 10);
+  assert.equal(actions.rows[0]?.count, 12);
   const publicFeed = await getBoardManagerAgentFeed({ limit: 20 });
   assert.equal(publicFeed.some((entry) => entry.runId === runId), false);
   const feed = await getBoardManagerAgentFeed({ limit: 20, includeInternal: true });

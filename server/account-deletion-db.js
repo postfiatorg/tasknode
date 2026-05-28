@@ -1,7 +1,11 @@
 import { databaseEnabled, transaction } from "./db/pool.js";
+import {
+  buildAccountDeletionAuditRecord,
+  insertAccountDeletionAuditRecord,
+} from "./account-deletion-audit.js";
 
 const blockingGrantStatuses = ["processing", "completed", "unknown"];
-const accountDataExclusions = ["billing_accounts", "billing_ledger_entries", "wallet_initiation_grants"];
+const accountDataExclusions = ["account_deletion_audit", "billing_accounts", "billing_ledger_entries", "wallet_initiation_grants"];
 
 function quoteIdentifier(value) {
   return `"${String(value || "").replaceAll("\"", "\"\"")}"`;
@@ -33,13 +37,26 @@ async function archiveAccountRows(client, { accountId = "", archiveId = "" } = {
 }
 
 export async function deleteAccountDatabaseData({
+  account = null,
   accountId = "",
   archiveId = "",
   walletAddress = "",
+  ethereumDepositAddress = "",
+  actorSessionId = "",
   reason = "user_requested_account_delete",
 } = {}) {
   if (!databaseEnabled()) return { enabled: false, skipped: true };
   return transaction(async (client) => {
+    const auditRecord = buildAccountDeletionAuditRecord({
+      account,
+      accountId,
+      archiveId,
+      walletAddress,
+      ethereumDepositAddress,
+      reason,
+      actorSessionId,
+    });
+    const deletionAudit = await insertAccountDeletionAuditRecord(auditRecord, { client });
     const accountRows = await archiveAccountRows(client, { accountId, archiveId });
     const ledger = await client.query(
       "UPDATE billing_ledger_entries SET account_id = $2 WHERE account_id = $1",
@@ -63,6 +80,7 @@ export async function deleteAccountDatabaseData({
     return {
       enabled: true,
       archiveId,
+      deletionAudit: { id: auditRecord.id, inserted: deletionAudit.ok === true },
       accountRows,
       billing: { ledgerRows: ledger.rowCount, billingAccounts: billingAccount.rowCount },
       walletInitiationGrants: grants.rowCount,

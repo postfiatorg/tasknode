@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { buildAccountDeletionAuditRecord } from "./account-deletion-audit.js";
 
 function digest(value = "") {
   return createHash("sha256").update(String(value || "")).digest("hex").slice(0, 16);
@@ -32,8 +33,10 @@ export function deleteRuntimeAccountDataForState({
   const effectiveArchiveId = archiveId || deletedAccountArchiveId(normalizedAccountId);
   const emailCanonical = String(account?.primaryEmailCanonical || "").trim().toLowerCase();
   const activeDeposit = state.ethereumDepositAccounts?.[normalizedAccountId] || null;
-  const walletAddress = state.accountWallets?.[normalizedAccountId]?.address || activeDeposit?.address || "";
+  const linkedWalletAddress = state.accountWallets?.[normalizedAccountId]?.address || "";
+  const walletAddress = linkedWalletAddress || activeDeposit?.address || "";
   const hadContextDocument = Boolean(state.contextDocuments?.[normalizedAccountId]);
+  if (!Array.isArray(state.accountDeletionAudit)) state.accountDeletionAudit = [];
 
   const removed = {
     account: account ? 1 : 0,
@@ -54,7 +57,22 @@ export function deleteRuntimeAccountDataForState({
     ethereumDeposit: activeDeposit ? 1 : 0,
     retiredDepositsArchived: 0,
     authEvents: 0,
+    accountDeletionAudit: 0,
   };
+
+  if (account) {
+    state.accountDeletionAudit.push(buildAccountDeletionAuditRecord({
+      account,
+      accountId: normalizedAccountId,
+      archiveId: effectiveArchiveId,
+      walletAddress: linkedWalletAddress,
+      ethereumDepositAddress: activeDeposit?.address || "",
+      reason,
+      actorSessionId,
+    }));
+    state.accountDeletionAudit = state.accountDeletionAudit.slice(-2000);
+    removed.accountDeletionAudit = 1;
+  }
 
   delete state.accounts[normalizedAccountId];
   delete state.accountWallets[normalizedAccountId];
@@ -80,12 +98,16 @@ export function deleteRuntimeAccountDataForState({
   state.telegramBotEvents = (state.telegramBotEvents || []).filter((event) => event?.accountId !== normalizedAccountId);
   removed.telegramBotEvents = beforeTelegramBotEvents - state.telegramBotEvents.length;
 
-  const beforeGrants = state.walletInitiationGrants.length;
-  state.walletInitiationGrants = state.walletInitiationGrants.filter((grant) => (
-    grant?.accountId !== normalizedAccountId &&
-    (!walletAddress || grant?.walletAddress !== walletAddress)
-  ));
-  removed.walletInitiationGrants = beforeGrants - state.walletInitiationGrants.length;
+  const activeGrantStatuses = new Set(["processing", "completed", "unknown"]);
+  for (const grant of state.walletInitiationGrants || []) {
+    const matches = grant?.accountId === normalizedAccountId || (walletAddress && grant?.walletAddress === walletAddress);
+    if (!matches) continue;
+    grant.accountId = effectiveArchiveId;
+    if (activeGrantStatuses.has(grant.status)) grant.status = "failed";
+    grant.error = grant.error || `account deleted: ${reason}`;
+    grant.updatedAt = new Date().toISOString();
+    removed.walletInitiationGrants += 1;
+  }
 
   if (activeDeposit) {
     state.ethereumDepositRetiredAccounts.push({

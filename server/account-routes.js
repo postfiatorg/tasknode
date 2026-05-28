@@ -2,6 +2,7 @@ import { deleteAccountDatabaseData } from "./account-deletion-db.js";
 import { deletedAccountArchiveId } from "./account-deletion-state.js";
 import {
   deleteAccountRuntimeData,
+  getAccountDeletionAuditSnapshot,
   getEthereumDepositAccount,
   getLinkedWallet,
 } from "./runtime-store.js";
@@ -48,14 +49,19 @@ export async function handleAccountRoute({
   const accountId = session.accountId;
   const linkedWallet = getLinkedWallet({ accountId });
   const depositAccount = getEthereumDepositAccount({ accountId });
-  const walletAddress = linkedWallet?.address || depositAccount?.address || "";
+  const walletAddress = linkedWallet?.address || "";
+  const ethereumDepositAddress = depositAccount?.address || "";
+  const accountSnapshot = getAccountDeletionAuditSnapshot({ accountId });
   const archiveId = deletedAccountArchiveId(accountId);
   const reason = String(payload?.reason || "user_requested_account_delete").slice(0, 240);
 
   try {
     const database = await deleteAccountDatabaseData({
+      account: accountSnapshot,
       accountId,
       archiveId,
+      actorSessionId: sessionId,
+      ethereumDepositAddress,
       walletAddress,
       reason,
     });
@@ -88,4 +94,3 @@ export async function handleAccountRoute({
   }
   return true;
 }
-

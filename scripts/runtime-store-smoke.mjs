@@ -46,6 +46,7 @@ try {
     appendUsageCredit,
     appendChatTurn,
     createAccountSession,
+    deleteAccountRuntimeData,
     deleteChatConversation,
     delinkWalletFromAccount,
     getContextDocument,
@@ -824,6 +825,36 @@ try {
   });
   if (replayGift.eligible || replayGift.reason !== "account_registered") {
     throw new Error(`Wallet initiation grant must be account-idempotent: ${JSON.stringify(replayGift)}`);
+  }
+  const deletedGiftAccount = deleteAccountRuntimeData({
+    accountId: oauthAccount.id,
+    archiveId: "deleted_account_runtime_smoke_oauth",
+    actorSessionId: "runtime-smoke-session",
+    reason: "runtime_smoke_recreate_guard",
+  });
+  if (!deletedGiftAccount.ok || deletedGiftAccount.removed.accountDeletionAudit !== 1) {
+    throw new Error(`Account deletion should create a deletion audit record: ${JSON.stringify(deletedGiftAccount)}`);
+  }
+  const recreatedOauthAccount = getOrCreateProviderAccount({
+    provider: "github",
+    providerUserId: "runtime-smoke-gh",
+    username: "runtime-smoke",
+  });
+  const recreatedGift = walletInitiationGrantStatus({
+    accountId: recreatedOauthAccount.id,
+    walletAddress: "rRuntimeSmokeWalletInitReplay111111",
+  });
+  if (recreatedGift.eligible || recreatedGift.reason !== "deleted_account_faucet_guard") {
+    throw new Error(`Deleted account identity must not be eligible for another initiation grant: ${JSON.stringify(recreatedGift)}`);
+  }
+  process.env.TASKNODE_DELETION_FAUCET_GUARD_EXEMPT_ACCOUNT_IDS = recreatedOauthAccount.id;
+  const exemptRecreatedGift = walletInitiationGrantStatus({
+    accountId: recreatedOauthAccount.id,
+    walletAddress: "rRuntimeSmokeWalletInitReplay111111",
+  });
+  delete process.env.TASKNODE_DELETION_FAUCET_GUARD_EXEMPT_ACCOUNT_IDS;
+  if (!exemptRecreatedGift.eligible) {
+    throw new Error(`Configured QA account exemption should allow recycled account testing: ${JSON.stringify(exemptRecreatedGift)}`);
   }
 
   const persistedChat = appendChatTurn({

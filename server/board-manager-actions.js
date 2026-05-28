@@ -238,6 +238,60 @@ async function recordResult({ runId, decision, result }) {
   });
 }
 
+async function findDuplicateMessageDelivery({ accountId = "", hiveContextEntryId = "" } = {}) {
+  const normalizedAccountId = safeText(accountId, 180);
+  const normalizedHiveContextEntryId = safeText(hiveContextEntryId, 180);
+  if (!normalizedAccountId || !normalizedHiveContextEntryId) return null;
+  const existing = await query(
+    `
+      SELECT id, run_id, account_id, message_text, created_at, metadata_json
+      FROM board_manager_user_messages
+      WHERE account_id = $1
+        AND status <> 'archived'
+        AND metadata_json->>'hive_context_entry_id' = $2
+        AND EXISTS (
+          SELECT 1
+          FROM chat_messages cm
+          WHERE cm.id = board_manager_user_messages.metadata_json->>'chat_message_id'
+            AND cm.account_id = board_manager_user_messages.account_id
+            AND cm.conversation_id = board_manager_user_messages.metadata_json->>'conversation_id'
+            AND cm.role = 'assistant'
+        )
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `,
+    [normalizedAccountId, normalizedHiveContextEntryId]
+  );
+  return existing.rows[0] || null;
+}
+
+async function findRecentAccountMessageDelivery({ accountId = "", hours = 6 } = {}) {
+  const normalizedAccountId = safeText(accountId, 180);
+  if (!normalizedAccountId) return null;
+  const windowHours = Math.min(Math.max(Number(hours) || 6, 1), 24);
+  const existing = await query(
+    `
+      SELECT id, run_id, account_id, message_text, created_at, metadata_json
+      FROM board_manager_user_messages
+      WHERE account_id = $1
+        AND status <> 'archived'
+        AND created_at > now() - ($2::text || ' hours')::interval
+        AND EXISTS (
+          SELECT 1
+          FROM chat_messages cm
+          WHERE cm.id = board_manager_user_messages.metadata_json->>'chat_message_id'
+            AND cm.account_id = board_manager_user_messages.account_id
+            AND cm.conversation_id = board_manager_user_messages.metadata_json->>'conversation_id'
+            AND cm.role = 'assistant'
+        )
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `,
+    [normalizedAccountId, String(windowHours)]
+  );
+  return existing.rows[0] || null;
+}
+
 async function executeMessageUser({ runId, decision, sourcePacket }) {
   const target = resolveMessageTarget({ decision, sourcePacket });
   const accountId = target.accountId;
@@ -253,6 +307,38 @@ async function executeMessageUser({ runId, decision, sourcePacket }) {
       throw new Error(`board_manager_message_user_${hiveConversation.error || "hive_chat_unavailable"}`);
     }
     conversationId = hiveConversation.conversation?.conversationId || hiveConversation.conversation?.id || conversationId;
+  }
+  const duplicate = await findDuplicateMessageDelivery({
+    accountId,
+    hiveContextEntryId: target.hiveContextEntryId,
+  });
+  if (duplicate) {
+    return {
+      executed: false,
+      skipped: true,
+      reason: "board_manager_message_user_duplicate_hive_context_entry",
+      duplicateMessageId: duplicate.id,
+      duplicateRunId: duplicate.run_id,
+      accountId,
+      conversationId,
+      hiveContextEntryId: target.hiveContextEntryId,
+      messagePreview: safeText(duplicate.message_text, 240),
+    };
+  }
+  if (!target.hiveContextEntryId) {
+    const recent = await findRecentAccountMessageDelivery({ accountId });
+    if (recent) {
+      return {
+        executed: false,
+        skipped: true,
+        reason: "board_manager_message_user_recent_account_message",
+        duplicateMessageId: recent.id,
+        duplicateRunId: recent.run_id,
+        accountId,
+        conversationId,
+        messagePreview: safeText(recent.message_text, 240),
+      };
+    }
   }
   const messageId = `boardmsg_${randomUUID()}`;
   const assistantMessageId = `msg_${messageId}_assistant`.slice(0, 180);

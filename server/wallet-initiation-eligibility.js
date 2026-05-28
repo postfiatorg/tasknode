@@ -1,9 +1,8 @@
-import { createHash } from "node:crypto";
-
-function stableId(value, prefix) {
-  const digest = createHash("sha256").update(String(value || "")).digest("hex").slice(0, 24);
-  return `${prefix}_${digest}`;
-}
+import {
+  accountDeletionEmailHash,
+  faucetProviderIdentityHash,
+  findRuntimeBlockingAccountDeletionAudit,
+} from "./account-deletion-audit.js";
 
 export function walletInitiationAmountPft() {
   const amount = Number(process.env.TASKNODE_WALLET_INITIATION_PFT || 12);
@@ -13,10 +12,6 @@ export function walletInitiationAmountPft() {
 
 export function walletInitiationAmountDrops() {
   return String(Math.round(walletInitiationAmountPft() * 1_000_000));
-}
-
-function walletInitiationIdentityHash(provider, providerUserId) {
-  return stableId(`${String(provider || "").toLowerCase()}:${String(providerUserId || "")}`, "identity");
 }
 
 function walletInitiationIdentities(account) {
@@ -30,9 +25,13 @@ function walletInitiationIdentities(account) {
     .map((provider) => ({
       provider: String(provider.id || "").trim().toLowerCase(),
       providerUserId: String(provider.providerUserId || "").trim(),
-      providerUserIdHash: walletInitiationIdentityHash(provider.id, provider.providerUserId),
+      providerUserIdHash: faucetProviderIdentityHash(provider.id, provider.providerUserId),
       username: provider.username || null,
     }));
+}
+
+function walletInitiationEmailHash(account) {
+  return accountDeletionEmailHash(account?.primaryEmailCanonical || "");
 }
 
 export function publicWalletInitiationGrant(grant) {
@@ -72,6 +71,22 @@ export function walletInitiationGrantStatusForState({
   if (!normalizedAccountId) return unavailable("login_required", "Sign in with GitHub, X, Telegram, or Discord before claiming the wallet initiation gift.");
   const account = state.accounts?.[normalizedAccountId];
   if (!account) return unavailable("account_not_found", "The signed-in account was not found.");
+  const identities = walletInitiationIdentities(account);
+  const emailHash = walletInitiationEmailHash(account);
+  const deletionAudit = findRuntimeBlockingAccountDeletionAudit({
+    state,
+    accountId: normalizedAccountId,
+    walletAddress: normalizedWalletAddress,
+    providerIdentityHashes: identities.map((identity) => identity.providerUserIdHash),
+    emailHash,
+  });
+  if (deletionAudit) {
+    return unavailable(
+      "deleted_account_faucet_guard",
+      "This sign-in identity previously deleted a Task Node account and is not eligible for another wallet initiation gift.",
+      { deletionAudit }
+    );
+  }
 
   const activeGrants = (state.walletInitiationGrants || []).filter((grant) => (
     grant && ["processing", "completed", "unknown"].includes(grant.status)
@@ -97,10 +112,9 @@ export function walletInitiationGrantStatusForState({
     if (linkedWallet.proof?.purpose !== "wallet_create" && !walletCreatedInAccountForRecord(normalizedAccountId, linkedWallet)) return unavailable("wallet_create_proof_required", "The USDC top-up PFT grant is only available for wallets created in this account.");
     const walletBlock = walletRegistered(linkedWallet.address);
     if (walletBlock) return walletBlock;
-    return available({ source: "usdc_top_up", provider: "ethereum_usdc_top_up", identities: [], message: `${amountPft.toLocaleString("en-US")} PFT grant available after a qualifying USDC top-up.` });
+    return available({ source: "usdc_top_up", provider: "ethereum_usdc_top_up", identities: [], emailHash, message: `${amountPft.toLocaleString("en-US")} PFT grant available after a qualifying USDC top-up.` });
   }
 
-  const identities = walletInitiationIdentities(account);
   if (identities.length === 0) {
     const reason = account.primaryProvider === "email" ? "email_ineligible" : "provider_required";
     const message = account.primaryProvider === "email"
@@ -120,6 +134,5 @@ export function walletInitiationGrantStatusForState({
   if (providerGrant) {
     return unavailable("provider_identity_registered", "This sign-in identity already received a wallet initiation gift.", { grant: publicWalletInitiationGrant(providerGrant) });
   }
-  return available({ provider: identities[0].provider, identities, message: `${amountPft.toLocaleString("en-US")} PFT initiation gift available after creating a new wallet.` });
+  return available({ provider: identities[0].provider, identities, emailHash, message: `${amountPft.toLocaleString("en-US")} PFT initiation gift available after creating a new wallet.` });
 }
-

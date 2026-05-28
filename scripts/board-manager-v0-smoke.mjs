@@ -137,6 +137,40 @@ assert.equal(busyCandidateBoard.signals[0].allowedNextActions.includes("initiate
 assert.equal(busyCandidateBoard.signals[0].allowedNextActions.includes("message_user"), true);
 assert.equal(busyCandidateBoard.signals[0].preferredNextAction, "message_user");
 
+const pendingUserFollowupBoard = buildBoardManagerActionPressure({
+  hiveProjects: {
+    projects: {
+      empty_protocol_project: {
+        id: "empty_protocol_project",
+        title: "Empty Protocol Project",
+        status: "active",
+        taskCount: 2,
+        contributorCount: 1,
+        tasks: [],
+        contributors: [],
+      },
+    },
+  },
+  networkTaskContent: {
+    completed: [],
+    outstanding: [{ projectId: "other_project", candidateWalletAddress: "rCandidate" }],
+    stopped: [],
+    pendingGeneration: [],
+  },
+  networkTaskCandidates: [{ accountId: "acct_candidate", walletAddress: "rCandidate" }],
+  recentBoardManagerRuns: [
+    {
+      action: "message_user",
+      state: "executed",
+      dryRun: false,
+      completedAt: new Date().toISOString(),
+    },
+  ],
+});
+assert.equal(pendingUserFollowupBoard.summary.recentUserFollowup, true);
+assert.equal(pendingUserFollowupBoard.summary.requiresAction, false);
+assert.equal(pendingUserFollowupBoard.signals[0].requiresAction, false);
+
 const documentRefreshOnlyBoard = buildBoardManagerActionPressure({
   hiveProjects: {
     projects: {

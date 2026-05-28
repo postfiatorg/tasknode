@@ -1,4 +1,5 @@
 import { databaseEnabled, query } from "./db/pool.js";
+import { findBlockingAccountDeletionFaucetAudit } from "./account-deletion-audit.js";
 
 const BLOCKING_STATUSES = ["processing", "completed", "unknown"];
 
@@ -48,6 +49,25 @@ export async function findBlockingWalletInitiationGrant({ accountId = "", wallet
 
 export async function mergeWalletInitiationGrantStatus(status, { accountId = "", walletAddress = "" } = {}) {
   if (!status || !databaseEnabled() || status.eligible === false) return status;
+
+  const providerIdentityHashes = Array.isArray(status.identities)
+    ? status.identities.map((identity) => identity?.providerUserIdHash).filter(Boolean)
+    : [];
+  const deletionAudit = await findBlockingAccountDeletionFaucetAudit({
+    accountId,
+    walletAddress,
+    providerIdentityHashes,
+    emailHash: status.emailHash || "",
+  });
+  if (deletionAudit) {
+    return {
+      ...status,
+      eligible: false,
+      reason: "deleted_account_faucet_guard",
+      message: "This sign-in identity previously deleted a Task Node account and is not eligible for another wallet initiation gift.",
+      deletionAudit,
+    };
+  }
 
   const blocking = await findBlockingWalletInitiationGrant({ accountId, walletAddress });
   if (!blocking) return status;

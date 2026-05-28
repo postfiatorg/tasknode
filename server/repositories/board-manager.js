@@ -601,7 +601,7 @@ export async function buildBoardManagerSourcePacket({
     currentTaskRequests({ limit: 8 }),
     getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 12, stoppedLimit: 6, pendingLimit: 6 }).catch(() => null),
     listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
-    recentBoardManagerRuns({ limit: 5 }),
+    recentBoardManagerRuns({ limit: 20 }),
   ]);
 
   const generatedAt = new Date().toISOString();
@@ -653,7 +653,7 @@ export async function buildBoardManagerSourcePacket({
       projectDeletionPolicy: "archive_project hides a project from the active Hive board without hard deletion. Board Manager archives are soft and reversible; only explicit operator archive locks prevent planner resurrection.",
       taskLifecyclePolicy: "Network tasks must use the existing PFTL task lifecycle.",
       networkTaskPolicy: "Board Manager initiates allocation/generation jobs only. The network task generation worker writes concrete task offers through the existing task engine. Default reward band is 10000-50000 PFT.",
-      userResponsePolicy: "Hive Context entries are inbound user messages. message_user responses must target a hive_context_entry when possible and are delivered back to that entry's sourceConversationId as a chat assistant message.",
+      userResponsePolicy: "Hive Context entries are inbound user messages. message_user responses must target a hive_context_entry when possible and are delivered back to that entry's sourceConversationId as a chat assistant message. A prior message_user response is pending user follow-up; do not send another Hive message until new user input or a materially new blocker appears.",
     },
   };
 

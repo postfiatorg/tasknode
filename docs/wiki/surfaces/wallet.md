@@ -52,6 +52,7 @@ If a linked wallet has no saved local vault, the app cannot unlock from the moda
 - PFT balance and activity: PFTL-derived cache.
 - Ethereum top-ups: generated deposit addresses and observed token deposits.
 - Initiation grant register: one grant per eligible account or wallet, whether it came from OAuth wallet creation or the qualifying USDC top-up path. Eligibility is server-side, but payout is user-initiated from the browser only after the matching local vault is saved or unlocked.
+- Account deletion audit: deleting an account writes an `account_deletion_audit` record with account id, archive id, wallet/deposit addresses when present, hashed provider identities, hashed email, and non-secret profile labels. Initiation grant eligibility uses this audit to prevent deleting and recreating the same identity to farm the faucet.
 
 ## Diagram
 
@@ -79,6 +80,8 @@ flowchart LR
 - Wallet creation and USDC top-up sync must not auto-send an initiation grant before the matching local seed vault is saved or unlocked.
 - A qualifying USDC top-up should not create duplicate PFT grants if the account
   or wallet already has a processing, completed, or unknown initiation grant.
+- Recreated accounts with a matching deletion audit are ineligible for another initiation grant unless explicitly exempted for QA.
+- QA exemptions are controlled with `TASKNODE_DELETION_FAUCET_GUARD_EXEMPT_ACCOUNT_IDS`, `TASKNODE_DELETION_FAUCET_GUARD_EXEMPT_WALLETS`, `TASKNODE_DELETION_FAUCET_GUARD_EXEMPT_IDENTITY_HASHES`, or `TASKNODE_DELETION_FAUCET_GUARD_EXEMPT_EMAIL_HASHES`. The guard defaults on and can be disabled with `TASKNODE_DELETION_FAUCET_GUARD_ENABLED=false`.
 
 ## Reviewer To Do List
 

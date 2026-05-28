@@ -55,6 +55,8 @@ const migrations = [
   "045_profile_daily_airdrop_processing_status.sql",
   "046_wallet_initiation_grants.sql",
   "047_telegram_bot_events.sql",
+  "048_account_deletion_audit.sql",
+  "049_board_manager_message_dedupe_index.sql",
 ];
 
 let migrated = false;

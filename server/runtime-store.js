@@ -23,6 +23,7 @@ import {
   reserveWalletInitiationGrantRecord,
   updateWalletInitiationGrantRecord,
 } from "./wallet-initiation-grants-db.js";
+import { accountDeletionAuditSnapshot } from "./account-deletion-audit.js";
 import {
   publicWalletInitiationGrant,
   walletInitiationAmountDrops,
@@ -50,6 +51,7 @@ const defaultState = {
   telegramBotPreferences: {},
   telegramBotEvents: [],
   walletInitiationGrants: [],
+  accountDeletionAudit: [],
   ethereumDepositAccounts: {},
   ethereumDepositRetiredAccounts: [],
   ethereumDepositAddressIndex: {},
@@ -61,7 +63,6 @@ const defaultState = {
   emailChallenges: {},
   authEvents: [],
 };
-
 let state = loadState();
 
 export function runtimeStoreStatus() {
@@ -99,6 +100,9 @@ function loadState() {
         : [],
       walletInitiationGrants: Array.isArray(parsed.walletInitiationGrants)
         ? parsed.walletInitiationGrants
+        : [],
+      accountDeletionAudit: Array.isArray(parsed.accountDeletionAudit)
+        ? parsed.accountDeletionAudit
         : [],
       ethereumDepositAccounts: plainObject(parsed.ethereumDepositAccounts),
       ethereumDepositRetiredAccounts: Array.isArray(parsed.ethereumDepositRetiredAccounts)
@@ -599,6 +603,11 @@ export async function failWalletInitiationGrant({ grantId = "", error = "", unkn
 
 export function getAccount(accountId) {
   return accountPayload(state.accounts[accountId] || null);
+}
+
+export function getAccountDeletionAuditSnapshot({ accountId = "" } = {}) {
+  const normalizedAccountId = accountId ? safeId(accountId, "account") : "";
+  return accountDeletionAuditSnapshot(state.accounts[normalizedAccountId] || null);
 }
 
 function syncAccountSessions(account) {

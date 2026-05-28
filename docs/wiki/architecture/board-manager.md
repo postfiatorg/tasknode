@@ -17,6 +17,7 @@ System Status row: `board_manager`
 - Source tables: `board_manager_scopes`, `board_manager_runs`,
   `board_manager_jobs`, `board_manager_leases`, and
   `board_manager_action_results`.
+- User-message delivery table: `board_manager_user_messages`.
 - Current Hive action results are rendered in the Hive surface as inspectable
   agent activity.
 
@@ -53,3 +54,10 @@ Inspect `board_manager_jobs.last_error`, `board_manager_runs.error`, provider
 secrets, and action-hook errors before retrying. Do not manually mutate Hive
 project rows while the Board Manager scope is enabled unless the repair is a
 bounded data fix with a recorded reason.
+
+If a user receives repeated Hive messages, inspect recent `message_user` runs
+and `board_manager_user_messages` first. The action hook should skip duplicate
+responses to the same Hive Context entry and should rate-limit account-target
+fallback messages while waiting for user follow-up. A repeated-message burst
+usually means the board still looks stalled while recent user follow-up was not
+treated as motion.

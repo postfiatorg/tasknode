@@ -103,12 +103,22 @@ function projectPlannedCount(project = {}, key = "") {
 function hasRecentProjectHandling({ projectId = "", recentBoardManagerRuns = [] } = {}) {
   const normalizedProjectId = safeText(projectId, 180);
   if (!normalizedProjectId) return false;
-  return safeArray(recentBoardManagerRuns).slice(0, 5).some((run) => {
+  return safeArray(recentBoardManagerRuns).slice(0, 12).some((run) => {
     const action = safeText(run.selectedAction || run.action, 80);
     const targetId = safeText(run.targetId || run.target_id || run.decision?.target_id, 240);
     const resultTargetId = safeArray(run.actionResults).some((result) => safeText(result.targetId || result.target_id, 240) === normalizedProjectId);
     return ["initiate_network_task", "assign_contributor", "archive_project", "message_user"].includes(action)
       && (targetId === normalizedProjectId || resultTargetId);
+  });
+}
+
+function hasRecentUserFollowup({ recentBoardManagerRuns = [] } = {}) {
+  return safeArray(recentBoardManagerRuns).slice(0, 20).some((run) => {
+    const action = safeText(run.selectedAction || run.action, 80);
+    const state = safeText(run.state, 80);
+    if (action !== "message_user") return false;
+    if (run.dryRun === true) return false;
+    return !["failed", "skipped", "blocked"].includes(state);
   });
 }
 
@@ -121,6 +131,7 @@ function projectPressureSignal({
   eligibleCandidateCount = 0,
   candidateCount = 0,
   recentBoardManagerRuns = [],
+  recentUserFollowup = false,
 } = {}) {
   const projectId = safeText(project.id, 180);
   const status = safeText(project.status, 80).toLowerCase() || "unknown";
@@ -134,7 +145,8 @@ function projectPressureSignal({
   const hasPendingNetworkTaskGeneration = pendingProjectIds.has(projectId);
   const hasCompletedNetworkTask = completedProjectIds.has(projectId);
   const hasStoppedNetworkTask = stoppedProjectIds.has(projectId);
-  const recentlyHandled = hasRecentProjectHandling({ projectId, recentBoardManagerRuns });
+  const recentlyHandled = hasRecentProjectHandling({ projectId, recentBoardManagerRuns })
+    || (!eligibleCandidateCount && recentUserFollowup);
   const reasons = [];
 
   if (plannedTaskCount > liveTaskCount) reasons.push("planned task count is not backed by live project task rows");
@@ -211,6 +223,7 @@ export function buildBoardManagerActionPressure({
   const unavailableCandidateCount = Math.max(0, candidateCount - eligibleCandidateCount);
   const staleHiveSecretary = numeric(freshness.hiveSecretaryAgeMs, 0) > 60 * 60 * 1000;
   const activeProjects = projects.filter((project) => safeText(project.status, 80).toLowerCase() === "active");
+  const recentUserFollowup = hasRecentUserFollowup({ recentBoardManagerRuns });
   const signals = activeProjects
     .map((project) =>
       projectPressureSignal({
@@ -222,6 +235,7 @@ export function buildBoardManagerActionPressure({
         eligibleCandidateCount,
         candidateCount,
         recentBoardManagerRuns,
+        recentUserFollowup,
       })
     )
     .filter(Boolean);
@@ -251,6 +265,7 @@ export function buildBoardManagerActionPressure({
       unavailableCandidateCount,
       activeNetworkTaskCapacityBlockerCount: capacityBlockers.length,
       staleHiveSecretary,
+      recentUserFollowup,
     },
     candidateCapacity: {
       policy: {
@@ -278,6 +293,7 @@ export function buildBoardManagerActionPressure({
       documentRefreshIsNotLiveMotion: true,
       zeroEligibleCandidatesRequiresFollowup: true,
       doNothingRequiresHealthyMotionOrRecentHandling: true,
+      recentUserFollowupCountsAsRecentHandling: true,
       personalTasksDoNotAffectNetworkTaskEligibility: true,
       candidateCapacityIsConsumedOnlyByOutstandingOrPendingNetworkTasks: true,
       acceptableResolutions: [
