@@ -1665,7 +1665,7 @@ function ChatSurface({
     const taskRequestAssistantId = requestId ? `msg_${requestId}_request_assistant`.slice(0, 180) : "";
     const hiveContextMessageId = isHiveContext ? `msg_${newClientCorrelationId("hive")}_user`.slice(0, 180) : "";
     const hiveContextAssistantId = isHiveContext ? `${hiveContextMessageId}_assistant`.slice(0, 180) : "";
-    const pendingId = taskRequestAssistantId || (isHiveContext ? "" : hiveContextAssistantId) || `assistant-pending-${startedAt}`;
+    const pendingId = taskRequestAssistantId || hiveContextAssistantId || `assistant-pending-${startedAt}`;
     const submittedAttachments = attachments;
     const fallbackPrompt = promptForAttachments(submittedAttachments);
     const submittedText = message || fallbackPrompt;
@@ -1716,9 +1716,7 @@ function ChatSurface({
         turnMetadata
       );
     setTurns((current) => (
-      isHiveContext
-        ? [...current, submittedUserTurn]
-        : [...current, submittedUserTurn, createPendingAssistantTurn(pendingId, startedAt, turnMetadata)]
+      [...current, submittedUserTurn, createPendingAssistantTurn(pendingId, startedAt, turnMetadata)]
     ));
     if (!activeChat) {
       onActiveChatChange?.({
@@ -1797,10 +1795,11 @@ function ChatSurface({
 
         if (result.body.assistant) {
           const assistantTurn = normalizeChatMessage(result.body.assistant, pendingId);
-          setTurns((current) => [...current, { ...assistantTurn, id: pendingId }]);
+          setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
         } else {
-          setTurns((current) => [
-            ...current,
+          setTurns((current) => replaceTurnById(
+            current,
+            pendingId,
             {
               id: `hive-status-${result.body.entry.id || startedAt}`,
               role: "assistant",
@@ -1811,8 +1810,8 @@ function ChatSurface({
                   inline: [{ text: result.body.message || "Saved to Hive Context. Hive may respond here if useful." }],
                 },
               ],
-            },
-          ]);
+            }
+          ));
         }
         setSendMessage("");
         setStatusTone("muted");

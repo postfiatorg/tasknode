@@ -23,6 +23,14 @@ function numeric(value) {
   return Number.isFinite(parsed) ? Number(parsed.toFixed(6)) : 0;
 }
 
+const activeTaskStateRank = new Map([
+  ["accepted", 10],
+  ["verification_requested", 20],
+  ["verification_response_submitted", 30],
+  ["submitted", 40],
+  ["proposed", 50],
+]);
+
 function intValue(value) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
@@ -115,6 +123,7 @@ function publicContributor(row = {}) {
     pft: numeric(row.pft_earned),
     lastActive: safeText(row.last_active_label, 80),
     role: safeText(row.role_label, 80),
+    currentTasks: [],
   };
 }
 
@@ -163,8 +172,8 @@ function operatorMap(projects = {}) {
   const operators = {};
   for (const project of Object.values(projects)) {
     for (const contributor of safeArray(project.contributors)) {
-      if (!contributor.wallet || operators[contributor.wallet]) continue;
-      operators[contributor.wallet] = {
+      if (!contributor.wallet) continue;
+      const operator = {
         codename: contributor.codename || "Operator",
         archetype: contributor.archetype || "",
         badge: contributor.badge || 0,
@@ -172,14 +181,46 @@ function operatorMap(projects = {}) {
         cap: contributor.cap || 0,
         load: contributor.load || 0,
         status: contributor.status || "active",
+        tasks: contributor.tasks || 0,
+        pft: contributor.pft || 0,
+        currentTasks: safeArray(contributor.currentTasks),
         nft: contributor.nft || null,
       };
+      operators[contributor.wallet] = operators[contributor.wallet]
+        ? mergeContributor(operators[contributor.wallet], operator)
+        : operator;
     }
   }
   return operators;
 }
 
-function deriveContributorFromTask(task = {}) {
+function taskNextAction(state = "") {
+  const normalized = safeText(state, 80).toLowerCase();
+  if (normalized === "accepted") return "Complete the task and submit evidence for review.";
+  if (normalized === "verification_requested") return "Answer the reviewer follow-up with the missing verification detail.";
+  if (normalized === "verification_response_submitted") return "Wait for review or prepare any final clarification.";
+  if (normalized === "submitted") return "Wait for review, then respond quickly if verification is requested.";
+  if (normalized === "proposed") return "Open the task, accept it, and start the evidence packet.";
+  return "Open the project task row and inspect the latest state.";
+}
+
+function taskStateRank(state = "") {
+  return activeTaskStateRank.get(safeText(state, 80).toLowerCase()) || 0;
+}
+
+function taskIsNextCandidate(task = {}) {
+  return Boolean(task?.taskId && taskStateRank(task.state) > 0);
+}
+
+function compareNextTask(left = {}, right = {}) {
+  const leftRank = taskStateRank(left.state);
+  const rightRank = taskStateRank(right.state);
+  if (leftRank !== rightRank) return leftRank - rightRank;
+  if (numeric(right.rewardPft) !== numeric(left.rewardPft)) return numeric(right.rewardPft) - numeric(left.rewardPft);
+  return timestampMs(right.updatedAt) - timestampMs(left.updatedAt);
+}
+
+function deriveContributorFromTask(project = {}, task = {}) {
   const wallet = safeText(task.assignee, 120);
   if (!wallet) return null;
   const taskState = safeText(task.state, 80).toLowerCase();
@@ -198,6 +239,18 @@ function deriveContributorFromTask(task = {}) {
     pft: paidPft,
     lastActive: task.age || "recently",
     role: "contributor",
+    currentTasks: taskIsNextCandidate(task)
+      ? [{
+          projectId: project.id,
+          projectName: project.name,
+          taskId: task.taskId,
+          title: task.title,
+          state: task.state,
+          rewardPft: numeric(task.pft),
+          nextAction: taskNextAction(task.state),
+          updatedAt: task.updatedAt || task.createdAt || "",
+        }]
+      : [],
     nft: task.assigneeNft || null,
   };
 }
@@ -207,6 +260,12 @@ function mergeContributor(left = {}, right = {}) {
   const tasks = intValue(left.tasks) + intValue(right.tasks);
   const load = intValue(left.load) + intValue(right.load);
   const cap = Math.max(intValue(left.cap), intValue(right.cap), load, 1);
+  const currentTasks = [...safeArray(left.currentTasks), ...safeArray(right.currentTasks)]
+    .filter((task, index, list) => (
+      task?.taskId &&
+      list.findIndex((item) => item?.taskId === task.taskId) === index
+    ))
+    .sort(compareNextTask);
   return {
     ...left,
     codename: left.codename || right.codename,
@@ -220,6 +279,7 @@ function mergeContributor(left = {}, right = {}) {
     pft,
     lastActive: left.lastActive || right.lastActive,
     role: left.role || right.role,
+    currentTasks,
     nft: left.nft || right.nft || null,
   };
 }
@@ -262,7 +322,7 @@ function populateDerivedProjectRollups(projects = {}) {
   for (const project of Object.values(projects)) {
     const byWallet = new Map(safeArray(project.contributors).map((contributor) => [contributor.wallet, contributor]));
     for (const task of safeArray(project.tasks)) {
-      const contributor = deriveContributorFromTask(task);
+      const contributor = deriveContributorFromTask(project, task);
       if (contributor) {
         byWallet.set(contributor.wallet, byWallet.has(contributor.wallet)
           ? mergeContributor(byWallet.get(contributor.wallet), contributor)

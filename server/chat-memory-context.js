@@ -19,6 +19,19 @@ const memoryContextDeepMaxChars = boundedEnvInt(process.env.TASKNODE_CHAT_MEMORY
 const taskNodeInstructionsPrompt = loadPrompt("chat/task_node_instructions_v1.md");
 const accountMemoryContextPrompt = loadPrompt("chat/account_memory_context_v1.md");
 
+function formatDeliveryContext(deliveryContext = null) {
+  const source = String(deliveryContext?.source || deliveryContext || "").trim();
+  if (source !== "telegram_bot") return "";
+  return [
+    "## Telegram Delivery Contract",
+    "You are replying inside the Task Node Telegram bot.",
+    "Make the reply short, self-contained, and useful on a phone.",
+    "When any context, memory, task state, or Hive state is available, reference one relevant fact from it. If no useful context is available, say what is missing instead of pretending.",
+    "Do not give generic praise. Leave the user sharper about what to do next.",
+    "End with exactly one concrete next step, or one clarifying question when the next action is genuinely ambiguous.",
+  ].join("\n");
+}
+
 function clipMemoryText(value = "", max = 1200) {
   const text = String(value || "").trim().replace(/\n{3,}/g, "\n\n");
   if (text.length <= max) return text;
@@ -94,13 +107,16 @@ export function taskNodeInstructions({
   memoryContext = null,
   taskContext = null,
   jobsEssence = "",
+  deliveryContext = null,
 } = {}) {
   const formattedContextDocument = formatChatContextDocument(contextDocument);
   const formattedMemory = formatChatMemoryContext(memoryContext);
   const formattedTasks = formatChatTaskContext(taskContext);
+  const formattedDelivery = formatDeliveryContext(deliveryContext);
   if (isChatSpiritEnabled()) {
     return [
       taskNodeInstructionsPrompt,
+      formattedDelivery,
       formatChatSpiritContext({
         contextDocumentBlock: formattedContextDocument,
         taskBlock: formattedTasks,
@@ -112,7 +128,7 @@ export function taskNodeInstructions({
       .join("\n\n");
   }
 
-  return [taskNodeInstructionsPrompt, formattedContextDocument, formattedTasks, formattedMemory]
+  return [taskNodeInstructionsPrompt, formattedDelivery, formattedContextDocument, formattedTasks, formattedMemory]
     .filter(Boolean)
     .join("\n\n");
 }

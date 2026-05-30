@@ -15,6 +15,8 @@ Read the packet blocks this way:
 Task quality rules:
 - Generate one task, not a menu of options.
 - Respect the user's requested focus when one is present.
+- If the User does not have an obvious direction as evidenced from their chat and context doc instruct the user to either chat with the agent more to help
+specify what they want out of the system or update their context document so that it is more effective. A good context document specifies a north star, coherent strategies to reach the north star and tactics that compose the strategies that are time bound and specific
 - For Network Tasks and Alpha Tasks, respect the project need and routing reason. Generate the concrete task; do not restate the routing packet as the task.
 - Make the task specific, useful, and independently verifiable.
 - Prefer a 2 to 4 hour workflow that results in an app-supported verifiable artifact.
@@ -52,32 +54,3 @@ Output fields:
 - `reward_offer.amount_estimate_pft`: decimal string selected from the reward rules above.
 - `deadline.accept_by`: ISO-like timestamp or short machine-readable deadline from the packet when available.
 - `deadline.deadline_at`: ISO-like timestamp or `null`.
-
-## Reviewer To Do List
-
-Review implementation against this document (taskgen minimal v1). Mark each item when verified.
-
-### Memory Efficiency
-- [ ] Prompt input blocks bounded; large context clipped or digested before call.
-- [ ] Prompt output schema minimal for downstream storage.
-- [ ] Input blocks clipped per block contract; request bundle size bounded before encrypt.
-
-### Code Quality
-- [ ] Prompt version recorded when output persisted to DB or PFTL payload.
-- [ ] Structured output prompts match parser validation in caller.
-- [ ] Output JSON schema matches worker validation (2–5 steps, evidence surfaces).
-
-### Coherence
-- [ ] Prompt policy matches surface doc behavior (e.g., evidence types, mode rules).
-- [ ] Used-by call sites in docs-content.js still accurate.
-- [ ] Block contract doc and Python `project_taskgen_input` agree on block names.
-
-### Bloat
-- [ ] Prompt text avoids redundant restatement of data already in input blocks.
-- [ ] No duplicate prompt files for same behavior without version bump.
-- [ ] Prompt does not restate full context document when digest/summary block exists.
-
-### Security
-- [ ] Prompt instructs model not to invent hidden state or exfiltrate secrets.
-- [ ] Private/user data handling matches provider privacy mode for caller.
-- [ ] Prompt forbids unsupported evidence types (video, screen recording, etc.).

@@ -96,6 +96,23 @@ async function assertChatConversationReadable({ accountId = "", conversationId =
   }
 }
 
+async function chatConversationHistoryReadableForWrite({ accountId = "", conversationId = "" } = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedConversationId = safeConversationId(conversationId);
+  assertConversationIdAccountBoundary({ accountId: normalizedAccountId, conversationId: normalizedConversationId });
+
+  const conversation = await query(
+    "SELECT account_id, status FROM chat_conversations WHERE id = $1",
+    [normalizedConversationId]
+  );
+  const row = conversation.rows[0];
+  if (!row) return true;
+  if ((row.account_id || "") !== normalizedAccountId) {
+    throw chatConversationNotFound();
+  }
+  return row.status === "active";
+}
+
 const cleanTitle = (title = "") => String(title || "").trim().replace(/\s+/g, " ").slice(0, 80);
 const titleFromPrompt = (prompt = "") => cleanTitle(prompt).slice(0, 64) || "New chat";
 const messagePreview = (message = "") => String(message || "").trim().replace(/\s+/g, " ").slice(0, 140);
@@ -787,6 +804,67 @@ export async function getChatMessages(input = "dev", options = {}) {
       accountId: normalizedAccountId,
       conversationId: normalizedConversationId,
     });
+
+    const rows = await query(
+      `
+        SELECT *
+        FROM chat_messages
+        WHERE conversation_id = $1
+          AND account_id = $3
+        ORDER BY message_order DESC
+        LIMIT $2
+      `,
+      [normalizedConversationId, normalizedLimit, normalizedAccountId]
+    );
+    const orderedMessages = await hydrateContextEditProposalMetadata(
+      rows.rows.reverse(),
+      normalizedAccountId
+    );
+    const messageIds = orderedMessages.map((row) => row.id);
+    const attachmentsByMessage = new Map();
+    if (messageIds.length > 0) {
+      const attachmentRows = await query(
+        `
+          SELECT *
+          FROM chat_attachments
+          WHERE message_id = ANY($1::text[])
+          ORDER BY message_id ASC, ordinal ASC
+        `,
+        [messageIds]
+      );
+      for (const row of attachmentRows.rows) {
+        const existing = attachmentsByMessage.get(row.message_id) || [];
+        existing.push(publicAttachment(row));
+        attachmentsByMessage.set(row.message_id, existing);
+      }
+    }
+    return orderedMessages.map((row) => publicMessage(row, attachmentsByMessage.get(row.id) || []));
+  } catch (error) {
+    if (error?.message === "chat_conversation_not_found") throw error;
+    if (process.env.TASKNODE_POSTGRES_STRICT === "false") {
+      return getRuntimeChatMessages(normalizedConversationId).slice(-normalizedLimit);
+    }
+    throw error;
+  }
+}
+
+export async function getChatMessagesForWrite(input = "dev", options = {}) {
+  const { accountId, conversationId, limit = 30 } = chatMessagesArgs(input, options);
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 30, 1), maxMessageLimit);
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedConversationId = safeConversationId(conversationId);
+  assertConversationIdAccountBoundary({
+    accountId: normalizedAccountId,
+    conversationId: normalizedConversationId,
+  });
+  if (!useDatabase()) return getRuntimeChatMessages(normalizedConversationId).slice(-normalizedLimit);
+
+  try {
+    const readable = await chatConversationHistoryReadableForWrite({
+      accountId: normalizedAccountId,
+      conversationId: normalizedConversationId,
+    });
+    if (!readable) return [];
 
     const rows = await query(
       `

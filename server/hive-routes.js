@@ -1,4 +1,5 @@
 import {
+  appendChatTurn,
   appendChatUserMessage,
   enableHiveConversation,
   getHiveConversation,
@@ -16,6 +17,11 @@ import {
   saveHiveContextEntry,
 } from "./repositories/hive-context.js";
 import { getAccountIdentityProfile } from "./runtime-store.js";
+import { decodeTextDataUrl, normalizeChatAttachments } from "./chat-attachment-utils.js";
+import { executeHiveImmediateResponse } from "./hive-immediate-response.js";
+
+const maxHiveAttachmentTextLength = 12_000;
+const maxHiveAttachmentExcerptLength = 800;
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -31,6 +37,23 @@ function safeAttachments(items = []) {
         dataUrl: typeof item?.dataUrl === "string" ? item.dataUrl : undefined,
       }))
     : [];
+}
+
+function hiveContextAttachmentSummaries(items = []) {
+  return normalizeChatAttachments(items).map((attachment) => {
+    const textContent = attachment.kind === "text"
+      ? safeText(decodeTextDataUrl(attachment.dataUrl), maxHiveAttachmentTextLength)
+      : "";
+    return {
+      name: safeText(attachment.name || "attachment", 160),
+      mimeType: safeText(attachment.mimeType || "", 120),
+      size: Math.max(0, Number(attachment.size || 0)),
+      source: safeText(attachment.source || "", 80),
+      kind: safeText(attachment.kind || "file", 40),
+      textContent: textContent || undefined,
+      textExcerpt: textContent ? safeText(textContent, maxHiveAttachmentExcerptLength) : undefined,
+    };
+  });
 }
 
 function linkedWalletForSession({ getLinkedWallet, session }) {
@@ -153,12 +176,7 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
   );
   const sourceConversationTitle = safeText(payload?.conversationTitle || "", 160);
   const attachments = safeAttachments(payload?.attachments || []);
-  const hiveContextAttachments = attachments.map(({ name, mimeType, size, source }) => ({
-    name,
-    mimeType,
-    size,
-    source,
-  }));
+  const hiveContextAttachments = hiveContextAttachmentSummaries(attachments);
   const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
   const identityProfile = getAccountIdentityProfile({ accountId: session.accountId }) || {};
   const entry = await saveHiveContextEntry({
@@ -192,25 +210,80 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
   }
   let chatTurn = null;
   let chatHistoryWarning = "";
+  let immediateResponseWarning = "";
   if (sourceConversationId) {
     try {
-      chatTurn = await appendChatUserMessage({
+      const immediate = await executeHiveImmediateResponse({
+        accountId: session.accountId,
+        conversationId: sourceConversationId,
+        message: body,
+        attachments,
+        sourceEntryId: entry.id,
+      });
+      chatTurn = await appendChatTurn({
         accountId: session.accountId,
         conversationId: sourceConversationId,
         mode: "Hive",
-        provider: "tasknode",
-        model: "hive_context_store",
+        provider: immediate.provider,
+        model: immediate.model,
+        responseId: immediate.responseId,
         userMessage: body,
+        assistantMessage: immediate.text,
         userMessageId: safeText(payload?.userMessageId || "", 180),
+        assistantMessageId: safeText(payload?.assistantMessageId || "", 180),
         conversationTitle: "Hive",
         userMetadata: {
           kind: "hive_input",
           hiveContextEntryId: entry.id,
         },
+        assistantMetadata: {
+          kind: "hive_immediate_response",
+          hiveContextEntryId: entry.id,
+          sourcePacketDigest: immediate.sourcePacketDigest,
+          boardManagerSourcePacketDigest: immediate.boardManagerSourcePacketDigest,
+          boardManagerSecretaryPacketId: immediate.boardManagerSecretaryPacketId,
+          boardManagerSecretaryPacketDigest: immediate.boardManagerSecretaryPacketDigest,
+          boardManagerSecretaryPacketCurrentForSource: immediate.boardManagerSecretaryPacketCurrentForSource,
+        },
+        runMetadata: {
+          kind: "hive_immediate_response",
+          hiveContextEntryId: entry.id,
+          sourcePacketDigest: immediate.sourcePacketDigest,
+          boardManagerSourcePacketDigest: immediate.boardManagerSourcePacketDigest,
+          boardManagerSecretarySourceDigest: immediate.boardManagerSecretarySourceDigest,
+          boardManagerSecretaryPacketId: immediate.boardManagerSecretaryPacketId,
+          boardManagerSecretaryPacketDigest: immediate.boardManagerSecretaryPacketDigest,
+          boardManagerSecretaryPacketCurrentForSource: immediate.boardManagerSecretaryPacketCurrentForSource,
+          internalBilling: "system_paid",
+          providerCostUsd: immediate.usage?.providerCostUsd || 0,
+        },
         attachments,
+        usage: {
+          ...immediate.usage,
+          costUsd: 0,
+        },
       });
     } catch (error) {
-      chatHistoryWarning = error?.message || "chat_history_write_failed";
+      immediateResponseWarning = error?.message || "hive_immediate_response_failed";
+      try {
+        chatTurn = await appendChatUserMessage({
+          accountId: session.accountId,
+          conversationId: sourceConversationId,
+          mode: "Hive",
+          provider: "tasknode",
+          model: "hive_context_store",
+          userMessage: body,
+          userMessageId: safeText(payload?.userMessageId || "", 180),
+          conversationTitle: "Hive",
+          userMetadata: {
+            kind: "hive_input",
+            hiveContextEntryId: entry.id,
+          },
+          attachments,
+        });
+      } catch (chatError) {
+        chatHistoryWarning = chatError?.message || "chat_history_write_failed";
+      }
     }
   }
 
@@ -219,8 +292,9 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
     message: "Saved to Hive Context. Hive may respond here if useful.",
     entry,
     chatHistoryWarning,
+    immediateResponseWarning,
     user: chatTurn?.user || null,
-    assistant: null,
+    assistant: chatTurn?.assistant || null,
     context: await getHiveContextDocument({ limit: 120 }),
     secretary: await getHiveSecretaryState(),
     boardManager: {

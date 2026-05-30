@@ -1,6 +1,7 @@
 import {
   appendChatTurn,
   getChatMessages,
+  getChatMessagesForWrite,
 } from "./repositories/chat-billing.js";
 import { enqueueChatMemoryJob } from "./repositories/chat-memory.js";
 import {
@@ -42,7 +43,8 @@ export {
 const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const defaultDeepSeekBaseUrl = "https://api.deepseek.com";
-const providerTimeoutMs = Number(process.env.CHAT_PROVIDER_TIMEOUT_MS || 45000);
+const defaultProviderTimeoutMs = 45_000;
+const telegramDiscountThinkingTimeoutMs = 120_000;
 
 export const chatModePrices = {
   "Private Instant": {
@@ -110,6 +112,43 @@ export function chatProviderConfigured(provider) {
   if (provider === "openrouter") return hasOpenRouter();
   if (provider === "deepseek") return hasDeepSeek();
   return false;
+}
+
+function timeoutFromEnv(names = [], fallback = defaultProviderTimeoutMs) {
+  for (const name of names) {
+    const parsed = Number(process.env[name]);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.min(Math.max(Math.floor(parsed), 5_000), 300_000);
+    }
+  }
+  return Math.min(Math.max(Math.floor(Number(fallback) || defaultProviderTimeoutMs), 5_000), 300_000);
+}
+
+export function chatProviderTimeoutMs({ mode = "", provider = "", source = "" } = {}) {
+  const normalizedMode = normalizedChatMode(mode) || String(mode || "").trim();
+  const normalizedProvider = String(provider || chatModePrices[normalizedMode]?.provider || "").trim();
+  const normalizedSource = String(source || "").trim();
+  if (normalizedSource === "telegram_bot" && normalizedMode === "Discount Thinking") {
+    return timeoutFromEnv(
+      [
+        "TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS",
+        "TELEGRAM_DISCOUNT_THINKING_TIMEOUT_MS",
+        "TASKNODE_TELEGRAM_DISCOUNT_THINKING_TIMEOUT_MS",
+      ],
+      telegramDiscountThinkingTimeoutMs
+    );
+  }
+  if (normalizedMode === "Discount Thinking" || normalizedProvider === "deepseek") {
+    return timeoutFromEnv(
+      [
+        "CHAT_PROVIDER_DEEPSEEK_TIMEOUT_MS",
+        "CHAT_PROVIDER_DISCOUNT_THINKING_TIMEOUT_MS",
+        "CHAT_PROVIDER_TIMEOUT_MS",
+      ],
+      defaultProviderTimeoutMs
+    );
+  }
+  return timeoutFromEnv(["CHAT_PROVIDER_TIMEOUT_MS"], defaultProviderTimeoutMs);
 }
 
 function chatProviderEnabled(provider) {
@@ -345,6 +384,7 @@ export function openRouterChatRequest({
   memoryContext = null,
   taskContext = null,
   jobsEssence = "",
+  deliveryContext = null,
 }) {
   const config = chatModeConfig(mode);
   const normalizedAttachments = normalizeChatAttachments(attachments);
@@ -361,6 +401,7 @@ export function openRouterChatRequest({
       memoryContext,
       taskContext,
       jobsEssence,
+      deliveryContext,
     }),
     provider: openRouterProviderPreferences({
       providerOrder: config.providerOrder || [],
@@ -398,12 +439,13 @@ export function openAiResponseRequest({
   instructionsOverride = "",
   responseFormat = null,
   toolsEnabled = true,
+  deliveryContext = null,
 }) {
   const config = chatModeConfig(mode);
   const tools = toolsEnabled ? openAiTools() : [];
   return {
     model,
-    instructions: instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence }),
+    instructions: instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext }),
     input: openAiInput({
       conversationId,
       message,
@@ -437,6 +479,7 @@ export function deepSeekChatRequest({
   memoryContext = null,
   taskContext = null,
   jobsEssence = "",
+  deliveryContext = null,
 }) {
   const config = chatModeConfig(mode);
   return {
@@ -450,6 +493,7 @@ export function deepSeekChatRequest({
       memoryContext,
       taskContext,
       jobsEssence,
+      deliveryContext,
     }),
     thinking: config.reasoningEffort ? { type: "enabled" } : { type: "disabled" },
     reasoning_effort: config.reasoningEffort || undefined,
@@ -463,9 +507,9 @@ export function deepSeekChatRequest({
   };
 }
 
-async function fetchJson(url, options) {
+async function fetchJson(url, options, { timeoutMs = defaultProviderTimeoutMs } = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
@@ -493,9 +537,9 @@ async function fetchJson(url, options) {
   }
 }
 
-async function fetchEventStream(url, options = {}, { signal } = {}) {
+async function fetchEventStream(url, options = {}, { signal, timeoutMs = defaultProviderTimeoutMs } = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), providerTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   function abortFromParent() {
     controller.abort();
@@ -639,9 +683,11 @@ export async function executeOpenAi({
   contextDocument = null,
   taskContext = null,
   jobsEssence = "",
+  deliveryContext = null,
   instructionsOverride = "",
   responseFormat = null,
   toolsEnabled = true,
+  timeoutMs = defaultProviderTimeoutMs,
 }) {
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
   const request = {
@@ -655,18 +701,23 @@ export async function executeOpenAi({
     memoryContext,
     taskContext,
     jobsEssence,
+    deliveryContext,
     instructionsOverride,
     responseFormat,
     toolsEnabled,
   };
-  const body = await fetchJson(`${baseUrl}/responses`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "content-type": "application/json",
+  const body = await fetchJson(
+    `${baseUrl}/responses`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(openAiResponseRequest(request)),
     },
-    body: JSON.stringify(openAiResponseRequest(request)),
-  });
+    { timeoutMs }
+  );
   const text = outputTextFromOpenAi(body);
 
   return {
@@ -689,8 +740,10 @@ async function streamOpenAi({
   contextDocument = null,
   taskContext = null,
   jobsEssence = "",
+  deliveryContext = null,
   onDelta,
   signal,
+  timeoutMs = defaultProviderTimeoutMs,
 }) {
   const baseUrl = (process.env.OPENAI_BASE_URL || defaultOpenAiBaseUrl).replace(/\/+$/, "");
   const request = {
@@ -704,6 +757,7 @@ async function streamOpenAi({
     memoryContext,
     taskContext,
     jobsEssence,
+    deliveryContext,
   };
   const stream = await fetchEventStream(
     `${baseUrl}/responses`,
@@ -716,7 +770,7 @@ async function streamOpenAi({
       },
       body: JSON.stringify(openAiResponseRequest({ ...request, stream: true })),
     },
-    { signal }
+    { signal, timeoutMs }
   );
 
   let text = "";
@@ -782,6 +836,8 @@ async function executeOpenRouter({
   contextDocument = null,
   taskContext = null,
   jobsEssence = "",
+  deliveryContext = null,
+  timeoutMs = defaultProviderTimeoutMs,
 }) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
   const request = {
@@ -795,6 +851,7 @@ async function executeOpenRouter({
     memoryContext,
     taskContext,
     jobsEssence,
+    deliveryContext,
   };
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -802,17 +859,21 @@ async function executeOpenRouter({
     process.env.VITE_SITE_ORIGIN ||
     "https://tasknodeofficial-dev.fly.dev";
   const title = process.env.OPENROUTER_TITLE || "Task Node Official";
-  const body = await fetchJson(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${process.env.OPENROUTER_API_KEY || process.env.OPENROUTER}`,
-      "content-type": "application/json",
-      "http-referer": referer,
-      "x-title": title,
-      "x-openrouter-title": title,
+  const body = await fetchJson(
+    `${baseUrl}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.OPENROUTER_API_KEY || process.env.OPENROUTER}`,
+        "content-type": "application/json",
+        "http-referer": referer,
+        "x-title": title,
+        "x-openrouter-title": title,
+      },
+      body: JSON.stringify(openRouterChatRequest(request)),
     },
-    body: JSON.stringify(openRouterChatRequest(request)),
-  });
+    { timeoutMs }
+  );
   const text = outputTextFromOpenRouter(body);
   if (!text) {
     throw openRouterEmptyResponseError({ body, mode, model });
@@ -838,6 +899,8 @@ async function executeDeepSeek({
   contextDocument = null,
   taskContext = null,
   jobsEssence = "",
+  deliveryContext = null,
+  timeoutMs = defaultProviderTimeoutMs,
 }) {
   const baseUrl = (process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "");
   const request = {
@@ -851,15 +914,20 @@ async function executeDeepSeek({
     memoryContext,
     taskContext,
     jobsEssence,
+    deliveryContext,
   };
-  const body = await fetchJson(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK}`,
-      "content-type": "application/json",
+  const body = await fetchJson(
+    `${baseUrl}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(deepSeekChatRequest(request)),
     },
-    body: JSON.stringify(deepSeekChatRequest(request)),
-  });
+    { timeoutMs }
+  );
   const text = outputTextFromOpenRouter(body);
   if (!text) {
     throw openRouterEmptyResponseError({
@@ -892,8 +960,10 @@ async function streamOpenRouter({
   contextDocument = null,
   taskContext = null,
   jobsEssence = "",
+  deliveryContext = null,
   onDelta,
   signal,
+  timeoutMs = defaultProviderTimeoutMs,
 }) {
   const baseUrl = (process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "");
   const request = {
@@ -907,6 +977,7 @@ async function streamOpenRouter({
     memoryContext,
     taskContext,
     jobsEssence,
+    deliveryContext,
   };
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -928,7 +999,7 @@ async function streamOpenRouter({
       },
       body: JSON.stringify(openRouterChatRequest({ ...request, stream: true })),
     },
-    { signal }
+    { signal, timeoutMs }
   );
 
   let text = "";
@@ -997,8 +1068,10 @@ async function streamDeepSeek({
   contextDocument = null,
   taskContext = null,
   jobsEssence = "",
+  deliveryContext = null,
   onDelta,
   signal,
+  timeoutMs = defaultProviderTimeoutMs,
 }) {
   const baseUrl = (process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "");
   const request = {
@@ -1012,6 +1085,7 @@ async function streamDeepSeek({
     memoryContext,
     taskContext,
     jobsEssence,
+    deliveryContext,
   };
   const stream = await fetchEventStream(
     `${baseUrl}/chat/completions`,
@@ -1024,7 +1098,7 @@ async function streamDeepSeek({
       },
       body: JSON.stringify(deepSeekChatRequest({ ...request, stream: true })),
     },
-    { signal }
+    { signal, timeoutMs }
   );
 
   let text = "";
@@ -1092,6 +1166,8 @@ export async function executeChat({
   taskContext,
   contextStatus,
   jobsEssence,
+  source = "",
+  providerTimeoutMs = 0,
 }) {
   const normalizedMode = normalizedChatMode(mode);
   if (!normalizedMode) throw unknownChatModeError(mode);
@@ -1103,9 +1179,13 @@ export async function executeChat({
     error.provider = status.provider;
     throw error;
   }
+  const timeoutMs = Number(providerTimeoutMs) > 0
+    ? Math.min(Math.max(Math.floor(Number(providerTimeoutMs)), 5_000), 300_000)
+    : chatProviderTimeoutMs({ mode: normalizedMode, provider: status.provider, source });
+  const deliveryContext = source ? { source } : null;
 
   const [historyMessages, resolvedContextDocument, resolvedMemoryContext, resolvedTaskContext] = await Promise.all([
-    getChatMessages({ accountId, conversationId }),
+    getChatMessagesForWrite({ accountId, conversationId }),
     contextDocument === undefined ? chatContextDocumentForAccount(accountId) : contextDocument,
     memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
     taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
@@ -1141,6 +1221,8 @@ export async function executeChat({
           memoryContext: resolvedMemoryContext,
           taskContext: resolvedTaskContext,
           jobsEssence: resolvedJobsEssence,
+          deliveryContext,
+          timeoutMs,
         })
       : status.provider === "deepseek"
         ? await executeDeepSeek({
@@ -1154,6 +1236,8 @@ export async function executeChat({
             memoryContext: resolvedMemoryContext,
             taskContext: resolvedTaskContext,
             jobsEssence: resolvedJobsEssence,
+            deliveryContext,
+            timeoutMs,
           })
         : await executeOpenRouter({
           mode: normalizedMode,
@@ -1166,6 +1250,8 @@ export async function executeChat({
           memoryContext: resolvedMemoryContext,
           taskContext: resolvedTaskContext,
           jobsEssence: resolvedJobsEssence,
+          deliveryContext,
+          timeoutMs,
         });
 
   if (!result.text) {
@@ -1210,6 +1296,8 @@ export async function executeChatStream({
   jobsEssence,
   onDelta,
   signal,
+  source = "",
+  providerTimeoutMs = 0,
 }) {
   const normalizedMode = normalizedChatMode(mode);
   if (!normalizedMode) throw unknownChatModeError(mode);
@@ -1221,9 +1309,13 @@ export async function executeChatStream({
     error.provider = status.provider;
     throw error;
   }
+  const timeoutMs = Number(providerTimeoutMs) > 0
+    ? Math.min(Math.max(Math.floor(Number(providerTimeoutMs)), 5_000), 300_000)
+    : chatProviderTimeoutMs({ mode: normalizedMode, provider: status.provider, source });
+  const deliveryContext = source ? { source } : null;
 
   const [historyMessages, resolvedContextDocument, resolvedMemoryContext, resolvedTaskContext] = await Promise.all([
-    getChatMessages({ accountId, conversationId }),
+    getChatMessagesForWrite({ accountId, conversationId }),
     contextDocument === undefined ? chatContextDocumentForAccount(accountId) : contextDocument,
     memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
     taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
@@ -1259,8 +1351,10 @@ export async function executeChatStream({
           memoryContext: resolvedMemoryContext,
           taskContext: resolvedTaskContext,
           jobsEssence: resolvedJobsEssence,
+          deliveryContext,
           onDelta,
           signal,
+          timeoutMs,
         })
       : status.provider === "deepseek"
         ? await streamDeepSeek({
@@ -1274,8 +1368,10 @@ export async function executeChatStream({
             memoryContext: resolvedMemoryContext,
             taskContext: resolvedTaskContext,
             jobsEssence: resolvedJobsEssence,
+            deliveryContext,
             onDelta,
             signal,
+            timeoutMs,
           })
         : await streamOpenRouter({
           mode: normalizedMode,
@@ -1288,8 +1384,10 @@ export async function executeChatStream({
           memoryContext: resolvedMemoryContext,
           taskContext: resolvedTaskContext,
           jobsEssence: resolvedJobsEssence,
+          deliveryContext,
           onDelta,
           signal,
+          timeoutMs,
         });
 
   if (!result.text) {

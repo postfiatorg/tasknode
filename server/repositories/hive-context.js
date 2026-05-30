@@ -9,6 +9,9 @@ const maxConversationIdLength = 180;
 const maxLimit = 240;
 const maxClaimLimit = 3;
 const failedAttemptLimit = 3;
+const maxAttachmentTextLength = 12_000;
+const maxAttachmentSourceTextLength = 3_200;
+const maxAttachmentExcerptLength = 800;
 export const hiveSecretaryPromptVersion = "hive_secretary_v1";
 const fallbackEntries = [];
 const fallbackJobs = [];
@@ -89,6 +92,35 @@ function displayWallet(value = "") {
   if (!wallet) return "";
   if (wallet.length <= 16) return wallet;
   return `${wallet.slice(0, 8)}...${wallet.slice(-6)}`;
+}
+
+function sourceAttachment(attachment = {}) {
+  const textContent = safeText(attachment?.textContent || attachment?.text_content || "", maxAttachmentTextLength);
+  const textExcerpt = safeText(
+    attachment?.textExcerpt || attachment?.text_excerpt || textContent,
+    maxAttachmentExcerptLength
+  );
+  return {
+    name: safeText(attachment?.name || "attachment", 160),
+    mimeType: safeText(attachment?.mimeType || attachment?.mime_type || "", 120),
+    kind: safeText(attachment?.kind || "", 40),
+    source: safeText(attachment?.source || "", 80),
+    size: Math.max(0, Number(attachment?.size || attachment?.sizeBytes || attachment?.size_bytes || 0)),
+    textContent: textContent || undefined,
+    textExcerpt: textExcerpt || undefined,
+  };
+}
+
+function attachmentSourceText(attachments = []) {
+  const normalized = jsonArray(attachments).map(sourceAttachment).filter((attachment) => attachment.name);
+  if (normalized.length === 0) return "";
+  return [
+    "Attachments",
+    ...normalized.map((attachment, index) => [
+      `Attachment ${index + 1}: ${attachment.name} (${attachment.mimeType || attachment.kind || "file"}, ${attachment.size} bytes)`,
+      safeText(attachment.textContent || attachment.textExcerpt || "[No readable text extracted.]", maxAttachmentSourceTextLength),
+    ].filter(Boolean).join("\n")),
+  ].join("\n");
 }
 
 function publicEntry(row = {}) {
@@ -390,6 +422,7 @@ export function formatHiveSecretaryReport(output = {}) {
 
 function sourceEntry(row = {}) {
   const entry = publicEntry(row);
+  const attachments = jsonArray(row.attachments_json || row.attachments).map(sourceAttachment);
   return {
     id: entry.id,
     accountId: entry.accountId,
@@ -397,6 +430,7 @@ function sourceEntry(row = {}) {
     walletAddress: entry.walletAddress,
     walletDisplay: displayWallet(entry.walletAddress),
     body: entry.body,
+    attachments,
     createdAt: entry.createdAt,
   };
 }
@@ -432,6 +466,15 @@ function secretarySourcePacketFromEntries(entries = []) {
         id: entry.id,
         created_at: entry.createdAt,
         body: entry.body,
+        attachments: entry.attachments.map((attachment) => ({
+          name: attachment.name,
+          mime_type: attachment.mimeType,
+          kind: attachment.kind,
+          source: attachment.source,
+          size: attachment.size,
+          text_excerpt: attachment.textExcerpt,
+          text_content: attachment.textContent,
+        })),
       })),
     })),
   };
@@ -451,6 +494,7 @@ function secretarySourcePacketFromEntries(entries = []) {
             `Input ${index + 1}: ${entry.id}`,
             `Time: ${entry.createdAt}`,
             oneLine(entry.body, 3200),
+            attachmentSourceText(entry.attachments),
           ].join("\n")),
         ].filter(Boolean).join("\n")).join("\n\n")
       : "No validated wallet inputs.",

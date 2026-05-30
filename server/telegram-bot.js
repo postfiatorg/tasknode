@@ -794,7 +794,7 @@ export async function processTelegramBotUpdate(update = {}, {
     fetchImpl,
   });
 
-  const result = await chatExecutor(payload, "POST");
+  const result = await chatExecutor(payload, "POST", { source: "telegram_bot" });
   const replyText = result?.body?.ok ? assistantTextFromChatResult(result) : failureText(result);
   const sent = await sendBotMessage({
     chatId: message.chatId,

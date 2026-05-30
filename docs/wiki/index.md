@@ -43,6 +43,7 @@ flowchart LR
 - Browser-control release testing is documented under Architecture -> [Browser-Control QA](#docs/codex-computer-control-qa).
 - Hive board professionalism is documented under Plans -> [Hive Board Professionalism Diagnosis](plans/hive-board-professionalism-diagnosis.md). Active board counts must be live rows, and Board Manager archives must be resurrectable unless explicitly operator-locked.
 - Production launch scope is documented under Plans -> [Task Node Production Scope](#docs/task-node-production-scope). That page is the current checklist for required login, funding, context, chat, Hive, Telegram, task, profile, docs, and deployment surfaces.
+- Beta acceptance gates are documented under Plans -> [Beta Acceptance Gates](#docs/beta-acceptance-gates). That page is the release boundary for Telegram, Task Generation, Context Editing, and Hive Board.
 
 ## Primary Code References
 

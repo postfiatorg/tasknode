@@ -6,6 +6,7 @@ import {
   appendUsageCredit,
   deleteChatConversation,
   getChatMessages,
+  getChatMessagesForWrite,
   hasUsageCreditForSource,
   listChatConversations,
   renameChatConversation,
@@ -158,6 +159,31 @@ const renamed = await renameChatConversation({
 });
 const deleted = await deleteChatConversation({ accountId, conversationId });
 const afterDelete = await listChatConversations({ accountId });
+let deletedReadRejected = false;
+try {
+  await getChatMessages({ accountId, conversationId });
+} catch (error) {
+  deletedReadRejected = error?.message === "chat_conversation_not_found";
+}
+const writeHistoryAfterDelete = await getChatMessagesForWrite({ accountId, conversationId });
+const revived = await appendChatTurn({
+  accountId,
+  conversationId,
+  mode: "Frontier Instant",
+  provider: "openai",
+  model: "chat-latest",
+  responseId: `resp_revive_${suffix}`,
+  userMessage: "Revive this deleted conversation for a new write.",
+  assistantMessage: "Revived.",
+  usage: {
+    inputTokens: 10,
+    outputTokens: 2,
+    totalTokens: 12,
+    costUsd: 0,
+  },
+});
+const afterReviveMessages = await getChatMessages({ accountId, conversationId });
+const afterRevive = await listChatConversations({ accountId });
 
 if (
   !chat?.ledgerEntry ||
@@ -174,7 +200,12 @@ if (
   !conversations.some((item) => item.conversationId === conversationId) ||
   !renamed.ok ||
   !deleted.ok ||
-  afterDelete.some((item) => item.conversationId === conversationId)
+  afterDelete.some((item) => item.conversationId === conversationId) ||
+  !deletedReadRejected ||
+  writeHistoryAfterDelete.length !== 0 ||
+  revived.assistant?.body !== "Revived." ||
+  afterReviveMessages.length < 2 ||
+  !afterRevive.some((item) => item.conversationId === conversationId)
 ) {
   throw new Error(`Chat/billing Postgres smoke failed: ${JSON.stringify({
     chat,
@@ -185,6 +216,11 @@ if (
     renamed,
     deleted,
     afterDelete,
+    deletedReadRejected,
+    writeHistoryAfterDelete,
+    revived,
+    afterReviveMessages,
+    afterRevive,
   })}`);
 }
 

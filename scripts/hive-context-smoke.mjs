@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 process.env.TASKNODE_DATABASE_DISABLED = "true";
 process.env.TASKNODE_POSTGRES_DISABLED = "true";
+process.env.DEEPSEEK_API_KEY = "hive-context-smoke-deepseek-key";
 
 const {
   buildHiveSecretarySourcePacket,
@@ -12,6 +13,11 @@ const {
   markHiveContextEntriesWalletValidated,
   saveHiveContextEntry,
 } = await import("../server/repositories/hive-context.js");
+const { handleHiveRoute } = await import("../server/hive-routes.js");
+const {
+  formatHiveMindContextForImmediateResponse,
+  formatLiveBoardFactsForImmediateResponse,
+} = await import("../server/hive-immediate-response.js");
 
 await saveHiveContextEntry({
   accountId: "account_zephyr",
@@ -31,6 +37,17 @@ await saveHiveContextEntry({
   sourceConversationTitle: "marketing planning",
   walletAddress: "rAlexWallet",
   walletValidated: true,
+  attachments: [
+    {
+      name: "launch-surfaces.txt",
+      mimeType: "text/plain",
+      kind: "text",
+      source: "paste",
+      size: 126,
+      textContent: "Telegram, task generation, context editing, and Hive board are the first launch surfaces.",
+      textExcerpt: "Telegram, task generation, context editing, and Hive board are the first launch surfaces.",
+    },
+  ],
 });
 
 await saveHiveContextEntry({
@@ -62,12 +79,21 @@ assert.deepEqual(document.groups.map((group) => group.displayName), ["Alex", "Un
 assert.equal(document.groups[0].entries.length, 2);
 assert.match(document.groups[0].entries[0].body, /Alpha Generation|Protocol Marketing/);
 assert.equal(document.groups[0].entries[0].sourceConversationTitle, "alpha planning");
+const attachmentEntry = document.groups[0].entries.find((entry) => entry.attachments?.length > 0);
+assert.equal(attachmentEntry.attachments[0].name, "launch-surfaces.txt");
+assert.equal(attachmentEntry.attachments[0].textContent, undefined);
 
 const sourcePacket = await buildHiveSecretarySourcePacket();
 assert.equal(sourcePacket.counts.entryCount, 4);
 assert.equal(sourcePacket.counts.userCount, 3);
 assert.match(sourcePacket.sourceText, /Validated wallet inputs: 4/);
 assert.match(sourcePacket.sourceText, /Protocol Marketing needs/);
+assert.match(sourcePacket.sourceText, /launch-surfaces\.txt/);
+assert.match(sourcePacket.sourceText, /Telegram, task generation, context editing, and Hive board/);
+assert.match(
+  sourcePacket.sourceJson.groups[0].entries.find((entry) => entry.attachments?.length > 0).attachments[0].text_content,
+  /first launch surfaces/
+);
 
 const queued = await enqueueHiveSecretaryJob({
   reason: "hive_context_smoke",
@@ -94,5 +120,156 @@ const reportText = formatHiveSecretaryReport({
 });
 assert.match(reportText, /Hive Secretary Report/);
 assert.match(reportText, /Project signals/);
+
+const formattedHiveMindContext = formatHiveMindContextForImmediateResponse({
+  boardManagerSourcePacket: {
+    sourcePacketDigest: "live_source_digest",
+    generatedAt: "2026-05-30T02:50:00.000Z",
+    boardActionPressure: {
+      summary: {
+        motionState: "action_required",
+        requiresAction: true,
+        outstandingNetworkTaskCount: 0,
+        pendingNetworkTaskGenerationCount: 0,
+        eligibleCandidateCount: 1,
+        openFollowupCount: 1,
+      },
+      signals: [
+        {
+          projectId: "task_node_core_product_restored",
+          requiresAction: true,
+          preferredNextAction: "initiate_network_task",
+          hasOpenFollowup: false,
+          latestClosureAt: "2026-05-30T02:45:27.000Z",
+          reasons: ["active project has no live task movement"],
+        },
+      ],
+    },
+    openFollowups: [{ accountId: "account_alex", status: "open", lastSentAt: "2026-05-30T02:28:37.000Z" }],
+    hiveProjects: { projects: [{ id: "task_node_core_product_restored", title: "Task Node Core Product" }] },
+    taskState: {
+      recent: [
+        {
+          taskId: "task_dc07336c457592a783e53b0b7a175df9",
+          title: "Ship Four Acceptance Gates Beta Document",
+          status: "rewarded",
+          rewardActualPft: 18000,
+          updatedAt: "2026-05-30T02:45:28.799Z",
+        },
+      ],
+    },
+    networkTaskContent: {
+      outstanding: [],
+      pendingGeneration: [],
+      completed: [
+        {
+          projectId: "task_node_core_product_restored",
+          taskId: "task_dc07336c457592a783e53b0b7a175df9",
+          title: "Ship Four Acceptance Gates Beta Document",
+          state: "rewarded",
+          rewardActualPft: 18000,
+          updatedAt: "2026-05-30T02:45:28.799Z",
+        },
+      ],
+      stopped: [],
+    },
+    recentBoardManagerRuns: [{ selectedAction: "do_nothing", microSummaryText: "Waiting for user direction." }],
+  },
+  secretaryPacket: {
+    id: "bmsec_smoke",
+    sourceDigest: "secretary_source_digest",
+    packetDigest: "secretary_packet_digest",
+    packetText: "BOARD MANAGER SECRETARY PACKET\nMotion state: needs_attention\nBoard summary\nTask Node launch loop is active.",
+    createdAt: "2026-05-30T00:00:00.000Z",
+  },
+  secretaryPacketIsCurrentForSource: false,
+});
+assert.match(formattedHiveMindContext, /HIVE MIND \/ BOARD MANAGER CONTEXT/);
+assert.match(formattedHiveMindContext, /Task Node launch loop is active/);
+assert.match(formattedHiveMindContext, /LIVE BOARD FACTS - AUTHORITATIVE/);
+assert.match(formattedHiveMindContext, /Ship Four Acceptance Gates Beta Document/);
+assert.match(formattedHiveMindContext, /status=rewarded/);
+assert.match(formattedHiveMindContext, /Compressed Board Manager Secretary Packet - stale/);
+assert.match(formattedHiveMindContext, /task_node_core_product_restored/);
+assert.ok(
+  formattedHiveMindContext.indexOf("LIVE BOARD FACTS - AUTHORITATIVE") <
+    formattedHiveMindContext.indexOf("Compressed Board Manager Secretary Packet - stale"),
+  "live board facts must precede stale secretary packets"
+);
+
+const formattedLiveFacts = formatLiveBoardFactsForImmediateResponse({
+  sourcePacketDigest: "live_source_digest",
+  taskState: { recent: [{ title: "Acceptance gate task", status: "rewarded", taskId: "task_live" }] },
+  networkTaskContent: { completed: [{ title: "Acceptance gate task", state: "rewarded", taskId: "task_live" }] },
+});
+assert.match(formattedLiveFacts, /LIVE BOARD FACTS - AUTHORITATIVE/);
+assert.match(formattedLiveFacts, /Acceptance gate task/);
+assert.match(formattedLiveFacts, /status=rewarded|state=rewarded/);
+
+const routeAttachmentText = "Hive immediate response should see pasted launch surface context.";
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (_url, options = {}) => {
+  const request = JSON.parse(String(options.body || "{}"));
+  const serialized = JSON.stringify(request);
+  assert.match(serialized, /Hive immediate response should see pasted launch surface context/);
+  assert.match(serialized, /CURRENT HIVE CONTEXT SOURCE PACKET/);
+  assert.match(serialized, /HIVE MIND \/ BOARD MANAGER CONTEXT/);
+  assert.match(serialized, /LIVE BOARD FACTS - AUTHORITATIVE/);
+  assert.match(serialized, /Live Board Facts are authoritative/);
+  return {
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      id: "deepseek_hive_immediate_smoke",
+      model: "deepseek-v4-pro",
+      choices: [
+        {
+          message: {
+            content: "I got the pasted context. The next useful step is to turn it into one concrete launch task.",
+          },
+        },
+      ],
+      usage: {
+        prompt_tokens: 120,
+        completion_tokens: 24,
+        total_tokens: 144,
+      },
+    }),
+  };
+};
+
+let capturedRouteResponse = null;
+await handleHiveRoute({
+  getLinkedWallet: () => ({ status: "linked", address: "rHiveSmokeWallet" }),
+  json: (_res, status, body) => {
+    capturedRouteResponse = { status, body };
+  },
+  readJson: async () => ({
+    body: "Here is pasted Hive context.",
+    conversationId: "account_account_hive_smoke_hive",
+    conversationTitle: "Hive",
+    attachments: [
+      {
+        name: "hive-launch-context.txt",
+        mimeType: "text/plain",
+        size: routeAttachmentText.length,
+        source: "paste",
+        dataUrl: `data:text/plain,${encodeURIComponent(routeAttachmentText)}`,
+      },
+    ],
+    userMessageId: "msg_hive_context_smoke_user",
+    assistantMessageId: "msg_hive_context_smoke_assistant",
+  }),
+  req: { method: "POST" },
+  res: {},
+  session: { accountId: "account_hive_smoke", displayName: "Hive Smoke", primaryProvider: "smoke" },
+  url: new URL("https://tasknode.local/api/hive/context"),
+});
+globalThis.fetch = originalFetch;
+assert.equal(capturedRouteResponse.status, 200);
+assert.equal(capturedRouteResponse.body.assistant.id, "msg_hive_context_smoke_assistant");
+assert.equal(capturedRouteResponse.body.assistant.provider, "deepseek");
+assert.match(capturedRouteResponse.body.assistant.body, /pasted context/);
+assert.equal(capturedRouteResponse.body.immediateResponseWarning, "");
 
 console.log("hive context smoke ok");

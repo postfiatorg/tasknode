@@ -359,7 +359,7 @@ function usageAction({ id, label, path, requiredEnv = [], enabled = false, statu
   };
 }
 
-function chatPayload(payload) {
+function chatPayload(payload, { source = "", providerTimeoutMs = 0 } = {}) {
   const accountId = typeof payload?.accountId === "string" ? payload.accountId.trim().slice(0, 160) : "";
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
   const contextMode = isContextEditPayload(payload) ? contextEditMode : "";
@@ -380,6 +380,8 @@ function chatPayload(payload) {
     conversationId,
     dryRun,
     attachments,
+    source: typeof source === "string" ? source.trim().slice(0, 80) : "",
+    providerTimeoutMs: Number(providerTimeoutMs) > 0 ? Number(providerTimeoutMs) : 0,
   };
 }
 
@@ -439,8 +441,8 @@ export async function chatEstimateStart(payload, accountId = "") {
   return { status: 200, body: estimate };
 }
 
-async function chatExecutionPreflight(payload, method, action = "chat_send") {
-  let chat = chatPayload(payload);
+async function chatExecutionPreflight(payload, method, action = "chat_send", options = {}) {
+  let chat = chatPayload(payload, options);
   let estimate = null;
 
   if (!chat.mode) {
@@ -647,8 +649,8 @@ async function chatExecutionPreflight(payload, method, action = "chat_send") {
   };
 }
 
-export async function chatSend(payload, method) {
-  const preflight = await chatExecutionPreflight(payload, method, "chat_send");
+export async function chatSend(payload, method, options = {}) {
+  const preflight = await chatExecutionPreflight(payload, method, "chat_send", options);
   const {
     accountId,
     message,
@@ -685,6 +687,8 @@ export async function chatSend(payload, method) {
           memoryContext,
           taskContext,
           contextStatus,
+          source: preflight.chat.source,
+          providerTimeoutMs: preflight.chat.providerTimeoutMs,
         });
     return {
       status: 200,
@@ -740,8 +744,8 @@ export async function chatSend(payload, method) {
   }
 }
 
-export async function chatStreamStart(payload, method) {
-  const preflight = await chatExecutionPreflight(payload, method, "chat_stream");
+export async function chatStreamStart(payload, method, options = {}) {
+  const preflight = await chatExecutionPreflight(payload, method, "chat_stream", options);
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
   if (preflight.chat.contextMode === contextEditMode) {
     return {

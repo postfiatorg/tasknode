@@ -524,27 +524,3 @@ Quote Alan Kay: "People who are really serious about software should make their 
 Inherit familiar workflows. iPhone syncs with iTunes because tens of millions already know how. New category doesn't mean every behavior must be new.
 Don't ship "baby" versions of important experiences. Real Safari, real HTML email, real desktop-class apps — not crippled mobile substitutes.
 Anchor price against inferior alternatives before revealing the number. iPod nano $199 + smartphone $299 = $499. iPhone at $499 carries "no premium whatsoever."
-
-## Reviewer To Do List
-
-Review implementation against this document (claude 5 page jobs). Mark each item when verified.
-
-### Memory Efficiency
-- [ ] Prompt input blocks bounded; large context clipped or digested before call.
-- [ ] Prompt output schema minimal for downstream storage.
-
-### Code Quality
-- [ ] Prompt version recorded when output persisted to DB or PFTL payload.
-- [ ] Structured output prompts match parser validation in caller.
-
-### Coherence
-- [ ] Prompt policy matches surface doc behavior (e.g., evidence types, mode rules).
-- [ ] Used-by call sites in docs-content.js still accurate.
-
-### Bloat
-- [ ] Prompt text avoids redundant restatement of data already in input blocks.
-- [ ] No duplicate prompt files for same behavior without version bump.
-
-### Security
-- [ ] Prompt instructs model not to invent hidden state or exfiltrate secrets.
-- [ ] Private/user data handling matches provider privacy mode for caller.

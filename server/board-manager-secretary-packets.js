@@ -486,6 +486,35 @@ export async function getCurrentBoardManagerSecretaryPacket({
   return result.rows[0] ? rowToPacket(result.rows[0]) : null;
 }
 
+export async function getLatestBoardManagerSecretaryPacket({
+  scope = "global_hive",
+  packetType = "board_triage",
+  targetType = "",
+  targetId = "",
+} = {}) {
+  if (!useDatabase()) return null;
+  const result = await query(
+    `
+      SELECT *
+      FROM board_manager_secretary_packets
+      WHERE scope = $1
+        AND packet_type = $2
+        AND target_type = $3
+        AND target_id = $4
+        AND status = 'current'
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `,
+    [
+      safeText(scope, 120) || "global_hive",
+      safeText(packetType, 80) || "board_triage",
+      safeText(targetType, 80),
+      safeText(targetId, 240),
+    ]
+  );
+  return result.rows[0] ? rowToPacket(result.rows[0]) : null;
+}
+
 async function insertBoardManagerSecretaryPacket({
   scope = "global_hive",
   packetType = "board_triage",

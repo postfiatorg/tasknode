@@ -132,32 +132,3 @@ Return structured JSON matching the runtime schema:
   }
 }
 ```
-
-## Reviewer To Do List
-
-Review implementation against this document (board manager v1). Mark each item when verified.
-
-### Memory Efficiency
-- [ ] Prompt input blocks bounded; large context clipped or digested before call.
-- [ ] Prompt output schema minimal for downstream storage.
-- [ ] Source packet uses micro-summaries and digests, not full historical runs.
-
-### Code Quality
-- [ ] Prompt version recorded when output persisted to DB or PFTL payload.
-- [ ] Structured output prompts match parser validation in caller.
-- [ ] Action registry in prompt matches `board-manager-actions.js` handlers.
-
-### Coherence
-- [ ] Prompt policy matches surface doc behavior (e.g., evidence types, mode rules).
-- [ ] Used-by call sites in docs-content.js still accurate.
-- [ ] Board Manager plan doc status matches implemented actions list.
-
-### Bloat
-- [ ] Prompt text avoids redundant restatement of data already in input blocks.
-- [ ] No duplicate prompt files for same behavior without version bump.
-- [ ] Single action per run; prompt discourages multi-action sprawl.
-
-### Security
-- [ ] Prompt instructs model not to invent hidden state or exfiltrate secrets.
-- [ ] Private/user data handling matches provider privacy mode for caller.
-- [ ] Prompt cannot exfiltrate operator secrets; runs in leased server context.

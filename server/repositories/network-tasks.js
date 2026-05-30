@@ -557,7 +557,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
           'queued', $12, $13, $14, $15, $16::jsonb, now() + interval '14 days'
         )
-        ON CONFLICT (semantic_key) DO UPDATE SET
+        ON CONFLICT (semantic_key) WHERE semantic_key <> '' DO UPDATE SET
           status = 'queued',
           allocation_id = EXCLUDED.allocation_id,
           generation_job_id = EXCLUDED.generation_job_id,

@@ -10,8 +10,11 @@ process.env.TASKNODE_DATABASE_DISABLED = "true";
 process.env.TASKNODE_POSTGRES_DISABLED = "true";
 process.env.TELEGRAM_AUTH_BOT_TOKEN = "123456:tasknode-telegram-secret";
 process.env.TELEGRAM_BOT_CHAT_MODE = "Private Instant";
+process.env.CHAT_PROVIDER_TIMEOUT_MS = "45000";
+process.env.TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS = "135000";
 
 try {
+  const { chatProviderTimeoutMs, deepSeekChatRequest } = await import("../server/chat-router.js");
   const { getOrCreateProviderAccount } = await import("../server/runtime-store.js");
   const { listTelegramBotEvents } = await import("../server/repositories/telegram-bot-events.js");
   const {
@@ -41,8 +44,8 @@ try {
     sentChatActions.push(action);
     return { ok: true, status: 200 };
   };
-  const chatExecutor = async (payload, method) => {
-    chatCalls.push({ payload, method });
+  const chatExecutor = async (payload, method, options = {}) => {
+    chatCalls.push({ payload, method, options });
     return {
       status: 200,
       body: {
@@ -53,6 +56,32 @@ try {
       },
     };
   };
+
+  assert.equal(
+    chatProviderTimeoutMs({ mode: "Discount Thinking", source: "telegram_bot" }),
+    135000
+  );
+  const telegramDiscountTimeout = process.env.TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS;
+  delete process.env.TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS;
+  assert.equal(
+    chatProviderTimeoutMs({ mode: "Discount Thinking", source: "telegram_bot" }),
+    120000
+  );
+  process.env.TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS = telegramDiscountTimeout;
+  assert.equal(
+    chatProviderTimeoutMs({ mode: "Discount Thinking", source: "web" }),
+    45000
+  );
+  const telegramPromptRequest = deepSeekChatRequest({
+    mode: "Discount Thinking",
+    model: "deepseek-v4-pro",
+    conversationId: "telegram-smoke",
+    message: "What should I do next?",
+    deliveryContext: { source: "telegram_bot" },
+  });
+  assert.match(telegramPromptRequest.messages[0].content, /Telegram Delivery Contract/);
+  assert.match(telegramPromptRequest.messages[0].content, /reference one relevant fact/);
+  assert.match(telegramPromptRequest.messages[0].content, /End with exactly one concrete next step/);
 
   const linkedResult = await processTelegramBotUpdate({
     update_id: 1,
@@ -70,6 +99,7 @@ try {
   assert.match(linkedResult.conversationId, /^account_.+_telegram_12345$/);
   assert.equal(chatCalls.length, 1);
   assert.equal(chatCalls[0].method, "POST");
+  assert.equal(chatCalls[0].options.source, "telegram_bot");
   assert.equal(chatCalls[0].payload.accountId, account.id);
   assert.equal(chatCalls[0].payload.mode, "Private Instant");
   assert.equal(chatCalls[0].payload.message, "hello from telegram");
@@ -250,6 +280,7 @@ try {
   assert.equal(chatCalls.length, 3);
   assert.equal(chatCalls[2].payload.mode, "Discount Thinking");
   assert.equal(chatCalls[2].payload.message, "use discount mode");
+  assert.equal(chatCalls[2].options.source, "telegram_bot");
   assert.equal(sentMessages.at(-1).text, "reply:use discount mode");
   assert.equal(sentMessages.at(-1).replyMarkup, undefined);
 

@@ -781,6 +781,17 @@
   min-width: 0;
 }
 
+.hive-operator-role > span,
+.hive-operator-role small {
+  display: block;
+}
+
+.hive-operator-role small {
+  color: var(--hive-ink-soft);
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
 .hive-load {
   align-items: center;
   display: flex;
@@ -1221,4 +1232,5 @@
   .hive-action {
     width: auto;
   }
+
 }

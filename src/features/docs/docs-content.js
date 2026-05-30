@@ -49,6 +49,7 @@ import taskReviewRewardWorker from "../../../docs/wiki/architecture/task-review-
 import telegramBotChat from "../../../docs/wiki/architecture/telegram-bot-chat.md?raw";
 import turnMemoryWorker from "../../../docs/wiki/architecture/turn-memory-worker.md?raw";
 import agentManagedAboutPanels from "../../../docs/wiki/plans/agent-managed-about-panels.md?raw";
+import betaAcceptanceGates from "../../../docs/wiki/plans/beta-acceptance-gates.md?raw";
 import boardManager from "../../../docs/wiki/plans/board-manager.md?raw";
 import boardManagerDeepseekSecretaryPackets from "../../../docs/wiki/plans/board-manager-deepseek-secretary-packets.md?raw";
 import codeReviewBurndown from "../../../docs/wiki/plans/code-review-burndown.md?raw";
@@ -66,6 +67,7 @@ import profileAndHiveMindPlan from "../../../docs/wiki/plans/profile-and-hive-mi
 import pseudonymousIdentityAndNamespacePlan from "../../../docs/wiki/plans/pseudonymous-identity-and-namespace-plan.md?raw";
 import publicProfileRealDataPlan from "../../../docs/wiki/plans/public-profile-real-data-plan.md?raw";
 import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-engine-speedrun.md?raw";
+import restoredCoreProductTaskFlow from "../../../docs/wiki/plans/restored-core-product-task-flow.md?raw";
 import taskEngineUxIntegrationPlan from "../../../docs/wiki/plans/task-engine-ux-integration-plan.md?raw";
 import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-production-scope.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
@@ -759,6 +761,19 @@ export const DOC_GROUPS = [
         title: "Task Node Production Scope",
         summary: "Launch-readiness scope across login, funding, context, chat, Hive, Telegram, tasks, and operations.",
         markdown: taskNodeProductionScope,
+      },
+      {
+        slug: "beta-acceptance-gates",
+        title: "Beta Acceptance Gates",
+        summary: "Four beta shipping gates for Telegram, Task Generation, Context Editing, and Hive Board.",
+        markdown: betaAcceptanceGates,
+      },
+      {
+        slug: "restored-core-product-task-flow",
+        route: "#docs/restored-core-product-task-flow",
+        title: "Restored Core Product Task Flow",
+        summary: "Concise restored-board spec for the first request-to-reward Task Node loop.",
+        markdown: restoredCoreProductTaskFlow,
       },
       {
         slug: "code-review-burndown",

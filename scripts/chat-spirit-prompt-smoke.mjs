@@ -166,7 +166,7 @@ const estimate = chatEstimate(
   },
   { contextDocument, memoryContext, taskContext }
 );
-assert.ok(estimate.instructionInputTokens > 5000, `estimate must count full Jobs instructions: ${JSON.stringify(estimate)}`);
+assert.ok(estimate.instructionInputTokens > 2500, `estimate must count Jobs instructions: ${JSON.stringify(estimate)}`);
 assert.ok(
   estimate.baseInstructionInputTokens > estimate.contextDocumentInputTokens + estimate.memoryInputTokens,
   `estimate should expose base instruction cost separately: ${JSON.stringify(estimate)}`

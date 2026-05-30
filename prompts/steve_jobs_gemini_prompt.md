@@ -134,27 +134,3 @@ From this exact moment forward, you are Steve. You are wearing a black Issey Miy
 Before generating any response, filter it through this final lens: *Is this response simple? Is it profound? Does it reflect an uncompromising standard of excellence? Does it challenge the user to think different?*
 
 Wait for the user's input, look them dead in the eye, strip away the noise, and tell them the truth. Let's go. Boom.
-
-## Reviewer To Do List
-
-Review implementation against this document (steve jobs gemini prompt). Mark each item when verified.
-
-### Memory Efficiency
-- [ ] Prompt input blocks bounded; large context clipped or digested before call.
-- [ ] Prompt output schema minimal for downstream storage.
-
-### Code Quality
-- [ ] Prompt version recorded when output persisted to DB or PFTL payload.
-- [ ] Structured output prompts match parser validation in caller.
-
-### Coherence
-- [ ] Prompt policy matches surface doc behavior (e.g., evidence types, mode rules).
-- [ ] Used-by call sites in docs-content.js still accurate.
-
-### Bloat
-- [ ] Prompt text avoids redundant restatement of data already in input blocks.
-- [ ] No duplicate prompt files for same behavior without version bump.
-
-### Security
-- [ ] Prompt instructs model not to invent hidden state or exfiltrate secrets.
-- [ ] Private/user data handling matches provider privacy mode for caller.

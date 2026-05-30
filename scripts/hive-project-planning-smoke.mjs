@@ -156,7 +156,7 @@ const boardDocument = hiveProjectsDocumentForTests({
       task_id: "task_resurrected",
       title: "Resurrection evidence",
       state: "accepted",
-      assignee_wallet: "rAgent",
+      assignee_wallet: "rProjected",
       reward_pft: 300,
       created_at: "2026-05-26T00:00:00.000Z",
       updated_at: "2026-05-26T00:01:00.000Z",
@@ -189,5 +189,7 @@ assert.equal(boardDocument.projects.live_project.tasks[0].assignee, "rProjected"
 assert.equal(boardDocument.projects.live_project.tasks[0].pft, 250);
 assert.equal(boardDocument.projects.pending_generation_project.pendingGenerationCount, 1);
 assert.equal(boardDocument.projects.pending_generation_project.tasks.length, 0);
+assert.equal(boardDocument.operators.rProjected.load, 2);
+assert.equal(boardDocument.operators.rProjected.currentTasks.length, 2);
 
 console.log("hive project planning smoke ok");

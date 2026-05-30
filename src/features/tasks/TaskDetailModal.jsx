@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -33,6 +33,11 @@ import {
   readEvidenceFile,
 } from "./task-submission-actions.js";
 import { buildTaskCopyPayloads } from "./task-copy-format.js";
+import {
+  optimisticEvidenceStateFromSubmission,
+  overlayTaskDetailWithOptimisticEvidence,
+  shouldRetainOptimisticEvidenceState,
+} from "./task-detail-optimistic-state.js";
 import {
   addUserRequestedEvidenceDraft,
   evidenceFileForDraft,
@@ -982,7 +987,9 @@ export function TaskDetailModal({
   const [detailState, setDetailState] = useState({ data: null, error: "", loading: true });
   const [detailRefreshKey, setDetailRefreshKey] = useState(0);
   const [copiedValue, setCopiedValue] = useState("");
+  const [optimisticEvidence, setOptimisticEvidence] = useState(null);
   const aliveRef = useRef(true);
+  const optimisticEvidenceRef = useRef(null);
   const displayTask = detailState.data?.task || task;
   const steps = Array.isArray(displayTask.steps) ? displayTask.steps : [];
   const verification = displayTask.verification || {};
@@ -991,6 +998,24 @@ export function TaskDetailModal({
   const taskVersion = taskVersionKey(task);
   const taskBriefPayload = buildTaskCopyPayloads(displayTask, detailState.data).codex;
   const forensicsCount = detailState.data?.forensics?.timeline?.length || displayTask.metadata?.eventCount || 0;
+
+  useEffect(() => {
+    optimisticEvidenceRef.current = optimisticEvidence;
+  }, [optimisticEvidence]);
+
+  const commitTaskDetailResult = useCallback((body) => {
+    const currentOptimisticEvidence = optimisticEvidenceRef.current;
+    const keepOptimistic = shouldRetainOptimisticEvidenceState(body, currentOptimisticEvidence);
+    if (!keepOptimistic && currentOptimisticEvidence) {
+      optimisticEvidenceRef.current = null;
+      setOptimisticEvidence(null);
+    }
+    const data = keepOptimistic
+      ? overlayTaskDetailWithOptimisticEvidence(body, currentOptimisticEvidence)
+      : body;
+    setDetailState({ data, error: "", loading: false });
+    return data;
+  }, []);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -1012,8 +1037,7 @@ export function TaskDetailModal({
       const result = await requestJson(`/api/tasks/detail?taskId=${encodeURIComponent(taskId)}`);
       if (!aliveRef.current) return null;
       if (result.ok && result.body?.ok) {
-        setDetailState({ data: result.body, error: "", loading: false });
-        return result.body;
+        return commitTaskDetailResult(result.body);
       }
       setDetailState({
         data: null,
@@ -1034,12 +1058,17 @@ export function TaskDetailModal({
 
   useEffect(() => {
     let active = true;
-    setDetailState({ data: null, error: "", loading: true });
+    setDetailState((current) => {
+      if (current.data?.task && optimisticEvidenceRef.current) {
+        return { ...current, error: "", loading: true };
+      }
+      return { data: null, error: "", loading: true };
+    });
     requestJson(`/api/tasks/detail?taskId=${encodeURIComponent(taskId)}`)
       .then((result) => {
         if (!active) return;
         if (result.ok && result.body?.ok) {
-          setDetailState({ data: result.body, error: "", loading: false });
+          commitTaskDetailResult(result.body);
         } else {
           setDetailState({
             data: null,
@@ -1059,36 +1088,18 @@ export function TaskDetailModal({
     return () => {
       active = false;
     };
-  }, [detailRefreshKey, taskId, taskVersion]);
+  }, [commitTaskDetailResult, detailRefreshKey, taskId, taskVersion]);
 
   function applyOptimisticEvidenceState(result = {}) {
-    const schema = result?.submissionPayload?.schema || "";
-    const verificationResponse = schema === "pf.task.verification_response.v1";
-    const nextTaskStatus = verificationResponse
-      ? { status: "Awaiting review", statusKey: "verification_response_submitted" }
-      : { status: "Submitted", statusKey: "submitted" };
+    const optimistic = optimisticEvidenceStateFromSubmission(result);
+    optimisticEvidenceRef.current = optimistic;
+    setOptimisticEvidence(optimistic);
     setDetailState((current) => {
       const data = current.data;
       if (!data?.task) return current;
       return {
         ...current,
-        data: {
-          ...data,
-          task: {
-            ...data.task,
-            ...nextTaskStatus,
-            metadata: {
-              ...(data.task.metadata || {}),
-              optimisticLastTxHash: result?.txHash || "",
-            },
-          },
-          actions: {
-            ...(data.actions || {}),
-            canSubmitInitialEvidence: false,
-            canSubmitVerificationEvidence: false,
-            browserSubmissionEnabled: false,
-          },
-        },
+        data: overlayTaskDetailWithOptimisticEvidence(data, optimistic),
       };
     });
   }
@@ -1110,7 +1121,13 @@ export function TaskDetailModal({
       const statusKey = normalizeTaskStatus(detail.task.statusKey || detail.task.status);
       const terminal = taskIsTerminal(statusKey);
       if (terminal) return;
-      if (!verificationResponse && (statusKey === "verification_requested" || (hasSubmittedTx && !taskRequiresRefresh(statusKey)))) {
+      if (verificationResponse && statusKey === "verification_response_submitted") return;
+      if (
+        !verificationResponse &&
+        (statusKey === "submitted" ||
+          statusKey === "verification_requested" ||
+          (hasSubmittedTx && !taskRequiresRefresh(statusKey)))
+      ) {
         return;
       }
       applyOptimisticEvidenceState(result);

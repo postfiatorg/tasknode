@@ -29,7 +29,7 @@ Project IDs are part of the product surface. The project detail header should ex
 
 Every signed-in user gets one default `Hive Chat` conversation in the chat sidebar. The main coordination page remains `Hive`. `Hive Chat` is not a temporary composer mode and it is not selected from the chat `+` menu. It is a durable conversation dedicated to talking to the network coordination layer.
 
-When the user sends a message in `Hive Chat`, `POST /api/hive/context` saves the user message to `Hive Context` and records that user message in chat history. This is a persistence action, not a model call and not a billed chat response. The app shows a lightweight grey italic saved-status row locally; it does not persist repeated assistant acknowledgements such as `Hive input saved...`. The Hive speaks back in the same chat only when the Board Manager chooses `message_user`.
+When the user sends a message in `Hive Chat`, `POST /api/hive/context` saves the user message to `Hive Context`, builds the updated Hive source packet, loads the latest compressed Board Manager Secretary Packet plus a small live Board Manager source snapshot, and asks direct DeepSeek for an immediate conversational Hive response in the same chat. The response is persisted as a normal assistant message with `provider=deepseek`, but it is system-paid and does not debit the user's chat credit. If DeepSeek is unavailable, the route still saves the Hive Context entry and records the user message, then falls back to the lightweight saved-status row. Durable board mutations still happen only when the Board Manager later chooses an action such as `message_user`, `create_project`, `restore_project`, or `initiate_network_task`.
 
 `Hive Chat` is visually pinned and labeled differently from normal user-created chats. It cannot be renamed. If the user disables it from the chat action menu, the app warns that this removes the default Hive conversation and stops new Hive discussion there until it is re-enabled from Settings -> Data controls. Disabling Hive Chat changes the conversation status to `hive_disabled`; it does not hard-delete Hive Context entries.
 
@@ -37,7 +37,7 @@ Board Manager replies create unread Hive notifications. `message_user` writes a 
 
 `Hive Context` is a network context document built from user-submitted entries. It is grouped by user and shown collapsed on the Hive page.
 
-Each Hive Context entry keeps the sender account, display-name snapshot, validated wallet state, body hash, and source chat conversation id. That source conversation id is the return route if the Board Manager decides the Hive should speak back to that user.
+Each Hive Context entry keeps the sender account, display-name snapshot, validated wallet state, body hash, attachment metadata, and source chat conversation id. Text paste attachments are decoded into the Secretary and Board Manager source packet so user-supplied context is available to the agent while the public Hive Context document stays metadata-only. That source conversation id is the return route if the Board Manager decides the Hive should speak back to that user.
 
 Expanding the section shows tabs. `Hive Context` shows the current `Hive Secretary` report first. Raw user inputs are behind a second collapsible `Raw inputs` control so the page reads like a network report by default instead of a transcript dump. Raw inputs show contributor, timestamp, body, and whether the entry came from a validated linked wallet. Source chat title is intentionally not displayed because it is usually not useful network context.
 

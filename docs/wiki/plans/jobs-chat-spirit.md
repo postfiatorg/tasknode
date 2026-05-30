@@ -16,7 +16,7 @@ There are two different source assets and they should not be confused:
 
 | Asset | Current location | Size observed | Purpose |
 | --- | --- | --- | --- |
-| Jobs XML prompt | `prompts/chat/jobs_chat_os_v1.xml` | 29,323 bytes | Active Phase 1 system prompt. It contains XML prompt text with runtime slots for context, current plate, retrieved Jobs essence, and current user message. |
+| Jobs XML prompt | `prompts/chat/jobs_chat_os_v1.xml` | 11,754 bytes | Active production system prompt. It contains compressed XML prompt text with runtime slots for context, current plate, retrieved Jobs essence, and current user message. |
 | Jobs corpus gist | `https://gist.github.com/goodalexander/3246640dcf10db350fbae9fab8e6a473` | raw `jobs.md` is 331,597 bytes | Phase 2 retrieval corpus. The gist is Jobs reference notes and source packets, not the runtime prompt itself. |
 
 The gist was inspected through the GitHub gist API. It currently exposes one file named `jobs.md` with raw URL:

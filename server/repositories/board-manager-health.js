@@ -15,6 +15,12 @@ function numeric(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function dateMs(value = null) {
+  if (!value) return 0;
+  const parsed = value instanceof Date ? value.getTime() : Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function projectEntries(hiveProjects = {}) {
   const projects = safeObject(hiveProjects.projects);
   return Object.values(projects).filter((project) => project && typeof project === "object");
@@ -100,10 +106,13 @@ function projectPlannedCount(project = {}, key = "") {
   return Math.max(0, Math.round(numeric(project[key], 0)));
 }
 
-function hasRecentProjectHandling({ projectId = "", recentBoardManagerRuns = [] } = {}) {
+function hasRecentProjectHandling({ projectId = "", recentBoardManagerRuns = [], sinceMs = 0 } = {}) {
   const normalizedProjectId = safeText(projectId, 180);
   if (!normalizedProjectId) return false;
   return safeArray(recentBoardManagerRuns).slice(0, 12).some((run) => {
+    if (sinceMs > 0 && dateMs(run.completedAt || run.completed_at || run.updatedAt || run.updated_at) < sinceMs) {
+      return false;
+    }
     const action = safeText(run.selectedAction || run.action, 80);
     const targetId = safeText(run.targetId || run.target_id || run.decision?.target_id, 240);
     const resultTargetId = safeArray(run.actionResults).some((result) => safeText(result.targetId || result.target_id, 240) === normalizedProjectId);
@@ -112,8 +121,11 @@ function hasRecentProjectHandling({ projectId = "", recentBoardManagerRuns = [] 
   });
 }
 
-function hasRecentUserFollowup({ recentBoardManagerRuns = [] } = {}) {
+function hasRecentUserFollowup({ recentBoardManagerRuns = [], sinceMs = 0 } = {}) {
   return safeArray(recentBoardManagerRuns).slice(0, 20).some((run) => {
+    if (sinceMs > 0 && dateMs(run.completedAt || run.completed_at || run.updatedAt || run.updated_at) < sinceMs) {
+      return false;
+    }
     const action = safeText(run.selectedAction || run.action, 80);
     const state = safeText(run.status || run.state, 80);
     if (action !== "message_user") return false;
@@ -122,15 +134,50 @@ function hasRecentUserFollowup({ recentBoardManagerRuns = [] } = {}) {
   });
 }
 
-function hasOpenFollowupForProject({ projectId = "", openFollowups = [] } = {}) {
+function hasOpenFollowupForProject({ projectId = "", openFollowups = [], sinceMs = 0 } = {}) {
   const normalizedProjectId = safeText(projectId, 180);
   return safeArray(openFollowups).some((followup) => {
     const status = safeText(followup.status, 80);
     const followupProjectId = safeText(followup.projectId || followup.project_id, 180);
     if (status && status !== "open") return false;
+    if (sinceMs > 0) {
+      const followupMs = dateMs(
+        followup.lastSentAt ||
+          followup.last_sent_at ||
+          followup.answeredAt ||
+          followup.answered_at ||
+          followup.updatedAt ||
+          followup.updated_at ||
+          followup.createdAt ||
+          followup.created_at
+      );
+      if (!followupMs || followupMs < sinceMs) return false;
+    }
     if (normalizedProjectId && followupProjectId === normalizedProjectId) return true;
     return !followupProjectId;
   });
+}
+
+function latestProjectTaskMs(tasks = [], projectId = "") {
+  const normalizedProjectId = safeText(projectId, 180);
+  if (!normalizedProjectId) return 0;
+  return safeArray(tasks).reduce((latest, task) => {
+    const taskProjectId = safeText(task.projectId || task.project_id, 180);
+    if (taskProjectId !== normalizedProjectId) return latest;
+    return Math.max(
+      latest,
+      dateMs(
+        task.updatedAt ||
+          task.updated_at ||
+          task.completedAt ||
+          task.completed_at ||
+          task.lastEventAt ||
+          task.last_event_at ||
+          task.createdAt ||
+          task.created_at
+      )
+    );
+  }, 0);
 }
 
 function projectPressureSignal({
@@ -144,6 +191,8 @@ function projectPressureSignal({
   recentBoardManagerRuns = [],
   recentUserFollowup = false,
   openFollowups = [],
+  completedTasks = [],
+  stoppedTasks = [],
 } = {}) {
   const projectId = safeText(project.id, 180);
   const status = safeText(project.status, 80).toLowerCase() || "unknown";
@@ -157,10 +206,14 @@ function projectPressureSignal({
   const hasPendingNetworkTaskGeneration = pendingProjectIds.has(projectId);
   const hasCompletedNetworkTask = completedProjectIds.has(projectId);
   const hasStoppedNetworkTask = stoppedProjectIds.has(projectId);
-  const hasOpenFollowup = hasOpenFollowupForProject({ projectId, openFollowups });
-  const recentlyHandled = hasRecentProjectHandling({ projectId, recentBoardManagerRuns })
+  const latestClosureMs = latestProjectTaskMs([...safeArray(completedTasks), ...safeArray(stoppedTasks)], projectId);
+  const hasOpenFollowup = hasOpenFollowupForProject({ projectId, openFollowups, sinceMs: latestClosureMs });
+  const recentUserFollowupAfterClosure = latestClosureMs > 0
+    ? hasRecentUserFollowup({ recentBoardManagerRuns, sinceMs: latestClosureMs })
+    : recentUserFollowup;
+  const recentlyHandled = hasRecentProjectHandling({ projectId, recentBoardManagerRuns, sinceMs: latestClosureMs })
     || hasOpenFollowup
-    || (!eligibleCandidateCount && recentUserFollowup);
+    || (!eligibleCandidateCount && recentUserFollowupAfterClosure);
   const reasons = [];
 
   if (plannedTaskCount > liveTaskCount) reasons.push("planned task count is not backed by live project task rows");
@@ -207,6 +260,7 @@ function projectPressureSignal({
     hasCompletedNetworkTask,
     hasStoppedNetworkTask,
     hasOpenFollowup,
+    latestClosureAt: latestClosureMs ? new Date(latestClosureMs).toISOString() : null,
     recentlyHandled,
   };
 }
@@ -225,6 +279,8 @@ export function buildBoardManagerActionPressure({
   const pendingProjectIds = taskProjectIds(networkTaskContent.pendingGeneration);
   const completedProjectIds = taskProjectIds(networkTaskContent.completed);
   const stoppedProjectIds = taskProjectIds(networkTaskContent.stopped);
+  const completedTasks = safeArray(networkTaskContent.completed);
+  const stoppedTasks = safeArray(networkTaskContent.stopped);
   const activeKeys = activeCandidateKeys([
     ...safeArray(networkTaskContent.outstanding),
     ...safeArray(networkTaskContent.pendingGeneration),
@@ -253,6 +309,8 @@ export function buildBoardManagerActionPressure({
         recentBoardManagerRuns,
         recentUserFollowup,
         openFollowups,
+        completedTasks,
+        stoppedTasks,
       })
     )
     .filter(Boolean);

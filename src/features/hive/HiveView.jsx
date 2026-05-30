@@ -475,6 +475,7 @@ function AllottedOperatorRow({ wallet, operator, last = false }) {
   const loadPercent = resolvedOperator.cap ? Math.round((resolvedOperator.load / resolvedOperator.cap) * 100) : 0;
   const active = resolvedOperator.status === "active";
   const walletLabel = compactWallet(wallet);
+  const focusTask = (resolvedOperator.currentTasks || [])[0] || null;
 
   return (
     <div className={`hive-operator-row ${last ? "is-last" : ""}`}>
@@ -484,7 +485,12 @@ function AllottedOperatorRow({ wallet, operator, last = false }) {
         {resolvedOperator.codename !== walletLabel && <small>{walletLabel}</small>}
       </span>
       <span className={`hive-presence ${active ? "is-active" : "is-quiet"}`} />
-      <span className="hive-operator-role">{resolvedOperator.archetype}</span>
+      <span className="hive-operator-role">
+        <span>{resolvedOperator.archetype}</span>
+        {focusTask && (
+          <small>Working on {focusTask.title}{focusTask.projectName ? ` · ${focusTask.projectName}` : ""}</small>
+        )}
+      </span>
       <span className="hive-load">
         <span>
           <i style={{ width: `${loadPercent}%` }} />
@@ -498,6 +504,7 @@ function AllottedOperatorRow({ wallet, operator, last = false }) {
 }
 
 function ContributorCard({ contributor }) {
+  const focusTask = (contributor.currentTasks || [])[0] || null;
   return (
     <div className="hive-contributor-card">
       <HiveProfileBadge nft={contributor.nft} size={36} variant={contributor.badge} />
@@ -507,7 +514,7 @@ function ContributorCard({ contributor }) {
           {contributor.role === "lead" && <small>lead</small>}
         </span>
         <code>{contributor.wallet}</code>
-        <p>{contributor.archetype}</p>
+        <p>{focusTask ? `Working on ${focusTask.title}` : contributor.archetype}</p>
       </div>
       <div className="hive-contributor-metrics">
         <span>
