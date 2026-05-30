@@ -40,26 +40,72 @@ function safeJson(value, max = 4000) {
   }
 }
 
-function taskLine(task = {}) {
+function taskOwnerAccountId(task = {}) {
+  return safeText(
+    task.candidateAccountId ||
+      task.candidate_account_id ||
+      task.accountId ||
+      task.account_id ||
+      task.assigneeAccountId ||
+      task.assignee_account_id ||
+      "",
+    180
+  );
+}
+
+function taskOwnerWallet(task = {}) {
+  return safeText(
+    task.candidateWalletAddress ||
+      task.candidate_wallet_address ||
+      task.subjectWallet ||
+      task.subject_wallet ||
+      task.assigneeWallet ||
+      task.assignee_wallet ||
+      "",
+    120
+  );
+}
+
+function taskMatchesRequestingIdentity(task = {}, { requestingAccountId = "", requestingWalletAddress = "" } = {}) {
+  const account = safeText(requestingAccountId, 180);
+  const wallet = safeText(requestingWalletAddress, 120);
+  const ownerAccountId = taskOwnerAccountId(task);
+  const ownerWallet = taskOwnerWallet(task);
+  return Boolean((account && ownerAccountId === account) || (wallet && ownerWallet === wallet));
+}
+
+function taskLine(task = {}, { requestingAccountId = "", requestingWalletAddress = "" } = {}) {
   const id = safeText(task.taskId || task.task_id || task.id || "", 180);
   const status = safeText(task.status || task.statusKey || task.state || "", 80);
   const title = safeText(task.title || task.name || id || "Untitled task", 220);
   const reward = Number(task.rewardActualPft ?? task.reward_actual_pft ?? task.rewardOfferPft ?? task.reward_offer_pft ?? task.pft ?? 0);
   const updatedAt = safeText(task.updatedAt || task.updated_at || task.lastEventAt || task.last_event_at || "", 80);
+  const ownerAccountId = taskOwnerAccountId(task);
+  const ownerWallet = taskOwnerWallet(task);
+  const normalizedRequestingAccountId = safeText(requestingAccountId, 180);
+  const normalizedRequestingWalletAddress = safeText(requestingWalletAddress, 120);
   return [
     `- ${title}`,
     id ? `id=${id}` : "",
     status ? `status=${status}` : "",
+    ownerAccountId ? `ownerAccount=${ownerAccountId}` : "",
+    ownerWallet ? `ownerWallet=${ownerWallet}` : "",
+    normalizedRequestingAccountId && ownerAccountId
+      ? `requesting_user=${ownerAccountId === normalizedRequestingAccountId ? "yes" : "no"}`
+      : "",
+    normalizedRequestingWalletAddress && ownerWallet
+      ? `requesting_wallet=${ownerWallet === normalizedRequestingWalletAddress ? "yes" : "no"}`
+      : "",
     Number.isFinite(reward) && reward > 0 ? `pft=${reward}` : "",
     updatedAt ? `updated=${updatedAt}` : "",
   ].filter(Boolean).join(" | ");
 }
 
-function taskGroupLines(label = "", tasks = [], limit = 6) {
+function taskGroupLines(label = "", tasks = [], limit = 6, options = {}) {
   const items = safeArray(tasks).slice(0, limit);
   return [
     `${label} (${safeArray(tasks).length})`,
-    items.length ? items.map(taskLine).join("\n") : "- none",
+    items.length ? items.map((task) => taskLine(task, options)).join("\n") : "- none",
   ].join("\n");
 }
 
@@ -77,9 +123,15 @@ function pressureSignalLine(signal = {}) {
   ].filter(Boolean).join(" | ");
 }
 
-function followupLine(followup = {}) {
+function followupLine(followup = {}, { requestingAccountId = "" } = {}) {
+  const accountId = safeText(followup.accountId || followup.account_id || "", 180);
+  const normalizedRequestingAccountId = safeText(requestingAccountId, 180);
   return [
     `- id=${safeText(followup.id, 80) || "unknown"}`,
+    accountId ? `account=${accountId}` : "",
+    normalizedRequestingAccountId && accountId
+      ? `requesting_user=${accountId === normalizedRequestingAccountId ? "yes" : "no"}`
+      : "",
     `status=${safeText(followup.status, 80) || "unknown"}`,
     followup.projectId || followup.project_id ? `project=${safeText(followup.projectId || followup.project_id, 180)}` : "project=global",
     followup.lastSentAt || followup.last_sent_at ? `lastSent=${safeText(followup.lastSentAt || followup.last_sent_at, 80)}` : "",
@@ -98,6 +150,54 @@ function recentRunLine(run = {}) {
       ? `summary=${safeText(run.microSummaryText || run.micro_summary_text, 320)}`
       : "",
   ].filter(Boolean).join(" | ");
+}
+
+function requestingUserScopedBoardFacts({
+  networkTaskContent = {},
+  taskState = {},
+  openFollowups = [],
+  requestingAccountId = "",
+  requestingWalletAddress = "",
+} = {}) {
+  const normalizedRequestingAccountId = safeText(requestingAccountId, 180);
+  const normalizedRequestingWalletAddress = safeText(requestingWalletAddress, 120);
+  if (!normalizedRequestingAccountId && !normalizedRequestingWalletAddress) {
+    return [
+      "Requesting user scoped board facts",
+      "- requestingAccountId=unknown",
+      "- requestingWallet=unknown",
+      "- No account id or wallet was supplied. Do not personalize shared tasks, follow-ups, capacity, or blockers.",
+    ].join("\n");
+  }
+  const allNetworkTasks = [
+    ...safeArray(networkTaskContent.outstanding),
+    ...safeArray(networkTaskContent.pendingGeneration),
+    ...safeArray(networkTaskContent.completed),
+    ...safeArray(networkTaskContent.stopped),
+    ...safeArray(safeObject(taskState).recent),
+  ];
+  const userTasks = allNetworkTasks.filter((task) =>
+    taskMatchesRequestingIdentity(task, {
+      requestingAccountId: normalizedRequestingAccountId,
+      requestingWalletAddress: normalizedRequestingWalletAddress,
+    })
+  );
+  const userFollowups = safeArray(openFollowups).filter((followup) =>
+    normalizedRequestingAccountId &&
+      safeText(followup.accountId || followup.account_id || "", 180) === normalizedRequestingAccountId
+  );
+  return [
+    "Requesting user scoped board facts",
+    `- requestingAccountId=${normalizedRequestingAccountId || "unknown"}`,
+    `- requestingWallet=${normalizedRequestingWalletAddress || "unknown"}`,
+    userTasks.length
+      ? ["Confirmed tasks for requesting user", userTasks.slice(0, 6).map((task) => taskLine(task, { requestingAccountId: normalizedRequestingAccountId, requestingWalletAddress: normalizedRequestingWalletAddress })).join("\n")].join("\n")
+      : "- No confirmed tasks for the requesting account in the live board facts.",
+    userFollowups.length
+      ? ["Confirmed open follow-ups for requesting user", userFollowups.slice(0, 4).map((followup) => followupLine(followup, { requestingAccountId: normalizedRequestingAccountId })).join("\n")].join("\n")
+      : "- No confirmed open follow-up for the requesting account in the live board facts.",
+    "Do not tell the requesting user that they personally have a task, capacity blocker, or open follow-up unless it is listed above or the latest user message says so.",
+  ].join("\n");
 }
 
 function deepSeekKey() {
@@ -213,8 +313,61 @@ function compactLiveBoardFacts(sourcePacket = {}) {
   };
 }
 
-export function formatLiveBoardFactsForImmediateResponse(sourcePacket = {}) {
+function linkedAliasLine(alias = {}) {
+  const label = safeText(alias.label || alias.provider || alias.id || "", 80);
+  const username = safeText(alias.username || alias.handle || "", 120);
+  const displayName = safeText(alias.displayName || "", 120);
+  const status = safeText(alias.status || "", 80);
+  return [
+    `- ${label || "provider"}`,
+    username ? `username=${username}` : "",
+    displayName ? `display=${displayName}` : "",
+    status ? `status=${status}` : "",
+  ].filter(Boolean).join(" | ");
+}
+
+function formatRequestingUserForImmediateResponse({
+  accountId = "",
+  conversationId = "",
+  requestingUser = null,
+} = {}) {
+  const user = safeObject(requestingUser);
+  const identityProfile = safeObject(user.identityProfile || user.identity || {});
+  const normalizedAccountId = safeText(accountId || user.accountId || identityProfile.accountId, 180);
+  const hiveHandle = safeText(user.hiveHandle || identityProfile.hiveHandle, 120);
+  const walletAddress = safeText(user.walletAddress || user.linkedWalletAddress || "", 120);
+  const displayName = safeText(
+    user.displayName ||
+      identityProfile.displayName ||
+      user.publicDisplayName ||
+      identityProfile.publicDisplayName ||
+      hiveHandle ||
+      normalizedAccountId,
+    160
+  );
+  const primaryProvider = safeText(user.primaryProvider, 80);
+  const aliases = safeArray(user.aliases || identityProfile.aliases).slice(0, 8);
+  return [
+    "REQUESTING USER - AUTHORITATIVE",
+    "This is the account that sent the latest Hive Chat message. Use this identity for second-person statements.",
+    `Account ID: ${normalizedAccountId || "unknown"}`,
+    `Conversation ID: ${safeText(conversationId, 180) || "unknown"}`,
+    walletAddress ? `Linked wallet: ${walletAddress}` : "",
+    displayName ? `Display: ${displayName}` : "",
+    hiveHandle ? `Hive handle: @${hiveHandle.replace(/^@+/, "")}` : "",
+    primaryProvider ? `Primary provider: ${primaryProvider}` : "",
+    aliases.length ? ["Linked aliases", aliases.map(linkedAliasLine).join("\n")].join("\n") : "",
+    "Second-person boundary: say 'you' only for facts tied to this account id, this conversation, the account-scoped Hive Context packet, or the latest user message. Shared board facts about other accounts must be described as shared board state or other contributors.",
+  ].filter(Boolean).join("\n");
+}
+
+export function formatLiveBoardFactsForImmediateResponse(sourcePacket = {}, {
+  requestingAccountId = "",
+  requestingWalletAddress = "",
+} = {}) {
   const packet = safeObject(sourcePacket);
+  const normalizedRequestingAccountId = safeText(requestingAccountId, 180);
+  const normalizedRequestingWalletAddress = safeText(requestingWalletAddress, 120);
   const taskState = safeObject(packet.taskState);
   const networkTaskContent = safeObject(packet.networkTaskContent);
   const pressure = safeObject(packet.boardActionPressure);
@@ -227,7 +380,7 @@ export function formatLiveBoardFactsForImmediateResponse(sourcePacket = {}) {
   return safeText(
     [
       "LIVE BOARD FACTS - AUTHORITATIVE",
-      "Use this section over stale secretary packets, older assistant messages, and older board-manager run summaries when task state conflicts.",
+      "These are shared board facts. Use this section over stale secretary packets, older assistant messages, and older board-manager run summaries when task state conflicts.",
       `Source digest: ${safeText(packet.sourcePacketDigest, 120) || "unknown"}`,
       `Generated at: ${packet.generatedAt || "unknown"}`,
       "",
@@ -245,17 +398,25 @@ export function formatLiveBoardFactsForImmediateResponse(sourcePacket = {}) {
         ? pressureSignals.slice(0, 6).map(pressureSignalLine).join("\n")
         : "- no pressure signals",
       "",
+      requestingUserScopedBoardFacts({
+        networkTaskContent,
+        taskState,
+        openFollowups,
+        requestingAccountId: normalizedRequestingAccountId,
+        requestingWalletAddress: normalizedRequestingWalletAddress,
+      }),
+      "",
       "Network task state",
-      taskGroupLines("Outstanding", networkTaskContent.outstanding, 8),
-      taskGroupLines("Pending generation", networkTaskContent.pendingGeneration, 6),
-      taskGroupLines("Recently completed/rewarded", networkTaskContent.completed, 8),
-      taskGroupLines("Recently stopped/refused", networkTaskContent.stopped, 6),
+      taskGroupLines("Outstanding", networkTaskContent.outstanding, 8, { requestingAccountId: normalizedRequestingAccountId, requestingWalletAddress: normalizedRequestingWalletAddress }),
+      taskGroupLines("Pending generation", networkTaskContent.pendingGeneration, 6, { requestingAccountId: normalizedRequestingAccountId, requestingWalletAddress: normalizedRequestingWalletAddress }),
+      taskGroupLines("Recently completed/rewarded", networkTaskContent.completed, 8, { requestingAccountId: normalizedRequestingAccountId, requestingWalletAddress: normalizedRequestingWalletAddress }),
+      taskGroupLines("Recently stopped/refused", networkTaskContent.stopped, 6, { requestingAccountId: normalizedRequestingAccountId, requestingWalletAddress: normalizedRequestingWalletAddress }),
       "",
       "Recent task projections",
-      recentTasks.length ? recentTasks.slice(0, 10).map(taskLine).join("\n") : "- none",
+      recentTasks.length ? recentTasks.slice(0, 10).map((task) => taskLine(task, { requestingAccountId: normalizedRequestingAccountId, requestingWalletAddress: normalizedRequestingWalletAddress })).join("\n") : "- none",
       "",
       "Open follow-ups",
-      openFollowups.length ? openFollowups.slice(0, 8).map(followupLine).join("\n") : "- none",
+      openFollowups.length ? openFollowups.slice(0, 8).map((followup) => followupLine(followup, { requestingAccountId: normalizedRequestingAccountId })).join("\n") : "- none",
       "",
       "Recent Board Manager runs",
       recentRuns.length ? recentRuns.slice(0, 6).map(recentRunLine).join("\n") : "- none",
@@ -268,11 +429,15 @@ export function formatHiveMindContextForImmediateResponse({
   boardManagerSourcePacket = null,
   secretaryPacket = null,
   secretaryPacketIsCurrentForSource = false,
+  requestingAccountId = "",
+  requestingWalletAddress = "",
 } = {}) {
   const sourcePacket = safeObject(boardManagerSourcePacket);
   const secretary = safeObject(secretaryPacket);
   const secretaryText = safeText(secretary.packetText, maxHiveMindContextCharacters);
-  const liveFacts = sourcePacket.sourcePacketDigest ? formatLiveBoardFactsForImmediateResponse(sourcePacket) : "";
+  const liveFacts = sourcePacket.sourcePacketDigest
+    ? formatLiveBoardFactsForImmediateResponse(sourcePacket, { requestingAccountId, requestingWalletAddress })
+    : "";
   const liveFactsJson = sourcePacket.sourcePacketDigest
     ? safeJson(compactLiveBoardFacts(sourcePacket), 4000)
     : "";
@@ -305,7 +470,10 @@ export function formatHiveMindContextForImmediateResponse({
   ].filter(Boolean).join("\n");
 }
 
-async function buildHiveMindContextForImmediateResponse() {
+async function buildHiveMindContextForImmediateResponse({
+  requestingAccountId = "",
+  requestingWalletAddress = "",
+} = {}) {
   const boardManagerSourcePacket = await buildBoardManagerSourcePacket({
     trigger: "hive_immediate_response",
     limit: 80,
@@ -319,6 +487,8 @@ async function buildHiveMindContextForImmediateResponse() {
     boardManagerSourcePacket,
     secretaryPacket,
     secretaryPacketIsCurrentForSource: Boolean(currentSecretaryPacket),
+    requestingAccountId,
+    requestingWalletAddress,
   });
   return {
     text,
@@ -330,21 +500,29 @@ async function buildHiveMindContextForImmediateResponse() {
   };
 }
 
-function hiveSystemPrompt({ sourcePacket = null, hiveMindContextText = "" } = {}) {
+function hiveSystemPrompt({
+  sourcePacket = null,
+  hiveMindContextText = "",
+  requestingUserText = "",
+} = {}) {
   const packetText = safeText(sourcePacket?.sourceText || "", maxSourcePacketCharacters);
   const boardText = safeText(hiveMindContextText, maxHiveMindContextCharacters);
+  const userText = safeText(requestingUserText, 4000);
   return [
     "You are Hive, Task Node's immediate conversational layer for the shared work board.",
     "Reply now in the user's Hive Chat. Be direct, specific, and useful.",
     "The user's message has already been saved into Hive Context for later Board Manager and task-routing decisions.",
-    "Use the latest user message, readable attachments, recent Hive Chat history, the current Hive Context packet, and the compressed Hive Mind / Board Manager context.",
+    "Use the latest user message, readable attachments, recent Hive Chat history, the requesting user's Hive Context packet, and the compressed Hive Mind / Board Manager context.",
+    "The requesting-user block is authoritative for who is speaking. Do not infer the speaker from global Hive Context, Board Manager runs, or another contributor's task rows.",
     "Live Board Facts are authoritative for current task, reward, follow-up, and Board Manager state. If they conflict with chat history or a stale secretary packet, trust Live Board Facts.",
+    "Live Board Facts are shared board facts. Only describe a task, follow-up, capacity blocker, or reward as the user's own when it is marked requesting_user=yes or appears in the Requesting user scoped board facts section.",
     "Do not claim that you created, archived, restored, assigned, reviewed, or rewarded anything. Those durable board mutations happen only through Board Manager actions.",
     "If the user is reporting product direction, restate the operational implication and name the next concrete thing to do.",
     "If the user is asking whether context was received, answer from the evidence in the message/attachment context.",
     "If the Hive Mind context is stale, say so only when it matters and lean on the live board facts.",
     "Keep the response concise: usually 2-6 sentences or a short set of bullets.",
-    packetText ? ["", "CURRENT HIVE CONTEXT SOURCE PACKET", packetText].join("\n") : "",
+    userText ? ["", userText].join("\n") : "",
+    packetText ? ["", "REQUESTING USER HIVE CONTEXT SOURCE PACKET", "This packet is scoped to the requesting account, not the entire Hive.", packetText].join("\n") : "",
     boardText ? ["", boardText].join("\n") : "",
   ].filter(Boolean).join("\n");
 }
@@ -365,6 +543,7 @@ export async function executeHiveImmediateResponse({
   message = "",
   attachments = [],
   sourceEntryId = "",
+  requestingUser = null,
   fetchImpl = globalThis.fetch,
 } = {}) {
   const status = hiveImmediateResponseStatus();
@@ -379,10 +558,18 @@ export async function executeHiveImmediateResponse({
     throw error;
   }
 
+  const normalizedAccountId = safeText(accountId, 180);
+  const requestingWalletAddress = safeText(
+    safeObject(requestingUser).walletAddress || safeObject(requestingUser).linkedWalletAddress || "",
+    120
+  );
   const [historyMessages, sourcePacket, hiveMindContext] = await Promise.all([
-    getChatMessagesForWrite({ accountId, conversationId, limit: maxHistoryMessages }).catch(() => []),
-    buildHiveSecretarySourcePacket({ limit: 80 }).catch(() => null),
-    buildHiveMindContextForImmediateResponse().catch(() => ({
+    getChatMessagesForWrite({ accountId: normalizedAccountId, conversationId, limit: maxHistoryMessages }).catch(() => []),
+    buildHiveSecretarySourcePacket({ limit: 80, accountId: normalizedAccountId }).catch(() => null),
+    buildHiveMindContextForImmediateResponse({
+      requestingAccountId: normalizedAccountId,
+      requestingWalletAddress,
+    }).catch(() => ({
       text: "",
       boardManagerSourcePacketDigest: "",
       boardManagerSecretarySourceDigest: "",
@@ -393,8 +580,15 @@ export async function executeHiveImmediateResponse({
   ]);
   const reasoningEffort = hiveImmediateReasoningEffort();
   const normalizedAttachments = normalizeChatAttachments(attachments);
+  const requestingUserText = formatRequestingUserForImmediateResponse({
+    accountId: normalizedAccountId,
+    conversationId,
+    requestingUser,
+  });
   const userContent = [
     sourceEntryId ? `Hive Context Entry: ${sourceEntryId}` : "",
+    normalizedAccountId ? `Requesting account: ${normalizedAccountId}` : "",
+    requestingWalletAddress ? `Requesting wallet: ${requestingWalletAddress}` : "",
     safeText(message, 24_000),
     attachmentText(normalizedAttachments),
   ].filter(Boolean).join("\n\n");
@@ -406,6 +600,7 @@ export async function executeHiveImmediateResponse({
         content: hiveSystemPrompt({
           sourcePacket,
           hiveMindContextText: hiveMindContext.text,
+          requestingUserText,
         }),
       },
       ...historyMessagesForPrompt(historyMessages),

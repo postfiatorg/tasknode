@@ -2,7 +2,12 @@
 
 Task Node has one account cloud per user. Email, GitHub, Telegram, X, wallets, and future providers should attach to that account cloud instead of creating isolated identities. Discord OAuth code exists as an implemented integration, but Discord is out of the initial production launch scope until the product scope explicitly promotes it.
 
-The current UI surface is Settings -> Connected accounts. The backend contract is `authProviders`, `authStart`, and `authCallback` in `server/product-contracts.js`.
+The current UI surfaces are:
+
+- profile menu -> Telegram Chat, immediately below Directory, for the primary Telegram bot/chat link path;
+- Settings -> Security -> Connected accounts, for the full provider list.
+
+The backend contract is `authProviders`, `authStart`, and `authCallback` in `server/product-contracts.js`.
 
 ## What Exists Now
 
@@ -57,7 +62,7 @@ The rules are:
 
 1. A provider identity can be linked to only one Task Node account.
 2. A verified provider email cannot be used to silently merge into another account.
-3. Link attempts from Settings include the current session account id in the OAuth state row.
+3. Link attempts from the profile menu Telegram row or Settings include the current session account id in the OAuth state row.
 4. Callback handlers do not trust query parameters for account ownership; they consume the state row and state cookie.
 5. A successful provider link issues a fresh session whose `linkedProviders` list reflects the updated account cloud.
 
@@ -92,7 +97,7 @@ TELEGRAM_BOT_WEBHOOK_SECRET
 TASKNODE_PUBLIC_URL or a request origin from the running app
 ```
 
-`TELEGRAM_AUTH_WIDGET_DOMAIN` must be the hostname configured in BotFather. `TASKNODE_PUBLIC_URL` must resolve to that same hostname for Telegram login to work. If they differ, Settings should not treat Telegram as usable.
+`TELEGRAM_AUTH_WIDGET_DOMAIN` must be the hostname configured in BotFather. `TASKNODE_PUBLIC_URL` must resolve to that same hostname for Telegram login to work. If they differ, the profile menu and Settings should not treat Telegram as usable.
 
 Telegram bot chat accepts webhooks at `/api/integrations/telegram/webhook`. Production webhook calls must include `X-Telegram-Bot-Api-Secret-Token` matching `TELEGRAM_BOT_WEBHOOK_SECRET`.
 

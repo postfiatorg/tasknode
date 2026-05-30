@@ -351,6 +351,8 @@ function App() {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [identityPromptDismissed, setIdentityPromptDismissed] = useState(false);
+  const [profileAuthMessage, setProfileAuthMessage] = useState("");
+  const [profilePendingProvider, setProfilePendingProvider] = useState("");
   const [theme, setTheme] = useState("auto");
   const [profileTab, setProfileTab] = useState("private");
   const [profilePublic, setProfilePublic] = useState(true);
@@ -475,6 +477,8 @@ function App() {
   const walletVaultUnlocked = Boolean(walletVaultAvailable && walletVaultStatus?.unlocked);
   const vaultDisplay = walletVaultDisplayState(walletVaultStatus, linkedWalletAddress);
   const identityHandleRequired = signedIn && session?.identityProfile?.handleRequired === true;
+  const telegramProvider = accountLinkProvider(session, "telegram");
+  const linkedTelegramProvider = linkedProviderById(session, "telegram");
 
   useEffect(() => {
     setIdentityPromptDismissed(false);
@@ -827,6 +831,48 @@ function App() {
     setProfileMenuOpen(false);
   }
 
+  async function startTelegramLinkFromProfileMenu() {
+    if (!signedIn) {
+      setLoginOpen(true);
+      setProfileMenuOpen(false);
+      return;
+    }
+
+    if (linkedTelegramProvider) {
+      setProfileAuthMessage("Telegram is linked. Open Telegram and message the Task Node bot.");
+      return;
+    }
+
+    if (!telegramProvider?.enabled) {
+      setProfileAuthMessage(
+        telegramProvider?.actionRequired ||
+          telegramProvider?.message ||
+          "Telegram linking is not available in this environment."
+      );
+      return;
+    }
+
+    setProfilePendingProvider("telegram");
+    setProfileAuthMessage("");
+
+    try {
+      const result = await requestJson(`${telegramProvider.startPath}?redirect=/`);
+      if (result.ok && result.body?.redirectUrl) {
+        window.location.assign(result.body.redirectUrl);
+        return;
+      }
+      setProfileAuthMessage(
+        result.body?.message ||
+          result.body?.actionRequired ||
+          `Telegram returned HTTP ${result.status}.`
+      );
+    } catch (error) {
+      setProfileAuthMessage(error?.message || "Telegram linking is unavailable.");
+    } finally {
+      setProfilePendingProvider("");
+    }
+  }
+
   async function renameRecentChat(chat, title) {
     const conversationId = chat?.conversationId || chat?.id || "";
     const result = await requestJson("/api/chat/conversation", {
@@ -1139,6 +1185,14 @@ function App() {
                         label="Directory"
                         trailing={<span className="menu-count">#16</span>}
                       />
+                      <TelegramProfileMenuRow
+                        linkedProvider={linkedTelegramProvider}
+                        onClick={startTelegramLinkFromProfileMenu}
+                        pending={profilePendingProvider === "telegram"}
+                        provider={telegramProvider}
+                        signedIn={signedIn}
+                      />
+                      {profileAuthMessage && <div className="profile-menu-message">{profileAuthMessage}</div>}
                       <ToolMenuRow
                         icon={SettingsIcon}
                         label="Settings"
@@ -4479,11 +4533,67 @@ function ConnectedAccountRow({ linkedProviders, onLink, pending, provider, signe
   );
 }
 
+function TelegramProfileMenuRow({ linkedProvider, onClick, pending, provider, signedIn }) {
+  const linked = Boolean(linkedProvider);
+  const detail = linked
+    ? linkedAccountStatus(linkedProvider)
+    : provider?.enabled
+      ? "Link Telegram to use Task Node from chat."
+      : provider?.configured
+        ? "Telegram linking is temporarily disabled."
+        : "Telegram linking needs setup.";
+  const status = linked
+    ? "Linked"
+    : pending
+      ? "Checking"
+      : provider?.enabled
+        ? "Connect"
+        : "Setup";
+
+  return (
+    <button
+      className="telegram-menu-row"
+      disabled={!signedIn || pending}
+      onClick={onClick}
+      type="button"
+    >
+      <span className="telegram-menu-icon">
+        <ProviderIcon id="telegram" />
+      </span>
+      <span className="telegram-menu-copy">
+        <strong>Telegram Chat</strong>
+        <small>{detail}</small>
+      </span>
+      <span className={linked ? "telegram-menu-status linked" : "telegram-menu-status"}>
+        {status}
+      </span>
+    </button>
+  );
+}
+
 function linkedAccountStatus(provider) {
   if (provider.username) return `@${provider.username}`;
   if (provider.maskedEmail) return provider.maskedEmail;
   if (provider.email) return provider.email;
   return "Linked";
+}
+
+function accountLinkProvider(session, providerId) {
+  const id = String(providerId || "").trim();
+  return (
+    (session?.accountLinks || []).find((provider) => provider?.id === id) || {
+      id,
+      label: "Telegram",
+      startPath: `/api/auth/start/${id}`,
+      configured: false,
+      enabled: false,
+    }
+  );
+}
+
+function linkedProviderById(session, providerId) {
+  const id = String(providerId || "").trim();
+  return (session?.linkedProviders || []).find((provider) => provider?.id === id) || null;
 }
 
 function DataSettings({ chat, onAccountDeleted, onAppStateChange, session }) {

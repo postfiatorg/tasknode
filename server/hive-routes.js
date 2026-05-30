@@ -219,6 +219,20 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
         message: body,
         attachments,
         sourceEntryId: entry.id,
+        requestingUser: {
+          accountId: session.accountId,
+          displayName:
+            identityProfile.displayName ||
+            (identityProfile.hiveHandle ? `@${identityProfile.hiveHandle}` : "") ||
+            session.displayName ||
+            "",
+          hiveHandle: identityProfile.hiveHandle || session.hiveHandle || "",
+          walletAddress: linkedWallet?.address || "",
+          publicDisplayName: identityProfile.publicDisplayName || session.publicDisplayName || "",
+          primaryProvider: session.primaryProvider || "",
+          aliases: identityProfile.aliases || session.linkedProviders || [],
+          identityProfile,
+        },
       });
       chatTurn = await appendChatTurn({
         accountId: session.accountId,

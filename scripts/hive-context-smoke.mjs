@@ -95,6 +95,12 @@ assert.match(
   /first launch surfaces/
 );
 
+const alexSourcePacket = await buildHiveSecretarySourcePacket({ accountId: "account_alex" });
+assert.equal(alexSourcePacket.counts.entryCount, 2);
+assert.equal(alexSourcePacket.counts.userCount, 1);
+assert.match(alexSourcePacket.sourceText, /Protocol Marketing needs/);
+assert.doesNotMatch(alexSourcePacket.sourceText, /Need stronger validator onboarding/);
+
 const queued = await enqueueHiveSecretaryJob({
   reason: "hive_context_smoke",
   sourceEntryId: document.groups[0].entries[0].id,
@@ -167,6 +173,7 @@ const formattedHiveMindContext = formatHiveMindContextForImmediateResponse({
           taskId: "task_dc07336c457592a783e53b0b7a175df9",
           title: "Ship Four Acceptance Gates Beta Document",
           state: "rewarded",
+          candidateAccountId: "account_alex",
           rewardActualPft: 18000,
           updatedAt: "2026-05-30T02:45:28.799Z",
         },
@@ -183,12 +190,16 @@ const formattedHiveMindContext = formatHiveMindContextForImmediateResponse({
     createdAt: "2026-05-30T00:00:00.000Z",
   },
   secretaryPacketIsCurrentForSource: false,
+  requestingAccountId: "account_zephyr",
 });
 assert.match(formattedHiveMindContext, /HIVE MIND \/ BOARD MANAGER CONTEXT/);
 assert.match(formattedHiveMindContext, /Task Node launch loop is active/);
 assert.match(formattedHiveMindContext, /LIVE BOARD FACTS - AUTHORITATIVE/);
 assert.match(formattedHiveMindContext, /Ship Four Acceptance Gates Beta Document/);
 assert.match(formattedHiveMindContext, /status=rewarded/);
+assert.match(formattedHiveMindContext, /ownerAccount=account_alex/);
+assert.match(formattedHiveMindContext, /requesting_user=no/);
+assert.match(formattedHiveMindContext, /No confirmed tasks for the requesting account/);
 assert.match(formattedHiveMindContext, /Compressed Board Manager Secretary Packet - stale/);
 assert.match(formattedHiveMindContext, /task_node_core_product_restored/);
 assert.ok(
@@ -199,12 +210,24 @@ assert.ok(
 
 const formattedLiveFacts = formatLiveBoardFactsForImmediateResponse({
   sourcePacketDigest: "live_source_digest",
-  taskState: { recent: [{ title: "Acceptance gate task", status: "rewarded", taskId: "task_live" }] },
-  networkTaskContent: { completed: [{ title: "Acceptance gate task", state: "rewarded", taskId: "task_live" }] },
-});
+  taskState: { recent: [{ title: "Acceptance gate task", status: "rewarded", taskId: "task_live", subjectWallet: "rZephyrWallet" }] },
+  openFollowups: [{ id: "followup_other", accountId: "account_other", status: "open" }],
+  networkTaskContent: {
+    completed: [{ title: "Acceptance gate task", state: "rewarded", taskId: "task_live", candidateAccountId: "account_other" }],
+    outstanding: [{ title: "Fix Hive identity scoping", state: "accepted", taskId: "task_hive_identity", candidateAccountId: "account_zephyr" }],
+  },
+}, { requestingAccountId: "account_zephyr", requestingWalletAddress: "rZephyrWallet" });
 assert.match(formattedLiveFacts, /LIVE BOARD FACTS - AUTHORITATIVE/);
 assert.match(formattedLiveFacts, /Acceptance gate task/);
 assert.match(formattedLiveFacts, /status=rewarded|state=rewarded/);
+assert.match(formattedLiveFacts, /Confirmed tasks for requesting user/);
+assert.match(formattedLiveFacts, /Fix Hive identity scoping/);
+assert.match(formattedLiveFacts, /ownerAccount=account_zephyr/);
+assert.match(formattedLiveFacts, /requesting_user=yes/);
+assert.match(formattedLiveFacts, /ownerWallet=rZephyrWallet/);
+assert.match(formattedLiveFacts, /requesting_wallet=yes/);
+assert.match(formattedLiveFacts, /account=account_other/);
+assert.match(formattedLiveFacts, /requesting_user=no/);
 
 const routeAttachmentText = "Hive immediate response should see pasted launch surface context.";
 const originalFetch = globalThis.fetch;
@@ -212,10 +235,18 @@ globalThis.fetch = async (_url, options = {}) => {
   const request = JSON.parse(String(options.body || "{}"));
   const serialized = JSON.stringify(request);
   assert.match(serialized, /Hive immediate response should see pasted launch surface context/);
-  assert.match(serialized, /CURRENT HIVE CONTEXT SOURCE PACKET/);
+  assert.match(serialized, /REQUESTING USER - AUTHORITATIVE/);
+  assert.match(serialized, /Account ID: account_hive_smoke/);
+  assert.match(serialized, /Linked wallet: rHiveSmokeWallet/);
+  assert.match(serialized, /REQUESTING USER HIVE CONTEXT SOURCE PACKET/);
+  assert.match(serialized, /This packet is scoped to the requesting account/);
   assert.match(serialized, /HIVE MIND \/ BOARD MANAGER CONTEXT/);
   assert.match(serialized, /LIVE BOARD FACTS - AUTHORITATIVE/);
   assert.match(serialized, /Live Board Facts are authoritative/);
+  assert.match(serialized, /Only describe a task, follow-up, capacity blocker, or reward as the user's own/);
+  assert.match(serialized, /Requesting account: account_hive_smoke/);
+  assert.match(serialized, /Requesting wallet: rHiveSmokeWallet/);
+  assert.doesNotMatch(serialized, /Protocol Marketing needs/);
   return {
     ok: true,
     status: 200,

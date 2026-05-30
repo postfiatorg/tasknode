@@ -511,10 +511,16 @@ function secretarySourcePacketFromEntries(entries = []) {
   };
 }
 
-export async function buildHiveSecretarySourcePacket({ limit = 120 } = {}) {
+export async function buildHiveSecretarySourcePacket({ limit = 120, accountId = "" } = {}) {
   const normalizedLimit = Math.min(Math.max(Number(limit) || 120, 1), maxLimit);
+  const normalizedAccountId = safeAccountId(accountId);
   if (!useDatabase()) {
-    return secretarySourcePacketFromEntries(fallbackEntries.filter((entry) => entry.walletValidated).slice(0, normalizedLimit));
+    return secretarySourcePacketFromEntries(
+      fallbackEntries
+        .filter((entry) => entry.walletValidated)
+        .filter((entry) => !normalizedAccountId || entry.accountId === normalizedAccountId)
+        .slice(0, normalizedLimit)
+    );
   }
 
   const result = await query(
@@ -523,10 +529,11 @@ export async function buildHiveSecretarySourcePacket({ limit = 120 } = {}) {
       FROM hive_context_entries
       WHERE deleted_at IS NULL
         AND wallet_validated = true
+        AND ($2::text = '' OR account_id = $2)
       ORDER BY created_at DESC, id DESC
       LIMIT $1
     `,
-    [normalizedLimit]
+    [normalizedLimit, normalizedAccountId]
   );
   return secretarySourcePacketFromEntries(result.rows);
 }
