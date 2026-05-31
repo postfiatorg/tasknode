@@ -93,8 +93,11 @@ minimal deployable dev app:
   PFTasks context/task rows as sanitized pointer metadata. `/api/context/history/ipfs/:cid`
   fetches encrypted JSON only for imported pointer CIDs, and the browser
   decrypts the latest context payload with the locally unlocked seed vault.
-  Shared URL imports and explicit PFTL manifest ink remain disabled until their
-  trust and wallet boundaries are implemented.
+  Shared URL imports remain disabled until their trust boundary is implemented.
+  Explicit, user-initiated PFTL manifest ink is implemented and config-gated: the
+  browser signs the pointer transaction while the server only pins the encrypted
+  payload and submits the signed blob, scoped to a signed-in account with a linked
+  wallet, and is off in environments without IPFS/PFTL/encryption-key configuration.
 
 Dev URL: https://tasknodeofficial-dev.fly.dev
 

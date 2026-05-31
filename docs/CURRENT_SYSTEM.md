@@ -224,7 +224,15 @@ Usage/billing:
 - Public startup guard disables public dev auth and refuses default `/tmp`
   runtime-store auth state for public origins.
 - API security headers and focused route rate limits for auth, chat, wallet,
-  usage, and admin credit.
+  usage, admin credit, and context manifest ink.
+- Explicit, user-initiated PFTL context manifest ink
+  (`POST /api/context/manifest/ink`) when IPFS pinning, PFTL submit, and the
+  Task Node service encryption key are configured. The browser signs the pointer
+  transaction; the server only pins the already-encrypted payload and submits the
+  signed blob, gated on a linked wallet and scoped to the signed-in account. It
+  returns a configured/disabled contract response when those dependencies are not
+  set, so it is effectively off in environments without IPFS/PFTL/encryption-key
+  configuration.
 - Runtime, API, and frame-smoke coverage.
 - Fly dev deployment through `npm run fly:deploy`, which includes the
   post-deploy background guard for the non-HTTP `worker` and `board-manager`
@@ -239,7 +247,6 @@ Usage/billing:
 - Wallet delink/relink behavior.
 - Production sweep service for Ethereum deposit addresses.
 - Context import into the Postgres cache.
-- PFTL manifest ink.
 - OpenRouter production route verification against selected ZDR endpoints and
   attachment-heavy prompts.
 - Formal Postgres-backed context cache backfill in production.
@@ -252,7 +259,8 @@ Usage/billing:
 - Notion and Google Docs context imports.
 - Network/alpha task request UX.
 - Full task verification/reward payout.
-- PFTL manifest inking by default.
+- Automatic/background PFTL manifest inking by default (the explicit,
+  user-initiated ink flow is live; only default/automatic inking is deferred).
 - Rebuilding old PFTasks surfaces wholesale.
 
 ## Near-Term Build Path
