@@ -129,8 +129,11 @@ function normalizeReward(value, offerPft = 0) {
   const parsed = Number(value);
   const offer = Number(offerPft);
   if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  // The model-supplied reward is scored over untrusted user evidence. Only honor it
+  // when a positive authority offer exists to clamp against; without a trusted upper
+  // bound, fail closed to 0 rather than paying an unbounded model-chosen amount.
   if (Number.isFinite(offer) && offer > 0) return Math.min(parsed, offer);
-  return parsed;
+  return 0;
 }
 
 function pftToDrops(value) {
@@ -798,6 +801,29 @@ async function processVerificationResponse(row, { logger = console } = {}) {
   const verificationResponse = latestPayloadBySchema(payloads, ["pf.task.verification_response.v1"]);
   if (!taskOffer || !initialSubmission || !verificationResponse) {
     throw new Error("task_scoring_missing_required_events");
+  }
+  // Double-payment guard: if a reward payment is already indexed for this task, do not
+  // score or pay again. A worker crash between submitting the on-chain reward and marking
+  // the claim published can leave the projection on `verification_response_submitted`; once
+  // the claim goes stale it would be re-claimed and re-scored, and because scoring is
+  // non-deterministic the deterministic event_id would not dedupe the second payment.
+  const existingRewardEvent = (Array.isArray(detail?.forensics?.timeline) ? detail.forensics.timeline : [])
+    .filter((event) => safeObject(event?.rawPayload).schema === "pf.reward.v1")
+    .pop();
+  if (existingRewardEvent) {
+    await markWorkerPublished({
+      taskId: row.task_id,
+      workerName: "reward_scoring",
+      published: {
+        txHash: safeText(existingRewardEvent.txHash, 120),
+        cid: safeText(existingRewardEvent.cid, 240),
+      },
+    });
+    logger.info?.("task_reward_already_indexed_skip", {
+      taskId: row.task_id,
+      txHash: safeText(existingRewardEvent.txHash, 120),
+    });
+    return { ok: true, taskId: row.task_id, alreadyRewarded: true };
   }
   const [processedInitial, processedVerification] = await Promise.all([
     processedEvidenceFromPayload(initialSubmission),
