@@ -58,6 +58,7 @@
     "hive-project-rollup-repair": "node scripts/repair-hive-project-rollups.mjs",
     "task-request-unlock-policy-smoke": "node scripts/task-request-unlock-policy-smoke.mjs",
     "task-detail-optimistic-state-smoke": "node scripts/task-detail-optimistic-state-smoke.mjs",
+    "task-review-integrity-smoke": "node scripts/task-review-integrity-smoke.mjs",
     "task-lifecycle-smoke": "node scripts/task-lifecycle-smoke.mjs",
     "task-receipt-projection-smoke": "node scripts/task-receipt-projection-smoke.mjs",
     "pftl-cache-reducer-replay-smoke": "node scripts/pftl-cache-reducer-replay-smoke.mjs",

@@ -129,8 +129,128 @@ function normalizeReward(value, offerPft = 0) {
   const parsed = Number(value);
   const offer = Number(offerPft);
   if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  // The model-supplied reward is scored over untrusted user evidence. Only honor it
+  // when a positive authority offer exists to clamp against; without a trusted upper
+  // bound, fail closed to 0 rather than paying an unbounded model-chosen amount.
   if (Number.isFinite(offer) && offer > 0) return Math.min(parsed, offer);
-  return parsed;
+  return 0;
+}
+
+function eventSchema(event = {}) {
+  return safeText(event?.schema || safeObject(event?.rawPayload).schema, 120);
+}
+
+function latestRewardPaymentEvent(detail = {}) {
+  const timeline = Array.isArray(detail?.forensics?.timeline) ? detail.forensics.timeline : [];
+  return timeline.filter((event) => eventSchema(event) === "pf.reward.v1").pop() || null;
+}
+
+function rewardPaymentGuard(metadata = {}) {
+  return safeObject(metadata?.reward_payment_guard);
+}
+
+function rewardPaymentGuardStatus(guard = {}) {
+  return safeText(guard.status, 80).toLowerCase();
+}
+
+function rewardPaymentGuardBlocksRetry(guard = {}) {
+  return ["submitting", "submitted", "submit_unknown"].includes(rewardPaymentGuardStatus(guard));
+}
+
+function rewardPaymentGuardPayload({ taskId = "", rewardPayload = {}, rewardPft = 0 } = {}) {
+  const now = new Date().toISOString();
+  return {
+    status: "submitting",
+    task_id: safeText(taskId, 180),
+    event_id: safeText(rewardPayload.event_id, 180),
+    reward_pft: Number(rewardPft || 0).toFixed(2),
+    payload_digest: sha256(rewardPayload),
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+async function claimRewardPaymentGuard({ taskId = "", rewardPayload = {}, rewardPft = 0 } = {}) {
+  const guard = rewardPaymentGuardPayload({ taskId, rewardPayload, rewardPft });
+  const result = await query(
+    `
+      UPDATE task_projections
+      SET metadata_json = jsonb_set(
+            COALESCE(metadata_json, '{}'::jsonb),
+            '{reward_payment_guard}',
+            $2::jsonb,
+            true
+          ),
+          updated_at = now()
+      WHERE task_id = $1
+        AND (
+          metadata_json->'reward_payment_guard' IS NULL
+          OR COALESCE(metadata_json->'reward_payment_guard'->>'status', '') = ''
+        )
+      RETURNING metadata_json->'reward_payment_guard' AS guard
+    `,
+    [taskId, JSON.stringify(guard)]
+  );
+  if (result.rows[0]) return { claimed: true, guard: safeObject(result.rows[0].guard) };
+
+  const existing = await query(
+    "SELECT metadata_json->'reward_payment_guard' AS guard FROM task_projections WHERE task_id = $1 LIMIT 1",
+    [taskId]
+  );
+  return { claimed: false, guard: safeObject(existing.rows[0]?.guard) };
+}
+
+async function updateRewardPaymentGuard({ taskId = "", patch = {} } = {}) {
+  return transaction(async (client) => {
+    const current = await client.query(
+      "SELECT metadata_json->'reward_payment_guard' AS guard FROM task_projections WHERE task_id = $1 FOR UPDATE",
+      [taskId]
+    );
+    const guard = safeObject(current.rows[0]?.guard);
+    if (!current.rows[0] || !Object.keys(guard).length) return null;
+    const next = {
+      ...guard,
+      ...patch,
+      updated_at: new Date().toISOString(),
+    };
+    await client.query(
+      `
+        UPDATE task_projections
+        SET metadata_json = jsonb_set(
+              COALESCE(metadata_json, '{}'::jsonb),
+              '{reward_payment_guard}',
+              $2::jsonb,
+              true
+            ),
+            updated_at = now()
+        WHERE task_id = $1
+      `,
+      [taskId, JSON.stringify(next)]
+    );
+    return next;
+  });
+}
+
+async function markRewardPaymentSubmitted({ taskId = "", reward = {} } = {}) {
+  return updateRewardPaymentGuard({
+    taskId,
+    patch: {
+      status: "submitted",
+      submitted_at: new Date().toISOString(),
+      tx_hash: safeText(reward.txHash, 120),
+      cid: safeText(reward.cid, 240),
+    },
+  });
+}
+
+async function markRewardPaymentSubmitUnknown({ taskId = "", error = "" } = {}) {
+  return updateRewardPaymentGuard({
+    taskId,
+    patch: {
+      status: "submit_unknown",
+      last_error: safeText(error, 1000),
+    },
+  });
 }
 
 function pftToDrops(value) {
@@ -786,6 +906,12 @@ async function processVerificationResponse(row, { logger = console } = {}) {
   if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
   const authorityWallet = walletFromSeed(authoritySeed(), "task_authority_seed_missing");
   const rewardWallet = walletFromSeed(rewardSeed(), "task_reward_seed_missing");
+  await syncTaskWallets({
+    accountId: row.account_id,
+    subjectWallet: row.subject_wallet,
+    authorityWallet: authorityWallet.classicAddress,
+    allocationWallet: rewardWallet.classicAddress,
+  });
   const detail = await getTaskDetail({
     accountId: row.account_id,
     walletAddress: row.subject_wallet,
@@ -798,6 +924,58 @@ async function processVerificationResponse(row, { logger = console } = {}) {
   const verificationResponse = latestPayloadBySchema(payloads, ["pf.task.verification_response.v1"]);
   if (!taskOffer || !initialSubmission || !verificationResponse) {
     throw new Error("task_scoring_missing_required_events");
+  }
+  // Double-payment guard: if a reward payment is already indexed for this task, do not
+  // score or pay again. A worker crash between submitting the on-chain reward and marking
+  // the claim published can leave the projection on `verification_response_submitted`; once
+  // the claim goes stale it would be re-claimed and re-scored, and because scoring is
+  // non-deterministic the deterministic event_id would not dedupe the second payment.
+  const existingRewardEvent = latestRewardPaymentEvent(detail);
+  if (existingRewardEvent) {
+    await markWorkerPublished({
+      taskId: row.task_id,
+      workerName: "reward_scoring",
+      published: {
+        txHash: safeText(existingRewardEvent.txHash, 120),
+        cid: safeText(existingRewardEvent.cid, 240),
+      },
+    });
+    logger.info?.("task_reward_already_indexed_skip", {
+      taskId: row.task_id,
+      txHash: safeText(existingRewardEvent.txHash, 120),
+    });
+    return { ok: true, taskId: row.task_id, alreadyRewarded: true };
+  }
+  const existingPaymentGuard = rewardPaymentGuard(row.metadata_json);
+  if (rewardPaymentGuardBlocksRetry(existingPaymentGuard)) {
+    await syncTaskWallets({
+      accountId: row.account_id,
+      subjectWallet: row.subject_wallet,
+      authorityWallet: authorityWallet.classicAddress,
+      allocationWallet: rewardWallet.classicAddress,
+    });
+    const refreshedDetail = await getTaskDetail({
+      accountId: row.account_id,
+      walletAddress: row.subject_wallet,
+      taskId: row.task_id,
+    });
+    const refreshedRewardEvent = latestRewardPaymentEvent(refreshedDetail);
+    if (refreshedRewardEvent) {
+      await markWorkerPublished({
+        taskId: row.task_id,
+        workerName: "reward_scoring",
+        published: {
+          txHash: safeText(refreshedRewardEvent.txHash, 120),
+          cid: safeText(refreshedRewardEvent.cid, 240),
+        },
+      });
+      logger.info?.("task_reward_already_indexed_after_guard_sync", {
+        taskId: row.task_id,
+        txHash: safeText(refreshedRewardEvent.txHash, 120),
+      });
+      return { ok: true, taskId: row.task_id, alreadyRewarded: true };
+    }
+    throw new Error(`task_reward_payment_guard_active:${rewardPaymentGuardStatus(existingPaymentGuard) || "unknown"}`);
   }
   const [processedInitial, processedVerification] = await Promise.all([
     processedEvidenceFromPayload(initialSubmission),
@@ -872,15 +1050,29 @@ async function processVerificationResponse(row, { logger = console } = {}) {
         reward_decision: decisionPayload,
       },
     };
-    reward = await publishAuthorityPointer({
-      payload: rewardPayload,
-      contentKind: "REWARD",
-      destination: row.subject_wallet,
-      kind: "REWARD",
-      signerWallet: rewardWallet,
-      tasknodeKey,
-      amountDrops: pftToDrops(rewardPft),
+    const paymentGuard = await claimRewardPaymentGuard({
+      taskId: row.task_id,
+      rewardPayload,
+      rewardPft,
     });
+    if (!paymentGuard.claimed) {
+      throw new Error(`task_reward_payment_guard_active:${rewardPaymentGuardStatus(paymentGuard.guard) || "unknown"}`);
+    }
+    try {
+      reward = await publishAuthorityPointer({
+        payload: rewardPayload,
+        contentKind: "REWARD",
+        destination: row.subject_wallet,
+        kind: "REWARD",
+        signerWallet: rewardWallet,
+        tasknodeKey,
+        amountDrops: pftToDrops(rewardPft),
+      });
+      await markRewardPaymentSubmitted({ taskId: row.task_id, reward });
+    } catch (error) {
+      await markRewardPaymentSubmitUnknown({ taskId: row.task_id, error: error?.message || error });
+      throw error;
+    }
   }
   await finalizeWorkerPublish({
     taskId: row.task_id,
@@ -914,6 +1106,14 @@ async function processVerificationResponse(row, { logger = console } = {}) {
   });
   return { ok: true, taskId: row.task_id, decision, reward };
 }
+
+export const taskReviewWorkerInternals = {
+  latestRewardPaymentEvent,
+  normalizeReward,
+  rewardPaymentGuardBlocksRetry,
+  rewardPaymentGuardPayload,
+  rewardPaymentGuardStatus,
+};
 
 export async function processTaskReviewQueueOnce({ limit = 1, logger = console } = {}) {
   const results = [];
