@@ -14,6 +14,7 @@ import {
   deleteChatMemoryEntry,
   deepMemoryJobSource,
   enqueueChatMemoryJob,
+  enqueueMissingDeepMemoryJobs,
   getChatMemoryContext,
   listChatMemory,
 } from "../server/repositories/chat-memory.js";
@@ -209,6 +210,40 @@ await completeDeepMemoryJob({
   },
 });
 
+await query(
+  "DELETE FROM chat_memory_entries WHERE account_id = $1 AND kind = 'deep_memory'",
+  [accountId]
+);
+const repairedDeepMemory = await enqueueMissingDeepMemoryJobs({ accountId });
+assert.equal(repairedDeepMemory.ok, true);
+assert.equal(repairedDeepMemory.requeued, 1);
+const repairedDeepJobs = await claimDeepMemoryJobs({ limit: 1 });
+assert.equal(repairedDeepJobs.length, 1);
+assert.equal(repairedDeepJobs[0].block_index, 1);
+const repairedDeepSource = await deepMemoryJobSource(repairedDeepJobs[0]);
+assert.deepEqual(repairedDeepSource.entries.map((entry) => entry.id), sourceEntryIds);
+await completeDeepMemoryJob({
+  job: repairedDeepSource,
+  summary: {
+    userRequestSummary: [
+      "- The user repeatedly asked the system to remember concise implementation-plan preferences.",
+      "- The user wants future implementation plans to stay concrete and checkpoint driven.",
+    ].join("\n"),
+    systemResponseSummary: [
+      "- The assistant repeatedly acknowledged the concise-plan preference.",
+      "- The assistant committed to using concrete checkpoints in future planning.",
+    ].join("\n"),
+    memoryText:
+      "Repair-stable concise planning style memory. A missing deep-memory row was regenerated from the stored 36-row source snapshot.",
+    sourceUserExcerpt: "36 deterministic memory summaries.",
+    sourceAssistantExcerpt: "Repaired deep memory smoke synthesis.",
+    provider: "smoke",
+    model: "deterministic",
+    promptVersion: "smoke_deep",
+    usage: {},
+  },
+});
+
 await query("DELETE FROM chat_deep_memory_jobs WHERE id = $1", [deepJobs[0].id]);
 const recreatedDeepJobId = `deepmemjob_recreated_${suffix}`;
 await query(
@@ -256,6 +291,10 @@ const memory = await listChatMemory({ accountId });
 assert.equal(memory.deepMemories.length, 1);
 assert.equal(memory.memories.length, 36);
 assert.equal(memory.entries.length, 37);
+assert.equal(memory.counts.deepMemoryTotal, 1);
+assert.equal(memory.counts.turnMemoryTotal, 37);
+assert.equal(memory.counts.returnedDeepMemories, 1);
+assert.equal(memory.counts.returnedMemories, 36);
 assert.match(memory.deepMemories[0].memoryText, /Retry-stable concise planning style/);
 assert.equal(memory.queue.turnJobs.total >= 0, true);
 
@@ -295,6 +334,9 @@ for (let overflowIndex = 0; overflowIndex < 80; overflowIndex += 1) {
 const overflowList = await listChatMemory({ accountId });
 assert.equal(overflowList.deepMemories.length, 1);
 assert.equal(overflowList.memories.length, 36);
+assert.equal(overflowList.counts.deepMemoryTotal, 1);
+assert.equal(overflowList.counts.turnMemoryTotal, 117);
+assert.equal(overflowList.counts.returnedMemories, 36);
 assert.match(overflowList.deepMemories[0].memoryText, /Retry-stable concise planning style/);
 
 const context = await getChatMemoryContext({ accountId, deepLimit: 3, turnLimit: 36 });
@@ -314,11 +356,17 @@ assert.equal(deletedTurnLookup.rows[0].count, 0);
 const clearedDeepMemory = await clearChatMemoryEntriesByKind({ accountId, kind: "deep_memory" });
 assert.equal(clearedDeepMemory.ok, true);
 assert.equal(clearedDeepMemory.deleted, 1);
+assert.equal(clearedDeepMemory.deletedJobs, 1);
 const clearedDeepLookup = await query(
   "SELECT COUNT(*)::int AS count FROM chat_memory_entries WHERE account_id = $1 AND kind = 'deep_memory'",
   [accountId]
 );
 assert.equal(clearedDeepLookup.rows[0].count, 0);
+const clearedDeepJobsLookup = await query(
+  "SELECT COUNT(*)::int AS count FROM chat_deep_memory_jobs WHERE account_id = $1",
+  [accountId]
+);
+assert.equal(clearedDeepJobsLookup.rows[0].count, 0);
 
 await query(
   `

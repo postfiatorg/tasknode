@@ -86,6 +86,10 @@ function assertJobsInstructions(instructions, label) {
     `${label} should instruct short turns to stay compact`
   );
   assert.ok(
+    instructions.includes("Context awareness means selecting the right small answer"),
+    `${label} should define context-aware brevity`
+  );
+  assert.ok(
     instructions.includes("Do not write a 30-paragraph response unless the user clearly asks"),
     `${label} should forbid long-form responses unless clearly requested`
   );

@@ -18,7 +18,7 @@ The memory UI is `src/features/memory/MemoryView.jsx`. Backend memory logic is i
 
 Private memory jobs use the configured OpenRouter ZDR model path. The worker requires the provider to honor JSON mode and hidden-reasoning controls: `response_format.type = "json_object"`, `reasoning.effort = "none"`, `reasoning.exclude = true`, and `provider.require_parameters = true`. This keeps memory compression output as parseable JSON instead of spending the output cap on invisible reasoning and returning a truncated object. Memory writes are not billed to the user right now. Ordinary chat model tokens remain billable.
 
-Deep-memory jobs are stable snapshots. `chat_deep_memory_jobs.source_entry_ids` stores the exact 36 `chat_memory_entries.id` values selected when the block is queued. The worker reads those IDs directly instead of recalculating the block later from timestamps, so backfills, imports, or corrected timestamps cannot change what a queued deep-memory job summarizes. `chat_memory_entries` also enforces one `deep_memory` row per account and block index, so retrying or recreating a deep-memory job updates the existing block summary rather than creating duplicates.
+Deep-memory jobs are stable snapshots. `chat_deep_memory_jobs.source_entry_ids` stores the exact 36 `chat_memory_entries.id` values selected when the block is queued. The worker reads those IDs directly instead of recalculating the block later from timestamps, so backfills, imports, or corrected timestamps cannot change what a queued deep-memory job summarizes. `chat_memory_entries` also enforces one `deep_memory` row per account and block index, so retrying or recreating a deep-memory job updates the existing block summary rather than creating duplicates. The enqueue path repairs any completed or failed deep-memory job whose visible `deep_memory` row is missing; it reuses the stored source snapshot and sends that block back to the worker.
 
 Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. The prompt is `prompts/memory/network_task_profile_v2.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh. The generated profile is also queued automatically once an account has at least two positive task rewards, both when rewarded task projections are imported and during the memory worker backfill pass. The generated profile is not required for the page to render. Network Context Inputs are built from profile data and routable `task_projections` on every route read and are returned even while a profile job is pending.
 
@@ -75,9 +75,9 @@ The generated report and Network Context Inputs intentionally live in the same t
 The `Deep Memory` tab remains normal memory inspection:
 
 - `Deep Memory`: the last 3 deep-memory bundles.
-- `Recent Memory`: the last 36 ordinary memory summaries.
+- `Recent Memory`: the last 36 ordinary memory summaries, with the total stored turn-memory count shown separately when more than 36 exist.
 
-Users can delete individual memory rows, clear all deep-memory summaries, clear all recent turn-memory summaries, or reset the generated diagnostic report. Deletes are account-scoped hard deletes from the memory/profile tables. Resetting the diagnostic report deletes generated `network_task_profiles` rows and queued `network_task_profile_jobs`; it does not delete Deep Memory or Recent Memory.
+Users can delete individual memory rows, clear all deep-memory summaries, clear all recent turn-memory summaries, or reset the generated diagnostic report. Deletes are account-scoped hard deletes from the memory/profile tables. Clearing deep memory also deletes the associated deep-memory job rows so stale completed jobs cannot hide missing summaries. Resetting the diagnostic report deletes generated `network_task_profiles` rows and queued `network_task_profile_jobs`; it does not delete Deep Memory or Recent Memory.
 
 ## Prompt Construction
 

@@ -270,7 +270,7 @@ export async function completeChatMemoryJob({ job, summary }) {
       [job.id]
     );
 
-    const deepMemoryJob = await maybeEnqueueDeepMemoryJobForAccount(client, {
+    const deepMemoryJob = await maybeEnqueueDeepMemoryJobsForAccount(client, {
       accountId: job.account_id,
     });
 
@@ -278,7 +278,7 @@ export async function completeChatMemoryJob({ job, summary }) {
   });
 }
 
-async function maybeEnqueueDeepMemoryJobForAccount(client, { accountId = "" } = {}) {
+async function maybeEnqueueDeepMemoryJobsForAccount(client, { accountId = "" } = {}) {
   const normalizedAccountId = safeAccountId(accountId);
   if (!normalizedAccountId) return { queued: false, reason: "missing_account" };
 
@@ -292,48 +292,21 @@ async function maybeEnqueueDeepMemoryJobForAccount(client, { accountId = "" } = 
     [normalizedAccountId]
   );
   const count = Number(countResult.rows[0]?.count || 0);
-  if (count < deepMemoryBlockSize || count % deepMemoryBlockSize !== 0) {
+  if (count < deepMemoryBlockSize) {
     return { queued: false, count };
   }
 
-  const blockIndex = count / deepMemoryBlockSize;
-  const sourceEntryIds = await turnMemoryEntryIdsForBlock(client, {
+  const blockCount = Math.floor(count / deepMemoryBlockSize);
+  const result = await enqueueMissingDeepMemoryJobsForAccount(client, {
     accountId: normalizedAccountId,
-    blockIndex,
+    blockCount,
   });
-  if (sourceEntryIds.length !== deepMemoryBlockSize) {
-    return {
-      queued: false,
-      count,
-      blockIndex,
-      reason: "source_snapshot_incomplete",
-    };
-  }
-
-  const inserted = await client.query(
-    `
-      INSERT INTO chat_deep_memory_jobs (
-        id,
-        account_id,
-        block_index,
-        source_entry_ids
-      )
-      VALUES ($1, $2, $3, $4::jsonb)
-      ON CONFLICT (account_id, block_index) DO NOTHING
-      RETURNING *
-    `,
-    [
-      `deepmemjob_${randomUUID()}`,
-      normalizedAccountId,
-      blockIndex,
-      JSON.stringify(sourceEntryIds),
-    ]
-  );
 
   return {
-    queued: Boolean(inserted.rows[0]),
-    blockIndex,
-    jobId: inserted.rows[0]?.id || null,
+    ...result,
+    queued: result.queued > 0 || result.requeued > 0,
+    count,
+    blockCount,
   };
 }
 
@@ -378,17 +351,63 @@ export async function enqueueMissingDeepMemoryJobs({ accountId = "" } = {}) {
   );
   const count = Number(countResult.rows[0]?.count || 0);
   const blockCount = Math.floor(count / deepMemoryBlockSize);
+
+  const result = await transaction((client) => enqueueMissingDeepMemoryJobsForAccount(client, {
+    accountId: normalizedAccountId,
+    blockCount,
+  }));
+
+  return { ok: true, count, blockCount, ...result };
+}
+
+async function enqueueMissingDeepMemoryJobsForAccount(client, { accountId = "", blockCount = 0 } = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedBlockCount = Math.max(0, Number(blockCount || 0));
   let queued = 0;
+  let requeued = 0;
+  let existing = 0;
+  let incomplete = 0;
+  const jobIds = [];
 
-  for (let blockIndex = 1; blockIndex <= blockCount; blockIndex += 1) {
-    await transaction(async (client) => {
-      const sourceEntryIds = await turnMemoryEntryIdsForBlock(client, {
-        accountId: normalizedAccountId,
-        blockIndex,
-      });
-      if (sourceEntryIds.length !== deepMemoryBlockSize) return;
+  for (let blockIndex = 1; blockIndex <= normalizedBlockCount; blockIndex += 1) {
+    const sourceEntryIds = await turnMemoryEntryIdsForBlock(client, {
+      accountId: normalizedAccountId,
+      blockIndex,
+    });
+    if (sourceEntryIds.length !== deepMemoryBlockSize) {
+      incomplete += 1;
+      continue;
+    }
 
-      const result = await client.query(
+    const deepEntry = await client.query(
+      `
+        SELECT id
+        FROM chat_memory_entries
+        WHERE account_id = $1
+          AND kind = 'deep_memory'
+          AND deep_memory_block_index = $2
+        LIMIT 1
+      `,
+      [normalizedAccountId, blockIndex]
+    );
+    if (deepEntry.rows[0]) {
+      existing += 1;
+      continue;
+    }
+
+    const existingJob = await client.query(
+      `
+        SELECT id, status
+        FROM chat_deep_memory_jobs
+        WHERE account_id = $1
+          AND block_index = $2
+        LIMIT 1
+      `,
+      [normalizedAccountId, blockIndex]
+    );
+
+    if (!existingJob.rows[0]) {
+      const inserted = await client.query(
         `
           INSERT INTO chat_deep_memory_jobs (
             id,
@@ -397,14 +416,7 @@ export async function enqueueMissingDeepMemoryJobs({ accountId = "" } = {}) {
             source_entry_ids
           )
           VALUES ($1, $2, $3, $4::jsonb)
-          ON CONFLICT (account_id, block_index) DO UPDATE SET
-            source_entry_ids = CASE
-              WHEN jsonb_array_length(chat_deep_memory_jobs.source_entry_ids) = 0
-                THEN EXCLUDED.source_entry_ids
-              ELSE chat_deep_memory_jobs.source_entry_ids
-            END,
-            updated_at = now()
-          RETURNING (xmax = 0) AS inserted
+          RETURNING id
         `,
         [
           `deepmemjob_${randomUUID()}`,
@@ -413,11 +425,46 @@ export async function enqueueMissingDeepMemoryJobs({ accountId = "" } = {}) {
           JSON.stringify(sourceEntryIds),
         ]
       );
-      if (result.rows[0]?.inserted) queued += 1;
-    });
+      queued += 1;
+      jobIds.push(inserted.rows[0]?.id);
+      continue;
+    }
+
+    const status = safeText(existingJob.rows[0].status, 40);
+    if (["completed", "failed"].includes(status)) {
+      const updated = await client.query(
+        `
+          UPDATE chat_deep_memory_jobs
+          SET status = 'pending',
+              attempt_count = 0,
+              next_attempt_at = now(),
+              locked_at = NULL,
+              last_error = '',
+              source_entry_ids = CASE
+                WHEN source_entry_ids IS NULL OR jsonb_array_length(source_entry_ids) = 0
+                  THEN $2::jsonb
+                ELSE source_entry_ids
+              END,
+              updated_at = now()
+          WHERE id = $1
+          RETURNING id
+        `,
+        [existingJob.rows[0].id, JSON.stringify(sourceEntryIds)]
+      );
+      requeued += 1;
+      jobIds.push(updated.rows[0]?.id);
+    } else {
+      existing += 1;
+    }
   }
 
-  return { ok: true, count, blockCount, queued };
+  return {
+    queued,
+    requeued,
+    existing,
+    incomplete,
+    jobIds: jobIds.filter(Boolean),
+  };
 }
 
 export async function claimDeepMemoryJobs({ limit = 1 } = {}) {
@@ -720,7 +767,10 @@ export async function listChatMemory({
   const normalizedQuery = safeText(q, 120);
   const normalizedDeepLimit = Math.min(Math.max(Number(deepLimit) || 3, 0), maxContextDeepLimit);
   const normalizedTurnLimit = Math.min(Math.max(Number(turnLimit) || 36, 0), maxContextTurnLimit);
-  const queue = await getChatMemoryQueueHealth({ accountId: normalizedAccountId });
+  const [queue, counts] = await Promise.all([
+    getChatMemoryQueueHealth({ accountId: normalizedAccountId }),
+    getChatMemoryEntryCounts({ accountId: normalizedAccountId }),
+  ]);
 
   if (!normalizedQuery) {
     const context = await getChatMemoryContext({
@@ -733,6 +783,11 @@ export async function listChatMemory({
       deepMemories: context.deepMemories,
       memories: context.memories,
       queue,
+      counts: {
+        ...counts,
+        returnedDeepMemories: context.deepMemories.length,
+        returnedMemories: context.memories.length,
+      },
       durable: true,
       storePath: "postgres",
     };
@@ -788,8 +843,42 @@ export async function listChatMemory({
     deepMemories,
     memories,
     queue,
+    counts: {
+      ...counts,
+      returnedDeepMemories: deepMemories.length,
+      returnedMemories: memories.length,
+    },
     durable: true,
     storePath: "postgres",
+  };
+}
+
+async function getChatMemoryEntryCounts({ accountId = "" } = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  if (!useDatabase() || !normalizedAccountId) {
+    return {
+      deepMemoryTotal: 0,
+      turnMemoryTotal: 0,
+      total: 0,
+    };
+  }
+
+  const result = await query(
+    `
+      SELECT
+        COUNT(*) FILTER (WHERE kind = 'deep_memory')::integer AS deep_memory_total,
+        COUNT(*) FILTER (WHERE kind = 'turn_memory')::integer AS turn_memory_total,
+        COUNT(*)::integer AS total
+      FROM chat_memory_entries
+      WHERE account_id = $1
+    `,
+    [normalizedAccountId]
+  );
+  const row = result.rows[0] || {};
+  return {
+    deepMemoryTotal: Number(row.deep_memory_total || 0),
+    turnMemoryTotal: Number(row.turn_memory_total || 0),
+    total: Number(row.total || 0),
   };
 }
 
@@ -838,19 +927,33 @@ export async function clearChatMemoryEntriesByKind({ accountId = "", kind = "" }
     return { ok: false, status: 400, error: "memory_clear_missing_account", message: "Sign in before clearing memory." };
   }
 
-  const result = await query(
-    `
-      DELETE FROM chat_memory_entries
-      WHERE account_id = $1
-        AND kind = $2
-    `,
-    [normalizedAccountId, normalizedKind]
-  );
+  const result = await transaction(async (client) => {
+    const deletedEntries = await client.query(
+      `
+        DELETE FROM chat_memory_entries
+        WHERE account_id = $1
+          AND kind = $2
+      `,
+      [normalizedAccountId, normalizedKind]
+    );
+    let deletedJobs = { rowCount: 0 };
+    if (normalizedKind === "deep_memory") {
+      deletedJobs = await client.query(
+        `
+          DELETE FROM chat_deep_memory_jobs
+          WHERE account_id = $1
+        `,
+        [normalizedAccountId]
+      );
+    }
+    return { entries: deletedEntries.rowCount, jobs: deletedJobs.rowCount };
+  });
 
   return {
     ok: true,
     action: normalizedKind === "deep_memory" ? "clear_deep_memory" : "clear_turn_memory",
-    deleted: result.rowCount,
+    deleted: result.entries,
+    deletedJobs: result.jobs,
     message: normalizedKind === "deep_memory" ? "Deep Memory cleared." : "Recent Memory cleared.",
   };
 }

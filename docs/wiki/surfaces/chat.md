@@ -27,9 +27,11 @@ The Jobs layer governs response cadence in the prompt, not by cutting output
 after generation. The current user turn drives response length: fewer than 3
 sentences should normally produce fewer than 10 assistant sentences unless the
 user explicitly asks for an essay, long rant, full diagnosis, detailed plan, or
-lengthy analysis. Long pasted material, vulnerable passages, and explicit
-long-form requests may receive longer synthesis, but the answer should still use
-complete paragraphs instead of dramatic line stacks.
+lengthy analysis. That rule is treated as a hard style priority: context
+awareness means choosing the right small answer for a short turn, not restating
+all available memory or strategy context. Long pasted material, vulnerable
+passages, and explicit long-form requests may receive longer synthesis, but the
+answer should still use complete paragraphs instead of dramatic line stacks.
 
 Chat also has an explicit task-request mode from the `+` menu. That mode is different from ordinary chat. The next send becomes task request detail text and uses the same `POST /api/tasks/request` browser-wallet signing path as the Tasks page modal. It publishes a signed `pf.task.request.v1` pointer, records a durable `task_requests` row, and leaves the actual task card to appear from the PFTL projection after the task-generation worker publishes `pf.task.offer.v1`.
 

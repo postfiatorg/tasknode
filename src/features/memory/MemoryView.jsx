@@ -31,6 +31,7 @@ export function MemoryView({ session }) {
   const [deepMemories, setDeepMemories] = useState([]);
   const [turnMemories, setTurnMemories] = useState([]);
   const [queueHealth, setQueueHealth] = useState(null);
+  const [memoryCounts, setMemoryCounts] = useState(null);
   const [networkProfile, setNetworkProfile] = useState(null);
   const [networkStatus, setNetworkStatus] = useState("idle");
   const [networkMessage, setNetworkMessage] = useState("");
@@ -52,9 +53,11 @@ export function MemoryView({ session }) {
   const memoryEntries = turnMemories.length > 0
     ? turnMemories
     : entries.filter((entry) => entry.kind !== "deep_memory").slice(0, 36);
+  const deepMemoryTotal = Number(memoryCounts?.deepMemoryTotal ?? deepEntries.length);
+  const turnMemoryTotal = Number(memoryCounts?.turnMemoryTotal ?? memoryEntries.length);
   const failedJobCount =
     Number(queueHealth?.turnJobs?.failed || 0) + Number(queueHealth?.deepJobs?.failed || 0);
-  const deepTabCount = deepEntries.length + memoryEntries.length;
+  const deepTabCount = deepMemoryTotal + turnMemoryTotal;
 
   const loadNetworkProfile = useCallback(({ refresh = false } = {}) => {
     if (!signedIn) return undefined;
@@ -102,6 +105,7 @@ export function MemoryView({ session }) {
         setDeepMemories(result.body?.deepMemories || []);
         setTurnMemories(result.body?.memories || []);
         setQueueHealth(result.body?.queue || null);
+        setMemoryCounts(result.body?.counts || null);
         setMessage("");
         setStatus("ready");
       })
@@ -264,9 +268,10 @@ export function MemoryView({ session }) {
           {deepEntries.length > 0 && (
             <MemoryListSection
               actionLabel="Clear all"
-              count={deepEntries.length}
+              count={deepMemoryTotal}
               onAction={() => setConfirmDelete({ type: "clear_deep_memory" })}
               title="Deep Memory"
+              visibleCount={deepEntries.length}
             >
               {deepEntries.map((entry) => (
                 <MemoryCard
@@ -284,9 +289,10 @@ export function MemoryView({ session }) {
           {memoryEntries.length > 0 && (
             <MemoryListSection
               actionLabel="Clear recent"
-              count={memoryEntries.length}
+              count={turnMemoryTotal}
               onAction={() => setConfirmDelete({ type: "clear_turn_memory" })}
               title="Recent Memory"
+              visibleCount={memoryEntries.length}
             >
               {memoryEntries.map((entry) => (
                 <MemoryCard
@@ -505,15 +511,21 @@ function CompanyItem({ item }) {
   );
 }
 
-function MemoryListSection({ actionLabel, children, count, onAction, title }) {
+function MemoryListSection({ actionLabel, children, count, onAction, title, visibleCount = count }) {
+  const total = Math.max(0, Number(count || 0));
+  const visible = Math.max(0, Number(visibleCount || 0));
+  const summary = visible < total
+    ? `Showing ${visible} of ${total} stored summaries`
+    : `${total} stored summar${total === 1 ? "y" : "ies"}`;
+
   return (
     <section className="memory-list-section">
       <div className="memory-list-heading">
         <div>
           <h2>{title}</h2>
-          <p>{count} stored summar{count === 1 ? "y" : "ies"}</p>
+          <p>{summary}</p>
         </div>
-        {count > 0 && (
+        {total > 0 && (
           <button className="memory-danger-text" onClick={onAction} type="button">
             {actionLabel}
           </button>
