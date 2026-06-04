@@ -214,14 +214,22 @@ await query(
   "DELETE FROM chat_memory_entries WHERE account_id = $1 AND kind = 'deep_memory'",
   [accountId]
 );
+await query("DELETE FROM chat_memory_entries WHERE account_id = $1 AND id = $2", [
+  accountId,
+  sourceEntryIds[0],
+]);
 const repairedDeepMemory = await enqueueMissingDeepMemoryJobs({ accountId });
 assert.equal(repairedDeepMemory.ok, true);
 assert.equal(repairedDeepMemory.requeued, 1);
+assert.equal(repairedDeepMemory.refreshed, 1);
 const repairedDeepJobs = await claimDeepMemoryJobs({ limit: 1 });
 assert.equal(repairedDeepJobs.length, 1);
 assert.equal(repairedDeepJobs[0].block_index, 1);
 const repairedDeepSource = await deepMemoryJobSource(repairedDeepJobs[0]);
-assert.deepEqual(repairedDeepSource.entries.map((entry) => entry.id), sourceEntryIds);
+const repairedSourceEntryIds = repairedDeepSource.entries.map((entry) => entry.id);
+assert.equal(repairedSourceEntryIds.length, deepMemoryBlockSize);
+assert.notDeepEqual(repairedSourceEntryIds, sourceEntryIds);
+assert.equal(repairedSourceEntryIds.includes(driftEntryId), true);
 await completeDeepMemoryJob({
   job: repairedDeepSource,
   summary: {
@@ -257,13 +265,13 @@ await query(
     )
     VALUES ($1, $2, 1, 'processing', $3::jsonb)
   `,
-  [recreatedDeepJobId, accountId, JSON.stringify(sourceEntryIds)]
+  [recreatedDeepJobId, accountId, JSON.stringify(repairedSourceEntryIds)]
 );
 const recreatedDeepSource = await deepMemoryJobSource({
   id: recreatedDeepJobId,
   account_id: accountId,
   block_index: 1,
-  source_entry_ids: sourceEntryIds,
+  source_entry_ids: repairedSourceEntryIds,
 });
 await completeDeepMemoryJob({
   job: recreatedDeepSource,
@@ -292,7 +300,7 @@ assert.equal(memory.deepMemories.length, 1);
 assert.equal(memory.memories.length, 36);
 assert.equal(memory.entries.length, 37);
 assert.equal(memory.counts.deepMemoryTotal, 1);
-assert.equal(memory.counts.turnMemoryTotal, 37);
+assert.equal(memory.counts.turnMemoryTotal, 36);
 assert.equal(memory.counts.returnedDeepMemories, 1);
 assert.equal(memory.counts.returnedMemories, 36);
 assert.match(memory.deepMemories[0].memoryText, /Retry-stable concise planning style/);
@@ -335,7 +343,7 @@ const overflowList = await listChatMemory({ accountId });
 assert.equal(overflowList.deepMemories.length, 1);
 assert.equal(overflowList.memories.length, 36);
 assert.equal(overflowList.counts.deepMemoryTotal, 1);
-assert.equal(overflowList.counts.turnMemoryTotal, 117);
+assert.equal(overflowList.counts.turnMemoryTotal, 116);
 assert.equal(overflowList.counts.returnedMemories, 36);
 assert.match(overflowList.deepMemories[0].memoryText, /Retry-stable concise planning style/);
 
