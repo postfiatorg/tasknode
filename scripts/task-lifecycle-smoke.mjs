@@ -36,6 +36,12 @@ const taskgenBase = {
 assert.equal(validateTaskgenOutput(taskgenBase).task_kind, "personal");
 assert.equal(validateTaskgenOutput({ ...taskgenBase, task_kind: "alpha" }).task_kind, "alpha");
 assert.equal(validateTaskgenOutput(taskgenBase, { task_class: "network" }).task_kind, "network");
+const normalizedRelativeDeadline = validateTaskgenOutput({
+  ...taskgenBase,
+  deadline: { accept_by: "24h", deadline_at: "tomorrow" },
+}).deadline;
+assert.equal(Number.isFinite(Date.parse(normalizedRelativeDeadline.accept_by)), true);
+assert.equal(normalizedRelativeDeadline.deadline_at, null);
 assert.deepEqual(taskgenPromptForInput({ request: { requestText: "Build a personal task" } }), {
   path: "task_engine/taskgen_personal_v1.md",
   version: "taskgen_personal_v1",

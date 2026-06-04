@@ -213,6 +213,17 @@ function normalizeReward(value, policy = {}) {
   return parsed.toFixed(2);
 }
 
+function normalizeDeadlineTimestamp(value, { fallbackMs = null } = {}) {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString();
+  const text = safeText(value, 80);
+  if (text) {
+    const parsed = Date.parse(text);
+    if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+  }
+  if (Number.isFinite(fallbackMs)) return new Date(Date.now() + fallbackMs).toISOString();
+  return null;
+}
+
 function normalizeTaskKind(value = "", policy = {}) {
   const policyTaskClass = safeText(policy.task_class ?? policy.taskClass, 80).toLowerCase();
   if (policyTaskClass === "network" || policyTaskClass === "alpha") return policyTaskClass;
@@ -254,8 +265,8 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
       amount_estimate_pft: normalizeReward(reward.amount_estimate_pft, policy),
     },
     deadline: {
-      accept_by: safeText(output.deadline?.accept_by, 80) || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      deadline_at: output.deadline?.deadline_at ? safeText(output.deadline.deadline_at, 80) : null,
+      accept_by: normalizeDeadlineTimestamp(output.deadline?.accept_by, { fallbackMs: 24 * 60 * 60 * 1000 }),
+      deadline_at: normalizeDeadlineTimestamp(output.deadline?.deadline_at),
     },
   };
 }

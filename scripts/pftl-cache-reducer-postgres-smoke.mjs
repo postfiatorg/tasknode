@@ -200,8 +200,8 @@ try {
       request_bundle_cid: "bafyrequestbundle",
     },
     context_refs: [{ cid: contextCid }],
-    accept_by: new Date(Date.now() + 3600000).toISOString(),
-    deadline_at: new Date(Date.now() + 7200000).toISOString(),
+    accept_by: "24h",
+    deadline_at: "tomorrow",
   };
   const encryptedTaskOffer = await encryptForService(taskOffer);
   const verificationRequest = {
@@ -325,7 +325,7 @@ try {
   assert.equal(contextRows.rows[0].pointer_type, "context");
 
   const projectionRows = await query(
-    "SELECT status, title, reward_offer_pft::text AS reward_offer_pft, reward_actual_pft::text AS reward_actual_pft, metadata_json FROM task_projections WHERE task_id = $1",
+    "SELECT status, title, reward_offer_pft::text AS reward_offer_pft, reward_actual_pft::text AS reward_actual_pft, accept_by, deadline_at, metadata_json FROM task_projections WHERE task_id = $1",
     [taskId]
   );
   assert.equal(projectionRows.rows.length, 1);
@@ -333,6 +333,8 @@ try {
   assert.equal(projectionRows.rows[0].title, "Reducer smoke projected task");
   assert.equal(projectionRows.rows[0].reward_offer_pft, "12.500000");
   assert.equal(projectionRows.rows[0].reward_actual_pft, "0.000000");
+  assert.equal(projectionRows.rows[0].accept_by, null);
+  assert.equal(projectionRows.rows[0].deadline_at, null);
   assert.deepEqual(projectionRows.rows[0].metadata_json.generatedTask.steps, taskOffer.steps);
   assert.ok(!fetchedCids.includes(nullTaskCid), "known-task projection must not hydrate unrelated null-task pointers");
 

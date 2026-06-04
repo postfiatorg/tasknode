@@ -29,7 +29,7 @@ function toIso(value) {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString();
   const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : String(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
 
 function numeric(value) {

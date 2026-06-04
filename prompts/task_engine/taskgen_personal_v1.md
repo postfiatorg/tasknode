@@ -98,7 +98,7 @@ Choose reward from burden, difficulty, durability, and evidence strength:
 
 If policy provides an explicit reward range, stay inside it. Do not choose a random number.
 
-Use deadline values from the packet when available. `deadline.accept_by` must be a string; if no accept-by is supplied, use `24h`. `deadline.deadline_at` must be the supplied task deadline or `null`.
+Use deadline values from the packet when available. `deadline.accept_by` must be an ISO-8601 UTC timestamp string. Never emit relative strings such as `24h`, `soon`, or `tomorrow`. If no accept-by is supplied, use an ISO-8601 UTC timestamp about 24 hours after generation. `deadline.deadline_at` must be the supplied ISO-8601 task deadline or `null`.
 
 ## Output Contract
 
@@ -115,7 +115,7 @@ Return only one JSON object. Do not add fields.
 - `verification_policy.mode`: usually `standard_followup`.
 - `verification_policy.verification_type`: match the evidence type unless a different supported follow-up type is necessary.
 - `reward_offer.amount_estimate_pft`: decimal string selected from the reward rules.
-- `deadline.accept_by`: string from the packet, or `24h`.
-- `deadline.deadline_at`: string from the packet, or `null`.
+- `deadline.accept_by`: ISO-8601 UTC string from the packet, or an ISO-8601 UTC timestamp about 24 hours after generation.
+- `deadline.deadline_at`: ISO-8601 UTC string from the packet, or `null`.
 
 Final silent checklist: one personal task, not duplicate, concrete artifact, supported evidence, 2 to 5 steps, appropriate reward, contract-compliant JSON, immediately clear next move.
