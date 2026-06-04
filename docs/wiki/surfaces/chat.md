@@ -23,6 +23,8 @@ Task state is also ported into chat by `server/chat-task-context.js`. This is a 
 
 The chat voice is calibrated by the Jobs Markdown prompt in `prompts/chat/jobs_standard_chat_codex_style_draft.md`. The prompt is loaded once by `server/chat-spirit-context.js` and rendered from the shared `server/chat-memory-context.js::taskNodeInstructions` boundary, so Private Instant, Private Thinking, Discount Thinking, Frontier Instant, and Frontier Thinking all use the same prompt assembly path. The base Task Node operational prompt still comes first; the Jobs Markdown prompt receives the current context document, task context, memory context, and pgvector Jobs retrieval context as runtime slots. The current user message, prior chat history, and attachments remain normal provider user messages instead of being duplicated into the prompt.
 
+Standard chat is advisory by default. It can help the user decide, draft, evaluate, plan, and clarify evidence, but it must not claim it can perform app actions on the user's behalf. The `+` menu starts Request a task or Context Refine. The Tasks panel is where the user accepts or refuses tasks and submits evidence. The Hive panel is where the user views network work and contributes to the network. If chat recommends one of those actions, it should name the surface the user should use instead of saying chat can do the action.
+
 The Jobs layer governs response cadence in the prompt, not by cutting output
 after generation. The current user turn drives response length: fewer than 3
 sentences should normally produce fewer than 10 assistant sentences unless the

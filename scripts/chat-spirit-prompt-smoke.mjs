@@ -87,7 +87,20 @@ function count(haystack, needle) {
 
 function assertJobsInstructions(instructions, label) {
   assert.equal(count(instructions, "## Experience Promise"), 1, `${label} should include Jobs Markdown prompt once`);
+  assert.equal(count(instructions, "## Product Surface Boundary"), 1, `${label} should include product surface boundary once`);
   assert.equal(count(instructions, "## Response Length Calibration"), 1, `${label} should include response length calibration once`);
+  assert.ok(
+    instructions.includes("Ordinary chat can draft the note, sharpen the decision, explain the consequence, or tell the User which surface to use."),
+    `${label} should describe ordinary chat as advisory`
+  );
+  assert.ok(
+    instructions.includes("The Tasks panel is where the User accepts or refuses tasks and submits evidence."),
+    `${label} should route task mutations to the Tasks panel`
+  );
+  assert.ok(
+    instructions.includes("The Hive panel is where the User views network work and contributes to the network."),
+    `${label} should route Hive work to the Hive panel`
+  );
   assert.ok(
     instructions.includes("A short current turn after a long thread is still a short turn."),
     `${label} should instruct short turns to stay compact`
