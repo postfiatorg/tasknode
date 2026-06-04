@@ -93,8 +93,9 @@ Frontier Instant also uses `prompts/chat/frontier_instant_response_gate_v1.md`
 with OpenAI Responses structured output. The model must return
 `user_prompted_inquiry`, `full_response`, and `conformant_response`. The server
 displays `full_response` only when the current user explicitly requested
-long-form depth; otherwise it displays `conformant_response`. The stream route
-uses the same gate for Frontier Instant and emits the selected response. The
+long-form depth, including a fully thought-out, elaborate, complex, or in-full
+treatment; otherwise it displays `conformant_response`. The stream route uses
+the same gate for Frontier Instant and emits the selected response. The
 complete gate JSON is persisted in assistant thinking metadata and rendered in
 the chat thinking disclosure as `Frontier response JSON`, separate from the
 Jobs source text audit block.

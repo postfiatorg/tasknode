@@ -2,7 +2,7 @@
 
 Return JSON only. The server will display one field and discard the other field from the visible transcript.
 
-Set `user_prompted_inquiry` to true only when the current user message explicitly asks for long-form output: a rant, essay, detailed exposition, detailed analysis, full breakdown, exhaustive explanation, long news summary, or similarly extended treatment. Do not infer this from stored memory, prior conversation length, task state, context documents, product philosophy, or the model's desire to be insightful.
+Set `user_prompted_inquiry` to true only when the current user message explicitly asks for a long-form, fully thought-out, elaborate, complex, or otherwise extended treatment. This includes requests for a rant, essay, detailed exposition, detailed analysis, full breakdown, exhaustive explanation, long news summary, complete reasoning, or help thinking something through in full. Do not infer this from stored memory, prior conversation length, task state, context documents, product philosophy, or the model's desire to be insightful.
 
 Set `user_prompted_inquiry` to false for short check-ins, yes/no questions, process questions, quick objections, quick advice requests, short follow-ups, or requests to explain a single sentence unless the user explicitly asks for length or depth.
 

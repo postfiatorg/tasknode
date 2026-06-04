@@ -39,8 +39,9 @@ returns strict JSON with `user_prompted_inquiry`, `full_response`, and
 `conformant_response`. The server displays and persists `full_response` only
 when `user_prompted_inquiry` is true, meaning the current user message explicitly
 asks for a rant, essay, detailed exposition, detailed analysis, full breakdown,
-long news summary, or similar long-form treatment. Otherwise the server displays
-and persists `conformant_response`, which is required to answer directly in
+long news summary, fully thought-out answer, elaborate or complex treatment, or
+help thinking something through in full. Otherwise the server displays and
+persists `conformant_response`, which is required to answer directly in
 plain sentences without bullets, headings, dramatic line breaks, or Reddit-style
 cadence. The streaming endpoint uses the same gate for Frontier Instant and
 emits the selected response as the visible stream. The assistant thinking
