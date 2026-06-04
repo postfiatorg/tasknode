@@ -164,7 +164,12 @@ function baseModeRows(liveByModel = new Map(), endpointsByModel = new Map()) {
       enabled: execution.enabled,
       description: modeDescriptions[mode] || "",
       configuredPricing: configuredPricing(config),
-      maxOutputTokens: Number(config.maxOutputTokens || 0),
+      maxOutputTokens: Number.isFinite(Number(config.maxOutputTokens)) && Number(config.maxOutputTokens) > 0
+        ? Number(config.maxOutputTokens)
+        : null,
+      estimatedOutputTokens: Number.isFinite(Number(config.estimatedOutputTokens)) && Number(config.estimatedOutputTokens) > 0
+        ? Number(config.estimatedOutputTokens)
+        : null,
       reasoning: config.reasoningEffort
         ? config.reasoningEffort
         : config.disableReasoning

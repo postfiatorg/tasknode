@@ -252,9 +252,10 @@ try {
 
   if (
     basicFrontierRequest.tools?.[0]?.type !== "web_search" ||
-    basicFrontierRequest.tool_choice !== "auto"
+    basicFrontierRequest.tool_choice !== "auto" ||
+    Object.prototype.hasOwnProperty.call(basicFrontierRequest, "max_output_tokens")
   ) {
-    throw new Error(`Basic OpenAI Responses requests should carry prompt-governed web search tools: ${JSON.stringify(basicFrontierRequest)}`);
+    throw new Error(`Basic OpenAI Responses requests should carry prompt-governed web search tools without a hard output cap: ${JSON.stringify(basicFrontierRequest)}`);
   }
 
   const smokeMemoryContext = {
@@ -454,9 +455,9 @@ try {
   if (
     frontierThinkingRequest.model !== "gpt-5.5" ||
     frontierThinkingRequest.reasoning?.effort !== "high" ||
-    frontierThinkingRequest.max_output_tokens !== 4096
+    Object.prototype.hasOwnProperty.call(frontierThinkingRequest, "max_output_tokens")
   ) {
-    throw new Error(`Frontier Thinking must use gpt-5.5 high reasoning: ${JSON.stringify(frontierThinkingRequest)}`);
+    throw new Error(`Frontier Thinking must use gpt-5.5 high reasoning without a hard output cap: ${JSON.stringify(frontierThinkingRequest)}`);
   }
 
   const openRouterRequest = openRouterChatRequest({

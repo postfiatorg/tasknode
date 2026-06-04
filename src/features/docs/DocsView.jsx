@@ -283,6 +283,9 @@ function SystemPricingPanel({ pricing }) {
 function SystemPricingCard({ mode }) {
   const liveModel = mode.liveModel || {};
   const endpoints = pricingEndpointsForDisplay(mode);
+  const maxOutputLabel = liveModel.maxCompletionTokens || mode.maxOutputTokens
+    ? formatCompactNumber(liveModel.maxCompletionTokens || mode.maxOutputTokens)
+    : "provider default";
   return (
     <article className="system-pricing-card">
       <div className="system-pricing-card-title">
@@ -321,7 +324,7 @@ function SystemPricingCard({ mode }) {
           <dt>Context / max output</dt>
           <dd>
             {formatCompactNumber(liveModel.contextLength)} /{" "}
-            {formatCompactNumber(liveModel.maxCompletionTokens || mode.maxOutputTokens)}
+            {maxOutputLabel}
           </dd>
         </div>
         <div>

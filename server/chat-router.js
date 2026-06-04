@@ -81,7 +81,8 @@ export const chatModePrices = {
     outputUsdPerMillion: 30,
     provider: "openai",
     defaultModel: "chat-latest",
-    maxOutputTokens: 700,
+    maxOutputTokens: null,
+    estimatedOutputTokens: 4096,
     reasoningEffort: "medium",
   },
   "Frontier Thinking": {
@@ -89,7 +90,8 @@ export const chatModePrices = {
     outputUsdPerMillion: 30,
     provider: "openai",
     defaultModel: "gpt-5.5",
-    maxOutputTokens: 4096,
+    maxOutputTokens: null,
+    estimatedOutputTokens: 4096,
     reasoningEffort: "high",
   },
 };
@@ -492,7 +494,7 @@ export function openAiResponseRequest({
 }) {
   const config = chatModeConfig(mode);
   const tools = toolsEnabled ? openAiTools() : [];
-  return {
+  const request = {
     model,
     instructions: instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext }),
     input: openAiInput({
@@ -501,7 +503,6 @@ export function openAiResponseRequest({
       attachments,
       historyMessages: instructionsOverride ? [] : historyMessages,
     }),
-    max_output_tokens: config.maxOutputTokens,
     reasoning: config.reasoningEffort ? { effort: config.reasoningEffort } : undefined,
     text: responseFormat ? { format: responseFormat } : undefined,
     stream: stream || undefined,
@@ -514,6 +515,11 @@ export function openAiResponseRequest({
       mode,
     },
   };
+  const maxOutputTokens = Number(config.maxOutputTokens || 0);
+  if (Number.isFinite(maxOutputTokens) && maxOutputTokens > 0) {
+    request.max_output_tokens = maxOutputTokens;
+  }
+  return request;
 }
 
 export function deepSeekChatRequest({

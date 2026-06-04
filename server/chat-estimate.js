@@ -110,7 +110,8 @@ export function chatEstimate(
   const instructionInputTokens = Math.max(1, Math.ceil(instructionCharacters / 4));
   const baseInstructionInputTokens =
     baseInstructionCharacters > 0 ? Math.ceil(baseInstructionCharacters / 4) : 0;
-  const estimatedOutputTokens = modeConfig.maxOutputTokens || (modeConfig.reasoningEffort ? 1800 : 700);
+  const estimatedOutputTokens =
+    modeConfig.estimatedOutputTokens || modeConfig.maxOutputTokens || (modeConfig.reasoningEffort ? 1800 : 700);
   const estimatedTokenUsd = actualChatCost(mode, {
     inputTokens,
     outputTokens: estimatedOutputTokens,

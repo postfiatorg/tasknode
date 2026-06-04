@@ -121,6 +121,11 @@ for (const [mode, model] of [
   });
   assertJobsInstructions(request.instructions, mode);
   assert.equal(request.input.at(-1)?.content?.[0]?.text?.includes(userSentinel), true);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(request, "max_output_tokens"),
+    false,
+    `${mode} should not send a hard OpenAI output cap`
+  );
 }
 
 for (const [mode, model] of [
