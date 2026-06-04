@@ -43,7 +43,11 @@ long news summary, or similar long-form treatment. Otherwise the server displays
 and persists `conformant_response`, which is required to answer directly in
 plain sentences without bullets, headings, dramatic line breaks, or Reddit-style
 cadence. The streaming endpoint uses the same gate for Frontier Instant and
-emits the selected response as the visible stream.
+emits the selected response as the visible stream. The assistant thinking
+disclosure stores the complete gate JSON in a separate `Frontier response JSON`
+panel so operators can audit `full_response`, `conformant_response`, and the
+selected field without mixing that audit block into the visible answer or the
+Jobs source text panel.
 
 Chat also has an explicit task-request mode from the `+` menu. That mode is different from ordinary chat. The next send becomes task request detail text and uses the same `POST /api/tasks/request` browser-wallet signing path as the Tasks page modal. It publishes a signed `pf.task.request.v1` pointer, records a durable `task_requests` row, and leaves the actual task card to appear from the PFTL projection after the task-generation worker publishes `pf.task.offer.v1`.
 

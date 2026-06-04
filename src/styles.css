@@ -1261,6 +1261,11 @@ h1 {
   color: #34332f;
 }
 
+.thinking-json-block {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
 .assistant-error {
   width: max-content;
   margin-top: 8px;

@@ -177,6 +177,11 @@ const gatedConformant = selectFrontierInstantResponseText(JSON.stringify({
 }));
 assert.equal(gatedConformant.text, "No. This should stay short.");
 assert.equal(gatedConformant.responseGate.selectedField, "conformant_response");
+assert.deepEqual(gatedConformant.responseGate.auditJson, {
+  user_prompted_inquiry: false,
+  full_response: "This is the long version that should not be shown.",
+  conformant_response: "No. This should stay short.",
+});
 
 const gatedFull = selectFrontierInstantResponseText(JSON.stringify({
   user_prompted_inquiry: true,
@@ -185,6 +190,11 @@ const gatedFull = selectFrontierInstantResponseText(JSON.stringify({
 }));
 assert.equal(gatedFull.text, "This is the detailed analysis requested by the user.");
 assert.equal(gatedFull.responseGate.selectedField, "full_response");
+assert.deepEqual(gatedFull.responseGate.auditJson, {
+  user_prompted_inquiry: true,
+  full_response: "This is the detailed analysis requested by the user.",
+  conformant_response: "Short version.",
+});
 
 for (const [mode, model] of [
   ["Private Instant", "deepseek/deepseek-v4-flash"],

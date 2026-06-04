@@ -346,6 +346,24 @@ function chatThinkingForJobsRetrieval({ jobsResult = null, renderedContext = "" 
   };
 }
 
+function chatThinkingWithResponseGate(thinking = {}, responseGate = null) {
+  if (!responseGate || typeof responseGate !== "object") return thinking;
+  return {
+    ...thinking,
+    responseGate,
+  };
+}
+
+function assistantChatMetadata({ thinking = {}, responseGate = null } = {}) {
+  const assistantThinking = chatThinkingWithResponseGate(thinking, responseGate);
+  return {
+    assistantThinking,
+    assistantMetadata: responseGate
+      ? { thinking: assistantThinking, responseGate }
+      : { thinking: assistantThinking },
+  };
+}
+
 export function frontierInstantResponseGateEnabled(mode = "") {
   return (
     String(process.env.TASKNODE_FRONTIER_INSTANT_RESPONSE_GATE || "true").trim().toLowerCase() !== "false" &&
@@ -419,6 +437,11 @@ export function selectFrontierInstantResponseText(rawText = "") {
       selectedField: userPromptedInquiry ? "full_response" : "conformant_response",
       fullResponseLength: fullResponse.length,
       conformantResponseLength: conformantResponse.length,
+      auditJson: {
+        user_prompted_inquiry: userPromptedInquiry,
+        full_response: fullResponse,
+        conformant_response: conformantResponse,
+      },
     },
   };
 }
@@ -1423,6 +1446,11 @@ export async function executeChat({
     throw error;
   }
 
+  const { assistantThinking, assistantMetadata } = assistantChatMetadata({
+    thinking,
+    responseGate: result.responseGate,
+  });
+
   const persisted = await appendChatTurn({
     accountId,
     conversationId,
@@ -1434,7 +1462,7 @@ export async function executeChat({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
-    assistantMetadata: result.responseGate ? { thinking, responseGate: result.responseGate } : { thinking },
+    assistantMetadata,
     runMetadata: { contextStatus: resolvedContextStatus },
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
@@ -1444,7 +1472,7 @@ export async function executeChat({
     ...persisted,
     assistant: {
       ...persisted.assistant,
-      thinking,
+      thinking: assistantThinking,
     },
     contextStatus: resolvedContextStatus,
   };
@@ -1619,6 +1647,11 @@ export async function executeChatStream({
     throw error;
   }
 
+  const { assistantThinking, assistantMetadata } = assistantChatMetadata({
+    thinking,
+    responseGate: result.responseGate,
+  });
+
   const persisted = await appendChatTurn({
     accountId,
     conversationId,
@@ -1630,7 +1663,7 @@ export async function executeChatStream({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
-    assistantMetadata: result.responseGate ? { thinking, responseGate: result.responseGate } : { thinking },
+    assistantMetadata,
     runMetadata: { contextStatus: resolvedContextStatus },
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
@@ -1640,7 +1673,7 @@ export async function executeChatStream({
     ...persisted,
     assistant: {
       ...persisted.assistant,
-      thinking,
+      thinking: assistantThinking,
     },
     contextStatus: resolvedContextStatus,
   };

@@ -239,7 +239,9 @@ export function AssistantMessage({
 
 function ThinkingDetails({ message }) {
   const retrieval = message.thinking?.jobsRetrieval || null;
+  const responseGate = responseGateForMessage(message);
   const sourceText = readableJobsRetrievalText(retrieval);
+  const responseGateJson = readableResponseGateJson(responseGate);
 
   return (
     <div className="thinking-details">
@@ -263,8 +265,35 @@ function ThinkingDetails({ message }) {
           )}
         </div>
       )}
+      {responseGate && (
+        <div className="thinking-vector-panel thinking-response-gate-panel">
+          <div className="thinking-vector-header">
+            <strong>Frontier response JSON</strong>
+            <span>{thinkingResponseGateSummary(responseGate)}</span>
+          </div>
+          {responseGateJson ? (
+            <pre className="thinking-source-block thinking-json-block">{responseGateJson}</pre>
+          ) : (
+            <span className="thinking-vector-empty">
+              No Frontier response JSON was stored for this message.
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+function responseGateForMessage(message = {}) {
+  return message.thinking?.responseGate || message.metadata?.responseGate || null;
+}
+
+function readableResponseGateJson(responseGate = null) {
+  const auditJson = responseGate?.auditJson;
+  if (auditJson && typeof auditJson === "object" && !Array.isArray(auditJson)) {
+    return JSON.stringify(auditJson, null, 2);
+  }
+  return "";
 }
 
 function readableJobsRetrievalText(retrieval = null) {
@@ -287,6 +316,12 @@ function thinkingRetrievalSummary(retrieval = {}) {
   const state = retrieval.state || "unknown";
   const count = Number(retrieval.chunkCount || 0);
   return `${state} · ${count} ${count === 1 ? "excerpt" : "excerpts"}`;
+}
+
+function thinkingResponseGateSummary(responseGate = {}) {
+  const selectedField = responseGate.selectedField || "unknown field";
+  const mode = responseGate.userPromptedInquiry === true ? "full response" : "conformant response";
+  return `${mode}; selected ${selectedField}`;
 }
 
 function assistantSourceLabel(metadata = {}) {

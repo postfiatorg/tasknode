@@ -94,7 +94,10 @@ with OpenAI Responses structured output. The model must return
 `user_prompted_inquiry`, `full_response`, and `conformant_response`. The server
 displays `full_response` only when the current user explicitly requested
 long-form depth; otherwise it displays `conformant_response`. The stream route
-uses the same gate for Frontier Instant and emits the selected response.
+uses the same gate for Frontier Instant and emits the selected response. The
+complete gate JSON is persisted in assistant thinking metadata and rendered in
+the chat thinking disclosure as `Frontier response JSON`, separate from the
+Jobs source text audit block.
 
 Jobs retrieval uses OpenAI `/v1/embeddings` through `server/embedding-provider.js`, defaulting to `text-embedding-3-small` with 1536 dimensions. That embedding call is internal retrieval infrastructure; it is not a chat completion provider route and does not enable web search on private modes.
 
