@@ -3,7 +3,14 @@ import assert from "node:assert/strict";
 process.env.TASKNODE_CHAT_SPIRIT_ENABLED = "true";
 delete process.env.TASKNODE_CHAT_SPIRIT_PROMPT;
 
-const { deepSeekChatRequest, openAiResponseRequest, openRouterChatRequest } = await import("../server/chat-router.js");
+const {
+  deepSeekChatRequest,
+  frontierInstantResponseGateInstructionBlock,
+  frontierInstantResponseGateResponseFormat,
+  openAiResponseRequest,
+  openRouterChatRequest,
+  selectFrontierInstantResponseText,
+} = await import("../server/chat-router.js");
 const { chatEstimate } = await import("../server/chat-estimate.js");
 const { chatSpiritMetadata } = await import("../server/chat-spirit-context.js");
 
@@ -140,6 +147,44 @@ for (const [mode, model] of [
     `${mode} should not send a hard OpenAI output cap`
   );
 }
+
+const gatedFrontierRequest = openAiResponseRequest({
+  mode: "Frontier Instant",
+  model: "chat-latest",
+  message: "what do you think?",
+  conversationId: "jobs-smoke-frontier-gate",
+  contextDocument,
+  memoryContext,
+  taskContext,
+  jobsEssence,
+  responseInstructionBlock: frontierInstantResponseGateInstructionBlock(),
+  responseFormat: frontierInstantResponseGateResponseFormat(),
+});
+assert.equal(count(gatedFrontierRequest.instructions, "## Frontier Instant Response Gate"), 1);
+assert.equal(gatedFrontierRequest.text.format.type, "json_schema");
+assert.equal(gatedFrontierRequest.text.format.name, "frontier_instant_response_gate");
+assert.equal(gatedFrontierRequest.text.format.strict, true);
+assert.deepEqual(gatedFrontierRequest.text.format.schema.required, [
+  "user_prompted_inquiry",
+  "full_response",
+  "conformant_response",
+]);
+
+const gatedConformant = selectFrontierInstantResponseText(JSON.stringify({
+  user_prompted_inquiry: false,
+  full_response: "This is the long version that should not be shown.",
+  conformant_response: "No. This should stay short.",
+}));
+assert.equal(gatedConformant.text, "No. This should stay short.");
+assert.equal(gatedConformant.responseGate.selectedField, "conformant_response");
+
+const gatedFull = selectFrontierInstantResponseText(JSON.stringify({
+  user_prompted_inquiry: true,
+  full_response: "This is the detailed analysis requested by the user.",
+  conformant_response: "Short version.",
+}));
+assert.equal(gatedFull.text, "This is the detailed analysis requested by the user.");
+assert.equal(gatedFull.responseGate.selectedField, "full_response");
 
 for (const [mode, model] of [
   ["Private Instant", "deepseek/deepseek-v4-flash"],

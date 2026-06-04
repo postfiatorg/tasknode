@@ -33,6 +33,18 @@ all available memory or strategy context. Long pasted material, vulnerable
 passages, and explicit long-form requests may receive longer synthesis, but the
 answer should still use complete paragraphs instead of dramatic line stacks.
 
+Frontier Instant has an additional structured response gate in
+`prompts/chat/frontier_instant_response_gate_v1.md`. The OpenAI Responses call
+returns strict JSON with `user_prompted_inquiry`, `full_response`, and
+`conformant_response`. The server displays and persists `full_response` only
+when `user_prompted_inquiry` is true, meaning the current user message explicitly
+asks for a rant, essay, detailed exposition, detailed analysis, full breakdown,
+long news summary, or similar long-form treatment. Otherwise the server displays
+and persists `conformant_response`, which is required to answer directly in
+plain sentences without bullets, headings, dramatic line breaks, or Reddit-style
+cadence. The streaming endpoint uses the same gate for Frontier Instant and
+emits the selected response as the visible stream.
+
 Chat also has an explicit task-request mode from the `+` menu. That mode is different from ordinary chat. The next send becomes task request detail text and uses the same `POST /api/tasks/request` browser-wallet signing path as the Tasks page modal. It publishes a signed `pf.task.request.v1` pointer, records a durable `task_requests` row, and leaves the actual task card to appear from the PFTL projection after the task-generation worker publishes `pf.task.offer.v1`.
 
 Chat also has a Context Refine mode from the `+` menu. That mode stays in the same chat, changes the composer into `Context Refine`, and sends the next message through the dedicated context-edit route. Context Refine is not a modal and does not require a wallet.

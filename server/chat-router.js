@@ -34,6 +34,7 @@ import {
   openAiInput,
   openRouterMessages,
 } from "./chat-provider-message-builders.js";
+import { loadPrompt } from "./prompt-registry.js";
 export {
   deepSeekMessages,
   openAiInput,
@@ -46,6 +47,8 @@ const defaultDeepSeekBaseUrl = "https://api.deepseek.com";
 const defaultProviderTimeoutMs = 45_000;
 const defaultDeepSeekProviderTimeoutMs = 120_000;
 const telegramDiscountThinkingTimeoutMs = 120_000;
+const frontierInstantResponseGatePromptVersion = "frontier_instant_response_gate_v1";
+const frontierInstantResponseGatePrompt = loadPrompt("chat/frontier_instant_response_gate_v1.md");
 
 export const chatModePrices = {
   "Private Instant": {
@@ -343,6 +346,83 @@ function chatThinkingForJobsRetrieval({ jobsResult = null, renderedContext = "" 
   };
 }
 
+export function frontierInstantResponseGateEnabled(mode = "") {
+  return (
+    String(process.env.TASKNODE_FRONTIER_INSTANT_RESPONSE_GATE || "true").trim().toLowerCase() !== "false" &&
+    normalizedChatMode(mode) === "Frontier Instant"
+  );
+}
+
+export function frontierInstantResponseGateInstructionBlock() {
+  return frontierInstantResponseGatePrompt;
+}
+
+export function frontierInstantResponseGateResponseFormat() {
+  return {
+    type: "json_schema",
+    name: "frontier_instant_response_gate",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["user_prompted_inquiry", "full_response", "conformant_response"],
+      properties: {
+        user_prompted_inquiry: {
+          type: "boolean",
+          description: "True only when the current user explicitly asks for long-form depth.",
+        },
+        full_response: {
+          type: "string",
+          description: "The complete long-form answer for explicit long-form requests.",
+        },
+        conformant_response: {
+          type: "string",
+          description: "The concise normal-chat answer in plain complete sentences without bullets or Reddit cadence.",
+        },
+      },
+    },
+  };
+}
+
+function stripJsonFence(text = "") {
+  return String(text || "")
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function parseJsonObject(text = "") {
+  const raw = stripJsonFence(text);
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) throw new Error("frontier_response_gate_invalid_json");
+  const parsed = JSON.parse(raw.slice(start, end + 1));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("frontier_response_gate_invalid_object");
+  }
+  return parsed;
+}
+
+export function selectFrontierInstantResponseText(rawText = "") {
+  const parsed = parseJsonObject(rawText);
+  const userPromptedInquiry = parsed.user_prompted_inquiry === true;
+  const fullResponse = String(parsed.full_response || "").trim();
+  const conformantResponse = String(parsed.conformant_response || "").trim();
+  const selectedText = userPromptedInquiry ? fullResponse : conformantResponse;
+  if (!selectedText) throw new Error("frontier_response_gate_empty_selected_text");
+  return {
+    text: selectedText,
+    responseGate: {
+      promptVersion: frontierInstantResponseGatePromptVersion,
+      userPromptedInquiry,
+      selectedField: userPromptedInquiry ? "full_response" : "conformant_response",
+      fullResponseLength: fullResponse.length,
+      conformantResponseLength: conformantResponse.length,
+    },
+  };
+}
+
 function loggedUsage(usage = null) {
   if (!usage || typeof usage !== "object") return undefined;
   return {
@@ -488,15 +568,20 @@ export function openAiResponseRequest({
   taskContext = null,
   jobsEssence = "",
   instructionsOverride = "",
+  responseInstructionBlock = "",
   responseFormat = null,
   toolsEnabled = true,
   deliveryContext = null,
 }) {
   const config = chatModeConfig(mode);
   const tools = toolsEnabled ? openAiTools() : [];
+  const instructions = [
+    instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext }),
+    responseInstructionBlock,
+  ].filter(Boolean).join("\n\n");
   const request = {
     model,
-    instructions: instructionsOverride || taskNodeInstructions({ contextDocument, memoryContext, taskContext, jobsEssence, deliveryContext }),
+    instructions,
     input: openAiInput({
       conversationId,
       message,
@@ -740,6 +825,7 @@ export async function executeOpenAi({
   jobsEssence = "",
   deliveryContext = null,
   instructionsOverride = "",
+  responseInstructionBlock = "",
   responseFormat = null,
   toolsEnabled = true,
   timeoutMs = defaultProviderTimeoutMs,
@@ -758,6 +844,7 @@ export async function executeOpenAi({
     jobsEssence,
     deliveryContext,
     instructionsOverride,
+    responseInstructionBlock,
     responseFormat,
     toolsEnabled,
   };
@@ -781,6 +868,20 @@ export async function executeOpenAi({
     responseId: body?.id || null,
     text,
     usage: openAiUsage(body, mode),
+  };
+}
+
+async function executeOpenAiFrontierInstantResponseGate(request = {}) {
+  const result = await executeOpenAi({
+    ...request,
+    responseInstructionBlock: frontierInstantResponseGateInstructionBlock(),
+    responseFormat: frontierInstantResponseGateResponseFormat(),
+  });
+  const selected = selectFrontierInstantResponseText(result.text);
+  return {
+    ...result,
+    text: selected.text,
+    responseGate: selected.responseGate,
   };
 }
 
@@ -1269,7 +1370,9 @@ export async function executeChat({
   });
   const result =
     status.provider === "openai"
-      ? await executeOpenAi({
+      ? await (frontierInstantResponseGateEnabled(normalizedMode)
+          ? executeOpenAiFrontierInstantResponseGate
+          : executeOpenAi)({
           mode: normalizedMode,
           model: status.model,
           message,
@@ -1331,7 +1434,7 @@ export async function executeChat({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
-    assistantMetadata: { thinking },
+    assistantMetadata: result.responseGate ? { thinking, responseGate: result.responseGate } : { thinking },
     runMetadata: { contextStatus: resolvedContextStatus },
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
@@ -1408,22 +1511,42 @@ export async function executeChatStream({
   });
   const result =
     status.provider === "openai"
-      ? await streamOpenAi({
-          mode: normalizedMode,
-          model: status.model,
-          message,
-          conversationId,
-          attachments,
-          historyMessages,
-          contextDocument: resolvedContextDocument,
-          memoryContext: resolvedMemoryContext,
-          taskContext: resolvedTaskContext,
-          jobsEssence: resolvedJobsEssence,
-          deliveryContext,
-          onDelta,
-          signal,
-          timeoutMs,
-        })
+      ? await (async () => {
+          if (!frontierInstantResponseGateEnabled(normalizedMode)) {
+            return streamOpenAi({
+              mode: normalizedMode,
+              model: status.model,
+              message,
+              conversationId,
+              attachments,
+              historyMessages,
+              contextDocument: resolvedContextDocument,
+              memoryContext: resolvedMemoryContext,
+              taskContext: resolvedTaskContext,
+              jobsEssence: resolvedJobsEssence,
+              deliveryContext,
+              onDelta,
+              signal,
+              timeoutMs,
+            });
+          }
+          const gatedResult = await executeOpenAiFrontierInstantResponseGate({
+            mode: normalizedMode,
+            model: status.model,
+            message,
+            conversationId,
+            attachments,
+            historyMessages,
+            contextDocument: resolvedContextDocument,
+            memoryContext: resolvedMemoryContext,
+            taskContext: resolvedTaskContext,
+            jobsEssence: resolvedJobsEssence,
+            deliveryContext,
+            timeoutMs,
+          });
+          await onDelta?.(gatedResult.text);
+          return gatedResult;
+        })()
       : status.provider === "deepseek"
         ? await (async () => {
             let emittedVisibleDelta = false;
@@ -1507,7 +1630,7 @@ export async function executeChatStream({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
-    assistantMetadata: { thinking },
+    assistantMetadata: result.responseGate ? { thinking, responseGate: result.responseGate } : { thinking },
     runMetadata: { contextStatus: resolvedContextStatus },
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });

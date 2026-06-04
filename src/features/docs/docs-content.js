@@ -58,6 +58,7 @@ import turnMemoryWorker from "../../../docs/wiki/architecture/turn-memory-worker
 import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-production-scope.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import jobsStandardChatPrompt from "../../../prompts/chat/jobs_standard_chat_codex_style_draft.md?raw";
+import frontierInstantResponseGatePrompt from "../../../prompts/chat/frontier_instant_response_gate_v1.md?raw";
 import contextEditJobsPrompt from "../../../prompts/context/context_edit_jobs_v1.xml?raw";
 import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
 import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
@@ -143,6 +144,19 @@ const PROMPT_SOURCES = [
       "server/chat-router.js::openAiResponseRequest",
     ],
     content: jobsStandardChatPrompt,
+  },
+  {
+    family: "Chat",
+    title: "Frontier Instant Response Gate",
+    path: "prompts/chat/frontier_instant_response_gate_v1.md",
+    summary: "Structured-output gate for Frontier Instant that returns full_response, conformant_response, and user_prompted_inquiry so short turns display the conformant answer.",
+    status: "Active for Frontier Instant when TASKNODE_FRONTIER_INSTANT_RESPONSE_GATE is not false",
+    usedBy: [
+      "server/chat-router.js::frontierInstantResponseGateInstructionBlock",
+      "server/chat-router.js::frontierInstantResponseGateResponseFormat",
+      "server/chat-router.js::selectFrontierInstantResponseText",
+    ],
+    content: frontierInstantResponseGatePrompt,
   },
   {
     family: "Chat",

@@ -89,6 +89,13 @@ fails.
 
 All chat modes use one prompt assembly boundary. `prompts/chat/task_node_instructions_v1.md` remains the operational product-truth prompt. `prompts/chat/jobs_standard_chat_codex_style_draft.md` is then rendered by `server/chat-spirit-context.js` so the model's voice and judgment feel product-led without duplicating provider code. The current user message, history, and attachments remain provider messages; the Jobs Markdown prompt receives only durable background slots for the context document, task projection, memory context, and pgvector Jobs retrieval. The chat thinking disclosure exposes the rendered Jobs retrieval context for audit.
 
+Frontier Instant also uses `prompts/chat/frontier_instant_response_gate_v1.md`
+with OpenAI Responses structured output. The model must return
+`user_prompted_inquiry`, `full_response`, and `conformant_response`. The server
+displays `full_response` only when the current user explicitly requested
+long-form depth; otherwise it displays `conformant_response`. The stream route
+uses the same gate for Frontier Instant and emits the selected response.
+
 Jobs retrieval uses OpenAI `/v1/embeddings` through `server/embedding-provider.js`, defaulting to `text-embedding-3-small` with 1536 dimensions. That embedding call is internal retrieval infrastructure; it is not a chat completion provider route and does not enable web search on private modes.
 
 ## Hive Board Manager And Planning Workers
