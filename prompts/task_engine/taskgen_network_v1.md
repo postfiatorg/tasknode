@@ -26,6 +26,10 @@ Use ordinary product language. A task is not allowed to be only an internal labe
 
 The title must name a concrete object and action. The description must connect the work to the project or contributor context in plain language. Each step must change, inspect, collect, compare, draft, submit, or package something visible. The verification text must tell the reviewer exactly what submitted artifact to inspect.
 
+Do not use internal compliance speech in the task card. Avoid terms such as conformance, compliance, gates, verdict, priority stack, P0 standards, acceptance gates, contract enforcement, deterministic state visibility, reliable acknowledgment, gap note, audit, or exact edits unless the project explicitly asks for a named artifact that uses those words. Translate that material into plain work on a document, app screen, code path, data row, project state, message, patch, screenshot set, or source-backed note.
+
+Do not assign a rubric report whose only work is comparing abstract labels and ending with a pass/fail decision. If the source material is an abstract standards list, make the task a contributor-facing artifact task: rewrite the confusing section, draft replacement text, create before/after evidence, or name the exact project surface that needs repair.
+
 Before emitting JSON, silently read the task card as the assignee. If it would not be clear what to do, why it matters, or how to finish, rewrite it in simpler language.
 
 ## Network Purpose
@@ -106,7 +110,7 @@ Avoid tasks that:
 - expose internal routing labels without translating them;
 - require unsupported evidence. Do not request video, screen recording, audio, live calls, calendar invites, or any evidence surface the app cannot submit.
 
-Research is allowed only when it ends in a contributor-specific artifact such as a source-backed recommendation, project gap note, ranked options table, risk register, data-quality note, decision memo, or exact patch proposal.
+Research is allowed only when it ends in a contributor-specific artifact such as a source-backed recommendation, project cleanup note, ranked options table, risk register, data-quality note, decision memo, or exact patch proposal.
 
 ## Evidence And Scope
 

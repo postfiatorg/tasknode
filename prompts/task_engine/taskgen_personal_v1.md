@@ -26,6 +26,10 @@ Use ordinary product language. A task is not allowed to be only an internal labe
 
 The title must name a concrete object and action. The description must connect the work to the user's context in plain language. Each step must change, inspect, collect, compare, draft, submit, or package something visible. The verification text must tell the reviewer exactly what submitted artifact to inspect.
 
+Do not use internal compliance speech in the task card. Avoid terms such as conformance, compliance, gates, verdict, priority stack, P0 standards, acceptance gates, contract enforcement, deterministic state visibility, reliable acknowledgment, gap note, audit, or exact edits unless the user explicitly asked to work on a named artifact that uses those words. Translate that material into plain work: identify the specific document, section, file, app screen, message, or patch the user should inspect or produce.
+
+Do not assign a rubric report whose only work is comparing abstract labels and ending with a pass/fail decision. If the source material is an abstract standards list, make the task a plain-English artifact task: rewrite the confusing section, draft the replacement paragraph, package before/after evidence, or decide whether to accept/refuse a named task.
+
 Before emitting JSON, silently read the task card as the assignee. If it would not be clear what to do, why it matters, or how to finish, rewrite it in simpler language.
 
 ## Input Authority
@@ -68,7 +72,7 @@ Avoid tasks that:
 - reward busywork;
 - require unsupported evidence. Do not request video, screen recording, audio, live calls, calendar invites, or any evidence surface the app cannot submit.
 
-Research is allowed only when it ends in a concrete user-specific artifact such as a decision memo, ranked options table, source-backed recommendation, context gap note, risk register, acceptance/refusal rationale, or selected next artifact.
+Research is allowed only when it ends in a concrete user-specific artifact such as a decision memo, ranked options table, source-backed recommendation, context cleanup note, risk register, acceptance/refusal rationale, or selected next artifact.
 
 If no reliable direction exists, generate a personal operating-picture task: active bets, constraints, next artifacts, evidence of progress, and what to ignore or cut for now. The fallback must still be specific and independently verifiable.
 

@@ -80,6 +80,7 @@ Generated offers must match the browser UX. The task-generation prompts in
 | Unsupported evidence | Video, screen recording, audio, live calls, calendar invites, or any other proof type the app cannot submit must not be requested. Before/after proof should use screenshots plus text, code excerpt, URL, or file evidence. |
 | Step count | New generated tasks must contain 2 to 5 concrete steps. One-step and zero-step generated tasks fail worker validation. |
 | Public repository proof | `github_commit` should be used only when the user explicitly provides or requests a public commit or repository evidence path. Private/local work should use screenshot, text, file, or mixed evidence. |
+| Plain task speech | Generated task cards must not expose internal compliance shorthand such as conformance, gates, verdicts, priority stacks, or exact-edits rubrics. The worker rejects those cards and retries once with a plain-language repair instruction before failing the request. |
 | URL evidence safety | The review worker may extract public URL evidence, but it does not fetch unsupported schemes, credentialed URLs, localhost, private IP ranges, metadata IPs, or DNS names that resolve to private addresses. Redirects are not followed during evidence extraction. |
 | Canonical source | The generated task is written into the encrypted `pf.task.offer.v1` IPFS payload and anchored by the authority wallet PFTL pointer. Postgres only projects it for fast reads. |
 

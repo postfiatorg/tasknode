@@ -232,6 +232,40 @@ function normalizeTaskKind(value = "", policy = {}) {
   return "personal";
 }
 
+const opaqueTaskSpeechPatterns = Object.freeze([
+  ["acceptance gates", /\bacceptance\s+gates?\b/i],
+  ["active p0", /\bactive\s+p0\b/i],
+  ["chat contract enforcement", /\bchat\s+contract\s+enforcement\b/i],
+  ["compliance", /\bcompliance\b/i],
+  ["conformance", /\bconformance\b/i],
+  ["contract enforcement", /\bcontract\s+enforcement\b/i],
+  ["deterministic state visibility", /\bdeterministic\s+state\s+visibility\b/i],
+  ["exact edits", /\bexact\s+edits?\b/i],
+  ["gap note", /\bgap\s+note\b/i],
+  ["gates", /\bgates?\b/i],
+  ["p0 standards", /\bp0\s+standards?\b/i],
+  ["priority stack", /\bpriority\s+stack\b/i],
+  ["reliable acknowledgment", /\breliable\s+(user\s+)?acknowledg(e)?ment\b/i],
+  ["verdict", /\bverdict\b/i],
+]);
+
+function taskCardSpeechText(output = {}) {
+  const requirement = safeObject(output.submission_requirement);
+  return [
+    output.title,
+    output.description,
+    ...(Array.isArray(output.steps) ? output.steps : []),
+    requirement.criteria,
+  ].map((value) => safeText(value, 4000)).filter(Boolean).join("\n");
+}
+
+function assertPlainTaskCardSpeech(output = {}) {
+  const text = taskCardSpeechText(output);
+  for (const [label, pattern] of opaqueTaskSpeechPatterns) {
+    if (pattern.test(text)) throw new Error(`taskgen_plain_speech_violation:${label}`);
+  }
+}
+
 export function validateTaskgenOutput(output = {}, policy = {}) {
   const required = ["title", "description", "task_kind", "submission_requirement", "verification_policy", "reward_offer", "deadline"];
   const missing = required.filter((key) => output[key] === undefined || output[key] === null);
@@ -246,7 +280,7 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
     : [];
   if (steps.length < 2) throw new Error("taskgen_steps_invalid");
   const reward = safeObject(output.reward_offer);
-  return {
+  const normalized = {
     ...output,
     title: safeText(output.title, 240),
     description: safeText(output.description, 8000),
@@ -269,6 +303,8 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
       deadline_at: normalizeDeadlineTimestamp(output.deadline?.deadline_at),
     },
   };
+  assertPlainTaskCardSpeech(normalized);
+  return normalized;
 }
 
 async function generateTaskWithOpenAi(taskInput) {
@@ -278,43 +314,57 @@ async function generateTaskWithOpenAi(taskInput) {
   const systemPrompt = loadPrompt(taskgenPrompt.path);
   const model = safeText(process.env.TASKNODE_TASKGEN_MODEL || "chat-latest", 120);
   const startedAt = Date.now();
-  const response = await fetch(`${(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `Generate a minimal Task Node task from this input packet. Return JSON matching schema pf.taskgen.output.v1.\n\n${stableJson(taskInput)}`,
+  const baseInstruction = `Generate a minimal Task Node task from this input packet. Return JSON matching schema pf.taskgen.output.v1.\n\n${stableJson(taskInput)}`;
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const repairInstruction = attempt === 1
+      ? ""
+      : "\n\nThe previous draft used opaque internal compliance language. Rewrite the task card in plain product language with a concrete object, action, artifact, and evidence. Do not use conformance, compliance, gates, verdict, priority stack, P0 standards, gap note, or exact-edits language.";
+    const response = await fetch(`${(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `${baseInstruction}${repairInstruction}`,
+          },
+        ],
+        response_format: taskgenResponseFormat,
+      }),
+    });
+    const bodyText = await response.text();
+    if (!response.ok) throw new Error(`taskgen_openai_http_${response.status}:${bodyText.slice(0, 500)}`);
+    const body = JSON.parse(bodyText);
+    try {
+      const output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
+      return {
+        output,
+        metadata: {
+          provider: "frontier",
+          model,
+          prompt_version: taskgenPrompt.version,
+          prompt_path: taskgenPrompt.path,
+          prompt_digest: promptDigest(systemPrompt),
+          input_packet_digest: sha256(taskInput),
+          output_digest: sha256(output),
+          latency_ms: Date.now() - startedAt,
+          parse_status: "ok",
+          openai_response_id: body.id || "",
+          validation_attempts: attempt,
         },
-      ],
-      response_format: taskgenResponseFormat,
-    }),
-  });
-  const bodyText = await response.text();
-  if (!response.ok) throw new Error(`taskgen_openai_http_${response.status}:${bodyText.slice(0, 500)}`);
-  const body = JSON.parse(bodyText);
-  const output = validateTaskgenOutput(parseJsonObject(body?.choices?.[0]?.message?.content || ""), taskInput.policy || {});
-  return {
-    output,
-    metadata: {
-      provider: "frontier",
-      model,
-      prompt_version: taskgenPrompt.version,
-      prompt_path: taskgenPrompt.path,
-      prompt_digest: promptDigest(systemPrompt),
-      input_packet_digest: sha256(taskInput),
-      output_digest: sha256(output),
-      latency_ms: Date.now() - startedAt,
-      parse_status: "ok",
-      openai_response_id: body.id || "",
-    },
-  };
+      };
+    } catch (error) {
+      lastError = error;
+      if (!String(error?.message || "").startsWith("taskgen_plain_speech_violation:") || attempt >= 2) throw error;
+    }
+  }
+  throw lastError || new Error("taskgen_failed");
 }
 
 function taskIdForOffer({ authorityWallet = "", requestBundleCid = "", output = {} } = {}) {
