@@ -43,7 +43,10 @@ long news summary, fully thought-out answer, elaborate or complex treatment, or
 help thinking something through in full. Otherwise the server displays and
 persists `conformant_response`, which is required to answer directly in
 plain sentences without bullets, headings, dramatic line breaks, or Reddit-style
-cadence. The streaming endpoint uses the same gate for Frontier Instant and
+cadence. `conformant_response` is concise but not stripped down: when the user
+asks for judgment or next steps, it should keep the concrete action, blocker,
+tradeoff, and immediate success test instead of reducing the answer to a generic
+principle. The streaming endpoint uses the same gate for Frontier Instant and
 emits the selected response as the visible stream. The assistant thinking
 disclosure stores the complete gate JSON in a separate `Frontier response JSON`
 panel so operators can audit `full_response`, `conformant_response`, and the

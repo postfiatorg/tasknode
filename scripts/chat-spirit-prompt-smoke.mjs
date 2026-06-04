@@ -163,6 +163,8 @@ const gatedFrontierRequest = openAiResponseRequest({
 assert.equal(count(gatedFrontierRequest.instructions, "## Frontier Instant Response Gate"), 1);
 assert.match(gatedFrontierRequest.instructions, /fully thought-out, elaborate, complex/);
 assert.match(gatedFrontierRequest.instructions, /thinking something through in full/);
+assert.match(gatedFrontierRequest.instructions, /preserve the decision-critical details/);
+assert.match(gatedFrontierRequest.instructions, /stay under 10 sentences/);
 assert.equal(gatedFrontierRequest.text.format.type, "json_schema");
 assert.equal(gatedFrontierRequest.text.format.name, "frontier_instant_response_gate");
 assert.equal(gatedFrontierRequest.text.format.strict, true);

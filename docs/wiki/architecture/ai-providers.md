@@ -95,7 +95,9 @@ with OpenAI Responses structured output. The model must return
 displays `full_response` only when the current user explicitly requested
 long-form depth, including a fully thought-out, elaborate, complex, or in-full
 treatment; otherwise it displays `conformant_response`. The stream route uses
-the same gate for Frontier Instant and emits the selected response. The
+the same gate for Frontier Instant and emits the selected response.
+`conformant_response` should still preserve decision-critical next-step detail;
+it is a plain-language answer, not a lossy summary. The
 complete gate JSON is persisted in assistant thinking metadata and rendered in
 the chat thinking disclosure as `Frontier response JSON`, separate from the
 Jobs source text audit block.
