@@ -20,6 +20,15 @@ Private memory jobs use the configured OpenRouter ZDR model path. The worker req
 
 Deep-memory jobs are stable snapshots. `chat_deep_memory_jobs.source_entry_ids` stores the exact 36 `chat_memory_entries.id` values selected when the block is queued. The worker reads those IDs directly instead of recalculating the block later from timestamps, so backfills, imports, or corrected timestamps cannot change what a queued deep-memory job summarizes. `chat_memory_entries` also enforces one `deep_memory` row per account and block index, so retrying or recreating a deep-memory job updates the existing block summary rather than creating duplicates. The enqueue path repairs any completed or failed deep-memory job whose visible `deep_memory` row is missing; it reuses the stored source snapshot and sends that block back to the worker.
 
+Production incident note, June 4, 2026: turn memory appeared stuck at 36 because the Memory API returned only the latest 36 turn-memory rows and the UI displayed the returned window count instead of the stored total. The account actually had 156 turn-memory rows. Deep memory was separately broken because `clear_deep_memory` deleted `chat_memory_entries.kind = 'deep_memory'` rows without deleting the associated `chat_deep_memory_jobs` rows. Those jobs stayed marked `completed`, so backfill treated the deep-memory blocks as already handled even though no visible deep-memory summaries existed. Some old job snapshots also pointed at turn-memory row IDs that had since been deleted, so naive requeueing failed with `deep_memory_job_source_incomplete`.
+
+The repair contract is now:
+
+- the Memory API returns stored totals separately from the bounded display window;
+- clearing Deep Memory deletes both deep-memory entry rows and deep-memory job rows;
+- missing deep-memory rows requeue the corresponding completed or failed jobs;
+- if the stored 36-row source snapshot is stale and no deep-memory output row exists, repair refreshes the snapshot from the current 36-row block before requeueing.
+
 Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. The prompt is `prompts/memory/network_task_profile_v2.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh. The generated profile is also queued automatically once an account has at least two positive task rewards, both when rewarded task projections are imported and during the memory worker backfill pass. The generated profile is not required for the page to render. Network Context Inputs are built from profile data and routable `task_projections` on every route read and are returned even while a profile job is pending.
 
 This page is the current product contract for Memory and Network Diagnostic
@@ -152,6 +161,8 @@ sequenceDiagram
 - Network Task Profile jobs must not block Memory page rendering.
 - Network Context Inputs should remain current even if profile generation fails.
 - Memory failure should be logged and retryable.
+- A completed `chat_deep_memory_jobs` row without a matching `deep_memory` entry is not complete product state; repair must requeue it.
+- A stale `source_entry_ids` snapshot may be refreshed only when the deep-memory output row is missing. Existing deep-memory rows preserve the original snapshot contract.
 - User-derived memory should be presented as memory context, not as app policy.
 - Users should be able to inspect memory entries for trust.
 
