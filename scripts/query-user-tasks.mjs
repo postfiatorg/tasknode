@@ -227,11 +227,12 @@ async function main() {
           account_id,
           wallet_address,
           source,
+          source_ref,
           status,
           task_count,
           pointer_event_count,
-          started_at,
-          completed_at
+          error,
+          created_at
         FROM pftl_task_sync_runs
         WHERE ($1::text <> '' AND account_id = $1)
            OR ($2::text <> '' AND wallet_address = $2)
