@@ -2892,8 +2892,13 @@ function TasksView({
   const activeRequests = activeTaskRequests(requests);
   const taskSync = tasks?.sync || {};
   const taskSyncStatus = String(taskSync.status || "ready");
-  const shouldRefreshTaskState = Boolean(taskSync.requiresRefresh || activeRequests.length || needsLegacyTaskRefresh(tasks));
   const shouldRefreshTaskProjection = taskSyncStatus === "indexing_lag" || taskSyncStatus === "reducer_attention";
+  const shouldRefreshTaskState = Boolean(
+    shouldRefreshTaskProjection ||
+    taskSync.requiresRefresh ||
+    activeRequests.length ||
+    needsLegacyTaskRefresh(tasks)
+  );
   const taskRefreshMs = Math.min(Math.max(Number(taskSync.nextPollMs || 2500), 1000), 30000);
   const currentTabTasks = {
     outstanding,

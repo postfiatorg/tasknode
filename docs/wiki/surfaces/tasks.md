@@ -42,18 +42,18 @@ Once an account has at least two positive task rewards, Task Node automatically 
 
 The task list, tab counts, and task detail page must agree because they read the same projected lifecycle. If the detail page says a task is rewarded, the list must not keep showing that task under Verification.
 
-The failure mode we just fixed was not a bad reward outcome and not a one-off task record. The database projection already had the correct terminal state. The bug was that the Tasks page was allowed to stop refreshing while a task sat at `verification_requested`. That state is not stable. It means the user can still submit verification evidence and the authority worker can later publish a reward outcome.
+Refresh failures must be treated as state-boundary bugs, not one-off task records. A task can be visibly stale while the database projection, chain cache, or reducer is still catching up. The Tasks page must keep refreshing when either the lifecycle itself is active or the sync metadata says the projection is behind cached pointers.
 
-The repair is in the shared lifecycle contract, not a hard-coded task patch. `shared/task-lifecycle.js` now marks `verification_requested` as an active review-loop state with `requiresRefresh: true`. `GET /api/tasks` uses that contract when returning sync metadata, and the Tasks page uses the metadata to keep polling until the projection reaches a terminal state such as `rewarded`, `refused`, or `cancelled`.
+The repair belongs in the shared lifecycle and sync contract, not a hard-coded task patch. `shared/task-lifecycle.js` marks review-loop states such as `verification_requested` as refreshable and also accepts a projection-refresh flag for `indexing_lag`. `GET /api/tasks` uses that contract when returning sync metadata, and the Tasks page uses the metadata to keep polling until the projection catches up or reaches a terminal state such as `rewarded`, `refused`, or `cancelled`.
 
 In plain English:
 
 1. A task card can sit in Verification while the system is waiting for evidence or review.
 2. While it is in that review loop, the list keeps checking the projection cache.
-3. When the reducer projects a terminal reward outcome, the card moves to Rewarded without a manual browser reload.
+3. If the cache has a newer task pointer than the projected row, the list keeps checking even if the visible task is still Proposed.
 4. Terminal states stop active refresh because no later lifecycle event is expected for the normal task loop.
 
-Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`. It asserts that `verification_requested` stays refreshable and that terminal `rewarded` tasks do not keep the page polling forever.
+Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`. It asserts that `verification_requested` stays refreshable, that projection lag keeps a proposed task polling, and that terminal `rewarded` tasks do not keep the page polling forever.
 
 The `Request task` button opens a modal where the user can describe the kind of work they want. Submitting the modal uses `POST /api/tasks/request` to build a request bundle from the current context document, deep memory, recent memory, recent chats, and existing task queue; encrypt the bundle locally in the browser; pin it to IPFS; encrypt a `pf.task.request.v1` event that points at that bundle; and sign a PFTL `TASK` pointer transaction from the linked user wallet.
 

@@ -218,7 +218,12 @@ export function canApplyTaskStopAction(status = "", action = "") {
   return false;
 }
 
-export function taskRefreshMetadata({ tasks = [], activeRequestCount = 0 } = {}) {
+export function taskRefreshMetadata({
+  tasks = [],
+  activeRequestCount = 0,
+  projectionRefreshRequired = false,
+  projectionRefreshReason = "",
+} = {}) {
   const refreshTasks = tasks
     .filter((task) => taskRequiresRefresh(task?.statusKey || task?.status))
     .map((task) => task?.taskId || task?.fullId || task?.id || "")
@@ -238,12 +243,15 @@ export function taskRefreshMetadata({ tasks = [], activeRequestCount = 0 } = {})
     .filter(Boolean);
   const requestCount = Number(activeRequestCount || 0);
   const refreshTaskIds = [...new Set([...refreshTasks, ...activeTasks])];
-  const requiresRefresh = requestCount > 0 || refreshTaskIds.length > 0;
+  const projectionRefresh = Boolean(projectionRefreshRequired);
+  const requiresRefresh = projectionRefresh || requestCount > 0 || refreshTaskIds.length > 0;
 
   return {
     requiresRefresh,
-    nextPollMs: requiresRefresh ? (requestCount > 0 || refreshTasks.length > 0 ? 2500 : 10000) : null,
-    refreshReason: requestCount > 0
+    nextPollMs: requiresRefresh ? (projectionRefresh || requestCount > 0 || refreshTasks.length > 0 ? 2500 : 10000) : null,
+    refreshReason: projectionRefresh
+      ? String(projectionRefreshReason || "task_projection_refresh").trim()
+      : requestCount > 0
       ? "task_requests_active"
       : refreshTasks.length > 0
         ? "task_review_active"

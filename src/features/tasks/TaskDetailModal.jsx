@@ -1158,7 +1158,7 @@ export function TaskDetailModal({
       reason,
     });
     setDetailRefreshKey((key) => key + 1);
-    await onTaskChanged?.();
+    await onTaskChanged?.({ taskProjectionRefresh: true });
     return result;
   }
 

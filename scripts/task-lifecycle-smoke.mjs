@@ -98,4 +98,14 @@ const terminalReward = taskRefreshMetadata({
 assert.equal(terminalReward.requiresRefresh, false);
 assert.deepEqual(terminalReward.refreshTaskIds, []);
 
+const laggedProposedTask = taskRefreshMetadata({
+  tasks: [{ taskId: "task_proposed", statusKey: TASK_STATUS.proposed }],
+  projectionRefreshRequired: true,
+  projectionRefreshReason: "task_projection_indexing_lag",
+});
+assert.equal(laggedProposedTask.requiresRefresh, true);
+assert.equal(laggedProposedTask.nextPollMs, 2500);
+assert.equal(laggedProposedTask.refreshReason, "task_projection_indexing_lag");
+assert.deepEqual(laggedProposedTask.refreshTaskIds, []);
+
 console.log("task lifecycle smoke ok");

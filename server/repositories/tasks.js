@@ -443,11 +443,25 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
   });
   const grouped = groupTasks(taskItems);
   const lastSyncedAt = rows[0]?.updated_at ? toIso(rows[0].updated_at) : null;
+  const syncStatus = integrity.totals.indexingLagCount > 0
+    ? "indexing_lag"
+    : integrity.totals.failedReducerCount > 0
+      ? "reducer_attention"
+      : rows.length > 0
+        ? "ready"
+        : "empty";
+  const projectionRefreshRequired = syncStatus === "indexing_lag" ||
+    integrity.totals.pendingReducerCount > 0 ||
+    integrity.totals.processingReducerCount > 0;
   const refresh = taskRefreshMetadata({
     tasks: taskItems,
     activeRequestCount: Array.isArray(requests?.items)
       ? requests.items.filter((request) => request?.isActive).length
       : 0,
+    projectionRefreshRequired,
+    projectionRefreshReason: syncStatus === "indexing_lag"
+      ? "task_projection_indexing_lag"
+      : "task_reducer_pending",
   });
 
   return {
@@ -457,13 +471,7 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
     ...grouped,
     sync: {
       source: "task_projections",
-      status: integrity.totals.indexingLagCount > 0
-        ? "indexing_lag"
-        : integrity.totals.failedReducerCount > 0
-          ? "reducer_attention"
-          : rows.length > 0
-            ? "ready"
-            : "empty",
+      status: syncStatus,
       walletAddress,
       projectionCount: rows.length,
       lastSyncedAt,
@@ -625,6 +633,9 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
   const reducerHealth = reducerHealthResult.rows[0] || {};
   const cachedPointer = cachedPointerResult.rows[0] || {};
   const projectionBehindCachedPointer = isProjectionBehindCachedPointer(row, cachedPointer);
+  const detailProjectionRefreshRequired = projectionBehindCachedPointer ||
+    Number(reducerHealth.pending_count || 0) > 0 ||
+    Number(reducerHealth.processing_count || 0) > 0;
 
   return {
     ok: true,
@@ -691,7 +702,13 @@ export async function getTaskDetail({ accountId = "", walletAddress = "", taskId
     sync: {
       updatedAt: toIso(row.updated_at),
       lastEventAt: toIso(row.last_event_at),
-      ...taskRefreshMetadata({ tasks: [task] }),
+      ...taskRefreshMetadata({
+        tasks: [task],
+        projectionRefreshRequired: detailProjectionRefreshRequired,
+        projectionRefreshReason: projectionBehindCachedPointer
+          ? "task_projection_indexing_lag"
+          : "task_reducer_pending",
+      }),
     },
   };
 }
