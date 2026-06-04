@@ -80,6 +80,11 @@ function count(haystack, needle) {
 
 function assertJobsInstructions(instructions, label) {
   assert.equal(count(instructions, "## Experience Promise"), 1, `${label} should include Jobs Markdown prompt once`);
+  assert.equal(count(instructions, "## Response Length Calibration"), 1, `${label} should include response length calibration once`);
+  assert.ok(
+    instructions.includes("Do not turn a short message into a full strategic memo."),
+    `${label} should instruct short turns to stay compact`
+  );
   assert.ok(
     instructions.includes("## Rendered Runtime Blocks"),
     `${label} should include rendered runtime block boundary`
