@@ -226,4 +226,62 @@ assert.equal(ownerRow.rows[0]?.account_id, ownerAccountId);
 assert.equal(ownerRow.rows[0]?.subject_wallet, ownerWallet);
 assert.equal(ownerRow.rows[0]?.metadata_json?.fixture?.account_id, ownerAccountId);
 console.log(`task projection owner smoke ok: ${ownerTaskId}`);
+
+const acceptedNoDeadlineTaskId = `task_accepted_no_deadline_${suffix}`;
+const acceptedNoDeadlineWallet = `rAcceptedNoDeadline${suffix}`;
+const acceptedNoDeadlineAccountId = `acct_accepted_no_deadline_${suffix}`;
+await importTaskReplayReceipt({
+  run_id: `task_projection_accepted_no_deadline_${suffix}`,
+  task_id: acceptedNoDeadlineTaskId,
+  fixture: { account_id: acceptedNoDeadlineAccountId },
+  wallets: [
+    { role: "user", address: acceptedNoDeadlineWallet },
+    { role: "task_authority", address: `rAcceptedNoDeadlineAuthority${suffix}` },
+  ],
+  generated_task: {
+    title: "Keep accepted task deadline honest",
+    description: "Accepted tasks should not display accept-by as a work deadline.",
+    task_kind: "personal",
+    reward_offer: { amount_estimate_pft: "1.00" },
+    submission_requirement: { type: "text", criteria: "Submit deadline smoke evidence." },
+    verification_policy: { mode: "manual_review" },
+    deadline: {
+      accept_by: "2026-05-25T21:14:00Z",
+      deadline_at: null,
+    },
+  },
+  hydrated_events: [{
+    schema: "pf.task.offer.v1",
+    task_id: acceptedNoDeadlineTaskId,
+    tx_hash: `ACCEPTED_NO_DEADLINE_OFFER_TX_${suffix}`,
+    cid: `QmAcceptedNoDeadlineOffer${suffix}`,
+    payload: {
+      schema: "pf.task.offer.v1",
+      task_id: acceptedNoDeadlineTaskId,
+      title: "Keep accepted task deadline honest",
+    },
+  }],
+  projection: {
+    [acceptedNoDeadlineTaskId]: {
+      status: "accepted",
+      title: "Keep accepted task deadline honest",
+      task_kind: "personal",
+      reward_offer_pft: "1.00",
+      events: [{}],
+    },
+  },
+}, {
+  source: "task_projection_deadline_smoke",
+  sourceRef: "accepted-no-deadline-smoke",
+});
+const acceptedNoDeadlineState = await listTaskState({
+  accountId: acceptedNoDeadlineAccountId,
+  walletAddress: acceptedNoDeadlineWallet,
+});
+const acceptedNoDeadlineTask = acceptedNoDeadlineState.outstanding.find((task) => task.taskId === acceptedNoDeadlineTaskId);
+assert.equal(acceptedNoDeadlineTask?.statusKey, "accepted");
+assert.equal(acceptedNoDeadlineTask?.dueLabel, "Deadline");
+assert.equal(acceptedNoDeadlineTask?.fullDue, "No deadline");
+assert.equal(acceptedNoDeadlineTask?.acceptBy, "2026-05-25T21:14:00.000Z");
+console.log(`task projection accepted no-deadline smoke ok: ${acceptedNoDeadlineTaskId}`);
 await closePool();

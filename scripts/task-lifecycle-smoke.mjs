@@ -42,6 +42,17 @@ const normalizedRelativeDeadline = validateTaskgenOutput({
 }).deadline;
 assert.equal(Number.isFinite(Date.parse(normalizedRelativeDeadline.accept_by)), true);
 assert.equal(normalizedRelativeDeadline.deadline_at, null);
+const policyDeadline = validateTaskgenOutput({
+  ...taskgenBase,
+  deadline: { accept_by: "2026-05-26T21:00:00.000Z", deadline_at: "2026-05-29T00:00:00.000Z" },
+}, {
+  deadline: {
+    accept_by: "2026-05-26T20:47:04.186Z",
+    deadline_at: null,
+  },
+}).deadline;
+assert.equal(policyDeadline.accept_by, "2026-05-26T20:47:04.186Z");
+assert.equal(policyDeadline.deadline_at, null);
 assert.throws(
   () => validateTaskgenOutput({
     ...taskgenBase,

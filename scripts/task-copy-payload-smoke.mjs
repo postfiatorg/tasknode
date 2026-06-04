@@ -25,6 +25,17 @@ const rewardedTask = {
   verification: { body: "Show the copied modal in the running app." },
 };
 
+const proposedTask = {
+  taskId: "task_copy_proposed",
+  title: "Check task accept window copy",
+  kind: "Personal",
+  status: "Proposed",
+  dueLabel: "Accept by",
+  fullDue: "May 23, 9:14 PM UTC",
+  pft: 2,
+  description: "Verify proposed task copy labels the accept window correctly.",
+};
+
 const accepted = buildTaskCopyPayloads(acceptedTask);
 assert.equal(accepted.title, acceptedTask.title);
 assert.match(accepted.summary, /Status: Accepted/);
@@ -43,6 +54,10 @@ assert.match(rewarded.summary, /Status: Rewarded/);
 assert.match(rewarded.summary, /Reward: 1.25 PFT/);
 assert.match(rewarded.full, /Ship task copy modal/);
 
+const proposed = buildTaskCopyPayloads(proposedTask);
+assert.match(proposed.summary, /Accept by: May 23, 9:14 PM UTC/);
+assert.doesNotMatch(proposed.summary, /Deadline: May 23, 9:14 PM UTC/);
+
 const verificationRequested = buildTaskCopyPayloads(acceptedTask, {
   currentVerificationRequest: {
     body: "Provide the exact code diff and test output.",
@@ -52,7 +67,7 @@ const verificationRequested = buildTaskCopyPayloads(acceptedTask, {
 assert.match(verificationRequested.codex, /Current Verification Request\nProvide the exact code diff and test output\./);
 assert.match(verificationRequested.codex, /Reason: The first submission did not include test evidence\./);
 
-for (const payloads of [accepted, rewarded, verificationRequested]) {
+for (const payloads of [accepted, rewarded, proposed, verificationRequested]) {
   for (const value of Object.values(payloads)) {
     assert.equal(value.includes("undefined"), false);
     assert.equal(value.includes("[object Object]"), false);

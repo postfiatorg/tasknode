@@ -111,8 +111,10 @@ function publicTask(row) {
   const verification = safeObject(row.verification_policy_json);
   const acceptBy = toIso(row.accept_by);
   const deadlineAt = toIso(row.deadline_at);
-  const dueAt = deadlineAt || acceptBy;
+  const acceptWindowApplies = statusKey === "proposed" && Boolean(acceptBy);
+  const dueAt = deadlineAt || (acceptWindowApplies ? acceptBy : null);
   const formattedDue = formatTaskDeadline(dueAt, { locale: "en-US" });
+  const dueLabel = deadlineAt ? "Deadline" : acceptWindowApplies ? "Accept by" : "Deadline";
 
   return {
     id: String(row.task_id || "").slice(0, 12),
@@ -131,6 +133,7 @@ function publicTask(row) {
     lifecycle: statusInfo,
     due: formattedDue,
     fullDue: formattedDue,
+    dueLabel,
     dueAt,
     acceptBy,
     deadlineAt,

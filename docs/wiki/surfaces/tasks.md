@@ -195,7 +195,10 @@ The detail header always shows:
 - task title;
 - full task ID;
 - status;
-- deadline, formatted as a date-only value when the protocol field is a calendar deadline;
+- deadline label and value. Proposed tasks without a work deadline show the
+  server-owned `Accept by` window. Accepted tasks do not keep showing that
+  accept-by timestamp as a work deadline; if no `deadline_at` exists, they show
+  `No deadline`;
 - displayed reward;
 - indexed event count.
 
@@ -433,11 +436,15 @@ Task date/time rendering uses `shared/task-time-format.js`.
 
 | Field kind | Rendering rule | Example |
 | --- | --- | --- |
+| Accept-by window | Proposed tasks show `Accept by` from `accept_by`; it is not a work deadline. | `Accept by Jun 5, 9:14 PM UTC` |
+| Work deadline | Use `deadline_at` when present. Accepted tasks with no `deadline_at` show `No deadline`. | `Jun 6` or `No deadline` |
 | Calendar deadline | If the ISO value is midnight UTC, show date only. | `2026-05-20T00:00:00.000Z` -> `May 20` |
 | Real event timestamp | Show date, time, and timezone. | `2026-05-19T17:48:00.000Z` -> `May 19, 5:48 PM UTC` |
 | Relative list freshness | Use the projection `updated_at` or `last_event_at` display. | `2h ago`, `just now` |
 
-This distinction matters because task deadlines are often date-only commitments while PFTL events are exact transaction history.
+This distinction matters because task deadlines are often date-only commitments,
+accept-by windows are task-offer decisions, and PFTL events are exact
+transaction history.
 
 ## Database Tables
 

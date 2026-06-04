@@ -18,6 +18,7 @@ function TaskDot() {
 }
 
 export function TaskRow({ isFirst, onClick, task }) {
+  const dueText = task.dueLabel && task.dueLabel !== "Deadline" ? `${task.dueLabel} ${task.fullDue}` : task.fullDue;
   return (
     <article className={`task-row task-entry${isFirst ? " is-first" : ""}${task.isNetworkTask ? " is-network-task" : ""}`}>
       <button className="task-entry-open" onClick={onClick} type="button">
@@ -33,7 +34,7 @@ export function TaskRow({ isFirst, onClick, task }) {
               {task.status}
             </span>
             <TaskDot />
-            <span>{task.fullDue}</span>
+            <span>{dueText}</span>
             <TaskDot />
             <span>{task.ago}</span>
           </span>

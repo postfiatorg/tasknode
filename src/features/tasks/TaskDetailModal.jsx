@@ -1217,7 +1217,7 @@ export function TaskDetailModal({
               </span>
             </div>
             <div>
-              <small>Deadline</small>
+              <small>{displayTask.dueLabel || "Deadline"}</small>
               <span>{displayTask.fullDue}</span>
             </div>
             <div>

@@ -135,7 +135,7 @@ Every task must include `reward_offer.amount_estimate_pft`.
 
 Set the reward from the explicit range in `network_task.reward_band_pft` or `policy`. Network and Alpha Task reward ranges are authoritative and may be much larger than personal task rewards. Stay inside the explicit allowed range. If no range exists, choose conservatively from scope, difficulty, durability, and evidence strength.
 
-Use deadline values from the packet when available. `deadline.accept_by` must be an ISO-8601 UTC timestamp string. Never emit relative strings such as `24h`, `soon`, or `tomorrow`. If no accept-by is supplied, use an ISO-8601 UTC timestamp about 24 hours after generation. `deadline.deadline_at` must be the supplied ISO-8601 task deadline or `null`.
+Use deadline values from the packet when available. If `policy.deadline.accept_by` is supplied, copy it exactly. `deadline.accept_by` must be an ISO-8601 UTC timestamp string. Never emit relative strings such as `24h`, `soon`, or `tomorrow`. If no accept-by is supplied, use an ISO-8601 UTC timestamp about 24 hours after generation. `deadline.deadline_at` must be the supplied ISO-8601 task deadline or `null`.
 
 ## Output Contract
 
@@ -152,7 +152,7 @@ Return only one JSON object. Do not add fields.
 - `verification_policy.mode`: usually `standard_followup`.
 - `verification_policy.verification_type`: match the evidence type unless a different supported follow-up type is necessary.
 - `reward_offer.amount_estimate_pft`: decimal string selected from the reward rules.
-- `deadline.accept_by`: ISO-8601 UTC string from the packet, or an ISO-8601 UTC timestamp about 24 hours after generation.
-- `deadline.deadline_at`: ISO-8601 UTC string from the packet, or `null`.
+- `deadline.accept_by`: ISO-8601 UTC string from `policy.deadline.accept_by`, another packet deadline value, or an ISO-8601 UTC timestamp about 24 hours after generation.
+- `deadline.deadline_at`: ISO-8601 UTC string from `policy.deadline.deadline_at` or another packet task deadline, or `null`.
 
 Final silent checklist: one network or alpha task, project named, plain-English assignment, not duplicate, concrete artifact, sybil-resistant evidence, 2 to 5 steps, appropriate reward, contract-compliant JSON, useful to the next contributor.

@@ -108,6 +108,14 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function objectValue(source = {}, keys = []) {
+  const object = safeObject(source);
+  for (const key of keys) {
+    if (Object.hasOwn(object, key)) return { present: true, value: object[key] };
+  }
+  return { present: false, value: undefined };
+}
+
 function objectKeyCount(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).length : 0;
 }
@@ -224,6 +232,13 @@ function normalizeDeadlineTimestamp(value, { fallbackMs = null } = {}) {
   return null;
 }
 
+function policyDeadlineValue(policy = {}, field = "accept_by") {
+  const keys = field === "deadline_at" ? ["deadline_at", "deadlineAt"] : ["accept_by", "acceptBy"];
+  const nested = objectValue(safeObject(policy).deadline, keys);
+  if (nested.present) return nested;
+  return objectValue(policy, keys);
+}
+
 function normalizeTaskKind(value = "", policy = {}) {
   const policyTaskClass = safeText(policy.task_class ?? policy.taskClass, 80).toLowerCase();
   if (policyTaskClass === "network" || policyTaskClass === "alpha") return policyTaskClass;
@@ -280,6 +295,12 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
     : [];
   if (steps.length < 2) throw new Error("taskgen_steps_invalid");
   const reward = safeObject(output.reward_offer);
+  const policyAcceptBy = policyDeadlineValue(policy, "accept_by");
+  const policyDeadlineAt = policyDeadlineValue(policy, "deadline_at");
+  const normalizedPolicyAcceptBy = policyAcceptBy.present ? normalizeDeadlineTimestamp(policyAcceptBy.value) : null;
+  const normalizedOutputAcceptBy = normalizeDeadlineTimestamp(output.deadline?.accept_by);
+  const normalizedPolicyDeadlineAt = policyDeadlineAt.present ? normalizeDeadlineTimestamp(policyDeadlineAt.value) : null;
+  const normalizedOutputDeadlineAt = normalizeDeadlineTimestamp(output.deadline?.deadline_at);
   const normalized = {
     ...output,
     title: safeText(output.title, 240),
@@ -299,8 +320,8 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
       amount_estimate_pft: normalizeReward(reward.amount_estimate_pft, policy),
     },
     deadline: {
-      accept_by: normalizeDeadlineTimestamp(output.deadline?.accept_by, { fallbackMs: 24 * 60 * 60 * 1000 }),
-      deadline_at: normalizeDeadlineTimestamp(output.deadline?.deadline_at),
+      accept_by: normalizedPolicyAcceptBy || normalizedOutputAcceptBy || normalizeDeadlineTimestamp(null, { fallbackMs: 24 * 60 * 60 * 1000 }),
+      deadline_at: policyDeadlineAt.present ? normalizedPolicyDeadlineAt : normalizedOutputDeadlineAt,
     },
   };
   assertPlainTaskCardSpeech(normalized);

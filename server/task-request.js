@@ -21,6 +21,7 @@ import { taskRequestCanonicalText, taskRequestIntentStart } from "./task-request
 
 const ACTION_ID = "task_request";
 const TASK_POINTER_SCHEMA = 1;
+const DEFAULT_TASK_ACCEPT_WINDOW_HOURS = 24;
 
 function actionResponse({ status, error, message, actionRequired, extra = {} }) {
   return {
@@ -204,6 +205,9 @@ function queueProjection(tasks = {}) {
 }
 
 export async function buildRequestBundle({ accountId, walletAddress, request, authorityWallet }) {
+  const createdAt = new Date();
+  const createdAtIso = createdAt.toISOString();
+  const acceptByIso = new Date(createdAt.getTime() + DEFAULT_TASK_ACCEPT_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
   const [context, memoryContext, recentChat, taskState] = await Promise.all([
     getContextDocument({ accountId }),
     getChatMemoryContext({ accountId, deepLimit: 3, turnLimit: 36 }),
@@ -218,7 +222,7 @@ export async function buildRequestBundle({ accountId, walletAddress, request, au
     bundle_id: request.bundleId,
     subject_wallet: walletAddress,
     subject_encryption_pubkey: request.subjectEncryptionPubkey || "",
-    created_at: new Date().toISOString(),
+    created_at: createdAtIso,
     client: {
       name: "tasknodeofficial-web",
       version: "0.1.0",
@@ -277,6 +281,12 @@ export async function buildRequestBundle({ accountId, walletAddress, request, au
       task_policy_version: "task-policy-minimal-v1",
       reward_policy_version: "reward-policy-minimal-v1",
       generation_policy_version: "taskgen-policy-minimal-v1",
+      deadline: {
+        accept_by: acceptByIso,
+        deadline_at: null,
+        accept_window_hours: DEFAULT_TASK_ACCEPT_WINDOW_HOURS,
+        source: "server_default_accept_window",
+      },
     },
     wallet: {
       subject_wallet: walletAddress,

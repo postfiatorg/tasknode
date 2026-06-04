@@ -44,6 +44,7 @@ export function buildTaskCopyPayloads(task = {}, detail = {}) {
   const kind = cleanText(task.kind || "Task");
   const status = cleanText(task.status || task.statusKey || "");
   const due = cleanText(task.fullDue || task.due || "");
+  const dueLabel = cleanText(task.dueLabel || "Deadline");
   const description = cleanText(task.description || "");
   const steps = taskSteps(task);
   const verification = taskVerificationText(task);
@@ -58,7 +59,7 @@ export function buildTaskCopyPayloads(task = {}, detail = {}) {
     id ? `Task ID: ${id}` : "",
     status ? `Status: ${status}` : "",
     `Reward: ${taskReward(task)}`,
-    due ? `Deadline: ${due}` : "",
+    due ? `${dueLabel}: ${due}` : "",
     description ? `Summary: ${description}` : "",
   ]).join("\n");
 
@@ -72,7 +73,7 @@ export function buildTaskCopyPayloads(task = {}, detail = {}) {
       kind ? `Kind: ${kind}` : "",
       status ? `Status: ${status}` : "",
       `Reward: ${taskReward(task)}`,
-      due ? `Deadline: ${due}` : "",
+      due ? `${dueLabel}: ${due}` : "",
     ]),
     "",
     "Description",
@@ -103,7 +104,7 @@ export function buildTaskCopyPayloads(task = {}, detail = {}) {
       kind ? `Kind: ${kind}` : "",
       status ? `Status: ${status}` : "",
       `Reward: ${taskReward(task)}`,
-      due ? `Deadline: ${due}` : "",
+      due ? `${dueLabel}: ${due}` : "",
     ]),
     "",
     "Objective",
