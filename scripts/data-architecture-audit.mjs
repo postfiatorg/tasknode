@@ -159,7 +159,6 @@ try {
                 ELSE 'submitted'
               END
             WHEN te.payload_json->>'schema' = 'pf.task.verification_response.v1' THEN 'verification_response_submitted'
-            WHEN te.payload_json->>'schema' = 'pf.task.reward_decision.v1' THEN 'rewarded'
             WHEN te.payload_json->>'schema' = 'pf.reward.v1' THEN 'rewarded'
             ELSE 'unknown'
           END AS expected_status,

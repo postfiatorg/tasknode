@@ -1,4 +1,5 @@
 import { databaseEnabled, query, transaction } from "../db/pool.js";
+import { listPublicAccountWalletIdentities } from "../runtime-store.js";
 import { latestHiveProjectPlanningState, projectHasOperatorArchiveLock } from "./hive-project-planning.js";
 import { getCurrentProjectProductDocs } from "./hive-project-product-docs.js";
 
@@ -74,6 +75,62 @@ function compactWallet(wallet = "") {
   return `${normalized.slice(0, 6)}...${normalized.slice(-5)}`;
 }
 
+function walletIdentityKey(wallet = "") {
+  return safeText(wallet, 160).toLowerCase();
+}
+
+function walletIdentityDisplayName(identity = {}) {
+  const publicAlias = safeArray(identity.publicAliases).find((alias) => safeText(alias?.handle, 120));
+  return safeText(
+    identity.displayName ||
+      identity.publicDisplayName ||
+      (identity.hiveHandle ? `@${safeText(identity.hiveHandle, 80).replace(/^@+/, "")}` : "") ||
+      (publicAlias?.handle ? `@${safeText(publicAlias.handle, 120).replace(/^@+/, "")}` : ""),
+    120
+  );
+}
+
+function walletIdentityMap(walletIdentities = []) {
+  const identities = new Map();
+  for (const identity of safeArray(walletIdentities)) {
+    const key = walletIdentityKey(identity.walletAddress || identity.wallet_address || identity.wallet);
+    const displayName = walletIdentityDisplayName(identity);
+    if (!key || !displayName) continue;
+    identities.set(key, {
+      accountId: safeText(identity.accountId || identity.account_id, 180),
+      displayName,
+      hiveHandle: safeText(identity.hiveHandle || identity.hive_handle, 80),
+      publicDisplayName: safeText(identity.publicDisplayName || identity.public_display_name, 120),
+      publicAliases: safeArray(identity.publicAliases || identity.public_aliases),
+      publicTrustBadges: safeArray(identity.publicTrustBadges || identity.public_trust_badges),
+    });
+  }
+  return identities;
+}
+
+function enrichContributorWithWalletIdentity(contributor = {}, identity = null) {
+  if (!identity?.displayName) return contributor;
+  contributor.codename = identity.displayName;
+  contributor.accountId = identity.accountId || contributor.accountId || "";
+  contributor.hiveHandle = identity.hiveHandle || contributor.hiveHandle || "";
+  contributor.publicDisplayName = identity.publicDisplayName || contributor.publicDisplayName || "";
+  contributor.publicAliases = identity.publicAliases || contributor.publicAliases || [];
+  contributor.publicTrustBadges = identity.publicTrustBadges || contributor.publicTrustBadges || [];
+  return contributor;
+}
+
+function applyWalletIdentitiesToProjects(projects = {}, walletIdentities = []) {
+  const identities = walletIdentityMap(walletIdentities);
+  if (identities.size === 0) return projects;
+
+  for (const project of Object.values(projects)) {
+    for (const contributor of safeArray(project.contributors)) {
+      enrichContributorWithWalletIdentity(contributor, identities.get(walletIdentityKey(contributor.wallet)));
+    }
+  }
+  return projects;
+}
+
 function publicProject(row = {}) {
   const phase = row.phase_label || (row.phase_current && row.phase_total ? `${row.phase_current} of ${row.phase_total}` : "");
   return {
@@ -129,6 +186,7 @@ function publicContributor(row = {}) {
 
 function publicTask(row = {}) {
   const projectedReward = row.projected_reward_pft ?? row.reward_pft;
+  const state = safeText(row.projected_status || row.state, 80) || "proposed";
   const assigneeNft = safeText(row.assignee_nft_image_cid || row.assignee_nft_image_gateway_url, 500)
     ? {
         title: safeText(row.assignee_nft_title, 160),
@@ -142,9 +200,10 @@ function publicTask(row = {}) {
     taskId: safeText(row.task_id, 180),
     requestId: safeText(row.request_id, 180),
     title: safeText(row.projected_title || row.title, 240),
-    state: safeText(row.projected_status || row.state, 80) || "proposed",
+    state,
     assignee: safeText(row.projected_subject_wallet || row.assignee_wallet, 120),
     pft: numeric(projectedReward),
+    nextAction: taskNextAction(state),
     age: safeText(row.age_label, 80),
     source: safeText(row.source, 100),
     createdAt: toIso(row.created_at),
@@ -162,6 +221,7 @@ function publicActivity(row = {}) {
     task: safeText(row.task_title, 240),
     time: safeText(row.time_label, 80),
     pft: row.pft_amount === null || row.pft_amount === undefined ? null : numeric(row.pft_amount),
+    nextAction: taskNextAction(row.action),
     routing: safeText(row.routing_label, 120),
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -185,6 +245,11 @@ function operatorMap(projects = {}) {
         pft: contributor.pft || 0,
         currentTasks: safeArray(contributor.currentTasks),
         nft: contributor.nft || null,
+        accountId: contributor.accountId || "",
+        hiveHandle: contributor.hiveHandle || "",
+        publicDisplayName: contributor.publicDisplayName || "",
+        publicAliases: safeArray(contributor.publicAliases),
+        publicTrustBadges: safeArray(contributor.publicTrustBadges),
       };
       operators[contributor.wallet] = operators[contributor.wallet]
         ? mergeContributor(operators[contributor.wallet], operator)
@@ -200,7 +265,10 @@ function taskNextAction(state = "") {
   if (normalized === "verification_requested") return "Answer the reviewer follow-up with the missing verification detail.";
   if (normalized === "verification_response_submitted") return "Wait for review or prepare any final clarification.";
   if (normalized === "submitted") return "Wait for review, then respond quickly if verification is requested.";
-  if (normalized === "proposed") return "Open the task, accept it, and start the evidence packet.";
+  if (normalized === "proposed") return "Open the task and accept or refuse it before the deadline.";
+  if (normalized === "reward_decided") return "Wait for the terminal reward outcome to settle.";
+  if (["rewarded", "paid"].includes(normalized)) return "Reward recorded; no further action is required.";
+  if (["refused", "cancelled", "rejected", "expired"].includes(normalized)) return "Task is stopped; wait for a new routed task if more work is needed.";
   return "Open the project task row and inspect the latest state.";
 }
 
@@ -216,8 +284,26 @@ function compareNextTask(left = {}, right = {}) {
   const leftRank = taskStateRank(left.state);
   const rightRank = taskStateRank(right.state);
   if (leftRank !== rightRank) return leftRank - rightRank;
-  if (numeric(right.rewardPft) !== numeric(left.rewardPft)) return numeric(right.rewardPft) - numeric(left.rewardPft);
+  if (numeric(right.rewardPft || right.pft) !== numeric(left.rewardPft || left.pft)) {
+    return numeric(right.rewardPft || right.pft) - numeric(left.rewardPft || left.pft);
+  }
   return timestampMs(right.updatedAt) - timestampMs(left.updatedAt);
+}
+
+function projectNextTask(project = {}) {
+  const task = safeArray(project.tasks)
+    .filter(taskIsNextCandidate)
+    .sort(compareNextTask)[0] || null;
+  if (!task) return null;
+  return {
+    taskId: task.taskId,
+    title: task.title,
+    state: task.state,
+    assignee: task.assignee,
+    pft: numeric(task.pft),
+    nextAction: task.nextAction || taskNextAction(task.state),
+    updatedAt: task.updatedAt || task.createdAt || "",
+  };
 }
 
 function deriveContributorFromTask(project = {}, task = {}) {
@@ -281,13 +367,18 @@ function mergeContributor(left = {}, right = {}) {
     role: left.role || right.role,
     currentTasks,
     nft: left.nft || right.nft || null,
+    accountId: left.accountId || right.accountId || "",
+    hiveHandle: left.hiveHandle || right.hiveHandle || "",
+    publicDisplayName: left.publicDisplayName || right.publicDisplayName || "",
+    publicAliases: safeArray(left.publicAliases).length ? left.publicAliases : safeArray(right.publicAliases),
+    publicTrustBadges: safeArray(left.publicTrustBadges).length ? left.publicTrustBadges : safeArray(right.publicTrustBadges),
   };
 }
 
 function actionForTaskState(state = "") {
   const normalized = safeText(state, 80).toLowerCase();
   if (normalized === "verification_response_submitted") return "verification_response_submitted";
-  if (normalized === "reward_decided") return "reward_decided";
+  if (normalized === "reward_decided") return "reward_pending";
   if (normalized === "rewarded") return "rewarded";
   if (normalized === "cancelled") return "cancelled";
   if (normalized === "rejected") return "rejected";
@@ -310,6 +401,7 @@ function deriveActivityFromTask(project = {}, task = {}) {
     task: task.title,
     time: task.age || "",
     pft: action === "rewarded" ? numeric(task.pft) : null,
+    nextAction: task.nextAction || taskNextAction(action),
     routing: task.requestId ? `request ${task.requestId}` : "",
     project: project.name,
     derived: true,
@@ -350,6 +442,7 @@ function populateDerivedProjectRollups(projects = {}) {
     project.taskCount = project.tasks.length;
     project.contributorCount = project.contributors.length;
     project.pft = numeric(project.tasks.reduce((sum, task) => sum + numeric(task.pft), 0));
+    project.nextTask = projectNextTask(project);
   }
 }
 
@@ -372,10 +465,13 @@ function projectHasBoardEvidence(project = {}) {
   );
 }
 
-function projectVisibleOnActiveBoard(project = {}) {
-  if (!projectHasBoardEvidence(project)) return false;
+function projectVisibleOnActiveBoard(project = {}, { includeEmptyActive = false } = {}) {
   if (projectHasOperatorArchiveLock({ metadata_json: project.metadata })) return false;
-  return ["active", "paused", "archived"].includes(safeText(project.status, 80));
+  const status = safeText(project.status, 80);
+  if (status !== "active") return false;
+  if (includeEmptyActive && status === "active") return true;
+  if (!projectHasBoardEvidence(project)) return false;
+  return true;
 }
 
 function visiblePublicProject(project = {}) {
@@ -392,6 +488,8 @@ function documentFromRows({
   productDocs = [],
   latestSecretary = null,
   projectPlanning = null,
+  walletIdentities = [],
+  includeEmptyActive = false,
 } = {}) {
   const projects = Object.fromEntries(projectRows.map((row) => {
     const project = publicProject(row);
@@ -419,10 +517,11 @@ function documentFromRows({
     if (project) project.productDocument = doc;
   }
   populateDerivedProjectRollups(projects);
+  applyWalletIdentitiesToProjects(projects, walletIdentities);
 
   const visibleProjects = Object.fromEntries(
     Object.values(projects)
-      .filter(projectVisibleOnActiveBoard)
+      .filter((project) => projectVisibleOnActiveBoard(project, { includeEmptyActive }))
       .map((project) => [project.id, visiblePublicProject(project)])
   );
   const projectIds = Object.values(visibleProjects)
@@ -518,9 +617,9 @@ export async function syncNetworkProjectsWithLatestHiveSecretary() {
   });
 }
 
-export async function getHiveProjectsDocument() {
+export async function getHiveProjectsDocument({ includeEmptyActive = false } = {}) {
   if (!useDatabase()) {
-    return documentFromRows({});
+    return documentFromRows({ includeEmptyActive });
   }
   const [projectsResult, contributorsResult, tasksResult, activityResult, pendingGenerationResult, secretaryResult] = await Promise.all([
     query(
@@ -639,6 +738,7 @@ export async function getHiveProjectsDocument() {
     projectIds: projectsResult.rows.map((row) => row.id),
   });
   const projectPlanning = await latestHiveProjectPlanningState().catch(() => null);
+  const walletIdentities = listPublicAccountWalletIdentities();
 
   return documentFromRows({
     projectRows: projectsResult.rows,
@@ -649,6 +749,8 @@ export async function getHiveProjectsDocument() {
     productDocs,
     latestSecretary: secretaryResult.rows[0] || null,
     projectPlanning,
+    walletIdentities,
+    includeEmptyActive,
   });
 }
 

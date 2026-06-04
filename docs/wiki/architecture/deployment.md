@@ -309,9 +309,29 @@ ETH_DEPOSIT_BALANCE_BLOCK_TAG
 ETH_DEPOSIT_START_INDEX
 ```
 
+Custody keys are deliberately outside the Fly app. `npm run
+eth-deposit-wallet` prints the operator mnemonic and receive xprv once, then
+writes only the xpub config. The receive xprv for `m/44'/60'/0'/0` can derive
+each child private key at `m/44'/60'/0'/0/<deposit-index>`. Operators can verify
+custody material without printing it by running:
+
+```bash
+npm run eth-deposit-verify -- --index <deposit-index>
+```
+
+Do not put the mnemonic, receive xprv, or child private keys in Fly secrets.
+Sweep keys belong in an operator-controlled wallet, hardware signer, or separate
+sweep process.
+
 If `/api/usage/top-up/start` returns `usage_top_up_login_required`, top-up is configured but the caller is signed out. If it returns `Ethereum deposit addresses are not configured for this environment`, Fly is missing `ETH_DEPOSIT_XPUB`.
 
 Top-up start verifies a derived address is empty before returning it to the user. If any supported asset probe fails, the app does not show the address. If a candidate address already has ETH, USDC, or USDT, the app retires that candidate and advances to the next derivation index. Older pre-fix addresses that only contain historical observed funds and no `ethereum_deposit` ledger credit for that exact deposit account are retired on the next start or sync. Admin credits and chat spend are not deposit ownership proof. The displayed address should therefore be clean, and only later balance increases become usage credit.
+
+Retiring a deposit record does not move funds. Active and retired deposit
+records currently live in `/data/runtime-store.json` under
+`ethereumDepositAccounts` and `ethereumDepositRetiredAccounts`. If money was
+sent to a retired child address, it remains at that Ethereum address until the
+operator sweeps it with the matching child key.
 
 When sync records USDC credit and the credited USDC balance is greater than
 `$10`, a newly created linked PFT wallet can receive the one-time `12 PFT`
@@ -320,6 +340,12 @@ but must not auto-send it. The wallet page sends it only after the matching
 local seed vault is saved or unlocked in the browser. The USDC credit remains
 account billing state; the PFT grant is a separate PFTL payment to the linked
 wallet and is idempotent by account and wallet.
+
+Ethereum top-up credits are recorded as app billing ledger entries, not as PFT
+wallet balances. `/api/usage/top-up/sync` writes
+`billing_ledger_entries.source = ethereum_deposit` with an idempotency key based
+on deposit account id, asset, and credited raw balance. A raw chain balance is
+not app credit until that ledger row exists.
 
 ## PFTL And IPFS
 
@@ -456,8 +482,8 @@ Review implementation against this document (deployment). Mark each item when ve
 
 ### Coherence
 - [ ] Auth provider behavior matches the Auth And Connected Accounts doc.
-- [ ] Ethereum top-up behavior matches the Wallet surface and `docs/ETHEREUM_TOP_UPS.md`.
-- [ ] Docker/Fly data bridge behavior matches `docs/DOCKER_DEV.md`.
+- [ ] Ethereum top-up behavior matches the Wallet surface and Ethereum Deposit RPC architecture page.
+- [ ] Docker/Fly data bridge behavior matches this Deployment page.
 
 ### Bloat
 - [ ] Deployment page stays operational and does not duplicate every provider prompt or task-engine detail.

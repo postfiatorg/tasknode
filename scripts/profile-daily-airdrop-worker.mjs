@@ -28,6 +28,7 @@ try {
     batchLimit: Number(argValue("--batch-limit", process.env.TASKNODE_DAILY_AIRDROP_WORKER_BATCH_LIMIT || "10")),
     maxDailyPft: Number(argValue("--max-daily-pft", process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || "10000")),
     model: argValue("--model", process.env.TASKNODE_DAILY_AIRDROP_MODEL || "deepseek/deepseek-v4-pro"),
+    runMode: argValue("--run-mode", process.env.TASKNODE_DAILY_AIRDROP_WORKER_RUN_MODE || "production"),
     trigger: argValue("--trigger", "manual_daily_airdrop_worker"),
   });
   if (json) {

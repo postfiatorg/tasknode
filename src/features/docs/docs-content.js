@@ -12,11 +12,17 @@ import tasks from "../../../docs/wiki/surfaces/tasks.md?raw";
 import wallet from "../../../docs/wiki/surfaces/wallet.md?raw";
 import aiProviders from "../../../docs/wiki/architecture/ai-providers.md?raw";
 import authAndConnectedAccounts from "../../../docs/wiki/architecture/auth-and-connected-accounts.md?raw";
+import authWalletBoundary from "../../../docs/wiki/architecture/auth-wallet-boundary.md?raw";
+import bootup from "../../../docs/wiki/architecture/bootup.md?raw";
 import boardManagerArchitecture from "../../../docs/wiki/architecture/board-manager.md?raw";
 import boardManagerSecretaryPacket from "../../../docs/wiki/architecture/board-manager-secretary-packet.md?raw";
+import contextHistoryRestore from "../../../docs/wiki/architecture/context-history-restore.md?raw";
 import codexComputerControlQa from "../../../docs/wiki/architecture/codex-computer-control-qa.md?raw";
+import currentSystem from "../../../docs/wiki/architecture/current-system.md?raw";
 import database from "../../../docs/wiki/architecture/database.md?raw";
+import databaseArchitecture from "../../../docs/wiki/architecture/database-architecture.md?raw";
 import dailyAirdropWorker from "../../../docs/wiki/architecture/daily-airdrop-worker.md?raw";
+import deathmarch from "../../../docs/wiki/architecture/deathmarch.md?raw";
 import deepMemoryWorker from "../../../docs/wiki/architecture/deep-memory-worker.md?raw";
 import deployment from "../../../docs/wiki/architecture/deployment.md?raw";
 import encryption from "../../../docs/wiki/architecture/encryption.md?raw";
@@ -37,6 +43,7 @@ import pftlCacheRetention from "../../../docs/wiki/architecture/pftl-cache-reten
 import pftlCurrentRpcAndWss from "../../../docs/wiki/architecture/pftl-current-rpc-and-wss.md?raw";
 import pftlHistoryRpcAndArchiveWss from "../../../docs/wiki/architecture/pftl-history-rpc-and-archive-wss.md?raw";
 import pftlHotWalletSync from "../../../docs/wiki/architecture/pftl-hot-wallet-sync.md?raw";
+import pftlLiveTaskReplay from "../../../docs/wiki/architecture/pftl-live-task-replay.md?raw";
 import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
 import pftlWssWatcher from "../../../docs/wiki/architecture/pftl-wss-watcher.md?raw";
 import resettableSignupTesting from "../../../docs/wiki/architecture/resettable-signup-testing.md?raw";
@@ -48,30 +55,9 @@ import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw
 import taskReviewRewardWorker from "../../../docs/wiki/architecture/task-review-reward-worker.md?raw";
 import telegramBotChat from "../../../docs/wiki/architecture/telegram-bot-chat.md?raw";
 import turnMemoryWorker from "../../../docs/wiki/architecture/turn-memory-worker.md?raw";
-import agentManagedAboutPanels from "../../../docs/wiki/plans/agent-managed-about-panels.md?raw";
-import betaAcceptanceGates from "../../../docs/wiki/plans/beta-acceptance-gates.md?raw";
-import boardManager from "../../../docs/wiki/plans/board-manager.md?raw";
-import boardManagerDeepseekSecretaryPackets from "../../../docs/wiki/plans/board-manager-deepseek-secretary-packets.md?raw";
-import codeReviewBurndown from "../../../docs/wiki/plans/code-review-burndown.md?raw";
-import contextEditChatMode from "../../../docs/wiki/plans/context-edit-chat-mode.md?raw";
-import dataArchitectureHardeningPlan from "../../../docs/wiki/plans/data-architecture-hardening-plan.md?raw";
-import dailyAirdropMigrationPlan from "../../../docs/wiki/plans/daily-airdrop-migration-plan.md?raw";
-import gettingTasksOverLine from "../../../docs/wiki/plans/getting-tasks-over-line.md?raw";
-import hiveBoardProfessionalismDiagnosis from "../../../docs/wiki/plans/hive-board-professionalism-diagnosis.md?raw";
-import jobsChatSpirit from "../../../docs/wiki/plans/jobs-chat-spirit.md?raw";
-import makingFunctionalNetworkTasks from "../../../docs/wiki/plans/making-functional-network-tasks.md?raw";
-import networkTaskAgenticObjects from "../../../docs/wiki/plans/network-task-agentic-objects.md?raw";
-import networkTaskProfileMemoryPlan from "../../../docs/wiki/plans/network-task-profile-memory-plan.md?raw";
-import pftlTransactionCacheMilestone from "../../../docs/wiki/plans/pftl-transaction-cache-milestone.md?raw";
-import profileAndHiveMindPlan from "../../../docs/wiki/plans/profile-and-hive-mind-plan.md?raw";
-import pseudonymousIdentityAndNamespacePlan from "../../../docs/wiki/plans/pseudonymous-identity-and-namespace-plan.md?raw";
-import publicProfileRealDataPlan from "../../../docs/wiki/plans/public-profile-real-data-plan.md?raw";
-import pythonicTaskEngineSpeedrun from "../../../docs/wiki/plans/pythonic-task-engine-speedrun.md?raw";
-import restoredCoreProductTaskFlow from "../../../docs/wiki/plans/restored-core-product-task-flow.md?raw";
-import taskEngineUxIntegrationPlan from "../../../docs/wiki/plans/task-engine-ux-integration-plan.md?raw";
 import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-production-scope.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
-import jobsChatOsPrompt from "../../../prompts/chat/jobs_chat_os_v1.xml?raw";
+import jobsStandardChatPrompt from "../../../prompts/chat/jobs_standard_chat_codex_style_draft.md?raw";
 import contextEditJobsPrompt from "../../../prompts/context/context_edit_jobs_v1.xml?raw";
 import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
 import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
@@ -84,13 +70,12 @@ import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw"
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
 import publicProfileSnapshotPrompt from "../../../prompts/profile/public_profile_snapshot_v1.md?raw";
-import blockContractPrompt from "../../../prompts/task_engine/block_contract_v1.md?raw";
 import evidenceScreenshotPrompt from "../../../prompts/task_engine/evidence_screenshot_read_v1.md?raw";
 import rewardScoringPrompt from "../../../prompts/task_engine/reward_scoring_v1.md?raw";
-import taskgenPrompt from "../../../prompts/task_engine/taskgen_minimal_v1.md?raw";
-import taskgenRepairPrompt from "../../../prompts/task_engine/taskgen_repair_v1.md?raw";
+import taskgenNetworkPrompt from "../../../prompts/task_engine/taskgen_network_v1.md?raw";
+import taskgenPersonalPrompt from "../../../prompts/task_engine/taskgen_personal_v1.md?raw";
 import verificationRequestPrompt from "../../../prompts/task_engine/verification_request_v1.md?raw";
-import profileNftImagePrompt from "../../../prompts/profile_nft_image.placeholder.md?raw";
+import profileNftImagePrompt from "../../../prompts/non_production/profile_nft_dev/profile_nft_image.placeholder.md?raw";
 
 const PROMPT_SOURCES = [
   {
@@ -110,9 +95,9 @@ const PROMPT_SOURCES = [
   {
     family: "Profile",
     title: "Profile NFT Image",
-    path: "prompts/profile_nft_image.placeholder.md",
-    summary: "Public fallback template for profile NFT image generation. Production uses ignored private_prompts/profile_nft_image.md or PROFILE_NFT_PROMPT_PATH.",
-    status: "Fallback template; private production prompt is intentionally not exposed",
+    path: "prompts/non_production/profile_nft_dev/profile_nft_image.placeholder.md",
+    summary: "Dev/test fallback template for profile NFT image generation. Production requires PROFILE_NFT_PROMPT_B64 or PROFILE_NFT_PROMPT_TEXT.",
+    status: "Non-production fallback; production route fails closed without a private prompt",
     usedBy: [
       "server/profile-nft-prompts.js::renderProfileNftPrompt",
       "server/profile-nft-generation.js::profileNftGenerateStart",
@@ -148,8 +133,8 @@ const PROMPT_SOURCES = [
   {
     family: "Chat",
     title: "Jobs Chat Spirit",
-    path: "prompts/chat/jobs_chat_os_v1.xml",
-    summary: "Shared XML operating prompt that gives all exposed chat modes the Jobs-style product voice while preserving Task Node context, memory, and task awareness.",
+    path: "prompts/chat/jobs_standard_chat_codex_style_draft.md",
+    summary: "Shared Markdown operating prompt that gives all exposed chat modes the Jobs-calibrated product voice while preserving Task Node context, memory, task awareness, and pgvector Jobs retrieval.",
     status: "Active by default; disabled only when TASKNODE_CHAT_SPIRIT_ENABLED=false",
     usedBy: [
       "server/chat-spirit-context.js::formatChatSpiritContext",
@@ -157,7 +142,7 @@ const PROMPT_SOURCES = [
       "server/chat-router.js::openRouterMessages",
       "server/chat-router.js::openAiResponseRequest",
     ],
-    content: jobsChatOsPrompt,
+    content: jobsStandardChatPrompt,
   },
   {
     family: "Chat",
@@ -242,7 +227,7 @@ const PROMPT_SOURCES = [
     summary: "Operating prompt for the single leased Board Manager action registry.",
     status: "Active for persistent Board Manager Codex Exec runs and first action hooks",
     usedBy: [
-      "docs/wiki/plans/board-manager.md",
+      "docs/wiki/architecture/board-manager.md",
       "scripts/board-manager-codex-exec.mjs",
       "server/repositories/board-manager.js::formatBoardManagerCodexPrompt",
       "server/board-manager-actions.js::executeBoardManagerDecision",
@@ -290,39 +275,32 @@ const PROMPT_SOURCES = [
   },
   {
     family: "Task Engine",
-    title: "Task Generation",
-    path: "prompts/task_engine/taskgen_minimal_v1.md",
-    summary: "Generates one concise PFTL task from request, context, memory, chat, wallet, policy, and optional network_task routing blocks.",
-    status: "Active app worker, Network Task worker handoff, and Python reference",
+    title: "Task Generation Personal",
+    path: "prompts/task_engine/taskgen_personal_v1.md",
+    summary: "Generates one concise personal PFTL task from request, context, memory, chat, wallet, policy, and task queue blocks.",
+    status: "Active app worker and Python reference for personal task requests",
     usedBy: [
       "server/task-generation-worker.js::generateTaskWithOpenAi",
-      "server/network-task-generation-worker.js::createTaskRequestForNetworkJob",
+      "server/task-generation-worker.js::taskgenPromptForInput",
       "reference_clients/python/tasknode_pftl/taskgen.py::generate_task",
-      "reference_clients/python/tasknode_pftl/taskgen.py::benchmark_taskgen",
-      "reference_clients/python/tasknode_pftl/taskgen.py::TASKGEN_RESPONSE_FORMAT",
+      "reference_clients/python/tasknode_pftl/taskgen.py::taskgen_prompt_for_input",
     ],
-    content: taskgenPrompt,
+    content: taskgenPersonalPrompt,
   },
   {
     family: "Task Engine",
-    title: "Task Block Contract",
-    path: "prompts/task_engine/block_contract_v1.md",
-    summary: "Human-readable contract for taskgen input blocks.",
-    status: "Documentation contract",
+    title: "Task Generation Network",
+    path: "prompts/task_engine/taskgen_network_v1.md",
+    summary: "Generates one concrete Network or Alpha Task from structured Board Manager routing context.",
+    status: "Active app worker, Network Task worker handoff, and Python reference",
     usedBy: [
-      "reference_clients/python/tasknode_pftl/taskgen.py::project_taskgen_input",
-      "reference_clients/python/tasknode_pftl/app_data.py::build_request_bundle_from_fixture",
+      "server/network-task-generation-worker.js::createTaskRequestForNetworkJob",
+      "server/task-generation-worker.js::taskgenPromptForInput",
+      "server/task-generation-worker.js::generateTaskWithOpenAi",
+      "reference_clients/python/tasknode_pftl/taskgen.py::taskgen_prompt_for_input",
+      "reference_clients/python/tasknode_pftl/taskgen.py::generate_task",
     ],
-    content: blockContractPrompt,
-  },
-  {
-    family: "Task Engine",
-    title: "Task JSON Repair",
-    path: "prompts/task_engine/taskgen_repair_v1.md",
-    summary: "Reserved repair prompt for malformed task generation JSON.",
-    status: "Reserved",
-    usedBy: ["No runtime caller yet"],
-    content: taskgenRepairPrompt,
+    content: taskgenNetworkPrompt,
   },
   {
     family: "Verification",
@@ -352,7 +330,7 @@ const PROMPT_SOURCES = [
     family: "Reward",
     title: "Reward Scoring",
     path: "prompts/task_engine/reward_scoring_v1.md",
-    summary: "Scores verification evidence and produces reward, partial reward, or zero-reward decisions.",
+    summary: "Scores verification evidence and produces reward, partial reward, or zero-reward outcomes.",
     status: "Active app worker and Python reference",
     usedBy: [
       "server/task-review-worker.js::processVerificationResponse",
@@ -558,6 +536,12 @@ export const DOC_GROUPS = [
         markdown: authAndConnectedAccounts,
       },
       {
+        slug: "auth-wallet-boundary",
+        title: "Auth And Wallet Boundary",
+        summary: "Account auth, wallet proof, local vault unlock, and seed custody guardrails.",
+        markdown: authWalletBoundary,
+      },
+      {
         slug: "resettable-signup-testing",
         title: "Resettable Signup Testing",
         summary: "QA reset workflow for reusable email signup and funded wallet tests.",
@@ -574,6 +558,24 @@ export const DOC_GROUPS = [
         title: "Deployment",
         summary: "Fly dev, Docker, data stores, secrets, auth, top-up, and verification commands.",
         markdown: deployment,
+      },
+      {
+        slug: "bootup",
+        title: "Bootup",
+        summary: "Local setup, smoke checks, startup guards, and first failure triage.",
+        markdown: bootup,
+      },
+      {
+        slug: "current-system",
+        title: "Current System",
+        summary: "Current product boundary, routes, enabled surfaces, deferrals, and near-term build path.",
+        markdown: currentSystem,
+      },
+      {
+        slug: "deathmarch",
+        title: "Deathmarch Local Harness",
+        summary: "Local-only Discord posting harness for Task Node task events.",
+        markdown: deathmarch,
       },
       {
         slug: "system-status",
@@ -717,6 +719,12 @@ export const DOC_GROUPS = [
       { slug: "ipfs", title: "IPFS", summary: "CID-backed payload standards.", markdown: ipfs },
       { slug: "database", title: "Database", summary: "Postgres cache architecture.", markdown: database },
       {
+        slug: "database-architecture",
+        title: "Database Architecture",
+        summary: "Target Postgres account, billing, context, task, and pgvector architecture.",
+        markdown: databaseArchitecture,
+      },
+      {
         slug: "execution-mandate",
         title: "Execution Mandate",
         summary: "Verification rules for repo work and claims of completion.",
@@ -733,6 +741,18 @@ export const DOC_GROUPS = [
         title: "Task Lifecycle",
         summary: "Replayable task state machine.",
         markdown: taskLifecycle,
+      },
+      {
+        slug: "pftl-live-task-replay",
+        title: "PFTL Live Task Replay",
+        summary: "Successful live PFTL/IPFS lifecycle replay from request through reward.",
+        markdown: pftlLiveTaskReplay,
+      },
+      {
+        slug: "context-history-restore",
+        title: "Context History Restore",
+        summary: "PFTL cache projection path for historical context restore.",
+        markdown: contextHistoryRestore,
       },
       {
         slug: "network-task-recovery",
@@ -759,140 +779,8 @@ export const DOC_GROUPS = [
       {
         slug: "task-node-production-scope",
         title: "Task Node Production Scope",
-        summary: "Launch-readiness scope across login, funding, context, chat, Hive, Telegram, tasks, and operations.",
+        summary: "Single active beta plan: acceptance gates, completed work, and remaining P0/P1 launch scope.",
         markdown: taskNodeProductionScope,
-      },
-      {
-        slug: "beta-acceptance-gates",
-        title: "Beta Acceptance Gates",
-        summary: "Four beta shipping gates for Telegram, Task Generation, Context Editing, and Hive Board.",
-        markdown: betaAcceptanceGates,
-      },
-      {
-        slug: "restored-core-product-task-flow",
-        route: "#docs/restored-core-product-task-flow",
-        title: "Restored Core Product Task Flow",
-        summary: "Concise restored-board spec for the first request-to-reward Task Node loop.",
-        markdown: restoredCoreProductTaskFlow,
-      },
-      {
-        slug: "code-review-burndown",
-        title: "Code Review Burndown",
-        summary: "Active doc-driven review queue for visible app promises.",
-        markdown: codeReviewBurndown,
-      },
-    ],
-  },
-  {
-    title: "Implemented / Deprecated Plans",
-    pages: [
-      {
-        slug: "agent-managed-about-panels",
-        title: "Agent-Managed About Panels",
-        summary: "Deprecated implemented plan; current Hive product documents live in the Hive surface docs.",
-        markdown: agentManagedAboutPanels,
-      },
-      {
-        slug: "board-manager",
-        title: "Board Manager",
-        summary: "Deprecated implemented v0 plan; current Board Manager behavior lives in Hive, Deployment, and Board Manager architecture docs.",
-        markdown: boardManager,
-      },
-      {
-        slug: "board-manager-deepseek-secretary-packets",
-        title: "Board Manager DeepSeek Secretary Packets",
-        summary: "Deprecated implemented milestone for Board Triage packet compression.",
-        markdown: boardManagerDeepseekSecretaryPackets,
-      },
-      {
-        slug: "hive-board-professionalism-diagnosis",
-        title: "Hive Board Professionalism Diagnosis",
-        summary: "Deprecated implemented guardrail; current Hive board semantics live in Hive and Board Manager architecture docs.",
-        markdown: hiveBoardProfessionalismDiagnosis,
-      },
-      {
-        slug: "task-engine-ux-integration-plan",
-        title: "Task Engine UX Integration Plan",
-        summary: "Deprecated implemented v1 plan; current task lifecycle truth lives in Tasks and task architecture docs.",
-        markdown: taskEngineUxIntegrationPlan,
-      },
-      {
-        slug: "data-architecture-hardening-plan",
-        title: "Data Architecture Hardening Plan",
-        summary: "Deprecated implemented hardening milestone; current cache and projection repair docs live in architecture.",
-        markdown: dataArchitectureHardeningPlan,
-      },
-      {
-        slug: "profile-and-hive-mind-plan",
-        title: "Profile and Hive Mind Plan",
-        summary: "Deprecated implemented v1 plan; current Profile, Hive, Daily Airdrop, and Memory docs are authoritative.",
-        markdown: profileAndHiveMindPlan,
-      },
-      {
-        slug: "pseudonymous-identity-and-namespace-plan",
-        title: "Pseudonymous Identity And Namespace Plan",
-        summary: "Deprecated partially implemented v1 plan; current handle and alias behavior lives in Profile and Auth docs.",
-        markdown: pseudonymousIdentityAndNamespacePlan,
-      },
-      {
-        slug: "making-functional-network-tasks",
-        title: "Making Functional Network Tasks",
-        summary: "Deprecated implemented Network Task bridge; current behavior lives in Tasks, Hive, and status-linked architecture docs.",
-        markdown: makingFunctionalNetworkTasks,
-      },
-      {
-        slug: "network-task-agentic-objects",
-        title: "Network Task Agentic Objects",
-        summary: "Archived Network Task design reference; current implementation truth lives in Tasks and Network Task architecture docs.",
-        markdown: networkTaskAgenticObjects,
-      },
-      {
-        slug: "context-edit-chat-mode",
-        title: "Context Refine Chat Mode",
-        summary: "Deprecated implemented v1 plan; current behavior lives in Chat and Context docs.",
-        markdown: contextEditChatMode,
-      },
-      {
-        slug: "daily-airdrop-migration-plan",
-        title: "Daily Airdrop Migration Plan",
-        summary: "Deprecated implemented v1 plan; current scoring, issuance, and worker behavior lives in Profile and Daily Airdrop docs.",
-        markdown: dailyAirdropMigrationPlan,
-      },
-      {
-        slug: "getting-tasks-over-line",
-        title: "Getting Tasks Over The Line",
-        summary: "Deprecated implemented milestone for signed request, projection, and task UX integration.",
-        markdown: gettingTasksOverLine,
-      },
-      {
-        slug: "jobs-chat-spirit",
-        title: "Jobs Chat Spirit",
-        summary: "Deprecated implemented plan for the Jobs XML prompt and pgvector retrieval path.",
-        markdown: jobsChatSpirit,
-      },
-      {
-        slug: "network-task-profile-memory-plan",
-        title: "Network Task Profile Memory Plan",
-        summary: "Deprecated implemented v1 plan; current packet and worker behavior lives in Memory and Hive docs.",
-        markdown: networkTaskProfileMemoryPlan,
-      },
-      {
-        slug: "pftl-transaction-cache-milestone",
-        title: "PFTL Transaction Cache Milestone",
-        summary: "Deprecated implemented milestone; current cache behavior lives in PFTL Transaction Cache docs.",
-        markdown: pftlTransactionCacheMilestone,
-      },
-      {
-        slug: "public-profile-real-data-plan",
-        title: "Public Profile Real Data Plan",
-        summary: "Deprecated implemented v1 plan; current deterministic profile data lives in Profile docs.",
-        markdown: publicProfileRealDataPlan,
-      },
-      {
-        slug: "pythonic-task-engine-speedrun",
-        title: "Pythonic Task Engine Speedrun",
-        summary: "Deprecated completed reference milestone for the Python task lifecycle proofs.",
-        markdown: pythonicTaskEngineSpeedrun,
       },
     ],
   },

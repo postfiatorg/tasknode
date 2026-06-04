@@ -161,6 +161,7 @@ export function AssistantMessage({
   const hasThinking = Boolean(message.thinking);
   const isHiveInputAck = message.metadata?.kind === "hive_input_ack";
   const isHiveContextStatus = message.metadata?.kind === "hive_context_status";
+  const sourceLabel = assistantSourceLabel(message.metadata);
   const showToolbar = !message.pending && !message.error && !isHiveInputAck && !isHiveContextStatus;
   const proposal = message.metadata?.contextEdit?.proposal || null;
 
@@ -181,6 +182,7 @@ export function AssistantMessage({
         message.pending ? "pending" : "",
         message.error ? "error" : "",
         isHiveInputAck ? "is-hive-input-ack" : "",
+        sourceLabel ? `is-${sourceLabel.kind}` : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -201,12 +203,14 @@ export function AssistantMessage({
             )}
           </button>
           {thinkingOpen && (
-            <div className="thinking-details">
-              {thinkingSteps(message).map((step) => (
-                <span key={step}>{step}</span>
-              ))}
-            </div>
+            <ThinkingDetails message={message} />
           )}
+        </div>
+      )}
+      {sourceLabel && (
+        <div className="assistant-source-row" title={sourceLabel.title}>
+          <span className="assistant-source-label">{sourceLabel.label}</span>
+          {sourceLabel.meta && <span className="assistant-source-meta">{sourceLabel.meta}</span>}
         </div>
       )}
       <div className="assistant-body">
@@ -231,6 +235,85 @@ export function AssistantMessage({
       )}
     </article>
   );
+}
+
+function ThinkingDetails({ message }) {
+  const retrieval = message.thinking?.jobsRetrieval || null;
+  const sourceText = readableJobsRetrievalText(retrieval);
+
+  return (
+    <div className="thinking-details">
+      <div className="thinking-step-list">
+        {thinkingSteps(message).map((step) => (
+          <span key={step}>{step}</span>
+        ))}
+      </div>
+      {retrieval && (
+        <div className="thinking-vector-panel">
+          <div className="thinking-vector-header">
+            <strong>Jobs source text</strong>
+            <span>{thinkingRetrievalSummary(retrieval)}</span>
+          </div>
+          {sourceText ? (
+            <pre className="thinking-source-block">{sourceText}</pre>
+          ) : (
+            <span className="thinking-vector-empty">
+              No Jobs source text was passed{retrieval.reason ? `: ${retrieval.reason}` : "."}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function readableJobsRetrievalText(retrieval = null) {
+  const chunks = Array.isArray(retrieval?.chunks) ? retrieval.chunks : [];
+  const readable = chunks
+    .map((chunk) => String(chunk.content || "").trim())
+    .filter(Boolean);
+  if (readable.length > 0) return readable.join("\n\n---\n\n");
+
+  const renderedContext = String(retrieval?.renderedContext || "").trim();
+  if (!renderedContext) return "";
+  const matches = [...renderedContext.matchAll(/<!\[CDATA\[\n?([\s\S]*?)\n?\]\]>/g)];
+  return matches
+    .map((match) => String(match[1] || "").trim())
+    .filter(Boolean)
+    .join("\n\n---\n\n");
+}
+
+function thinkingRetrievalSummary(retrieval = {}) {
+  const state = retrieval.state || "unknown";
+  const count = Number(retrieval.chunkCount || 0);
+  return `${state} · ${count} ${count === 1 ? "excerpt" : "excerpts"}`;
+}
+
+function assistantSourceLabel(metadata = {}) {
+  if (metadata?.kind === "hive_manager_response") {
+    return {
+      kind: "board-manager",
+      label: "Board Manager",
+      meta: metadata.boardManagerRunId ? `Run ${shortMetaId(metadata.boardManagerRunId)}` : "",
+      title: metadata.boardManagerRunId ? `Board Manager run ${metadata.boardManagerRunId}` : "Automated Board Manager message",
+    };
+  }
+  if (metadata?.kind === "hive_immediate_response") {
+    return {
+      kind: "hive-chat",
+      label: "Hive Chat",
+      title: metadata.accountLiveStateDigest
+        ? `Hive response with account live state ${metadata.accountLiveStateDigest.slice(0, 12)}`
+        : "Immediate Hive Chat response",
+    };
+  }
+  return null;
+}
+
+function shortMetaId(value = "") {
+  const normalized = String(value || "").trim();
+  if (normalized.length <= 18) return normalized;
+  return `${normalized.slice(0, 10)}...${normalized.slice(-6)}`;
 }
 
 function thinkingLabel(thinking) {

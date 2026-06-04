@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
+import { applyCanonicalHiveProject } from "../hive-project-canonical.js";
 
 const maxClaimLimit = 2;
 const failedAttemptLimit = 3;
@@ -68,7 +69,7 @@ function normalizeProject(project = {}, index = 0) {
       (phaseCurrent && phaseTotal ? `${phaseCurrent} of ${phaseTotal}` : ""),
     80
   );
-  return {
+  return applyCanonicalHiveProject({
     id,
     type,
     title,
@@ -84,7 +85,29 @@ function normalizeProject(project = {}, index = 0) {
     task_count: 0,
     contributor_count: 0,
     rationale: safeText(project.rationale || project.reason, 1200),
+  });
+}
+
+function mergeProject(left = {}, right = {}) {
+  return {
+    ...left,
+    priority: Math.min(intValue(left.priority, 100), intValue(right.priority, 100)),
+    rationale: [left.rationale, right.rationale].map((item) => safeText(item, 700)).filter(Boolean).join(" "),
+    source_project_titles: [
+      ...safeArray(left.source_project_titles),
+      safeText(right.title, 180),
+      ...safeArray(right.source_project_titles),
+    ].filter(Boolean).slice(0, 12),
   };
+}
+
+function mergeProjectsById(projects = []) {
+  const byId = new Map();
+  for (const project of projects) {
+    const existing = byId.get(project.id);
+    byId.set(project.id, existing ? mergeProject(existing, project) : project);
+  }
+  return [...byId.values()].sort((left, right) => intValue(left.priority, 100) - intValue(right.priority, 100));
 }
 
 export function normalizeHiveProjectPlanningOutput(output = {}) {
@@ -96,7 +119,7 @@ export function normalizeHiveProjectPlanningOutput(output = {}) {
   return {
     title: safeText(raw.title, 180) || "Hive Active Projects",
     summary: safeText(raw.summary, 1200),
-    projects,
+    projects: mergeProjectsById(projects),
   };
 }
 

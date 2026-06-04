@@ -15,7 +15,8 @@ import {
 import { taskProductConfig } from "../task-product-config.js";
 import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
-import { syncNetworkTaskProjection } from "./network-tasks.js";
+import { getNetworkTaskEligibility, syncNetworkTaskProjection } from "./network-tasks.js";
+import { enqueueNetworkTaskProfileForRewardThreshold } from "./network-task-profile.js";
 import { emptyTaskRequestState, listTaskRequests } from "./task-requests.js";
 import { normalizeTaskStatus, taskLifecycleActions, taskRefreshMetadata, taskStatusInfo, taskStatusLabel, taskStatusTab } from "../../shared/task-lifecycle.js";
 import { formatTaskDeadline, formatTaskTimestamp } from "../../shared/task-time-format.js";
@@ -362,7 +363,19 @@ async function taskReadIntegrityByTaskId({ taskIds = [], accountId = "", walletA
 
 export async function listTaskState({ accountId = "", walletAddress = "" } = {}) {
   const linked = Boolean(String(walletAddress || "").trim());
-  if (!linked) return emptyTaskState({ walletLinked: false });
+  const networkTasks = await getNetworkTaskEligibility({ accountId, walletAddress }).catch((error) => ({
+    schema: "pf.task_node.network_task_eligibility.v1",
+    status: "unavailable",
+    label: "Network task routing unavailable",
+    summary: "Task Node could not inspect Network Task routing state.",
+    nextAction: "Try again after task state reloads.",
+    error: safeText(error?.message || error, 500),
+    gates: [],
+  }));
+  if (!linked) return {
+    ...emptyTaskState({ walletLinked: false }),
+    networkTasks,
+  };
   const requests = await listTaskRequests({ accountId, walletAddress }).catch((error) => ({
     ...emptyTaskRequestState({ walletLinked: true, walletAddress }),
     sync: {
@@ -378,6 +391,7 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
   if (!databaseEnabled()) {
     return {
       ...emptyTaskState({ walletLinked: true, walletAddress }),
+      networkTasks,
       requests,
       sync: {
         source: "task_projections",
@@ -438,6 +452,7 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
 
   return {
     ...emptyTaskState({ walletLinked: true, walletAddress }),
+    networkTasks,
     requests,
     ...grouped,
     sync: {
@@ -737,7 +752,7 @@ function projectionForReceipt(receipt) {
 function pointerKindForSchema(schema = "") {
   if (schema === "pf.reward.v1") return "REWARD";
   if (schema === "pf.task.submission.v1" || schema === "pf.task.verification_response.v1") return "TASK_SUBMISSION";
-  if (schema === "pf.task.update.v1" || schema === "pf.task.reward_decision.v1") return "TASK_UPDATE";
+  if (schema === "pf.task.update.v1") return "TASK_UPDATE";
   return "TASK";
 }
 
@@ -764,6 +779,23 @@ async function projectionWithDurableOwner(projection = {}) {
   const metadata = safeObject(projection.metadata);
   const fixture = { ...safeObject(metadata.fixture), account_id: ownerAccountId, request_id: ownerRequestId };
   return { ...projection, accountId: ownerAccountId, subjectWallet: ownerWallet || projection.subjectWallet, requestId: ownerRequestId, metadata: { ...metadata, fixture } };
+}
+
+async function maybeQueueNetworkTaskProfileAfterReward(projection = {}) {
+  const accountId = safeText(projection.accountId, 180);
+  const rewardActual = numeric(projection.rewardActual);
+  const statusTab = taskStatusTab(normalizeTaskStatus(projection.status));
+  if (!accountId || rewardActual <= 0 || statusTab !== "rewarded") {
+    return { queued: false, reason: "not_positive_reward_projection" };
+  }
+  return enqueueNetworkTaskProfileForRewardThreshold({
+    accountId,
+    reason: "rewarded_task_projection",
+  }).catch((error) => ({
+    queued: false,
+    reason: "reward_threshold_enqueue_failed",
+    error: safeText(error?.message || error, 1000),
+  }));
 }
 
 export async function importTaskReplayReceipt(receipt, { sourceRef = "", source = "pftl_replay_receipt" } = {}) {
@@ -986,6 +1018,7 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
   });
 
   await syncNetworkTaskProjection({ taskId: projection.taskId }).catch(() => null);
+  const networkTaskProfile = await maybeQueueNetworkTaskProfileAfterReward(projection);
 
   return {
     ok: true,
@@ -995,5 +1028,6 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
     walletAddress: projection.subjectWallet,
     status: projection.status,
     pointerEventCount: projection.hydratedEvents.length,
+    networkTaskProfile,
   };
 }

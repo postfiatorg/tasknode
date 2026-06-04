@@ -44,7 +44,7 @@ function nullableTimestampValue(value = null) {
 export async function ensureBoardManagerScope({
   scope = "global_hive",
   status = null,
-  cadenceSeconds = 900,
+  cadenceSeconds = 120,
   maxActionsPerHour = defaultBoardManagerMaxActionsPerHour,
   nextRunAt = null,
   metadata = {},
@@ -77,7 +77,7 @@ export async function ensureBoardManagerScope({
     [
       normalizedScope,
       normalizedStatus,
-      clampInt(cadenceSeconds, 900, 60, 86400),
+      clampInt(cadenceSeconds, 120, 60, 86400),
       clampInt(maxActionsPerHour, defaultBoardManagerMaxActionsPerHour, 0, 200),
       timestampValue(nextRunAt),
       jsonValue(metadata),
@@ -296,7 +296,7 @@ export async function enqueueDueBoardManagerTicks({ scope = "", limit = 5 } = {}
               updated_at = now()
           WHERE scope = $1
         `,
-        [row.scope, String(clampInt(row.cadence_seconds, 900, 60, 86400))]
+        [row.scope, String(clampInt(row.cadence_seconds, 120, 60, 86400))]
       );
     }
     return { ok: true, enqueued: jobs.length, jobs };

@@ -8,7 +8,7 @@ import {
   taskRequiresRefresh,
   taskStatusTab,
 } from "../shared/task-lifecycle.js";
-import { validateTaskgenOutput } from "../server/task-generation-worker.js";
+import { taskgenPromptForInput, validateTaskgenOutput } from "../server/task-generation-worker.js";
 import { isSafeEvidenceUrlLiteral } from "../server/task-review-worker.js";
 
 assert.equal(taskStatusTab(TASK_STATUS.verificationRequested), TASK_TABS.verification);
@@ -19,7 +19,7 @@ assert.equal(taskLifecycleActions(TASK_STATUS.proposed).canRefuse, true);
 assert.equal(taskLifecycleActions(TASK_STATUS.proposed).canStop, true);
 assert.equal(taskLifecycleActions(TASK_STATUS.proposed).stopAction, "refuse");
 assert.equal(taskLifecycleActions(TASK_STATUS.proposed).stopLabel, "Refuse task");
-assert.equal(statusFromRewardAmount("2.50"), TASK_STATUS.rewardDecided);
+assert.equal(statusFromRewardAmount("2.50"), TASK_STATUS.rewarded);
 assert.equal(statusFromRewardAmount("0"), TASK_STATUS.rewarded);
 
 const taskgenBase = {
@@ -36,6 +36,18 @@ const taskgenBase = {
 assert.equal(validateTaskgenOutput(taskgenBase).task_kind, "personal");
 assert.equal(validateTaskgenOutput({ ...taskgenBase, task_kind: "alpha" }).task_kind, "alpha");
 assert.equal(validateTaskgenOutput(taskgenBase, { task_class: "network" }).task_kind, "network");
+assert.deepEqual(taskgenPromptForInput({ request: { requestText: "Build a personal task" } }), {
+  path: "task_engine/taskgen_personal_v1.md",
+  version: "taskgen_personal_v1",
+});
+assert.deepEqual(taskgenPromptForInput({
+  request: { requestText: "Network Task", requestedTaskKind: "network" },
+  network_task: { project_id: "project_1", project_need_summary: "Patch a named surface." },
+  policy: { task_class: "network" },
+}), {
+  path: "task_engine/taskgen_network_v1.md",
+  version: "taskgen_network_v1",
+});
 assert.equal(isSafeEvidenceUrlLiteral("https://example.com/proof").ok, true);
 assert.equal(isSafeEvidenceUrlLiteral("file:///etc/passwd").reason, "unsupported_protocol");
 assert.equal(isSafeEvidenceUrlLiteral("http://localhost:5174").reason, "localhost_not_allowed");

@@ -343,9 +343,17 @@ function writeTaskLocation(taskId, { replace = false } = {}) {
   window.history[method]({ tasknodeView: "tasks", taskId: normalizedTaskId }, "", nextPath);
 }
 
+function isMobileViewport() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches;
+}
+
+function initialSidebarOpen() {
+  return !isMobileViewport();
+}
+
 function App() {
   const [view, setView] = useState(() => viewFromLocation());
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(initialSidebarOpen);
   const [loginOpen, setLoginOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -456,6 +464,21 @@ function App() {
     return () => document.removeEventListener("keydown", closeModal);
   }, [settingsOpen, selectedTask, chatActionMenu, walletUnlockOpen]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const query = window.matchMedia("(max-width: 760px)");
+    const syncSidebarForViewport = (event = query) => {
+      setSidebarOpen(!event.matches);
+      setMoreMenuOpen(false);
+      setProfileMenuOpen(false);
+      setChatActionMenu(null);
+    };
+
+    syncSidebarForViewport(query);
+    query.addEventListener("change", syncSidebarForViewport);
+    return () => query.removeEventListener("change", syncSidebarForViewport);
+  }, []);
+
   const recentChats = buildRecentChats(appState?.chat?.recents || []);
   const activeChatId = activeChat?.conversationId || activeChat?.id || "";
   const hiveUnreadCount = hiveUnreadCountFromAppState(appState);
@@ -504,7 +527,9 @@ function App() {
 
       try {
         const walletCore = await import("./wallet-core");
-        const nextStatus = walletCore.localWalletVaultStatus({ accountId: effectiveAccountId });
+        const nextStatus = typeof walletCore.localWalletVaultStatusAsync === "function"
+          ? await walletCore.localWalletVaultStatusAsync({ accountId: effectiveAccountId })
+          : walletCore.localWalletVaultStatus({ accountId: effectiveAccountId });
         setWalletVaultStatus((current) => {
           const keepUnlocked =
             preserveUnlock &&
@@ -629,6 +654,9 @@ function App() {
     setSelectedTask(null);
     setLoginOpen(false);
     setWalletUnlockOpen(false);
+    if (isMobileViewport()) {
+      setSidebarOpen(false);
+    }
     writeViewLocation(normalizedView, { replace: options.replace === true });
   }, []);
 
@@ -930,7 +958,15 @@ function App() {
   }
 
   return (
-    <main className={`app-shell ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+    <main className={`app-shell view-${view} ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+      {sidebarOpen && (
+        <button
+          aria-label="Close navigation"
+          className="mobile-sidebar-scrim"
+          onClick={() => setSidebarOpen(false)}
+          type="button"
+        />
+      )}
       <aside className="sidebar" aria-label="Primary">
         <div className="sidebar-header">
           {sidebarOpen && (
@@ -951,7 +987,10 @@ function App() {
             type="button"
           >
             {sidebarOpen ? (
-              <PanelLeft size={18} strokeWidth={1.75} />
+              <>
+                <PanelLeft className="desktop-sidebar-toggle-icon" size={18} strokeWidth={1.75} />
+                <X className="mobile-sidebar-close-icon" size={20} strokeWidth={1.9} />
+              </>
             ) : (
               <PostFiatLogo />
             )}
@@ -1233,92 +1272,24 @@ function App() {
         </div>
       </aside>
 
-      <nav className="mobile-route-nav" aria-label="Primary mobile navigation">
-        <button
-          aria-current={view === "chat" ? "page" : undefined}
-          className={view === "chat" ? "active" : ""}
-          onClick={startNewChat}
-          type="button"
-        >
-          <SquarePen size={18} strokeWidth={1.75} />
-          <span>Chat</span>
-        </button>
-        <button
-          aria-current={view === "tasks" ? "page" : undefined}
-          className={view === "tasks" ? "active" : ""}
-          onClick={() => navigateToView("tasks")}
-          type="button"
-        >
-          <ListTodo size={18} strokeWidth={1.75} />
-          <span>Tasks</span>
-        </button>
-        <button
-          aria-current={view === "hive" ? "page" : undefined}
-          className={view === "hive" ? "active" : ""}
-          onClick={() => navigateToView("hive")}
-          type="button"
-        >
-          <Activity size={18} strokeWidth={1.75} />
-          <span>Hive</span>
-        </button>
-        <button
-          aria-current={view === "wallet" ? "page" : undefined}
-          className={view === "wallet" ? "active" : ""}
-          onClick={openWalletSummary}
-          type="button"
-        >
-          <Wallet size={18} strokeWidth={1.75} />
-          <span>Wallet</span>
-        </button>
-        <button
-          aria-current={view === "context" ? "page" : undefined}
-          className={view === "context" ? "active" : ""}
-          onClick={() => navigateToView("context")}
-          type="button"
-        >
-          <BookOpen size={18} strokeWidth={1.75} />
-          <span>Context</span>
-        </button>
-        <button
-          aria-current={view === "memory" ? "page" : undefined}
-          className={view === "memory" ? "active" : ""}
-          onClick={() => navigateToView("memory")}
-          type="button"
-        >
-          <MessageSquare size={18} strokeWidth={1.75} />
-          <span>Memory</span>
-        </button>
-        <button
-          aria-current={view === "profile" ? "page" : undefined}
-          className={view === "profile" ? "active" : ""}
-          onClick={() => {
-            if (signedIn) {
-              navigateToView("profile");
-              return;
-            }
-            setLoginOpen(true);
-          }}
-          type="button"
-        >
-          <UserIcon size={18} strokeWidth={1.75} />
-          <span>{signedIn ? "Profile" : "Log in"}</span>
-        </button>
-        <button
-          aria-current={view === "docs" ? "page" : undefined}
-          className={view === "docs" ? "active" : ""}
-          onClick={() => navigateToView("docs")}
-          type="button"
-        >
-          <LifeBuoy size={18} strokeWidth={1.75} />
-          <span>Help</span>
-        </button>
-      </nav>
-
       <section className="workspace">
         <header className="topbar">
           <div className="topbar-left">
-            <button className="icon-button" onClick={startNewChat} title="New chat" type="button">
+            <button className="icon-button topbar-new-chat" onClick={startNewChat} title="New chat" type="button">
               <SquarePen size={18} strokeWidth={1.75} />
+            </button>
+            <button
+              className="mobile-brand-button"
+              onClick={() => {
+                setSidebarOpen(true);
+                setMoreMenuOpen(false);
+                setProfileMenuOpen(false);
+                setChatActionMenu(null);
+              }}
+              type="button"
+            >
+              <PostFiatLogo />
+              <span>Task Node</span>
             </button>
           </div>
           {view === "chat" && activeChat && (
@@ -1328,6 +1299,11 @@ function App() {
                 Share
               </button>
             </div>
+          )}
+          {signedIn && view !== "chat" && (
+            <button className="mobile-topbar-action" onClick={startNewChat} title="New chat" type="button">
+              <Pencil size={22} strokeWidth={1.75} />
+            </button>
           )}
         </header>
 
@@ -1916,9 +1892,11 @@ function ChatSurface({
         const assistantTurn = normalizeChatMessage(
           {
             ...result.body.assistant,
-            thinking: result.body.assistant.thinking || {
+            thinking: {
               state: "finished",
               duration: formatElapsedSeconds(Date.now() - startedAt),
+              ...(result.body.assistant.metadata?.thinking || {}),
+              ...(result.body.assistant.thinking || {}),
             },
           },
           pendingId

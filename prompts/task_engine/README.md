@@ -5,11 +5,11 @@ engine. The prompts are source controlled so task behavior can be reviewed,
 replayed, and audited without relying on hidden database state.
 
 PFTasks is useful prior art, but its prompt set is intentionally not copied
-here. The Task Node Official prompt contract is smaller:
+here. The Task Node Official prompt contract is split by task source:
 
-- Generate one task from the current request packet.
-- Use context, memory, and recent chat as background signals.
-- Produce concise task content, 2 to 5 concrete steps, and verifiable evidence rules.
+- `taskgen_personal_v1.md` generates user-requested personal tasks.
+- `taskgen_network_v1.md` generates Board Manager-routed Network and Alpha Tasks.
+- Both prompts produce concise task content, 2 to 5 concrete steps, and verifiable evidence rules.
 - Prefer a 2 to 4 hour workflow with a checkable artifact.
 - Keep evidence inside the app-supported surfaces: text, URL, screenshot/image,
   uploaded file or document, public commit link when explicitly appropriate, or
@@ -18,17 +18,23 @@ here. The Task Node Official prompt contract is smaller:
   or another evidence surface the app cannot submit.
 - Reject broad milestones, duplicate work, pure research without an artifact,
   and tasks a chat model could complete for the user.
+- Network tasks must coordinate contributors across project work: advance Post
+  Fiat, Task Node, the shared data lake, or collective capital formation while
+  staying scoped to one contributor and requiring sybil-resistant evidence.
 
 ## Files
 
 | File | Purpose | Runtime status |
 | --- | --- | --- |
-| `block_contract_v1.md` | Human-readable contract for the data blocks task prompts receive. | Documentation |
-| `taskgen_minimal_v1.md` | System prompt for task generation from a `pf.taskgen.input.v1` packet. | Loaded by `server/task-generation-worker.js` and `reference_clients/python/tasknode_pftl/taskgen.py` |
-| `taskgen_repair_v1.md` | Minimal repair prompt for malformed task JSON. | Reserved |
+| `taskgen_personal_v1.md` | System prompt for personal task generation from a `pf.taskgen.input.v1` packet. | Loaded by `server/task-generation-worker.js` and `reference_clients/python/tasknode_pftl/taskgen.py` for personal requests |
+| `taskgen_network_v1.md` | System prompt for Network and Alpha Task generation from structured Board Manager routing context. | Loaded by `server/task-generation-worker.js` and `reference_clients/python/tasknode_pftl/taskgen.py` when a `network_task` packet or `network`/`alpha` task class is present |
 | `verification_request_v1.md` | Prompt policy for a single follow-up verification request. | Loaded by `server/task-review-worker.js` and `reference_clients/python/tasknode_pftl/engine/scoring.py` |
 | `evidence_screenshot_read_v1.md` | Vision prompt for screenshot evidence reads. | Loaded by `server/task-evidence-processing.js` and `reference_clients/python/tasknode_pftl/verification.py` |
 | `reward_scoring_v1.md` | Minimal reward scoring policy for reward adjudication. | Loaded by `server/task-review-worker.js` and `reference_clients/python/tasknode_pftl/engine/scoring.py` |
+
+Non-production task-engine references, including the block contract, reserved
+repair prompt, and legacy combined taskgen prompt, live under
+`prompts/non_production/task_engine_ref/`.
 
 ## Data Blocks
 
@@ -45,6 +51,15 @@ should read the blocks this way:
   local continuity and avoid losing the thread.
 - `wallet`: Attribution and routing metadata. Do not infer task content from a
   wallet address.
+- `network_task`: Present only for Network and Alpha Task routing. It is consumed
+  by `taskgen_network_v1.md`, not by personal task generation. The prompt turns
+  Board Manager routing into plain-English contributor work with a concrete
+  artifact, reviewable proof, and network value. The packet originates from
+  Board Manager `payload.network_task`, is mirrored in
+  `network_task_allocations` / `network_task_generation_jobs`, is appended to an
+  encrypted `pf.task.request_bundle.v1` as `pf.hive.network_task_request.v1`,
+  then projects into `pf.taskgen.input.v1` before becoming an encrypted
+  `pf.task.offer.v1`.
 - `policy`: Version IDs and operating constraints. Treat policy as authoritative.
 
 Postgres may cache prompt IDs, prompt digests, inputs, and outputs for speed and

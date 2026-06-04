@@ -1155,6 +1155,7 @@ function WalletLinkModal({
       }
 
       const proof = walletCore.signWalletChallenge(normalized, start.body.challenge.message);
+      const tasknodeEncryptionPubkey = await walletCore.deriveTaskNodePublicKey(normalized);
       if (isCreate) setMessage("Wallet proof signed. Waiting for Task Node to link the wallet.");
       const verify = await requestJson(start.body.verifyPath || "/api/wallet/link/verify", {
         method: "POST",
@@ -1163,6 +1164,7 @@ function WalletLinkModal({
           challengeId: start.body.challenge.id,
           address: proof.address,
           publicKey: proof.publicKey,
+          tasknodeEncryptionPubkey,
           signature: proof.signature,
         }),
       });
@@ -1402,7 +1404,11 @@ function WalletDelinkModal({
       onWalletVaultLock?.();
       try {
         const walletCore = await import("../../wallet-core");
-        walletCore.removeLocalWalletVault({ accountId: session.accountId });
+        if (typeof walletCore.removeLocalWalletVaultAsync === "function") {
+          await walletCore.removeLocalWalletVaultAsync({ accountId: session.accountId });
+        } else {
+          walletCore.removeLocalWalletVault({ accountId: session.accountId });
+        }
       } catch {
         // Server delink succeeded. A local vault cleanup failure should not
         // restore server wallet ownership.

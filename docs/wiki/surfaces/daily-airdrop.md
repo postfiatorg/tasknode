@@ -34,7 +34,7 @@ Included work:
 - only tasks tied to the account's identity wallet cloud;
 - only tasks with `reward_paid_pft > 0`;
 - only tasks inside the trailing lookback window, currently 7 days;
-- task title, kind, status, reward offer, reward paid, reward decision, reward reason, completion score, evidence quality, event CIDs, and transaction hashes.
+- task title, kind, status, reward offer, reward outcome, reward reason, completion score, evidence quality, event CIDs, and transaction hashes.
 
 Excluded work:
 
@@ -191,19 +191,19 @@ Observed packet:
 
 ### Recurring Worker
 
-The recurring worker is `server/profile-daily-airdrop-worker.js`. It is started by `server/background-workers.js` when `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`; local Docker enables it in `docker-compose.dev.yml`.
+The recurring worker is `server/profile-daily-airdrop-worker.js`. It is started by `server/background-workers.js` when `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`; local Docker enables it in `docker-compose.dev.yml`. The recurring worker scores in `production` mode by default so a completed account/day score suppresses repeat scoring on later ticks. Manual dry runs can use `TASKNODE_DAILY_AIRDROP_WORKER_RUN_MODE=dry_run` or `scripts/profile-daily-airdrop-score.mjs`.
 
-The original migration plan is retained under `Implemented / Deprecated Plans`.
 This page is the current product contract for scoring, issuance, retry, and
-worker audit behavior.
+worker audit behavior. Historical migration planning has been folded into this
+surface doc and the Daily Airdrop Worker runbook.
 
 Each tick:
 
 1. claims a Postgres-backed `daily_airdrop` lease using the same lease table as Board Manager so multiple app instances do not run the payout loop at the same time;
 2. selects accounts with positive rewarded task work inside the trailing seven-day task packet and no production/pending/submitted/failed airdrop for the current UTC day;
-3. runs the existing DeepSeek/OpenRouter daily airdrop scorer in dry-run mode to create a completed scoring row;
+3. runs the existing DeepSeek/OpenRouter daily airdrop scorer in production mode to create a completed account/day scoring row;
 4. issues the specific scoring run through `issueLatestDailyAirdrop` when the proposed amount is positive;
-5. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.` Zero-candidate ticks are recorded too, so the Help system status page has a durable last-run timestamp.
+5. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.` Zero-payout ticks are recorded at most once per UTC day unless there is a failed account or submitted payout, so the Hive Mind Agent feed does not fill with duplicate zero-result cards after deploy restarts.
 
 `issueLatestDailyAirdrop` is fail-closed for money. It claims a row as `processing` before signing. If failure occurs before a PFT submission is attempted, the row is marked `failed` and can be retried. If failure occurs after submission is attempted, the row remains `processing` so a retry cannot sign another payment until reconciliation has inspected the chain/cache.
 

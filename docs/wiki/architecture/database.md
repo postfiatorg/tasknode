@@ -125,6 +125,53 @@ This matters because task lifecycle state is not owned by the Hive agent. The Bo
 - Wallet link, auth identity linkage, initiation grants, and Ethereum deposit state are partially represented outside the typed migration set. Those should be pulled into explicit account, identity, wallet link, grant, and deposit tables before the billing and task surfaces become public production surfaces.
 - Account-scoped semantic search over user chat/context/task data is not implemented yet. The current pgvector implementation is limited to the global Jobs reference corpus used by chat style retrieval.
 
+## Billing And Ethereum Deposits
+
+Billing is account-scoped. The linked PFT wallet does not own app USD credit and
+does not receive Ethereum top-up funds.
+
+Current split:
+
+- Ethereum deposit address records are still JSON runtime-store records under
+  `ethereumDepositAccounts` and `ethereumDepositRetiredAccounts`.
+- The app spend balance is Postgres-backed when `TASKNODE_DATABASE_ENABLED=true`
+  through `billing_accounts` and `billing_ledger_entries`.
+- In runtime fallback mode, the same ledger shape is stored in
+  `runtime-store.js` `ledgerEntries`.
+
+Top-up flow:
+
+1. `/api/usage/top-up/start` allocates an account-scoped Ethereum child address
+   from `ETH_DEPOSIT_XPUB`.
+2. The assigned address and child derivation index are saved in the runtime
+   store.
+3. `/api/usage/top-up/sync` reads ETH, USDC, and USDT balances for that address.
+4. Positive balance deltas after assignment append credits to
+   `billing_ledger_entries`.
+5. `billing_accounts` stores the O(1) account balance summary used by chat
+   preflight and billing UI.
+
+Ethereum deposit credits use:
+
+```text
+billing_ledger_entries.kind = account_credit
+billing_ledger_entries.source = ethereum_deposit
+billing_ledger_entries.created_by = ethereum_deposit_sync
+billing_ledger_entries.idempotency_key =
+  ethereum_deposit:<depositAccountId>:<asset>:<creditedBalanceRaw>
+```
+
+The ledger row metadata includes deposit account id, deposit address, asset,
+raw amount, chain id, network, credited raw balance, and block tag. USDC and
+USDT credit 1:1 as USD. ETH credits at the configured or fetched ETH/USD price
+at sync time.
+
+Important boundary: an Ethereum chain balance is not app credit until the
+ledger credit exists. Retiring a runtime-store deposit record does not sweep
+money and does not reverse credits. Sweeping is a custody operation outside the
+web app; it must not mutate historical billing ledger rows or create negative
+credits.
+
 ## Architecture
 
 Repositories live under `server/repositories/`. Runtime fallback behavior remains in `server/runtime-store.js`, but new feature work should prefer scoped repositories and migrations.

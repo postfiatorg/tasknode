@@ -8,6 +8,7 @@ import { buildPftPointerMemo, POINTER_FLAGS } from "./pftl-pointer.js";
 import { preparePftPointerTransaction, submitSignedPftTransaction } from "./pftl-submit.js";
 import { query, transaction } from "./db/pool.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
+import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 
 const AIRDROP_POINTER_SCHEMA = 1;
 const PFT_DROPS_PER_PFT = 1_000_000;
@@ -282,9 +283,14 @@ export async function issueLatestDailyAirdrop({ accountId, runId = "" } = {}) {
 
   let submissionAttempted = false;
   try {
+    const recipientPublicKeys = await taskPayloadRecipientPublicKeys({
+      tasknodeKey,
+      accountId,
+      walletAddress: recipientWallet,
+    });
     const encryptedPayload = await encryptTasknodePayload({
       plaintext: stableJson(payload),
-      recipientPublicKeys: [tasknodeKey.publicKey],
+      recipientPublicKeys,
     });
     const pin = await pinContextIpfsJson({
       payload: encryptedPayload,

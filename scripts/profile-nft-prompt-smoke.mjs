@@ -9,7 +9,23 @@ import { buildProfileNftUserData } from "../server/profile-nft-generation.js";
 
 const loaded = loadProfileNftPrompt();
 assert.equal(loaded.metadata.model, "gpt-image-2");
-assert.ok(["private", "placeholder"].includes(loaded.source));
+assert.ok(["private", "placeholder", "env_secret"].includes(loaded.source));
+
+const secretPrompt = loadProfileNftPrompt({
+  PROFILE_NFT_PROMPT_B64: Buffer.from([
+    "---",
+    "name: smoke-secret-profile-nft",
+    "model: openai/gpt-image-2",
+    "---",
+    "Secret prompt ___NFT_USER_DATA_REPLACED_HERE___",
+    "Context ___USER_CONTEXT_DOCUMENT_CONTENT_REPLACED_HERE___",
+    "Boot < insert Random String>",
+  ].join("\n")).toString("base64"),
+});
+assert.equal(secretPrompt.source, "env_secret");
+assert.equal(secretPrompt.sourcePath, "PROFILE_NFT_PROMPT_B64");
+assert.equal(secretPrompt.metadata.model, "gpt-image-2");
+assert.ok(secretPrompt.promptTemplate.includes("Secret prompt"));
 
 const nftUserData = buildProfileNftUserData({
   session: {

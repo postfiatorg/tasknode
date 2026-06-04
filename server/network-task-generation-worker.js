@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { pinContextIpfsJson } from "./context-ipfs.js";
 import { resolveTasknodeEncryptionKey } from "./context-publish.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
+import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 import { buildRequestBundle } from "./task-request.js";
 import { scheduleTaskGenerationQueue } from "./task-generation-worker.js";
 import { upsertTaskRequest } from "./repositories/task-requests.js";
@@ -25,6 +26,10 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
   if (value && typeof value === "object") {
@@ -37,27 +42,8 @@ function sha256(value = "") {
   return createHash("sha256").update(typeof value === "string" ? value : stableJson(value), "utf8").digest("hex");
 }
 
-function requestTextForJob({ source = {}, job = {} } = {}) {
-  const networkTask = safeObject(source.networkTask);
-  const project = safeObject(source.project);
-  const candidate = safeObject(source.candidate);
-  const reward = normalizeNetworkTaskRewardBand({
-    min: job.reward_min_pft || networkTask.rewardMinPft,
-    max: job.reward_max_pft || networkTask.rewardMaxPft,
-  });
-  return [
-    `Generate a ${job.task_class || networkTask.taskClass || "network"} task for the selected contributor.`,
-    "",
-    `Project: ${project.title || job.project_id}`,
-    `Project ID: ${project.id || job.project_id}`,
-    `Need: ${networkTask.projectNeedSummary || ""}`,
-    `Routing reason: ${networkTask.allocationReasonSummary || ""}`,
-    `Candidate account: ${candidate.accountId || job.candidate_account_id}`,
-    `Candidate wallet: ${candidate.walletAddress || job.candidate_wallet_address}`,
-    `Reward band: ${reward.min} to ${reward.max} PFT`,
-    "",
-    "Use the normal Task Node task generation rules. Create a concrete, verifiable task with supported evidence only.",
-  ].join("\n").trim();
+function compactList(items = [], maxItems = 4, maxChars = 280) {
+  return safeArray(items).map((item) => safeText(item, maxChars)).filter(Boolean).slice(0, maxItems);
 }
 
 async function createTaskRequestForNetworkJob(job = {}) {
@@ -74,7 +60,7 @@ async function createTaskRequestForNetworkJob(job = {}) {
     requestId,
     bundleId,
     requestText: "Network Task",
-    userDetailText: requestTextForJob({ source, job }),
+    userDetailText: "",
     requestedTaskKind: safeText(job.task_class, 80) || "network",
     source: "network_task",
     sourceConversationTitle: `Hive: ${source.project?.title || job.project_id}`,
@@ -96,6 +82,16 @@ async function createTaskRequestForNetworkJob(job = {}) {
     task_class: job.task_class,
     source_payload_digest: job.source_payload_digest,
     routing_profile_digest: source.candidate?.profileDigest || "",
+    project_title: source.project?.title || "",
+    project_summary: source.project?.summary || "",
+    project_document: {
+      title: source.project_document?.title || source.projectDocument?.title || "",
+      summary: source.project_document?.summary || source.projectDocument?.summary || "",
+      project_status: source.project_document?.projectStatus || source.projectDocument?.projectStatus || "",
+      key_points: compactList(source.project_document?.keyPoints || source.projectDocument?.keyPoints),
+      blocked_or_unclear: compactList(source.project_document?.blockedOrUnclear || source.projectDocument?.blockedOrUnclear),
+      next_actions: compactList(source.project_document?.nextActions || source.projectDocument?.nextActions),
+    },
     reward_band_pft: {
       min: reward.min,
       max: reward.max,
@@ -114,9 +110,19 @@ async function createTaskRequestForNetworkJob(job = {}) {
     supported_evidence_types: ["text", "url", "github_commit", "screenshot", "file", "mixed"],
   };
   const plaintext = stableJson(requestBundle);
+  const recipientPublicKeys = await taskPayloadRecipientPublicKeys({
+    tasknodeKey,
+    accountId: job.candidate_account_id,
+    walletAddress: job.candidate_wallet_address,
+    explicitPublicKeys: [
+      requestBundle.subject_encryption_pubkey,
+      requestBundle.wallet?.subject_encryption_pubkey,
+      requestBundle.encryption?.subject_public_key,
+    ],
+  });
   const encryptedPayload = await encryptTasknodePayload({
     plaintext,
-    recipientPublicKeys: [tasknodeKey.publicKey],
+    recipientPublicKeys,
   });
   const pin = await pinContextIpfsJson({
     payload: encryptedPayload,

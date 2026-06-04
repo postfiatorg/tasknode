@@ -1,6 +1,6 @@
 import { loadPrompt, promptDigest, renderPromptTemplate } from "./prompt-registry.js";
 
-const defaultChatSpiritPrompt = "chat/jobs_chat_os_v1.xml";
+const defaultChatSpiritPrompt = "chat/jobs_standard_chat_codex_style_draft.md";
 const jobsRetrievalPlaceholder =
   "No retrieved Jobs corpus chunks are available for this turn. Use the operating prompt and the supplied Task Node context.";
 const userMessagePointer =

@@ -180,7 +180,7 @@ Files and surfaces:
 - `src/main.jsx` connected account UI
 - `scripts/auth-login-state-fixture.mjs`
 - `docs/wiki/architecture/auth-and-connected-accounts.md`
-- `docs/DEPLOYMENT.md`
+- `docs/wiki/architecture/deployment.md`
 
 Review questions:
 
@@ -235,8 +235,7 @@ Files and surfaces:
 - `scripts/fly-dev-data-bridge.mjs`
 - `server/db/pool.js`
 - `server/db/migrate.js`
-- `docs/DEPLOYMENT.md`
-- `docs/DOCKER_DEV.md`
+- `docs/wiki/architecture/deployment.md`
 
 Review questions:
 

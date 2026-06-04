@@ -183,6 +183,7 @@ function publicMessage(row, attachments = []) {
   };
   if (attachments.length > 0) message.attachments = attachments;
   if (Object.keys(metadata).length > 0) message.metadata = metadata;
+  if (metadata.thinking && typeof metadata.thinking === "object") message.thinking = metadata.thinking;
   return message;
 }
 

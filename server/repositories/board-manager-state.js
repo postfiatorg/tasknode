@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "../db/pool.js";
+import { activeAllocationStatuses } from "./network-tasks-utils.js";
 
 function useDatabase() {
   return databaseEnabled();
@@ -11,6 +12,10 @@ function safeText(value = "", max = 1000) {
 
 function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 function jsonValue(value) {
@@ -227,4 +232,119 @@ export async function expireOpenBoardManagerFollowups() {
     `
   );
   return { ok: true, expired: result.rowCount || 0 };
+}
+
+const followupClosingTaskStatuses = new Set([
+  "accepted",
+  "submitted",
+  "verification_requested",
+  "verification_response_submitted",
+  "reward_decided",
+  "refused",
+  "rejected",
+  "cancelled",
+  "expired",
+  "rerouted",
+  "rewarded",
+  "completed",
+  "failed",
+]);
+
+export async function resolveBoardManagerFollowupsForTaskState({
+  accountId = "",
+  projectIds = [],
+  taskId = "",
+  allocationIds = [],
+  status = "",
+  reason = "task_state_changed",
+} = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const normalizedAccountId = safeText(accountId, 180);
+  const normalizedStatus = safeText(status, 80).toLowerCase();
+  if (!normalizedAccountId) return { ok: false, updated: 0, reason: "account_required" };
+  if (!followupClosingTaskStatuses.has(normalizedStatus)) {
+    return { ok: true, updated: 0, skipped: true, reason: "status_does_not_close_followups" };
+  }
+  const normalizedProjectIds = [...new Set(safeArray(projectIds).map((id) => safeText(id, 180)).filter(Boolean))];
+  const normalizedAllocationIds = [...new Set(safeArray(allocationIds).map((id) => safeText(id, 180)).filter(Boolean))];
+  const normalizedTaskId = safeText(taskId, 180);
+  if (!normalizedProjectIds.length && !normalizedAllocationIds.length && !normalizedTaskId) {
+    return { ok: true, updated: 0, skipped: true, reason: "no_task_or_project_scope" };
+  }
+  const result = await query(
+    `
+      UPDATE board_manager_followups
+      SET status = 'resolved',
+          resolved_at = now(),
+          updated_at = now(),
+          metadata_json = metadata_json || $5::jsonb
+      WHERE account_id = $1
+        AND status = 'open'
+        AND expires_at > now()
+        AND (
+          (cardinality($2::text[]) > 0 AND project_id = ANY($2::text[]))
+          OR ($3::text <> '' AND metadata_json->>'task_id' = $3)
+          OR ($3::text <> '' AND metadata_json->'related_task_ids' ? $3)
+          OR (cardinality($4::text[]) > 0 AND metadata_json->>'allocation_id' = ANY($4::text[]))
+          OR (cardinality($4::text[]) > 0 AND metadata_json->'related_allocation_ids' ?| $4::text[])
+        )
+      RETURNING *
+    `,
+    [
+      normalizedAccountId,
+      normalizedProjectIds,
+      normalizedTaskId,
+      normalizedAllocationIds,
+      jsonValue({
+        resolved_by: safeText(reason, 120),
+        resolved_by_task_id: normalizedTaskId,
+        resolved_by_status: normalizedStatus,
+        resolved_project_ids: normalizedProjectIds,
+        resolved_allocation_ids: normalizedAllocationIds,
+      }),
+    ]
+  );
+  return {
+    ok: true,
+    updated: result.rowCount || 0,
+    followups: result.rows.map(publicFollowup),
+  };
+}
+
+export async function resolveStaleBoardManagerFollowups() {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const result = await query(
+    `
+      UPDATE board_manager_followups followups
+      SET status = 'resolved',
+          resolved_at = now(),
+          updated_at = now(),
+          metadata_json = metadata_json || $2::jsonb
+      WHERE followups.status = 'open'
+        AND followups.expires_at > now()
+        AND followups.account_id <> ''
+        AND followups.project_id <> ''
+        AND followups.blocker_type = 'project_blocked_on_user'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM network_task_allocations alloc
+          WHERE alloc.candidate_account_id = followups.account_id
+            AND alloc.project_id = followups.project_id
+            AND alloc.allocation_status = ANY($1::text[])
+        )
+      RETURNING *
+    `,
+    [
+      activeAllocationStatuses,
+      jsonValue({
+        resolved_by: "stale_followup_reconcile",
+        active_allocation_statuses_checked: activeAllocationStatuses,
+      }),
+    ]
+  );
+  return {
+    ok: true,
+    updated: result.rowCount || 0,
+    followups: result.rows.map(publicFollowup),
+  };
 }

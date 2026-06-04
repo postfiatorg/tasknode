@@ -80,7 +80,7 @@ Review implementation against this document (ipfs). Mark each item when verified
 ### Coherence
 - [ ] Canonical vs cache boundaries consistent with wiki index.
 - [ ] Cross-links to related architecture pages remain accurate.
-- [ ] Payload schemas referenced match task engine spec and verification evidence doc.
+- [ ] Payload schemas referenced match Task Async Engine and Task Lifecycle evidence docs.
 
 ### Bloat
 - [ ] No parallel implementations of the same protocol concern.

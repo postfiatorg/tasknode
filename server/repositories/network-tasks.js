@@ -1,4 +1,5 @@
 import { databaseEnabled, query, transaction } from "../db/pool.js";
+import { resolveBoardManagerFollowupsForTaskState } from "./board-manager-state.js";
 import { enqueueNetworkTaskRewardFollowup } from "./network-task-reward-followup.js";
 import {
   activeAllocationStatuses, allocationStatusForTaskStatus, compactCandidate, compactNetworkTaskContent,
@@ -70,12 +71,12 @@ export async function getNetworkTaskContentSnapshot({
         job.updated_at AS job_updated_at,
         (
           SELECT e.payload_json
-          FROM task_events e
-          WHERE e.task_id = refs.task_id
-            AND e.event_type = 'pf.task.reward_decision.v1'
-          ORDER BY e.occurred_at DESC, e.id DESC
-          LIMIT 1
-        ) AS reward_decision_payload,
+	          FROM task_events e
+	          WHERE e.task_id = refs.task_id
+	            AND e.event_type = 'pf.reward.v1'
+	          ORDER BY e.occurred_at DESC, e.id DESC
+	          LIMIT 1
+	        ) AS reward_outcome_payload,
         (
           SELECT e.payload_json
           FROM task_events e
@@ -229,6 +230,296 @@ export async function listEligibleNetworkTaskCandidates({ limit = 12 } = {}) {
     [Math.min(Math.max(Number(limit || 12), 1), 50)]
   );
   return result.rows.map(compactCandidate);
+}
+
+function eligibilityGate(id, label, status, detail, action = "") {
+  return {
+    id,
+    label,
+    status,
+    detail: safeText(detail, 500),
+    action: safeText(action, 180),
+  };
+}
+
+function eligibilityBlocker(row = {}) {
+  return {
+    source: safeText(row.source || "network_task_allocation", 80),
+    projectId: safeText(row.project_id || row.projectId, 180),
+    taskId: safeText(row.task_id || row.taskId, 180),
+    requestId: safeText(row.request_id || row.requestId, 180),
+    allocationId: safeText(row.allocation_id || row.allocationId || row.id, 180),
+    generationJobId: safeText(row.generation_job_id || row.generationJobId, 180),
+    title: safeText(row.title || row.ref_title || row.project_need_summary || row.projectNeedSummary || "Active Network Task", 240),
+    state: safeText(row.state || row.status || row.allocation_status || row.generation_job_status, 80),
+    updatedAt: toIso(row.updated_at || row.allocation_updated_at || row.job_updated_at),
+  };
+}
+
+export async function getNetworkTaskEligibility({ accountId = "", walletAddress = "" } = {}) {
+  const normalizedAccountId = safeText(accountId, 180);
+  const normalizedWalletAddress = safeText(walletAddress, 120);
+  const base = {
+    schema: "pf.task_node.network_task_eligibility.v1",
+    canRequestManually: false,
+    manualRequestCopy: "Request task creates personal task proposals. Network Tasks are routed by Hive Board Manager when an active project needs a candidate.",
+    policy: {
+      requiresSignedInAccount: true,
+      requiresLinkedPftWallet: true,
+      requiresActivePftlWalletSync: true,
+      requiresCompletedNetworkDiagnosticReport: true,
+      capacityConsumedByOutstandingOrPendingNetworkTasks: true,
+      personalTasksDoNotBlockNetworkTasks: true,
+      boardManagerSelectsWhenProjectNeedsWork: true,
+    },
+    status: "setup_required",
+    label: "Network task setup required",
+    summary: "Network Tasks are routed by Hive Board Manager after your wallet and routing profile are ready.",
+    nextAction: "Sign in, link a PFT wallet, and generate your Network Diagnostic Report.",
+    accountId: normalizedAccountId,
+    walletAddress: normalizedWalletAddress,
+    profile: { status: "missing" },
+    wallet: {
+      linked: Boolean(normalizedWalletAddress),
+      synced: false,
+    },
+    capacity: {
+      available: false,
+      blockers: [],
+    },
+    gates: [],
+  };
+
+  if (!normalizedAccountId) {
+    return {
+      ...base,
+      status: "sign_in_required",
+      label: "Sign in required",
+      summary: "Sign in before Task Node can build a Network Task routing profile.",
+      nextAction: "Sign in with GitHub, email, Telegram, or X.",
+      gates: [
+        eligibilityGate("account", "Signed-in account", "action_required", "Network Task routing is account-scoped.", "Sign in"),
+      ],
+    };
+  }
+
+  if (!useDatabase()) {
+    return {
+      ...base,
+      status: "unavailable",
+      label: "Network task routing unavailable",
+      summary: "The database is not configured, so Task Node cannot inspect Network Task eligibility.",
+      nextAction: "Run with Postgres enabled.",
+      gates: [
+        eligibilityGate("database", "Routing database", "blocked", "Network Task routing needs Postgres."),
+      ],
+    };
+  }
+
+  const [profileResult, jobResult, walletResult, blockerResult] = await Promise.all([
+    query(
+      `
+        SELECT *
+        FROM network_task_profiles
+        WHERE account_id = $1
+          AND status = 'completed'
+          AND superseded_at IS NULL
+        ORDER BY completed_at DESC NULLS LAST, created_at DESC, id DESC
+        LIMIT 1
+      `,
+      [normalizedAccountId]
+    ),
+    query(
+      `
+        SELECT id, status, last_error, created_at, updated_at
+        FROM network_task_profile_jobs
+        WHERE account_id = $1
+          AND status IN ('pending', 'processing', 'failed')
+        ORDER BY
+          CASE status WHEN 'processing' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END,
+          updated_at DESC,
+          id DESC
+        LIMIT 1
+      `,
+      [normalizedAccountId]
+    ),
+    normalizedWalletAddress
+      ? query(
+        `
+          SELECT wallet_address, last_hot_sync_at, last_full_sync_at, status
+          FROM pftl_sync_wallets
+          WHERE account_id = $1
+            AND wallet_address = $2
+            AND role = 'user'
+            AND status = 'active'
+          ORDER BY priority DESC, last_hot_sync_at DESC NULLS LAST, wallet_address ASC
+          LIMIT 1
+        `,
+        [normalizedAccountId, normalizedWalletAddress]
+      )
+      : Promise.resolve({ rows: [] }),
+    query(
+      `
+        SELECT
+          'active_network_task_capacity' AS source,
+          alloc.id AS allocation_id,
+          alloc.project_id,
+          alloc.allocation_status,
+          alloc.project_need_summary,
+          alloc.updated_at AS allocation_updated_at,
+          job.id AS generation_job_id,
+          job.status AS generation_job_status,
+          job.request_id,
+          job.task_id,
+          job.updated_at AS job_updated_at,
+          refs.title AS ref_title,
+          p.title,
+          COALESCE(p.status, refs.state, job.status, alloc.allocation_status) AS state,
+          COALESCE(p.updated_at, refs.updated_at, job.updated_at, alloc.updated_at) AS updated_at
+        FROM network_task_allocations alloc
+        LEFT JOIN network_task_generation_jobs job
+          ON job.allocation_id = alloc.id
+        LEFT JOIN network_project_task_refs refs
+          ON (
+            (job.task_id <> '' AND refs.task_id = job.task_id)
+            OR (job.request_id <> '' AND refs.request_id = job.request_id)
+          )
+        LEFT JOIN task_projections p
+          ON p.task_id = COALESCE(NULLIF(job.task_id, ''), refs.task_id)
+        WHERE alloc.allocation_status = ANY($1::text[])
+          AND ($2::text = '' OR alloc.candidate_account_id = $2)
+          AND ($3::text = '' OR alloc.candidate_wallet_address = $3)
+          AND alloc.created_at > now() - interval '24 hours'
+        ORDER BY COALESCE(p.updated_at, refs.updated_at, job.updated_at, alloc.updated_at) DESC,
+                 alloc.id DESC
+        LIMIT 8
+      `,
+      [activeAllocationStatuses, normalizedAccountId, normalizedWalletAddress]
+    ),
+  ]);
+
+  const profile = profileResult.rows[0] || null;
+  const job = jobResult.rows[0] || null;
+  const wallet = walletResult.rows[0] || null;
+  const blockers = blockerResult.rows.map(eligibilityBlocker);
+  const profileStatus = profile
+    ? "completed"
+    : ["pending", "processing"].includes(job?.status)
+      ? job.status
+      : job?.status === "failed"
+        ? "failed"
+        : "missing";
+  const walletSynced = Boolean(wallet?.wallet_address);
+  const gates = [
+    eligibilityGate(
+      "wallet",
+      "Linked PFT wallet",
+      normalizedWalletAddress ? "complete" : "action_required",
+      normalizedWalletAddress
+        ? "A PFT wallet is linked to this account."
+        : "Network Tasks need a linked wallet because offers and rewards are wallet-bound.",
+      normalizedWalletAddress ? "" : "Create or link a wallet"
+    ),
+    eligibilityGate(
+      "wallet_sync",
+      "Wallet indexed by Task Node",
+      normalizedWalletAddress && walletSynced ? "complete" : normalizedWalletAddress ? "pending" : "blocked",
+      walletSynced
+        ? "The linked wallet is active in the PFTL sync cache."
+        : normalizedWalletAddress
+          ? "Task Node has not indexed the linked wallet as an active user wallet yet."
+          : "Link a wallet before wallet indexing can complete.",
+      walletSynced ? "" : "Refresh wallet/task sync"
+    ),
+    eligibilityGate(
+      "routing_profile",
+      "Network Diagnostic Report",
+      profile ? "complete" : ["pending", "processing"].includes(profileStatus) ? "pending" : "action_required",
+      profile
+        ? "A completed compact routing profile exists for Board Manager."
+        : ["pending", "processing"].includes(profileStatus)
+          ? "The routing profile job is queued or processing."
+          : "Board Manager needs the generated routing profile before it can pick this account.",
+      profile ? "" : "Open Memory and refresh the Network Diagnostic Report"
+    ),
+    eligibilityGate(
+      "capacity",
+      "Network Task capacity",
+      blockers.length ? "blocked" : "complete",
+      blockers.length
+        ? "An outstanding or pending Network Task is already consuming this account's Network Task capacity."
+        : "No active Network Task capacity blocker was found for this account.",
+      blockers.length ? "Finish, refuse, or wait for the active Network Task to close" : ""
+    ),
+    eligibilityGate(
+      "board_routing",
+      "Hive Board Manager routing",
+      profile && walletSynced && !blockers.length ? "waiting" : "blocked",
+      "Network Tasks are generated by Board Manager when an active project needs work; personal proposed tasks do not block eligibility.",
+    ),
+  ];
+
+  const ready = Boolean(profile && normalizedWalletAddress && walletSynced && blockers.length === 0);
+  const status = !normalizedWalletAddress
+    ? "setup_required"
+    : !walletSynced
+      ? "wallet_sync_pending"
+      : profileStatus === "pending" || profileStatus === "processing"
+        ? "profile_pending"
+        : profileStatus === "failed"
+          ? "profile_failed"
+          : !profile
+            ? "profile_required"
+            : blockers.length
+              ? "at_capacity"
+              : "available_for_routing";
+  const labelByStatus = {
+    setup_required: "Link wallet for Network Tasks",
+    wallet_sync_pending: "Wallet sync required",
+    profile_pending: "Routing profile processing",
+    profile_failed: "Routing profile failed",
+    profile_required: "Network profile required",
+    at_capacity: "Network Task capacity busy",
+    available_for_routing: "Eligible for Board Manager routing",
+  };
+  const nextActionByStatus = {
+    setup_required: "Create or link a wallet.",
+    wallet_sync_pending: "Open Wallet or Tasks and refresh after the wallet sync catches up.",
+    profile_pending: "Wait for the memory worker to finish the Network Diagnostic Report.",
+    profile_failed: "Open Memory and refresh the Network Diagnostic Report.",
+    profile_required: "Open Memory and refresh the Network Diagnostic Report.",
+    at_capacity: "Finish or close the active Network Task before another Network Task can be routed.",
+    available_for_routing: "No manual request is needed. Hive Board Manager can route a Network Task when a project needs work.",
+  };
+
+  return {
+    ...base,
+    status,
+    label: labelByStatus[status] || base.label,
+    summary: ready
+      ? "This account is routable for Network Tasks. Board Manager still chooses when an active project needs this profile."
+      : "Network Task routing needs a linked wallet, active wallet sync, a completed Network Diagnostic Report, and free Network Task capacity.",
+    nextAction: nextActionByStatus[status] || base.nextAction,
+    profile: {
+      status: profileStatus,
+      id: profile?.id || "",
+      completedAt: toIso(profile?.completed_at),
+      jobId: job?.id || "",
+      jobStatus: job?.status || "",
+      lastError: safeText(job?.last_error || "", 500),
+    },
+    wallet: {
+      linked: Boolean(normalizedWalletAddress),
+      synced: walletSynced,
+      lastHotSyncAt: toIso(wallet?.last_hot_sync_at),
+      lastFullSyncAt: toIso(wallet?.last_full_sync_at),
+    },
+    capacity: {
+      available: !blockers.length,
+      blockers,
+    },
+    gates,
+  };
 }
 async function projectById(projectId = "") {
   const result = await query(
@@ -673,11 +964,12 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
           status,
           trigger,
           board_manager_run_id,
+          prompt_version,
           source_payload_digest,
           source_payload_json,
           source_payload_text
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'queued', 'board_manager', $10, $11, $12::jsonb, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'queued', 'board_manager', $10, 'taskgen_network_v1', $11, $12::jsonb, $13)
         ON CONFLICT (id) DO UPDATE SET
           status = 'queued',
           candidate_account_id = EXCLUDED.candidate_account_id,
@@ -692,6 +984,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
           offer_tx_hash = '',
           trigger = EXCLUDED.trigger,
           board_manager_run_id = EXCLUDED.board_manager_run_id,
+          prompt_version = EXCLUDED.prompt_version,
           source_payload_digest = EXCLUDED.source_payload_digest,
           source_payload_json = EXCLUDED.source_payload_json,
           source_payload_text = EXCLUDED.source_payload_text,
@@ -1070,7 +1363,7 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
 
   const projectionResult = await query(
     `
-      SELECT task_id, status, title, subject_wallet, reward_offer_pft, reward_actual_pft,
+      SELECT task_id, account_id, status, title, subject_wallet, reward_offer_pft, reward_actual_pft,
              last_event_tx_hash, last_event_cid, last_event_at, updated_at
       FROM task_projections
       WHERE task_id = $1
@@ -1192,6 +1485,18 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
       error: error?.message || String(error),
     }))
     : { ok: true, queued: false, skipped: true, reason: "status_not_rewarded" };
+  const boardManagerFollowupsResolved = await resolveBoardManagerFollowupsForTaskState({
+    accountId: safeText(projection.account_id, 180),
+    projectIds,
+    taskId: normalizedTaskId,
+    allocationIds: allocationResult.rows.map((row) => row.id).filter(Boolean),
+    status: canonicalStatus,
+    reason: "network_task_projection_sync",
+  }).catch((error) => ({
+    ok: false,
+    updated: 0,
+    error: error?.message || String(error),
+  }));
 
   return {
     ok: true,
@@ -1202,6 +1507,7 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
     allocationsUpdated: allocationResult.rowCount || 0,
     projectIds,
     boardManagerFollowup,
+    boardManagerFollowupsResolved,
   };
 }
 

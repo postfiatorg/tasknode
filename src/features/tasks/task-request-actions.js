@@ -89,7 +89,7 @@ export async function publishTaskRequest({
   const config = await requestJson("/api/tasks/request", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ phase: "config", ...requestPayload }),
+    body: JSON.stringify({ phase: "config", ...requestPayload, tasknodeEncryptionPubkey: userPubkey }),
   });
   if (!config.ok || !config.body?.tasknodeEncryptionPubkey || !config.body?.requestBundle) {
     throw new Error(config.body?.message || "Task request publishing is not configured.");

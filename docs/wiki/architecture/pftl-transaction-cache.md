@@ -152,8 +152,7 @@ Current task replay recognizes these app-produced payload schemas:
 - `pf.task.update.v1` for accepted, refused, cancelled, verification requested, and reward-decision transitions.
 - `pf.task.submission.v1` for initial evidence.
 - `pf.task.verification_response.v1` for follow-up verification evidence.
-- `pf.task.reward_decision.v1` for terminal scoring.
-- `pf.reward.v1` for positive PFT payment evidence.
+- `pf.reward.v1` for current terminal reward outcomes, including positive payouts and zero-reward one-drop carriers.
 
 The reducer writes readable forensics fields only when the Task Node service key can decrypt the IPFS payload. CID, transaction hash, ledger, memo index, schema, and digest remain visible even if readable payload hydration fails.
 

@@ -15,12 +15,13 @@ reviewed, versioned, and replayed.
 - `profile/`: Public profile scoring and summary prompts, including the daily
   airdrop scoring prompt and the public profile snapshot prompt. Private
   image-generation prompts do not belong here.
-- `openai_jobs_*.md` and `steve_jobs_*.md`: Product prompt artifacts for the
-  Motivation/Jobs surfaces. They are not task-engine policy.
-- `profile_nft_image.placeholder.md`: Safe tracked fallback for profile NFT
-  image generation. The production NFT image prompt belongs in ignored
-  `private_prompts/profile_nft_image.md` or an explicit
-  `PROFILE_NFT_PROMPT_PATH`; do not commit the private prompt body.
+- `non_production/`: Prompt research, local-only harness prompts, drafts, and
+  reserved prompt artifacts that are not used by a live app surface. Steve Jobs
+  reference material lives in `non_production/steve_jobs_ref/`. The Profile NFT
+  placeholder prompt lives in `non_production/profile_nft_dev/`; production
+  generation requires a private prompt from `PROFILE_NFT_PROMPT_B64`,
+  `PROFILE_NFT_PROMPT_TEXT`, `PROFILE_NFT_PROMPT_PATH`, or ignored
+  `private_prompts/profile_nft_image.md`.
 
 Runtime code should record the prompt version and prompt digest whenever a
 prompt output becomes part of a PFTL payload, database cache, or audit trail.

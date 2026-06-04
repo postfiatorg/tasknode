@@ -7,7 +7,7 @@ import {
   decryptTasknodeServicePayload,
   tasknodeServiceIdentityFromEnv,
 } from "./task-payloads.js";
-import { statusFromRewardAmount, taskIsTerminal } from "../shared/task-lifecycle.js";
+import { taskIsTerminal } from "../shared/task-lifecycle.js";
 
 const TASK_POINTER_KINDS = ["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"];
 const TASK_PAYLOAD_SCHEMAS = new Set([
@@ -16,7 +16,6 @@ const TASK_PAYLOAD_SCHEMAS = new Set([
   "pf.task.update.v1",
   "pf.task.submission.v1",
   "pf.task.verification_response.v1",
-  "pf.task.reward_decision.v1",
   "pf.reward.v1",
 ]);
 
@@ -327,15 +326,6 @@ function statusFromTaskUpdate(payload = {}) {
   return "";
 }
 
-function rewardAmountFromDecision(payload = {}) {
-  return normalizeText(
-    payload.score?.reward_pft ??
-      payload.reward_pft ??
-      payload.reward_actual_pft ??
-      "0"
-  );
-}
-
 function recognizedTaskPayloadSchema(schema = "") {
   return TASK_PAYLOAD_SCHEMAS.has(normalizeText(schema));
 }
@@ -436,13 +426,9 @@ function reduceHydratedTaskEvents(hydratedEvents) {
       );
     } else if (schema === "pf.task.verification_response.v1") {
       applyProjectionStatus(projection, "verification_response_submitted");
-    } else if (schema === "pf.task.reward_decision.v1") {
-      const rewardAmount = rewardAmountFromDecision(payload);
-      applyProjectionStatus(projection, statusFromRewardAmount(rewardAmount));
-      projection.reward_actual_pft = rewardAmount;
     } else if (schema === "pf.reward.v1") {
       applyProjectionStatus(projection, "rewarded");
-      projection.reward_actual_pft = normalizeText(payload.reward_pft);
+      projection.reward_actual_pft = normalizeText(payload.reward_pft || payload.economic_reward_pft);
     }
   }
 

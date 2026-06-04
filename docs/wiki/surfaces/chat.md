@@ -21,15 +21,15 @@ Memory context is injected by `server/chat-memory-context.js`. The memory worker
 
 Task state is also ported into chat by `server/chat-task-context.js`. This is a read-only projection of the user's cached task state, not a task mutation path.
 
-The chat voice is calibrated by the Jobs XML prompt in `prompts/chat/jobs_chat_os_v1.xml`. The prompt is loaded once by `server/chat-spirit-context.js` and rendered from the shared `server/chat-memory-context.js::taskNodeInstructions` boundary, so Private Instant, Private Thinking, Frontier Instant, and Frontier Thinking all use the same prompt assembly path. The base Task Node operational prompt still comes first; the Jobs XML receives the current context document, task context, memory context, and pgvector Jobs retrieval context as runtime slots. The current user message, prior chat history, and attachments remain normal provider user messages instead of being duplicated into the XML.
+The chat voice is calibrated by the Jobs Markdown prompt in `prompts/chat/jobs_standard_chat_codex_style_draft.md`. The prompt is loaded once by `server/chat-spirit-context.js` and rendered from the shared `server/chat-memory-context.js::taskNodeInstructions` boundary, so Private Instant, Private Thinking, Discount Thinking, Frontier Instant, and Frontier Thinking all use the same prompt assembly path. The base Task Node operational prompt still comes first; the Jobs Markdown prompt receives the current context document, task context, memory context, and pgvector Jobs retrieval context as runtime slots. The current user message, prior chat history, and attachments remain normal provider user messages instead of being duplicated into the prompt.
 
 Chat also has an explicit task-request mode from the `+` menu. That mode is different from ordinary chat. The next send becomes task request detail text and uses the same `POST /api/tasks/request` browser-wallet signing path as the Tasks page modal. It publishes a signed `pf.task.request.v1` pointer, records a durable `task_requests` row, and leaves the actual task card to appear from the PFTL projection after the task-generation worker publishes `pf.task.offer.v1`.
 
 Chat also has a Context Refine mode from the `+` menu. That mode stays in the same chat, changes the composer into `Context Refine`, and sends the next message through the dedicated context-edit route. Context Refine is not a modal and does not require a wallet.
 
-The original Jobs Chat Spirit and Context Refine implementation plans are now
-retained under `Implemented / Deprecated Plans`. This page is the current product
-contract for chat prompt assembly, Jobs retrieval, and Context Refine behavior.
+This page is the current product contract for chat prompt assembly, Jobs
+retrieval, and Context Refine behavior. Historical implementation planning has
+been folded into this surface doc and the single active production scope plan.
 
 The visible tool menus currently expose only file upload, Context Refine, Request a task, and More. Motivation, Brainstorming Context, and Context Rewrite are intentionally hidden until they have production-quality flows.
 
@@ -53,6 +53,14 @@ Private modes use OpenRouter with `provider.zdr=true` and `provider.data_collect
 
 Discount Thinking uses the direct DeepSeek API. It is labeled `DeepSeek API Direct` in the model picker/status surfaces. This route is cheaper at the current direct API discount price, but it is not the OpenRouter ZDR route and should not be described as private/ZDR. User billing is calculated from DeepSeek-returned token usage and the configured direct API prices, including DeepSeek cache-hit input pricing when cache-hit tokens are reported.
 
+Direct DeepSeek reasoning can spend longer in provider-side thinking than the
+fast chat modes. Task Node gives Discount Thinking a 120 second default provider
+budget through `CHAT_PROVIDER_DEEPSEEK_TIMEOUT_MS`,
+`CHAT_PROVIDER_DISCOUNT_THINKING_TIMEOUT_MS`, or `CHAT_PROVIDER_TIMEOUT_MS`.
+When the direct DeepSeek streaming connection terminates before any visible
+assistant text is emitted, the server retries the same request through the
+non-streaming DeepSeek completion path before returning an error to the user.
+
 Frontier modes use the OpenAI Responses API with `store=false`. Task Node passes durable app history from Postgres instead of relying on OpenAI-hosted conversation state. The server exposes the hosted `web_search` tool to Frontier modes and counts observed search calls in usage billing.
 
 ## Pricing Visibility
@@ -70,7 +78,7 @@ Preflight reserves the configured maximum OpenAI search tool budget for Frontier
 
 ## Jobs pgvector Retrieval
 
-Every chat mode can receive up to three retrieved Jobs reference chunks. This is not a public mode switch and the assistant should not mention the retrieval machinery. The retrieval layer exists to calibrate taste and judgment inside the Jobs XML prompt.
+Every chat mode can receive up to three retrieved Jobs reference chunks. This is not a public mode switch and the assistant should not mention the retrieval machinery by default. The retrieval layer exists to give the Jobs Markdown prompt concrete source principles to apply, not merely a hidden style hint. The chat thinking disclosure shows the source text passed to the provider so operators can audit which retrieved material should have influenced a response.
 
 The runtime path is:
 
@@ -96,7 +104,7 @@ The runtime path is:
 4. `server/chat-memory-context.js::taskNodeInstructions` renders the context block into the shared instruction payload.
 5. `server/chat-router.js` sends those instructions to OpenAI Responses API as `instructions` or to OpenRouter Chat Completions as the system message.
 
-With the Jobs XML layer enabled, step 4 renders the context document into the XML `CONTEXT_DOCUMENT` slot. Task context and memory context are rendered into `CURRENT_PLATE`. This keeps the user's saved context available to chat without adding duplicate context blocks after the Jobs prompt.
+With the Jobs Markdown layer enabled, step 4 renders the context document into the `CONTEXT_DOCUMENT` runtime slot. Task context and memory context are rendered into `CURRENT_PLATE`. This keeps the user's saved context available to chat without adding duplicate context blocks after the Jobs prompt.
 
 The injected block is shaped as:
 
@@ -143,7 +151,7 @@ The runtime path is:
 5. `server/chat-memory-context.js::taskNodeInstructions` renders the task block into the shared instruction payload.
 6. `server/chat-router.js` sends those instructions to OpenAI Responses API as `instructions` or to OpenRouter Chat Completions as the system message.
 
-With the Jobs XML layer enabled, the rendered task block is placed inside the XML `CURRENT_PLATE` slot alongside memory context. It is still advisory cache context and does not mutate task state.
+With the Jobs Markdown layer enabled, the rendered task block is placed inside the `CURRENT_PLATE` runtime slot alongside memory context. It is still advisory cache context and does not mutate task state.
 
 The injected block is shaped as:
 

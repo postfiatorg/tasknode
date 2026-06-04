@@ -9,7 +9,7 @@ System Status row: `task_generation`
 ## Runtime Boundary
 
 - Worker module: `server/task-generation-worker.js`.
-- Prompt: `prompts/task_engine/taskgen_minimal_v1.md`.
+- Prompts: `prompts/task_engine/taskgen_personal_v1.md` for personal requests and `prompts/task_engine/taskgen_network_v1.md` for Network/Alpha routing packets.
 - Source table: `task_requests`.
 - Output protocol event: `pf.task.offer.v1`.
 - Projection target: `task_projections` through PFTL reducer replay.

@@ -70,7 +70,7 @@ None.
 - `.gitignore` covers `.env.*`; `git ls-files` shows no tracked env secrets.
 - Default `npm run docker:dev` uses isolated local Postgres; fly-data mode requires explicit `npm run docker:dev:fly-data`.
 - Migrations are idempotent via `tasknode_schema_migrations`.
-- Docs (`DEPLOYMENT.md`, `DOCKER_DEV.md`) state wallet vaults are origin-local and warn against PFTasks DB retargeting.
+- Deployment wiki docs state wallet vaults are origin-local and warn against PFTasks DB retargeting.
 
 ## Fixes Included On This Branch
 

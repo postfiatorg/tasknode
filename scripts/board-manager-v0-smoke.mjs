@@ -238,6 +238,21 @@ const smokeDecisionOutput = {
   target_id: "acct_candidate",
   reason: "The board is stalled and no contributor capacity is available, so ask for the smallest decision input.",
   confidence: 0.74,
+  decision_basis: {
+    source_facts: [
+      "boardActionPressure requires action.",
+      "No eligible candidate capacity is available after active Network Task blockers.",
+    ],
+    tradeoffs: ["A message is safer than over-capacity task routing."],
+    rejected_actions: [
+      {
+        action: "initiate_network_task",
+        reason: "No eligible candidate capacity is available in the source packet.",
+      },
+    ],
+    risk_notes: ["The user may need to make a priority decision before new routing is useful."],
+    next_check: "Wait for a user response or a capacity change before routing another Network Task.",
+  },
   payload: {
     summary: "Ask the contributor for the smallest useful project input.",
     next_steps: ["Wait for the contributor response before routing another task."],
@@ -330,6 +345,7 @@ assert.equal(capturedOpenRouterBody.reasoning.effort, "high");
 assert.equal(capturedOpenRouterBody.response_format.type, "json_schema");
 assert.equal(capturedOpenRouterBody.response_format.json_schema.name, "board_manager_action");
 assert.ok(capturedOpenRouterBody.response_format.json_schema.schema.properties.payload.properties.project.properties.title);
+assert.ok(capturedOpenRouterBody.response_format.json_schema.schema.properties.decision_basis.properties.source_facts);
 assert.equal(capturedOpenRouterBody.provider.data_collection, "deny");
 assert.equal(capturedOpenRouterBody.provider.require_parameters, true);
 assert.equal(capturedOpenRouterBody.usage.include, true);
@@ -370,6 +386,7 @@ assert.equal(capturedOpenAiBody.reasoning.effort, "high");
 assert.equal(capturedOpenAiBody.text.format.type, "json_schema");
 assert.equal(capturedOpenAiBody.text.format.name, "board_manager_action");
 assert.ok(capturedOpenAiBody.text.format.schema.properties.payload.properties.project.properties.title);
+assert.ok(capturedOpenAiBody.text.format.schema.properties.decision_basis.properties.source_facts);
 assert.equal(capturedOpenAiBody.store, false);
 assert.equal(capturedOpenAiBody.metadata.prompt_version, "board_manager_v1");
 assert.equal(openAiDecision.provider, "openai");
@@ -392,6 +409,7 @@ assert.equal(decision.action, "refresh_hive_secretary");
 assert.equal(decision.confidence, 0.72);
 assert.equal(decision.payload.summary, "Refresh the Hive Secretary report because validated inputs changed.");
 assert.deepEqual(decision.payload.next_steps, ["Run the secretary refresh action when mutation execution is enabled."]);
+assert.deepEqual(decision.decision_basis.source_facts, ["The report is stale relative to validated Hive Context entries."]);
 assert.equal(decision.payload.project.title, "");
 assert.equal(decision.payload.contributor.wallet_address, "");
 
@@ -464,6 +482,17 @@ const pendingJobFeedItem = formatBoardManagerAgentJob({
   status: "running",
   claimedBy: "worker_smoke",
   claimedAt: "2026-05-22T00:01:00.000Z",
+  details: {
+    job: {
+      id: "boardjob_pending_decision",
+      trigger: "periodic_tick",
+      status: "running",
+      reason: "Periodic Board Manager tick due.",
+      claimedBy: "worker_smoke",
+      attemptCount: 1,
+      maxAttempts: 3,
+    },
+  },
 });
 assert.equal(pendingJobFeedItem.id, "boardjob_pending_decision");
 assert.equal(pendingJobFeedItem.action, "decision_pending");
@@ -471,6 +500,32 @@ assert.equal(pendingJobFeedItem.label, "Decision pending");
 assert.equal(pendingJobFeedItem.state, "running");
 assert.equal(pendingJobFeedItem.trigger, "periodic_tick");
 assert.equal(pendingJobFeedItem.startedAt, "2026-05-22T00:01:00.000Z");
+assert.equal(pendingJobFeedItem.details.job.id, "boardjob_pending_decision");
+assert.equal(pendingJobFeedItem.details.job.attemptCount, 1);
+
+const queuedJobFeedItem = formatBoardManagerAgentJob({
+  id: "boardjob_queued_decision",
+  scope: "global_hive",
+  trigger: "periodic_tick",
+  reason: "Periodic Board Manager tick queued.",
+  status: "queued",
+  runAfter: "2026-05-22T00:02:00.000Z",
+});
+assert.equal(queuedJobFeedItem.action, "decision_queued");
+assert.equal(queuedJobFeedItem.label, "Decision queued");
+assert.equal(queuedJobFeedItem.summary, "The Board Manager job is queued and has not been claimed by the worker yet.");
+
+const deferredJobFeedItem = formatBoardManagerAgentJob({
+  id: "boardjob_deferred_decision",
+  scope: "global_hive",
+  trigger: "periodic_tick",
+  reason: "Periodic Board Manager tick retry.",
+  status: "deferred",
+  runAfter: "2026-05-22T00:03:00.000Z",
+});
+assert.equal(deferredJobFeedItem.action, "decision_retry_scheduled");
+assert.equal(deferredJobFeedItem.label, "Decision retry scheduled");
+assert.equal(deferredJobFeedItem.summary, "The Board Manager job was deferred after an error and is scheduled for retry.");
 
 const noDecisionFeedItem = formatBoardManagerAgentRun({
   id: "boardrun_no_decision",

@@ -62,7 +62,7 @@ Implement the Postgres storage path for:
 
 ## Target Tables
 
-The target schema should match `docs/DATABASE_ARCHITECTURE.md` unless we discover
+The target schema should match `docs/wiki/architecture/database-architecture.md` unless we discover
 a concrete reason to revise it during implementation.
 
 ### `context_documents`

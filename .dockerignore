@@ -7,3 +7,7 @@ dist
 *.local
 chatgpt_postgres_spec.md
 private_prompts
+deathmarch.log
+deathmarch.pid
+docs/verification/evidence
+docs/verification/task_*.md

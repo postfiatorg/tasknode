@@ -25,7 +25,7 @@ function hydratedEvent({
     ledger_index: ledgerIndex,
     memo_index: memoIndex,
     pointer: {
-      kind: "TASK_UPDATE",
+      kind: schema === "pf.reward.v1" ? "REWARD" : "TASK_UPDATE",
       cid: resolvedCid,
       task_id: taskId,
       memo_index: memoIndex,
@@ -35,32 +35,32 @@ function hydratedEvent({
   };
 }
 
-const positiveDecision = reduceHydratedTaskEvents([
+const positiveRewardOutcome = reduceHydratedTaskEvents([
   hydratedEvent({ schema: "pf.task.offer.v1", ledgerIndex: 1, memoIndex: 1 }),
   hydratedEvent({ schema: "pf.task.update.v1", transition: "accepted", ledgerIndex: 2, memoIndex: 2 }),
-  hydratedEvent({ schema: "pf.task.reward_decision.v1", rewardPft: "3.25", ledgerIndex: 3, memoIndex: 3 }),
+  hydratedEvent({ schema: "pf.reward.v1", rewardPft: "3.25", ledgerIndex: 3, memoIndex: 3 }),
 ]).projections.get("task_replay_smoke");
-assert.equal(positiveDecision.status, TASK_STATUS.rewardDecided);
-assert.equal(positiveDecision.reward_actual_pft, "3.25");
+assert.equal(positiveRewardOutcome.status, TASK_STATUS.rewarded);
+assert.equal(positiveRewardOutcome.reward_actual_pft, "3.25");
 
 const deduped = reduceHydratedTaskEvents([
   hydratedEvent({ schema: "pf.task.update.v1", transition: "accepted", ledgerIndex: 2, memoIndex: 1, cid: "cid-shared" }),
   hydratedEvent({ schema: "pf.task.update.v1", transition: "accepted", ledgerIndex: 2, memoIndex: 1, cid: "cid-shared" }),
-  hydratedEvent({ schema: "pf.task.reward_decision.v1", rewardPft: "0.00", ledgerIndex: 4, memoIndex: 2 }),
+  hydratedEvent({ schema: "pf.reward.v1", rewardPft: "0.00", ledgerIndex: 4, memoIndex: 2 }),
 ]).projections.get("task_replay_smoke");
 assert.equal(deduped.events.length, 2);
 assert.equal(deduped.status, TASK_STATUS.rewarded);
 
 const outOfOrder = reduceHydratedTaskEvents([
-  hydratedEvent({ schema: "pf.task.reward_decision.v1", rewardPft: "0.00", ledgerIndex: 4, memoIndex: 2 }),
+  hydratedEvent({ schema: "pf.reward.v1", rewardPft: "0.00", ledgerIndex: 4, memoIndex: 2 }),
   hydratedEvent({ schema: "pf.task.update.v1", transition: "accepted", ledgerIndex: 2, memoIndex: 1 }),
 ]).projections.get("task_replay_smoke");
 assert.equal(outOfOrder.status, TASK_STATUS.rewarded);
 
 const terminalGuard = reduceHydratedTaskEvents([
   hydratedEvent({ schema: "pf.task.update.v1", transition: "accepted", ledgerIndex: 2 }),
-  hydratedEvent({ schema: "pf.task.reward_decision.v1", rewardPft: "0.00", ledgerIndex: 4 }),
-  hydratedEvent({ schema: "pf.task.update.v1", transition: "accepted", ledgerIndex: 1, txHash: "tx-late" }),
+  hydratedEvent({ schema: "pf.reward.v1", rewardPft: "0.00", ledgerIndex: 4 }),
+  hydratedEvent({ schema: "pf.task.update.v1", transition: "accepted", ledgerIndex: 5, txHash: "tx-late" }),
 ]).projections.get("task_replay_smoke");
 assert.equal(terminalGuard.status, TASK_STATUS.rewarded);
 

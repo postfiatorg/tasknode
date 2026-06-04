@@ -44,6 +44,7 @@ const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultOpenRouterBaseUrl = "https://openrouter.ai/api/v1";
 const defaultDeepSeekBaseUrl = "https://api.deepseek.com";
 const defaultProviderTimeoutMs = 45_000;
+const defaultDeepSeekProviderTimeoutMs = 120_000;
 const telegramDiscountThinkingTimeoutMs = 120_000;
 
 export const chatModePrices = {
@@ -145,7 +146,7 @@ export function chatProviderTimeoutMs({ mode = "", provider = "", source = "" } 
         "CHAT_PROVIDER_DISCOUNT_THINKING_TIMEOUT_MS",
         "CHAT_PROVIDER_TIMEOUT_MS",
       ],
-      defaultProviderTimeoutMs
+      defaultDeepSeekProviderTimeoutMs
     );
   }
   return timeoutFromEnv(["CHAT_PROVIDER_TIMEOUT_MS"], defaultProviderTimeoutMs);
@@ -307,6 +308,39 @@ function safeLogText(value = "", max = 600) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
+function safeDebugText(value = "", max = 1200) {
+  const text = String(value || "").trim().replace(/\n{4,}/g, "\n\n\n");
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 15)).trimEnd()} [truncated]`;
+}
+
+function chatThinkingForJobsRetrieval({ jobsResult = null, renderedContext = "" } = {}) {
+  const chunks = Array.isArray(jobsResult?.chunks) ? jobsResult.chunks : [];
+  const included = Boolean(String(renderedContext || "").trim());
+  const state = jobsResult?.skipped
+    ? "skipped"
+    : jobsResult?.ok === false
+      ? "error"
+      : included
+        ? "included"
+        : "empty";
+
+  return {
+    state: "finished",
+    jobsRetrieval: {
+      state,
+      included,
+      reason: jobsResult?.reason || undefined,
+      chunkCount: chunks.length,
+      chunks: chunks.slice(0, 5).map((chunk, index) => ({
+        rank: index + 1,
+        title: safeDebugText(chunk.title || "Jobs corpus excerpt", 160),
+        content: safeDebugText(chunk.content || "", 1600),
+      })),
+    },
+  };
+}
+
 function loggedUsage(usage = null) {
   if (!usage || typeof usage !== "object") return undefined;
   return {
@@ -322,6 +356,21 @@ function loggedUsage(usage = null) {
     ),
     cost: Number(usage.cost || usage.costUsd || 0),
   };
+}
+
+function isRecoverableStreamTermination(error) {
+  const message = String(error?.message || "").toLowerCase();
+  const causeCode = String(error?.cause?.code || error?.code || "").toLowerCase();
+  return (
+    !error?.status &&
+    (
+      message === "terminated" ||
+      message === "fetch failed" ||
+      message.includes("socket") ||
+      message.includes("premature close") ||
+      causeCode.includes("und_err_socket")
+    )
+  );
 }
 
 export function logChatProviderError(error, context = {}) {
@@ -1208,6 +1257,10 @@ export async function executeChat({
     taskStatus: contextStatus?.tasks,
     jobsRetrieval: jobsResult,
   });
+  const thinking = chatThinkingForJobsRetrieval({
+    jobsResult,
+    renderedContext: resolvedJobsEssence,
+  });
   const result =
     status.provider === "openai"
       ? await executeOpenAi({
@@ -1272,6 +1325,7 @@ export async function executeChat({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
+    assistantMetadata: { thinking },
     runMetadata: { contextStatus: resolvedContextStatus },
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
@@ -1279,6 +1333,10 @@ export async function executeChat({
   return {
     ...result,
     ...persisted,
+    assistant: {
+      ...persisted.assistant,
+      thinking,
+    },
     contextStatus: resolvedContextStatus,
   };
 }
@@ -1338,6 +1396,10 @@ export async function executeChatStream({
     taskStatus: contextStatus?.tasks,
     jobsRetrieval: jobsResult,
   });
+  const thinking = chatThinkingForJobsRetrieval({
+    jobsResult,
+    renderedContext: resolvedJobsEssence,
+  });
   const result =
     status.provider === "openai"
       ? await streamOpenAi({
@@ -1357,22 +1419,53 @@ export async function executeChatStream({
           timeoutMs,
         })
       : status.provider === "deepseek"
-        ? await streamDeepSeek({
-            mode: normalizedMode,
-            model: status.model,
-            message,
-            conversationId,
-            attachments,
-            historyMessages,
-            contextDocument: resolvedContextDocument,
-            memoryContext: resolvedMemoryContext,
-            taskContext: resolvedTaskContext,
-            jobsEssence: resolvedJobsEssence,
-            deliveryContext,
-            onDelta,
-            signal,
-            timeoutMs,
-          })
+        ? await (async () => {
+            let emittedVisibleDelta = false;
+            const trackDelta = async (delta) => {
+              emittedVisibleDelta = emittedVisibleDelta || Boolean(String(delta || ""));
+              await onDelta?.(delta);
+            };
+            try {
+              return await streamDeepSeek({
+                mode: normalizedMode,
+                model: status.model,
+                message,
+                conversationId,
+                attachments,
+                historyMessages,
+                contextDocument: resolvedContextDocument,
+                memoryContext: resolvedMemoryContext,
+                taskContext: resolvedTaskContext,
+                jobsEssence: resolvedJobsEssence,
+                deliveryContext,
+                onDelta: trackDelta,
+                signal,
+                timeoutMs,
+              });
+            } catch (error) {
+              if (emittedVisibleDelta || signal?.aborted || !isRecoverableStreamTermination(error)) throw error;
+              console.warn("chat_provider_stream_fallback", {
+                mode: normalizedMode,
+                provider: status.provider,
+                model: status.model,
+                error: safeLogText(error?.message || "stream_terminated", 160),
+              });
+              return executeDeepSeek({
+                mode: normalizedMode,
+                model: status.model,
+                message,
+                conversationId,
+                attachments,
+                historyMessages,
+                contextDocument: resolvedContextDocument,
+                memoryContext: resolvedMemoryContext,
+                taskContext: resolvedTaskContext,
+                jobsEssence: resolvedJobsEssence,
+                deliveryContext,
+                timeoutMs,
+              });
+            }
+          })()
         : await streamOpenRouter({
           mode: normalizedMode,
           model: status.model,
@@ -1408,6 +1501,7 @@ export async function executeChatStream({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
+    assistantMetadata: { thinking },
     runMetadata: { contextStatus: resolvedContextStatus },
   });
   enqueueMemoryForTurn({ accountId, conversationId, persisted });
@@ -1415,6 +1509,10 @@ export async function executeChatStream({
   return {
     ...result,
     ...persisted,
+    assistant: {
+      ...persisted.assistant,
+      thinking,
+    },
     contextStatus: resolvedContextStatus,
   };
 }

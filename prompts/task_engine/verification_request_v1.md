@@ -15,6 +15,10 @@ Verification rules:
 - If the work is likely private or local to the user's machine, ask for screenshot, code excerpt, text, file, or mixed proof that does not require a public repository link.
 - Do not ask for broad essays, duplicate screenshots, or generic "confirm you did it" statements.
 
+Guidance:
+- Users actually enjoy verification if it improves the underlying quality of the work
+- Once use case is AI agents who receive verification requests are oftentimes forced to deal with underlying issues of the code generated. So Verification is an opportunity to do this
+
 Output fields:
 - `assessment`: `legitimate`, `suspicious`, or `incomplete`.
 - `verification_ask`: one specific question or request.

@@ -41,9 +41,23 @@ flowchart LR
 - Deployment is documented under Architecture -> Deployment. The current public dev app is `tasknodeofficial-dev` on Fly; local Docker can either use isolated local data or the Fly dev data bridge for QA against the same Postgres rows. Fly releases must use `npm run fly:deploy` so the non-HTTP `worker` process group is started and guarded after deploy.
 - Scheduler, worker, and RPC audit state is documented under Architecture -> System Status and rendered live in Help from `/api/system/status`.
 - Browser-control release testing is documented under Architecture -> [Browser-Control QA](#docs/codex-computer-control-qa).
-- Hive board professionalism is documented under Plans -> [Hive Board Professionalism Diagnosis](plans/hive-board-professionalism-diagnosis.md). Active board counts must be live rows, and Board Manager archives must be resurrectable unless explicitly operator-locked.
-- Production launch scope is documented under Plans -> [Task Node Production Scope](#docs/task-node-production-scope). That page is the current checklist for required login, funding, context, chat, Hive, Telegram, task, profile, docs, and deployment surfaces.
-- Beta acceptance gates are documented under Plans -> [Beta Acceptance Gates](#docs/beta-acceptance-gates). That page is the release boundary for Telegram, Task Generation, Context Editing, and Hive Board.
+- The single active beta plan is documented under Plans -> [Task Node Production Scope](#docs/task-node-production-scope). That page now consolidates production scope, beta acceptance gates, completed implementation areas, contributor trust/reward policy, and the remaining P0/P1 beta work.
+
+## Canonical Wiki Locations
+
+Root-level legacy runbooks are not the app Help source of truth. Use these wiki
+locations instead:
+
+| Topic | Canonical Help page |
+| --- | --- |
+| Fresh checkout, local setup, smoke checks, first failure triage | [Bootup](#docs/bootup) |
+| Current product boundary, route map, enabled surfaces, and deferrals | [Current System](#docs/current-system) |
+| Account auth, wallet proof, local vault unlock, and seed custody | [Auth And Wallet Boundary](#docs/auth-wallet-boundary), [Auth And Connected Accounts](#docs/auth-and-connected-accounts), [Wallet](#docs/wallet) |
+| Docker, Fly deploys, secrets, process groups, production pause/restart | [Deployment](#docs/deployment) |
+| Postgres schema target and context history restore | [Database Architecture](#docs/database-architecture), [Database](#docs/database), [Context History Restore](#docs/context-history-restore) |
+| Ethereum deposit addresses, xpub custody, balance sync, sweep boundary | [Ethereum Deposit RPC](#docs/ethereum-deposit-rpc), [Wallet](#docs/wallet), [Database](#docs/database) |
+| PFTL task protocol, async task engine, lifecycle replay, evidence and rewards | [PFTL Usage](#docs/pftl), [Task Async Engine](#docs/task-async-engine), [Task Lifecycle](#docs/task-lifecycle), [PFTL Live Task Replay](#docs/pftl-live-task-replay), [Task Review And Reward Worker](#docs/task-review-reward-worker), [PFTL Transaction Cache](#docs/pftl-transaction-cache) |
+| Local Discord task-event posting harness | [Deathmarch Local Harness](#docs/deathmarch) |
 
 ## Primary Code References
 

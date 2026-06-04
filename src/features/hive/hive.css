@@ -190,11 +190,66 @@
 
 .hive-project-card p {
   color: var(--hive-muted);
-  flex: 1;
   font-size: 12.5px;
   line-height: 1.5;
   margin: 8px 0 12px;
   min-height: 36px;
+}
+
+.hive-project-next-task {
+  background: #fbfaf6;
+  border: 0.5px solid var(--hive-border);
+  border-radius: 8px;
+  display: block;
+  margin: 0 0 12px;
+  min-height: 72px;
+  padding: 9px 10px;
+}
+
+.hive-project-next-task small,
+.hive-project-next-task strong,
+.hive-project-next-task em,
+.hive-project-next-task span {
+  display: block;
+}
+
+.hive-project-next-task small {
+  color: var(--hive-muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.hive-project-next-task strong {
+  color: var(--hive-ink);
+  display: -webkit-box;
+  font-size: 12.3px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.hive-project-next-task em,
+.hive-project-next-task span {
+  color: var(--hive-muted);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.hive-project-next-task span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hive-project-next-task.is-empty strong {
+  color: var(--hive-muted);
 }
 
 .hive-card-contributors {
@@ -673,6 +728,184 @@
   margin-top: 8px;
 }
 
+.hive-agent-log-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-top: 0.5px solid var(--hive-border);
+  color: var(--hive-ink);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 9px 0 0;
+  width: 100%;
+}
+
+.hive-agent-log-toggle svg {
+  color: var(--hive-muted);
+  transition: transform 140ms ease;
+}
+
+.hive-agent-log-toggle svg.is-open {
+  transform: rotate(180deg);
+}
+
+.hive-agent-full-logs {
+  display: grid;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.hive-agent-basis-panel {
+  background: rgba(91, 138, 85, 0.08);
+  border: 0.5px solid rgba(91, 138, 85, 0.22);
+  border-radius: 8px;
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+}
+
+.hive-agent-basis-panel h4 {
+  color: var(--hive-ink);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.hive-agent-basis-list strong,
+.hive-agent-basis-next strong {
+  color: var(--hive-muted);
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.hive-agent-basis-list ul {
+  color: var(--hive-ink-soft);
+  display: grid;
+  font-size: 11.2px;
+  gap: 3px;
+  line-height: 1.45;
+  list-style: disc;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.hive-agent-basis-list li span {
+  color: var(--hive-ink);
+  font-weight: 600;
+}
+
+.hive-agent-basis-next p {
+  color: var(--hive-ink-soft);
+  font-size: 11.2px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.hive-agent-audit-summary {
+  background: rgba(255, 255, 255, 0.82);
+  border: 0.5px solid rgba(37, 37, 35, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.hive-agent-audit-summary h4 {
+  color: var(--hive-ink);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.hive-agent-audit-summary dl {
+  display: grid;
+  gap: 6px 10px;
+  grid-template-columns: minmax(96px, 0.34fr) 1fr;
+  margin: 0;
+}
+
+.hive-agent-audit-summary dt {
+  color: var(--hive-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.hive-agent-audit-summary dd {
+  color: var(--hive-ink-soft);
+  font-size: 11.2px;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.hive-agent-log-section {
+  background: rgba(255, 255, 255, 0.74);
+  border: 0.5px solid rgba(37, 37, 35, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.hive-agent-log-section h4 {
+  background: rgba(37, 37, 35, 0.04);
+  border-bottom: 0.5px solid rgba(37, 37, 35, 0.08);
+  color: var(--hive-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin: 0;
+  padding: 7px 9px;
+  text-transform: uppercase;
+}
+
+.hive-agent-log-section summary {
+  background: rgba(37, 37, 35, 0.04);
+  border-bottom: 0.5px solid rgba(37, 37, 35, 0.08);
+  color: var(--hive-muted);
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  padding: 7px 9px;
+  text-transform: uppercase;
+}
+
+.hive-agent-log-section.is-raw:not([open]) summary {
+  border-bottom: 0;
+}
+
+.hive-agent-log-section pre,
+.hive-agent-log-section p {
+  color: var(--hive-ink-soft);
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 9px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.hive-agent-log-section pre {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.hive-agent-log-empty {
+  color: var(--hive-muted);
+  font-size: 11.5px;
+  margin: 0;
+}
+
 .hive-context-raw-toggle {
   background: transparent;
   border: 0;
@@ -1092,7 +1325,10 @@
 }
 
 .hive-task-row {
+  align-items: center;
+  display: grid;
   gap: 14px;
+  grid-template-columns: 8px minmax(0, 1fr) minmax(154px, 190px) 76px;
   padding: 14px 20px;
 }
 
@@ -1130,7 +1366,6 @@
 }
 
 .hive-task-main {
-  flex: 1;
   min-width: 0;
 }
 
@@ -1151,13 +1386,23 @@
   margin-top: 4px;
 }
 
+.hive-task-main .hive-task-next {
+  color: var(--hive-ink-soft);
+  display: block;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hive-task-assignee {
   align-items: center;
   color: var(--hive-ink);
   display: flex;
-  flex-shrink: 0;
   font-size: 12px;
   gap: 8px;
+  min-width: 0;
+  width: 100%;
 }
 
 .hive-task-assignee em {
@@ -1165,10 +1410,33 @@
   font-size: 11.5px;
 }
 
+.hive-task-assignee-label {
+  color: var(--hive-ink);
+  display: block;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.hive-task-assignee-label > span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hive-task-assignee-label small {
+  color: var(--hive-muted);
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 1.2;
+  margin-top: 1px;
+}
+
 .hive-task-pft {
-  flex-shrink: 0;
   text-align: right;
-  width: 60px;
+  white-space: nowrap;
 }
 
 .hive-task-pft strong {
@@ -1183,6 +1451,42 @@
   display: block;
   font-size: 9.5px;
   letter-spacing: 0.06em;
+}
+
+.hive-task-pft.is-empty strong {
+  color: var(--hive-muted-2);
+}
+
+.hive-pagination {
+  align-items: center;
+  border-top: 0.5px solid var(--hive-border);
+  color: var(--hive-muted);
+  display: flex;
+  font-size: 11.5px;
+  justify-content: space-between;
+  padding: 10px 16px;
+}
+
+.hive-pagination div {
+  display: flex;
+  gap: 6px;
+}
+
+.hive-pagination button {
+  background: #fbfaf6;
+  border: 0.5px solid var(--hive-border);
+  border-radius: 6px;
+  color: var(--hive-ink-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  padding: 5px 9px;
+}
+
+.hive-pagination button:disabled {
+  color: var(--hive-muted-2);
+  cursor: default;
+  opacity: 0.7;
 }
 
 .hive-empty-project {
@@ -1213,10 +1517,14 @@
 
   .hive-feed-row,
   .hive-activity-row,
-  .hive-operator-row,
-  .hive-task-row {
+  .hive-operator-row {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  .hive-task-row {
+    align-items: center;
+    grid-template-columns: 8px minmax(0, 1fr) 68px;
   }
 
   .hive-feed-operator,
@@ -1231,6 +1539,16 @@
 
   .hive-action {
     width: auto;
+  }
+
+  .hive-task-row .hive-task-assignee {
+    grid-column: 2 / -1;
+  }
+
+  .hive-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
   }
 
 }

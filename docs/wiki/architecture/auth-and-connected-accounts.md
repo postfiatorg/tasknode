@@ -83,7 +83,7 @@ Provider aliases are attached by the auth linking flow but remain private unless
 
 This means X, GitHub, Telegram, email, wallet identity, and any explicitly enabled future provider can be used for login, recovery, anti-sybil signals, and operator trust without forcing public correlation. Discord should not be presented as a production launch promise while it remains out of scope. A user who wants public continuity can still choose a matching Hive handle and disclose the verified provider alias.
 
-The old pseudonymous identity plan is retained under `Implemented / Deprecated Plans`. The current product contract is split between this architecture page and `Surfaces -> Profile`.
+The current identity product contract is split between this architecture page and `Surfaces -> Profile`.
 
 ## Provider Configuration
 

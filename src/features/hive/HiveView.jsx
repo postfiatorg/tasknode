@@ -3,6 +3,8 @@ import { Activity, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { requestJson } from "../../api";
 import "./hive.css";
 
+const PROJECT_DETAIL_PAGE_SIZE = 8;
+
 export function HiveView() {
   const [selectedProject, setSelectedProject] = useState(null);
   const [projectDocument, setProjectDocument] = useState(null);
@@ -68,7 +70,7 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
       setHiveContextStatus("loading");
     }
     try {
-      const result = await requestJson("/api/hive/context?limit=120");
+      const result = await requestJson("/api/hive/context?limit=120&agentLogs=full");
       if (!shouldApply()) return;
       if (!result.ok) throw new Error(result.body?.message || `Hive Context returned HTTP ${result.status}.`);
       setHiveContext(result.body?.context || null);
@@ -213,6 +215,18 @@ function ProjectGrid({ document, onSelectProject, status }) {
 }
 
 function ProjectDetail({ onBack, operators, project, status }) {
+  const [taskPage, setTaskPage] = useState(1);
+  const [activityPage, setActivityPage] = useState(1);
+  const projectTasks = project?.tasks || [];
+  const projectActivity = project?.activity || [];
+  const taskPageState = paginateRows(projectTasks, taskPage, PROJECT_DETAIL_PAGE_SIZE);
+  const activityPageState = paginateRows(projectActivity, activityPage, PROJECT_DETAIL_PAGE_SIZE);
+
+  useEffect(() => {
+    setTaskPage(1);
+    setActivityPage(1);
+  }, [project?.id]);
+
   if (status === "loading") {
     return <div className="hive-shell"><div className="hive-card hive-empty-project">Loading project.</div></div>;
   }
@@ -237,7 +251,7 @@ function ProjectDetail({ onBack, operators, project, status }) {
           {project.summary && <p>{project.summary}</p>}
         </div>
         <div className="hive-stats">
-          <Stat label="Task rows" value={project.tasks.length} />
+          <Stat label="Task rows" value={projectTasks.length} />
           <Stat label="Operators" value={project.contributors?.length || 0} />
           <Stat label="PFT routed" value={formatPft(project.pft)} accent />
         </div>
@@ -282,15 +296,25 @@ function ProjectDetail({ onBack, operators, project, status }) {
 
       <Section title="Tasks" subtitle={tasksSubtitle(project)} layerNumber="03">
         <div className="hive-card">
-          {project.tasks.length ? (
-            project.tasks.map((task, index) => (
-              <ProjectTaskRow
-                key={task.id || `${task.title}-${task.state}`}
-                last={index === project.tasks.length - 1}
-                operators={operators}
-                task={task}
+          {projectTasks.length ? (
+            <>
+              {taskPageState.rows.map((task, index) => (
+                <ProjectTaskRow
+                  key={task.id || `${task.title}-${task.state}`}
+                  last={index === taskPageState.rows.length - 1}
+                  operators={operators}
+                  task={task}
+                />
+              ))}
+              <PaginationControls
+                label="Tasks"
+                onPageChange={setTaskPage}
+                page={taskPageState.page}
+                pageCount={taskPageState.pageCount}
+                pageSize={PROJECT_DETAIL_PAGE_SIZE}
+                total={projectTasks.length}
               />
-            ))
+            </>
           ) : (
             <div className="hive-empty-project">Network tasks will appear after the allocation worker creates PFTL task offers for this project.</div>
           )}
@@ -299,20 +323,58 @@ function ProjectDetail({ onBack, operators, project, status }) {
 
       <Section title="Activity" subtitle="Recent events scoped to this project" layerNumber="04">
         <div className="hive-card">
-          {project.activity.length ? (
-            project.activity.map((entry, index) => (
-              <ActivityRow
-                entry={entry}
-                key={entry.id || `${entry.wallet}-${entry.task}`}
-                last={index === project.activity.length - 1}
-                operators={operators}
+          {projectActivity.length ? (
+            <>
+              {activityPageState.rows.map((entry, index) => (
+                <ActivityRow
+                  entry={entry}
+                  key={entry.id || `${entry.wallet}-${entry.task}`}
+                  last={index === activityPageState.rows.length - 1}
+                  operators={operators}
+                />
+              ))}
+              <PaginationControls
+                label="Activity"
+                onPageChange={setActivityPage}
+                page={activityPageState.page}
+                pageCount={activityPageState.pageCount}
+                pageSize={PROJECT_DETAIL_PAGE_SIZE}
+                total={projectActivity.length}
               />
-            ))
+            </>
           ) : (
             <div className="hive-empty-project">Project activity will populate as project-linked tasks move.</div>
           )}
         </div>
       </Section>
+    </div>
+  );
+}
+
+function PaginationControls({ label, onPageChange, page, pageCount, pageSize, total }) {
+  if (total <= pageSize) return null;
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(total, page * pageSize);
+
+  return (
+    <div className="hive-pagination">
+      <span>{label}: {start}-{end} of {total}</span>
+      <div>
+        <button
+          disabled={page <= 1}
+          onClick={() => onPageChange((current) => Math.max(1, current - 1))}
+          type="button"
+        >
+          Previous
+        </button>
+        <button
+          disabled={page >= pageCount}
+          onClick={() => onPageChange((current) => Math.min(pageCount, current + 1))}
+          type="button"
+        >
+          Next
+        </button>
+      </div>
     </div>
   );
 }
@@ -409,12 +471,17 @@ function ProjectCard({ operators, project, onClick }) {
   const taskCount = project.tasks?.length || 0;
   const pendingGenerationCount = Number(project.pendingGenerationCount || 0);
   const hasAllocatedContributors = previewWallets.length > 0;
+  const nextTask = project.nextTask || null;
 
   return (
     <button className="hive-project-card" onClick={onClick} type="button">
       <span className="hive-project-card-title">{project.name}</span>
       <span className="hive-project-type">{project.type}</span>
       <p>{project.summary}</p>
+      <ProjectNextTaskPreview
+        nextTask={nextTask}
+        pendingGenerationCount={pendingGenerationCount}
+      />
       <span className="hive-card-contributors">
         {hasAllocatedContributors && (
           <span className="hive-badge-stack">
@@ -444,6 +511,28 @@ function ProjectCard({ operators, project, onClick }) {
         <ChevronRight size={14} strokeWidth={1.8} />
       </span>
     </button>
+  );
+}
+
+function ProjectNextTaskPreview({ nextTask, pendingGenerationCount = 0 }) {
+  if (nextTask) {
+    return (
+      <span className="hive-project-next-task">
+        <small>Next reward task</small>
+        <strong>{nextTask.title}</strong>
+        <em>{actionLabel(nextTask.state)} · {formatPft(nextTask.pft)} PFT</em>
+        {nextTask.nextAction && <span>{nextTask.nextAction}</span>}
+      </span>
+    );
+  }
+  const blocker = pendingGenerationCount > 0
+    ? `${pendingGenerationCount} generation ${pendingGenerationCount === 1 ? "job is" : "jobs are"} queued.`
+    : "No reward-bearing task is available on this project right now.";
+  return (
+    <span className="hive-project-next-task is-empty">
+      <small>Next reward task</small>
+      <strong>{blocker}</strong>
+    </span>
   );
 }
 
@@ -531,30 +620,36 @@ function ProjectTaskRow({ task, last = false, operators = {} }) {
   const state = taskState(task.state);
   const operator = task.assignee ? operatorForWallet(task.assignee, operators) : null;
   const age = String(task.age || "").trim();
-  const assigneeLabel = operator?.codename || compactWallet(task.assignee);
+  const walletLabel = compactWallet(task.assignee);
+  const assigneeLabel = operator?.codename || walletLabel;
+  const nextAction = task.nextAction || taskNextAction(task.state);
 
   return (
     <div className={`hive-task-row ${last ? "is-last" : ""} ${state.dim ? "is-dim" : ""}`}>
       <span className={`hive-task-dot ${state.ring ? "is-ring" : ""} is-${state.tone}`} />
       <span className="hive-task-main">
         <strong>{task.title}</strong>
-        <small>
+        <small className="hive-task-state-line">
           <span className={`hive-action is-${state.key}`}>{state.label}</span>
           {age ? <> · {age}</> : null}
         </small>
+        {nextAction && <small className="hive-task-next">Next: {nextAction}</small>}
       </span>
       <span className="hive-task-assignee">
         {task.assignee ? (
           <>
             <HiveProfileBadge nft={task.assigneeNft} size={20} variant={operator?.badge || 0} />
-            <span>{assigneeLabel}</span>
+            <span className="hive-task-assignee-label">
+              <span>{assigneeLabel}</span>
+              {assigneeLabel !== walletLabel && <small>{walletLabel}</small>}
+            </span>
           </>
         ) : (
           <em>unassigned</em>
         )}
       </span>
       <span className="hive-task-pft">
-        <strong>{task.pft}</strong>
+        <strong>{formatPft(task.pft)}</strong>
         <small>PFT</small>
       </span>
     </div>
@@ -597,19 +692,36 @@ function HiveProfileBadge({ nft = null, size = 20, variant = 0 }) {
 }
 
 function ActivityRow({ entry, last = false, operators = {} }) {
+  const state = taskState(entry.action);
   const operator = operatorForWallet(entry.wallet, operators);
+  const walletLabel = compactWallet(entry.wallet);
+  const operatorLabel = operator.codename || walletLabel;
+  const timeLabel = String(entry.time || "").trim() || formatContextTime(entry.updatedAt || entry.createdAt);
+  const hasPft = entry.pft !== null && entry.pft !== undefined && entry.pft !== "";
+  const nextAction = entry.nextAction || taskNextAction(entry.action);
 
   return (
-    <div className={`hive-activity-row ${last ? "is-last" : ""}`}>
-      <HiveProfileBadge nft={operator.nft} size={22} variant={operator.badge} />
-      <span className="hive-feed-operator">
-        <strong>{operator.codename}</strong>
-        <small>{entry.wallet}</small>
+    <div className={`hive-task-row hive-activity-task-row ${last ? "is-last" : ""} ${state.dim ? "is-dim" : ""}`}>
+      <span className={`hive-task-dot ${state.ring ? "is-ring" : ""} is-${state.tone}`} />
+      <span className="hive-task-main">
+        <strong>{entry.task || "Project activity"}</strong>
+        <small className="hive-task-state-line">
+          <span className={`hive-action is-${state.key}`}>{state.label}</span>
+          {timeLabel ? <> · {timeLabel}</> : null}
+        </small>
+        {nextAction && <small className="hive-task-next">Acknowledged: {nextAction}</small>}
       </span>
-      <span className={`hive-action is-${entry.action}`}>{actionLabel(entry.action)}</span>
-      <span className="hive-feed-copy">{entry.task}</span>
-      {entry.pft && <span className="hive-pft">+{entry.pft} PFT</span>}
-      <time>{entry.time}</time>
+      <span className="hive-task-assignee">
+        <HiveProfileBadge nft={operator.nft} size={20} variant={operator.badge} />
+        <span className="hive-task-assignee-label">
+          <span>{operatorLabel}</span>
+          {operatorLabel !== walletLabel && <small>{walletLabel}</small>}
+        </span>
+      </span>
+      <span className={`hive-task-pft ${hasPft ? "" : "is-empty"}`}>
+        <strong>{hasPft ? formatPft(entry.pft) : "—"}</strong>
+        <small>PFT</small>
+      </span>
     </div>
   );
 }
@@ -777,12 +889,16 @@ function HiveContextInputs({
 
 function HiveMindAgentPanel({ boardManager }) {
   const feed = boardManager?.feed || [];
+  const logMode = boardManager?.logMode || "summary";
   return (
     <section className="hive-agent-panel">
       <header className="hive-agent-heading">
         <span>
           <strong>Hive Mind Agent</strong>
-          <small>{feed.length ? `${feed.length} recent ${feed.length === 1 ? "run" : "runs"}` : "No agent runs recorded"}</small>
+          <small>
+            {feed.length ? `${feed.length} recent ${feed.length === 1 ? "run" : "runs"}` : "No agent runs recorded"}
+            {logMode === "full" ? " · full logs available" : ""}
+          </small>
         </span>
       </header>
       <div className="hive-agent-feed">
@@ -797,10 +913,15 @@ function HiveMindAgentPanel({ boardManager }) {
 }
 
 function HiveAgentRun({ entry }) {
+  const [logsOpen, setLogsOpen] = useState(false);
   const target = [entry.targetType, entry.targetId].filter(Boolean).join(" · ");
   const resultCount = entry.actionResults?.length || 0;
   const decisionReason = entry.reason && entry.reason !== entry.summary ? entry.reason : "";
   const resultSummary = entry.actionResults?.find((result) => result.summary || result.error)?.summary || "";
+  const details = entry.details || null;
+  const hasDetails = Boolean(details);
+  const decisionBasis = buildDecisionBasis({ entry, details });
+  const auditSummary = buildAgentAuditSummary({ entry, details });
   return (
     <article className={`hive-agent-run is-${entry.state || "recorded"}`}>
       <div className="hive-agent-run-top">
@@ -820,6 +941,12 @@ function HiveAgentRun({ entry }) {
           <p>{resultSummary}</p>
         </div>
       )}
+      {decisionBasis.nextCheck && (
+        <div className="hive-agent-audit-block">
+          <span>Next check</span>
+          <p>{decisionBasis.nextCheck}</p>
+        </div>
+      )}
       <div className="hive-agent-audit-row">
         {Number.isFinite(entry.confidence) && entry.confidence > 0 && <span>Confidence {Math.round(entry.confidence * 100)}%</span>}
         {entry.runId && <span>Run {shortId(entry.runId)}</span>}
@@ -832,8 +959,294 @@ function HiveAgentRun({ entry }) {
         {resultCount > 0 && <span>{resultCount} {resultCount === 1 ? "result" : "results"}</span>}
         {entry.trigger && <span>{entry.trigger}</span>}
       </footer>
+      <button
+        aria-expanded={logsOpen}
+        className="hive-agent-log-toggle"
+        onClick={() => setLogsOpen((open) => !open)}
+        type="button"
+      >
+        <span>Full logs</span>
+        <ChevronDown className={logsOpen ? "is-open" : ""} size={15} strokeWidth={1.8} />
+      </button>
+      {logsOpen && (
+        <div className="hive-agent-full-logs">
+          {hasDetails ? (
+            <>
+              <DecisionBasisPanel basis={decisionBasis} />
+              <AgentAuditSummary summary={auditSummary} />
+              <AgentLogSection title="Raw Scheduler Job JSON" value={details.job} />
+              <AgentLogSection title="Raw Decision JSON" value={details.decision} />
+              <AgentLogSection title="Raw Action Payload JSON" value={details.actionPayload} />
+              <AgentLogSection title="Raw Action Result JSON" value={details.actionResults} />
+              <AgentLogSection title="Provider Output" value={details.outputText} empty="No provider output text was stored for this run." />
+              <AgentLogSection title="Micro Summary" value={details.microSummaryText || details.microSummary} />
+              <AgentLogSection title="Raw Source Snapshot JSON" value={details.sourcePacket} />
+            </>
+          ) : (
+            <p className="hive-agent-log-empty">Full logs were not attached to this feed response.</p>
+          )}
+        </div>
+      )}
     </article>
   );
+}
+
+function AgentAuditSummary({ summary }) {
+  const rows = Array.isArray(summary?.rows) ? summary.rows.filter((row) => row?.value) : [];
+  if (!rows.length) return null;
+  return (
+    <section className="hive-agent-audit-summary">
+      <h4>Audit Summary</h4>
+      <dl>
+        {rows.map((row) => (
+          <React.Fragment key={row.label}>
+            <dt>{row.label}</dt>
+            <dd>{row.value}</dd>
+          </React.Fragment>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function DecisionBasisPanel({ basis }) {
+  return (
+    <section className="hive-agent-basis-panel">
+      <h4>Decision Basis</h4>
+      <DecisionBasisList items={basis.sourceFacts} title="Source facts" />
+      <DecisionBasisList items={basis.tradeoffs} title="Tradeoffs" />
+      <DecisionBasisRejected items={basis.rejectedActions} />
+      <DecisionBasisList items={basis.riskNotes} title="Risk notes" />
+      {basis.nextCheck && (
+        <div className="hive-agent-basis-next">
+          <strong>Next check</strong>
+          <p>{basis.nextCheck}</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DecisionBasisList({ items = [], title }) {
+  const normalized = items.filter(Boolean);
+  if (!normalized.length) return null;
+  return (
+    <div className="hive-agent-basis-list">
+      <strong>{title}</strong>
+      <ul>
+        {normalized.map((item, index) => <li key={`${title}-${index}`}>{item}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+function DecisionBasisRejected({ items = [] }) {
+  const normalized = items.filter((item) => item?.action || item?.reason);
+  if (!normalized.length) return null;
+  return (
+    <div className="hive-agent-basis-list">
+      <strong>Rejected actions</strong>
+      <ul>
+        {normalized.map((item, index) => (
+          <li key={`${item.action || "action"}-${index}`}>
+            {item.action ? <span>{item.action}: </span> : null}
+            {item.reason || "No reason recorded."}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function AgentLogSection({ empty = "No value recorded.", title, value }) {
+  const rendered = formatLogValue(value);
+  const isRaw = /^Raw\b/.test(title);
+  if (isRaw) {
+    return (
+      <details className="hive-agent-log-section is-raw">
+        <summary>{title}</summary>
+        {rendered ? <pre>{rendered}</pre> : <p>{empty}</p>}
+      </details>
+    );
+  }
+  return (
+    <section className="hive-agent-log-section">
+      <h4>{title}</h4>
+      {rendered ? <pre>{rendered}</pre> : <p>{empty}</p>}
+    </section>
+  );
+}
+
+function formatLogValue(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value) && value.length === 0) return "";
+  if (typeof value === "object" && !Object.keys(value).length) return "";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value || "").trim();
+  }
+}
+
+function buildAgentAuditSummary({ entry = {}, details = null } = {}) {
+  const job = details?.job || {};
+  const decision = details?.decision || {};
+  const actionPayload = details?.actionPayload || {};
+  const sourcePacket = details?.sourcePacket || {};
+  const pressureSummary = sourcePacket.boardActionPressure?.summary || {};
+  const routingAccounts = Array.isArray(sourcePacket.routingConstraints?.accounts)
+    ? sourcePacket.routingConstraints.accounts
+    : [];
+  const actionResults = Array.isArray(details?.actionResults) ? details.actionResults : [];
+  const firstResult = actionResults[0]?.result || {};
+  const action = entry.action || decision.action || actionPayload.action || "";
+  const target = [entry.targetType || decision.target_type, entry.targetId || decision.target_id].filter(Boolean).join(" / ");
+  const routingConstraintText = routingAccounts.length
+    ? routingAccounts.slice(0, 4).map((account) => {
+        const minPft = account.reservationRate?.minPft;
+        return `${account.accountId || "account"} min ${formatPft(minPft)} PFT`;
+      }).join("; ")
+    : "No explicit reservation-rate constraints in this source packet.";
+  const boardState = [
+    pressureSummary.motionState ? `motion=${pressureSummary.motionState}` : "",
+    pressureSummary.eligibleCandidateCount !== undefined ? `eligible=${pressureSummary.eligibleCandidateCount}` : "",
+    pressureSummary.projectsWithoutLiveTasks !== undefined ? `projects_without_live_tasks=${pressureSummary.projectsWithoutLiveTasks}` : "",
+    pressureSummary.openFollowupCount !== undefined ? `open_followups=${pressureSummary.openFollowupCount}` : "",
+  ].filter(Boolean).join("; ");
+  const actionOutcome = [
+    firstResult.reason || firstResult.error || actionResults[0]?.summary || "",
+    firstResult.executed === false || firstResult.skipped ? "skipped" : "",
+    firstResult.followupId ? `followup=${shortId(firstResult.followupId)}` : "",
+    firstResult.taskId ? `task=${shortId(firstResult.taskId)}` : "",
+    firstResult.allocationId ? `allocation=${shortId(firstResult.allocationId)}` : "",
+  ].filter(Boolean).join("; ");
+  return {
+    rows: [
+      { label: "Trigger", value: job.trigger || entry.trigger || "manual/unknown" },
+      { label: "Job state", value: job.id ? `${shortId(job.id)} is ${job.status || entry.status || "pending"}` : (entry.status || entry.state || "") },
+      { label: "Timing", value: [
+        job.runAfter ? `run_after=${formatContextTime(job.runAfter)}` : "",
+        job.claimedAt ? `claimed=${formatContextTime(job.claimedAt)}` : "",
+        entry.completedAt || entry.startedAt ? `run=${formatContextTime(entry.completedAt || entry.startedAt)}` : "",
+      ].filter(Boolean).join("; ") },
+      { label: "Decision", value: action ? `${action}${target ? ` -> ${target}` : ""}` : "" },
+      { label: "Board state", value: boardState },
+      { label: "Routing constraints", value: routingConstraintText },
+      { label: "Action outcome", value: actionOutcome || entry.summary || entry.reason || "" },
+      { label: "Source digest", value: sourcePacket.sourcePacketDigest || entry.sourcePacketDigest || "" },
+    ],
+  };
+}
+
+function buildDecisionBasis({ entry = {}, details = null } = {}) {
+  const decision = details?.decision || {};
+  const structured = normalizeDecisionBasis(decision.decision_basis || decision.decisionBasis || entry.decisionBasis || {});
+  if (structured.hasAny) return structured;
+  if (details?.job) return buildSchedulerJobBasis({ entry, job: details.job });
+  const sourcePacket = details?.sourcePacket || {};
+  const actionResults = details?.actionResults || [];
+  if (entry.action === "daily_airdrop") {
+    return buildDailyAirdropBasis({ entry, sourcePacket, actionResults });
+  }
+  return buildSourceSnapshotBasis({ entry, sourcePacket, actionResults });
+}
+
+function normalizeDecisionBasis(value = {}) {
+  const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const sourceFacts = stringList(input.source_facts || input.sourceFacts, 8);
+  const tradeoffs = stringList(input.tradeoffs, 6);
+  const rejectedActions = Array.isArray(input.rejected_actions || input.rejectedActions)
+    ? (input.rejected_actions || input.rejectedActions).slice(0, 8).map((item) => ({
+        action: String(item?.action || "").trim(),
+        reason: String(item?.reason || "").trim(),
+      })).filter((item) => item.action || item.reason)
+    : [];
+  const riskNotes = stringList(input.risk_notes || input.riskNotes, 6);
+  const nextCheck = String(input.next_check || input.nextCheck || "").trim();
+  return {
+    sourceFacts,
+    tradeoffs,
+    rejectedActions,
+    riskNotes,
+    nextCheck,
+    hasAny: Boolean(sourceFacts.length || tradeoffs.length || rejectedActions.length || riskNotes.length || nextCheck),
+  };
+}
+
+function buildSchedulerJobBasis({ entry = {}, job = {} } = {}) {
+  const attempts = Number(job.attemptCount || 0);
+  const maxAttempts = Number(job.maxAttempts || 0);
+  return {
+    sourceFacts: [
+      `Scheduler job ${job.id || entry.id || "unknown"} is ${job.status || entry.status || "pending"}.`,
+      job.trigger ? `Trigger is ${job.trigger}.` : "",
+      job.reason ? `Reason: ${job.reason}` : "",
+      Number.isFinite(attempts) && maxAttempts ? `Attempt ${attempts.toLocaleString("en-US")} of ${maxAttempts.toLocaleString("en-US")}.` : "",
+      job.claimedBy ? `Claimed by ${job.claimedBy}.` : "The job has not recorded a worker claim yet.",
+    ].filter(Boolean),
+    tradeoffs: ["This is a scheduler job waiting for, or currently inside, a Board Manager run. Decision JSON is not available until the run is started and persisted."],
+    rejectedActions: [],
+    riskNotes: job.lastError ? [job.lastError] : [],
+    nextCheck: "Wait for the matching Board Manager run to complete, or inspect this scheduler job for stale claimed_at/run_after timestamps if it stays pending.",
+    hasAny: true,
+  };
+}
+
+function buildDailyAirdropBasis({ entry = {}, sourcePacket = {}, actionResults = [] } = {}) {
+  const result = actionResults?.[0]?.result || {};
+  const candidateCount = Number(sourcePacket.candidateCount ?? result.candidateCount ?? 0);
+  const scoredCount = Number(sourcePacket.scoredCount ?? result.scoredCount ?? 0);
+  const issuedCount = Number(sourcePacket.issuedCount ?? result.userCount ?? 0);
+  const failedCount = Number(sourcePacket.failedCount ?? result.failedCount ?? 0);
+  const totalPft = Number(sourcePacket.totalPft ?? result.totalPft ?? 0);
+  const sourceFacts = [
+    `${candidateCount.toLocaleString("en-US")} candidate ${candidateCount === 1 ? "account was" : "accounts were"} loaded for this daily airdrop tick.`,
+    `${scoredCount.toLocaleString("en-US")} candidate ${scoredCount === 1 ? "account was" : "accounts were"} scored.`,
+    `${issuedCount.toLocaleString("en-US")} payout ${issuedCount === 1 ? "was" : "were"} submitted, totaling ${formatPft(totalPft)} PFT.`,
+  ];
+  if (failedCount) sourceFacts.push(`${failedCount.toLocaleString("en-US")} candidate ${failedCount === 1 ? "failed" : "accounts failed"} during scoring or issuance.`);
+  return {
+    sourceFacts,
+    tradeoffs: ["This is a deterministic worker audit card, not a model-selected Hive board decision."],
+    rejectedActions: [],
+    riskNotes: failedCount ? ["Failed accounts should be inspected before retrying issuance."] : [],
+    nextCheck: totalPft > 0
+      ? "Inspect action-result JSON for issuance ids, recipient wallets, and transaction hashes."
+      : "Inspect scored account rows to confirm why eligible accounts received 0 PFT.",
+    hasAny: true,
+  };
+}
+
+function buildSourceSnapshotBasis({ entry = {}, sourcePacket = {}, actionResults = [] } = {}) {
+  const pressure = sourcePacket.boardActionPressure || {};
+  const summary = pressure.summary || {};
+  const signals = Array.isArray(pressure.signals) ? pressure.signals : [];
+  const sourceFacts = [];
+  if (summary.motionState) sourceFacts.push(`Board motion state was ${summary.motionState}.`);
+  if (summary.activeProjectCount !== undefined) sourceFacts.push(`${Number(summary.activeProjectCount || 0).toLocaleString("en-US")} active project ${Number(summary.activeProjectCount || 0) === 1 ? "was" : "were"} in the source packet.`);
+  if (summary.projectsWithoutLiveTasks !== undefined) sourceFacts.push(`${Number(summary.projectsWithoutLiveTasks || 0).toLocaleString("en-US")} active project ${Number(summary.projectsWithoutLiveTasks || 0) === 1 ? "had" : "had"} no live task movement.`);
+  if (summary.eligibleCandidateCount !== undefined) sourceFacts.push(`${Number(summary.eligibleCandidateCount || 0).toLocaleString("en-US")} eligible Network Task candidate ${Number(summary.eligibleCandidateCount || 0) === 1 ? "was" : "were"} available after capacity blockers.`);
+  signals.slice(0, 4).forEach((signal) => {
+    const reasons = Array.isArray(signal.reasons) ? signal.reasons.join("; ") : "";
+    sourceFacts.push(`${signal.projectId || "project"}: ${reasons || signal.pressure || "pressure signal recorded"}.`);
+  });
+  const result = actionResults?.[0]?.result || {};
+  if (result.error) sourceFacts.push(`Action hook reported error: ${result.error}.`);
+  return {
+    sourceFacts: sourceFacts.length ? sourceFacts : [entry.reason || entry.summary || "No structured source facts were stored for this run."],
+    tradeoffs: entry.reason ? [entry.reason] : [],
+    rejectedActions: [],
+    riskNotes: result.error ? [result.error] : [],
+    nextCheck: "Open Source Snapshot JSON to inspect boardActionPressure, candidates, open follow-ups, and project task state for this run.",
+    hasAny: true,
+  };
+}
+
+function stringList(value, max = 6) {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean).slice(0, max)
+    : [];
 }
 
 function HiveSecretaryList({ items = [], title }) {
@@ -905,12 +1318,38 @@ function contributorsSubtitle(project = {}) {
   return "No operators allocated yet";
 }
 
+function paginateRows(rows = [], requestedPage = 1, pageSize = PROJECT_DETAIL_PAGE_SIZE) {
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  const pageCount = Math.max(1, Math.ceil(normalizedRows.length / pageSize));
+  const page = Math.min(Math.max(1, requestedPage), pageCount);
+  const startIndex = (page - 1) * pageSize;
+  return {
+    page,
+    pageCount,
+    rows: normalizedRows.slice(startIndex, startIndex + pageSize),
+  };
+}
+
 function tasksSubtitle(project = {}) {
   const allocated = project.tasks?.length || 0;
   const pending = Number(project.pendingGenerationCount || 0);
+  if (project.nextTask?.title) return `${allocated} task ${allocated === 1 ? "row" : "rows"}; next: ${project.nextTask.title}`;
   if (allocated) return `${allocated} allocated task ${allocated === 1 ? "row" : "rows"} on this project`;
   if (pending) return `${pending} Network Task generation ${pending === 1 ? "job is" : "jobs are"} queued for this project`;
   return "No project task rows yet";
+}
+
+function taskNextAction(state = "") {
+  const normalized = String(state || "").trim().toLowerCase();
+  if (normalized === "accepted") return "Complete the task and submit evidence for review.";
+  if (normalized === "verification_requested") return "Answer the reviewer follow-up.";
+  if (normalized === "verification_response_submitted") return "Wait for review.";
+  if (normalized === "submitted") return "Wait for review and respond if verification is requested.";
+  if (normalized === "proposed") return "Open the task and accept or refuse it before the deadline.";
+  if (normalized === "reward_decided") return "Wait for the terminal reward outcome to settle.";
+  if (["rewarded", "paid"].includes(normalized)) return "Reward recorded; no further action is required.";
+  if (["refused", "cancelled", "rejected", "expired"].includes(normalized)) return "Task is stopped; wait for a new routed task if more work is needed.";
+  return "Open the task row and inspect the latest state.";
 }
 
 function formatContextTime(value = "") {
@@ -1013,7 +1452,7 @@ function actionLabel(action) {
       verification_response: "v. response",
       v_requested: "v. requested",
       v_response: "v. response",
-      reward_decided: "reward decided",
+      reward_decided: "reward pending",
       rewarded: "rewarded",
       paid: "paid",
       cancelled: "cancelled",
@@ -1034,7 +1473,7 @@ function taskState(state) {
       verification_requested: { key: "verification_requested", label: "v. requested", tone: "amber", ring: false, dim: false },
       verification_response_submitted: { key: "verification_response_submitted", label: "awaiting review", tone: "green", ring: false, dim: false },
       verification_response: { key: "verification_response", label: "v. response", tone: "green", ring: false, dim: false },
-      reward_decided: { key: "reward_decided", label: "reward decided", tone: "muted", ring: false, dim: true },
+      reward_decided: { key: "reward_decided", label: "reward pending", tone: "muted", ring: false, dim: true },
       rewarded: { key: "rewarded", label: "rewarded", tone: "muted", ring: false, dim: true },
       paid: { key: "paid", label: "paid", tone: "muted", ring: false, dim: true },
       refused: { key: "refused", label: "refused", tone: "muted", ring: true, dim: true },

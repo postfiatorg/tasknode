@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { hostname } from "node:os";
-import { databaseEnabled } from "./db/pool.js";
+import { databaseEnabled, query } from "./db/pool.js";
 import { runDailyAirdropScore } from "./profile-daily-airdrop.js";
 import { issueLatestDailyAirdrop } from "./profile-daily-airdrop-issuance.js";
 import {
@@ -64,6 +64,10 @@ function autoIssueEnabled(env = process.env) {
   return env.TASKNODE_DAILY_AIRDROP_AUTO_ISSUE !== "false";
 }
 
+function dailyAirdropWorkerRunMode(env = process.env) {
+  return env.TASKNODE_DAILY_AIRDROP_WORKER_RUN_MODE === "dry_run" ? "dry_run" : "production";
+}
+
 function pftText(value = 0) {
   const amount = Number(value || 0);
   return amount.toLocaleString("en-US", {
@@ -93,6 +97,7 @@ async function recordDailyAirdropAgentRun({
   failed = [],
   trigger = "daily_airdrop_worker",
   model = "",
+  runMode = "production",
   dryRun = false,
 } = {}) {
   const totalPft = issued.reduce((sum, item) => sum + Number(item.amountPft || 0), 0);
@@ -107,6 +112,7 @@ async function recordDailyAirdropAgentRun({
     schema: "pf.hive.daily_airdrop.run_source.v1",
     generatedAt: new Date().toISOString(),
     runDate,
+    runMode,
     candidateCount: candidates.length,
     scoredCount: scored.length,
     issuedCount: issued.length,
@@ -132,6 +138,18 @@ async function recordDailyAirdropAgentRun({
       error: safeText(item.error, 500),
     })),
   };
+  if (!issued.length && !failed.length) {
+    const existing = await latestDailyAirdropAgentRunForDate({ runDate });
+    if (existing?.id) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: "daily_airdrop_agent_audit_already_recorded",
+        runId: existing.id,
+        summary,
+      };
+    }
+  }
   const start = await startBoardManagerRun({
     scope: "global_hive",
     managerId: "daily_airdrop_worker",
@@ -151,6 +169,27 @@ async function recordDailyAirdropAgentRun({
     target_id: runDate,
     reason: summary,
     confidence: failed.length ? 0.75 : 1,
+    decision_basis: {
+      source_facts: [
+        `${candidates.length} candidate ${candidates.length === 1 ? "account was" : "accounts were"} loaded for ${runDate}.`,
+        `The worker scoring mode was ${runMode}.`,
+        `${scored.length} candidate ${scored.length === 1 ? "account was" : "accounts were"} scored by the daily airdrop scorer.`,
+        `${issued.length} payout ${issued.length === 1 ? "was" : "were"} submitted, totaling ${pftText(totalPft)} PFT.`,
+        failed.length ? `${failed.length} candidate ${failed.length === 1 ? "failed" : "accounts failed"} during scoring or issuance.` : "No candidate failures were recorded.",
+      ],
+      tradeoffs: [
+        autoIssueEnabled(process.env)
+          ? "Auto-issuance was enabled, so positive scored runs were eligible for payment submission."
+          : "Auto-issuance was disabled, so the worker recorded scoring without submitting payouts.",
+      ],
+      rejected_actions: [],
+      risk_notes: failed.length
+        ? ["Review failed accounts before retrying so duplicate or partial payout behavior is understood."]
+        : [],
+      next_check: failed.length
+        ? "Open the daily airdrop action-result JSON and inspect failed account errors before retrying."
+        : "If zero PFT was dispensed, inspect scored account rows to confirm they were ineligible or scored at 0 PFT.",
+    },
     payload: {
       summary,
       next_steps: failed.length ? ["Review failed accounts before retrying so duplicate payouts are not sent."] : [],
@@ -187,12 +226,29 @@ async function recordDailyAirdropAgentRun({
   return { ok: true, runId: start.run.id, summary };
 }
 
+async function latestDailyAirdropAgentRunForDate({ runDate } = {}) {
+  if (!databaseEnabled()) return null;
+  const result = await query(
+    `SELECT id, completed_at
+       FROM board_manager_runs
+      WHERE manager_id = 'daily_airdrop_worker'
+        AND selected_action = 'daily_airdrop'
+        AND status = 'completed'
+        AND decision_json->>'target_id' = $1
+      ORDER BY completed_at DESC NULLS LAST, updated_at DESC, id DESC
+      LIMIT 1`,
+    [dateOnly(runDate)]
+  );
+  return result.rows[0] || null;
+}
+
 export async function runDailyAirdropWorkerOnce({
   runDate = dateOnly(),
   lookbackDays = Number(process.env.TASKNODE_DAILY_AIRDROP_LOOKBACK_DAYS || DEFAULT_LOOKBACK_DAYS),
   batchLimit = Number(process.env.TASKNODE_DAILY_AIRDROP_WORKER_BATCH_LIMIT || DEFAULT_BATCH_LIMIT),
   maxDailyPft = Number(process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || 10000),
   model = process.env.TASKNODE_DAILY_AIRDROP_MODEL || "deepseek/deepseek-v4-pro",
+  runMode = dailyAirdropWorkerRunMode(process.env),
   trigger = "daily_airdrop_worker",
   recordAgentRun = true,
   env = process.env,
@@ -202,6 +258,7 @@ export async function runDailyAirdropWorkerOnce({
     return { ok: true, skipped: true, reason: "daily_airdrop_worker_disabled" };
   }
   const normalizedRunDate = dateOnly(runDate || new Date());
+  const normalizedRunMode = runMode === "dry_run" ? "dry_run" : "production";
 
   const managerId = `daily_airdrop_worker_${hostname()}`;
   const lease = await claimBoardManagerLease({
@@ -232,7 +289,7 @@ export async function runDailyAirdropWorkerOnce({
       try {
         const score = await runDailyAirdropScore({
           accountId: candidate.accountId,
-          runMode: "dry_run",
+          runMode: normalizedRunMode,
           scenarioId: `daily_airdrop_worker:${normalizedRunDate}`,
           lookbackDays,
           maxDailyPft,
@@ -277,6 +334,7 @@ export async function runDailyAirdropWorkerOnce({
     const result = {
       ok: true,
       runDate: normalizedRunDate,
+      runMode: normalizedRunMode,
       candidateCount: candidates.length,
       scoredCount: scored.length,
       issuedCount: issued.length,
@@ -302,6 +360,7 @@ export async function runDailyAirdropWorkerOnce({
         failed,
         trigger,
         model,
+        runMode: normalizedRunMode,
       });
     }
     return result;

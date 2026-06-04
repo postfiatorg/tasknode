@@ -1,6 +1,6 @@
 # Review Plan: Task Engine Prompts
 
-Source docs: `prompts/task_engine/taskgen_minimal_v1.md`, `block_contract_v1.md`, `taskgen_repair_v1.md`
+Source docs: `prompts/task_engine/taskgen_personal_v1.md`, `prompts/task_engine/taskgen_network_v1.md`, `prompts/non_production/task_engine_ref/block_contract_v1.md`, `prompts/non_production/task_engine_ref/taskgen_repair_v1.md`, `prompts/non_production/task_engine_ref/taskgen_minimal_v1.md`
 App doc group: Prompts
 App doc slug: `prompts-task-engine`
 Review status: review_ready

@@ -4,9 +4,9 @@ import { createGeneratedProfileNft } from "./repositories/profile-nfts.js";
 
 const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultProfileNftSize = "1024x1024";
-const defaultProfileNftQuality = "low";
+const defaultProfileNftQuality = "high";
 const defaultProfileNftOutputFormat = "png";
-const profileNftTimeoutMs = 130_000;
+const defaultProfileNftTimeoutMs = 300_000;
 
 function safeText(value = "", max = 5000) {
   return String(value || "").trim().slice(0, max);
@@ -70,9 +70,13 @@ export function buildProfileNftUserData({ session = null, state = null, payload 
   );
 }
 
-async function openAiImageGeneration({ apiKey, baseUrl, body }) {
+function profileNftTimeoutMs(env = process.env) {
+  return Math.max(30_000, Number(env.PROFILE_NFT_IMAGE_TIMEOUT_MS || defaultProfileNftTimeoutMs));
+}
+
+async function openAiImageGeneration({ apiKey, baseUrl, body, env = process.env }) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), profileNftTimeoutMs);
+  const timeout = setTimeout(() => controller.abort(), profileNftTimeoutMs(env));
 
   try {
     const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/images/generations`, {
@@ -152,6 +156,21 @@ export async function profileNftGenerateStart({
     env,
   });
 
+  if (
+    rendered.source === "placeholder" &&
+    env.NODE_ENV === "production" &&
+    env.PROFILE_NFT_ALLOW_PLACEHOLDER !== "true"
+  ) {
+    return {
+      status: 503,
+      body: {
+        ok: false,
+        error: "profile_nft_private_prompt_required",
+        message: "Profile NFT generation is missing the private production prompt.",
+      },
+    };
+  }
+
   if (rendered.unresolvedPlaceholders.length > 0) {
     return {
       status: 500,
@@ -183,6 +202,7 @@ export async function profileNftGenerateStart({
         output_format: outputFormat,
         n: 1,
       },
+      env,
     });
     const imageBase64 = result?.data?.[0]?.b64_json || "";
     if (!imageBase64) {

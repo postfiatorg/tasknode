@@ -9,6 +9,7 @@ import { formatTaskTimestamp } from "../../shared/task-time-format.js";
 const maxClaimLimit = 5;
 const failedAttemptLimit = 3;
 const autoRefreshMs = 24 * 60 * 60 * 1000;
+const rewardThresholdDefault = 2;
 export const networkTaskProfilePromptVersion = "network_task_profile_v2";
 
 function useDatabase() {
@@ -96,8 +97,8 @@ function stripHtmlForPacket(value = "") {
 function publicProfileFromRow(row = {}) {
   const metadata = safeObject(row.metadata_json);
   const generatedTask = safeObject(metadata.generatedTask);
-  const rewardDecision = safeObject(row.reward_decision_payload);
-  const rewardScore = safeObject(rewardDecision.score || rewardDecision.reward_score);
+  const rewardOutcome = safeObject(row.reward_outcome_payload);
+  const rewardScore = safeObject(rewardOutcome.reward_score || rewardOutcome.score);
   const stopPayload = safeObject(row.stop_payload);
   const statusKey = normalizeTaskStatus(row.status);
   return {
@@ -116,12 +117,13 @@ function publicProfileFromRow(row = {}) {
       summary: safeText(
         rewardScore.user_feedback ||
           rewardScore.reason ||
-          rewardDecision.user_feedback ||
-          rewardDecision.reason ||
+          rewardOutcome.reward_summary ||
+          rewardOutcome.user_feedback ||
+          rewardOutcome.reason ||
           "",
         900
       ),
-      decision: safeText(rewardScore.decision || rewardDecision.decision || "", 80),
+      decision: safeText(rewardScore.decision || rewardOutcome.reward_decision || rewardOutcome.decision || "", 80),
     },
     stopOutcome: {
       summary: safeText(
@@ -441,12 +443,12 @@ export async function getLiveTaskRoutingContext({ accountId = "" } = {}) {
       SELECT p.*,
              (
                SELECT e.payload_json
-               FROM task_events e
-               WHERE e.task_id = p.task_id
-                 AND e.event_type = 'pf.task.reward_decision.v1'
-               ORDER BY e.occurred_at DESC, e.id DESC
-               LIMIT 1
-             ) AS reward_decision_payload,
+	               FROM task_events e
+	               WHERE e.task_id = p.task_id
+	                 AND e.event_type = 'pf.reward.v1'
+	               ORDER BY e.occurred_at DESC, e.id DESC
+	               LIMIT 1
+	             ) AS reward_outcome_payload,
              (
                SELECT e.payload_json
                FROM task_events e
@@ -579,6 +581,176 @@ export async function enqueueNetworkTaskProfileJob({
     ]
   );
   return { queued: true, job: publicJob(result.rows[0]) };
+}
+
+async function positiveRewardStats({ accountId = "" } = {}) {
+  if (!useDatabase()) return { positiveRewardedTaskCount: 0, lastRewardedTaskAt: null };
+  const normalizedAccountId = safeAccountId(accountId);
+  if (!normalizedAccountId) return { positiveRewardedTaskCount: 0, lastRewardedTaskAt: null };
+  const result = await query(
+    `
+      SELECT COUNT(task_id)::integer AS rewarded_task_count,
+             MAX(updated_at) AS last_rewarded_task_at
+      FROM task_projections
+      WHERE account_id = $1
+        AND reward_actual_pft > 0
+    `,
+    [normalizedAccountId]
+  );
+  const row = result.rows[0] || {};
+  return {
+    positiveRewardedTaskCount: Number(row.rewarded_task_count || 0),
+    lastRewardedTaskAt: toIso(row.last_rewarded_task_at),
+  };
+}
+
+export async function enqueueNetworkTaskProfileForRewardThreshold({
+  accountId = "",
+  reason = "rewarded_task_threshold",
+  minRewardedTasks = rewardThresholdDefault,
+} = {}) {
+  if (!useDatabase()) return { queued: false, reason: "database_not_configured" };
+  const normalizedAccountId = safeAccountId(accountId);
+  if (!normalizedAccountId) return { queued: false, reason: "missing_account_id" };
+
+  const threshold = Math.max(1, Number(minRewardedTasks || rewardThresholdDefault));
+  const stats = await positiveRewardStats({ accountId: normalizedAccountId });
+  if (stats.positiveRewardedTaskCount < threshold) {
+    return {
+      queued: false,
+      reason: "reward_threshold_not_met",
+      minRewardedTasks: threshold,
+      ...stats,
+    };
+  }
+
+  const source = await buildNetworkTaskProfileSource({ accountId: normalizedAccountId });
+  const [latest, activeJob] = await Promise.all([
+    getLatestNetworkTaskProfile({ accountId: normalizedAccountId }),
+    getLatestNetworkTaskProfileJob({ accountId: normalizedAccountId }),
+  ]);
+  const currentCompletedProfile = Boolean(
+    latest?.sourcePacketDigest === source.sourcePacketDigest &&
+      latest?.promptVersion === networkTaskProfilePromptVersion
+  );
+  if (currentCompletedProfile) {
+    return {
+      queued: false,
+      reason: "network_task_profile_current",
+      minRewardedTasks: threshold,
+      sourcePacketDigest: source.sourcePacketDigest,
+      ...stats,
+    };
+  }
+  if (activeJob?.sourcePacketDigest === source.sourcePacketDigest) {
+    return {
+      queued: false,
+      reason: "network_task_profile_job_already_active",
+      minRewardedTasks: threshold,
+      job: activeJob,
+      sourcePacketDigest: source.sourcePacketDigest,
+      ...stats,
+    };
+  }
+
+  const queued = await enqueueNetworkTaskProfileJob({
+    accountId: normalizedAccountId,
+    sourcePacket: source,
+    reason,
+  });
+  return {
+    ...queued,
+    reason: queued.reason || reason,
+    minRewardedTasks: threshold,
+    sourcePacketDigest: source.sourcePacketDigest,
+    ...stats,
+  };
+}
+
+export async function enqueueNetworkTaskProfilesForRewardedAccounts({
+  limit = 2,
+  minRewardedTasks = rewardThresholdDefault,
+  reason = "rewarded_task_threshold_backfill",
+} = {}) {
+  if (!useDatabase()) return { ok: true, skipped: true, reason: "database_not_configured" };
+  const threshold = Math.max(1, Number(minRewardedTasks || rewardThresholdDefault));
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 1, 1), 10);
+  const result = await query(
+    `
+      WITH reward_accounts AS (
+        SELECT account_id,
+               COUNT(task_id)::integer AS rewarded_task_count,
+               MAX(updated_at) AS last_rewarded_task_at
+        FROM task_projections
+        WHERE account_id <> ''
+          AND reward_actual_pft > 0
+        GROUP BY account_id
+        HAVING COUNT(task_id) >= $1
+      ),
+      latest_profiles AS (
+        SELECT DISTINCT ON (account_id)
+               account_id,
+               source_packet_digest,
+               prompt_version,
+               completed_at,
+               created_at
+        FROM network_task_profiles
+        WHERE status = 'completed'
+          AND superseded_at IS NULL
+        ORDER BY account_id, completed_at DESC NULLS LAST, created_at DESC, id DESC
+      ),
+      active_jobs AS (
+        SELECT DISTINCT account_id
+        FROM network_task_profile_jobs
+        WHERE status IN ('pending', 'processing')
+      )
+      SELECT reward_accounts.account_id,
+             reward_accounts.rewarded_task_count,
+             reward_accounts.last_rewarded_task_at
+      FROM reward_accounts
+      LEFT JOIN latest_profiles
+        ON latest_profiles.account_id = reward_accounts.account_id
+      LEFT JOIN active_jobs
+        ON active_jobs.account_id = reward_accounts.account_id
+      WHERE active_jobs.account_id IS NULL
+        AND (
+          latest_profiles.account_id IS NULL
+          OR latest_profiles.prompt_version <> $2
+          OR COALESCE(latest_profiles.completed_at, latest_profiles.created_at)
+               < reward_accounts.last_rewarded_task_at
+        )
+      ORDER BY reward_accounts.last_rewarded_task_at ASC,
+               reward_accounts.account_id ASC
+      LIMIT $3
+    `,
+    [threshold, networkTaskProfilePromptVersion, normalizedLimit]
+  );
+
+  const results = [];
+  for (const row of result.rows) {
+    try {
+      results.push(await enqueueNetworkTaskProfileForRewardThreshold({
+        accountId: row.account_id,
+        reason,
+        minRewardedTasks: threshold,
+      }));
+    } catch (error) {
+      results.push({
+        queued: false,
+        reason: "reward_threshold_enqueue_failed",
+        accountId: safeAccountId(row.account_id),
+        error: safeText(error?.message || error, 1000),
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    scanned: result.rows.length,
+    queuedCount: results.filter((item) => item.queued).length,
+    failedCount: results.filter((item) => item.reason === "reward_threshold_enqueue_failed").length,
+    results,
+  };
 }
 
 export async function getNetworkTaskProfileState({

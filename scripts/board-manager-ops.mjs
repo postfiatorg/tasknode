@@ -87,7 +87,7 @@ try {
     case "ensure-scope":
       result = await ensureBoardManagerScope({
         scope,
-        cadenceSeconds: Number(argValue("--cadence-seconds", process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS || "900")),
+        cadenceSeconds: Number(argValue("--cadence-seconds", process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS || "120")),
         maxActionsPerHour: Number(argValue("--max-actions-per-hour", process.env.TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR || "60")),
         metadata: { source: "board_manager_ops" },
       });

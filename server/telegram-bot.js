@@ -225,6 +225,39 @@ function modeForTelegramChat({ accountId = "", chatId = "", preferenceReader = g
   return knownModeLabel(preference?.mode) || defaultTelegramMode();
 }
 
+function fallbackTelegramMode(currentMode = "") {
+  const explicit = knownModeLabel(process.env.TELEGRAM_BOT_FALLBACK_CHAT_MODE);
+  const modes = chatModes();
+  const enabled = (label) => {
+    const status = modes.find((mode) => mode.label === label);
+    return status?.enabled === true && label !== currentMode;
+  };
+  if (explicit && enabled(explicit)) return explicit;
+
+  return [
+    "Private Instant",
+    "Frontier Instant",
+    "Private Thinking",
+    "Frontier Thinking",
+  ].find(enabled) || "";
+}
+
+function shouldRetryTelegramChat({ mode = "", result = {} } = {}) {
+  if (mode !== "Discount Thinking" || result?.body?.ok === true) return false;
+  if (result?.body?.estimate?.provider !== "deepseek") return false;
+  const error = result?.body?.error || "";
+  const status = Number(result?.body?.providerStatus || result?.status || 0);
+  return (
+    error === "provider_request_failed" ||
+    error === "provider_timeout" ||
+    error === "chat_provider_empty_response" ||
+    error === "provider_stream_unavailable" ||
+    status === 402 ||
+    status === 429 ||
+    status >= 500
+  );
+}
+
 function modeKeyboard(currentMode = "") {
   const current = knownModeLabel(currentMode) || defaultTelegramMode();
   return {
@@ -794,7 +827,22 @@ export async function processTelegramBotUpdate(update = {}, {
     fetchImpl,
   });
 
-  const result = await chatExecutor(payload, "POST", { source: "telegram_bot" });
+  let result = await chatExecutor(payload, "POST", { source: "telegram_bot" });
+  let fallbackMode = "";
+  let primaryChatStatus = result?.status || 0;
+  if (shouldRetryTelegramChat({ mode: currentMode, result })) {
+    fallbackMode = fallbackTelegramMode(currentMode);
+    if (fallbackMode) {
+      console.warn("telegram_bot_chat_provider_fallback", {
+        accountId: account.id,
+        fromMode: currentMode,
+        toMode: fallbackMode,
+        providerStatus: result?.body?.providerStatus || result?.status || 0,
+        providerMessage: text(result?.body?.providerMessage || result?.body?.message || "", 180),
+      });
+      result = await chatExecutor({ ...payload, mode: fallbackMode }, "POST", { source: "telegram_bot" });
+    }
+  }
   const replyText = result?.body?.ok ? assistantTextFromChatResult(result) : failureText(result);
   const sent = await sendBotMessage({
     chatId: message.chatId,
@@ -811,6 +859,9 @@ export async function processTelegramBotUpdate(update = {}, {
     accountId: account.id,
     conversationId,
     mode: currentMode,
+    effectiveMode: result?.body?.ok && fallbackMode ? fallbackMode : currentMode,
+    fallbackMode,
+    primaryChatStatus,
     chatStatus: result?.status || 0,
     sent,
   });

@@ -1,82 +1,249 @@
 # Task Node Production Scope
 
-This is the working scope for getting Task Node to a credible production cut. It is a launch-readiness document, not a claim that every row is already green. A surface is production-ready only when the product behavior works for a normal signed-in user, has an operator-visible failure state, and has current docs that match the implementation.
+Date: 2026-06-02
+
+Status: single active beta-readiness plan
+
+Contributor trust task: `task_2fa17202f941537b166cef01ee6b66c8`
+
+This is the one remaining active plan for Task Node. Older implementation plans
+have either been deleted from the docs surface or moved into the current
+surface/architecture docs that now own the behavior.
+
+The goal is an acceptable beta, not a perfect production system. Acceptable beta
+means a normal signed-in user can use the core loop, understand what state the
+system is in, and avoid unsafe money, wallet, or reward behavior.
 
 ## Launch Rule
 
-Task Node can move from dev-only to production only when every required launch surface is green or deliberately hidden. A green surface has live evidence, a documented owner boundary, and no known blocking user workflow failure. An amber surface is implemented but missing live evidence, has partial provider configuration, or has known edge cases that an operator can tolerate temporarily. A red surface has a user-visible failure or unsafe behavior and must not be exposed as production-ready.
+Task Node can be called beta-ready when every required launch surface is either:
 
-If a feature is implemented but out of launch scope, hide it, label it as out of scope, or keep it out of the main user path. Do not let an out-of-scope integration create a false production promise.
+- **Green**: the workflow works for a normal signed-in user, has live or command
+  evidence, and has docs/runbooks that match the implementation;
+- **Amber accepted**: the workflow is implemented and safe, but has a known
+  limitation that is clearly documented and tolerable for beta;
+- **Hidden**: the feature is not promised in the main user path.
+
+Red surfaces must not be presented as beta-ready. A red surface is one that
+misleads the user, loses durable state, charges or rewards incorrectly, leaks
+private data, blocks core navigation, or produces stale authoritative state.
+
+## Beta Acceptance Gates
+
+These four gates are the product boundary for the restored core Task Node beta.
+If a surface cannot pass its sentence, it does not ship as beta-ready.
+
+| Gate | Acceptance sentence | Current state | Remaining beta work |
+| --- | --- | --- | --- |
+| Telegram | A user sends a message, gets a clarifying response that references their context, and leaves sharper about what to do next. | Implemented and smoke-tested. Telegram can route linked private bot chats through configured chat modes, including Discount Thinking. | Prove at least one non-operator Telegram user can link and get a useful live reply. Keep provider failure messages actionable. |
+| Task generation | A user asks for a task in plain language, sees one task clearly connected to their values and strategy, and knows why it is the right thing to do. | Implemented through signed task request, task generation worker, PFTL/IPFS offer, projection, Tasks UI, and Network Task generation bridge. | Keep generated tasks from mirroring user input without adding judgment. Make task rationale and next action obvious in every path. |
+| Context editing | A user asks the system to review their context, it identifies a specific weakness and proposes a concrete edit, and the user accepts it because it is tighter than what they would produce alone. | Implemented as Context Refine with explicit proposal/apply behavior. Context save/publish boundaries are documented. | Re-run live save/refresh evidence after recent context changes. Ordinary draft refinement must never require wallet signing. |
+| Hive board | A user opens the board, sees what core contributors are working on and why, and can spot the single next task to earn rewards and advance shared goals. | Partially implemented. Hive has live project/task rows, project activity, Board Manager feed, full logs, state-aware message preconditions, and Network Task routing. | Highest-risk gate. Consolidate Task Node boards, prevent stale/opaque board messages, make contributor eligibility visible, and route validation tasks without confusing personal tasks and Network Tasks. |
+
+## What Is Already Done
+
+These items should not remain standalone plans. Their current truth lives in
+the linked docs.
+
+| Area | Done state | Current owner docs |
+| --- | --- | --- |
+| Task lifecycle UX | Request, offer, accept, refuse, cancel, submit evidence, verification, and reward states are implemented as the task product model. | [Tasks](#docs/tasks), [Task Lifecycle](#docs/task-lifecycle), [Task Async Engine](#docs/task-async-engine) |
+| Task review and reward | Review, verification request, verification response, and terminal `pf.reward.v1` reward outcome are implemented. Duplicate reward hardening is documented in the worker architecture. | [Task Review And Reward Worker](#docs/task-review-reward-worker), [Task Lifecycle](#docs/task-lifecycle) |
+| Network Task bridge | Board Manager can initiate project-linked Network Task allocation/generation jobs; the task engine writes the concrete task offer. | [Hive](#docs/hive), [Network Task Generation Worker](#docs/network-task-generation-worker), [Network Task Recovery](#docs/network-task-recovery) |
+| Board Manager v0 | Leased Board Manager jobs, action registry, user-message delivery, follow-ups, project restore/archive, and action audit feed exist. | [Board Manager](#docs/board-manager-architecture), [Hive](#docs/hive), [Deployment](#docs/deployment) |
+| Board Manager secretary packets | DeepSeek secretary packet compression exists and is documented as part of the Board Manager path. | [Board Manager Secretary Packet](#docs/board-manager-secretary-packet), [Board Manager](#docs/board-manager-architecture) |
+| Hive project professionalism | Hive cards, project details, task/activity rows, live contributor rollups, and agent feed are implemented. | [Hive](#docs/hive), [Hive Active Projects Helper](#docs/hive-active-projects-helper) |
+| Hive stale-message guard | Task-action `message_user` decisions require runtime preconditions and are skipped if fresh account state contradicts the message. | [Board Manager](#docs/board-manager-architecture), [Hive](#docs/hive) |
+| Context Refine | Context editing via proposal/apply flow is implemented. | [Refine Context](#docs/refine-context), [Context](#docs/context), [Chat](#docs/chat) |
+| Jobs chat spirit and retrieval | Standard chat uses the Jobs-calibrated prompt with context, task awareness, memory, and Jobs pgvector retrieval. | [Chat](#docs/chat), [AI Providers](#docs/ai-providers), [Jobs PGVector Corpus](#docs/jobs-pgvector-corpus) |
+| Memory and Network Diagnostic Report | Turn memory, deep memory, and Network Task profile workers exist; Memory surfaces the compressed context. | [Memory](#docs/memory), [Turn Memory Worker](#docs/turn-memory-worker), [Deep Memory Worker](#docs/deep-memory-worker), [Network Task Profile Worker](#docs/network-task-profile-worker) |
+| Profile and daily airdrop | Public/private profile, profile NFT/PFP handling, and daily airdrop worker docs exist. | [Profile](#docs/profile), [Daily Airdrop](#docs/daily-airdrop), [Daily Airdrop Worker](#docs/daily-airdrop-worker) |
+| PFTL transaction cache | PFTL cache, hot sync, archive sync, WSS watcher, reducer, and retention runbooks exist. | [PFTL Transaction Cache](#docs/pftl-transaction-cache), [PFTL Cache Reducer](#docs/pftl-cache-reducer), [PFTL Current RPC And WSS](#docs/pftl-current-rpc-and-wss) |
+| Contributor trust framework | Beta stance is defined: no heavy upfront Sybil gate; trust is earned through task history, linked-account signals, evidence quality, and targeted Board Manager validation tasks when risk warrants it. | This plan, plus [Board Manager](#docs/board-manager-architecture) and [Task Review And Reward Worker](#docs/task-review-reward-worker) |
+
+## Contributor Trust And Sybil Verification Policy
+
+Beta should not start with a heavy Sybil gate. A new user's first experience
+should be a useful task or a clear reason no task is available, not a generic
+proof-of-personhood checkpoint. Trust should emerge from work output first, then
+shape routing, reward caps, and review depth.
+
+The default beta eligibility rule is:
+
+1. The user has a Task Node account.
+2. The user has a linked wallet for reward-bearing work.
+3. The user has enough context and task history to generate a Network Diagnostic
+   Report, or has explicit operator authorization from `agticorp` or
+   `goodalexander`.
+4. The user has no active Network Task capacity blocker and no unresolved
+   operator hold.
+
+This means wallet-link plus Network Diagnostic Report is the normal beta path.
+Linked accounts, Telegram, GitHub, email, X, wallet age, and public handle are
+signals, not hard proof-of-personhood requirements.
+
+### Trust Inputs
+
+Board Manager should receive a compact contributor trust packet, not full raw
+private history. The packet should include:
+
+- linked-account count and provider mix;
+- explicit operator authorization or testing exemption;
+- wallet age, wallet reuse, and reward-wallet mapping;
+- Network Diagnostic Report status;
+- Network Task completion rate;
+- evidence quality average and recent trend;
+- verification responsiveness;
+- refusal rate and refusal reasons;
+- duplicate account, account-deletion, faucet, or initiation-grant abuse signals;
+- reward/review idempotency anomalies;
+- open disputes or operator holds.
+
+The user-facing product should not show a raw Sybil score. It should show plain
+eligibility language: `eligible`, `needs more task history`, `validation task
+needed`, `capacity blocked`, `operator hold`, or `no suitable task right now`.
+
+### Board Manager Validation Path
+
+Board Manager may require Sybil verification only by routing a specific
+validation task or by applying a temporary operator hold. It should not invent a
+generic signup wall.
+
+Board Manager should choose a validation task when one or more are true:
+
+- the contributor is unknown and the next available Network Task is high reward;
+- linked-account or wallet signals suggest possible duplicate accounts;
+- the user has repeated account resets, faucet attempts, or initiation-grant
+  churn;
+- recent evidence quality is low and the next task would be expensive;
+- the user is requesting access to a sensitive project, trust-sensitive
+  coordination work, or a role adjacent to review/reward authority;
+- an operator marked the account for validation.
+
+Board Manager should not require validation when:
+
+- the task is low-value and non-sensitive;
+- the contributor has recent high-quality completed work;
+- the account is a known QA/test account with an explicit exemption;
+- the only concern is lack of social graph data.
+
+### Validation Task Shape
+
+A validation task must be concrete, respectful, and hard to fake at scale. It
+should validate routing confidence, not humiliate the user or ask for private
+information.
+
+Acceptable validation task examples:
+
+- Contact a named project participant about their project through an approved
+  channel, ask them to request a personal task, and submit the resulting task
+  id.
+- Ask one useful question in a project channel, then submit the question, the
+  answer, and the resulting next-action summary.
+- Link a second independent account provider and confirm the same wallet remains
+  attached.
+- Complete a small public project-specific task that requires reading the live
+  Hive board and producing an artifact that references the correct project,
+  contributor, and next action.
+- Produce a concise explanation of why a proposed Network Task matters and what
+  evidence would prove it was completed.
+
+Disallowed validation task examples:
+
+- Government ID, KYC, or social-graph attestation for ordinary beta access.
+- Requests for client names, investor names, trading IP, termination decisions,
+  legal/confidential facts, or private team disputes.
+- Generic "prove you are human" busywork unrelated to the network.
+- Tasks that require another user to disclose private context.
+
+Validation task outcomes:
+
+- Pass: contributor becomes eligible for the target task class or reward band.
+- Partial: contributor may receive lower-cap tasks or stricter review.
+- Fail: contributor is not banned automatically; Board Manager lowers routing
+  confidence and may require operator review for higher-value tasks.
+- Abuse: operator hold or route pause is allowed when the evidence suggests
+  faucet, reward, confidentiality, or duplicate-account abuse.
+
+### Reward Safeguards
+
+Trust scoring must never replace protocol idempotency. Every task still has one
+terminal reward outcome through `pf.reward.v1`, and replayed workers must return
+the existing reward reference instead of signing again.
+
+Reward safeguards for beta:
+
+- Unknown contributors get lower reward caps and stricter verification.
+- Eligible contributors get normal Network Task routing and normal review.
+- Trusted contributors can receive higher caps and possible randomized upside.
+- Randomized upside can pay up to `2x` for above-and-beyond work, but only after
+  evidence quality and task usefulness justify it.
+- Testing exemptions can bypass activation friction for QA accounts, but cannot
+  bypass duplicate reward protection.
+- Disputes create task-level audit records. They do not become side-channel chat
+  promises.
+
+## Remaining Beta Work
+
+### P0: Must Fix Or Prove Before Beta
+
+| P0 | Work | Why it matters | Done when |
+| --- | --- | --- | --- |
+| P0-1 | Prove non-operator Telegram linking and chat. | Telegram is a core beta gate and cannot depend only on owner accounts. | A non-operator Telegram user links, sends a private bot message, receives a useful context-aware reply, and the conversation appears in account chat history. |
+| P0-2 | Prove Context Refine save durability on live dev. | A context editor that says "saved" but loses the edit destroys trust. | A live account accepts a Context Refine edit, refreshes, and the edit remains. |
+| P0-3 | Make Hive board state understandable to users. | The board is still the weakest product surface and can look arbitrary or stale. | A user can see project purpose, current contributor work, one next reward-bearing task or honest blocker, and why Board Manager did or did not act. |
+| P0-4 | Consolidate duplicate Task Node project boards. | Multiple Task Node boards make routing look random and hide the real active project. | Task Node work routes under one durable Task Node project unless an operator explicitly creates a separate real project. |
+| P0-5 | Make contributor eligibility explainable. | Users currently cannot tell whether they can get Network Tasks or why not. | Hive/Tasks explains the real blocker: missing wallet, missing Network Diagnostic Report, capacity blocker, validation task needed, operator hold, or no suitable project task. Board Manager can route a validation task instead of silently blocking a user behind a hidden Sybil concern. |
+| P0-6 | Keep reward/review idempotency green. | Duplicate rewards or duplicate verification requests are economically unsafe. | Replay/idempotency smokes pass, reward projections show one terminal reward outcome per task, and Deathmarch/public feeds do not fabricate duplicate chain events. |
+| P0-7 | Finish user-facing provider failure behavior. | Chat and Telegram failures must not look like random product collapse. | Failed provider calls preserve the user message, show a clear retry/mode-health message, and do not bill as successful completions. |
+
+### P1: Beta Hardening
+
+| P1 | Work | Done when |
+| --- | --- | --- |
+| P1-1 | Add contributor trust read model. | Linked-account strength, wallet stability, Network Diagnostic Report status, task completion rate, evidence quality, verification responsiveness, refusals, operator authorization, testing exemption, and Sybil risk are compacted for Board Manager. |
+| P1-2 | Add contributor-validation Network Task class. | Board Manager can route a respectful validation task when risk warrants it, record the result, and use that result to raise/lower eligibility without creating a generic upfront Sybil gate. |
+| P1-3 | Add randomized reward upside policy. | Tasks can pay up to `2x` for above-and-beyond work without bypassing review, caps, or idempotency. |
+| P1-4 | Tighten System Status evidence. | Every scheduler/worker/RPC row has status, last run, next run or freshness, and a runbook link. |
+| P1-5 | Improve Hive/Board Manager full logs. | Full logs show source facts, rejected actions, next check, and hook result before raw JSON. |
 
 ## Required Launch Surface Matrix
 
-| Surface | Production scope | Green evidence required | Current docs |
+| Surface | Beta scope | Current state | Current docs |
 | --- | --- | --- | --- |
-| Login and account cloud | Email, GitHub, Telegram, and X login/linking must work. Discord is out of the initial production scope even if implementation code exists. Random normal Telegram users must be able to authenticate, not only `goodalexander`. | `npm run auth-login-state-fixture` passes; live dev callback test passes for Email, GitHub, Telegram, and X; Connected Accounts shows only launch-scoped enabled providers or clearly marks out-of-scope providers unavailable. | [Auth And Connected Accounts](#docs/auth-and-connected-accounts), [Telegram Bot Chat](#docs/telegram-bot-chat) |
-| Funding and wallet | Wallet creation/link/unlock must work. USDC, USDT, and ETH on Ethereum mainnet must be accepted as custodial account top-ups. USDC must credit usage and trigger the qualifying PFT initiation grant path when eligible. USDT and ETH must be live-checked before production because they were not confirmed in the latest operator notes. | A clean deposit address is allocated; USDC live credit is observed; USDT live credit is observed; ETH live credit is observed; duplicate sync does not double-credit; wallet lock/unlock and PFT balance remain intact. | [Wallet](#docs/wallet), [Ethereum Deposit RPC](#docs/ethereum-deposit-rpc), [Deployment](#docs/deployment) |
-| Context | The signed-in user can create, edit, save, and reload the current context document without needing a wallet. Publishing to PFTL remains an explicit wallet action. | Manual save/reload test passes for email and OAuth accounts; context document is injected into chat; publish path refuses locked or missing wallet state safely. | [Context](#docs/context), [Encryption](#docs/encryption), [PFTL Usage](#docs/pftl) |
-| Context Refine | Context Refine must open from chat, produce a clear proposal, and apply only after explicit user acceptance. It must not silently overwrite context or publish to PFTL. | `npm run context-edit-smoke` passes; live dev user can request an edit, see the inline proposal, accept it, and observe the saved context revision update. | [Chat](#docs/chat), [Refine Context](#docs/refine-context) |
-| Chat | All exposed chat settings must work end to end with persistence, billing, context injection, task context injection, memory scheduling, and visible errors. Current exposed modes are Private Instant, Private Thinking, Discount Thinking, Frontier Instant, and Frontier Thinking. If the production product should have exactly four settings, hide or merge Discount Thinking before launch; otherwise it is in scope because it is exposed. | `npm run runtime-smoke`, `npm run chat-spirit-prompt-smoke`, and a live dev send for each exposed mode pass; failed provider calls show useful errors and do not charge successful-completion prices. | [Chat](#docs/chat), [AI Providers](#docs/ai-providers), [System Status](#docs/system-status-home) |
-| Hive Chat | Hive Chat must be a real durable conversation, not a transient task-manager trigger. User Hive messages must be logged. Board Manager replies must appear in that same account-scoped Hive Chat only through explicit `message_user` actions. The product must not archive random active work or create unpredictable user-facing churn. | A signed-in user gets the pinned Hive Chat; posting records chat history and Hive Context; Board Manager message delivery creates one logged assistant message and unread badge; archive actions are reversible unless operator-locked. | [Hive](#docs/hive), [Board Manager](#docs/board-manager-architecture), [Board Manager Secretary Packet](#docs/board-manager-secretary-packet) |
-| Hive board and Network Tasks | Hive must show live projects, task routing, operators, and activity from real task/projection rows. Board Manager cadence must be inspectable and controlled by the scheduler, not random task-manager side effects. | System Status rows for Board Manager, Secretary Packet, Hive Secretary, Active Projects, Network Task Generation, Task Generation, and Task Review are green or have explained amber states; a project-linked Network Task can move through the normal task lifecycle. | [Hive](#docs/hive), [Network Task Generation Worker](#docs/network-task-generation-worker), [Task Lifecycle](#docs/task-lifecycle) |
-| Tasks | Request, accept, refuse, cancel, submit evidence, review, and reward paths must work through signed PFTL/IPFS-backed task events with Postgres projections as the fast read model. | `npm run task-lifecycle-smoke`, `npm run task-receipt-projection-smoke`, and a live dev signed request-to-visible-task check pass. | [Tasks](#docs/tasks), [Task Async Engine](#docs/task-async-engine), [Task Generation Worker](#docs/task-generation-worker), [Task Review And Reward Worker](#docs/task-review-reward-worker) |
-| Telegram bot | Linked Telegram users must be able to chat through the bot, choose available chat modes, and see useful responses. Unlinked users must get link instructions. Group chats must not run account-scoped chat. | `npm run telegram-bot-webhook-smoke` passes; live Telegram webhook status is healthy; at least one non-operator Telegram account links and sends a private bot message successfully. | [Telegram Bot Chat](#docs/telegram-bot-chat), [Auth And Connected Accounts](#docs/auth-and-connected-accounts) |
-| Memory | Memory must open, render calmly, support deletion, and avoid exposing internal packet ids or provider model ids as user-facing content. Background memory failures must be auditable without blocking chat. | Memory tab opens and scrolls; delete removes account memory from the live store; failed jobs show operator-requeue status without leaking low-level internals to ordinary users. | [Memory](#docs/memory), [Turn Memory Worker](#docs/turn-memory-worker), [Deep Memory Worker](#docs/deep-memory-worker) |
-| Profile and airdrop | Public profile must explain earned PFT, rewards, drops, selected PFP/NFT, aliases, and public identity without confusing private account state. Daily airdrop must be auditable and not look like a fake payout when no recipients qualify. | Public/private profile views agree on intended public fields; daily airdrop worker run with zero recipients is labeled as a no-op with reason; PFT earned math is documented. | [Profile](#docs/profile), [Daily Airdrop](#docs/daily-airdrop), [Daily Airdrop Worker](#docs/daily-airdrop-worker) |
-| Search | Search must retrieve user-visible cached work without exposing unrelated accounts or raw internal identifiers as primary content. | Search returns account-scoped results with empty/error states; no cross-account leakage in route smoke or manual live check. | [Search](#docs/search), [Database](#docs/database) |
-| Docs and System Status | Help must include current user-facing surface docs, architecture runbooks for every live status row, and a live System Status page with last run, next run, trigger, owner, and runbook links. | `npm run system-status-smoke` passes; every status row has a clickable architecture page; production scope page appears under Plans; stale implemented plans are under Implemented / Deprecated Plans. | [System Status](#docs/system-status-home), [Deployment](#docs/deployment), [Execution Mandate](#docs/execution-mandate) |
-| Deployment and operations | Fly dev/prod deployment must start web, worker, and board-manager process groups with guarded background roles. Operators must have commands for deploy, worker guard, Board Manager guard, migrations, and data bridge. | `npm run fly:deploy` completes for dev; `npm run fly:background-guard` reports worker and board-manager guard ok; System Status generated from live app matches expected rows. | [Deployment](#docs/deployment), [Database](#docs/database), [System Status](#docs/system-status-home) |
+| Login and account cloud | Email, GitHub, Telegram, and X login/linking. Discord remains out of launch scope. | GitHub has live evidence. Telegram must be proven with non-operator linking. Email and X need current beta evidence. | [Auth And Connected Accounts](#docs/auth-and-connected-accounts), [Telegram Bot Chat](#docs/telegram-bot-chat) |
+| Wallet and funding | Wallet creation/link/unlock and top-up accounting for launch-supported assets. | Wallet flow works in QA. USDC evidence exists historically; USDT/ETH need current confirmation before a production claim. | [Wallet](#docs/wallet), [Ethereum Deposit RPC](#docs/ethereum-deposit-rpc), [Deployment](#docs/deployment) |
+| Context | Create, edit, save, reload current context without wallet. Publish remains wallet-bound. | Implemented; live save durability must be rechecked. | [Context](#docs/context), [Encryption](#docs/encryption), [PFTL Usage](#docs/pftl) |
+| Context Refine | Review context, propose edit, apply only after user acceptance. | Implemented; needs fresh live evidence. | [Refine Context](#docs/refine-context), [Chat](#docs/chat) |
+| Chat | Exposed modes persist messages, use context/memory/task state, bill correctly, and fail clearly. | Implemented; provider failure behavior and mode matrix need recurring live QA. | [Chat](#docs/chat), [AI Providers](#docs/ai-providers) |
+| Telegram bot | Linked private bot chat for normal users; unlinked users get link instructions. | Implemented; non-operator live proof remains. | [Telegram Bot Chat](#docs/telegram-bot-chat) |
+| Tasks | Request, accept/refuse/cancel, submit, verify, and reward through PFTL/IPFS and projections. | Implemented; keep replay/idempotency checks green. | [Tasks](#docs/tasks), [Task Lifecycle](#docs/task-lifecycle), [Task Review And Reward Worker](#docs/task-review-reward-worker) |
+| Hive Chat | Durable account-scoped Hive conversation with logged Board Manager replies. | Implemented; system-vs-chat distinction and stale-state audit remain product risks. | [Hive](#docs/hive), [Board Manager](#docs/board-manager-architecture) |
+| Hive board and Network Tasks | Live project/task/operator/activity view with one clear next reward task or blocker. | Implemented but highest-risk. Needs board consolidation and eligibility clarity. | [Hive](#docs/hive), [Network Task Generation Worker](#docs/network-task-generation-worker) |
+| Memory | Readable memory, deletion, and worker failure audit without exposing internal packet ids as primary labels. | Implemented; keep UX/regression evidence current. | [Memory](#docs/memory), [Turn Memory Worker](#docs/turn-memory-worker), [Deep Memory Worker](#docs/deep-memory-worker) |
+| Profile and airdrop | Public/private profile, PFT metrics, profile NFT/PFP, and honest airdrop state. | Implemented; daily zero-recipient no-op must stay clearly labeled. | [Profile](#docs/profile), [Daily Airdrop](#docs/daily-airdrop) |
+| Docs and System Status | Help docs and live status rows match actual schedulers, workers, RPCs, and runbooks. | Implemented; keep stale plan pages removed. | [System Status](#docs/system-status-home), [Execution Mandate](#docs/execution-mandate) |
+| Deployment and operations | Fly deploy starts app, worker, and Board Manager process groups with guard checks. | Implemented. | [Deployment](#docs/deployment), [Database](#docs/database) |
 
-## Explicitly Out Of Initial Production Scope
+## Explicitly Out Of Initial Beta Scope
 
-- Discord login and Discord linking as a production promise. Implementation may exist, but launch scope is Email, GitHub, Telegram, and X.
-- User withdrawals from the Ethereum top-up address.
-- Wallet-connect or MetaMask-based top-up authorization.
+- Discord login/linking as a production promise.
+- User withdrawals from Ethereum top-up addresses.
+- WalletConnect or MetaMask top-up authorization.
 - Nostr public broadcast.
 - Autonomous irreversible Hive archive actions.
-- Unlogged Hive or Board Manager messages.
-- Hidden legacy tools such as Motivation, Brainstorming Context, and Context Rewrite unless they are rebuilt as production surfaces.
+- Hidden legacy context modes such as Motivation, Brainstorming Context, and Rewrite.
+- Raw Sybil-score display to users.
+- Heavy upfront Sybil gates, KYC, government ID, or social-graph attestation for
+  ordinary beta access.
+- Legal/confidential, client-name, termination, or trading-IP disclosure tasks.
 
-## Immediate Work Order
+## Operating Evidence Rule
 
-1. Get login green for Email, GitHub, Telegram, and X. Hide or disable Discord for production launch unless the scope changes.
-2. Get funding green with live USDC, USDT, and ETH top-up evidence. Do not treat untested asset support as green.
-3. Get Context and Context Refine green because chat quality depends on current context being durable and editable.
-4. Get Chat green for every exposed mode. Decide whether production exposes four modes or five modes with Discount Thinking.
-5. Get Hive Chat green as a logged, durable conversation. Stop treating Hive conversation as a side effect of the task manager.
-6. Get Telegram bot green for a non-operator account.
-7. Get the task lifecycle and Network Task lifecycle green enough that Hive can route work without inventing fake board motion.
-8. Make System Status green or honestly amber/red with runbook links for every non-green row.
+Do not mark a row green from code inspection alone. Green requires at least one
+command or live product observation proving the user workflow.
 
-## Evidence Log
-
-```text
-Date: 2026-05-26
-Environment: Fly dev live app at https://tasknodeofficial-dev.fly.dev plus local operator verification command
-Surface: Login and account cloud
-Status: amber
-Evidence: GitHub login was validated live with the GitHub account 0xPostFiatChad. The live runtime store records username 0xPostFiatChad, profileUrl https://github.com/0xPostFiatChad, and a GitHub OAuth session issued at 2026-05-26T23:18:09Z. The live provider readiness endpoint also reports github configured=true, enabled=true, status=ready, startPath=/api/auth/start/github, and callbackPath=/api/auth/callback/github. This proves the GitHub beta login path is working as a user-facing OAuth flow.
-Commands: curl -fsS https://tasknodeofficial-dev.fly.dev/api/auth/providers
-Live user/account tested: GitHub 0xPostFiatChad; Task Node display name @pftchad
-Remaining blocker: The whole Login surface is not green until Email, Telegram for a non-operator user, and X have matching live beta evidence, and Discord is hidden/disabled or explicitly excluded from the beta provider surface.
-Docs updated: docs/wiki/plans/task-node-production-scope.md
-```
-
-```text
-Date: 2026-05-26
-Environment: local repo / deterministic Telegram webhook smoke against Task Node Official code; Fly dev live Telegram behavior operator-reported after the Discount Thinking Telegram rollout
-Surface: Telegram bot
-Status: amber
-Evidence: I ran the Telegram bot webhook smoke and it passed with accountId acct_oauth_de97b03526100b281c9c4333, conversationId account_acct_oauth_de97b03526100b281c9c4333_telegram_12345, chatCalls 3, sentMessages 10, sentChatActions 3, answeredCallbacks 3, and telegramBotEvents 30. That smoke exercises mode selection for Discount Thinking and verifies the next Telegram message routes to Discount Thinking. The operator also repeatedly tested Discount Thinking in live Telegram after the rollout and reported it works.
-Commands: npm run telegram-bot-webhook-smoke
-Live user/account tested: goodalexander linked Telegram account, operator-reported repeated live Discount Thinking chats; deterministic smoke account acct_oauth_de97b03526100b281c9c4333
-Remaining blocker: Telegram bot is not green for production until at least one non-operator Telegram user links successfully and sends a private bot message through the live webhook.
-Docs updated: docs/wiki/plans/task-node-production-scope.md and docs/wiki/architecture/telegram-bot-chat.md
-```
-
-## Evidence Log Format
-
-Each production-readiness pass should append a dated evidence block using this shape:
+Each beta-readiness pass should append evidence in this shape:
 
 ```text
 Date:
@@ -90,4 +257,28 @@ Remaining blocker:
 Docs updated:
 ```
 
-Do not mark a row green from code inspection alone. Green requires at least one command or live product observation that proves the user workflow.
+## Current Evidence Notes
+
+```text
+Date: 2026-05-26
+Environment: Fly dev live app at https://tasknodeofficial-dev.fly.dev plus local operator verification command
+Surface: Login and account cloud
+Status: amber
+Evidence: GitHub login was validated live with GitHub account 0xPostFiatChad. The live runtime store recorded username 0xPostFiatChad and the live provider readiness endpoint reported GitHub configured, enabled, and ready.
+Commands: curl -fsS https://tasknodeofficial-dev.fly.dev/api/auth/providers
+Live user/account tested: GitHub 0xPostFiatChad; Task Node display name @pftchad
+Remaining blocker: Email, Telegram for a non-operator user, and X need matching live beta evidence. Discord must remain hidden/disabled or explicitly excluded.
+Docs updated: docs/wiki/plans/task-node-production-scope.md
+```
+
+```text
+Date: 2026-05-26
+Environment: local deterministic Telegram webhook smoke plus operator-reported Fly dev Telegram behavior
+Surface: Telegram bot
+Status: amber
+Evidence: Telegram bot webhook smoke passed and exercised mode selection for Discount Thinking. Operator reported repeated live Discount Thinking Telegram chats working.
+Commands: npm run telegram-bot-webhook-smoke
+Live user/account tested: goodalexander linked Telegram account; deterministic smoke account acct_oauth_de97b03526100b281c9c4333
+Remaining blocker: Telegram is not green until at least one non-operator Telegram user links and sends a private live bot message successfully.
+Docs updated: docs/wiki/plans/task-node-production-scope.md and docs/wiki/architecture/telegram-bot-chat.md
+```

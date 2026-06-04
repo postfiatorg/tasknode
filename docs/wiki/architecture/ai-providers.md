@@ -35,7 +35,7 @@ Unknown mode strings are rejected with `unknown_chat_mode`. On app load, the def
 
 Frontier modes call OpenAI through the Responses API. Task Node sends:
 
-- `instructions`: the shared Task Node instruction assembly from `server/chat-memory-context.js::taskNodeInstructions`. This includes the base operational prompt and, by default, the Jobs XML prompt rendered with the current context document, memory, and task state.
+- `instructions`: the shared Task Node instruction assembly from `server/chat-memory-context.js::taskNodeInstructions`. This includes the base operational prompt and, by default, the Jobs Markdown prompt rendered with the current context document, memory, task state, and pgvector Jobs retrieval context.
 - `input`: recent conversation, the user message, and supported attachments.
 - `reasoning`: `medium` for Frontier Instant and `high` for Frontier Thinking.
 - `store: false`: app history remains in Task Node Postgres instead of provider-hosted state.
@@ -78,9 +78,16 @@ It is not the OpenRouter ZDR route. It exists for lower-cost direct DeepSeek V4
 Pro reasoning when the user does not need ZDR routing or multimodal file
 inspection.
 
+Discount Thinking has a 120 second default provider budget because direct
+DeepSeek V4 Pro can spend noticeable time in provider-side thinking before
+visible output. If the streaming response is terminated before any visible text
+is emitted, Task Node retries that same request through the non-streaming
+DeepSeek completion path and only surfaces an error if that completion also
+fails.
+
 ## Shared Chat Spirit
 
-All chat modes use one prompt assembly boundary. `prompts/chat/task_node_instructions_v1.md` remains the operational product-truth prompt. `prompts/chat/jobs_chat_os_v1.xml` is then rendered by `server/chat-spirit-context.js` so the model's voice and judgment feel product-led without duplicating provider code. The current user message, history, and attachments remain provider messages; the Jobs XML receives only durable background slots for the context document, task projection, memory context, and pgvector Jobs retrieval.
+All chat modes use one prompt assembly boundary. `prompts/chat/task_node_instructions_v1.md` remains the operational product-truth prompt. `prompts/chat/jobs_standard_chat_codex_style_draft.md` is then rendered by `server/chat-spirit-context.js` so the model's voice and judgment feel product-led without duplicating provider code. The current user message, history, and attachments remain provider messages; the Jobs Markdown prompt receives only durable background slots for the context document, task projection, memory context, and pgvector Jobs retrieval. The chat thinking disclosure exposes the rendered Jobs retrieval context for audit.
 
 Jobs retrieval uses OpenAI `/v1/embeddings` through `server/embedding-provider.js`, defaulting to `text-embedding-3-small` with 1536 dimensions. That embedding call is internal retrieval infrastructure; it is not a chat completion provider route and does not enable web search on private modes.
 
@@ -98,7 +105,7 @@ The target architecture is Board Manager centered. The Board Manager is a leased
 | Hive Secretary | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON report | `store=false` |
 | Hive Active Projects | OpenAI | `/v1/responses` | `gpt-5.5-pro` | `high` | Structured JSON project set | `store=false` |
 
-Hive Immediate Response is the synchronous conversational layer for Hive Chat. It runs after the user message is saved into Hive Context, so its prompt sees the updated account-scoped source packet including bounded text paste attachments for the requesting user. It also reads the latest current `board_manager_secretary_packets` row when available, prefers an exact packet for the live source digest, and falls back to the latest compressed packet plus live board facts when the user's new input has made that packet slightly stale. The live board facts are read-only shared board facts and include current action pressure, open follow-ups, projects, tasks, task requests, candidates, and recent Board Manager run summaries. The prompt separately marks which tasks or follow-ups are tied to the requesting `account_id`; otherwise the response must discuss them as shared board state or other contributors' work. This lets Hive acknowledge and clarify immediately, but it cannot mutate board state; durable mutations still require a later Board Manager action. Set `TASKNODE_HIVE_IMMEDIATE_RESPONSE_ENABLED=false` to disable it, `TASKNODE_HIVE_IMMEDIATE_MODEL` to override the model, `TASKNODE_HIVE_IMMEDIATE_MAX_TOKENS` to tune output length, and `TASKNODE_HIVE_IMMEDIATE_REASONING=high` only if the immediate reply should spend reasoning budget.
+Hive Immediate Response is the synchronous conversational layer for Hive Chat. It runs after the user message is saved into Hive Context, so its prompt sees the updated account-scoped source packet including bounded text paste attachments for the requesting user. It also reads the latest current `board_manager_secretary_packets` row when available, prefers an exact packet for the live source digest, and falls back to the latest compressed packet plus live board facts when the user's new input has made that packet slightly stale. The live board facts are read-only shared board facts and include current action pressure, open follow-ups, projects, tasks, task requests, candidates, and recent Board Manager run summaries. The prompt separately marks which tasks or follow-ups are tied to the requesting `account_id`; otherwise the response must discuss them as shared board state or other contributors' work. This lets Hive acknowledge and clarify immediately, but it cannot mutate board state; durable mutations still require a later Board Manager action. Set `TASKNODE_HIVE_IMMEDIATE_RESPONSE_ENABLED=false` to disable it, `TASKNODE_HIVE_IMMEDIATE_MODEL` to override the model, `TASKNODE_HIVE_IMMEDIATE_MAX_TOKENS` to tune output length, and `TASKNODE_HIVE_IMMEDIATE_REASONING=high` only if the immediate reply should spend reasoning budget. The default output budget is `1600` tokens, with `TASKNODE_HIVE_IMMEDIATE_MAX_TOKENS` clamped between `120` and `4096`.
 
 The Board Manager model default comes from OpenRouter's `qwen/qwen3.7-max` route. The model page/API report a 1M context window, structured-output support, and pricing of $2.50 per 1M input tokens and $7.50 per 1M output tokens. OpenAI `gpt-5.5-pro` remains available as an explicit override when the operator needs the older higher-cost path: set `TASKNODE_BOARD_MANAGER_PROVIDER=openai` and `TASKNODE_BOARD_MANAGER_MODEL=gpt-5.5-pro`.
 
@@ -137,14 +144,16 @@ Current behavior:
 
 - Provider: OpenAI Image API.
 - Model: `gpt-image-2`.
-- Private prompt source: `private_prompts/profile_nft_image.md`, or `PROFILE_NFT_PROMPT_PATH` when explicitly configured.
-- Public fallback prompt: `prompts/profile_nft_image.placeholder.md`.
+- Private prompt source: `PROFILE_NFT_PROMPT_B64` or `PROFILE_NFT_PROMPT_TEXT` in deployed environments; local development can also use ignored `private_prompts/profile_nft_image.md`, or `PROFILE_NFT_PROMPT_PATH` when explicitly configured.
+- Dev/test fallback prompt: `prompts/non_production/profile_nft_dev/profile_nft_image.placeholder.md`. Production generation fails closed unless a private prompt is configured.
 - Renderer: `server/profile-nft-prompts.js`.
 - Generator: `server/profile-nft-generation.js`.
 - Persistence: `server/repositories/profile-nfts.js` and `profile_nfts`.
 - Browser result: generated image data URL, IPFS image CID, model metadata, and prompt digests; not the prompt body.
 
-The OpenAI image generation guide says the Image API is the right path for a single image from one prompt, while the Responses API image tool is better for conversational or multi-turn image workflows. Task Node uses the Image API for the first profile NFT generation path. `gpt-image-2` supports square `1024x1024` output and `low`, `medium`, `high`, or `auto` quality; the current local route defaults to `1024x1024` and `low` for fast iteration. `gpt-image-2` does not support transparent backgrounds, so profile images should use opaque/light backgrounds.
+The OpenAI image generation guide says the Image API is the right path for a single image from one prompt, while the Responses API image tool is better for conversational or multi-turn image workflows. Task Node uses the Image API for the first profile NFT generation path. `gpt-image-2` supports square `1024x1024` output and `low`, `medium`, `high`, or `auto` quality; the current route defaults to `1024x1024` and `high` so generated profile NFTs are not silently produced as low-quality launch assets. `gpt-image-2` does not support transparent backgrounds, so profile images should use opaque/light backgrounds.
+
+In `NODE_ENV=production`, profile NFT generation refuses to run from the public placeholder prompt unless `PROFILE_NFT_ALLOW_PLACEHOLDER=true` is explicitly set. This prevents live accounts from minting or saving generic images when the private prompt secret is missing.
 
 After generation, the server pins the image bytes to IPFS and records only public-safe metadata: image CID, image hash, prompt digest, template digest, provider/model, and status. The full image prompt remains server-side in `private_prompts/` or a configured private prompt path.
 

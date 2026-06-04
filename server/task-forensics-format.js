@@ -49,8 +49,7 @@ function schemaLabel(schema = "", payload = {}) {
     "pf.task.submission.v1": "Evidence submitted",
     "pf.task.verification_request.v1": "Verification requested",
     "pf.task.verification_response.v1": "Verification response submitted",
-    "pf.reward.v1": "Reward paid",
-    "pf.task.reward_decision.v1": "Reward decision",
+    "pf.reward.v1": "Reward outcome",
     "pf.task.update.v1": "Task updated",
   }[normalized] || titleCase(normalized.replace(/^pf\./, "") || "Task event");
 }
@@ -157,7 +156,10 @@ function payloadDetails(schema = "", payload = {}, pointer = {}) {
   addDetail(details, "Title", payload.title);
   addDetail(details, "Kind", payload.task_kind || payload.kind);
   addDetail(details, "Reward offer", payload.reward_offer?.amount_estimate_pft || payload.reward_offer_pft);
-  addDetail(details, "Reward paid", payload.reward_pft || payload.reward_actual_pft || payload.score?.reward_pft);
+  addDetail(details, "Reward outcome", payload.reward_pft || payload.reward_actual_pft || payload.score?.reward_pft);
+  addDetail(details, "Economic reward", payload.economic_reward_pft);
+  addDetail(details, "Transaction amount drops", payload.transaction_amount_drops);
+  addDetail(details, "Carrier drops", payload.carrier_amount_drops);
   addDetail(details, "Reward tier", payload.reward_tier || payload.score?.decision);
   addDetail(details, "Reward score", payload.reward_score || payload.score?.completion);
   addDetail(details, "Evidence quality", payload.score?.evidence_quality);

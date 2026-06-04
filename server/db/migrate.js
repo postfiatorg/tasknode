@@ -58,6 +58,8 @@ const migrations = [
   "048_account_deletion_audit.sql",
   "049_board_manager_message_dedupe_index.sql",
   "050_board_manager_state_guardrails.sql",
+  "051_task_review_publication_locks.sql",
+  "052_taskgen_split_prompt_versions.sql",
 ];
 
 let migrated = false;

@@ -45,11 +45,17 @@ export function taskEventMeaning(schema = "", payload = {}) {
   if (normalized === "pf.task.verification_response.v1") {
     return "The user responded to the verification request.";
   }
-  if (normalized === "pf.task.reward_decision.v1") {
-    return "The task authority scored the submitted evidence.";
-  }
   if (normalized === "pf.reward.v1") {
-    return "The reward wallet paid the user.";
+    const rewardPft = numberValue(
+      payload?.reward_pft ||
+        payload?.reward_actual_pft ||
+        payload?.economic_reward_pft ||
+        payload?.reward_score?.reward_pft
+    );
+    if (rewardPft <= 0) {
+      return "The reward wallet recorded a zero-PFT review outcome with a one-drop carrier transaction.";
+    }
+    return "The reward wallet recorded the review outcome and paid the user.";
   }
   return "";
 }
@@ -63,17 +69,11 @@ function numberValue(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function rewardDecisionAmount(event = {}) {
-  const payload = event?.rawPayload || {};
-  return numberValue(payload?.score?.reward_pft || payload?.reward_pft || payload?.reward_actual_pft);
-}
-
 export function taskEventExpectation({ status = "", timeline = [] } = {}) {
   const events = Array.isArray(timeline) ? timeline : [];
   const schemas = new Set(events.map(eventSchema).filter(Boolean));
   const last = events[events.length - 1] || {};
   const lastSchema = eventSchema(last);
-  const rewardDecision = events.find((event) => eventSchema(event) === "pf.task.reward_decision.v1");
 
   if (
     cleanText(status, 120) === "submitted" &&
@@ -91,43 +91,22 @@ export function taskEventExpectation({ status = "", timeline = [] } = {}) {
       severity: "warning",
       label: "Awaiting authority review",
       body:
-        "Initial evidence is indexed. The task authority has not published a verification request or reward decision yet. The next canonical step is usually pf.task.update.v1 with transition verification_requested, or pf.task.reward_decision.v1 after review.",
-      missingSchemas: ["pf.task.update.v1", "pf.task.reward_decision.v1"],
+        "Initial evidence is indexed. The task authority has not published a verification request or terminal reward outcome yet. The next canonical step is usually pf.task.update.v1 with transition verification_requested, or pf.reward.v1 after review.",
+      missingSchemas: ["pf.task.update.v1", "pf.reward.v1"],
     };
   }
 
   if (
     cleanText(status, 120) === "verification_response_submitted" &&
     lastSchema === "pf.task.verification_response.v1" &&
-    !schemas.has("pf.task.reward_decision.v1") &&
     !schemas.has("pf.reward.v1")
   ) {
     return {
       severity: "warning",
       label: "Awaiting Task Node review",
       body:
-        "The user verification response is indexed. No authority review has been indexed yet. The next canonical event should be pf.task.reward_decision.v1; if the reward is greater than zero it should be followed by pf.reward.v1.",
-      missingSchemas: ["pf.task.reward_decision.v1", "pf.reward.v1"],
-    };
-  }
-
-  if (rewardDecision && !schemas.has("pf.reward.v1") && rewardDecisionAmount(rewardDecision) > 0) {
-    return {
-      severity: "warning",
-      label: "Reward payment not indexed",
-      body:
-        "A positive reward decision is indexed, but the matching pf.reward.v1 payment pointer is not indexed yet.",
+        "The user verification response is indexed. No terminal authority review has been indexed yet. The next canonical event should be one pf.reward.v1 outcome transaction.",
       missingSchemas: ["pf.reward.v1"],
-    };
-  }
-
-  if (rewardDecision && !schemas.has("pf.reward.v1") && rewardDecisionAmount(rewardDecision) === 0) {
-    return {
-      severity: "neutral",
-      label: "Closed with zero reward",
-      body:
-        "The authority review is indexed with a zero-PFT decision, so no separate payment pointer is expected.",
-      missingSchemas: [],
     };
   }
 

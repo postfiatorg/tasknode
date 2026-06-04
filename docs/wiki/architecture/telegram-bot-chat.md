@@ -39,9 +39,21 @@ chat default:
 - `TASKNODE_TELEGRAM_DISCOUNT_THINKING_TIMEOUT_MS`
 
 If none are set, Telegram Discount Thinking waits up to 120 seconds before Task
-Node aborts the provider request. Other Telegram modes, and web Discount
-Thinking calls, keep the normal chat provider timeout unless their own provider
-timeout environment variable is configured.
+Node aborts the provider request. Web Discount Thinking uses the same 120 second
+default through the shared DeepSeek chat timeout path. Other Telegram modes keep
+the normal chat provider timeout unless their own provider timeout environment
+variable is configured.
+
+If the selected Telegram mode is Discount Thinking and the direct DeepSeek
+provider fails before producing a response, the bot retries once through an
+enabled non-DeepSeek chat mode so the Telegram product surface does not dead-end
+on an upstream DeepSeek account outage. `TELEGRAM_BOT_FALLBACK_CHAT_MODE` can
+pin that retry mode; otherwise the bot prefers Private Instant, Frontier
+Instant, Private Thinking, then Frontier Thinking.
+
+Telegram tone is intentionally product-safe. The prompt can be direct, but it
+must not insult, shame, taunt, or perform contempt. The pressure belongs on the
+decision or artifact, not on the person.
 
 ## Environment
 
@@ -49,6 +61,7 @@ timeout environment variable is configured.
 TELEGRAM_BOT_TOKEN=<telegram bot token>
 TELEGRAM_BOT_WEBHOOK_SECRET=<random webhook secret>
 TELEGRAM_BOT_CHAT_MODE=<optional Task Node chat mode>
+TELEGRAM_BOT_FALLBACK_CHAT_MODE=<optional fallback when Discount Thinking provider fails>
 TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS=<optional; defaults to 120000>
 ```
 

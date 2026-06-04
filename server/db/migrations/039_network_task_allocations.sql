@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS network_task_generation_jobs (
   source_payload_text text NOT NULL DEFAULT '',
   provider text NOT NULL DEFAULT 'tasknode',
   model text NOT NULL DEFAULT 'task_generation_worker',
-  prompt_version text NOT NULL DEFAULT 'taskgen_minimal_v1',
+  prompt_version text NOT NULL DEFAULT 'taskgen_network_v1',
   request_bundle_cid text NOT NULL DEFAULT '',
   generated_task_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
   task_id text NOT NULL DEFAULT '',

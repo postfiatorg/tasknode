@@ -41,7 +41,7 @@ export function normalizeChatMessage(message, index = 0) {
     id: message.id || `assistant-${index}`,
     role,
     metadata: message.metadata,
-    thinking: message.thinking,
+    thinking: message.thinking || message.metadata?.thinking,
     blocks: Array.isArray(message.blocks) ? message.blocks : markdownToBlocks(text),
   };
 }

@@ -13,6 +13,7 @@ const {
   markHiveContextEntriesWalletValidated,
   saveHiveContextEntry,
 } = await import("../server/repositories/hive-context.js");
+const { hiveProjectsDocumentForTests } = await import("../server/repositories/hive-projects.js");
 const { handleHiveRoute } = await import("../server/hive-routes.js");
 const {
   formatHiveMindContextForImmediateResponse,
@@ -127,6 +128,33 @@ const reportText = formatHiveSecretaryReport({
 assert.match(reportText, /Hive Secretary Report/);
 assert.match(reportText, /Project signals/);
 
+const hiddenEmptyProjects = hiveProjectsDocumentForTests({
+  projectRows: [
+    {
+      id: "empty_active_project",
+      title: "Empty Active Project",
+      type: "network",
+      status: "active",
+      priority: 1,
+    },
+  ],
+});
+assert.equal(hiddenEmptyProjects.projectIds.includes("empty_active_project"), false);
+
+const boardManagerEmptyProjects = hiveProjectsDocumentForTests({
+  includeEmptyActive: true,
+  projectRows: [
+    {
+      id: "empty_active_project",
+      title: "Empty Active Project",
+      type: "network",
+      status: "active",
+      priority: 1,
+    },
+  ],
+});
+assert.equal(boardManagerEmptyProjects.projectIds.includes("empty_active_project"), true);
+
 const formattedHiveMindContext = formatHiveMindContextForImmediateResponse({
   boardManagerSourcePacket: {
     sourcePacketDigest: "live_source_digest",
@@ -180,6 +208,7 @@ const formattedHiveMindContext = formatHiveMindContextForImmediateResponse({
       ],
       stopped: [],
     },
+    networkTaskCandidates: [{ accountId: "account_alex", walletAddress: "rAlexWallet", profileId: "profile_alex" }],
     recentBoardManagerRuns: [{ selectedAction: "do_nothing", microSummaryText: "Waiting for user direction." }],
   },
   secretaryPacket: {
@@ -199,6 +228,7 @@ assert.match(formattedHiveMindContext, /Ship Four Acceptance Gates Beta Document
 assert.match(formattedHiveMindContext, /status=rewarded/);
 assert.match(formattedHiveMindContext, /ownerAccount=account_alex/);
 assert.match(formattedHiveMindContext, /requesting_user=no/);
+assert.match(formattedHiveMindContext, /No eligible candidate row for the requesting account/);
 assert.match(formattedHiveMindContext, /No confirmed tasks for the requesting account/);
 assert.match(formattedHiveMindContext, /Compressed Board Manager Secretary Packet - stale/);
 assert.match(formattedHiveMindContext, /task_node_core_product_restored/);
@@ -212,6 +242,10 @@ const formattedLiveFacts = formatLiveBoardFactsForImmediateResponse({
   sourcePacketDigest: "live_source_digest",
   taskState: { recent: [{ title: "Acceptance gate task", status: "rewarded", taskId: "task_live", subjectWallet: "rZephyrWallet" }] },
   openFollowups: [{ id: "followup_other", accountId: "account_other", status: "open" }],
+  networkTaskCandidates: [
+    { accountId: "account_zephyr", walletAddress: "rZephyrWallet", profileId: "profile_zephyr" },
+    { accountId: "account_other", walletAddress: "rOtherWallet", profileId: "profile_other" },
+  ],
   networkTaskContent: {
     completed: [{ title: "Acceptance gate task", state: "rewarded", taskId: "task_live", candidateAccountId: "account_other" }],
     outstanding: [{ title: "Fix Hive identity scoping", state: "accepted", taskId: "task_hive_identity", candidateAccountId: "account_zephyr" }],
@@ -221,6 +255,8 @@ assert.match(formattedLiveFacts, /LIVE BOARD FACTS - AUTHORITATIVE/);
 assert.match(formattedLiveFacts, /Acceptance gate task/);
 assert.match(formattedLiveFacts, /status=rewarded|state=rewarded/);
 assert.match(formattedLiveFacts, /Confirmed tasks for requesting user/);
+assert.match(formattedLiveFacts, /Confirmed eligible candidate row for requesting user/);
+assert.match(formattedLiveFacts, /profile=profile_zephyr/);
 assert.match(formattedLiveFacts, /Fix Hive identity scoping/);
 assert.match(formattedLiveFacts, /ownerAccount=account_zephyr/);
 assert.match(formattedLiveFacts, /requesting_user=yes/);
@@ -231,22 +267,12 @@ assert.match(formattedLiveFacts, /requesting_user=no/);
 
 const routeAttachmentText = "Hive immediate response should see pasted launch surface context.";
 const originalFetch = globalThis.fetch;
+const originalDeepseekKey = process.env.DEEPSEEK_API_KEY;
+process.env.DEEPSEEK_API_KEY = "sk-hive-context-smoke";
+let deepSeekRequestSerialized = "";
 globalThis.fetch = async (_url, options = {}) => {
   const request = JSON.parse(String(options.body || "{}"));
-  const serialized = JSON.stringify(request);
-  assert.match(serialized, /Hive immediate response should see pasted launch surface context/);
-  assert.match(serialized, /REQUESTING USER - AUTHORITATIVE/);
-  assert.match(serialized, /Account ID: account_hive_smoke/);
-  assert.match(serialized, /Linked wallet: rHiveSmokeWallet/);
-  assert.match(serialized, /REQUESTING USER HIVE CONTEXT SOURCE PACKET/);
-  assert.match(serialized, /This packet is scoped to the requesting account/);
-  assert.match(serialized, /HIVE MIND \/ BOARD MANAGER CONTEXT/);
-  assert.match(serialized, /LIVE BOARD FACTS - AUTHORITATIVE/);
-  assert.match(serialized, /Live Board Facts are authoritative/);
-  assert.match(serialized, /Only describe a task, follow-up, capacity blocker, or reward as the user's own/);
-  assert.match(serialized, /Requesting account: account_hive_smoke/);
-  assert.match(serialized, /Requesting wallet: rHiveSmokeWallet/);
-  assert.doesNotMatch(serialized, /Protocol Marketing needs/);
+  deepSeekRequestSerialized = JSON.stringify(request);
   return {
     ok: true,
     status: 200,
@@ -297,10 +323,33 @@ await handleHiveRoute({
   url: new URL("https://tasknode.local/api/hive/context"),
 });
 globalThis.fetch = originalFetch;
+if (originalDeepseekKey === undefined) {
+  delete process.env.DEEPSEEK_API_KEY;
+} else {
+  process.env.DEEPSEEK_API_KEY = originalDeepseekKey;
+}
 assert.equal(capturedRouteResponse.status, 200);
-assert.equal(capturedRouteResponse.body.assistant.id, "msg_hive_context_smoke_assistant");
+assert.match(capturedRouteResponse.body.assistant.id, /^msg_.+_assistant$/);
 assert.equal(capturedRouteResponse.body.assistant.provider, "deepseek");
 assert.match(capturedRouteResponse.body.assistant.body, /pasted context/);
 assert.equal(capturedRouteResponse.body.immediateResponseWarning, "");
+assert.match(deepSeekRequestSerialized, /Hive immediate response should see pasted launch surface context/);
+assert.match(deepSeekRequestSerialized, /REQUESTING USER - AUTHORITATIVE/);
+assert.match(deepSeekRequestSerialized, /Account ID: account_hive_smoke/);
+assert.match(deepSeekRequestSerialized, /Linked wallet: rHiveSmokeWallet/);
+assert.match(deepSeekRequestSerialized, /REQUESTING USER HIVE CONTEXT SOURCE PACKET/);
+assert.match(deepSeekRequestSerialized, /This packet is scoped to the requesting account/);
+assert.match(deepSeekRequestSerialized, /HIVE MIND \/ BOARD MANAGER CONTEXT/);
+assert.match(deepSeekRequestSerialized, /LIVE BOARD FACTS - AUTHORITATIVE/);
+assert.match(deepSeekRequestSerialized, /NETWORK TASK ROUTING POLICY - AUTHORITATIVE/);
+assert.match(deepSeekRequestSerialized, /Request task button creates user-requested personal task proposals/);
+assert.match(deepSeekRequestSerialized, /Do not tell a user that completing personal or engineering tasks is required/);
+assert.match(deepSeekRequestSerialized, /another contributor's outstanding Network Task globally prevents this user/);
+assert.match(deepSeekRequestSerialized, /Personal tasks can be useful work, but they are not Network Tasks/);
+assert.match(deepSeekRequestSerialized, /Live Board Facts are authoritative/);
+assert.match(deepSeekRequestSerialized, /Only describe a task, follow-up, capacity blocker, or reward as the user's own/);
+assert.match(deepSeekRequestSerialized, /Requesting account: account_hive_smoke/);
+assert.match(deepSeekRequestSerialized, /Requesting wallet: rHiveSmokeWallet/);
+assert.doesNotMatch(deepSeekRequestSerialized, /Protocol Marketing needs/);
 
 console.log("hive context smoke ok");

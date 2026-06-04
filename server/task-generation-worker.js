@@ -17,10 +17,17 @@ import {
   markNetworkTaskOfferLinkFailed,
 } from "./repositories/network-tasks.js";
 import { encryptTasknodePayload, fetchAndDecryptTasknodePayload } from "./task-payloads.js";
+import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 
 const TASK_POINTER_SCHEMA = 1;
-const TASKGEN_PROMPT_PATH = "task_engine/taskgen_minimal_v1.md";
-const TASKGEN_PROMPT_VERSION = "taskgen_minimal_v1";
+const TASKGEN_PERSONAL_PROMPT = {
+  path: "task_engine/taskgen_personal_v1.md",
+  version: "taskgen_personal_v1",
+};
+const TASKGEN_NETWORK_PROMPT = {
+  path: "task_engine/taskgen_network_v1.md",
+  version: "taskgen_network_v1",
+};
 
 const taskgenResponseFormat = {
   type: "json_schema",
@@ -103,6 +110,17 @@ function safeObject(value) {
 
 function objectKeyCount(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).length : 0;
+}
+
+export function taskgenPromptForInput(taskInput = {}) {
+  const networkTask = safeObject(taskInput.network_task);
+  const policy = safeObject(taskInput.policy);
+  const request = safeObject(taskInput.request);
+  const taskClass = safeText(policy.task_class ?? policy.taskClass ?? request.requestedTaskKind ?? request.requested_task_kind, 80).toLowerCase();
+  if (objectKeyCount(networkTask) > 0 || taskClass === "network" || taskClass === "alpha") {
+    return TASKGEN_NETWORK_PROMPT;
+  }
+  return TASKGEN_PERSONAL_PROMPT;
 }
 
 function stableJson(value) {
@@ -245,7 +263,8 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
 async function generateTaskWithOpenAi(taskInput) {
   const apiKey = safeText(process.env.OPENAI_API_KEY);
   if (!apiKey) throw new Error("openai_api_key_missing");
-  const systemPrompt = loadPrompt(TASKGEN_PROMPT_PATH);
+  const taskgenPrompt = taskgenPromptForInput(taskInput);
+  const systemPrompt = loadPrompt(taskgenPrompt.path);
   const model = safeText(process.env.TASKNODE_TASKGEN_MODEL || "chat-latest", 120);
   const startedAt = Date.now();
   const response = await fetch(`${(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`, {
@@ -275,7 +294,8 @@ async function generateTaskWithOpenAi(taskInput) {
     metadata: {
       provider: "frontier",
       model,
-      prompt_version: TASKGEN_PROMPT_VERSION,
+      prompt_version: taskgenPrompt.version,
+      prompt_path: taskgenPrompt.path,
       prompt_digest: promptDigest(systemPrompt),
       input_packet_digest: sha256(taskInput),
       output_digest: sha256(output),
@@ -339,9 +359,19 @@ async function publishOffer({ request, requestBundle, taskgen, tasknodeKey, auth
       request_bundle_digest: contextDoc.digest || "",
     },
   };
+  const recipientPublicKeys = await taskPayloadRecipientPublicKeys({
+    tasknodeKey,
+    accountId: request.accountId,
+    walletAddress: subjectWallet,
+    explicitPublicKeys: [
+      requestBundle.subject_encryption_pubkey,
+      requestBundle.wallet?.subject_encryption_pubkey,
+      requestBundle.encryption?.subject_public_key,
+    ],
+  });
   const encryptedPayload = await encryptTasknodePayload({
     plaintext: stableJson(offerPayload),
-    recipientPublicKeys: [tasknodeKey.publicKey],
+    recipientPublicKeys,
   });
   const pin = await pinContextIpfsJson({
     payload: encryptedPayload,

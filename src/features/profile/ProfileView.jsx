@@ -732,7 +732,7 @@ function ProfileStudio({
     const result = await requestJson("/api/profile/nft/generate", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ size: "1024x1024", quality: "low" }),
+      body: JSON.stringify({ size: "1024x1024", quality: "high" }),
     });
     if (result.ok && result.body?.nft) {
       const nextNft = { ...result.body.nft, imageDataUrl: result.body.imageDataUrl };

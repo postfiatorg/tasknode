@@ -11,14 +11,21 @@ import {
   getCurrentBoardManagerSecretaryPacket,
   getLatestBoardManagerSecretaryPacket,
 } from "./board-manager-secretary-packets.js";
+import {
+  buildHiveAccountLiveState,
+  formatHiveAccountLiveStateForPrompt,
+} from "./repositories/hive-account-live-state.js";
 
 const defaultDeepSeekBaseUrl = "https://api.deepseek.com";
 const defaultHiveImmediateModel = "deepseek-v4-pro";
 const defaultTimeoutMs = 45_000;
+const defaultHiveImmediateMaxTokens = 1600;
+const maxHiveImmediateMaxTokens = 4096;
 const maxHistoryMessages = 10;
 const maxSourcePacketCharacters = 14_000;
 const maxHiveMindContextCharacters = 18_000;
 const maxLiveBoardFactsCharacters = 12_000;
+const maxAccountLiveStateCharacters = 10_000;
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
@@ -152,9 +159,40 @@ function recentRunLine(run = {}) {
   ].filter(Boolean).join(" | ");
 }
 
+function candidateMatchesRequestingIdentity(candidate = {}, {
+  requestingAccountId = "",
+  requestingWalletAddress = "",
+} = {}) {
+  const account = safeText(requestingAccountId, 180);
+  const wallet = safeText(requestingWalletAddress, 120);
+  const candidateAccount = safeText(candidate.accountId || candidate.account_id || "", 180);
+  const candidateWallet = safeText(candidate.walletAddress || candidate.wallet_address || "", 120);
+  return Boolean((account && candidateAccount === account) || (wallet && candidateWallet === wallet));
+}
+
+function candidateLine(candidate = {}, { requestingAccountId = "", requestingWalletAddress = "" } = {}) {
+  const account = safeText(candidate.accountId || candidate.account_id || "", 180);
+  const wallet = safeText(candidate.walletAddress || candidate.wallet_address || "", 120);
+  const profile = safeText(candidate.profileId || candidate.profile_id || "", 180);
+  const normalizedRequestingAccountId = safeText(requestingAccountId, 180);
+  const normalizedRequestingWalletAddress = safeText(requestingWalletAddress, 120);
+  return [
+    `- account=${account || "unknown"}`,
+    wallet ? `wallet=${wallet}` : "",
+    profile ? `profile=${profile}` : "",
+    normalizedRequestingAccountId && account
+      ? `requesting_user=${account === normalizedRequestingAccountId ? "yes" : "no"}`
+      : "",
+    normalizedRequestingWalletAddress && wallet
+      ? `requesting_wallet=${wallet === normalizedRequestingWalletAddress ? "yes" : "no"}`
+      : "",
+  ].filter(Boolean).join(" | ");
+}
+
 function requestingUserScopedBoardFacts({
   networkTaskContent = {},
   taskState = {},
+  networkTaskCandidates = [],
   openFollowups = [],
   requestingAccountId = "",
   requestingWalletAddress = "",
@@ -182,6 +220,12 @@ function requestingUserScopedBoardFacts({
       requestingWalletAddress: normalizedRequestingWalletAddress,
     })
   );
+  const userCandidates = safeArray(networkTaskCandidates).filter((candidate) =>
+    candidateMatchesRequestingIdentity(candidate, {
+      requestingAccountId: normalizedRequestingAccountId,
+      requestingWalletAddress: normalizedRequestingWalletAddress,
+    })
+  );
   const userFollowups = safeArray(openFollowups).filter((followup) =>
     normalizedRequestingAccountId &&
       safeText(followup.accountId || followup.account_id || "", 180) === normalizedRequestingAccountId
@@ -190,6 +234,9 @@ function requestingUserScopedBoardFacts({
     "Requesting user scoped board facts",
     `- requestingAccountId=${normalizedRequestingAccountId || "unknown"}`,
     `- requestingWallet=${normalizedRequestingWalletAddress || "unknown"}`,
+    userCandidates.length
+      ? ["Confirmed eligible candidate row for requesting user", userCandidates.slice(0, 3).map((candidate) => candidateLine(candidate, { requestingAccountId: normalizedRequestingAccountId, requestingWalletAddress: normalizedRequestingWalletAddress })).join("\n")].join("\n")
+      : "- No eligible candidate row for the requesting account/wallet appears in the live board facts.",
     userTasks.length
       ? ["Confirmed tasks for requesting user", userTasks.slice(0, 6).map((task) => taskLine(task, { requestingAccountId: normalizedRequestingAccountId, requestingWalletAddress: normalizedRequestingWalletAddress })).join("\n")].join("\n")
       : "- No confirmed tasks for the requesting account in the live board facts.",
@@ -197,6 +244,24 @@ function requestingUserScopedBoardFacts({
       ? ["Confirmed open follow-ups for requesting user", userFollowups.slice(0, 4).map((followup) => followupLine(followup, { requestingAccountId: normalizedRequestingAccountId })).join("\n")].join("\n")
       : "- No confirmed open follow-up for the requesting account in the live board facts.",
     "Do not tell the requesting user that they personally have a task, capacity blocker, or open follow-up unless it is listed above or the latest user message says so.",
+  ].join("\n");
+}
+
+function networkTaskRoutingPolicyForPrompt() {
+  return [
+    "NETWORK TASK ROUTING POLICY - AUTHORITATIVE",
+    "- The Request task button creates user-requested personal task proposals. It is not the way to request a Network Task.",
+    "- Network Tasks are generated by Hive Board Manager when an active network project needs work and an eligible candidate is available.",
+    "- Eligibility gates: signed-in Task Node account, linked PFT wallet, linked wallet indexed as an active user wallet, completed Network Diagnostic Report, and no outstanding or pending Network Task already consuming capacity.",
+    "- Personal, engineering, proposed, refused, and rewarded non-network tasks can inform routing judgment, but they do not hard-block Network Task eligibility.",
+    "- Do not tell a user that completing personal or engineering tasks is required to become eligible for Network Tasks, puts them first in line, or is the fastest path to Network Tasks. That is not the routing policy.",
+    "- Do not say another contributor's outstanding Network Task globally prevents this user from receiving a Network Task. Capacity is candidate-specific unless Live Board Facts show a requesting_user/requesting_wallet capacity blocker for this account.",
+    "- If Live Board Facts show other contributors have outstanding Network Tasks, describe that as shared board motion, not as this user's blocker.",
+    "- If no Network Task is available for this user, distinguish the cause: missing eligibility row, no active project need, project already has enough live motion, or a user-specific capacity blocker shown in Requesting user scoped board facts.",
+    "- When a user asks for tasks, say what Hive can and cannot do: Hive Chat can explain status, the Request task button can create personal task proposals, and only Board Manager can route project-linked Network Tasks.",
+    "- Current contributor means an account/wallet currently assigned to live project-linked work or a project contributor row. It is not a permanent role and it is not earned by vague waiting.",
+    "- If the requesting user is not listed as an eligible candidate in Live Board Facts, say that plainly and name the likely missing gates; do not claim a specific missing gate unless the context proves it.",
+    "- If the requesting user is eligible but no task is assigned, say they are available for Board Manager routing and explain that assignment waits for a project need.",
   ].join("\n");
 }
 
@@ -229,8 +294,10 @@ function hiveImmediateModel() {
 }
 
 function hiveImmediateMaxTokens() {
-  const parsed = Number(process.env.TASKNODE_HIVE_IMMEDIATE_MAX_TOKENS || 700);
-  return Number.isFinite(parsed) ? Math.min(Math.max(Math.floor(parsed), 120), 1600) : 700;
+  const parsed = Number(process.env.TASKNODE_HIVE_IMMEDIATE_MAX_TOKENS || defaultHiveImmediateMaxTokens);
+  return Number.isFinite(parsed)
+    ? Math.min(Math.max(Math.floor(parsed), 120), maxHiveImmediateMaxTokens)
+    : defaultHiveImmediateMaxTokens;
 }
 
 function hiveImmediateReasoningEffort() {
@@ -376,6 +443,7 @@ export function formatLiveBoardFactsForImmediateResponse(sourcePacket = {}, {
   const recentTasks = safeArray(taskState.recent);
   const recentRuns = safeArray(packet.recentBoardManagerRuns);
   const openFollowups = safeArray(packet.openFollowups);
+  const networkTaskCandidates = safeArray(packet.networkTaskCandidates);
 
   return safeText(
     [
@@ -401,10 +469,16 @@ export function formatLiveBoardFactsForImmediateResponse(sourcePacket = {}, {
       requestingUserScopedBoardFacts({
         networkTaskContent,
         taskState,
+        networkTaskCandidates,
         openFollowups,
         requestingAccountId: normalizedRequestingAccountId,
         requestingWalletAddress: normalizedRequestingWalletAddress,
       }),
+      "",
+      "Eligible routing candidates",
+      networkTaskCandidates.length
+        ? networkTaskCandidates.slice(0, 8).map((candidate) => candidateLine(candidate, { requestingAccountId: normalizedRequestingAccountId, requestingWalletAddress: normalizedRequestingWalletAddress })).join("\n")
+        : "- none",
       "",
       "Network task state",
       taskGroupLines("Outstanding", networkTaskContent.outstanding, 8, { requestingAccountId: normalizedRequestingAccountId, requestingWalletAddress: normalizedRequestingWalletAddress }),
@@ -502,10 +576,12 @@ async function buildHiveMindContextForImmediateResponse({
 
 function hiveSystemPrompt({
   sourcePacket = null,
+  accountLiveStateText = "",
   hiveMindContextText = "",
   requestingUserText = "",
 } = {}) {
   const packetText = safeText(sourcePacket?.sourceText || "", maxSourcePacketCharacters);
+  const accountStateText = safeText(accountLiveStateText, maxAccountLiveStateCharacters);
   const boardText = safeText(hiveMindContextText, maxHiveMindContextCharacters);
   const userText = safeText(requestingUserText, 4000);
   return [
@@ -514,14 +590,20 @@ function hiveSystemPrompt({
     "The user's message has already been saved into Hive Context for later Board Manager and task-routing decisions.",
     "Use the latest user message, readable attachments, recent Hive Chat history, the requesting user's Hive Context packet, and the compressed Hive Mind / Board Manager context.",
     "The requesting-user block is authoritative for who is speaking. Do not infer the speaker from global Hive Context, Board Manager runs, or another contributor's task rows.",
+    "Account Live State is the first source of truth for the requesting user's current tasks, follow-ups, refusals, rewards, and explicit reward constraints.",
     "Live Board Facts are authoritative for current task, reward, follow-up, and Board Manager state. If they conflict with chat history or a stale secretary packet, trust Live Board Facts.",
     "Live Board Facts are shared board facts. Only describe a task, follow-up, capacity blocker, or reward as the user's own when it is marked requesting_user=yes or appears in the Requesting user scoped board facts section.",
+    "If Account Live State conflicts with Live Board Facts, chat history, or compressed secretary packets about this account, trust Account Live State and explain the conflict only if it changes the answer.",
+    "For Network Task eligibility and contributor questions, use the Network Task Routing Policy section instead of improvising a social or reputation ladder.",
+    "Never use personal tasks as the answer to a Network Task eligibility question. Personal tasks can be useful work, but they are not Network Tasks and they are not a prerequisite for Network Task routing.",
     "Do not claim that you created, archived, restored, assigned, reviewed, or rewarded anything. Those durable board mutations happen only through Board Manager actions.",
     "If the user is reporting product direction, restate the operational implication and name the next concrete thing to do.",
     "If the user is asking whether context was received, answer from the evidence in the message/attachment context.",
     "If the Hive Mind context is stale, say so only when it matters and lean on the live board facts.",
     "Keep the response concise: usually 2-6 sentences or a short set of bullets.",
     userText ? ["", userText].join("\n") : "",
+    accountStateText ? ["", accountStateText].join("\n") : "",
+    ["", networkTaskRoutingPolicyForPrompt()].join("\n"),
     packetText ? ["", "REQUESTING USER HIVE CONTEXT SOURCE PACKET", "This packet is scoped to the requesting account, not the entire Hive.", packetText].join("\n") : "",
     boardText ? ["", boardText].join("\n") : "",
   ].filter(Boolean).join("\n");
@@ -563,9 +645,26 @@ export async function executeHiveImmediateResponse({
     safeObject(requestingUser).walletAddress || safeObject(requestingUser).linkedWalletAddress || "",
     120
   );
-  const [historyMessages, sourcePacket, hiveMindContext] = await Promise.all([
+  const [historyMessages, sourcePacket, accountLiveState, hiveMindContext] = await Promise.all([
     getChatMessagesForWrite({ accountId: normalizedAccountId, conversationId, limit: maxHistoryMessages }).catch(() => []),
     buildHiveSecretarySourcePacket({ limit: 80, accountId: normalizedAccountId }).catch(() => null),
+    buildHiveAccountLiveState({
+      accountId: normalizedAccountId,
+      walletAddress: requestingWalletAddress,
+      limit: 12,
+    }).catch((error) => ({
+      ok: false,
+      status: "query_failed",
+      error: safeText(error?.message || String(error), 600),
+      accountId: normalizedAccountId,
+      walletAddress: requestingWalletAddress,
+      snapshotAt: new Date().toISOString(),
+      networkTasks: [],
+      openFollowups: [],
+      recentBoardMessages: [],
+      routingConstraints: {},
+      digest: "",
+    })),
     buildHiveMindContextForImmediateResponse({
       requestingAccountId: normalizedAccountId,
       requestingWalletAddress,
@@ -599,6 +698,7 @@ export async function executeHiveImmediateResponse({
         role: "system",
         content: hiveSystemPrompt({
           sourcePacket,
+          accountLiveStateText: formatHiveAccountLiveStateForPrompt(accountLiveState),
           hiveMindContextText: hiveMindContext.text,
           requestingUserText,
         }),
@@ -645,6 +745,9 @@ export async function executeHiveImmediateResponse({
       text,
       usage: usageFromDeepSeek(body),
       sourcePacketDigest: safeText(sourcePacket?.sourcePacketDigest || "", 120),
+      accountLiveStateDigest: safeText(accountLiveState?.digest || "", 120),
+      accountLiveStateSnapshotAt: safeText(accountLiveState?.snapshotAt || "", 80),
+      accountLiveStateStatus: safeText(accountLiveState?.status || "", 80),
       boardManagerSourcePacketDigest: hiveMindContext.boardManagerSourcePacketDigest,
       boardManagerSecretarySourceDigest: hiveMindContext.boardManagerSecretarySourceDigest,
       boardManagerSecretaryPacketId: hiveMindContext.boardManagerSecretaryPacketId,

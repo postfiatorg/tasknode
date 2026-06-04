@@ -109,14 +109,14 @@ function messageKeyFromPublicKeyBytes(bytes) {
   return `ED${Buffer.from(bytes).toString("hex")}`.toUpperCase();
 }
 
-function publicKeyBase64FromMessageKey(messageKey) {
+export function publicKeyBase64FromMessageKey(messageKey) {
   const normalized = String(messageKey || "").trim().toUpperCase();
   const hex = normalized.startsWith("ED") ? normalized.slice(2) : normalized;
   if (!/^[A-F0-9]{64}$/.test(hex)) throw new Error("tasknode_message_key_invalid");
   return hexToBase64(hex);
 }
 
-function normalizePublicKeyBase64(value) {
+export function normalizePublicKeyBase64(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
   if (/^(ED)?[A-Fa-f0-9]{64}$/.test(raw)) {
@@ -129,7 +129,7 @@ function normalizePublicKeyBase64(value) {
   return bytesToBase64(bytes);
 }
 
-async function accountMessageKey(address, env = process.env) {
+export async function accountMessageKey(address, env = process.env) {
   const account = String(address || "").trim();
   if (!account) return "";
   for (const endpoint of rpcCandidates(env)) {

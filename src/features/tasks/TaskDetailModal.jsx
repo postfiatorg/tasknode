@@ -180,7 +180,7 @@ function TaskRewardOutcome({ outcome }) {
   const offeredPft = Number(outcome.offeredPft || 0);
   const rows = [
     ["Decision", outcome.decision],
-    ["Reward decision", `${formatPftValue(rewardPft)} PFT`],
+    ["Reward outcome", `${formatPftValue(rewardPft)} PFT`],
     offeredPft > 0 && offeredPft !== rewardPft
       ? ["Original offer", `${formatPftValue(offeredPft)} PFT`]
       : null,
@@ -192,8 +192,8 @@ function TaskRewardOutcome({ outcome }) {
     <section className={`task-reward-outcome is-${statusSlug(outcome.status)}`}>
       <div className="task-reward-outcome-head">
         <span>Reward outcome</span>
-        <strong>{outcome.title || "Reward decision"}</strong>
-        <p>{outcome.summary || "The reward decision has been indexed on-chain."}</p>
+        <strong>{outcome.title || "Reward outcome"}</strong>
+        <p>{outcome.summary || "The reward outcome has been indexed on-chain."}</p>
       </div>
       {rows.length > 0 && (
         <dl className="task-reward-outcome-grid">
@@ -416,14 +416,14 @@ function submitClosedCopy(task = {}) {
   if (status === "verification_response_submitted") {
     return {
       title: "Awaiting review",
-      body: "Your verification response is indexed. The task authority is reviewing it for a reward decision.",
+      body: "Your verification response is indexed. The task authority is reviewing it for a reward outcome.",
       detail: "No evidence action is needed right now.",
     };
   }
   if (status === "reward_decided") {
     return {
-      title: "Reward decision indexed",
-      body: "The authority decision is indexed. The projection will settle after the reward state is fully reduced.",
+      title: "Reward outcome pending",
+      body: "The task has an intermediate reward state. It will settle after the terminal reward outcome is reduced.",
       detail: "No evidence action is available for this state.",
     };
   }

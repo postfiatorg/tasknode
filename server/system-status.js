@@ -31,7 +31,7 @@ const recentFailureStatus = (status, count, label = "Recent failures") => (
 );
 
 async function boardManagerItem(tables, nowMs) {
-  const cadenceFallback = intEnv(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS, 900, { min: 60, max: 86400 });
+  const cadenceFallback = intEnv(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS, 120, { min: 60, max: 86400 });
   const [scopeResult, runResult, successResult, jobResult, leaseResult] = await Promise.all([
     optionalQuery(
       tables,
@@ -392,7 +392,7 @@ async function taskReviewItem(tables, nowMs) {
     id: "task_review",
     category: "task_engine",
     title: "Task Review And Reward Worker",
-    description: "Publishes verification requests, reward decisions, and reward payments.",
+    description: "Publishes verification requests and terminal reward outcomes.",
     owner: "worker process",
     trigger: "submitted task projections",
     cadence: `${intEnv(process.env.TASKNODE_TASK_REVIEW_WORKER_INTERVAL_MS, 20000, { min: 1000 })}ms`,

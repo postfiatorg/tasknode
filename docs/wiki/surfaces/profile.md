@@ -38,9 +38,9 @@ Not implemented in v1: public member search, Hive mention resolution, provider-p
 
 The public profile is now a read model over deterministic account metrics plus one generated profile snapshot.
 
-The original Public Profile Real Data implementation plan is retained under
-`Implemented / Deprecated Plans`. This page is the current product contract for
-public profile data, generated copy, NFT image state, and profile reward facts.
+This page is the current product contract for public profile data, generated
+copy, NFT image state, and profile reward facts. Historical profile planning has
+been folded into this surface doc and the current architecture docs.
 
 It should not contain mock connections, fake member-since history, Sybil scores, graph language, or placeholder NFT ownership.
 
@@ -181,7 +181,7 @@ Included work:
 - only tasks tied to the account's identity wallet cloud;
 - only tasks with `reward_paid_pft > 0`;
 - only tasks inside the trailing lookback window, currently 7 days;
-- task title, kind, status, reward offer, reward paid, reward decision, reward reason, completion score, evidence quality, event CIDs, and transaction hashes.
+- task title, kind, status, reward offer, reward outcome, reward reason, completion score, evidence quality, event CIDs, and transaction hashes.
 
 Excluded work:
 

@@ -68,7 +68,7 @@ assert.equal(staleFollowupPressure.signals[0].hasOpenFollowup, false);
 assert.equal(staleFollowupPressure.signals[0].latestClosureAt, closedAt);
 assert.match(staleFollowupPressure.signals[0].reasons.join(" "), /active project has no live task movement/);
 
-const freshFollowupPressure = buildBoardManagerActionPressure({
+const freshGlobalFollowupPressure = buildBoardManagerActionPressure({
   ...baseInput,
   networkTaskContent: {
     completed: [
@@ -93,8 +93,37 @@ const freshFollowupPressure = buildBoardManagerActionPressure({
   ],
 });
 
-assert.equal(freshFollowupPressure.summary.requiresAction, false);
-assert.equal(freshFollowupPressure.signals[0].requiresAction, false);
-assert.equal(freshFollowupPressure.signals[0].hasOpenFollowup, true);
+assert.equal(freshGlobalFollowupPressure.summary.requiresAction, true);
+assert.equal(freshGlobalFollowupPressure.signals[0].requiresAction, true);
+assert.equal(freshGlobalFollowupPressure.signals[0].hasOpenFollowup, false);
+
+const freshProjectFollowupPressure = buildBoardManagerActionPressure({
+  ...baseInput,
+  networkTaskContent: {
+    completed: [
+      {
+        projectId,
+        taskId: "task_rewarded_pressure",
+        state: "rewarded",
+        updatedAt: closedAt,
+      },
+    ],
+    outstanding: [],
+    pendingGeneration: [],
+    stopped: [],
+  },
+  openFollowups: [
+    {
+      status: "open",
+      projectId,
+      createdAt: "2026-05-30T02:46:00.000Z",
+      lastSentAt: "2026-05-30T02:46:00.000Z",
+    },
+  ],
+});
+
+assert.equal(freshProjectFollowupPressure.summary.requiresAction, false);
+assert.equal(freshProjectFollowupPressure.signals[0].requiresAction, false);
+assert.equal(freshProjectFollowupPressure.signals[0].hasOpenFollowup, true);
 
 console.log("board-manager-action-pressure-smoke ok");

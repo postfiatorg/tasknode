@@ -22,6 +22,25 @@ The corpus is global product style/context material. It is not account-private
 memory, and it is not the future semantic search index for user chat, context, or
 tasks.
 
+## Chat Injection Path
+
+1. `server/chat-router.js` calls `jobsRetrievalForChat(...)` for chat turns when
+   `jobsEssence` is not manually overridden.
+2. `server/jobs-corpus.js` embeds the retrieval query.
+3. `server/jobs-corpus.js` searches `jobs_corpus_chunks` with pgvector distance:
+
+   ```sql
+   chunk.embedding <=> $1::vector
+   ```
+
+4. `server/jobs-corpus.js` formats the top chunks into
+   `<jobs_retrieval_context>`.
+5. `server/chat-memory-context.js` passes that retrieval text into
+   `formatChatSpiritContext(...)`.
+6. `server/chat-spirit-context.js` renders it into
+   `RELEVANT_JOBS_ESSENCE_FROM_VECTOR_DB` in
+   `prompts/chat/jobs_standard_chat_codex_style_draft.md`.
+
 ## Fly Deployment Shape
 
 PGVector does not have its own `tasknodeofficial-dev` Fly machine. The live app
@@ -35,6 +54,20 @@ The vector extension and corpus tables live in the shared Fly Postgres database.
 If a separate database app or MPG cluster is provisioned by Fly, it should be
 documented here by database name/cluster ID, but it still is not a Task Node
 application process group.
+
+Fly dev verification on May 25, 2026 showed the app attached to pgvector-enabled
+database cluster `tasknodeofficial-dev-pgvector-202605252246` with cluster ID
+`3x9jv02yd3dr6qp7`, database `tasknodeofficial`, active table
+`jobs_corpus_chunks`, 259 chunks, embedding model `text-embedding-3-small`, and
+1536 dimensions.
+
+The previous array-storage fallback was removed. Do not reintroduce:
+
+- `TASKNODE_JOBS_STORAGE_MODE`;
+- `double precision[]` Jobs corpus storage;
+- `jobs_corpus_chunk_arrays` runtime query path;
+- `048_jobs_corpus_array_fallback.sql`;
+- array fallback assertions in `scripts/jobs-corpus-pgvector-smoke.mjs`.
 
 ## Status Derivation
 
@@ -77,6 +110,15 @@ Run the local Postgres/pgvector smoke against the configured database:
 
 ```bash
 npm run db:jobs-corpus-smoke
+```
+
+Focused chat injection checks:
+
+```bash
+npm run chat-spirit-prompt-smoke
+npm run format-check
+npm run lint
+git diff --check
 ```
 
 If the corpus is empty or model-mismatched, ingest it:

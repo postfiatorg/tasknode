@@ -42,7 +42,7 @@ The target product is a world-class ChatGPT-style execution app:
 - `pftdocs/docs/postfiat/AGENT_HANDOFF.md`.
 - `pftdocs/src/postfiat/wallet-core.mjs`.
 - `pftdocs/lib/http-worker.js`.
-- `tasknodedocs/DATABASE_ARCHITECTURE.md`.
+- `docs/wiki/architecture/database-architecture.md`.
 
 Note: local and Fly secrets are an input to deployment research, but secret
 values should never be copied into this repo, this spec, tickets, logs, or LLM
@@ -772,7 +772,7 @@ Sources:
 - `pftasks/worker` tx sync jobs.
 - `pftdocs/src/postfiat/wallet-core.mjs`.
 - `pftdocs/lib/http-worker.js`.
-- `tasknodedocs/DATABASE_ARCHITECTURE.md`.
+- `docs/wiki/architecture/database-architecture.md`.
 
 Deliverable:
 

@@ -13,9 +13,10 @@ from .config import PftlConfig
 from .prompt_registry import load_prompt, prompt_digest
 
 
-TASKGEN_PROMPT_VERSION = "taskgen_minimal_v1"
-TASKGEN_PROMPT_PATH = "task_engine/taskgen_minimal_v1.md"
-MINIMAL_TASKGEN_SYSTEM = load_prompt(TASKGEN_PROMPT_PATH)
+TASKGEN_PERSONAL_PROMPT_VERSION = "taskgen_personal_v1"
+TASKGEN_PERSONAL_PROMPT_PATH = "task_engine/taskgen_personal_v1.md"
+TASKGEN_NETWORK_PROMPT_VERSION = "taskgen_network_v1"
+TASKGEN_NETWORK_PROMPT_PATH = "task_engine/taskgen_network_v1.md"
 PRIVATE_TASKGEN_PROVIDER_ORDER = ["novita", "atlas-cloud", "siliconflow", "deepinfra"]
 
 DEFAULT_REFERENCE_REWARD_PFT = Decimal("3.20")
@@ -235,6 +236,7 @@ def project_taskgen_input(bundle: dict[str, Any], *, bundle_cid: str, bundle_dig
                 "rewarded": 0,
             },
         },
+        "network_task": bundle.get("network_task") or None,
         "wallet": bundle["wallet"],
         "policy": bundle["policy"],
     }
@@ -257,6 +259,30 @@ def _openrouter_provider_preferences() -> dict[str, Any]:
         "order": PRIVATE_TASKGEN_PROVIDER_ORDER,
         "only": PRIVATE_TASKGEN_PROVIDER_ORDER,
     }
+
+
+def taskgen_prompt_for_input(task_input: dict[str, Any]) -> tuple[str, str, str]:
+    network_task = task_input.get("network_task")
+    policy = task_input.get("policy") or {}
+    request = task_input.get("request") or {}
+    task_class = str(
+        policy.get("task_class")
+        or policy.get("taskClass")
+        or request.get("requestedTaskKind")
+        or request.get("requested_task_kind")
+        or ""
+    ).strip().lower()
+    if (isinstance(network_task, dict) and bool(network_task)) or task_class in {"network", "alpha"}:
+        return (
+            TASKGEN_NETWORK_PROMPT_VERSION,
+            TASKGEN_NETWORK_PROMPT_PATH,
+            load_prompt(TASKGEN_NETWORK_PROMPT_PATH),
+        )
+    return (
+        TASKGEN_PERSONAL_PROMPT_VERSION,
+        TASKGEN_PERSONAL_PROMPT_PATH,
+        load_prompt(TASKGEN_PERSONAL_PROMPT_PATH),
+    )
 
 
 def _structured_chat_completion(
@@ -369,7 +395,8 @@ def generate_task(
 ) -> TaskgenResult:
     provider_name = str(provider or "frontier").strip().lower()
     model_name = model or (config.private_taskgen_model if provider_name == "private" else config.taskgen_model)
-    system_prompt_digest = prompt_digest(MINIMAL_TASKGEN_SYSTEM)
+    prompt_version, prompt_path, system_prompt = taskgen_prompt_for_input(task_input)
+    system_prompt_digest = prompt_digest(system_prompt)
     input_digest = sha256_hex(task_input)
     provider_configured = (
         bool(config.openrouter_api_key) if provider_name == "private" else bool(config.openai_api_key)
@@ -390,7 +417,7 @@ def generate_task(
             provider=provider_name,
             model=model_name,
             messages=[
-                {"role": "system", "content": MINIMAL_TASKGEN_SYSTEM},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             response_format=TASKGEN_RESPONSE_FORMAT,
@@ -402,7 +429,8 @@ def generate_task(
         metadata = {
             "provider": provider_name,
             "model": model_name,
-            "prompt_version": TASKGEN_PROMPT_VERSION,
+            "prompt_version": prompt_version,
+            "prompt_path": prompt_path,
             "prompt_digest": system_prompt_digest,
             "input_packet_digest": input_digest,
             "output_digest": sha256_hex(output),
@@ -412,13 +440,15 @@ def generate_task(
             "benchmark": None,
         }
         if benchmark_high_reasoning:
-            metadata["benchmark"] = benchmark_taskgen(config, task_input)
+            metadata["benchmark"] = benchmark_taskgen(config, task_input, system_prompt=system_prompt)
         return TaskgenResult(output=output, metadata=metadata)
     except Exception as exc:
         raise RuntimeError(f"{provider_name} task generation failed: {type(exc).__name__}: {exc}") from exc
 
 
-def benchmark_taskgen(config: PftlConfig, task_input: dict[str, Any]) -> dict[str, Any]:
+def benchmark_taskgen(config: PftlConfig, task_input: dict[str, Any], *, system_prompt: str | None = None) -> dict[str, Any]:
+    if system_prompt is None:
+        _prompt_version, _prompt_path, system_prompt = taskgen_prompt_for_input(task_input)
     started = time.time()
     try:
         response = requests.post(
@@ -430,7 +460,7 @@ def benchmark_taskgen(config: PftlConfig, task_input: dict[str, Any]) -> dict[st
             json={
                 "model": config.high_reasoning_model,
                 "messages": [
-                    {"role": "system", "content": MINIMAL_TASKGEN_SYSTEM},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": canonical_json(task_input)},
                 ],
                 "response_format": TASKGEN_RESPONSE_FORMAT,

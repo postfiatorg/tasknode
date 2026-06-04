@@ -13,6 +13,11 @@ System Status row: `network_task_profile`
 - Smoke script: `scripts/network-task-profile-smoke.mjs`.
 - Request-contract smoke: `scripts/chat-memory-worker-request-smoke.mjs`.
 - Runtime consumer: Board Manager source packet and Network Task routing.
+- Auto-queue trigger: `server/repositories/tasks.js::importTaskReplayReceipt`
+  queues a profile job when a task projection reaches the rewarded tab with
+  positive `reward_actual_pft` and the account has at least two positive task
+  rewards. The memory worker also backfills eligible accounts with no current
+  profile/job.
 
 ## Provider Contract
 
@@ -47,6 +52,12 @@ npm run fly:background-guard
 Inspect profile job source packet errors, provider config, and
 `network_task_profiles` digest state. Do not route a Network Task from a stale
 or invented profile packet.
+
+If a user has at least two positive task rewards but no report, inspect
+`task_projections.reward_actual_pft`, `network_task_profile_jobs`, and the
+memory worker return fields `networkProfileSeeded` and
+`networkProfileSeedFailed`. Opening Memory is not required for the normal path;
+it is only a manual refresh/repair surface.
 
 If the worker reports JSON parse failures, run the request-contract smoke before
 requeueing profile jobs. Provider routes must not ignore JSON mode or hidden

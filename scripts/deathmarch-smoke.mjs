@@ -1,0 +1,366 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { generateMnemonic } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
+
+import {
+  callDeepSeekSummary,
+  deathmarchEnvWithSeedFile,
+  decryptTasknodeUserMnemonicPayload,
+  formatDeathmarchDiscordMessage,
+  postToDiscord,
+  processDeathmarchEvents,
+  sanitizeEventForAnonymity,
+  tasknodePublicKeyFromUserMnemonic,
+} from "./deathmarch.mjs";
+import { encryptTasknodePayload } from "../server/task-payloads.js";
+
+const sensitiveEvent = {
+  schema: "pf.task.request.v1",
+  actionKind: "task_request",
+  taskId: "task_sensitive",
+  txHash: "ABCDEF1234567890",
+  cid: "QmSensitive",
+  memoIndex: 0,
+  occurredAt: "2026-06-01T00:00:00.000Z",
+  eventKey: "ABCDEF1234567890:0:QmSensitive:pf.task.request.v1",
+  payload: {
+    schema: "pf.task.request.v1",
+    task_id: "task_sensitive",
+    title: "Model autocorrelation on tech sector names for client ACME Capital",
+    description: "Build a medium frequency trading signal for NVDA and AMD.",
+  },
+};
+
+const levelOne = sanitizeEventForAnonymity(sensitiveEvent, 1);
+const levelOneText = JSON.stringify(levelOne);
+assert.equal(levelOne.directional_category, "market or trading-related task");
+assert.equal(levelOneText.includes("autocorrelation"), false);
+assert.equal(levelOneText.includes("tech sector"), false);
+assert.equal(levelOneText.includes("ACME"), false);
+assert.equal(levelOneText.includes("NVDA"), false);
+
+const levelTwo = sanitizeEventForAnonymity(sensitiveEvent, 2);
+const levelTwoText = JSON.stringify(levelTwo);
+assert.equal(levelTwoText.includes("client ACME Capital"), false);
+assert.equal(levelTwoText.includes("[redacted]") || levelTwoText.includes("[redacted organization]"), true);
+
+const requestEvent = {
+  schema: "pf.task.request.v1",
+  actionKind: "task_request",
+  taskId: "",
+  txHash: "74E110C201208A97A88FEDFF1F4DF8DD1C315C6A99E07B0ABFB0F92BE93D61DF",
+  cid: "QmRequest",
+  memoIndex: 0,
+  occurredAt: "2026-06-01T19:10:00.000Z",
+  eventKey: "74E110:0:QmRequest:pf.task.request.v1",
+  payload: {
+    schema: "pf.task.request.v1",
+    request_text: "Request a task using my current context document, account memory, recent messages, and the additional task details I just provided.",
+    user_detail_text: "Please make it about Discord task notifications.",
+    requested_task_kind: "personal",
+    request_bundle: { summary: "Recent conversation asked for deathmarch Discord updates." },
+  },
+};
+const requestPacket = sanitizeEventForAnonymity(requestEvent, 3);
+assert.equal(requestPacket.event.request_text.includes("current context document"), true);
+assert.equal(requestPacket.event.user_detail_text, "Please make it about Discord task notifications.");
+assert.equal(requestPacket.event.request_bundle_summary.includes("deathmarch Discord updates"), true);
+
+const formattedOffer = formatDeathmarchDiscordMessage({
+  event: sanitizeEventForAnonymity({
+    schema: "pf.task.offer.v1",
+    actionKind: "task_offer",
+    taskId: "task_cdd241775a0a65ddae909bae3b771d29",
+    txHash: "7005B006FDFF2C30F8914BC050A4B3B6C6FC72305F65A1ACD8CE8CB77BBF7C0C",
+    cid: "QmDeathmarchOffer",
+    eventKey: "7005:0:QmDeathmarchOffer:pf.task.offer.v1",
+    payload: {
+      schema: "pf.task.offer.v1",
+      task_id: "task_cdd241775a0a65ddae909bae3b771d29",
+      title: "Launch Death March Discord Protocol",
+    },
+  }, 3),
+  summary:
+    "A task was proposed to enable Death March Discord updates with the Green/Yellow/Red visibility model. tx: 7005B006FDFF2C30F8914BC050A4B3B6C6FC72305F65A1ACD8CE8CB77BBF7C0C",
+});
+assert.equal(formattedOffer.includes("**Task proposed**"), true);
+assert.equal(formattedOffer.includes("**Launch Death March Discord Protocol**"), true);
+assert.equal(formattedOffer.includes("Green/Yellow/Red"), false);
+assert.equal(formattedOffer.includes("visibility model"), false);
+assert.equal((formattedOffer.match(/tx:/g) || []).length, 1);
+assert.equal(formattedOffer.endsWith("tx: 7005B006FDFF2C30F8914BC050A4B3B6C6FC72305F65A1ACD8CE8CB77BBF7C0C"), true);
+
+const submissionEvent = {
+  schema: "pf.task.submission.v1",
+  actionKind: "initial_verification",
+  taskId: "task_cdd241775a0a65ddae909bae3b771d29",
+  txHash: "4A22F4CA999E9582504EDB9E7134268784CDC0F9F051822D1E0CAAEB6D86EBCC",
+  cid: "QmDeathmarchSubmission",
+  eventKey: "4A22:0:QmDeathmarchSubmission:pf.task.submission.v1",
+  payload: {
+    schema: "pf.task.submission.v1",
+    task_id: "task_cdd241775a0a65ddae909bae3b771d29",
+    phase: "initial_submission",
+    evidence_items: [{
+      index: 1,
+      artifact_type: "text",
+      value: "Published the Death March Discord protocol and posted the first compliant update.",
+      notes: "Includes public-envelope/private-payload guidance.",
+    }],
+  },
+};
+const submissionPacket = sanitizeEventForAnonymity(submissionEvent, 3);
+assert.equal(
+  submissionPacket.event.submission_detail.includes("Published the Death March Discord protocol"),
+  true
+);
+const formattedSubmission = formatDeathmarchDiscordMessage({
+  event: submissionPacket,
+  summary: "A new task was submitted and is now in initial verification.",
+});
+assert.equal(formattedSubmission.includes("**Evidence submitted**"), true);
+assert.equal(formattedSubmission.includes("Submitted evidence: text: Published the Death March Discord protocol"), true);
+assert.equal(formattedSubmission.includes("A new task was submitted and is now in initial verification."), false);
+assert.equal((formattedSubmission.match(/tx:/g) || []).length, 1);
+assert.equal(formattedSubmission.endsWith("tx: 4A22F4CA999E9582504EDB9E7134268784CDC0F9F051822D1E0CAAEB6D86EBCC"), true);
+
+const rewardPaymentEvent = {
+  schema: "pf.reward.v1",
+  actionKind: "reward_outcome",
+  taskId: "task_cdd241775a0a65ddae909bae3b771d29",
+  txHash: "B3D7B19EA7E5D9CB7A5BE9E70696D3E6",
+  cid: "QmDeathmarchReward",
+  eventKey: "B3D7:0:QmDeathmarchReward:pf.reward.v1",
+  payload: {
+    schema: "pf.reward.v1",
+    task_id: "task_cdd241775a0a65ddae909bae3b771d29",
+    reward_pft: "12000.00",
+    reward_tier: "task_engine_live",
+    reward_summary: "Evidence was accepted but before/after artifacts were incomplete.",
+  },
+};
+const rewardPacket = sanitizeEventForAnonymity(rewardPaymentEvent, 3);
+assert.equal(rewardPacket.event.reward_detail.includes("Recorded terminal reward outcome: 12,000 PFT."), true);
+const formattedReward = formatDeathmarchDiscordMessage({
+  event: rewardPacket,
+  summary: "A reward was paid for the task.",
+});
+assert.equal(formattedReward.includes("**Reward outcome**"), true);
+assert.equal(formattedReward.includes("Recorded terminal reward outcome: 12,000 PFT."), true);
+assert.equal(formattedReward.includes("Evidence was accepted but before/after artifacts were incomplete."), true);
+assert.equal(formattedReward.includes("A reward was paid for the task."), false);
+assert.equal((formattedReward.match(/tx:/g) || []).length, 1);
+assert.equal(formattedReward.endsWith("tx: B3D7B19EA7E5D9CB7A5BE9E70696D3E6"), true);
+
+const zeroRewardPacket = sanitizeEventForAnonymity({
+  schema: "pf.reward.v1",
+  actionKind: "reward_outcome",
+  taskId: "task_zero_reward",
+  txHash: "ZERO000000000000000000000000000000000000000000000000000000000000",
+  cid: "QmDeathmarchZeroReward",
+  eventKey: "ZERO:0:QmDeathmarchZeroReward:pf.reward.v1",
+  payload: {
+    schema: "pf.reward.v1",
+    task_id: "task_zero_reward",
+    reward_pft: "0.00",
+    economic_reward_pft: "0.00",
+    carrier_amount_drops: "1",
+    reward_summary: "Evidence did not meet the task acceptance standard.",
+  },
+}, 3);
+const formattedZeroReward = formatDeathmarchDiscordMessage({
+  event: zeroRewardPacket,
+  summary: "Reward decision: rejected.",
+});
+assert.equal(formattedZeroReward.includes("**Reward outcome**"), true);
+assert.equal(formattedZeroReward.includes("0 PFT"), true);
+assert.equal(formattedZeroReward.includes("one-drop carrier"), true);
+assert.equal(formattedZeroReward.includes("Reward decision"), false);
+assert.equal((formattedZeroReward.match(/tx:/g) || []).length, 1);
+
+await assert.rejects(
+  () => callDeepSeekSummary({
+    event: sensitiveEvent,
+    anonymity: 3,
+    env: {
+      DEEPSEEK_API_KEY: "test",
+      DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 503,
+      text: async () => JSON.stringify({ error: { message: "provider unavailable" } }),
+    }),
+  }),
+  /deepseek_api_error:503:provider unavailable/
+);
+
+const posted = [];
+const result = await processDeathmarchEvents({
+  events: [sensitiveEvent],
+  anonymity: 3,
+  dryRun: false,
+  noState: true,
+  env: {
+    DEEPSEEK_API_KEY: "test",
+    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
+  },
+  fetchImpl: async (url, options) => {
+    if (String(url).includes("deepseek")) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          choices: [{
+            message: {
+              content: "User requested a Task Node task. tx: ABCDEF1234567890",
+            },
+          }],
+        }),
+      };
+    }
+    posted.push(JSON.parse(options.body));
+    return { ok: true, status: 204, text: async () => "" };
+  },
+});
+
+assert.equal(result.posted, 1);
+assert.equal(posted.length, 1);
+assert.equal(posted[0].content.includes("**Task requested**"), true);
+assert.equal(posted[0].content.includes("User requested a Task Node task."), true);
+assert.equal((posted[0].content.match(/tx:/g) || []).length, 1);
+assert.equal(posted[0].content.endsWith("tx: ABCDEF1234567890"), true);
+assert.deepEqual(posted[0].allowed_mentions, { parse: [] });
+
+const marked = await processDeathmarchEvents({
+  events: [sensitiveEvent],
+  markExisting: true,
+  noState: true,
+  env: {},
+  fetchImpl: async () => {
+    throw new Error("mark_existing_should_not_call_network");
+  },
+});
+assert.equal(marked.marked, 1);
+assert.equal(marked.posted, 0);
+
+const ignoredAirdrop = await processDeathmarchEvents({
+  events: [{
+    schema: "pf.daily_airdrop.v1",
+    actionKind: "daily_airdrop",
+    txHash: "AIRDROP123",
+    eventKey: "AIRDROP123:0:QmAirdrop:pf.daily_airdrop.v1",
+    payload: { schema: "pf.daily_airdrop.v1" },
+    pointerKind: "REWARD",
+  }],
+  markExisting: true,
+  noState: true,
+});
+assert.equal(ignoredAirdrop.checked, 1);
+assert.equal(ignoredAirdrop.marked, 0);
+
+const ignoredLegacyRewardDecision = await processDeathmarchEvents({
+  events: [{
+    schema: "pf.task.reward_decision.v1",
+    actionKind: "reward_decision",
+    taskId: "task_legacy_reward_decision",
+    txHash: "LEGACYREWARDDECISION123",
+    eventKey: "LEGACYREWARDDECISION123:0:QmLegacy:pf.task.reward_decision.v1",
+    payload: { schema: "pf.task.reward_decision.v1", reward_pft: "12.00" },
+    pointerKind: "TASK_UPDATE",
+  }],
+  markExisting: true,
+  noState: true,
+});
+assert.equal(ignoredLegacyRewardDecision.checked, 1);
+assert.equal(ignoredLegacyRewardDecision.marked, 0);
+
+const ignoredUnreadableRewardPointer = await processDeathmarchEvents({
+  events: [{
+    schema: "",
+    actionKind: "task_pointer",
+    taskId: "task_unreadable_reward_pointer",
+    txHash: "UNREADABLEREWARD123",
+    eventKey: "UNREADABLEREWARD123:0:QmUnreadable:no_schema",
+    payload: { payload_error: "task_payload_decrypt_failed" },
+    pointerKind: "REWARD",
+  }],
+  markExisting: true,
+  noState: true,
+});
+assert.equal(ignoredUnreadableRewardPointer.checked, 1);
+assert.equal(ignoredUnreadableRewardPointer.marked, 0);
+
+const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "deathmarch-smoke-"));
+const seedFile = path.join(tempDir, "deathmarchseed.txt");
+await fs.writeFile(seedFile, "sTestDeathmarchSeed\n", "utf8");
+const fileSeedEnv = await deathmarchEnvWithSeedFile({
+  env: { DEEPSEEK_API_KEY: "test" },
+  seedFile,
+  explicitSeedFile: true,
+});
+assert.equal(fileSeedEnv.TASKNODE_SERVICE_SEED, "sTestDeathmarchSeed");
+
+const existingSeedEnv = await deathmarchEnvWithSeedFile({
+  env: { TASKNODE_SERVICE_SEED: "env-wins" },
+  seedFile,
+  explicitSeedFile: true,
+});
+assert.equal(existingSeedEnv.TASKNODE_SERVICE_SEED, "env-wins");
+
+const userMnemonic = generateMnemonic(wordlist, 256);
+const userSeedFile = path.join(tempDir, "user-deathmarchseed.txt");
+await fs.writeFile(userSeedFile, `${userMnemonic}\n`, "utf8");
+const userSeedEnv = await deathmarchEnvWithSeedFile({
+  env: { TASKNODE_SERVICE_SEED: "service-stays" },
+  seedFile: userSeedFile,
+  explicitSeedFile: true,
+});
+assert.equal(userSeedEnv.TASKNODE_SERVICE_SEED, "service-stays");
+assert.equal(userSeedEnv.DEATHMARCH_USER_MNEMONIC, userMnemonic);
+const userPublicKey = await tasknodePublicKeyFromUserMnemonic(userMnemonic);
+const encryptedForUser = await encryptTasknodePayload({
+  plaintext: JSON.stringify({ ok: true, schema: "deathmarch.user_decrypt.smoke" }),
+  recipientPublicKeys: [userPublicKey],
+});
+const decryptedForUser = await decryptTasknodeUserMnemonicPayload({
+  blob: encryptedForUser,
+  mnemonic: userMnemonic,
+});
+assert.equal(decryptedForUser.schema, "deathmarch.user_decrypt.smoke");
+
+const originalCwd = process.cwd();
+const childDir = path.join(tempDir, "child");
+await fs.mkdir(childDir);
+await fs.writeFile(path.join(tempDir, "deathmarchseed.txt"), "sParentDeathmarchSeed\n", "utf8");
+try {
+  process.chdir(childDir);
+  const parentSeedEnv = await deathmarchEnvWithSeedFile({ env: {} });
+  assert.equal(parentSeedEnv.TASKNODE_SERVICE_SEED, "sParentDeathmarchSeed");
+} finally {
+  process.chdir(originalCwd);
+}
+
+await assert.rejects(
+  () => deathmarchEnvWithSeedFile({
+    env: {},
+    seedFile: path.join(tempDir, "missing.txt"),
+    explicitSeedFile: true,
+  }),
+  /deathmarch_seed_file_missing/
+);
+
+await assert.rejects(
+  () => postToDiscord({
+    content: "hello",
+    env: {},
+    fetchImpl: async () => ({ ok: true, status: 204, text: async () => "" }),
+  }),
+  /discord_destination_missing/
+);
+
+console.log("deathmarch smoke ok");

@@ -21,23 +21,27 @@ digests in taskgen and verification metadata.
 | Turn memory summary | Active async memory worker | `server/chat-memory-worker.js` | `chat_memory_v1` | OpenRouter, default `deepseek/deepseek-v4-flash` | Summarizes one user/assistant exchange into user summary, system summary, and memory text. |
 | Deep memory summary | Active async memory worker | `server/chat-memory-worker.js` | `deep_memory_v1` | OpenRouter, default `deepseek/deepseek-v4-flash` | Triggered every 36 turn-memory records; produces account-level memory. |
 | Task request intent | Active UX correlation only | `server/task-request-intent.js` | `pf.task.request_intent.v1` | None | Records canonical request text plus user detail text. Does not generate a task yet. |
-| Task generation | Active Python replay only | `prompts/task_engine/taskgen_minimal_v1.md`, loaded by `reference_clients/python/tasknode_pftl/taskgen.py` | `taskgen_minimal_v1` | OpenAI, default `chat-latest` | Generates `pf.taskgen.output.v1` with title, description, task kind, steps, submission requirement, verification policy, reward offer, deadline. |
+| Personal task generation | Active app worker and Python replay | `prompts/task_engine/taskgen_personal_v1.md`, selected by `server/task-generation-worker.js` and `reference_clients/python/tasknode_pftl/taskgen.py` | `taskgen_personal_v1` | OpenAI, default `chat-latest` | Generates personal `pf.taskgen.output.v1` tasks with title, description, task kind, steps, submission requirement, verification policy, reward offer, deadline. |
+| Network task generation | Active app worker and Python replay | `prompts/task_engine/taskgen_network_v1.md`, selected when a `network_task` packet or `network`/`alpha` task class is present | `taskgen_network_v1` | OpenAI, default `chat-latest` | Generates Network/Alpha `pf.taskgen.output.v1` tasks from structured Board Manager routing context. |
 | Task generation schema | Active Python replay only | `reference_clients/python/tasknode_pftl/taskgen.py` | `TASKGEN_RESPONSE_FORMAT` | OpenAI Chat Completions JSON schema | Strict output shape for task generation. |
 | Verification request | Active Python replay only | `prompts/task_engine/verification_request_v1.md`, referenced by `reference_clients/python/tasknode_pftl/taskgen.py` | `verification_request_v1` | None currently | Deterministic follow-up ask generated from task offer and initial submission; prompt policy is present for the future model-backed verifier. |
 | Screenshot evidence read | Active Python verification examples | `prompts/task_engine/evidence_screenshot_read_v1.md`, loaded by `reference_clients/python/tasknode_pftl/verification.py` | `evidence_screenshot_read_v1` | OpenAI Responses, default `gpt-5.5` | Reads visible screenshot evidence. PDF, DOCX, and URL readers are deterministic extractors. |
 | Verification response packet | Active Python verification examples | `reference_clients/python/tasknode_pftl/verification.py` | `pf.task.verification_response.v1` | None | Builds canonical packet from evidence summaries. |
 | Reward scoring | Not implemented in Task Node Official | n/a | n/a | n/a | PFTasks has reference reward prompts, but this repo has not ported scoring prompts yet. Current Python replay issues deterministic reward from the generated offer. |
-| Motivation | Prompt research / product surface, not currently wired as task engine | `prompts/openai_jobs_motivation.md`, `prompts/steve_jobs_*.md` | prompt artifact | n/a | These are not task generation prompts and should not be treated as production task-engine policy. |
+| Motivation | Prompt research / product surface, not currently wired as task engine | `prompts/non_production/steve_jobs_ref/openai_jobs_motivation.md`, `prompts/non_production/steve_jobs_ref/steve_jobs_*.md` | prompt artifact | n/a | These are not task generation prompts and should not be treated as production task-engine policy. |
 
-## Current Task Generation Prompt
+## Current Task Generation Prompts
 
-File: `prompts/task_engine/taskgen_minimal_v1.md`
+Files:
 
-The prompt is intentionally small. It explains the default blocks passed from
-Task Node (`request`, `context`, `memory`, `chat`, `relevant_history_summary`,
-`wallet`, and `policy`) and asks for one task with concise description, 2 to 5
-steps when useful, one submission requirement, one verification policy, and a
-bounded PFT reward estimate.
+- `prompts/task_engine/taskgen_personal_v1.md`
+- `prompts/task_engine/taskgen_network_v1.md`
+
+The prompts are intentionally split. Personal task generation receives user
+request, context, memory, chat, relevant history, task queue, wallet, and policy
+blocks. Network task generation receives those blocks plus structured
+`network_task` routing context from Board Manager and owns translating routing
+shorthand into contributor-facing work.
 
 The user prompt is assembled as:
 

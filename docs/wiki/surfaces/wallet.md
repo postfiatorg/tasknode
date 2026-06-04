@@ -50,7 +50,11 @@ If a linked wallet has no saved local vault, the app cannot unlock from the moda
 - Linked wallet metadata: server account record.
 - Session unlock secret: in-memory browser state only, never persisted server-side.
 - PFT balance and activity: PFTL-derived cache.
-- Ethereum top-ups: generated deposit addresses and observed token deposits.
+- Ethereum top-ups: account-scoped Ethereum deposit addresses and observed
+  token deposits. These addresses are derived from the operator receive xpub,
+  not from the user's linked PFT wallet. The web app stores xpub-derived
+  address/index metadata and balance sync state; the mnemonic, receive xprv,
+  and child private keys stay outside the app with operator custody.
 - Initiation grant register: one grant per eligible account or wallet, whether it came from OAuth wallet creation or the qualifying USDC top-up path. Eligibility is server-side, but payout is user-initiated from the browser only after the matching local vault is saved or unlocked.
 - Account deletion audit: deleting an account writes an `account_deletion_audit` record with account id, archive id, wallet/deposit addresses when present, hashed provider identities, hashed email, and non-secret profile labels. Initiation grant eligibility uses this audit to prevent deleting and recreating the same identity to farm the faucet.
 
@@ -96,14 +100,14 @@ Review implementation against this document (wallet). Mark each item when verifi
 ### Code Quality
 - [ ] Code references in doc resolve to existing modules and routes.
 - [ ] Failure modes documented here have matching user-visible error handling.
-- [ ] Link vs unlock vs proof boundaries match `AUTH_WALLET_BOUNDARY.md`.
+- [ ] Link vs unlock vs proof boundaries match Auth And Connected Accounts, Encryption, and this Wallet page.
 - [ ] Initiation grant and faucet paths are idempotent and auditable.
 
 ### Coherence
 - [ ] Surface behavior matches Architecture docs for cache vs canonical state.
 - [ ] Hidden/not-exposed features labeled honestly if mentioned.
 - [ ] UI lock/unlock state matches server expectations for signing routes.
-- [ ] Top-up rail docs align with `ETHEREUM_TOP_UPS.md` custody model.
+- [ ] Top-up rail docs align with the Ethereum Deposit RPC custody model.
 
 ### Bloat
 - [ ] Surface does not duplicate logic owned by shared modules or workers.

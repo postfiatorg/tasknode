@@ -26,13 +26,13 @@ const allocationWallet = Wallet.generate().address;
 const contextTxHash = `PFTL_REDUCER_CONTEXT_${runId}`;
 const taskTxHash = `PFTL_REDUCER_TASK_${runId}`;
 const verificationRequestTxHash = `PFTL_REDUCER_VERIFICATION_${runId}`;
-const rewardDecisionTxHash = `PFTL_REDUCER_REWARD_DECISION_${runId}`;
+const rewardOutcomeTxHash = `PFTL_REDUCER_REWARD_OUTCOME_${runId}`;
 const nullTaskTxHash = `PFTL_REDUCER_NULL_TASK_${runId}`;
-const txHashes = [contextTxHash, taskTxHash, verificationRequestTxHash, rewardDecisionTxHash, nullTaskTxHash];
+const txHashes = [contextTxHash, taskTxHash, verificationRequestTxHash, rewardOutcomeTxHash, nullTaskTxHash];
 const contextCid = `bafkreireducercontext${Date.now()}`;
 const taskCid = `bafkreireducertask${Date.now()}`;
 const verificationRequestCid = `bafkreireducerverification${Date.now()}`;
-const rewardDecisionCid = `bafkreireducerrewarddecision${Date.now()}`;
+const rewardOutcomeCid = `bafkreireducerrewardoutcome${Date.now()}`;
 const nullTaskCid = `bafkreireducernulltask${Date.now()}`;
 const taskId = `task_${runId}`;
 
@@ -157,9 +157,9 @@ try {
     schema: 1,
     taskId,
   });
-  const rewardDecisionPointer = buildPftPointerMemo({
-    cid: rewardDecisionCid,
-    kind: "TASK_UPDATE",
+  const rewardOutcomePointer = buildPftPointerMemo({
+    cid: rewardOutcomeCid,
+    kind: "REWARD",
     schema: 1,
     taskId,
   });
@@ -222,11 +222,13 @@ try {
     allocation_wallet: allocationWallet,
   };
   const encryptedVerificationRequest = await encryptForService(verificationRequest);
-  const rewardDecision = {
-    schema: "pf.task.reward_decision.v1",
+  const rewardOutcome = {
+    schema: "pf.reward.v1",
     task_id: taskId,
-    status_after: "reward_decided",
-    score: {
+    reward_pft: "0.00",
+    economic_reward_pft: "0.00",
+    carrier_amount_drops: "1",
+    reward_score: {
       decision: "reject",
       reward_pft: "0.00",
     },
@@ -234,11 +236,11 @@ try {
     authority_wallet: authorityWallet,
     allocation_wallet: allocationWallet,
   };
-  const encryptedRewardDecision = await encryptForService(rewardDecision);
+  const encryptedRewardOutcome = await encryptForService(rewardOutcome);
   const ipfsPayloads = new Map([
     [taskCid, encryptedTaskOffer],
     [verificationRequestCid, encryptedVerificationRequest],
-    [rewardDecisionCid, encryptedRewardDecision],
+    [rewardOutcomeCid, encryptedRewardOutcome],
   ]);
   const fetchedCids = [];
 
@@ -250,9 +252,9 @@ try {
     pointerMemo: verificationRequestPointer,
     ledgerIndex: 810003,
   });
-  const rewardDecisionEntry = txEntry({
-    txHash: rewardDecisionTxHash,
-    pointerMemo: rewardDecisionPointer,
+  const rewardOutcomeEntry = txEntry({
+    txHash: rewardOutcomeTxHash,
+    pointerMemo: rewardOutcomePointer,
     ledgerIndex: 810004,
   });
   await storePftlAccountTransactions({
@@ -261,13 +263,17 @@ try {
   });
   await storePftlAccountTransactions({
     walletAddress: authorityWallet,
-    transactions: [nullTaskEntry, verificationRequestEntry, rewardDecisionEntry],
+    transactions: [nullTaskEntry, verificationRequestEntry],
+  });
+  await storePftlAccountTransactions({
+    walletAddress: allocationWallet,
+    transactions: [rewardOutcomeEntry],
   });
   for (const [walletAddress, entry] of [
     [userWallet, contextEntry],
     [userWallet, taskEntry],
     [authorityWallet, verificationRequestEntry],
-    [authorityWallet, rewardDecisionEntry],
+    [allocationWallet, rewardOutcomeEntry],
   ]) {
     await enqueuePftlReducerEventsForTransaction({
       walletAddress,

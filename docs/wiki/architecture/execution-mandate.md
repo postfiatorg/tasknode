@@ -109,7 +109,7 @@ Review implementation against this document (execution mandate). Mark each item 
 - [ ] Canonical vs cache boundaries consistent with wiki index.
 - [ ] Cross-links to related architecture pages remain accurate.
 - [ ] End-to-end definition matches task engine and wiki index canonical rules.
-- [ ] Docker container names and ports match `BOOTUP.md` and skill.
+- [ ] Docker container names and ports match the Bootup wiki page and skill.
 
 ### Bloat
 - [ ] No parallel implementations of the same protocol concern.

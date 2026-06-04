@@ -10,6 +10,12 @@ secrets.*.json
 *.secrets
 github_local_auth.txt
 env_dump.txt
+.deathmarch-state.json
+deathmarch.log
+deathmarch.pid
+deathmarchseed.txt
+docs/verification/evidence/
+docs/verification/task_*.md
 node_modules/
 dist/
 private_prompts/

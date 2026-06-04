@@ -148,8 +148,8 @@ export function compactNetworkTaskContent(row = {}) {
   const sourcePayload = safeObject(row.source_payload_json);
   const sourceNetworkTask = safeObject(sourcePayload.networkTask || sourcePayload.network_task);
   const networkTask = { ...sourceNetworkTask, ...safeObject(generatedTask.network_task) };
-  const rewardDecision = safeObject(row.reward_decision_payload);
-  const rewardScore = safeObject(rewardDecision.score || rewardDecision.reward_score);
+  const rewardOutcome = safeObject(row.reward_outcome_payload);
+  const rewardScore = safeObject(rewardOutcome.reward_score || rewardOutcome.score);
   const stopPayload = safeObject(row.stop_payload);
   const verificationPayload = safeObject(row.verification_request_payload);
   const verificationRequest = safeObject(verificationPayload.verification_request);
@@ -165,8 +165,8 @@ export function compactNetworkTaskContent(row = {}) {
     1000
   );
   const rewardSummary = safeText(
-    rewardScore.user_feedback || rewardScore.reason || rewardDecision.reward_summary ||
-      rewardDecision.user_feedback || rewardDecision.reason || "",
+    rewardScore.user_feedback || rewardScore.reason || rewardOutcome.reward_summary ||
+      rewardOutcome.user_feedback || rewardOutcome.reason || "",
     1200
   );
   const stopSummary = safeText(

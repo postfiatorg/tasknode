@@ -20,11 +20,11 @@ Private memory jobs use the configured OpenRouter ZDR model path. The worker req
 
 Deep-memory jobs are stable snapshots. `chat_deep_memory_jobs.source_entry_ids` stores the exact 36 `chat_memory_entries.id` values selected when the block is queued. The worker reads those IDs directly instead of recalculating the block later from timestamps, so backfills, imports, or corrected timestamps cannot change what a queued deep-memory job summarizes. `chat_memory_entries` also enforces one `deep_memory` row per account and block index, so retrying or recreating a deep-memory job updates the existing block summary rather than creating duplicates.
 
-Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. The prompt is `prompts/memory/network_task_profile_v2.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh. The generated profile is not required for the page to render. Network Context Inputs are built from profile data and routable `task_projections` on every route read and are returned even while a profile job is pending.
+Network Task Profile jobs use the same memory worker and OpenRouter ZDR route. The prompt is `prompts/memory/network_task_profile_v2.md`. The API route is `GET /api/memory/network-task-profile`; `POST /api/memory/network-task-profile` requests a refresh. The generated profile is also queued automatically once an account has at least two positive task rewards, both when rewarded task projections are imported and during the memory worker backfill pass. The generated profile is not required for the page to render. Network Context Inputs are built from profile data and routable `task_projections` on every route read and are returned even while a profile job is pending.
 
-The original Network Task Profile implementation plan is retained under
-`Implemented / Deprecated Plans`. This page is the current product contract for
-Memory and Network Diagnostic Report behavior.
+This page is the current product contract for Memory and Network Diagnostic
+Report behavior. Historical Network Task Profile planning has been folded into
+this surface doc and the Network Task Profile Worker runbook.
 
 ## Network Task Profile
 

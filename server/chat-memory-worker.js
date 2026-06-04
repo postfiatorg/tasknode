@@ -15,6 +15,7 @@ import {
 import {
   claimNetworkTaskProfileJobs,
   completeNetworkTaskProfileJob,
+  enqueueNetworkTaskProfilesForRewardedAccounts,
   failNetworkTaskProfileJob,
   networkTaskProfilePromptVersion,
 } from "./repositories/network-task-profile.js";
@@ -435,6 +436,8 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
   let networkProfileProcessed = 0;
   let networkProfileFailed = 0;
   let networkProfileClaimed = 0;
+  let networkProfileSeeded = 0;
+  let networkProfileSeedFailed = 0;
   try {
     const jobs = await claimChatMemoryJobs({ limit });
     for (const job of jobs) {
@@ -467,6 +470,21 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
         await failDeepMemoryJob(job, error);
       }
     }
+    const seedLimit = Math.min(
+      Math.max(Number(process.env.TASKNODE_NETWORK_TASK_PROFILE_AUTO_QUEUE_LIMIT || 2), 1),
+      10
+    );
+    const seedResult = await enqueueNetworkTaskProfilesForRewardedAccounts({
+      limit: seedLimit,
+      reason: "rewarded_task_threshold_worker",
+    }).catch((error) => ({
+      queuedCount: 0,
+      failedCount: 1,
+      error: error?.message || String(error),
+    }));
+    networkProfileSeeded = Number(seedResult.queuedCount || 0);
+    networkProfileSeedFailed = Number(seedResult.failedCount || 0);
+
     const networkJobs = await claimNetworkTaskProfileJobs({ limit: 1 });
     networkProfileClaimed = networkJobs.length;
     for (const job of networkJobs) {
@@ -500,6 +518,8 @@ export async function processMemoryQueueOnce({ limit = 3 } = {}) {
       networkProfileProcessed,
       networkProfileFailed,
       networkProfileClaimed,
+      networkProfileSeeded,
+      networkProfileSeedFailed,
     };
   } finally {
     running = false;

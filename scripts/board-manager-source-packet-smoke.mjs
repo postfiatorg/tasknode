@@ -67,7 +67,7 @@ async function main() {
     await query(
       `
         INSERT INTO task_events (id, task_id, account_id, wallet_address, event_type, source_tx_hash, source_cid, payload_json, occurred_at)
-        VALUES ($1, $2, 'acct_board_packet_smoke', 'rBoardPacketSmoke', 'pf.task.reward_decision.v1',
+        VALUES ($1, $2, 'acct_board_packet_smoke', 'rBoardPacketSmoke', 'pf.reward.v1',
           $3, $4, $5::jsonb, now() - interval '9 minutes')
       `,
       [
@@ -76,7 +76,11 @@ async function main() {
         `tx_completed_${suffix}`,
         `cid_completed_${suffix}`,
         JSON.stringify({
-          score: {
+          schema: "pf.reward.v1",
+          reward_pft: "11000",
+          economic_reward_pft: "11000",
+          reward_summary: "Completed task reward summary that should be available to the Board Manager.",
+          reward_score: {
             decision: "reward",
             reward_pft: "11000",
             reason: "Completed task reward summary that should be available to the Board Manager.",

@@ -79,7 +79,8 @@ assert.equal(capturedBody.store, false);
 assert.equal(result.provider, "openai");
 assert.equal(result.model, "gpt-5.5-pro-2026-04-23");
 assert.equal(result.output.projects.length, 1);
-assert.equal(result.output.projects[0].id, "task_node_reliability");
+assert.equal(result.output.projects[0].id, "task_node_core_product");
+assert.equal(result.output.projects[0].title, "Task Node Core Product");
 assert.equal(result.output.projects[0].type, "protocol_applications");
 assert.equal(result.output.projects[0].task_count, 0);
 assert.equal(result.output.projects[0].contributor_count, 0);
@@ -177,11 +178,12 @@ const boardDocument = hiveProjectsDocumentForTests({
     { project_id: "pending_generation_project", pending_generation_count: 1 },
   ],
 });
-assert.deepEqual(boardDocument.projectIds, ["live_project", "agent_archived_project", "pending_generation_project"]);
-assert.equal(boardDocument.stats.activeProjects, 3);
-assert.equal(boardDocument.stats.tasksInFlight, 2);
-assert.equal(boardDocument.stats.pftRouted, 550);
+assert.deepEqual(boardDocument.projectIds, ["live_project", "pending_generation_project"]);
+assert.equal(boardDocument.stats.activeProjects, 2);
+assert.equal(boardDocument.stats.tasksInFlight, 1);
+assert.equal(boardDocument.stats.pftRouted, 250);
 assert.equal(boardDocument.projects.empty_active_project, undefined);
+assert.equal(boardDocument.projects.agent_archived_project, undefined);
 assert.equal(boardDocument.projects.operator_archived_project, undefined);
 assert.equal(boardDocument.projects.live_project.tasks[0].title, "Projected task");
 assert.equal(boardDocument.projects.live_project.tasks[0].state, "accepted");
@@ -189,7 +191,7 @@ assert.equal(boardDocument.projects.live_project.tasks[0].assignee, "rProjected"
 assert.equal(boardDocument.projects.live_project.tasks[0].pft, 250);
 assert.equal(boardDocument.projects.pending_generation_project.pendingGenerationCount, 1);
 assert.equal(boardDocument.projects.pending_generation_project.tasks.length, 0);
-assert.equal(boardDocument.operators.rProjected.load, 2);
-assert.equal(boardDocument.operators.rProjected.currentTasks.length, 2);
+assert.equal(boardDocument.operators.rProjected.load, 1);
+assert.equal(boardDocument.operators.rProjected.currentTasks.length, 1);
 
 console.log("hive project planning smoke ok");

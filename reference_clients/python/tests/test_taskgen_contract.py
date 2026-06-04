@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from tasknode_pftl.config import PftlConfig
-from tasknode_pftl.taskgen import build_request_bundle, generate_task, project_taskgen_input
+from tasknode_pftl.taskgen import build_request_bundle, generate_task, project_taskgen_input, taskgen_prompt_for_input
 
 
 class TaskgenContractTests(unittest.TestCase):
@@ -72,6 +72,27 @@ class TaskgenContractTests(unittest.TestCase):
 
         self.assertEqual(task_input["task_queue"]["summary"]["outstanding"], 1)
         self.assertEqual(task_input["task_queue"]["groups"]["outstanding"][0]["task_id"], "task_open")
+
+    def test_prompt_selection_splits_personal_and_network_taskgen(self):
+        bundle = build_request_bundle(subject_wallet="rUser", allocation_wallet="rAllocation")
+        personal_input = project_taskgen_input(bundle, bundle_cid="bafbundle", bundle_digest="sha256:abc")
+        personal_version, personal_path, personal_prompt = taskgen_prompt_for_input(personal_input)
+        self.assertEqual(personal_version, "taskgen_personal_v1")
+        self.assertEqual(personal_path, "task_engine/taskgen_personal_v1.md")
+        self.assertNotIn("network_task", personal_prompt)
+
+        bundle["network_task"] = {
+            "schema": "pf.hive.network_task_request.v1",
+            "task_class": "network",
+            "project_title": "Task Node",
+            "project_need_summary": "Patch a concrete app Help page.",
+        }
+        bundle["policy"]["task_class"] = "network"
+        network_input = project_taskgen_input(bundle, bundle_cid="bafbundle", bundle_digest="sha256:def")
+        network_version, network_path, network_prompt = taskgen_prompt_for_input(network_input)
+        self.assertEqual(network_version, "taskgen_network_v1")
+        self.assertEqual(network_path, "task_engine/taskgen_network_v1.md")
+        self.assertIn("network_task", network_prompt)
 
     def test_private_taskgen_uses_openrouter_zdr_routing(self):
         class FakeResponse:

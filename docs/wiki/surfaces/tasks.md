@@ -2,9 +2,9 @@
 
 Tasks are wallet-backed work objects. The UX is a fast Postgres projection over PFTL pointer history and encrypted IPFS payloads. PFTL/IPFS is the canonical record; Postgres is the read model that lets the app render task queues, detail pages, forensics, chat context, and reward status without scanning wallet history on every page load.
 
-The original task-over-the-line and Python speedrun plans are retained under
-`Implemented / Deprecated Plans`. This page and `Architecture -> Task Async
-Engine` are the current product contract for the app-backed task lifecycle.
+This page and `Architecture -> Task Async Engine` are the current product
+contract for the app-backed task lifecycle. Historical task implementation
+plans have been folded into the current surface and architecture docs.
 
 ## What The User Sees
 
@@ -15,7 +15,7 @@ The Tasks surface is reached from the left navigation. It shows a compact task q
 | Outstanding | Proposed, accepted, or initially submitted tasks that still require user action. | No cap. Active work must not disappear. |
 | Verification | Tasks with a verification request or verification response waiting for authority review. | No cap. Active work must not disappear. |
 | Refused | Rejected, refused, expired, or cancelled tasks. | UI may paginate later; chat context currently caps refused history at 10. |
-| Rewarded | Tasks that reached a reward decision or reward payment state. | UI may paginate later; chat context currently caps rewarded history at 12. |
+| Rewarded | Tasks that reached a terminal reward outcome. | UI may paginate later; chat context currently caps rewarded history at 12. |
 
 The top summary shows outstanding count, PFT in flight, chain-indexed projection count, and active request count. Deadlines render as calendar dates, such as `May 20`, while real event and review timestamps render with time and timezone. This prevents date-only deadlines from showing as misleading `12:00 AM` event times.
 
@@ -23,11 +23,26 @@ The top summary shows outstanding count, PFT in flight, chain-indexed projection
 
 Network-pushed work appears in the same task queue, not in a separate lifecycle. Visible task labels are intentionally limited to `Personal`, `Network`, or `Alpha`; implementation categories such as engineering are not shown as task types. Project/routing metadata stays in the backing payload and forensics, while the list and detail page focus on the normal task lifecycle: accept or refuse, submit, verify, reward, and audit.
 
+`Request task` is not the Network Task entry point. `Request task` creates a user-requested personal task proposal. Network Tasks are system-routed by Hive Board Manager when an active network project needs work and an eligible candidate is available.
+
+The user-facing routing gates are:
+
+1. Signed-in Task Node account.
+2. Linked PFT wallet.
+3. Linked wallet indexed as an active user wallet in the PFTL sync cache.
+4. Completed Network Diagnostic Report from Memory.
+5. No outstanding or pending Network Task already consuming that account/wallet's Network Task capacity.
+6. Hive Board Manager finds a project need that matches the routing profile.
+
+Personal, engineering, proposed, refused, and rewarded non-network tasks can inform routing judgment, but they do not hard-block Network Task eligibility. When these gates are satisfied, the user is ready to receive a Network Task but still waits for Board Manager to choose them for a live project need.
+
+Once an account has at least two positive task rewards, Task Node automatically queues the Network Diagnostic Report job from the task projection/reward path and from the memory worker backfill. The user should not need to open Memory or click refresh for the report to be generated.
+
 ## List And Detail State Consistency
 
 The task list, tab counts, and task detail page must agree because they read the same projected lifecycle. If the detail page says a task is rewarded, the list must not keep showing that task under Verification.
 
-The failure mode we just fixed was not a bad reward decision and not a one-off task record. The database projection already had the correct terminal state. The bug was that the Tasks page was allowed to stop refreshing while a task sat at `verification_requested`. That state is not stable. It means the user can still submit verification evidence and the authority worker can later publish a reward decision.
+The failure mode we just fixed was not a bad reward outcome and not a one-off task record. The database projection already had the correct terminal state. The bug was that the Tasks page was allowed to stop refreshing while a task sat at `verification_requested`. That state is not stable. It means the user can still submit verification evidence and the authority worker can later publish a reward outcome.
 
 The repair is in the shared lifecycle contract, not a hard-coded task patch. `shared/task-lifecycle.js` now marks `verification_requested` as an active review-loop state with `requiresRefresh: true`. `GET /api/tasks` uses that contract when returning sync metadata, and the Tasks page uses the metadata to keep polling until the projection reaches a terminal state such as `rewarded`, `refused`, or `cancelled`.
 
@@ -35,7 +50,7 @@ In plain English:
 
 1. A task card can sit in Verification while the system is waiting for evidence or review.
 2. While it is in that review loop, the list keeps checking the projection cache.
-3. When the reducer projects a reward decision or payment, the card moves to Rewarded without a manual browser reload.
+3. When the reducer projects a terminal reward outcome, the card moves to Rewarded without a manual browser reload.
 4. Terminal states stop active refresh because no later lifecycle event is expected for the normal task loop.
 
 Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`. It asserts that `verification_requested` stays refreshable and that terminal `rewarded` tasks do not keep the page polling forever.
@@ -54,7 +69,10 @@ the active Fly `worker` is `started` before treating task data as corrupt.
 
 ## Task Generation Contract
 
-Generated offers must match the browser UX. The task-generation prompt in `prompts/task_engine/taskgen_minimal_v1.md` and the worker validation in `server/task-generation-worker.js` enforce this contract:
+Generated offers must match the browser UX. The task-generation prompts in
+`prompts/task_engine/taskgen_personal_v1.md` and
+`prompts/task_engine/taskgen_network_v1.md`, plus worker validation in
+`server/task-generation-worker.js`, enforce this contract:
 
 | Contract | Current behavior |
 | --- | --- |
@@ -65,7 +83,21 @@ Generated offers must match the browser UX. The task-generation prompt in `promp
 | URL evidence safety | The review worker may extract public URL evidence, but it does not fetch unsupported schemes, credentialed URLs, localhost, private IP ranges, metadata IPs, or DNS names that resolve to private addresses. Redirects are not followed during evidence extraction. |
 | Canonical source | The generated task is written into the encrypted `pf.task.offer.v1` IPFS payload and anchored by the authority wallet PFTL pointer. Postgres only projects it for fast reads. |
 
-Network Tasks and Alpha Tasks reuse this same prompt and worker. The network-task generation worker injects a `network_task` block into the request bundle with project id, task class, routing reason, diagnostic profile digest, and reward band. The Board Manager does not author the concrete task. It queues the allocation and records why the system is routing work to the contributor; `server/task-generation-worker.js` still generates the title, steps, submission requirement, and verification policy.
+Network Tasks and Alpha Tasks use the separate network taskgen prompt. The network-task generation worker injects a `network_task` block into the request bundle with project id, task class, routing reason, diagnostic profile digest, and reward band. The Board Manager does not author the concrete task. It queues the allocation and records why the system is routing work to the contributor; `server/task-generation-worker.js` still generates the title, steps, submission requirement, and verification policy.
+
+The network prompt treats generated tasks as coordination units for contributors
+who may not know each other. A compliant Network Task should advance Post Fiat,
+Task Node, the shared data lake, or collective capital formation while producing
+a scoped artifact with reviewable, sybil-resistant proof. The assignment should
+translate project or Board Manager shorthand into plain-English work on a named
+surface, document, data state, code path, or artifact.
+
+The packet path is Board Manager `payload.network_task` ->
+`network_task_allocations` / `network_task_generation_jobs` ->
+encrypted `pf.task.request_bundle.v1` with a `pf.hive.network_task_request.v1`
+block -> `pf.taskgen.input.v1` -> encrypted `pf.task.offer.v1`. That path keeps
+Network Tasks in the normal task lifecycle while preserving the project routing,
+candidate fit, reward band, and source payload digest for audit.
 
 After publication, the Board Manager is out of the lifecycle. Status comes from signed PFTL task pointers reduced into `task_projections`. Hive/project rows mirror that status through `syncNetworkTaskProjection`; they do not decide task state.
 
@@ -111,7 +143,7 @@ The detail header always shows:
 - displayed reward;
 - indexed event count.
 
-The Overview tab renders the task description, steps, verification requirement, and any reward decision. If a task has a `pf.task.reward_decision.v1` event with `reward_pft: 0`, the page shows `No PFT paid` and explains that no separate reward payment pointer is expected. The detailed reason and feedback are not hard-coded. They are read from the reward decision payload:
+The Overview tab renders the task description, steps, verification requirement, and any reward outcome. Current reward reviews close with one `pf.reward.v1` event. If the payload has `reward_pft: 0`, the page shows `No PFT paid` and explains that the one-drop transaction is only the encrypted outcome carrier, not an economic reward. The detailed reason and feedback are not hard-coded. They are read from the reward payload:
 
 - `score.decision`;
 - `score.reward_pft`;
@@ -119,8 +151,6 @@ The Overview tab renders the task description, steps, verification requirement, 
 - `score.evidence_quality`;
 - `score.reason`;
 - `score.user_feedback`.
-
-If the authority decision is positive but the matching `pf.reward.v1` payment event is not indexed yet, the page should show that the reward decision exists but payment is pending.
 
 Task steps come from the decrypted `pf.task.offer.v1` payload. The reducer preserves those steps in `task_projections.metadata_json.generatedTask.steps`; the UI must not invent a one-step list from the submission requirement when real generated steps exist.
 
@@ -165,7 +195,7 @@ Screenshot and file uploads use a Task Node styled picker, not the native browse
 
 The task detail modal keeps its own local detail state while it is open. After a successful evidence transaction, the modal updates optimistically to `Submitted` or `Awaiting review` and polls task detail for the submitted transaction hash so the user is not left looking at the old prompt while indexing catches up.
 
-The Tasks page refresh policy is driven by the shared lifecycle contract in `shared/task-lifecycle.js` and the server metadata returned by `GET /api/tasks`. Initial submissions can be advanced by the review worker into `Verification requested`; verification responses can be advanced into `Rewarded` after the authority scores the evidence and, when positive, publishes the reward payment. The list and tab counts should therefore follow the projection cache without a manual browser reload.
+The Tasks page refresh policy is driven by the shared lifecycle contract in `shared/task-lifecycle.js` and the server metadata returned by `GET /api/tasks`. Initial submissions can be advanced by the review worker into `Verification requested`; verification responses can be advanced into `Rewarded` after the authority scores the evidence and publishes the terminal `pf.reward.v1` outcome. The list and tab counts should therefore follow the projection cache without a manual browser reload.
 
 The review worker is a production dependency, not an optional enhancement. On
 Fly it runs under `npm run start:worker`; a passing public `/health` check does
@@ -183,18 +213,25 @@ The IPFS payload limit is intentionally small enough to catch bad evidence archi
 - submitted tasks are scored for a follow-up verification request using `prompts/task_engine/verification_request_v1.md`; multi-artifact submissions are expanded into separate processed evidence entries before the prompt call;
 - the worker publishes a `pf.task.update.v1` pointer with `transition: verification_requested`;
 - verification responses are scored using `prompts/task_engine/reward_scoring_v1.md`;
-- the worker publishes `pf.task.reward_decision.v1`;
-- if the model returns a positive reward, the reward wallet publishes `pf.reward.v1` and transfers PFT;
-- if the model returns zero, the task is terminal `rewarded` with `0 PFT` and no payment pointer is expected.
+- the worker publishes exactly one terminal `pf.reward.v1`;
+- if the model returns a positive or partial reward, the `pf.reward.v1` transaction amount is the economic PFT payout;
+- if the model returns zero, the `pf.reward.v1` transaction amount is one drop and the payload records `reward_pft: "0.00"` and `economic_reward_pft: "0.00"`.
 
-Worker publication is one-way. Once the worker gets a transaction hash or CID
-back from PFTL, `metadata_json.workers.<worker>.published` stays true even if
-the projection has not caught up yet. A stale processing lease can be retried,
-but a stale published marker cannot be reclaimed for another publication. This
-prevents duplicate verification requests and duplicate reward payments during
-cache or reducer lag.
+Worker publication is guarded by `task_review_publications`, keyed by
+`(task_id, worker_name)`. Once the worker has a transaction hash or CID for the
+verification request or reward outcome, the publication row is
+the idempotency record even if the projection has not caught up yet. A stale
+processing lease can be retried, but a recorded publication cannot be reclaimed
+for a second authority review or reward outcome. This prevents duplicate
+verification requests and duplicate reward outcomes during cache or reducer lag.
 
-The browser path has now exercised zero, partial, and positive reward outcomes. The task projection treats each as terminal `rewarded`; the reward panel explains whether a separate `pf.reward.v1` payment pointer exists.
+This lock only protects workers that share the same database. Default local
+Docker therefore runs the API as web-only and does not publish task-review
+events to the live Fly task universe. Local end-to-end reward tests use
+`npm run docker:reward-test`, which generates local-only authority and reward
+seeds in `.env.local-rewards` and starts an isolated `reward-test-worker`.
+
+The browser path has now exercised zero, partial, and positive reward outcomes. The task projection treats each as terminal `rewarded`; the reward panel explains whether the `pf.reward.v1` event paid an economic amount or used a one-drop zero-reward carrier.
 
 ## Forensics
 
@@ -216,8 +253,7 @@ When the Task Node service key can decrypt the IPFS payload, the app expands the
 - `pf.task.update.v1`: lifecycle transition such as accepted, refused, cancelled, or verification requested.
 - `pf.task.submission.v1`: initial evidence packet, evidence refs, processed artifacts.
 - `pf.task.verification_response.v1`: user's response to the verification request.
-- `pf.task.reward_decision.v1`: authority scoring decision, reason, feedback, reward amount.
-- `pf.reward.v1`: reward payment pointer/payment evidence.
+- `pf.reward.v1`: terminal reward outcome with scorer decision, reason, task history, and economic reward amount.
 
 The raw payload is kept collapsible below the readable fields so operators can audit exact schemas without losing the user-facing explanation.
 
@@ -245,7 +281,7 @@ stateDiagram-v2
   Accepted --> Submitted: initial evidence
   Submitted --> VerificationRequested: authority asks follow-up
   VerificationRequested --> AwaitingReview: user submits verification evidence
-  AwaitingReview --> Rewarded: reward decision indexed
+  AwaitingReview --> Rewarded: reward outcome indexed
   Accepted --> Cancelled: user cancels
   Submitted --> Cancelled: user cancels
   VerificationRequested --> Cancelled: user cancels
@@ -255,7 +291,7 @@ stateDiagram-v2
   Rewarded --> [*]
 ```
 
-`Rewarded` does not necessarily mean a positive PFT payment. It means the task reached a terminal reward decision or reward payment state. A rewarded task can correctly show `0 PFT` when the authority decision rejects the evidence or assigns no reward.
+`Rewarded` does not necessarily mean a positive PFT payment. It means the task reached a terminal reward outcome. A rewarded task can correctly show `0 PFT` when the authority review rejects the evidence or assigns no reward.
 
 ## Data Flow
 
@@ -390,10 +426,11 @@ Outstanding and pending verification tasks are uncapped in chat context. Refused
 - Board Manager `initiate_network_task` queueing is implemented. It writes `network_task_allocations` and `network_task_generation_jobs`; fake smoke jobs are marked failed after verification so the live worker does not process test data.
 - The API worker starts `server/task-generation-worker.js` when `TASKNODE_TASK_GENERATION_WORKER_ENABLED=true`. It claims `task_requests` rows and emits real `pf.task.offer.v1` pointers. Browser publishes also schedule an immediate generation tick; the 5 second worker interval is the backstop.
 - The API worker starts `server/network-task-generation-worker.js` when `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true`. It creates a normal encrypted task request bundle from a queued network allocation and schedules the existing task-generation worker. A queued `network_task_generation_jobs` row is not a visible Network Task until the second worker publishes the offer and `task_projections` contains the task.
-- Local Docker live Network Task smoke: Board Manager run `boardrun_6e436673-14aa-4568-b7a1-fe2874d4ad7a` queued generation job `nettaskjob_2d863a1a-0d57-47c2-9b33-52787ad8d37c`; the worker created request `req_net_c73fe62037a9cf201d51b32bdefa69ca`; task generation published `task_01af1624fcb74e41d902ca32b126f27d` with offer transaction `E6C86781C0D53A68F2E7740AA8751E19616B9732489D9EA8C4330A692AC1A931`; the user completed the normal submission/review/reward loop; `task_projections` shows status `rewarded`; `network_project_task_refs` mirrors `rewarded`; `network_task_allocations` mirrors `completed`.
 - Browser accept/refuse/cancel task updates are live through `POST /api/tasks/action`.
 - Browser evidence and verification-response submission are live through `POST /api/tasks/submission`, including up to two compact artifacts in one signed packet.
-- The local Docker API starts `server/task-review-worker.js`, controlled by `TASKNODE_TASK_REVIEW_WORKER_ENABLED`. It publishes verification requests, reward decisions, and positive reward payments from configured service/reward seeds.
+- Default local Docker is web/API only for task review publication: `TASKNODE_PROCESS_ROLE=web` and `TASKNODE_TASK_REVIEW_WORKER_ENABLED=false`. It can inspect and reduce task state, but it must not publish verification requests or reward outcomes to the live Fly task universe.
+- Local reward issuance tests use `npm run docker:reward-test`. That profile starts `reward-test-worker` with generated local service, authority, and reward seeds from `.env.local-rewards`. It can publish local task-review/reward events against the local Docker database without sharing production signing authority with Fly.
+- The task review worker uses `TASKNODE_TASK_WORKER_CLAIM_STALE_SECONDS` with a 900 second deployment value and a 300 second code floor. Review/scoring can include provider calls, IPFS writes, PFTL publishes, and projection refreshes, so a short stale-claim window can reclaim the same task while the first publish is still settling. Claim queries exclude tasks that already have indexed verification-request or reward-outcome events in `task_events`, the `task_review_publications` lock owns each publication lane, and the worker re-checks the task timeline immediately before publishing verification requests or rewards.
 - Positive reward, partial reward, and zero-reward browser paths have been exercised against projected tasks.
 - Allocation wallet provisioning is still seed-config based. Per-user or per-shard allocation wallet provisioning is not implemented.
 - Worker failure state is not yet a full user-facing retry panel. Errors are retained in request rows, projection worker metadata, and logs.
@@ -407,7 +444,7 @@ When changing Tasks, verify:
 2. `GET /api/tasks/detail?taskId=...` includes `actions`, `forensics.timeline`, and any `rewardOutcome`.
 3. Non-terminal verification-loop tasks expose `canCancel: true`.
 4. Terminal tasks do not expose stop actions.
-5. Zero-reward tasks explain the reason from `pf.task.reward_decision.v1`.
+5. Zero-reward tasks explain the reason from the terminal `pf.reward.v1` payload.
 6. Forensics rows show CIDs, transaction hashes, schema, and decrypted payload details when the service key can read them.
 7. Chat task context still treats task state as read-only projection data.
 8. Task deadlines render without `12:00 AM`, while real event rows still show exact times.

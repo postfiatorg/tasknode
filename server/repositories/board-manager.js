@@ -24,7 +24,9 @@ import { buildBoardManagerActionPressure } from "./board-manager-health.js";
 import {
   expireOpenBoardManagerFollowups,
   listOpenBoardManagerFollowups,
+  resolveStaleBoardManagerFollowups,
 } from "./board-manager-state.js";
+import { buildHiveRoutingConstraintsSnapshot } from "./hive-account-live-state.js";
 import {
   compactHiveProjectsForBoardManager,
   compactNetworkTaskContentForBoardManager,
@@ -106,6 +108,17 @@ const emptyBoardManagerPayload = Object.freeze({
     accept_window_hours: 24,
     allow_over_capacity: false,
   },
+  message_precondition: {
+    intent: "",
+    project_id: "",
+    related_task_id: "",
+    related_allocation_id: "",
+    expected_task_status: [],
+    expected_allocation_status: [],
+    expected_followup_status: "",
+    expected_min_reward_pft: 0,
+    allow_terminal_task: false,
+  },
 });
 
 function useDatabase() {
@@ -134,6 +147,7 @@ function normalizePayload(payload = {}) {
   const projectDocument = safeObject(input.project_document || input.projectDocument);
   const contributor = safeObject(input.contributor);
   const networkTask = safeObject(input.network_task || input.networkTask);
+  const messagePrecondition = safeObject(input.message_precondition || input.messagePrecondition);
   const rewardBand = normalizeNetworkTaskRewardBand({
     min: networkTask.reward_min_pft ?? networkTask.rewardMinPft,
     max: networkTask.reward_max_pft ?? networkTask.rewardMaxPft,
@@ -194,6 +208,68 @@ function normalizePayload(payload = {}) {
       ),
       allow_over_capacity: Boolean(networkTask.allow_over_capacity || networkTask.allowOverCapacity),
     },
+    message_precondition: {
+      intent: safeText(messagePrecondition.intent, 80),
+      project_id: safeText(messagePrecondition.project_id || messagePrecondition.projectId, 180),
+      related_task_id: safeText(messagePrecondition.related_task_id || messagePrecondition.relatedTaskId, 180),
+      related_allocation_id: safeText(
+        messagePrecondition.related_allocation_id || messagePrecondition.relatedAllocationId,
+        180
+      ),
+      expected_task_status: safeArray(messagePrecondition.expected_task_status || messagePrecondition.expectedTaskStatus)
+        .map((item) => safeText(item, 80).toLowerCase())
+        .filter(Boolean)
+        .slice(0, 8),
+      expected_allocation_status: safeArray(
+        messagePrecondition.expected_allocation_status || messagePrecondition.expectedAllocationStatus
+      )
+        .map((item) => safeText(item, 80).toLowerCase())
+        .filter(Boolean)
+        .slice(0, 8),
+      expected_followup_status: safeText(
+        messagePrecondition.expected_followup_status || messagePrecondition.expectedFollowupStatus,
+        80
+      ).toLowerCase(),
+      expected_min_reward_pft: Math.max(
+        0,
+        Number(messagePrecondition.expected_min_reward_pft ?? messagePrecondition.expectedMinRewardPft ?? 0) || 0
+      ),
+      allow_terminal_task: Boolean(messagePrecondition.allow_terminal_task || messagePrecondition.allowTerminalTask),
+    },
+  };
+}
+
+function normalizeDecisionBasis(decision = {}, fallbackReason = "") {
+  const input = safeObject(decision.decision_basis || decision.decisionBasis);
+  const sourceFacts = safeArray(input.source_facts || input.sourceFacts)
+    .map((item) => safeText(item, 500))
+    .filter(Boolean)
+    .slice(0, 8);
+  const tradeoffs = safeArray(input.tradeoffs)
+    .map((item) => safeText(item, 500))
+    .filter(Boolean)
+    .slice(0, 6);
+  const rejectedActions = safeArray(input.rejected_actions || input.rejectedActions)
+    .map((item) => {
+      const action = safeText(item?.action, 80);
+      if (!boardManagerActions.includes(action)) return null;
+      return {
+        action,
+        reason: safeText(item?.reason, 500),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+  const riskNotes = safeArray(input.risk_notes || input.riskNotes)
+    .map((item) => safeText(item, 500))
+    .filter(Boolean)
+    .slice(0, 6);
+  return {
+    source_facts: sourceFacts.length ? sourceFacts : [safeText(fallbackReason, 500) || "No structured source facts were recorded for this run."],
+    tradeoffs,
+    rejected_actions: rejectedActions,
+    risk_notes: riskNotes,
+    next_check: safeText(input.next_check || input.nextCheck, 700),
   };
 }
 
@@ -387,7 +463,31 @@ function internalRunFilterSql(includeInternal = false) {
     : "AND lower(trigger) NOT LIKE '%smoke%' AND lower(manager_id) NOT LIKE '%smoke%'";
 }
 
-async function recentBoardManagerRuns({ limit = 12, includeInternal = false } = {}) {
+function boardManagerSourceLogSnapshot(packet = {}) {
+  const source = safeObject(packet);
+  if (!Object.keys(source).length) return {};
+  return {
+    schema: safeText(source.schema, 120),
+    scope: safeText(source.scope, 120),
+    trigger: safeText(source.trigger, 160),
+    generatedAt: source.generatedAt || null,
+    sourcePacketDigest: safeText(source.sourcePacketDigest, 120),
+    freshness: safeObject(source.freshness),
+    boardActionPressure: safeObject(source.boardActionPressure),
+    networkTaskCandidates: safeArray(source.networkTaskCandidates).slice(0, 20),
+    routingConstraints: safeObject(source.routingConstraints),
+    openFollowups: safeArray(source.openFollowups).slice(0, 20),
+    hiveProjects: safeObject(source.hiveProjects),
+    projectRegistry: safeArray(source.projectRegistry).slice(0, 40),
+    networkTaskContent: safeObject(source.networkTaskContent),
+    taskState: safeObject(source.taskState),
+    taskRequests: safeArray(source.taskRequests).slice(0, 20),
+    recentBoardManagerRuns: safeArray(source.recentBoardManagerRuns).slice(0, 20),
+    executionPolicy: safeObject(source.executionPolicy),
+  };
+}
+
+async function recentBoardManagerRuns({ limit = 12, includeInternal = false, includeDetails = false } = {}) {
   if (!useDatabase()) return [];
   const exists = await query("SELECT to_regclass('public.board_manager_runs') AS name");
   if (!exists.rows[0]?.name) return [];
@@ -397,6 +497,7 @@ async function recentBoardManagerRuns({ limit = 12, includeInternal = false } = 
              selected_action, action_payload_json, decision_json, dry_run,
              model, reasoning_effort, error, codex_session_id, codex_session_path,
              session_mode, micro_summary_json, micro_summary_text,
+             ${includeDetails ? "provider, output_text, source_packet_json," : ""}
              started_at, completed_at
       FROM board_manager_runs
       WHERE 1 = 1
@@ -443,6 +544,7 @@ async function recentBoardManagerRuns({ limit = 12, includeInternal = false } = 
     microSummary: safeObject(row.micro_summary_json),
     microSummaryText: safeText(row.micro_summary_text, 3000),
     dryRun: Boolean(row.dry_run),
+    provider: safeText(row.provider, 120),
     model: row.model,
     reasoningEffort: row.reasoning_effort,
     codexSessionId: row.codex_session_id,
@@ -450,16 +552,28 @@ async function recentBoardManagerRuns({ limit = 12, includeInternal = false } = 
     sessionMode: row.session_mode,
     error: row.error,
     actionResults: actionResultsByRun.get(row.id) || [],
+    details: includeDetails
+      ? {
+          provider: safeText(row.provider, 120),
+          outputText: safeText(row.output_text, 40_000),
+          decision: safeObject(row.decision_json),
+          actionPayload: safeObject(row.action_payload_json),
+          microSummary: safeObject(row.micro_summary_json),
+          microSummaryText: safeText(row.micro_summary_text, 5000),
+          actionResults: actionResultsByRun.get(row.id) || [],
+          sourcePacket: boardManagerSourceLogSnapshot(row.source_packet_json),
+        }
+      : null,
     startedAt: iso(row.started_at),
     completedAt: iso(row.completed_at),
   }));
 }
 
-export async function getBoardManagerAgentFeed({ limit = 20, includeInternal = false } = {}) {
+export async function getBoardManagerAgentFeed({ limit = 20, includeInternal = false, includeDetails = false } = {}) {
   const normalizedLimit = Math.min(Math.max(Number(limit) || 20, 1), 30);
   const [jobs, runs] = await Promise.all([
-    activeBoardManagerJobs({ limit: Math.min(normalizedLimit, 10), includeInternal }),
-    recentBoardManagerRuns({ limit: normalizedLimit, includeInternal }),
+    activeBoardManagerJobs({ limit: Math.min(normalizedLimit, 10), includeInternal, includeDetails }),
+    recentBoardManagerRuns({ limit: normalizedLimit, includeInternal, includeDetails }),
   ]);
   return [
     ...jobs.map(formatBoardManagerAgentJob),
@@ -595,12 +709,13 @@ export async function buildBoardManagerSourcePacket({
     networkTaskContent,
     networkTaskCandidates,
     recentRuns,
+    routingConstraints,
     openFollowups,
   ] = await Promise.all([
     getHiveContextDocument({ limit }),
     buildHiveSecretarySourcePacket({ limit }),
     getHiveSecretaryState(),
-    getHiveProjectsDocument(),
+    getHiveProjectsDocument({ includeEmptyActive: true }),
     latestHiveProjectPlanningState().catch(() => null),
     currentProjectRegistry({ limit: 60 }),
     currentTaskState({ limit: 12 }),
@@ -608,7 +723,9 @@ export async function buildBoardManagerSourcePacket({
     getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 12, stoppedLimit: 6, pendingLimit: 6 }).catch(() => null),
     listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
     recentBoardManagerRuns({ limit: 20 }),
+    buildHiveRoutingConstraintsSnapshot({ limit: 120 }).catch(() => ({ ok: false, status: "unavailable", accounts: [] })),
     expireOpenBoardManagerFollowups()
+      .then(() => resolveStaleBoardManagerFollowups())
       .then(() => listOpenBoardManagerFollowups({ limit: 20 }))
       .catch(() => []),
   ]);
@@ -647,6 +764,7 @@ export async function buildBoardManagerSourcePacket({
     taskRequests: compactTaskRequestsForBoardManager(taskRequests),
     networkTaskContent: compactNetworkTaskContentForBoardManager(networkTaskContent),
     networkTaskCandidates,
+    routingConstraints,
     openFollowups,
     recentBoardManagerRuns: compactRecentRuns,
     executionPolicy: {
@@ -665,7 +783,7 @@ export async function buildBoardManagerSourcePacket({
       projectDeletionPolicy: "archive_project hides a project from the active Hive board without hard deletion. restore_project reactivates a non-operator-locked archived project. Board Manager archives are soft and reversible; only explicit operator archive locks prevent planner resurrection.",
       taskLifecyclePolicy: "Network tasks must use the existing PFTL task lifecycle.",
       networkTaskPolicy: "Board Manager initiates allocation/generation jobs only. The network task generation worker writes concrete task offers through the existing task engine. Default reward band is 10000-50000 PFT. Repeated task intents for the same project, candidate, class, need hash, and reward band are suppressed before another generation job is queued.",
-      userResponsePolicy: "Hive Context entries are inbound user messages. message_user responses must target a hive_context_entry when possible and are delivered back to that entry's sourceConversationId as a chat assistant message. A message_user action creates an open follow-up row; do not send another Hive message to the same account/project until new user input answers it, it expires, or a materially new blocker appears.",
+      userResponsePolicy: "Hive Context entries are inbound user messages. message_user responses must target a hive_context_entry when possible and are delivered back to that entry's sourceConversationId as a chat assistant message. A message_user action creates an open follow-up row; do not send another Hive message to the same account/project until new user input answers it, it expires, or a materially new blocker appears. For task-action messages, payload.message_precondition must identify the related task or allocation and the live statuses that must still hold when the runtime sends the message; stale preconditions are skipped at execution time.",
     },
   };
 
@@ -706,6 +824,7 @@ export function normalizeBoardManagerDecision(decision = {}) {
     target_id: safeText(decision.target_id, 240),
     reason: safeText(decision.reason, 2000) || "No reason provided.",
     confidence: Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : 0,
+    decision_basis: normalizeDecisionBasis(decision, decision.reason),
     payload: normalizePayload({ ...emptyBoardManagerPayload, ...safeObject(decision.payload) }),
   };
 }

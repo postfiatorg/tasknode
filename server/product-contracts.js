@@ -738,6 +738,8 @@ export async function chatSend(payload, method, options = {}) {
             : "The chat provider could not complete this response.",
         actionRequired:
           "Retry with a shorter prompt, choose another configured mode, or check provider health.",
+        providerStatus: status,
+        providerMessage: error?.providerMessage || "",
         estimate,
       },
     };
@@ -1526,6 +1528,7 @@ export async function walletLinkVerify(payload, method, session = null) {
 
   const address = String(payload?.address || "").trim();
   const publicKey = String(payload?.publicKey || "").trim();
+  const tasknodeEncryptionPubkey = String(payload?.tasknodeEncryptionPubkey || payload?.tasknode_encryption_pubkey || "").trim();
   const signature = String(payload?.signature || "").trim();
   const verified = verifyWalletSignature({
     message: challengeResult.challenge.message,
@@ -1548,6 +1551,7 @@ export async function walletLinkVerify(payload, method, session = null) {
     accountId: session.accountId,
     address,
     publicKey,
+    tasknodeEncryptionPubkey,
     challengeId: challengeResult.challenge.id,
     signature,
     proofPurpose: challengeResult.challenge.purpose,

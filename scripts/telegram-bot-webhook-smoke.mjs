@@ -12,6 +12,7 @@ process.env.TELEGRAM_AUTH_BOT_TOKEN = "123456:tasknode-telegram-secret";
 process.env.TELEGRAM_BOT_CHAT_MODE = "Private Instant";
 process.env.CHAT_PROVIDER_TIMEOUT_MS = "45000";
 process.env.TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS = "135000";
+process.env.OPENROUTER_API_KEY = "test-openrouter-key";
 
 try {
   const { chatProviderTimeoutMs, deepSeekChatRequest } = await import("../server/chat-router.js");
@@ -68,10 +69,17 @@ try {
     120000
   );
   process.env.TELEGRAM_BOT_DISCOUNT_THINKING_TIMEOUT_MS = telegramDiscountTimeout;
+  const sharedProviderTimeout = process.env.CHAT_PROVIDER_TIMEOUT_MS;
   assert.equal(
     chatProviderTimeoutMs({ mode: "Discount Thinking", source: "web" }),
     45000
   );
+  delete process.env.CHAT_PROVIDER_TIMEOUT_MS;
+  assert.equal(
+    chatProviderTimeoutMs({ mode: "Discount Thinking", source: "web" }),
+    120000
+  );
+  process.env.CHAT_PROVIDER_TIMEOUT_MS = sharedProviderTimeout;
   const telegramPromptRequest = deepSeekChatRequest({
     mode: "Discount Thinking",
     model: "deepseek-v4-pro",
@@ -81,6 +89,7 @@ try {
   });
   assert.match(telegramPromptRequest.messages[0].content, /Telegram Delivery Contract/);
   assert.match(telegramPromptRequest.messages[0].content, /reference one relevant fact/);
+  assert.match(telegramPromptRequest.messages[0].content, /Do not insult/);
   assert.match(telegramPromptRequest.messages[0].content, /End with exactly one concrete next step/);
 
   const linkedResult = await processTelegramBotUpdate({
@@ -282,6 +291,53 @@ try {
   assert.equal(chatCalls[2].payload.message, "use discount mode");
   assert.equal(chatCalls[2].options.source, "telegram_bot");
   assert.equal(sentMessages.at(-1).text, "reply:use discount mode");
+  assert.equal(sentMessages.at(-1).replyMarkup, undefined);
+
+  const fallbackChatCalls = [];
+  const discountFallbackExecutor = async (payload, method, options = {}) => {
+    fallbackChatCalls.push({ payload, method, options });
+    if (fallbackChatCalls.length === 1) {
+      return {
+        status: 402,
+        body: {
+          ok: false,
+          error: "provider_request_failed",
+          providerStatus: 402,
+          providerMessage: "Insufficient Balance",
+          estimate: { provider: "deepseek", model: "deepseek-v4-pro" },
+        },
+      };
+    }
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        assistant: {
+          body: `fallback:${payload.mode}:${payload.message}`,
+        },
+      },
+    };
+  };
+  const discountFallbackResult = await processTelegramBotUpdate({
+    update_id: 11,
+    message: {
+      message_id: 20,
+      from: { id: 12345, is_bot: false, username: "linked_user" },
+      chat: { id: 12345, type: "private" },
+      text: "discount provider fallback",
+    },
+  }, { chatExecutor: discountFallbackExecutor, sendTelegramChatAction, sendTelegramMessage });
+
+  assert.equal(discountFallbackResult.action, "telegram_bot_chat");
+  assert.equal(discountFallbackResult.mode, "Discount Thinking");
+  assert.equal(discountFallbackResult.effectiveMode, "Private Instant");
+  assert.equal(discountFallbackResult.fallbackMode, "Private Instant");
+  assert.equal(discountFallbackResult.primaryChatStatus, 402);
+  assert.equal(fallbackChatCalls.length, 2);
+  assert.equal(fallbackChatCalls[0].payload.mode, "Discount Thinking");
+  assert.equal(fallbackChatCalls[1].payload.mode, "Private Instant");
+  assert.equal(fallbackChatCalls[1].options.source, "telegram_bot");
+  assert.equal(sentMessages.at(-1).text, "fallback:Private Instant:discount provider fallback");
   assert.equal(sentMessages.at(-1).replyMarkup, undefined);
 
   const events = await listTelegramBotEvents({

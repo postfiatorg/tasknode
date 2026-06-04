@@ -65,7 +65,11 @@ export function WalletUnlockModal({
     setForgetting(true);
     setMessage("");
     try {
-      walletCore.removeLocalWalletVault({ accountId: session.accountId });
+      if (typeof walletCore.removeLocalWalletVaultAsync === "function") {
+        await walletCore.removeLocalWalletVaultAsync({ accountId: session.accountId });
+      } else {
+        walletCore.removeLocalWalletVault({ accountId: session.accountId });
+      }
       await onWalletVaultChange?.();
       onClose();
     } catch {

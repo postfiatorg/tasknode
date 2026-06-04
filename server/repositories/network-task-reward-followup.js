@@ -21,9 +21,8 @@ async function latestRewardEventForTask(taskId = "") {
       SELECT event_type, source_tx_hash, source_cid, occurred_at, created_at
       FROM task_events
       WHERE task_id = $1
-        AND event_type IN ('pf.reward.v1', 'pf.task.reward_decision.v1')
+        AND event_type = 'pf.reward.v1'
       ORDER BY
-        CASE WHEN event_type = 'pf.reward.v1' THEN 0 ELSE 1 END,
         occurred_at DESC,
         created_at DESC,
         id DESC

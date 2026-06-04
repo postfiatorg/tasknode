@@ -11,34 +11,72 @@ Task lifecycle replay is the ability to reconstruct task state from PFTL wallet 
 5. User submits the required work product as `pf.task.submission.v1`.
 6. System requests verification with a `pf.task.update.v1` transition to `verification_requested`.
 7. User submits verification evidence as `pf.task.verification_response.v1`.
-8. System processes evidence and records `pf.task.reward_decision.v1`.
-9. If the decision pays PFT, a reward wallet sends `pf.reward.v1`.
+8. System processes evidence and records one terminal `pf.reward.v1`.
+9. If the review pays PFT, that same transaction carries the economic payout; if it pays zero, it uses a one-drop carrier and records `reward_pft: 0`.
 
 ## Technical Architecture
 
-The protocol plan is `docs/PFTL_TASK_ENGINE_SPEC.md`. The async worker design is in Help under `Task Async Engine`, backed by `docs/wiki/architecture/task-async-engine.md`. The live replay reference is `reference_clients/python/tasknode_pftl/scenarios/full_lifecycle.py`. The encryption-specific onboarding reference is `reference_clients/python/tasknode_pftl/scenarios/encryption_pubkey_demo.py`.
+The protocol contract is documented in this Help wiki across PFTL, Task Async
+Engine, Task Generation Worker, Task Review And Reward Worker, and PFTL
+Transaction Cache. The live replay reference is
+`reference_clients/python/tasknode_pftl/scenarios/full_lifecycle.py`. The
+encryption-specific onboarding reference is
+`reference_clients/python/tasknode_pftl/scenarios/encryption_pubkey_demo.py`.
 
 The app maintains a task projection cache for speed. The cache is rebuildable by scanning relevant wallet histories and fetching referenced IPFS CIDs.
 
 The current Tasks UX reads from `task_projections` and opens task detail through `GET /api/tasks/detail`. Detail pages include a server-derived action model from `server/task-lifecycle-policy.js`. Non-terminal tasks can be stopped from the Overview tab. Proposed tasks use `refused`; accepted/submitted/verification-loop tasks use `cancelled`. The stop action is published as an encrypted `pf.task.update.v1` payload and a user-signed `TASK_UPDATE` PFTL pointer through `POST /api/tasks/action`.
 
-Request creation, evidence submission, verification requests, reward decisions, and positive reward payments are now wired into the app path:
+Request creation, evidence submission, verification requests, and terminal reward outcomes are now wired into the app path:
 
 - `POST /api/tasks/request` coordinates browser-signed `pf.task.request.v1` publishing and durable `task_requests` rows.
 - `server/task-generation-worker.js` emits `pf.task.offer.v1` from the authority wallet.
 - `POST /api/tasks/submission` publishes initial evidence and verification evidence from the user wallet.
-- `server/task-review-worker.js` emits verification requests, reward decisions, and positive reward payments.
+- `server/task-review-worker.js` emits verification requests and one terminal `pf.reward.v1` reward outcome.
 - `server/pftl-cache-reducer.js` hydrates the encrypted IPFS payloads and projects the task state.
 
-Reward display is also projection-derived. A terminal reward decision with `reward_pft: 0` is still shown under the Rewarded bucket, but the UI explains that no PFT was paid and renders the verifier reason from the indexed `pf.task.reward_decision.v1` payload.
+Reward display is also projection-derived. A terminal `pf.reward.v1` with `reward_pft: 0` is still shown under the Rewarded bucket, but the UI explains that no economic PFT was paid and renders the verifier reason from the indexed reward payload.
 
 Evidence packets can include one or two compact artifacts. Screenshot/image evidence is processed into a vision description and digest metadata before the encrypted payload is pinned; raw image bytes should not be embedded in task payload JSON.
+
+## Verification Evidence
+
+Verification evidence is portable across the web app, Codex, and wallet-capable
+agents. The canonical packet is `pf.task.evidence.v1`, wrapped by
+`pf.task.verification_response.v1` when a user responds to a verification
+request.
+
+Supported evidence inputs:
+
+- text evidence;
+- public URL evidence;
+- screenshot/image evidence described by the OpenAI vision evidence reader;
+- PDF and DOCX file evidence extracted to compact text and metadata;
+- mixed evidence made from one or two compact artifacts.
+
+Implementation references:
+
+- `server/task-evidence-processing.js`
+- `prompts/task_engine/evidence_screenshot_read_v1.md`
+- `reference_clients/python/tasknode_pftl/verification.py`
+- `reference_clients/python/tasknode_pftl/scenarios/verification_evidence_examples.py`
+
+Example reference command:
+
+```bash
+cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
+python3 -m tasknode_pftl.scenarios.verification_evidence_examples
+```
+
+Evidence readers must not receive wallet seeds, private keys, wallet passwords,
+or other custody material. URL evidence must be public text or HTML; binary URLs
+are file evidence and should go through the file evidence path.
 
 ## Review Loop Refresh Contract
 
 Task lifecycle state is shared between server and client through `shared/task-lifecycle.js`. That file is the source of truth for labels, tabs, allowed actions, terminal states, and refresh behavior.
 
-Review-loop states are not final. `submitted`, `verification_requested`, `verification_response_submitted`, and `reward_decided` can all be followed by worker-published events. The app must keep refreshing projections while a visible task is in one of those states. This prevents a split-brain UX where the detail route has already observed a reward but the list route still shows the older Verification card.
+Review-loop states are not final. `submitted`, `verification_requested`, and `verification_response_submitted` can all be followed by worker-published events. The app must keep refreshing projections while a visible task is in one of those states. This prevents a split-brain UX where the detail route has already observed a reward but the list route still shows the older Verification card.
 
 On Fly, the worker-published transitions in this loop require the `worker`
 process group to be running. `npm run fly:deploy` runs the post-deploy worker
@@ -52,8 +90,7 @@ The current contract is:
 | --- | --- |
 | `submitted` | The authority worker may publish a verification request. |
 | `verification_requested` | The user may submit verification evidence and the worker may later review it. |
-| `verification_response_submitted` | The authority worker may publish a reward decision. |
-| `reward_decided` | A positive decision may still be followed by the actual reward payment pointer. |
+| `verification_response_submitted` | The authority worker may publish the terminal `pf.reward.v1` outcome. |
 
 Terminal states such as `rewarded`, `refused`, `cancelled`, `expired`, and `rejected` do not request ongoing list refresh. They can still be opened and audited through detail/forensics, but the normal lifecycle is finished.
 
@@ -73,8 +110,7 @@ sequenceDiagram
   U->>T: Initial submission pointer
   T->>U: Verification request pointer
   U->>T: Verification response pointer
-  T->>U: Reward decision pointer
-  R->>U: Optional reward payment
+  R->>U: Reward outcome pointer and optional economic payout
 ```
 
 ## Failure Modes
@@ -82,7 +118,7 @@ sequenceDiagram
 - PFTL is synchronous per wallet, so transaction queues are required.
 - Cache updates should tolerate delayed or out-of-order replay.
 - Encrypted payload fetch failures should be retried without losing pointer events.
-- A rewarded projection can correctly have `0 PFT` when the reward decision rejects evidence or assigns no payout.
+- A rewarded projection can correctly have `0 PFT` when the reward outcome rejects evidence or assigns no payout.
 - User stop actions must be signed by the linked wallet and must not mutate the task projection directly before chain replay confirms the update.
 - Date-only deadlines must render as dates, while PFTL events and review timestamps must render as exact times with timezone.
 - If the cache lags after a submit, the UI should show the submitted transaction and poll projection state rather than pretending the task did not change.

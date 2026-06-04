@@ -626,6 +626,39 @@ export function getAccountIdentityProfile({ accountId = "" } = {}) {
   return accountIdentityProfile(state.accounts[String(accountId || "").trim()] || null);
 }
 
+export function listPublicAccountWalletIdentities() {
+  return Object.entries(state.accountWallets || {})
+    .map(([accountId, wallet]) => {
+      const normalizedAccountId = safeId(accountId, "account");
+      const walletAddress = String(wallet?.address || "").trim();
+      if (!walletAddress || wallet?.status !== "linked") return null;
+
+      const identityProfile = accountIdentityProfile(state.accounts[normalizedAccountId] || null, {
+        includeSuggestions: false,
+      });
+      if (!identityProfile) return null;
+
+      const firstPublicAlias = (identityProfile.publicAliases || []).find((alias) => alias?.handle);
+      const displayName = (
+        identityProfile.publicDisplayName ||
+        (identityProfile.hiveHandle ? `@${identityProfile.hiveHandle}` : "") ||
+        (firstPublicAlias?.handle ? `@${String(firstPublicAlias.handle).replace(/^@+/, "")}` : "")
+      ).trim();
+      if (!displayName) return null;
+
+      return {
+        accountId: normalizedAccountId,
+        walletAddress,
+        displayName: displayName.slice(0, 80),
+        hiveHandle: identityProfile.hiveHandle || "",
+        publicDisplayName: identityProfile.publicDisplayName || "",
+        publicAliases: identityProfile.publicAliases || [],
+        publicTrustBadges: identityProfile.publicTrustBadges || [],
+      };
+    })
+    .filter(Boolean);
+}
+
 export function deleteAccountRuntimeData({ accountId = "", reason = "user_requested_account_delete", actorSessionId = "", archiveId = "" } = {}) {
   const result = deleteRuntimeAccountDataForState({ state, accountId, reason, actorSessionId, archiveId, safeId });
   saveState();
@@ -1749,6 +1782,7 @@ export function linkWalletToAccount({
   accountId = "",
   address = "",
   publicKey = "",
+  tasknodeEncryptionPubkey = "",
   challengeId = "",
   signature = "",
   proofPurpose = "wallet_link",
@@ -1776,6 +1810,7 @@ export function linkWalletToAccount({
       metadata: {
         walletAddress: ownerWallet.address,
         publicKey: ownerWallet.publicKey || null,
+        tasknodeEncryptionPubkey: ownerWallet.tasknodeEncryptionPubkey || null,
         custody: ownerWallet.custody || "local_seed_required",
         linkedAt: ownerWallet.linkedAt || null,
         reclaimedByAccountId: normalizedAccountId,
@@ -1797,6 +1832,7 @@ export function linkWalletToAccount({
     status: "linked",
     address: normalizedAddress,
     publicKey: String(publicKey || "").trim(),
+    tasknodeEncryptionPubkey: String(tasknodeEncryptionPubkey || previousWallet?.tasknodeEncryptionPubkey || "").trim(),
     custody: "local_seed_required",
     linkedAt: previousWallet?.linkedAt || now,
     relinkedAt: previousWallet ? now : undefined,
@@ -1820,6 +1856,7 @@ export function linkWalletToAccount({
     metadata: {
       walletAddress: wallet.address,
       previousWalletAddress: previousWallet?.address || null,
+      tasknodeEncryptionPubkey: wallet.tasknodeEncryptionPubkey || null,
       proofPurpose,
       challengeId,
       signatureHash: wallet.proof.signatureHash,
@@ -1869,6 +1906,7 @@ export function delinkWalletFromAccount({
     metadata: {
       walletAddress: wallet.address,
       publicKey: wallet.publicKey || null,
+      tasknodeEncryptionPubkey: wallet.tasknodeEncryptionPubkey || null,
       custody: wallet.custody || "local_seed_required",
       linkedAt: wallet.linkedAt || null,
       reason: String(reason || "user_requested").slice(0, 120),
@@ -1901,7 +1939,13 @@ function walletCreatedInAccountForRecord(accountId = "", wallet = null) {
 }
 
 export function getLinkedWallet({ accountId = "" } = {}) {
-  const unlinked = { status: "not_linked", address: null, publicKey: null, custody: "local_seed_required" };
+  const unlinked = {
+    status: "not_linked",
+    address: null,
+    publicKey: null,
+    tasknodeEncryptionPubkey: "",
+    custody: "local_seed_required",
+  };
   if (!accountId) return unlinked;
 
   const wallet = state.accountWallets[safeId(accountId, "account")];
@@ -1911,6 +1955,7 @@ export function getLinkedWallet({ accountId = "" } = {}) {
     status: wallet.status || "linked",
     address: wallet.address,
     publicKey: wallet.publicKey,
+    tasknodeEncryptionPubkey: wallet.tasknodeEncryptionPubkey || "",
     proofPurpose: wallet.proof?.purpose || null,
     walletCreatedInAccount: walletCreatedInAccountForRecord(safeId(accountId, "account"), wallet),
     custody: wallet.custody || "local_seed_required",

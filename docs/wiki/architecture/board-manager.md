@@ -66,6 +66,18 @@ should skip account/project messages while an open follow-up is waiting for the
 user. A repeated-message burst means the follow-up row was missing, expired
 incorrectly, or the Board Manager found a materially new blocker.
 
+Task-action Hive messages also require a runtime `message_precondition`.
+Any Board Manager `message_user` action that asks a user to accept, decline,
+review, verify, unblock, or otherwise act on a Network Task must name the
+related task id or allocation id plus the task/allocation statuses that must
+still be true at send time. The action hook rebuilds the account live state
+immediately before delivery. If the task was refused, rewarded, cancelled,
+expired, replaced by another allocation, below the user's recorded reservation
+rate, or already has an open follow-up that contradicts the message, the
+message is skipped and an audit result records the stale precondition. This is
+the guard that prevents "please accept this task" nudges from being delivered
+after the user already refused or completed the task.
+
 If the board creates duplicate project cards, inspect the create result. The
 `create_project` hook checks active and archived project rows before inserting.
 When a matching archived row exists, the correct action is `restore_project`

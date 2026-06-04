@@ -4,6 +4,10 @@ function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
 }
 
+function safeObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
 function iso(value) {
   if (!value) return null;
   const parsed = value instanceof Date ? value : new Date(value);
@@ -16,14 +20,16 @@ function internalJobFilterSql(includeInternal = false) {
     : "AND lower(trigger) NOT LIKE '%smoke%' AND lower(COALESCE(claimed_by, '')) NOT LIKE '%smoke%'";
 }
 
-export async function activeBoardManagerJobs({ limit = 5, includeInternal = false } = {}) {
+export async function activeBoardManagerJobs({ limit = 5, includeInternal = false, includeDetails = false } = {}) {
   if (!databaseEnabled()) return [];
   const exists = await query("SELECT to_regclass('public.board_manager_jobs') AS name");
   if (!exists.rows[0]?.name) return [];
   const result = await query(
     `
-      SELECT id, scope, trigger, reason, status, claimed_by, run_after,
-             claimed_at, created_at, updated_at
+      SELECT id, scope, trigger, reason, status, idempotency_key,
+             attempt_count, max_attempts, claimed_by, run_after,
+             claimed_at, completed_at, failed_at, run_id, last_error,
+             result_json, metadata_json, created_at, updated_at
       FROM board_manager_jobs
       WHERE COALESCE(run_id, '') = ''
         AND (
@@ -47,16 +53,31 @@ export async function activeBoardManagerJobs({ limit = 5, includeInternal = fals
     `,
     [Math.min(Math.max(Number(limit) || 5, 1), 10)]
   );
-  return result.rows.map((row) => ({
-    id: row.id,
-    scope: row.scope,
-    trigger: row.trigger,
-    reason: row.reason,
-    status: row.status,
-    claimedBy: row.claimed_by,
-    runAfter: iso(row.run_after),
-    claimedAt: iso(row.claimed_at),
-    createdAt: iso(row.created_at),
-    updatedAt: iso(row.updated_at),
-  }));
+  return result.rows.map((row) => {
+    const job = {
+      id: row.id,
+      scope: row.scope,
+      trigger: row.trigger,
+      reason: row.reason,
+      status: row.status,
+      idempotencyKey: row.idempotency_key,
+      attemptCount: Number(row.attempt_count || 0),
+      maxAttempts: Number(row.max_attempts || 0),
+      claimedBy: row.claimed_by,
+      runAfter: iso(row.run_after),
+      claimedAt: iso(row.claimed_at),
+      completedAt: iso(row.completed_at),
+      failedAt: iso(row.failed_at),
+      runId: row.run_id,
+      lastError: row.last_error,
+      result: safeObject(row.result_json),
+      metadata: safeObject(row.metadata_json),
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    };
+    return {
+      ...job,
+      details: includeDetails ? { job } : null,
+    };
+  });
 }

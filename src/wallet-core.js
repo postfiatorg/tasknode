@@ -7,6 +7,9 @@ import { Wallet } from "xrpl";
 export const TASKNODE_DERIVATION_PATH = "m/44'/144'/0'/0/0";
 export const TASKNODE_VAULT_VERSION = 1;
 export const TASKNODE_VAULT_STORAGE_PREFIX = "tasknode.walletVault.v1.";
+export const TASKNODE_VAULT_IDB_NAME = "tasknode-wallet-vaults";
+export const TASKNODE_VAULT_IDB_STORE = "vaults";
+export const TASKNODE_VAULT_IDB_VERSION = 1;
 export const TASKNODE_VAULT_KDF_ITERATIONS = 310000;
 export const TASKNODE_ENC_SUITE = "ENC_X25519_XCHACHA20P1305";
 
@@ -118,6 +121,14 @@ function requireStorage() {
     throw new Error("LOCAL_STORAGE_UNAVAILABLE");
   }
   return globalThis.localStorage;
+}
+
+function hasLocalStorage() {
+  return Boolean(globalThis.localStorage);
+}
+
+function hasIndexedDb() {
+  return Boolean(globalThis.indexedDB);
 }
 
 function normalizeAccountId(accountId) {
@@ -334,12 +345,9 @@ export function walletVaultStorageKey({ accountId }) {
   return `${TASKNODE_VAULT_STORAGE_PREFIX}${encodeURIComponent(normalizeAccountId(accountId))}`;
 }
 
-export function loadLocalWalletVault({ accountId }) {
-  const raw = requireStorage().getItem(walletVaultStorageKey({ accountId }));
-  if (!raw) return null;
-
+function normalizeStoredWalletVault(value) {
+  const vault = value?.vault || value;
   try {
-    const vault = JSON.parse(raw);
     if (vault?.kind !== "tasknode-local-seed-vault" || vault.version !== TASKNODE_VAULT_VERSION) {
       return null;
     }
@@ -349,23 +357,12 @@ export function loadLocalWalletVault({ accountId }) {
   }
 }
 
-export function localWalletVaultStatus({ accountId }) {
-  const normalizedAccountId = String(accountId || "").trim();
-  if (!normalizedAccountId || !globalThis.localStorage) {
-    return {
-      available: false,
-      unlocked: false,
-      accountId: normalizedAccountId || null,
-      address: null,
-    };
-  }
-
-  const vault = loadLocalWalletVault({ accountId: normalizedAccountId });
+function vaultStatusFromVault({ accountId, vault, storage = "" }) {
   if (!vault) {
     return {
       available: false,
       unlocked: false,
-      accountId: normalizedAccountId,
+      accountId,
       address: null,
     };
   }
@@ -373,17 +370,184 @@ export function localWalletVaultStatus({ accountId }) {
   return {
     available: true,
     unlocked: false,
-    accountId: normalizedAccountId,
+    accountId,
     version: vault.version,
     address: vault.address || null,
     publicKey: vault.publicKey || null,
     derivationPath: vault.derivationPath || TASKNODE_DERIVATION_PATH,
     createdAt: vault.createdAt || null,
     updatedAt: vault.updatedAt || null,
+    storage: storage || "local",
     kdf: vault.encryption?.kdf?.name || "PBKDF2",
     hash: vault.encryption?.kdf?.hash || "SHA-256",
     iterations: vault.encryption?.kdf?.iterations || TASKNODE_VAULT_KDF_ITERATIONS,
   };
+}
+
+function loadLocalStorageWalletVault({ accountId }) {
+  if (!hasLocalStorage()) return null;
+  const raw = requireStorage().getItem(walletVaultStorageKey({ accountId }));
+  if (!raw) return null;
+
+  try {
+    return normalizeStoredWalletVault(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function saveVaultToLocalStorage({ accountId, vault }) {
+  requireStorage().setItem(walletVaultStorageKey({ accountId }), JSON.stringify(vault));
+}
+
+function removeVaultFromLocalStorage({ accountId }) {
+  if (!hasLocalStorage()) return;
+  requireStorage().removeItem(walletVaultStorageKey({ accountId }));
+}
+
+function openWalletVaultDb() {
+  if (!hasIndexedDb()) return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const request = globalThis.indexedDB.open(TASKNODE_VAULT_IDB_NAME, TASKNODE_VAULT_IDB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(TASKNODE_VAULT_IDB_STORE)) {
+        db.createObjectStore(TASKNODE_VAULT_IDB_STORE, { keyPath: "accountId" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("INDEXEDDB_OPEN_FAILED"));
+    request.onblocked = () => reject(new Error("INDEXEDDB_OPEN_BLOCKED"));
+  });
+}
+
+async function withVaultObjectStore(mode, callback) {
+  const db = await openWalletVaultDb();
+  if (!db) return null;
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(TASKNODE_VAULT_IDB_STORE, mode);
+      const store = tx.objectStore(TASKNODE_VAULT_IDB_STORE);
+      let callbackResult = null;
+      tx.oncomplete = () => resolve(callbackResult);
+      tx.onerror = () => reject(tx.error || new Error("INDEXEDDB_TRANSACTION_FAILED"));
+      tx.onabort = () => reject(tx.error || new Error("INDEXEDDB_TRANSACTION_ABORTED"));
+      callbackResult = callback(store);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function requestPersistentVaultStorage() {
+  try {
+    if (typeof globalThis.navigator?.storage?.persist !== "function") return false;
+    return await globalThis.navigator.storage.persist();
+  } catch {
+    return false;
+  }
+}
+
+function requestFromStore(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("INDEXEDDB_REQUEST_FAILED"));
+  });
+}
+
+async function loadIndexedDbWalletVault({ accountId }) {
+  if (!hasIndexedDb()) return null;
+  try {
+    const record = await withVaultObjectStore("readonly", (store) =>
+      requestFromStore(store.get(accountId))
+    );
+    return normalizeStoredWalletVault(record);
+  } catch {
+    return null;
+  }
+}
+
+async function saveVaultToIndexedDb({ accountId, vault }) {
+  if (!hasIndexedDb()) throw new Error("INDEXEDDB_UNAVAILABLE");
+  await withVaultObjectStore("readwrite", (store) =>
+    requestFromStore(store.put({
+      accountId,
+      key: walletVaultStorageKey({ accountId }),
+      vault,
+      updatedAt: new Date().toISOString(),
+    }))
+  );
+}
+
+async function removeVaultFromIndexedDb({ accountId }) {
+  if (!hasIndexedDb()) return;
+  await withVaultObjectStore("readwrite", (store) => requestFromStore(store.delete(accountId)));
+}
+
+export function loadLocalWalletVault({ accountId }) {
+  return loadLocalStorageWalletVault({ accountId });
+}
+
+export async function loadLocalWalletVaultAsync({ accountId }) {
+  const normalizedAccountId = normalizeAccountId(accountId);
+  const indexedDbVault = await loadIndexedDbWalletVault({ accountId: normalizedAccountId });
+  if (indexedDbVault) return indexedDbVault;
+
+  const localStorageVault = loadLocalStorageWalletVault({ accountId: normalizedAccountId });
+  if (localStorageVault) {
+    try {
+      await saveVaultToIndexedDb({ accountId: normalizedAccountId, vault: localStorageVault });
+      await requestPersistentVaultStorage();
+    } catch {
+      // localStorage remains the compatibility fallback if IndexedDB is blocked.
+    }
+  }
+  return localStorageVault;
+}
+
+export function localWalletVaultStatus({ accountId }) {
+  const normalizedAccountId = String(accountId || "").trim();
+  if (!normalizedAccountId) {
+    return {
+      available: false,
+      unlocked: false,
+      accountId: null,
+      address: null,
+    };
+  }
+
+  const vault = loadLocalStorageWalletVault({ accountId: normalizedAccountId });
+  return vaultStatusFromVault({ accountId: normalizedAccountId, vault, storage: "localStorage" });
+}
+
+export async function localWalletVaultStatusAsync({ accountId }) {
+  const normalizedAccountId = String(accountId || "").trim();
+  if (!normalizedAccountId) {
+    return {
+      available: false,
+      unlocked: false,
+      accountId: null,
+      address: null,
+    };
+  }
+
+  const indexedDbVault = await loadIndexedDbWalletVault({ accountId: normalizedAccountId });
+  if (indexedDbVault) {
+    return vaultStatusFromVault({ accountId: normalizedAccountId, vault: indexedDbVault, storage: "indexedDB" });
+  }
+
+  const localStorageVault = loadLocalStorageWalletVault({ accountId: normalizedAccountId });
+  if (localStorageVault) {
+    try {
+      await saveVaultToIndexedDb({ accountId: normalizedAccountId, vault: localStorageVault });
+      await requestPersistentVaultStorage();
+    } catch {
+      // Keep reporting the fallback vault; persistence can be blocked in private/in-app browsers.
+    }
+    return vaultStatusFromVault({ accountId: normalizedAccountId, vault: localStorageVault, storage: "localStorage" });
+  }
+
+  return vaultStatusFromVault({ accountId: normalizedAccountId, vault: null });
 }
 
 export async function saveEncryptedMnemonicVault({
@@ -402,7 +566,7 @@ export async function saveEncryptedMnemonicVault({
   }
 
   const api = requireBrowserCrypto();
-  const existing = loadLocalWalletVault({ accountId: normalizedAccountId });
+  const existing = await loadLocalWalletVaultAsync({ accountId: normalizedAccountId });
   const summary = deriveWalletSummary(normalizedMnemonic);
   const now = new Date().toISOString();
   const salt = randomBase64(16);
@@ -443,18 +607,38 @@ export async function saveEncryptedMnemonicVault({
     },
   };
 
-  requireStorage().setItem(walletVaultStorageKey({ accountId: normalizedAccountId }), JSON.stringify(vault));
-  return {
-    ...localWalletVaultStatus({ accountId: normalizedAccountId }),
-    address: summary.address,
-    publicKey: summary.publicKey,
-    derivationPath: summary.derivationPath,
-  };
+  let saved = false;
+  let lastError = null;
+  let savedStorage = "";
+  try {
+    await saveVaultToIndexedDb({ accountId: normalizedAccountId, vault });
+    await requestPersistentVaultStorage();
+    saved = true;
+    savedStorage = "indexedDB";
+  } catch (error) {
+    lastError = error;
+  }
+  try {
+    saveVaultToLocalStorage({ accountId: normalizedAccountId, vault });
+    saved = true;
+    if (!savedStorage) savedStorage = "localStorage";
+  } catch (error) {
+    lastError = error;
+  }
+  if (!saved) {
+    throw lastError || new Error("VAULT_STORAGE_UNAVAILABLE");
+  }
+
+  return vaultStatusFromVault({
+    accountId: normalizedAccountId,
+    vault,
+    storage: savedStorage || "localStorage",
+  });
 }
 
 export async function unlockEncryptedMnemonicVault({ accountId, password, expectedAddress = "" }) {
   const normalizedAccountId = normalizeAccountId(accountId);
-  const vault = loadLocalWalletVault({ accountId: normalizedAccountId });
+  const vault = await loadLocalWalletVaultAsync({ accountId: normalizedAccountId });
   if (!vault?.encryption?.ciphertext || !vault.encryption?.iv || !vault.encryption?.kdf?.salt) {
     throw new Error("VAULT_NOT_FOUND");
   }
@@ -507,6 +691,14 @@ export async function unlockEncryptedMnemonicVault({ accountId, password, expect
 
 export function removeLocalWalletVault({ accountId }) {
   const normalizedAccountId = normalizeAccountId(accountId);
-  requireStorage().removeItem(walletVaultStorageKey({ accountId: normalizedAccountId }));
+  removeVaultFromLocalStorage({ accountId: normalizedAccountId });
+  void removeVaultFromIndexedDb({ accountId: normalizedAccountId });
   return localWalletVaultStatus({ accountId: normalizedAccountId });
+}
+
+export async function removeLocalWalletVaultAsync({ accountId }) {
+  const normalizedAccountId = normalizeAccountId(accountId);
+  removeVaultFromLocalStorage({ accountId: normalizedAccountId });
+  await removeVaultFromIndexedDb({ accountId: normalizedAccountId });
+  return localWalletVaultStatusAsync({ accountId: normalizedAccountId });
 }

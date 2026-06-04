@@ -50,7 +50,7 @@ For every item below, the target state is:
 | Prompt Area | File Target | Required Behavior |
 | --- | --- | --- |
 | Chat tool intent | `prompts/chat/task_node_instructions_v1.md` | Frontier modes expose the web search tool; the assistant prompt instructs when the model should use it. Billing preflight reserves the maximum configured tool budget for Frontier requests. |
-| Task generation | `prompts/task_engine/taskgen_minimal_v1.md` or successor | Produce task content, reward offer, submission requirement, evidence expectations, and verification policy without UI/code guessing. |
+| Task generation | `prompts/task_engine/taskgen_personal_v1.md` and `prompts/task_engine/taskgen_network_v1.md` | Produce task content, reward offer, submission requirement, evidence expectations, and verification policy without UI/code guessing. |
 | Verification request | `prompts/task_engine/verification_request_v1.md` | Given the task and first submission, produce the next verification request. Private-work tasks should prefer screenshot, code excerpt, text evidence, or local artifact proof when public links are not appropriate. |
 | Reward scoring | `prompts/task_engine/reward_scoring_v1.md` | Score submitted verification evidence against the task and verification request, then return structured reward outcome fields. |
 

@@ -153,7 +153,7 @@ function hasOpenFollowupForProject({ projectId = "", openFollowups = [], sinceMs
       );
       if (!followupMs || followupMs < sinceMs) return false;
     }
-    if (normalizedProjectId && followupProjectId === normalizedProjectId) return true;
+    if (normalizedProjectId) return followupProjectId === normalizedProjectId;
     return !followupProjectId;
   });
 }

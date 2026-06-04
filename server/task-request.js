@@ -80,6 +80,7 @@ function requestInput(payload = {}) {
     requestText: safeText(payload?.requestText || taskRequestCanonicalText, 8000),
     userDetailText: safeText(payload?.userDetailText || payload?.message || "", 8000),
     requestedTaskKind: safeText(payload?.requestedTaskKind || "personal", 80) || "personal",
+    subjectEncryptionPubkey: safeText(payload?.tasknodeEncryptionPubkey || payload?.subjectEncryptionPubkey || "", 4000),
     source: safeText(payload?.source || "task_interface", 80) || "task_interface",
     sourceConversationTitle: safeText(payload?.sourceConversationTitle || "Tasks", 160) || "Tasks",
     conversationId: safeText(payload?.conversationId || "", 180),
@@ -216,6 +217,7 @@ export async function buildRequestBundle({ accountId, walletAddress, request, au
     schema: "pf.task.request_bundle.v1",
     bundle_id: request.bundleId,
     subject_wallet: walletAddress,
+    subject_encryption_pubkey: request.subjectEncryptionPubkey || "",
     created_at: new Date().toISOString(),
     client: {
       name: "tasknodeofficial-web",
@@ -278,9 +280,14 @@ export async function buildRequestBundle({ accountId, walletAddress, request, au
     },
     wallet: {
       subject_wallet: walletAddress,
+      subject_encryption_pubkey: request.subjectEncryptionPubkey || "",
       authority_wallet: authorityWallet || "",
       authority_hint: authorityWallet || "",
       allocation_wallet: "",
+    },
+    encryption: {
+      subject_public_key: request.subjectEncryptionPubkey || "",
+      tasknode_service_required: true,
     },
   };
 }
@@ -323,6 +330,7 @@ async function taskRequestConfig({ payload, session }) {
     requestText: request.requestText,
     userDetailText: request.userDetailText,
     requestedTaskKind: request.requestedTaskKind,
+    subjectEncryptionPubkey: request.subjectEncryptionPubkey,
     source: request.source,
     sourceConversationTitle: request.sourceConversationTitle,
     requestBundle,

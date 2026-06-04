@@ -6,41 +6,38 @@ is intentionally not live yet.
 
 ## Read Order
 
-1. `BOOTUP.md`
+1. `wiki/index.md`
+   App Help wiki index and source-of-truth map.
+
+2. `wiki/architecture/bootup.md`
    Local setup, dev server, smoke tests, guarded Fly deploy, env/secrets, and
    common failure checks.
 
-2. `CURRENT_SYSTEM.md`
+3. `wiki/architecture/current-system.md`
    Current repo layout, runtime surfaces, API contracts, enabled features,
    disabled features, and the near-term build path.
 
-3. `DOCKER_DEV.md`
-   Local Docker dev loop for rapid iteration without Fly deploys.
+4. `wiki/architecture/deployment.md`
+   Local Docker dev, Fly release deployment paths, durable stores, secrets, and
+   background process guardrails.
 
-4. `DATABASE_ARCHITECTURE.md`
+5. `wiki/architecture/database.md`
    Target Postgres architecture for accounts, linked identities, context,
    chat, billing, deposits, task projections, pgvector retrieval, and JSON
    runtime-store migration.
 
-5. `PFTL_TASK_ENGINE_SPEC.md`
-   Proposed on-chain-first task engine, PFTasks deprecation rationale,
-   pointer-native lifecycle, wallet provisioning, cache strategy, and
+6. `wiki/architecture/task-async-engine.md`
+   PFTL-native task engine, wallet roles, pointer lifecycle, worker queues, and
    portability target for Codex/CLI clients.
 
-6. `PFTL_LIVE_TASK_REPLAY_WALKTHROUGH.md`
-   Human-readable walkthrough of the successful live PFTL/IPFS task lifecycle
-   replay from request through reward.
+7. `wiki/architecture/task-lifecycle.md`
+   Human-readable lifecycle replay from request through reward.
 
-7. `PFTL_VERIFICATION_EVIDENCE.md`
-   Canonical screenshot, PDF, DOCX, and public URL evidence readers for PFTL
-   verification payloads.
+8. `wiki/architecture/task-review-reward-worker.md`
+   Verification requests, evidence review, reward scoring, and terminal reward
+   publication.
 
-8. `DEPLOYMENT.md`
-   Local Docker dev, local production Docker, Fly release deployment paths, and
-   the background guard required for non-HTTP worker and Board Manager
-   processes.
-
-9. `ETHEREUM_TOP_UPS.md`
+9. `wiki/architecture/ethereum-deposit-rpc.md`
    Account-scoped Ethereum mainnet deposit addresses for ETH, USDC, and USDT
    top-ups, including custody boundaries and sync behavior.
 
@@ -50,7 +47,7 @@ is intentionally not live yet.
 11. `../auth_account_spec.md`
    Auth, provider linking, wallet claim, email login, and delink/relink design.
 
-12. `AUTH_WALLET_BOUNDARY.md`
+12. `wiki/architecture/auth-wallet-boundary.md`
    Concrete implementation guardrails for wallet auth UX, session refresh,
    wallet proof, local vault state, and regression coverage.
 

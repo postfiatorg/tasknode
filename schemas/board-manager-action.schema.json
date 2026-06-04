@@ -3,7 +3,7 @@
   "title": "Task Node Board Manager Action",
   "type": "object",
   "additionalProperties": false,
-  "required": ["action", "target_type", "target_id", "reason", "confidence", "payload"],
+  "required": ["action", "target_type", "target_id", "reason", "confidence", "decision_basis", "payload"],
   "properties": {
     "action": {
       "type": "string",
@@ -37,6 +37,71 @@
       "minimum": 0,
       "maximum": 1
     },
+    "decision_basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_facts", "tradeoffs", "rejected_actions", "risk_notes", "next_check"],
+      "properties": {
+        "source_facts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "tradeoffs": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "rejected_actions": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["action", "reason"],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": [
+                  "do_nothing",
+                  "refresh_hive_secretary",
+                  "message_user",
+                  "create_project",
+                  "archive_project",
+                  "restore_project",
+                  "refresh_project_document",
+                  "assign_contributor",
+                  "initiate_network_task"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 500
+              }
+            }
+          }
+        },
+        "risk_notes": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "next_check": {
+          "type": "string",
+          "maxLength": 700
+        }
+      }
+    },
     "payload": {
       "type": "object",
       "additionalProperties": false,
@@ -48,7 +113,8 @@
         "project",
         "project_document",
         "contributor",
-        "network_task"
+        "network_task",
+        "message_precondition"
       ],
       "properties": {
         "summary": {
@@ -328,6 +394,75 @@
               "maximum": 336
             },
             "allow_over_capacity": {
+              "type": "boolean"
+            }
+          }
+        },
+        "message_precondition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "intent",
+            "project_id",
+            "related_task_id",
+            "related_allocation_id",
+            "expected_task_status",
+            "expected_allocation_status",
+            "expected_followup_status",
+            "expected_min_reward_pft",
+            "allow_terminal_task"
+          ],
+          "properties": {
+            "intent": {
+              "type": "string",
+              "enum": [
+                "",
+                "task_acceptance_nudge",
+                "task_verification_nudge",
+                "task_status_clarification",
+                "routing_status",
+                "project_followup",
+                "account_followup"
+              ]
+            },
+            "project_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "related_task_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "related_allocation_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "expected_task_status": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "expected_allocation_status": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "expected_followup_status": {
+              "type": "string",
+              "enum": ["", "none_open", "open"]
+            },
+            "expected_min_reward_pft": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "allow_terminal_task": {
               "type": "boolean"
             }
           }

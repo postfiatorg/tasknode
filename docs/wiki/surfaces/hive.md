@@ -23,6 +23,19 @@ The project detail page is layered as:
 3. Tasks
 4. Activity
 
+Project detail task rows and activity rows use the same compact row structure:
+status, task title, current public operator identity, PFT amount, and explicit
+next-action text. Activity rows also acknowledge the latest state transition so
+the user does not need to infer whether a proposed, accepted, submitted,
+refused, or rewarded task was recorded. Long task and activity lists paginate
+in-page instead of expanding the project page indefinitely.
+
+Project cards include a `Next reward task` preview. If the project has a live
+accepted, verification, submitted, or proposed task, the card shows that task,
+its current state, reward amount, and next action. If no reward-bearing task is
+available, the card shows the honest blocker: either a queued generation job or
+that no reward-bearing task is available right now.
+
 Project IDs are part of the product surface. The project detail header should expose the stable `network_projects.id` so operators can refer to a project in tasks, docs, and chat without ambiguity.
 
 ## Hive Chat
@@ -47,13 +60,24 @@ Daily airdrop worker runs also appear in this feed. They are recorded as interna
 
 Every recorded Board Manager run writes a micro summary artifact at completion. The artifact is stored as structured JSON plus a short plain-text report on the run row. It says what action was selected, why, what target was touched, what executed, and what should happen next. Future Board Manager source packets use these micro summaries for recent-run memory instead of injecting full prior decisions and action payloads.
 
-The Hive Mind Agent card renders that decision audit directly. A run should show the selected action, summary, decision reason, action result, confidence, run id, source packet digest, and trigger. This is required even when the selected action is `do_nothing`, which the UI labels as `No board change`, because "no board mutation" is still a decision that must be explainable from the live state the agent saw.
+The Hive Mind Agent card renders that decision audit directly. A run should show the selected action, summary, decision reason, action result, next check, confidence, run id, source packet digest, and trigger. This is required even when the selected action is `do_nothing`, which the UI labels as `No board change`, because "no board mutation" is still a decision that must be explainable from the live state the agent saw. Model-selected Board Manager runs also persist `decision_basis`: concrete source facts, tradeoffs, rejected actions, risk notes, and the next check. This is an audit summary, not hidden chain-of-thought.
+
+The card surfaces the `Next check` from that decision basis before the raw logs
+drawer. Users should not have to expand JSON logs to understand what the system
+will inspect next or why no immediate board mutation happened.
+
+Each Hive Mind Agent card also exposes an expandable `Full logs` drawer. When the viewer is signed in, the Hive page asks `GET /api/hive/context?agentLogs=full` for the stored run internals: decision basis, normalized decision JSON, action payload JSON, action-result JSON, provider output text when stored, the run micro-summary, and a compact source-packet snapshot. This is the first operator stop for understanding why the Hive behaved a certain way; it avoids a Fly shell audit for routine questions about what the Board Manager saw, what it decided, and what hook executed. The drawer intentionally shows a source snapshot rather than the entire raw source packet so it stays inspectable in-browser. Older runs that predate `decision_basis` synthesize a visible basis from stored action pressure, action results, and worker source packets.
 
 ## Board Manager Target
 
 The Board Manager is the system operator for Hive. It is a leased model decision worker with a bounded action registry. It runs periodically or after meaningful state changes, claims a single `global_hive` lease, inspects the current board state, and chooses one action.
 
-The active board professionalism standard now lives in this Hive surface page, [Architecture -> Board Manager](../architecture/board-manager.md), and [Architecture -> Hive Active Projects Helper](../architecture/hive-active-projects-helper.md). Active board counts must be live execution counts, not planned or scoped counts. Board Manager archives are reversible unless an explicit operator archive lock is present. The original diagnosis is retained only under `Implemented / Deprecated Plans`.
+The active board professionalism standard now lives in this Hive surface page,
+[Architecture -> Board Manager](../architecture/board-manager.md), and
+[Architecture -> Hive Active Projects Helper](../architecture/hive-active-projects-helper.md).
+Active board counts must be live execution counts, not planned or scoped counts.
+Board Manager archives are reversible unless an explicit operator archive lock
+is present.
 
 V0 now builds the current Hive source packet, optionally compresses it through a DeepSeek secretary packet, calls the configured decision provider, validates the returned action against `schemas/board-manager-action.schema.json`, and records the decision in `board_manager_runs` when Postgres is enabled. The default local and production-shaped decision model is OpenRouter Chat Completions with `qwen/qwen3.7-max`, `high` reasoning, structured JSON output, `data_collection="deny"`, and usage reporting. OpenAI Responses with `gpt-5.5-pro` remains available through `TASKNODE_BOARD_MANAGER_PROVIDER=openai`. It defaults to dry-run for app mutations, and executes supported action hooks only when the executor is run with `--execute`. Codex Exec remains available as a manual repo/operator tool, but it is no longer the normal Board Manager decision engine.
 
@@ -61,7 +85,7 @@ The DeepSeek secretary path uses the direct DeepSeek API with `deepseek-v4-pro`;
 
 The local continuous runner is `npm run board-manager:loop -- --execute`. It calls the same one-shot Board Manager executor repeatedly. If the manager selects `do_nothing`, the loop sleeps for two minutes before the next tick. If the manager changes the board, it waits only the shorter action delay and then rechecks the resulting Hive state. This is a development harness, not the production deployment model.
 
-The production target is a Fly-managed `board-manager` process group with a Postgres-backed job queue and lease. The first implementation is now in place. Web/API instances can enqueue Board Manager jobs but do not run background workers when started with `TASKNODE_PROCESS_ROLE=web`. The dedicated Board Manager worker claims one due job, calls the one-shot decision path, claims the scope lease inside that one-shot run, executes at most one validated action, writes the run/action/micro-summary audit rows, and schedules follow-up work when the action mutates state. Multiple Fly machines can exist for failover, but only claimed jobs and the Board Manager lease holder can act. The original migration plan is now retained under `Implemented / Deprecated Plans`; current repair instructions live in `Architecture -> Board Manager`.
+The production target is a Fly-managed `board-manager` process group with a Postgres-backed job queue and lease. The first implementation is now in place. Web/API instances can enqueue Board Manager jobs but do not run background workers when started with `TASKNODE_PROCESS_ROLE=web`. The dedicated Board Manager worker claims one due job, calls the one-shot decision path, claims the scope lease inside that one-shot run, executes at most one validated action, writes the run/action/micro-summary audit rows, and schedules follow-up work when the action mutates state. Multiple Fly machines can exist for failover, but only claimed jobs and the Board Manager lease holder can act. Current repair instructions live in `Architecture -> Board Manager`.
 
 Fly releases must use `npm run fly:deploy`, which runs `npm run
 fly:background-guard` after deploy. The guard starts the active
@@ -105,11 +129,15 @@ This snapshot is intentionally not the full forensics view. It does not carry ra
 
 User routing context is also compacted before it reaches the Board Manager. `network_task_profiles` are generated asynchronously by the memory worker through the DeepSeek Flash ZDR route, and `listEligibleNetworkTaskCandidates` passes only those small diagnostic profiles plus the active wallet. The Board Manager does not receive full user context documents, full chat history, or raw memory bundles in the normal decision packet.
 
+Network Task eligibility is not a manual application flow. A user becomes routable when their Task Node account has a linked PFT wallet, that wallet is active in the PFTL sync cache, Memory has generated a completed Network Diagnostic Report, and the account/wallet has no outstanding or pending Network Task consuming capacity. The Network Diagnostic Report is queued automatically after the account has at least two positive task rewards; opening Memory and clicking refresh is only a manual repair path. The Board Manager can then allocate a Network Task only when an active project needs work that fits that routing profile. Personal and engineering task history is useful signal, but it is not the capacity gate and should not be described as a hard prerequisite.
+
 The source packet also includes `boardActionPressure`, a deterministic health summary. This is the guard against passive Hive decisions. If active projects have no live tasks, no contributors, no pending generation, or a recent stopped Network Task with no follow-up, the packet marks the board as action-required. In that state the manager should route work, assign an eligible contributor, ask for the smallest missing decision input, refresh the project document with a concrete blocker, restore a matching archived project, or archive the project. `eligibleCandidateCount` means candidates still available after outstanding and pending Network Tasks are accounted for, so a busy contributor is not counted as free capacity. Personal and engineering tasks are context only; they do not make a contributor ineligible for a Network Task. When capacity is unavailable, the packet includes the exact outstanding Network Task or pending generation job consuming that capacity in `boardActionPressure.candidateCapacity.activeNetworkTaskCapacityBlockers`. If `eligibleCandidateCount` is zero and there is no open user follow-up, the expected fallback is `message_user`, not `do_nothing`. A Project Status refresh is not live board motion; it cannot by itself clear an empty project. `do_nothing` is acceptable when the board already has live motion, a matching task/generation job is in flight, or a targeted user follow-up is waiting for a response.
 
-The Hive project task row renders canonical task statuses directly, including `rewarded`, `reward_decided`, `verification_response_submitted`, and stopped states. Unknown statuses are shown as unknown, not silently downgraded to `proposed`.
+The normal Hive UI can hide empty active project rows until they have tasks, contributors, pending generation, or an operator pin. The Board Manager source packet must still include empty active projects. Otherwise the manager cannot see a project need and cannot route the first Network Task that would create the evidence row.
 
-Task assignees use the assignee wallet's latest selected/profile NFT image when one exists in `profile_nfts`. If no profile NFT image is available, Hive falls back to the small deterministic SVG badge and compact wallet label.
+The Hive project task row renders canonical task statuses directly, including `rewarded`, `verification_response_submitted`, intermediate states, and stopped states. Unknown statuses are shown as unknown, not silently downgraded to `proposed`.
+
+Task assignees use the assignee wallet's latest selected/profile NFT image when one exists in `profile_nfts`. Operator labels are enriched from the current public account identity for the linked wallet, so public Hive handle or public display-name changes appear on Hive without waiting for Board Manager to rewrite project contributor rows. If no public identity or profile NFT image is available, Hive falls back to the small deterministic SVG badge and compact wallet label.
 
 The Routing Feed and Allotted Operators sections are also derived from live project-linked tasks. `network_project_contributors` and `network_project_activity` may hold explicit project rows later, but the current board will not stay empty when `network_project_task_refs` has real tasks. A project-linked task with an assignee creates a contributor/operator read model, and its current task state creates a routing-feed entry. The Allotted Operators subtitle refers to operators currently routed by live project tasks, not a permanent full-time membership claim.
 
@@ -168,14 +196,14 @@ Each project can now have a project-linked Product Document. Each project card o
 
 That Product Document is written by the Board Manager when it chooses `refresh_project_document`. The document is part of the Board Manager's JSON decision in `payload.project_document`; the action hook validates and stores it in `network_project_product_docs`. It does not call a second writer model. The static project identity remains in `network_projects.about`.
 
-The Product Document appears as a collapsible `Project Status` section inside About. The static `network_projects.about` text explains what the project is. The generated Project Status explains the current execution picture, key points, blockers, and next actions. The collapsed view shows only the short summary so the project page remains scannable. The original About-panel plan is now retained under `Implemented / Deprecated Plans`; this Hive surface page is the current product contract.
+The Product Document appears as a collapsible `Project Status` section inside About. The static `network_projects.about` text explains what the project is. The generated Project Status explains the current execution picture, key points, blockers, and next actions. The collapsed view shows only the short summary so the project page remains scannable. This Hive surface page is the current product contract.
 
 If no current product document exists, the About section shows the static project description plus the empty state `Project status has not been generated yet.` It does not show filler copy.
 
 Current endpoints:
 
 - `GET /api/hive/projects` returns active network projects, project task rows, contributor rollups, activity rows, and the latest Hive Secretary input reference.
-- `GET /api/hive/context` returns the grouped Hive Context document, Hive Secretary report/job state, and public Board Manager action feed. If the viewer is signed in, it also includes that account's private Board Manager messages.
+- `GET /api/hive/context` returns the grouped Hive Context document, Hive Secretary report/job state, and public Board Manager action feed. If the viewer is signed in, it also includes that account's private Board Manager messages. If the signed-in viewer passes `agentLogs=full`, Board Manager feed rows include expandable stored run logs for the Hive Mind Agent tab.
 - `POST /api/hive/context` stores one signed-in user's Hive chat entry, records the user message in the Hive conversation, and queues Hive Secretary when the user has a linked wallet.
 - `GET /api/hive/chat` returns the signed-in account's Hive chat state.
 - `PATCH /api/hive/chat` marks the signed-in account's unread Board Manager Hive messages as read.
@@ -263,7 +291,7 @@ Board Manager target:
 - Product Documents refresh when the manager decides a project is stale or materially changed.
 - If a Product Document identifies missing information, the manager can research, ask follow-up questions, or initiate information-gathering Network Tasks under the existing project.
 - Production runs come from a durable Fly worker process with `board_manager_jobs`, `board_manager_leases`, and auditable `board_manager_runs`, not from local tmux. The runnable entrypoints are `npm run start:web`, `npm run start:worker`, and `npm run start:board-manager`.
-- Local Docker now has a dedicated `board-manager` service. It runs `npm run board-manager:worker -- --execute`, uses the configured Board Manager provider credentials from the app environment, and consumes `board_manager_jobs` separately from the API process. Its periodic scope cadence is configured by `TASKNODE_BOARD_MANAGER_CADENCE_SECONDS` and defaults to 900 seconds in the local and Fly deployment environment. Its useful board-mutation budget is configured by `TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR` and defaults to 60 actions per rolling hour. Internal audit cards such as daily airdrop payout reports appear in Hive Mind Agent but do not consume that budget. Running jobs older than the configured stale-job threshold are recovered for retry so a killed worker cannot leave the Hive agent stuck.
+- Local Docker now has a dedicated `board-manager` service. It runs `npm run board-manager:worker -- --execute`, uses the configured Board Manager provider credentials from the app environment, and consumes `board_manager_jobs` separately from the API process. Its periodic scope cadence is configured by `TASKNODE_BOARD_MANAGER_CADENCE_SECONDS` and defaults to 120 seconds in the local and Fly deployment environment. Its useful board-mutation budget is configured by `TASKNODE_BOARD_MANAGER_MAX_ACTIONS_PER_HOUR` and defaults to 60 actions per rolling hour. Internal audit cards such as daily airdrop payout reports appear in Hive Mind Agent but do not consume that budget. Running jobs older than the configured stale-job threshold are recovered for retry so a killed worker cannot leave the Hive agent stuck.
 - Board Manager scope status is durable. `enabled`, `paused`, and `disabled` live in `board_manager_scopes`; worker startup can create a missing scope and update cadence/budget settings, but it must not silently flip a paused or disabled scope back to enabled unless the operator explicitly sets that status.
 - The API worker must run both `TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED=true` and `TASKNODE_TASK_GENERATION_WORKER_ENABLED=true`. The Network Task worker consumes `network_task_generation_jobs` and creates normal encrypted task request bundles; the task-generation worker publishes the real `pf.task.offer.v1` task pointer. A queued generation job is only a pending worker input, not a visible Network Task.
 - Outside local Docker, a live PFTL network-task offer still requires the network worker, task-generation worker, service encryption key, IPFS, and PFTL submit credentials to be enabled.

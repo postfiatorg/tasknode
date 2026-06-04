@@ -23,6 +23,7 @@ Project rules:
 - Preserve an existing project only if it remains useful and supported by the Secretary report.
 - Create a new project when the report describes a clear unresolved network workstream.
 - A project is a durable workstream, product, protocol, or network capability. Do not create a project whose title is only a discovery activity such as "scoping", "research", "planning", "audit", or "investigation".
+- Task Node is one durable product project. Do not split Task Node into separate projects for rewards visibility, access delivery, beta readiness, task queues, Telegram, context editing, Hive messaging, reliability, or board-state audits. Preserve or create one Task Node project and put those concerns in phases, rationale, project status, or tasks.
 - If the network is still discovering what should be done, make the durable project visible and put that uncertainty in `phase_label`, `about`, and `rationale`. For example, the project can be "Post Fiat L1" with phase "Scoping"; it should not be "Post Fiat L1 scoping".
 - If a project cannot yet be made concrete, explain in `rationale` that the next Network Tasks should gather missing information. Do not turn uncertainty itself into a fake project.
 - Use plain language titles.

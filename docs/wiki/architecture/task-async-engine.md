@@ -11,13 +11,13 @@ Implemented in the app:
 - Tasks modal and chat `Request task` mode publish encrypted `pf.task.request.v1` PFTL pointers from the linked browser wallet through `POST /api/tasks/request`.
 - `server/task-request.js` builds the request bundle from the saved context document, last 3 deep memories, last 36 recent memories, recent chats, and current task queue projection.
 - `task_requests` is the durable request receipt and worker claim table.
-- `server/task-generation-worker.js` claims published requests, decrypts the bundle, calls OpenAI `chat-latest` with `prompts/task_engine/taskgen_minimal_v1.md`, publishes encrypted `pf.task.offer.v1` pointers from the authority wallet, syncs PFTL, and runs the reducer.
+- `server/task-generation-worker.js` claims published requests, decrypts the bundle, selects `prompts/task_engine/taskgen_personal_v1.md` for personal requests or `prompts/task_engine/taskgen_network_v1.md` for Network/Alpha routing packets, calls OpenAI `chat-latest`, publishes encrypted `pf.task.offer.v1` pointers from the authority wallet, syncs PFTL, and runs the reducer.
 - The Tasks page renders real task cards from `task_projections`, not fabricated local cards.
 - The task detail page publishes user-signed accept, refuse, and cancel transitions through `POST /api/tasks/action`.
 - The Submit tab publishes user-signed initial evidence and verification evidence through `POST /api/tasks/submission`.
 - Evidence packets can contain one or two compact artifacts. Screenshot files are described by the OpenAI vision evidence reader before being included in the encrypted payload.
 - `server/task-review-worker.js` claims submitted tasks, generates a follow-up verification request with `verification_request_v1`, publishes a `pf.task.update.v1` pointer, then scores verification responses with `reward_scoring_v1`.
-- Positive reward decisions publish both `pf.task.reward_decision.v1` and a `pf.reward.v1` payment pointer. Zero-reward decisions publish the reward decision only and still close the task as terminal `rewarded`.
+- Reward scoring publishes exactly one terminal `pf.reward.v1`. Positive and partial rewards use the transaction amount as the economic PFT payout. Zero-reward outcomes use a one-drop carrier transaction while the encrypted payload records `reward_pft: "0.00"`.
 - The Python reference still exists for external agent playback and multi-wallet protocol stress tests, but the app path now uses the JavaScript server modules listed above.
 
 Still not implemented:
@@ -77,7 +77,7 @@ The current engine is a set of small modules inside the Node API process. The bo
 | Lifecycle action route | `server/task-actions.js` | Prepare and submit signed accept, refuse, and cancel pointers. | User wallet signed PFTL transaction. | PFTL cache and `task_projections`. |
 | Evidence submission route | `server/task-submission.js` | Prepare and submit signed initial or verification evidence pointers. | User wallet signed PFTL transaction. | PFTL cache and `task_projections`. |
 | Evidence processor | `server/task-evidence-processing.js` | Read screenshots/files before payload construction so raw media is not embedded in encrypted JSON. | User-provided artifact plus model extraction. | Compact evidence metadata in IPFS payload. |
-| Review and reward worker | `server/task-review-worker.js` | Publish verification requests, reward decisions, and positive reward payments. | Authority/reward wallet PFTL pointers. | Worker metadata, PFTL cache, `task_projections`. |
+| Review and reward worker | `server/task-review-worker.js` | Publish verification requests and terminal reward outcomes. | Authority/reward wallet PFTL pointers. | Worker metadata, PFTL cache, `task_projections`. |
 | Projection reducer | `server/pftl-cache-reducer.js` | Hydrate/decrypt task pointers and rebuild current task state. | PFTL plus encrypted IPFS. | `pftl_task_pointer_events`, `task_events`, `task_projections`. |
 
 Projection ownership is anchored to the durable `task_requests` row when a
@@ -117,7 +117,7 @@ For each accepted user wallet path, the demo:
 7. queues a task offer and verification request from the assigned authority wallet;
 8. submits accept, evidence, and verification response pointers from the user wallet;
 9. scores the response through the configured model path;
-10. sends a reward payment from the assigned allocation wallet when the score is rewardable;
+10. sends one terminal `pf.reward.v1` from the assigned allocation wallet, using the economic reward amount for positive outcomes or one drop for zero outcomes;
 11. replays wallet histories and encrypted IPFS payloads into final projections.
 
 The demo writes generated run artifacts under `reference_clients/python/runs/`, which is gitignored because private receipts contain generated testnet seeds and encryption private keys. Public receipts contain addresses, CIDs, transaction hashes, queue summaries, and replay status only.

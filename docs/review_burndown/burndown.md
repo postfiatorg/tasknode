@@ -76,7 +76,7 @@ checks fail, do not merge it.
 | 3 | Prompt Index | generated from `prompts/**` | `reviews/prompts-index.md` | `review_ready` | no |
 | 3 | Chat Prompts | generated from `prompts/chat/*.md` | `reviews/prompts-chat.md` | `review_ready` | no |
 | 3 | Memory Prompts | generated from `prompts/memory/*.md` | `reviews/prompts-memory.md` | `review_ready` | no |
-| 3 | Task Engine Prompts | generated from `prompts/task_engine/*taskgen*`, `block_contract_v1.md` | `reviews/prompts-task-engine.md` | `review_ready` | no |
+| 3 | Task Engine Prompts | generated from `prompts/task_engine/taskgen_personal_v1.md`, `prompts/task_engine/taskgen_network_v1.md`, plus non-production task engine references | `reviews/prompts-task-engine.md` | `review_ready` | no |
 | 3 | Verification Prompts | generated from `prompts/task_engine/verification_request_v1.md`, `evidence_screenshot_read_v1.md` | `reviews/prompts-verification.md` | `review_ready` | no |
 | 3 | Reward Prompts | generated from `prompts/task_engine/reward_scoring_v1.md` | `reviews/prompts-reward.md` | `review_ready` | no |
 | 4 | Start Here | `docs/wiki/index.md` | `reviews/start-task-node-wiki.md` | `review_ready` | no |

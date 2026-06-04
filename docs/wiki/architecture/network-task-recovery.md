@@ -41,7 +41,6 @@ Recovery inspects active Network Task statuses:
 - `submitted`
 - `verification_requested`
 - `verification_response_submitted`
-- `reward_decided`
 
 For each task it first calls `syncNetworkTaskProjection`. That copies the canonical `task_projections.status` into `network_project_task_refs.state` and `network_task_allocations.allocation_status`. This keeps the Hive board aligned with the task page after restart.
 
@@ -54,7 +53,6 @@ Then it chooses one next action:
 | `submitted` | `resume_verification_request_worker` unless already published | Task review worker |
 | `verification_requested` | `await_user_verification_evidence` | User |
 | `verification_response_submitted` | `resume_reward_scoring_worker` unless already published | Task review worker |
-| `reward_decided` | `await_reward_payment_or_projection` | Cache/reducer/chain sync |
 
 ## Duplicate Transition Policy
 
@@ -63,7 +61,7 @@ Recovery never signs user transitions. It does not accept, refuse, cancel, or su
 Recovery also checks worker metadata before asking a worker to continue:
 
 - `metadata_json.workers.verification_request.published = true` means the verification request was already published, so recovery waits for projection instead of publishing another request.
-- `metadata_json.workers.reward_scoring.published = true` means the reward decision or reward payment path already published, so recovery waits for projection instead of scoring again.
+- `metadata_json.workers.reward_scoring.published = true` means the terminal reward outcome already published, so recovery waits for projection instead of scoring again.
 
 The task review worker still owns the actual verification and reward publications. Its claim queries are idempotent and stale-claim aware: processing leases can expire and be retried, but published markers are terminal for that worker. Recovery only reconstructs what should happen next and makes the project mirrors accurate.
 

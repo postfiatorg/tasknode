@@ -9,12 +9,12 @@ crypto-funded usage.
 This repository is initialized with early product/interface artifacts and a
 minimal deployable dev app:
 
-- `docs/README.md` is the engineering landing page for new contributors.
-- `docs/BOOTUP.md` explains local setup, smoke tests, Fly deploy, env/secrets,
+- `docs/wiki/index.md` is the source-of-truth Help wiki index.
+- `docs/wiki/architecture/bootup.md` explains local setup, smoke tests,
   runtime persistence, and common failure checks.
-- `docs/DEPLOYMENT.md` clearly separates local Docker dev, local production
-  Docker, and Fly release deployments.
-- `docs/CURRENT_SYSTEM.md` maps the current app, API contracts, enabled
+- `docs/wiki/architecture/deployment.md` covers local Docker, Fly release
+  deployments, background process groups, secrets, and operational checks.
+- `docs/wiki/architecture/current-system.md` maps the current app, API contracts, enabled
   surfaces, disabled surfaces, and near-term build path.
 - `product_spec.md` contains the initial product direction and migration notes.
 - `jsx_mock.jsx` contains a React mock for a ChatGPT-style Task Node interface with Tasks, Wallet, Context, Profile, Settings, and PFT balance surfaces.
@@ -93,8 +93,11 @@ minimal deployable dev app:
   PFTasks context/task rows as sanitized pointer metadata. `/api/context/history/ipfs/:cid`
   fetches encrypted JSON only for imported pointer CIDs, and the browser
   decrypts the latest context payload with the locally unlocked seed vault.
-  Shared URL imports and explicit PFTL manifest ink remain disabled until their
-  trust and wallet boundaries are implemented.
+  Shared URL imports remain disabled until their trust boundary is implemented.
+  Explicit, user-initiated PFTL manifest ink is implemented and config-gated: the
+  browser signs the pointer transaction while the server only pins the encrypted
+  payload and submits the signed blob, scoped to a signed-in account with a linked
+  wallet, and is off in environments without IPFS/PFTL/encryption-key configuration.
 
 Dev URL: https://tasknodeofficial-dev.fly.dev
 
@@ -102,10 +105,10 @@ Dev URL: https://tasknodeofficial-dev.fly.dev
 
 Read these in order:
 
-1. `docs/BOOTUP.md`
-2. `docs/CURRENT_SYSTEM.md`
-3. `docs/DOCKER_DEV.md`
-4. `docs/DEPLOYMENT.md`
+1. `docs/wiki/index.md`
+2. `docs/wiki/architecture/current-system.md`
+3. `docs/wiki/architecture/bootup.md`
+4. `docs/wiki/architecture/deployment.md`
 5. `full_spec.md`
 6. `auth_account_spec.md`
 7. `whip_context.md`

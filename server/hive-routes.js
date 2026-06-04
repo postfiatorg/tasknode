@@ -122,6 +122,7 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
 
   if (req.method === "GET") {
     const accountId = session?.accountId || "";
+    const includeAgentLogs = Boolean(accountId) && url.searchParams.get("agentLogs") === "full";
     const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
     if (accountId && linkedWallet?.address) {
       const validated = await markHiveContextEntriesWalletValidated({
@@ -143,7 +144,12 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       context: await getHiveContextDocument({ limit: url.searchParams.get("limit") || 120 }),
       secretary: await getHiveSecretaryState(),
       boardManager: {
-        feed: await getBoardManagerAgentFeed({ limit: 20 }),
+        feed: await getBoardManagerAgentFeed({
+          limit: includeAgentLogs ? 12 : 20,
+          includeDetails: includeAgentLogs,
+        }),
+        logMode: includeAgentLogs ? "full" : "summary",
+        logsAvailable: Boolean(accountId),
         messages: accountId ? await getBoardManagerUserMessages({ accountId, limit: 12 }) : [],
       },
     });
@@ -254,6 +260,9 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
           kind: "hive_immediate_response",
           hiveContextEntryId: entry.id,
           sourcePacketDigest: immediate.sourcePacketDigest,
+          accountLiveStateDigest: immediate.accountLiveStateDigest,
+          accountLiveStateSnapshotAt: immediate.accountLiveStateSnapshotAt,
+          accountLiveStateStatus: immediate.accountLiveStateStatus,
           boardManagerSourcePacketDigest: immediate.boardManagerSourcePacketDigest,
           boardManagerSecretaryPacketId: immediate.boardManagerSecretaryPacketId,
           boardManagerSecretaryPacketDigest: immediate.boardManagerSecretaryPacketDigest,
@@ -263,6 +272,9 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
           kind: "hive_immediate_response",
           hiveContextEntryId: entry.id,
           sourcePacketDigest: immediate.sourcePacketDigest,
+          accountLiveStateDigest: immediate.accountLiveStateDigest,
+          accountLiveStateSnapshotAt: immediate.accountLiveStateSnapshotAt,
+          accountLiveStateStatus: immediate.accountLiveStateStatus,
           boardManagerSourcePacketDigest: immediate.boardManagerSourcePacketDigest,
           boardManagerSecretarySourceDigest: immediate.boardManagerSecretarySourceDigest,
           boardManagerSecretaryPacketId: immediate.boardManagerSecretaryPacketId,

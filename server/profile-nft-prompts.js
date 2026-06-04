@@ -7,13 +7,41 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 
 export const privateProfileNftPromptPath = path.join(rootDir, "private_prompts", "profile_nft_image.md");
-export const placeholderProfileNftPromptPath = path.join(rootDir, "prompts", "profile_nft_image.placeholder.md");
+export const placeholderProfileNftPromptPath = path.join(
+  rootDir,
+  "prompts",
+  "non_production",
+  "profile_nft_dev",
+  "profile_nft_image.placeholder.md"
+);
 
 const nftUserDataPlaceholder = "___NFT_USER_DATA_REPLACED_HERE___";
 const contextDocumentPlaceholder = "___USER_CONTEXT_DOCUMENT_CONTENT_REPLACED_HERE___";
 const bootStringPlaceholder = "< insert Random String>";
 
+function readSecretPrompt(env = process.env) {
+  const direct = String(env.PROFILE_NFT_PROMPT_TEXT || "").trim();
+  if (direct) {
+    return {
+      text: direct,
+      source: "env_secret",
+      sourcePath: "PROFILE_NFT_PROMPT_TEXT",
+    };
+  }
+
+  const encoded = String(env.PROFILE_NFT_PROMPT_B64 || "").trim();
+  if (!encoded) return null;
+  return {
+    text: Buffer.from(encoded, "base64").toString("utf8").trim(),
+    source: "env_secret",
+    sourcePath: "PROFILE_NFT_PROMPT_B64",
+  };
+}
+
 function readPromptFile(env = process.env) {
+  const secretPrompt = readSecretPrompt(env);
+  if (secretPrompt?.text) return secretPrompt;
+
   const configuredPath = env.PROFILE_NFT_PROMPT_PATH
     ? path.resolve(env.PROFILE_NFT_PROMPT_PATH)
     : privateProfileNftPromptPath;

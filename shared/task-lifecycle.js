@@ -86,7 +86,7 @@ const taskStatusDefinitions = Object.freeze({
     stopTransition: "cancelled",
   },
   [TASK_STATUS.rewardDecided]: {
-    label: "Reward decided",
+    label: "Reward pending",
     tab: TASK_TABS.rewarded,
     tone: "rewarded",
     color: "#6e5223",
@@ -182,8 +182,8 @@ export function parseRewardPftAmount(value = "") {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function statusFromRewardAmount(rewardPft = "") {
-  return parseRewardPftAmount(rewardPft) > 0 ? TASK_STATUS.rewardDecided : TASK_STATUS.rewarded;
+export function statusFromRewardAmount() {
+  return TASK_STATUS.rewarded;
 }
 
 export function taskLifecycleActions(status = "") {

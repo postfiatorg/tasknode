@@ -82,8 +82,8 @@ Read these first:
 8. `docs/review_burndown/README.md`
 9. `docs/review_burndown/composer_full_codebase_review_plan_2026-05-23.md`
 10. `docs/review_burndown/recent_work_pr_review_spec_2026-05-24.md`
-11. `docs/ETHEREUM_TOP_UPS.md`
-12. `docs/DATABASE_ARCHITECTURE.md`
+11. `docs/wiki/architecture/ethereum-deposit-rpc.md`
+12. `docs/wiki/architecture/database-architecture.md`
 
 Then inventory the repo:
 
@@ -433,7 +433,7 @@ Use this format for every finding:
 
 #### P1: Signed-out usage ledger could expose account billing rows
 
-- Files: `server/index.js`, `server/repositories/chat-billing.js`, `server/runtime-store.js`, `server/app-state.js`, `server/route-policies.js`, `scripts/smoke.mjs`, `scripts/security-smoke.mjs`, `docs/CURRENT_SYSTEM.md`
+- Files: `server/index.js`, `server/repositories/chat-billing.js`, `server/runtime-store.js`, `server/app-state.js`, `server/route-policies.js`, `scripts/smoke.mjs`, `scripts/security-smoke.mjs`, `docs/wiki/architecture/current-system.md`
 - Boundary: auth | billing | persistence
 - What breaks: `/api/usage/ledger` was an optional-auth route. When no session was present, it passed empty account and conversation scope to `usageLedger`. Both runtime and Postgres repository paths treated empty scope as aggregate scope, so a signed-out caller could receive recent billing ledger rows across accounts.
 - Why it matters: Billing ledger rows include account IDs, credit/debit metadata, provider/model cost records, and operational usage details. That is account data and must not be readable without a session.
@@ -483,7 +483,7 @@ Use this format for every finding:
 
 #### P1: Fly dev data bridge push could overwrite Fly dev data without confirmation
 
-- Files: `scripts/fly-dev-data-bridge.mjs`, `docs/DOCKER_DEV.md`, `docs/DEPLOYMENT.md`, `docs/wiki/architecture/deployment.md`
+- Files: `scripts/fly-dev-data-bridge.mjs`, `docs/wiki/architecture/deployment.md`
 - Boundary: deployment | persistence | operator workflow
 - What breaks: `npm run fly-dev:data:push` truncates reloadable Fly dev Postgres tables and restores local Docker data into Fly dev. Before this patch it did not require an explicit destructive-operation confirmation before starting the Fly proxy and touching databases.
 - Why it matters: even though this is a dev deployment, Fly dev is currently the shared source of truth for local/Fly QA. An accidental push can wipe or replace current chats, memory, tasks, Hive, profile, billing, and PFTL cache rows.
@@ -493,11 +493,11 @@ Use this format for every finding:
 
 #### P2: Task generation taxonomy still allowed implementation categories
 
-- Files: `server/task-generation-worker.js`, `prompts/task_engine/taskgen_minimal_v1.md`, `prompts/task_engine/block_contract_v1.md`, `prompts/task_engine/taskgen_repair_v1.md`, `scripts/task-lifecycle-smoke.mjs`
+- Files: `server/task-generation-worker.js`, `prompts/task_engine/taskgen_personal_v1.md`, `prompts/task_engine/taskgen_network_v1.md`, `prompts/non_production/task_engine_ref/block_contract_v1.md`, `prompts/non_production/task_engine_ref/taskgen_repair_v1.md`, `scripts/task-lifecycle-smoke.mjs`
 - Boundary: task generation | prompt contract | UI taxonomy
 - What breaks: Tasks docs and UX now treat task type as `Personal`, `Network`, or `Alpha`, but the task-generation prompt and structured schema still allowed `engineering` and `system`. Those values could persist into generated payload metadata and downstream task/profile summaries even when the visible list normalized them.
 - Why it matters: not a canonical-state corruption bug, but it reintroduces confusing implementation categories into user-facing and downstream LLM context.
-- Evidence: `taskgen_minimal_v1.md` listed `system` and `engineering`; `taskgenResponseFormat` accepted any string for `task_kind`.
+- Evidence: the legacy combined `taskgen_minimal_v1.md` listed `system` and `engineering`; `taskgenResponseFormat` accepted any string for `task_kind`.
 - Fix status: fixed in commit `9272ac6`.
 - Tests needed: passed `npm run task-lifecycle-smoke`.
 
@@ -563,7 +563,7 @@ For every code change, add:
 - Tests still needed manually:
 
 - Commit: `a53f9a1`
-- Files changed: `server/index.js`, `server/route-policies.js`, `server/app-state.js`, `server/runtime-store.js`, `server/repositories/chat-billing.js`, `scripts/smoke.mjs`, `scripts/security-smoke.mjs`, `docs/CURRENT_SYSTEM.md`
+- Files changed: `server/index.js`, `server/route-policies.js`, `server/app-state.js`, `server/runtime-store.js`, `server/repositories/chat-billing.js`, `scripts/smoke.mjs`, `scripts/security-smoke.mjs`, `docs/wiki/architecture/current-system.md`
 - Why changed: close the signed-out/no-scope usage ledger leakage class and document that ledger reads are account-scoped session reads.
 - Risk: low to moderate. Signed-out ledger calls now return `401`; the app should rely on signed-out app state for zero balance and signed-in ledger for detailed rows.
 - Tests already run: direct runtime proof after patch confirmed scoped ledger still returns one row and unscoped ledger returns zero rows; `npm run security-smoke`; `npm run runtime-smoke`; `npm run quality`; `DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial TASKNODE_DATABASE_ENABLED=true npm run db:chat-billing-smoke`; `npm run route-smoke`; `npm run smoke`; `git diff --check`.
@@ -598,14 +598,14 @@ For every code change, add:
 - Tests still needed manually: none.
 
 - Commit: this commit
-- Files changed: `scripts/fly-dev-data-bridge.mjs`, `docs/DOCKER_DEV.md`, `docs/DEPLOYMENT.md`, `docs/wiki/architecture/deployment.md`
+- Files changed: `scripts/fly-dev-data-bridge.mjs`, `docs/wiki/architecture/deployment.md`
 - Why changed: prevent accidental destructive replacement of Fly dev data from local Docker.
 - Risk: low to moderate. Operators now need one explicit confirmation when intentionally pushing local data to Fly dev.
 - Tests already run: direct guard commands for missing confirmation and wrong app target; `npm run route-smoke`.
 - Tests still needed manually: an intentional `fly-dev:data:push` dry operator rehearsal with a disposable Fly dev backup, using `--confirm-dev-push`, before relying on the push command for real recovery.
 
 - Commit: `9272ac6`
-- Files changed: `server/task-generation-worker.js`, `prompts/task_engine/taskgen_minimal_v1.md`, `prompts/task_engine/block_contract_v1.md`, `prompts/task_engine/taskgen_repair_v1.md`, `scripts/task-lifecycle-smoke.mjs`
+- Files changed: `server/task-generation-worker.js`, `prompts/task_engine/taskgen_personal_v1.md`, `prompts/task_engine/taskgen_network_v1.md`, `prompts/non_production/task_engine_ref/block_contract_v1.md`, `prompts/non_production/task_engine_ref/taskgen_repair_v1.md`, `scripts/task-lifecycle-smoke.mjs`
 - Why changed: align future generated task payloads with the product taxonomy of `personal`, `network`, or `alpha` instead of leaking implementation categories such as `engineering`.
 - Risk: low. Existing tasks are not rewritten; future malformed or legacy `engineering` output normalizes to `personal` unless a network/alpha policy is present.
 - Tests already run: `npm run task-lifecycle-smoke`.

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
   buildNetworkTaskProfileSourcePacket,
+  enqueueNetworkTaskProfileForRewardThreshold,
+  enqueueNetworkTaskProfilesForRewardedAccounts,
   formatLiveTaskRoutingContext,
   formatNetworkContextInputs,
   formatNetworkTaskProfileOutput,
@@ -121,5 +123,15 @@ assert.match(output, /Primary contribution ability/);
 assert.match(output, /Companies this User Would Move the Needle At/);
 assert.doesNotMatch(output, /Best task types/);
 assert.doesNotMatch(output, /Caveats/);
+
+const thresholdNoDb = await enqueueNetworkTaskProfileForRewardThreshold({
+  accountId: "acct_network_task_profile_smoke",
+});
+assert.equal(thresholdNoDb.queued, false);
+assert.equal(thresholdNoDb.reason, "database_not_configured");
+
+const backfillNoDb = await enqueueNetworkTaskProfilesForRewardedAccounts({ limit: 1 });
+assert.equal(backfillNoDb.skipped, true);
+assert.equal(backfillNoDb.reason, "database_not_configured");
 
 console.log("network task profile smoke ok");

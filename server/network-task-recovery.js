@@ -138,7 +138,7 @@ function nextRecoveryAction(row = {}) {
       willPublish: false,
       duplicateGuard: {
         ...baseGuard,
-        rewardPolicy: "recovery does not create an extra reward payment from a reward_decided projection",
+        rewardPolicy: "recovery does not create an extra reward outcome from an intermediate reward projection",
       },
       operatorNote: "Reward decision is indexed. Recovery waits for payment/projection catch-up rather than issuing another reward.",
     };

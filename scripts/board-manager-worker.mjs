@@ -50,7 +50,7 @@ function usage() {
     "  --provider <provider>       Decision provider: openrouter or openai. Default: openrouter",
     "  --model <model>             Provider model. Default: qwen/qwen3.7-max for OpenRouter, gpt-5.5-pro for OpenAI",
     "  --reasoning <effort>        Provider reasoning effort. Default: high",
-    "  --cadence-seconds <n>       Periodic scope cadence. Default: 900",
+    "  --cadence-seconds <n>       Periodic scope cadence. Default: 120",
     "  --job-limit <n>             Due scope ticks to enqueue per pass. Default: 5",
     "  --max-actions-per-hour <n>  Scope action budget. Default: 60",
     "  --stale-job-seconds <n>     Recover running jobs older than this. Default: 900",
@@ -249,7 +249,7 @@ const config = {
   pollMs: numberArg("--poll-ms", Number(process.env.TASKNODE_BOARD_MANAGER_WORKER_POLL_MS || 15000), { min: 1000 }),
   cadenceSeconds: numberArg(
     "--cadence-seconds",
-    Number(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS || 900),
+    Number(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS || 120),
     { min: 60, max: 86400 }
   ),
   actionDelayMs: numberArg("--action-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS || 5000), { min: 0 }),

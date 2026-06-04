@@ -1,0 +1,85 @@
+services:
+  api:
+    environment:
+      TASKNODE_PROCESS_ROLE: web
+      TASKNODE_SERVICE_SEED: ${TASKNODE_LOCAL_SERVICE_SEED:?Run npm run docker:reward-env first}
+      TASKNODE_ENCRYPTION_SEED: ${TASKNODE_LOCAL_SERVICE_SEED:?Run npm run docker:reward-env first}
+      TASKNODE_AUTHORITY_SEED: ${TASKNODE_LOCAL_AUTHORITY_SEED:?Run npm run docker:reward-env first}
+      TASKNODE_REWARD_SEED: ${TASKNODE_LOCAL_REWARD_SEED:?Run npm run docker:reward-env first}
+      TASKNODE_ALLOCATION_SEED: ${TASKNODE_LOCAL_REWARD_SEED:?Run npm run docker:reward-env first}
+      TASKNODE_PFT_FAUCET_SEED: ${TASKNODE_LOCAL_FAUCET_SEED:-}
+      TASKNODE_TASK_GENERATION_WORKER_ENABLED: "false"
+      TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED: "false"
+      TASKNODE_TASK_REVIEW_WORKER_ENABLED: "false"
+      TASKNODE_TASK_REVIEW_ALLOW_NON_PRODUCTION: "false"
+      TASKNODE_DAILY_AIRDROP_WORKER_ENABLED: "false"
+      TASKNODE_DAILY_AIRDROP_AUTO_ISSUE: "false"
+      TASKNODE_MEMORY_ENABLED: "false"
+      TASKNODE_HIVE_SECRETARY_ENABLED: "false"
+      TASKNODE_HIVE_PROJECT_WORKER_ENABLED: "false"
+      TASKNODE_LOCAL_REWARD_TEST_MODE: "true"
+
+  reward-test-worker:
+    profiles:
+      - reward-test
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: npm run start:worker
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      TASKNODE_ENV: development
+      TASKNODE_PROCESS_ROLE: worker
+      TASKNODE_APP_NAME: tasknodeofficial-local-reward-test-worker
+      TASKNODE_PUBLIC_URL: http://localhost:5174
+      VITE_SITE_ORIGIN: http://localhost:5174
+      TASKNODE_DATABASE_ENABLED: "true"
+      DATABASE_URL: ${TASKNODE_DATABASE_URL:-postgres://tasknodeofficial:tasknodeofficial@db:5432/tasknodeofficial}
+      TASKNODE_SERVICE_SEED: ${TASKNODE_LOCAL_SERVICE_SEED:?Run npm run docker:reward-env first}
+      TASKNODE_ENCRYPTION_SEED: ${TASKNODE_LOCAL_SERVICE_SEED:?Run npm run docker:reward-env first}
+      TASKNODE_AUTHORITY_SEED: ${TASKNODE_LOCAL_AUTHORITY_SEED:?Run npm run docker:reward-env first}
+      TASKNODE_REWARD_SEED: ${TASKNODE_LOCAL_REWARD_SEED:?Run npm run docker:reward-env first}
+      TASKNODE_ALLOCATION_SEED: ${TASKNODE_LOCAL_REWARD_SEED:?Run npm run docker:reward-env first}
+      TASKNODE_PFT_FAUCET_SEED: ${TASKNODE_LOCAL_FAUCET_SEED:-}
+      TASKNODE_TASK_REVIEW_ALLOW_NON_PRODUCTION: "true"
+      TASKNODE_TASK_REVIEW_WORKER_ENABLED: "true"
+      TASKNODE_TASK_REVIEW_WORKER_INTERVAL_MS: ${TASKNODE_TASK_REVIEW_WORKER_INTERVAL_MS:-5000}
+      TASKNODE_TASK_WORKER_CLAIM_STALE_SECONDS: ${TASKNODE_TASK_WORKER_CLAIM_STALE_SECONDS:-900}
+      TASKNODE_TASK_GENERATION_WORKER_ENABLED: "true"
+      TASKNODE_TASK_GENERATION_WORKER_INTERVAL_MS: ${TASKNODE_TASK_GENERATION_WORKER_INTERVAL_MS:-5000}
+      TASKNODE_TASK_GENERATION_WORKER_BATCH_LIMIT: ${TASKNODE_TASK_GENERATION_WORKER_BATCH_LIMIT:-1}
+      TASKNODE_NETWORK_TASK_GENERATION_WORKER_ENABLED: "false"
+      TASKNODE_DAILY_AIRDROP_WORKER_ENABLED: "false"
+      TASKNODE_DAILY_AIRDROP_AUTO_ISSUE: "false"
+      TASKNODE_MEMORY_ENABLED: "false"
+      TASKNODE_HIVE_SECRETARY_ENABLED: "false"
+      TASKNODE_HIVE_PROJECT_WORKER_ENABLED: "false"
+      PFTL_CACHE_WSS_WATCHER_ENABLED: "true"
+      PFTL_CACHE_WORKER_ENABLED: "true"
+      PFTL_CACHE_REDUCER_WORKER_ENABLED: "true"
+      PFTL_CACHE_ARCHIVE_WORKER_ENABLED: "false"
+      PFTL_CACHE_RETENTION_WORKER_ENABLED: "false"
+      PFTL_WSS_URL: ${PFTL_WSS_URL:-wss://172.17.0.1:6005}
+      PFTL_WSS_URL_FALLBACKS: ${PFTL_WSS_URL_FALLBACKS:-wss://ws.testnet.postfiat.org}
+      PFTL_WSS_REJECT_UNAUTHORIZED: ${PFTL_WSS_REJECT_UNAUTHORIZED:-false}
+      TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS: ${TASKNODE_ALLOW_INSECURE_LOCAL_PFTL_TLS:-true}
+      PFTL_RPC_URL: ${PFTL_RPC_URL:-http://178.156.143.199:5005}
+      PFTL_RPC_URL_FALLBACKS: ${PFTL_RPC_URL_FALLBACKS:-https://rpc.testnet.postfiat.org}
+      PFTL_RPC_API_KEY: ${PFTL_RPC_API_KEY:-}
+      PFTL_HISTORY_WSS_URL: ${PFTL_HISTORY_WSS_URL:-wss://ws-archive.testnet.postfiat.org}
+      PFTL_HISTORY_RPC_URL: ${PFTL_HISTORY_RPC_URL:-https://rpc.testnet.postfiat.org:5006/}
+      PFTL_HISTORY_ACCOUNT_TX_LIMIT: ${PFTL_HISTORY_ACCOUNT_TX_LIMIT:-200}
+      PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES: ${PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES:-8}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env.local-rewards or the shell}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      TASKNODE_TASKGEN_MODEL: ${TASKNODE_TASKGEN_MODEL:-chat-latest}
+      TASKNODE_TASK_REVIEW_MODEL: ${TASKNODE_TASK_REVIEW_MODEL:-chat-latest}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+      - api_node_modules:/app/node_modules
+      - dev_data:/data

@@ -21,6 +21,7 @@ function isPendingRun(run = {}) {
 export function boardManagerRunState({ action, primaryResult, run = {} }) {
   const result = safeObject(primaryResult?.result);
   if (runStatus(run) === "failed") return "failed";
+  if (action === "decision_queued" || action === "decision_retry_scheduled") return "no_decision";
   if (isPendingRun(run)) return "running";
   if (run.dryRun) return "dry_run";
   if (result.executed) return "executed";
@@ -37,6 +38,8 @@ function actionLabel(action = "") {
     do_nothing: "No board change",
     daily_airdrop: "Daily airdrop",
     decision_pending: "Decision pending",
+    decision_queued: "Decision queued",
+    decision_retry_scheduled: "Decision retry scheduled",
     initiate_network_task: "Initiated network task",
     message_user: "Messaged user",
     refresh_hive_secretary: "Updated Hive Secretary",
@@ -50,12 +53,37 @@ function runSummary(run = {}, action = "", primaryResult = null) {
   const decision = safeObject(run.decision);
   const result = safeObject(primaryResult?.result);
   if (runStatus(run) === "failed") return run.error || "The Board Manager run failed before completing a decision.";
+  if (action === "decision_queued") return "The Board Manager job is queued and has not been claimed by the worker yet.";
+  if (action === "decision_retry_scheduled") return "The Board Manager job was deferred after an error and is scheduled for retry.";
   if (isPendingRun(run)) return "The Board Manager is evaluating Hive state and has not recorded a decision yet.";
   if (!action || action === "no_decision") return "The Board Manager run did not record a selected action.";
   if (action === "do_nothing") {
     return payload.summary || decision.reason || "The agent reviewed current Hive state and chose not to change the board.";
   }
   return payload.summary || decision.reason || result.messagePreview || result.archiveReason || "The agent selected an action for the Hive board.";
+}
+
+function formatBoardManagerRunDetails(details = null) {
+  const data = safeObject(details);
+  if (!Object.keys(data).length) return null;
+  return {
+    provider: safeText(data.provider, 120),
+    outputText: safeText(data.outputText, 40_000),
+    decision: safeObject(data.decision),
+    actionPayload: safeObject(data.actionPayload),
+    microSummary: safeObject(data.microSummary),
+    microSummaryText: safeText(data.microSummaryText, 5_000),
+    actionResults: safeArray(data.actionResults).slice(0, 20).map((result) => ({
+      id: safeText(result.id, 180),
+      action: safeText(result.action, 80),
+      targetType: safeText(result.targetType, 120),
+      targetId: safeText(result.targetId, 240),
+      result: safeObject(result.result),
+      createdAt: result.createdAt || null,
+    })),
+    sourcePacket: safeObject(data.sourcePacket),
+    job: safeObject(data.job),
+  };
 }
 
 export function formatBoardManagerAgentRun(run = {}) {
@@ -74,6 +102,7 @@ export function formatBoardManagerAgentRun(run = {}) {
     dryRun: Boolean(run.dryRun),
     summary: runSummary(run, action, primaryResult),
     reason: safeText(run.decision?.reason || run.error || "", 2000),
+    decisionBasis: safeObject(run.decision?.decision_basis || run.decision?.decisionBasis),
     confidence: Number(run.decision?.confidence || 0),
     targetType: safeText(run.targetType || run.decision?.target_type || primaryResult?.targetType, 120),
     targetId: safeText(run.targetId || run.decision?.target_id || primaryResult?.targetId, 240),
@@ -94,25 +123,34 @@ export function formatBoardManagerAgentRun(run = {}) {
       createdAt: result.createdAt || null,
     })),
     microSummaryText: safeText(run.microSummaryText, 1800),
+    details: formatBoardManagerRunDetails(run.details),
     startedAt: run.startedAt || null,
     completedAt: run.completedAt || null,
   };
 }
 
 export function formatBoardManagerAgentJob(job = {}) {
+  const details = safeObject(job.details);
+  const status = safeText(job.status, 80) || "queued";
+  const selectedAction = status === "queued"
+    ? "decision_queued"
+    : status === "deferred"
+      ? "decision_retry_scheduled"
+      : "decision_pending";
   return formatBoardManagerAgentRun({
     id: safeText(job.id, 180),
     scope: safeText(job.scope, 120),
     managerId: safeText(job.claimedBy || job.claimed_by, 180),
     trigger: safeText(job.trigger, 160),
-    status: safeText(job.status, 80) || "queued",
-    selectedAction: "",
+    status,
+    selectedAction,
     actionPayload: {
       summary: safeText(job.reason, 1000),
     },
     decision: {},
     dryRun: false,
     actionResults: [],
+    details: Object.keys(details).length ? details : null,
     startedAt: job.claimedAt || job.claimed_at || job.runAfter || job.run_after || job.createdAt || job.created_at || null,
     completedAt: null,
   });
@@ -196,6 +234,7 @@ export function buildBoardManagerRunMicroSummary(run = {}) {
     confidence: Number(decision.confidence || 0),
     summary,
     reason: safeText(decision.reason || run.error, 1000),
+    decisionBasis: safeObject(decision.decision_basis || decision.decisionBasis),
     result: resultText,
     nextSteps,
     results,

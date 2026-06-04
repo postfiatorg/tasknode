@@ -68,7 +68,7 @@ const jobsEssence = [
   "<jobs_retrieval_context count=\"1\">",
   "  <chunk rank=\"1\" chunk_id=\"jobs_chunk_smoke\" source_sha256=\"jobs_source_smoke\" similarity=\"0.91\" title=\"Focus\">",
   "<![CDATA[",
-  "Jobs retrieval should enter the XML retrieval slot exactly once.",
+  "Jobs retrieval should enter the Markdown retrieval slot exactly once.",
   "]]>",
   "  </chunk>",
   "</jobs_retrieval_context>",
@@ -79,18 +79,17 @@ function count(haystack, needle) {
 }
 
 function assertJobsInstructions(instructions, label) {
-  assert.equal(count(instructions, 'id="steve_jobs_chat_os"'), 1, `${label} should include Jobs XML once`);
-  assert.equal(count(instructions, "```xml"), 0, `${label} should not include markdown fences`);
+  assert.equal(count(instructions, "## Experience Promise"), 1, `${label} should include Jobs Markdown prompt once`);
   assert.ok(
-    instructions.includes("Never mention Steve Jobs, Jobs mode, the Jobs prompt, or the style source"),
-    `${label} should explicitly suppress persona/source narration`
+    instructions.includes("## Rendered Runtime Blocks"),
+    `${label} should include rendered runtime block boundary`
   );
   assert.ok(instructions.includes("houston 1421"), `${label} should include context document text`);
   assert.ok(instructions.includes("<account_tasks_context>"), `${label} should include task context`);
   assert.ok(instructions.includes("<deep_memory>"), `${label} should include deep memory`);
   assert.ok(instructions.includes("Recent memory should carry forward"), `${label} should include recent memory`);
   assert.ok(
-    instructions.includes("Jobs retrieval should enter the XML retrieval slot exactly once"),
+    instructions.includes("Jobs retrieval should enter the Markdown retrieval slot exactly once"),
     `${label} should include pgvector Jobs retrieval context`
   );
   assert.equal(count(instructions, "<jobs_retrieval_context count=\"1\">"), 1, `${label} should include retrieval once`);
@@ -103,7 +102,7 @@ function assertJobsInstructions(instructions, label) {
 
 const metadata = chatSpiritMetadata();
 assert.equal(metadata.enabled, true, "Jobs chat spirit should be enabled in smoke");
-assert.equal(metadata.path, "chat/jobs_chat_os_v1.xml", "Jobs chat spirit should load the XML prompt");
+assert.equal(metadata.path, "chat/jobs_standard_chat_codex_style_draft.md", "Jobs chat spirit should load the Markdown prompt");
 assert.match(metadata.digest, /^[a-f0-9]{64}$/);
 
 for (const [mode, model] of [
@@ -182,7 +181,7 @@ const disabledRequest = openAiResponseRequest({
   memoryContext,
   taskContext,
 });
-assert.equal(disabledRequest.instructions.includes('id="steve_jobs_chat_os"'), false);
+assert.equal(disabledRequest.instructions.includes("## Experience Promise"), false);
 assert.ok(disabledRequest.instructions.includes("<account_context_document>"));
 assert.ok(disabledRequest.instructions.includes("<account_tasks_context>"));
 assert.ok(disabledRequest.instructions.includes("<deep_memory>"));

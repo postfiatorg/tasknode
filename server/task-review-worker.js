@@ -12,6 +12,7 @@ import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { query, transaction } from "./db/pool.js";
 import { getTaskDetail } from "./repositories/tasks.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
+import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 
 const TASK_POINTER_SCHEMA = 1;
 const VERIFICATION_PROMPT_PATH = "task_engine/verification_request_v1.md";
@@ -19,6 +20,7 @@ const VERIFICATION_PROMPT_VERSION = "verification_request_v1";
 const REWARD_PROMPT_PATH = "task_engine/reward_scoring_v1.md";
 const REWARD_PROMPT_VERSION = "reward_scoring_v1";
 const PFT_DROPS_PER_PFT = 1_000_000;
+const REWARD_CARRIER_DROPS = "1";
 
 const verificationResponseFormat = {
   type: "json_schema",
@@ -63,8 +65,21 @@ const rewardResponseFormat = {
 let timer = null;
 
 function workerClaimStaleSeconds() {
-  const parsed = Number(process.env.TASKNODE_TASK_WORKER_CLAIM_STALE_SECONDS || 60);
-  return Math.min(Math.max(Number.isFinite(parsed) ? parsed : 60, 60), 3600);
+  const parsed = Number(process.env.TASKNODE_TASK_WORKER_CLAIM_STALE_SECONDS || 900);
+  return Math.min(Math.max(Number.isFinite(parsed) ? parsed : 900, 300), 3600);
+}
+
+function taskReviewPublisherPermission({
+  env = process.env,
+  enabled = env.TASKNODE_TASK_REVIEW_WORKER_ENABLED === "true",
+} = {}) {
+  if (!enabled) return { enabled: false, reason: "disabled" };
+  const tasknodeEnv = String(env.TASKNODE_ENV || env.NODE_ENV || "").trim().toLowerCase();
+  if (tasknodeEnv === "production") return { enabled: true, reason: "production" };
+  if (env.TASKNODE_TASK_REVIEW_ALLOW_NON_PRODUCTION === "true") {
+    return { enabled: true, reason: "non_production_override" };
+  }
+  return { enabled: false, reason: "non_production_publisher_blocked" };
 }
 
 function safeText(value = "", max = 4000) {
@@ -143,6 +158,52 @@ function eventPayloads(detail = {}) {
   return (Array.isArray(detail?.forensics?.timeline) ? detail.forensics.timeline : [])
     .map((event) => safeObject(event?.rawPayload))
     .filter((payload) => payload.schema);
+}
+
+function timelineEvents(detail = {}) {
+  return Array.isArray(detail?.forensics?.timeline) ? detail.forensics.timeline : [];
+}
+
+function eventRawPayload(event = {}) {
+  return safeObject(event?.rawPayload || event?.payload || event?.payloadJson);
+}
+
+function timelineEventPublishedRef(event = {}) {
+  return {
+    txHash: safeText(event.txHash || event.sourceTxHash || event.tx_hash || "", 120),
+    cid: safeText(event.cid || event.sourceCid || event.source_cid || "", 240),
+  };
+}
+
+function isVerificationRequestPayload(payload = {}) {
+  return (
+    payload.schema === "pf.task.verification_request.v1" ||
+    (
+      payload.schema === "pf.task.update.v1" &&
+      safeText(payload.transition || payload.status_after || payload.status, 80) === "verification_requested"
+    )
+  );
+}
+
+function isRewardReviewPayload(payload = {}) {
+  return payload.schema === "pf.reward.v1";
+}
+
+function latestTimelineEvent(detail = {}, predicate = () => false) {
+  const events = timelineEvents(detail);
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (predicate(eventRawPayload(event))) return event;
+  }
+  return null;
+}
+
+function existingVerificationRequestEvent(detail = {}) {
+  return latestTimelineEvent(detail, isVerificationRequestPayload);
+}
+
+function existingRewardReviewEvent(detail = {}) {
+  return latestTimelineEvent(detail, isRewardReviewPayload);
 }
 
 function latestPayloadBySchema(payloads = [], schemas = []) {
@@ -391,11 +452,17 @@ async function publishAuthorityPointer({
   kind = "TASK_UPDATE",
   signerWallet,
   tasknodeKey,
+  accountId = "",
   amountDrops = "1",
 }) {
+  const recipientPublicKeys = await taskPayloadRecipientPublicKeys({
+    tasknodeKey,
+    accountId,
+    walletAddress: payload.subject_wallet || destination,
+  });
   const encryptedPayload = await encryptTasknodePayload({
     plaintext: stableJson(payload),
-    recipientPublicKeys: [tasknodeKey.publicKey],
+    recipientPublicKeys,
   });
   const pin = await pinContextIpfsJson({
     payload: encryptedPayload,
@@ -505,6 +572,28 @@ async function claimSubmittedTasks({ limit = 1 } = {}) {
         FROM task_projections
         WHERE status = 'submitted'
           AND COALESCE(metadata_json->'workers'->'verification_request'->>'published', '') <> 'true'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM task_review_publications pub
+            WHERE pub.task_id = task_projections.task_id
+              AND pub.worker_name = 'verification_request'
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM task_events existing
+            WHERE existing.task_id = task_projections.task_id
+              AND (
+                existing.event_type = 'pf.reward.v1'
+                OR (
+                  existing.event_type = 'pf.task.update.v1'
+                  AND (
+                    existing.payload_json->>'transition' = 'verification_requested'
+                    OR existing.payload_json->>'status_after' = 'verification_requested'
+                  )
+                )
+                OR existing.event_type = 'pf.task.verification_request.v1'
+              )
+          )
           AND (
             COALESCE(metadata_json->'workers'->'verification_request'->>'processing', '') <> 'true'
             OR NULLIF(metadata_json->'workers'->'verification_request'->>'claimed_at', '')::timestamptz
@@ -552,6 +641,18 @@ async function claimVerificationResponses({ limit = 1 } = {}) {
         FROM task_projections
         WHERE status = 'verification_response_submitted'
           AND COALESCE(metadata_json->'workers'->'reward_scoring'->>'published', '') <> 'true'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM task_review_publications pub
+            WHERE pub.task_id = task_projections.task_id
+              AND pub.worker_name = 'reward_scoring'
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM task_events existing
+            WHERE existing.task_id = task_projections.task_id
+              AND existing.event_type = 'pf.reward.v1'
+          )
           AND (
             COALESCE(metadata_json->'workers'->'reward_scoring'->>'processing', '') <> 'true'
             OR NULLIF(metadata_json->'workers'->'reward_scoring'->>'claimed_at', '')::timestamptz
@@ -642,6 +743,84 @@ async function markWorkerPublished({ taskId, workerName, published = {} }) {
   );
 }
 
+async function acquireReviewPublicationLock({ taskId, workerName, metadata = {} } = {}) {
+  const result = await query(
+    `
+      INSERT INTO task_review_publications (
+        task_id, worker_name, status, metadata_json, reserved_at, updated_at
+      )
+      VALUES ($1, $2, 'reserved', $3::jsonb, now(), now())
+      ON CONFLICT (task_id, worker_name) DO NOTHING
+      RETURNING task_id, worker_name, status, source_tx_hash, source_cid, metadata_json
+    `,
+    [taskId, workerName, JSON.stringify(safeObject(metadata))]
+  );
+  if (result.rows[0]) return { acquired: true, row: result.rows[0] };
+  const existing = await query(
+    `
+      SELECT task_id, worker_name, status, source_tx_hash, source_cid, metadata_json, reserved_at, published_at, updated_at
+      FROM task_review_publications
+      WHERE task_id = $1 AND worker_name = $2
+      LIMIT 1
+    `,
+    [taskId, workerName]
+  );
+  return { acquired: false, row: existing.rows[0] || null };
+}
+
+async function markReviewPublicationPublished({ taskId, workerName, published = {}, metadata = {} } = {}) {
+  await query(
+    `
+      UPDATE task_review_publications
+      SET status = 'published',
+          source_tx_hash = $3,
+          source_cid = $4,
+          metadata_json = COALESCE(metadata_json, '{}'::jsonb) || $5::jsonb,
+          published_at = now(),
+          updated_at = now()
+      WHERE task_id = $1 AND worker_name = $2
+    `,
+    [
+      taskId,
+      workerName,
+      safeText(published.txHash, 120),
+      safeText(published.cid, 240),
+      JSON.stringify(safeObject(metadata)),
+    ]
+  );
+}
+
+async function markReviewPublicationError({ taskId, workerName, error = "", metadata = {} } = {}) {
+  await query(
+    `
+      UPDATE task_review_publications
+      SET status = 'error',
+          error = $3,
+          metadata_json = COALESCE(metadata_json, '{}'::jsonb) || $4::jsonb,
+          updated_at = now()
+      WHERE task_id = $1 AND worker_name = $2
+    `,
+    [taskId, workerName, safeText(error, 1000), JSON.stringify(safeObject(metadata))]
+  );
+}
+
+async function releaseReviewPublicationLock({ taskId, workerName } = {}) {
+  await query(
+    `
+      DELETE FROM task_review_publications
+      WHERE task_id = $1 AND worker_name = $2 AND status = 'reserved'
+    `,
+    [taskId, workerName]
+  );
+}
+
+function publicationLockPublishedRef(lockRow = {}) {
+  const txHash = safeText(lockRow?.source_tx_hash, 120);
+  const cid = safeText(lockRow?.source_cid, 240);
+  if (!txHash && !cid) return null;
+  return { txHash, cid };
+}
+
 async function finalizeWorkerPublish({
   taskId,
   workerName,
@@ -683,6 +862,7 @@ async function finalizeWorkerPublish({
 }
 
 async function processSubmittedTask(row, { logger = console } = {}) {
+  const workerName = "verification_request";
   const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
   if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
   const authorityWallet = walletFromSeed(authoritySeed(), "task_authority_seed_missing");
@@ -695,77 +875,166 @@ async function processSubmittedTask(row, { logger = console } = {}) {
   const taskOffer = latestPayloadBySchema(payloads, ["pf.task.offer.v1"]);
   const initialSubmission = latestPayloadBySchema(payloads, ["pf.task.submission.v1"]);
   if (!taskOffer || !initialSubmission) throw new Error("task_review_missing_offer_or_submission");
-  const processedEvidence = await processedEvidenceFromPayload(initialSubmission);
-  const verification = await callOpenAiJson({
-    promptPath: VERIFICATION_PROMPT_PATH,
-    promptVersion: VERIFICATION_PROMPT_VERSION,
-    responseFormat: verificationResponseFormat,
-    input: {
-      task_offer: taskOffer,
-      initial_submission: initialSubmission,
-      processed_evidence: processedEvidence,
-      context: {},
+  const existingVerificationRequest = existingVerificationRequestEvent(detail);
+  const existingRewardReview = existingRewardReviewEvent(detail);
+  const existingReviewEvent = existingVerificationRequest || existingRewardReview;
+  if (existingReviewEvent) {
+    const publishedRef = timelineEventPublishedRef(existingReviewEvent);
+    await markWorkerPublished({
+      taskId: row.task_id,
+      workerName: "verification_request",
+      published: publishedRef,
+    });
+    logger.info?.("task_verification_request_already_published", {
+      taskId: row.task_id,
+      txHash: publishedRef.txHash,
+    });
+    return { ok: true, taskId: row.task_id, skipped: true, reason: "verification_request_already_published" };
+  }
+
+  const publicationLock = await acquireReviewPublicationLock({
+    taskId: row.task_id,
+    workerName,
+    metadata: {
+      phase: "verification_request",
+      subject_wallet: row.subject_wallet,
+      submission_cid: initialSubmission.cid || "",
     },
   });
-  const now = new Date().toISOString();
-  const verificationRequest = {
-    assessment: safeText(verification.output.assessment, 80),
-    verification_ask: safeText(verification.output.verification_ask, 4000),
-    verification_type: safeText(verification.output.verification_type, 80),
-    reason: safeText(verification.output.reason, 1000),
-  };
-  const payload = {
-    schema: "pf.task.update.v1",
-    protocol: "tasknode.pftl",
-    created_at: now,
-    chain: process.env.TASKNODE_PFTL_CHAIN_NAME || "pftl-testnet",
-    task_id: row.task_id,
-    event_id: `evt_${sha256({ taskId: row.task_id, verificationRequest }).slice(0, 24)}`,
-    actor_wallet: authorityWallet.classicAddress,
-    subject_wallet: row.subject_wallet,
-    authority_wallet: authorityWallet.classicAddress,
-    allocation_wallet: row.allocation_wallet || "",
-    transition: "verification_requested",
-    status_after: "verification_requested",
-    verification_request: verificationRequest,
-    verification_ask: verificationRequest.verification_ask,
-    verification_type: verificationRequest.verification_type,
-    submission_cid: initialSubmission.cid || "",
-    generation: verification.metadata,
-  };
-  const published = await publishAuthorityPointer({
-    payload,
-    contentKind: "TASK_UPDATE",
-    destination: row.subject_wallet,
-    kind: "TASK_UPDATE",
-    signerWallet: authorityWallet,
-    tasknodeKey,
-  });
-  await finalizeWorkerPublish({
-    taskId: row.task_id,
-    workerName: "verification_request",
-    published,
-    expectedStatuses: ["verification_requested"],
-    accountId: row.account_id,
-    subjectWallet: row.subject_wallet,
-    authorityWallet: authorityWallet.classicAddress,
-    phase: "verification_request",
-    logger,
-  });
-  scheduleTaskWalletSync({
-    accountId: row.account_id,
-    subjectWallet: row.subject_wallet,
-    authorityWallet: authorityWallet.classicAddress,
-    taskId: row.task_id,
-    phase: "verification_request",
-    logger,
-  });
-  logger.info?.("task_verification_request_published", {
-    taskId: row.task_id,
-    txHash: published.txHash,
-    cid: published.cid,
-  });
-  return { ok: true, taskId: row.task_id, published };
+  if (!publicationLock.acquired) {
+    const publishedRef = publicationLockPublishedRef(publicationLock.row);
+    if (publishedRef) {
+      await markWorkerPublished({ taskId: row.task_id, workerName, published: publishedRef });
+    }
+    logger.info?.("task_verification_request_publication_lock_exists", {
+      taskId: row.task_id,
+      status: publicationLock.row?.status || "",
+      txHash: publishedRef?.txHash || "",
+    });
+    return { ok: true, taskId: row.task_id, skipped: true, reason: "verification_request_publication_lock_exists" };
+  }
+
+  let publicationAttempted = false;
+  try {
+    const processedEvidence = await processedEvidenceFromPayload(initialSubmission);
+    const verification = await callOpenAiJson({
+      promptPath: VERIFICATION_PROMPT_PATH,
+      promptVersion: VERIFICATION_PROMPT_VERSION,
+      responseFormat: verificationResponseFormat,
+      input: {
+        task_offer: taskOffer,
+        initial_submission: initialSubmission,
+        processed_evidence: processedEvidence,
+        context: {},
+      },
+    });
+    const now = new Date().toISOString();
+    const verificationRequest = {
+      assessment: safeText(verification.output.assessment, 80),
+      verification_ask: safeText(verification.output.verification_ask, 4000),
+      verification_type: safeText(verification.output.verification_type, 80),
+      reason: safeText(verification.output.reason, 1000),
+    };
+    const payload = {
+      schema: "pf.task.update.v1",
+      protocol: "tasknode.pftl",
+      created_at: now,
+      chain: process.env.TASKNODE_PFTL_CHAIN_NAME || "pftl-testnet",
+      task_id: row.task_id,
+      event_id: `evt_${sha256({ taskId: row.task_id, verificationRequest }).slice(0, 24)}`,
+      actor_wallet: authorityWallet.classicAddress,
+      subject_wallet: row.subject_wallet,
+      authority_wallet: authorityWallet.classicAddress,
+      allocation_wallet: row.allocation_wallet || "",
+      transition: "verification_requested",
+      status_after: "verification_requested",
+      verification_request: verificationRequest,
+      verification_ask: verificationRequest.verification_ask,
+      verification_type: verificationRequest.verification_type,
+      submission_cid: initialSubmission.cid || "",
+      generation: verification.metadata,
+    };
+    const prePublishDetail = await getTaskDetail({
+      accountId: row.account_id,
+      walletAddress: row.subject_wallet,
+      taskId: row.task_id,
+    });
+    const preExistingVerificationRequest = existingVerificationRequestEvent(prePublishDetail);
+    const preExistingRewardReview = existingRewardReviewEvent(prePublishDetail);
+    const preExistingReviewEvent = preExistingVerificationRequest || preExistingRewardReview;
+    if (preExistingReviewEvent) {
+      const publishedRef = timelineEventPublishedRef(preExistingReviewEvent);
+      await markReviewPublicationPublished({
+        taskId: row.task_id,
+        workerName,
+        published: publishedRef,
+        metadata: { source: "existing_indexed_event" },
+      });
+      await markWorkerPublished({
+        taskId: row.task_id,
+        workerName,
+        published: publishedRef,
+      });
+      logger.info?.("task_verification_request_publish_skipped_existing_event", {
+        taskId: row.task_id,
+        txHash: publishedRef.txHash,
+      });
+      return { ok: true, taskId: row.task_id, skipped: true, reason: "verification_request_already_indexed_before_publish" };
+    }
+    publicationAttempted = true;
+    const published = await publishAuthorityPointer({
+      payload,
+      contentKind: "TASK_UPDATE",
+      destination: row.subject_wallet,
+      kind: "TASK_UPDATE",
+      signerWallet: authorityWallet,
+      tasknodeKey,
+      accountId: row.account_id,
+    });
+    await markReviewPublicationPublished({
+      taskId: row.task_id,
+      workerName,
+      published,
+      metadata: { source: "published_by_worker" },
+    });
+    await finalizeWorkerPublish({
+      taskId: row.task_id,
+      workerName,
+      published,
+      expectedStatuses: ["verification_requested"],
+      accountId: row.account_id,
+      subjectWallet: row.subject_wallet,
+      authorityWallet: authorityWallet.classicAddress,
+      phase: "verification_request",
+      logger,
+    });
+    scheduleTaskWalletSync({
+      accountId: row.account_id,
+      subjectWallet: row.subject_wallet,
+      authorityWallet: authorityWallet.classicAddress,
+      taskId: row.task_id,
+      phase: "verification_request",
+      logger,
+    });
+    logger.info?.("task_verification_request_published", {
+      taskId: row.task_id,
+      txHash: published.txHash,
+      cid: published.cid,
+    });
+    return { ok: true, taskId: row.task_id, published };
+  } catch (error) {
+    if (publicationAttempted) {
+      await markReviewPublicationError({
+        taskId: row.task_id,
+        workerName,
+        error: error?.message || String(error),
+        metadata: { publication_attempted: true },
+      }).catch(() => null);
+    } else {
+      await releaseReviewPublicationLock({ taskId: row.task_id, workerName }).catch(() => null);
+    }
+    throw error;
+  }
 }
 
 function normalizeRewardScore(output = {}, offerPft = 0) {
@@ -781,7 +1050,56 @@ function normalizeRewardScore(output = {}, offerPft = 0) {
   };
 }
 
+function buildRewardOutcomePayload({
+  row = {},
+  score = {},
+  scoringMetadata = {},
+  taskOffer = {},
+  initialSubmission = {},
+  verificationRequest = {},
+  verificationResponse = {},
+  authorityWalletAddress = "",
+  rewardWalletAddress = "",
+  createdAt = new Date().toISOString(),
+} = {}) {
+  const rewardPft = Number(score.reward_pft);
+  const economicRewardPft = Number.isFinite(rewardPft) && rewardPft > 0 ? rewardPft : 0;
+  const rewardAmountDrops = economicRewardPft > 0 ? pftToDrops(economicRewardPft) : REWARD_CARRIER_DROPS;
+  const carrierAmountDrops = economicRewardPft > 0 ? "0" : REWARD_CARRIER_DROPS;
+  const payload = {
+    schema: "pf.reward.v1",
+    reward_history_schema: 2,
+    protocol: "tasknode.pftl",
+    created_at: createdAt,
+    chain: process.env.TASKNODE_PFTL_CHAIN_NAME || "pftl-testnet",
+    task_id: row.task_id,
+    event_id: `evt_${sha256({ taskId: row.task_id, rewardPft: economicRewardPft, score }).slice(0, 24)}`,
+    actor_wallet: rewardWalletAddress,
+    subject_wallet: row.subject_wallet,
+    authority_wallet: authorityWalletAddress,
+    allocation_wallet: rewardWalletAddress,
+    recipient_wallet_address: row.subject_wallet,
+    reward_pft: economicRewardPft.toFixed(2),
+    economic_reward_pft: economicRewardPft.toFixed(2),
+    transaction_amount_drops: rewardAmountDrops,
+    carrier_amount_drops: carrierAmountDrops,
+    reward_tier: "task_engine_live",
+    reward_decision: score.decision,
+    reward_score: score,
+    reward_summary: score.reason,
+    generation: scoringMetadata,
+    task_history: {
+      task: taskOffer,
+      submission: initialSubmission,
+      verification_request: verificationRequest,
+      verification_response: verificationResponse,
+    },
+  };
+  return { payload, rewardAmountDrops, economicRewardPft };
+}
+
 async function processVerificationResponse(row, { logger = console } = {}) {
+  const workerName = "reward_scoring";
   const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
   if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
   const authorityWallet = walletFromSeed(authoritySeed(), "task_authority_seed_missing");
@@ -799,120 +1117,177 @@ async function processVerificationResponse(row, { logger = console } = {}) {
   if (!taskOffer || !initialSubmission || !verificationResponse) {
     throw new Error("task_scoring_missing_required_events");
   }
-  const [processedInitial, processedVerification] = await Promise.all([
-    processedEvidenceFromPayload(initialSubmission),
-    processedEvidenceFromPayload(verificationResponse),
-  ]);
-  const offerPft = Number(taskOffer?.reward_offer?.amount_estimate_pft || row.reward_offer_pft || 0);
-  const scoring = await callOpenAiJson({
-    promptPath: REWARD_PROMPT_PATH,
-    promptVersion: REWARD_PROMPT_VERSION,
-    responseFormat: rewardResponseFormat,
-    input: {
-      task_offer: taskOffer,
-      initial_submission: initialSubmission,
-      verification_request: verificationRequest,
-      verification_response: verificationResponse,
-      processed_evidence: {
-        initial: processedInitial,
-        verification: processedVerification,
-      },
+  const existingRewardReview = existingRewardReviewEvent(detail);
+  if (existingRewardReview) {
+    const publishedRef = timelineEventPublishedRef(existingRewardReview);
+    await markWorkerPublished({
+      taskId: row.task_id,
+      workerName,
+      published: publishedRef,
+    });
+    logger.info?.("task_reward_scoring_already_published", {
+      taskId: row.task_id,
+      txHash: publishedRef.txHash,
+    });
+    return { ok: true, taskId: row.task_id, skipped: true, reason: "reward_scoring_already_published" };
+  }
+
+  const publicationLock = await acquireReviewPublicationLock({
+    taskId: row.task_id,
+    workerName,
+    metadata: {
+      phase: "reward_scoring",
+      subject_wallet: row.subject_wallet,
+      verification_response_cid: verificationResponse.cid || "",
     },
   });
-  const score = normalizeRewardScore(scoring.output, offerPft);
-  const now = new Date().toISOString();
-  const decisionPayload = {
-    schema: "pf.task.reward_decision.v1",
-    protocol: "tasknode.pftl",
-    created_at: now,
-    chain: process.env.TASKNODE_PFTL_CHAIN_NAME || "pftl-testnet",
-    task_id: row.task_id,
-    event_id: `evt_${sha256({ taskId: row.task_id, score }).slice(0, 24)}`,
-    actor_wallet: authorityWallet.classicAddress,
-    subject_wallet: row.subject_wallet,
-    authority_wallet: authorityWallet.classicAddress,
-    allocation_wallet: rewardWallet.classicAddress,
-    status_after: "reward_decided",
-    score,
-    generation: scoring.metadata,
-  };
-  const decision = await publishAuthorityPointer({
-    payload: decisionPayload,
-    contentKind: "TASK_UPDATE",
-    destination: row.subject_wallet,
-    kind: "TASK_UPDATE",
-    signerWallet: authorityWallet,
-    tasknodeKey,
-  });
-  let reward = null;
-  const rewardPft = Number(score.reward_pft);
-  if (Number.isFinite(rewardPft) && rewardPft > 0) {
-    const rewardPayload = {
-      schema: "pf.reward.v1",
-      reward_history_schema: 1,
-      protocol: "tasknode.pftl",
-      created_at: new Date().toISOString(),
-      chain: process.env.TASKNODE_PFTL_CHAIN_NAME || "pftl-testnet",
-      task_id: row.task_id,
-      event_id: `evt_${sha256({ taskId: row.task_id, rewardPft, score }).slice(0, 24)}`,
-      actor_wallet: rewardWallet.classicAddress,
-      subject_wallet: row.subject_wallet,
-      authority_wallet: authorityWallet.classicAddress,
-      allocation_wallet: rewardWallet.classicAddress,
-      recipient_wallet_address: row.subject_wallet,
-      reward_pft: rewardPft.toFixed(2),
-      reward_tier: "task_engine_live",
-      reward_score: score,
-      reward_summary: score.reason,
-      task_history: {
-        task: taskOffer,
-        submission: initialSubmission,
+  if (!publicationLock.acquired) {
+    const publishedRef = publicationLockPublishedRef(publicationLock.row);
+    if (publishedRef) {
+      await markWorkerPublished({ taskId: row.task_id, workerName, published: publishedRef });
+    }
+    logger.info?.("task_reward_scoring_publication_lock_exists", {
+      taskId: row.task_id,
+      status: publicationLock.row?.status || "",
+      txHash: publishedRef?.txHash || "",
+    });
+    return { ok: true, taskId: row.task_id, skipped: true, reason: "reward_scoring_publication_lock_exists" };
+  }
+
+  let publicationAttempted = false;
+  try {
+    const [processedInitial, processedVerification] = await Promise.all([
+      processedEvidenceFromPayload(initialSubmission),
+      processedEvidenceFromPayload(verificationResponse),
+    ]);
+    const offerPft = Number(taskOffer?.reward_offer?.amount_estimate_pft || row.reward_offer_pft || 0);
+    const scoring = await callOpenAiJson({
+      promptPath: REWARD_PROMPT_PATH,
+      promptVersion: REWARD_PROMPT_VERSION,
+      responseFormat: rewardResponseFormat,
+      input: {
+        task_offer: taskOffer,
+        initial_submission: initialSubmission,
         verification_request: verificationRequest,
         verification_response: verificationResponse,
-        reward_decision: decisionPayload,
+        processed_evidence: {
+          initial: processedInitial,
+          verification: processedVerification,
+        },
       },
-    };
-    reward = await publishAuthorityPointer({
+    });
+    const score = normalizeRewardScore(scoring.output, offerPft);
+    const {
+      payload: rewardPayload,
+      rewardAmountDrops,
+      economicRewardPft,
+    } = buildRewardOutcomePayload({
+      row,
+      score,
+      scoringMetadata: scoring.metadata,
+      taskOffer,
+      initialSubmission,
+      verificationRequest,
+      verificationResponse,
+      authorityWalletAddress: authorityWallet.classicAddress,
+      rewardWalletAddress: rewardWallet.classicAddress,
+    });
+    const prePublishDetail = await getTaskDetail({
+      accountId: row.account_id,
+      walletAddress: row.subject_wallet,
+      taskId: row.task_id,
+    });
+    const preExistingRewardReview = existingRewardReviewEvent(prePublishDetail);
+    if (preExistingRewardReview) {
+      const publishedRef = timelineEventPublishedRef(preExistingRewardReview);
+      await markReviewPublicationPublished({
+        taskId: row.task_id,
+        workerName,
+        published: publishedRef,
+        metadata: { source: "existing_indexed_event" },
+      });
+      await markWorkerPublished({
+        taskId: row.task_id,
+        workerName,
+        published: publishedRef,
+      });
+      logger.info?.("task_reward_scoring_publish_skipped_existing_event", {
+        taskId: row.task_id,
+        txHash: publishedRef.txHash,
+      });
+      return { ok: true, taskId: row.task_id, skipped: true, reason: "reward_already_indexed_before_publish" };
+    }
+    publicationAttempted = true;
+    const reward = await publishAuthorityPointer({
       payload: rewardPayload,
       contentKind: "REWARD",
       destination: row.subject_wallet,
       kind: "REWARD",
       signerWallet: rewardWallet,
       tasknodeKey,
-      amountDrops: pftToDrops(rewardPft),
+      accountId: row.account_id,
+      amountDrops: rewardAmountDrops,
     });
+    const publishedRef = {
+      txHash: reward.txHash,
+      cid: reward.cid,
+    };
+    await markReviewPublicationPublished({
+      taskId: row.task_id,
+      workerName,
+      published: publishedRef,
+      metadata: {
+        source: "published_by_worker",
+        reward_tx_hash: reward.txHash,
+        reward_cid: reward.cid,
+        reward_pft: score.reward_pft,
+        economic_reward_pft: economicRewardPft.toFixed(2),
+        transaction_amount_drops: rewardAmountDrops,
+        carrier_amount_drops: rewardPayload.carrier_amount_drops,
+        terminal_schema: "pf.reward.v1",
+      },
+    });
+    await finalizeWorkerPublish({
+      taskId: row.task_id,
+      workerName,
+      published: publishedRef,
+      expectedStatuses: ["rewarded"],
+      accountId: row.account_id,
+      subjectWallet: row.subject_wallet,
+      authorityWallet: authorityWallet.classicAddress,
+      allocationWallet: rewardWallet.classicAddress,
+      phase: "reward_scoring",
+      logger,
+    });
+    scheduleTaskWalletSync({
+      accountId: row.account_id,
+      subjectWallet: row.subject_wallet,
+      authorityWallet: authorityWallet.classicAddress,
+      allocationWallet: rewardWallet.classicAddress,
+      taskId: row.task_id,
+      phase: "reward_scoring",
+      logger,
+    });
+    logger.info?.("task_reward_outcome_published", {
+      taskId: row.task_id,
+      rewardTxHash: reward.txHash,
+      rewardPft: score.reward_pft,
+      amountDrops: rewardAmountDrops,
+    });
+    return { ok: true, taskId: row.task_id, reward };
+  } catch (error) {
+    if (publicationAttempted) {
+      await markReviewPublicationError({
+        taskId: row.task_id,
+        workerName,
+        error: error?.message || String(error),
+        metadata: { publication_attempted: true },
+      }).catch(() => null);
+    } else {
+      await releaseReviewPublicationLock({ taskId: row.task_id, workerName }).catch(() => null);
+    }
+    throw error;
   }
-  await finalizeWorkerPublish({
-    taskId: row.task_id,
-    workerName: "reward_scoring",
-    published: {
-      txHash: reward?.txHash || decision.txHash,
-      cid: reward?.cid || decision.cid,
-    },
-    expectedStatuses: ["reward_decided", "rewarded"],
-    accountId: row.account_id,
-    subjectWallet: row.subject_wallet,
-    authorityWallet: authorityWallet.classicAddress,
-    allocationWallet: rewardWallet.classicAddress,
-    phase: "reward_scoring",
-    logger,
-  });
-  scheduleTaskWalletSync({
-    accountId: row.account_id,
-    subjectWallet: row.subject_wallet,
-    authorityWallet: authorityWallet.classicAddress,
-    allocationWallet: rewardWallet.classicAddress,
-    taskId: row.task_id,
-    phase: "reward_scoring",
-    logger,
-  });
-  logger.info?.("task_reward_decision_published", {
-    taskId: row.task_id,
-    decisionTxHash: decision.txHash,
-    rewardTxHash: reward?.txHash || "",
-    rewardPft: score.reward_pft,
-  });
-  return { ok: true, taskId: row.task_id, decision, reward };
 }
 
 export async function processTaskReviewQueueOnce({ limit = 1, logger = console } = {}) {
@@ -949,7 +1324,18 @@ export function startTaskReviewWorker({
   batchLimit = Number(process.env.TASKNODE_TASK_REVIEW_WORKER_BATCH_LIMIT || 1),
   logger = console,
 } = {}) {
-  if (timer || !enabled) return { started: false, reason: timer ? "already_started" : "disabled" };
+  const permission = taskReviewPublisherPermission({ enabled });
+  if (timer || !permission.enabled) {
+    const reason = timer ? "already_started" : permission.reason;
+    if (!timer && enabled && reason === "non_production_publisher_blocked") {
+      logger.warn?.("task_review_worker_not_started", {
+        reason,
+        tasknodeEnv: process.env.TASKNODE_ENV || process.env.NODE_ENV || "",
+        appName: process.env.TASKNODE_APP_NAME || "",
+      });
+    }
+    return { started: false, reason };
+  }
   const safeInterval = Math.min(Math.max(intervalMs || 20000, 5000), 3_600_000);
   const safeBatch = Math.min(Math.max(batchLimit || 1, 1), 3);
   let running = false;
@@ -968,3 +1354,14 @@ export function startTaskReviewWorker({
   runOnce();
   return { started: true, intervalMs: safeInterval, batchLimit: safeBatch };
 }
+
+export const taskReviewWorkerInternalsForTests = {
+  workerClaimStaleSeconds,
+  existingVerificationRequestEvent,
+  existingRewardReviewEvent,
+  isVerificationRequestPayload,
+  isRewardReviewPayload,
+  taskReviewPublisherPermission,
+  timelineEventPublishedRef,
+  buildRewardOutcomePayload,
+};
