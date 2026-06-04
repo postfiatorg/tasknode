@@ -82,8 +82,12 @@ function assertJobsInstructions(instructions, label) {
   assert.equal(count(instructions, "## Experience Promise"), 1, `${label} should include Jobs Markdown prompt once`);
   assert.equal(count(instructions, "## Response Length Calibration"), 1, `${label} should include response length calibration once`);
   assert.ok(
-    instructions.includes("Do not turn a short message into a full strategic memo."),
+    instructions.includes("A short current turn after a long thread is still a short turn."),
     `${label} should instruct short turns to stay compact`
+  );
+  assert.ok(
+    instructions.includes("Do not write a 30-paragraph response unless the user clearly asks"),
+    `${label} should forbid long-form responses unless clearly requested`
   );
   assert.ok(
     instructions.includes("## Rendered Runtime Blocks"),
