@@ -605,12 +605,14 @@ function latestRunFresh(run = null) {
 function publicConnection(row = {}) {
   const snapshot = safeObject(row.candidate_snapshot);
   const candidateAccountId = row.candidate_account_id || snapshot.accountId || "";
+  const heroNft = safeObject(row.candidate_hero_nft || snapshot.heroNft);
   return {
     id: row.id || "",
     runId: row.run_id || "",
     accountId: candidateAccountId,
     displayName: snapshot.displayName || "",
     hiveHandle: snapshot.hiveHandle || "",
+    heroNft: heroNft.id || heroNft.imageCid || heroNft.imageGatewayUrl ? heroNft : null,
     walletAddress: row.candidate_wallet_address || snapshot.walletAddress || "",
     profilePath: candidateAccountId
       ? `/api/profile/member?accountId=${encodeURIComponent(candidateAccountId)}`
@@ -650,13 +652,34 @@ export async function getRecommendedConnectionsState({ accountId = "" } = {}) {
   const rows = await query(
     `
       SELECT connections.*,
-             candidate_profiles.wallet_address AS candidate_wallet_address
+             candidate_profiles.wallet_address AS candidate_wallet_address,
+             candidate_nft.hero_nft AS candidate_hero_nft
       FROM recommended_connections connections
       LEFT JOIN recommended_connection_profiles candidate_profiles
         ON candidate_profiles.account_id = connections.candidate_account_id
        AND candidate_profiles.visibility = 'public'
        AND candidate_profiles.discoverable = true
        AND candidate_profiles.disabled_at IS NULL
+      LEFT JOIN LATERAL (
+        SELECT jsonb_build_object(
+          'id', nft.id,
+          'accountId', nft.account_id,
+          'title', nft.title,
+          'status', nft.status,
+          'imageCid', nft.image_cid,
+          'imageGatewayUrl', nft.image_gateway_url,
+          'imageMimeType', nft.image_mime_type,
+          'generatedAt', nft.generated_at,
+          'preparedAt', nft.prepared_at,
+          'mintedAt', nft.minted_at,
+          'updatedAt', nft.updated_at
+        ) AS hero_nft
+        FROM profile_nfts nft
+        WHERE nft.account_id = connections.candidate_account_id
+          AND lower(nft.status) IN ('minted', 'generated', 'prepared')
+        ORDER BY nft.updated_at DESC NULLS LAST, nft.created_at DESC NULLS LAST
+        LIMIT 1
+      ) candidate_nft ON true
       WHERE connections.target_account_id = $1
         AND connections.status = 'active'
         AND connections.expires_at > now()

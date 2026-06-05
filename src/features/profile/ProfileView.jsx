@@ -1099,6 +1099,44 @@ function connectionInitials(connection = {}) {
     .join("") || "TN";
 }
 
+function ConnectionAvatar({ connection = {}, size = 48 } = {}) {
+  const imageCandidates = useMemo(() => imageCandidatesForNft(connection.heroNft || {}), [connection.heroNft]);
+  const [imageIndex, setImageIndex] = useState(0);
+  const imageSrc = imageCandidates[imageIndex] || "";
+
+  useEffect(() => {
+    setImageIndex(0);
+  }, [imageCandidates]);
+
+  return (
+    <div style={{
+      alignItems: "center",
+      background: C.paper2,
+      border: `1px solid ${C.ruleSoft}`,
+      borderRadius: 10,
+      color: C.ink2,
+      display: "flex",
+      fontSize: Math.max(12, Math.round(size * 0.29)),
+      fontWeight: 650,
+      height: size,
+      justifyContent: "center",
+      overflow: "hidden",
+      width: size,
+    }}>
+      {imageSrc ? (
+        <img
+          alt={`${connectionLabel(connection)} profile NFT`}
+          onError={() => setImageIndex((index) => index + 1)}
+          src={imageSrc}
+          style={{ display: "block", height: "100%", objectFit: "cover", width: "100%" }}
+        />
+      ) : (
+        connectionInitials(connection)
+      )}
+    </div>
+  );
+}
+
 function walletExplorerHref(walletAddress = "", explorerBase = "") {
   const address = String(walletAddress || "").trim();
   const base = String(explorerBase || "").trim();
@@ -1129,15 +1167,18 @@ function ProfilePreviewPanel({ connection = null, error = "", loading = false, o
         padding: 16,
       }}
     >
-      <div style={{ alignItems: "flex-start", display: "flex", gap: 18, justifyContent: "space-between" }}>
-        <div>
-          <div className="tn-eyebrow" style={{ marginBottom: 6 }}>Member profile</div>
-          <div style={{ color: C.ink, fontSize: 16, fontWeight: 650, lineHeight: 1.25 }}>
-            {loading ? "Loading profile..." : displayName}
+      <div style={{ alignItems: "flex-start", display: "flex", gap: 14, justifyContent: "space-between" }}>
+        <div style={{ alignItems: "center", display: "flex", gap: 12, minWidth: 0 }}>
+          <ConnectionAvatar connection={{ ...connection, heroNft: profile?.heroNft || connection.heroNft }} size={44} />
+          <div style={{ minWidth: 0 }}>
+            <div className="tn-eyebrow" style={{ marginBottom: 6 }}>Member profile</div>
+            <div style={{ color: C.ink, fontSize: 16, fontWeight: 650, lineHeight: 1.25 }}>
+              {loading ? "Loading profile..." : displayName}
+            </div>
+            {displayHandle && displayHandle !== displayName && (
+              <div className="tn-mono" style={{ color: C.ink4, fontSize: 12.5, marginTop: 4 }}>{displayHandle}</div>
+            )}
           </div>
-          {displayHandle && displayHandle !== displayName && (
-            <div className="tn-mono" style={{ color: C.ink4, fontSize: 12.5, marginTop: 4 }}>{displayHandle}</div>
-          )}
         </div>
         <button className="tn-btn" onClick={onClose} style={{ fontSize: 12.5, paddingTop: 0 }} type="button">
           Close
@@ -1248,21 +1289,7 @@ function ConnectionRecommendationRow({
       gridTemplateColumns: "48px 1fr",
       padding: "20px 0",
     }}>
-      <div style={{
-        alignItems: "center",
-        background: C.paper2,
-        border: `1px solid ${C.ruleSoft}`,
-        borderRadius: 10,
-        color: C.ink2,
-        display: "flex",
-        fontSize: 14,
-        fontWeight: 650,
-        height: 48,
-        justifyContent: "center",
-        width: 48,
-      }}>
-        {connectionInitials(connection)}
-      </div>
+      <ConnectionAvatar connection={connection} size={48} />
       <div>
         <div style={{ alignItems: "baseline", display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 6 }}>
           <button
