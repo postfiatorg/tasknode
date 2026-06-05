@@ -285,8 +285,8 @@ const EMPTY_WALLET_VAULT_STATUS = {
   publicKey: null,
   lastUnlockedAt: null,
 };
-const WALLET_BALANCE_REFRESH_MS = 15000;
-const WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS = 250;
+const WALLET_BALANCE_REFRESH_MS = 1000;
+const WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS = 0;
 const WALLET_ACTIVITY_EVENT_NAME = "tasknode:wallet-activity";
 
 function viewFromLocation() {
@@ -782,7 +782,10 @@ function App() {
     if (!signedIn || !linkedWalletAddress) return undefined;
 
     refreshWalletBalance({ force: true, address: linkedWalletAddress });
-    const timer = window.setInterval(() => refreshWalletBalance(), WALLET_BALANCE_REFRESH_MS);
+    const timer = window.setInterval(
+      () => refreshWalletBalance({ force: true, address: linkedWalletAddress }),
+      WALLET_BALANCE_REFRESH_MS
+    );
 
     return () => {
       window.clearInterval(timer);
@@ -802,6 +805,10 @@ function App() {
       if (walletAddress && walletAddress !== linkedWalletAddress) return;
       window.dispatchEvent(new CustomEvent(WALLET_ACTIVITY_EVENT_NAME, { detail: payload }));
       window.clearTimeout(refreshTimer);
+      if (WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS <= 0) {
+        refreshWalletBalance({ force: true, address: linkedWalletAddress });
+        return;
+      }
       refreshTimer = window.setTimeout(() => {
         refreshWalletBalance({ force: true, address: linkedWalletAddress });
       }, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS);

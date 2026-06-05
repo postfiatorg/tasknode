@@ -70,9 +70,12 @@ publishes a `wallet_activity` event through Postgres `NOTIFY`. App processes
 listen for that channel and forward matching account events through
 `GET /api/events` as Server-Sent Events.
 
-The browser keeps existing polling as a fallback. On a `wallet_activity` event
-for the linked wallet, it forces `/api/wallet/balance?force=1`; if the Wallet
-surface is open, it also refreshes `/api/wallet/transactions?force=1`.
+The browser keeps polling as a fallback. Linked-wallet sessions force
+`/api/wallet/balance?force=1` every `1s`, so fallback balance reads do not sit
+behind the server cache TTL. On a `wallet_activity` event for the linked wallet,
+the browser forces `/api/wallet/balance?force=1` immediately; if the Wallet
+surface is open, it also refreshes `/api/wallet/transactions?force=1`. The
+Wallet transaction feed force-polls every `3s` while mounted.
 
 ## Tables
 
