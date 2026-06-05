@@ -30,30 +30,29 @@ function taskProjectIds(tasks = []) {
   return new Set(safeArray(tasks).map((task) => safeText(task.projectId || task.project_id, 180)).filter(Boolean));
 }
 
-function candidateKeys(candidate = {}) {
-  const keys = new Set();
-  const accountId = safeText(candidate.accountId || candidate.account_id || candidate.candidateAccountId || candidate.candidate_account_id, 180);
-  const walletAddress = safeText(candidate.walletAddress || candidate.wallet_address || candidate.candidateWalletAddress || candidate.candidate_wallet_address, 120);
-  if (accountId) keys.add(`account:${accountId}`);
-  if (walletAddress) keys.add(`wallet:${walletAddress}`);
-  return keys;
+function candidateIdentity(candidate = {}) {
+  return {
+    accountId: safeText(candidate.accountId || candidate.account_id || candidate.candidateAccountId || candidate.candidate_account_id, 180),
+    walletAddress: safeText(candidate.walletAddress || candidate.wallet_address || candidate.candidateWalletAddress || candidate.candidate_wallet_address, 120),
+  };
 }
 
-function activeCandidateKeys(tasks = []) {
-  const keys = new Set();
-  for (const task of safeArray(tasks)) {
-    for (const key of candidateKeys(task)) keys.add(key);
+function capacityMatchesCandidate(candidate = {}, blocker = {}) {
+  const candidateInfo = candidateIdentity(candidate);
+  const blockerInfo = candidateIdentity(blocker);
+  if (candidateInfo.walletAddress && blockerInfo.walletAddress) {
+    return candidateInfo.walletAddress === blockerInfo.walletAddress;
   }
-  return keys;
+  if (candidateInfo.accountId && blockerInfo.accountId && (!candidateInfo.walletAddress || !blockerInfo.walletAddress)) {
+    return candidateInfo.accountId === blockerInfo.accountId;
+  }
+  return false;
 }
 
-function availableCandidates(candidates = [], activeKeys = new Set()) {
-  return safeArray(candidates).filter((candidate) => {
-    for (const key of candidateKeys(candidate)) {
-      if (activeKeys.has(key)) return false;
-    }
-    return true;
-  });
+function availableCandidates(candidates = [], blockers = []) {
+  return safeArray(candidates).filter((candidate) =>
+    !safeArray(blockers).some((blocker) => capacityMatchesCandidate(candidate, blocker))
+  );
 }
 
 function activeNetworkTaskCapacityBlockers({
@@ -80,13 +79,7 @@ function activeNetworkTaskCapacityBlockers({
 
 function candidateCapacityRows(candidates = [], blockers = []) {
   return safeArray(candidates).map((candidate) => {
-    const keys = candidateKeys(candidate);
-    const matchingBlockers = safeArray(blockers).filter((blocker) => {
-      for (const key of candidateKeys(blocker)) {
-        if (keys.has(key)) return true;
-      }
-      return false;
-    });
+    const matchingBlockers = safeArray(blockers).filter((blocker) => capacityMatchesCandidate(candidate, blocker));
     return {
       accountId: safeText(candidate.accountId || candidate.account_id, 180),
       walletAddress: safeText(candidate.walletAddress || candidate.wallet_address, 120),
@@ -290,16 +283,12 @@ export function buildBoardManagerActionPressure({
   const stoppedTasks = safeArray(networkTaskContent.stopped);
   const outstandingTasks = safeArray(networkTaskContent.outstanding);
   const pendingTasks = safeArray(networkTaskContent.pendingGeneration);
-  const activeKeys = activeCandidateKeys([
-    ...outstandingTasks,
-    ...pendingTasks,
-  ]);
   const capacityBlockers = activeNetworkTaskCapacityBlockers({
     outstanding: networkTaskContent.outstanding,
     pendingGeneration: networkTaskContent.pendingGeneration,
   });
   const candidateCount = safeArray(networkTaskCandidates).length;
-  const eligibleCandidates = availableCandidates(networkTaskCandidates, activeKeys);
+  const eligibleCandidates = availableCandidates(networkTaskCandidates, capacityBlockers);
   const eligibleCandidateCount = eligibleCandidates.length;
   const unavailableCandidateCount = Math.max(0, candidateCount - eligibleCandidateCount);
   const staleHiveSecretary = numeric(freshness.hiveSecretaryAgeMs, 0) > 60 * 60 * 1000;
@@ -359,6 +348,8 @@ export function buildBoardManagerActionPressure({
         personalTasksDoNotAffectNetworkTaskEligibility: true,
         engineeringTasksDoNotAffectNetworkTaskEligibility: true,
         candidateCapacityIsConsumedOnlyByOutstandingOrPendingNetworkTasks: true,
+        walletBoundNetworkTasksOnlyConsumeMatchingWalletCapacity: true,
+        accountOnlyPendingWorkConsumesAccountCapacityUntilWalletIsKnown: true,
         personalAndEngineeringTasksAreContextOnly: true,
       },
       ignoredForCapacity: {

@@ -101,3 +101,10 @@ refusals are routing feedback, not a current capacity status, unless the live
 packet includes an explicit availability constraint. A recent stopped task with
 no newer replacement task or generation job should create action pressure even
 when the project still has older work open.
+
+Capacity matching is wallet-aware. A Network Task with a concrete candidate
+wallet consumes capacity for that wallet, not forever for every future wallet
+the same account links. If an account delinks `rOld` and links `rNew`, an active
+task on `rOld` remains auditable but must not make `rNew` unavailable for
+routing. Pending work without a candidate wallet is the fallback account-level
+blocker until the wallet is known.

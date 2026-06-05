@@ -137,6 +137,72 @@ assert.equal(busyCandidateBoard.signals[0].allowedNextActions.includes("initiate
 assert.equal(busyCandidateBoard.signals[0].allowedNextActions.includes("message_user"), true);
 assert.equal(busyCandidateBoard.signals[0].preferredNextAction, "message_user");
 
+const relinkedWalletBoard = buildBoardManagerActionPressure({
+  hiveProjects: {
+    projects: {
+      empty_protocol_project: {
+        id: "empty_protocol_project",
+        title: "Empty Protocol Project",
+        status: "active",
+        taskCount: 2,
+        contributorCount: 1,
+        tasks: [],
+        contributors: [],
+      },
+    },
+  },
+  networkTaskContent: {
+    completed: [],
+    outstanding: [
+      {
+        projectId: "other_project",
+        candidateAccountId: "acct_candidate",
+        candidateWalletAddress: "rOldWallet",
+      },
+    ],
+    stopped: [],
+    pendingGeneration: [],
+  },
+  networkTaskCandidates: [{ accountId: "acct_candidate", walletAddress: "rNewWallet" }],
+  recentBoardManagerRuns: [],
+});
+assert.equal(relinkedWalletBoard.summary.eligibleCandidateCount, 1);
+assert.equal(relinkedWalletBoard.candidateCapacity.candidates[0].availableForNetworkTask, true);
+assert.equal(relinkedWalletBoard.candidateCapacity.candidates[0].capacityBlockers.length, 0);
+
+const accountOnlyPendingBoard = buildBoardManagerActionPressure({
+  hiveProjects: {
+    projects: {
+      empty_protocol_project: {
+        id: "empty_protocol_project",
+        title: "Empty Protocol Project",
+        status: "active",
+        taskCount: 2,
+        contributorCount: 1,
+        tasks: [],
+        contributors: [],
+      },
+    },
+  },
+  networkTaskContent: {
+    completed: [],
+    outstanding: [],
+    stopped: [],
+    pendingGeneration: [
+      {
+        projectId: "other_project",
+        candidateAccountId: "acct_candidate",
+        generationJobId: "job_without_wallet_yet",
+      },
+    ],
+  },
+  networkTaskCandidates: [{ accountId: "acct_candidate", walletAddress: "rNewWallet" }],
+  recentBoardManagerRuns: [],
+});
+assert.equal(accountOnlyPendingBoard.summary.eligibleCandidateCount, 0);
+assert.equal(accountOnlyPendingBoard.candidateCapacity.candidates[0].availableForNetworkTask, false);
+assert.equal(accountOnlyPendingBoard.candidateCapacity.candidates[0].capacityBlockers[0].generationJobId, "job_without_wallet_yet");
+
 const pendingUserFollowupBoard = buildBoardManagerActionPressure({
   hiveProjects: {
     projects: {
