@@ -1031,10 +1031,12 @@ export function TaskDetailModal({
     };
   }, [escapeDisabled, onClose]);
 
-  async function refreshTaskDetail({ showLoading = true } = {}) {
+  async function refreshTaskDetail({ showLoading = true, taskProjectionRefresh = false } = {}) {
     if (showLoading) setDetailState((current) => ({ ...current, loading: true }));
     try {
-      const result = await requestJson(`/api/tasks/detail?taskId=${encodeURIComponent(taskId)}`);
+      const query = new URLSearchParams({ taskId });
+      if (taskProjectionRefresh) query.set("refreshProjection", "1");
+      const result = await requestJson(`/api/tasks/detail?${query.toString()}`);
       if (!aliveRef.current) return null;
       if (result.ok && result.body?.ok) {
         return commitTaskDetailResult(result.body);
@@ -1110,8 +1112,8 @@ export function TaskDetailModal({
     for (let attempt = 0; attempt < 30; attempt += 1) {
       await new Promise((resolve) => window.setTimeout(resolve, 2000));
       if (!aliveRef.current) return;
-      const detail = await refreshTaskDetail({ showLoading: false });
-      await onTaskChanged?.();
+      const detail = await refreshTaskDetail({ showLoading: false, taskProjectionRefresh: true });
+      await onTaskChanged?.({ taskProjectionRefresh: true });
       if (!detail?.task) continue;
       const lastTx = detail?.forensics?.lastEventTxHash || "";
       const hasSubmittedTx = txHash && (
@@ -1124,8 +1126,7 @@ export function TaskDetailModal({
       if (verificationResponse && statusKey === "verification_response_submitted") return;
       if (
         !verificationResponse &&
-        (statusKey === "submitted" ||
-          statusKey === "verification_requested" ||
+        (statusKey === "verification_requested" ||
           (hasSubmittedTx && !taskRequiresRefresh(statusKey)))
       ) {
         return;
@@ -1136,7 +1137,7 @@ export function TaskDetailModal({
 
   async function handleEvidenceSubmitted(result = {}) {
     applyOptimisticEvidenceState(result);
-    await onTaskChanged?.();
+    await onTaskChanged?.({ taskProjectionRefresh: true });
     pollTaskDetailForSubmittedTx(result);
   }
 

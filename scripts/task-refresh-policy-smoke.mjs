@@ -53,6 +53,24 @@ const expiredSettle = taskRefreshPolicy({
 assert.equal(expiredSettle.shouldRefreshTaskState, false);
 assert.equal(expiredSettle.shouldForceTaskProjection, false);
 
+const reviewLoopRefresh = taskRefreshPolicy({
+  activeRequestCount: 0,
+  nowMs,
+  taskSyncRequiresRefresh: true,
+  taskSyncStatus: "ready",
+});
+assert.equal(reviewLoopRefresh.shouldRefreshTaskState, true);
+assert.equal(reviewLoopRefresh.shouldForceTaskProjection, true);
+
+const legacyReviewLoopRefresh = taskRefreshPolicy({
+  activeRequestCount: 0,
+  legacyRefreshNeeded: true,
+  nowMs,
+  taskSyncStatus: "ready",
+});
+assert.equal(legacyReviewLoopRefresh.shouldRefreshTaskState, true);
+assert.equal(legacyReviewLoopRefresh.shouldForceTaskProjection, true);
+
 const indexingLag = taskRefreshPolicy({
   activeRequestCount: 0,
   nowMs,

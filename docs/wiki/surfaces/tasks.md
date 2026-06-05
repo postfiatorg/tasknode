@@ -72,6 +72,14 @@ appears during the settle window, the UI returns to the `Outstanding` tab. This
 prevents the empty task-list state where a card exists or is about to exist, but
 the user must reload the whole page to see it.
 
+The same rule applies after task evidence is submitted. The detail modal calls
+`GET /api/tasks/detail?refreshProjection=1` while polling for the signed
+evidence transaction and the next review state. The Tasks list also forces
+projection refresh while review-loop states such as `submitted`,
+`verification_requested`, `verification_response_submitted`, or `reward_decided`
+are active. A user should not need to reload the browser to see a verification
+request appear after the review worker publishes it.
+
 On Fly, task generation and review both depend on the `worker` process group.
 Deploys must use `npm run fly:deploy`, which runs `npm run fly:background-guard`
 after the image rollout. If request receipts remain queued, offers do not

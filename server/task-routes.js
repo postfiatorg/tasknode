@@ -35,6 +35,7 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
 
   if (url.pathname === "/api/tasks/detail") {
     const linkedWallet = getLinkedWallet({ accountId: session?.accountId || "" });
+    const walletAddress = linkedWallet.status === "linked" ? linkedWallet.address || "" : "";
     const taskId = url.searchParams.get("taskId") || "";
     if (!taskId.trim()) {
       json(res, 400, {
@@ -44,10 +45,17 @@ export async function handleTaskReadRoute({ getLinkedWallet, json, readJson, req
       });
       return true;
     }
+    if (url.searchParams.get("refreshProjection") === "1" && walletAddress) {
+      await refreshLinkedWalletTaskProjection({
+        accountId: session?.accountId || "",
+        walletAddress,
+        syncKind: "task_detail_refresh",
+      });
+    }
 
     const detail = await getTaskDetail({
       accountId: session?.accountId || "",
-      walletAddress: linkedWallet.status === "linked" ? linkedWallet.address || "" : "",
+      walletAddress,
       taskId,
     });
     if (!detail) {

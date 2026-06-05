@@ -46,7 +46,9 @@ export function taskRefreshPolicy({
   const shouldForceTaskProjection = Boolean(
     shouldRefreshTaskProjection ||
       requestCount > 0 ||
-      taskRequestSettling
+      taskRequestSettling ||
+      taskSyncRequiresRefresh ||
+      legacyRefreshNeeded
   );
   const shouldRefreshTaskState = Boolean(
     shouldRefreshTaskProjection ||
