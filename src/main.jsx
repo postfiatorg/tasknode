@@ -108,6 +108,13 @@ import { TaskDetailModal } from "./features/tasks/TaskDetailModal.jsx";
 import { TaskRequestModal } from "./features/tasks/TaskRequestModal.jsx";
 import { activeTaskRequests, TaskRequestQueue } from "./features/tasks/TaskRequestQueue.jsx";
 import { TaskRow } from "./features/tasks/TaskRow.jsx";
+import {
+  settledTaskRequestHasVisibleOutstanding,
+  shouldRevealSettledOutstandingTask,
+  shouldStartTaskRequestSettle,
+  taskRefreshPolicy,
+  taskRequestSettleDeadline,
+} from "./features/tasks/task-refresh-policy.js";
 import { publishTaskRequest } from "./features/tasks/task-request-actions.js";
 import { evaluateTaskRequestUnlockPolicy } from "./features/tasks/task-request-unlock-policy.js";
 import {
@@ -407,7 +414,7 @@ function App() {
     if (view !== "tasks") return undefined;
     let active = true;
 
-    fetchAppState()
+    fetchAppState({ taskProjectionRefresh: true })
       .then((state) => {
         if (!active) return;
         setAppState((current) => mergeAppStateWithClientWalletBalance(current, state));
@@ -1848,7 +1855,7 @@ function ChatSurface({
           source: "live",
           title: activeChat?.title || "Task request",
         });
-        await onChatSettled?.();
+        await onChatSettled?.({ taskProjectionRefresh: true });
         return;
       }
 
@@ -2930,23 +2937,31 @@ function TasksView({
 }) {
   const [tasksTab, setTasksTab] = useState("outstanding");
   const [taskRequestOpen, setTaskRequestOpen] = useState(false);
+  const [taskRequestSettleUntilMs, setTaskRequestSettleUntilMs] = useState(0);
   const didAutoSelectTaskTabRef = useRef(false);
+  const previousActiveRequestCountRef = useRef(0);
   const outstanding = taskArray(tasks.outstanding);
   const verification = taskArray(tasks.verification);
   const refused = taskArray(tasks.refused);
   const rewarded = taskArray(tasks.rewarded);
   const requests = taskRequestArray(tasks);
   const activeRequests = activeTaskRequests(requests);
+  const activeRequestCount = activeRequests.length;
   const taskSync = tasks?.sync || {};
   const taskSyncStatus = String(taskSync.status || "ready");
-  const shouldRefreshTaskProjection = taskSyncStatus === "indexing_lag" || taskSyncStatus === "reducer_attention";
-  const shouldRefreshTaskState = Boolean(
-    shouldRefreshTaskProjection ||
-    taskSync.requiresRefresh ||
-    activeRequests.length ||
-    needsLegacyTaskRefresh(tasks)
-  );
-  const taskRefreshMs = Math.min(Math.max(Number(taskSync.nextPollMs || 2500), 1000), 30000);
+  const {
+    shouldForceTaskProjection,
+    shouldRefreshTaskState,
+    taskRefreshMs,
+    taskRequestSettling,
+  } = taskRefreshPolicy({
+    activeRequestCount,
+    legacyRefreshNeeded: needsLegacyTaskRefresh(tasks),
+    nextPollMs: taskSync.nextPollMs,
+    settleUntilMs: taskRequestSettleUntilMs,
+    taskSyncRequiresRefresh: taskSync.requiresRefresh,
+    taskSyncStatus,
+  });
   const currentTabTasks = {
     outstanding,
     verification,
@@ -2971,12 +2986,57 @@ function TasksView({
   }, [outstanding.length, rewarded.length, tasksTab, verification.length]);
 
   useEffect(() => {
+    if (!settledTaskRequestHasVisibleOutstanding({
+      outstandingCount: outstanding.length,
+      taskRequestSettling,
+    })) return;
+    if (shouldRevealSettledOutstandingTask({
+      currentTab: tasksTab,
+      outstandingCount: outstanding.length,
+      taskRequestSettling,
+    })) {
+      setTasksTab("outstanding");
+    }
+    setTaskRequestSettleUntilMs(0);
+  }, [outstanding.length, taskRequestSettling, tasksTab]);
+
+  useEffect(() => {
+    const previous = previousActiveRequestCountRef.current;
+    if (shouldStartTaskRequestSettle({
+      previousActiveRequestCount: previous,
+      currentActiveRequestCount: activeRequestCount,
+    })) {
+      setTaskRequestSettleUntilMs(taskRequestSettleDeadline());
+    }
+    previousActiveRequestCountRef.current = activeRequestCount;
+  }, [activeRequestCount]);
+
+  const handleTaskRequestRecorded = useCallback(
+    async () => {
+      setTaskRequestSettleUntilMs(taskRequestSettleDeadline());
+      return onRequestSettled?.({ taskProjectionRefresh: true });
+    },
+    [onRequestSettled]
+  );
+
+  useEffect(() => {
     if (!shouldRefreshTaskState || typeof onRequestSettled !== "function") return undefined;
     const refresh = window.setInterval(() => {
-      Promise.resolve(onRequestSettled({ taskProjectionRefresh: shouldRefreshTaskProjection })).catch(() => null);
+      if (taskRequestSettling && Date.now() >= taskRequestSettleUntilMs) {
+        setTaskRequestSettleUntilMs(0);
+        return;
+      }
+      Promise.resolve(onRequestSettled({ taskProjectionRefresh: shouldForceTaskProjection })).catch(() => null);
     }, taskRefreshMs);
     return () => window.clearInterval(refresh);
-  }, [onRequestSettled, shouldRefreshTaskProjection, shouldRefreshTaskState, taskRefreshMs]);
+  }, [
+    onRequestSettled,
+    shouldForceTaskProjection,
+    shouldRefreshTaskState,
+    taskRefreshMs,
+    taskRequestSettleUntilMs,
+    taskRequestSettling,
+  ]);
 
   const taskSyncNotice = {
     indexing_lag: {
@@ -3091,7 +3151,7 @@ function TasksView({
             accountId={accountId}
             linkedWalletAddress={linkedWalletAddress}
             onClose={() => setTaskRequestOpen(false)}
-            onRecorded={onRequestSettled}
+            onRecorded={handleTaskRequestRecorded}
             onWalletUnlock={onWalletUnlock}
             walletSecret={walletSecret}
             walletUnlockPending={walletUnlockPending}

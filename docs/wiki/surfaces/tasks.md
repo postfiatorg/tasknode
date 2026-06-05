@@ -61,6 +61,17 @@ After a successful chain submit, the server records a durable `task_requests` ro
 
 A signed request is not the same thing as a proposed task card. Durable task cards appear after `server/task-generation-worker.js` claims the `task_requests` row, decrypts the request bundle, calls the task-generation prompt/model, emits an encrypted `pf.task.offer.v1` pointer from the authority wallet, syncs PFTL, and the reducer projects the offer into `task_projections`.
 
+The Tasks page must not stop refreshing at the exact moment a request receipt
+leaves the active strip. That is the handoff where the generated offer may have
+been published but the visible `task_projections` row may still be catching up.
+After a task request is recorded, or after active request count drops from
+nonzero to zero, the browser keeps a bounded settle window: it refreshes app
+state every `2.5s` for up to `90s` with task projection replay enabled. Opening
+the Tasks route also performs a projection refresh. If a new outstanding task
+appears during the settle window, the UI returns to the `Outstanding` tab. This
+prevents the empty task-list state where a card exists or is about to exist, but
+the user must reload the whole page to see it.
+
 On Fly, task generation and review both depend on the `worker` process group.
 Deploys must use `npm run fly:deploy`, which runs `npm run fly:background-guard`
 after the image rollout. If request receipts remain queued, offers do not
