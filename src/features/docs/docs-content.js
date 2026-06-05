@@ -71,6 +71,7 @@ import hiveSecretaryPrompt from "../../../prompts/hive/hive_secretary_v1.md?raw"
 import hiveActiveProjectsPrompt from "../../../prompts/hive/hive_active_projects_v1.md?raw";
 import dailyAirdropPrompt from "../../../prompts/profile/daily_airdrop_v1.md?raw";
 import publicProfileSnapshotPrompt from "../../../prompts/profile/public_profile_snapshot_v1.md?raw";
+import recommendedConnectionsPrompt from "../../../prompts/profile/recommended_connections_v1.md?raw";
 import evidenceScreenshotPrompt from "../../../prompts/task_engine/evidence_screenshot_read_v1.md?raw";
 import rewardScoringPrompt from "../../../prompts/task_engine/reward_scoring_v1.md?raw";
 import taskgenNetworkPrompt from "../../../prompts/task_engine/taskgen_network_v1.md?raw";
@@ -117,6 +118,19 @@ const PROMPT_SOURCES = [
       "POST /api/profile/public/regenerate",
     ],
     content: publicProfileSnapshotPrompt,
+  },
+  {
+    family: "Profile",
+    title: "Recommended Connections",
+    path: "prompts/profile/recommended_connections_v1.md",
+    summary: "Reranks the top 50 discoverable member profiles into 3-4 useful recommended connections with plain-English reasons.",
+    status: "Active for private profile recommendations and the weekly recommendation worker",
+    usedBy: [
+      "server/repositories/recommended-connections.js::refreshRecommendedConnections",
+      "server/recommended-connections-worker.js::startRecommendedConnectionsWorker",
+      "POST /api/profile/recommended-connections/refresh",
+    ],
+    content: recommendedConnectionsPrompt,
   },
   {
     family: "Chat",

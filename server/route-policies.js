@@ -88,6 +88,7 @@ export const apiRoutePolicies = [
   { id: "profile_handle_availability", path: "/api/profile/handle/availability", methods: ["GET"], auth: "session" },
   { id: "profile_identity", path: "/api/profile/identity", methods: ["GET"], auth: "session" },
   { id: "profile_identity_alias", path: "/api/profile/identity/alias", methods: ["POST"], auth: "session" },
+  { id: "profile_visibility", path: "/api/profile/visibility", methods: ["GET", "POST"], auth: "session" },
   { id: "profile_public", path: "/api/profile/public", methods: ["GET"], auth: "session" },
   {
     id: "profile_public_regenerate",
@@ -97,6 +98,21 @@ export const apiRoutePolicies = [
     rateLimit: { limit: 5, windowMs: tenMinutes },
   },
   { id: "profile_reward_history", path: "/api/profile/reward-history", methods: ["GET"], auth: "session" },
+  { id: "profile_recommended_connections", path: "/api/profile/recommended-connections", methods: ["GET"], auth: "session" },
+  {
+    id: "profile_recommended_connections_refresh",
+    path: "/api/profile/recommended-connections/refresh",
+    methods: ["POST"],
+    auth: "session",
+    rateLimit: { limit: 5, windowMs: tenMinutes },
+  },
+  {
+    id: "profile_recommended_connection_event",
+    path: "/api/profile/recommended-connections/event",
+    methods: ["POST"],
+    auth: "session",
+    rateLimit: { limit: 60, windowMs: tenMinutes },
+  },
   {
     id: "profile_nft_generate",
     path: "/api/profile/nft/generate",

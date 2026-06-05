@@ -149,6 +149,34 @@ Environment overrides:
 - `TASKNODE_HIVE_PROJECT_REASONING_EFFORT`
 The default reasoning effort is `high`. These workers use structured outputs rather than prompt-only JSON parsing so invalid project shapes fail the job instead of silently changing the UI.
 
+## Recommended Connections Rerank
+
+Recommended connections are not a chat mode and are not billed to the user's chat balance. They are an internal profile discovery job behind the private Profile surface.
+
+The route builds public/discoverable member packets, embeds them with the shared embedding provider, retrieves at most 50 candidate profiles from pgvector, then asks DeepSeek V4 Pro to choose 3-4 useful recommendations. A completed rerank suppresses another normal rerank for the target profile for seven days.
+
+Current behavior:
+
+- Provider: DeepSeek API Direct.
+- API path: `/chat/completions`.
+- Default model: `deepseek-v4-pro`.
+- Prompt: `prompts/profile/recommended_connections_v1.md`.
+- Worker: `server/recommended-connections-worker.js`.
+- Manual route: `POST /api/profile/recommended-connections/refresh`.
+- Privacy check: private or non-discoverable profiles are not embedded, indexed, retrieved, sent to DeepSeek, or included in recommendation output.
+
+Environment overrides:
+
+- `TASKNODE_RECOMMENDED_CONNECTIONS_MODEL`
+- `TASKNODE_RECOMMENDED_CONNECTIONS_WORKER_ENABLED`
+- `TASKNODE_RECOMMENDED_CONNECTIONS_WORKER_INTERVAL_MS`
+- `TASKNODE_RECOMMENDED_CONNECTIONS_PROFILE_INDEX_LIMIT`
+- `TASKNODE_RECOMMENDED_CONNECTIONS_RERANK_LIMIT`
+- `TASKNODE_RECOMMENDED_CONNECTIONS_EMBEDDING_PROVIDER`
+- `TASKNODE_RECOMMENDED_CONNECTIONS_EMBEDDING_MODEL`
+- `DEEPSEEK_API_KEY` or `DEEPSEEK`
+- `DEEPSEEK_BASE_URL`
+
 ## Profile NFT Image Generation
 
 Profile NFT image generation is not a chat mode. It is a separate profile action backed by `POST /api/profile/nft/generate`.

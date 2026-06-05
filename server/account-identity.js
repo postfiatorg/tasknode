@@ -157,6 +157,7 @@ export function accountIdentityProfile(account = null, { accounts = {}, includeS
   if (!account?.id) return null;
   const handle = normalizeHiveHandle(account.hiveHandle || "");
   const linked = Array.isArray(account.linkedProviders) ? account.linkedProviders : [];
+  const profileVisibility = account.profileVisibility === "private" ? "private" : "public";
   const aliases = linked
     .map(providerAliasDefaults)
     .filter((provider) => provider?.id && provider.kind !== "email_code" && provider.kind !== "development")
@@ -192,6 +193,8 @@ export function accountIdentityProfile(account = null, { accounts = {}, includeS
     handleRequired: !handle,
     displayName: publicAccountDisplayName(account, handle),
     publicDisplayName: String(account.publicDisplayName || "").trim().slice(0, 80),
+    profileVisibility,
+    profileDiscoverable: profileVisibility === "public",
     handlePolicy: {
       minLength: hiveHandleMinLength,
       maxLength: hiveHandleMaxLength,
@@ -204,6 +207,25 @@ export function accountIdentityProfile(account = null, { accounts = {}, includeS
       .map((alias) => ({ provider: alias.provider, label: `${alias.label} verified` })),
     suggestions: includeSuggestions && !handle ? suggestHiveHandles({ accounts, accountId: account.id }) : [],
   };
+}
+
+export function applyAccountProfileVisibility({
+  accounts = {},
+  accountId = "",
+  visibility = "public",
+} = {}) {
+  const normalizedAccountId = String(accountId || "").trim();
+  const account = accounts[normalizedAccountId];
+  if (!account) {
+    return { ok: false, status: 404, error: "account_not_found", message: "The signed-in account was not found." };
+  }
+  const normalizedVisibility = visibility === "private" ? "private" : "public";
+  const now = new Date().toISOString();
+  account.profileVisibility = normalizedVisibility;
+  account.updatedAt = now;
+  account.identityUpdatedAt = now;
+  accounts[normalizedAccountId] = account;
+  return { ok: true, identityProfile: accountIdentityProfile(account, { accounts }), account };
 }
 
 export function applyAccountHiveHandle({

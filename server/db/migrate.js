@@ -60,6 +60,7 @@ const migrations = [
   "050_board_manager_state_guardrails.sql",
   "051_task_review_publication_locks.sql",
   "052_taskgen_split_prompt_versions.sql",
+  "053_recommended_connections.sql",
 ];
 
 let migrated = false;

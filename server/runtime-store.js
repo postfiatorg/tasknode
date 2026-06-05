@@ -5,6 +5,7 @@ import {
   accountIdentityProfile as buildAccountIdentityProfile,
   applyAccountAliasVisibility,
   applyAccountHiveHandle,
+  applyAccountProfileVisibility,
   checkHiveHandleAvailability as checkHiveHandleAvailabilityForAccounts,
   normalizeHiveHandle,
   providerAliasDefaults,
@@ -440,6 +441,8 @@ function accountPayload(account) {
     displayName: identityProfile?.displayName || account.displayName,
     hiveHandle: identityProfile?.hiveHandle || "",
     publicDisplayName: identityProfile?.publicDisplayName || "",
+    profileVisibility: identityProfile?.profileVisibility || "public",
+    profileDiscoverable: identityProfile?.profileDiscoverable !== false,
     primaryProvider: account.primaryProvider || "email",
     linkedProviders: account.linkedProviders || [],
     assurance: account.assurance || "low",
@@ -618,12 +621,21 @@ function syncAccountSessions(account) {
     session.displayName = identityProfile?.displayName || account.displayName;
     session.hiveHandle = identityProfile?.hiveHandle || "";
     session.publicDisplayName = identityProfile?.publicDisplayName || "";
+    session.profileVisibility = identityProfile?.profileVisibility || "public";
     session.linkedProviders = account.linkedProviders || [];
   }
 }
 
 export function getAccountIdentityProfile({ accountId = "" } = {}) {
   return accountIdentityProfile(state.accounts[String(accountId || "").trim()] || null);
+}
+
+export function getAccountProfileVisibility({ accountId = "" } = {}) {
+  const identityProfile = getAccountIdentityProfile({ accountId });
+  return {
+    visibility: identityProfile?.profileVisibility === "private" ? "private" : "public",
+    discoverable: identityProfile?.profileDiscoverable !== false,
+  };
 }
 
 export function listPublicAccountWalletIdentities() {
@@ -659,6 +671,13 @@ export function listPublicAccountWalletIdentities() {
     .filter(Boolean);
 }
 
+export function listDiscoverableAccountWalletIdentities() {
+  return listPublicAccountWalletIdentities()
+    .filter((identity) => (
+      getAccountProfileVisibility({ accountId: identity.accountId }).discoverable === true
+    ));
+}
+
 export function deleteAccountRuntimeData({ accountId = "", reason = "user_requested_account_delete", actorSessionId = "", archiveId = "" } = {}) {
   const result = deleteRuntimeAccountDataForState({ state, accountId, reason, actorSessionId, archiveId, safeId });
   saveState();
@@ -687,6 +706,18 @@ export function setAccountAliasVisibility({
     visibility,
     discloseHandle,
     discloseVerifiedBadge,
+  });
+  if (!result.ok) return result;
+  syncAccountSessions(result.account);
+  saveState();
+  return { ...result, account: accountPayload(result.account) };
+}
+
+export function setAccountProfileVisibility({ accountId = "", visibility = "public" } = {}) {
+  const result = applyAccountProfileVisibility({
+    accounts: state.accounts,
+    accountId,
+    visibility,
   });
   if (!result.ok) return result;
   syncAccountSessions(result.account);

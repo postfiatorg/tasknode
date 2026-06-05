@@ -1,5 +1,7 @@
 import { profileNftGenerateStart } from "./profile-nft-generation.js";
 import { profileNftMintStart } from "./profile-nft-mint.js";
+import { createHash } from "node:crypto";
+import { loadPrompt } from "./prompt-registry.js";
 import { runPublicProfileSnapshot } from "./profile-public-snapshot.js";
 import {
   getLatestDailyAirdropRun,
@@ -8,12 +10,26 @@ import {
 import { listProfileNfts } from "./repositories/profile-nfts.js";
 import { getPublicProfile } from "./repositories/profile-public.js";
 import {
+  getRecommendedConnectionsState,
+  recordRecommendedConnectionEvent,
+  refreshRecommendedConnectionProfile,
+  refreshRecommendedConnections,
+} from "./repositories/recommended-connections.js";
+import {
   checkHiveHandleAvailability,
+  getAccountProfileVisibility,
   getAccountIdentityProfile,
   setAccountAliasVisibility,
   setAccountHiveHandle,
+  setAccountProfileVisibility,
   suggestHiveHandles,
 } from "./runtime-store.js";
+
+const recommendedConnectionsPrompt = loadPrompt("profile/recommended_connections_v1.md");
+
+function promptDigest(text = "") {
+  return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
+}
 
 export async function handleProfileRoute({ getState, json, readJson, req, res, session, url }) {
   if (
@@ -23,8 +39,12 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       "/api/profile/handle/availability",
       "/api/profile/identity",
       "/api/profile/identity/alias",
+      "/api/profile/visibility",
       "/api/profile/public",
       "/api/profile/public/regenerate",
+      "/api/profile/recommended-connections",
+      "/api/profile/recommended-connections/refresh",
+      "/api/profile/recommended-connections/event",
       "/api/profile/reward-history",
       "/api/profile/nfts",
       "/api/profile/nft/generate",
@@ -149,6 +169,48 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
     return true;
   }
 
+  if (url.pathname === "/api/profile/visibility") {
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_visibility_login_required",
+        message: "Sign in before editing profile visibility.",
+      });
+      return true;
+    }
+    if (req.method === "GET") {
+      json(res, 200, {
+        ok: true,
+        visibility: getAccountProfileVisibility({ accountId: session.accountId }),
+        identityProfile: getAccountIdentityProfile({ accountId: session.accountId }),
+      });
+      return true;
+    }
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_visibility_method_not_allowed",
+        message: "Profile visibility requires GET or POST.",
+      });
+      return true;
+    }
+    const payload = await readJson(req, 8192);
+    const result = setAccountProfileVisibility({
+      accountId: session.accountId,
+      visibility: payload.visibility,
+    });
+    if (result.ok) {
+      await refreshRecommendedConnectionProfile({ accountId: session.accountId })
+        .catch(() => null);
+    }
+    json(res, result.ok ? 200 : result.status || 400, {
+      ok: result.ok,
+      ...result,
+      visibility: getAccountProfileVisibility({ accountId: session.accountId }),
+    });
+    return true;
+  }
+
   if (url.pathname === "/api/profile/daily-airdrop") {
     if (req.method !== "GET") {
       json(res, 405, {
@@ -231,6 +293,93 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
         message: error?.message || "Public profile regeneration failed.",
       });
     }
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/recommended-connections") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "recommended_connections_method_not_allowed",
+        message: "Recommended connections requires GET.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "recommended_connections_login_required",
+        message: "Sign in before viewing recommended connections.",
+      });
+      return true;
+    }
+    json(res, 200, await getRecommendedConnectionsState({ accountId: session.accountId }));
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/recommended-connections/refresh") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "recommended_connections_refresh_method_not_allowed",
+        message: "Recommended connection refresh requires POST.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "recommended_connections_refresh_login_required",
+        message: "Sign in before refreshing recommended connections.",
+      });
+      return true;
+    }
+    const payload = await readJson(req, 8192);
+    try {
+      const result = await refreshRecommendedConnections({
+        accountId: session.accountId,
+        force: payload.force === true,
+        trigger: payload.trigger || "profile_page",
+        prompt: recommendedConnectionsPrompt,
+        promptDigest: promptDigest(recommendedConnectionsPrompt),
+      });
+      json(res, result.ok === false ? result.status || 500 : 200, result);
+    } catch (error) {
+      json(res, error?.status || 500, {
+        ok: false,
+        error: "recommended_connections_refresh_failed",
+        message: error?.message || "Recommended connections could not be refreshed.",
+      });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/recommended-connections/event") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "recommended_connection_event_method_not_allowed",
+        message: "Recommended connection events require POST.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "recommended_connection_event_login_required",
+        message: "Sign in before recording recommended connection events.",
+      });
+      return true;
+    }
+    const payload = await readJson(req, 64 * 1024);
+    const result = await recordRecommendedConnectionEvent({
+      accountId: session.accountId,
+      candidateAccountId: payload.candidateAccountId || payload.candidate_account_id,
+      connectionId: payload.connectionId || payload.connection_id,
+      eventType: payload.eventType || payload.event_type,
+      metadata: payload.metadata || {},
+    });
+    json(res, result.ok ? 200 : result.status || 400, result);
     return true;
   }
 

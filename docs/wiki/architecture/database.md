@@ -36,6 +36,7 @@ Postgres is the product cache and account database. It is critical for speed, UX
 - Network task allocations and generation jobs: `server/db/migrations/039_network_task_allocations.sql`
 - Board Manager scheduler: `server/db/migrations/042_board_manager_scheduler.sql`
 - Board Manager secretary packets: `server/db/migrations/043_board_manager_secretary_packets.sql`
+- Recommended connections pgvector tables: `server/db/migrations/053_recommended_connections.sql`
 
 ## Table Inventory
 
@@ -99,6 +100,10 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `profile_daily_airdrop_runs` | Account-scoped daily airdrop scoring rows with dry-run/production mode, scenario id, model output fields, contributor reasoning, identity-cloud input snapshot, deterministic recipient metadata, alignment numerator/denominator, provider/model/prompt metadata, and status timestamps. | Profile Daily Airdrop panel, recurring daily airdrop worker, dry-run scoring audit, operator review. | `019_profile_daily_airdrop.sql` |
 | `profile_daily_airdrop_issuances` | Submitted daily airdrop payments with source wallet, recipient wallet, PFT amount, payload digest, pointer CID, tx hash, ledger index, and account/day uniqueness. | Private Profile paid airdrop display, reward history chart, public profile lifetime earned PFT. | `020_profile_daily_airdrop_issuance.sql` |
 | `profile_public_snapshots` | Account-scoped public profile role snapshots with deterministic input snapshot/fingerprint, DeepSeek output fields, provider/model/prompt metadata, status, and completion timestamps. Numeric scores and NFT state are not model-generated. | Public Profile role title, summary, skills, archetype, useful-to copy, profile snapshot audit. | `021_profile_public_snapshots.sql` |
+| `recommended_connection_profiles` | One current public/discoverable member packet plus pgvector embedding per account. Private profiles are deleted from this table and cannot enter candidate retrieval. | Private Profile recommended connections, weekly recommendation worker, recommendation prompt source packets. | `053_recommended_connections.sql` |
+| `recommended_connection_runs` | Weekly-scale rerank audit rows for one target account, including candidate ids, provider/model/prompt metadata, output JSON, usage, status, and errors. | Private Profile recommendation refresh state, worker audit, manual refresh diagnostics. | `053_recommended_connections.sql` |
+| `recommended_connections` | Persisted 3-4 recommendation rows from the latest successful rerank, including reason, suggested first action, supporting signals, public candidate snapshot, score, status, and expiry. | Private Profile recommended connection cards. | `053_recommended_connections.sql` |
+| `recommended_connection_events` | Feedback events for recommendation rows, such as useful or dismissed. These events do not message or connect users; they only record local feedback. | Recommendation quality review and future ranking feedback. | `053_recommended_connections.sql` |
 
 ## Planned Board Manager Tables
 
@@ -123,7 +128,7 @@ This matters because task lifecycle state is not owned by the Hive agent. The Bo
 ## Known Gaps
 
 - Wallet link, auth identity linkage, initiation grants, and Ethereum deposit state are partially represented outside the typed migration set. Those should be pulled into explicit account, identity, wallet link, grant, and deposit tables before the billing and task surfaces become public production surfaces.
-- Account-scoped semantic search over user chat/context/task data is not implemented yet. The current pgvector implementation is limited to the global Jobs reference corpus used by chat style retrieval.
+- Account-scoped semantic search over private user chat/context/task data is not implemented yet. The current pgvector implementations are limited to the global Jobs reference corpus and the public/discoverable recommended-connections profile corpus.
 
 ## Billing And Ethereum Deposits
 

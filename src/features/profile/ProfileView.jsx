@@ -1082,77 +1082,214 @@ function NFTTile({ nft }) {
   );
 }
 
-const CONNECTIONS = [
-  {
-    addr: "rDVKRN...tyjB", match: 95, palette: "green", kind: "topology",
-    body: "Strong synergy between your deterministic reward composers and their deterministic task-generation parser and verification policy fixes.",
-    tags: ["Task-generation parser", "Verification policy", "DB-backed constraints"],
-  },
-  {
-    addr: "rDep8S...EQKu", match: 88, palette: "gold", kind: "sunburst",
-    body: "Direct alignment in building deterministic Python reducers and handling task-generation logic with regression-style scoring.",
-    tags: ["Python reducers", "Dependency-light validators", "Prompt escaping"],
-  },
-  {
-    addr: "rGu432...Dcw9", match: 85, palette: "blue", kind: "flow",
-    body: "Overlap in deterministic tools and verification workflows with CLI-first JSON scoring and auditable triage.",
-    tags: ["CLI JSON scoring", "Triage packet design", "Sim engineering"],
-  },
-];
+function connectionLabel(connection = {}) {
+  return connection.hiveHandle
+    ? `@${String(connection.hiveHandle).replace(/^@+/, "")}`
+    : connection.displayName || shortHash(connection.accountId || "", 10, 6) || "Task Node member";
+}
 
-function ConnectionsCard() {
+function connectionInitials(connection = {}) {
+  const label = connection.displayName || connection.hiveHandle || "TN";
+  return String(label)
+    .replace(/^@+/, "")
+    .split(/\s+|[-_]/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "TN";
+}
+
+function recommendationStatusText(status = "", run = null) {
+  if (status === "vector_tables_not_ready") return "The recommendation store is not ready yet.";
+  if (status === "profile_private") return "Profile hidden. Recommended connections are off while your profile is private.";
+  if (status === "failed") return run?.lastError || "Recommendation generation failed.";
+  return "No recommendations yet. You need a public profile, a completed Network Diagnostic Report, and other public members to compare against.";
+}
+
+function ConnectionsCard({ accountId = "", profilePublic = true } = {}) {
+  const [state, setState] = useState({ loading: Boolean(accountId), refreshing: false, error: "", data: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!accountId) {
+      setState({ loading: false, refreshing: false, error: "", data: null });
+      return () => {
+        cancelled = true;
+      };
+    }
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    requestJson("/api/profile/recommended-connections").then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setState({ loading: false, refreshing: false, error: "", data: result.body || null });
+        return;
+      }
+      setState({
+        loading: false,
+        refreshing: false,
+        error: result.body?.message || result.body?.error || "Recommended connections could not be loaded.",
+        data: null,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
+  const refresh = async () => {
+    if (!accountId || state.refreshing || profilePublic === false) return;
+    setState((current) => ({ ...current, refreshing: true, error: "" }));
+    const result = await requestJson("/api/profile/recommended-connections/refresh", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ trigger: "profile_page_manual_refresh" }),
+    });
+    if (result.ok || result.body?.ok) {
+      setState({ loading: false, refreshing: false, error: "", data: result.body || null });
+      return;
+    }
+    setState((current) => ({
+      ...current,
+      loading: false,
+      refreshing: false,
+      error: result.body?.message || result.body?.error || "Recommended connections could not be refreshed.",
+    }));
+  };
+
+  const recordEvent = async (connection, eventType) => {
+    if (!connection?.accountId) return;
+    await requestJson("/api/profile/recommended-connections/event", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        candidateAccountId: connection.accountId,
+        connectionId: connection.id,
+        eventType,
+      }),
+    });
+    if (eventType === "dismissed") {
+      setState((current) => ({
+        ...current,
+        data: {
+          ...(current.data || {}),
+          recommendations: (current.data?.recommendations || [])
+            .filter((item) => item.id !== connection.id),
+        },
+      }));
+    }
+  };
+
+  const data = state.data || {};
+  const recommendations = Array.isArray(data.recommendations) ? data.recommendations : [];
+  const isPrivate = profilePublic === false || data.status === "profile_private";
+  const visibleRecommendations = isPrivate ? [] : recommendations;
+  const canRefresh = !isPrivate && data.available !== false && data.refresh?.allowed !== false;
+  const showEmpty = !state.loading && visibleRecommendations.length === 0;
+  const action = (
+    <button
+      className="tn-btn"
+      disabled={!canRefresh || state.refreshing}
+      onClick={refresh}
+      style={{ fontSize: 13, opacity: !canRefresh ? 0.45 : 1 }}
+      type="button"
+    >
+      {state.refreshing ? "Refreshing..." : "Refresh"}
+    </button>
+  );
+
   return (
     <section style={{ paddingTop: 64 }}>
       <SectionHead
+        action={action}
         eyebrow="Recommended connections"
-        sub="Members whose work overlaps yours this week"
+        sub="People worth knowing, with the signals behind the recommendation"
       />
 
+      {state.loading && (
+        <div className="tn-fadeIn" style={{ color: C.ink3, fontSize: 13.5, padding: "8px 0 24px" }}>
+          Loading recommendations.
+        </div>
+      )}
+
+      {(state.error || showEmpty) && (
+        <div className="tn-fadeIn" style={{
+          borderTop: `1px solid ${C.ruleSoft}`,
+          color: state.error || data.status === "failed" ? C.rust : C.ink3,
+          fontSize: 13.5,
+          lineHeight: 1.55,
+          padding: "20px 0",
+        }}>
+          {state.error || recommendationStatusText(isPrivate ? "profile_private" : data.status, data.run)}
+        </div>
+      )}
+
       <div>
-        {CONNECTIONS.map((c, i) => (
-          <div key={i} style={{
-            display: "grid", gridTemplateColumns: "48px 1fr auto",
-            gap: 20, alignItems: "flex-start",
+        {visibleRecommendations.map((connection, index) => (
+          <div key={connection.id || connection.accountId} style={{
+            alignItems: "flex-start",
+            borderTop: index === 0 ? "none" : `1px solid ${C.ruleSoft}`,
+            display: "grid",
+            gap: 18,
+            gridTemplateColumns: "48px 1fr auto",
             padding: "20px 0",
-            borderTop: i === 0 ? "none" : `1px solid ${C.ruleSoft}`,
           }}>
-            <div style={{ borderRadius: 10, overflow: "hidden" }}>
-              <NFTArt kind={c.kind} palette={c.palette} size={48} />
+            <div style={{
+              alignItems: "center",
+              background: C.paper2,
+              border: `1px solid ${C.ruleSoft}`,
+              borderRadius: 10,
+              color: C.ink2,
+              display: "flex",
+              fontSize: 14,
+              fontWeight: 650,
+              height: 48,
+              justifyContent: "center",
+              width: 48,
+            }}>
+              {connectionInitials(connection)}
             </div>
             <div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
-                <span className="tn-mono" style={{ fontSize: 13.5, fontWeight: 500, color: C.ink }}>{c.addr}</span>
-                <span style={{ fontSize: 11.5, color: C.ink4 }}>active 2h ago</span>
+              <div style={{ alignItems: "baseline", display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 6 }}>
+                <span style={{ color: C.ink, fontSize: 14, fontWeight: 600 }}>{connectionLabel(connection)}</span>
+                {connection.roleTitle && <span style={{ color: C.ink4, fontSize: 12 }}>{connection.roleTitle}</span>}
               </div>
-              <div style={{ fontSize: 13.5, color: C.ink2, lineHeight: 1.55, marginBottom: 8, maxWidth: 620 }}>
-                {c.body}
+              <div style={{ color: C.ink2, fontSize: 13.5, lineHeight: 1.55, marginBottom: 10, maxWidth: 680 }}>
+                {connection.reason}
               </div>
-              <div style={{ fontSize: 12, color: C.ink4 }}>
-                {c.tags.map((t, j) => (
-                  <span key={t}>
-                    {t}{j < c.tags.length - 1 && <span style={{ margin: "0 8px", color: C.ink5 }}>·</span>}
-                  </span>
-                ))}
-              </div>
+              {connection.suggestedFirstAction && (
+                <div style={{ color: C.ink3, fontSize: 13, lineHeight: 1.5, marginBottom: 8, maxWidth: 680 }}>
+                  <span style={{ color: C.ink, fontWeight: 600 }}>Suggested first move: </span>
+                  {connection.suggestedFirstAction}
+                </div>
+              )}
+              {Array.isArray(connection.supportingSignals) && connection.supportingSignals.length > 0 && (
+                <div style={{ color: C.ink4, fontSize: 12, lineHeight: 1.7 }}>
+                  {connection.supportingSignals.map((signal, signalIndex) => (
+                    <span key={`${connection.id || connection.accountId}-${signal}`}>
+                      {signal}{signalIndex < connection.supportingSignals.length - 1 && <span style={{ color: C.ink5, margin: "0 8px" }}>·</span>}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-              <MatchScore pct={c.match} />
-              <button className="tn-btn" style={{ fontSize: 13 }}>Connect →</button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 82 }}>
+              <button className="tn-btn" onClick={() => recordEvent(connection, "marked_useful")} style={{ fontSize: 12.5 }} type="button">
+                Useful
+              </button>
+              <button className="tn-btn" onClick={() => recordEvent(connection, "dismissed")} style={{ color: C.ink4, fontSize: 12.5 }} type="button">
+                Dismiss
+              </button>
             </div>
           </div>
         ))}
       </div>
-    </section>
-  );
-}
 
-function MatchScore({ pct }) {
-  const tone = pct >= 90 ? C.success : pct >= 80 ? C.warning : C.ink4;
-  return (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-      <span className="tn-bigNum" style={{ fontSize: 22, color: tone, lineHeight: 1 }}>{pct}</span>
-      <span style={{ fontSize: 11, color: C.ink4 }}>%</span>
-    </div>
+      {data.run?.completedAt && visibleRecommendations.length > 0 && (
+        <div style={{ color: C.ink4, fontSize: 11.5, paddingTop: 6 }}>
+          Refreshed {fmtDateTime(data.run.completedAt)}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1162,6 +1299,7 @@ function PrivateProfile({
   onProfileIdentityChange,
   onProfileAvatarChange,
   onWalletUnlock,
+  profilePublic = true,
   session = null,
   walletSecret = null,
   walletVault = {},
@@ -1256,7 +1394,7 @@ function PrivateProfile({
         range={rewardRange}
       />
       <NFTGallery minted={profileNfts.length ? profileNfts : NFT_DATA} />
-      <ConnectionsCard />
+      <ConnectionsCard accountId={accountId} profilePublic={profilePublic} />
     </div>
   );
 }
@@ -1277,6 +1415,12 @@ export function ProfileView({
 } = {}) {
   useStylesheet();
   const [localView, setLocalView] = useState(profileTab === "public" ? "public" : "private");
+  const [visibilityState, setVisibilityState] = useState({
+    error: "",
+    loading: Boolean(accountId),
+    saving: false,
+    visibility: profilePublic ? "public" : "private",
+  });
   const controlledView = typeof setProfileTab === "function";
   const view = controlledView ? (profileTab === "public" ? "public" : "private") : localView;
   const setView = (nextView) => {
@@ -1286,8 +1430,68 @@ export function ProfileView({
     }
     setLocalView(nextView);
   };
-  const togglePublic = () => {
-    if (typeof setProfilePublic === "function") setProfilePublic((value) => !value);
+  useEffect(() => {
+    let cancelled = false;
+    if (!accountId) {
+      setVisibilityState({
+        error: "",
+        loading: false,
+        saving: false,
+        visibility: profilePublic ? "public" : "private",
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    setVisibilityState((current) => ({ ...current, loading: true, error: "" }));
+    requestJson("/api/profile/visibility").then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        const visibility = result.body?.visibility?.visibility === "private" ? "private" : "public";
+        setVisibilityState({ error: "", loading: false, saving: false, visibility });
+        if (typeof setProfilePublic === "function") setProfilePublic(visibility !== "private");
+        return;
+      }
+      setVisibilityState((current) => ({
+        ...current,
+        error: result.body?.message || result.body?.error || "Profile visibility could not be loaded.",
+        loading: false,
+        saving: false,
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, profilePublic, setProfilePublic]);
+  const effectiveProfilePublic = visibilityState.visibility !== "private";
+  const togglePublic = async () => {
+    if (!accountId || visibilityState.saving) return;
+    const nextVisibility = effectiveProfilePublic ? "private" : "public";
+    setVisibilityState((current) => ({
+      ...current,
+      error: "",
+      saving: true,
+      visibility: nextVisibility,
+    }));
+    const result = await requestJson("/api/profile/visibility", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ visibility: nextVisibility }),
+    });
+    if (result.ok && result.body?.ok !== false) {
+      const visibility = result.body?.visibility?.visibility === "private" ? "private" : "public";
+      setVisibilityState({ error: "", loading: false, saving: false, visibility });
+      if (typeof setProfilePublic === "function") setProfilePublic(visibility !== "private");
+      return;
+    }
+    const previousVisibility = nextVisibility === "private" ? "public" : "private";
+    setVisibilityState({
+      error: result.body?.message || result.body?.error || "Profile visibility could not be saved.",
+      loading: false,
+      saving: false,
+      visibility: previousVisibility,
+    });
+    if (typeof setProfilePublic === "function") setProfilePublic(previousVisibility !== "private");
   };
 
   return (
@@ -1308,12 +1512,13 @@ export function ProfileView({
 
           <button
             onClick={togglePublic}
+            disabled={!accountId || visibilityState.saving || visibilityState.loading}
             style={{
               alignItems: "center",
               background: "transparent",
               border: 0,
-              color: profilePublic ? C.success : C.ink4,
-              cursor: "pointer",
+              color: effectiveProfilePublic ? C.success : C.ink4,
+              cursor: !accountId || visibilityState.saving || visibilityState.loading ? "default" : "pointer",
               display: "inline-flex",
               fontFamily: SANS,
               fontSize: 13,
@@ -1323,10 +1528,18 @@ export function ProfileView({
             }}
             type="button"
           >
-            <span className="tn-pulseGreen" />
-            {profilePublic ? "Profile public" : "Profile hidden"}
+            <span
+              className="tn-pulseGreen"
+              style={{ background: effectiveProfilePublic ? C.success : C.ink5 }}
+            />
+            {visibilityState.saving ? "Saving..." : effectiveProfilePublic ? "Profile public" : "Profile hidden"}
           </button>
         </div>
+        {visibilityState.error && (
+          <div style={{ color: C.rust, fontSize: 12.5, marginBottom: 12, textAlign: "right" }}>
+            {visibilityState.error}
+          </div>
+        )}
 
         <div className="tn-fadeIn" key={view}>
           {view === "private" ? (
@@ -1336,12 +1549,13 @@ export function ProfileView({
               onProfileIdentityChange={onProfileIdentityChange}
               onProfileAvatarChange={onProfileAvatarChange}
               onWalletUnlock={onWalletUnlock}
+              profilePublic={effectiveProfilePublic}
               session={session}
               walletSecret={walletSecret}
               walletVault={walletVault}
             />
           ) : (
-            <PublicProfile accountId={accountId} profilePublic={profilePublic} />
+            <PublicProfile accountId={accountId} profilePublic={effectiveProfilePublic} />
           )}
         </div>
       </div>
