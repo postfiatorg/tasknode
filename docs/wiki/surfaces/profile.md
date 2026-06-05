@@ -17,6 +17,8 @@ Runtime endpoints:
 
 The Hive handle is the public routing name for the account. It is normalized by the server, globally unique within Task Node, checked against reserved names, and stored on the internal account record rather than on a wallet. Provider usernames are never copied into the public Hive namespace unless the user explicitly chooses that handle and it is available.
 
+Profile visibility defaults to public for every account. Public means the account can appear in discovery features when the rest of the required public/discoverable inputs exist. Private is an explicit opt-out. When a member switches private, recommended-connections indexing removes that member from the compute path.
+
 Linked provider aliases remain private by default. The user can make an alias public from the identity controls and can independently choose whether the public alias shows the provider handle and a verified badge. Public profile reads receive only the explicit public alias set from `identity.publicAliases`; private provider identities are excluded from public profile copy, task rows, Hive cards, and Board Manager-facing public display state.
 
 Current UI entry points:

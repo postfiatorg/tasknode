@@ -79,19 +79,32 @@ function plainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function normalizeAccountProfileVisibility(account = null) {
+  if (!account || typeof account !== "object") return account;
+  account.profileVisibility = account.profileVisibility === "private" ? "private" : "public";
+  return account;
+}
+
+function normalizeAccountsProfileVisibility(accounts = {}) {
+  for (const account of Object.values(accounts || {})) {
+    normalizeAccountProfileVisibility(account);
+  }
+  return accounts;
+}
+
 function loadState() {
   if (!existsSync(storePath)) return structuredClone(defaultState);
 
   try {
     const parsed = JSON.parse(readFileSync(storePath, "utf8"));
-    return {
+    const loaded = {
       ...structuredClone(defaultState),
       ...parsed,
       conversations: parsed.conversations || structuredClone(defaultState.conversations),
       conversationMeta: plainObject(parsed.conversationMeta),
       ledgerEntries: Array.isArray(parsed.ledgerEntries) ? parsed.ledgerEntries : [],
       sessions: plainObject(parsed.sessions),
-      accounts: plainObject(parsed.accounts),
+      accounts: normalizeAccountsProfileVisibility(plainObject(parsed.accounts)),
       accountEmails: plainObject(parsed.accountEmails),
       accountIdentities: plainObject(parsed.accountIdentities),
       accountWallets: plainObject(parsed.accountWallets),
@@ -120,6 +133,7 @@ function loadState() {
       emailChallenges: plainObject(parsed.emailChallenges),
       authEvents: Array.isArray(parsed.authEvents) ? parsed.authEvents : [],
     };
+    return loaded;
   } catch {
     return structuredClone(defaultState);
   }
@@ -363,6 +377,8 @@ function sessionPayload(session) {
     displayName: identityProfile?.displayName || session.displayName,
     hiveHandle: identityProfile?.hiveHandle || session.hiveHandle || "",
     publicDisplayName: identityProfile?.publicDisplayName || session.publicDisplayName || "",
+    profileVisibility: identityProfile?.profileVisibility || session.profileVisibility || "public",
+    profileDiscoverable: identityProfile?.profileDiscoverable !== false,
     identityProfile,
     primaryProvider: session.primaryProvider,
     linkedProviders: session.linkedProviders || [],
@@ -759,6 +775,7 @@ export function getOrCreateEmailAccount({ email, canonicalEmail, maskedEmail }) 
   const now = new Date().toISOString();
   if (existingId && state.accounts[existingId]) {
     const account = state.accounts[existingId];
+    normalizeAccountProfileVisibility(account);
     account.updatedAt = now;
     account.emailLastSeenAt = now;
     account.primaryEmailOriginal = email || account.primaryEmailOriginal;
@@ -777,6 +794,7 @@ export function getOrCreateEmailAccount({ email, canonicalEmail, maskedEmail }) 
     primaryEmailVerified: true,
     primaryProvider: "email",
     assurance: "low",
+    profileVisibility: "public",
     linkedProviders: [linkedEmailProvider({ maskedEmail })],
     createdAt: now,
     updatedAt: now,
@@ -834,12 +852,14 @@ export function getOrCreateProviderAccount({
       displayName: displayName || username || providerLabel(normalizedProvider),
       primaryProvider: normalizedProvider,
       assurance: "medium",
+      profileVisibility: "public",
       linkedProviders: [],
       createdAt: now,
       updatedAt: now,
     };
   }
 
+  normalizeAccountProfileVisibility(account);
   mergeLinkedProvider(account, providerPayload);
   account.status = account.status || "active";
   account.displayName = account.displayName || displayName || username || providerLabel(normalizedProvider);
@@ -953,6 +973,7 @@ export function createAccountSession(account, { provider = "email", assurance = 
     displayName: identityProfile?.displayName || account.displayName,
     hiveHandle: identityProfile?.hiveHandle || "",
     publicDisplayName: identityProfile?.publicDisplayName || "",
+    profileVisibility: identityProfile?.profileVisibility || "public",
     primaryProvider: provider,
     linkedProviders: account.linkedProviders || [],
     assurance,
@@ -991,9 +1012,11 @@ export function createDevSession({ email = "dev@tasknode.local" } = {}) {
     displayName: displayNameFromEmail(normalizedEmail),
     primaryProvider: "dev",
     assurance: "low",
+    profileVisibility: "public",
     linkedProviders: [],
     createdAt: now.toISOString(),
   };
+  normalizeAccountProfileVisibility(account);
   mergeLinkedProvider(account, devProvider());
   account.updatedAt = now.toISOString();
   state.accounts[accountId] = account;
@@ -1006,6 +1029,7 @@ export function createDevSession({ email = "dev@tasknode.local" } = {}) {
     displayName: identityProfile?.displayName || account.displayName,
     hiveHandle: identityProfile?.hiveHandle || "",
     publicDisplayName: identityProfile?.publicDisplayName || "",
+    profileVisibility: identityProfile?.profileVisibility || "public",
     primaryProvider: "dev",
     linkedProviders: account.linkedProviders || [devProvider()],
     createdAt: now.toISOString(),

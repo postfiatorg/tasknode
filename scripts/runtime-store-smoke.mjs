@@ -51,6 +51,7 @@ try {
     delinkWalletFromAccount,
     getContextDocument,
     getContextHistory,
+    getAccountProfileVisibility,
     getEthereumDepositAccount,
     getLinkedWallet,
     getOrCreateEmailAccount,
@@ -690,6 +691,9 @@ try {
     providerUserId: "runtime-smoke-gh",
     username: "runtime-smoke",
   });
+  if (oauthAccount.profileVisibility !== "public") {
+    throw new Error(`OAuth accounts should default public: ${JSON.stringify(oauthAccount)}`);
+  }
   const createFlowAccount = getOrCreateProviderAccount({
     provider: "github",
     providerUserId: "runtime-smoke-create-gh",
@@ -754,6 +758,14 @@ try {
     throw new Error(`Initiation retry must reject linked-only wallets: ${JSON.stringify(retryAfterLink)}`);
   }
   const emailAccount = getOrCreateEmailAccount({ email: "runtime-smoke@example.com", canonicalEmail: "runtime-smoke@example.com", maskedEmail: "r***@example.com" });
+  const emailSession = createAccountSession(emailAccount, { provider: "email", assurance: "low" });
+  if (
+    emailAccount.profileVisibility !== "public" ||
+    emailSession.session.profileVisibility !== "public" ||
+    getAccountProfileVisibility({ accountId: emailAccount.id }).visibility !== "public"
+  ) {
+    throw new Error(`Email accounts and sessions should default public: ${JSON.stringify({ emailAccount, emailSession })}`);
+  }
   const emailGift = walletInitiationGrantStatus({ accountId: emailAccount.id });
   if (emailGift.eligible || emailGift.reason !== "email_ineligible") {
     throw new Error(`Email-only accounts must not be initiation-gift eligible: ${JSON.stringify(emailGift)}`);
