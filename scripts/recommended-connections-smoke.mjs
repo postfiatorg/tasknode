@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   deterministicRecommendedConnections,
   parseRecommendedConnectionsJson,
+  recommendedConnectionIdentityFromParts,
   shouldIndexRecommendedConnectionProfile,
 } from "../server/repositories/recommended-connections.js";
 
@@ -42,6 +43,21 @@ assert.equal(
   shouldIndexRecommendedConnectionProfile({ visibility: "public", discoverable: true }),
   true,
   "public discoverable profiles can enter vector indexing"
+);
+
+const identityWithoutWallet = recommendedConnectionIdentityFromParts({
+  accountId: "acct_profile_only",
+  networkProfile: {
+    output: {
+      profile_title: "Protocol QA Operator",
+    },
+  },
+});
+assert.equal(identityWithoutWallet.walletAddress, "", "wallet address should be optional recommendation metadata");
+assert.equal(
+  identityWithoutWallet.displayName,
+  "Protocol QA Operator",
+  "profile-only accounts should still get a usable display name from the Network Diagnostic"
 );
 
 const parsed = parseRecommendedConnectionsJson(JSON.stringify({

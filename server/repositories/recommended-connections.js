@@ -8,6 +8,7 @@ import {
   jobsEmbeddingProvider,
 } from "../embedding-provider.js";
 import {
+  getAccountIdentityProfile,
   getAccountProfileVisibility,
   listDiscoverableAccountWalletIdentities,
 } from "../runtime-store.js";
@@ -93,10 +94,93 @@ export function shouldIndexRecommendedConnectionProfile({ visibility = "public",
   return visibility !== "private" && discoverable !== false;
 }
 
+function deletedAccountId(accountId = "") {
+  return String(accountId || "").startsWith("deleted_account_");
+}
+
+async function latestTaskWallet({ accountId = "" } = {}) {
+  if (!useDatabase()) return "";
+  const result = await query(
+    `
+      SELECT subject_wallet
+      FROM task_projections
+      WHERE account_id = $1
+        AND subject_wallet <> ''
+      ORDER BY updated_at DESC NULLS LAST,
+               task_id DESC
+      LIMIT 1
+    `,
+    [safeText(accountId, 180)]
+  );
+  return safeText(result.rows[0]?.subject_wallet, 120);
+}
+
+export function recommendedConnectionIdentityFromParts({
+  accountId = "",
+  identityProfile = null,
+  walletIdentity = null,
+  networkProfile = null,
+  walletAddress = "",
+} = {}) {
+  const diagnosticTitle = safeText(
+    networkProfile?.output?.profile_title ||
+      networkProfile?.output?.profileTitle ||
+      "",
+    120
+  );
+  const hiveHandle = safeText(identityProfile?.hiveHandle || walletIdentity?.hiveHandle, 80);
+  const displayName = safeText(
+    identityProfile?.publicDisplayName ||
+      identityProfile?.displayName ||
+      walletIdentity?.displayName ||
+      diagnosticTitle ||
+      safeText(accountId, 24),
+    120
+  );
+  return {
+    accountId: safeText(accountId, 180),
+    walletAddress: safeText(walletIdentity?.walletAddress || walletAddress, 120),
+    displayName,
+    hiveHandle,
+    publicDisplayName: safeText(identityProfile?.publicDisplayName || walletIdentity?.publicDisplayName, 120),
+    publicAliases: safeArray(identityProfile?.publicAliases || walletIdentity?.publicAliases),
+    publicTrustBadges: safeArray(identityProfile?.publicTrustBadges || walletIdentity?.publicTrustBadges),
+  };
+}
+
 async function recommendedConnectionTablesReady() {
   if (!useDatabase()) return false;
   const result = await query("SELECT to_regclass('public.recommended_connection_profiles') AS profile_table");
   return Boolean(result.rows[0]?.profile_table);
+}
+
+async function listRecommendedConnectionCandidateAccountIds({ limit = 20 } = {}) {
+  if (!useDatabase()) return [];
+  const normalizedLimit = Math.min(Math.max(Number(limit || 20), 1), 500);
+  const result = await query(
+    `
+      SELECT account_id
+      FROM (
+        SELECT account_id,
+               max(COALESCE(completed_at, created_at)) AS latest_profile_at
+        FROM network_task_profiles
+        WHERE status = 'completed'
+          AND superseded_at IS NULL
+          AND account_id <> ''
+          AND account_id NOT LIKE 'deleted_account_%'
+          AND output_text <> ''
+        GROUP BY account_id
+      ) profiles
+      ORDER BY latest_profile_at DESC NULLS LAST,
+               account_id ASC
+      LIMIT $1
+    `,
+    [normalizedLimit]
+  );
+  return result.rows
+    .map((row) => safeText(row.account_id, 180))
+    .filter((accountId) => accountId && !deletedAccountId(accountId))
+    .filter((accountId) => shouldIndexRecommendedConnectionProfile(profileVisibility(accountId)));
 }
 
 async function currentTaskContext({ accountId = "", limit = 8 } = {}) {
@@ -188,13 +272,11 @@ function packetTextFromParts({
 export async function buildRecommendedConnectionPacket({ accountId = "" } = {}) {
   const normalizedAccountId = safeText(accountId, 180);
   if (!normalizedAccountId) return { ok: false, reason: "account_required" };
+  if (deletedAccountId(normalizedAccountId)) return { ok: false, reason: "deleted_account" };
   const visibility = profileVisibility(normalizedAccountId);
   if (!shouldIndexRecommendedConnectionProfile(visibility)) {
     return { ok: false, reason: "profile_private", visibility };
   }
-  const identity = listDiscoverableAccountWalletIdentities()
-    .find((entry) => entry.accountId === normalizedAccountId) || null;
-  if (!identity?.walletAddress) return { ok: false, reason: "discoverable_wallet_required", visibility };
 
   const [networkProfile, publicSnapshot, publicInput, tasks] = await Promise.all([
     getLatestNetworkTaskProfile({ accountId: normalizedAccountId }),
@@ -203,8 +285,18 @@ export async function buildRecommendedConnectionPacket({ accountId = "" } = {}) 
     currentTaskContext({ accountId: normalizedAccountId }),
   ]);
   if (!networkProfile?.outputText) {
-    return { ok: false, reason: "network_diagnostic_required", visibility, identity };
+    return { ok: false, reason: "network_diagnostic_required", visibility };
   }
+  const walletIdentity = listDiscoverableAccountWalletIdentities()
+    .find((entry) => entry.accountId === normalizedAccountId) || null;
+  const identityProfile = getAccountIdentityProfile({ accountId: normalizedAccountId });
+  const identity = recommendedConnectionIdentityFromParts({
+    accountId: normalizedAccountId,
+    identityProfile,
+    walletIdentity,
+    networkProfile,
+    walletAddress: await latestTaskWallet({ accountId: normalizedAccountId }),
+  });
 
   const packetJson = {
     schema: "pf.profile.recommended_connection_packet.v1",
@@ -392,16 +484,15 @@ export async function refreshRecommendedConnectionProfile({ accountId = "", forc
 
 export async function refreshDiscoverableRecommendedConnectionProfiles({ limit = 20, force = false } = {}) {
   if (!await recommendedConnectionTablesReady()) return { ok: false, skipped: true, reason: "tables_not_ready" };
-  const identities = listDiscoverableAccountWalletIdentities()
-    .slice(0, Math.min(Math.max(Number(limit || 20), 1), 200));
+  const accountIds = await listRecommendedConnectionCandidateAccountIds({ limit });
   const results = [];
-  for (const identity of identities) {
+  for (const accountId of accountIds) {
     try {
-      results.push(await refreshRecommendedConnectionProfile({ accountId: identity.accountId, force }));
+      results.push(await refreshRecommendedConnectionProfile({ accountId, force }));
     } catch (error) {
       results.push({
         ok: false,
-        accountId: identity.accountId,
+        accountId,
         reason: "profile_refresh_failed",
         error: safeText(error?.message || error, 1000),
       });
@@ -409,7 +500,7 @@ export async function refreshDiscoverableRecommendedConnectionProfiles({ limit =
   }
   return {
     ok: true,
-    scanned: identities.length,
+    scanned: accountIds.length,
     indexedCount: results.filter((item) => item.ok && !item.skipped && !item.deleted).length,
     skippedCount: results.filter((item) => item.skipped || item.deleted).length,
     failedCount: results.filter((item) => item.ok === false && !item.skipped).length,
