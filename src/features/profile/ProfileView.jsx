@@ -1107,7 +1107,7 @@ function walletExplorerHref(walletAddress = "", explorerBase = "") {
   return `${base.replace(/\/+$/, "")}/${encodeURIComponent(address)}`;
 }
 
-function ProfilePreviewModal({ connection = null, error = "", loading = false, onClose, onCopyWallet, pftlExplorerUrl = "", profile = null } = {}) {
+function ProfilePreviewPanel({ connection = null, error = "", loading = false, onClose, onCopyWallet, pftlExplorerUrl = "", profile = null } = {}) {
   if (!connection) return null;
   const identity = profile?.identity || {};
   const role = profile?.role || {};
@@ -1120,117 +1120,101 @@ function ProfilePreviewModal({ connection = null, error = "", loading = false, o
 
   return (
     <div
-      aria-modal="true"
-      role="dialog"
+      aria-live="polite"
       style={{
-        alignItems: "center",
-        background: "rgba(31, 27, 22, 0.38)",
-        display: "flex",
-        inset: 0,
-        justifyContent: "center",
-        padding: 24,
-        position: "fixed",
-        zIndex: 80,
+        background: C.paper3,
+        border: `1px solid ${C.ruleSoft}`,
+        borderRadius: 8,
+        marginTop: 14,
+        padding: 16,
       }}
     >
-      <div style={{
-        background: C.paper3,
-        border: `1px solid ${C.rule}`,
-        borderRadius: 8,
-        boxShadow: "0 24px 80px rgba(31, 27, 22, 0.22)",
-        maxHeight: "calc(100vh - 48px)",
-        maxWidth: 720,
-        overflow: "auto",
-        padding: 24,
-        width: "100%",
-      }}>
-        <div style={{ alignItems: "flex-start", display: "flex", gap: 18, justifyContent: "space-between" }}>
-          <div>
-            <div className="tn-eyebrow" style={{ marginBottom: 8 }}>Member profile</div>
-            <h3 style={{ color: C.ink, fontSize: 22, fontWeight: 600, lineHeight: 1.2, margin: 0 }}>
-              {loading ? "Loading profile..." : displayName}
-            </h3>
-            {displayHandle && displayHandle !== displayName && (
-              <div className="tn-mono" style={{ color: C.ink4, fontSize: 13, marginTop: 5 }}>{displayHandle}</div>
-            )}
+      <div style={{ alignItems: "flex-start", display: "flex", gap: 18, justifyContent: "space-between" }}>
+        <div>
+          <div className="tn-eyebrow" style={{ marginBottom: 6 }}>Member profile</div>
+          <div style={{ color: C.ink, fontSize: 16, fontWeight: 650, lineHeight: 1.25 }}>
+            {loading ? "Loading profile..." : displayName}
           </div>
-          <button className="tn-btn" onClick={onClose} style={{ paddingTop: 0 }} type="button">
-            Close
-          </button>
+          {displayHandle && displayHandle !== displayName && (
+            <div className="tn-mono" style={{ color: C.ink4, fontSize: 12.5, marginTop: 4 }}>{displayHandle}</div>
+          )}
         </div>
+        <button className="tn-btn" onClick={onClose} style={{ fontSize: 12.5, paddingTop: 0 }} type="button">
+          Close
+        </button>
+      </div>
 
-        {error && (
-          <div style={{ borderTop: `1px solid ${C.ruleSoft}`, color: C.rust, fontSize: 13.5, lineHeight: 1.5, marginTop: 18, paddingTop: 16 }}>
-            {error}
-          </div>
-        )}
+      {error && (
+        <div style={{ borderTop: `1px solid ${C.ruleSoft}`, color: C.rust, fontSize: 13.5, lineHeight: 1.5, marginTop: 14, paddingTop: 14 }}>
+          {error}
+        </div>
+      )}
 
-        {!error && !loading && (
-          <div style={{ display: "grid", gap: 24, marginTop: 22 }}>
-            <div>
-              <div style={{ color: C.ink, fontSize: 16, fontWeight: 600, lineHeight: 1.35, marginBottom: 8 }}>
-                {role.roleTitle || connection.roleTitle || "Public profile"}
-              </div>
-              <div style={{ color: C.ink2, fontSize: 13.5, lineHeight: 1.6, maxWidth: 640 }}>
-                {role.roleSummary || connection.roleSummary || "No public profile summary is available yet."}
-              </div>
-              {role.usefulTo && (
-                <div style={{ borderLeft: `2px solid ${C.ruleSoft}`, color: C.ink3, fontSize: 13, lineHeight: 1.5, marginTop: 14, paddingLeft: 12 }}>
-                  <span style={{ color: C.ink, fontWeight: 600 }}>Best fit: </span>
-                  {role.usefulTo}
-                </div>
-              )}
+      {!error && !loading && (
+        <div style={{ display: "grid", gap: 16, marginTop: 16 }}>
+          <div>
+            <div style={{ color: C.ink, fontSize: 14, fontWeight: 600, lineHeight: 1.35, marginBottom: 7 }}>
+              {role.roleTitle || connection.roleTitle || "Public profile"}
             </div>
-
-            {skills.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {skills.map((skill) => (
-                  <span key={skill} style={{
-                    background: C.paper2,
-                    border: `1px solid ${C.ruleSoft}`,
-                    borderRadius: 999,
-                    color: C.ink2,
-                    fontSize: 12,
-                    fontWeight: 500,
-                    padding: "6px 9px",
-                  }}>
-                    {skill}
-                  </span>
-                ))}
+            <div style={{ color: C.ink2, fontSize: 13, lineHeight: 1.55, maxWidth: 640 }}>
+              {role.roleSummary || connection.roleSummary || "No public profile summary is available yet."}
+            </div>
+            {role.usefulTo && (
+              <div style={{ borderLeft: `2px solid ${C.ruleSoft}`, color: C.ink3, fontSize: 12.5, lineHeight: 1.5, marginTop: 12, paddingLeft: 10 }}>
+                <span style={{ color: C.ink, fontWeight: 600 }}>Best fit: </span>
+                {role.usefulTo}
               </div>
             )}
-
-            <div style={{
-              borderTop: `1px solid ${C.ruleSoft}`,
-              color: C.ink3,
-              display: "flex",
-              flexWrap: "wrap",
-              fontSize: 12.5,
-              gap: 12,
-              paddingTop: 16,
-            }}>
-              {displayWallet && (
-                explorerHref ? (
-                  <a className="tn-link tn-mono" href={explorerHref} rel="noreferrer" target="_blank">
-                    Wallet {shortHash(displayWallet, 8, 6)}
-                  </a>
-                ) : (
-                  <button className="tn-link tn-mono" onClick={() => onCopyWallet(displayWallet, connection)} style={{ background: "transparent", border: 0, padding: 0 }} type="button">
-                    Wallet {shortHash(displayWallet, 8, 6)}
-                  </button>
-                )
-              )}
-              {displayWallet && (
-                <button className="tn-link" onClick={() => onCopyWallet(displayWallet, connection)} style={{ background: "transparent", border: 0, padding: 0 }} type="button">
-                  Copy wallet
-                </button>
-              )}
-              <span>{fmtPft(metrics.lifetimeTotalPft || 0)} lifetime PFT</span>
-              <span>{Number(metrics.lifetimeRewardedTasks || 0)} rewarded tasks</span>
-            </div>
           </div>
-        )}
-      </div>
+
+          {skills.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {skills.map((skill) => (
+                <span key={skill} style={{
+                  background: C.paper2,
+                  border: `1px solid ${C.ruleSoft}`,
+                  borderRadius: 999,
+                  color: C.ink2,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  padding: "6px 9px",
+                }}>
+                  {skill}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div style={{
+            borderTop: `1px solid ${C.ruleSoft}`,
+            color: C.ink3,
+            display: "flex",
+            flexWrap: "wrap",
+            fontSize: 12.5,
+            gap: 12,
+            paddingTop: 14,
+          }}>
+            {displayWallet && (
+              explorerHref ? (
+                <a className="tn-link tn-mono" href={explorerHref} rel="noreferrer" target="_blank">
+                  Wallet {shortHash(displayWallet, 8, 6)}
+                </a>
+              ) : (
+                <button className="tn-link tn-mono" onClick={() => onCopyWallet(displayWallet, connection)} style={{ background: "transparent", border: 0, padding: 0 }} type="button">
+                  Wallet {shortHash(displayWallet, 8, 6)}
+                </button>
+              )
+            )}
+            {displayWallet && (
+              <button className="tn-link" onClick={() => onCopyWallet(displayWallet, connection)} style={{ background: "transparent", border: 0, padding: 0 }} type="button">
+                Copy wallet
+              </button>
+            )}
+            <span>{fmtPft(metrics.lifetimeTotalPft || 0)} lifetime PFT</span>
+            <span>{Number(metrics.lifetimeRewardedTasks || 0)} rewarded tasks</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1247,11 +1231,14 @@ function ConnectionRecommendationRow({
   copiedWallet = false,
   index = 0,
   onCopyWallet,
+  onCloseProfile,
   onOpenProfile,
   onRecordEvent,
   pftlExplorerUrl = "",
+  profilePreview = null,
 } = {}) {
   const explorerHref = walletExplorerHref(connection.walletAddress, pftlExplorerUrl);
+  const previewOpen = Boolean(profilePreview);
   return (
     <div key={connection.id || connection.accountId} style={{
       alignItems: "flex-start",
@@ -1295,7 +1282,7 @@ function ConnectionRecommendationRow({
             style={{ background: "transparent", border: 0, padding: 0 }}
             type="button"
           >
-            View profile
+            {previewOpen ? "Hide profile" : "View profile"}
           </button>
           {connection.walletAddress && (
             explorerHref ? (
@@ -1337,6 +1324,17 @@ function ConnectionRecommendationRow({
               </span>
             ))}
           </div>
+        )}
+        {previewOpen && (
+          <ProfilePreviewPanel
+            connection={connection}
+            error={profilePreview.error}
+            loading={profilePreview.loading}
+            onClose={onCloseProfile}
+            onCopyWallet={onCopyWallet}
+            pftlExplorerUrl={pftlExplorerUrl}
+            profile={profilePreview.profile}
+          />
         )}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 82 }}>
@@ -1441,6 +1439,12 @@ function ConnectionsCard({ accountId = "", pftlExplorerUrl = "", profilePublic =
 
   const openProfilePreview = async (connection) => {
     if (!connection?.accountId) return;
+    const current = previewState.connection || {};
+    const sameConnection = (current.id || current.accountId) === (connection.id || connection.accountId);
+    if (sameConnection && !previewState.loading) {
+      setPreviewState({ connection: null, error: "", loading: false, profile: null });
+      return;
+    }
     const path = connection.profilePath || `/api/profile/member?accountId=${encodeURIComponent(connection.accountId)}`;
     setPreviewState({ connection, error: "", loading: true, profile: null });
     const result = await requestJson(path);
@@ -1502,18 +1506,24 @@ function ConnectionsCard({ accountId = "", pftlExplorerUrl = "", profilePublic =
       )}
 
       <div>
-        {visibleRecommendations.map((connection, index) => (
-          <ConnectionRecommendationRow
-            connection={connection}
-            copiedWallet={copiedWalletId === (connection.id || connection.accountId || connection.walletAddress)}
-            index={index}
-            key={connection.id || connection.accountId}
-            onCopyWallet={copyWalletAddress}
-            onOpenProfile={openProfilePreview}
-            onRecordEvent={recordEvent}
-            pftlExplorerUrl={pftlExplorerUrl}
-          />
-        ))}
+        {visibleRecommendations.map((connection, index) => {
+          const previewKey = previewState.connection?.id || previewState.connection?.accountId || "";
+          const connectionKey = connection.id || connection.accountId || "";
+          return (
+            <ConnectionRecommendationRow
+              connection={connection}
+              copiedWallet={copiedWalletId === (connection.id || connection.accountId || connection.walletAddress)}
+              index={index}
+              key={connection.id || connection.accountId}
+              onCloseProfile={() => setPreviewState({ connection: null, error: "", loading: false, profile: null })}
+              onCopyWallet={copyWalletAddress}
+              onOpenProfile={openProfilePreview}
+              onRecordEvent={recordEvent}
+              pftlExplorerUrl={pftlExplorerUrl}
+              profilePreview={previewKey && previewKey === connectionKey ? previewState : null}
+            />
+          );
+        })}
       </div>
 
       {data.run?.completedAt && visibleRecommendations.length > 0 && (
@@ -1521,15 +1531,6 @@ function ConnectionsCard({ accountId = "", pftlExplorerUrl = "", profilePublic =
           Refreshed {fmtDateTime(data.run.completedAt)}
         </div>
       )}
-      <ProfilePreviewModal
-        connection={previewState.connection}
-        error={previewState.error}
-        loading={previewState.loading}
-        onClose={() => setPreviewState({ connection: null, error: "", loading: false, profile: null })}
-        onCopyWallet={copyWalletAddress}
-        pftlExplorerUrl={pftlExplorerUrl}
-        profile={previewState.profile}
-      />
     </section>
   );
 }
