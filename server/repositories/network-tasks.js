@@ -346,7 +346,7 @@ export async function getNetworkTaskEligibility({ accountId = "", walletAddress 
     normalizedWalletAddress
       ? query(
         `
-          SELECT wallet_address, last_hot_sync_at, last_full_sync_at, status
+          SELECT wallet_address, last_hot_sync_at, last_archive_sync_at AS last_full_sync_at, status
           FROM pftl_sync_wallets
           WHERE account_id = $1
             AND wallet_address = $2

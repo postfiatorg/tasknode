@@ -126,4 +126,91 @@ assert.equal(freshProjectFollowupPressure.summary.requiresAction, false);
 assert.equal(freshProjectFollowupPressure.signals[0].requiresAction, false);
 assert.equal(freshProjectFollowupPressure.signals[0].hasOpenFollowup, true);
 
+const stoppedAfterOlderOutstandingPressure = buildBoardManagerActionPressure({
+  hiveProjects: {
+    projects: {
+      active_product_project: {
+        id: "active_product_project",
+        title: "Active product project",
+        status: "active",
+        tasks: [{ taskId: "task_old_open" }, { taskId: "task_recent_refused" }],
+        contributors: [{ walletAddress: "rPressureSmoke" }],
+        taskCount: 2,
+        contributorCount: 1,
+      },
+    },
+  },
+  networkTaskContent: {
+    completed: [],
+    outstanding: [
+      {
+        projectId: "active_product_project",
+        taskId: "task_old_open",
+        state: "accepted",
+        updatedAt: "2026-05-30T02:40:00.000Z",
+      },
+    ],
+    stopped: [
+      {
+        projectId: "active_product_project",
+        taskId: "task_recent_refused",
+        state: "refused",
+        updatedAt: "2026-05-30T02:50:00.000Z",
+      },
+    ],
+    pendingGeneration: [],
+  },
+  networkTaskCandidates: [{ accountId: "acct_pressure_smoke", walletAddress: "rPressureSmoke" }],
+  recentBoardManagerRuns: [],
+  openFollowups: [],
+});
+assert.equal(stoppedAfterOlderOutstandingPressure.summary.requiresAction, true);
+assert.equal(stoppedAfterOlderOutstandingPressure.signals[0].requiresAction, true);
+assert.equal(stoppedAfterOlderOutstandingPressure.signals[0].preferredNextAction, "initiate_network_task");
+assert.match(
+  stoppedAfterOlderOutstandingPressure.signals[0].reasons.join(" "),
+  /latest stopped Network Task has no newer replacement task or generation job/
+);
+
+const replacementAfterStoppedPressure = buildBoardManagerActionPressure({
+  hiveProjects: {
+    projects: {
+      active_product_project: {
+        id: "active_product_project",
+        title: "Active product project",
+        status: "active",
+        tasks: [{ taskId: "task_recent_refused" }, { taskId: "task_new_open" }],
+        contributors: [{ walletAddress: "rPressureSmoke" }],
+        taskCount: 2,
+        contributorCount: 1,
+      },
+    },
+  },
+  networkTaskContent: {
+    completed: [],
+    outstanding: [
+      {
+        projectId: "active_product_project",
+        taskId: "task_new_open",
+        state: "proposed",
+        updatedAt: "2026-05-30T02:55:00.000Z",
+      },
+    ],
+    stopped: [
+      {
+        projectId: "active_product_project",
+        taskId: "task_recent_refused",
+        state: "refused",
+        updatedAt: "2026-05-30T02:50:00.000Z",
+      },
+    ],
+    pendingGeneration: [],
+  },
+  networkTaskCandidates: [{ accountId: "acct_pressure_smoke", walletAddress: "rPressureSmoke" }],
+  recentBoardManagerRuns: [],
+  openFollowups: [],
+});
+assert.equal(replacementAfterStoppedPressure.summary.requiresAction, false);
+assert.equal(replacementAfterStoppedPressure.signals.length, 0);
+
 console.log("board-manager-action-pressure-smoke ok");

@@ -90,3 +90,14 @@ before the generation jobs. Intent idempotency is semantic: project, candidate,
 task class, normalized project need, and reward band. A repeated Board Manager
 run should return `network_task_semantic_intent_exists` instead of enqueueing a
 second job for the same work.
+
+If the board keeps choosing `do_nothing` while a user appears eligible for
+Network Tasks, inspect `boardActionPressure` before trusting a project document
+or older follow-up summary. `eligibleCandidateCount > 0` means at least one
+candidate is live after outstanding tasks and pending generation jobs are
+accounted for. Other users' stale tasks, orphaned allocations, generated-but-
+unlinked jobs, and open follow-ups do not globally block that candidate. Recent
+refusals are routing feedback, not a current capacity status, unless the live
+packet includes an explicit availability constraint. A recent stopped task with
+no newer replacement task or generation job should create action pressure even
+when the project still has older work open.

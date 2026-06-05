@@ -231,6 +231,7 @@ const prompt = formatBoardManagerCodexPrompt({
 assert.match(prompt, /BOARD MANAGER SOURCE PACKET/);
 assert.match(prompt, /Do not mutate database state/);
 assert.match(prompt, /pf\.hive\.board_manager\.source\.v0/);
+assert.match(prompt, /Recent refusals are routing feedback/);
 
 const smokeDecisionOutput = {
   action: "message_user",

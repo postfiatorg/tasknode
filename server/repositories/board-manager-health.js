@@ -191,6 +191,8 @@ function projectPressureSignal({
   recentBoardManagerRuns = [],
   recentUserFollowup = false,
   openFollowups = [],
+  outstandingTasks = [],
+  pendingTasks = [],
   completedTasks = [],
   stoppedTasks = [],
 } = {}) {
@@ -206,6 +208,8 @@ function projectPressureSignal({
   const hasPendingNetworkTaskGeneration = pendingProjectIds.has(projectId);
   const hasCompletedNetworkTask = completedProjectIds.has(projectId);
   const hasStoppedNetworkTask = stoppedProjectIds.has(projectId);
+  const latestStoppedMs = latestProjectTaskMs(stoppedTasks, projectId);
+  const latestReplacementMs = latestProjectTaskMs([...safeArray(outstandingTasks), ...safeArray(pendingTasks)], projectId);
   const latestClosureMs = latestProjectTaskMs([...safeArray(completedTasks), ...safeArray(stoppedTasks)], projectId);
   const hasOpenFollowup = hasOpenFollowupForProject({ projectId, openFollowups, sinceMs: latestClosureMs });
   const recentUserFollowupAfterClosure = latestClosureMs > 0
@@ -229,6 +233,9 @@ function projectPressureSignal({
   }
   if (hasStoppedNetworkTask && !hasOutstandingNetworkTask && !hasPendingNetworkTaskGeneration) {
     reasons.push("recent network task stopped without a replacement or closure decision");
+  }
+  if (latestStoppedMs > 0 && latestStoppedMs > latestReplacementMs && eligibleCandidateCount > 0) {
+    reasons.push("latest stopped Network Task has no newer replacement task or generation job");
   }
 
   if (!reasons.length) return null;
@@ -281,9 +288,11 @@ export function buildBoardManagerActionPressure({
   const stoppedProjectIds = taskProjectIds(networkTaskContent.stopped);
   const completedTasks = safeArray(networkTaskContent.completed);
   const stoppedTasks = safeArray(networkTaskContent.stopped);
+  const outstandingTasks = safeArray(networkTaskContent.outstanding);
+  const pendingTasks = safeArray(networkTaskContent.pendingGeneration);
   const activeKeys = activeCandidateKeys([
-    ...safeArray(networkTaskContent.outstanding),
-    ...safeArray(networkTaskContent.pendingGeneration),
+    ...outstandingTasks,
+    ...pendingTasks,
   ]);
   const capacityBlockers = activeNetworkTaskCapacityBlockers({
     outstanding: networkTaskContent.outstanding,
@@ -309,6 +318,8 @@ export function buildBoardManagerActionPressure({
         recentBoardManagerRuns,
         recentUserFollowup,
         openFollowups,
+        outstandingTasks,
+        pendingTasks,
         completedTasks,
         stoppedTasks,
       })

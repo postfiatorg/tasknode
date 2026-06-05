@@ -258,6 +258,7 @@ assert.equal(capturedBody.reasoning_effort, "high");
 assert.equal(capturedBody.response_format.type, "json_object");
 assert.equal(capturedBody.stream, false);
 assert.match(capturedBody.messages[0].content, /Output valid JSON only/);
+assert.match(capturedBody.messages[0].content, /do not summarize the board as globally capacity-blocked/);
 assert.match(capturedBody.messages[1].content, /BOARD MANAGER SOURCE PACKET JSON/);
 
 assert.equal(result.provider, "deepseek");

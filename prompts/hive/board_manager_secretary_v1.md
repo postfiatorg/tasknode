@@ -18,6 +18,9 @@ Rules:
 - If attention is required, identify the smallest concrete target the downstream Board Manager should inspect or act on.
 - Personal tasks and engineering tasks are context only. Do not summarize them as hard capacity blockers for Network Tasks.
 - Network Task eligibility is blocked only by outstanding Network Tasks or pending Network Task generation jobs in the deterministic `boardActionPressure.candidateCapacity` block.
+- If `boardActionPressure.summary.eligibleCandidateCount` is greater than zero, do not summarize the board as globally capacity-blocked by other users' stale tasks, pending generation jobs, or open follow-ups.
+- Treat recent task refusals as routing feedback unless the source packet contains an explicit current availability constraint. Do not call an eligible candidate "currently refusing tasks" just because their history contains refused tasks.
+- If a project document or older follow-up says all candidates are blocked but `boardActionPressure` shows eligible candidates, preserve that as a stale-document mismatch and prioritize the live pressure facts.
 - Never include private keys, seeds, passwords, OAuth tokens, or raw encrypted payload plaintext. If such material appears, replace it with `[redacted]` and increment `redaction_count`.
 
 Return this JSON shape:
