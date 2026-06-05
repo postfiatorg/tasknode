@@ -35,6 +35,30 @@ assert.equal(hidden.metadata.keepPublic, "safe-context");
 assert.equal(hidden.metadata.operator_repair, undefined);
 assert.equal(hidden.metadata.last_error, undefined);
 
+const autoHiddenNetworkFailure = publicTaskRequest({
+  request_id: "req_network_generation_failed_before_offer",
+  source: "network_task",
+  requested_task_kind: "network",
+  status: "failed",
+  last_error: "context_ipfs_fetch_failed",
+  created_at: now,
+  updated_at: now,
+  metadata_json: {
+    operator_repair: {
+      action: "fail_network_task_generation_chain",
+      operator: "task_generation_worker",
+      public_visibility: "hidden",
+      user_visible: false,
+      reason: "context_ipfs_fetch_failed",
+    },
+  },
+});
+
+assert.equal(autoHiddenNetworkFailure.statusLabel, "Closed");
+assert.equal(autoHiddenNetworkFailure.isActive, false);
+assert.equal(autoHiddenNetworkFailure.canRetry, false);
+assert.equal(autoHiddenNetworkFailure.lastError, "");
+
 const userFailedRequest = publicTaskRequest({
   request_id: "req_user_failed_visible",
   status: "failed",

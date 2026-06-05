@@ -14,6 +14,7 @@ import {
 } from "./repositories/task-requests.js";
 import {
   completeNetworkTaskOfferFromTaskRequest,
+  failNetworkTaskGenerationChain,
   markNetworkTaskOfferLinkFailed,
 } from "./repositories/network-tasks.js";
 import { encryptTasknodePayload, fetchAndDecryptTasknodePayload } from "./task-payloads.js";
@@ -106,6 +107,54 @@ function safeText(value = "", max = 4000) {
 
 function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function isNetworkGeneratedRequest(request = {}) {
+  const source = safeText(request.source, 80).toLowerCase();
+  const requestedKind = safeText(request.requestedTaskKind || request.requested_task_kind, 80).toLowerCase();
+  return source === "network_task" || requestedKind === "network" || requestedKind === "alpha";
+}
+
+function networkGenerationFailureMetadata(message = "") {
+  return {
+    operator_repair: {
+      action: "fail_network_task_generation_chain",
+      operator: "task_generation_worker",
+      reason: safeText(message, 1000) || "network_task_generation_failed_before_offer",
+      public_visibility: "hidden",
+      user_visible: false,
+      repaired_at: new Date().toISOString(),
+    },
+  };
+}
+
+async function markGenerationFailure({ request = {}, message = "", logger = console } = {}) {
+  const requestId = request.requestId || request.request_id;
+  if (isNetworkGeneratedRequest(request)) {
+    const repair = await failNetworkTaskGenerationChain({
+      requestId,
+      reason: message || "network_task_generation_failed_before_offer",
+      operator: "task_generation_worker",
+    }).catch(async (error) => {
+      logger.warn?.("network_task_generation_chain_auto_repair_failed", {
+        requestId,
+        error: error?.message || String(error),
+      });
+      return null;
+    });
+
+    if (repair?.ok) return { ok: true, hidden: true, repair };
+
+    await markTaskRequestFailed({
+      requestId,
+      error: message,
+      metadata: networkGenerationFailureMetadata(message),
+    }).catch(() => null);
+    return { ok: false, hidden: true, repair };
+  }
+
+  await markTaskRequestFailed({ requestId, error: message }).catch(() => null);
+  return { ok: true, hidden: false, repair: null };
 }
 
 function objectValue(source = {}, keys = []) {
@@ -600,8 +649,12 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
       results.push({ ok: true, requestId: request.requestId, taskId: offer.taskId, txHash: offer.txHash });
     } catch (error) {
       const message = safeText(error?.message || error, 1000);
-      await markTaskRequestFailed({ requestId: request.requestId, error: message }).catch(() => null);
-      logger.warn?.("task_generation_request_failed", { requestId: request.requestId, error: message });
+      const failure = await markGenerationFailure({ request, message, logger });
+      logger.warn?.("task_generation_request_failed", {
+        requestId: request.requestId,
+        error: message,
+        userVisible: !failure.hidden,
+      });
       results.push({ ok: false, requestId: request.requestId, error: message });
     }
   }
