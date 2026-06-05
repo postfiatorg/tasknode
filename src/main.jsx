@@ -1357,6 +1357,7 @@ function App() {
                 onWalletVaultUnlocked={handleWalletVaultUnlocked}
                 session={appState?.session}
                 wallet={appState?.wallet}
+                walletSecret={walletSecretRef.current}
                 walletVault={walletVaultStatus}
                 usage={appState?.usage}
               />

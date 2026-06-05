@@ -876,6 +876,16 @@ export function walletActions() {
         "Implement unlock transaction boundaries and signing confirmation screens before enabling wallet unlock.",
     }),
     walletAction({
+      id: "send_pft",
+      label: "Send PFT",
+      path: "/api/wallet/send/prepare",
+      enabled: true,
+      note:
+        "Prepares a native PFTL Payment for the linked wallet. The browser signs locally and submits the signed blob to /api/wallet/send/submit.",
+      actionRequired:
+        "Unlock the matching local seed vault, enter a destination and amount, review the payment, then sign locally.",
+    }),
+    walletAction({
       id: "delink",
       label: "Delink wallet",
       path: "/api/wallet/delink",

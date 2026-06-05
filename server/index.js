@@ -47,6 +47,7 @@ import { handleMemoryRoute } from "./memory-routes.js";
 import { handleHiveRoute } from "./hive-routes.js";
 import { handleSystemStatusRoute } from "./system-status.js";
 import { handleTelegramBotRoute } from "./telegram-bot.js";
+import { walletSendPrepare, walletSendSubmit } from "./wallet-send.js";
 import { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole } from "./process-role.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -794,6 +795,20 @@ async function routeApi(req, url, res) {
       limit: url.searchParams.get("limit"),
     });
     json(res, result.status || (result.ok ? 200 : 502), result);
+    return true;
+  }
+
+  if (url.pathname === "/api/wallet/send/prepare") {
+    const payload = req.method === "POST" ? await readJson(req, 8192) : {};
+    const result = await walletSendPrepare(payload, req.method, session);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/wallet/send/submit") {
+    const payload = req.method === "POST" ? await readJson(req, 8192) : {};
+    const result = await walletSendSubmit(payload, req.method, session);
+    json(res, result.status, result.body);
     return true;
   }
 

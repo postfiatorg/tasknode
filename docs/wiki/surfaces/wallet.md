@@ -8,14 +8,15 @@ Wallet is the identity and value surface. It shows PFT balance, local seed vault
 2. The local seed vault is encrypted in the browser with the user's password.
 3. The user can unlock, lock, back up, delink, or relink the wallet.
 4. Wallet activity is fetched from PFTL and displayed without exposing RPC details in the UX.
-5. New eligible OAuth accounts may receive a one-time PFT initiation grant after wallet creation only after the matching encrypted local vault is saved.
-6. Email-only accounts can receive the same one-time grant after creating a wallet, saving/unlocking the matching local vault, and crediting more than `$10` USDC through the account top-up rail. The wallet page shows a subtle italic note under chat credit until that grant path is satisfied.
+5. The user can send native PFT from the linked wallet after unlocking the matching local seed vault. The server prepares and submits the transaction; the browser signs locally.
+6. New eligible OAuth accounts may receive a one-time PFT initiation grant after wallet creation only after the matching encrypted local vault is saved.
+7. Email-only accounts can receive the same one-time grant after creating a wallet, saving/unlocking the matching local vault, and crediting more than `$10` USDC through the account top-up rail. The wallet page shows a subtle italic note under chat credit until that grant path is satisfied.
 
 ## Technical Architecture
 
 Frontend wallet UX lives in `src/features/wallet/WalletView.jsx`, `src/features/wallet/WalletUnlockModal.jsx`, `src/features/wallet/WalletSeedBackupModal.jsx`, `src/features/wallet/wallet-state.js`, and `src/wallet-core.js`.
 
-Backend wallet logic lives in `server/pftl-balance.js`, `server/pftl-transactions.js`, `server/pftl-faucet.js`, `server/pftl-submit.js`, `server/wallet-proof.js`, and `server/ethereum-deposits.js`.
+Backend wallet logic lives in `server/pftl-balance.js`, `server/pftl-transactions.js`, `server/pftl-faucet.js`, `server/pftl-submit.js`, `server/wallet-send.js`, `server/wallet-proof.js`, and `server/ethereum-deposits.js`.
 
 Wallet linkage belongs to the signup identity account, not only the Post Fiat wallet ID. This lets GitHub, X, Telegram, and future login identities map cleanly into one account model.
 
@@ -38,7 +39,21 @@ The unlock modal is available from multiple surfaces:
 
 If the vault is already unlocked, the same wallet control path locks it instead of opening another modal. Locking clears the decrypted mnemonic from memory but does not delink the wallet, delete the encrypted browser vault, delete context, or alter PFT balance/activity caches.
 
-Locked wallets can still show linked address, balance, transaction history, billing top-up state, and cached context. Unlock is required only for wallet-bound private-key actions: signing PFTL pointer transactions, publishing encrypted context to PFTL, decrypting historical encrypted context payloads, task request signing, task acceptance/refusal/cancellation, task evidence submission, verification evidence signing, and seed backup.
+Locked wallets can still show linked address, balance, transaction history, billing top-up state, and cached context. Unlock is required only for wallet-bound private-key actions: sending PFT, signing PFTL pointer transactions, publishing encrypted context to PFTL, decrypting historical encrypted context payloads, task request signing, task acceptance/refusal/cancellation, task evidence submission, verification evidence signing, and seed backup.
+
+## PFT Send
+
+PFT Send is a browser-signed native PFTL `Payment` flow.
+
+1. The user opens Wallet, unlocks the matching local vault, and clicks `Send`.
+2. The browser posts destination and amount to `/api/wallet/send/prepare`.
+3. The server validates the signed-in account, linked wallet, destination, amount, PFTL balance, reserve, fee, and network id, then returns an autofilled transaction JSON.
+4. The browser signs the prepared transaction with `src/wallet-core.js::signPreparedPftlTransaction`.
+5. The browser posts only the signed transaction blob, expected destination, and expected amount to `/api/wallet/send/submit`.
+6. The server decodes the blob and rejects it unless the source account, destination, amount, transaction type, and `NetworkID` match the prepared payment boundary.
+7. The server submits to PFTL and returns transaction hash, ledger index, and engine result.
+
+The API never receives mnemonic, private key, wallet password, or decrypted vault material. Send is not the Ethereum billing top-up rail and does not move USDC/USDT/ETH.
 
 When a task modal opens the unlock flow, the task detail modal remains in place behind the wallet unlock modal. A successful unlock returns the user to the same task action instead of forcing them to close the task and navigate to Wallet.
 
@@ -78,6 +93,8 @@ flowchart LR
 - If the vault is locked, show locked state without erasing wallet linkage.
 - If the user clicks a locked wallet state, open unlock where possible instead of forcing navigation to the Wallet tab.
 - If the encrypted local vault is missing, send the user to the Wallet tab to relink or create a vault.
+- If the user clicks Send with a locked vault, open unlock before showing the send form.
+- If a signed send transaction does not match the linked wallet, destination, amount, or PFTL network id, reject it before submission.
 - Delinking should not delete context.
 - Existing linked wallet conflicts should be resolved at the account-link boundary.
 - Balance reads should show loading or error, never `NaN`, `undefined`, or fake freshness.
@@ -102,6 +119,7 @@ Review implementation against this document (wallet). Mark each item when verifi
 - [ ] Failure modes documented here have matching user-visible error handling.
 - [ ] Link vs unlock vs proof boundaries match Auth And Connected Accounts, Encryption, and this Wallet page.
 - [ ] Initiation grant and faucet paths are idempotent and auditable.
+- [ ] PFT Send prepare/submit routes reject wrong account, destination, amount, transaction type, and network id.
 
 ### Coherence
 - [ ] Surface behavior matches Architecture docs for cache vs canonical state.
@@ -119,5 +137,6 @@ Review implementation against this document (wallet). Mark each item when verifi
 - [ ] Account scoping enforced on all read/write API paths for this surface.
 - [ ] Wallet-bound actions require linked unlocked wallet as documented.
 - [ ] Seed vault stays browser-local; server never receives mnemonic or private keys.
+- [ ] PFT Send signs locally and submits only a signed transaction blob.
 - [ ] Wallet proof required only for wallet-bound actions, not ordinary login.
 - [ ] Ethereum deposit addresses are account-scoped; operator xpub custody boundaries documented.

@@ -373,6 +373,114 @@ export async function preparePftPointerTransaction({
   }
 }
 
+export async function preparePftPaymentTransaction({
+  account,
+  destination,
+  amountPft,
+  amountDrops,
+  env = process.env,
+} = {}) {
+  const source = String(account || "").trim();
+  if (!isValidClassicAddress(source)) {
+    const error = new Error("source_wallet_invalid");
+    error.status = 400;
+    throw error;
+  }
+
+  const target = String(destination || "").trim();
+  if (!isValidClassicAddress(target)) {
+    const error = new Error("destination_wallet_invalid");
+    error.status = 400;
+    throw error;
+  }
+
+  let drops = String(amountDrops || "").trim();
+  if (!drops) {
+    const amountText = String(amountPft || "").trim();
+    if (!amountText || !/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(amountText)) {
+      const error = new Error("payment_amount_invalid");
+      error.status = 400;
+      throw error;
+    }
+    try {
+      drops = xrpToDrops(amountText);
+    } catch {
+      const error = new Error("payment_amount_invalid");
+      error.status = 400;
+      throw error;
+    }
+  }
+
+  if (!/^\d+$/.test(drops) || BigInt(drops) <= 0n) {
+    const error = new Error("payment_amount_invalid");
+    error.status = 400;
+    throw error;
+  }
+
+  const networkId = configuredNetworkId(env);
+  const timeoutMs = Math.max(3000, Number(env.PFTL_SUBMIT_TIMEOUT_MS || DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
+  const { client, endpoint } = await connectPftlClient({ env, timeoutMs });
+
+  try {
+    const payment = applyNetworkId({
+      TransactionType: "Payment",
+      Account: source,
+      Destination: target,
+      Amount: drops,
+    }, networkId);
+
+    let prepared;
+    try {
+      prepared = applyNetworkId(await client.autofill(payment), networkId);
+    } catch (error) {
+      if (sourceWalletUnfunded(error)) {
+        const wrapped = new Error("Active wallet is not activated on PFTL.");
+        wrapped.status = 400;
+        wrapped.code = "source_wallet_unfunded";
+        throw wrapped;
+      }
+      throw error;
+    }
+
+    const [accountInfo, serverInfo] = await Promise.all([
+      client.request({ command: "account_info", account: source, ledger_index: "validated" }),
+      client.request({ command: "server_info" }),
+    ]);
+    applyLastLedgerBuffer(prepared, serverInfo?.result?.info?.validated_ledger?.seq);
+
+    const balanceDrops = accountInfo?.result?.account_data?.Balance || "0";
+    const reserveBasePft = serverInfo?.result?.info?.validated_ledger?.reserve_base_xrp ?? 10;
+    const reserveDrops = xrpToDrops(String(reserveBasePft));
+    const feeDrops = prepared?.Fee || "0";
+    const availableDrops = BigInt(balanceDrops) - BigInt(reserveDrops) - BigInt(feeDrops);
+    if (availableDrops <= 0n || BigInt(drops) > availableDrops) {
+      const error = new Error("Insufficient PFT balance to send this payment.");
+      error.status = 400;
+      error.code = "payment_insufficient_balance";
+      throw error;
+    }
+
+    return {
+      txJson: prepared,
+      fromAddress: source,
+      destination: target,
+      amountDrops: drops,
+      feeDrops,
+      balanceDrops,
+      reserveDrops,
+      availableDrops: availableDrops.toString(),
+      endpoint,
+      networkId,
+    };
+  } finally {
+    try {
+      if (client.isConnected()) await client.disconnect();
+    } catch {
+      // Disconnect errors are non-actionable after prepare.
+    }
+  }
+}
+
 export async function preparePftNftMintTransaction({
   account,
   uriHex,
@@ -448,6 +556,8 @@ export async function preparePftNftMintTransaction({
 export async function submitSignedPftTransaction({
   signedTxBlob,
   expectedAccount = "",
+  expectedDestination = "",
+  expectedAmountDrops = "",
   env = process.env,
 } = {}) {
   const blob = String(signedTxBlob || "").trim();
@@ -480,7 +590,19 @@ export async function submitSignedPftTransaction({
     throw error;
   }
   if (decoded?.TransactionType !== "Payment") {
-    const error = new Error("Only PFTL payment pointer transactions can be submitted here.");
+    const error = new Error("Only PFTL Payment transactions can be submitted here.");
+    error.status = 400;
+    throw error;
+  }
+  const destination = String(decoded?.Destination || "").trim();
+  if (expectedDestination && destination !== String(expectedDestination).trim()) {
+    const error = new Error("Signed transaction destination does not match the prepared payment.");
+    error.status = 400;
+    throw error;
+  }
+  const amount = typeof decoded?.Amount === "string" ? decoded.Amount : "";
+  if (expectedAmountDrops && amount !== String(expectedAmountDrops).trim()) {
+    const error = new Error("Signed transaction amount does not match the prepared payment.");
     error.status = 400;
     throw error;
   }

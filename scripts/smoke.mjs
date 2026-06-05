@@ -322,6 +322,32 @@ if (devAuth.response.status === 200) {
   );
 
   await checkRequest(
+    "/api/wallet/send/prepare",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ destination: "not-a-wallet", amountPft: "1" }),
+    },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.status === 400 && body.error === "destination_wallet_invalid";
+    }
+  );
+
+  await checkRequest(
+    "/api/wallet/send/submit",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ signedTxBlob: "nothex" }),
+    },
+    (response, text) => {
+      const body = JSON.parse(text);
+      return response.status === 400 && body.error === "signed_transaction_blob_invalid";
+    }
+  );
+
+  await checkRequest(
     "/api/chat/history",
     { headers: { cookie } },
     (response, text) => {
@@ -647,6 +673,7 @@ await check("/api/wallet/actions", (response, text) => {
   const createAction = body.actions?.find((action) => action.id === "create_start");
   const linkAction = body.actions?.find((action) => action.id === "link_start");
   const unlockAction = body.actions?.find((action) => action.id === "unlock_start");
+  const sendAction = body.actions?.find((action) => action.id === "send_pft");
   const delinkAction = body.actions?.find((action) => action.id === "delink");
   const relinkAction = body.actions?.find((action) => action.id === "relink_start");
   return (
@@ -654,6 +681,8 @@ await check("/api/wallet/actions", (response, text) => {
     createAction?.enabled === true &&
     linkAction?.enabled === true &&
     unlockAction?.enabled === false &&
+    sendAction?.enabled === true &&
+    sendAction?.path === "/api/wallet/send/prepare" &&
     delinkAction?.enabled === true &&
     relinkAction?.enabled === true
   );
@@ -665,6 +694,16 @@ await checkRequest("/api/wallet/link/start", { method: "POST" }, (response, text
 });
 
 await checkRequest("/api/wallet/delink", { method: "POST" }, (response, text) => {
+  const body = JSON.parse(text);
+  return response.status === 401 && body.error === "wallet_login_required";
+});
+
+await checkRequest("/api/wallet/send/prepare", { method: "POST" }, (response, text) => {
+  const body = JSON.parse(text);
+  return response.status === 401 && body.error === "wallet_login_required";
+});
+
+await checkRequest("/api/wallet/send/submit", { method: "POST" }, (response, text) => {
   const body = JSON.parse(text);
   return response.status === 401 && body.error === "wallet_login_required";
 });

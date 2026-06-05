@@ -74,6 +74,7 @@ export function WalletView({
   onWalletVaultUnlocked,
   session,
   wallet,
+  walletSecret,
   walletVault,
   usage,
 }) {
@@ -87,6 +88,7 @@ export function WalletView({
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
   const [delinkOpen, setDelinkOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [creationResult, setCreationResult] = useState(null);
   const [creationRetrying, setCreationRetrying] = useState(false);
@@ -108,6 +110,7 @@ export function WalletView({
   const createAction = actions.find((action) => action.id === "create_start");
   const linkAction = actions.find((action) => action.id === "link_start");
   const relinkAction = actions.find((action) => action.id === "relink_start");
+  const sendAction = actions.find((action) => action.id === "send_pft");
   const delinkAction = actions.find((action) => action.id === "delink");
   const initiationRetryAction = actions.find((action) => action.id === "initiation_retry");
   const fundingActions = usage?.fundingActions || [];
@@ -292,6 +295,36 @@ export function WalletView({
         message: error?.message || "Top-up is unavailable.",
       });
     }
+  }
+
+  function openSendFlow() {
+    if (!signedIn) {
+      setMessage("Sign in before sending PFT.");
+      onLoginRequired?.();
+      return;
+    }
+    if (!walletLinked) {
+      setMessage("Link a PFT wallet before sending PFT.");
+      return;
+    }
+    if (!vaultAvailable) {
+      setMessage("Save the matching local seed vault before sending PFT.");
+      setWalletProofAction(linkAction);
+      setLinkOpen(true);
+      return;
+    }
+    if (!vaultUnlocked) {
+      setMessage("Unlock the local seed vault before sending PFT.");
+      setUnlockOpen(true);
+      return;
+    }
+    if (!walletSecret?.mnemonic || walletSecret.address !== linkedWallet.address) {
+      setMessage("Unlock the matching local seed vault before sending PFT.");
+      setUnlockOpen(true);
+      return;
+    }
+    setMessage("");
+    setSendOpen(true);
   }
 
   async function refreshTopUpDeposits() {
@@ -612,7 +645,7 @@ export function WalletView({
                 <Download size={16} strokeWidth={2} />
                 Receive
               </button>
-              <button className="wallet-secondary-action" disabled type="button">
+              <button className="wallet-secondary-action" disabled={!walletLinked} onClick={openSendFlow} type="button">
                 <Send size={16} strokeWidth={2} />
                 Send
               </button>
@@ -866,6 +899,19 @@ export function WalletView({
           state={topUpState}
         />
       )}
+      {sendOpen && (
+        <WalletSendModal
+          action={sendAction}
+          linkedWallet={linkedWallet}
+          onAppStateChange={onAppStateChange}
+          onClose={() => setSendOpen(false)}
+          onSent={async (result) => {
+            setMessage(result?.message || "PFT sent.");
+            await refreshWalletTransactions({ force: true });
+          }}
+          walletSecret={walletSecret}
+        />
+      )}
       {creationResult && (
         <WalletCreationResultModal
           onClose={() => setCreationResult(null)}
@@ -878,6 +924,188 @@ export function WalletView({
           result={creationResult}
         />
       )}
+    </div>
+  );
+}
+
+function formatPftFromDrops(drops) {
+  const pft = Number(drops || 0) / 1_000_000;
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: pft > 0 && pft < 0.01 ? 6 : 0,
+    maximumFractionDigits: pft > 0 && pft < 0.01 ? 6 : 6,
+  }).format(pft);
+}
+
+function WalletSendModal({
+  action,
+  linkedWallet,
+  onAppStateChange,
+  onClose,
+  onSent,
+  walletSecret,
+}) {
+  const [destination, setDestination] = useState("");
+  const [amountPft, setAmountPft] = useState("");
+  const [message, setMessage] = useState("");
+  const [prepared, setPrepared] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(null);
+
+  const fromAddress = linkedWallet?.address || "";
+  const canPrepare = destination.trim() && amountPft.trim() && !sending && !sent;
+
+  async function prepareAndSend() {
+    if (!walletSecret?.mnemonic || walletSecret.address !== fromAddress) {
+      setMessage("Unlock the matching local seed vault before sending PFT.");
+      return;
+    }
+
+    setSending(true);
+    setMessage("");
+    setSent(null);
+    try {
+      const prepare = await requestJson(action?.path || "/api/wallet/send/prepare", {
+        method: action?.method || "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          destination: destination.trim(),
+          amountPft: amountPft.trim(),
+        }),
+      });
+      if (!prepare.ok || !prepare.body?.ok || !prepare.body?.txJson) {
+        throw new Error(prepare.body?.message || prepare.body?.actionRequired || "PFT payment could not be prepared.");
+      }
+      setPrepared(prepare.body);
+
+      const walletCore = await import("../../wallet-core");
+      const signed = walletCore.signPreparedPftlTransaction({
+        mnemonic: walletSecret.mnemonic,
+        txJson: prepare.body.txJson,
+        expectedAddress: fromAddress,
+      });
+
+      const submit = await requestJson("/api/wallet/send/submit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          signedTxBlob: signed.txBlob,
+          expectedDestination: prepare.body.destination,
+          expectedAmountDrops: prepare.body.amountDrops,
+        }),
+      });
+      if (!submit.ok || !submit.body?.ok) {
+        throw new Error(submit.body?.message || submit.body?.actionRequired || "PFT payment could not be submitted.");
+      }
+
+      const result = {
+        ...submit.body,
+        amountDrops: prepare.body.amountDrops,
+        message: submit.body.message || "PFT sent.",
+      };
+      setSent(result);
+      setMessage(result.message);
+      await onAppStateChange?.();
+      await onSent?.(result);
+    } catch (error) {
+      setMessage(error?.message || "PFT send failed.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop chat-edit-backdrop" onClick={onClose} role="presentation">
+      <div
+        aria-label="Send PFT"
+        aria-modal="true"
+        className="wallet-link-modal wallet-send-modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header>
+          <div>
+            <h2>Send PFT</h2>
+            <p>Sign locally from {shortWalletAddress(fromAddress)}.</p>
+          </div>
+          <button className="icon-button" onClick={onClose} type="button" aria-label="Close PFT send">
+            <X size={16} strokeWidth={2} />
+          </button>
+        </header>
+
+        <label className="wallet-seed-field compact">
+          <span>Destination wallet</span>
+          <input
+            autoCapitalize="none"
+            autoComplete="off"
+            autoCorrect="off"
+            disabled={sending || Boolean(sent)}
+            onChange={(event) => {
+              setDestination(event.target.value);
+              setPrepared(null);
+              setMessage("");
+            }}
+            placeholder="r..."
+            spellCheck={false}
+            value={destination}
+          />
+        </label>
+
+        <label className="wallet-seed-field compact">
+          <span>Amount</span>
+          <input
+            autoComplete="off"
+            disabled={sending || Boolean(sent)}
+            inputMode="decimal"
+            onChange={(event) => {
+              setAmountPft(event.target.value);
+              setPrepared(null);
+              setMessage("");
+            }}
+            placeholder="0.00"
+            value={amountPft}
+          />
+        </label>
+
+        <div className="wallet-proof-summary">
+          <span>
+            <strong>{shortWalletAddress(fromAddress)}</strong>
+            From
+          </span>
+          <span>
+            <strong>{prepared?.feeDrops ? formatPftFromDrops(prepared.feeDrops) : "-"}</strong>
+            Fee PFT
+          </span>
+          <span>
+            <strong>{prepared?.networkId || "-"}</strong>
+            Network
+          </span>
+        </div>
+
+        <div className="wallet-link-warning">
+          The recovery phrase stays in this browser. Task Node receives only the signed PFTL transaction blob.
+        </div>
+
+        {sent?.txHash && (
+          <div className="wallet-creation-result-state is-success">
+            <span>Payment submitted</span>
+            <strong>{formatPftFromDrops(sent.amountDrops)} PFT</strong>
+            <small>Tx {shortWalletAddress(sent.txHash)}</small>
+          </div>
+        )}
+
+        {message && <div className="inline-message">{message}</div>}
+
+        <footer>
+          <button className="light-pill" disabled={sending} onClick={onClose} type="button">
+            {sent ? "Done" : "Cancel"}
+          </button>
+          {!sent && (
+            <button className="dark-pill" disabled={!canPrepare} onClick={prepareAndSend} type="button">
+              {sending ? "Sending" : "Send PFT"}
+            </button>
+          )}
+        </footer>
+      </div>
     </div>
   );
 }
