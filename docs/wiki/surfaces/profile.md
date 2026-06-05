@@ -174,13 +174,13 @@ Tables:
 - `recommended_connection_profiles`: one current packet and embedding per discoverable account.
 - `recommended_connection_runs`: one rerank run per target account and week-scale refresh window.
 - `recommended_connections`: the 3-4 persisted recommendations from the latest successful run.
-- `recommended_connection_events`: feedback such as viewed, clicked, dismissed, messaged, or converted into shared task work.
+- `recommended_connection_events`: lightweight interaction telemetry such as profile views, wallet clicks, and wallet copies.
 
 The recurring worker is `server/recommended-connections-worker.js`, started by `server/background-workers.js` unless `TASKNODE_RECOMMENDED_CONNECTIONS_WORKER_ENABLED=false`. It refreshes public/discoverable profile embeddings, then reranks stale target profiles. The default rerank limit is one target profile per tick, and a completed run suppresses another normal rerank for seven days. Manual refresh uses the same weekly guard unless explicitly forced by server code.
 
 The prompt is `prompts/profile/recommended_connections_v1.md`. It receives the target packet plus at most 50 candidate packets and returns raw JSON containing 3-4 recommendations. The recommendation prompt bans internal jargon and asks for clear reasons, supporting signals, and a useful first move.
 
-The private profile page renders recommendation cards from `GET /api/profile/recommended-connections`. Each card shows the recommended member's public handle or display name, a `View profile` action, wallet metadata when present, one role line, the plain-English reason, the strongest supporting signals, and a suggested first action. `GET /api/profile/member?accountId=...` returns only the same sanitized public profile read model used by the public profile tab, and only for public/discoverable accounts. It does not show raw vector scores, raw Network Diagnostic text, internal packet JSON, private aliases, private context, or hidden task evidence. Feedback buttons record local recommendation events; they do not message another user or perform a connection action on the user's behalf.
+The private profile page renders recommendation cards from `GET /api/profile/recommended-connections`. Each card shows the recommended member's public handle or display name, a `View profile` action, wallet metadata when present, one role line, the plain-English reason, the strongest supporting signals, and a suggested first action. `GET /api/profile/member?accountId=...` returns only the same sanitized public profile read model used by the public profile tab, and only for public/discoverable accounts. It does not show raw vector scores, raw Network Diagnostic text, internal packet JSON, private aliases, private context, hidden task evidence, or explicit Useful/Dismiss feedback controls. Profile and wallet interactions may record local recommendation events; they do not message another user or perform a connection action on the user's behalf.
 
 ## Daily Airdrop
 

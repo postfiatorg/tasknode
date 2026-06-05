@@ -1245,7 +1245,7 @@ function ConnectionRecommendationRow({
       borderTop: index === 0 ? "none" : `1px solid ${C.ruleSoft}`,
       display: "grid",
       gap: 18,
-      gridTemplateColumns: "48px 1fr auto",
+      gridTemplateColumns: "48px 1fr",
       padding: "20px 0",
     }}>
       <div style={{
@@ -1337,14 +1337,6 @@ function ConnectionRecommendationRow({
           />
         )}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 82 }}>
-        <button className="tn-btn" onClick={() => onRecordEvent(connection, "marked_useful")} style={{ fontSize: 12.5 }} type="button">
-          Useful
-        </button>
-        <button className="tn-btn" onClick={() => onRecordEvent(connection, "dismissed")} style={{ color: C.ink4, fontSize: 12.5 }} type="button">
-          Dismiss
-        </button>
-      </div>
     </div>
   );
 }
@@ -1412,16 +1404,6 @@ function ConnectionsCard({ accountId = "", pftlExplorerUrl = "", profilePublic =
         eventType,
       }),
     });
-    if (eventType === "dismissed") {
-      setState((current) => ({
-        ...current,
-        data: {
-          ...(current.data || {}),
-          recommendations: (current.data?.recommendations || [])
-            .filter((item) => item.id !== connection.id),
-        },
-      }));
-    }
   };
 
   const copyWalletAddress = async (walletAddress = "", connection = null) => {
