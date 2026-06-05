@@ -49,6 +49,7 @@ import { handleSystemStatusRoute } from "./system-status.js";
 import { handleTelegramBotRoute } from "./telegram-bot.js";
 import { walletSendPrepare, walletSendSubmit } from "./wallet-send.js";
 import { shouldStartBackgroundWorkers, shouldStartHttpServer, tasknodeProcessRole } from "./process-role.js";
+import { startRealtimeNotificationListener, subscribeRealtimeEvents } from "./app-realtime.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -798,6 +799,28 @@ async function routeApi(req, url, res) {
     return true;
   }
 
+  if (url.pathname === "/api/events") {
+    if (req.method !== "GET") {
+      json(res, 405, { ok: false, error: "method_not_allowed" });
+      return true;
+    }
+    const linkedWallet = session?.accountId ? getLinkedWallet({ accountId: session.accountId }) : null;
+    const subscribed = subscribeRealtimeEvents({
+      req,
+      res,
+      session,
+      linkedWallet,
+      headers: securityHeaders(),
+    });
+    if (!subscribed.ok) {
+      json(res, subscribed.status || 401, {
+        ok: false,
+        error: subscribed.error || "realtime_events_unavailable",
+      });
+    }
+    return true;
+  }
+
   if (url.pathname === "/api/wallet/send/prepare") {
     const payload = req.method === "POST" ? await readJson(req, 8192) : {};
     const result = await walletSendPrepare(payload, req.method, session);
@@ -1008,6 +1031,11 @@ try {
   throw error;
 }
 if (backgroundWorkersEnabled) startBackgroundWorkers();
+if (httpEnabled) {
+  startRealtimeNotificationListener().catch((error) => {
+    console.warn("realtime_notification_listener_start_failed", { error: error?.message || String(error) });
+  });
+}
 
 if (httpEnabled) {
   server.listen(port, "0.0.0.0", () => {

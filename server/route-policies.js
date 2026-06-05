@@ -151,6 +151,7 @@ export const apiRoutePolicies = [
   { id: "wallet", path: "/api/wallet", methods: ["GET"], auth: "optional" },
   { id: "wallet_balance", path: "/api/wallet/balance", methods: ["GET"], auth: "session" },
   { id: "wallet_transactions", path: "/api/wallet/transactions", methods: ["GET"], auth: "session" },
+  { id: "realtime_events", path: "/api/events", methods: ["GET"], auth: "session" },
   {
     id: "wallet_send_prepare",
     path: "/api/wallet/send/prepare",

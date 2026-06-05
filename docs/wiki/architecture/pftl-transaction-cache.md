@@ -36,6 +36,8 @@ PFTL validated transaction
   -> pftl_pointer_memos
   -> pftl_pointer_observations
   -> pftl_cache_reducer_events
+  -> Postgres NOTIFY tasknode_realtime
+  -> /api/events Server-Sent Event to signed-in browser sessions
   -> context_history_pointers / task_projections / wallet refresh state
 ```
 
@@ -58,6 +60,19 @@ app surface
 ```
 
 Normal app reads do not call historical `account_tx` directly. The wallet transaction endpoint reads the cache and returns sync state.
+
+## Browser Realtime Bridge
+
+The PFTL websocket watcher runs in the worker process. Browser sessions are
+served by the app process, so wallet UI updates cannot rely on in-memory worker
+state. When the watcher sees a validated transaction for a tracked wallet, it
+publishes a `wallet_activity` event through Postgres `NOTIFY`. App processes
+listen for that channel and forward matching account events through
+`GET /api/events` as Server-Sent Events.
+
+The browser keeps existing polling as a fallback. On a `wallet_activity` event
+for the linked wallet, it forces `/api/wallet/balance?force=1`; if the Wallet
+surface is open, it also refreshes `/api/wallet/transactions?force=1`.
 
 ## Tables
 
@@ -245,6 +260,7 @@ Hot activity should use the rapid PFTL RPC/WSS. Historical backfill should use t
 ```text
 npm run pftl-cache-smoke
 npm run pftl-cache-watcher-smoke
+npm run wallet-realtime-events-smoke
 npm run db:pftl-cache-smoke
 npm run db:pftl-cache-watcher-stress
 npm run db:pftl-cache-reducer-smoke

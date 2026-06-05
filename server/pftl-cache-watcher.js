@@ -11,6 +11,7 @@ import {
   storePftlAccountTransactions,
 } from "./repositories/pftl-cache.js";
 import { pftlWssRejectUnauthorized } from "./pftl-wss-tls.js";
+import { publishWalletActivityEvent } from "./app-realtime.js";
 
 const DEFAULT_WSS_URL = "wss://ws.testnet.postfiat.org";
 const DEFAULT_REQUEST_TIMEOUT_MS = 8000;
@@ -236,6 +237,21 @@ export async function processPftlCacheTransactionEvent({
           ledgerIndex: mapped?.ledgerIndex ?? ledgerIndex(event),
         },
       });
+      if (wallet.account_id || wallet.accountId) {
+        await publishWalletActivityEvent({
+          accountId: wallet.account_id || wallet.accountId || "",
+          walletAddress,
+          txHash: hash,
+          ledgerIndex: mapped?.ledgerIndex ?? ledgerIndex(event),
+          source,
+        }, { local: false }).catch((error) => {
+          logger.warn?.("pftl_cache_watcher_realtime_publish_failed", {
+            walletAddress,
+            txHash: hash,
+            error: safeError(error),
+          });
+        });
+      }
       result.stored += stored?.inserted || 0;
       result.reducerEvents += queued?.inserted || 0;
     } catch (error) {

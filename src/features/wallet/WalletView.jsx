@@ -37,6 +37,7 @@ import {
 } from "./wallet-state";
 
 const WALLET_TX_REFRESH_MS = 60000;
+const WALLET_ACTIVITY_EVENT_NAME = "tasknode:wallet-activity";
 const ETH_TOP_UP_SYNC_INITIAL_DELAY_MS = 1200;
 const OAUTH_LINK_PROVIDER_IDS = new Set(["github", "telegram", "discord", "x"]);
 
@@ -543,6 +544,21 @@ export function WalletView({
     refreshWalletTransactions({ force: true });
     const timer = window.setInterval(() => refreshWalletTransactions(), WALLET_TX_REFRESH_MS);
     return () => window.clearInterval(timer);
+  }, [linkedWallet.address, refreshWalletTransactions, signedIn, walletLinked]);
+
+  useEffect(() => {
+    if (!signedIn || !walletLinked || !linkedWallet.address || typeof window === "undefined") {
+      return undefined;
+    }
+
+    function handleWalletActivity(event) {
+      const walletAddress = String(event.detail?.walletAddress || "").trim();
+      if (walletAddress && walletAddress !== linkedWallet.address) return;
+      refreshWalletTransactions({ force: true });
+    }
+
+    window.addEventListener(WALLET_ACTIVITY_EVENT_NAME, handleWalletActivity);
+    return () => window.removeEventListener(WALLET_ACTIVITY_EVENT_NAME, handleWalletActivity);
   }, [linkedWallet.address, refreshWalletTransactions, signedIn, walletLinked]);
 
   async function copyWalletAddress() {

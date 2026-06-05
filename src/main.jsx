@@ -286,6 +286,8 @@ const EMPTY_WALLET_VAULT_STATUS = {
   lastUnlockedAt: null,
 };
 const WALLET_BALANCE_REFRESH_MS = 15000;
+const WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS = 250;
+const WALLET_ACTIVITY_EVENT_NAME = "tasknode:wallet-activity";
 
 function viewFromLocation() {
   if (typeof window === "undefined") return "chat";
@@ -784,6 +786,40 @@ function App() {
 
     return () => {
       window.clearInterval(timer);
+    };
+  }, [signedIn, linkedWalletAddress, refreshWalletBalance]);
+
+  useEffect(() => {
+    if (!signedIn || !linkedWalletAddress || typeof window === "undefined" || !window.EventSource) {
+      return undefined;
+    }
+
+    const events = new window.EventSource("/api/events");
+    let refreshTimer = null;
+
+    function scheduleWalletRefresh(payload = {}) {
+      const walletAddress = String(payload.walletAddress || "").trim();
+      if (walletAddress && walletAddress !== linkedWalletAddress) return;
+      window.dispatchEvent(new CustomEvent(WALLET_ACTIVITY_EVENT_NAME, { detail: payload }));
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshWalletBalance({ force: true, address: linkedWalletAddress });
+      }, WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS);
+    }
+
+    function handleWalletActivity(event) {
+      try {
+        scheduleWalletRefresh(JSON.parse(event.data || "{}"));
+      } catch {
+        scheduleWalletRefresh({});
+      }
+    }
+
+    events.addEventListener("wallet_activity", handleWalletActivity);
+    return () => {
+      window.clearTimeout(refreshTimer);
+      events.removeEventListener("wallet_activity", handleWalletActivity);
+      events.close();
     };
   }, [signedIn, linkedWalletAddress, refreshWalletBalance]);
 

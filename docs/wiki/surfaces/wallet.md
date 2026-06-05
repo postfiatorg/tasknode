@@ -20,6 +20,19 @@ Backend wallet logic lives in `server/pftl-balance.js`, `server/pftl-transaction
 
 Wallet linkage belongs to the signup identity account, not only the Post Fiat wallet ID. This lets GitHub, X, Telegram, and future login identities map cleanly into one account model.
 
+## Balance And Activity Freshness
+
+`/api/wallet/balance` reads the current validated PFTL ledger through configured
+WSS/RPC `account_info`, with a short server cache unless the browser passes
+`force=1`. `/api/wallet/transactions` reads the Postgres PFTL transaction cache.
+
+The backend PFTL WSS watcher is the chain listener. When it observes a validated
+transaction for a tracked wallet, it publishes a `wallet_activity` event through
+Postgres `NOTIFY`. The browser listens on authenticated `GET /api/events` using
+Server-Sent Events. Matching wallet events force a fresh balance read, and the
+Wallet tab refreshes transaction history when it is open. The existing polling
+loop remains as the fallback if the browser stream disconnects.
+
 ## Locking And Unlocking
 
 Wallet linkage and wallet unlock are separate states.

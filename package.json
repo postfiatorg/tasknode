@@ -128,6 +128,7 @@
     "context-publish-live-smoke": "node scripts/context-publish-live-smoke.mjs",
     "tasknode-service-message-key": "PYTHONPATH=reference_clients/python python3 -m tasknode_pftl.scenarios.service_message_key",
     "wallet-balance-smoke": "node scripts/wallet-balance-smoke.mjs",
+    "wallet-realtime-events-smoke": "node scripts/realtime-wallet-events-smoke.mjs",
     "wallet-transactions-smoke": "node scripts/wallet-transactions-smoke.mjs",
     "eth-deposit-wallet": "node scripts/generate-eth-deposit-wallet.mjs",
     "eth-deposit-verify": "node scripts/verify-eth-deposit-wallet.mjs",
