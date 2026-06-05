@@ -32,7 +32,7 @@ Implementation references:
 - `server/runtime-store.js`: account-scoped persistence and linked-provider state;
 - `server/repositories/profile-public.js`: public profile packet shaping with explicit public aliases only.
 
-Not implemented in v1: public member search, Hive mention resolution, provider-photo import, and admin impersonation review queues. Those are future product work, not active Plans pages.
+Not implemented in v1: public member search, recommended connections, Hive mention resolution, provider-photo import, and admin impersonation review queues. Those are future product work, not active Plans pages.
 
 ## Public Profile
 
@@ -138,6 +138,44 @@ The public NFT gallery renders real `profile_nfts` rows only. If the account has
 The app shell account avatar uses the same latest profile NFT image as the public profile hero when one exists. If the account has no profile NFT image, the shell falls back to account initials.
 
 Prompt privacy remains unchanged: the image prompt body is never returned to the browser, never shown in public metadata, and never committed to the public prompt folder.
+
+## Recommended Connections Plan
+
+Recommended connections are planned as a private-profile discovery surface that answers one product question: who should this member know or work with next, and why?
+
+The implementation should reuse the existing Postgres pgvector infrastructure already used by Jobs chat retrieval. It should not introduce a separate vector database unless the Postgres workload proves it is required.
+
+The planned pipeline is:
+
+1. Build one compact recommended-connections packet per discoverable member.
+2. Embed that packet with the shared embedding provider, currently `text-embedding-3-small` with 1536 dimensions.
+3. Store the packet and embedding in a member-specific pgvector table, not in the Jobs corpus tables.
+4. For a target member, retrieve at most the top 50 discoverable candidate profiles by vector similarity.
+5. Apply deterministic filters and scoring before model reranking.
+6. Run one DeepSeek V4 Pro rerank per target profile no more than once per week unless an operator forces refresh.
+7. Persist the final 3-4 recommendations with plain-English reasons, supporting signals, source packet digests, prompt/model metadata, expiry, and user feedback events.
+
+The member packet should include the full Network Diagnostic Report, the relevant current task text when it is useful routing context, public profile snapshot fields, current focus, contribution themes, skills, recent rewarded task themes, activity recency, capacity, and explicit "looking for" signals. The accepted Network Task text for `Fix Recommended Connections On Private Profile Page` is a valid example of task context to include when it represents the user's current work.
+
+Privacy is a hard gate. A member whose profile is private or not discoverable must not be embedded, indexed, retrieved, sent to DeepSeek, or included in another member's candidate set. Private profiles should be outside the recommendation compute path entirely, not merely filtered after retrieval. If a member switches from discoverable to private, the worker must delete or disable that member's vector profile row and expire any outstanding recommendations that include that member. If they switch back to discoverable, the packet and embedding must be regenerated from current public/discoverable inputs.
+
+The planned tables are:
+
+- `recommended_connection_profiles`: one current packet and embedding per discoverable account.
+- `recommended_connection_runs`: one rerank run per target account and week-scale refresh window.
+- `recommended_connections`: the 3-4 persisted recommendations from the latest successful run.
+- `recommended_connection_events`: feedback such as viewed, clicked, dismissed, messaged, or converted into shared task work.
+
+The private profile page should render recommendation cards from `GET /api/profile/recommended-connections`. Each card should show the recommended member's public handle/avatar, one role line, the plain-English reason, the strongest supporting signals, and a suggested first action. It should not show raw vector scores, raw Network Diagnostic text, internal packet JSON, private aliases, private context, or hidden task evidence.
+
+Open implementation requirements:
+
+- add a profile-level discoverability/private setting separate from provider alias visibility;
+- add the pgvector migration and profile packet builder;
+- add the weekly recommendation worker and DeepSeek V4 Pro prompt;
+- add refresh and feedback endpoints;
+- render the private profile cards and empty/private states;
+- add smoke coverage proving private profiles are excluded before vector retrieval and DeepSeek reranking.
 
 ## Daily Airdrop
 

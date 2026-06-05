@@ -22,6 +22,26 @@ The corpus is global product style/context material. It is not account-private
 memory, and it is not the future semantic search index for user chat, context, or
 tasks.
 
+## Shared Vector Infrastructure
+
+Jobs retrieval is the first live pgvector use case, but the vector extension,
+database connection, and `server/embedding-provider.js` are shared app
+infrastructure. Future member discovery, including recommended connections,
+should reuse this Postgres pgvector setup while keeping its own tables and
+privacy rules.
+
+Recommended connections must not write member profiles into
+`jobs_corpus_sources` or `jobs_corpus_chunks`. The planned member-discovery
+tables are `recommended_connection_profiles`, `recommended_connection_runs`,
+`recommended_connections`, and `recommended_connection_events`.
+
+The critical privacy boundary is stricter than normal retrieval filtering: if a
+profile is private or not discoverable, it should not be embedded, indexed,
+retrieved, or sent to a reranking model. Private profiles stay outside the
+recommendation compute path entirely. Discoverable profiles can be vector
+retrieved up to a top-50 candidate cap, then reranked by the planned weekly
+DeepSeek V4 Pro recommendation run.
+
 ## Chat Injection Path
 
 1. `server/chat-router.js` calls `jobsRetrievalForChat(...)` for chat turns when
