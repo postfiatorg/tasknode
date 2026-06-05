@@ -46,6 +46,7 @@ import pftlHotWalletSync from "../../../docs/wiki/architecture/pftl-hot-wallet-s
 import pftlLiveTaskReplay from "../../../docs/wiki/architecture/pftl-live-task-replay.md?raw";
 import pftlTransactionCache from "../../../docs/wiki/architecture/pftl-transaction-cache.md?raw";
 import pftlWssWatcher from "../../../docs/wiki/architecture/pftl-wss-watcher.md?raw";
+import pftasksCutover from "../../../docs/wiki/architecture/pftasks-cutover.md?raw";
 import resettableSignupTesting from "../../../docs/wiki/architecture/resettable-signup-testing.md?raw";
 import styleGuide from "../../../docs/wiki/architecture/style-guide.md?raw";
 import systemStatus from "../../../docs/wiki/architecture/system-status.md?raw";
@@ -586,6 +587,12 @@ export const DOC_GROUPS = [
         title: "Deployment",
         summary: "Fly dev, Docker, data stores, secrets, auth, top-up, and verification commands.",
         markdown: deployment,
+      },
+      {
+        slug: "pftasks-cutover",
+        title: "PFTasks Cutover",
+        summary: "Old PFTasks account shutdown and Task Node Official migration runbook.",
+        markdown: pftasksCutover,
       },
       {
         slug: "bootup",
