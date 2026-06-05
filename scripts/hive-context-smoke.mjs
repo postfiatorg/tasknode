@@ -342,10 +342,13 @@ assert.match(deepSeekRequestSerialized, /This packet is scoped to the requesting
 assert.match(deepSeekRequestSerialized, /HIVE MIND \/ BOARD MANAGER CONTEXT/);
 assert.match(deepSeekRequestSerialized, /LIVE BOARD FACTS - AUTHORITATIVE/);
 assert.match(deepSeekRequestSerialized, /NETWORK TASK ROUTING POLICY - AUTHORITATIVE/);
+assert.match(deepSeekRequestSerialized, /Hive Chat cannot create, queue, publish, accept, refuse, or submit personal tasks/);
 assert.match(deepSeekRequestSerialized, /Request task button creates user-requested personal task proposals/);
 assert.match(deepSeekRequestSerialized, /Do not tell a user that completing personal or engineering tasks is required/);
+assert.match(deepSeekRequestSerialized, /Do not offer to generate a personal task as a fallback/);
 assert.match(deepSeekRequestSerialized, /another contributor's outstanding Network Task globally prevents this user/);
 assert.match(deepSeekRequestSerialized, /Personal tasks can be useful work, but they are not Network Tasks/);
+assert.match(deepSeekRequestSerialized, /Do not offer to create a personal task, task proposal, or concrete card from Hive Chat/);
 assert.match(deepSeekRequestSerialized, /Live Board Facts are authoritative/);
 assert.match(deepSeekRequestSerialized, /Only describe a task, follow-up, capacity blocker, or reward as the user's own/);
 assert.match(deepSeekRequestSerialized, /Requesting account: account_hive_smoke/);

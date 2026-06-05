@@ -28,7 +28,8 @@ function normalizeRequestStatus(status = "") {
   return "published";
 }
 
-function statusLabel(status = "") {
+function statusLabel(status = "", { operatorAuditOnly = false } = {}) {
+  if (operatorAuditOnly) return "Closed";
   return {
     signing: "Signing",
     published: "Queued for generation",
@@ -58,7 +59,38 @@ function requestAgeMs(value) {
   return Number.isFinite(timestamp) ? Date.now() - timestamp : Number.POSITIVE_INFINITY;
 }
 
-function requestLifecycle(row = {}, status = normalizeRequestStatus(row.status)) {
+function safeObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+export function isOperatorAuditOnlyTaskRequest(row = {}) {
+  const metadata = safeObject(row.metadata || row.metadata_json);
+  const repair = safeObject(metadata.operator_repair || metadata.operatorRepair);
+  return repair.action === "fail_network_task_generation_chain" ||
+    repair.public_visibility === "hidden" ||
+    repair.user_visible === false ||
+    repair.user_visible === "false";
+}
+
+function publicMetadata(metadata = {}, { operatorAuditOnly = false } = {}) {
+  if (!operatorAuditOnly) return metadata;
+  const rest = { ...metadata };
+  delete rest.operator_repair;
+  delete rest.operatorRepair;
+  delete rest.last_error;
+  return rest;
+}
+
+function requestLifecycle(row = {}, status = normalizeRequestStatus(row.status), metadata = {}) {
+  if (isOperatorAuditOnlyTaskRequest({ ...row, metadata })) {
+    return {
+      isActive: false,
+      isStale: false,
+      isTerminal: true,
+      canRetry: false,
+      displayUntil: null,
+    };
+  }
   const ageMs = requestAgeMs(row.updated_at || row.created_at);
   const generatedTaskId = safeText(row.generated_task_id, 180);
   const isFailedVisible = status === "failed" && ageMs < 24 * 60 * 60 * 1000;
@@ -76,10 +108,11 @@ function requestLifecycle(row = {}, status = normalizeRequestStatus(row.status))
   };
 }
 
-function publicTaskRequest(row = {}) {
+export function publicTaskRequest(row = {}) {
   const metadata = row.metadata_json && typeof row.metadata_json === "object" ? row.metadata_json : {};
+  const operatorAuditOnly = isOperatorAuditOnlyTaskRequest({ ...row, metadata });
   const status = normalizeRequestStatus(row.status);
-  const lifecycle = requestLifecycle(row, status);
+  const lifecycle = requestLifecycle(row, status, metadata);
   return {
     requestId: row.request_id || "",
     bundleId: row.bundle_id || "",
@@ -95,17 +128,17 @@ function publicTaskRequest(row = {}) {
     requestEventCid: row.request_event_cid || "",
     requestTxHash: row.request_tx_hash || "",
     status,
-    statusLabel: statusLabel(status),
+    statusLabel: statusLabel(status, { operatorAuditOnly }),
     generatedTaskId: row.generated_task_id || "",
     workerAttemptCount: Number(row.worker_attempt_count || 0),
     workerClaimedAt: toIso(row.worker_claimed_at),
     workerCompletedAt: toIso(row.worker_completed_at),
-    lastError: row.last_error || "",
+    lastError: operatorAuditOnly ? "" : row.last_error || "",
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
     ago: relativeAge(row.updated_at || row.created_at),
     ...lifecycle,
-    metadata,
+    metadata: publicMetadata(metadata, { operatorAuditOnly }),
   };
 }
 
@@ -312,6 +345,11 @@ export async function listTaskRequests({ accountId = "", walletAddress = "", lim
         AND (
           tr.subject_wallet = $2
           OR tr.subject_wallet = ''
+        )
+        AND NOT (
+          COALESCE(tr.metadata_json->'operator_repair'->>'action', '') = 'fail_network_task_generation_chain'
+          OR COALESCE(tr.metadata_json->'operator_repair'->>'public_visibility', '') = 'hidden'
+          OR COALESCE(tr.metadata_json->'operator_repair'->>'user_visible', '') = 'false'
         )
       ORDER BY tr.updated_at DESC, tr.created_at DESC, tr.request_id DESC
       LIMIT $3

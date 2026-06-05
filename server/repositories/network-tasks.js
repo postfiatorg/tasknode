@@ -1156,6 +1156,142 @@ export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "
   return { ok: true, job: row || null };
 }
 
+export async function failNetworkTaskGenerationChain({
+  allocationId = "",
+  jobId = "",
+  requestId = "",
+  reason = "",
+  operator = "operator",
+  force = false,
+} = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true };
+  const normalizedAllocationId = safeText(allocationId, 180);
+  const normalizedJobId = safeText(jobId, 180);
+  const normalizedRequestId = safeText(requestId, 180);
+  if (!normalizedAllocationId && !normalizedJobId && !normalizedRequestId) {
+    throw new Error("network_task_repair_target_required");
+  }
+
+  const message = safeText(reason, 1000) || "operator marked Network Task generation chain failed";
+  const operatorName = safeText(operator, 120) || "operator";
+  return transaction(async (client) => {
+    const found = await client.query(
+      `
+        SELECT
+          alloc.id AS allocation_id,
+          alloc.allocation_status,
+          alloc.task_request_id,
+          alloc.generated_task_id AS allocation_task_id,
+          job.id AS job_id,
+          job.status AS job_status,
+          job.request_id AS job_request_id,
+          job.task_id AS job_task_id
+        FROM network_task_allocations alloc
+        LEFT JOIN network_task_generation_jobs job
+          ON job.allocation_id = alloc.id
+        WHERE ($1::text <> '' AND alloc.id = $1)
+           OR ($2::text <> '' AND job.id = $2)
+           OR ($3::text <> '' AND (alloc.task_request_id = $3 OR job.request_id = $3))
+        ORDER BY job.updated_at DESC NULLS LAST, alloc.updated_at DESC
+        LIMIT 1
+      `,
+      [normalizedAllocationId, normalizedJobId, normalizedRequestId]
+    );
+    const row = found.rows[0];
+    if (!row?.allocation_id) throw new Error("network_task_repair_target_not_found");
+
+    const existingTaskId = safeText(row.allocation_task_id || row.job_task_id, 180);
+    if (existingTaskId && !force) throw new Error("network_task_repair_has_generated_task");
+
+    const repair = {
+      operator_repair: {
+        action: "fail_network_task_generation_chain",
+        operator: operatorName,
+        reason: message,
+        public_visibility: "hidden",
+        user_visible: false,
+        repaired_at: new Date().toISOString(),
+        previous_allocation_status: safeText(row.allocation_status, 80),
+        previous_job_status: safeText(row.job_status, 80),
+        request_id: safeText(row.task_request_id || row.job_request_id, 180),
+      },
+      last_error: message,
+    };
+
+    let job = null;
+    if (row.job_id) {
+      const jobResult = await client.query(
+        `
+          UPDATE network_task_generation_jobs
+          SET status = 'failed',
+              next_attempt_at = now(),
+              locked_at = NULL,
+              last_error = $2,
+              generated_task_payload = COALESCE(generated_task_payload, '{}'::jsonb) || $3::jsonb,
+              updated_at = now()
+          WHERE id = $1
+          RETURNING id, allocation_id, status, request_id, task_id, last_error
+        `,
+        [row.job_id, message, jsonValue(repair)]
+      );
+      job = jobResult.rows[0] || null;
+    }
+
+    const allocationResult = await client.query(
+      `
+        UPDATE network_task_allocations
+        SET allocation_status = 'failed',
+            metadata_json = metadata_json || $2::jsonb,
+            updated_at = now()
+        WHERE id = $1
+        RETURNING id, allocation_status, task_request_id, generated_task_id
+      `,
+      [row.allocation_id, jsonValue(repair)]
+    );
+
+    const intentResult = await client.query(
+      `
+        UPDATE network_task_intents
+        SET status = 'stale',
+            metadata_json = metadata_json || $3::jsonb,
+            updated_at = now()
+        WHERE ($1::text <> '' AND generation_job_id = $1)
+           OR ($2::text <> '' AND allocation_id = $2)
+        RETURNING id, status
+      `,
+      [row.job_id || "", row.allocation_id, jsonValue(repair)]
+    );
+
+    const effectiveRequestId = safeText(row.task_request_id || row.job_request_id || normalizedRequestId, 180);
+    let request = null;
+    if (effectiveRequestId) {
+      const requestResult = await client.query(
+        `
+          UPDATE task_requests
+          SET status = 'cancelled',
+              worker_completed_at = COALESCE(worker_completed_at, now()),
+              last_error = $2,
+              metadata_json = metadata_json || $3::jsonb,
+              updated_at = now()
+          WHERE request_id = $1
+          RETURNING request_id, status, generated_task_id, last_error
+        `,
+        [effectiveRequestId, message, jsonValue(repair)]
+      );
+      request = requestResult.rows[0] || null;
+    }
+
+    return {
+      ok: true,
+      allocation: allocationResult.rows[0] || null,
+      job,
+      request,
+      staleIntentCount: intentResult.rowCount || 0,
+      reason: message,
+    };
+  });
+}
+
 export async function markNetworkTaskOfferLinkFailed({ requestId = "", taskId = "", error = "" } = {}) {
   if (!useDatabase()) return { ok: false, skipped: true };
   const result = await query(
