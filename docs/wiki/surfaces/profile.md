@@ -151,6 +151,7 @@ Runtime endpoints:
 
 - `GET /api/profile/visibility`
 - `POST /api/profile/visibility`
+- `GET /api/profile/member`
 - `GET /api/profile/recommended-connections`
 - `POST /api/profile/recommended-connections/refresh`
 - `POST /api/profile/recommended-connections/event`
@@ -179,7 +180,7 @@ The recurring worker is `server/recommended-connections-worker.js`, started by `
 
 The prompt is `prompts/profile/recommended_connections_v1.md`. It receives the target packet plus at most 50 candidate packets and returns raw JSON containing 3-4 recommendations. The recommendation prompt bans internal jargon and asks for clear reasons, supporting signals, and a useful first move.
 
-The private profile page renders recommendation cards from `GET /api/profile/recommended-connections`. Each card shows the recommended member's public handle or display name, one role line, the plain-English reason, the strongest supporting signals, and a suggested first action. It does not show raw vector scores, raw Network Diagnostic text, internal packet JSON, private aliases, private context, or hidden task evidence. Feedback buttons record local recommendation events; they do not message another user or perform a connection action on the user's behalf.
+The private profile page renders recommendation cards from `GET /api/profile/recommended-connections`. Each card shows the recommended member's public handle or display name, a `View profile` action, wallet metadata when present, one role line, the plain-English reason, the strongest supporting signals, and a suggested first action. `GET /api/profile/member?accountId=...` returns only the same sanitized public profile read model used by the public profile tab, and only for public/discoverable accounts. It does not show raw vector scores, raw Network Diagnostic text, internal packet JSON, private aliases, private context, or hidden task evidence. Feedback buttons record local recommendation events; they do not message another user or perform a connection action on the user's behalf.
 
 ## Daily Airdrop
 

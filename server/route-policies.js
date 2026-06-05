@@ -89,6 +89,7 @@ export const apiRoutePolicies = [
   { id: "profile_identity", path: "/api/profile/identity", methods: ["GET"], auth: "session" },
   { id: "profile_identity_alias", path: "/api/profile/identity/alias", methods: ["POST"], auth: "session" },
   { id: "profile_visibility", path: "/api/profile/visibility", methods: ["GET", "POST"], auth: "session" },
+  { id: "profile_member", path: "/api/profile/member", methods: ["GET"], auth: "session" },
   { id: "profile_public", path: "/api/profile/public", methods: ["GET"], auth: "session" },
   {
     id: "profile_public_regenerate",

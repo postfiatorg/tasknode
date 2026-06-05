@@ -11,6 +11,7 @@ import { listProfileNfts } from "./repositories/profile-nfts.js";
 import { getPublicProfile } from "./repositories/profile-public.js";
 import {
   getRecommendedConnectionsState,
+  recommendedConnectionProfileIsDiscoverable,
   recordRecommendedConnectionEvent,
   refreshRecommendedConnectionProfile,
   refreshRecommendedConnections,
@@ -40,6 +41,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       "/api/profile/identity",
       "/api/profile/identity/alias",
       "/api/profile/visibility",
+      "/api/profile/member",
       "/api/profile/public",
       "/api/profile/public/regenerate",
       "/api/profile/recommended-connections",
@@ -256,6 +258,51 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
     const profile = await getPublicProfile({ accountId: session.accountId });
     json(res, 200, {
       ok: true,
+      profile,
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/member") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_member_method_not_allowed",
+        message: "Member profile preview requires GET.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_member_login_required",
+        message: "Sign in before viewing member profiles.",
+      });
+      return true;
+    }
+    const targetAccountId = String(url.searchParams.get("accountId") || "").trim();
+    if (!targetAccountId || targetAccountId.startsWith("deleted_account_")) {
+      json(res, 400, {
+        ok: false,
+        error: "profile_member_account_required",
+        message: "Choose a valid member profile.",
+      });
+      return true;
+    }
+    const visibility = getAccountProfileVisibility({ accountId: targetAccountId });
+    const indexed = await recommendedConnectionProfileIsDiscoverable({ accountId: targetAccountId });
+    if (visibility.visibility !== "public" || visibility.discoverable === false || !indexed) {
+      json(res, 404, {
+        ok: false,
+        error: "profile_member_not_discoverable",
+        message: "This member profile is not public.",
+      });
+      return true;
+    }
+    const profile = await getPublicProfile({ accountId: targetAccountId });
+    json(res, 200, {
+      ok: true,
+      accountId: targetAccountId,
       profile,
     });
     return true;

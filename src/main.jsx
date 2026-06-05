@@ -1380,6 +1380,7 @@ function App() {
                 onProfileAvatarChange={setProfileAvatarNft}
                 onProfileIdentityChange={refreshAppState}
                 onWalletUnlock={openWalletVaultControl}
+                pftlExplorerUrl={runtimeConfig?.pftlExplorerUrl || ""}
                 profilePublic={profilePublic}
                 profileTab={profileTab}
                 session={appState?.session}

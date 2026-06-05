@@ -154,6 +154,25 @@ async function recommendedConnectionTablesReady() {
   return Boolean(result.rows[0]?.profile_table);
 }
 
+export async function recommendedConnectionProfileIsDiscoverable({ accountId = "" } = {}) {
+  if (!await recommendedConnectionTablesReady()) return false;
+  const normalizedAccountId = safeText(accountId, 180);
+  if (!normalizedAccountId || deletedAccountId(normalizedAccountId)) return false;
+  const result = await query(
+    `
+      SELECT account_id
+      FROM recommended_connection_profiles
+      WHERE account_id = $1
+        AND visibility = 'public'
+        AND discoverable = true
+        AND disabled_at IS NULL
+      LIMIT 1
+    `,
+    [normalizedAccountId]
+  );
+  return Boolean(result.rows[0]?.account_id);
+}
+
 async function listRecommendedConnectionCandidateAccountIds({ limit = 20 } = {}) {
   if (!useDatabase()) return [];
   const normalizedLimit = Math.min(Math.max(Number(limit || 20), 1), 500);
@@ -585,12 +604,17 @@ function latestRunFresh(run = null) {
 
 function publicConnection(row = {}) {
   const snapshot = safeObject(row.candidate_snapshot);
+  const candidateAccountId = row.candidate_account_id || snapshot.accountId || "";
   return {
     id: row.id || "",
     runId: row.run_id || "",
-    accountId: row.candidate_account_id || snapshot.accountId || "",
+    accountId: candidateAccountId,
     displayName: snapshot.displayName || "",
     hiveHandle: snapshot.hiveHandle || "",
+    walletAddress: row.candidate_wallet_address || snapshot.walletAddress || "",
+    profilePath: candidateAccountId
+      ? `/api/profile/member?accountId=${encodeURIComponent(candidateAccountId)}`
+      : "",
     roleTitle: snapshot.roleTitle || "",
     roleSummary: snapshot.roleSummary || "",
     rank: Number(row.rank || 0),
@@ -625,12 +649,18 @@ export async function getRecommendedConnectionsState({ accountId = "" } = {}) {
   }
   const rows = await query(
     `
-      SELECT *
-      FROM recommended_connections
-      WHERE target_account_id = $1
-        AND status = 'active'
-        AND expires_at > now()
-      ORDER BY rank ASC, created_at DESC, id ASC
+      SELECT connections.*,
+             candidate_profiles.wallet_address AS candidate_wallet_address
+      FROM recommended_connections connections
+      LEFT JOIN recommended_connection_profiles candidate_profiles
+        ON candidate_profiles.account_id = connections.candidate_account_id
+       AND candidate_profiles.visibility = 'public'
+       AND candidate_profiles.discoverable = true
+       AND candidate_profiles.disabled_at IS NULL
+      WHERE connections.target_account_id = $1
+        AND connections.status = 'active'
+        AND connections.expires_at > now()
+      ORDER BY connections.rank ASC, connections.created_at DESC, connections.id ASC
       LIMIT $2
     `,
     [normalizedAccountId, maxRecommendations]
@@ -814,6 +844,7 @@ function candidateSnapshot(candidate = {}) {
     accountId: candidate.accountId,
     displayName: candidate.displayName,
     hiveHandle: candidate.hiveHandle,
+    walletAddress: candidate.walletAddress,
     roleTitle: candidate.roleTitle,
     roleSummary: candidate.roleSummary,
     skills: candidate.skills,
