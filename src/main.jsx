@@ -757,34 +757,35 @@ function App() {
     refreshWalletVaultStatus({ preserveUnlock: true });
   }, [refreshWalletVaultStatus]);
 
-  useEffect(() => {
-    if (!signedIn || !linkedWalletAddress) return undefined;
-
-    let active = true;
-
-    async function refreshWalletBalance({ force = false } = {}) {
-      setAppState((current) => markWalletBalanceChecking(current, linkedWalletAddress));
+  const refreshWalletBalance = useCallback(
+    async ({ force = false, address = linkedWalletAddress } = {}) => {
+      if (!signedIn || !address) return null;
+      setAppState((current) => markWalletBalanceChecking(current, address));
 
       try {
         const result = await requestJson(`/api/wallet/balance${force ? "?force=1" : ""}`);
-        if (!active) return;
-        setAppState((current) => applyWalletBalanceResult(current, linkedWalletAddress, result));
+        setAppState((current) => applyWalletBalanceResult(current, address, result));
+        return result;
       } catch (error) {
-        if (!active) return;
         setAppState((current) =>
-          applyWalletBalanceError(current, linkedWalletAddress, error?.message || "Balance read failed.")
+          applyWalletBalanceError(current, address, error?.message || "Balance read failed.")
         );
+        return null;
       }
-    }
+    },
+    [linkedWalletAddress, signedIn]
+  );
 
-    refreshWalletBalance({ force: true });
+  useEffect(() => {
+    if (!signedIn || !linkedWalletAddress) return undefined;
+
+    refreshWalletBalance({ force: true, address: linkedWalletAddress });
     const timer = window.setInterval(() => refreshWalletBalance(), WALLET_BALANCE_REFRESH_MS);
 
     return () => {
-      active = false;
       window.clearInterval(timer);
     };
-  }, [signedIn, linkedWalletAddress]);
+  }, [signedIn, linkedWalletAddress, refreshWalletBalance]);
 
   useEffect(() => {
     if (!signedIn || !session?.accountId) return undefined;
@@ -1351,6 +1352,7 @@ function App() {
             <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
               <WalletView
                 onAppStateChange={refreshAppState}
+                onWalletBalanceRefresh={() => refreshWalletBalance({ force: true })}
                 onLoginRequired={() => setLoginOpen(true)}
                 onWalletVaultChange={() => refreshWalletVaultStatus({ preserveUnlock: true })}
                 onWalletVaultLock={lockWalletVault}

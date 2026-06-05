@@ -69,6 +69,7 @@ function seedWordCount(value) {
 export function WalletView({
   onAppStateChange,
   onLoginRequired,
+  onWalletBalanceRefresh,
   onWalletVaultChange,
   onWalletVaultLock,
   onWalletVaultUnlocked,
@@ -907,6 +908,7 @@ export function WalletView({
           onClose={() => setSendOpen(false)}
           onSent={async (result) => {
             setMessage(result?.message || "PFT sent.");
+            await onWalletBalanceRefresh?.();
             await refreshWalletTransactions({ force: true });
           }}
           walletSecret={walletSecret}
