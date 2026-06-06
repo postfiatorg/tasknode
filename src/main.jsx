@@ -125,6 +125,11 @@ import {
   mergeAppStateWithClientWalletBalance,
   walletVaultDisplayState,
 } from "./features/wallet/wallet-state";
+import {
+  clearUnlockedWalletSession,
+  readUnlockedWalletSession,
+  saveUnlockedWalletSession,
+} from "./features/wallet/wallet-unlocked-session.js";
 import { WalletUnlockModal } from "./features/wallet/WalletUnlockModal";
 import { formatCreditUsd, formatUsageUsd } from "./formatters";
 import { isSignedInSession } from "./session";
@@ -517,13 +522,15 @@ function App() {
   }, [session?.accountId]);
 
   const lockWalletVault = useCallback(() => {
+    const accountId = walletSecretRef.current?.accountId || walletAccountId;
     walletSecretRef.current = null;
+    clearUnlockedWalletSession({ accountId });
     setWalletVaultStatus((current) => ({
       ...current,
       unlocked: false,
       lastUnlockedAt: null,
     }));
-  }, []);
+  }, [walletAccountId]);
 
   const refreshWalletVaultStatus = useCallback(
     async ({ preserveUnlock = false, accountId = "" } = {}) => {
@@ -535,32 +542,46 @@ function App() {
       }
 
       try {
+        if (!preserveUnlock) clearUnlockedWalletSession({ accountId: effectiveAccountId });
         const walletCore = await import("./wallet-core");
         const nextStatus = typeof walletCore.localWalletVaultStatusAsync === "function"
           ? await walletCore.localWalletVaultStatusAsync({ accountId: effectiveAccountId })
           : walletCore.localWalletVaultStatus({ accountId: effectiveAccountId });
         setWalletVaultStatus((current) => {
-          const keepUnlocked =
-            preserveUnlock &&
-            Boolean(current.unlocked) &&
-            current.accountId === effectiveAccountId &&
-            current.address === nextStatus.address &&
-            walletSecretRef.current?.accountId === effectiveAccountId &&
-            walletSecretRef.current?.address === nextStatus.address;
+          const currentSecret = walletSecretRef.current;
+          const canRestoreUnlock = Boolean(preserveUnlock && nextStatus?.available && nextStatus?.address);
+          const inMemorySecretMatches =
+            canRestoreUnlock &&
+            currentSecret?.accountId === effectiveAccountId &&
+            currentSecret?.address === nextStatus.address &&
+            currentSecret?.mnemonic;
+          const sessionSecret = inMemorySecretMatches
+            ? null
+            : canRestoreUnlock
+              ? readUnlockedWalletSession({
+                accountId: effectiveAccountId,
+                expectedAddress: nextStatus.address,
+              })
+              : null;
+          const activeSecret = inMemorySecretMatches ? currentSecret : sessionSecret;
 
-          if (!keepUnlocked) {
+          if (activeSecret) {
+            walletSecretRef.current = activeSecret;
+          } else {
             walletSecretRef.current = null;
+            clearUnlockedWalletSession({ accountId: effectiveAccountId });
           }
 
           return {
             ...nextStatus,
-            unlocked: keepUnlocked,
-            lastUnlockedAt: keepUnlocked ? current.lastUnlockedAt : null,
+            unlocked: Boolean(activeSecret),
+            lastUnlockedAt: activeSecret ? activeSecret.unlockedAt || current.lastUnlockedAt : null,
           };
         });
         return nextStatus;
       } catch {
         walletSecretRef.current = null;
+        clearUnlockedWalletSession({ accountId: effectiveAccountId });
         setWalletVaultStatus({
           ...EMPTY_WALLET_VAULT_STATUS,
           accountId: effectiveAccountId,
@@ -582,6 +603,7 @@ function App() {
         mnemonic: unlock.mnemonic,
         unlockedAt: unlock.unlockedAt || new Date().toISOString(),
       };
+      saveUnlockedWalletSession(walletSecretRef.current);
       setWalletVaultStatus((current) => ({
         ...current,
         available: true,

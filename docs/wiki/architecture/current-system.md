@@ -292,7 +292,9 @@ P1 seed login:
 5. Done: persist an encrypted local seed vault in the browser with WebCrypto
    AES-GCM/PBKDF2.
 6. Done: add local vault unlock/lock UX and keep the decrypted seed in memory
-   only for the current browser session.
+   plus same-tab `sessionStorage` only for the current browser session. Lock,
+   logout, local-vault removal, account mismatch, or wallet mismatch clears the
+   unlocked session entry.
 7. Done: use the unlocked local vault to decrypt the latest cached encrypted
    context CID in the browser. The server only fetches encrypted JSON for CIDs
    already present in the account's cached pointer metadata.

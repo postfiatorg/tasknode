@@ -89,6 +89,11 @@ offers a retry without creating or relinking another wallet.
   present or has just been refreshed successfully.
 - The encrypted local vault status is device-local. It can show `Saved`,
   `Locked`, or `Unlocked`, but it must not imply server-side custody or login.
+- `Unlocked` is browser-local session state. After a successful unlock, the app
+  keeps the decrypted wallet secret in memory and mirrors it into same-tab
+  `sessionStorage` so normal app reloads do not force another password prompt.
+  Lock, logout, local-vault removal, account mismatch, or wallet mismatch must
+  clear that session entry.
 - A wallet initiation payout must not be sent from wallet proof alone. The
   browser must save or unlock the matching local vault before requesting payout.
 
