@@ -217,6 +217,73 @@ export async function pinIpfsFile({
   };
 }
 
+export async function pinIpfsCidByHash({
+  cid,
+  name = "",
+  keyvalues = {},
+  env = process.env,
+  fetchImpl = fetch,
+} = {}) {
+  const headers = pinataHeaders(env);
+  if (!headers) {
+    const error = new Error("pinata_not_configured");
+    error.status = 409;
+    throw error;
+  }
+
+  const normalizedCid = normalizeContextCid(cid);
+  if (!isValidContextCid(normalizedCid)) {
+    const error = new Error("ipfs_cid_invalid");
+    error.status = 400;
+    throw error;
+  }
+
+  const metadata = {
+    name: String(name || normalizedCid).replace(/[^a-zA-Z0-9_.-]+/g, "_").slice(0, 120) || normalizedCid,
+  };
+  const normalizedKeyvalues = {};
+  if (keyvalues && typeof keyvalues === "object" && !Array.isArray(keyvalues)) {
+    for (const [key, value] of Object.entries(keyvalues)) {
+      if (!key || value === null || value === undefined) continue;
+      const text = String(value).slice(0, 500);
+      if (text) normalizedKeyvalues[String(key).slice(0, 120)] = text;
+    }
+  }
+  if (Object.keys(normalizedKeyvalues).length) metadata.keyvalues = normalizedKeyvalues;
+
+  const response = await fetchImpl("https://api.pinata.cloud/pinning/pinByHash", {
+    method: "POST",
+    headers: {
+      ...headers,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      hashToPin: normalizedCid,
+      pinataMetadata: metadata,
+    }),
+  });
+  const text = await response.text();
+  let result = {};
+  try {
+    result = text ? JSON.parse(text) : {};
+  } catch {
+    result = { raw: text };
+  }
+  if (!response.ok) {
+    const error = new Error(result?.error || result?.message || `pinata_pin_by_hash_http_${response.status}`);
+    error.status = response.status;
+    error.body = result || text;
+    throw error;
+  }
+
+  return {
+    ok: true,
+    provider: "pinata",
+    cid: normalizedCid,
+    response: result,
+  };
+}
+
 export async function pinContextIpfsJson({
   payload,
   name = "context.json",

@@ -37,9 +37,45 @@ Current profile NFT implementation pins generated image bytes publicly at genera
 
 Profile NFT image rendering uses `/api/profile/nft/image/:cid` for rows with an `imageCid`. The route validates the CID, fetches the image through configured IPFS gateways, accepts only image content types, enforces the default 8 MB binary limit, and caches successful image bytes in memory. This keeps profile galleries from depending on one public gateway and prevents the browser from eagerly opening many large public gateway requests at once.
 
+## Exact-CID Repin For Legacy Public Assets
+
+Public NFT assets are different from encrypted task/context payloads because the CID is part of the public on-chain artifact. If an old NFT metadata URI says `ipfs://<metadataCid>` and that metadata says `image: "ipfs://<imageCid>"`, Task Node Official must preserve those exact CIDs. Re-uploading bytes and rendering a different CID is not a valid repair for the existing token.
+
+The preferred recovery path is exact-CID repinning:
+
+1. Export every historical NFT metadata, image, and thumbnail CID from the old cache.
+2. Deduplicate by CID.
+3. Verify each CID against current gateways.
+4. Verify unresolved CIDs against legacy PFTasks gateways.
+5. For legacy-proven CIDs, request `pinByHash` from the current pinning provider.
+6. Rerun current-gateway verification until every migrated CID resolves without the legacy gateways.
+7. Only then remove legacy gateways from production config.
+
+Operator command:
+
+```bash
+npm run --silent profile-nft-cid-repin -- \
+  --source-json /tmp/pftasks-nft-mints-all.json \
+  --dry-run
+
+npm run --silent profile-nft-cid-repin -- \
+  --source-json /tmp/pftasks-nft-mints-all.json \
+  --execute \
+  --limit 250 \
+  --offset 0
+
+npm run --silent profile-nft-cid-repin -- \
+  --source-json /tmp/pftasks-nft-mints-all.json \
+  --verify-only
+```
+
+Repeat execute batches by increasing `--offset` by the batch size until the report's `uniqueCids` count is covered. Use `--verify-only` as the final gate before removing legacy gateways.
+
+If `pinByHash` cannot verify a CID that an old gateway can still serve, the next repair is block-level migration from the old IPFS node into current IPFS infrastructure. That may be a CAR export/import or another exact-CID block transfer. Do not treat a new CID from a normal file upload as a fix for an already minted NFT unless the returned CID exactly matches the original CID.
+
 ## Technical Architecture
 
-Server IPFS helpers live in `server/context-ipfs.js`. JSON pins use `pinContextIpfsJson`; binary profile NFT image pins use `pinIpfsFile` with an 8 MB server-side size limit. Context publishing uses `server/context-publish.js` and `src/features/context/context-publish.js`. Python reference IPFS upload and fetch code lives in `reference_clients/python/tasknode_pftl/ipfs.py`.
+Server IPFS helpers live in `server/context-ipfs.js`. JSON pins use `pinContextIpfsJson`; binary profile NFT image pins use `pinIpfsFile` with an 8 MB server-side size limit; legacy public CID repair uses `pinIpfsCidByHash`. Context publishing uses `server/context-publish.js` and `src/features/context/context-publish.js`. Python reference IPFS upload and fetch code lives in `reference_clients/python/tasknode_pftl/ipfs.py`.
 
 Pinata is the current simple pinning path. A self-hosted IPFS node can be added as another adapter as long as the CID and payload schema stay stable.
 

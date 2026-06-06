@@ -190,6 +190,29 @@ npm run profile-nft-import-pftasks -- \
   --execute
 ```
 
+Before deprecating old PFTasks IPFS gateways, run exact-CID repin over the full historical NFT set, not only one wallet. Export all minted old `nft_mints` rows with `image_cid`, `metadata_cid`, and `thumbnail_cid`, then classify and repin:
+
+```bash
+npm run --silent profile-nft-cid-repin -- \
+  --source-json /tmp/pftasks-nft-mints-all.json \
+  --dry-run \
+  --limit 100
+
+npm run --silent profile-nft-cid-repin -- \
+  --source-json /tmp/pftasks-nft-mints-all.json \
+  --execute \
+  --limit 250 \
+  --offset 0
+
+npm run --silent profile-nft-cid-repin -- \
+  --source-json /tmp/pftasks-nft-mints-all.json \
+  --verify-only
+```
+
+The cutover is not done while any CID remains `needs_repin`, `missing_from_legacy_gateways`, `repin_requested_not_yet_verified`, or `repin_failed`. Existing minted NFTs point at immutable CIDs. If a CID cannot be preserved through `pinByHash`, move the exact block from the old IPFS node into current infrastructure or keep the legacy gateway available for that exception until a deliberate remint/migration path exists.
+
+For large migrations, repeat the execute command with `--offset` increased by the batch size until the dry-run `uniqueCids` count is covered. Do not run a full unbounded execute in an interactive shell unless the process is deliberately supervised and its JSON report is redirected to a file.
+
 After import, the current Task Node Official profile NFT gallery can render those IPFS image CIDs because `/api/profile/nfts`, public profile, Hive, and recommended-connections avatars all read current-wallet `profile_nfts` cache rows.
 
 Old PFTasks tasks should not be imported as live new Task Node tasks. Treat them as historical evidence unless a separate replay importer proves that the old event stream maps cleanly into Task Node Official `task_projections`.

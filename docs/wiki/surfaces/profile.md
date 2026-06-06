@@ -219,6 +219,55 @@ for (const nft of inventory.nfts) {
 
 `scripts/import-pftasks-profile-nfts.mjs` remains useful for historical cutover because old PFTasks already stored mint dates, tx hashes, and image CIDs. It is not the canonical NFT discovery path.
 
+### Legacy NFT CID Repin
+
+Old PFTasks profile NFTs can only be trusted if their original CIDs remain resolvable. The minted token points at an IPFS metadata CID, and that metadata points at an image CID. Those CIDs are content addresses. Task Node Official must not silently replace them with new CIDs because that would make the app render something different from the on-chain NFT.
+
+The temporary production bridge is `TASKNODE_PROFILE_NFT_IMAGE_GATEWAYS`, which may include old PFTasks gateways so users can see their historical images during cutover. That bridge is not the final state. The final state is: every old metadata, image, and thumbnail CID resolves from current IPFS infrastructure, then the old PFTasks gateways can be removed from the profile image proxy config.
+
+Bulk repin operator flow:
+
+```bash
+# Export minted old PFTasks nft_mints rows to JSON first.
+# The JSON may be either an array or { "rows": [...] } and should include
+# image_cid, metadata_cid, thumbnail_cid, wallet_address, owner_wallet_address,
+# status, id, nft_name/display_name, minted_at, and tx_hash when available.
+
+npm run --silent profile-nft-cid-repin -- \
+  --source-json /tmp/pftasks-nft-mints-all.json \
+  --dry-run \
+  --limit 100 \
+  --concurrency 4 \
+  --timeout-ms 8000
+
+npm run --silent profile-nft-cid-repin -- \
+  --source-json /tmp/pftasks-nft-mints-all.json \
+  --execute \
+  --limit 250 \
+  --offset 0 \
+  --concurrency 4 \
+  --timeout-ms 8000
+
+npm run --silent profile-nft-cid-repin -- \
+  --source-json /tmp/pftasks-nft-mints-all.json \
+  --verify-only \
+  --concurrency 8 \
+  --timeout-ms 8000
+```
+
+`profile-nft-cid-repin` dedupes all `image_cid`, `metadata_cid`, and `thumbnail_cid` values before doing network work. It first checks current gateways, then old PFTasks gateways. In execute mode it calls Pinata `pinByHash` only for CIDs that are not already current-resolvable and are proven reachable through a legacy gateway. The output is a JSON report with one row per unique CID and status counts. For a full migration, repeat execute batches by increasing `--offset` by the batch size until `offset >= uniqueCids`, then run unbounded `--verify-only`.
+
+Status meanings:
+
+- `already_current_resolvable`: safe; no action needed.
+- `needs_repin`: legacy gateway can serve it, but current gateways cannot yet.
+- `repinned_and_verified`: safe; current gateways resolved it after repin.
+- `repin_requested_not_yet_verified`: Pinata accepted the pin request, but current gateways have not caught up; rerun `--verify-only`.
+- `missing_from_legacy_gateways`: not safe to remove old infrastructure for this CID; investigate old IPFS node/block availability or mark as an exception.
+- `repin_failed`: operator must inspect the Pinata error and retry or move the block by another exact-CID path.
+
+Do not remove old PFTasks gateways from `TASKNODE_PROFILE_NFT_IMAGE_GATEWAYS` until a full `--verify-only` run over the exported historical NFT set has zero `needs_repin`, `missing_from_legacy_gateways`, `repin_requested_not_yet_verified`, and `repin_failed` rows.
+
 ## Recommended Connections
 
 Recommended connections are the private-profile discovery surface that answers one product question: who should this member know or work with next, and why?
