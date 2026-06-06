@@ -21,6 +21,7 @@ const fmtDateTime = (value = "") => {
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 };
+const NFT_GALLERY_PAGE_SIZE = 10;
 const contributionLevelLabel = (tierNumber) => {
   const tier = Number(tierNumber || 0);
   if (tier >= 4) return "Network operator";
@@ -355,14 +356,62 @@ function PublicNFTTile({ nft }) {
 }
 
 function PublicNFTGallery({ nfts = [] }) {
+  const [page, setPage] = useState(0);
   const mintedCount = nfts.filter((nft) => String(nft.status || "").toLowerCase() === "minted").length;
+  const pageCount = Math.max(1, Math.ceil(nfts.length / NFT_GALLERY_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const start = currentPage * NFT_GALLERY_PAGE_SIZE;
+  const visibleNfts = nfts.slice(start, start + NFT_GALLERY_PAGE_SIZE);
+  const showingStart = nfts.length ? start + 1 : 0;
+  const showingEnd = Math.min(nfts.length, start + visibleNfts.length);
+
+  useEffect(() => {
+    setPage(0);
+  }, [nfts.length]);
+
+  useEffect(() => {
+    if (page >= pageCount) setPage(pageCount - 1);
+  }, [page, pageCount]);
+
   return (
     <section style={{ paddingTop: 64 }}>
-      <SectionHead eyebrow="NFT gallery" sub={`${nfts.length} profile NFTs · ${mintedCount} minted`} />
+      <SectionHead
+        eyebrow="NFT gallery"
+        sub={`${nfts.length} profile NFTs · ${mintedCount} minted${nfts.length > NFT_GALLERY_PAGE_SIZE ? ` · showing ${showingStart}-${showingEnd}` : ""}`}
+      />
       {nfts.length > 0 ? (
-        <div style={{ display: "grid", gap: 32, gridTemplateColumns: "repeat(4, 1fr)" }}>
-          {nfts.map((nft) => <PublicNFTTile key={nft.id} nft={nft} />)}
-        </div>
+        <>
+          <div style={{ display: "grid", gap: 32, gridTemplateColumns: "repeat(4, 1fr)" }}>
+            {visibleNfts.map((nft) => <PublicNFTTile key={nft.id} nft={nft} />)}
+          </div>
+          {pageCount > 1 && (
+            <div style={{ alignItems: "center", display: "flex", gap: 18, justifyContent: "space-between", marginTop: 24 }}>
+              <div style={{ color: C.ink4, fontSize: 12.5 }}>
+                Page {currentPage + 1} of {pageCount}
+              </div>
+              <div style={{ display: "flex", gap: 14 }}>
+                <button
+                  className="tn-tab"
+                  disabled={currentPage === 0}
+                  onClick={() => setPage((value) => Math.max(0, value - 1))}
+                  style={{ fontSize: 12.5, opacity: currentPage === 0 ? 0.45 : 1 }}
+                  type="button"
+                >
+                  Prev
+                </button>
+                <button
+                  className="tn-tab"
+                  disabled={currentPage >= pageCount - 1}
+                  onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}
+                  style={{ fontSize: 12.5, opacity: currentPage >= pageCount - 1 ? 0.45 : 1 }}
+                  type="button"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <div style={{ borderTop: `1px solid ${C.ruleSoft}`, color: C.ink3, fontSize: 13.5, lineHeight: 1.55, paddingTop: 18 }}>
           No public profile NFTs yet. Generate or mint a profile NFT from the private profile tab.

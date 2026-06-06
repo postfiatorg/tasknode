@@ -42,6 +42,7 @@ const fmtDateTime = (value = "") => {
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 };
+const NFT_GALLERY_PAGE_SIZE = 10;
 const shortHash = (value = "", head = 8, tail = 6) => {
   const text = String(value || "");
   return text.length > head + tail + 3 ? `${text.slice(0, head)}…${text.slice(-tail)}` : text;
@@ -986,20 +987,64 @@ function PFTTimeseries({ error = "", history, loading = false, onRangeChange, ra
 }
 
 function NFTGallery({ minted = [], allowMockFallback = true, emptyCopy = "No profile NFTs yet." }) {
+  const [page, setPage] = useState(0);
   const records = minted.length ? minted : (allowMockFallback ? NFT_DATA : []);
   const mintedCount = records.filter((n) => (n.status || "").toLowerCase() === "minted" || n.rarity).length;
+  const pageCount = Math.max(1, Math.ceil(records.length / NFT_GALLERY_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const start = currentPage * NFT_GALLERY_PAGE_SIZE;
+  const visibleRecords = records.slice(start, start + NFT_GALLERY_PAGE_SIZE);
+  const showingStart = records.length ? start + 1 : 0;
+  const showingEnd = Math.min(records.length, start + visibleRecords.length);
+
+  useEffect(() => {
+    setPage(0);
+  }, [records.length]);
+
+  useEffect(() => {
+    if (page >= pageCount) setPage(pageCount - 1);
+  }, [page, pageCount]);
+
   return (
     <section style={{ paddingTop: 64 }}>
       <SectionHead
         eyebrow="NFT gallery"
-        sub={`${records.length} profile NFTs · ${mintedCount} minted`}
-        action={<a className="tn-link" onClick={(e) => e.preventDefault()} href="#">View all →</a>}
+        sub={`${records.length} profile NFTs · ${mintedCount} minted${records.length > NFT_GALLERY_PAGE_SIZE ? ` · showing ${showingStart}-${showingEnd}` : ""}`}
       />
 
       {records.length > 0 ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 32 }}>
-          {records.map(n => <NFTTile key={n.id} nft={n} />)}
-        </div>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 32 }}>
+            {visibleRecords.map(n => <NFTTile key={n.id} nft={n} />)}
+          </div>
+          {pageCount > 1 && (
+            <div style={{ alignItems: "center", display: "flex", gap: 18, justifyContent: "space-between", marginTop: 24 }}>
+              <div style={{ color: C.ink4, fontSize: 12.5 }}>
+                Page {currentPage + 1} of {pageCount}
+              </div>
+              <div style={{ display: "flex", gap: 14 }}>
+                <button
+                  className="tn-tab"
+                  disabled={currentPage === 0}
+                  onClick={() => setPage((value) => Math.max(0, value - 1))}
+                  style={{ fontSize: 12.5, opacity: currentPage === 0 ? 0.45 : 1 }}
+                  type="button"
+                >
+                  Prev
+                </button>
+                <button
+                  className="tn-tab"
+                  disabled={currentPage >= pageCount - 1}
+                  onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}
+                  style={{ fontSize: 12.5, opacity: currentPage >= pageCount - 1 ? 0.45 : 1 }}
+                  type="button"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <div style={{
           borderTop: `1px solid ${C.ruleSoft}`,

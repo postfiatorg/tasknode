@@ -137,6 +137,8 @@ The public page does not expose `T3 / T4` style labels because they read like ar
 
 The public NFT gallery renders real `profile_nfts` rows only. It filters rows to the account's currently linked wallet and walletless generated drafts. It does not show NFTs minted or generated for a delinked or historical wallet. If the current wallet has no generated or minted profile NFTs, the page shows an empty state instead of procedural placeholder art.
 
+Private and public NFT galleries render 10 NFT tiles per page. Pagination is client-side over cached `profile_nfts` rows, and gallery images remain lazy-loaded through `/api/profile/nft/image/:cid` when an `imageCid` exists. This prevents large migrated NFT libraries from expanding the profile page or eagerly opening every image request at once.
+
 The app shell account avatar uses the same latest active-wallet profile NFT image as the public profile hero when one exists. If the current wallet has no profile NFT image, the shell falls back to account initials.
 
 Prompt privacy remains unchanged: the image prompt body is never returned to the browser, never shown in public metadata, and never committed to the public prompt folder.
@@ -552,7 +554,7 @@ Review implementation against this document (profile). Mark each item when verif
 - [ ] List and detail views read Postgres caches with documented caps or pagination.
 - [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
 - [ ] Public profile reads snapshot table; regeneration is async, not on every page load.
-- [ ] NFT gallery paginated or capped; no unbounded metadata fetch.
+- [x] NFT gallery paginated or capped; no unbounded metadata fetch.
 
 ### Code Quality
 - [ ] Code references in doc resolve to existing modules and routes.
