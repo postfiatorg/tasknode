@@ -141,6 +141,82 @@ The app shell account avatar uses the same latest active-wallet profile NFT imag
 
 Prompt privacy remains unchanged: the image prompt body is never returned to the browser, never shown in public metadata, and never committed to the public prompt folder.
 
+### Wallet NFT Inventory From Chain
+
+The durable NFT source of truth is the PFTL wallet, not the old PFTasks database and not Task Node Official's `profile_nfts` cache.
+
+To discover NFTs for any wallet:
+
+1. Query PFTL `account_nfts` for the wallet.
+2. Read each NFT's hex `URI`.
+3. Decode the URI into an IPFS metadata URI such as `ipfs://bafk...`.
+4. Fetch that metadata JSON from IPFS.
+5. Read `image` from the metadata and resolve the image CID.
+6. Render the image directly, or upsert a `profile_nfts` cache row so profile/Hive/recommended-connections surfaces can render it.
+
+Operator command:
+
+```bash
+npm run wallet-nft-inventory -- \
+  --wallet rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx \
+  --pretty
+```
+
+Fast chain-only check, without fetching IPFS metadata:
+
+```bash
+npm run wallet-nft-inventory -- \
+  --wallet rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx \
+  --pretty \
+  --no-metadata
+```
+
+Bound metadata fetches when the IPFS gateways are slow:
+
+```bash
+npm run wallet-nft-inventory -- \
+  --wallet rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx \
+  --pretty \
+  --timeout-ms 3000 \
+  --metadata-concurrency 6
+```
+
+Local PFTL endpoints may use self-signed TLS. For those internal endpoints only, prefix the command with `PFTL_WSS_REJECT_UNAUTHORIZED=false TASKNODE_ALLOW_INSECURE_PFTL_TLS=true`.
+
+If IPFS metadata cannot be fetched, the inventory still returns the NFT token id, decoded metadata URI, metadata CID, and `metadataFetch` status. Cache import only upserts rows with both `metadataCid` and `imageCid`; retry unreachable metadata later or use the old PFTasks cache import only as a historical fallback when preserving already-known image CIDs during cutover.
+
+Cache import for a linked Task Node Official account:
+
+```bash
+npm run wallet-nft-inventory -- \
+  --wallet rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx \
+  --account-id acct_oauth_... \
+  --import-profile-cache \
+  --dry-run
+
+npm run wallet-nft-inventory -- \
+  --wallet rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx \
+  --account-id acct_oauth_... \
+  --import-profile-cache \
+  --execute
+```
+
+Example application code:
+
+```js
+import { fetchWalletNftInventory } from "../server/pftl-nfts.js";
+
+const inventory = await fetchWalletNftInventory({
+  walletAddress: "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx",
+});
+
+for (const nft of inventory.nfts) {
+  console.log(nft.title, nft.imageGatewayUrl, nft.metadataCid);
+}
+```
+
+`scripts/import-pftasks-profile-nfts.mjs` remains useful for historical cutover because old PFTasks already stored mint dates, tx hashes, and image CIDs. It is not the canonical NFT discovery path.
+
 ## Recommended Connections
 
 Recommended connections are the private-profile discovery surface that answers one product question: who should this member know or work with next, and why?

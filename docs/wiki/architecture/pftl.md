@@ -55,6 +55,68 @@ Profile NFT minting is wallet-signed, not server-custodied:
 
 The NFT metadata URI is public. The private image prompt remains outside the mint transaction and outside public metadata.
 
+## Wallet NFT Inventory
+
+PFTL wallet NFT discovery uses the same XRPL-shaped `account_nfts` RPC method the chain exposes for XLS-24 NFTs. Task Node should be able to reconstruct renderable profile NFTs from chain and IPFS without the old PFTasks database.
+
+The implemented helper is `server/pftl-nfts.js::fetchWalletNftInventory`.
+
+It performs this sequence:
+
+1. Connect to `PFTL_WSS_URL`, `PFTL_WSS_URL_FALLBACKS`, or websocket-compatible `PFTL_RPC_URL`.
+2. Call `account_nfts` with `ledger_index: "validated"`.
+3. Decode each NFT's hex `URI` into UTF-8.
+4. Extract the metadata CID from `ipfs://...` or gateway `/ipfs/...` URIs.
+5. Fetch metadata through the shared IPFS gateway helper.
+6. Extract the image CID from metadata fields such as `image`.
+7. Return renderable rows containing `nftTokenId`, `metadataCid`, `imageCid`, `imageGatewayUrl`, title, and description.
+
+CLI:
+
+```bash
+npm run wallet-nft-inventory -- --wallet r... --pretty
+```
+
+Use `--no-metadata` for a fast chain-only inventory that returns token ids and decoded metadata URIs without fetching IPFS JSON. Use `--timeout-ms` and `--metadata-concurrency` to keep metadata resolution bounded:
+
+```bash
+npm run wallet-nft-inventory -- \
+  --wallet r... \
+  --pretty \
+  --timeout-ms 3000 \
+  --metadata-concurrency 6
+```
+
+Local PFTL endpoints may use self-signed TLS. For those internal endpoints only, prefix the command with `PFTL_WSS_REJECT_UNAUTHORIZED=false TASKNODE_ALLOW_INSECURE_PFTL_TLS=true`.
+
+If IPFS metadata cannot be fetched, the inventory still returns the NFT token id, decoded metadata URI, metadata CID, and `metadataFetch` status. Cache import only upserts rows with both `metadataCid` and `imageCid`.
+
+Profile cache import:
+
+```bash
+npm run wallet-nft-inventory -- \
+  --wallet r... \
+  --account-id acct_oauth_... \
+  --import-profile-cache \
+  --execute
+```
+
+The cache import upserts `profile_nfts` by existing `nft_token_id` or `metadata_cid` first, then falls back to a stable `nft_chain_<digest>` id. This prevents duplicate profile NFT rows when an old PFTasks cache row already exists.
+
+Minimal code example:
+
+```js
+import { fetchWalletNftInventory } from "./server/pftl-nfts.js";
+
+const inventory = await fetchWalletNftInventory({ walletAddress: "r..." });
+
+if (inventory.ok) {
+  for (const nft of inventory.nfts) {
+    console.log(nft.nftTokenId, nft.metadataUri, nft.imageGatewayUrl);
+  }
+}
+```
+
 ## Diagram
 
 ```mermaid

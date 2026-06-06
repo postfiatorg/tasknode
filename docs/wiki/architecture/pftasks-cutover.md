@@ -153,7 +153,23 @@ NFTs have two paths:
 - Minted NFTs remain on-chain with the old wallet. They do not move during cutover.
 - Task Node Official profile NFT rows can be imported from old `nft_mints` metadata only as cache records. The on-chain token id, mint tx hash, metadata CID, image CID, owner wallet, and mint status must be preserved.
 
-Use `npm run profile-nft-import-pftasks` for the cache import. It accepts old PFTasks `nft_mints` rows as JSON, filters to `status = 'minted'` and the requested owner wallet, then upserts Task Node Official `profile_nfts` rows with stable ids of the form `nft_pftasks_<old_mint_id>`. The import is cache-only: it does not move NFTs, sign transactions, change custody, or alter the old PFTasks rows.
+Prefer chain inventory for the canonical import path:
+
+```bash
+npm run wallet-nft-inventory -- --wallet r... --pretty --no-metadata
+
+npm run wallet-nft-inventory -- \
+  --wallet r... \
+  --account-id acct_oauth_... \
+  --import-profile-cache \
+  --timeout-ms 3000 \
+  --metadata-concurrency 6 \
+  --execute
+```
+
+That command queries PFTL `account_nfts`, decodes each on-chain NFT metadata URI, fetches IPFS metadata, extracts the image CID, and upserts renderable `profile_nfts` cache rows. It does not depend on the old PFTasks database.
+
+Use `npm run profile-nft-import-pftasks` only as a historical bootstrap or audit shortcut. It accepts old PFTasks `nft_mints` rows as JSON, filters to `status = 'minted'` and the requested owner wallet, then upserts Task Node Official `profile_nfts` rows with stable ids of the form `nft_pftasks_<old_mint_id>`. The import is cache-only: it does not move NFTs, sign transactions, change custody, or alter the old PFTasks rows.
 
 Example operator flow:
 
