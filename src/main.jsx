@@ -250,10 +250,11 @@ function RouteErrorFallback({ error }) {
 
 function profileNftImageCandidates(nft = {}) {
   const record = nft || {};
-  const candidates = [record.imageDataUrl, record.imageGatewayUrl];
+  const candidates = [record.imageDataUrl];
   if (record.imageCid) {
-    candidates.push(`https://dweb.link/ipfs/${encodeURIComponent(record.imageCid)}`);
-    candidates.push(`https://ipfs.io/ipfs/${encodeURIComponent(record.imageCid)}`);
+    candidates.push(`/api/profile/nft/image/${encodeURIComponent(record.imageCid)}`);
+  } else {
+    candidates.push(record.imageGatewayUrl);
   }
   return candidates
     .map((value) => String(value || "").trim())

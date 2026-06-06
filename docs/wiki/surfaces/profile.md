@@ -185,6 +185,8 @@ Local PFTL endpoints may use self-signed TLS. For those internal endpoints only,
 
 If IPFS metadata cannot be fetched, the inventory still returns the NFT token id, decoded metadata URI, metadata CID, and `metadataFetch` status. Cache import only upserts rows with both `metadataCid` and `imageCid`; retry unreachable metadata later or use the old PFTasks cache import only as a historical fallback when preserving already-known image CIDs during cutover.
 
+Profile NFT rendering should not make the browser depend on one public gateway for every gallery tile. For rows with an `imageCid`, the browser uses the same-origin image proxy at `/api/profile/nft/image/:cid`; the server validates the CID, fetches through configured IPFS gateways, rejects non-image content, enforces an 8 MB default size limit, and caches successful image bytes in memory. Browser-side public gateway URLs are used only for legacy rows that do not have an `imageCid`. Gallery tiles use lazy image loading so a profile with many NFTs does not eagerly request every full-size IPFS image at once.
+
 Cache import for a linked Task Node Official account:
 
 ```bash

@@ -657,10 +657,11 @@ function ProjectTaskRow({ task, last = false, operators = {} }) {
 }
 
 function imageCandidatesForNft(nft = {}) {
-  const candidates = [nft.imageDataUrl, nft.imageGatewayUrl];
+  const candidates = [nft.imageDataUrl];
   if (nft.imageCid) {
-    candidates.push(`https://dweb.link/ipfs/${encodeURIComponent(nft.imageCid)}`);
-    candidates.push(`https://ipfs.io/ipfs/${encodeURIComponent(nft.imageCid)}`);
+    candidates.push(`/api/profile/nft/image/${encodeURIComponent(nft.imageCid)}`);
+  } else {
+    candidates.push(nft.imageGatewayUrl);
   }
   return candidates
     .map((value) => String(value || "").trim())
@@ -683,6 +684,7 @@ function HiveProfileBadge({ nft = null, size = 20, variant = 0 }) {
     <img
       alt={nft?.title || "Profile NFT"}
       className="hive-profile-badge"
+      decoding="async"
       height={size}
       onError={() => setImageIndex((index) => index + 1)}
       src={imageSrc}

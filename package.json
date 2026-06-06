@@ -86,6 +86,7 @@
     "profile-daily-airdrop-issuance-smoke": "node scripts/profile-daily-airdrop-issuance-smoke.mjs",
     "profile-public-snapshot": "node scripts/profile-public-snapshot.mjs",
     "profile-nft-import-pftasks": "node scripts/import-pftasks-profile-nfts.mjs",
+    "profile-nft-image-proxy-smoke": "node scripts/profile-nft-image-proxy-smoke.mjs",
     "wallet-nft-inventory": "node scripts/wallet-nft-inventory.mjs",
     "wallet-nft-inventory-smoke": "node scripts/wallet-nft-inventory-smoke.mjs",
     "recommended-connections-smoke": "node scripts/recommended-connections-smoke.mjs",

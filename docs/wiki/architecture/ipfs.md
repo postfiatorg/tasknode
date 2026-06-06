@@ -35,6 +35,8 @@ Each image generation should also create an encrypted run receipt with schema `p
 
 Current profile NFT implementation pins generated image bytes publicly at generation time and stores the resulting image CID in `profile_nfts`. Mint preparation pins public XLS-24 metadata JSON with `image: "ipfs://<imageCid>"`. The generated image and metadata are public assets; the private prompt is not included in either payload.
 
+Profile NFT image rendering uses `/api/profile/nft/image/:cid` for rows with an `imageCid`. The route validates the CID, fetches the image through configured IPFS gateways, accepts only image content types, enforces the default 8 MB binary limit, and caches successful image bytes in memory. This keeps profile galleries from depending on one public gateway and prevents the browser from eagerly opening many large public gateway requests at once.
+
 ## Technical Architecture
 
 Server IPFS helpers live in `server/context-ipfs.js`. JSON pins use `pinContextIpfsJson`; binary profile NFT image pins use `pinIpfsFile` with an 8 MB server-side size limit. Context publishing uses `server/context-publish.js` and `src/features/context/context-publish.js`. Python reference IPFS upload and fetch code lives in `reference_clients/python/tasknode_pftl/ipfs.py`.
