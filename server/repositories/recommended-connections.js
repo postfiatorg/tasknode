@@ -676,6 +676,16 @@ export async function getRecommendedConnectionsState({ accountId = "" } = {}) {
         ) AS hero_nft
         FROM profile_nfts nft
         WHERE nft.account_id = connections.candidate_account_id
+          AND (
+            (
+              COALESCE(candidate_profiles.wallet_address, '') <> ''
+              AND nft.wallet_address = candidate_profiles.wallet_address
+            )
+            OR (
+              COALESCE(candidate_profiles.wallet_address, '') = ''
+              AND nft.wallet_address = ''
+            )
+          )
           AND lower(nft.status) IN ('minted', 'generated', 'prepared')
         ORDER BY nft.updated_at DESC NULLS LAST, nft.created_at DESC NULLS LAST
         LIMIT 1

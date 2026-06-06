@@ -13,6 +13,7 @@ const { pftUriToHex } = await import("../server/pftl-submit.js");
 
 const accountId = "account_profile_nft_smoke";
 const walletAddress = "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7";
+const oldWalletAddress = "rhwiJxkiTkxTC65MrmLG7WiUkbiCyw2TaE";
 
 const generated = await createGeneratedProfileNft({
   accountId,
@@ -39,6 +40,31 @@ const listed = await listProfileNfts({ accountId });
 assert.equal(listed.length, 1);
 assert.equal(listed[0].id, generated.id);
 
+const oldWalletNft = await createGeneratedProfileNft({
+  accountId,
+  walletAddress: oldWalletAddress,
+  title: "Old Wallet NFT",
+  imageCid: "QmOldWalletProfileNftImageCid111111111111111",
+});
+const walletlessDraft = await createGeneratedProfileNft({
+  accountId,
+  title: "Walletless Draft",
+  imageCid: "QmWalletlessProfileNftImageCid11111111111111",
+});
+
+const accountWide = await listProfileNfts({ accountId });
+assert.equal(accountWide.length, 3);
+assert.ok(accountWide.some((nft) => nft.id === oldWalletNft.id));
+
+const currentWalletListed = await listProfileNfts({ accountId, walletAddress });
+assert.ok(currentWalletListed.some((nft) => nft.id === generated.id));
+assert.ok(currentWalletListed.some((nft) => nft.id === walletlessDraft.id));
+assert.equal(
+  currentWalletListed.some((nft) => nft.id === oldWalletNft.id),
+  false,
+  "current wallet gallery must not include old wallet NFTs"
+);
+
 const metadataUri = "ipfs://QmSmokeProfileNftMetadataCid1111111111111111";
 const uriHex = pftUriToHex(metadataUri);
 assert.equal(Buffer.from(uriHex, "hex").toString("utf8"), metadataUri);
@@ -57,6 +83,21 @@ const prepared = await markProfileNftMintPrepared({
 });
 assert.equal(prepared.status, "prepared");
 assert.equal(prepared.mintTxJson.URI, uriHex);
+
+const preparedDraft = await markProfileNftMintPrepared({
+  accountId,
+  nftId: walletlessDraft.id,
+  metadataCid: "QmWalletlessProfileNftMetadataCid1111111111",
+  metadataUri,
+  metadataJson: { schema: "erc721", image: `ipfs://${walletlessDraft.imageCid}` },
+  mintTxJson: {
+    TransactionType: "NFTokenMint",
+    Account: walletAddress,
+    URI: uriHex,
+  },
+  walletAddress,
+});
+assert.equal(preparedDraft.walletAddress, walletAddress, "mint preparation must bind walletless drafts to the signing wallet");
 
 const minted = await markProfileNftMinted({
   accountId,

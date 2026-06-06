@@ -24,6 +24,7 @@ import {
   setAccountHiveHandle,
   setAccountProfileVisibility,
   suggestHiveHandles,
+  getLinkedWallet,
 } from "./runtime-store.js";
 
 const recommendedConnectionsPrompt = loadPrompt("profile/recommended_connections_v1.md");
@@ -475,7 +476,12 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       });
       return true;
     }
-    const nfts = await listProfileNfts({ accountId: session.accountId, limit: 24 });
+    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const nfts = await listProfileNfts({
+      accountId: session.accountId,
+      walletAddress: linkedWallet.address || "",
+      limit: 24,
+    });
     json(res, 200, {
       ok: true,
       nfts,

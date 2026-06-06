@@ -50,10 +50,16 @@ function normalizeRecord(record = {}) {
   };
 }
 
-function runtimeList(accountId = "") {
+function runtimeList({ accountId = "", walletAddress = "", hasWalletFilter = false, includeWalletless = true } = {}) {
   const normalizedAccountId = safeAccountId(accountId);
+  const normalizedWalletAddress = safeText(walletAddress, 120);
   return [...runtimeNfts.values()]
-    .filter((record) => record.accountId === normalizedAccountId)
+    .filter((record) => {
+      if (record.accountId !== normalizedAccountId) return false;
+      if (!hasWalletFilter) return true;
+      if (record.walletAddress === normalizedWalletAddress) return true;
+      return includeWalletless && !record.walletAddress;
+    })
     .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
 }
 
@@ -150,23 +156,45 @@ export async function createGeneratedProfileNft({
   return normalizeRecord(result.rows[0]);
 }
 
-export async function listProfileNfts({ accountId = "", limit = 12 } = {}) {
+export async function listProfileNfts(options = {}) {
+  options = options && typeof options === "object" ? options : {};
+  const { accountId = "", limit = 12, includeWalletless = true } = options;
   const normalizedAccountId = safeAccountId(accountId);
   if (!normalizedAccountId) return [];
+  const hasWalletFilter = Object.hasOwn(options, "walletAddress");
+  const walletAddress = safeText(options.walletAddress, 120);
   const boundedLimit = Math.min(Math.max(Number(limit || 12), 1), 40);
 
   if (!databaseEnabled()) {
-    return runtimeList(normalizedAccountId).slice(0, boundedLimit);
+    return runtimeList({
+      accountId: normalizedAccountId,
+      walletAddress,
+      hasWalletFilter,
+      includeWalletless,
+    }).slice(0, boundedLimit);
   }
 
-  const result = await query(
-    `SELECT *
-       FROM profile_nfts
-      WHERE account_id = $1
-      ORDER BY updated_at DESC
-      LIMIT $2`,
-    [normalizedAccountId, boundedLimit]
-  );
+  const result = hasWalletFilter
+    ? await query(
+        `SELECT *
+           FROM profile_nfts
+          WHERE account_id = $1
+            AND (
+              wallet_address = $3
+              OR ($4::boolean = true AND wallet_address = '')
+            )
+          ORDER BY updated_at DESC
+          LIMIT $2`,
+        [normalizedAccountId, boundedLimit, walletAddress, includeWalletless === true]
+      )
+    : await query(
+        `SELECT *
+           FROM profile_nfts
+          WHERE account_id = $1
+          ORDER BY updated_at DESC
+          LIMIT $2`,
+        [normalizedAccountId, boundedLimit]
+      );
   return result.rows.map(normalizeRecord);
 }
 
@@ -197,14 +225,17 @@ export async function markProfileNftMintPrepared({
   metadataUri = "",
   metadataJson = {},
   mintTxJson = {},
+  walletAddress = "",
 } = {}) {
   const record = await getProfileNft({ accountId, nftId });
   if (!record) return null;
+  const normalizedWalletAddress = safeText(walletAddress, 120);
   const preparedAt = nowIso();
 
   if (!databaseEnabled()) {
     const next = normalizeRecord({
       ...record,
+      walletAddress: record.walletAddress || normalizedWalletAddress,
       status: "prepared",
       metadataCid,
       metadataUri,
@@ -220,6 +251,10 @@ export async function markProfileNftMintPrepared({
   const result = await query(
     `UPDATE profile_nfts
         SET status = 'prepared',
+            wallet_address = CASE
+              WHEN wallet_address = '' AND $7::text <> '' THEN $7
+              ELSE wallet_address
+            END,
             metadata_cid = $3,
             metadata_uri = $4,
             metadata_json = $5::jsonb,
@@ -230,7 +265,15 @@ export async function markProfileNftMintPrepared({
       WHERE account_id = $1
         AND id = $2
       RETURNING *`,
-    [safeAccountId(accountId), safeText(nftId, 120), safeText(metadataCid, 160), safeText(metadataUri, 240), JSON.stringify(metadataJson || {}), JSON.stringify(mintTxJson || {})]
+    [
+      safeAccountId(accountId),
+      safeText(nftId, 120),
+      safeText(metadataCid, 160),
+      safeText(metadataUri, 240),
+      JSON.stringify(metadataJson || {}),
+      JSON.stringify(mintTxJson || {}),
+      normalizedWalletAddress,
+    ]
   );
   return result.rows[0] ? normalizeRecord(result.rows[0]) : null;
 }

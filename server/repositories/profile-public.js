@@ -289,14 +289,18 @@ function primaryWallet({ walletCloud, walletStats, nfts }) {
 export async function buildPublicProfileSnapshotInput({ accountId } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("profile_public_account_required");
+  const walletCloud = getAccountWalletCloud({ accountId: normalizedAccount });
   const [walletStats, rewardTotals, alignment, recentRewardedTasks, nfts] = await Promise.all([
     queryWalletStats({ accountId: normalizedAccount }),
     queryRewardTotals({ accountId: normalizedAccount }),
     queryLatestAlignment({ accountId: normalizedAccount }),
     queryRecentRewardedTasks({ accountId: normalizedAccount, limit: 24 }),
-    listProfileNfts({ accountId: normalizedAccount, limit: 12 }),
+    listProfileNfts({
+      accountId: normalizedAccount,
+      walletAddress: walletCloud.activeWalletAddress || "",
+      limit: 12,
+    }),
   ]);
-  const walletCloud = getAccountWalletCloud({ accountId: normalizedAccount });
   const cloudWallets = walletCloud.wallets.map((wallet) => ({
     walletAddress: wallet.address,
     status: wallet.status,
@@ -538,10 +542,15 @@ export async function getCompletedPublicProfileSnapshotByFingerprint({
 export async function getPublicProfile({ accountId } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("profile_public_account_required");
+  const walletCloud = getAccountWalletCloud({ accountId: normalizedAccount });
   const [input, snapshot, nfts] = await Promise.all([
     buildPublicProfileSnapshotInput({ accountId: normalizedAccount }),
     getLatestPublicProfileSnapshot({ accountId: normalizedAccount }),
-    listProfileNfts({ accountId: normalizedAccount, limit: 24 }),
+    listProfileNfts({
+      accountId: normalizedAccount,
+      walletAddress: walletCloud.activeWalletAddress || "",
+      limit: 24,
+    }),
   ]);
   return publicProfileFromParts({ accountId: normalizedAccount, input, snapshot, nfts });
 }

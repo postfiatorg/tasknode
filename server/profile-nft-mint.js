@@ -94,6 +94,7 @@ async function prepareProfileNftMint({ nft, session, state, env }) {
     metadataUri,
     metadataJson,
     mintTxJson: prepared.txJson,
+    walletAddress,
   });
 
   return {

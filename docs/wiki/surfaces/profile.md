@@ -2,7 +2,7 @@
 
 Profile is the member-facing trust surface. It should explain what the system knows about the account, what the member has earned, what profile image/NFT state exists, and which private account-level reads are available.
 
-The profile is account-scoped. Wallets can change over time, but the profile belongs to the signup identity cloud, not to a single current wallet.
+The profile is account-scoped. Wallets can change over time, but the profile belongs to the signup identity cloud, not to a single current wallet. Profile NFT ownership is the exception: NFT library reads are scoped to the currently linked wallet, with walletless generated drafts included until they are minted. Old-wallet NFT rows stay historical and must not render as the current wallet's gallery or avatar.
 
 ## Hive Handle And Public Aliases
 
@@ -53,13 +53,13 @@ Runtime endpoints:
 
 The deterministic fields come from Postgres and runtime wallet-link state:
 
-- primary/display wallet from the account wallet cloud, task history, and profile NFT rows;
+- primary/display wallet from the account wallet cloud, task history, and active-wallet profile NFT rows;
 - lifetime task reward PFT from `task_projections.reward_actual_pft > 0`;
 - lifetime daily airdrop PFT from submitted `profile_daily_airdrop_issuances`;
 - total lifetime PFT as task rewards plus issued airdrops;
 - alignment score from the latest completed `profile_daily_airdrop_runs.alignment_score_7d`;
 - contribution tier from positive task rewards in the trailing 30 days;
-- public NFT gallery from account-owned `profile_nfts` rows.
+- public NFT gallery from active-wallet `profile_nfts` rows plus walletless generated drafts.
 
 The model-generated fields come from `profile_public_snapshots`:
 
@@ -135,9 +135,9 @@ The public page does not expose `T3 / T4` style labels because they read like ar
 
 ### Public NFT Gallery
 
-The public NFT gallery renders real `profile_nfts` rows only. If the account has no generated or minted profile NFTs, the page shows an empty state instead of procedural placeholder art.
+The public NFT gallery renders real `profile_nfts` rows only. It filters rows to the account's currently linked wallet and walletless generated drafts. It does not show NFTs minted or generated for a delinked or historical wallet. If the current wallet has no generated or minted profile NFTs, the page shows an empty state instead of procedural placeholder art.
 
-The app shell account avatar uses the same latest profile NFT image as the public profile hero when one exists. If the account has no profile NFT image, the shell falls back to account initials.
+The app shell account avatar uses the same latest active-wallet profile NFT image as the public profile hero when one exists. If the current wallet has no profile NFT image, the shell falls back to account initials.
 
 Prompt privacy remains unchanged: the image prompt body is never returned to the browser, never shown in public metadata, and never committed to the public prompt folder.
 
@@ -180,7 +180,7 @@ The recurring worker is `server/recommended-connections-worker.js`, started by `
 
 The prompt is `prompts/profile/recommended_connections_v1.md`. It receives the target packet plus at most 50 candidate packets and returns raw JSON containing 3-4 recommendations. The recommendation prompt bans internal jargon and asks for clear reasons, supporting signals, and a useful first move.
 
-The private profile page renders recommendation cards from `GET /api/profile/recommended-connections`. Each card shows the recommended member's latest generated/prepared/minted profile NFT image when present, falling back to initials when no image exists. It also shows the member's public handle or display name, a `View profile` action, wallet metadata when present, one role line, the plain-English reason, the strongest supporting signals, and a suggested first action. `GET /api/profile/member?accountId=...` returns only the same sanitized public profile read model used by the public profile tab, and only for public/discoverable accounts. It does not show raw vector scores, raw Network Diagnostic text, internal packet JSON, private aliases, private context, hidden task evidence, or explicit Useful/Dismiss feedback controls. Profile and wallet interactions may record local recommendation events; they do not message another user or perform a connection action on the user's behalf.
+The private profile page renders recommendation cards from `GET /api/profile/recommended-connections`. Each card shows the recommended member's latest current-wallet generated/prepared/minted profile NFT image when present, falling back to initials when no image exists. It also shows the member's public handle or display name, a `View profile` action, wallet metadata when present, one role line, the plain-English reason, the strongest supporting signals, and a suggested first action. `GET /api/profile/member?accountId=...` returns only the same sanitized public profile read model used by the public profile tab, and only for public/discoverable accounts. It does not show raw vector scores, raw Network Diagnostic text, internal packet JSON, private aliases, private context, hidden task evidence, old-wallet NFT rows, or explicit Useful/Dismiss feedback controls. Profile and wallet interactions may record local recommendation events; they do not message another user or perform a connection action on the user's behalf.
 
 ## Daily Airdrop
 
