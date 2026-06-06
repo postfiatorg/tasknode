@@ -245,6 +245,7 @@ npm run --silent profile-nft-cid-repin -- \
   --execute \
   --limit 250 \
   --offset 0 \
+  --no-verify-after \
   --concurrency 4 \
   --timeout-ms 8000
 

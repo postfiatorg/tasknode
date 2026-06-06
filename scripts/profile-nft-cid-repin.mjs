@@ -41,6 +41,7 @@ function usage() {
     "Exact-repins profile NFT CIDs with Pinata pinByHash. It preserves original CIDs.",
     "Use --kinds image,metadata,thumbnail to control which CID classes are included.",
     "Use --verify-only to skip pinning and only check gateway reachability.",
+    "Use --no-verify-after for bulk execute runs, then run --verify-only afterward.",
   ].join("\n"));
 }
 
@@ -314,6 +315,7 @@ export async function main() {
   const offset = Math.max(0, Number(argValue("offset", "0")) || 0);
   const concurrency = Math.max(1, Number(argValue("concurrency", "4")) || 4);
   const timeoutMs = Math.max(1000, Number(argValue("timeout-ms", "8000")) || 8000);
+  const verifyAfter = !hasFlag("no-verify-after");
   const kinds = parseList(argValue("kinds", "image,metadata,thumbnail"), ["image", "metadata", "thumbnail"]);
   const currentGateways = uniqueList(parseList(argValue("current-gateways"), defaultCurrentGateways).map(normalizeGateway));
   const legacyGateways = uniqueList(parseList(argValue("legacy-gateways"), defaultLegacyGateways).map(normalizeGateway));
@@ -329,6 +331,7 @@ export async function main() {
     currentGateways,
     legacyGateways,
     timeoutMs,
+    verifyAfter,
   }));
 
   await closePool().catch(() => null);
@@ -340,6 +343,7 @@ export async function main() {
     uniqueCids: records.length,
     selectedCids: selected.length,
     offset,
+    verifyAfter,
     currentGateways,
     legacyGateways,
     statusCounts: results.reduce((acc, result) => {

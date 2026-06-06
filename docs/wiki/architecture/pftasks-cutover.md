@@ -202,7 +202,8 @@ npm run --silent profile-nft-cid-repin -- \
   --source-json /tmp/pftasks-nft-mints-all.json \
   --execute \
   --limit 250 \
-  --offset 0
+  --offset 0 \
+  --no-verify-after
 
 npm run --silent profile-nft-cid-repin -- \
   --source-json /tmp/pftasks-nft-mints-all.json \
