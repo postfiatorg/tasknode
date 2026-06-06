@@ -153,6 +153,29 @@ NFTs have two paths:
 - Minted NFTs remain on-chain with the old wallet. They do not move during cutover.
 - Task Node Official profile NFT rows can be imported from old `nft_mints` metadata only as cache records. The on-chain token id, mint tx hash, metadata CID, image CID, owner wallet, and mint status must be preserved.
 
+Use `npm run profile-nft-import-pftasks` for the cache import. It accepts old PFTasks `nft_mints` rows as JSON, filters to `status = 'minted'` and the requested owner wallet, then upserts Task Node Official `profile_nfts` rows with stable ids of the form `nft_pftasks_<old_mint_id>`. The import is cache-only: it does not move NFTs, sign transactions, change custody, or alter the old PFTasks rows.
+
+Example operator flow:
+
+```bash
+# 1. Query old PFTasks nft_mints for the wallet from the old PFTasks API app.
+# 2. Dry-run the import against Task Node Official.
+npm run profile-nft-import-pftasks -- \
+  --account-id acct_oauth_... \
+  --wallet r... \
+  --source-json /tmp/old-pftasks-nfts.json \
+  --dry-run
+
+# 3. Execute only after the dry run shows the expected minted rows.
+npm run profile-nft-import-pftasks -- \
+  --account-id acct_oauth_... \
+  --wallet r... \
+  --source-json /tmp/old-pftasks-nfts.json \
+  --execute
+```
+
+After import, the current Task Node Official profile NFT gallery can render those IPFS image CIDs because `/api/profile/nfts`, public profile, Hive, and recommended-connections avatars all read current-wallet `profile_nfts` cache rows.
+
 Old PFTasks tasks should not be imported as live new Task Node tasks. Treat them as historical evidence unless a separate replay importer proves that the old event stream maps cleanly into Task Node Official `task_projections`.
 
 ## URL Cutover
