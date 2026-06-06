@@ -214,6 +214,24 @@ The cutover is not done while any CID remains `needs_repin`, `missing_from_legac
 
 For large migrations, repeat the execute command with `--offset` increased by the batch size until the dry-run `uniqueCids` count is covered. Do not run a full unbounded execute in an interactive shell unless the process is deliberately supervised and its JSON report is redirected to a file.
 
+### June 6, 2026 PFTasks NFT Repin Run
+
+The historical PFTasks export contained 3,388 minted NFT rows across 56 users and 57 wallets. Those rows deduped to 10,065 public NFT CIDs: 3,355 image CIDs, 3,355 metadata CIDs, and 3,355 thumbnail CIDs.
+
+The first full execute pass covered all 10,065 CIDs. 9,016 already resolved from current gateways and 1,049 were accepted by Pinata as exact-CID `pinByHash` requests. No CID was missing from the old PFTasks gateways and no Pinata request failed.
+
+The follow-up verify and retry passes reduced the legacy-only tail to one thumbnail CID: `bafkreicmubbbsmf4arvxj35ia3f3mdesry52mjpq4ie45de73vz3mvorqe`. That CID exists on the old IPFS node, was pinned and announced there, and has an open Pinata `prechecking` job. Keep old PFTasks gateways configured as fallback until that final CID resolves from current infrastructure or is moved by another exact-CID block transfer.
+
+Live gateway order should prefer current infrastructure first, with old PFTasks gateways last:
+
+```text
+https://gateway.pinata.cloud/ipfs/,
+https://dweb.link/ipfs/,
+https://ipfs.io/ipfs/,
+https://ipfs-testnet.postfiat.org/ipfs/,
+https://pft-ipfs-testnet-node-1.fly.dev/ipfs/
+```
+
 After import, the current Task Node Official profile NFT gallery can render those IPFS image CIDs because `/api/profile/nfts`, public profile, Hive, and recommended-connections avatars all read current-wallet `profile_nfts` cache rows.
 
 Old PFTasks tasks should not be imported as live new Task Node tasks. Treat them as historical evidence unless a separate replay importer proves that the old event stream maps cleanly into Task Node Official `task_projections`.
