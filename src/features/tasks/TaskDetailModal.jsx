@@ -35,13 +35,15 @@ import {
 import { buildTaskCopyPayloads } from "./task-copy-format.js";
 import {
   optimisticEvidenceStateFromSubmission,
-  optimisticTaskStateFromActionReceipt,
-  optimisticTaskStateFromTask,
   overlayTaskDetailWithOptimisticEvidence,
-  overlayTaskDetailWithOptimisticTaskState,
   shouldRetainOptimisticEvidenceState,
-  shouldRetainOptimisticTaskState,
 } from "./task-detail-optimistic-state.js";
+import {
+  overlayTaskDetailWithVisibleState,
+  shouldRetainVisibleTaskDetailState,
+  visibleTaskStateFromActionReceipt,
+  visibleTaskStateFromTask,
+} from "./task-visible-state.js";
 import {
   taskActionReceiptFromEvidenceResult,
   taskActionReceiptFromLifecycleResult,
@@ -1026,15 +1028,15 @@ export function TaskDetailModal({
       setOptimisticEvidence(null);
     }
     const currentOptimisticLifecycle = optimisticLifecycleRef.current;
-    const keepLifecycleOptimistic = shouldRetainOptimisticTaskState(body, currentOptimisticLifecycle);
+    const keepLifecycleOptimistic = shouldRetainVisibleTaskDetailState(body, currentOptimisticLifecycle);
     if (!keepLifecycleOptimistic && currentOptimisticLifecycle) {
       optimisticLifecycleRef.current = null;
       setOptimisticLifecycle(null);
     }
-    const currentTaskOptimistic = optimisticTaskStateFromTask(task);
-    let data = overlayTaskDetailWithOptimisticTaskState(body, currentTaskOptimistic);
+    const currentTaskOptimistic = visibleTaskStateFromTask(task);
+    let data = overlayTaskDetailWithVisibleState(body, currentTaskOptimistic);
     if (keepLifecycleOptimistic) {
-      data = overlayTaskDetailWithOptimisticTaskState(data, currentOptimisticLifecycle);
+      data = overlayTaskDetailWithVisibleState(data, currentOptimisticLifecycle);
     }
     if (keepOptimistic) {
       data = overlayTaskDetailWithOptimisticEvidence(data, currentOptimisticEvidence);
@@ -1133,7 +1135,7 @@ export function TaskDetailModal({
   }
 
   function applyOptimisticLifecycleState(receipt = {}) {
-    const optimistic = optimisticTaskStateFromActionReceipt(receipt);
+    const optimistic = visibleTaskStateFromActionReceipt(receipt);
     if (!optimistic) return;
     optimisticLifecycleRef.current = optimistic;
     setOptimisticLifecycle(optimistic);
@@ -1142,7 +1144,7 @@ export function TaskDetailModal({
       if (!data?.task) return current;
       return {
         ...current,
-        data: overlayTaskDetailWithOptimisticTaskState(data, optimistic),
+        data: overlayTaskDetailWithVisibleState(data, optimistic),
       };
     });
   }

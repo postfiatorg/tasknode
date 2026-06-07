@@ -107,24 +107,23 @@ import {
 import { PostFiatLogo, SidebarButton, ToolMenuRow } from "./features/shell/ShellControls";
 import { TaskDetailModal } from "./features/tasks/TaskDetailModal.jsx";
 import { TaskRequestModal } from "./features/tasks/TaskRequestModal.jsx";
-import { activeTaskRequests, TaskRequestQueue } from "./features/tasks/TaskRequestQueue.jsx";
+import { TaskRequestQueue } from "./features/tasks/TaskRequestQueue.jsx";
 import { TaskRow } from "./features/tasks/TaskRow.jsx";
 import {
   settledTaskRequestHasVisibleOutstanding,
   shouldRevealSettledOutstandingTask,
-  shouldForceTaskSyncNotice,
   shouldStartTaskRequestSettle,
-  taskRefreshPolicy,
   taskRequestSettleDeadline,
 } from "./features/tasks/task-refresh-policy.js";
 import {
   appendTaskActionReceipt,
   loadTaskActionReceipts,
-  mergeTaskStateWithActionReceipts,
-  pruneTaskActionReceiptsForTaskState,
   saveTaskActionReceipts,
-  taskSyncNoticeForStatus,
 } from "./features/tasks/task-action-receipts.js";
+import {
+  findTaskById,
+  reconcileTaskVisibleState,
+} from "./features/tasks/task-visible-state.js";
 import { publishTaskRequest } from "./features/tasks/task-request-actions.js";
 import { evaluateTaskRequestUnlockPolicy } from "./features/tasks/task-request-unlock-policy.js";
 import {
@@ -145,7 +144,6 @@ import { formatCreditUsd, formatUsageUsd } from "./formatters";
 import { isSignedInSession } from "./session";
 import { escapeContextHtml, looksLikeContextHtml, sanitizeContextHtml } from "../shared/context-html";
 import { contextLineCount as countContextLines } from "../shared/context-line-map.js";
-import { taskRequiresRefresh } from "../shared/task-lifecycle";
 import "./styles.css";
 import "./features/context/context.css";
 
@@ -539,10 +537,13 @@ function App() {
       ? appState.wallet.pftWallet
       : null;
   const linkedWalletAddress = linkedWallet?.address || "";
-  const visibleTasks = useMemo(() => mergeTaskStateWithActionReceipts(appState?.tasks || EMPTY_TASKS, taskActionReceipts, {
+  const taskVisibleState = useMemo(() => reconcileTaskVisibleState({
     accountId: walletAccountId,
-    walletAddress: linkedWalletAddress,
+    linkedWalletAddress,
+    receipts: taskActionReceipts,
+    tasks: appState?.tasks || EMPTY_TASKS,
   }), [appState?.tasks, linkedWalletAddress, taskActionReceipts, walletAccountId]);
+  const visibleTasks = taskVisibleState.tasks;
   const walletVaultAvailable = Boolean(walletVaultStatus?.available && walletVaultStatus?.address === linkedWalletAddress);
   const walletVaultUnlocked = Boolean(walletVaultAvailable && walletVaultStatus?.unlocked);
   const vaultDisplay = walletVaultDisplayState(walletVaultStatus, linkedWalletAddress);
@@ -561,10 +562,12 @@ function App() {
   useEffect(() => {
     if (!appState?.tasks) return;
     setTaskActionReceipts((current) => {
-      const pruned = pruneTaskActionReceiptsForTaskState(current, appState.tasks, {
+      const pruned = reconcileTaskVisibleState({
         accountId: walletAccountId,
-        walletAddress: linkedWalletAddress,
-      });
+        linkedWalletAddress,
+        receipts: current,
+        tasks: appState.tasks,
+      }).prunedReceipts;
       if (pruned.length === current.length) return current;
       saveTaskActionReceipts(
         typeof window === "undefined" ? null : window.sessionStorage,
@@ -2995,39 +2998,6 @@ function ProfileAvatar({ imageCandidates = [], initials, signedIn }) {
   );
 }
 
-function taskArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function taskRequestArray(tasks = EMPTY_TASKS) {
-  return Array.isArray(tasks?.requests?.items) ? tasks.requests.items : [];
-}
-
-function allTaskBuckets(tasks = EMPTY_TASKS) {
-  return [
-    ...taskArray(tasks.outstanding),
-    ...taskArray(tasks.verification),
-    ...taskArray(tasks.refused),
-    ...taskArray(tasks.rewarded),
-  ];
-}
-
-function needsLegacyTaskRefresh(tasks = EMPTY_TASKS) {
-  if (Object.prototype.hasOwnProperty.call(tasks?.sync || {}, "requiresRefresh")) return false;
-  return allTaskBuckets(tasks).some((task) => {
-    const statusKey = String(task?.statusKey || "").toLowerCase();
-    return taskRequiresRefresh(task?.statusKey || task?.status) || statusKey === "verification_requested";
-  });
-}
-
-function findTaskById(tasks = EMPTY_TASKS, taskId = "") {
-  const normalized = String(taskId || "").trim();
-  if (!normalized) return null;
-  return allTaskBuckets(tasks).find((task) =>
-    [task.taskId, task.fullId, task.id].some((value) => String(value || "") === normalized)
-  ) || null;
-}
-
 function EmptyState({ icon: Icon, title, desc }) {
   return (
     <div className="empty-state">
@@ -3056,42 +3026,34 @@ function TasksView({
   const [taskRequestSettleUntilMs, setTaskRequestSettleUntilMs] = useState(0);
   const didAutoSelectTaskTabRef = useRef(false);
   const previousActiveRequestCountRef = useRef(0);
-  const outstanding = taskArray(tasks.outstanding);
-  const verification = taskArray(tasks.verification);
-  const refused = taskArray(tasks.refused);
-  const rewarded = taskArray(tasks.rewarded);
-  const requests = taskRequestArray(tasks);
-  const activeRequests = activeTaskRequests(requests);
-  const activeRequestCount = activeRequests.length;
-  const taskSync = tasks?.sync || {};
-  const taskSyncStatus = String(taskSync.status || "ready");
+  const visibleState = useMemo(() => reconcileTaskVisibleState({
+    accountId,
+    linkedWalletAddress,
+    taskRequestSettleUntilMs,
+    tasks,
+    tasksTab,
+  }), [accountId, linkedWalletAddress, taskRequestSettleUntilMs, tasks, tasksTab]);
+  const {
+    activeRequests,
+    activeRequestCount,
+    counts,
+    currentTabTasks,
+    outstanding,
+    polling,
+    rewarded,
+    sync: taskSync,
+    tabs,
+    taskSyncNotice,
+    totalPftInFlight,
+    verification,
+  } = visibleState;
   const {
     shouldForceTaskProjection,
     shouldRefreshTaskState,
     taskRefreshMs,
     taskRequestSettling,
-  } = taskRefreshPolicy({
-    activeRequestCount,
-    legacyRefreshNeeded: needsLegacyTaskRefresh(tasks),
-    nextPollMs: taskSync.nextPollMs,
-    settleUntilMs: taskRequestSettleUntilMs,
-    taskSyncRequiresRefresh: taskSync.requiresRefresh,
-    taskSyncStatus,
-  });
-  const currentTabTasks = {
-    outstanding,
-    verification,
-    refused,
-    rewarded,
-  }[tasksTab] || [];
-  const outstandingCount = outstanding.length;
-  const totalPft = [...outstanding, ...verification].reduce((sum, task) => sum + Number(task.pft || 0), 0);
-  const tabs = [
-    { key: "outstanding", label: "Outstanding", count: outstanding.length },
-    { key: "verification", label: "Verification", count: verification.length },
-    { key: "refused", label: "Refused", count: refused.length },
-    { key: "rewarded", label: "Rewarded", count: rewarded.length },
-  ];
+  } = polling;
+  const outstandingCount = counts.outstanding;
 
   useEffect(() => {
     if (didAutoSelectTaskTabRef.current) return;
@@ -3154,8 +3116,6 @@ function TasksView({
     taskRequestSettling,
   ]);
 
-  const taskSyncNotice = shouldForceTaskSyncNotice(taskSync) ? taskSyncNoticeForStatus(taskSync) : null;
-
   const emptyCopy = {
     outstanding: {
       icon: Flag,
@@ -3188,7 +3148,7 @@ function TasksView({
             <p>
               <strong>{outstandingCount} outstanding</strong>
               <span aria-hidden="true">.</span>
-              <span className="task-in-flight">{totalPft.toLocaleString()} PFT in flight</span>
+              <span className="task-in-flight">{totalPftInFlight.toLocaleString()} PFT in flight</span>
               {tasks?.sync?.projectionCount > 0 && (
                 <>
                   <span aria-hidden="true">.</span>

@@ -1,4 +1,5 @@
 import React from "react";
+import { activeTaskRequests } from "./task-visible-state.js";
 
 function statusSlug(status = "") {
   return String(status || "published")
@@ -9,24 +10,6 @@ function statusSlug(status = "") {
 
 function requestTitle(request = {}) {
   return request.userDetailText || request.requestText || "Task request";
-}
-
-function requestAgeMs(request = {}) {
-  const timestamp = Date.parse(request.updatedAt || request.createdAt || "");
-  return Number.isFinite(timestamp) ? Date.now() - timestamp : Number.POSITIVE_INFINITY;
-}
-
-export function activeTaskRequests(requests = []) {
-  return (Array.isArray(requests) ? requests : []).filter((request) => {
-    if (request?.isActive === true) return true;
-    if (request?.isActive === false) return false;
-    const status = String(request?.status || "").trim().toLowerCase();
-    if (!status || status === "proposed" || status === "cancelled") return false;
-    if (status === "failed") return requestAgeMs(request) < 24 * 60 * 60 * 1000;
-    if (["signing", "queued", "generating"].includes(status)) return true;
-    if (status === "published") return requestAgeMs(request) < 20 * 60 * 1000 && !request.generatedTaskId;
-    return false;
-  });
 }
 
 function TaskRequestRow({ request }) {

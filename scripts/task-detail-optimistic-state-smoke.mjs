@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 
 import {
   optimisticEvidenceStateFromSubmission,
-  optimisticTaskStateFromActionReceipt,
-  optimisticTaskStateFromTask,
   overlayTaskDetailWithOptimisticEvidence,
-  overlayTaskDetailWithOptimisticTaskState,
   shouldRetainOptimisticEvidenceState,
-  shouldRetainOptimisticTaskState,
 } from "../src/features/tasks/task-detail-optimistic-state.js";
+import {
+  overlayTaskDetailWithVisibleState,
+  shouldRetainVisibleTaskDetailState,
+  visibleTaskStateFromActionReceipt,
+  visibleTaskStateFromTask,
+} from "../src/features/tasks/task-visible-state.js";
 
 const initialSubmission = optimisticEvidenceStateFromSubmission({
   txHash: "ABC123",
@@ -22,7 +24,7 @@ assert.equal(
   "accepted detail refresh is stale after evidence submit"
 );
 
-const acceptedReceipt = optimisticTaskStateFromActionReceipt({
+const acceptedReceipt = visibleTaskStateFromActionReceipt({
   actionType: "accept",
   expectedStatusKey: "accepted",
   expectedStatus: "Accepted",
@@ -31,12 +33,12 @@ const acceptedReceipt = optimisticTaskStateFromActionReceipt({
 });
 
 assert.equal(
-  shouldRetainOptimisticTaskState({ task: { statusKey: "proposed" } }, acceptedReceipt),
+  shouldRetainVisibleTaskDetailState({ task: { statusKey: "proposed" } }, acceptedReceipt),
   true,
   "proposed detail refresh is stale after accept"
 );
 
-const staleAcceptedDetail = overlayTaskDetailWithOptimisticTaskState(
+const staleAcceptedDetail = overlayTaskDetailWithVisibleState(
   {
     task: { taskId: "task_accepted_1", status: "Proposed", statusKey: "proposed", metadata: {} },
     actions: {
@@ -54,7 +56,7 @@ assert.equal(staleAcceptedDetail.task.metadata.optimisticLastTxHash, "ACCEPT_TX"
 assert.equal(staleAcceptedDetail.actions.canAccept, false);
 assert.equal(staleAcceptedDetail.actions.canSubmitInitialEvidence, true);
 
-const acceptedRowState = optimisticTaskStateFromTask({
+const acceptedRowState = visibleTaskStateFromTask({
   taskId: "task_accepted_1",
   status: "Accepted",
   statusKey: "accepted",
@@ -63,7 +65,7 @@ const acceptedRowState = optimisticTaskStateFromTask({
   clientSyncLabel: "syncing",
 });
 
-const staleDetailFromAdvancedRow = overlayTaskDetailWithOptimisticTaskState(
+const staleDetailFromAdvancedRow = overlayTaskDetailWithVisibleState(
   {
     task: { taskId: "task_accepted_1", status: "Proposed", statusKey: "proposed", metadata: {} },
     actions: { canAccept: true },
@@ -76,7 +78,7 @@ assert.equal(staleDetailFromAdvancedRow.task.clientSyncLabel, "syncing");
 assert.equal(staleDetailFromAdvancedRow.actions.canSubmitInitialEvidence, true);
 
 assert.equal(
-  shouldRetainOptimisticTaskState({ task: { statusKey: "accepted" } }, optimisticTaskStateFromTask({ statusKey: "proposed" })),
+  shouldRetainVisibleTaskDetailState({ task: { statusKey: "accepted" } }, visibleTaskStateFromTask({ statusKey: "proposed" })),
   false,
   "older row state must not downgrade advanced detail"
 );

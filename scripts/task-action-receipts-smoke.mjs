@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 
 import {
   appendTaskActionReceipt,
-  mergeTaskStateWithActionReceipts,
-  pruneTaskActionReceiptsForTaskState,
   taskActionReceiptFromEvidenceResult,
   taskActionReceiptFromLifecycleResult,
-  taskSyncNoticeForStatus,
 } from "../src/features/tasks/task-action-receipts.js";
 import { shouldForceTaskSyncNotice } from "../src/features/tasks/task-refresh-policy.js";
+import {
+  mergeTaskStateWithActionReceipts,
+  pruneTaskActionReceiptsForTaskState,
+  taskSyncNoticeForStatus,
+} from "../src/features/tasks/task-visible-state.js";
 
 const nowMs = Date.parse("2026-06-07T10:00:00.000Z");
 const accountId = "acct_test";
