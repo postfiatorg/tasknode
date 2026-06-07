@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { query } from "./db/pool.js";
-import { getAccountWalletCloud } from "./account-wallet-cloud.js";
 import {
   completeDailyAirdropRun,
   createDailyAirdropRun,
   failDailyAirdropRun,
   recentDailyAirdropRunWindow,
   resolveDailyAirdropRecipientWallet,
+  resolveDailyAirdropWalletCloud,
 } from "./repositories/profile-daily-airdrop.js";
 
 const PROMPT_PATH = "profile/daily_airdrop_v1.md";
@@ -54,6 +54,11 @@ function clampNumber(value, min = 0, max = DEFAULT_MAX_DAILY_PFT) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return min;
   return Math.min(max, Math.max(min, parsed));
+}
+
+function positiveNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
 function parseJsonObject(text = "") {
@@ -138,7 +143,7 @@ export async function buildDailyAirdropTaskRewardPacket({
   if (!normalizedAccount) throw new Error("daily_airdrop_account_required");
   const to = now instanceof Date ? now : new Date(now);
   const from = new Date(to.getTime() - Math.max(1, Number(lookbackDays || DEFAULT_LOOKBACK_DAYS)) * 24 * 60 * 60 * 1000);
-  const walletCloud = getAccountWalletCloud({ accountId: normalizedAccount });
+  const walletCloud = await resolveDailyAirdropWalletCloud({ accountId: normalizedAccount });
   const airdropRecipient = await resolveDailyAirdropRecipientWallet({
     accountId: normalizedAccount,
     candidateWallets: walletCloud.wallets,
@@ -223,6 +228,7 @@ export async function buildDailyAirdropTaskRewardPacket({
       account_id: normalizedAccount,
       active_wallet_address: walletCloud.activeWalletAddress || "",
       eligible_wallet_count: walletCloud.wallets.length,
+      source: walletCloud.source || "pftl_sync_wallets",
       eligible_wallets: walletCloud.wallets.map((wallet) => ({
         address: wallet.address,
         status: wallet.status,
@@ -330,11 +336,30 @@ export async function runDailyAirdropScore({
   lookbackDays = DEFAULT_LOOKBACK_DAYS,
   maxDailyPft = Number(process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || DEFAULT_MAX_DAILY_PFT),
   model = process.env.TASKNODE_DAILY_AIRDROP_MODEL || DEFAULT_MODEL,
+  expectedCandidate = null,
   env = process.env,
 } = {}) {
   const promptText = loadPrompt(PROMPT_PATH);
   const digest = promptDigest(promptText);
   const packet = await buildDailyAirdropTaskRewardPacket({ accountId, now, lookbackDays, maxDailyPft });
+  const expectedRewardedTasks = positiveNumber(expectedCandidate?.rewardedTaskCount);
+  const expectedRewardPft = positiveNumber(expectedCandidate?.rewardActualPft);
+  const packetRewardedTasks = positiveNumber(packet?.reward_totals?.rewarded_task_count);
+  const packetRewardPft = positiveNumber(packet?.reward_totals?.total_reward_paid_pft);
+  const packetWalletCount = positiveNumber(packet?.identity_cloud?.eligible_wallet_count);
+  if ((expectedRewardedTasks > 0 || expectedRewardPft > 0) && (packetWalletCount === 0 || packetRewardedTasks === 0 || packetRewardPft === 0)) {
+    const error = new Error("daily_airdrop_packet_candidate_mismatch");
+    error.details = {
+      accountId,
+      expectedRewardedTasks,
+      expectedRewardPft,
+      packetWalletCount,
+      packetRewardedTasks,
+      packetRewardPft,
+      walletCloudSource: packet?.identity_cloud?.source || "",
+    };
+    throw error;
+  }
   const inputHash = `sha256:${sha256(packet)}`;
   const run = await createDailyAirdropRun({
     accountId,

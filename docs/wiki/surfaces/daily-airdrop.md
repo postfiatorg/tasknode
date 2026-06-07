@@ -27,11 +27,15 @@ The adjacent reward chart uses `GET /api/profile/reward-history?range=7d|28d|90d
 
 ### Evidence Packet
 
-The scorer builds one compact task reward packet from Postgres task projections and task reward events.
+The scorer builds one compact task reward packet from Postgres wallet, task
+projection, and task reward-event facts. The worker path must not depend on
+`runtime-store.js` for wallet identity because Fly `app` and `worker` processes
+do not share app-local runtime memory or files.
 
 Included work:
 
-- only tasks tied to the account's identity wallet cloud;
+- only tasks tied to the account's durable identity wallet cloud from
+  `pftl_sync_wallets`;
 - only tasks with `reward_paid_pft > 0`;
 - only tasks inside the trailing lookback window, currently 7 days;
 - task title, kind, status, reward offer, reward outcome, reward reason, completion score, evidence quality, event CIDs, and transaction hashes.
@@ -44,19 +48,29 @@ Excluded work:
 
 ### Identity Cloud
 
-The airdrop is one score per identity cloud, not one score per wallet. An account can link, delink, and relink multiple PFT wallets over time, but daily scoring remains keyed by `account_id` and `run_date`.
+The airdrop is one score per identity cloud, not one score per wallet. An account can link, delink, and relink multiple PFT wallets over time, but daily scoring remains keyed by `account_id` and `run_date`. The wallet cloud is for attribution and recipient selection; it is not a payout fanout list.
 
-The identity wallet cloud is built from:
+The worker-visible identity wallet cloud is built from `pftl_sync_wallets`:
 
-- the active linked wallet;
-- wallet link, relink, and delink auth events for the account;
-- reclaim events that remove wallets now claimed by another active account.
+- active `role = 'user'` rows are treated as currently linked wallets;
+- inactive `role = 'user'` rows are treated as historical identity-cloud wallets;
+- non-user roles such as `allocation_reward`, authority, and funding wallets are
+  excluded.
 
 This prevents a user from farming airdrops by rotating wallets and prevents Task Node authority/funding wallets from being selected just because they appear in chain replay rows.
+
+`runtime-store.js` can describe the signed-in app session, but it is not the
+daily-airdrop worker source of truth. If a wallet link or delink changes user
+identity, the wallet sync registry must also be updated so the worker can build
+the same identity cloud from Postgres.
 
 ### Recipient Wallet
 
 Recipient selection is deterministic metadata, not model reasoning.
+
+Each completed airdrop run has exactly one `recipient_wallet`. Even when the
+identity cloud contains multiple current or historical wallets, issuance pays one
+wallet for that account/day.
 
 The selected recipient wallet is chosen from eligible identity-cloud wallets by:
 
@@ -166,6 +180,12 @@ Important fields:
 
 The production uniqueness boundary is one production scoring row per account per UTC day. Dry runs can be repeated for prompt and packet testing.
 
+The worker is fail-closed before creating a production run: if candidate
+selection finds a positive rewarded-task account but the scoring packet contains
+zero eligible wallets, zero rewarded tasks, or zero rewarded PFT, scoring throws
+`daily_airdrop_packet_candidate_mismatch`. That state is a data-boundary failure,
+not an eligible zero-airdrop result.
+
 `profile_daily_airdrop_issuances` stores live payment submissions. It is keyed by `run_id` and prevents more than one submitted issuance per account/day. The recurring worker treats any pending, processing, submitted, or failed issuance for an account/day as a stop sign so retries do not blindly double-pay after a partial chain failure.
 
 Issuance state is intentionally conservative:
@@ -174,9 +194,11 @@ Issuance state is intentionally conservative:
 - `submitted`: the PFTL payment and pointer are persisted with transaction hash, pointer CID, payload digest, and ledger index.
 - `failed`: no PFT submission was attempted. This can be reclaimed by a manual retry because no on-chain payment risk exists yet.
 
-### Current Goodalexander Dry Run
+### Historical Goodalexander Dry Run
 
-The latest verified local dry run used account `acct_oauth_3c70e69ab7b8ef1fad3df508`.
+The historical local dry run used account `acct_oauth_3c70e69ab7b8ef1fad3df508`.
+This example is retained as an old evidence packet shape, not as current live
+eligibility truth.
 
 Observed packet:
 
@@ -219,6 +241,16 @@ The older direct commands remain useful for diagnosis:
 npm run profile-daily-airdrop-score -- --account-id <account_id> --run-mode dry_run
 npm run profile-daily-airdrop-issue -- --account-id=<account_id> --run-id=<run_id>
 ```
+
+Packet boundary regression:
+
+```bash
+npm run profile-daily-airdrop-packet-smoke
+```
+
+This smoke inserts a user wallet only through `pftl_sync_wallets`, creates a
+positive rewarded task, and verifies that the daily airdrop packet still counts
+the wallet and task without using runtime-store state.
 
 ## Reviewer To Do List
 

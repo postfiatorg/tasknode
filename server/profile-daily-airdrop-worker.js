@@ -294,6 +294,7 @@ export async function runDailyAirdropWorkerOnce({
           lookbackDays,
           maxDailyPft,
           model,
+          expectedCandidate: candidate,
           env,
         });
         scored.push({

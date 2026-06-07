@@ -177,6 +177,64 @@ export async function resolveDailyAirdropRecipientWallet({
   };
 }
 
+export async function resolveDailyAirdropWalletCloud({ accountId } = {}) {
+  const normalizedAccount = safeText(accountId, 180);
+  if (!normalizedAccount || !databaseEnabled()) {
+    return {
+      accountId: normalizedAccount,
+      activeWalletAddress: "",
+      wallets: [],
+      source: "pftl_sync_wallets",
+    };
+  }
+  const result = await query(
+    `SELECT wallet_address,
+            status,
+            role,
+            priority,
+            metadata_json,
+            created_at,
+            updated_at,
+            last_hot_sync_at,
+            last_archive_sync_at
+       FROM pftl_sync_wallets
+      WHERE account_id = $1
+        AND role = 'user'
+        AND wallet_address <> ''
+      ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+               priority ASC,
+               updated_at DESC,
+               wallet_address ASC`,
+    [normalizedAccount]
+  );
+  const activeRows = result.rows.filter((row) => row.status === "active");
+  const activeWalletAddress = activeRows[0]?.wallet_address || "";
+  const wallets = result.rows.map((row) => {
+    const status = row.status === "active" ? "linked" : "historical";
+    const metadata = row.metadata_json && typeof row.metadata_json === "object" ? row.metadata_json : {};
+    return {
+      address: safeText(row.wallet_address, 120),
+      status,
+      sources: [
+        "pftl_sync_wallets",
+        row.status === "active" ? "active_sync_wallet" : "historical_sync_wallet",
+        metadata.reason ? `reason:${safeText(metadata.reason, 80)}` : "",
+        metadata.inactiveReason ? `inactive:${safeText(metadata.inactiveReason, 80)}` : "",
+      ].filter(Boolean),
+      linkedAt: toIso(row.created_at),
+      updatedAt: toIso(row.updated_at),
+      lastHotSyncAt: toIso(row.last_hot_sync_at),
+      lastArchiveSyncAt: toIso(row.last_archive_sync_at),
+    };
+  });
+  return {
+    accountId: normalizedAccount,
+    activeWalletAddress,
+    wallets,
+    source: "pftl_sync_wallets",
+  };
+}
+
 export async function getLatestDailyAirdropRun({ accountId } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount || !databaseEnabled()) return null;
