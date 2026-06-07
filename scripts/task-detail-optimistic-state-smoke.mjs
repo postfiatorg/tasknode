@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 
 import {
   optimisticEvidenceStateFromSubmission,
+  optimisticTaskStateFromActionReceipt,
+  optimisticTaskStateFromTask,
   overlayTaskDetailWithOptimisticEvidence,
+  overlayTaskDetailWithOptimisticTaskState,
   shouldRetainOptimisticEvidenceState,
+  shouldRetainOptimisticTaskState,
 } from "../src/features/tasks/task-detail-optimistic-state.js";
 
 const initialSubmission = optimisticEvidenceStateFromSubmission({
@@ -16,6 +20,65 @@ assert.equal(
   shouldRetainOptimisticEvidenceState({ task: { statusKey: "accepted" } }, initialSubmission),
   true,
   "accepted detail refresh is stale after evidence submit"
+);
+
+const acceptedReceipt = optimisticTaskStateFromActionReceipt({
+  actionType: "accept",
+  expectedStatusKey: "accepted",
+  expectedStatus: "Accepted",
+  txHash: "ACCEPT_TX",
+  createdAt: "2026-06-07T11:53:46.088Z",
+});
+
+assert.equal(
+  shouldRetainOptimisticTaskState({ task: { statusKey: "proposed" } }, acceptedReceipt),
+  true,
+  "proposed detail refresh is stale after accept"
+);
+
+const staleAcceptedDetail = overlayTaskDetailWithOptimisticTaskState(
+  {
+    task: { taskId: "task_accepted_1", status: "Proposed", statusKey: "proposed", metadata: {} },
+    actions: {
+      canAccept: true,
+      canStop: true,
+      stopAction: "refuse",
+    },
+  },
+  acceptedReceipt
+);
+
+assert.equal(staleAcceptedDetail.task.statusKey, "accepted");
+assert.equal(staleAcceptedDetail.task.status, "Accepted");
+assert.equal(staleAcceptedDetail.task.metadata.optimisticLastTxHash, "ACCEPT_TX");
+assert.equal(staleAcceptedDetail.actions.canAccept, false);
+assert.equal(staleAcceptedDetail.actions.canSubmitInitialEvidence, true);
+
+const acceptedRowState = optimisticTaskStateFromTask({
+  taskId: "task_accepted_1",
+  status: "Accepted",
+  statusKey: "accepted",
+  txHash: "ACCEPT_TX",
+  clientActionPending: true,
+  clientSyncLabel: "syncing",
+});
+
+const staleDetailFromAdvancedRow = overlayTaskDetailWithOptimisticTaskState(
+  {
+    task: { taskId: "task_accepted_1", status: "Proposed", statusKey: "proposed", metadata: {} },
+    actions: { canAccept: true },
+  },
+  acceptedRowState
+);
+
+assert.equal(staleDetailFromAdvancedRow.task.statusKey, "accepted");
+assert.equal(staleDetailFromAdvancedRow.task.clientSyncLabel, "syncing");
+assert.equal(staleDetailFromAdvancedRow.actions.canSubmitInitialEvidence, true);
+
+assert.equal(
+  shouldRetainOptimisticTaskState({ task: { statusKey: "accepted" } }, optimisticTaskStateFromTask({ statusKey: "proposed" })),
+  false,
+  "older row state must not downgrade advanced detail"
 );
 
 const staleInitial = overlayTaskDetailWithOptimisticEvidence(

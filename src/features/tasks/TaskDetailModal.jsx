@@ -35,8 +35,12 @@ import {
 import { buildTaskCopyPayloads } from "./task-copy-format.js";
 import {
   optimisticEvidenceStateFromSubmission,
+  optimisticTaskStateFromActionReceipt,
+  optimisticTaskStateFromTask,
   overlayTaskDetailWithOptimisticEvidence,
+  overlayTaskDetailWithOptimisticTaskState,
   shouldRetainOptimisticEvidenceState,
+  shouldRetainOptimisticTaskState,
 } from "./task-detail-optimistic-state.js";
 import {
   taskActionReceiptFromEvidenceResult,
@@ -993,8 +997,10 @@ export function TaskDetailModal({
   const [detailRefreshKey, setDetailRefreshKey] = useState(0);
   const [copiedValue, setCopiedValue] = useState("");
   const [optimisticEvidence, setOptimisticEvidence] = useState(null);
+  const [optimisticLifecycle, setOptimisticLifecycle] = useState(null);
   const aliveRef = useRef(true);
   const optimisticEvidenceRef = useRef(null);
+  const optimisticLifecycleRef = useRef(null);
   const displayTask = detailState.data?.task || task;
   const steps = Array.isArray(displayTask.steps) ? displayTask.steps : [];
   const verification = displayTask.verification || {};
@@ -1008,6 +1014,10 @@ export function TaskDetailModal({
     optimisticEvidenceRef.current = optimisticEvidence;
   }, [optimisticEvidence]);
 
+  useEffect(() => {
+    optimisticLifecycleRef.current = optimisticLifecycle;
+  }, [optimisticLifecycle]);
+
   const commitTaskDetailResult = useCallback((body) => {
     const currentOptimisticEvidence = optimisticEvidenceRef.current;
     const keepOptimistic = shouldRetainOptimisticEvidenceState(body, currentOptimisticEvidence);
@@ -1015,12 +1025,23 @@ export function TaskDetailModal({
       optimisticEvidenceRef.current = null;
       setOptimisticEvidence(null);
     }
-    const data = keepOptimistic
-      ? overlayTaskDetailWithOptimisticEvidence(body, currentOptimisticEvidence)
-      : body;
+    const currentOptimisticLifecycle = optimisticLifecycleRef.current;
+    const keepLifecycleOptimistic = shouldRetainOptimisticTaskState(body, currentOptimisticLifecycle);
+    if (!keepLifecycleOptimistic && currentOptimisticLifecycle) {
+      optimisticLifecycleRef.current = null;
+      setOptimisticLifecycle(null);
+    }
+    const currentTaskOptimistic = optimisticTaskStateFromTask(task);
+    let data = overlayTaskDetailWithOptimisticTaskState(body, currentTaskOptimistic);
+    if (keepLifecycleOptimistic) {
+      data = overlayTaskDetailWithOptimisticTaskState(data, currentOptimisticLifecycle);
+    }
+    if (keepOptimistic) {
+      data = overlayTaskDetailWithOptimisticEvidence(data, currentOptimisticEvidence);
+    }
     setDetailState({ data, error: "", loading: false });
     return data;
-  }, []);
+  }, [task]);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -1066,7 +1087,7 @@ export function TaskDetailModal({
   useEffect(() => {
     let active = true;
     setDetailState((current) => {
-      if (current.data?.task && optimisticEvidenceRef.current) {
+      if (current.data?.task && (optimisticEvidenceRef.current || optimisticLifecycleRef.current)) {
         return { ...current, error: "", loading: true };
       }
       return { data: null, error: "", loading: true };
@@ -1107,6 +1128,21 @@ export function TaskDetailModal({
       return {
         ...current,
         data: overlayTaskDetailWithOptimisticEvidence(data, optimistic),
+      };
+    });
+  }
+
+  function applyOptimisticLifecycleState(receipt = {}) {
+    const optimistic = optimisticTaskStateFromActionReceipt(receipt);
+    if (!optimistic) return;
+    optimisticLifecycleRef.current = optimistic;
+    setOptimisticLifecycle(optimistic);
+    setDetailState((current) => {
+      const data = current.data;
+      if (!data?.task) return current;
+      return {
+        ...current,
+        data: overlayTaskDetailWithOptimisticTaskState(data, optimistic),
       };
     });
   }
@@ -1177,7 +1213,10 @@ export function TaskDetailModal({
       task: displayTask,
       taskAction,
     });
-    if (receipt) onTaskActionReceipt?.(receipt);
+    if (receipt) {
+      applyOptimisticLifecycleState(receipt);
+      onTaskActionReceipt?.(receipt);
+    }
     setDetailRefreshKey((key) => key + 1);
     await onTaskChanged?.({ taskProjectionRefresh: true });
     return result;
