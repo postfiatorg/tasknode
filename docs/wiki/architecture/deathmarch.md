@@ -7,7 +7,7 @@ The harness watches or ingests Task Node PFTL task actions, asks DeepSeek API Di
 Default watched wallet:
 
 ```text
-rhwiJxkiTkxTC65MrmLG7WiUkbiCyw2TaE
+rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx
 ```
 
 ## Configuration
@@ -31,7 +31,7 @@ export DEATHMARCH_DISCORD_CHANNEL_ID=...
 Optional:
 
 ```bash
-export DEATHMARCH_WALLET=rhwiJxkiTkxTC65MrmLG7WiUkbiCyw2TaE
+export DEATHMARCH_WALLET=rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx
 export DEATHMARCH_SEED_FILE=deathmarchseed.txt
 export DEATHMARCH_DEEPSEEK_MODEL=deepseek-v4-pro
 export DEATHMARCH_DEEPSEEK_BASE_URL=https://api.deepseek.com/chat/completions
@@ -65,7 +65,7 @@ If the seed file is a 24-word Task Node wallet mnemonic, it is used as the local
 
 Wallet mode does not read from Fly, SPRS, Postgres, or Discord. It reads the local PFTL feed for the configured wallet:
 
-1. `fetchHistoricalAccountTransactions` polls PFTL account history for `DEATHMARCH_WALLET`, defaulting to `rhwiJxkiTkxTC65MrmLG7WiUkbiCyw2TaE`.
+1. `fetchHistoricalAccountTransactions` polls PFTL account history for `DEATHMARCH_WALLET`, defaulting to `rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx`.
 2. `extractPftPointerEvents` extracts `pf.ptr/v4` memo pointers from account transactions.
 3. The harness filters pointer kinds to `TASK`, `TASK_UPDATE`, `TASK_SUBMISSION`, and `REWARD`.
 4. Each pointer CID is fetched from IPFS through the existing context gateways.

@@ -11,7 +11,7 @@ import { fetchHistoricalAccountTransactions, extractPftPointerEvents } from "../
 import { fetchContextIpfsJson } from "../server/context-ipfs.js";
 import { fetchAndDecryptTasknodePayload } from "../server/task-payloads.js";
 
-const DEFAULT_WALLET = "rhwiJxkiTkxTC65MrmLG7WiUkbiCyw2TaE";
+const DEFAULT_WALLET = "rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx";
 const DEFAULT_STATE_PATH = ".deathmarch-state.json";
 const DEFAULT_SEED_FILE = "deathmarchseed.txt";
 const DEFAULT_DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
