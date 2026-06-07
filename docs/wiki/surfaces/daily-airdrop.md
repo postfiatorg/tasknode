@@ -25,6 +25,13 @@ Displayed airdrop values come from:
 
 The adjacent reward chart uses `GET /api/profile/reward-history?range=7d|28d|90d`. It is based on actual positive `reward_actual_pft` task projections, submitted daily airdrop issuances, and reward event timestamps. It intentionally renders one earned-PFT series until task reward categories are real data. The chart total can be much larger than the daily airdrop headline because it includes task rewards; the UI must keep those labels separate.
 
+The task count in the airdrop explanation may be larger than the current Tasks
+tab reward count. Daily Airdrop counts recent positive rewards across the
+account's identity wallet cloud, including historical user wallets that remain
+attached for attribution. The current Tasks tab may be scoped to the active
+wallet projection. The profile copy should make this clear when showing airdrop
+reasoning.
+
 ### Evidence Packet
 
 The scorer builds one compact task reward packet from Postgres wallet, task
@@ -241,6 +248,43 @@ The older direct commands remain useful for diagnosis:
 npm run profile-daily-airdrop-score -- --account-id <account_id> --run-mode dry_run
 npm run profile-daily-airdrop-issue -- --account-id=<account_id> --run-id=<run_id>
 ```
+
+### Same-Day Repair
+
+Use this only when a same-day production run is provably bad before payment, such
+as a completed zero run caused by an empty worker wallet cloud. Do not delete the
+bad row. Demote it out of the production uniqueness boundary with an audit
+message, then create and issue one fresh production run.
+
+Required preconditions:
+
+- the bad run has `daily_airdrop_pft = 0`;
+- its `input_snapshot.identity_cloud.eligible_wallet_count` is `0`;
+- its `input_snapshot.reward_totals.rewarded_task_count` is `0`;
+- it has no issuance row;
+- a fresh packet smoke or packet query proves the account now has a DB-backed
+  wallet cloud and positive rewarded tasks.
+
+Operator sequence:
+
+```bash
+# 1. Demote only the guarded bad zero run.
+fly ssh console -a tasknodeofficial-dev --process-group worker -C \
+  'npm run profile-daily-airdrop-repair-zero-run -- --account-id=<account_id> --run-date=<yyyy-mm-dd>'
+
+# 2. Score one replacement production run.
+fly ssh console -a tasknodeofficial-dev --process-group worker -C \
+  'node scripts/profile-daily-airdrop-score.mjs --account-id <account_id> --run-mode production --scenario-id operator_repair_<yyyymmdd> --json'
+
+# 3. Issue that exact run id if the amount is positive.
+fly ssh console -a tasknodeofficial-dev --process-group worker -C \
+  'node scripts/profile-daily-airdrop-issue.mjs --account-id=<account_id> --run-id=<run_id>'
+```
+
+The repair must result in exactly one canonical production run and exactly one
+submitted issuance for that account/day. The issuance recipient is the single
+deterministic `airdrop_recipient.wallet_address`, not every wallet in the
+identity cloud.
 
 Packet boundary regression:
 

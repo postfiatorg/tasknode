@@ -89,6 +89,7 @@
     "task-copy-payload-smoke": "node scripts/task-copy-payload-smoke.mjs",
     "profile-daily-airdrop-score": "node scripts/profile-daily-airdrop-score.mjs",
     "profile-daily-airdrop-issue": "node scripts/profile-daily-airdrop-issue.mjs",
+    "profile-daily-airdrop-repair-zero-run": "node scripts/profile-daily-airdrop-repair-zero-run.mjs",
     "profile-daily-airdrop-worker": "node scripts/profile-daily-airdrop-worker.mjs",
     "profile-daily-airdrop-packet-smoke": "node scripts/profile-daily-airdrop-packet-smoke.mjs",
     "profile-daily-airdrop-worker-smoke": "node scripts/profile-daily-airdrop-worker-smoke.mjs",
