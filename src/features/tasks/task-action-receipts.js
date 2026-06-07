@@ -223,6 +223,11 @@ export function mergeTaskStateWithActionReceipts(tasks = {}, receipts = [], {
     return receipt && shouldOverlayReceipt(task, receipt, nowMs) ? overlayTask(task, receipt, nowMs) : task;
   });
   const grouped = groupTasks(mergedTasks);
+  const optimisticSyncTaskIds = mergedTasks
+    .filter((task) => task?.clientActionPending)
+    .map((task) => task.taskId || task.fullId || task.id || "")
+    .filter(Boolean);
+  const hasOptimisticSync = optimisticSyncTaskIds.length > 0;
 
   return {
     ...tasks,
@@ -230,10 +235,14 @@ export function mergeTaskStateWithActionReceipts(tasks = {}, receipts = [], {
     sync: {
       ...(tasks?.sync || {}),
       activeReceiptCount: activeReceipts.length,
-      optimisticSyncTaskIds: mergedTasks
-        .filter((task) => task?.clientActionPending)
-        .map((task) => task.taskId || task.fullId || task.id || "")
-        .filter(Boolean),
+      optimisticSyncTaskIds,
+      requiresRefresh: Boolean(tasks?.sync?.requiresRefresh || hasOptimisticSync),
+      nextPollMs: hasOptimisticSync
+        ? Math.min(Math.max(Number(tasks?.sync?.nextPollMs || 2500), 1000), 2500)
+        : tasks?.sync?.nextPollMs,
+      refreshReason: hasOptimisticSync
+        ? "task_action_receipt_pending"
+        : tasks?.sync?.refreshReason,
     },
   };
 }

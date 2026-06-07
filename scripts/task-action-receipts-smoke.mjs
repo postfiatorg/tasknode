@@ -63,6 +63,9 @@ assert.equal(mergedStale.outstanding[0].status, "Submitted");
 assert.equal(mergedStale.outstanding[0].clientActionPending, true);
 assert.equal(mergedStale.outstanding[0].clientSyncLabel, "syncing");
 assert.equal(mergedStale.outstanding[0].metadata.optimisticLastTxHash, "SUBMIT_TX");
+assert.equal(mergedStale.sync.requiresRefresh, true);
+assert.equal(mergedStale.sync.nextPollMs, 2500);
+assert.equal(mergedStale.sync.refreshReason, "task_action_receipt_pending");
 assert.deepEqual(mergedStale.sync.optimisticSyncTaskIds, ["task_submit_1"]);
 
 assert.equal(
@@ -118,6 +121,7 @@ const mergedTerminal = mergeTaskStateWithActionReceipts(terminalProjection, [evi
 });
 assert.equal(mergedTerminal.rewarded[0].statusKey, "rewarded");
 assert.equal(mergedTerminal.rewarded[0].clientActionPending, undefined);
+assert.equal(mergedTerminal.sync.requiresRefresh, false);
 
 const verificationResponseReceipt = taskActionReceiptFromEvidenceResult({
   accountId,

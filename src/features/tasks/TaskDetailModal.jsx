@@ -1150,7 +1150,8 @@ export function TaskDetailModal({
   async function pollTaskDetailForSubmittedTx(result = {}) {
     const txHash = String(result?.txHash || "").trim();
     const verificationResponse = result?.submissionPayload?.schema === "pf.task.verification_response.v1";
-    for (let attempt = 0; attempt < 30; attempt += 1) {
+    const maxAttempts = verificationResponse ? 90 : 45;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       await new Promise((resolve) => window.setTimeout(resolve, 2000));
       if (!aliveRef.current) return;
       const detail = await refreshTaskDetail({ showLoading: false, taskProjectionRefresh: true });
@@ -1164,7 +1165,10 @@ export function TaskDetailModal({
       const statusKey = normalizeTaskStatus(detail.task.statusKey || detail.task.status);
       const terminal = taskIsTerminal(statusKey);
       if (terminal) return;
-      if (verificationResponse && statusKey === "verification_response_submitted") return;
+      if (verificationResponse && statusKey === "verification_response_submitted") {
+        applyOptimisticEvidenceState(result);
+        continue;
+      }
       if (
         !verificationResponse &&
         (statusKey === "verification_requested" ||
