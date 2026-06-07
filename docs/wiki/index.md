@@ -61,7 +61,7 @@ locations instead:
 | Postgres schema target and context history restore | [Database](#docs/database), [PFTL](#docs/pftl) |
 | Ethereum deposit addresses, xpub custody, balance sync, sweep boundary | [Ethereum Deposit RPC](#docs/ethereum-deposit-rpc), [Wallet](#docs/wallet), [Database](#docs/database) |
 | PFTL task protocol, async task engine, lifecycle replay, evidence and rewards | [Task Generation](#docs/task-generation), [PFTL](#docs/pftl), [Tasks](#docs/tasks) |
-| IPFS payload standards, gateway order, first-party IPFS rebuild, and legacy NFT CID migration | [IPFS](#docs/ipfs), [IPFS Infrastructure Rebuild](#docs/ipfs-infrastructure-rebuild), [Profile](#docs/profile), [PFTasks Cutover](#docs/pftasks-cutover) |
+| IPFS payload standards, gateway order, first-party IPFS rebuild, fresh CID replication, and legacy NFT CID migration | [IPFS](#docs/ipfs), [IPFS Infrastructure Rebuild](#docs/ipfs-infrastructure-rebuild), [IPFS New Write Replication](#docs/ipfs-new-write-replication), [Profile](#docs/profile), [PFTasks Cutover](#docs/pftasks-cutover) |
 | Local Discord task-event posting harness | [Deathmarch Local Harness](#docs/deathmarch) |
 
 ## Documentation Review Policy

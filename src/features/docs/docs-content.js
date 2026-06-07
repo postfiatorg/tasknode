@@ -33,6 +33,7 @@ import hiveSecretaryWorker from "../../../docs/wiki/architecture/hive-secretary-
 import executionMandate from "../../../docs/wiki/architecture/execution-mandate.md?raw";
 import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
 import ipfsInfrastructureRebuild from "../../../docs/wiki/architecture/ipfs-infrastructure-rebuild.md?raw";
+import ipfsNewWriteReplication from "../../../docs/wiki/architecture/ipfs-new-write-replication.md?raw";
 import jobsPgvectorCorpus from "../../../docs/wiki/architecture/jobs-pgvector-corpus.md?raw";
 import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import networkTaskRecovery from "../../../docs/wiki/architecture/network-task-recovery.md?raw";
@@ -729,6 +730,12 @@ export const DOC_GROUPS = [
         title: "IPFS Infrastructure",
         summary: "Clean first-party gateway, CID migration, and legacy recovery boundary.",
         markdown: ipfsInfrastructureRebuild,
+      },
+      {
+        slug: "ipfs-new-write-replication",
+        title: "IPFS New Write Replication",
+        summary: "Fresh CID replication queue, clean-cluster pinning, and verification target state.",
+        markdown: ipfsNewWriteReplication,
       },
       {
         slug: "ai-providers",
