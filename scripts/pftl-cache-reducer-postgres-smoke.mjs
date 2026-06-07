@@ -5,6 +5,7 @@ import { Wallet } from "xrpl";
 import { closePool, query } from "../server/db/pool.js";
 import { buildPftPointerMemo } from "../server/pftl-pointer.js";
 import {
+  claimPftlReducerEvents,
   markPftlReducerEventCompleted,
   processPftlReducerEvent,
 } from "../server/pftl-cache-reducer.js";
@@ -285,6 +286,15 @@ try {
     });
   }
 
+  const targetedEvents = await claimPftlReducerEvents({
+    limit: 8,
+    taskId,
+    txHash: verificationRequestTxHash,
+  });
+  assert.equal(targetedEvents.length, 1);
+  assert.equal(targetedEvents[0].task_id, taskId);
+  assert.equal(targetedEvents[0].tx_hash, verificationRequestTxHash);
+
   const reducerEvents = await query(
     `
       UPDATE pftl_cache_reducer_events
@@ -292,11 +302,12 @@ try {
           attempts = attempts + 1,
           updated_at = now()
       WHERE tx_hash = ANY($1)
+        AND status = 'pending'
       RETURNING *
     `,
     [txHashes]
   );
-  assert.equal(reducerEvents.rows.length, 8);
+  assert.equal(reducerEvents.rows.length, 7);
 
   const reducerOptions = {
     fetchIpfsJson: async ({ cid }) => {
@@ -311,7 +322,7 @@ try {
     },
     env: process.env,
   };
-  for (const event of reducerEvents.rows) {
+  for (const event of [...targetedEvents, ...reducerEvents.rows]) {
     const processed = await processPftlReducerEvent(event, reducerOptions);
     await markPftlReducerEventCompleted({ id: event.id, metadata: processed });
   }

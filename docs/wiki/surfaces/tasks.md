@@ -85,12 +85,13 @@ projection refresh while review-loop states such as `submitted`,
 are active. A user should not need to reload the browser to see a verification
 request appear after the review worker publishes it.
 
-Submission and lifecycle routes also trigger a best-effort targeted projection
-refresh. After the signed transaction returns a hash, the route syncs the linked
-wallet and asks the reducer to claim pending work for that exact `task_id` and
-transaction hash before falling back to normal batch reduction. This reduces
-avoidable queue delay, but the browser receipt remains the user-visible source
-of continuity while IPFS, wallet history, or reducer replay catches up.
+Submission, lifecycle, and review-worker publication routes also trigger a
+best-effort targeted projection refresh. After the signed transaction returns a
+hash, the route syncs the relevant wallets and asks the reducer to claim pending
+work for that exact `task_id` and transaction hash before falling back to normal
+batch reduction. This reduces avoidable queue delay, but the browser receipt
+remains the user-visible source of continuity while IPFS, wallet history, or
+reducer replay catches up.
 
 On Fly, task generation and review both depend on the `worker` process group.
 Deploys must use `npm run fly:deploy`, which runs `npm run fly:background-guard`

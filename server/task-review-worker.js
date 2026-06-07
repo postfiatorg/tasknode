@@ -627,7 +627,14 @@ async function publishAuthorityPointer({
   };
 }
 
-async function syncTaskWallets({ accountId, subjectWallet, authorityWallet, allocationWallet = "" }) {
+async function syncTaskWallets({
+  accountId,
+  subjectWallet,
+  authorityWallet,
+  allocationWallet = "",
+  taskId = "",
+  txHash = "",
+}) {
   const syncs = await Promise.all([
     authorityWallet
       ? syncPftlWalletTransactions({
@@ -660,18 +667,33 @@ async function syncTaskWallets({ accountId, subjectWallet, authorityWallet, allo
       })
       : null,
   ]);
-  const reduced = await runPftlCacheReducerOnce({ batchLimit: 40, logger: console });
-  return { syncs, reduced };
+  const targeted = taskId || txHash
+    ? await runPftlCacheReducerOnce({ batchLimit: 12, logger: console, taskId, txHash })
+    : { claimed: 0 };
+  const reduced = targeted.claimed > 0
+    ? targeted
+    : await runPftlCacheReducerOnce({ batchLimit: 40, logger: console });
+  return { syncs, reduced, targeted: Boolean(targeted.claimed > 0) };
 }
 
-function scheduleTaskWalletSync({ accountId, subjectWallet, authorityWallet, allocationWallet = "", taskId, phase, logger = console }) {
+function scheduleTaskWalletSync({
+  accountId,
+  subjectWallet,
+  authorityWallet,
+  allocationWallet = "",
+  taskId,
+  txHash = "",
+  phase,
+  logger = console,
+}) {
   setTimeout(() => {
-    syncTaskWallets({ accountId, subjectWallet, authorityWallet, allocationWallet })
+    syncTaskWallets({ accountId, subjectWallet, authorityWallet, allocationWallet, taskId, txHash })
       .then((sync) => {
         logger.info?.("task_review_projection_refresh_finished", {
           taskId,
           phase,
           syncs: Array.isArray(sync?.syncs) ? sync.syncs.length : 0,
+          targeted: Boolean(sync?.targeted),
         });
       })
       .catch((error) => {
@@ -963,6 +985,8 @@ async function finalizeWorkerPublish({
     subjectWallet,
     authorityWallet,
     allocationWallet,
+    taskId,
+    txHash: published.txHash,
   });
   await markWorkerPublished({ taskId, workerName, published });
   const statusResult = await query(
@@ -1138,6 +1162,7 @@ async function processSubmittedTask(row, { logger = console } = {}) {
       subjectWallet: row.subject_wallet,
       authorityWallet: authorityWallet.classicAddress,
       taskId: row.task_id,
+      txHash: published.txHash,
       phase: "verification_request",
       logger,
     });
@@ -1434,6 +1459,7 @@ async function processVerificationResponse(row, { logger = console } = {}) {
       authorityWallet: authorityWallet.classicAddress,
       allocationWallet: rewardWallet.classicAddress,
       taskId: row.task_id,
+      txHash: publishedRef.txHash,
       phase: "reward_scoring",
       logger,
     });
