@@ -95,7 +95,7 @@ Memory must be auditable. Generated memory, deep memory, live task context, and 
 
 ### Docs
 
-Docs are the canonical human-readable map of the app. Every major surface should explain what exists now, what data backs it, and where the code lives. Docs should not imply vaporware is operational.
+Docs are the canonical human-readable map of the app. Every major surface should explain what exists now, what data backs it, and where the code lives. Docs should not imply vaporware is operational. Do not leave generic reviewer to-do lists in product docs; either run the review and record dated evidence, or mark the workflow as a current limit, deprecated, or not exposed.
 
 ## Review Checklist
 

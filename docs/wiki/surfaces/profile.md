@@ -545,36 +545,3 @@ Observed packet:
 Live issuance is owned by `server/profile-daily-airdrop-worker.js` when the worker is enabled. It claims a single `daily_airdrop` lease, scores eligible account/day packets, pays positive airdrops through the existing issuance path, and writes a Hive Mind Agent audit card. `scripts/profile-daily-airdrop-issue.mjs` remains available as a manual operator command for a specific completed run.
 
 Issuance is fail-closed: after a run is claimed as `processing`, another worker cannot publish it. If a failure happens before PFT submission is attempted, the row becomes `failed` and can be retried. If a failure happens after PFT submission is attempted, the row stays `processing` until reconciliation or operator review proves whether a payment happened.
-
-## Reviewer To Do List
-
-Review implementation against this document (profile). Mark each item when verified.
-
-### Memory Efficiency
-- [ ] List and detail views read Postgres caches with documented caps or pagination.
-- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
-- [ ] Public profile reads snapshot table; regeneration is async, not on every page load.
-- [x] NFT gallery paginated or capped; no unbounded metadata fetch.
-
-### Code Quality
-- [ ] Code references in doc resolve to existing modules and routes.
-- [ ] Failure modes documented here have matching user-visible error handling.
-- [ ] Deterministic metrics separated from model-generated role copy.
-- [ ] Contribution tier calculation documented and test-covered.
-
-### Coherence
-- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
-- [ ] Hidden/not-exposed features labeled honestly if mentioned.
-- [ ] Public fields match `public-profile-real-data-plan.md`; mocks removed where claimed.
-- [ ] Daily airdrop private panel aligns with `daily-airdrop.md` scoring rules.
-
-### Bloat
-- [ ] Surface does not duplicate logic owned by shared modules or workers.
-- [ ] UI state not duplicated in unrelated caches without invalidation rules.
-- [ ] Profile view does not embed full task forensics or chat history.
-
-### Security
-- [ ] Account scoping enforced on all read/write API paths for this surface.
-- [ ] Wallet-bound actions require linked unlocked wallet as documented.
-- [ ] Public profile exposes only intended fields; private memory/diagnostic data excluded.
-- [ ] NFT prompt series uses private ASSET pointers; production prompt path not in repo.

@@ -500,27 +500,3 @@ reference_clients/python/runs/<run_id>/receipt_private.json
 
 Only the public receipt is appropriate to share. The private receipt contains
 generated wallet seeds and encryption private keys for the local test run.
-
-## Reviewer To Do List
-
-Review implementation against this document (PFTL live task replay). Mark each item when verified.
-
-### Memory Efficiency
-- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
-- [ ] Replay harness rebuilds state from pointers + IPFS, not app UI session.
-
-### Code Quality
-- [ ] Commands, env vars, and file paths verified against repo.
-- [ ] CIDs and tx hashes in walkthrough verifiable against reference run receipts.
-
-### Coherence
-- [ ] Doc aligns with wiki and spec docs for same topic.
-- [ ] Steps match task-lifecycle wiki state names.
-
-### Bloat
-- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
-- [ ] Walkthrough references Python harness, not duplicate server implementation.
-
-### Security
-- [ ] No secrets committed; custody boundaries explicit.
-- [ ] Re-run instructions use local seeds from env, not committed keys.

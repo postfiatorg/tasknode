@@ -64,6 +64,22 @@ locations instead:
 | IPFS payload standards, gateway order, first-party IPFS rebuild, and legacy NFT CID migration | [IPFS](#docs/ipfs), [IPFS Infrastructure Rebuild](#docs/ipfs-infrastructure-rebuild), [Profile](#docs/profile), [PFTasks Cutover](#docs/pftasks-cutover) |
 | Local Discord task-event posting harness | [Deathmarch Local Harness](#docs/deathmarch) |
 
+## Documentation Review Policy
+
+The wiki is the source of truth for the app, not an unfinished review queue.
+Pages should describe current behavior, current limits, operator commands, and
+verified checks. Do not add generic `Reviewer To Do List` sections or
+placeholder checklists that ask an unnamed reviewer to inspect the page later.
+
+If a document needs active verification, use one of these explicit forms:
+
+- `Verification Checklist` for checks that operators should run when changing a
+  specific surface;
+- `Current Limits` for known incomplete or constrained behavior;
+- `Deprecated` or `Not Exposed` when a surface or workflow is no longer live;
+- a dated evidence note with commands, task IDs, transaction hashes, CIDs,
+  screenshots, or links when a review was actually performed.
+
 ## Primary Code References
 
 - `src/main.jsx`
@@ -76,32 +92,3 @@ locations instead:
 - `server/repositories/context.js`
 - `server/repositories/chat-memory.js`
 - `reference_clients/python/tasknode_pftl/`
-
-## Reviewer To Do List
-
-Review implementation against this document (index). Mark each item when verified.
-
-### Memory Efficiency
-- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
-- [ ] Confirm the product map names only surfaces that exist or are explicitly marked hidden/TBD.
-- [ ] Verify the system diagram does not imply unbounded in-memory fan-out (e.g., full chain replay on every page load).
-
-### Code Quality
-- [ ] Commands, env vars, and file paths verified against repo.
-- [ ] Cross-check Primary Code References against current entry points; remove dead paths.
-- [ ] Ensure canonical-vs-cache rules are stated once and not contradicted by linked surface docs.
-
-### Coherence
-- [ ] Doc aligns with wiki and spec docs for same topic.
-- [ ] Every surface in the product map links to an existing wiki page or is labeled not exposed.
-- [ ] Diagram arrows match actual data flow described in Architecture docs.
-
-### Bloat
-- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
-- [ ] Index stays overview-level; deep implementation detail belongs in surface/architecture pages.
-- [ ] Avoid duplicating full mode matrices or table inventories here.
-
-### Security
-- [ ] No secrets committed; custody boundaries explicit.
-- [ ] Canonical rules state wallet requirements and encryption expectations without overstating guarantees.
-- [ ] No secrets, seed examples, or operator keys in the index doc.

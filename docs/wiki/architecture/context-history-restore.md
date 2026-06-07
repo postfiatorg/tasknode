@@ -73,27 +73,3 @@ npm run context-history-rpc-smoke
 TASKNODE_DATABASE_ENABLED=true DATABASE_URL=postgres://tasknodeofficial:tasknodeofficial@localhost:5436/tasknodeofficial npm run db:pftl-cache-reducer-smoke
 SMOKE_BASE_URL=http://127.0.0.1:5174 npm run smoke
 ```
-
-## Reviewer To Do List
-
-Review implementation against this document (context history restore). Mark each item when verified.
-
-### Memory Efficiency
-- [ ] Operational paths use checkpoints, caches, or bounded batch sizes.
-- [ ] Backfill uses checkpoints in `pftl_sync_wallets`; no full wallet replay every login.
-
-### Code Quality
-- [ ] Commands, env vars, and file paths verified against repo.
-- [ ] Verification smoke commands still runnable.
-
-### Coherence
-- [ ] Doc aligns with wiki and spec docs for same topic.
-- [ ] Pointer contract matches PFTL and context architecture docs.
-
-### Bloat
-- [ ] Engineering doc scoped to its audience; defers product detail to wiki.
-- [ ] Restore is worker-driven; UI does not duplicate import logic.
-
-### Security
-- [ ] No secrets committed; custody boundaries explicit.
-- [ ] Login required; empty history and missing CID failures explicit, not silent.

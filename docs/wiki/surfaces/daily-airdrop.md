@@ -295,36 +295,3 @@ npm run profile-daily-airdrop-packet-smoke
 This smoke inserts a user wallet only through `pftl_sync_wallets`, creates a
 positive rewarded task, and verifies that the daily airdrop packet still counts
 the wallet and task without using runtime-store state.
-
-## Reviewer To Do List
-
-Review implementation against this document (daily airdrop). Mark each item when verified.
-
-### Memory Efficiency
-- [ ] List and detail views read Postgres caches with documented caps or pagination.
-- [ ] Async workers handle heavy model/IPFS work; primary UX path stays non-blocking.
-- [ ] Scoring uses bounded 7-day task-reward packet, not full wallet history.
-- [ ] Issuance idempotency keys prevent duplicate payouts on retry.
-
-### Code Quality
-- [ ] Code references in doc resolve to existing modules and routes.
-- [ ] Failure modes documented here have matching user-visible error handling.
-- [ ] Alignment score formula matches implementation in `profile-daily-airdrop.js`.
-- [ ] Dry-run vs production modes clearly separated in scripts and API.
-
-### Coherence
-- [ ] Surface behavior matches Architecture docs for cache vs canonical state.
-- [ ] Hidden/not-exposed features labeled honestly if mentioned.
-- [ ] Identity cloud recipient selection deterministic and documented.
-- [ ] Scoring prompt output shape matches parser expectations.
-
-### Bloat
-- [ ] Surface does not duplicate logic owned by shared modules or workers.
-- [ ] UI state not duplicated in unrelated caches without invalidation rules.
-- [ ] Run records stored in dedicated tables; not duplicated across profile and wallet caches.
-
-### Security
-- [ ] Account scoping enforced on all read/write API paths for this surface.
-- [ ] Wallet-bound actions require linked unlocked wallet as documented.
-- [ ] Reward pool wallets operator-controlled; no user-supplied payout addresses.
-- [ ] No-double-pay invariants enforced before on-chain issuance.
