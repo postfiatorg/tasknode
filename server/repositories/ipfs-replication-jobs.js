@@ -98,6 +98,7 @@ export async function claimIpfsReplicationJobs({
   workerId = `ipfs_worker_${process.pid}`,
   limit = 10,
   staleClaimMs = 5 * 60 * 1000,
+  sourceRefPrefix = "",
 } = {}) {
   if (!databaseEnabled()) return { ok: false, skipped: true, reason: "database_not_configured", jobs: [] };
   const boundedLimit = clampInteger(limit, 10, 1, 100);
@@ -116,11 +117,23 @@ export async function claimIpfsReplicationJobs({
         SELECT id
         FROM ipfs_replication_jobs
         WHERE
-          status IN ('queued', 'retry_wait')
-          AND next_attempt_at <= now()
+          (
+            (
+              status IN ('queued', 'retry_wait')
+              AND next_attempt_at <= now()
+              AND (
+                claimed_at IS NULL
+                OR claimed_at < now() - ($2::text || ' milliseconds')::interval
+              )
+            )
+            OR (
+              status = 'pinning'
+              AND claimed_at < now() - ($2::text || ' milliseconds')::interval
+            )
+          )
           AND (
-            claimed_at IS NULL
-            OR claimed_at < now() - ($2::text || ' milliseconds')::interval
+            $4::text = ''
+            OR source_ref LIKE ($4::text || '%')
           )
         ORDER BY first_seen_at ASC, id ASC
         LIMIT $3
@@ -128,7 +141,7 @@ export async function claimIpfsReplicationJobs({
       )
       RETURNING *
     `,
-    [safeText(workerId, 160), String(staleMs), boundedLimit]
+    [safeText(workerId, 160), String(staleMs), boundedLimit, safeText(sourceRefPrefix, 240)]
   );
   return { ok: true, jobs: result.rows.map(jobFromRow) };
 }

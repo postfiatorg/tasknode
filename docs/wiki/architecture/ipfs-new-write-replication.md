@@ -165,12 +165,27 @@ Command:
 ```bash
 npm run ipfs-replication-worker -- --once
 npm run ipfs-replication-worker -- --poll --interval-ms 60000
+npm run ipfs-replication-worker -- --once --source-ref-prefix task_abc
 ```
 
 The worker first verifies whether the clean gateway already serves the CID. If
 it does, the job is marked `verified`. If not, the worker calls the configured
 first-party pin interface, then verifies the clean gateway again before marking
 the job healthy.
+
+The app-side pin endpoint timeout must be longer than the clean service
+migration timeout. The default is 240 seconds because `migrate-cids` can need
+time for Kubo provider discovery, exact re-add, cluster pinning, and clean
+gateway verification. A shorter timeout can leave the clean cluster pinned while
+the database row still says `retry_wait`.
+
+Stale `pinning` rows are reclaimable after the worker claim timeout. This is
+required because a process can claim a batch, timeout, or restart while a clean
+service migration continues independently.
+
+For operator recovery and smoke tests, `--source-ref-prefix` restricts a manual
+worker run to matching `source_ref` rows. The background worker does not use this
+filter; it continues to process the global queue.
 
 ### 5. Add A Stable Clean-Cluster Pin Interface
 

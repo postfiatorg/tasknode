@@ -21,7 +21,7 @@ await migrateDatabase();
 const suffix = Date.now().toString(36);
 const sourceRef = `ipfs_replication_smoke_${suffix}`;
 const cid = "Qm11111111111111111111111111111111111111111111";
-await deleteIpfsReplicationJobsForTest({ sourceRefPrefix: sourceRef });
+await deleteIpfsReplicationJobsForTest({ sourceRefPrefix: "ipfs_replication_smoke_" });
 
 const enqueued = await enqueueIpfsReplicationJob({
   cid,
@@ -39,6 +39,7 @@ let pinEndpointCalled = false;
 const result = await processIpfsReplicationJobsOnce({
   limit: 1,
   workerId: `ipfs_replication_smoke_${suffix}`,
+  sourceRefPrefix: sourceRef,
   env: {
     TASKNODE_IPFS_CLEAN_GATEWAY: "https://clean.example/ipfs/",
     TASKNODE_IPFS_REPLICATION_PIN_ENDPOINT: "https://pin.example/replicate-cid",
@@ -87,7 +88,7 @@ assert.equal(stored.rows[0].verified_gateway, "https://clean.example/ipfs/");
 assert.equal(stored.rows[0].metadata_json.smoke, true);
 assert.equal(stored.rows[0].metadata_json.pin.ok, true);
 
-await deleteIpfsReplicationJobsForTest({ sourceRefPrefix: sourceRef });
+await deleteIpfsReplicationJobsForTest({ sourceRefPrefix: "ipfs_replication_smoke_" });
 await closePool();
 
 console.log("ipfs replication postgres smoke ok");

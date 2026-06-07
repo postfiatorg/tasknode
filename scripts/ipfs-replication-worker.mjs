@@ -25,6 +25,7 @@ function usage() {
     "Usage:",
     "  npm run ipfs-replication-worker -- --once",
     "  npm run ipfs-replication-worker -- --poll --interval-ms 60000",
+    "  npm run ipfs-replication-worker -- --once --source-ref-prefix task_abc",
     "",
     "Required for real pinning:",
     "  TASKNODE_IPFS_REPLICATION_PIN_ENDPOINT or TASKNODE_IPFS_REPLICATION_PIN_COMMAND",
@@ -34,6 +35,7 @@ function usage() {
     "  --poll                 Process batches continuously",
     "  --limit <n>            Jobs per batch. Default: env or 10",
     "  --interval-ms <n>      Poll interval. Default: 60000",
+    "  --source-ref-prefix <s> Restrict this run to source_ref values with the prefix",
   ].join("\n");
 }
 
@@ -50,11 +52,13 @@ await migrateDatabase();
 
 const limit = argValue("--limit", process.env.TASKNODE_IPFS_REPLICATION_BATCH_LIMIT || "10");
 const intervalMs = clampInteger(argValue("--interval-ms", "60000"), 60000, 5000, 24 * 60 * 60 * 1000);
+const sourceRefPrefix = argValue("--source-ref-prefix", "");
 
 async function runOnce() {
   const result = await processIpfsReplicationJobsOnce({
     limit,
     workerId: `ipfs_replication_cli_${process.pid}`,
+    sourceRefPrefix,
   });
   console.log(JSON.stringify({ at: new Date().toISOString(), ...result }, null, hasFlag("--pretty") ? 2 : 0));
   return result;

@@ -10,6 +10,7 @@ const DEFAULT_CLEAN_GATEWAY = "https://pft-ipfs-testnet-clean.fly.dev/ipfs/";
 const DEFAULT_INTERVAL_MS = 60_000;
 const DEFAULT_INITIAL_DELAY_MS = 10_000;
 const DEFAULT_TIMEOUT_MS = 8_000;
+const DEFAULT_PIN_TIMEOUT_MS = 240_000;
 const MAX_VERIFY_BYTES = 1_048_576;
 
 let timer = null;
@@ -231,7 +232,7 @@ export async function pinCidWithConfiguredInterface({
 } = {}) {
   const endpoint = safeText(env.TASKNODE_IPFS_REPLICATION_PIN_ENDPOINT, 2000);
   const command = safeText(env.TASKNODE_IPFS_REPLICATION_PIN_COMMAND, 4000);
-  const timeoutMs = clampInteger(env.TASKNODE_IPFS_REPLICATION_PIN_TIMEOUT_MS, 60_000, 1_000, 30 * 60_000);
+  const timeoutMs = clampInteger(env.TASKNODE_IPFS_REPLICATION_PIN_TIMEOUT_MS, DEFAULT_PIN_TIMEOUT_MS, 1_000, 30 * 60_000);
   const body = {
     cid: job.cid,
     payloadClass: job.payloadClass,
@@ -329,10 +330,12 @@ export async function processIpfsReplicationJobsOnce({
   logger = console,
   workerId = `ipfs_replication_${hostname()}_${process.pid}`,
   limit = env.TASKNODE_IPFS_REPLICATION_BATCH_LIMIT,
+  sourceRefPrefix = "",
 } = {}) {
   const claimed = await claimIpfsReplicationJobs({
     workerId,
     limit: clampInteger(limit, 10, 1, 100),
+    sourceRefPrefix,
   });
   if (claimed.skipped) return { ok: true, skipped: true, reason: claimed.reason, processed: 0 };
   const results = [];
