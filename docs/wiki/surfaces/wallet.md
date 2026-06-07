@@ -12,6 +12,51 @@ Wallet is the identity and value surface. It shows PFT balance, local seed vault
 6. New eligible OAuth accounts may receive a one-time PFT initiation grant after wallet creation only after the matching encrypted local vault is saved.
 7. Email-only accounts can receive the same one-time grant after creating a wallet, saving/unlocking the matching local vault, and crediting more than `$10` USDC through the account top-up rail. The wallet page shows a subtle italic note under chat credit until that grant path is satisfied.
 
+## Wallet Help Chat First-Run Copy
+
+This copy is ready to paste into a first-run Wallet help chat.
+
+Designed to answer:
+
+1. What is the Wallet for?
+2. Do I need a wallet before I can use Task Node?
+3. Why does the wallet lock and unlock?
+4. What is the difference between PFT, rewards, and top-up credit?
+5. What task states should I understand?
+6. How do I submit work?
+7. What happens after I submit evidence?
+8. Where should I look when I am confused?
+
+Help chat script:
+
+The Wallet is where your PFT address, balance, local vault, top-up status, and signing state live. Your app account proves who you are inside Task Node. Your wallet proves PFT ownership, signs task actions, and receives PFT rewards.
+
+You do not need an unlocked wallet for ordinary chat or reading the app. You do need a linked wallet for task signing and PFT rewards. If you create a wallet, save the seed phrase. Task Node cannot recover it for you.
+
+Locked means the app knows your linked wallet, but your browser has not decrypted the local vault for signing. Unlocked means your browser can sign wallet-bound actions for this session. The server does not receive your seed phrase, private key, wallet password, or decrypted vault.
+
+PFT is the token used for task rewards and wallet actions. Top-up credit is different. Top-up credit pays for app usage, such as model calls. A top-up deposit address is not your PFT wallet.
+
+Task states are simple:
+
+Proposed means a task is offered, but you have not accepted it.
+Accepted means the task is on your plate.
+Submitted means you sent evidence for review.
+Verification requested means the app needs a specific follow-up answer or proof.
+Verification response submitted means your follow-up was sent and the task is waiting.
+Rewarded means the task lifecycle completed with a reward.
+Refused or cancelled means the task is closed without becoming your active work.
+
+To submit work, open Tasks, choose the accepted task, and use Submit evidence. Good evidence is specific: changed files, commands run, test results, screenshots, links, transaction hashes, CIDs, or a short proof note. If the app asks you to unlock the wallet, that is because task evidence is a signed wallet action.
+
+After submission, the task moves through the verification and reward workflow. The app may ask for one follow-up if the evidence is incomplete. If the task is rewarded, the reward appears in your task history and PFT accounting.
+
+### If you're not sure what to do next
+
+Open Tasks first. If you have a proposed task, accept it or refuse it. If you have an accepted task, complete it and submit evidence. If you have a verification request, answer that specific request. If you have no task, use Request task or the Chat `+` button to ask for a personal task.
+
+Open Wallet when an action is blocked by a missing wallet, locked vault, missing seed backup, balance issue, send issue, or top-up issue. Open Help when you need the app explained in plain English. Open Hive when the question is about Network Tasks or group work.
+
 ## Technical Architecture
 
 Frontend wallet UX lives in `src/features/wallet/WalletView.jsx`, `src/features/wallet/WalletUnlockModal.jsx`, `src/features/wallet/WalletSeedBackupModal.jsx`, `src/features/wallet/wallet-state.js`, and `src/wallet-core.js`.

@@ -308,7 +308,7 @@ async function prepareTaskSubmission({ payload, session }) {
   });
 }
 
-async function bestEffortRefreshTaskProjection({ accountId, walletAddress }) {
+async function bestEffortRefreshTaskProjection({ accountId, walletAddress, taskId = "", txHash = "" }) {
   try {
     const synced = await syncPftlWalletTransactions({
       walletAddress,
@@ -317,8 +317,13 @@ async function bestEffortRefreshTaskProjection({ accountId, walletAddress }) {
       maxPages: 1,
       syncKind: "task_submission_submit",
     });
-    const reduced = await runPftlCacheReducerOnce({ batchLimit: 30, logger: console });
-    return { synced, reduced };
+    const targeted = taskId || txHash
+      ? await runPftlCacheReducerOnce({ batchLimit: 8, logger: console, taskId, txHash })
+      : { claimed: 0 };
+    const reduced = targeted.claimed > 0
+      ? targeted
+      : await runPftlCacheReducerOnce({ batchLimit: 30, logger: console });
+    return { synced, reduced, targeted: Boolean(targeted.claimed > 0) };
   } catch (error) {
     return {
       ok: false,
@@ -327,14 +332,16 @@ async function bestEffortRefreshTaskProjection({ accountId, walletAddress }) {
   }
 }
 
-function scheduleBestEffortRefreshTaskProjection({ accountId, walletAddress, taskId }) {
+function scheduleBestEffortRefreshTaskProjection({ accountId, walletAddress, taskId, txHash = "" }) {
   setTimeout(() => {
-    bestEffortRefreshTaskProjection({ accountId, walletAddress })
+    bestEffortRefreshTaskProjection({ accountId, walletAddress, taskId, txHash })
       .then((refresh) => {
         console.info?.("task_submission_projection_refresh_finished", {
           taskId,
+          txHash,
           walletAddress,
           ok: refresh?.synced?.ok !== false && refresh?.reduced?.ok !== false,
+          targeted: Boolean(refresh?.targeted),
         });
       })
       .catch((error) => {
@@ -376,6 +383,7 @@ async function submitTaskSubmission({ payload, session }) {
     accountId: resolved.accountId,
     walletAddress: resolved.wallet.address,
     taskId: resolved.task.task_id,
+    txHash,
   });
 
   return okResponse({

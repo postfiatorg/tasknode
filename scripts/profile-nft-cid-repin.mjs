@@ -13,6 +13,7 @@ const defaultLegacyGateways = [
 ];
 
 const defaultCurrentGateways = [
+  "https://pft-ipfs-testnet-clean.fly.dev/ipfs/",
   "https://gateway.pinata.cloud/ipfs/",
   "https://dweb.link/ipfs/",
   "https://ipfs.io/ipfs/",

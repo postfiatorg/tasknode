@@ -17,6 +17,7 @@ COPY package*.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY server ./server
 COPY scripts ./scripts
+COPY docs ./docs
 COPY prompts ./prompts
 COPY schemas ./schemas
 COPY shared ./shared

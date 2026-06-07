@@ -39,6 +39,10 @@ import {
   shouldRetainOptimisticEvidenceState,
 } from "./task-detail-optimistic-state.js";
 import {
+  taskActionReceiptFromEvidenceResult,
+  taskActionReceiptFromLifecycleResult,
+} from "./task-action-receipts.js";
+import {
   addUserRequestedEvidenceDraft,
   evidenceFileForDraft,
   evidenceMethodFromContract,
@@ -975,6 +979,7 @@ export function TaskDetailModal({
   escapeDisabled = false,
   linkedWalletAddress = "",
   onClose,
+  onTaskActionReceipt,
   onTaskChanged,
   onWalletUnlock,
   task,
@@ -1137,6 +1142,13 @@ export function TaskDetailModal({
 
   async function handleEvidenceSubmitted(result = {}) {
     applyOptimisticEvidenceState(result);
+    const receipt = taskActionReceiptFromEvidenceResult({
+      accountId,
+      walletAddress: linkedWalletAddress,
+      result,
+      task: displayTask,
+    });
+    if (receipt) onTaskActionReceipt?.(receipt);
     await onTaskChanged?.({ taskProjectionRefresh: true });
     pollTaskDetailForSubmittedTx(result);
   }
@@ -1158,6 +1170,14 @@ export function TaskDetailModal({
       taskAction,
       reason,
     });
+    const receipt = taskActionReceiptFromLifecycleResult({
+      accountId,
+      walletAddress: linkedWalletAddress,
+      result,
+      task: displayTask,
+      taskAction,
+    });
+    if (receipt) onTaskActionReceipt?.(receipt);
     setDetailRefreshKey((key) => key + 1);
     await onTaskChanged?.({ taskProjectionRefresh: true });
     return result;

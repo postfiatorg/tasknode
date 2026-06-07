@@ -40,6 +40,12 @@ assert.equal(pricingModes.get("Discount Thinking")?.providerLabel, "DeepSeek API
 assert.equal(pricingModes.get("Discount Thinking")?.configuredPricing?.outputUsdPerMillion, 0.87);
 assert.equal(pricingModes.get("Discount Thinking")?.configuredPricing?.inputCacheHitUsdPerMillion, 0.003625);
 assert.match(pricingModes.get("Discount Thinking")?.privacyPolicy || "", /Direct DeepSeek API/);
+assert.equal(pricingModes.get("Help")?.model, "deepseek-v4-pro");
+assert.equal(pricingModes.get("Help")?.providerLabel, "DeepSeek API Direct");
+assert.equal(pricingModes.get("Help")?.reasoning, "");
+assert.equal(pricingModes.get("Help")?.estimatedOutputTokens, 1200);
+assert.equal(pricingModes.get("Help")?.maxOutputTokens, null);
+assert.match(pricingModes.get("Help")?.description || "", /plain-English Task Node product help/);
 
 const categories = new Map(status.categories.map((category) => [category.id, category]));
 assert.deepEqual([...categories.keys()], ["hive", "task_engine", "pftl", "memory"]);

@@ -77,11 +77,15 @@ function sessionState(session, providers, runtimeReadiness, linkedWallet, identi
 export async function appState(session = null, { refreshTaskProjection = false } = {}) {
   const providers = authProviders();
   const runtimeReadiness = await readiness();
-  const modes = chatModes();
   const accountId = session?.accountId || "";
-  const enabledMode =
-    modes.find((mode) => mode.label === "Frontier Instant" && mode.enabled) ||
-    modes.find((mode) => mode.enabled);
+  const signedOut = !accountId;
+  const modes = chatModes({ signedOut });
+  const enabledMode = signedOut
+    ? modes.find((mode) => mode.label === "Help" && mode.enabled) || modes.find((mode) => mode.enabled)
+    : (
+        modes.find((mode) => mode.label === "Frontier Instant" && mode.enabled) ||
+        modes.find((mode) => mode.enabled)
+      );
   const conversationId = conversationIdForSession(session);
   const usage = accountId
     ? await usageSummary({ accountId, conversationId })
@@ -137,7 +141,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       historyPath: "/api/chat/history",
       recents: accountId ? await listChatConversations({ accountId }) : [],
       hiveConversation: accountId ? await getHiveConversation({ accountId }) : null,
-      defaultMode: enabledMode?.label || "Private Instant",
+      defaultMode: signedOut ? "Help" : enabledMode?.label || "Private Instant",
       modes,
       seedMessages: accountId ? await getChatMessages({ accountId, conversationId }) : [],
     },

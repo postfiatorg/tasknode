@@ -5,11 +5,12 @@ Chat is the primary work surface. Users should be able to speak naturally, attac
 ## User Flow
 
 1. The user opens a new or recent chat.
-2. The user selects a mode such as Private Instant, Private Thinking, Frontier Instant, or Frontier Thinking.
-3. The user sends text and optional attachments.
-4. The server routes the request to the correct provider.
-5. The assistant response is streamed back when available.
-6. Usage is billed to the user-facing balance, while background memory writes are not user-billed.
+2. Signed-out users start in Help mode. Help is the only enabled signed-out chat mode.
+3. Signed-in users select a mode such as Private Instant, Private Thinking, Frontier Instant, Help, or Frontier Thinking.
+4. The user sends text and optional attachments.
+5. The server routes the request to the correct provider.
+6. The assistant response is streamed back when available.
+7. Signed-in billable usage is billed to the user-facing balance, while background memory writes are not user-billed.
 
 ## Technical Architecture
 
@@ -21,7 +22,9 @@ Memory context is injected by `server/chat-memory-context.js`. The memory worker
 
 Task state is also ported into chat by `server/chat-task-context.js`. This is a read-only projection of the user's cached task state, not a task mutation path.
 
-The chat voice is calibrated by the Jobs Markdown prompt in `prompts/chat/jobs_standard_chat_codex_style_draft.md`. The prompt is loaded once by `server/chat-spirit-context.js` and rendered from the shared `server/chat-memory-context.js::taskNodeInstructions` boundary, so Private Instant, Private Thinking, Discount Thinking, Frontier Instant, and Frontier Thinking all use the same prompt assembly path. The base Task Node operational prompt still comes first; the Jobs Markdown prompt receives the current context document, task context, memory context, and pgvector Jobs retrieval context as runtime slots. The current user message, prior chat history, and attachments remain normal provider user messages instead of being duplicated into the prompt.
+The chat voice is calibrated by the Jobs Markdown prompt in `prompts/chat/jobs_standard_chat_codex_style_draft.md`. The prompt is loaded once by `server/chat-spirit-context.js` and rendered from the shared `server/chat-memory-context.js::taskNodeInstructions` boundary, so Private Instant, Private Thinking, Discount Thinking, Frontier Instant, and Frontier Thinking all use the same prompt assembly path. The base Task Node operational prompt still comes first; the Jobs Markdown prompt receives the current context document, task context, memory context, and pgvector Jobs retrieval context as runtime slots. The Help mode wraps that same runtime context with `prompts/chat/help_mode_v1.md` and the User Guide from `docs/wiki/surfaces/user-guide.md`, then sends the composed instructions to DeepSeek API Direct. The current user message, prior chat history, and attachments remain normal provider user messages instead of being duplicated into the prompt.
+
+When there is no signed-in account, `appState` sets the chat default to Help and marks other chat modes as login-required. The frontend filters the signed-out model picker to Help and disables the `+` menu because Request a task and Context Refine are account actions. Server preflight allows anonymous Help execution only; every other chat mode still returns `chat_login_required`. Anonymous Help sends a bounded `clientHistory` packet containing the recent visible local thread so first-time users can say "sure" or "what do you mean?" without losing continuity. That history is ephemeral transport context only. Anonymous Help responses are not written to chat history, memory, or the billing ledger because there is no account boundary to attach them to.
 
 Standard chat is advisory by default. It can help the user decide, draft, evaluate, plan, and clarify evidence, but it must not claim it can perform app actions on the user's behalf. The `+` menu starts Request a task or Context Refine. The Tasks panel is where the user accepts or refuses tasks and submits evidence. The Hive panel is where the user views network work and contributes to the network. If chat recommends one of those actions, it should name the surface the user should use instead of saying chat can do the action.
 
@@ -75,20 +78,22 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 | Private Thinking | OpenRouter `/chat/completions` | `deepseek/deepseek-v4-pro` | Uses `CHAT_MODEL_PRIVATE_THINKING` if set, then `OPENROUTER_MODEL`, then the default. Requires `OPENROUTER_API_KEY` or `OPENROUTER`. | Same attachment path as Private Instant. Adds `reasoning.effort="high"` and `provider.require_parameters=true`. Web search is intentionally disabled. | Slower private open-source reasoning. |
 | Discount Thinking | DeepSeek API Direct `/chat/completions` | `deepseek-v4-pro` | Uses `CHAT_MODEL_DISCOUNT_THINKING` if set, then `DEEPSEEK_CHAT_MODEL`, then the default. Requires `DEEPSEEK_API_KEY` or `DEEPSEEK`. | Sends the shared instruction stack, recent history, the user message, and text attachments as plain chat messages. Image, PDF, and binary attachments are not sent to DeepSeek API Direct; the model receives an attachment notice instead. Adds `thinking.type="enabled"`, `reasoning_effort="high"`, and `max_tokens=4096`. Web search is intentionally disabled. | Lower-cost direct DeepSeek reasoning when ZDR routing and multimodal attachments are not required. |
 | Frontier Instant | OpenAI `/responses` | `chat-latest` | Uses `CHAT_MODEL_FRONTIER_INSTANT` if set, otherwise the pinned default. Does not use `OPENAI_MODEL` as a broad override. Requires `OPENAI_API_KEY`. | Text, image, and file inputs are mapped to Responses API input parts. The OpenAI web search tool is available and prompt-governed. The app does not send a hard `max_output_tokens` cap; preflight only reserves an estimated output budget for billing. | Fast frontier chat with optional web and file understanding. |
+| Help | DeepSeek API Direct `/chat/completions` | `deepseek-v4-pro` | Uses `CHAT_MODEL_HELP` if set, then `DEEPSEEK_CHAT_MODEL`, then the default. Requires `DEEPSEEK_API_KEY` or `DEEPSEEK`. | Sends the Help prompt, the normal account context stack, recent history, the user message, text attachments, and the embedded User Guide. Image, PDF, and binary attachments are not sent to DeepSeek API Direct; the model receives an attachment notice instead. Sends `thinking.type="disabled"` and no hard `max_tokens` cap. Web search is intentionally disabled. | Plain-English product help for using Task Node with awareness of the user's context, tasks, wallet, Hive, profile, and next app step. |
 | Frontier Thinking | OpenAI `/responses` | `gpt-5.5` | Uses `CHAT_MODEL_FRONTIER_THINKING` if set, otherwise the pinned default. Requires `OPENAI_API_KEY`. | Same attachment path as Frontier Instant. Adds `reasoning.effort="high"`. The OpenAI web search tool is available and prompt-governed. The app does not send a hard `max_output_tokens` cap; preflight only reserves an estimated output budget for billing. | Deeper frontier reasoning, especially when web or files matter. |
 
-Unknown mode strings are rejected with `unknown_chat_mode`. The app default prefers Frontier Instant when it is enabled; otherwise it chooses the first enabled mode.
+Unknown mode strings are rejected with `unknown_chat_mode`. The signed-in app default prefers Frontier Instant when it is enabled; otherwise it chooses the first enabled mode. The signed-out app default is Help.
 
 ## Provider Policies
 
 Private modes use OpenRouter with `provider.zdr=true` and `provider.data_collection="deny"`. They also set `provider.order` and `provider.only` to the code-defined provider allowlist for the selected mode, so private requests do not route through arbitrary cheapest-provider selection. Private Instant explicitly disables reasoning output; Private Thinking explicitly requests high reasoning and excludes reasoning text from the UI. OpenRouter can support web search through server tools, but Task Node deliberately leaves that off for private modes right now.
 
-Discount Thinking uses the direct DeepSeek API. It is labeled `DeepSeek API Direct` in the model picker/status surfaces. This route is cheaper at the current direct API discount price, but it is not the OpenRouter ZDR route and should not be described as private/ZDR. User billing is calculated from DeepSeek-returned token usage and the configured direct API prices, including DeepSeek cache-hit input pricing when cache-hit tokens are reported.
+Discount Thinking and Help use the direct DeepSeek API. They are labeled `DeepSeek API Direct` in provider/status surfaces. This is not the OpenRouter ZDR route and should not be described as private/ZDR. User billing is calculated from DeepSeek-returned token usage and the configured direct API prices, including DeepSeek cache-hit input pricing when cache-hit tokens are reported. Discount Thinking requests high reasoning for deeper analysis. Help disables provider-side thinking and relies on `prompts/chat/help_mode_v1.md` to answer product-help questions plainly.
 
 Direct DeepSeek reasoning can spend longer in provider-side thinking than the
-fast chat modes. Task Node gives Discount Thinking a 120 second default provider
-budget through `CHAT_PROVIDER_DEEPSEEK_TIMEOUT_MS`,
-`CHAT_PROVIDER_DISCOUNT_THINKING_TIMEOUT_MS`, or `CHAT_PROVIDER_TIMEOUT_MS`.
+fast chat modes. Task Node gives direct DeepSeek chat a 120 second default provider
+budget through `CHAT_PROVIDER_DEEPSEEK_TIMEOUT_MS`, mode-specific
+`CHAT_PROVIDER_HELP_TIMEOUT_MS` or `CHAT_PROVIDER_DISCOUNT_THINKING_TIMEOUT_MS`,
+or `CHAT_PROVIDER_TIMEOUT_MS`.
 When the direct DeepSeek streaming connection terminates before any visible
 assistant text is emitted, the server retries the same request through the
 non-streaming DeepSeek completion path before returning an error to the user.
@@ -100,7 +105,7 @@ Frontier modes use the OpenAI Responses API with `store=false`. Task Node passes
 Help -> System Status includes a Chat Model Pricing section. It shows each chat
 mode's configured preflight estimate, live OpenRouter model metadata when
 available, allowed OpenRouter endpoint prices for private modes, and the direct
-DeepSeek V4 Pro discount price for Discount Thinking.
+DeepSeek V4 Pro prices used by Discount Thinking and Help.
 
 ## Web Search Selection
 

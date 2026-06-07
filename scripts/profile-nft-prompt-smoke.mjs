@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import {
   loadProfileNftPrompt,
+  profileNftImagePromptPath,
   privateProfileNftPromptPath,
   renderProfileNftPrompt,
 } from "../server/profile-nft-prompts.js";
@@ -9,7 +10,12 @@ import { buildProfileNftUserData } from "../server/profile-nft-generation.js";
 
 const loaded = loadProfileNftPrompt();
 assert.equal(loaded.metadata.model, "gpt-image-2");
-assert.ok(["private", "placeholder", "env_secret"].includes(loaded.source));
+assert.ok(["tracked", "configured", "legacy_private", "placeholder", "env_secret"].includes(loaded.source));
+assert.equal(loaded.source, "tracked");
+assert.equal(loaded.sourcePath, profileNftImagePromptPath);
+assert.ok(loaded.promptTemplate.includes("Use a full color palette"));
+assert.ok(loaded.promptTemplate.includes("Do not default to red and black"));
+assert.ok(!loaded.promptTemplate.includes("red for aggression"));
 
 const secretPrompt = loadProfileNftPrompt({
   PROFILE_NFT_PROMPT_B64: Buffer.from([
@@ -26,6 +32,14 @@ assert.equal(secretPrompt.source, "env_secret");
 assert.equal(secretPrompt.sourcePath, "PROFILE_NFT_PROMPT_B64");
 assert.equal(secretPrompt.metadata.model, "gpt-image-2");
 assert.ok(secretPrompt.promptTemplate.includes("Secret prompt"));
+
+const configuredPrompt = loadProfileNftPrompt({
+  PROFILE_NFT_PROMPT_PATH: profileNftImagePromptPath,
+  PROFILE_NFT_PROMPT_B64: Buffer.from("Stale prompt").toString("base64"),
+});
+assert.equal(configuredPrompt.source, "tracked");
+assert.equal(configuredPrompt.sourcePath, profileNftImagePromptPath);
+assert.ok(configuredPrompt.promptTemplate.includes("Use a full color palette"));
 
 const nftUserData = buildProfileNftUserData({
   session: {

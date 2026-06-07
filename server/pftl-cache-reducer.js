@@ -39,9 +39,11 @@ function sha256Hex(value) {
   return createHash("sha256").update(data).digest("hex");
 }
 
-export async function claimPftlReducerEvents({ limit = 10 } = {}) {
+export async function claimPftlReducerEvents({ limit = 10, taskId = "", txHash = "" } = {}) {
   if (!databaseEnabled()) return [];
   const cappedLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
+  const normalizedTaskId = normalizeText(taskId).slice(0, 180);
+  const normalizedTxHash = normalizeText(txHash).slice(0, 180);
   return transaction(async (client) => {
     await client.query(
       `
@@ -65,6 +67,8 @@ export async function claimPftlReducerEvents({ limit = 10 } = {}) {
           FROM pftl_cache_reducer_events
           WHERE status = 'pending'
             AND available_at <= now()
+            AND ($2::text = '' OR task_id = $2)
+            AND ($3::text = '' OR tx_hash = $3)
           ORDER BY
             CASE WHEN task_id IS NULL OR task_id = '' THEN 1 ELSE 0 END ASC,
             available_at ASC,
@@ -74,7 +78,7 @@ export async function claimPftlReducerEvents({ limit = 10 } = {}) {
         )
         RETURNING *
       `,
-      [cappedLimit]
+      [cappedLimit, normalizedTaskId, normalizedTxHash]
     );
     return result.rows;
   });
@@ -637,9 +641,11 @@ export async function runPftlCacheReducerOnce({
   batchLimit = 10,
   maxAttempts = 5,
   logger = console,
+  taskId = "",
+  txHash = "",
   ...options
 } = {}) {
-  const events = await claimPftlReducerEvents({ limit: batchLimit });
+  const events = await claimPftlReducerEvents({ limit: batchLimit, taskId, txHash });
   let completed = 0;
   let failed = 0;
 

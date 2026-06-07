@@ -12,22 +12,24 @@ not a worker health row. It is an audit snapshot of the current chat-mode
 provider contracts from `server/chat-router.js`, plus cached live OpenRouter
 model metadata from `https://openrouter.ai/api/v1/models`.
 
-Each status row links to the corresponding Architecture page for that system.
-Those pages define how green, amber, red, disabled, and unknown are derived and
-what the operator should inspect or run next. If a row appears here, it must have
-a matching Architecture page.
+Each status row links to the functional Help page that owns that system. Several
+rows may share the same page when they are part of one product boundary. For
+example, Task Generation owns offer generation, review, verification, and reward
+workers; PFTL owns hot sync, archive sync, WSS, reducer, retention, and RPC
+checks; Hive and Board Operations owns the Board Manager, secretary packets,
+Hive Secretary reports, and active projects.
 
 ## Categories
 
-- Hive and Board Agents: Board Manager, Hive Secretary, active project planning,
-  and Board Manager secretary packets.
-- Task Systems: Network Task generation, task offer generation, and task review
-  or reward work.
-- PFTL and RPCs: hot wallet sync, archive sync, websocket watcher, reducer,
-  retention, current PFTL RPC/WSS, history RPC/WSS, and Ethereum deposit RPC.
+- Hive and Board Agents: Board Manager decisions, secretary packets, Hive
+  Secretary reports, and active project planning.
+- Task Systems: Network Task generation, user task generation, task review,
+  verification requests, and reward work.
+- PFTL and RPCs: wallet sync, websocket watcher, reducer, retention, current
+  PFTL endpoints, history endpoints, and Ethereum deposit RPC.
 - Memory, Retrieval, Profiles, and Airdrops: Jobs pgvector retrieval, turn
-  memory, deep memory, Network Task routing profiles, and daily airdrop scoring
-  or issuance.
+  memory, deep memory, Network Diagnostic Reports, and daily airdrop scoring or
+  issuance.
 
 ## Chat Model Pricing
 
@@ -43,7 +45,7 @@ The status page pricing block separates three values that are easy to confuse:
   `provider.only` allowlist as allowed, and labels non-allowlisted DeepSeek
   endpoints as reference prices only.
 - DeepSeek API Direct price: the configured direct DeepSeek V4 Pro price for
-  Discount Thinking, including the lower cache-hit input token price when
+  Discount Thinking and Help, including the lower cache-hit input token price when
   DeepSeek reports cache-hit tokens.
 
 Actual chat billing prefers provider-returned usage. For OpenRouter this means
@@ -58,8 +60,8 @@ Private modes also send `provider.zdr=true` and
 `provider.data_collection="deny"`. A cheap endpoint shown by OpenRouter is not
 automatically a Task Node private route unless it is compatible with that request
 policy. The direct DeepSeek V4 Pro reference price is shown because it explains
-the public `$0.87/M output` headline and backs Discount Thinking. It is not a
-Task Node private/ZDR chat route.
+the public `$0.87/M output` headline and backs Discount Thinking and Help. It is
+not a Task Node private/ZDR chat route.
 
 ## Status Rules
 

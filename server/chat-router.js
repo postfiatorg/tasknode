@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   appendChatTurn,
   getChatMessages,
@@ -10,6 +11,7 @@ import {
 } from "./chat-memory-context.js";
 import { chatContextDocumentForAccount } from "./chat-account-context.js";
 import { jobsRetrievalForChat } from "./jobs-corpus.js";
+import { normalizeClientChatHistory } from "./chat-client-history.js";
 import { taskContextForAccount } from "./chat-task-context.js";
 import {
   deepSeekUsage,
@@ -34,6 +36,7 @@ import {
   openAiInput,
   openRouterMessages,
 } from "./chat-provider-message-builders.js";
+import { helpModeInstructions, isHelpChatMode } from "./chat-help-mode.js";
 import { loadPrompt } from "./prompt-registry.js";
 export {
   deepSeekMessages,
@@ -87,6 +90,16 @@ export const chatModePrices = {
     maxOutputTokens: null,
     estimatedOutputTokens: 4096,
     reasoningEffort: "medium",
+  },
+  "Help": {
+    inputUsdPerMillion: 0.435,
+    inputCacheHitUsdPerMillion: 0.003625,
+    outputUsdPerMillion: 0.87,
+    provider: "deepseek",
+    providerLabel: "DeepSeek API Direct",
+    defaultModel: "deepseek-v4-pro",
+    maxOutputTokens: null,
+    estimatedOutputTokens: 1200,
   },
   "Frontier Thinking": {
     inputUsdPerMillion: 5,
@@ -147,10 +160,11 @@ export function chatProviderTimeoutMs({ mode = "", provider = "", source = "" } 
   if (normalizedMode === "Discount Thinking" || normalizedProvider === "deepseek") {
     return timeoutFromEnv(
       [
+        normalizedMode === "Help" ? "CHAT_PROVIDER_HELP_TIMEOUT_MS" : "",
         "CHAT_PROVIDER_DEEPSEEK_TIMEOUT_MS",
         "CHAT_PROVIDER_DISCOUNT_THINKING_TIMEOUT_MS",
         "CHAT_PROVIDER_TIMEOUT_MS",
-      ],
+      ].filter(Boolean),
       defaultDeepSeekProviderTimeoutMs
     );
   }
@@ -364,6 +378,61 @@ function assistantChatMetadata({ thinking = {}, responseGate = null } = {}) {
   };
 }
 
+function transientChatTurn({
+  conversationId = "dev",
+  mode = "",
+  provider = "",
+  model = "",
+  responseId = "",
+  userMessage = "",
+  assistantMessage = "",
+  attachments = [],
+  assistantMetadata = {},
+} = {}) {
+  const createdAt = new Date().toISOString();
+  const user = {
+    id: `anon_user_${randomUUID()}`,
+    role: "user",
+    body: userMessage,
+    createdAt,
+    mode,
+    conversationId,
+  };
+  const normalizedAttachments = normalizeChatAttachments(attachments);
+  if (normalizedAttachments.length > 0) user.attachments = normalizedAttachments;
+
+  const assistant = {
+    id: `anon_assistant_${randomUUID()}`,
+    role: "assistant",
+    body: assistantMessage,
+    createdAt,
+    mode,
+    provider,
+    model,
+    responseId: responseId || undefined,
+  };
+  if (assistantMetadata && Object.keys(assistantMetadata).length > 0) {
+    assistant.metadata = assistantMetadata;
+  }
+
+  return {
+    user,
+    assistant,
+    ledgerEntry: null,
+    modelRun: null,
+  };
+}
+
+function chatDeliveryContext({ accountId = "", mode = "", source = "" } = {}) {
+  const context = {};
+  const normalizedSource = String(source || "").trim();
+  if (normalizedSource) context.source = normalizedSource;
+  if (isHelpChatMode(mode)) {
+    context.accountStatus = accountId ? "signed_in" : "signed_out";
+  }
+  return Object.keys(context).length > 0 ? context : null;
+}
+
 export function frontierInstantResponseGateEnabled(mode = "") {
   return (
     String(process.env.TASKNODE_FRONTIER_INSTANT_RESPONSE_GATE || "true").trim().toLowerCase() !== "false" &&
@@ -478,6 +547,24 @@ function isRecoverableStreamTermination(error) {
   );
 }
 
+function chatInstructionsOverride({
+  mode,
+  contextDocument = null,
+  memoryContext = null,
+  taskContext = null,
+  jobsEssence = "",
+  deliveryContext = null,
+} = {}) {
+  if (!isHelpChatMode(mode)) return "";
+  return helpModeInstructions({
+    contextDocument,
+    memoryContext,
+    taskContext,
+    jobsEssence,
+    deliveryContext,
+  });
+}
+
 export function logChatProviderError(error, context = {}) {
   if (!error || error.loggedChatProviderError) return;
   error.loggedChatProviderError = true;
@@ -539,6 +626,7 @@ export function openRouterChatRequest({
   taskContext = null,
   jobsEssence = "",
   deliveryContext = null,
+  instructionsOverride = "",
 }) {
   const config = chatModeConfig(mode);
   const normalizedAttachments = normalizeChatAttachments(attachments);
@@ -556,6 +644,7 @@ export function openRouterChatRequest({
       taskContext,
       jobsEssence,
       deliveryContext,
+      instructionsOverride,
     }),
     provider: openRouterProviderPreferences({
       providerOrder: config.providerOrder || [],
@@ -643,9 +732,10 @@ export function deepSeekChatRequest({
   taskContext = null,
   jobsEssence = "",
   deliveryContext = null,
+  instructionsOverride = "",
 }) {
   const config = chatModeConfig(mode);
-  return {
+  const request = {
     model,
     messages: deepSeekMessages({
       conversationId,
@@ -657,10 +747,10 @@ export function deepSeekChatRequest({
       taskContext,
       jobsEssence,
       deliveryContext,
+      instructionsOverride,
     }),
     thinking: config.reasoningEffort ? { type: "enabled" } : { type: "disabled" },
     reasoning_effort: config.reasoningEffort || undefined,
-    max_tokens: config.maxOutputTokens,
     stream: stream || undefined,
     stream_options: stream
       ? {
@@ -668,6 +758,11 @@ export function deepSeekChatRequest({
         }
       : undefined,
   };
+  const maxOutputTokens = Number(config.maxOutputTokens || 0);
+  if (Number.isFinite(maxOutputTokens) && maxOutputTokens > 0) {
+    request.max_tokens = maxOutputTokens;
+  }
+  return request;
 }
 
 async function fetchJson(url, options, { timeoutMs = defaultProviderTimeoutMs } = {}) {
@@ -937,6 +1032,14 @@ async function streamOpenAi({
     taskContext,
     jobsEssence,
     deliveryContext,
+    instructionsOverride: chatInstructionsOverride({
+      mode,
+      contextDocument,
+      memoryContext,
+      taskContext,
+      jobsEssence,
+      deliveryContext,
+    }),
   };
   const stream = await fetchEventStream(
     `${baseUrl}/responses`,
@@ -1031,6 +1134,14 @@ async function executeOpenRouter({
     taskContext,
     jobsEssence,
     deliveryContext,
+    instructionsOverride: chatInstructionsOverride({
+      mode,
+      contextDocument,
+      memoryContext,
+      taskContext,
+      jobsEssence,
+      deliveryContext,
+    }),
   };
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -1094,6 +1205,14 @@ async function executeDeepSeek({
     taskContext,
     jobsEssence,
     deliveryContext,
+    instructionsOverride: chatInstructionsOverride({
+      mode,
+      contextDocument,
+      memoryContext,
+      taskContext,
+      jobsEssence,
+      deliveryContext,
+    }),
   };
   const body = await fetchJson(
     `${baseUrl}/chat/completions`,
@@ -1157,6 +1276,14 @@ async function streamOpenRouter({
     taskContext,
     jobsEssence,
     deliveryContext,
+    instructionsOverride: chatInstructionsOverride({
+      mode,
+      contextDocument,
+      memoryContext,
+      taskContext,
+      jobsEssence,
+      deliveryContext,
+    }),
   };
   const referer =
     process.env.OPENROUTER_REFERER ||
@@ -1265,6 +1392,14 @@ async function streamDeepSeek({
     taskContext,
     jobsEssence,
     deliveryContext,
+    instructionsOverride: chatInstructionsOverride({
+      mode,
+      contextDocument,
+      memoryContext,
+      taskContext,
+      jobsEssence,
+      deliveryContext,
+    }),
   };
   const stream = await fetchEventStream(
     `${baseUrl}/chat/completions`,
@@ -1345,6 +1480,8 @@ export async function executeChat({
   taskContext,
   contextStatus,
   jobsEssence,
+  clientHistory = [],
+  ephemeralHistoryMessages = [],
   source = "",
   providerTimeoutMs = 0,
 }) {
@@ -1361,13 +1498,21 @@ export async function executeChat({
   const timeoutMs = Number(providerTimeoutMs) > 0
     ? Math.min(Math.max(Math.floor(Number(providerTimeoutMs)), 5_000), 300_000)
     : chatProviderTimeoutMs({ mode: normalizedMode, provider: status.provider, source });
-  const deliveryContext = source ? { source } : null;
+  const deliveryContext = chatDeliveryContext({ accountId, mode: normalizedMode, source });
+  const anonymousHelp = !accountId && isHelpChatMode(normalizedMode);
+  const anonymousHistoryMessages = anonymousHelp
+    ? normalizeClientChatHistory(
+        Array.isArray(ephemeralHistoryMessages) && ephemeralHistoryMessages.length > 0
+          ? ephemeralHistoryMessages
+          : clientHistory
+      )
+    : [];
 
   const [historyMessages, resolvedContextDocument, resolvedMemoryContext, resolvedTaskContext] = await Promise.all([
-    getChatMessagesForWrite({ accountId, conversationId }),
-    contextDocument === undefined ? chatContextDocumentForAccount(accountId) : contextDocument,
-    memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
-    taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
+    anonymousHelp ? anonymousHistoryMessages : getChatMessagesForWrite({ accountId, conversationId }),
+    anonymousHelp ? null : contextDocument === undefined ? chatContextDocumentForAccount(accountId) : contextDocument,
+    anonymousHelp ? null : memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
+    anonymousHelp ? null : taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
   ]);
   const jobsResult = jobsEssence === undefined
     ? await jobsRetrievalForChat({
@@ -1451,6 +1596,29 @@ export async function executeChat({
     responseGate: result.responseGate,
   });
 
+  if (anonymousHelp) {
+    const transient = transientChatTurn({
+      conversationId,
+      mode: normalizedMode,
+      provider: result.provider,
+      model: result.model,
+      responseId: result.responseId,
+      userMessage: message,
+      assistantMessage: result.text,
+      attachments,
+      assistantMetadata,
+    });
+    return {
+      ...result,
+      ...transient,
+      assistant: {
+        ...transient.assistant,
+        thinking: assistantThinking,
+      },
+      contextStatus: resolvedContextStatus,
+    };
+  }
+
   const persisted = await appendChatTurn({
     accountId,
     conversationId,
@@ -1489,6 +1657,8 @@ export async function executeChatStream({
   taskContext,
   contextStatus,
   jobsEssence,
+  clientHistory = [],
+  ephemeralHistoryMessages = [],
   onDelta,
   signal,
   source = "",
@@ -1507,13 +1677,21 @@ export async function executeChatStream({
   const timeoutMs = Number(providerTimeoutMs) > 0
     ? Math.min(Math.max(Math.floor(Number(providerTimeoutMs)), 5_000), 300_000)
     : chatProviderTimeoutMs({ mode: normalizedMode, provider: status.provider, source });
-  const deliveryContext = source ? { source } : null;
+  const deliveryContext = chatDeliveryContext({ accountId, mode: normalizedMode, source });
+  const anonymousHelp = !accountId && isHelpChatMode(normalizedMode);
+  const anonymousHistoryMessages = anonymousHelp
+    ? normalizeClientChatHistory(
+        Array.isArray(ephemeralHistoryMessages) && ephemeralHistoryMessages.length > 0
+          ? ephemeralHistoryMessages
+          : clientHistory
+      )
+    : [];
 
   const [historyMessages, resolvedContextDocument, resolvedMemoryContext, resolvedTaskContext] = await Promise.all([
-    getChatMessagesForWrite({ accountId, conversationId }),
-    contextDocument === undefined ? chatContextDocumentForAccount(accountId) : contextDocument,
-    memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
-    taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
+    anonymousHelp ? anonymousHistoryMessages : getChatMessagesForWrite({ accountId, conversationId }),
+    anonymousHelp ? null : contextDocument === undefined ? chatContextDocumentForAccount(accountId) : contextDocument,
+    anonymousHelp ? null : memoryContext === undefined ? chatMemoryContextForAccount(accountId) : memoryContext,
+    anonymousHelp ? null : taskContext === undefined ? taskContextForAccount(accountId) : taskContext,
   ]);
   const jobsResult = jobsEssence === undefined
     ? await jobsRetrievalForChat({
@@ -1651,6 +1829,29 @@ export async function executeChatStream({
     thinking,
     responseGate: result.responseGate,
   });
+
+  if (anonymousHelp) {
+    const transient = transientChatTurn({
+      conversationId,
+      mode: normalizedMode,
+      provider: result.provider,
+      model: result.model,
+      responseId: result.responseId,
+      userMessage: message,
+      assistantMessage: result.text,
+      attachments,
+      assistantMetadata,
+    });
+    return {
+      ...result,
+      ...transient,
+      assistant: {
+        ...transient.assistant,
+        thinking: assistantThinking,
+      },
+      contextStatus: resolvedContextStatus,
+    };
+  }
 
   const persisted = await appendChatTurn({
     accountId,

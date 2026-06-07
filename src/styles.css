@@ -1763,6 +1763,15 @@ h1 {
   background: rgba(0, 0, 0, 0.05);
 }
 
+.composer button:disabled:not(.send-button) {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.composer button:disabled:not(.send-button):hover {
+  background: transparent;
+}
+
 .composer .attachment-action {
   justify-content: flex-start;
   gap: 1px;
@@ -1908,6 +1917,15 @@ h1 {
 .model-menu button.selected,
 .model-menu button:hover {
   background: #f5f5f3;
+}
+
+.model-menu button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.model-menu button:disabled:hover {
+  background: transparent;
 }
 
 .model-option > span {
@@ -2916,6 +2934,15 @@ h1 {
 
 .task-status-text {
   font-weight: 500;
+}
+
+.task-sync-inline {
+  color: #6b6b66;
+  font-weight: 500;
+}
+
+.task-entry.is-syncing {
+  border-color: #dedbd1;
 }
 
 .task-dot {

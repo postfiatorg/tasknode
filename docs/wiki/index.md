@@ -4,6 +4,8 @@ Task Node is a chat-first work system that connects human context, model assista
 
 The most important distinction is canonical state versus convenience state. Postgres exists so the product is fast and recoverable. PFTL pointers, encrypted IPFS payloads, wallet events, and task lifecycle messages are the replayable protocol layer.
 
+For a normal user-facing explanation, start with [User Guide](#docs/user-guide).
+
 ## Product Map
 
 - Chat is where users work.
@@ -50,14 +52,16 @@ locations instead:
 
 | Topic | Canonical Help page |
 | --- | --- |
+| Plain-English app walkthrough and feature catalogue | [User Guide](#docs/user-guide) |
 | Fresh checkout, local setup, smoke checks, first failure triage | [Bootup](#docs/bootup) |
 | Current product boundary, route map, enabled surfaces, and deferrals | [Current System](#docs/current-system) |
-| Account auth, wallet proof, local vault unlock, and seed custody | [Auth And Wallet Boundary](#docs/auth-wallet-boundary), [Auth And Connected Accounts](#docs/auth-and-connected-accounts), [Wallet](#docs/wallet) |
+| Account auth, wallet proof, local vault unlock, and seed custody | [Identity & Wallets](#docs/identity-wallets), [Wallet](#docs/wallet) |
 | Docker, Fly deploys, secrets, process groups, production pause/restart | [Deployment](#docs/deployment) |
 | PFTasks to Task Node Official account, wallet, context, task, NFT, and URL cutover | [PFTasks Cutover](#docs/pftasks-cutover) |
-| Postgres schema target and context history restore | [Database Architecture](#docs/database-architecture), [Database](#docs/database), [Context History Restore](#docs/context-history-restore) |
+| Postgres schema target and context history restore | [Database](#docs/database), [PFTL](#docs/pftl) |
 | Ethereum deposit addresses, xpub custody, balance sync, sweep boundary | [Ethereum Deposit RPC](#docs/ethereum-deposit-rpc), [Wallet](#docs/wallet), [Database](#docs/database) |
-| PFTL task protocol, async task engine, lifecycle replay, evidence and rewards | [PFTL Usage](#docs/pftl), [Task Async Engine](#docs/task-async-engine), [Task Lifecycle](#docs/task-lifecycle), [PFTL Live Task Replay](#docs/pftl-live-task-replay), [Task Review And Reward Worker](#docs/task-review-reward-worker), [PFTL Transaction Cache](#docs/pftl-transaction-cache) |
+| PFTL task protocol, async task engine, lifecycle replay, evidence and rewards | [Task Generation](#docs/task-generation), [PFTL](#docs/pftl), [Tasks](#docs/tasks) |
+| IPFS payload standards, gateway order, first-party IPFS rebuild, and legacy NFT CID migration | [IPFS](#docs/ipfs), [IPFS Infrastructure Rebuild](#docs/ipfs-infrastructure-rebuild), [Profile](#docs/profile), [PFTasks Cutover](#docs/pftasks-cutover) |
 | Local Discord task-event posting harness | [Deathmarch Local Harness](#docs/deathmarch) |
 
 ## Primary Code References

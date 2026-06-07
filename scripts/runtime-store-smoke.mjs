@@ -8,6 +8,7 @@ delete process.env.CHAT_MODEL_FRONTIER_INSTANT;
 delete process.env.CHAT_MODEL_FRONTIER_THINKING;
 delete process.env.CHAT_MODEL_PRIVATE_INSTANT;
 delete process.env.CHAT_MODEL_PRIVATE_THINKING;
+delete process.env.CHAT_MODEL_HELP;
 process.env.OPENAI_MODEL = "generic-openai-smoke-model";
 process.env.OPENROUTER_API_KEY = "runtime-smoke-openrouter-key";
 process.env.DEEPSEEK_API_KEY = "runtime-smoke-deepseek-key";
@@ -73,6 +74,7 @@ try {
   const {
     chatEstimate,
     chatEstimateForAccount,
+    chatModes,
     usageActions,
     walletActionStart,
     walletCreateStart,
@@ -107,12 +109,25 @@ try {
     throw new Error("Discount Thinking must default to direct DeepSeek V4 Pro.");
   }
 
+  if (modelForMode("Help") !== "deepseek-v4-pro") {
+    throw new Error("Help must default to direct DeepSeek V4 Pro.");
+  }
+
   if (!chatExecutionStatus("Private Instant").enabled) {
     throw new Error("Private Instant should be enabled when an OpenRouter key is configured.");
   }
 
   if (!chatExecutionStatus("Discount Thinking").enabled) {
     throw new Error("Discount Thinking should be enabled when a DeepSeek key is configured.");
+  }
+
+  if (!chatExecutionStatus("Help").enabled) {
+    throw new Error("Help should be enabled when a DeepSeek key is configured.");
+  }
+
+  const modeLabels = chatModes().map((mode) => mode.label);
+  if (modeLabels[modeLabels.indexOf("Frontier Instant") + 1] !== "Help") {
+    throw new Error(`Help should appear next to Frontier Instant in the chat mode list: ${modeLabels.join(", ")}`);
   }
 
   process.env.OPENROUTER_CHAT_ENABLED = "false";
@@ -142,6 +157,10 @@ try {
     }) !== 0.873625
   ) {
     throw new Error("Discount Thinking direct DeepSeek cache-hit pricing drifted from configured discount token rates.");
+  }
+
+  if (actualChatCost("Help", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 1.305) {
+    throw new Error("Help direct DeepSeek V4 Pro pricing drifted from configured token rates.");
   }
 
   const frontierSearchEstimate = chatEstimate({
@@ -635,6 +654,21 @@ try {
     !deepSeekUserMessage.includes("Attached file not sent to DeepSeek API Direct")
   ) {
     throw new Error(`Discount Thinking must use direct DeepSeek high reasoning with text-only attachment handling: ${JSON.stringify(deepSeekThinkingRequest)}`);
+  }
+
+  const helpRequest = deepSeekChatRequest({
+    mode: "Help",
+    model: "deepseek-v4-pro",
+    message: "How do tasks work?",
+    conversationId: "runtime-smoke-help-contract",
+  });
+  if (
+    helpRequest.model !== "deepseek-v4-pro" ||
+    helpRequest.thinking?.type !== "disabled" ||
+    helpRequest.reasoning_effort !== undefined ||
+    Object.prototype.hasOwnProperty.call(helpRequest, "max_tokens")
+  ) {
+    throw new Error(`Help must use direct DeepSeek without thinking or a hard output cap: ${JSON.stringify(helpRequest)}`);
   }
 
   const openRouterSearchRequest = openRouterChatRequest({

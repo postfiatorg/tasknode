@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
 const DEFAULT_GATEWAYS = [
+  "https://pft-ipfs-testnet-clean.fly.dev/ipfs/",
+  "https://gateway.pinata.cloud/ipfs/",
   "https://dweb.link/ipfs/",
   "https://ipfs.io/ipfs/",
 ];
@@ -23,18 +25,19 @@ export function isValidContextCid(value) {
   return CID_RE.test(normalizeContextCid(value));
 }
 
-function configuredGateways() {
+export function contextIpfsGatewayList(env = process.env) {
   const configured = [
-    process.env.TASKNODE_IPFS_GATEWAY,
-    process.env.IPFS_GATEWAY_URL,
-    process.env.TASKNODE_IPFS_GATEWAYS,
+    env.TASKNODE_IPFS_GATEWAY,
+    env.TASKNODE_IPFS_GATEWAYS,
+    env.IPFS_GATEWAY_FALLBACKS,
   ]
     .filter(Boolean)
     .flatMap((value) => String(value).split(","))
     .map((value) => value.trim())
     .filter(Boolean);
 
-  return [...configured, ...DEFAULT_GATEWAYS]
+  return [...configured, ...DEFAULT_GATEWAYS, env.IPFS_GATEWAY_URL]
+    .filter(Boolean)
     .map((value) => value.endsWith("/") ? value : `${value}/`)
     .filter((value, index, list) => list.indexOf(value) === index);
 }
@@ -76,7 +79,7 @@ export async function fetchContextIpfsJson({ cid, timeoutMs = DEFAULT_TIMEOUT_MS
   }
 
   let lastError = "";
-  for (const gateway of configuredGateways()) {
+  for (const gateway of contextIpfsGatewayList()) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const url = `${gateway.replace(/\/$/, "")}/${encodeURIComponent(normalizedCid)}`;

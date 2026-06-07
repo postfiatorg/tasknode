@@ -9,6 +9,7 @@ import profile from "../../../docs/wiki/surfaces/profile.md?raw";
 import refineContext from "../../../docs/wiki/surfaces/refine-context.md?raw";
 import search from "../../../docs/wiki/surfaces/search.md?raw";
 import tasks from "../../../docs/wiki/surfaces/tasks.md?raw";
+import userGuide from "../../../docs/wiki/surfaces/user-guide.md?raw";
 import wallet from "../../../docs/wiki/surfaces/wallet.md?raw";
 import aiProviders from "../../../docs/wiki/architecture/ai-providers.md?raw";
 import authAndConnectedAccounts from "../../../docs/wiki/architecture/auth-and-connected-accounts.md?raw";
@@ -31,6 +32,7 @@ import hiveActiveProjectsHelper from "../../../docs/wiki/architecture/hive-activ
 import hiveSecretaryWorker from "../../../docs/wiki/architecture/hive-secretary-worker.md?raw";
 import executionMandate from "../../../docs/wiki/architecture/execution-mandate.md?raw";
 import ipfs from "../../../docs/wiki/architecture/ipfs.md?raw";
+import ipfsInfrastructureRebuild from "../../../docs/wiki/architecture/ipfs-infrastructure-rebuild.md?raw";
 import jobsPgvectorCorpus from "../../../docs/wiki/architecture/jobs-pgvector-corpus.md?raw";
 import nostr from "../../../docs/wiki/architecture/nostr.md?raw";
 import networkTaskRecovery from "../../../docs/wiki/architecture/network-task-recovery.md?raw";
@@ -60,6 +62,7 @@ import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-producti
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import jobsStandardChatPrompt from "../../../prompts/chat/jobs_standard_chat_codex_style_draft.md?raw";
 import frontierInstantResponseGatePrompt from "../../../prompts/chat/frontier_instant_response_gate_v1.md?raw";
+import helpModePrompt from "../../../prompts/chat/help_mode_v1.md?raw";
 import contextEditJobsPrompt from "../../../prompts/context/context_edit_jobs_v1.xml?raw";
 import accountMemoryContextPrompt from "../../../prompts/chat/account_memory_context_v1.md?raw";
 import accountTasksContextPrompt from "../../../prompts/chat/account_tasks_context_v1.md?raw";
@@ -78,7 +81,7 @@ import rewardScoringPrompt from "../../../prompts/task_engine/reward_scoring_v1.
 import taskgenNetworkPrompt from "../../../prompts/task_engine/taskgen_network_v1.md?raw";
 import taskgenPersonalPrompt from "../../../prompts/task_engine/taskgen_personal_v1.md?raw";
 import verificationRequestPrompt from "../../../prompts/task_engine/verification_request_v1.md?raw";
-import profileNftImagePrompt from "../../../prompts/non_production/profile_nft_dev/profile_nft_image.placeholder.md?raw";
+import profileNftImagePrompt from "../../../prompts/profile/profile_nft_image_v1.md?raw";
 
 const PROMPT_SOURCES = [
   {
@@ -98,9 +101,9 @@ const PROMPT_SOURCES = [
   {
     family: "Profile",
     title: "Profile NFT Image",
-    path: "prompts/non_production/profile_nft_dev/profile_nft_image.placeholder.md",
-    summary: "Dev/test fallback template for profile NFT image generation. Production requires PROFILE_NFT_PROMPT_B64 or PROFILE_NFT_PROMPT_TEXT.",
-    status: "Non-production fallback; production route fails closed without a private prompt",
+    path: "prompts/profile/profile_nft_image_v1.md",
+    summary: "Live profile NFT image generation prompt. It uses a full color palette and does not default to red/black.",
+    status: "Active for profile NFT generation",
     usedBy: [
       "server/profile-nft-prompts.js::renderProfileNftPrompt",
       "server/profile-nft-generation.js::profileNftGenerateStart",
@@ -172,6 +175,19 @@ const PROMPT_SOURCES = [
       "server/chat-router.js::selectFrontierInstantResponseText",
     ],
     content: frontierInstantResponseGatePrompt,
+  },
+  {
+    family: "Chat",
+    title: "Help Mode",
+    path: "prompts/chat/help_mode_v1.md",
+    summary: "Product-help prompt that wraps the standard Task Node runtime context and embedded User Guide for the Help chat mode.",
+    status: "Active for the Help chat mode",
+    usedBy: [
+      "server/chat-help-mode.js::helpModeInstructions",
+      "server/chat-router.js::executeDeepSeek",
+      "server/chat-router.js::streamDeepSeek",
+    ],
+    content: helpModePrompt,
   },
   {
     family: "Chat",
@@ -462,39 +478,115 @@ function promptSourceSections(source) {
   ];
 }
 
+function docBody(markdown = "") {
+  return String(markdown || "")
+    .replace(/^# .*(?:\r?\n)+/, "")
+    .trim();
+}
+
+function docSection(title, markdown) {
+  const body = docBody(markdown);
+  return [`## ${title}`, body].filter(Boolean).join("\n\n");
+}
+
+function combinedDoc(title, intro, sections) {
+  return [`# ${title}`, intro.trim(), ...sections.map(([sectionTitle, markdown]) => docSection(sectionTitle, markdown))]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function movedDoc(title, canonicalSlug, canonicalTitle) {
+  return [
+    `# ${title}`,
+    `This old Help page has been consolidated into [${canonicalTitle}](#docs/${canonicalSlug}).`,
+    "Use the canonical page for current status, repair commands, and product boundaries.",
+  ].join("\n\n");
+}
+
+const identityAndWalletsDoc = combinedDoc(
+  "Identity & Wallets",
+  "One canonical account page for login, connected providers, wallet proof, local vault unlock, custody boundaries, balance reads, and seed-safety rules.",
+  [
+    ["Login And Connected Accounts", authAndConnectedAccounts],
+    ["Wallet Proof, Vault, And Custody Boundary", authWalletBoundary],
+  ]
+);
+
+const hiveOperationsDoc = combinedDoc(
+  "Hive & Board Operations",
+  "One canonical architecture page for the Hive coordination loop: Board Manager decisions, secretary packets, network context reports, active projects, and recovery when Hive-routed work stalls.",
+  [
+    ["Board Manager", boardManagerArchitecture],
+    ["Board Manager Secretary Packet", boardManagerSecretaryPacket],
+    ["Hive Secretary Report", hiveSecretaryWorker],
+    ["Hive Active Projects", hiveActiveProjectsHelper],
+    ["Network Task Recovery", networkTaskRecovery],
+  ]
+);
+
+const taskGenerationDoc = combinedDoc(
+  "Task Generation",
+  "One canonical architecture page for the task engine from signed request to generated offer, review, verification, reward, and replay.",
+  [
+    ["Async Request Engine", taskAsyncEngine],
+    ["Personal And Network Task Generation", taskGenerationWorker],
+    ["Network Allocation Handoff", networkTaskGenerationWorker],
+    ["Review, Verification, And Rewards", taskReviewRewardWorker],
+    ["Task Lifecycle", taskLifecycle],
+  ]
+);
+
+const pftlOperationsDoc = combinedDoc(
+  "PFTL",
+  "One canonical architecture page for Post Fiat chain usage, wallet sync, WSS/RPC endpoints, pointer replay, cache reduction, context history, and reward/task protocol reads.",
+  [
+    ["PFTL Usage", pftl],
+    ["Transaction Cache", pftlTransactionCache],
+    ["Hot Wallet Sync", pftlHotWalletSync],
+    ["Archive Wallet Sync", pftlArchiveWalletSync],
+    ["WSS Watcher", pftlWssWatcher],
+    ["Cache Reducer", pftlCacheReducer],
+    ["Cache Retention", pftlCacheRetention],
+    ["Current RPC And WSS", pftlCurrentRpcAndWss],
+    ["History RPC And Archive WSS", pftlHistoryRpcAndArchiveWss],
+    ["Live Task Replay", pftlLiveTaskReplay],
+    ["Context History Restore", contextHistoryRestore],
+  ]
+);
+
 export const SYSTEM_STATUS_DOC_LINKS = {
-  board_manager: { slug: "board-manager-architecture", label: "Architecture: Board Manager" },
+  board_manager: { slug: "hive-operations", label: "Docs: Hive & Board Operations" },
   board_manager_secretary_packets: {
-    slug: "board-manager-secretary-packet",
-    label: "Architecture: Board Manager Secretary Packet",
+    slug: "hive-operations",
+    label: "Docs: Hive & Board Operations",
   },
-  hive_secretary: { slug: "hive-secretary-worker", label: "Architecture: Hive Secretary Worker" },
-  hive_active_projects: { slug: "hive-active-projects-helper", label: "Architecture: Hive Active Projects Helper" },
+  hive_secretary: { slug: "hive-operations", label: "Docs: Hive & Board Operations" },
+  hive_active_projects: { slug: "hive-operations", label: "Docs: Hive & Board Operations" },
   network_task_generation: {
-    slug: "network-task-generation-worker",
-    label: "Architecture: Network Task Generation Worker",
+    slug: "task-generation",
+    label: "Docs: Task Generation",
   },
-  task_generation: { slug: "task-generation-worker", label: "Architecture: Task Generation Worker" },
-  task_review: { slug: "task-review-reward-worker", label: "Architecture: Task Review And Reward Worker" },
-  pftl_hot_sync: { slug: "pftl-hot-wallet-sync", label: "Architecture: PFTL Hot Wallet Sync" },
-  pftl_archive_sync: { slug: "pftl-archive-wallet-sync", label: "Architecture: PFTL Archive Wallet Sync" },
-  pftl_wss_watcher: { slug: "pftl-wss-watcher", label: "Architecture: PFTL WSS Watcher" },
-  pftl_cache_reducer: { slug: "pftl-cache-reducer", label: "Architecture: PFTL Cache Reducer" },
-  pftl_cache_retention: { slug: "pftl-cache-retention", label: "Architecture: PFTL Cache Retention" },
-  pftl_current_rpc: { slug: "pftl-current-rpc-and-wss", label: "Architecture: PFTL Current RPC And WSS" },
+  task_generation: { slug: "task-generation", label: "Docs: Task Generation" },
+  task_review: { slug: "task-generation", label: "Docs: Task Generation" },
+  pftl_hot_sync: { slug: "pftl", label: "Docs: PFTL" },
+  pftl_archive_sync: { slug: "pftl", label: "Docs: PFTL" },
+  pftl_wss_watcher: { slug: "pftl", label: "Docs: PFTL" },
+  pftl_cache_reducer: { slug: "pftl", label: "Docs: PFTL" },
+  pftl_cache_retention: { slug: "pftl", label: "Docs: PFTL" },
+  pftl_current_rpc: { slug: "pftl", label: "Docs: PFTL" },
   pftl_history_rpc: {
-    slug: "pftl-history-rpc-and-archive-wss",
-    label: "Architecture: PFTL History RPC And Archive WSS",
+    slug: "pftl",
+    label: "Docs: PFTL",
   },
-  ethereum_deposit_rpc: { slug: "ethereum-deposit-rpc", label: "Architecture: Ethereum Deposit RPC" },
-  jobs_pgvector_corpus: { slug: "jobs-pgvector-corpus", label: "Architecture: Jobs PGVector Corpus" },
-  chat_turn_memory: { slug: "turn-memory-worker", label: "Architecture: Turn Memory Worker" },
-  deep_memory: { slug: "deep-memory-worker", label: "Architecture: Deep Memory Worker" },
+  ethereum_deposit_rpc: { slug: "ethereum-deposit-rpc", label: "Docs: Ethereum Deposits" },
+  jobs_pgvector_corpus: { slug: "jobs-pgvector-corpus", label: "Docs: Jobs PGVector Corpus" },
+  chat_turn_memory: { slug: "memory", label: "Docs: Memory" },
+  deep_memory: { slug: "memory", label: "Docs: Memory" },
   network_task_profile: {
-    slug: "network-task-profile-worker",
-    label: "Architecture: Network Task Profile Worker",
+    slug: "profile",
+    label: "Docs: Profile",
   },
-  daily_airdrop_worker: { slug: "daily-airdrop-worker", label: "Architecture: Daily Airdrop Worker" },
+  daily_airdrop_worker: { slug: "daily-airdrop", label: "Docs: Daily Airdrop" },
 };
 
 export const DOC_GROUPS = [
@@ -502,11 +594,10 @@ export const DOC_GROUPS = [
     title: "Start",
     pages: [
       {
-        slug: "system-status-home",
-        title: "System Status",
-        summary: "Live audit view for schedulers, workers, and RPC dependencies.",
-        markdown: systemStatus,
-        component: "system-status",
+        slug: "user-guide",
+        title: "User Guide",
+        summary: "Plain-English feature guide for normal Task Node users.",
+        markdown: userGuide,
       },
       {
         slug: "start",
@@ -514,24 +605,32 @@ export const DOC_GROUPS = [
         summary: "The product and protocol mental model.",
         markdown: startHere,
       },
+      {
+        slug: "system-status-home",
+        title: "System Status",
+        summary: "Live audit view for schedulers, workers, and RPC dependencies.",
+        markdown: systemStatus,
+        component: "system-status",
+      },
     ],
   },
   {
-    title: "Surfaces",
+    title: "Product Surfaces",
     pages: [
       { slug: "chat", title: "Chat", summary: "The primary work surface.", markdown: chat },
-      { slug: "search", title: "Search", summary: "Retrieval across cached work.", markdown: search },
       { slug: "tasks", title: "Tasks", summary: "Portable task lifecycle state.", markdown: tasks },
       { slug: "hive", title: "Hive", summary: "Network project routing and operator coordination.", markdown: hive },
       { slug: "wallet", title: "Wallet", summary: "Identity, balances, and custody.", markdown: wallet },
       { slug: "profile", title: "Profile", summary: "Member trust surface and daily airdrop state.", markdown: profile },
+      { slug: "context", title: "Context", summary: "Durable working profile.", markdown: context },
+      { slug: "memory", title: "Memory", summary: "Inspectable chat compression.", markdown: memory },
+      { slug: "search", title: "Search", summary: "Retrieval across cached work.", markdown: search },
       {
         slug: "daily-airdrop",
         title: "Daily Airdrop",
         summary: "Account-level contributor scoring and identity-cloud recipient selection.",
         markdown: dailyAirdrop,
       },
-      { slug: "context", title: "Context", summary: "Durable working profile.", markdown: context },
       {
         slug: "refine-context",
         title: "Refine Context",
@@ -539,36 +638,16 @@ export const DOC_GROUPS = [
         markdown: refineContext,
       },
       { slug: "agents", title: "Agents", summary: "External wallet-native workers.", markdown: agents },
-      { slug: "memory", title: "Memory", summary: "Inspectable chat compression.", markdown: memory },
     ],
   },
   {
-    title: "Architecture",
+    title: "Identity & Access",
     pages: [
-      { slug: "pftl", title: "PFTL Usage", summary: "Chain records and pointer usage.", markdown: pftl },
       {
-        slug: "pftl-transaction-cache",
-        title: "PFTL Transaction Cache",
-        summary: "Wallet transaction mirror and sync strategy.",
-        markdown: pftlTransactionCache,
-      },
-      {
-        slug: "ai-providers",
-        title: "AI Providers",
-        summary: "Mode routing across OpenAI and OpenRouter.",
-        markdown: aiProviders,
-      },
-      {
-        slug: "auth-and-connected-accounts",
-        title: "Auth And Connected Accounts",
-        summary: "Email, GitHub, Telegram, X, wallet identity, and out-of-scope Discord notes.",
-        markdown: authAndConnectedAccounts,
-      },
-      {
-        slug: "auth-wallet-boundary",
-        title: "Auth And Wallet Boundary",
-        summary: "Account auth, wallet proof, local vault unlock, and seed custody guardrails.",
-        markdown: authWalletBoundary,
+        slug: "identity-wallets",
+        title: "Identity & Wallets",
+        summary: "Login, connected accounts, wallet proof, local vault unlock, and custody boundaries.",
+        markdown: identityAndWalletsDoc,
       },
       {
         slug: "resettable-signup-testing",
@@ -583,16 +662,96 @@ export const DOC_GROUPS = [
         markdown: telegramBotChat,
       },
       {
-        slug: "deployment",
-        title: "Deployment",
-        summary: "Fly dev, Docker, data stores, secrets, auth, top-up, and verification commands.",
-        markdown: deployment,
+        slug: "encryption",
+        title: "Encryption",
+        summary: "MessageKey and encrypted payloads.",
+        markdown: encryption,
+      },
+    ],
+  },
+  {
+    title: "Tasks & Hive",
+    pages: [
+      {
+        slug: "task-generation",
+        title: "Task Generation",
+        summary: "Requests, generated offers, review, verification, rewards, and replay.",
+        markdown: taskGenerationDoc,
+      },
+      {
+        slug: "hive-operations",
+        title: "Hive & Board Operations",
+        summary: "Board Manager, secretary packets, active projects, routing, and network-task recovery.",
+        markdown: hiveOperationsDoc,
+      },
+    ],
+  },
+  {
+    title: "PFTL & Payments",
+    pages: [
+      {
+        slug: "pftl",
+        title: "PFTL",
+        summary: "Chain usage, wallet sync, WSS/RPC endpoints, cache replay, and task pointers.",
+        markdown: pftlOperationsDoc,
+      },
+      {
+        slug: "ethereum-deposit-rpc",
+        title: "Ethereum Deposits",
+        summary: "Deposit top-up RPC configuration and request-time status.",
+        markdown: ethereumDepositRpc,
       },
       {
         slug: "pftasks-cutover",
         title: "PFTasks Cutover",
         summary: "Old PFTasks account shutdown and Task Node Official migration runbook.",
         markdown: pftasksCutover,
+      },
+    ],
+  },
+  {
+    title: "Data, IPFS & AI",
+    pages: [
+      {
+        slug: "database",
+        title: "Database",
+        summary: "Postgres cache architecture and schema target.",
+        markdown: `${database}\n\n${docSection("Database Architecture", databaseArchitecture)}`,
+      },
+      {
+        slug: "ipfs",
+        title: "IPFS",
+        summary: "CID-backed payload standards, gateway order, and profile NFT image proxy.",
+        markdown: ipfs,
+      },
+      {
+        slug: "ipfs-infrastructure-rebuild",
+        title: "IPFS Infrastructure",
+        summary: "Clean first-party gateway, CID migration, and legacy recovery boundary.",
+        markdown: ipfsInfrastructureRebuild,
+      },
+      {
+        slug: "ai-providers",
+        title: "AI Providers",
+        summary: "Mode routing across OpenAI and OpenRouter.",
+        markdown: aiProviders,
+      },
+      {
+        slug: "jobs-pgvector-corpus",
+        title: "Jobs PGVector Corpus",
+        summary: "Postgres pgvector retrieval corpus, Fly shape, and repair path.",
+        markdown: jobsPgvectorCorpus,
+      },
+    ],
+  },
+  {
+    title: "Operations",
+    pages: [
+      {
+        slug: "deployment",
+        title: "Deployment",
+        summary: "Fly dev, Docker, data stores, secrets, auth, top-up, and verification commands.",
+        markdown: deployment,
       },
       {
         slug: "bootup",
@@ -607,157 +766,10 @@ export const DOC_GROUPS = [
         markdown: currentSystem,
       },
       {
-        slug: "deathmarch",
-        title: "Deathmarch Local Harness",
-        summary: "Local-only Discord posting harness for Task Node task events.",
-        markdown: deathmarch,
-      },
-      {
-        slug: "system-status",
-        title: "System Status",
-        summary: "Live audit view for schedulers, workers, and RPC dependencies.",
-        markdown: systemStatus,
-        component: "system-status",
-      },
-      {
         slug: "codex-computer-control-qa",
         title: "Browser-Control QA Protocol",
         summary: "Browser automation QA protocol for beta release verification.",
         markdown: codexComputerControlQa,
-      },
-      {
-        slug: "board-manager-architecture",
-        title: "Board Manager",
-        summary: "Leased Hive decision worker, scheduler state, and repair path.",
-        markdown: boardManagerArchitecture,
-      },
-      {
-        slug: "board-manager-secretary-packet",
-        title: "Board Manager Secretary Packet",
-        summary: "DeepSeek packet compression before Board Manager decisions.",
-        markdown: boardManagerSecretaryPacket,
-      },
-      {
-        slug: "hive-secretary-worker",
-        title: "Hive Secretary Worker",
-        summary: "Structured Hive report generation and worker status derivation.",
-        markdown: hiveSecretaryWorker,
-      },
-      {
-        slug: "hive-active-projects-helper",
-        title: "Hive Active Projects Helper",
-        summary: "Active project derivation, freshness rules, and repair commands.",
-        markdown: hiveActiveProjectsHelper,
-      },
-      {
-        slug: "network-task-generation-worker",
-        title: "Network Task Generation Worker",
-        summary: "Board Manager allocation handoff into the standard task engine.",
-        markdown: networkTaskGenerationWorker,
-      },
-      {
-        slug: "task-generation-worker",
-        title: "Task Generation Worker",
-        summary: "Signed request to PFTL task offer worker path.",
-        markdown: taskGenerationWorker,
-      },
-      {
-        slug: "task-review-reward-worker",
-        title: "Task Review And Reward Worker",
-        summary: "Review, verification, reward progression, and repair path.",
-        markdown: taskReviewRewardWorker,
-      },
-      {
-        slug: "pftl-hot-wallet-sync",
-        title: "PFTL Hot Wallet Sync",
-        summary: "Current-ledger wallet sync status and repair path.",
-        markdown: pftlHotWalletSync,
-      },
-      {
-        slug: "pftl-archive-wallet-sync",
-        title: "PFTL Archive Wallet Sync",
-        summary: "Historical wallet backfill status and repair path.",
-        markdown: pftlArchiveWalletSync,
-      },
-      {
-        slug: "pftl-wss-watcher",
-        title: "PFTL WSS Watcher",
-        summary: "Websocket checkpoint freshness and reconnect checks.",
-        markdown: pftlWssWatcher,
-      },
-      {
-        slug: "pftl-cache-reducer",
-        title: "PFTL Cache Reducer",
-        summary: "Pointer reducer queue health and projection repair.",
-        markdown: pftlCacheReducer,
-      },
-      {
-        slug: "pftl-cache-retention",
-        title: "PFTL Cache Retention",
-        summary: "Cache maintenance freshness and safe cleanup rules.",
-        markdown: pftlCacheRetention,
-      },
-      {
-        slug: "pftl-current-rpc-and-wss",
-        title: "PFTL Current RPC And WSS",
-        summary: "Current ledger endpoint health for submissions and hot sync.",
-        markdown: pftlCurrentRpcAndWss,
-      },
-      {
-        slug: "pftl-history-rpc-and-archive-wss",
-        title: "PFTL History RPC And Archive WSS",
-        summary: "Archive endpoint health for historical backfill and context restore.",
-        markdown: pftlHistoryRpcAndArchiveWss,
-      },
-      {
-        slug: "ethereum-deposit-rpc",
-        title: "Ethereum Deposit RPC",
-        summary: "Deposit top-up RPC configuration and request-time status.",
-        markdown: ethereumDepositRpc,
-      },
-      {
-        slug: "jobs-pgvector-corpus",
-        title: "Jobs PGVector Corpus",
-        summary: "Postgres pgvector retrieval corpus, Fly shape, and repair path.",
-        markdown: jobsPgvectorCorpus,
-      },
-      {
-        slug: "turn-memory-worker",
-        title: "Turn Memory Worker",
-        summary: "Chat turn memory queue health and recovery.",
-        markdown: turnMemoryWorker,
-      },
-      {
-        slug: "deep-memory-worker",
-        title: "Deep Memory Worker",
-        summary: "Deep account memory queue health and recovery.",
-        markdown: deepMemoryWorker,
-      },
-      {
-        slug: "network-task-profile-worker",
-        title: "Network Task Profile Worker",
-        summary: "Routing profile queue health and repair commands.",
-        markdown: networkTaskProfileWorker,
-      },
-      {
-        slug: "daily-airdrop-worker",
-        title: "Daily Airdrop Worker",
-        summary: "Airdrop scoring, issuance status, and money-path recovery.",
-        markdown: dailyAirdropWorker,
-      },
-      {
-        slug: "encryption",
-        title: "Encryption",
-        summary: "MessageKey and encrypted payloads.",
-        markdown: encryption,
-      },
-      { slug: "ipfs", title: "IPFS", summary: "CID-backed payload standards.", markdown: ipfs },
-      { slug: "database", title: "Database", summary: "Postgres cache architecture.", markdown: database },
-      {
-        slug: "database-architecture",
-        title: "Database Architecture",
-        summary: "Target Postgres account, billing, context, task, and pgvector architecture.",
-        markdown: databaseArchitecture,
       },
       {
         slug: "execution-mandate",
@@ -771,37 +783,6 @@ export const DOC_GROUPS = [
         summary: "Visual system, colors, typography, and surface-level UX rules.",
         markdown: styleGuide,
       },
-      {
-        slug: "task-lifecycle",
-        title: "Task Lifecycle",
-        summary: "Replayable task state machine.",
-        markdown: taskLifecycle,
-      },
-      {
-        slug: "pftl-live-task-replay",
-        title: "PFTL Live Task Replay",
-        summary: "Successful live PFTL/IPFS lifecycle replay from request through reward.",
-        markdown: pftlLiveTaskReplay,
-      },
-      {
-        slug: "context-history-restore",
-        title: "Context History Restore",
-        summary: "PFTL cache projection path for historical context restore.",
-        markdown: contextHistoryRestore,
-      },
-      {
-        slug: "network-task-recovery",
-        title: "Network Task Recovery",
-        summary: "Restart recovery for active Network Tasks and Hive mirrors.",
-        markdown: networkTaskRecovery,
-      },
-      {
-        slug: "task-async-engine",
-        title: "Task Async Engine",
-        summary: "Wallet queues, worker ownership, and request edge states.",
-        markdown: taskAsyncEngine,
-      },
-      { slug: "nostr", title: "Nostr TBD", summary: "Public broadcast boundary.", markdown: nostr },
     ],
   },
   {
@@ -821,6 +802,46 @@ export const DOC_GROUPS = [
   },
 ];
 
-export const DOC_PAGES = DOC_GROUPS.flatMap((group) =>
-  group.pages.map((page) => ({ ...page, group: group.title }))
-);
+const LEGACY_DOC_PAGES = [
+  ["auth-and-connected-accounts", "Auth And Connected Accounts", "identity-wallets", "Identity & Wallets"],
+  ["auth-wallet-boundary", "Auth And Wallet Boundary", "identity-wallets", "Identity & Wallets"],
+  ["board-manager-architecture", "Board Manager", "hive-operations", "Hive & Board Operations"],
+  ["board-manager-secretary-packet", "Board Manager Secretary Packet", "hive-operations", "Hive & Board Operations"],
+  ["hive-secretary-worker", "Hive Secretary Worker", "hive-operations", "Hive & Board Operations"],
+  ["hive-active-projects-helper", "Hive Active Projects Helper", "hive-operations", "Hive & Board Operations"],
+  ["network-task-recovery", "Network Task Recovery", "hive-operations", "Hive & Board Operations"],
+  ["network-task-generation-worker", "Network Task Generation Worker", "task-generation", "Task Generation"],
+  ["task-generation-worker", "Task Generation Worker", "task-generation", "Task Generation"],
+  ["task-review-reward-worker", "Task Review And Reward Worker", "task-generation", "Task Generation"],
+  ["task-async-engine", "Task Async Engine", "task-generation", "Task Generation"],
+  ["task-lifecycle", "Task Lifecycle", "task-generation", "Task Generation"],
+  ["pftl-transaction-cache", "PFTL Transaction Cache", "pftl", "PFTL"],
+  ["pftl-hot-wallet-sync", "PFTL Hot Wallet Sync", "pftl", "PFTL"],
+  ["pftl-archive-wallet-sync", "PFTL Archive Wallet Sync", "pftl", "PFTL"],
+  ["pftl-wss-watcher", "PFTL WSS Watcher", "pftl", "PFTL"],
+  ["pftl-cache-reducer", "PFTL Cache Reducer", "pftl", "PFTL"],
+  ["pftl-cache-retention", "PFTL Cache Retention", "pftl", "PFTL"],
+  ["pftl-current-rpc-and-wss", "PFTL Current RPC And WSS", "pftl", "PFTL"],
+  ["pftl-history-rpc-and-archive-wss", "PFTL History RPC And Archive WSS", "pftl", "PFTL"],
+  ["pftl-live-task-replay", "PFTL Live Task Replay", "pftl", "PFTL"],
+  ["context-history-restore", "Context History Restore", "pftl", "PFTL"],
+  ["database-architecture", "Database Architecture", "database", "Database"],
+  ["turn-memory-worker", "Turn Memory Worker", "memory", "Memory"],
+  ["deep-memory-worker", "Deep Memory Worker", "memory", "Memory"],
+  ["network-task-profile-worker", "Network Task Profile Worker", "profile", "Profile"],
+  ["daily-airdrop-worker", "Daily Airdrop Worker", "daily-airdrop", "Daily Airdrop"],
+  ["system-status", "System Status", "system-status-home", "System Status"],
+  ["deathmarch", "Deathmarch Local Harness", "deployment", "Deployment"],
+  ["nostr", "Nostr TBD", "current-system", "Current System"],
+].map(([slug, title, canonicalSlug, canonicalTitle]) => ({
+  slug,
+  title,
+  summary: `Legacy location. See ${canonicalTitle}.`,
+  markdown: movedDoc(title, canonicalSlug, canonicalTitle),
+  group: "Legacy Redirects",
+}));
+
+export const DOC_PAGES = [
+  ...DOC_GROUPS.flatMap((group) => group.pages.map((page) => ({ ...page, group: group.title }))),
+  ...LEGACY_DOC_PAGES,
+];

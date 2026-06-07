@@ -70,3 +70,9 @@ export function taskRefreshPolicy({
     taskRequestSettling,
   };
 }
+
+export function shouldForceTaskSyncNotice(sync = {}) {
+  const status = String(sync?.status || "ready");
+  if (status === "reducer_attention") return true;
+  return status === "indexing_lag" && Number(sync?.indexingLagCount || 0) > 3;
+}

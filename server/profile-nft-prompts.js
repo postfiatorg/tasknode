@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 
+export const profileNftImagePromptPath = path.join(rootDir, "prompts", "profile", "profile_nft_image_v1.md");
 export const privateProfileNftPromptPath = path.join(rootDir, "private_prompts", "profile_nft_image.md");
 export const placeholderProfileNftPromptPath = path.join(
   rootDir,
@@ -39,16 +40,31 @@ function readSecretPrompt(env = process.env) {
 }
 
 function readPromptFile(env = process.env) {
+  if (env.PROFILE_NFT_PROMPT_PATH) {
+    const configuredPath = path.resolve(env.PROFILE_NFT_PROMPT_PATH);
+    return {
+      text: readFileSync(configuredPath, "utf8").trim(),
+      source: configuredPath === profileNftImagePromptPath ? "tracked" : "configured",
+      sourcePath: configuredPath,
+    };
+  }
+
   const secretPrompt = readSecretPrompt(env);
   if (secretPrompt?.text) return secretPrompt;
 
-  const configuredPath = env.PROFILE_NFT_PROMPT_PATH
-    ? path.resolve(env.PROFILE_NFT_PROMPT_PATH)
-    : privateProfileNftPromptPath;
-  const sourcePath = existsSync(configuredPath) ? configuredPath : placeholderProfileNftPromptPath;
+  const sourcePath = existsSync(profileNftImagePromptPath)
+    ? profileNftImagePromptPath
+    : existsSync(privateProfileNftPromptPath)
+      ? privateProfileNftPromptPath
+      : placeholderProfileNftPromptPath;
   return {
     text: readFileSync(sourcePath, "utf8").trim(),
-    source: sourcePath === placeholderProfileNftPromptPath ? "placeholder" : "private",
+    source:
+      sourcePath === profileNftImagePromptPath
+        ? "tracked"
+        : sourcePath === placeholderProfileNftPromptPath
+          ? "placeholder"
+          : "legacy_private",
     sourcePath,
   };
 }

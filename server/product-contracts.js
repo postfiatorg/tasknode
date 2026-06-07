@@ -51,7 +51,9 @@ import {
   usageSummary,
 } from "./repositories/chat-billing.js";
 import { loadChatExecutionContext } from "./chat-context-load.js";
+import { normalizeClientChatHistory } from "./chat-client-history.js";
 import { validateChatAttachments } from "./chat-attachment-utils.js";
+import { isHelpChatMode } from "./chat-help-mode.js";
 import {
   getContextHistory,
   saveContextDocument,
@@ -371,6 +373,7 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0 } = {}) {
       : "dev";
   const dryRun = payload?.dryRun === true;
   const attachments = Array.isArray(payload?.attachments) ? payload.attachments : [];
+  const clientHistory = normalizeClientChatHistory(payload?.clientHistory);
   return {
     accountId,
     message,
@@ -380,6 +383,7 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0 } = {}) {
     conversationId,
     dryRun,
     attachments,
+    clientHistory,
     source: typeof source === "string" ? source.trim().slice(0, 80) : "",
     providerTimeoutMs: Number(providerTimeoutMs) > 0 ? Number(providerTimeoutMs) : 0,
   };
@@ -497,7 +501,8 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
     };
   }
 
-  if (!chat.accountId) {
+  const signedOutHelp = !chat.accountId && isHelpChatMode(chat.mode) && !chat.contextMode;
+  if (!chat.accountId && !signedOutHelp) {
     return {
       ok: false,
       status: 401,
@@ -527,9 +532,35 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
   }
   chat = { ...chat, attachments: attachmentValidation.attachments };
   const estimatePayload = { ...payload, mode: chat.mode, attachments: chat.attachments };
-  estimate = chatEstimate(estimatePayload);
+  estimate = chatEstimate(estimatePayload, signedOutHelp ? { historyMessages: chat.clientHistory } : undefined);
 
   if (chat.dryRun) {
+    if (signedOutHelp) {
+      return {
+        ok: false,
+        status: 200,
+        body: {
+          ok: true,
+          dryRun: true,
+          action,
+          conversationId: chat.conversationId,
+          message: estimate.executionReady
+            ? "Help chat is configured. Dry run skipped the provider call."
+            : "Help chat is not configured in this environment. Dry run skipped the provider call.",
+          estimate,
+          contextStatus: null,
+        },
+        chat: {
+          ...chat,
+          contextDocument: null,
+          memoryContext: null,
+          taskContext: null,
+          contextStatus: null,
+        },
+        estimate,
+      };
+    }
+
     const [executionContext, historyMessages, activeProposal] = await Promise.all([
       loadChatExecutionContext(chat.accountId),
       chat.accountId && chat.conversationId
@@ -587,6 +618,23 @@ async function chatExecutionPreflight(payload, method, action = "chat_send", opt
         estimate,
       },
       chat,
+      estimate,
+    };
+  }
+
+  if (signedOutHelp) {
+    return {
+      ok: true,
+      status: 200,
+      chat: {
+        ...chat,
+        contextDocument: null,
+        memoryContext: null,
+        taskContext: null,
+        contextStatus: null,
+        clientHistory: chat.clientHistory,
+        ephemeralHistoryMessages: chat.clientHistory,
+      },
       estimate,
     };
   }
@@ -661,6 +709,7 @@ export async function chatSend(payload, method, options = {}) {
     memoryContext,
     taskContext,
     contextStatus,
+    clientHistory,
   } = preflight.chat;
   const { estimate } = preflight;
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
@@ -687,6 +736,7 @@ export async function chatSend(payload, method, options = {}) {
           memoryContext,
           taskContext,
           contextStatus,
+          ephemeralHistoryMessages: clientHistory,
           source: preflight.chat.source,
           providerTimeoutMs: preflight.chat.providerTimeoutMs,
         });
@@ -781,18 +831,20 @@ export async function chatStreamStart(payload, method, options = {}) {
   };
 }
 
-export function chatModes() {
+export function chatModes({ signedOut = false } = {}) {
   return Object.keys(chatModePrices).map((label) => {
     const status = chatExecutionStatus(label);
     const config = chatModePrices[label];
+    const loginRequired = signedOut && !isHelpChatMode(label);
     return {
       label,
       provider: status.provider,
       providerLabel: status.providerLabel,
       model: status.model,
       configured: status.configured,
-      enabled: status.enabled,
-      status: status.status,
+      enabled: loginRequired ? false : status.enabled,
+      status: loginRequired ? "login_required" : status.status,
+      actionRequired: loginRequired ? "Sign in to use billable chat modes." : undefined,
       privacy: status.provider === "openrouter"
         ? "Private provider route"
         : status.provider === "deepseek"

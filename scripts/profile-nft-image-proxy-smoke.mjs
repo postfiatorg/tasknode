@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   fetchProfileNftImage,
+  profileNftImageGatewayList,
   profileNftImageProxyPath,
 } from "../server/profile-nft-image-proxy.js";
 
@@ -12,6 +13,18 @@ assert.equal(
   profileNftImageProxyPath(cid),
   `/api/profile/nft/image/${cid}`
 );
+
+const gatewayList = profileNftImageGatewayList({
+  TASKNODE_PROFILE_NFT_IMAGE_GATEWAYS: "",
+  TASKNODE_IPFS_GATEWAY: "",
+  TASKNODE_IPFS_GATEWAYS: "",
+  IPFS_GATEWAY_FALLBACKS: "https://fallback.example/ipfs/",
+  IPFS_GATEWAY_URL: "https://legacy.example/ipfs/",
+});
+assert.equal(gatewayList[0], "https://fallback.example/ipfs/");
+assert.ok(gatewayList.includes("https://pft-ipfs-testnet-clean.fly.dev/ipfs/"));
+assert.ok(gatewayList.includes("https://legacy.example/ipfs/"));
+assert.ok(gatewayList.indexOf("https://pft-ipfs-testnet-clean.fly.dev/ipfs/") < gatewayList.indexOf("https://legacy.example/ipfs/"));
 
 const invalid = await fetchProfileNftImage({
   cid: "not a cid",

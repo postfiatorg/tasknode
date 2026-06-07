@@ -1077,6 +1077,7 @@ function NFTTile({ nft }) {
   const imageCandidates = useMemo(() => imageCandidatesForNft(nft), [nft]);
   const [imageIndex, setImageIndex] = useState(0);
   const imageSrc = imageCandidates[imageIndex] || "";
+  const hasImageCid = Boolean(String(nft.imageCid || "").trim());
 
   useEffect(() => {
     setImageIndex(0);
@@ -1110,6 +1111,25 @@ function NFTTile({ nft }) {
               width: "100%",
             }}
           />
+        ) : hasImageCid ? (
+          <div style={{
+            alignItems: "center",
+            border: `1px solid ${C.ruleSoft}`,
+            color: C.ink4,
+            display: "flex",
+            flexDirection: "column",
+            fontSize: 12,
+            gap: 8,
+            height: "100%",
+            justifyContent: "center",
+            padding: 14,
+            textAlign: "center",
+          }}>
+            <span style={{ color: C.ink3, fontWeight: 650 }}>Image unavailable</span>
+            <span className="tn-mono" style={{ fontSize: 10.5, lineHeight: 1.35, overflowWrap: "anywhere" }}>
+              {shortHash(nft.imageCid, 10, 8)}
+            </span>
+          </div>
         ) : (
           <NFTArt kind={nft.kind || "topology"} palette={nft.palette || "green"} size="100%" />
         )}

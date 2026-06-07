@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowUp,
@@ -87,6 +87,7 @@ import {
   titleFromTurns,
   transcriptTextFromThread,
 } from "./features/chat/chat-turns";
+import { plainTextFromBlocks } from "./features/chat/chat-markdown";
 import { BillingSettings } from "./features/billing/BillingSettings";
 import { IdentityHandleDialog, IdentitySettings } from "./features/identity/IdentityControls.jsx";
 import {
@@ -111,10 +112,19 @@ import { TaskRow } from "./features/tasks/TaskRow.jsx";
 import {
   settledTaskRequestHasVisibleOutstanding,
   shouldRevealSettledOutstandingTask,
+  shouldForceTaskSyncNotice,
   shouldStartTaskRequestSettle,
   taskRefreshPolicy,
   taskRequestSettleDeadline,
 } from "./features/tasks/task-refresh-policy.js";
+import {
+  appendTaskActionReceipt,
+  loadTaskActionReceipts,
+  mergeTaskStateWithActionReceipts,
+  pruneTaskActionReceiptsForTaskState,
+  saveTaskActionReceipts,
+  taskSyncNoticeForStatus,
+} from "./features/tasks/task-action-receipts.js";
 import { publishTaskRequest } from "./features/tasks/task-request-actions.js";
 import { evaluateTaskRequestUnlockPolicy } from "./features/tasks/task-request-unlock-policy.js";
 import {
@@ -156,6 +166,8 @@ const TASK_REQUEST_CANONICAL_TEXT =
 const TASK_REQUEST_PLACEHOLDER = "Add any relevant details for your task request";
 const HIVE_CHAT_PLACEHOLDER = "Talk to Hive Chat";
 const HIVE_CHAT_TITLE = "Hive Chat";
+const SIGNED_OUT_HELP_HISTORY_LIMIT = 10;
+const SIGNED_OUT_HELP_HISTORY_CHARS = 4000;
 const HIVE_CHAT_NOTIFICATION_REFRESH_MS = 20000;
 const ROUTE_CHUNK_RELOAD_COOLDOWN_MS = 30_000;
 const CHAT_ATTACHMENT_ACCEPT = [
@@ -173,6 +185,26 @@ const CHAT_ATTACHMENT_ACCEPT = [
 ].join(",");
 const serializeChatAttachments = (items = []) =>
   items.map(({ name, mimeType, size, source, dataUrl }) => ({ name, mimeType, size, source, dataUrl }));
+
+function textFromVisibleTurn(turn = {}) {
+  if (turn.role === "user") return String(turn.text || "").trim();
+  if (turn.role === "assistant") {
+    return String(turn.text || plainTextFromBlocks(turn.blocks || []) || "").trim();
+  }
+  return "";
+}
+
+function clientHistoryPayloadFromTurns(turns = []) {
+  return (turns || [])
+    .filter((turn) => !turn.pending && !turn.error && (turn.role === "user" || turn.role === "assistant"))
+    .map((turn) => {
+      const body = textFromVisibleTurn(turn).slice(0, SIGNED_OUT_HELP_HISTORY_CHARS).trim();
+      if (!body) return null;
+      return { role: turn.role, body };
+    })
+    .filter(Boolean)
+    .slice(-SIGNED_OUT_HELP_HISTORY_LIMIT);
+}
 
 function routeLoadErrorText(error) {
   return `${error?.name || ""} ${error?.message || error || ""}`.toLowerCase();
@@ -301,6 +333,7 @@ const EMPTY_WALLET_VAULT_STATUS = {
 const WALLET_BALANCE_REFRESH_MS = 1000;
 const WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS = 0;
 const WALLET_ACTIVITY_EVENT_NAME = "tasknode:wallet-activity";
+const TASK_ACTION_RECEIPTS_STORAGE_KEY = "tasknode_task_action_receipts";
 
 function viewFromLocation() {
   if (typeof window === "undefined") return "chat";
@@ -390,6 +423,9 @@ function App() {
   const [walletUnlockOpen, setWalletUnlockOpen] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
   const [appState, setAppState] = useState(null);
+  const [taskActionReceipts, setTaskActionReceipts] = useState(() =>
+    loadTaskActionReceipts(typeof window === "undefined" ? null : window.sessionStorage, TASK_ACTION_RECEIPTS_STORAGE_KEY)
+  );
   const [profileAvatarNft, setProfileAvatarNft] = useState(null);
   const [walletVaultStatus, setWalletVaultStatus] = useState(EMPTY_WALLET_VAULT_STATUS);
   const [loadError, setLoadError] = useState("");
@@ -434,14 +470,6 @@ function App() {
       active = false;
     };
   }, [view]);
-
-  useEffect(() => {
-    if (view !== "tasks") return;
-    const taskId = taskIdFromLocation();
-    if (!taskId) return;
-    const task = findTaskById(appState?.tasks, taskId);
-    if (task) setSelectedTask(task);
-  }, [appState?.tasks, view]);
 
   useEffect(() => {
     function closeMenus(event) {
@@ -511,12 +539,41 @@ function App() {
       ? appState.wallet.pftWallet
       : null;
   const linkedWalletAddress = linkedWallet?.address || "";
+  const visibleTasks = useMemo(() => mergeTaskStateWithActionReceipts(appState?.tasks || EMPTY_TASKS, taskActionReceipts, {
+    accountId: walletAccountId,
+    walletAddress: linkedWalletAddress,
+  }), [appState?.tasks, linkedWalletAddress, taskActionReceipts, walletAccountId]);
   const walletVaultAvailable = Boolean(walletVaultStatus?.available && walletVaultStatus?.address === linkedWalletAddress);
   const walletVaultUnlocked = Boolean(walletVaultAvailable && walletVaultStatus?.unlocked);
   const vaultDisplay = walletVaultDisplayState(walletVaultStatus, linkedWalletAddress);
   const identityHandleRequired = signedIn && session?.identityProfile?.handleRequired === true;
   const telegramProvider = accountLinkProvider(session, "telegram");
   const linkedTelegramProvider = linkedProviderById(session, "telegram");
+
+  useEffect(() => {
+    if (view !== "tasks") return;
+    const taskId = taskIdFromLocation();
+    if (!taskId) return;
+    const task = findTaskById(visibleTasks, taskId);
+    if (task) setSelectedTask(task);
+  }, [view, visibleTasks]);
+
+  useEffect(() => {
+    if (!appState?.tasks) return;
+    setTaskActionReceipts((current) => {
+      const pruned = pruneTaskActionReceiptsForTaskState(current, appState.tasks, {
+        accountId: walletAccountId,
+        walletAddress: linkedWalletAddress,
+      });
+      if (pruned.length === current.length) return current;
+      saveTaskActionReceipts(
+        typeof window === "undefined" ? null : window.sessionStorage,
+        pruned,
+        TASK_ACTION_RECEIPTS_STORAGE_KEY
+      );
+      return pruned;
+    });
+  }, [appState?.tasks, linkedWalletAddress, walletAccountId]);
 
   useEffect(() => {
     setIdentityPromptDismissed(false);
@@ -924,6 +981,18 @@ function App() {
       setLoadError(error?.message || "Failed to load app state");
       return null;
     }
+  }
+
+  function recordTaskActionReceipt(receipt) {
+    setTaskActionReceipts((current) => {
+      const next = appendTaskActionReceipt(current, receipt);
+      saveTaskActionReceipts(
+        typeof window === "undefined" ? null : window.sessionStorage,
+        next,
+        TASK_ACTION_RECEIPTS_STORAGE_KEY
+      );
+      return next;
+    });
   }
 
   async function logOut() {
@@ -1410,7 +1479,7 @@ function App() {
               onRequestSettled={refreshAppState}
               onSelectTask={openTaskDetail}
               onWalletUnlock={openWalletVaultControl}
-              tasks={appState?.tasks}
+              tasks={visibleTasks}
               walletSecret={walletSecretRef.current}
               walletUnlockPending={walletUnlockOpen}
               walletVault={walletVaultStatus}
@@ -1510,6 +1579,7 @@ function App() {
           escapeDisabled={walletUnlockOpen}
           linkedWalletAddress={linkedWalletAddress}
           onClose={closeTaskDetail}
+          onTaskActionReceipt={recordTaskActionReceipt}
           onTaskChanged={refreshAppState}
           onWalletUnlock={openWalletVaultControl}
           task={selectedTask}
@@ -1565,9 +1635,13 @@ function ChatSurface({
   linkedWalletAddress = "", onActiveChatChange, onChatSettled, onWalletUnlock, usage,
   walletSecret = null, walletUnlockPending = false, walletVault = {},
 }) {
-  const modes = chat?.modes || [];
+  const signedOut = !accountId;
+  const allModes = chat?.modes || [];
+  const modes = signedOut ? allModes.filter((mode) => mode.label === "Help") : allModes;
   const messages = chat?.seedMessages || [];
-  const defaultMode = chat?.defaultMode || "Private Instant";
+  const defaultMode = signedOut
+    ? modes.find((mode) => mode.label === "Help" && mode.enabled)?.label || "Help"
+    : chat?.defaultMode || "Private Instant";
   const isHiveChat = activeChat?.kind === "hive";
   const [turns, setTurns] = useState(() => normalizeChatMessages(messages));
   const [selectedMode, setSelectedMode] = useState(defaultMode);
@@ -1623,6 +1697,14 @@ function ChatSurface({
   useEffect(() => {
     setSelectedMode(defaultMode);
   }, [defaultMode]);
+
+  useEffect(() => {
+    if (!signedOut) return;
+    setTaskRequestMode(false);
+    setContextEditMode(false);
+    setSelectedMode("Help");
+    setPlusMenuOpen(false);
+  }, [signedOut]);
 
   useEffect(() => {
     if (clearedChatRef.current) return;
@@ -1936,10 +2018,11 @@ function ChatSurface({
 
       const chatPayload = {
         message: submittedText,
-        mode: isContextEdit ? "Frontier Thinking" : selectedMode,
+        mode: isContextEdit ? "Frontier Thinking" : signedOut ? "Help" : selectedMode,
         contextMode: isContextEdit ? CONTEXT_EDIT_MODE : undefined,
         conversationId: requestedConversationId,
         attachments: serializeChatAttachments(submittedAttachments),
+        clientHistory: signedOut && !isContextEdit ? clientHistoryPayloadFromTurns(turns) : undefined,
       };
       const result = usage?.chatStreamPath && !isContextEdit
         ? await requestEventStream(
@@ -2261,12 +2344,14 @@ function ChatSurface({
           <div className="plus-picker composer-plus" ref={plusRef}>
             <button
               className="composer-icon"
+              disabled={signedOut}
               onClick={() => {
+                if (signedOut) return;
                 setModelMenuOpen(false);
                 setPlusMenuOpen((open) => !open);
               }}
               type="button"
-              aria-label="Add"
+              aria-label={signedOut ? "Sign in for app actions" : "Add"}
             >
               <Plus size={20} strokeWidth={1.75} />
             </button>
@@ -2349,10 +2434,12 @@ function ChatSurface({
                 <div className="model-menu">
                   {modes.map((mode) => (
                     <ModelOption
+                      disabled={!mode.enabled}
                       key={mode.label}
                       mode={mode}
                       selected={mode.label === selectedMode}
                       onClick={() => {
+                        if (!mode.enabled) return;
                         setSelectedMode(mode.label);
                         setModelMenuOpen(false);
                       }}
@@ -2808,9 +2895,14 @@ function ShareModal({ onClose, thread, title }) {
   );
 }
 
-function ModelOption({ mode, onClick, selected }) {
+function ModelOption({ disabled = false, mode, onClick, selected }) {
   return (
-    <button className={`model-option${selected ? " selected" : ""}`} onClick={onClick} type="button">
+    <button
+      className={`model-option${selected ? " selected" : ""}`}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
       <span>
         <strong>{formatModeLabel(mode.label)}</strong>
         <small>{modeDescription(mode)}</small>
@@ -2830,6 +2922,7 @@ function modeDescription(mode = {}) {
   if (label === "Private Thinking") return "ZDR. Open Source. More reasoning.";
   if (label === "Discount Thinking") return "DeepSeek API Direct";
   if (label === "Frontier Instant") return "Fast frontier model";
+  if (label === "Help") return "Plain-English app guide";
   if (label === "Frontier Thinking") return "Deeper frontier reasoning";
   return mode.latency || mode.privacy || "";
 }
@@ -3061,37 +3154,28 @@ function TasksView({
     taskRequestSettling,
   ]);
 
-  const taskSyncNotice = {
-    indexing_lag: {
-      label: "Chain indexing in progress",
-      body: `Task Node has newer on-chain pointers than the list projection has consumed${taskSync.indexingLagCount ? ` (${taskSync.indexingLagCount} task${taskSync.indexingLagCount === 1 ? "" : "s"})` : ""}. Tabs refresh automatically while sync catches up.`,
-    },
-    reducer_attention: {
-      label: "Projection reducer needs attention",
-      body: `Some task pointers failed to reduce${taskSync.failedReducerCount ? ` (${taskSync.failedReducerCount} failed)` : ""}. The list may lag until reducer work succeeds.`,
-    },
-  }[taskSyncStatus];
+  const taskSyncNotice = shouldForceTaskSyncNotice(taskSync) ? taskSyncNoticeForStatus(taskSync) : null;
 
   const emptyCopy = {
     outstanding: {
       icon: Flag,
       title: tasks?.sync?.status === "wallet_required" ? "Link a wallet to view tasks" : "No outstanding tasks",
-      desc: "Tasks appear here after the PFTL projection cache indexes proposed or accepted work for your linked wallet.",
+      desc: "Tasks appear here after signed offers or updates finish syncing for your linked wallet.",
     },
     verification: {
       icon: Trophy,
       title: "Nothing awaiting verification",
-      desc: "When a verification request is indexed from PFTL, it will appear here.",
+      desc: "Tasks move here when someone asks for more evidence or review.",
     },
     refused: {
       icon: MoreHorizontal,
       title: "No refused tasks",
-      desc: "Rejected, expired, and cancelled task projections appear here.",
+      desc: "Refused, rejected, expired, and cancelled tasks appear here.",
     },
     rewarded: {
       icon: Trophy,
       title: "No rewarded tasks",
-      desc: "Rewarded task projections appear here after PFTL reward pointers are indexed.",
+      desc: "Paid tasks appear here after the reward is synced.",
     },
   }[tasksTab];
 
@@ -3108,7 +3192,7 @@ function TasksView({
               {tasks?.sync?.projectionCount > 0 && (
                 <>
                   <span aria-hidden="true">.</span>
-                  <span>{tasks.sync.projectionCount} chain indexed</span>
+                  <span>{tasks.sync.projectionCount} task records synced</span>
                 </>
               )}
               {activeRequests.length > 0 && (

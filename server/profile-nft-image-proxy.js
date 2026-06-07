@@ -1,6 +1,7 @@
 import { isValidContextCid, normalizeContextCid } from "./context-ipfs.js";
 
 const DEFAULT_GATEWAYS = [
+  "https://pft-ipfs-testnet-clean.fly.dev/ipfs/",
   "https://dweb.link/ipfs/",
   "https://ipfs.io/ipfs/",
 ];
@@ -24,19 +25,20 @@ function numericEnv(value, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.floor(number)));
 }
 
-function configuredGateways(env = process.env) {
+export function profileNftImageGatewayList(env = process.env) {
   const configured = [
     env.TASKNODE_PROFILE_NFT_IMAGE_GATEWAYS,
     env.TASKNODE_IPFS_GATEWAY,
-    env.IPFS_GATEWAY_URL,
     env.TASKNODE_IPFS_GATEWAYS,
+    env.IPFS_GATEWAY_FALLBACKS,
   ]
     .filter(Boolean)
     .flatMap((value) => String(value).split(","))
     .map((value) => value.trim())
     .filter(Boolean);
 
-  return [...configured, ...DEFAULT_GATEWAYS]
+  return [...configured, ...DEFAULT_GATEWAYS, env.IPFS_GATEWAY_URL]
+    .filter(Boolean)
     .map((value) => value.endsWith("/") ? value : `${value}/`)
     .filter((value, index, list) => list.indexOf(value) === index);
 }
@@ -163,7 +165,7 @@ export async function fetchProfileNftImage({
 
   const boundedTimeoutMs = numericEnv(timeoutMs ?? env.TASKNODE_PROFILE_NFT_IMAGE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, 1000, 60000);
   const boundedMaxBytes = numericEnv(maxBytes ?? env.TASKNODE_PROFILE_NFT_IMAGE_MAX_BYTES, DEFAULT_MAX_BYTES, 1024, 32 * 1024 * 1024);
-  const gatewayList = Array.isArray(gateways) && gateways.length ? gateways : configuredGateways(env);
+  const gatewayList = Array.isArray(gateways) && gateways.length ? gateways : profileNftImageGatewayList(env);
   const attempts = [];
 
   const fetches = gatewayList.map(async (gateway) => {

@@ -49,7 +49,7 @@ The preferred recovery path is exact-CID repinning:
 4. Verify unresolved CIDs against legacy PFTasks gateways.
 5. For legacy-proven CIDs, request `pinByHash` from the current pinning provider.
 6. Rerun current-gateway verification until every migrated CID resolves without the legacy gateways.
-7. Only then remove legacy gateways from production config.
+7. Only then retire legacy gateways from recovery tooling.
 
 Operator command:
 
@@ -70,7 +70,7 @@ npm run --silent profile-nft-cid-repin -- \
   --verify-only
 ```
 
-Repeat execute batches by increasing `--offset` by the batch size until the report's `uniqueCids` count is covered. Use `--verify-only` as the final gate before removing legacy gateways.
+Repeat execute batches by increasing `--offset` by the batch size until the report's `uniqueCids` count is covered. Use `--verify-only` as the final gate before retiring legacy gateways from recovery tooling.
 
 If `pinByHash` cannot verify a CID that an old gateway can still serve, the next repair is block-level migration from the old IPFS node into current IPFS infrastructure. That may be a CAR export/import or another exact-CID block transfer. Do not treat a new CID from a normal file upload as a fix for an already minted NFT unless the returned CID exactly matches the original CID.
 
@@ -81,6 +81,10 @@ Server IPFS helpers live in `server/context-ipfs.js`. JSON pins use `pinContextI
 Pinata is the current simple pinning path. A self-hosted IPFS node can be added as another adapter as long as the CID and payload schema stay stable.
 
 `server/context-ipfs.js` enforces a 1 MB JSON pin limit. That limit is intentional: IPFS pointers should carry compact canonical JSON, not raw media blobs. Screenshot and binary evidence must be processed before signing so the encrypted payload contains extracted text, SHA-256 digest metadata, file metadata, and processing metadata rather than base64 image or file bytes. The current screenshot path uses `server/task-evidence-processing.js` and `prompts/task_engine/evidence_screenshot_read_v1.md` before the browser encrypts and publishes the task submission pointer.
+
+Gateway fetch order matters for task indexing. `fetchContextIpfsJson` tries `TASKNODE_IPFS_GATEWAY`, then the comma-separated `TASKNODE_IPFS_GATEWAYS`, then `IPFS_GATEWAY_FALLBACKS`, then built-in defaults, then legacy `IPFS_GATEWAY_URL`. The built-in defaults currently prefer `https://pft-ipfs-testnet-clean.fly.dev/ipfs/`, then Pinata, `dweb.link`, and `ipfs.io`. Retired PFTasks/Fly gateways should not be default app reads; pass them explicitly only to inventory or recovery tools when investigating legacy CIDs.
+
+Profile NFT image rendering follows the same policy through `/api/profile/nft/image/:cid`. `TASKNODE_PROFILE_NFT_IMAGE_GATEWAYS` can override the proxy list, but the default proxy reads from the clean first-party gateway before public fallbacks. As of June 6, 2026 at 20:40 UTC, all 79 public profile NFT metadata, thumbnail, and image CIDs in the current Task Node database resolve through the clean first-party gateway. Do not replace unresolved minted artifacts with new CIDs. Profile galleries must show an explicit unavailable-image state for any future CID failure until the original blocks are recovered.
 
 ## Diagram
 

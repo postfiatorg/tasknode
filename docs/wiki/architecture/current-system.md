@@ -25,9 +25,8 @@ Current product rules:
 ```text
 .
 ├── README.md                  # root project overview and quick commands
-├── docs/wiki/                 # in-app Help wiki and engineering docs
-│   └── architecture/auth-wallet-boundary.md
-│                              # wallet/auth implementation guardrail
+├── docs/wiki/                 # source Markdown for in-app Help
+│   └── architecture/          # source pages that Help groups by function
 ├── full_spec.md               # current product/architecture source of truth
 ├── product_spec.md            # raw initial product brief
 ├── auth_account_spec.md       # auth/account/wallet-claim design

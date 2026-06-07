@@ -26,6 +26,7 @@ import {
   formatChatTaskContext,
   taskContextForAccount,
 } from "./chat-task-context.js";
+import { helpModeInstructions, isHelpChatMode } from "./chat-help-mode.js";
 import { jobsRetrievalEstimateText } from "./jobs-corpus.js";
 import { contextDocumentPacket } from "./context-line-map.js";
 import {
@@ -81,12 +82,19 @@ export function chatEstimate(
         activeProposal,
         userRequest: message,
       }).length
-    : taskNodeInstructions({
-        contextDocument,
-        memoryContext,
-        taskContext,
-        jobsEssence: estimatedJobsEssence,
-      }).length;
+    : isHelpChatMode(mode)
+      ? helpModeInstructions({
+          contextDocument,
+          memoryContext,
+          taskContext,
+          jobsEssence: estimatedJobsEssence,
+        }).length
+      : taskNodeInstructions({
+          contextDocument,
+          memoryContext,
+          taskContext,
+          jobsEssence: estimatedJobsEssence,
+        }).length;
   const contextEditLineNumberCharacters = contextMode === "context_edit"
     ? contextDocumentPacket(contextDocument || {}).lineNumberedText.length
     : 0;

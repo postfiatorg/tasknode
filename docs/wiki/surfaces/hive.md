@@ -74,9 +74,8 @@ Each Hive Mind Agent card also exposes an expandable `Full logs` drawer. When th
 
 The Board Manager is the system operator for Hive. It is a leased model decision worker with a bounded action registry. It runs periodically or after meaningful state changes, claims a single `global_hive` lease, inspects the current board state, and chooses one action.
 
-The active board professionalism standard now lives in this Hive surface page,
-[Architecture -> Board Manager](../architecture/board-manager.md), and
-[Architecture -> Hive Active Projects Helper](../architecture/hive-active-projects-helper.md).
+The active board professionalism standard now lives in this Hive surface page
+and [Architecture -> Hive & Board Operations](#docs/hive-operations).
 Active board counts must be live execution counts, not planned or scoped counts.
 Board Manager archives are reversible unless an explicit operator archive lock
 is present.

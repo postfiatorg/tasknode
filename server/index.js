@@ -555,7 +555,7 @@ async function routeApi(req, url, res) {
   }
 
   if (url.pathname === "/api/chat/modes") {
-    json(res, 200, { modes: chatModes() });
+    json(res, 200, { modes: chatModes({ signedOut: !session?.accountId }) });
     return true;
   }
 

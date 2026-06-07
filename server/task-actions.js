@@ -263,7 +263,7 @@ async function prepareTaskAction({ payload, session }) {
   });
 }
 
-async function bestEffortRefreshTaskProjection({ accountId, walletAddress }) {
+async function bestEffortRefreshTaskProjection({ accountId, walletAddress, taskId = "", txHash = "" }) {
   try {
     const synced = await syncPftlWalletTransactions({
       walletAddress,
@@ -272,8 +272,13 @@ async function bestEffortRefreshTaskProjection({ accountId, walletAddress }) {
       maxPages: 1,
       syncKind: "task_action_submit",
     });
-    const reduced = await runPftlCacheReducerOnce({ batchLimit: 20, logger: console });
-    return { synced, reduced };
+    const targeted = taskId || txHash
+      ? await runPftlCacheReducerOnce({ batchLimit: 8, logger: console, taskId, txHash })
+      : { claimed: 0 };
+    const reduced = targeted.claimed > 0
+      ? targeted
+      : await runPftlCacheReducerOnce({ batchLimit: 20, logger: console });
+    return { synced, reduced, targeted: Boolean(targeted.claimed > 0) };
   } catch (error) {
     return {
       ok: false,
@@ -303,6 +308,8 @@ async function submitTaskAction({ payload, session }) {
   const refresh = await bestEffortRefreshTaskProjection({
     accountId: resolved.accountId,
     walletAddress: resolved.wallet.address,
+    taskId: resolved.task.task_id,
+    txHash,
   });
 
   return okResponse({

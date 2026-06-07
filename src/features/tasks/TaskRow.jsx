@@ -19,8 +19,9 @@ function TaskDot() {
 
 export function TaskRow({ isFirst, onClick, task }) {
   const dueText = task.dueLabel && task.dueLabel !== "Deadline" ? `${task.dueLabel} ${task.fullDue}` : task.fullDue;
+  const syncLabel = task.clientSyncLabel || (task.integrity?.projectionBehindCachedPointer ? "updating" : "");
   return (
-    <article className={`task-row task-entry${isFirst ? " is-first" : ""}${task.isNetworkTask ? " is-network-task" : ""}`}>
+    <article className={`task-row task-entry${isFirst ? " is-first" : ""}${task.isNetworkTask ? " is-network-task" : ""}${syncLabel ? " is-syncing" : ""}`}>
       <button className="task-entry-open" onClick={onClick} type="button">
         <span className="task-entry-signal">
           <TaskStatusGlyph task={task} />
@@ -33,6 +34,14 @@ export function TaskRow({ isFirst, onClick, task }) {
             <span className="task-status-text" style={{ color: task.statusColor || taskStatusColor(task.statusKey) }}>
               {task.status}
             </span>
+            {syncLabel && (
+              <>
+                <TaskDot />
+                <span className="task-sync-inline" title={task.clientSyncDetail || "Task state is updating."}>
+                  {syncLabel}
+                </span>
+              </>
+            )}
             <TaskDot />
             <span>{dueText}</span>
             <TaskDot />

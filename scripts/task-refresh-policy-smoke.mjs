@@ -4,6 +4,7 @@ import {
   TASK_REQUEST_SETTLE_WINDOW_MS,
   settledTaskRequestHasVisibleOutstanding,
   shouldRevealSettledOutstandingTask,
+  shouldForceTaskSyncNotice,
   shouldStartTaskRequestSettle,
   taskRefreshPolicy,
   taskRequestSettleDeadline,
@@ -81,6 +82,9 @@ assert.equal(indexingLag.shouldRefreshTaskState, true);
 assert.equal(indexingLag.shouldRefreshTaskProjection, true);
 assert.equal(indexingLag.shouldForceTaskProjection, true);
 assert.equal(indexingLag.taskRefreshMs, 1000);
+assert.equal(shouldForceTaskSyncNotice({ status: "indexing_lag", indexingLagCount: 1 }), false);
+assert.equal(shouldForceTaskSyncNotice({ status: "indexing_lag", indexingLagCount: 4 }), true);
+assert.equal(shouldForceTaskSyncNotice({ status: "reducer_attention", failedReducerCount: 1 }), true);
 
 assert.equal(settledTaskRequestHasVisibleOutstanding({
   outstandingCount: 1,

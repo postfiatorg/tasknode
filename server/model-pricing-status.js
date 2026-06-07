@@ -21,6 +21,7 @@ const modeDescriptions = {
   "Private Thinking": "ZDR OpenRouter route using DeepSeek V4 Pro with high reasoning and an explicit provider allowlist.",
   "Discount Thinking": "Direct DeepSeek API route using DeepSeek V4 Pro high reasoning at the current direct discount price.",
   "Frontier Instant": "OpenAI Responses route for fast frontier chat with prompt-governed web search.",
+  Help: "Direct DeepSeek API route for plain-English Task Node product help with account context and the user guide injected.",
   "Frontier Thinking": "OpenAI Responses route for deeper frontier reasoning and prompt-governed web search.",
 };
 
@@ -131,7 +132,7 @@ function directProviderModelSummary({ model = "", provider = "", config = {} } =
   return {
     id: model,
     name: "DeepSeek-V4-Pro",
-    description: "Direct DeepSeek API model. The discount price is lower than the OpenRouter ZDR route, but this is not the Task Node private/ZDR provider path.",
+    description: "Direct DeepSeek API model. This is not the Task Node private/ZDR provider path.",
     inputUsdPerMillion: Number(config.inputUsdPerMillion || 0),
     outputUsdPerMillion: Number(config.outputUsdPerMillion || 0),
     cacheReadUsdPerMillion: Number(config.inputCacheHitUsdPerMillion || 0) || null,

@@ -17,7 +17,7 @@ The Tasks surface is reached from the left navigation. It shows a compact task q
 | Refused | Rejected, refused, expired, or cancelled tasks. | UI may paginate later; chat context currently caps refused history at 10. |
 | Rewarded | Tasks that reached a terminal reward outcome. | UI may paginate later; chat context currently caps rewarded history at 12. |
 
-The top summary shows outstanding count, PFT in flight, chain-indexed projection count, and active request count. Deadlines render as calendar dates, such as `May 20`, while real event and review timestamps render with time and timezone. This prevents date-only deadlines from showing as misleading `12:00 AM` event times.
+The top summary shows outstanding count, PFT in flight, synced task-record count, and active request count. Deadlines render as calendar dates, such as `May 20`, while real event and review timestamps render with time and timezone. This prevents date-only deadlines from showing as misleading `12:00 AM` event times.
 
 `GET /api/tasks` also returns task sync integrity from the cache layer. The sync status can be `ready`, `empty`, `indexing_lag`, or `reducer_attention`. `indexing_lag` means the cache has a newer task pointer than the projected row has consumed. `reducer_attention` means failed reducer work exists for one or more visible tasks. The UI should treat these as indexing states, not as final lifecycle states.
 
@@ -46,14 +46,19 @@ Refresh failures must be treated as state-boundary bugs, not one-off task record
 
 The repair belongs in the shared lifecycle and sync contract, not a hard-coded task patch. `shared/task-lifecycle.js` marks review-loop states such as `verification_requested` as refreshable and also accepts a projection-refresh flag for `indexing_lag`. `GET /api/tasks` uses that contract when returning sync metadata, and the Tasks page uses the metadata to keep polling until the projection catches up or reaches a terminal state such as `rewarded`, `refused`, or `cancelled`.
 
+After a successful signed task action, the browser records a short-lived task action receipt. This receipt includes the account, wallet, task ID, expected next state, transaction hash, and timestamp. The list, tab counts, URL-selected task, and detail modal all read the same receipt-aware task state. If `GET /api/tasks` still returns the older projected status, the receipt keeps the visible card at the signed state and marks the row as `syncing`. Once the projection reaches that state, advances beyond it, reaches a terminal state, or the receipt expires, the receipt is removed.
+
+Ordinary one-task indexing lag is a row-level syncing state, not a product-wide warning. The large sync notice is reserved for reducer failures or broader indexing lag across several task rows.
+
 In plain English:
 
 1. A task card can sit in Verification while the system is waiting for evidence or review.
 2. While it is in that review loop, the list keeps checking the projection cache.
 3. If the cache has a newer task pointer than the projected row, the list keeps checking even if the visible task is still Proposed.
 4. Terminal states stop active refresh because no later lifecycle event is expected for the normal task loop.
+5. A signed submit, accept, refuse, or cancel result cannot be overwritten by a stale list response while the projection catches up.
 
-Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`. It asserts that `verification_requested` stays refreshable, that projection lag keeps a proposed task polling, and that terminal `rewarded` tasks do not keep the page polling forever.
+Regression coverage lives in `scripts/task-lifecycle-smoke.mjs` and `scripts/task-action-receipts-smoke.mjs`. These checks assert that `verification_requested` stays refreshable, projection lag keeps a proposed task polling, terminal `rewarded` tasks do not keep the page polling forever, stale projections cannot overwrite a signed task action, and ordinary one-task lag does not trigger the global sync banner.
 
 The `Request task` button opens a modal where the user can describe the kind of work they want. Submitting the modal uses `POST /api/tasks/request` to build a request bundle from the current context document, deep memory, recent memory, recent chats, and existing task queue; encrypt the bundle locally in the browser; pin it to IPFS; encrypt a `pf.task.request.v1` event that points at that bundle; and sign a PFTL `TASK` pointer transaction from the linked user wallet.
 
@@ -79,6 +84,13 @@ projection refresh while review-loop states such as `submitted`,
 `verification_requested`, `verification_response_submitted`, or `reward_decided`
 are active. A user should not need to reload the browser to see a verification
 request appear after the review worker publishes it.
+
+Submission and lifecycle routes also trigger a best-effort targeted projection
+refresh. After the signed transaction returns a hash, the route syncs the linked
+wallet and asks the reducer to claim pending work for that exact `task_id` and
+transaction hash before falling back to normal batch reduction. This reduces
+avoidable queue delay, but the browser receipt remains the user-visible source
+of continuity while IPFS, wallet history, or reducer replay catches up.
 
 On Fly, task generation and review both depend on the `worker` process group.
 Deploys must use `npm run fly:deploy`, which runs `npm run fly:background-guard`
