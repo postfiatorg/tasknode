@@ -23,6 +23,7 @@ import currentSystem from "../../../docs/wiki/architecture/current-system.md?raw
 import database from "../../../docs/wiki/architecture/database.md?raw";
 import databaseArchitecture from "../../../docs/wiki/architecture/database-architecture.md?raw";
 import dailyAirdropWorker from "../../../docs/wiki/architecture/daily-airdrop-worker.md?raw";
+import defectRepairRule from "../../../docs/wiki/architecture/defect-repair-rule.md?raw";
 import deathmarch from "../../../docs/wiki/architecture/deathmarch.md?raw";
 import deepMemoryWorker from "../../../docs/wiki/architecture/deep-memory-worker.md?raw";
 import deployment from "../../../docs/wiki/architecture/deployment.md?raw";
@@ -783,6 +784,12 @@ export const DOC_GROUPS = [
         title: "Execution Mandate",
         summary: "Verification rules for repo work and claims of completion.",
         markdown: executionMandate,
+      },
+      {
+        slug: "defect-repair-rule",
+        title: "Defect Repair Rule",
+        summary: "Generalized repair rule for concrete user-reported app failures.",
+        markdown: defectRepairRule,
       },
       {
         slug: "style-guide",
