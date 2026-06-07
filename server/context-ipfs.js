@@ -67,7 +67,51 @@ async function readLimitedText(response) {
   return new TextDecoder().decode(body);
 }
 
-export async function fetchContextIpfsJson({ cid, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+async function fetchContextIpfsJsonFromGateway({
+  gateway,
+  normalizedCid,
+  timeoutMs,
+  fetchImpl,
+  controller = new AbortController(),
+} = {}) {
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const url = `${gateway.replace(/\/$/, "")}/${encodeURIComponent(normalizedCid)}`;
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const error = new Error(`HTTP_${response.status}`);
+      error.code = `HTTP_${response.status}`;
+      throw error;
+    }
+
+    const text = await readLimitedText(response);
+    const payload = text ? JSON.parse(text) : {};
+    return {
+      ok: true,
+      status: 200,
+      cid: normalizedCid,
+      gateway,
+      payload,
+    };
+  } catch (error) {
+    const wrapped = new Error(error?.name === "AbortError" ? "timeout" : error?.message || String(error));
+    wrapped.gateway = gateway;
+    throw wrapped;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function fetchContextIpfsJson({
+  cid,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  env = process.env,
+  fetchImpl = fetch,
+} = {}) {
   const normalizedCid = normalizeContextCid(cid);
   if (!isValidContextCid(normalizedCid)) {
     return {
@@ -78,45 +122,39 @@ export async function fetchContextIpfsJson({ cid, timeoutMs = DEFAULT_TIMEOUT_MS
     };
   }
 
-  let lastError = "";
-  for (const gateway of contextIpfsGatewayList()) {
+  const attempts = contextIpfsGatewayList(env).map((gateway) => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const url = `${gateway.replace(/\/$/, "")}/${encodeURIComponent(normalizedCid)}`;
-    try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: { accept: "application/json" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (!response.ok) {
-        lastError = `HTTP_${response.status}`;
-        continue;
-      }
+    const attempt = fetchContextIpfsJsonFromGateway({
+      gateway,
+      normalizedCid,
+      timeoutMs,
+      fetchImpl,
+      controller,
+    });
+    return { gateway, controller, attempt };
+  });
 
-      const text = await readLimitedText(response);
-      const payload = text ? JSON.parse(text) : {};
-      return {
-        ok: true,
-        status: 200,
-        cid: normalizedCid,
-        gateway,
-        payload,
-      };
-    } catch (error) {
-      clearTimeout(timeout);
-      lastError = error?.name === "AbortError" ? "timeout" : error?.message || String(error);
+  try {
+    const result = await Promise.any(attempts.map(({ attempt }) => attempt));
+    for (const { controller } of attempts) {
+      if (!controller.signal.aborted) controller.abort();
     }
+    return result;
+  } catch (error) {
+    const errors = Array.isArray(error?.errors) ? error.errors : [];
+    const detail = errors
+      .map((item) => `${item?.gateway || "gateway"}:${item?.message || item}`)
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(",");
+    return {
+      ok: false,
+      status: 502,
+      error: "context_ipfs_fetch_failed",
+      message: "Context CID could not be fetched.",
+      detail: detail || "gateway_unavailable",
+    };
   }
-
-  return {
-    ok: false,
-    status: 502,
-    error: "context_ipfs_fetch_failed",
-    message: "Context CID could not be fetched.",
-    detail: lastError || "gateway_unavailable",
-  };
 }
 
 function canonicalJson(value) {

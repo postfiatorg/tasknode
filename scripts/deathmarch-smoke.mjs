@@ -198,6 +198,33 @@ await assert.rejects(
   /deepseek_api_error:503:provider unavailable/
 );
 
+let deepseekRequestBody = null;
+const deterministicFallback = await callDeepSeekSummary({
+  event: rewardPaymentEvent,
+  anonymity: 3,
+  env: {
+    DEEPSEEK_API_KEY: "test",
+    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+  },
+  fetchImpl: async (url, options) => {
+    deepseekRequestBody = JSON.parse(options.body);
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        choices: [{
+          finish_reason: "length",
+          message: { reasoning_content: "reasoning only" },
+        }],
+      }),
+    };
+  },
+});
+assert.equal(Object.prototype.hasOwnProperty.call(deepseekRequestBody, "max_tokens"), false);
+assert.equal(deterministicFallback.includes("**Reward outcome**"), true);
+assert.equal(deterministicFallback.includes("Recorded terminal reward outcome: 12,000 PFT."), true);
+assert.equal(deterministicFallback.endsWith("tx: B3D7B19EA7E5D9CB7A5BE9E70696D3E6"), true);
+
 const posted = [];
 const result = await processDeathmarchEvents({
   events: [sensitiveEvent],
@@ -235,6 +262,44 @@ assert.equal(posted[0].content.includes("User requested a Task Node task."), tru
 assert.equal((posted[0].content.match(/tx:/g) || []).length, 1);
 assert.equal(posted[0].content.endsWith("tx: ABCDEF1234567890"), true);
 assert.deepEqual(posted[0].allowed_mentions, { parse: [] });
+
+let deepseekCalls = 0;
+const continuedPosts = [];
+const continuedAfterEventFailure = await processDeathmarchEvents({
+  events: [sensitiveEvent, rewardPaymentEvent],
+  anonymity: 3,
+  dryRun: false,
+  noState: true,
+  env: {
+    DEEPSEEK_API_KEY: "test",
+    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
+  },
+  fetchImpl: async (url, options) => {
+    if (String(url).includes("deepseek")) {
+      deepseekCalls += 1;
+      if (deepseekCalls === 1) throw new Error("deepseek_api_timeout");
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({
+          choices: [{
+            message: {
+              content: "Reward was recorded. tx: B3D7B19EA7E5D9CB7A5BE9E70696D3E6",
+            },
+          }],
+        }),
+      };
+    }
+    continuedPosts.push(JSON.parse(options.body));
+    return { ok: true, status: 204, text: async () => "" };
+  },
+});
+assert.equal(continuedAfterEventFailure.ok, false);
+assert.equal(continuedAfterEventFailure.failed, 1);
+assert.equal(continuedAfterEventFailure.posted, 1);
+assert.equal(continuedPosts.length, 1);
+assert.equal(continuedPosts[0].content.includes("**Reward outcome**"), true);
 
 const marked = await processDeathmarchEvents({
   events: [sensitiveEvent],

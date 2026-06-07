@@ -345,13 +345,21 @@ export function extractPftPointerEvents(transactions, walletAddress = "") {
 
 export function historyRpcConfig(env = process.env) {
   const hasWssOverride = Object.prototype.hasOwnProperty.call(env, "PFTL_HISTORY_WSS_URL");
+  const appPrimaryWss = normalizeText(env.PFTL_WSS_URL || env.VITE_PFTL_WSS_URL);
   const primaryWssUrl = hasWssOverride
     ? normalizeText(env.PFTL_HISTORY_WSS_URL)
-    : DEFAULT_HISTORY_WSS_URL;
+    : appPrimaryWss || DEFAULT_HISTORY_WSS_URL;
   const explicitPrimary = normalizeText(env.PFTL_HISTORY_RPC_URL);
-  const primaryUrl = explicitPrimary || DEFAULT_HISTORY_RPC_URL;
-  const wssFallbackUrls = splitUrls(env.PFTL_HISTORY_WSS_URL_FALLBACKS);
-  const fallbackUrls = splitUrls(env.PFTL_HISTORY_RPC_URL_FALLBACKS);
+  const appPrimaryRpc = normalizeText(env.PFTL_RPC_URL);
+  const primaryUrl = explicitPrimary || appPrimaryRpc || DEFAULT_HISTORY_RPC_URL;
+  const wssFallbackUrls = [
+    ...splitUrls(env.PFTL_HISTORY_WSS_URL_FALLBACKS),
+    ...(!hasWssOverride ? splitUrls(env.PFTL_WSS_URL_FALLBACKS) : []),
+  ];
+  const fallbackUrls = [
+    ...splitUrls(env.PFTL_HISTORY_RPC_URL_FALLBACKS),
+    ...(!explicitPrimary ? splitUrls(env.PFTL_RPC_URL_FALLBACKS) : []),
+  ];
   return {
     wssUrls: uniqueUrls([primaryWssUrl, ...wssFallbackUrls].map(normalizeWssUrl)),
     rpcUrls: uniqueUrls([primaryUrl, ...fallbackUrls]),
@@ -364,8 +372,8 @@ export function historyRpcConfig(env = process.env) {
       400
     ),
     maxPages: clampInteger(env.PFTL_HISTORY_ACCOUNT_TX_MAX_PAGES, DEFAULT_MAX_PAGES, 1, 30),
-    defaultedWssPrimary: !hasWssOverride,
-    defaultedRpcPrimary: !explicitPrimary,
+    defaultedWssPrimary: !hasWssOverride && !appPrimaryWss,
+    defaultedRpcPrimary: !explicitPrimary && !appPrimaryRpc,
   };
 }
 

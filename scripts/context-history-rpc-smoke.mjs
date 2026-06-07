@@ -171,6 +171,34 @@ assert.equal(defaultConfig.defaultedWssPrimary, true);
 assert.equal(defaultConfig.defaultedRpcPrimary, true);
 assert.equal(defaultConfig.apiKey, "");
 
+const appEndpointConfig = historyRpcConfig({
+  PFTL_WSS_URL: "wss://current.example/ws",
+  PFTL_WSS_URL_FALLBACKS: "wss://current-fallback.example/ws",
+  PFTL_RPC_URL: "http://current.example:5005",
+  PFTL_RPC_URL_FALLBACKS: "https://current-fallback.example/rpc",
+});
+assert.deepEqual(appEndpointConfig.wssUrls, [
+  "wss://current.example/ws",
+  "wss://current-fallback.example/ws",
+]);
+assert.deepEqual(appEndpointConfig.rpcUrls, [
+  "http://current.example:5005",
+  "https://current-fallback.example/rpc",
+]);
+assert.equal(appEndpointConfig.defaultedWssPrimary, false);
+assert.equal(appEndpointConfig.defaultedRpcPrimary, false);
+
+const explicitHistoryConfig = historyRpcConfig({
+  PFTL_HISTORY_WSS_URL: "",
+  PFTL_HISTORY_RPC_URL: "https://archive.example/rpc",
+  PFTL_WSS_URL: "wss://current.example/ws",
+  PFTL_RPC_URL: "http://current.example:5005",
+});
+assert.deepEqual(explicitHistoryConfig.wssUrls, []);
+assert.deepEqual(explicitHistoryConfig.rpcUrls, ["https://archive.example/rpc"]);
+assert.equal(explicitHistoryConfig.defaultedWssPrimary, false);
+assert.equal(explicitHistoryConfig.defaultedRpcPrimary, false);
+
 await assert.rejects(
   () => fetchHistoricalAccountTransactions({ walletAddress: "not-a-wallet", fetchImpl: fakeFetch }),
   /context_history_invalid_wallet/

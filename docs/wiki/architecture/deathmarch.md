@@ -35,12 +35,21 @@ export DEATHMARCH_WALLET=rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx
 export DEATHMARCH_SEED_FILE=deathmarchseed.txt
 export DEATHMARCH_DEEPSEEK_MODEL=deepseek-v4-pro
 export DEATHMARCH_DEEPSEEK_BASE_URL=https://api.deepseek.com/chat/completions
-export DEATHMARCH_DEEPSEEK_MAX_TOKENS=1000
+export DEATHMARCH_DEEPSEEK_TIMEOUT_MS=20000
+export DEATHMARCH_DISCORD_TIMEOUT_MS=10000
 export DEATHMARCH_ANONYMITY_LEVEL=3
 export DEATHMARCH_STATE_PATH=.deathmarch-state.json
 ```
 
-Wallet polling uses the existing PFTL history settings:
+`DEATHMARCH_DEEPSEEK_MAX_TOKENS` is intentionally unset by default. Set it only
+for a temporary provider-cost cap. If DeepSeek returns an empty content message
+after spending tokens on reasoning, Deathmarch falls back to deterministic event
+formatting for that task packet instead of dropping the event.
+
+Wallet polling uses the existing PFTL history helper. In local dev, sourcing
+`.env.tasknodeofficial-dev` is enough: when `PFTL_HISTORY_*` is not configured,
+the helper inherits `PFTL_WSS_URL`, `PFTL_RPC_URL`, and their fallbacks. Set
+history-specific endpoints only when you intentionally want archive lookup:
 
 ```bash
 export PFTL_HISTORY_WSS_URL=wss://ws-archive.testnet.postfiat.org
@@ -71,11 +80,14 @@ Wallet mode does not read from Fly, SPRS, Postgres, or Discord. It reads the loc
 4. Each pointer CID is fetched from IPFS through the existing context gateways.
 5. Encrypted payloads are decrypted locally with `TASKNODE_SERVICE_SEED`, or with the user mnemonic in `deathmarchseed.txt` when the payload is addressed to that wallet's Task Node encryption key.
 
-Default PFTL endpoints come from the repo's history RPC helper:
+Default PFTL endpoints come from the repo's history RPC helper. Explicit
+`PFTL_HISTORY_*` values win. Otherwise the helper uses the app's current
+`PFTL_WSS_URL` and `PFTL_RPC_URL` values before falling back to public archive
+defaults:
 
 ```bash
-PFTL_HISTORY_WSS_URL=wss://ws-archive.testnet.postfiat.org
-PFTL_HISTORY_RPC_URL=https://rpc.testnet.postfiat.org:5006/
+PFTL_WSS_URL=wss://178.156.143.199:6005
+PFTL_RPC_URL=http://178.156.143.199:5005
 ```
 
 IPFS gateway overrides use:
@@ -198,3 +210,9 @@ Level 3: network tasks and ordinary protocol work.
 The harness writes `.deathmarch-state.json` by default so reruns do not repost the same transaction. The file is gitignored.
 
 Use `--no-state` for tests or one-off replays where duplicate posting protection is not wanted.
+
+The poller records per-event failures in the loop result and continues to later
+events in the same wallet page. A slow DeepSeek call, Discord timeout, or one
+bad payload should not block a later reward event from posting. Failed events
+remain unmarked in `.deathmarch-state.json`, so the next poll can retry them
+without losing duplicate protection for events that did post.

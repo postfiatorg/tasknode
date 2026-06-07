@@ -16,6 +16,8 @@ const DEFAULT_STATE_PATH = ".deathmarch-state.json";
 const DEFAULT_SEED_FILE = "deathmarchseed.txt";
 const DEFAULT_DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
+const DEFAULT_DEEPSEEK_TIMEOUT_MS = 20000;
+const DEFAULT_DISCORD_TIMEOUT_MS = 10000;
 const TASK_KIND_LABELS = new Set(["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"]);
 const TASK_SCHEMAS = new Set([
   "pf.task.request.v1",
@@ -52,6 +54,33 @@ function clampInteger(value, fallback, min, max) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, Math.trunc(parsed)));
+}
+
+function safeErrorCode(error) {
+  return safeText(error?.code || error?.message || error?.name || "deathmarch_error", 240)
+    .replace(/[^a-zA-Z0-9_.:-]+/g, "_")
+    .slice(0, 240);
+}
+
+async function fetchWithTimeout(fetchImpl, url, options = {}, timeoutMs, timeoutCode) {
+  const controller = new AbortController();
+  let timeout;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      const error = new Error(timeoutCode);
+      error.code = timeoutCode;
+      reject(error);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      fetchImpl(url, { ...options, signal: controller.signal }),
+      timeoutPromise,
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function parseArgs(argv = process.argv.slice(2)) {
@@ -781,28 +810,41 @@ export async function callDeepSeekSummary({
   if (!apiKey) throw new Error("deepseek_api_key_missing");
   const prompt = await readPrompt();
   const sanitized = sanitizeEventForAnonymity(event, anonymity);
-  const response = await fetchImpl(env.DEATHMARCH_DEEPSEEK_BASE_URL || DEFAULT_DEEPSEEK_URL, {
+  const requestBody = {
+    model: env.DEATHMARCH_DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL,
+    messages: [
+      { role: "system", content: prompt },
+      {
+        role: "user",
+        content: JSON.stringify({
+          instruction: "Write the Death March Discord update for this task event.",
+          event: sanitized,
+        }, null, 2),
+      },
+    ],
+    temperature: 0.2,
+  };
+  if (safeText(env.DEATHMARCH_DEEPSEEK_MAX_TOKENS, 40)) {
+    requestBody.max_tokens = clampInteger(
+      env.DEATHMARCH_DEEPSEEK_MAX_TOKENS,
+      4000,
+      128,
+      12000
+    );
+  }
+  const response = await fetchWithTimeout(fetchImpl, env.DEATHMARCH_DEEPSEEK_BASE_URL || DEFAULT_DEEPSEEK_URL, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: env.DEATHMARCH_DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL,
-      messages: [
-        { role: "system", content: prompt },
-        {
-          role: "user",
-          content: JSON.stringify({
-            instruction: "Write the Death March Discord update for this task event.",
-            event: sanitized,
-          }, null, 2),
-        },
-      ],
-      temperature: 0.2,
-      max_tokens: clampInteger(env.DEATHMARCH_DEEPSEEK_MAX_TOKENS, 1000, 128, 4000),
-    }),
-  });
+    body: JSON.stringify(requestBody),
+  }, clampInteger(
+    env.DEATHMARCH_DEEPSEEK_TIMEOUT_MS,
+    DEFAULT_DEEPSEEK_TIMEOUT_MS,
+    1000,
+    120000
+  ), "deepseek_api_timeout");
   const bodyText = await response.text();
   let body = null;
   try {
@@ -824,6 +866,9 @@ export async function callDeepSeekSummary({
       choice.finish_reason ? `finish_reason=${safeText(choice.finish_reason, 80)}` : "",
       message.reasoning_content ? `reasoning_tokens_only=${safeText(message.reasoning_content, 10000).length}` : "",
     ].filter(Boolean).join(",");
+    if (env.DEATHMARCH_DETERMINISTIC_FALLBACK !== "false") {
+      return formatDeathmarchDiscordMessage({ summary: "", event: sanitized });
+    }
     throw new Error(`deepseek_api_error:empty_response${detail ? `:${detail}` : ""}`);
   }
   return formatDeathmarchDiscordMessage({ summary: content, event: sanitized });
@@ -836,16 +881,22 @@ export async function postToDiscord({
 } = {}) {
   const message = safeText(content, 1900);
   if (!message) throw new Error("discord_message_empty");
+  const timeoutMs = clampInteger(
+    env.DEATHMARCH_DISCORD_TIMEOUT_MS,
+    DEFAULT_DISCORD_TIMEOUT_MS,
+    1000,
+    60000
+  );
   const webhookUrl = safeText(env.DEATHMARCH_DISCORD_WEBHOOK_URL || env.DISCORD_WEBHOOK_URL, 2000);
   if (webhookUrl) {
-    const response = await fetchImpl(webhookUrl, {
+    const response = await fetchWithTimeout(fetchImpl, webhookUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         content: message,
         allowed_mentions: { parse: [] },
       }),
-    });
+    }, timeoutMs, "discord_webhook_timeout");
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       throw new Error(`discord_webhook_error:${response.status}:${safeText(text, 300)}`);
@@ -856,7 +907,7 @@ export async function postToDiscord({
   const token = safeText(env.DISCORD_BOT_TOKEN || env.DEATHMARCH_DISCORD_BOT_TOKEN, 4000);
   const channelId = safeText(env.DEATHMARCH_DISCORD_CHANNEL_ID || env.DISCORD_CHANNEL_ID, 120);
   if (!token || !channelId) throw new Error("discord_destination_missing");
-  const response = await fetchImpl(`https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages`, {
+  const response = await fetchWithTimeout(fetchImpl, `https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -866,7 +917,7 @@ export async function postToDiscord({
       content: message,
       allowed_mentions: { parse: [] },
     }),
-  });
+  }, timeoutMs, "discord_bot_timeout");
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     throw new Error(`discord_bot_error:${response.status}:${safeText(text, 300)}`);
@@ -929,25 +980,41 @@ export async function processDeathmarchEvents({
     return { ok: true, checked: events.length, marked: results.length, posted: 0, results };
   }
   for (const event of candidates) {
-    const summary = await callDeepSeekSummary({ event, anonymity, env, fetchImpl });
-    if (dryRun) {
-      stdout(summary);
-      results.push({ ok: true, dryRun: true, eventKey: event.eventKey, summary });
-      continue;
+    try {
+      const summary = await callDeepSeekSummary({ event, anonymity, env, fetchImpl });
+      if (dryRun) {
+        stdout(summary);
+        results.push({ ok: true, dryRun: true, eventKey: event.eventKey, summary });
+        continue;
+      }
+      const discord = await postToDiscord({ content: summary, env, fetchImpl });
+      state.seen[event.eventKey] = {
+        txHash: event.txHash,
+        cid: event.cid,
+        taskId: event.taskId,
+        actionKind: event.actionKind,
+        postedAt: new Date().toISOString(),
+        discord,
+      };
+      if (!noState) await writeState(statePath, state);
+      results.push({ ok: true, eventKey: event.eventKey, discord });
+    } catch (error) {
+      const failure = {
+        ok: false,
+        eventKey: event.eventKey,
+        txHash: event.txHash,
+        cid: event.cid,
+        taskId: event.taskId,
+        actionKind: event.actionKind,
+        error: safeErrorCode(error),
+      };
+      if (dryRun) stdout(`deathmarch_event_error:${failure.error}`);
+      results.push(failure);
     }
-    const discord = await postToDiscord({ content: summary, env, fetchImpl });
-    state.seen[event.eventKey] = {
-      txHash: event.txHash,
-      cid: event.cid,
-      taskId: event.taskId,
-      actionKind: event.actionKind,
-      postedAt: new Date().toISOString(),
-      discord,
-    };
-    if (!noState) await writeState(statePath, state);
-    results.push({ ok: true, eventKey: event.eventKey, discord });
   }
-  return { ok: true, checked: events.length, posted: results.length, results };
+  const failed = results.filter((result) => result.ok === false).length;
+  const posted = results.filter((result) => result.ok === true && !result.dryRun).length;
+  return { ok: failed === 0, checked: events.length, posted, failed, results };
 }
 
 async function runOnce(args) {

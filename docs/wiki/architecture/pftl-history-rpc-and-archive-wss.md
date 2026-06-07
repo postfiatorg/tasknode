@@ -8,8 +8,15 @@ System Status row: `pftl_history_rpc`
 
 ## Runtime Boundary
 
-- RPC config: `PFTL_HISTORY_RPC_URL` and history fallbacks.
-- Archive WSS config: archive websocket settings when configured.
+- RPC config: `PFTL_HISTORY_RPC_URL` and history fallbacks when explicitly
+  configured.
+- If no history-specific RPC is configured, the helper falls back to the app's
+  current `PFTL_RPC_URL` and `PFTL_RPC_URL_FALLBACKS`. Local operator tools such
+  as Deathmarch depend on this so recent rewards are read from the live PFTL
+  node instead of silently drifting to stale archive defaults.
+- Archive WSS config: `PFTL_HISTORY_WSS_URL` when explicitly configured. If it
+  is absent, the helper may use the app's current `PFTL_WSS_URL` before RPC
+  fallback.
 - Dependent status row: `pftl_archive_sync`.
 - Related docs: PFTL Usage and PFTL Transaction Cache.
 
@@ -30,5 +37,7 @@ fly secrets list -a tasknodeofficial-dev
 npm run db:pftl-cache-archive-smoke
 ```
 
-History RPC failures affect context restore, old wallet transaction history, and
-archive backfill. Fix endpoint config before editing archive markers.
+History RPC failures affect context restore, old wallet transaction history,
+archive backfill, and local wallet-history tools. If recent on-chain actions are
+missing from an operator tool, first confirm which endpoints `historyRpcConfig`
+selected before editing archive markers.
