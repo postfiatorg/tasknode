@@ -55,7 +55,7 @@ replication.
 
 ### 2. Add A Durable CID Replication Queue
 
-Create a durable queue table, for example `ipfs_replication_jobs`.
+Create a durable queue table: `ipfs_replication_jobs`.
 
 Required fields:
 
@@ -83,9 +83,22 @@ Suggested statuses:
 - `failed`
 - `exception_required`
 
+Implemented migration:
+
+```text
+server/db/migrations/054_ipfs_replication_jobs.sql
+```
+
+Repository boundary:
+
+```text
+server/repositories/ipfs-replication-jobs.js
+```
+
 ### 3. Enqueue Every New CID At The Write Boundary
 
-Every successful pin should enqueue its CID for first-party replication.
+Every successful pin enqueues its CID for first-party replication unless
+`TASKNODE_IPFS_REPLICATION_ENQUEUE_DISABLED=true`.
 
 The enqueue point is after these helpers return a CID:
 
@@ -105,6 +118,17 @@ Payload classes to tag:
 - `profile_nft_image`
 - `profile_nft_metadata`
 - `profile_nft_thumbnail`
+
+Implemented enqueue boundary:
+
+```text
+server/context-ipfs.js
+```
+
+The helper classifies jobs from Pinata metadata fields such as `schema`,
+`content_kind`, and `type`, then stores a queue row after the CID has been
+returned by Pinata. The returned pin object includes a `replication` result so
+callers and operator scripts can see whether queue insertion succeeded.
 
 If queue insertion fails after the CID has already been pinned, the app should
 log the failure loudly and retry through an operator repair command. Do not
@@ -129,6 +153,25 @@ The worker needs bounded attempts and clear failure codes. Typical failures:
 - CID not found on any configured gateway;
 - exact re-add mismatch.
 
+Implemented worker boundary:
+
+```text
+server/ipfs-replication-worker.js
+scripts/ipfs-replication-worker.mjs
+```
+
+Command:
+
+```bash
+npm run ipfs-replication-worker -- --once
+npm run ipfs-replication-worker -- --poll --interval-ms 60000
+```
+
+The worker first verifies whether the clean gateway already serves the CID. If
+it does, the job is marked `verified`. If not, the worker calls the configured
+first-party pin interface, then verifies the clean gateway again before marking
+the job healthy.
+
 ### 5. Add A Stable Clean-Cluster Pin Interface
 
 Do not rely on manual `fly ssh` as the normal product path.
@@ -138,6 +181,38 @@ Add one of:
 - an internal authenticated HTTP endpoint on the clean IPFS service;
 - a queue consumer that runs inside the clean IPFS app;
 - a dedicated operator worker that can call `ipfs-cluster-ctl` and report back.
+
+Task Node Official implements the dedicated operator-worker interface. Configure
+one of these:
+
+```bash
+TASKNODE_IPFS_REPLICATION_PIN_ENDPOINT=https://pft-ipfs-testnet-clean.fly.dev/replicate-cid
+TASKNODE_IPFS_REPLICATION_PIN_TOKEN=...
+
+# or
+TASKNODE_IPFS_REPLICATION_PIN_COMMAND='...'
+```
+
+`TASKNODE_IPFS_REPLICATION_PIN_ENDPOINT` receives JSON with the CID, payload
+class, source ref, exact-CID requirement, min replica count, clean gateway, and
+exact re-add gateways. `TASKNODE_IPFS_REPLICATION_PIN_COMMAND` receives the same
+JSON on stdin and must print a JSON response.
+
+The background worker starts automatically when a pin endpoint or command is
+configured, or when `TASKNODE_IPFS_REPLICATION_WORKER_ENABLED=true`.
+
+The clean IPFS service endpoint is implemented in the IPFS infrastructure repo:
+
+```text
+/home/pfrpc/repos/ipfs-infra/docker/health_server.py
+/home/pfrpc/repos/ipfs-infra/docker/nginx.conf
+```
+
+`POST /replicate-cid` requires a bearer token configured as
+`IPFS_REPLICATION_TOKEN` on the clean IPFS service. The endpoint runs the
+container's existing `migrate-cids` command, requests the configured replica
+count, uses exact re-add gateways when Kubo provider discovery fails, and
+returns the migration result to the Task Node worker.
 
 The app needs a stable command equivalent to:
 
@@ -183,6 +258,16 @@ npm run ipfs-new-write-replication-check -- \
   --fail-on-unverified
 ```
 
+Implemented command:
+
+```bash
+npm run ipfs-new-write-replication-check -- \
+  --lookback-hours 24 \
+  --require-clean-gateway \
+  --fail-on-unverified \
+  --pretty
+```
+
 The command should report:
 
 - total CIDs created;
@@ -191,6 +276,48 @@ The command should report:
 - failed jobs;
 - CIDs served only by Pinata/public gateways;
 - oldest unverified CID age.
+
+The command reads `ipfs_replication_jobs`, reports fresh-CID queue health, and
+can actively test unverified sample CIDs against the clean gateway.
+
+## Verification Commands
+
+Local unit smoke:
+
+```bash
+npm run ipfs-replication-smoke
+```
+
+Postgres queue/worker smoke:
+
+```bash
+set -a; source .env.tasknodeofficial-fly-dev-data; set +a
+export DATABASE_URL="$TASKNODE_DATABASE_URL"
+export TASKNODE_DATABASE_ENABLED=true
+export TASKNODE_POSTGRES_ENABLED=true
+npm run ipfs-replication-postgres-smoke
+```
+
+Fresh-write health check:
+
+```bash
+set -a; source .env.tasknodeofficial-fly-dev-data; set +a
+export DATABASE_URL="$TASKNODE_DATABASE_URL"
+export TASKNODE_DATABASE_ENABLED=true
+export TASKNODE_POSTGRES_ENABLED=true
+npm run ipfs-new-write-replication-check -- \
+  --lookback-hours 24 \
+  --require-clean-gateway \
+  --fail-on-unverified \
+  --pretty
+```
+
+Clean IPFS service endpoint checks:
+
+```bash
+python3 -m py_compile /home/pfrpc/repos/ipfs-infra/docker/health_server.py
+nginx -t -c /home/pfrpc/repos/ipfs-infra/docker/nginx.conf
+```
 
 ### 8. Add Monitoring
 

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { enqueueIpfsReplicationJob } from "./repositories/ipfs-replication-jobs.js";
 
 const DEFAULT_GATEWAYS = [
   "https://pft-ipfs-testnet-clean.fly.dev/ipfs/",
@@ -182,6 +183,97 @@ function pinataHeaders(env) {
   };
 }
 
+function safeText(value = "", max = 1000) {
+  return String(value ?? "").trim().slice(0, max);
+}
+
+function safeObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function replicationSourceRef(keyvalues = {}) {
+  const fields = [
+    keyvalues.task_id,
+    keyvalues.request_id,
+    keyvalues.run_id,
+    keyvalues.nftId,
+    keyvalues.accountId,
+    keyvalues.account_id,
+    keyvalues.wallet_address,
+    keyvalues.recipient_wallet,
+  ];
+  return safeText(fields.find((field) => safeText(field, 240)), 240);
+}
+
+export function classifyIpfsPayloadForReplication({ keyvalues = {}, name = "", source = "" } = {}) {
+  const values = safeObject(keyvalues);
+  const schema = safeText(values.schema, 160);
+  const type = safeText(values.type, 160);
+  const contentKind = safeText(values.content_kind, 160).toUpperCase();
+  const safeName = safeText(name, 240).toLowerCase();
+
+  if (type === "profile_nft_image") return "profile_nft_image";
+  if (type === "profile_nft_metadata") return "profile_nft_metadata";
+  if (type === "profile_nft_thumbnail") return "profile_nft_thumbnail";
+  if (safeName.includes("profile_nft_metadata")) return "profile_nft_metadata";
+  if (safeName.includes("profile_nft")) return "profile_nft_image";
+
+  if (schema === "pf.daily_airdrop.v1") return "daily_airdrop";
+  if (schema === "pf.reward.v1") return "task_reward";
+  if (schema === "pf.task.offer.v1") return "task_offer";
+  if (schema === "pf.task.submission.v1") return "task_submission";
+  if (schema === "pf.task.verification_response.v1") return "task_verification_response";
+  if (schema === "pf.task.request.v1" || schema === "pf.task.request_bundle.v1") return "task_request";
+  if (schema === "pf.context.v1" || schema.startsWith("pf.context.")) return "context";
+  if (schema === "pf.task.update.v1") {
+    if (safeText(values.task_action, 80)) return "task_action";
+    if (contentKind === "REWARD") return "task_reward";
+    return "task_update";
+  }
+  if (contentKind === "REWARD") return "task_reward";
+  if (contentKind === "TASK_SUBMISSION") return "task_submission";
+  if (contentKind === "TASK_UPDATE") return "task_update";
+  if (contentKind === "TASK") return "task_request";
+  if (safeText(source, 120) === "pinata_pin_by_hash") return "exact_cid_repin";
+  return "unknown";
+}
+
+async function enqueueReplicationAfterPin({
+  cid,
+  keyvalues = {},
+  name = "",
+  source = "",
+  exactCidRequired = true,
+  env = process.env,
+  metadata = {},
+} = {}) {
+  if (env.TASKNODE_IPFS_REPLICATION_ENQUEUE_DISABLED === "true") {
+    return { ok: false, skipped: true, reason: "disabled" };
+  }
+  try {
+    const payloadClass = classifyIpfsPayloadForReplication({ keyvalues, name, source });
+    return await enqueueIpfsReplicationJob({
+      cid,
+      payloadClass,
+      source,
+      sourceRef: replicationSourceRef(keyvalues) || safeText(name, 240),
+      exactCidRequired,
+      metadata: {
+        name: safeText(name, 240),
+        keyvalues: safeObject(keyvalues),
+        ...safeObject(metadata),
+      },
+    });
+  } catch (error) {
+    console.warn("ipfs_replication_enqueue_failed", {
+      cid,
+      source,
+      error: error?.message || String(error),
+    });
+    return { ok: false, error: error?.message || String(error) };
+  }
+}
+
 export function contextIpfsPinStatus(env = process.env) {
   const headers = pinataHeaders(env);
   return {
@@ -254,6 +346,18 @@ export async function pinIpfsFile({
     cid,
     sha256: sha256BytesHex(buffer),
     sizeBytes: buffer.byteLength,
+    replication: await enqueueReplicationAfterPin({
+      cid,
+      keyvalues,
+      name: safeName,
+      source: "pinata_file",
+      exactCidRequired: true,
+      env,
+      metadata: {
+        mimeType,
+        sizeBytes: buffer.byteLength,
+      },
+    }),
     response: result,
   };
 }
@@ -321,6 +425,15 @@ export async function pinIpfsCidByHash({
     ok: true,
     provider: "pinata",
     cid: normalizedCid,
+    replication: await enqueueReplicationAfterPin({
+      cid: normalizedCid,
+      keyvalues,
+      name: metadata.name,
+      source: "pinata_pin_by_hash",
+      exactCidRequired: true,
+      env,
+      metadata: { pinataMetadata: metadata },
+    }),
     response: result,
   };
 }
@@ -383,6 +496,18 @@ export async function pinContextIpfsJson({
     cid,
     sha256: sha256Hex(body),
     sizeBytes: byteLength,
+    replication: await enqueueReplicationAfterPin({
+      cid,
+      keyvalues,
+      name: safeName,
+      source: "pinata_json",
+      exactCidRequired: true,
+      env,
+      metadata: {
+        sizeBytes: byteLength,
+        sha256: sha256Hex(body),
+      },
+    }),
     response: result,
   };
 }
