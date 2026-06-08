@@ -341,12 +341,69 @@ const WALLET_BALANCE_REFRESH_MS = 1000;
 const WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS = 0;
 const WALLET_ACTIVITY_EVENT_NAME = "tasknode:wallet-activity";
 const TASK_ACTION_RECEIPTS_STORAGE_KEY = "tasknode_task_action_receipts";
+const AUTH_SESSION_HINT_STORAGE_KEY = "tasknode_auth_session_hint";
+const AUTH_SESSION_HINT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function viewFromLocation() {
   if (typeof window === "undefined") return "chat";
   const hashPath = window.location.hash.replace(/^#\/?/, "").trim();
   const hashView = hashPath.split("?")[0].split("/")[0].toLowerCase();
   return APP_VIEWS.has(hashView) ? hashView : "chat";
+}
+
+function readAuthSessionHint(storage) {
+  if (!storage) return null;
+  try {
+    const parsed = JSON.parse(storage.getItem(AUTH_SESSION_HINT_STORAGE_KEY) || "null");
+    const updatedAtMs = Date.parse(parsed?.updatedAt || "");
+    if (!parsed?.accountId || !Number.isFinite(updatedAtMs)) return null;
+    if (Date.now() - updatedAtMs > AUTH_SESSION_HINT_TTL_MS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeAuthSessionHint(storage, session = null) {
+  if (!storage || !isSignedInSession(session)) return;
+  try {
+    storage.setItem(
+      AUTH_SESSION_HINT_STORAGE_KEY,
+      JSON.stringify({
+        accountId: session.accountId || "",
+        displayName: session.displayName || "",
+        updatedAt: new Date().toISOString(),
+      })
+    );
+  } catch {
+    // Session hint only prevents signed-out flicker; auth still comes from the HttpOnly cookie.
+  }
+}
+
+function clearAuthSessionHint(storage) {
+  if (!storage) return;
+  try {
+    storage.removeItem(AUTH_SESSION_HINT_STORAGE_KEY);
+  } catch {
+    // Ignore blocked storage.
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function fetchAppStateWithSessionRetry(options = {}) {
+  const state = await fetchAppState(options);
+  if (isSignedInSession(state?.session) || typeof window === "undefined") return state;
+  const hint = readAuthSessionHint(window.sessionStorage);
+  if (!hint) return state;
+
+  await delay(350);
+  const retry = await fetchAppState(options);
+  if (isSignedInSession(retry?.session)) return retry;
+  clearAuthSessionHint(window.sessionStorage);
+  return retry;
 }
 
 function taskIdFromLocation() {
@@ -456,7 +513,7 @@ function App() {
   useEffect(() => {
     let active = true;
 
-    Promise.all([fetchRuntimeConfig(), fetchAppState()])
+    Promise.all([fetchRuntimeConfig(), fetchAppStateWithSessionRetry()])
       .then(([config, state]) => {
         if (!active) return;
         setRuntimeConfig(config);
@@ -992,6 +1049,7 @@ function App() {
   }, [signedIn, walletAccountId]);
 
   async function refreshAppState({
+    allowSignedOutSession = false,
     errorMessage = "Failed to load app state",
     taskProjectionRefresh = false,
   } = {}) {
@@ -1003,7 +1061,15 @@ function App() {
     }
 
     try {
-      const state = await fetchAppState({ taskProjectionRefresh });
+      const state = await fetchAppStateWithSessionRetry({ taskProjectionRefresh });
+      if (
+        !allowSignedOutSession &&
+        isSignedInSession(appState?.session) &&
+        !isSignedInSession(state?.session)
+      ) {
+        setLoadError("");
+        return appState;
+      }
       if (
         taskProjectionRefresh &&
         taskRefreshSequence < taskRefreshSequenceRef.current.applied
@@ -1028,6 +1094,10 @@ function App() {
   }
 
   function applyFetchedAppState(state) {
+    const storage = typeof window === "undefined" ? null : window.sessionStorage;
+    if (isSignedInSession(state?.session)) {
+      writeAuthSessionHint(storage, state.session);
+    }
     setAppState((current) =>
       mergeAppStateWithMonotonicTasks(current, state, {
         mergeBase: mergeAppStateWithClientWalletBalance,
@@ -1061,7 +1131,8 @@ function App() {
   async function logOut() {
     lockWalletVault();
     await requestJson("/api/auth/logout", { method: "POST" });
-    await refreshAppState();
+    clearAuthSessionHint(typeof window === "undefined" ? null : window.sessionStorage);
+    await refreshAppState({ allowSignedOutSession: true });
     setProfileMenuOpen(false);
   }
 
@@ -1994,6 +2065,10 @@ function ChatSurface({
           source: "user_chat",
           sourceConversationTitle: activeChat?.title || titleFromTurns(turns) || "New chat",
           attachments: serializeChatAttachments(submittedAttachments),
+          onProgress: (label) => {
+            setSendMessage(label);
+            setStatusTone("muted");
+          },
         });
 
         const receipt = `Task request published to PFT. Transaction ${String(result.txHash || "").slice(0, 12)}...`;

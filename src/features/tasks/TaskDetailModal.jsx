@@ -20,6 +20,7 @@ import { requestJson } from "../../api";
 import {
   normalizeTaskStatus,
   statusSlug,
+  taskLifecycleActions,
   taskIsTerminal,
   taskRequiresRefresh,
   taskStatusColor,
@@ -134,6 +135,110 @@ function TaskStatusGlyph({ statusKey }) {
     );
   }
   return <span className={`task-status-glyph is-${statusSlug(normalized)}`} aria-hidden="true" />;
+}
+
+function taskDetailCacheKey({
+  accountId = "",
+  linkedWalletAddress = "",
+  task = {},
+  taskVersion = "",
+} = {}) {
+  const taskId = taskIdentityKey(task);
+  if (!taskId || typeof window === "undefined") return "";
+  return [
+    "tasknode.taskDetail.v1",
+    accountId || "account",
+    linkedWalletAddress || "wallet",
+    taskId,
+    taskVersion || "version",
+  ].join(":");
+}
+
+function cachedTaskDetailFromTask(task = {}, {
+  linkedWalletAddress = "",
+} = {}) {
+  if (!task?.taskId && !task?.fullId && !task?.id) return null;
+  return {
+    ok: true,
+    partial: true,
+    source: "task_list_projection",
+    task,
+    wallets: {
+      user: linkedWalletAddress || "",
+      authority: task?.metadata?.authorityWallet || "",
+      allocation: task?.metadata?.allocationWallet || "",
+    },
+    actions: taskLifecycleActions(task.statusKey || task.status),
+    submission: {
+      summaries: [],
+      generatedTask: task?.metadata?.generatedTask || {},
+      verificationPolicy: task?.verificationPolicy || task?.verification?.policy || {},
+    },
+    currentVerificationRequest: null,
+    rewardOutcome: null,
+    forensics: {
+      source: task?.source || "task_list_projection",
+      eventCount: Number(task?.metadata?.eventCount || 0),
+      requestBundleCid: task?.requestBundleCid || "",
+      contextCid: task?.contextCid || "",
+      lastEventTxHash: task?.txHash || "",
+      lastEventCid: "",
+      cids: [],
+      transactions: task?.txHash ? [{ txHash: task.txHash, label: "Latest task event" }] : [],
+      timeline: [],
+      pointerEvents: [],
+      reducerEvents: [],
+      reviewState: null,
+      integrity: {
+        expectedEventCount: Number(task?.metadata?.eventCount || 0),
+        pointerEventCount: 0,
+        reducerEventCount: 0,
+        renderedEventCount: 0,
+        missingTimelineRows: false,
+        pendingReducerCount: 0,
+        processingReducerCount: 0,
+        failedReducerCount: 0,
+        failedReducerExamples: [],
+        latestReducerUpdatedAt: null,
+        latestReducerProcessedAt: null,
+        latestCachedPointer: null,
+        projectionBehindCachedPointer: false,
+        projectionLastEvent: {
+          txHash: task?.txHash || "",
+          cid: "",
+          status: task?.statusKey || task?.status || "",
+          eventCount: Number(task?.metadata?.eventCount || 0),
+        },
+      },
+    },
+    sync: {
+      updatedAt: task?.updatedAt || null,
+      lastEventAt: task?.lastEventAt || null,
+      requiresRefresh: false,
+      nextPollMs: null,
+      refreshReason: "",
+    },
+  };
+}
+
+function readCachedTaskDetail(cacheKey = "", fallback = null) {
+  if (!cacheKey || typeof window === "undefined") return fallback;
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(cacheKey) || "null");
+    if (parsed?.task) return parsed;
+  } catch {
+    // Ignore cache parse failures; the task list projection is the fallback.
+  }
+  return fallback;
+}
+
+function writeCachedTaskDetail(cacheKey = "", detail = null) {
+  if (!cacheKey || !detail?.task || typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(cacheKey, JSON.stringify(detail));
+  } catch {
+    // Detail cache is a UX optimization; actions still use server config.
+  }
 }
 
 function TaskSection({ children, last, title }) {
@@ -1134,9 +1239,25 @@ export function TaskDetailModal({
   walletUnlockPending = false,
   walletVault = null,
 }) {
+  const taskVersion = taskVersionKey(task);
+  const detailCacheKey = taskDetailCacheKey({
+    accountId,
+    linkedWalletAddress,
+    task,
+    taskVersion,
+  });
+  const initialDetail = readCachedTaskDetail(
+    detailCacheKey,
+    cachedTaskDetailFromTask(task, { linkedWalletAddress })
+  );
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
-  const [detailState, setDetailState] = useState({ data: null, error: "", loading: true });
+  const [detailState, setDetailState] = useState(() => ({
+    cacheKey: detailCacheKey,
+    data: initialDetail,
+    error: "",
+    loading: true,
+  }));
   const [detailRefreshKey, setDetailRefreshKey] = useState(0);
   const [copiedValue, setCopiedValue] = useState("");
   const [optimisticEvidence, setOptimisticEvidence] = useState(null);
@@ -1149,7 +1270,6 @@ export function TaskDetailModal({
   const verification = displayTask.verification || {};
   const rewardPft = Number(displayTask.pft || 0);
   const taskId = displayTask.taskId || displayTask.fullId || task.taskId || task.fullId || task.id || "";
-  const taskVersion = taskVersionKey(task);
   const currentTaskVisibleState = useMemo(() => visibleTaskStateFromTask(task), [taskVersion]);
   const taskBriefPayload = buildTaskCopyPayloads(displayTask, detailState.data).codex;
   const forensicsCount = detailState.data?.forensics?.timeline?.length || displayTask.metadata?.eventCount || 0;
@@ -1183,7 +1303,8 @@ export function TaskDetailModal({
     if (keepOptimistic) {
       data = overlayTaskDetailWithOptimisticEvidence(data, currentOptimisticEvidence);
     }
-    setDetailState({ data, error: "", loading: false });
+    writeCachedTaskDetail(detailCacheKey, data);
+    setDetailState({ cacheKey: detailCacheKey, data, error: "", loading: false });
     const observedReceipt = taskActionReceiptFromObservedTask({
       accountId,
       walletAddress: linkedWalletAddress,
@@ -1191,7 +1312,7 @@ export function TaskDetailModal({
     });
     if (observedReceipt) onTaskActionReceipt?.(observedReceipt);
     return data;
-  }, [accountId, currentTaskVisibleState, linkedWalletAddress, onTaskActionReceipt]);
+  }, [accountId, currentTaskVisibleState, detailCacheKey, linkedWalletAddress, onTaskActionReceipt]);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -1230,10 +1351,18 @@ export function TaskDetailModal({
     let active = true;
     setDetailState((current) => {
       const currentTaskId = taskIdentityKey(current.data?.task);
-      if (current.data?.task && currentTaskId === taskId) {
+      if (current.cacheKey === detailCacheKey && current.data?.task && currentTaskId === taskId) {
         return { ...current, error: "", loading: true };
       }
-      return { data: null, error: "", loading: true };
+      return {
+        cacheKey: detailCacheKey,
+        data: readCachedTaskDetail(
+          detailCacheKey,
+          cachedTaskDetailFromTask(task, { linkedWalletAddress })
+        ),
+        error: "",
+        loading: true,
+      };
     });
     requestJson(`/api/tasks/detail?taskId=${encodeURIComponent(taskId)}`)
       .then((result) => {
@@ -1251,7 +1380,7 @@ export function TaskDetailModal({
     return () => {
       active = false;
     };
-  }, [commitTaskDetailResult, detailRefreshKey, taskId, taskVersion]);
+  }, [commitTaskDetailResult, detailCacheKey, detailRefreshKey, linkedWalletAddress, task, taskId, taskVersion]);
 
   function applyOptimisticEvidenceState(result = {}) {
     const optimistic = optimisticEvidenceStateFromSubmission(result);
