@@ -1,5 +1,9 @@
 import React from "react";
-import { activeTaskRequests } from "./task-visible-state.js";
+import {
+  activeTaskRequests,
+  attentionTaskRequests,
+  processingTaskRequests,
+} from "./task-visible-state.js";
 
 function statusSlug(status = "") {
   return String(status || "published")
@@ -32,6 +36,8 @@ function TaskRequestRow({ request }) {
 export function TaskRequestQueue({ requests = [] }) {
   const activeRequests = activeTaskRequests(requests);
   if (!activeRequests.length) return null;
+  const processingCount = processingTaskRequests(activeRequests).length;
+  const attentionCount = attentionTaskRequests(activeRequests).length;
   const primary = activeRequests[0];
   const extraCount = activeRequests.length - 1;
   if (activeRequests.length === 1) {
@@ -47,7 +53,11 @@ export function TaskRequestQueue({ requests = [] }) {
       <div className="task-request-queue-head">
         <div>
           <strong>Task requests</strong>
-          <span>{activeRequests.length} processing</span>
+          <span>
+            {processingCount > 0 && `${processingCount} processing`}
+            {processingCount > 0 && attentionCount > 0 && " / "}
+            {attentionCount > 0 && `${attentionCount} need attention`}
+          </span>
         </div>
         {extraCount > 0 && <em>+{extraCount}</em>}
       </div>

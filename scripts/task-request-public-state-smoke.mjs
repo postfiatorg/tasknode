@@ -70,7 +70,25 @@ const userFailedRequest = publicTaskRequest({
 
 assert.equal(userFailedRequest.statusLabel, "Needs attention");
 assert.equal(userFailedRequest.isActive, true);
+assert.equal(userFailedRequest.isProcessing, false);
+assert.equal(userFailedRequest.needsAttention, true);
 assert.equal(userFailedRequest.canRetry, true);
 assert.equal(userFailedRequest.lastError, "context_ipfs_fetch_failed");
+
+const failedWithGeneratedTask = publicTaskRequest({
+  request_id: "req_failed_after_generated",
+  status: "failed",
+  generated_task_id: "task_generated_after_rpc_recovery",
+  last_error: "RPC broken",
+  created_at: now,
+  updated_at: now,
+  metadata_json: {},
+});
+
+assert.equal(failedWithGeneratedTask.isActive, false);
+assert.equal(failedWithGeneratedTask.isProcessing, false);
+assert.equal(failedWithGeneratedTask.needsAttention, false);
+assert.equal(failedWithGeneratedTask.isTerminal, true);
+assert.equal(failedWithGeneratedTask.canRetry, false);
 
 console.log("task request public state smoke ok");

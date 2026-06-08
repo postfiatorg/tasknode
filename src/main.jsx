@@ -122,8 +122,10 @@ import {
 } from "./features/tasks/task-action-receipts.js";
 import {
   findTaskById,
+  mergeTaskStateWithActionReceipts,
   reconcileTaskVisibleState,
 } from "./features/tasks/task-visible-state.js";
+import { mergeAppStateWithMonotonicTasks } from "./features/tasks/task-app-state-refresh.js";
 import { publishTaskRequest } from "./features/tasks/task-request-actions.js";
 import { evaluateTaskRequestUnlockPolicy } from "./features/tasks/task-request-unlock-policy.js";
 import {
@@ -389,6 +391,17 @@ function writeTaskLocation(taskId, { replace = false } = {}) {
   window.history[method]({ tasknodeView: "tasks", taskId: normalizedTaskId }, "", nextPath);
 }
 
+function taskSelectionFingerprint(task = {}) {
+  return [
+    task?.taskId || task?.fullId || task?.id || "",
+    task?.statusKey || task?.status || "",
+    task?.updatedAt || "",
+    task?.lastEventAt || "",
+    task?.txHash || "",
+    task?.metadata?.eventCount || "",
+  ].join("|");
+}
+
 function isMobileViewport() {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches;
 }
@@ -431,6 +444,7 @@ function App() {
   const moreRef = useRef(null);
   const chatActionRef = useRef(null);
   const walletSecretRef = useRef(null);
+  const taskRefreshSequenceRef = useRef({ applied: 0, started: 0 });
 
   useEffect(() => {
     let active = true;
@@ -439,7 +453,7 @@ function App() {
       .then(([config, state]) => {
         if (!active) return;
         setRuntimeConfig(config);
-        setAppState((current) => mergeAppStateWithClientWalletBalance(current, state));
+        applyFetchedAppState(state);
       })
       .catch((error) => {
         if (active) setLoadError(error?.message || "Failed to load app state");
@@ -452,21 +466,12 @@ function App() {
 
   useEffect(() => {
     if (view !== "tasks") return undefined;
-    let active = true;
 
-    fetchAppState({ taskProjectionRefresh: true })
-      .then((state) => {
-        if (!active) return;
-        setAppState((current) => mergeAppStateWithClientWalletBalance(current, state));
-        setLoadError("");
-      })
-      .catch((error) => {
-        if (active) setLoadError(error?.message || "Failed to load task state");
-      });
+    refreshAppState({ errorMessage: "Failed to load task state", taskProjectionRefresh: true })
+      .then(() => null)
+      .catch(() => null);
 
-    return () => {
-      active = false;
-    };
+    return undefined;
   }, [view]);
 
   useEffect(() => {
@@ -556,7 +561,11 @@ function App() {
     const taskId = taskIdFromLocation();
     if (!taskId) return;
     const task = findTaskById(visibleTasks, taskId);
-    if (task) setSelectedTask(task);
+    if (task) {
+      setSelectedTask((current) => (
+        taskSelectionFingerprint(current) === taskSelectionFingerprint(task) ? current : task
+      ));
+    }
   }, [view, visibleTasks]);
 
   useEffect(() => {
@@ -763,6 +772,9 @@ function App() {
     setSelectedTask(null);
     if (view === "tasks" && taskIdFromLocation()) {
       writeViewLocation("tasks", { replace: true });
+    }
+    if (view === "tasks") {
+      void refreshAppState({ taskProjectionRefresh: true });
     }
   }, [view]);
 
@@ -972,21 +984,52 @@ function App() {
     };
   }, [signedIn, walletAccountId]);
 
-  async function refreshAppState({ taskProjectionRefresh = false } = {}) {
+  async function refreshAppState({
+    errorMessage = "Failed to load app state",
+    taskProjectionRefresh = false,
+  } = {}) {
+    const taskRefreshSequence = taskProjectionRefresh
+      ? taskRefreshSequenceRef.current.started + 1
+      : 0;
+    if (taskProjectionRefresh) {
+      taskRefreshSequenceRef.current.started = taskRefreshSequence;
+    }
+
     try {
       const state = await fetchAppState({ taskProjectionRefresh });
-      setAppState((current) => mergeAppStateWithClientWalletBalance(current, state));
+      if (
+        taskProjectionRefresh &&
+        taskRefreshSequence < taskRefreshSequenceRef.current.applied
+      ) {
+        return state;
+      }
+      applyFetchedAppState(state);
+      if (taskProjectionRefresh) {
+        taskRefreshSequenceRef.current.applied = Math.max(
+          taskRefreshSequenceRef.current.applied,
+          taskRefreshSequence
+        );
+      }
       const nextAccountId = isSignedInSession(state?.session) ? state.session.accountId || "" : "";
       await refreshWalletVaultStatus({ preserveUnlock: true, accountId: nextAccountId });
       setLoadError("");
       return state;
     } catch (error) {
-      setLoadError(error?.message || "Failed to load app state");
+      setLoadError(error?.message || errorMessage);
       return null;
     }
   }
 
+  function applyFetchedAppState(state) {
+    setAppState((current) =>
+      mergeAppStateWithMonotonicTasks(current, state, {
+        mergeBase: mergeAppStateWithClientWalletBalance,
+      })
+    );
+  }
+
   function recordTaskActionReceipt(receipt) {
+    if (!receipt?.taskId || !receipt?.expectedStatusKey) return;
     setTaskActionReceipts((current) => {
       const next = appendTaskActionReceipt(current, receipt);
       saveTaskActionReceipts(
@@ -995,6 +1038,16 @@ function App() {
         TASK_ACTION_RECEIPTS_STORAGE_KEY
       );
       return next;
+    });
+    setAppState((current) => {
+      if (!current?.tasks) return current;
+      return {
+        ...current,
+        tasks: mergeTaskStateWithActionReceipts(current.tasks, [receipt], {
+          accountId: receipt.accountId || walletAccountId,
+          walletAddress: receipt.walletAddress || linkedWalletAddress,
+        }),
+      };
     });
   }
 
@@ -3025,6 +3078,9 @@ function TasksView({
   const [taskRequestOpen, setTaskRequestOpen] = useState(false);
   const [taskRequestSettleUntilMs, setTaskRequestSettleUntilMs] = useState(0);
   const didAutoSelectTaskTabRef = useRef(false);
+  const lastTaskFocusRefreshRef = useRef(0);
+  const lastTaskHandoffKeyRef = useRef("");
+  const lastTaskProjectionCountRef = useRef(null);
   const previousActiveRequestCountRef = useRef(0);
   const visibleState = useMemo(() => reconcileTaskVisibleState({
     accountId,
@@ -3036,10 +3092,12 @@ function TasksView({
   const {
     activeRequests,
     activeRequestCount,
+    attentionRequests,
     counts,
     currentTabTasks,
     outstanding,
     polling,
+    processingRequests,
     rewarded,
     sync: taskSync,
     tabs,
@@ -3054,6 +3112,7 @@ function TasksView({
     taskRequestSettling,
   } = polling;
   const outstandingCount = counts.outstanding;
+  const taskRequestHandoff = taskSync?.handoff || {};
 
   useEffect(() => {
     if (didAutoSelectTaskTabRef.current) return;
@@ -3089,12 +3148,60 @@ function TasksView({
     previousActiveRequestCountRef.current = activeRequestCount;
   }, [activeRequestCount]);
 
+  useEffect(() => {
+    const projectionCount = Number(taskSync?.projectionCount || 0);
+    if (lastTaskProjectionCountRef.current === null) {
+      lastTaskProjectionCountRef.current = projectionCount;
+      return;
+    }
+    if (projectionCount > lastTaskProjectionCountRef.current) {
+      setTaskRequestSettleUntilMs(taskRequestSettleDeadline());
+    }
+    lastTaskProjectionCountRef.current = projectionCount;
+  }, [taskSync?.projectionCount]);
+
+  useEffect(() => {
+    const handoffKey = [
+      taskRequestHandoff.latestRequestId || "",
+      taskRequestHandoff.latestRequestStatus || "",
+      taskRequestHandoff.generatedTaskId || "",
+      taskRequestHandoff.generatedTaskVisible ? "visible" : "pending",
+      taskRequestHandoff.latestRequestUpdatedAt || "",
+      taskRequestHandoff.requestHandoffState || "",
+    ].join("|");
+    if (!handoffKey.replace(/\|/g, "")) return;
+    if (!lastTaskHandoffKeyRef.current) {
+      lastTaskHandoffKeyRef.current = handoffKey;
+      return;
+    }
+    if (handoffKey === lastTaskHandoffKeyRef.current) return;
+    lastTaskHandoffKeyRef.current = handoffKey;
+    if (["generated_visible", "generated_projection_pending"].includes(taskRequestHandoff.requestHandoffState)) {
+      setTaskRequestSettleUntilMs(taskRequestSettleDeadline());
+    }
+  }, [
+    taskRequestHandoff.generatedTaskId,
+    taskRequestHandoff.generatedTaskVisible,
+    taskRequestHandoff.latestRequestId,
+    taskRequestHandoff.latestRequestStatus,
+    taskRequestHandoff.latestRequestUpdatedAt,
+    taskRequestHandoff.requestHandoffState,
+  ]);
+
+  const refreshCanonicalTaskState = useCallback(
+    ({ taskProjectionRefresh = true } = {}) => {
+      if (typeof onRequestSettled !== "function") return null;
+      return onRequestSettled({ taskProjectionRefresh });
+    },
+    [onRequestSettled]
+  );
+
   const handleTaskRequestRecorded = useCallback(
     async () => {
       setTaskRequestSettleUntilMs(taskRequestSettleDeadline());
-      return onRequestSettled?.({ taskProjectionRefresh: true });
+      return refreshCanonicalTaskState({ taskProjectionRefresh: true });
     },
-    [onRequestSettled]
+    [refreshCanonicalTaskState]
   );
 
   useEffect(() => {
@@ -3104,17 +3211,37 @@ function TasksView({
         setTaskRequestSettleUntilMs(0);
         return;
       }
-      Promise.resolve(onRequestSettled({ taskProjectionRefresh: shouldForceTaskProjection })).catch(() => null);
+      Promise.resolve(refreshCanonicalTaskState({ taskProjectionRefresh: shouldForceTaskProjection })).catch(() => null);
     }, taskRefreshMs);
     return () => window.clearInterval(refresh);
   }, [
-    onRequestSettled,
+    refreshCanonicalTaskState,
     shouldForceTaskProjection,
     shouldRefreshTaskState,
     taskRefreshMs,
     taskRequestSettleUntilMs,
     taskRequestSettling,
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return undefined;
+    if (typeof onRequestSettled !== "function") return undefined;
+
+    const refreshVisibleTaskState = () => {
+      if (document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (now - lastTaskFocusRefreshRef.current < 1000) return;
+      lastTaskFocusRefreshRef.current = now;
+      Promise.resolve(refreshCanonicalTaskState({ taskProjectionRefresh: true })).catch(() => null);
+    };
+
+    window.addEventListener("focus", refreshVisibleTaskState);
+    document.addEventListener("visibilitychange", refreshVisibleTaskState);
+    return () => {
+      window.removeEventListener("focus", refreshVisibleTaskState);
+      document.removeEventListener("visibilitychange", refreshVisibleTaskState);
+    };
+  }, [onRequestSettled, refreshCanonicalTaskState]);
 
   const emptyCopy = {
     outstanding: {
@@ -3155,10 +3282,16 @@ function TasksView({
                   <span>{tasks.sync.projectionCount} task records synced</span>
                 </>
               )}
-              {activeRequests.length > 0 && (
+              {processingRequests.length > 0 && (
                 <>
                   <span aria-hidden="true">.</span>
-                  <span>{activeRequests.length} requests processing</span>
+                  <span>{processingRequests.length} requests processing</span>
+                </>
+              )}
+              {attentionRequests.length > 0 && (
+                <>
+                  <span aria-hidden="true">.</span>
+                  <span>{attentionRequests.length} requests need attention</span>
                 </>
               )}
             </p>

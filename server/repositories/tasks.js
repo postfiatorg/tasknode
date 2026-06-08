@@ -70,6 +70,14 @@ function relativeAge(value) {
   return `${days}d ago`;
 }
 
+function maxIso(values = []) {
+  const timestamps = values
+    .map((value) => Date.parse(value || ""))
+    .filter((value) => Number.isFinite(value));
+  if (!timestamps.length) return null;
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
 function emptyTaskState({ walletLinked = false, walletAddress = "" } = {}) {
   return {
     ...taskProductConfig(),
@@ -200,6 +208,55 @@ function groupTasks(tasks) {
   }
 
   return { outstanding, verification, refused, rewarded };
+}
+
+export function taskRequestHandoffState({ requests = {}, taskItems = [] } = {}) {
+  const items = Array.isArray(requests?.items) ? requests.items : [];
+  const latest = items[0] || null;
+  if (!latest) {
+    return {
+      latestRequestId: "",
+      latestRequestStatus: "",
+      latestRequestUpdatedAt: null,
+      generatedTaskId: "",
+      generatedTaskVisible: false,
+      requestHandoffState: "none",
+      lastError: "",
+      isProcessing: false,
+      needsAttention: false,
+    };
+  }
+
+  const generatedTaskId = safeText(latest.generatedTaskId, 180);
+  const visibleTask = generatedTaskId
+    ? taskItems.find((task) => [task.taskId, task.fullId, task.id].some((value) => safeText(value, 180) === generatedTaskId))
+    : null;
+  const status = safeText(latest.status, 80);
+  const generatedTaskVisible = Boolean(visibleTask);
+  const requestHandoffState = generatedTaskId
+    ? generatedTaskVisible
+      ? "generated_visible"
+      : "generated_projection_pending"
+    : latest.needsAttention || status === "failed"
+      ? "failed"
+      : latest.isProcessing || ["signing", "published", "queued", "generating"].includes(status)
+        ? status || "processing"
+        : latest.isTerminal
+          ? "terminal"
+          : "waiting";
+
+  return {
+    latestRequestId: latest.requestId || "",
+    latestRequestStatus: status,
+    latestRequestUpdatedAt: latest.updatedAt || null,
+    generatedTaskId,
+    generatedTaskVisible,
+    visibleTaskId: visibleTask?.taskId || "",
+    requestHandoffState,
+    lastError: latest.lastError || "",
+    isProcessing: Boolean(latest.isProcessing),
+    needsAttention: Boolean(latest.needsAttention),
+  };
 }
 
 function taskActionState(status = "") {
@@ -446,6 +503,13 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
   });
   const grouped = groupTasks(taskItems);
   const lastSyncedAt = rows[0]?.updated_at ? toIso(rows[0].updated_at) : null;
+  const handoff = taskRequestHandoffState({ requests, taskItems });
+  const taskSyncVersion = maxIso([
+    lastSyncedAt,
+    requests?.sync?.lastUpdatedAt,
+    handoff.latestRequestUpdatedAt,
+    ...taskItems.map((task) => task.updatedAt),
+  ]);
   const syncStatus = integrity.totals.indexingLagCount > 0
     ? "indexing_lag"
     : integrity.totals.failedReducerCount > 0
@@ -482,6 +546,8 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
       processingReducerCount: integrity.totals.processingReducerCount,
       failedReducerCount: integrity.totals.failedReducerCount,
       indexingLagCount: integrity.totals.indexingLagCount,
+      handoff,
+      taskSyncVersion,
       ...refresh,
     },
   };

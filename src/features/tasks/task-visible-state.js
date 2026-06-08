@@ -47,14 +47,36 @@ function requestAgeMs(request = {}, nowMs = Date.now()) {
 
 export function activeTaskRequests(requests = [], { nowMs = Date.now() } = {}) {
   return taskArray(requests).filter((request) => {
+    if (request?.generatedTaskId || request?.isTerminal === true) return false;
     if (request?.isActive === true) return true;
     if (request?.isActive === false) return false;
     const status = safeText(request?.status, 80).toLowerCase();
     if (!status || status === "proposed" || status === "cancelled") return false;
+    if (request?.generatedTaskId) return false;
     if (status === "failed") return requestAgeMs(request, nowMs) < 24 * 60 * 60 * 1000;
     if (["signing", "queued", "generating"].includes(status)) return true;
     if (status === "published") return requestAgeMs(request, nowMs) < 20 * 60 * 1000 && !request.generatedTaskId;
     return false;
+  });
+}
+
+export function processingTaskRequests(requests = [], { nowMs = Date.now() } = {}) {
+  return activeTaskRequests(requests, { nowMs }).filter((request) => {
+    if (request?.isProcessing === true) return true;
+    if (request?.isProcessing === false) return false;
+    const status = safeText(request?.status, 80).toLowerCase();
+    if (["signing", "queued", "generating"].includes(status)) return true;
+    return status === "published" && requestAgeMs(request, nowMs) < 20 * 60 * 1000 && !request.generatedTaskId;
+  });
+}
+
+export function attentionTaskRequests(requests = [], { nowMs = Date.now() } = {}) {
+  return activeTaskRequests(requests, { nowMs }).filter((request) => {
+    if (request?.needsAttention === true) return true;
+    if (request?.needsAttention === false) return false;
+    return safeText(request?.status, 80).toLowerCase() === "failed" &&
+      requestAgeMs(request, nowMs) < 24 * 60 * 60 * 1000 &&
+      !request.generatedTaskId;
   });
 }
 
@@ -373,6 +395,8 @@ export function reconcileTaskVisibleState({
   const rewarded = taskArray(visibleTasks.rewarded);
   const requests = taskRequestArray(visibleTasks);
   const activeRequests = activeTaskRequests(requests, { nowMs });
+  const processingRequests = processingTaskRequests(requests, { nowMs });
+  const attentionRequests = attentionTaskRequests(requests, { nowMs });
   const taskSync = visibleTasks?.sync || {};
   const polling = taskRefreshPolicy({
     activeRequestCount: activeRequests.length,
@@ -406,6 +430,10 @@ export function reconcileTaskVisibleState({
     requests,
     activeRequests,
     activeRequestCount: activeRequests.length,
+    processingRequests,
+    processingRequestCount: processingRequests.length,
+    attentionRequests,
+    attentionRequestCount: attentionRequests.length,
     allTasks: [...outstanding, ...verification, ...refused, ...rewarded],
     counts,
     totalPftInFlight,
@@ -418,6 +446,7 @@ export function reconcileTaskVisibleState({
     }[tasksTab] || [],
     selectedTask: selectedTaskId ? findTaskById(visibleTasks, selectedTaskId) : null,
     sync: taskSync,
+    handoff: taskSync?.handoff || null,
     taskSyncNotice: shouldForceTaskSyncNotice(taskSync) ? taskSyncNoticeForStatus(taskSync) : null,
     polling,
     prunedReceipts: pruneTaskActionReceiptsForTaskState(receipts, tasks, {

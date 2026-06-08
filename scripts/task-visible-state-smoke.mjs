@@ -169,4 +169,102 @@ assert.deepEqual(
 
 assert.equal(findTaskById(noHardRefresh.tasks, "task_visible_state").statusKey, "rewarded");
 
+const acceptedCapacityTask = task("accepted", {
+  taskId: "task_capacity_tracking",
+  title: "Test Multi-Wallet Capacity Tracking and Document Results",
+  pft: 22000,
+});
+const acceptedPortsTask = task("accepted", {
+  taskId: "task_wallet_ports",
+  title: "Test Wallet Port Connections and Document Results",
+  pft: 1.5,
+});
+const rpcBrokenRequest = {
+  requestId: "req_rpc_broken",
+  status: "failed",
+  statusLabel: "Needs attention",
+  userDetailText: "RPC broken",
+  lastError: "RPC broken",
+  isActive: true,
+  isProcessing: false,
+  needsAttention: true,
+  isTerminal: false,
+  updatedAt: new Date(nowMs).toISOString(),
+  createdAt: new Date(nowMs).toISOString(),
+};
+const staleRpcState = reconcileTaskVisibleState({
+  accountId,
+  linkedWalletAddress: walletAddress,
+  nowMs,
+  tasks: {
+    outstanding: [acceptedCapacityTask, acceptedPortsTask],
+    verification: [verificationRequested],
+    refused: [task("refused", { taskId: "task_refused" })],
+    rewarded: [rewarded],
+    requests: { items: [rpcBrokenRequest] },
+    sync: {
+      status: "ready",
+      projectionCount: 11,
+      requiresRefresh: true,
+      refreshReason: "task_requests_active",
+    },
+  },
+});
+assert.equal(staleRpcState.counts.outstanding, 2);
+assert.equal(staleRpcState.processingRequestCount, 0);
+assert.equal(staleRpcState.attentionRequestCount, 1);
+assert.equal(staleRpcState.polling.shouldRefreshTaskState, true);
+assert.equal(staleRpcState.polling.shouldForceTaskProjection, true);
+
+const generatedRpcTask = task("proposed", {
+  taskId: "task_generated_from_rpc_recovery",
+  title: "Document RPC Failure Reproduction And Impact",
+  pft: 1.5,
+});
+const generatedVisibleState = reconcileTaskVisibleState({
+  accountId,
+  linkedWalletAddress: walletAddress,
+  nowMs,
+  taskRequestSettleUntilMs: nowMs + 30_000,
+  tasks: {
+    outstanding: [generatedRpcTask, acceptedCapacityTask, acceptedPortsTask],
+    verification: [verificationRequested],
+    refused: [task("refused", { taskId: "task_refused" })],
+    rewarded: [rewarded],
+    requests: {
+      items: [{
+        ...rpcBrokenRequest,
+        status: "proposed",
+        statusLabel: "Task proposed",
+        generatedTaskId: generatedRpcTask.taskId,
+        isActive: false,
+        isProcessing: false,
+        needsAttention: false,
+        isTerminal: true,
+        lastError: "",
+      }],
+    },
+    sync: {
+      status: "ready",
+      projectionCount: 12,
+      requiresRefresh: true,
+      refreshReason: "task_review_active",
+      handoff: {
+        latestRequestId: "req_rpc_broken",
+        latestRequestStatus: "proposed",
+        latestRequestUpdatedAt: new Date(nowMs + 1000).toISOString(),
+        generatedTaskId: generatedRpcTask.taskId,
+        generatedTaskVisible: true,
+        requestHandoffState: "generated_visible",
+      },
+    },
+  },
+});
+assert.equal(generatedVisibleState.counts.outstanding, 3);
+assert.equal(generatedVisibleState.processingRequestCount, 0);
+assert.equal(generatedVisibleState.attentionRequestCount, 0);
+assert.equal(generatedVisibleState.handoff.requestHandoffState, "generated_visible");
+assert.equal(findTaskById(generatedVisibleState.tasks, generatedRpcTask.taskId).statusKey, "proposed");
+assert.equal(generatedVisibleState.polling.taskRequestSettling, true);
+
 console.log("task-visible-state-smoke ok");
