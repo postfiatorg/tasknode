@@ -2,6 +2,10 @@ import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { resolveBoardManagerFollowupsForTaskState } from "./board-manager-state.js";
 import { enqueueNetworkTaskRewardFollowup } from "./network-task-reward-followup.js";
 import {
+  recordNetworkTaskCapacityEvent,
+  recordUserObservabilityEvent,
+} from "./user-observability.js";
+import {
   activeAllocationStatuses, allocationStatusForTaskStatus, compactCandidate, compactNetworkTaskContent,
   compactProductDoc, compactProject, digestJson, groupNetworkTaskContentText, isCompletedNetworkTask,
   isOutstandingNetworkTask, isStoppedNetworkTask, jsonValue, numeric, rewardBand, safeObject, safeText,
@@ -256,7 +260,11 @@ function eligibilityBlocker(row = {}) {
   };
 }
 
-export async function getNetworkTaskEligibility({ accountId = "", walletAddress = "" } = {}) {
+export async function getNetworkTaskEligibility({
+  accountId = "",
+  walletAddress = "",
+  recordCapacityEvent = true,
+} = {}) {
   const normalizedAccountId = safeText(accountId, 180);
   const normalizedWalletAddress = safeText(walletAddress, 120);
   const base = {
@@ -316,7 +324,7 @@ export async function getNetworkTaskEligibility({ accountId = "", walletAddress 
     };
   }
 
-  const [profileResult, jobResult, walletResult, blockerResult] = await Promise.all([
+  const [profileResult, jobResult, walletResult, blockerResult, capacityMetricsResult] = await Promise.all([
     query(
       `
         SELECT *
@@ -388,11 +396,57 @@ export async function getNetworkTaskEligibility({ accountId = "", walletAddress 
           ON p.task_id = COALESCE(NULLIF(job.task_id, ''), refs.task_id)
         WHERE alloc.allocation_status = ANY($1::text[])
           AND ($2::text = '' OR alloc.candidate_account_id = $2)
-          AND ($3::text = '' OR alloc.candidate_wallet_address = $3)
+          AND (
+            $3::text = ''
+            OR alloc.candidate_wallet_address = $3
+            OR (
+              $2::text <> ''
+              AND alloc.candidate_account_id = $2
+              AND alloc.candidate_wallet_address = ''
+            )
+          )
           AND alloc.created_at > now() - interval '24 hours'
         ORDER BY COALESCE(p.updated_at, refs.updated_at, job.updated_at, alloc.updated_at) DESC,
                  alloc.id DESC
         LIMIT 8
+      `,
+      [activeAllocationStatuses, normalizedAccountId, normalizedWalletAddress]
+    ),
+    query(
+      `
+        SELECT
+          count(*) FILTER (
+            WHERE $2::text <> ''
+              AND alloc.candidate_account_id = $2
+          )::int AS account_outstanding_count,
+          count(*) FILTER (
+            WHERE $3::text <> ''
+              AND alloc.candidate_wallet_address = $3
+          )::int AS wallet_outstanding_count,
+          count(*) FILTER (
+            WHERE $2::text <> ''
+              AND alloc.candidate_account_id = $2
+              AND alloc.candidate_wallet_address = ''
+          )::int AS account_only_pending_count,
+          count(*) FILTER (
+            WHERE $2::text <> ''
+              AND alloc.candidate_account_id = $2
+              AND job.status IN ('queued', 'running', 'generated', 'link_failed')
+          )::int AS account_pending_generation_count,
+          count(*) FILTER (
+            WHERE $3::text <> ''
+              AND alloc.candidate_wallet_address = $3
+              AND job.status IN ('queued', 'running', 'generated', 'link_failed')
+          )::int AS wallet_pending_generation_count
+        FROM network_task_allocations alloc
+        LEFT JOIN network_task_generation_jobs job
+          ON job.allocation_id = alloc.id
+        WHERE alloc.allocation_status = ANY($1::text[])
+          AND (
+            ($2::text <> '' AND alloc.candidate_account_id = $2)
+            OR ($3::text <> '' AND alloc.candidate_wallet_address = $3)
+          )
+          AND alloc.created_at > now() - interval '24 hours'
       `,
       [activeAllocationStatuses, normalizedAccountId, normalizedWalletAddress]
     ),
@@ -402,6 +456,14 @@ export async function getNetworkTaskEligibility({ accountId = "", walletAddress 
   const job = jobResult.rows[0] || null;
   const wallet = walletResult.rows[0] || null;
   const blockers = blockerResult.rows.map(eligibilityBlocker);
+  const capacityMetricsRow = capacityMetricsResult.rows[0] || {};
+  const capacityMetrics = {
+    accountOutstandingCount: Number(capacityMetricsRow.account_outstanding_count || 0),
+    walletOutstandingCount: Number(capacityMetricsRow.wallet_outstanding_count || 0),
+    accountOnlyPendingCount: Number(capacityMetricsRow.account_only_pending_count || 0),
+    accountPendingGenerationCount: Number(capacityMetricsRow.account_pending_generation_count || 0),
+    walletPendingGenerationCount: Number(capacityMetricsRow.wallet_pending_generation_count || 0),
+  };
   const profileStatus = profile
     ? "completed"
     : ["pending", "processing"].includes(job?.status)
@@ -492,7 +554,7 @@ export async function getNetworkTaskEligibility({ accountId = "", walletAddress 
     available_for_routing: "No manual request is needed. Hive Board Manager can route a Network Task when a project needs work.",
   };
 
-  return {
+  const eligibility = {
     ...base,
     status,
     label: labelByStatus[status] || base.label,
@@ -517,9 +579,14 @@ export async function getNetworkTaskEligibility({ accountId = "", walletAddress 
     capacity: {
       available: !blockers.length,
       blockers,
+      metrics: capacityMetrics,
     },
     gates,
   };
+  if (recordCapacityEvent !== false) {
+    await recordNetworkTaskCapacityEvent({ eligibility, metrics: capacityMetrics }).catch(() => {});
+  }
+  return eligibility;
 }
 async function projectById(projectId = "") {
   const result = await query(
@@ -778,6 +845,28 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     taskClass: normalizedTaskClass,
   });
   if (activeCount > 0 && !networkTask.allow_over_capacity) {
+    await recordUserObservabilityEvent({
+      eventType: "user.network_task.candidate_blocked",
+      accountId: candidate.accountId,
+      walletAddress: candidate.walletAddress,
+      walletScope: "candidate_wallet",
+      projectId,
+      sourceSurface: "hive",
+      sourceRoute: "server/repositories/network-tasks.js::enqueueNetworkTaskGenerationFromBoardDecision",
+      resultStatus: "blocked",
+      reasonCode: "network_task_candidate_at_capacity",
+      decision: {
+        schema: "pf.task_node.network_task_candidate_decision.v1",
+        eligible: false,
+        block_reason: "network_task_candidate_at_capacity",
+        active_allocation_count_24h: activeCount,
+        task_class: normalizedTaskClass,
+      },
+      metadata: {
+        boardManagerRunId: safeText(runId, 180),
+        projectId,
+      },
+    }).catch(() => {});
     throw new Error("network_task_candidate_at_capacity");
   }
   const productDoc = await currentProjectProductDoc(projectId);
@@ -1010,6 +1099,59 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       ]
     );
   });
+  await recordUserObservabilityEvent({
+    eventType: "user.network_task.candidate_selected",
+    accountId: candidate.accountId,
+    walletAddress: candidate.walletAddress,
+    walletScope: "candidate_wallet",
+    projectId,
+    allocationId,
+    generationJobId: jobId,
+    sourceSurface: "hive",
+    sourceRoute: "server/repositories/network-tasks.js::enqueueNetworkTaskGenerationFromBoardDecision",
+    resultStatus: "selected",
+    reasonCode: "board_manager",
+    decision: {
+      schema: "pf.task_node.network_task_candidate_decision.v1",
+      eligible: true,
+      task_class: normalizedTaskClass,
+      reward_min_pft: band.min,
+      reward_max_pft: band.max,
+      active_allocation_count_24h: activeCount,
+    },
+    metadata: {
+      intentId,
+      boardManagerRunId: safeText(runId, 180),
+      sourcePayloadDigest: sourceDigest,
+      idempotencyKey,
+      intentSemanticKey,
+    },
+  }).catch(() => {});
+  await recordUserObservabilityEvent({
+    eventType: "user.network_task.allocation_created",
+    accountId: candidate.accountId,
+    walletAddress: candidate.walletAddress,
+    walletScope: "candidate_wallet",
+    projectId,
+    allocationId,
+    generationJobId: jobId,
+    sourceSurface: "hive",
+    sourceRoute: "server/repositories/network-tasks.js::enqueueNetworkTaskGenerationFromBoardDecision",
+    resultStatus: "queued",
+    reasonCode: "board_manager",
+    metrics: {
+      rewardMinPft: band.min,
+      rewardMaxPft: band.max,
+      acceptWindowHours,
+    },
+    metadata: {
+      intentId,
+      boardManagerRunId: safeText(runId, 180),
+      sourcePayloadDigest: sourceDigest,
+      idempotencyKey,
+      taskClass: normalizedTaskClass,
+    },
+  }).catch(() => {});
   return {
     executed: true,
     intentId,
@@ -1110,6 +1252,27 @@ export async function markNetworkTaskGenerationJobGenerated({
       ]
     );
   }
+  if (row?.id) {
+    await recordUserObservabilityEvent({
+      eventType: "user.network_task.generation_job_changed",
+      accountId: row.candidate_account_id || "",
+      walletAddress: row.candidate_wallet_address || "",
+      walletScope: row.candidate_wallet_address ? "candidate_wallet" : "",
+      projectId: row.project_id || "",
+      allocationId: row.allocation_id || "",
+      generationJobId: row.id,
+      requestId: requestId,
+      cid: requestBundleCid,
+      sourceSurface: "tasks",
+      sourceRoute: "server/repositories/network-tasks.js::markNetworkTaskGenerationJobGenerated",
+      resultStatus: "generated",
+      reasonCode: "request_bundle_generated",
+      metadata: {
+        taskClass: row.task_class || "",
+        sourcePayloadDigest: row.source_payload_digest || "",
+      },
+    }).catch(() => {});
+  }
   return { ok: true, job: row || null };
 }
 
@@ -1152,6 +1315,25 @@ export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "
       `,
       [row.id, jsonValue({ last_error: message }), row.allocation_id]
     );
+  }
+  if (row?.id) {
+    await recordUserObservabilityEvent({
+      eventType: "user.network_task.generation_job_changed",
+      accountId: row.candidate_account_id || "",
+      walletAddress: row.candidate_wallet_address || "",
+      walletScope: row.candidate_wallet_address ? "candidate_wallet" : "",
+      projectId: row.project_id || "",
+      allocationId: row.allocation_id || "",
+      generationJobId: row.id,
+      sourceSurface: "tasks",
+      sourceRoute: "server/repositories/network-tasks.js::markNetworkTaskGenerationJobFailed",
+      resultStatus: row.status || "failed",
+      reasonCode: message || "network_task_generation_failed",
+      metadata: {
+        taskClass: row.task_class || "",
+        attemptCount: Number(row.attempt_count || 0),
+      },
+    }).catch(() => {});
   }
   return { ok: true, job: row || null };
 }
@@ -1442,6 +1624,30 @@ export async function completeNetworkTaskOfferFromTaskRequest({
     `,
     [job.project_id]
   );
+  await recordUserObservabilityEvent({
+    eventType: "user.network_task.generation_job_changed",
+    accountId: job.candidate_account_id || "",
+    walletAddress: subjectWallet || job.candidate_wallet_address || "",
+    walletScope: subjectWallet || job.candidate_wallet_address ? "candidate_wallet" : "",
+    projectId: job.project_id || "",
+    allocationId: job.allocation_id || "",
+    generationJobId: job.id,
+    requestId: request,
+    taskId: safeText(taskId, 180),
+    cid: safeText(offerCid, 240),
+    txHash: safeText(offerTxHash, 180),
+    sourceSurface: "tasks",
+    sourceRoute: "server/repositories/network-tasks.js::completeNetworkTaskOfferFromTaskRequest",
+    resultStatus: "published",
+    reasonCode: "offer_published",
+    metadata: {
+      taskClass: job.task_class || "",
+      generatedTaskTitlePresent: Boolean(title),
+    },
+    metrics: {
+      rewardOfferPft: reward,
+    },
+  }).catch(() => {});
   return { ok: true, jobId: job.id, allocationId: job.allocation_id, projectId: job.project_id };
 }
 
@@ -1633,6 +1839,35 @@ export async function syncNetworkTaskProjection({ taskId = "" } = {}) {
     updated: 0,
     error: error?.message || String(error),
   }));
+  if (allocationResult.rows.length > 0 && ["completed", "rewarded"].includes(canonicalStatus)) {
+    for (const allocation of allocationResult.rows) {
+      await recordUserObservabilityEvent({
+        eventType: "user.network_task.completed",
+        accountId: safeText(projection.account_id, 180),
+        walletAddress: safeText(projection.subject_wallet, 120),
+        walletScope: projection.subject_wallet ? "candidate_wallet" : "",
+        projectId: allocation.project_id || "",
+        allocationId: allocation.id || "",
+        taskId: normalizedTaskId,
+        txHash: safeText(projection.last_event_tx_hash, 180),
+        cid: safeText(projection.last_event_cid, 240),
+        sourceSurface: "tasks",
+        sourceRoute: "server/repositories/network-tasks.js::syncNetworkTaskProjection",
+        resultStatus: canonicalStatus,
+        reasonCode: "task_projection_sync",
+        metrics: {
+          rewardPft,
+        },
+        metadata: {
+          allocationStatus,
+          taskProjectionUpdatedAt: toIso(projection.updated_at),
+          taskProjectionLastEventAt: toIso(projection.last_event_at),
+          boardManagerFollowupQueued: boardManagerFollowup?.queued === true,
+          boardManagerFollowupsResolved: Number(boardManagerFollowupsResolved?.updated || 0),
+        },
+      }).catch(() => {});
+    }
+  }
 
   return {
     ok: true,

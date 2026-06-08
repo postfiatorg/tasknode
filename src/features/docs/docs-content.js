@@ -60,6 +60,7 @@ import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw
 import taskReviewRewardWorker from "../../../docs/wiki/architecture/task-review-reward-worker.md?raw";
 import telegramBotChat from "../../../docs/wiki/architecture/telegram-bot-chat.md?raw";
 import turnMemoryWorker from "../../../docs/wiki/architecture/turn-memory-worker.md?raw";
+import userObservabilityLogging from "../../../docs/wiki/architecture/user-observability-logging.md?raw";
 import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-production-scope.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import jobsStandardChatPrompt from "../../../prompts/chat/jobs_standard_chat_codex_style_draft.md?raw";
@@ -784,6 +785,12 @@ export const DOC_GROUPS = [
         title: "Execution Mandate",
         summary: "Verification rules for repo work and claims of completion.",
         markdown: executionMandate,
+      },
+      {
+        slug: "user-observability-logging",
+        title: "User Observability Logging",
+        summary: "Identity-vector logging spec for user, wallet, task, reward, memory, Hive, Telegram, and usage investigations.",
+        markdown: userObservabilityLogging,
       },
       {
         slug: "defect-repair-rule",

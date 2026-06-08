@@ -4,6 +4,7 @@ import {
   listRuntimeTelegramBotEvents,
   recordRuntimeTelegramBotEvent,
 } from "../runtime-store.js";
+import { recordUserObservabilityEvent } from "./user-observability.js";
 
 const directions = new Set(["inbound", "outbound", "internal"]);
 
@@ -56,6 +57,40 @@ function rowToEvent(row = {}) {
   };
 }
 
+function observabilityEventTypeForTelegramEvent(event = {}) {
+  if (event.direction === "inbound") return "user.telegram.bot_message_received";
+  if (event.direction === "outbound") {
+    return event.status === "failed" || event.error ? "user.telegram.webhook_failed" : "user.telegram.bot_response_sent";
+  }
+  if (event.status === "failed" || event.error) return "user.telegram.webhook_failed";
+  return "";
+}
+
+async function recordTelegramUserObservability(event = {}) {
+  const eventType = observabilityEventTypeForTelegramEvent(event);
+  if (!eventType) return;
+  await recordUserObservabilityEvent({
+    eventType,
+    accountId: event.accountId || "",
+    provider: "telegram",
+    providerUserId: event.providerUserId || "",
+    conversationId: event.chatId ? `telegram_${event.chatId}` : "",
+    sourceSurface: "telegram",
+    sourceRoute: "server/repositories/telegram-bot-events.js::recordTelegramBotEvent",
+    resultStatus: event.status || "",
+    reasonCode: event.error || event.action || "",
+    metadata: {
+      telegramEventId: event.id,
+      telegramEventType: event.eventType,
+      direction: event.direction,
+      action: event.action,
+      mode: event.mode,
+      updateIdPresent: Boolean(event.updateId),
+      messageIdPresent: Boolean(event.messageId),
+    },
+  }).catch(() => {});
+}
+
 export async function recordTelegramBotEvent(event = {}) {
   const normalized = normalizeEvent(event);
   if (databaseEnabled()) {
@@ -89,13 +124,16 @@ export async function recordTelegramBotEvent(event = {}) {
           normalized.createdAt,
         ]
       );
+      await recordTelegramUserObservability(normalized);
       return { ok: true, event: normalized, durable: true };
     } catch (error) {
       console.warn(`telegram bot event database write failed: ${error?.message || error}`);
     }
   }
 
-  return recordRuntimeTelegramBotEvent(normalized);
+  const result = recordRuntimeTelegramBotEvent(normalized);
+  await recordTelegramUserObservability(normalized);
+  return result;
 }
 
 export async function listTelegramBotEvents({

@@ -313,6 +313,13 @@ const EMPTY_TASKS = {
   sync: { status: "loading", projectionCount: 0 },
 };
 
+function recordClientObservabilityEvent(payload = {}) {
+  requestJson("/api/user-observability/event", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+}
 
 const SETTINGS_PAGES = [
   { key: "general", label: "General", icon: SettingsIcon },
@@ -3081,6 +3088,7 @@ function TasksView({
   const lastTaskFocusRefreshRef = useRef(0);
   const lastTaskHandoffKeyRef = useRef("");
   const lastTaskProjectionCountRef = useRef(null);
+  const lastTaskSyncWarningEventRef = useRef("");
   const previousActiveRequestCountRef = useRef(0);
   const visibleState = useMemo(() => reconcileTaskVisibleState({
     accountId,
@@ -3113,6 +3121,55 @@ function TasksView({
   } = polling;
   const outstandingCount = counts.outstanding;
   const taskRequestHandoff = taskSync?.handoff || {};
+
+  useEffect(() => {
+    const syncStatus = String(taskSync?.status || "");
+    const warningVisible = Boolean(taskSyncNotice) || attentionRequests.length > 0;
+    if (!warningVisible) {
+      lastTaskSyncWarningEventRef.current = "";
+      return;
+    }
+    const reasonCode = taskSyncNotice
+      ? syncStatus || "task_sync_warning"
+      : "task_requests_need_attention";
+    const eventKey = [
+      linkedWalletAddress,
+      reasonCode,
+      attentionRequests.length,
+      Number(taskSync?.failedReducerCount || 0),
+      Number(taskSync?.indexingLagCount || 0),
+    ].join("|");
+    if (eventKey === lastTaskSyncWarningEventRef.current) return;
+    recordClientObservabilityEvent({
+      eventType: "user.ui.sync_warning_shown",
+      walletAddress: linkedWalletAddress,
+      walletScope: linkedWalletAddress ? "active" : "unknown",
+      sourceSurface: "tasks",
+      sourceRoute: "src/main.jsx::TasksView",
+      resultStatus: "shown",
+      reasonCode,
+      metadata: {
+        label: taskSyncNotice?.label || "Task requests need attention",
+        syncStatus,
+        attentionRequestIds: attentionRequests.slice(0, 5).map((request) => request.requestId || "").filter(Boolean),
+      },
+      metrics: {
+        attentionRequestCount: attentionRequests.length,
+        failedReducerCount: Number(taskSync?.failedReducerCount || 0),
+        indexingLagCount: Number(taskSync?.indexingLagCount || 0),
+        projectionCount: Number(taskSync?.projectionCount || 0),
+      },
+    });
+    lastTaskSyncWarningEventRef.current = eventKey;
+  }, [
+    attentionRequests,
+    linkedWalletAddress,
+    taskSync?.failedReducerCount,
+    taskSync?.indexingLagCount,
+    taskSync?.projectionCount,
+    taskSync?.status,
+    taskSyncNotice,
+  ]);
 
   useEffect(() => {
     if (didAutoSelectTaskTabRef.current) return;

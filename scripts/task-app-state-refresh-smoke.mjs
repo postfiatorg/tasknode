@@ -7,14 +7,16 @@ import {
 } from "../src/features/tasks/task-app-state-refresh.js";
 
 function appState({
+  accountId = "acct_monotonic",
   generatedAt = "2026-06-08T01:00:40.000Z",
   handoffState = "none",
   projectionCount = 0,
   taskSyncVersion = "2026-06-08T01:00:40.000Z",
+  walletAddress = "rMonotonicWallet",
 } = {}) {
   return {
     generatedAt,
-    session: { status: "signed_in" },
+    session: { status: "signed_in", accountId },
     tasks: {
       outstanding: Array.from({ length: projectionCount }, (_, index) => ({
         taskId: `task_${index}`,
@@ -27,7 +29,7 @@ function appState({
         items: [],
         sync: {
           lastUpdatedAt: taskSyncVersion,
-          walletAddress: "rMonotonicWallet",
+          walletAddress,
         },
       },
       sync: {
@@ -37,10 +39,10 @@ function appState({
         },
         projectionCount,
         taskSyncVersion,
-        walletAddress: "rMonotonicWallet",
+        walletAddress,
       },
     },
-    wallet: { pftWallet: { status: "linked", address: "rMonotonicWallet" } },
+    wallet: { pftWallet: { status: walletAddress ? "linked" : "not_linked", address: walletAddress || null } },
   };
 }
 
@@ -89,5 +91,49 @@ const sameVersionLowerHandoff = appState({
   taskSyncVersion: "2026-06-08T01:00:36.000Z",
 });
 assert.equal(incomingTaskStateIsStale(fresh, sameVersionLowerHandoff), true);
+
+const preLinkEmpty = {
+  generatedAt: "2026-06-08T12:00:00.000Z",
+  session: { status: "signed_in", accountId: "acct_wallet_link" },
+  tasks: {
+    outstanding: [],
+    verification: [],
+    refused: [],
+    rewarded: [],
+    requests: {
+      items: [],
+      sync: {
+        status: "wallet_required",
+        walletAddress: "",
+      },
+    },
+    sync: {
+      status: "wallet_required",
+      projectionCount: 0,
+      walletAddress: null,
+    },
+  },
+  wallet: { pftWallet: { status: "not_linked", address: null } },
+};
+const linkedHistoricalTasks = appState({
+  accountId: "acct_wallet_link",
+  generatedAt: "2026-06-08T12:00:02.000Z",
+  handoffState: "none",
+  projectionCount: 47,
+  taskSyncVersion: "2026-06-01T23:44:02.000Z",
+  walletAddress: "rhwiJxkiTkxTC65MrmLG7WiUkbiCyw2TaE",
+});
+assert.equal(incomingTaskStateIsStale(preLinkEmpty, linkedHistoricalTasks), false);
+const linkedMerge = mergeAppStateWithMonotonicTasks(preLinkEmpty, linkedHistoricalTasks);
+assert.equal(linkedMerge.tasks.sync.walletAddress, "rhwiJxkiTkxTC65MrmLG7WiUkbiCyw2TaE");
+assert.equal(linkedMerge.tasks.sync.projectionCount, 47);
+
+const otherAccountTasks = appState({
+  accountId: "acct_other",
+  generatedAt: "2026-06-08T01:00:20.000Z",
+  projectionCount: 2,
+  taskSyncVersion: "2026-06-08T01:00:20.000Z",
+});
+assert.equal(incomingTaskStateIsStale(fresh, otherAccountTasks), false);
 
 console.log("task app-state refresh smoke ok");

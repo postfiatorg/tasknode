@@ -1436,7 +1436,10 @@ function WalletLinkModal({
           unlockedAt,
         });
       } catch {
-        await onAppStateChange?.();
+        await onAppStateChange?.({
+          errorMessage: "Failed to load linked wallet state.",
+          taskProjectionRefresh: true,
+        });
         setMessage("Wallet linked, but the encrypted vault could not be saved on this device.");
         setLinking(false);
         return;
@@ -1460,7 +1463,10 @@ function WalletLinkModal({
       setVaultPassword("");
       setVaultPasswordConfirm("");
       setMessage(finalMessage);
-      await onAppStateChange?.();
+      await onAppStateChange?.({
+        errorMessage: "Failed to load linked wallet state.",
+        taskProjectionRefresh: true,
+      });
       if (isCreate) {
         onCreateResult?.({
           ok: verify.body?.ok === true,

@@ -29,7 +29,7 @@ const routes = [
       "Database:",
       "Daily Airdrop",
       "AI Providers",
-      "Task Engine UX Integration Plan",
+      "User Observability Logging",
     ],
   },
   {

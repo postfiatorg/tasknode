@@ -12,6 +12,10 @@ function taskWalletAddress(tasks = {}) {
   return tasks?.sync?.walletAddress || tasks?.requests?.sync?.walletAddress || "";
 }
 
+function appAccountId(appState = {}) {
+  return appState?.session?.accountId || "";
+}
+
 function handoffRank(handoff = {}) {
   const state = String(handoff?.requestHandoffState || "").trim();
   return {
@@ -47,9 +51,11 @@ export function taskStateVersionMs(appState = {}) {
 export function incomingTaskStateIsStale(current = null, next = null) {
   if (!current?.tasks || !next?.tasks) return false;
 
+  if (appAccountId(current) !== appAccountId(next)) return false;
+
   const currentWallet = taskWalletAddress(current.tasks);
   const nextWallet = taskWalletAddress(next.tasks);
-  if (currentWallet && nextWallet && currentWallet !== nextWallet) return false;
+  if (currentWallet !== nextWallet) return false;
 
   const currentVersion = taskStateVersionMs(current);
   const nextVersion = taskStateVersionMs(next);

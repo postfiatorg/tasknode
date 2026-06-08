@@ -6,6 +6,42 @@ import {
   getEthereumDepositAccount,
   getLinkedWallet,
 } from "./runtime-store.js";
+import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
+
+function safeText(value = "", max = 500) {
+  return String(value || "").trim().slice(0, max);
+}
+
+async function recordProviderUnlinkedForAccountDeletion({
+  accountSnapshot = {},
+  archiveId = "",
+  database = {},
+  reason = "",
+  sessionId = "",
+  walletAddress = "",
+} = {}) {
+  const providers = Array.isArray(accountSnapshot?.providers) ? accountSnapshot.providers : [];
+  if (!archiveId || providers.length === 0) return;
+  await Promise.allSettled(providers.map((provider) => recordUserObservabilityEvent({
+    eventType: "user.provider.unlinked",
+    accountId: archiveId,
+    walletAddress,
+    walletScope: walletAddress ? "historical" : "",
+    provider: safeText(provider.provider, 80),
+    providerUserIdHash: safeText(provider.providerUserIdHash, 180),
+    sessionId,
+    sourceSurface: "auth",
+    sourceRoute: "server/account-routes.js::handleAccountRoute",
+    resultStatus: "unlinked",
+    reasonCode: "account_deleted",
+    metadata: {
+      archiveId,
+      deletionAuditId: safeText(database?.deletionAudit?.id, 180),
+      reason: safeText(reason, 240),
+      providerIdentityHashPresent: Boolean(provider.providerUserIdHash),
+    },
+  })));
+}
 
 export async function handleAccountRoute({
   expiredSessionCookie,
@@ -70,6 +106,14 @@ export async function handleAccountRoute({
       archiveId,
       actorSessionId: sessionId,
       reason,
+    });
+    await recordProviderUnlinkedForAccountDeletion({
+      accountSnapshot,
+      archiveId,
+      database,
+      reason,
+      sessionId,
+      walletAddress,
     });
     json(
       res,

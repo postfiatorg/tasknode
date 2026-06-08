@@ -646,6 +646,15 @@ export function getAccountIdentityProfile({ accountId = "" } = {}) {
   return accountIdentityProfile(state.accounts[String(accountId || "").trim()] || null);
 }
 
+export function listAccountIdentityProfiles() {
+  return Object.values(state.accounts || {})
+    .map((account) => accountIdentityProfile(account, {
+      accounts: state.accounts,
+      includeSuggestions: false,
+    }))
+    .filter(Boolean);
+}
+
 export function getAccountProfileVisibility({ accountId = "" } = {}) {
   const identityProfile = getAccountIdentityProfile({ accountId });
   return {

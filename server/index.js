@@ -12,7 +12,7 @@ import {
   authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart, authTelegramAuthorize, chatEstimateStart,
   chatModes, chatSend, chatStreamStart, contextActionStart, contextActions, contextEditSave,
   contextManifestInk, contextHistoryIpfsFetch, devAuthStatus, readiness, taskRequestIntentStart,
-  usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync, walletActionStart, walletActions,
+  usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync, userObservabilityClientEvent, walletActionStart, walletActions,
   walletLinkStart, walletLinkVerify,
 } from "./product-contracts.js";
 import { executeChatStream, logChatProviderError } from "./chat-router.js";
@@ -33,6 +33,7 @@ import {
   renameChatConversation,
   usageLedger,
 } from "./repositories/chat-billing.js";
+import { recordChatFailureObservability } from "./repositories/user-observability.js";
 import { chatConversationExistsForAccount } from "./repositories/chat-conversation-lookup.js";
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
@@ -397,6 +398,13 @@ async function routeApi(req, url, res) {
     return true;
   }
 
+  if (url.pathname === "/api/user-observability/event") {
+    const payload = req.method === "POST" ? await readJson(req, 8192) : {};
+    const result = await userObservabilityClientEvent(payload, req.method, session);
+    json(res, result.status, result.body);
+    return true;
+  }
+
   if (url.pathname === "/api/auth/dev/start") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = authDevStart(payload, req.method);
@@ -699,6 +707,16 @@ async function routeApi(req, url, res) {
           provider: started.estimate?.provider,
           model: started.estimate?.model,
         });
+        await recordChatFailureObservability({
+          accountId: started.chat.accountId,
+          conversationId,
+          mode: started.chat.mode,
+          provider: started.estimate?.provider,
+          model: started.estimate?.model,
+          status: error?.status || 502,
+          error,
+          sourceRoute: "server/index.js::/api/chat/stream",
+        }).catch(() => {});
         writeSse(res, "error", {
           ok: false,
           error: error?.message || "chat_provider_error",

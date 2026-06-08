@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "../db/pool.js";
 import { activeAllocationStatuses } from "./network-tasks-utils.js";
+import { recordUserObservabilityEvent } from "./user-observability.js";
 
 function useDatabase() {
   return databaseEnabled();
@@ -54,6 +55,30 @@ function publicFollowup(row = null) {
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
+}
+
+function recordFollowupClosedObservability(followup = null, {
+  reasonCode = "",
+  sourceRoute = "server/repositories/board-manager-state.js",
+} = {}) {
+  if (!followup?.accountId) return;
+  recordUserObservabilityEvent({
+    eventType: "user.hive.followup_closed",
+    accountId: followup.accountId,
+    projectId: followup.projectId || "",
+    conversationId: followup.conversationId || "",
+    sourceSurface: "hive",
+    sourceRoute,
+    resultStatus: followup.status || "closed",
+    reasonCode,
+    metadata: {
+      followupId: followup.id || "",
+      boardMessageId: followup.boardMessageId || "",
+      hiveContextEntryId: followup.hiveContextEntryId || "",
+      responseHiveContextEntryId: followup.responseHiveContextEntryId || "",
+      blockerType: followup.blockerType || "",
+    },
+  }).catch(() => {});
 }
 
 export async function listOpenBoardManagerFollowups({ limit = 20 } = {}) {
@@ -212,6 +237,12 @@ export async function markBoardManagerFollowupsAnsweredForHiveEntry({
       jsonValue({ answered_by_hive_context_entry_id: safeText(hiveContextEntryId, 180) }),
     ]
   );
+  for (const followup of result.rows.map(publicFollowup)) {
+    recordFollowupClosedObservability(followup, {
+      reasonCode: "answered_by_hive_context_entry",
+      sourceRoute: "server/repositories/board-manager-state.js::markBoardManagerFollowupsAnsweredForHiveEntry",
+    });
+  }
   return {
     ok: true,
     updated: result.rowCount || 0,
@@ -228,9 +259,15 @@ export async function expireOpenBoardManagerFollowups() {
           updated_at = now()
       WHERE status = 'open'
         AND expires_at <= now()
-      RETURNING id
+      RETURNING *
     `
   );
+  for (const followup of result.rows.map(publicFollowup)) {
+    recordFollowupClosedObservability(followup, {
+      reasonCode: "expired",
+      sourceRoute: "server/repositories/board-manager-state.js::expireOpenBoardManagerFollowups",
+    });
+  }
   return { ok: true, expired: result.rowCount || 0 };
 }
 
@@ -304,6 +341,12 @@ export async function resolveBoardManagerFollowupsForTaskState({
       }),
     ]
   );
+  for (const followup of result.rows.map(publicFollowup)) {
+    recordFollowupClosedObservability(followup, {
+      reasonCode: safeText(reason, 120) || "task_state_changed",
+      sourceRoute: "server/repositories/board-manager-state.js::resolveBoardManagerFollowupsForTaskState",
+    });
+  }
   return {
     ok: true,
     updated: result.rowCount || 0,
@@ -342,6 +385,12 @@ export async function resolveStaleBoardManagerFollowups() {
       }),
     ]
   );
+  for (const followup of result.rows.map(publicFollowup)) {
+    recordFollowupClosedObservability(followup, {
+      reasonCode: "stale_followup_reconcile",
+      sourceRoute: "server/repositories/board-manager-state.js::resolveStaleBoardManagerFollowups",
+    });
+  }
   return {
     ok: true,
     updated: result.rowCount || 0,

@@ -8,6 +8,7 @@ import {
   recordAuthEvent,
 } from "./runtime-store.js";
 import { appendUsageCredit } from "./repositories/chat-billing.js";
+import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import {
   hostnameFromOrigin,
   oauthBasicCredentialPart,
@@ -467,6 +468,70 @@ function oauthAction(providerId, suffix, linked = false) {
   return `${providerId}_${suffix}`;
 }
 
+function recordOAuthSuccessObservability({
+  accountId = "",
+  providerId = "",
+  providerUserId = "",
+  username = "",
+  stateRow = {},
+  created = {},
+  assurance = "",
+  initialCredit = null,
+  emailInfo = null,
+  metadata = {},
+} = {}) {
+  const linked = Boolean(stateRow?.linkAccountId);
+  const common = {
+    accountId,
+    provider: providerId,
+    providerUserId,
+    sessionId: created?.sessionId || "",
+    sourceSurface: "auth",
+    sourceRoute: "server/auth-connected-accounts.js::completeProviderAuth",
+  };
+  const events = [
+    recordUserObservabilityEvent({
+      ...common,
+      eventType: "user.provider.linked",
+      resultStatus: linked ? "linked" : "verified",
+      reasonCode: linked ? "oauth_linked" : "oauth_verified",
+      metadata: {
+        linked,
+        assurance,
+        usernamePresent: Boolean(username),
+        emailVerified: emailInfo?.verified === true,
+        initialCreditUsd: initialCredit?.idempotentReplay ? 0 : Number(initialCredit?.amountUsd || 0),
+        initialCreditIdempotentReplay: Boolean(initialCredit?.idempotentReplay),
+        metadataKeys: Object.keys(metadata || {}).sort(),
+      },
+    }),
+    recordUserObservabilityEvent({
+      ...common,
+      eventType: "user.session.started",
+      resultStatus: "started",
+      reasonCode: providerId,
+      metadata: {
+        provider: providerId,
+        assurance,
+        linkedProviderLogin: linked,
+      },
+    }),
+  ];
+  if (providerId === "telegram") {
+    events.push(recordUserObservabilityEvent({
+      ...common,
+      eventType: "user.telegram.linked",
+      resultStatus: linked ? "linked" : "verified",
+      reasonCode: linked ? "oauth_linked" : "oauth_verified",
+      metadata: {
+        linked,
+        usernamePresent: Boolean(username),
+      },
+    }));
+  }
+  Promise.allSettled(events).catch(() => {});
+}
+
 async function completeProviderAuth({
   providerId,
   label,
@@ -526,6 +591,18 @@ async function completeProviderAuth({
       initialCreditIdempotentReplay: Boolean(initialCredit?.idempotentReplay),
       ...metadata,
     },
+  });
+  recordOAuthSuccessObservability({
+    accountId: account.id,
+    providerId,
+    providerUserId,
+    username,
+    stateRow,
+    created,
+    assurance,
+    initialCredit,
+    emailInfo,
+    metadata,
   });
   return {
     status: 302,

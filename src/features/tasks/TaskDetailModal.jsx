@@ -39,6 +39,10 @@ import {
   shouldRetainOptimisticEvidenceState,
 } from "./task-detail-optimistic-state.js";
 import {
+  taskDetailControlsBlocked,
+  taskDetailRefreshErrorState,
+} from "./task-detail-loading-state.js";
+import {
   overlayTaskDetailWithVisibleState,
   shouldRetainVisibleTaskDetailState,
   visibleTaskStateFromActionReceipt,
@@ -85,6 +89,14 @@ function signingButtonLabel(
 
 function handleSigningUnlockAction(policy, onWalletUnlock) {
   if (["unlock", "open_wallet", "wait"].includes(policy.action)) onWalletUnlock?.();
+}
+
+function recordClientObservabilityEvent(payload = {}) {
+  requestJson("/api/user-observability/event", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
 }
 
 async function copyText(text) {
@@ -379,6 +391,7 @@ function TaskOverviewPanel({
               loading={loading}
               onLifecycleAction={onLifecycleAction}
               onWalletUnlock={onWalletUnlock}
+              taskId={taskIdentityKey(displayTask)}
               walletSecret={walletSecret}
               walletUnlockPending={walletUnlockPending}
               walletVault={walletVault}
@@ -394,6 +407,7 @@ function TaskOverviewPanel({
             loading={loading}
             onLifecycleAction={onLifecycleAction}
             onWalletUnlock={onWalletUnlock}
+            taskId={taskIdentityKey(displayTask)}
             walletSecret={walletSecret}
             walletUnlockPending={walletUnlockPending}
             walletVault={walletVault}
@@ -462,18 +476,19 @@ function submitClosedCopy(task = {}) {
 
 function TaskLifecycleActionPanel({
   accountId,
-  actions,
+  actions = {},
   linkedWalletAddress,
   loading,
   onLifecycleAction,
   onWalletUnlock,
+  taskId = "",
   walletSecret,
   walletUnlockPending = false,
   walletVault,
 }) {
   const [reason, setReason] = useState("");
   const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "" });
-  if (!actions?.canAccept && !actions?.canStop) return null;
+  const lastAcceptUiEventRef = useRef("");
 
   const unlockPolicy = evaluateTaskSigningUnlockPolicy({
     accountId,
@@ -503,6 +518,85 @@ function TaskLifecycleActionPanel({
   const reasonPlaceholder = actions.canAccept
     ? "Optional note if you refuse this task."
     : "Optional note for the task audit trail.";
+  const acceptUiEvent = useMemo(() => {
+    if (!actions.canAccept) return null;
+    if (!signingReady) {
+      return {
+        eventType: "user.ui.blocker_shown",
+        resultStatus: "blocked",
+        reasonCode: unlockPolicy.state || "wallet_unlock_required",
+        metadata: {
+          action: "accept",
+          unlockAction: unlockPolicy.action || "",
+          buttonLabel: acceptCopy,
+          helper,
+        },
+      };
+    }
+    if (acceptDisabled) {
+      return {
+        eventType: "user.ui.action_disabled",
+        resultStatus: "disabled",
+        reasonCode: loading ? "task_detail_loading" : state.pending ? "task_action_pending" : "accept_disabled",
+        metadata: {
+          action: "accept",
+          pendingAction,
+          loading,
+          buttonLabel: acceptPending ? "Publishing" : acceptCopy,
+        },
+      };
+    }
+    return {
+      eventType: "user.ui.action_recovered",
+      resultStatus: "recovered",
+      reasonCode: "accept_available",
+      metadata: {
+        action: "accept",
+        buttonLabel: acceptCopy,
+      },
+    };
+  }, [
+    acceptCopy,
+    acceptDisabled,
+    acceptPending,
+    actions.canAccept,
+    helper,
+    loading,
+    pendingAction,
+    signingReady,
+    state.pending,
+    unlockPolicy.action,
+    unlockPolicy.state,
+  ]);
+
+  useEffect(() => {
+    if (!actions.canAccept || !taskId || !acceptUiEvent) return;
+    const eventKey = [
+      acceptUiEvent.eventType,
+      acceptUiEvent.reasonCode,
+      taskId,
+      linkedWalletAddress,
+    ].join(":");
+    if (acceptUiEvent.eventType === "user.ui.action_recovered" && !lastAcceptUiEventRef.current) return;
+    if (lastAcceptUiEventRef.current === eventKey) return;
+    recordClientObservabilityEvent({
+      ...acceptUiEvent,
+      taskId,
+      walletAddress: linkedWalletAddress,
+      walletScope: linkedWalletAddress ? "active" : "unknown",
+      sourceSurface: "tasks",
+      sourceRoute: "src/features/tasks/TaskDetailModal.jsx::TaskLifecycleActionPanel",
+      metadata: {
+        ...acceptUiEvent.metadata,
+        canAccept: actions.canAccept,
+        canStop: actions.canStop,
+        signingReady,
+      },
+    });
+    lastAcceptUiEventRef.current = eventKey;
+  }, [acceptUiEvent, actions.canAccept, actions.canStop, linkedWalletAddress, signingReady, taskId]);
+
+  if (!actions?.canAccept && !actions?.canStop) return null;
 
   async function submitLifecycleAction(taskAction) {
     if (!signingReady) {
@@ -1059,6 +1153,7 @@ export function TaskDetailModal({
   const currentTaskVisibleState = useMemo(() => visibleTaskStateFromTask(task), [taskVersion]);
   const taskBriefPayload = buildTaskCopyPayloads(displayTask, detailState.data).codex;
   const forensicsCount = detailState.data?.forensics?.timeline?.length || displayTask.metadata?.eventCount || 0;
+  const controlsBlocked = taskDetailControlsBlocked(detailState);
 
   useEffect(() => {
     optimisticEvidenceRef.current = optimisticEvidence;
@@ -1122,19 +1217,11 @@ export function TaskDetailModal({
       if (result.ok && result.body?.ok) {
         return commitTaskDetailResult(result.body);
       }
-      setDetailState({
-        data: null,
-        error: result.body?.error || "task_detail_unavailable",
-        loading: false,
-      });
+      setDetailState((current) => taskDetailRefreshErrorState(current, result.body?.error || "task_detail_unavailable"));
       return null;
     } catch {
       if (!aliveRef.current) return null;
-      setDetailState({
-        data: null,
-        error: "Task detail could not be loaded.",
-        loading: false,
-      });
+      setDetailState((current) => taskDetailRefreshErrorState(current, "Task detail could not be loaded."));
       return null;
     }
   }
@@ -1154,20 +1241,12 @@ export function TaskDetailModal({
         if (result.ok && result.body?.ok) {
           commitTaskDetailResult(result.body);
         } else {
-          setDetailState({
-            data: null,
-            error: result.body?.error || "task_detail_unavailable",
-            loading: false,
-          });
+          setDetailState((current) => taskDetailRefreshErrorState(current, result.body?.error || "task_detail_unavailable"));
         }
       })
       .catch(() => {
         if (!active) return;
-        setDetailState({
-          data: null,
-          error: "Task detail could not be loaded.",
-          loading: false,
-        });
+        setDetailState((current) => taskDetailRefreshErrorState(current, "Task detail could not be loaded."));
       });
     return () => {
       active = false;
@@ -1371,7 +1450,7 @@ export function TaskDetailModal({
             ))}
           </div>
 
-          {detailState.loading && !detailState.data ? (
+          {controlsBlocked ? (
             <TaskDetailLoadingPanel />
           ) : activeTab === "overview" && (
             <TaskOverviewPanel
@@ -1379,7 +1458,7 @@ export function TaskDetailModal({
               detail={detailState.data}
               displayTask={displayTask}
               linkedWalletAddress={linkedWalletAddress}
-              loading={detailState.loading}
+              loading={controlsBlocked}
               onLifecycleAction={handleLifecycleAction}
               onSelectTab={setActiveTab}
               onWalletUnlock={onWalletUnlock}
@@ -1390,12 +1469,12 @@ export function TaskDetailModal({
               walletVault={walletVault}
             />
           )}
-          {!(detailState.loading && !detailState.data) && activeTab === "submit" && (
+          {!controlsBlocked && activeTab === "submit" && (
             <TaskSubmitPanel
               accountId={accountId}
               detail={detailState.data}
               linkedWalletAddress={linkedWalletAddress}
-              loading={detailState.loading}
+              loading={controlsBlocked}
               onEvidenceSubmitted={async (result) => {
                 await handleEvidenceSubmitted(result);
               }}
@@ -1407,7 +1486,7 @@ export function TaskDetailModal({
               walletVault={walletVault}
             />
           )}
-          {!(detailState.loading && !detailState.data) && activeTab === "forensics" && (
+          {!controlsBlocked && activeTab === "forensics" && (
             <TaskForensicsPanel
               copiedValue={copiedValue}
               detail={detailState.data}

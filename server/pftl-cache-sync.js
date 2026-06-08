@@ -15,6 +15,7 @@ import {
   registerPftlSyncWallet,
   storePftlAccountTransactions,
 } from "./repositories/pftl-cache.js";
+import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 
 function normalizeText(value) {
   if (value === undefined || value === null) return "";
@@ -153,7 +154,7 @@ export async function readPftlAccountPreviousTxnId({
 
 export async function bestEffortRegisterPftlSyncWallet({ accountId, walletAddress, reason }) {
   try {
-    await registerPftlSyncWallet({
+    const result = await registerPftlSyncWallet({
       accountId,
       walletAddress,
       role: "user",
@@ -161,6 +162,22 @@ export async function bestEffortRegisterPftlSyncWallet({ accountId, walletAddres
       status: "active",
       metadata: { reason },
     });
+    if (result?.ok) {
+      recordUserObservabilityEvent({
+        eventType: "user.wallet.sync_status_changed",
+        accountId,
+        walletAddress: result.walletAddress || walletAddress,
+        walletScope: "active",
+        sourceSurface: "wallet",
+        sourceRoute: "server/pftl-cache-sync.js::bestEffortRegisterPftlSyncWallet",
+        resultStatus: "active",
+        reasonCode: normalizeText(reason) || "wallet_registered",
+        metadata: {
+          role: "user",
+          priority: 10,
+        },
+      }).catch(() => {});
+    }
   } catch (error) {
     console.warn("pftl_sync_wallet_register_failed", {
       walletAddress,
@@ -171,7 +188,24 @@ export async function bestEffortRegisterPftlSyncWallet({ accountId, walletAddres
 
 export async function bestEffortDeactivatePftlSyncWallet({ walletAddress, reason }) {
   try {
-    await markPftlSyncWalletInactive({ walletAddress, reason });
+    const existingWallet = await getPftlSyncWallet({ walletAddress });
+    const result = await markPftlSyncWalletInactive({ walletAddress, reason });
+    if (result?.ok) {
+      recordUserObservabilityEvent({
+        eventType: "user.wallet.sync_status_changed",
+        accountId: existingWallet?.account_id || "",
+        walletAddress: result.walletAddress || walletAddress,
+        walletScope: "historical",
+        sourceSurface: "wallet",
+        sourceRoute: "server/pftl-cache-sync.js::bestEffortDeactivatePftlSyncWallet",
+        resultStatus: "inactive",
+        reasonCode: normalizeText(reason) || "wallet_deactivated",
+        metadata: {
+          previousStatus: normalizeText(existingWallet?.status),
+          role: normalizeText(existingWallet?.role || "user"),
+        },
+      }).catch(() => {});
+    }
   } catch (error) {
     console.warn("pftl_sync_wallet_deactivate_failed", {
       walletAddress,

@@ -4,6 +4,13 @@ export const apiRoutePolicies = [
   { id: "app_state", path: "/api/app-state", methods: ["GET"], auth: "optional" },
   { id: "session", path: "/api/session", methods: ["GET"], auth: "optional" },
   {
+    id: "user_observability_event",
+    path: "/api/user-observability/event",
+    methods: ["POST"],
+    auth: "session",
+    rateLimit: { limit: 120, windowMs: 60_000 },
+  },
+  {
     id: "auth_dev_start",
     path: "/api/auth/dev/start",
     methods: ["POST"],

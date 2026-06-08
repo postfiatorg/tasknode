@@ -3,6 +3,7 @@ import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { getChatMemoryContext } from "./chat-memory.js";
 import { getContextDocument } from "./context.js";
 import { buildPublicProfileSnapshotInput, getLatestPublicProfileSnapshot } from "./profile-public.js";
+import { recordUserObservabilityEvent } from "./user-observability.js";
 import { normalizeTaskStatus, taskStatusLabel, taskStatusTab } from "../../shared/task-lifecycle.js";
 import { formatTaskTimestamp } from "../../shared/task-time-format.js";
 
@@ -580,7 +581,20 @@ export async function enqueueNetworkTaskProfileJob({
       sourcePacket.sourceText,
     ]
   );
-  return { queued: true, job: publicJob(result.rows[0]) };
+  const job = publicJob(result.rows[0]);
+  await recordUserObservabilityEvent({
+    eventType: "user.memory.network_profile_queued",
+    accountId: normalizedAccountId,
+    sourceSurface: "memory",
+    sourceRoute: "server/repositories/network-task-profile.js::enqueueNetworkTaskProfileJob",
+    resultStatus: "queued",
+    reasonCode: safeText(reason, 120),
+    metadata: {
+      jobId: job?.id || "",
+      sourcePacketDigest: sourcePacket.sourcePacketDigest,
+    },
+  }).catch(() => {});
+  return { queued: true, job };
 }
 
 async function positiveRewardStats({ accountId = "" } = {}) {
@@ -805,7 +819,7 @@ export async function resetNetworkTaskProfileMemory({ accountId = "" } = {}) {
     return { ok: false, status: 400, error: "network_task_profile_reset_missing_account", message: "Sign in before resetting the diagnostic report." };
   }
 
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     const jobs = await client.query(
       `
         DELETE FROM network_task_profile_jobs
@@ -886,7 +900,7 @@ export async function completeNetworkTaskProfileJob({
   if (!useDatabase() || !job?.id) return { ok: false };
   const outputJson = safeObject(output);
   const outputText = formatNetworkTaskProfileOutput(outputJson);
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     await client.query(
       `
         UPDATE network_task_profiles
@@ -946,6 +960,28 @@ export async function completeNetworkTaskProfileJob({
     );
     return { ok: true, profile: publicProfile(inserted.rows[0]) };
   });
+  await recordUserObservabilityEvent({
+    eventType: "user.memory.network_profile_completed",
+    accountId: safeAccountId(job.account_id),
+    sourceSurface: "memory",
+    sourceRoute: "server/repositories/network-task-profile.js::completeNetworkTaskProfileJob",
+    resultStatus: "completed",
+    metadata: {
+      jobId: job.id,
+      profileId: result.profile?.id || "",
+      sourcePacketDigest: safeText(job.source_packet_digest, 120),
+      provider: safeText(provider, 80),
+      model: safeText(model, 160),
+      promptVersion: networkTaskProfilePromptVersion,
+      promptDigest: safeText(promptDigest, 120),
+    },
+    metrics: {
+      inputTokens: Number(usage?.inputTokens || usage?.prompt_tokens || 0),
+      outputTokens: Number(usage?.outputTokens || usage?.completion_tokens || 0),
+      totalTokens: Number(usage?.totalTokens || usage?.total_tokens || 0),
+    },
+  }).catch(() => {});
+  return result;
 }
 
 export async function failNetworkTaskProfileJob(job, error) {
@@ -973,5 +1009,19 @@ export async function failNetworkTaskProfileJob(job, error) {
       safeText(error?.message || error || "network_task_profile_job_failed", 1000),
     ]
   );
+  await recordUserObservabilityEvent({
+    eventType: "user.memory.network_profile_failed",
+    accountId: safeAccountId(job.account_id),
+    sourceSurface: "memory",
+    sourceRoute: "server/repositories/network-task-profile.js::failNetworkTaskProfileJob",
+    resultStatus: finalFailure ? "failed" : "retry_pending",
+    reasonCode: safeText(error?.message || error || "network_task_profile_job_failed", 180),
+    metadata: {
+      jobId: job.id,
+      sourcePacketDigest: safeText(job.source_packet_digest, 120),
+      attemptCount,
+      finalFailure,
+    },
+  }).catch(() => {});
   return { ok: true, retry: !finalFailure };
 }

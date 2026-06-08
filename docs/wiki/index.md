@@ -57,6 +57,7 @@ locations instead:
 | Current product boundary, route map, enabled surfaces, and deferrals | [Current System](#docs/current-system) |
 | Account auth, wallet proof, local vault unlock, and seed custody | [Identity & Wallets](#docs/identity-wallets), [Wallet](#docs/wallet) |
 | Docker, Fly deploys, secrets, process groups, production pause/restart | [Deployment](#docs/deployment) |
+| User-specific support, wallet-scoped eligibility, rewards, memory, profile, Hive, Telegram, and usage logging | [User Observability Logging](#docs/user-observability-logging) |
 | PFTasks to Task Node Official account, wallet, context, task, NFT, and URL cutover | [PFTasks Cutover](#docs/pftasks-cutover) |
 | Postgres schema target and context history restore | [Database](#docs/database), [PFTL](#docs/pftl) |
 | Ethereum deposit addresses, xpub custody, balance sync, sweep boundary | [Ethereum Deposit RPC](#docs/ethereum-deposit-rpc), [Wallet](#docs/wallet), [Database](#docs/database) |

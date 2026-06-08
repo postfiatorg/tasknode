@@ -6,6 +6,7 @@ import { runPftlCacheReducerOnce } from "./pftl-cache-reducer.js";
 import { syncPftlWalletTransactions } from "./pftl-cache-sync.js";
 import { buildPftPointerMemo, POINTER_FLAGS } from "./pftl-pointer.js";
 import { preparePftPointerTransaction, submitSignedPftTransaction } from "./pftl-submit.js";
+import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { query, transaction } from "./db/pool.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
@@ -349,6 +350,29 @@ export async function issueLatestDailyAirdrop({ accountId, runId = "" } = {}) {
       }),
     ]).catch(() => null);
     await runPftlCacheReducerOnce({ batchLimit: 20 }).catch(() => null);
+    await recordUserObservabilityEvent({
+      eventType: "user.profile.daily_airdrop_issued",
+      accountId: claim.run.account_id || accountId,
+      walletAddress: recipientWallet,
+      walletScope: "recipient_wallet",
+      txHash: submitted.txHash || "",
+      cid: pin.cid || "",
+      sourceSurface: "profile",
+      sourceRoute: "server/profile-daily-airdrop-issuance.js::issueLatestDailyAirdrop",
+      resultStatus: "submitted",
+      reasonCode: "daily_airdrop_issuance",
+      metadata: {
+        runId: claim.run.id,
+        issuanceId: claim.issuance.id,
+        sourceWallet: claim.rewardWallet.classicAddress,
+        payloadDigest: `sha256:${pin.sha256}`,
+        ledgerIndex: submitted.ledgerIndex || null,
+        alreadySubmitted: false,
+      },
+      metrics: {
+        amountPft,
+      },
+    }).catch(() => {});
     return {
       ok: true,
       alreadySubmitted: false,

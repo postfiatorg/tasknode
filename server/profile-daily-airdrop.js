@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { query } from "./db/pool.js";
+import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import {
   completeDailyAirdropRun,
   createDailyAirdropRun,
@@ -415,6 +416,36 @@ export async function runDailyAirdropScore({
       maxPossibleAirdropPft7d,
       alignmentScore7d,
     });
+    await recordUserObservabilityEvent({
+      eventType: "user.profile.daily_airdrop_scored",
+      accountId: safeText(accountId, 180),
+      walletAddress: safeText(packet?.airdrop_recipient?.wallet_address, 120),
+      walletScope: packet?.airdrop_recipient?.wallet_address ? "recipient_wallet" : "",
+      sourceSurface: "profile",
+      sourceRoute: "server/profile-daily-airdrop.js::runDailyAirdropScore",
+      resultStatus: normalized.eligibility_status,
+      reasonCode: normalized.eligibility_reason || "scored",
+      metadata: {
+        runId: row?.id || run.id,
+        runMode,
+        scenarioId: safeText(scenarioId, 120),
+        provider: response.provider,
+        model: response.model,
+        responseId: response.responseId || "",
+        promptVersion: PROMPT_VERSION,
+        promptDigest: digest,
+        inputHash,
+      },
+      metrics: {
+        dailyAirdropPft: normalized.daily_airdrop_pft,
+        retentionValueScore: normalized.retention_value_score,
+        rewardedTaskCount: Number(packet?.reward_totals?.rewarded_task_count || 0),
+        totalRewardPaidPft: Number(packet?.reward_totals?.total_reward_paid_pft || 0),
+        actualAirdropPft7d,
+        maxPossibleAirdropPft7d,
+        alignmentScore7d,
+      },
+    }).catch(() => {});
     return {
       ok: true,
       run: row,
