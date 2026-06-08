@@ -1,4 +1,5 @@
 import {
+  normalizeTaskStatus,
   TASK_STATUS,
   taskStatusLabel,
 } from "../../../shared/task-lifecycle.js";
@@ -12,6 +13,10 @@ function safeText(value = "", max = 500) {
 
 function taskId(task = {}) {
   return safeText(task.taskId || task.fullId || task.id, 180);
+}
+
+function taskTxHash(task = {}) {
+  return safeText(task.txHash || task.metadata?.optimisticLastTxHash, 180);
 }
 
 function receiptExpired(receipt = {}, nowMs = Date.now()) {
@@ -79,6 +84,34 @@ export function taskActionReceiptFromLifecycleResult({
     expectedStatus: taskStatusLabel(expectedStatusKey),
     txHash: safeText(result?.txHash, 180),
     cid: safeText(result?.cid, 180),
+    createdAt,
+    expiresAt: new Date(Date.now() + RECEIPT_TTL_MS).toISOString(),
+  };
+}
+
+export function taskActionReceiptFromObservedTask({
+  accountId = "",
+  walletAddress = "",
+  task = {},
+} = {}) {
+  const taskIdValue = taskId(task);
+  const expectedStatusKey = normalizeTaskStatus(task?.statusKey || task?.status);
+  if (!taskIdValue || expectedStatusKey === TASK_STATUS.unknown) return null;
+  const createdAt = new Date().toISOString();
+  const txHash = taskTxHash(task);
+  return {
+    id: `receipt_observed_${taskIdValue}_${expectedStatusKey}_${txHash || "no_tx"}`,
+    accountId: safeText(accountId, 180),
+    walletAddress: safeText(walletAddress, 180),
+    taskId: taskIdValue,
+    actionType: "detail_observed",
+    expectedStatusKey,
+    expectedStatus: taskStatusLabel(expectedStatusKey),
+    txHash,
+    cid: "",
+    clientActionPending: false,
+    clientSyncLabel: "",
+    clientSyncDetail: "",
     createdAt,
     expiresAt: new Date(Date.now() + RECEIPT_TTL_MS).toISOString(),
   };

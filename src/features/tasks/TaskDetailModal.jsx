@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -47,14 +47,19 @@ import {
 import {
   taskActionReceiptFromEvidenceResult,
   taskActionReceiptFromLifecycleResult,
+  taskActionReceiptFromObservedTask,
 } from "./task-action-receipts.js";
 import {
   addUserRequestedEvidenceDraft,
+  evidenceDraftStateHasUserInput,
   evidenceFileForDraft,
   evidenceMethodFromContract,
   evidenceValueForDraft,
   MAX_TASK_EVIDENCE_ITEMS,
+  restoreEvidenceDraftState,
   resetEvidenceDrafts,
+  serializeEvidenceDraftState,
+  taskEvidenceDraftStorageKey,
 } from "./task-evidence-drafts.js";
 import { TaskForensicsPanel } from "./TaskForensicsPanel.jsx";
 import {
@@ -182,6 +187,10 @@ function taskVersionKey(task = {}) {
     task.txHash || "",
     task.metadata?.eventCount || "",
   ].join("|");
+}
+
+function taskIdentityKey(task = {}) {
+  return String(task?.taskId || task?.fullId || task?.id || "").trim();
 }
 
 function TaskRewardOutcome({ outcome }) {
@@ -585,11 +594,6 @@ function TaskSubmitPanel({
 }) {
   const defaultEvidenceMethod = evidenceMethodFromContract(task, verification);
   const taskId = task?.taskId || task?.fullId || task?.id || detail?.task?.taskId || detail?.task?.fullId || "";
-  const [evidenceDrafts, setEvidenceDrafts] = useState(() => resetEvidenceDrafts(defaultEvidenceMethod));
-  const [confirmed, setConfirmed] = useState(false);
-  const [showVerificationRequest, setShowVerificationRequest] = useState(true);
-  const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "" });
-  const [notes, setNotes] = useState("");
   const actions = detail?.actions || {};
   const verificationRequest = detail?.currentVerificationRequest || null;
   const submissionOpen = Boolean(actions.canSubmitInitialEvidence || actions.canSubmitVerificationEvidence);
@@ -599,6 +603,17 @@ function TaskSubmitPanel({
     : actions.canSubmitInitialEvidence
       ? `initial:${taskId}`
       : `closed:${task?.statusKey || task?.status || taskId}`;
+  const draftStorageKey = taskEvidenceDraftStorageKey({ accountId, taskId, submissionModeKey });
+  const readPersistedDraftState = () => {
+    const storage = typeof window === "undefined" ? null : window.sessionStorage;
+    const value = draftStorageKey && storage ? storage.getItem(draftStorageKey) : null;
+    return restoreEvidenceDraftState(value, defaultEvidenceMethod);
+  };
+  const [evidenceDrafts, setEvidenceDrafts] = useState(() => readPersistedDraftState().evidenceDrafts);
+  const [confirmed, setConfirmed] = useState(false);
+  const [showVerificationRequest, setShowVerificationRequest] = useState(true);
+  const [state, setState] = useState({ error: "", pending: false, pendingLabel: "", result: "" });
+  const [notes, setNotes] = useState(() => readPersistedDraftState().notes);
   const summaries = Array.isArray(detail?.submission?.summaries) ? detail.submission.summaries : [];
   const signingEnabled = Boolean(actions.browserSubmissionEnabled);
   const unlockPolicy = evaluateTaskSigningUnlockPolicy({
@@ -639,11 +654,44 @@ function TaskSubmitPanel({
   ];
 
   useEffect(() => {
-    setEvidenceDrafts(resetEvidenceDrafts(defaultEvidenceMethod));
-    setNotes("");
+    const restored = readPersistedDraftState();
+    setEvidenceDrafts(restored.evidenceDrafts);
+    setNotes(restored.notes);
     setConfirmed(false);
     setState({ error: "", pending: false, pendingLabel: "", result: "" });
-  }, [defaultEvidenceMethod, submissionModeKey]);
+  }, [defaultEvidenceMethod, draftStorageKey]);
+
+  useEffect(() => {
+    if (!submissionOpen || !draftStorageKey || typeof window === "undefined") return;
+    try {
+      if (evidenceDraftStateHasUserInput({ evidenceDrafts, notes })) {
+        window.sessionStorage.setItem(
+          draftStorageKey,
+          JSON.stringify(serializeEvidenceDraftState({ evidenceDrafts, notes }))
+        );
+      } else {
+        window.sessionStorage.removeItem(draftStorageKey);
+      }
+    } catch {
+      // Draft persistence is a UI safety net; submission still works if storage is unavailable.
+    }
+  }, [draftStorageKey, evidenceDrafts, notes, submissionOpen]);
+
+  function clearPersistedDraftState() {
+    if (!draftStorageKey || typeof window === "undefined") return;
+    try {
+      window.sessionStorage.removeItem(draftStorageKey);
+    } catch {
+      // Ignore blocked storage during cleanup.
+    }
+  }
+
+  function resetSubmitDraftState({ clearStatus = true } = {}) {
+    setNotes("");
+    setConfirmed(false);
+    if (clearStatus) setState({ error: "", pending: false, pendingLabel: "", result: "" });
+    setEvidenceDrafts(resetEvidenceDrafts(defaultEvidenceMethod));
+  }
 
   function updateEvidenceDraft(id, key, value) {
     setState({ error: "", pending: false, pendingLabel: "", result: "" });
@@ -747,9 +795,8 @@ function TaskSubmitPanel({
         pendingLabel: "",
         result: result?.txHash ? `Published ${truncateCid(result.txHash)}` : "Evidence published",
       });
-      setEvidenceDrafts(resetEvidenceDrafts(defaultEvidenceMethod));
-      setNotes("");
-      setConfirmed(false);
+      clearPersistedDraftState();
+      resetSubmitDraftState({ clearStatus: false });
       Promise.resolve(onEvidenceSubmitted?.(result)).catch(() => {});
     } catch (error) {
       setState({
@@ -1009,6 +1056,7 @@ export function TaskDetailModal({
   const rewardPft = Number(displayTask.pft || 0);
   const taskId = displayTask.taskId || displayTask.fullId || task.taskId || task.fullId || task.id || "";
   const taskVersion = taskVersionKey(task);
+  const currentTaskVisibleState = useMemo(() => visibleTaskStateFromTask(task), [taskVersion]);
   const taskBriefPayload = buildTaskCopyPayloads(displayTask, detailState.data).codex;
   const forensicsCount = detailState.data?.forensics?.timeline?.length || displayTask.metadata?.eventCount || 0;
 
@@ -1033,8 +1081,7 @@ export function TaskDetailModal({
       optimisticLifecycleRef.current = null;
       setOptimisticLifecycle(null);
     }
-    const currentTaskOptimistic = visibleTaskStateFromTask(task);
-    let data = overlayTaskDetailWithVisibleState(body, currentTaskOptimistic);
+    let data = overlayTaskDetailWithVisibleState(body, currentTaskVisibleState);
     if (keepLifecycleOptimistic) {
       data = overlayTaskDetailWithVisibleState(data, currentOptimisticLifecycle);
     }
@@ -1042,8 +1089,14 @@ export function TaskDetailModal({
       data = overlayTaskDetailWithOptimisticEvidence(data, currentOptimisticEvidence);
     }
     setDetailState({ data, error: "", loading: false });
+    const observedReceipt = taskActionReceiptFromObservedTask({
+      accountId,
+      walletAddress: linkedWalletAddress,
+      task: data?.task,
+    });
+    if (observedReceipt) onTaskActionReceipt?.(observedReceipt);
     return data;
-  }, [task]);
+  }, [accountId, currentTaskVisibleState, linkedWalletAddress, onTaskActionReceipt]);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -1089,7 +1142,8 @@ export function TaskDetailModal({
   useEffect(() => {
     let active = true;
     setDetailState((current) => {
-      if (current.data?.task && (optimisticEvidenceRef.current || optimisticLifecycleRef.current)) {
+      const currentTaskId = taskIdentityKey(current.data?.task);
+      if (current.data?.task && currentTaskId === taskId) {
         return { ...current, error: "", loading: true };
       }
       return { data: null, error: "", loading: true };

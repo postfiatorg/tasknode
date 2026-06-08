@@ -132,14 +132,18 @@ export function visibleTaskStateFromTask(task = {}) {
 export function visibleTaskStateFromActionReceipt(receipt = {}) {
   const statusKey = normalizeTaskStatus(receipt?.expectedStatusKey || receipt?.statusKey);
   if (statusKey === TASK_STATUS.unknown) return null;
+  const hasClientSyncLabel = Object.prototype.hasOwnProperty.call(receipt, "clientSyncLabel");
+  const hasClientSyncDetail = Object.prototype.hasOwnProperty.call(receipt, "clientSyncDetail");
+  const clientActionPending = receipt?.clientActionPending === false ? false : true;
   return {
     status: safeText(receipt?.expectedStatus || receipt?.status, 120) || taskStatusLabel(statusKey),
     statusKey,
     txHash: safeText(receipt?.txHash, 180),
-    clientActionPending: true,
-    clientSyncLabel: "syncing",
-    clientSyncDetail:
-      statusKey === TASK_STATUS.submitted
+    clientActionPending,
+    clientSyncLabel: hasClientSyncLabel ? safeText(receipt?.clientSyncLabel, 80) : "syncing",
+    clientSyncDetail: hasClientSyncDetail
+      ? safeText(receipt?.clientSyncDetail, 240)
+      : statusKey === TASK_STATUS.submitted
         ? "Evidence was submitted. Task state is updating."
         : "Task action was signed. Task state is updating.",
     pendingActionReceipt: {
@@ -163,6 +167,8 @@ export function overlayTaskWithVisibleState(task = {}, visibleState = {}, { nowM
   if (!shouldApplyVisibleTaskState(task, visibleState)) return task;
   const statusKey = normalizeTaskStatus(visibleState.statusKey);
   const info = taskStatusInfo(statusKey);
+  const hasClientSyncLabel = Object.prototype.hasOwnProperty.call(visibleState, "clientSyncLabel");
+  const hasClientSyncDetail = Object.prototype.hasOwnProperty.call(visibleState, "clientSyncDetail");
   return {
     ...task,
     status: taskStatusLabel(statusKey),
@@ -174,9 +180,9 @@ export function overlayTaskWithVisibleState(task = {}, visibleState = {}, { nowM
     ago: relativeAge(visibleState.pendingActionReceipt?.createdAt, nowMs) || task.ago,
     updatedAt: visibleState.pendingActionReceipt?.createdAt || task.updatedAt,
     txHash: visibleState.txHash || task.txHash,
-    clientActionPending: true,
-    clientSyncLabel: visibleState.clientSyncLabel || "syncing",
-    clientSyncDetail: visibleState.clientSyncDetail || "Task action was signed. Task state is updating.",
+    clientActionPending: Boolean(visibleState.clientActionPending),
+    clientSyncLabel: hasClientSyncLabel ? visibleState.clientSyncLabel : "syncing",
+    clientSyncDetail: hasClientSyncDetail ? visibleState.clientSyncDetail : "Task action was signed. Task state is updating.",
     metadata: {
       ...(task.metadata || {}),
       optimisticLastTxHash: visibleState.txHash || "",
@@ -200,6 +206,8 @@ export function overlayTaskDetailWithVisibleState(detail = null, visibleState = 
   if (!detail?.task || !shouldRetainVisibleTaskDetailState(detail, visibleState)) return detail;
   const statusKey = normalizeTaskStatus(visibleState.statusKey);
   const statusInfo = taskStatusInfo(statusKey);
+  const hasClientSyncLabel = Object.prototype.hasOwnProperty.call(visibleState, "clientSyncLabel");
+  const hasClientSyncDetail = Object.prototype.hasOwnProperty.call(visibleState, "clientSyncDetail");
 
   return {
     ...detail,
@@ -212,9 +220,9 @@ export function overlayTaskDetailWithVisibleState(detail = null, visibleState = 
       statusTab: statusInfo.tab,
       lifecycle: statusInfo,
       txHash: visibleState.txHash || detail.task.txHash,
-      clientActionPending: visibleState.clientActionPending || detail.task.clientActionPending,
-      clientSyncLabel: visibleState.clientSyncLabel || detail.task.clientSyncLabel,
-      clientSyncDetail: visibleState.clientSyncDetail || detail.task.clientSyncDetail,
+      clientActionPending: Boolean(visibleState.clientActionPending || detail.task.clientActionPending),
+      clientSyncLabel: hasClientSyncLabel ? visibleState.clientSyncLabel : detail.task.clientSyncLabel,
+      clientSyncDetail: hasClientSyncDetail ? visibleState.clientSyncDetail : detail.task.clientSyncDetail,
       metadata: {
         ...(detail.task.metadata || {}),
         optimisticLastTxHash: visibleState.txHash || detail.task.metadata?.optimisticLastTxHash || "",

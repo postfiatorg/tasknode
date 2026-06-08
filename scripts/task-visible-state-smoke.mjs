@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   taskActionReceiptFromEvidenceResult,
   taskActionReceiptFromLifecycleResult,
+  taskActionReceiptFromObservedTask,
 } from "../src/features/tasks/task-action-receipts.js";
 import {
   findTaskById,
@@ -123,6 +124,33 @@ assert.equal(noHardRefresh.counts.verification, 0);
 assert.equal(noHardRefresh.totalPftInFlight, 0);
 assert.equal(noHardRefresh.prunedReceipts.length, 0);
 assert.equal(noHardRefresh.polling.shouldRefreshTaskState, false);
+
+const observedVerificationRequest = taskActionReceiptFromObservedTask({
+  accountId,
+  walletAddress,
+  task: {
+    ...task("verification_requested"),
+    txHash: "OBSERVED_TX",
+  },
+});
+const staleProposedVisible = reconcile(tasksWith("outstanding", proposed), [observedVerificationRequest]);
+assert.equal(staleProposedVisible.outstanding.length, 0);
+assert.equal(staleProposedVisible.verification.length, 1);
+assert.equal(staleProposedVisible.verification[0].statusKey, "verification_requested");
+assert.equal(staleProposedVisible.verification[0].clientActionPending, false);
+assert.equal(staleProposedVisible.verification[0].clientSyncLabel, "");
+assert.equal(staleProposedVisible.sync.requiresRefresh, true);
+
+const staleSubmittedVisible = reconcile(tasksWith("outstanding", task("submitted")), [observedVerificationRequest]);
+assert.equal(staleSubmittedVisible.outstanding.length, 0);
+assert.equal(staleSubmittedVisible.verification.length, 1);
+assert.equal(staleSubmittedVisible.verification[0].statusKey, "verification_requested");
+assert.equal(staleSubmittedVisible.counts.outstanding, 0);
+assert.equal(staleSubmittedVisible.counts.verification, 1);
+assert.equal(staleSubmittedVisible.selectedTask.statusKey, "verification_requested");
+
+const observedCaughtUp = reconcile(tasksWith("verification", verificationRequested), [observedVerificationRequest]);
+assert.equal(observedCaughtUp.prunedReceipts.length, 0);
 
 const hardRefresh = reconcile(tasksWith("rewarded", rewarded), []);
 assert.deepEqual(

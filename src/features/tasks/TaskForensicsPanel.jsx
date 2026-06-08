@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { formatTaskTimestamp } from "../../../shared/task-time-format";
 import { truncateCid } from "../context/context-view-utils.jsx";
+import { shouldShowIndexedTaskEventsLoading } from "./task-forensics-state.js";
 
 function statusTone(value = "") {
   const lower = String(value || "").toLowerCase();
@@ -338,7 +339,7 @@ export function TaskForensicsPanel({ copiedValue, detail, error, loading, onCopy
   const integrity = forensics.integrity || {};
   const expectedEvents = Number(forensics.eventCount || integrity.expectedEventCount || 0);
 
-  if (loading) {
+  if (shouldShowIndexedTaskEventsLoading({ detail, loading })) {
     return (
       <div className="task-empty-panel">
         <RefreshCw size={18} strokeWidth={1.8} />
