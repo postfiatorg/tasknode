@@ -88,7 +88,7 @@ Wallet linkage and wallet unlock are separate states.
 
 Linkage means the app account has a server-side proof that a PFT address belongs to the user. The server stores wallet metadata and proof records, but it does not receive the seed phrase, wallet password, private key, or browser vault plaintext.
 
-Unlock means the browser has decrypted the local encrypted seed vault for the current session. Unlocking happens in `WalletUnlockModal`, which calls `src/wallet-core.js::unlockEncryptedMnemonicVault` with the user's password and the expected linked address. The decrypted mnemonic is held in React memory through `walletSecretRef` in `src/main.jsx` and mirrored into same-tab `sessionStorage` so normal page reloads do not force another password prompt. It is cleared when the user locks the vault, logs out, or removes the local vault, and it does not survive closing the tab. Switching accounts replaces the in-memory secret, but a prior account's mirror entry can remain in the tab's `sessionStorage` until lock, logout, or tab close. The unlocked secret is never sent to or stored by the server.
+Unlock means the browser has decrypted the local encrypted seed vault for the current session. Unlocking happens in `WalletUnlockModal`, which calls `src/wallet-core.js::unlockEncryptedMnemonicVault` with the user's password and the expected linked address. The decrypted mnemonic is held in React memory through `walletSecretRef` in `src/main.jsx` and mirrored into same-tab `sessionStorage` so normal page reloads do not force another password prompt. The mirror is encrypted with a non-extractable AES-GCM key kept in browser IndexedDB, so the stored value is ciphertext rather than a readable phrase. The unlock is cleared when the user locks the vault, logs out, or removes the local vault; it does not survive closing the tab; and it locks automatically after `TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES` minutes of inactivity, default 30. Every vault refresh sweeps unlock entries that belong to any other account, so switching accounts cannot leave a prior account's session behind. The unlocked secret is never sent to or stored by the server.
 
 The unlock modal is available from multiple surfaces:
 
@@ -125,7 +125,7 @@ If a linked wallet has no saved local vault, the app cannot unlock from the moda
 
 - Local seed vault: browser-only encrypted custody material.
 - Linked wallet metadata: server account record.
-- Session unlock secret: browser tab state. React memory plus a same-tab `sessionStorage` mirror that survives page reloads and is removed on lock, logout, local-vault removal, or tab close. Never sent to or stored by the server.
+- Session unlock secret: browser tab state. React memory plus an encrypted same-tab `sessionStorage` mirror (AES-GCM under a non-extractable IndexedDB key) that survives page reloads and is removed on lock, logout, local-vault removal, idle auto-lock, or tab close. Never sent to or stored by the server.
 - PFT balance and activity: PFTL-derived cache.
 - Ethereum top-ups: account-scoped Ethereum deposit addresses and observed
   token deposits. These addresses are derived from the operator receive xpub,

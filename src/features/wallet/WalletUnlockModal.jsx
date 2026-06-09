@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
+import { walletUnlockIdleLockMinutes } from "./wallet-unlocked-session";
 import "./wallet-unlock.css";
 
 function shortWalletAddress(address) {
@@ -20,6 +21,7 @@ export function WalletUnlockModal({
   const [message, setMessage] = useState("");
   const [unlocking, setUnlocking] = useState(false);
   const [forgetting, setForgetting] = useState(false);
+  const [confirmingForget, setConfirmingForget] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -124,24 +126,55 @@ export function WalletUnlockModal({
             <AlertTriangle size={13} strokeWidth={1.75} />
             <span>
               The decrypted phrase stays available in this browser tab, including across page reloads, until you lock
-              the vault, log out, or close the tab. On a shared computer, lock the vault when you are done.
+              the vault, log out, or close the tab. It locks automatically after {walletUnlockIdleLockMinutes()} minutes
+              of inactivity. On a shared computer, lock the vault when you are done.
             </span>
           </div>
           {message && <div className="wallet-unlock-message">{message}</div>}
         </div>
-        <footer>
-          <button className="wallet-unlock-secondary" disabled={forgetting} onClick={forgetVault} type="button">
-            {forgetting ? "Forgetting" : "Forget local vault"}
-          </button>
-          <button
-            className="wallet-unlock-primary"
-            disabled={!walletCore || !password || unlocking}
-            onClick={unlockVault}
-            type="button"
-          >
-            {unlocking ? "Unlocking" : "Unlock"}
-          </button>
-        </footer>
+        {confirmingForget ? (
+          <>
+            <div className="wallet-unlock-warning">
+              <AlertTriangle size={13} strokeWidth={1.75} />
+              <span>
+                This permanently deletes the encrypted seed vault from this browser. Without your 24-word backup
+                phrase, this app cannot restore the wallet and its funds become unreachable from here.
+              </span>
+            </div>
+            <footer>
+              <button
+                className="wallet-unlock-secondary"
+                disabled={forgetting}
+                onClick={() => setConfirmingForget(false)}
+                type="button"
+              >
+                Keep vault
+              </button>
+              <button className="wallet-unlock-primary" disabled={forgetting} onClick={forgetVault} type="button">
+                {forgetting ? "Forgetting" : "Yes, delete local vault"}
+              </button>
+            </footer>
+          </>
+        ) : (
+          <footer>
+            <button
+              className="wallet-unlock-secondary"
+              disabled={forgetting}
+              onClick={() => setConfirmingForget(true)}
+              type="button"
+            >
+              Forget local vault
+            </button>
+            <button
+              className="wallet-unlock-primary"
+              disabled={!walletCore || !password || unlocking}
+              onClick={unlockVault}
+              type="button"
+            >
+              {unlocking ? "Unlocking" : "Unlock"}
+            </button>
+          </footer>
+        )}
       </div>
     </div>
   );

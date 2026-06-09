@@ -158,6 +158,7 @@ function runtimeConfig() {
     analyticsEnabled: process.env.VITE_ANALYTICS_ENABLED !== "false",
     posthogHost: process.env.VITE_POSTHOG_HOST || process.env.POSTHOG_UI_HOST || "",
     posthogKeyPresent: Boolean(process.env.POSTHOG_KEY || process.env.VITE_POSTHOG_KEY),
+    walletUnlockIdleLockMinutes: process.env.TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES || "",
   };
 }
 

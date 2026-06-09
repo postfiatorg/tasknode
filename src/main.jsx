@@ -137,9 +137,14 @@ import {
   walletVaultDisplayState,
 } from "./features/wallet/wallet-state";
 import {
+  clearAllUnlockedWalletSessions,
+  clearOtherUnlockedWalletSessions,
   clearUnlockedWalletSession,
   readUnlockedWalletSession,
   saveUnlockedWalletSession,
+  touchWalletUnlockActivity,
+  walletUnlockIdleLockMs,
+  walletUnlockIdleRemainingMs,
 } from "./features/wallet/wallet-unlocked-session.js";
 import { WalletUnlockModal } from "./features/wallet/WalletUnlockModal";
 import { formatCreditUsd, formatUsageUsd } from "./formatters";
@@ -659,15 +664,14 @@ function App() {
   }, [session?.accountId]);
 
   const lockWalletVault = useCallback(() => {
-    const accountId = walletSecretRef.current?.accountId || walletAccountId;
     walletSecretRef.current = null;
-    clearUnlockedWalletSession({ accountId });
+    clearAllUnlockedWalletSessions();
     setWalletVaultStatus((current) => ({
       ...current,
       unlocked: false,
       lastUnlockedAt: null,
     }));
-  }, [walletAccountId]);
+  }, []);
 
   const refreshWalletVaultStatus = useCallback(
     async ({ preserveUnlock = false, accountId = "" } = {}) => {
@@ -679,42 +683,44 @@ function App() {
       }
 
       try {
+        // Any persisted unlock entry that does not belong to the current
+        // account is stale by definition; sweep them on every refresh so a
+        // prior account's session can never linger after an account switch.
+        clearOtherUnlockedWalletSessions({ keepAccountId: effectiveAccountId });
         if (!preserveUnlock) clearUnlockedWalletSession({ accountId: effectiveAccountId });
         const walletCore = await import("./wallet-core");
         const nextStatus = typeof walletCore.localWalletVaultStatusAsync === "function"
           ? await walletCore.localWalletVaultStatusAsync({ accountId: effectiveAccountId })
           : walletCore.localWalletVaultStatus({ accountId: effectiveAccountId });
-        setWalletVaultStatus((current) => {
-          const currentSecret = walletSecretRef.current;
-          const canRestoreUnlock = Boolean(preserveUnlock && nextStatus?.available && nextStatus?.address);
-          const inMemorySecretMatches =
-            canRestoreUnlock &&
-            currentSecret?.accountId === effectiveAccountId &&
-            currentSecret?.address === nextStatus.address &&
-            currentSecret?.mnemonic;
-          const sessionSecret = inMemorySecretMatches
-            ? null
-            : canRestoreUnlock
-              ? readUnlockedWalletSession({
-                accountId: effectiveAccountId,
-                expectedAddress: nextStatus.address,
-              })
-              : null;
-          const activeSecret = inMemorySecretMatches ? currentSecret : sessionSecret;
+        const currentSecret = walletSecretRef.current;
+        const canRestoreUnlock = Boolean(preserveUnlock && nextStatus?.available && nextStatus?.address);
+        const inMemorySecretMatches =
+          canRestoreUnlock &&
+          currentSecret?.accountId === effectiveAccountId &&
+          currentSecret?.address === nextStatus.address &&
+          currentSecret?.mnemonic;
+        const sessionSecret = inMemorySecretMatches
+          ? null
+          : canRestoreUnlock
+            ? await readUnlockedWalletSession({
+              accountId: effectiveAccountId,
+              expectedAddress: nextStatus.address,
+            })
+            : null;
+        const activeSecret = inMemorySecretMatches ? currentSecret : sessionSecret;
 
-          if (activeSecret) {
-            walletSecretRef.current = activeSecret;
-          } else {
-            walletSecretRef.current = null;
-            clearUnlockedWalletSession({ accountId: effectiveAccountId });
-          }
+        if (activeSecret) {
+          walletSecretRef.current = activeSecret;
+        } else {
+          walletSecretRef.current = null;
+          clearUnlockedWalletSession({ accountId: effectiveAccountId });
+        }
 
-          return {
-            ...nextStatus,
-            unlocked: Boolean(activeSecret),
-            lastUnlockedAt: activeSecret ? activeSecret.unlockedAt || current.lastUnlockedAt : null,
-          };
-        });
+        setWalletVaultStatus((current) => ({
+          ...nextStatus,
+          unlocked: Boolean(activeSecret),
+          lastUnlockedAt: activeSecret ? activeSecret.unlockedAt || current.lastUnlockedAt : null,
+        }));
         return nextStatus;
       } catch {
         walletSecretRef.current = null;
@@ -740,7 +746,8 @@ function App() {
         mnemonic: unlock.mnemonic,
         unlockedAt: unlock.unlockedAt || new Date().toISOString(),
       };
-      saveUnlockedWalletSession(walletSecretRef.current);
+      void saveUnlockedWalletSession(walletSecretRef.current);
+      touchWalletUnlockActivity();
       setWalletVaultStatus((current) => ({
         ...current,
         available: true,
@@ -754,6 +761,35 @@ function App() {
     },
     [walletAccountId]
   );
+
+  useEffect(() => {
+    if (!walletVaultStatus?.unlocked) return undefined;
+    const idleLockMs = walletUnlockIdleLockMs();
+    let lastTouchMs = 0;
+    const onActivity = () => {
+      const nowMs = Date.now();
+      if (nowMs - lastTouchMs < 5000) return;
+      lastTouchMs = nowMs;
+      touchWalletUnlockActivity();
+    };
+    const lockIfIdle = () => {
+      const remaining = walletUnlockIdleRemainingMs({ idleLockMs });
+      if (remaining !== null && remaining <= 0) lockWalletVault();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") lockIfIdle();
+    };
+    const activityEvents = ["pointerdown", "keydown", "wheel", "touchstart"];
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, onActivity, { passive: true }));
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    onActivity();
+    const interval = window.setInterval(lockIfIdle, 30_000);
+    return () => {
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, onActivity));
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.clearInterval(interval);
+    };
+  }, [walletVaultStatus?.unlocked, lockWalletVault]);
 
   const hydrateContextPointer = useCallback(
     async (pointer) => {
