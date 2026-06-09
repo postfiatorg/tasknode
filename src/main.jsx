@@ -1108,10 +1108,15 @@ function App() {
     );
   }
 
-  function recordTaskActionReceipt(receipt) {
+  const recordTaskActionReceipt = useCallback((receipt) => {
     if (!receipt?.taskId || !receipt?.expectedStatusKey) return;
+    // A duplicate receipt returns the same array reference; skip both state
+    // updates and the session-storage write so observed-receipt emissions from
+    // task detail polling cannot re-render the app at network round-trip rate.
+    if (appendTaskActionReceipt(taskActionReceipts, receipt) === taskActionReceipts) return;
     setTaskActionReceipts((current) => {
       const next = appendTaskActionReceipt(current, receipt);
+      if (next === current) return current;
       saveTaskActionReceipts(
         typeof window === "undefined" ? null : window.sessionStorage,
         next,
@@ -1129,7 +1134,7 @@ function App() {
         }),
       };
     });
-  }
+  }, [linkedWalletAddress, taskActionReceipts, walletAccountId]);
 
   async function logOut() {
     lockWalletVault();

@@ -1264,6 +1264,7 @@ export function TaskDetailModal({
   const [optimisticEvidence, setOptimisticEvidence] = useState(null);
   const [optimisticLifecycle, setOptimisticLifecycle] = useState(null);
   const aliveRef = useRef(true);
+  const onTaskActionReceiptRef = useRef(onTaskActionReceipt);
   const optimisticEvidenceRef = useRef(null);
   const optimisticLifecycleRef = useRef(null);
   const projectionDetail = useMemo(
@@ -1280,6 +1281,13 @@ export function TaskDetailModal({
   const taskBriefPayload = buildTaskCopyPayloads(displayTask, displayDetail).codex;
   const forensicsCount = displayDetail?.forensics?.timeline?.length || displayTask.metadata?.eventCount || 0;
   const controlsBlocked = taskDetailControlsBlocked({ ...detailState, data: displayDetail });
+
+  // Hold the receipt callback in a ref so commitTaskDetailResult keeps a
+  // stable identity across parent re-renders; otherwise every observed
+  // receipt would re-arm the detail-fetch effect and loop the request.
+  useEffect(() => {
+    onTaskActionReceiptRef.current = onTaskActionReceipt;
+  }, [onTaskActionReceipt]);
 
   useEffect(() => {
     optimisticEvidenceRef.current = optimisticEvidence;
@@ -1316,9 +1324,9 @@ export function TaskDetailModal({
       walletAddress: linkedWalletAddress,
       task: data?.task,
     });
-    if (observedReceipt) onTaskActionReceipt?.(observedReceipt);
+    if (observedReceipt) onTaskActionReceiptRef.current?.(observedReceipt);
     return data;
-  }, [accountId, currentTaskVisibleState, detailCacheKey, linkedWalletAddress, onTaskActionReceipt]);
+  }, [accountId, currentTaskVisibleState, detailCacheKey, linkedWalletAddress]);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -1386,7 +1394,10 @@ export function TaskDetailModal({
     return () => {
       active = false;
     };
-  }, [commitTaskDetailResult, detailCacheKey, detailRefreshKey, linkedWalletAddress, task, taskId, taskVersion]);
+    // Keyed on stable primitives (plus the version-stable commit callback) so
+    // the fetch fires once per open, task-version change, or explicit refresh,
+    // not on every parent re-render that recreates the task object identity.
+  }, [commitTaskDetailResult, detailCacheKey, detailRefreshKey, linkedWalletAddress, taskId, taskVersion]);
 
   function applyOptimisticEvidenceState(result = {}) {
     const optimistic = optimisticEvidenceStateFromSubmission(result);

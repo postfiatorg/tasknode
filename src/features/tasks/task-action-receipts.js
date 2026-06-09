@@ -119,6 +119,16 @@ export function taskActionReceiptFromObservedTask({
 
 export function appendTaskActionReceipt(receipts = [], receipt = null, nowMs = Date.now()) {
   if (!receipt?.taskId || !receipt?.expectedStatusKey) return pruneTaskActionReceipts(receipts, nowMs);
+  const hasLiveDuplicate = (Array.isArray(receipts) ? receipts : []).some((item) => (
+    safeText(item.taskId || item.fullId || item.id, 180) === receipt.taskId &&
+    safeText(item.expectedStatusKey, 120) === safeText(receipt.expectedStatusKey, 120) &&
+    safeText(item.txHash, 180) === safeText(receipt.txHash, 180) &&
+    !receiptExpired(item, nowMs)
+  ));
+  // A duplicate receipt (same task, expected status, and tx hash) is a no-op:
+  // return the original reference so callers can skip state updates, and keep
+  // the existing expiresAt instead of re-minting a fresh TTL on every poll.
+  if (hasLiveDuplicate) return receipts;
   const next = [
     receipt,
     ...pruneTaskActionReceipts(receipts, nowMs).filter((item) => (
