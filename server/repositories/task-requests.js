@@ -236,6 +236,14 @@ export async function upsertTaskRequest(request = {}) {
   return { ok: true, request: publicTaskRequest(result.rows[0]) };
 }
 
+export async function getTaskRequestByRequestId(requestId = "") {
+  if (!databaseEnabled()) return null;
+  const normalizedRequestId = safeText(requestId, 180);
+  if (!normalizedRequestId) return null;
+  const result = await query("SELECT * FROM task_requests WHERE request_id = $1", [normalizedRequestId]);
+  return result.rows[0] ? publicTaskRequest(result.rows[0]) : null;
+}
+
 export async function claimTaskGenerationRequests({ limit = 1 } = {}) {
   if (!databaseEnabled()) return [];
   const result = await query(
@@ -245,6 +253,7 @@ export async function claimTaskGenerationRequests({ limit = 1 } = {}) {
         FROM task_requests
         WHERE status IN ('published', 'queued')
           AND request_bundle_cid <> ''
+          AND generated_task_id = ''
         ORDER BY updated_at ASC, created_at ASC, request_id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT $1
