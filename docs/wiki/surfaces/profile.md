@@ -161,6 +161,16 @@ and failed rows are not used as profile avatars and are filtered out of public
 profile output; public profile surfaces only expose generated, prepared, or
 minted NFT rows.
 
+If the server restarts while a generation request is in flight (for example
+during a deploy), the row would otherwise be stranded at `status='generating'`
+with no running request behind it. A staleness sweep on the next
+`/api/profile/nfts` read, and again at the start of the next generation
+request, marks any `generating` row older than the configured threshold
+(`TASKNODE_PROFILE_NFT_GENERATION_STALE_MINUTES`, default 10 minutes, always
+floored above the worst-case in-flight image timeout) as `status='failed'` with
+an interruption error, so the Studio recovers into the normal failed-row retry
+path on the next Profile load instead of waiting forever.
+
 ### Wallet NFT Inventory From Chain
 
 The durable NFT source of truth is the PFTL wallet, not the old PFTasks database and not Task Node Official's `profile_nfts` cache.

@@ -476,6 +476,69 @@ export async function markProfileNftMinted({
   return result.rows[0] ? normalizeRecord(result.rows[0]) : null;
 }
 
+const generationInterruptedError =
+  "Generation was interrupted: the server restarted while this image was generating. Retry generation.";
+
+function defaultGenerationStaleMinutes(env = process.env) {
+  const configured = Number(env.TASKNODE_PROFILE_NFT_GENERATION_STALE_MINUTES || 10);
+  return Number.isFinite(configured) && configured > 0 ? configured : 10;
+}
+
+function minimumGenerationStaleMinutes(env = process.env) {
+  // A legitimate generation request can stay in flight for the full OpenAI image
+  // timeout plus IPFS pin time, so the sweep threshold is floored above that
+  // worst case to guarantee a live request is never marked failed.
+  const imageTimeoutMs = Math.max(30_000, Number(env.PROFILE_NFT_IMAGE_TIMEOUT_MS || 300_000));
+  return Math.ceil(imageTimeoutMs / 60_000) + 2;
+}
+
+export async function failStaleGeneratingProfileNfts({ accountId = "", staleMinutes = 0, limit = 25 } = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  const requestedMinutes = Number(staleMinutes || 0) > 0 ? Number(staleMinutes) : defaultGenerationStaleMinutes();
+  const effectiveMinutes = Math.max(requestedMinutes, minimumGenerationStaleMinutes());
+  const boundedLimit = Math.min(Math.max(Number(limit || 25), 1), 100);
+
+  if (!databaseEnabled()) {
+    const cutoffMs = Date.now() - effectiveMinutes * 60_000;
+    const swept = [];
+    for (const record of runtimeNfts.values()) {
+      if (swept.length >= boundedLimit) break;
+      if (record.status !== "generating") continue;
+      if (normalizedAccountId && record.accountId !== normalizedAccountId) continue;
+      const updatedAtMs = Date.parse(record.updatedAt || "");
+      if (!Number.isFinite(updatedAtMs) || updatedAtMs >= cutoffMs) continue;
+      const next = normalizeRecord({
+        ...record,
+        status: "failed",
+        error: generationInterruptedError,
+        updatedAt: nowIso(),
+      });
+      runtimeNfts.set(record.id, next);
+      swept.push(next);
+    }
+    return swept;
+  }
+
+  const result = await query(
+    `UPDATE profile_nfts
+        SET status = 'failed',
+            error = $1,
+            updated_at = now()
+      WHERE id IN (
+        SELECT id
+          FROM profile_nfts
+         WHERE status = 'generating'
+           AND ($2::text = '' OR account_id = $2)
+           AND updated_at < now() - ($3::text || ' minutes')::interval
+         ORDER BY updated_at ASC
+         LIMIT $4
+      )
+      RETURNING *`,
+    [generationInterruptedError, normalizedAccountId, String(effectiveMinutes), boundedLimit]
+  );
+  return result.rows.map(normalizeRecord);
+}
+
 export async function markProfileNftFailed({ accountId = "", nftId = "", error = "" } = {}) {
   const record = await getProfileNft({ accountId, nftId });
   if (!record) return null;

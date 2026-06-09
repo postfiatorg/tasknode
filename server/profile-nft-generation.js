@@ -2,6 +2,7 @@ import { renderProfileNftPrompt } from "./profile-nft-prompts.js";
 import { pinIpfsFile } from "./context-ipfs.js";
 import {
   createGeneratingProfileNft,
+  failStaleGeneratingProfileNfts,
   markProfileNftFailed,
   markProfileNftGenerated,
 } from "./repositories/profile-nfts.js";
@@ -133,6 +134,10 @@ export async function profileNftGenerateStart({
       },
     };
   }
+
+  await failStaleGeneratingProfileNfts({ accountId: session.accountId }).catch((error) => {
+    console.warn(`profile nft stale generation sweep failed: ${error?.message || error}`);
+  });
 
   const apiKey = safeText(env.OPENAI_API_KEY, 10000);
   if (!apiKey) {
