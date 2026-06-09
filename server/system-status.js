@@ -894,6 +894,7 @@ async function dailyAirdropItem(tables, nowMs) {
                 i.run_id,
                 i.id AS issuance_id,
                 i.amount_pft::numeric AS amount_pft,
+                i.recipient_wallet,
                 CASE
                   WHEN i.status = 'failed'
                    AND COALESCE(i.tx_hash, '') = ''
@@ -919,6 +920,7 @@ async function dailyAirdropItem(tables, nowMs) {
                 r.id AS run_id,
                 '' AS issuance_id,
                 r.daily_airdrop_pft::numeric AS amount_pft,
+                COALESCE(r.input_snapshot->'airdrop_recipient'->>'wallet_address', '') AS recipient_wallet,
                 r.status,
                 r.error_message,
                 r.updated_at
@@ -934,6 +936,34 @@ async function dailyAirdropItem(tables, nowMs) {
                  AND complete.status = 'completed'
             )
        ),
+       missing_issuance_debt AS (
+         SELECT 'issuance_missing' AS kind,
+                r.account_id,
+                r.run_date,
+                r.id AS run_id,
+                '' AS issuance_id,
+                r.daily_airdrop_pft::numeric AS amount_pft,
+                COALESCE(r.input_snapshot->'airdrop_recipient'->>'wallet_address', '') AS recipient_wallet,
+                'missing_issuance' AS status,
+                r.error_message,
+                r.updated_at
+           FROM profile_daily_airdrop_runs r
+          WHERE r.run_mode = 'production'
+            AND r.status = 'completed'
+            AND r.daily_airdrop_pft > 0
+            AND NOT EXISTS (
+              SELECT 1
+                FROM profile_daily_airdrop_issuances i
+               WHERE i.run_id = r.id
+            )
+            AND NOT EXISTS (
+              SELECT 1
+                FROM profile_daily_airdrop_issuances submitted
+               WHERE submitted.account_id = r.account_id
+                 AND submitted.run_date = r.run_date
+                 AND submitted.status = 'submitted'
+            )
+       ),
        debt AS (
          SELECT *,
                 CASE
@@ -942,17 +972,21 @@ async function dailyAirdropItem(tables, nowMs) {
                   WHEN kind = 'issuance' AND status = 'processing_pre_submit' THEN 'wait_or_reclaim_pre_submit'
                   WHEN kind = 'scoring' AND status = 'running' THEN 'wait_or_reclaim_stale_scoring'
                   WHEN kind = 'scoring' AND status = 'failed' THEN 'retry_scoring'
+                  WHEN kind = 'issuance_missing' AND recipient_wallet <> '' THEN 'retry_issuance'
                   ELSE 'inspect'
                 END AS next_action
            FROM (
              SELECT * FROM issuance_debt
              UNION ALL
              SELECT * FROM scoring_debt
+             UNION ALL
+             SELECT * FROM missing_issuance_debt
            ) all_debt
        )
        SELECT count(*)::int AS unresolved_count,
               count(*) FILTER (WHERE kind = 'issuance')::int AS issuance_debt_count,
               count(*) FILTER (WHERE kind = 'scoring')::int AS scoring_debt_count,
+              count(*) FILTER (WHERE kind = 'issuance_missing')::int AS missing_issuance_count,
               count(*) FILTER (WHERE next_action = 'retry_issuance')::int AS retryable_issuance_count,
               count(*) FILTER (WHERE next_action = 'reconcile_before_retry')::int AS reconcile_count,
               count(*) FILTER (WHERE next_action IN ('wait_or_reclaim_pre_submit', 'wait_or_reclaim_stale_scoring'))::int AS blocked_count,
@@ -975,6 +1009,7 @@ async function dailyAirdropItem(tables, nowMs) {
     debt_unresolved: unresolvedDebt,
     debt_issuance: Number(debt.issuance_debt_count || 0),
     debt_scoring: Number(debt.scoring_debt_count || 0),
+    debt_missing_issuance: Number(debt.missing_issuance_count || 0),
     debt_retryable_issuance: Number(debt.retryable_issuance_count || 0),
     debt_reconcile: reconcileDebt,
     debt_blocked: blockedDebt,
@@ -1019,6 +1054,7 @@ async function dailyAirdropItem(tables, nowMs) {
       row?.run_date && `runDate=${row.run_date}`,
       row?.run_mode && `mode=${row.run_mode}`,
       unresolvedDebt > 0 && `unresolvedDebt=${unresolvedDebt}`,
+      Number(debt.missing_issuance_count || 0) > 0 && `missingIssuance=${debt.missing_issuance_count}`,
       Number(debt.retryable_issuance_count || 0) > 0 && `retryableIssuance=${debt.retryable_issuance_count} retryablePft=${debt.retryable_pft}`,
       reconcileDebt > 0 && `reconcileRequired=${reconcileDebt}`,
       blockedDebt > 0 && `blockedOrStale=${blockedDebt}`,

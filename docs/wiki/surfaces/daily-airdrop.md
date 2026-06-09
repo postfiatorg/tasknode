@@ -249,6 +249,8 @@ Each tick:
 
 `issueLatestDailyAirdrop` is fail-closed for money. It claims a row as `processing_pre_submit` before signing, writes `submitting` with the signed transaction hash before calling PFTL submission, and writes `submitted` only after tx proof is available. If failure occurs before a PFT submission is attempted, the issuance row is marked `failed_before_submit` and can be retried automatically. If failure occurs after submission is attempted, the row becomes `submit_unknown` so a retry cannot sign another payment until reconciliation has inspected the chain/cache.
 
+A worker crash between completing a positive production scoring run and claiming the issuance row leaves the run with no issuance row at all. Those runs are surfaced as `issuance_missing` debt by `profile-daily-airdrop-debt` and by the system-status airdrop row, and the worker re-claims them through the same fail-closed path on its next tick, so the crash window cannot silently strand an owed payout.
+
 The manual operator command remains available:
 
 ```bash
