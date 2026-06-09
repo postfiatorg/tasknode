@@ -1196,6 +1196,32 @@ export async function claimNetworkTaskGenerationJobs({ limit = 1 } = {}) {
   return result.rows;
 }
 
+export async function reclaimStaleNetworkTaskGenerationJobs({ staleMinutes = 5, limit = 10 } = {}) {
+  if (!useDatabase()) return [];
+  const safeStaleMinutes = Math.min(Math.max(Number(staleMinutes) || 5, 1), 24 * 60);
+  const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 50);
+  const result = await query(
+    `
+      SELECT id
+      FROM network_task_generation_jobs
+      WHERE status = 'running'
+        AND locked_at < now() - ($1::integer * interval '1 minute')
+      ORDER BY locked_at ASC, id ASC
+      LIMIT $2
+    `,
+    [safeStaleMinutes, safeLimit]
+  );
+  const reclaimed = [];
+  for (const row of result.rows) {
+    const marked = await markNetworkTaskGenerationJobFailed({
+      jobId: row.id,
+      error: `network_task_generation_stale_running_reclaimed_after_${safeStaleMinutes}m`,
+    });
+    if (marked?.job) reclaimed.push(marked.job);
+  }
+  return reclaimed;
+}
+
 export async function markNetworkTaskGenerationJobGenerated({
   jobId = "",
   requestId = "",
@@ -1288,6 +1314,7 @@ export async function markNetworkTaskGenerationJobFailed({ jobId = "", error = "
           last_error = $2,
           updated_at = now()
       WHERE id = $1
+        AND status = 'running'
       RETURNING *
     `,
     [safeText(jobId, 180), message]

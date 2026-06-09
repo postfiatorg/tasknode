@@ -87,6 +87,31 @@ Amber means recent `failed` or `link_failed` generation jobs exist.
 
 Red means a queued or running generation job is stale.
 
+## Recovery And Double-Publish Guards
+
+Job processing is restart-safe and idempotent at three layers:
+
+- Stale-running reclaim. Each queue pass first calls
+  `reclaimStaleNetworkTaskGenerationJobs`, which routes `running` jobs whose
+  `locked_at` is older than `TASKNODE_NETWORK_TASK_GENERATION_STALE_MINUTES`
+  (default 5 minutes) through the normal failure path. Jobs retry as `queued`
+  until `attempt_count` reaches 3, then converge to `failed` and fail the
+  allocation and intent, so a killed worker cannot leave a project wedged in
+  pending generation or hold candidate capacity.
+- Existing-request reuse. Before pinning or upserting, the worker reads the
+  deterministic task request for the job. If that request already advanced
+  (`generating`, `proposed`, `cancelled`, or a `generated_task_id` is set), the
+  retry marks the job generated from the existing request instead of resetting
+  the request to `queued`, which would let the task engine publish a second
+  `pf.task.offer.v1` for the same job.
+- Claim and failure guards. `claimTaskGenerationRequests` never claims a
+  request whose `generated_task_id` is set, even if its status regressed, and
+  `markNetworkTaskGenerationJobFailed` only flips jobs that are still
+  `running`, so a late failure cannot re-queue a job that already generated.
+
+`npm run network-task-generation-recovery-smoke` proves these guards against a
+configured database.
+
 ## Debug And Repair
 
 Run recovery first; it understands generated requests, allocation links, Hive

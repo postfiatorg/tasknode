@@ -5,12 +5,13 @@ import { encryptTasknodePayload } from "./task-payloads.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 import { buildRequestBundle } from "./task-request.js";
 import { scheduleTaskGenerationQueue } from "./task-generation-worker.js";
-import { upsertTaskRequest } from "./repositories/task-requests.js";
+import { getTaskRequestByRequestId, upsertTaskRequest } from "./repositories/task-requests.js";
 import {
   claimNetworkTaskGenerationJobs,
   markNetworkTaskGenerationJobFailed,
   markNetworkTaskGenerationJobGenerated,
   normalizeNetworkTaskRewardBand,
+  reclaimStaleNetworkTaskGenerationJobs,
   repairNetworkTaskOfferLinks,
 } from "./repositories/network-tasks.js";
 
@@ -46,16 +47,41 @@ function compactList(items = [], maxItems = 4, maxChars = 280) {
   return safeArray(items).map((item) => safeText(item, maxChars)).filter(Boolean).slice(0, maxItems);
 }
 
-async function createTaskRequestForNetworkJob(job = {}) {
+export async function createTaskRequestForNetworkJob(job = {}) {
   const source = safeObject(job.source_payload_json);
   const reward = normalizeNetworkTaskRewardBand({
     min: job.reward_min_pft,
     max: job.reward_max_pft,
   });
-  const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
-  if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
   const requestId = safeText(job.request_id, 180) || `req_net_${sha256(job.id).slice(0, 32)}`;
   const bundleId = `bundle_net_${sha256(`${job.id}:${job.source_payload_digest}`).slice(0, 32)}`;
+  const existingRequest = await getTaskRequestByRequestId(requestId);
+  const existingRequestAdvanced = Boolean(
+    existingRequest &&
+      (existingRequest.generatedTaskId || ["generating", "proposed", "cancelled"].includes(existingRequest.status))
+  );
+  if (existingRequestAdvanced) {
+    await markNetworkTaskGenerationJobGenerated({
+      jobId: job.id,
+      requestId,
+      requestBundleCid: existingRequest.requestBundleCid,
+      metadata: {
+        request_id: requestId,
+        request_bundle_cid: existingRequest.requestBundleCid,
+        task_request_status: existingRequest.status,
+        reused_existing_request: true,
+      },
+    });
+    return {
+      requestId,
+      bundleId: existingRequest.bundleId || bundleId,
+      requestBundleCid: existingRequest.requestBundleCid,
+      generationScheduled: { scheduled: false, reason: "request_already_advanced" },
+      reusedExistingRequest: true,
+    };
+  }
+  const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
+  if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
   const request = {
     requestId,
     bundleId,
@@ -181,6 +207,10 @@ async function createTaskRequestForNetworkJob(job = {}) {
 }
 
 export async function processNetworkTaskGenerationQueueOnce({ limit = 1, logger = console } = {}) {
+  const staleMinutes = Number(process.env.TASKNODE_NETWORK_TASK_GENERATION_STALE_MINUTES || 5);
+  await reclaimStaleNetworkTaskGenerationJobs({ staleMinutes }).catch((error) => {
+    logger.warn?.("network_task_generation_stale_reclaim_failed", { error: error?.message || String(error) });
+  });
   await repairNetworkTaskOfferLinks({ limit }).catch((error) => {
     logger.warn?.("network_task_offer_link_repair_failed", { error: error?.message || String(error) });
   });
