@@ -412,6 +412,31 @@ and requires `TASKNODE_ALLOW_FLY_DEV_DATA_PUSH=true` or `--confirm-dev-push`.
 Do not use it as a normal deploy path; normal deploys use git, Fly build, and
 migrations.
 
+## Production Cutover (Promoted Dev App)
+
+The production domain `tasknode.postfiat.org` is served by promoting this same
+Fly app, not by a separate production app. The decision and gates live in the
+[Task Node Production Cutover Package](#docs/task-node-production-cutover-package).
+What changes at cutover, all on this app:
+
+- `fly.toml` `[env]` is flipped to the production values listed in the
+  [PFTasks Transaction Shutdown Cutover Plan](#docs/pftasks-transaction-shutdown-cutover-plan)
+  (public URL, site origin, Telegram widget domain, Discord/X redirect URIs).
+- Once `fly.toml` carries a production hostname, `npm run fly:deploy` refuses
+  to run without explicit confirmation; use `npm run fly:deploy:prod` (which
+  sets `TASKNODE_CONFIRM_PRODUCTION_DEPLOY=yes`).
+- Startup fails closed in production when the site origin, Discord/X redirect
+  URIs, or Telegram widget domain do not match the public origin host.
+- Production money seeds must be explicit: `TASKNODE_REWARD_SEED` for task
+  rewards and `TASKNODE_DAILY_AIRDROP_SEED` for the daily airdrop. In
+  production the workers refuse the development fallback chain
+  (allocation/authority/service/faucet seeds) and fail with the existing
+  seed-missing error codes instead of signing from the wrong wallet.
+- Set `TASKNODE_LEGACY_REDIRECT_HOSTS=tasknodeofficial-dev.fly.dev` so GET
+  navigation on the old dev hostname 301-redirects to the production domain.
+  `/health` and non-GET API requests are exempt, so Fly health checks and
+  in-flight sessions keep working.
+
 ## Deployment Command
 
 Deploy from `main` after checks pass:

@@ -245,8 +245,13 @@ backups, may stay on because they are already inside the cutover allowlist.
 ## Decisions Needed Before Execution
 
 - Which old PFTasks hosts, Fly apps, and process managers are in scope.
-- Which Task Node Official Fly app receives `tasknode.postfiat.org`: a promoted
-  `tasknodeofficial-dev` app or a separate production app.
+- Resolved 2026-06-09: `tasknode.postfiat.org` goes to the promoted
+  `tasknodeofficial-dev` app. One database, one signer set, one writer fleet is
+  the reward-safety invariant; promoting the existing stack preserves it with
+  no runtime-store migration, no database fork, and no seed transfer window. A
+  separate production app can be revisited when staging cost is justified.
+  Because no second Task Node writer stack exists, the dev-twin writer
+  shutdown gate is N/A by topology.
 - Whether old PFTasks wallet sends remain user-facing or become operator-only.
 - Whether the old PFTasks 48-hour fallback window is exactly 48 hours or has an
   emergency extension policy.

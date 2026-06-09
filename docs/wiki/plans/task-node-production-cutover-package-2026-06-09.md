@@ -87,6 +87,24 @@ has the stated condition satisfied.
 | User communication | Product/Support | Users need one canonical URL and clear fallback rules. | Announcement is published and Help/support copy says Task Node Official is canonical while old PFTasks is backup-only. |
 | T+48 public legacy close | Ops/Product | Public old-login fallback must not stay open indefinitely. | After 48 hours, public old PFTasks login is closed or explicitly extended; seed recovery remains only through the approved post-window path. |
 
+### Production App Topology (resolved 2026-06-09)
+
+`tasknode.postfiat.org` moves to the promoted `tasknodeofficial-dev` Fly app.
+There is no separate production app and therefore no second Task Node writer
+fleet: the reward-safety invariant stays one database, one signer set, one
+writer fleet. The dev-twin writer shutdown concern is N/A by topology.
+
+Promoted-app gates, in addition to the checklist above:
+
+| Gate | Turn-off condition |
+| --- | --- |
+| Production env flip | `fly.toml` `[env]` carries the production values from the shutdown plan (public URL, site origin, Telegram widget domain, Discord/X redirects) and no longer says dev hostnames; deployed with `npm run fly:deploy:prod`. |
+| Deploy confirmation | `npm run fly:deploy` refuses to deploy a production-hostname `fly.toml` without explicit confirmation (`fly:deploy:prod` or `TASKNODE_CONFIRM_PRODUCTION_DEPLOY=yes`). |
+| Origin startup guard | App startup fails in production when `VITE_SITE_ORIGIN`, Discord/X redirect URIs, or the Telegram widget domain do not match the public origin host. Verified by deploying once with a deliberate mismatch in staging. |
+| Explicit money seeds | `TASKNODE_REWARD_SEED` and `TASKNODE_DAILY_AIRDROP_SEED` are set as explicit secrets. In production the workers refuse to sign from fallback seeds (allocation/authority/service/faucet). |
+| Legacy origin redirect | `TASKNODE_LEGACY_REDIRECT_HOSTS=tasknodeofficial-dev.fly.dev` is set so GET navigation on the old dev hostname 301-redirects to `tasknode.postfiat.org` (health checks and non-GET API calls are exempt). |
+| Dev-origin vault note | The announcement tells beta users who onboarded on `tasknodeofficial-dev.fly.dev` that browser seed vaults are origin-local: restore or unlock the vault again on `tasknode.postfiat.org`. |
+
 Exact PFTasks task-side turn-off condition:
 
 PFTasks can be turned off as a live task system once Task Node Official serves
@@ -110,6 +128,10 @@ What changes:
   sends, and historical review.
 - Existing PFT and NFTs remain wallet-owned on-chain. The cutover does not move
   your coins, seed, or NFTs.
+- If you used the beta at `tasknodeofficial-dev.fly.dev`, your browser seed
+  vault is stored per-origin: unlock or restore your wallet once on
+  `tasknode.postfiat.org` after the move. Your account, tasks, and balances are
+  unchanged.
 - New task requests, submissions, reviews, rewards, and airdrops should happen
   only in Task Node Official.
 
