@@ -1693,7 +1693,7 @@ function WalletDelinkModal({
           </span>
         </div>
         <div className="wallet-link-warning">
-          Delinking clears the active server wallet link for this account and removes the encrypted local vault from this browser. Relinking requires a fresh signed wallet proof.
+          Delinking clears the active server wallet link for this account and removes the encrypted local vault from this browser. Without your 24-word backup phrase, this app cannot restore the wallet afterwards. Relinking requires a fresh signed wallet proof.
         </div>
         {message && <div className="inline-message">{message}</div>}
         <footer>
