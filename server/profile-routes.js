@@ -7,7 +7,7 @@ import {
   getLatestDailyAirdropRun,
   getProfileRewardHistory,
 } from "./repositories/profile-daily-airdrop.js";
-import { listProfileNfts } from "./repositories/profile-nfts.js";
+import { failStaleGeneratingProfileNfts, listProfileNfts } from "./repositories/profile-nfts.js";
 import { getPublicProfile } from "./repositories/profile-public.js";
 import {
   getRecommendedConnectionsState,
@@ -581,6 +581,9 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       });
       return true;
     }
+    await failStaleGeneratingProfileNfts({ accountId: session.accountId }).catch((error) => {
+      console.warn(`profile nft stale generation sweep failed: ${error?.message || error}`);
+    });
     const linkedWallet = getLinkedWallet({ accountId: session.accountId });
     const nfts = await listProfileNfts({
       accountId: session.accountId,
