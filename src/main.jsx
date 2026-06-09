@@ -613,6 +613,9 @@ function App() {
     tasks: appState?.tasks || EMPTY_TASKS,
   }), [appState?.tasks, linkedWalletAddress, taskActionReceipts, walletAccountId]);
   const visibleTasks = taskVisibleState.tasks;
+  const selectedTaskId = selectedTask?.taskId || selectedTask?.fullId || selectedTask?.id || "";
+  const selectedVisibleTask = selectedTaskId ? findTaskById(visibleTasks, selectedTaskId) : null;
+  const selectedTaskForModal = selectedVisibleTask || selectedTask;
   const walletVaultAvailable = Boolean(walletVaultStatus?.available && walletVaultStatus?.address === linkedWalletAddress);
   const walletVaultUnlocked = Boolean(walletVaultAvailable && walletVaultStatus?.unlocked);
   const vaultDisplay = walletVaultDisplayState(walletVaultStatus, linkedWalletAddress);
@@ -1707,7 +1710,7 @@ function App() {
           session={session}
         />
       )}
-      {selectedTask && (
+      {selectedTaskForModal && (
         <TaskDetailModal
           accountId={walletAccountId}
           escapeDisabled={walletUnlockOpen}
@@ -1716,7 +1719,7 @@ function App() {
           onTaskActionReceipt={recordTaskActionReceipt}
           onTaskChanged={refreshAppState}
           onWalletUnlock={openWalletVaultControl}
-          task={selectedTask}
+          task={selectedTaskForModal}
           walletSecret={walletSecretRef.current}
           walletUnlockPending={walletUnlockOpen}
           walletVault={walletVaultStatus}
@@ -1827,6 +1830,23 @@ function ChatSurface({
     scrollNearBottomRef.current = nearBottom;
     setShowScrollBottom(overflow && !nearBottom);
   }, []);
+  const loadConversationHistory = useCallback(async (
+    conversationId,
+    { showLoading = true, shouldApply = () => true } = {}
+  ) => {
+    const normalizedConversationId = String(conversationId || "").trim();
+    if (!normalizedConversationId) return [];
+    const historyPath = chat?.historyPath || "/api/chat/history";
+    if (showLoading && shouldApply()) setTurns([]);
+    const result = await requestJson(`${historyPath}?conversationId=${encodeURIComponent(normalizedConversationId)}`);
+    if (!shouldApply()) return [];
+    if (!result.ok) {
+      throw new Error(result.body?.message || `History returned HTTP ${result.status}.`);
+    }
+    const hydrated = normalizeChatMessages(result.body?.messages || []);
+    setTurns(hydrated);
+    return hydrated;
+  }, [chat?.historyPath]);
 
   useEffect(() => {
     setSelectedMode(defaultMode);
@@ -1878,19 +1898,12 @@ function ChatSurface({
       return undefined;
     }
 
-    let cancelled = false;
     const conversationId = activeChat.conversationId || activeChat.id;
-    const historyPath = chat?.historyPath || "/api/chat/history";
-    setTurns([]);
+    let cancelled = false;
 
-    requestJson(`${historyPath}?conversationId=${encodeURIComponent(conversationId)}`)
-      .then((result) => {
+    loadConversationHistory(conversationId, { shouldApply: () => !cancelled })
+      .then(() => {
         if (cancelled) return;
-        if (!result.ok) {
-          throw new Error(result.body?.message || `History returned HTTP ${result.status}.`);
-        }
-        const hydrated = normalizeChatMessages(result.body?.messages || []);
-        setTurns(hydrated);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -1908,7 +1921,7 @@ function ChatSurface({
     return () => {
       cancelled = true;
     };
-  }, [activeChat, chatSelectionKey, chat?.historyPath]);
+  }, [activeChat, chatSelectionKey, loadConversationHistory]);
 
   useEffect(() => {
     if (shareSeenRef.current === chatShareRequestKey) return;
@@ -2120,6 +2133,13 @@ function ChatSurface({
           throw new Error(result.body?.message || `Hive Context returned HTTP ${result.status}.`);
         }
 
+        if (result.body.user) {
+          const userTurn = normalizeChatMessage(result.body.user, 0);
+          if (userTurn) {
+            setTurns((current) => replaceTurnById(current, hiveContextMessageId, userTurn));
+          }
+        }
+
         if (result.body.assistant) {
           const assistantTurn = normalizeChatMessage(result.body.assistant, pendingId);
           setTurns((current) => replaceTurnById(current, pendingId, { ...assistantTurn, id: pendingId }));
@@ -2142,14 +2162,18 @@ function ChatSurface({
         }
         setSendMessage("");
         setStatusTone("muted");
-        setDraftConversationId(result.body?.user?.conversationId || requestedConversationId);
+        const settledConversationId = result.body?.user?.conversationId || requestedConversationId;
+        setDraftConversationId(settledConversationId);
         onActiveChatChange?.({
-          id: requestedConversationId,
-          conversationId: requestedConversationId,
+          id: settledConversationId,
+          conversationId: settledConversationId,
           source: "live",
           kind: "hive",
           title: HIVE_CHAT_TITLE,
         });
+        if (result.body.assistant) {
+          await loadConversationHistory(settledConversationId, { showLoading: false }).catch(() => null);
+        }
         await onChatSettled?.();
         return;
       }
@@ -3302,13 +3326,15 @@ function TasksView({
       taskRequestHandoff.requestHandoffState || "",
     ].join("|");
     if (!handoffKey.replace(/\|/g, "")) return;
+    const shouldSettleHandoff = ["generated_visible", "generated_projection_pending"].includes(taskRequestHandoff.requestHandoffState);
     if (!lastTaskHandoffKeyRef.current) {
       lastTaskHandoffKeyRef.current = handoffKey;
+      if (shouldSettleHandoff) setTaskRequestSettleUntilMs(taskRequestSettleDeadline());
       return;
     }
     if (handoffKey === lastTaskHandoffKeyRef.current) return;
     lastTaskHandoffKeyRef.current = handoffKey;
-    if (["generated_visible", "generated_projection_pending"].includes(taskRequestHandoff.requestHandoffState)) {
+    if (shouldSettleHandoff) {
       setTaskRequestSettleUntilMs(taskRequestSettleDeadline());
     }
   }, [
@@ -3706,6 +3732,53 @@ function buildContextVersions(documentState = {}, history = {}) {
   return versions;
 }
 
+async function refreshContextStateAfterSave(onContextChange) {
+  if (typeof onContextChange !== "function") return null;
+
+  let timeoutId = 0;
+  try {
+    return await Promise.race([
+      onContextChange(),
+      new Promise((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          const error = new Error("context_app_state_refresh_timeout");
+          error.code = "context_app_state_refresh_timeout";
+          reject(error);
+        }, 4000);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
+async function requestContextSaveJson(path, payload) {
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  let timeoutId = 0;
+  try {
+    if (controller) {
+      timeoutId = window.setTimeout(() => controller.abort(), 10000);
+    }
+    return await requestJson(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller?.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      return {
+        ok: false,
+        status: 0,
+        body: { message: "Context save timed out. Try again." },
+      };
+    }
+    throw error;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
 function ContextView({ context, linkedWalletAddress = "", onContextChange, onHydrateContext, onPublishContext, walletVault }) {
   const initialDocument = context?.document || {};
   const savePath = context?.savePath || initialDocument.savePath || "/api/context/edit/save";
@@ -3743,6 +3816,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   });
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const [tableHover, setTableHover] = useState({ rows: 0, cols: 0 });
+  const [tablePickerPosition, setTablePickerPosition] = useState({ top: 0, left: 0 });
   const [hydratedContext, setHydratedContext] = useState(null);
   const [hydratedPreviewByCid, setHydratedPreviewByCid] = useState({});
   const [previewStateByCid, setPreviewStateByCid] = useState({});
@@ -3763,6 +3837,10 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const saveContextRef = useRef(async () => false);
   const titleRef = useRef(initialDocument.title || "Task Node Context");
   const lastSavedHtmlRef = useRef(contextBodyToHtml(initialDocument.body || ""));
+  const latestContextDocumentRef = useRef({
+    id: initialDocument.id || "",
+    revision: Number(initialDocument.revision || 0),
+  });
 
   const refreshContextLineRows = useCallback((fallbackLineCount = 1) => {
     window.requestAnimationFrame(() => {
@@ -3777,9 +3855,21 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
 
   useEffect(() => {
     const nextDocument = context?.document || {};
+    const nextDocumentId = nextDocument.id || "";
+    const nextRevision = Number(nextDocument.revision || 0);
+    const latestDocument = latestContextDocumentRef.current || {};
+    if (
+      nextDocumentId &&
+      latestDocument.id === nextDocumentId &&
+      nextRevision < Number(latestDocument.revision || 0)
+    ) {
+      return;
+    }
+
     const nextTitle = nextDocument.title || "Task Node Context";
     const nextHtml = contextBodyToHtml(nextDocument.body || "");
     const preserveLocalDraft = dirtyRef.current;
+    latestContextDocumentRef.current = { id: nextDocumentId, revision: nextRevision };
     setDocumentState(nextDocument);
     setSavedTitle(nextTitle);
     lastSavedHtmlRef.current = nextHtml;
@@ -3900,8 +3990,22 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     }
   }, [lineNumbersVisible]);
 
+  const updateTablePickerPosition = useCallback(() => {
+    const anchor = tableWrapRef.current;
+    if (!anchor || typeof window === "undefined") return;
+    const rect = anchor.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement?.clientWidth || 0;
+    const pickerWidth = 182;
+    const margin = 8;
+    setTablePickerPosition({
+      top: Math.round(rect.bottom + 8),
+      left: Math.max(margin, Math.min(Math.round(rect.left), Math.max(margin, viewportWidth - pickerWidth - margin))),
+    });
+  }, []);
+
   useEffect(() => {
     if (!tablePickerOpen) return undefined;
+    updateTablePickerPosition();
 
     function handleMouseDown(event) {
       if (tableWrapRef.current && !tableWrapRef.current.contains(event.target)) {
@@ -3915,11 +4019,15 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
 
     document.addEventListener("mousedown", handleMouseDown);
     document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", updateTablePickerPosition);
+    window.addEventListener("scroll", updateTablePickerPosition, true);
     return () => {
       document.removeEventListener("mousedown", handleMouseDown);
       document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", updateTablePickerPosition);
+      window.removeEventListener("scroll", updateTablePickerPosition, true);
     };
-  }, [tablePickerOpen]);
+  }, [tablePickerOpen, updateTablePickerPosition]);
 
   const saveSelection = useCallback(() => {
     const selection = window.getSelection?.();
@@ -4014,33 +4122,38 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   );
 
   const saveContext = useCallback(async () => {
-    if (!canEdit || saving || !editorRef.current) return false;
+    if (!canEdit || savingRef.current || !editorRef.current) return false;
 
+    savingRef.current = true;
     setSaving(true);
     setSaveMessage("");
     const body = sanitizeContextHtml(editorRef.current.innerHTML);
+    const requestTitle = titleRef.current;
 
     let result;
     try {
-      result = await requestJson(savePath, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, body }),
-      });
+      result = await requestContextSaveJson(savePath, { title: requestTitle, body });
     } catch {
       setSaveMessage("Context could not be saved.");
+      savingRef.current = false;
       setSaving(false);
       return false;
     }
 
     if (!result.ok || !result.body?.document) {
       setSaveMessage(result.body?.message || "Context could not be saved.");
+      savingRef.current = false;
       setSaving(false);
       return false;
     }
 
     const savedDocument = result.body.document;
-    const refreshedState = await onContextChange?.();
+    let refreshedState = null;
+    try {
+      refreshedState = await refreshContextStateAfterSave(onContextChange);
+    } catch {
+      refreshedState = null;
+    }
     const refreshedDocument = refreshedState?.context?.document;
     const durableDocument =
       refreshedDocument?.id === savedDocument.id &&
@@ -4049,22 +4162,29 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
         : savedDocument;
     const currentBody = sanitizeContextHtml(editorRef.current?.innerHTML || "");
     const currentTitle = titleRef.current;
-    const continuedEditing = currentBody !== body || currentTitle !== title;
+    const continuedEditing = currentBody !== body || currentTitle !== requestTitle;
 
     setDocumentState(durableDocument);
+    latestContextDocumentRef.current = {
+      id: durableDocument.id || "",
+      revision: Number(durableDocument.revision || 0),
+    };
     setSavedTitle(durableDocument.title || "Task Node Context");
     lastSavedHtmlRef.current = contextBodyToHtml(durableDocument.body || "");
     if (continuedEditing) {
+      dirtyRef.current = true;
       setDirty(true);
     } else {
       setTitle(durableDocument.title || "Task Node Context");
       titleRef.current = durableDocument.title || "Task Node Context";
       setSaveMessage("Saved just now");
+      dirtyRef.current = false;
       setDirty(false);
     }
+    savingRef.current = false;
     setSaving(false);
     return true;
-  }, [canEdit, onContextChange, savePath, saving, title]);
+  }, [canEdit, onContextChange, savePath]);
 
   useEffect(() => {
     saveContextRef.current = saveContext;
@@ -4077,9 +4197,6 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     }, 900);
     return () => {
       window.clearTimeout(timeout);
-      if (dirtyRef.current && canEdit && !savingRef.current) {
-        void saveContextRef.current();
-      }
     };
   }, [canEdit, dirty, saveContext, saving]);
 
@@ -4433,7 +4550,12 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     <div className="route-scroll">
       <div className="context-view context-wireframe">
         <section className="ctx-card" aria-label="Context document">
-          <div className="ctx-toolbar" role="toolbar" aria-label="Formatting">
+          <div
+            className="ctx-toolbar"
+            role="toolbar"
+            aria-label="Formatting"
+            onScroll={tablePickerOpen ? updateTablePickerPosition : undefined}
+          >
             <div className="ctx-toolbar-group">
               <ContextToolButton active={activeFormats.h1} disabled={!canEdit} onMouseDown={() => toggleHeading(1)} title="Heading 1">
                 <Heading1 size={16} strokeWidth={2} />
@@ -4474,7 +4596,10 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
                 onMouseDown={(event) => {
                   event.preventDefault();
                   if (!canEdit) return;
-                  if (!tablePickerOpen) saveSelection();
+                  if (!tablePickerOpen) {
+                    saveSelection();
+                    updateTablePickerPosition();
+                  }
                   setTablePickerOpen((open) => !open);
                   setTableHover({ rows: 0, cols: 0 });
                 }}
@@ -4485,7 +4610,15 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
                 <ChevronDown size={12} strokeWidth={2} />
               </button>
               {tablePickerOpen && (
-                <div className="ctx-table-picker" role="dialog" aria-label="Insert table">
+                <div
+                  className="ctx-table-picker"
+                  role="dialog"
+                  aria-label="Insert table"
+                  style={{
+                    top: `${tablePickerPosition.top}px`,
+                    left: `${tablePickerPosition.left}px`,
+                  }}
+                >
                   <div className="ctx-table-grid" onMouseLeave={() => setTableHover({ rows: 0, cols: 0 })}>
                     {Array.from({ length: 8 }).map((_, rowIndex) => (
                       <div className="ctx-table-row" key={rowIndex}>

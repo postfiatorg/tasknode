@@ -41,6 +41,7 @@ import {
 } from "./task-detail-optimistic-state.js";
 import {
   taskDetailControlsBlocked,
+  taskDetailDisplayData,
   taskDetailRefreshErrorState,
 } from "./task-detail-loading-state.js";
 import {
@@ -1265,15 +1266,20 @@ export function TaskDetailModal({
   const aliveRef = useRef(true);
   const optimisticEvidenceRef = useRef(null);
   const optimisticLifecycleRef = useRef(null);
-  const displayTask = detailState.data?.task || task;
+  const projectionDetail = useMemo(
+    () => cachedTaskDetailFromTask(task, { linkedWalletAddress }),
+    [linkedWalletAddress, task, taskVersion]
+  );
+  const displayDetail = taskDetailDisplayData(detailState, projectionDetail);
+  const displayTask = displayDetail?.task || task;
   const steps = Array.isArray(displayTask.steps) ? displayTask.steps : [];
   const verification = displayTask.verification || {};
   const rewardPft = Number(displayTask.pft || 0);
   const taskId = displayTask.taskId || displayTask.fullId || task.taskId || task.fullId || task.id || "";
   const currentTaskVisibleState = useMemo(() => visibleTaskStateFromTask(task), [taskVersion]);
-  const taskBriefPayload = buildTaskCopyPayloads(displayTask, detailState.data).codex;
-  const forensicsCount = detailState.data?.forensics?.timeline?.length || displayTask.metadata?.eventCount || 0;
-  const controlsBlocked = taskDetailControlsBlocked(detailState);
+  const taskBriefPayload = buildTaskCopyPayloads(displayTask, displayDetail).codex;
+  const forensicsCount = displayDetail?.forensics?.timeline?.length || displayTask.metadata?.eventCount || 0;
+  const controlsBlocked = taskDetailControlsBlocked({ ...detailState, data: displayDetail });
 
   useEffect(() => {
     optimisticEvidenceRef.current = optimisticEvidence;
@@ -1584,7 +1590,7 @@ export function TaskDetailModal({
           ) : activeTab === "overview" && (
             <TaskOverviewPanel
               accountId={accountId}
-              detail={detailState.data}
+              detail={displayDetail}
               displayTask={displayTask}
               linkedWalletAddress={linkedWalletAddress}
               loading={controlsBlocked}
@@ -1601,7 +1607,7 @@ export function TaskDetailModal({
           {!controlsBlocked && activeTab === "submit" && (
             <TaskSubmitPanel
               accountId={accountId}
-              detail={detailState.data}
+              detail={displayDetail}
               linkedWalletAddress={linkedWalletAddress}
               loading={controlsBlocked}
               onEvidenceSubmitted={async (result) => {
@@ -1618,7 +1624,7 @@ export function TaskDetailModal({
           {!controlsBlocked && activeTab === "forensics" && (
             <TaskForensicsPanel
               copiedValue={copiedValue}
-              detail={detailState.data}
+              detail={displayDetail}
               error={detailState.error}
               loading={detailState.loading}
               onCopy={copyTaskValue}

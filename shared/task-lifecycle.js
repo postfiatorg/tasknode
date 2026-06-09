@@ -221,6 +221,7 @@ export function canApplyTaskStopAction(status = "", action = "") {
 export function taskRefreshMetadata({
   tasks = [],
   activeRequestCount = 0,
+  handoffProjectionPending = false,
   projectionRefreshRequired = false,
   projectionRefreshReason = "",
 } = {}) {
@@ -244,13 +245,16 @@ export function taskRefreshMetadata({
   const requestCount = Number(activeRequestCount || 0);
   const refreshTaskIds = [...new Set([...refreshTasks, ...activeTasks])];
   const projectionRefresh = Boolean(projectionRefreshRequired);
-  const requiresRefresh = projectionRefresh || requestCount > 0 || refreshTaskIds.length > 0;
+  const pendingHandoff = Boolean(handoffProjectionPending);
+  const requiresRefresh = projectionRefresh || requestCount > 0 || refreshTaskIds.length > 0 || pendingHandoff;
 
   return {
     requiresRefresh,
-    nextPollMs: requiresRefresh ? (projectionRefresh || requestCount > 0 || refreshTasks.length > 0 ? 2500 : 10000) : null,
+    nextPollMs: requiresRefresh ? (projectionRefresh || requestCount > 0 || pendingHandoff || refreshTasks.length > 0 ? 2500 : 10000) : null,
     refreshReason: projectionRefresh
       ? String(projectionRefreshReason || "task_projection_refresh").trim()
+      : pendingHandoff
+      ? "task_request_handoff_projection_pending"
       : requestCount > 0
       ? "task_requests_active"
       : refreshTasks.length > 0
@@ -259,6 +263,7 @@ export function taskRefreshMetadata({
           ? "task_state_active"
         : "",
     activeRequestCount: requestCount,
+    handoffProjectionPending: pendingHandoff,
     refreshTaskIds,
   };
 }

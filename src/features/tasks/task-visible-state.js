@@ -357,6 +357,18 @@ export function needsLegacyTaskRefresh(tasks = {}) {
 export function taskSyncNoticeForStatus(sync = {}) {
   const status = safeText(sync?.status, 80);
   const indexingLagCount = Number(sync?.indexingLagCount || 0);
+  if (status === "database_error") {
+    return {
+      label: "Task state is reconnecting",
+      body: "Task Node could not read the task projection cache. The app will keep retrying without clearing your current task view.",
+    };
+  }
+  if (status === "integrity_unavailable") {
+    return {
+      label: "Task sync check is retrying",
+      body: "Task rows are visible, but the projection integrity check could not finish. The app will keep refreshing task state.",
+    };
+  }
   if (status === "reducer_attention") {
     return {
       label: "Task sync needs attention",
@@ -398,8 +410,10 @@ export function reconcileTaskVisibleState({
   const processingRequests = processingTaskRequests(requests, { nowMs });
   const attentionRequests = attentionTaskRequests(requests, { nowMs });
   const taskSync = visibleTasks?.sync || {};
+  const handoffProjectionPending = taskSync?.handoff?.requestHandoffState === "generated_projection_pending";
   const polling = taskRefreshPolicy({
     activeRequestCount: activeRequests.length,
+    handoffProjectionPending: Boolean(taskSync?.handoffProjectionPending || handoffProjectionPending),
     legacyRefreshNeeded: needsLegacyTaskRefresh(visibleTasks),
     nextPollMs: taskSync.nextPollMs,
     nowMs,

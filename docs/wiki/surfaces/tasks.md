@@ -116,10 +116,23 @@ the user must reload the whole page to see it.
 `tasks.sync.handoff`. The browser uses that metadata to distinguish
 `generated_visible`, `generated_projection_pending`, active processing, and
 failed attention states instead of inferring the handoff only from a local
-active-request count. Task app-state application is monotonic: an older task
+active-request count. `generated_projection_pending` is an active sync state
+even when the request receipt is no longer shown; it keeps forced projection
+refresh enabled until the generated task card is present in `task_projections`.
+Task app-state application is monotonic: an older task
 snapshot, lower projection count, or lower request handoff rank cannot overwrite
 a newer task snapshot in an open tab even if app-state refresh responses return
 out of order during PFTL/RPC recovery.
+
+Forced projection refresh from `/api/app-state?taskProjectionRefresh=1`,
+`/api/tasks?refreshProjection=1`, and task detail refresh is best-effort and
+coalesced per account/wallet. These routes must not block the app shell while
+PFTL sync, reducer replay, or the Postgres pool is under pressure. If the task
+projection cache cannot be read, the Tasks response returns
+`sync.status='database_error'` with `requiresRefresh=true` instead of an HTTP
+500. Open browser tabs keep the last known task snapshot when a temporary
+database-error response would otherwise replace it with a lower projection
+count.
 
 The same rule applies after task evidence is submitted. The detail modal calls
 `GET /api/tasks/detail?refreshProjection=1` while polling for the signed
@@ -249,6 +262,8 @@ Clicking a task opens a task detail popout with three tabs:
 
 On desktop the task detail covers the Tasks workspace as a smooth in-place pane, not as a separate app screen. The left app shell remains visible so the user keeps their place in the Task Node, and the close pill returns to the task queue. On narrow mobile screens the same detail surface expands to the full viewport because there is not enough horizontal room for a pane.
 
+The detail pane must render immediately from the visible `task_projections` row that backed the clicked task card or URL-selected task. `GET /api/tasks/detail` enriches that seeded view with actions, forensics, wallet roles, submissions, and reward outcome data in the background; it must not block the user behind `Loading task detail` when a visible task projection is already available.
+
 ## Copy Task Flow
 
 Task list rows do not expose copy controls. Clicking a row opens the task detail card, where the user can inspect the task before exporting it.
@@ -330,7 +345,7 @@ Screenshot and file uploads use a Task Node styled picker, not the native browse
 8. The server submits the signed transaction and returns the tx hash as soon as PFTL accepts it.
 9. Wallet sync and reducer projection are scheduled asynchronously. The UI should show the publish result immediately, then refresh task state as indexing catches up.
 
-The task detail modal keeps its own local detail state while it is open. After a successful evidence transaction, the modal updates optimistically to `Submitted` or `Awaiting review` and polls task detail for the submitted transaction hash so the user is not left looking at the old prompt while indexing catches up.
+The task detail modal keeps its own local detail state while it is open. It seeds that state from the visible task-list projection, then replaces or enriches it with `GET /api/tasks/detail` when the richer response arrives. After a successful evidence transaction, the modal updates optimistically to `Submitted` or `Awaiting review` and polls task detail for the submitted transaction hash so the user is not left looking at the old prompt while indexing catches up.
 
 The Tasks page refresh policy is driven by the shared lifecycle contract in `shared/task-lifecycle.js` and the server metadata returned by `GET /api/tasks`. Initial submissions can be advanced by the review worker into `Verification requested`; verification responses can be advanced into `Rewarded` after the authority scores the evidence and publishes the terminal `pf.reward.v1` outcome. The list and tab counts should therefore follow the projection cache without a manual browser reload.
 

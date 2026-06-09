@@ -108,6 +108,15 @@ assert.equal(acceptedOpenLoop.nextPollMs, 10000);
 assert.equal(acceptedOpenLoop.refreshReason, "task_state_active");
 assert.deepEqual(acceptedOpenLoop.refreshTaskIds, ["task_accepted"]);
 
+const pendingGeneratedProjection = taskRefreshMetadata({
+  handoffProjectionPending: true,
+});
+assert.equal(pendingGeneratedProjection.requiresRefresh, true);
+assert.equal(pendingGeneratedProjection.nextPollMs, 2500);
+assert.equal(pendingGeneratedProjection.refreshReason, "task_request_handoff_projection_pending");
+assert.equal(pendingGeneratedProjection.handoffProjectionPending, true);
+assert.deepEqual(pendingGeneratedProjection.refreshTaskIds, []);
+
 const terminalReward = taskRefreshMetadata({
   tasks: [
     {

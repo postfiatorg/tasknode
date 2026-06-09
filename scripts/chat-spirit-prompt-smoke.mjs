@@ -265,6 +265,11 @@ assert.ok(helpInstructions.includes("Use Tasks to accept tasks, refuse tasks, su
 assert.ok(helpInstructions.includes("Task Node is an AI-assisted work app"));
 assert.ok(helpInstructions.includes("Do not imply a human operator, reviewer, or \"someone\" performed an action"));
 assert.ok(helpInstructions.includes("not \"someone verified it.\""));
+assert.ok(helpInstructions.includes("When the user asks about Hive, Hive Chat, Network Tasks"));
+assert.ok(helpInstructions.includes("Open the pinned `Hive Chat` conversation in Chat."));
+assert.ok(helpInstructions.includes("no task is created just because the user sent a Hive Chat message"));
+assert.ok(helpInstructions.includes("Do not include this Hive quickstart in unrelated Help answers."));
+assert.ok(helpInstructions.includes("### Hive Chat First-Run Path"));
 assertJobsInstructions(helpInstructions, "Help");
 assert.equal(
   helpInstructions.includes(userSentinel),

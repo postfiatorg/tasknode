@@ -32,6 +32,7 @@ export function shouldRevealSettledOutstandingTask({
 
 export function taskRefreshPolicy({
   activeRequestCount = 0,
+  handoffProjectionPending = false,
   legacyRefreshNeeded = false,
   nextPollMs = null,
   nowMs = Date.now(),
@@ -40,12 +41,17 @@ export function taskRefreshPolicy({
   taskSyncStatus = "ready",
 } = {}) {
   const syncStatus = String(taskSyncStatus || "ready");
-  const shouldRefreshTaskProjection = syncStatus === "indexing_lag" || syncStatus === "reducer_attention";
+  const shouldRefreshTaskProjection = syncStatus === "indexing_lag" ||
+    syncStatus === "reducer_attention" ||
+    syncStatus === "database_error" ||
+    syncStatus === "integrity_unavailable";
   const requestCount = Number(activeRequestCount || 0);
   const taskRequestSettling = Number(settleUntilMs || 0) > Number(nowMs || 0);
+  const projectionPendingHandoff = Boolean(handoffProjectionPending);
   const shouldForceTaskProjection = Boolean(
     shouldRefreshTaskProjection ||
       requestCount > 0 ||
+      projectionPendingHandoff ||
       taskRequestSettling ||
       taskSyncRequiresRefresh ||
       legacyRefreshNeeded
@@ -54,6 +60,7 @@ export function taskRefreshPolicy({
     shouldRefreshTaskProjection ||
       taskSyncRequiresRefresh ||
       requestCount > 0 ||
+      projectionPendingHandoff ||
       legacyRefreshNeeded ||
       taskRequestSettling
   );
@@ -66,6 +73,7 @@ export function taskRefreshPolicy({
     shouldForceTaskProjection,
     shouldRefreshTaskProjection,
     shouldRefreshTaskState,
+    handoffProjectionPending: projectionPendingHandoff,
     taskRefreshMs: pollMs,
     taskRequestSettling,
   };
@@ -73,6 +81,7 @@ export function taskRefreshPolicy({
 
 export function shouldForceTaskSyncNotice(sync = {}) {
   const status = String(sync?.status || "ready");
+  if (status === "database_error" || status === "integrity_unavailable") return true;
   if (status === "reducer_attention") return true;
   return status === "indexing_lag" && Number(sync?.indexingLagCount || 0) > 3;
 }

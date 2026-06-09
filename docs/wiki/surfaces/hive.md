@@ -38,6 +38,49 @@ that no reward-bearing task is available right now.
 
 Project IDs are part of the product surface. The project detail header should expose the stable `network_projects.id` so operators can refer to a project in tasks, docs, and chat without ambiguity.
 
+## New User Quickstart
+
+This is the minimum path for a new Hive Chat contributor.
+
+1. Sign in or create a Task Node account.
+2. Open Profile and choose a Hive handle. This is the public name other members should recognize.
+3. Open Wallet and link or create a PFT wallet. If you create a local wallet, save the seed phrase. Task Node cannot recover it.
+4. Check that Wallet shows a linked PFT address. Hive Context validation is based on the account having a linked wallet; ordinary Hive Chat messages do not require the local vault to be unlocked.
+5. Open Chat and select the pinned `Hive Chat` conversation in the sidebar. It is a default conversation, not a `+` menu mode.
+6. Send a short first message that tells the network what you can contribute, what project you care about, or what context the Board Manager should consider.
+7. Open Hive to inspect active projects, routed tasks, contributor activity, and the Hive Context / Hive Mind Agent panels.
+8. If the Board Manager routes a Network Task to you, open Tasks. Accept or refuse the proposed task there. Hive explains network work; Tasks is where task actions happen.
+9. For an accepted task, do the work and submit evidence from the task detail. Evidence can be changed files, commands run, screenshots, links, transaction hashes, CIDs, or a short proof note.
+10. Watch the task move through submitted, verification, verification-response-submitted, and rewarded states. Rewarded tasks show PFT reward history in Tasks, Wallet, Profile, and Hive project activity when project-linked.
+
+### What A First Message Should Say
+
+A useful first Hive Chat message is plain and specific:
+
+```text
+I am new to Hive Chat. I linked my PFT wallet and want to help with Hive Chat onboarding. I can write docs, test wallet flows, and report confusing onboarding states. Please use this as network context for routing.
+```
+
+The message is saved to Hive Context. If the account has a linked wallet, the entry is marked as coming from a validated wallet. The immediate assistant response can explain the current board state, but it cannot create a task by itself. Network Task routing happens later through the Board Manager when there is a project need, eligible contributor capacity, and a matching user profile.
+
+### Tasks, Rewards, And Submissions
+
+Hive and Tasks are connected, but they are not the same surface.
+
+- Hive shows network projects, Board Manager decisions, contributor rollups, and project-linked task movement.
+- Hive Chat records network context and lets the user ask about board state.
+- Tasks shows the actionable task card. Use Tasks to accept, refuse, cancel, submit evidence, answer verification, and see final task state.
+- Wallet signs task actions and receives PFT rewards. A locked wallet can still display state, but wallet-bound task actions ask for unlock when signing is required.
+- Profile shows the user's public trust surface, lifetime reward/account signals, and visible contribution identity.
+
+### Onboarding Friction Points
+
+1. Hive Chat location is easy to miss. A new user may open Hive and expect to type there, but the composer lives in the pinned `Hive Chat` conversation in Chat. Suggested improvement: add an `Open Hive Chat` button or first-run callout on the Hive page that deep-links to the pinned Hive conversation.
+2. Wallet validation language is overloaded. New users may not know whether validation means signed in, linked wallet, active PFTL sync, or unlocked vault. Suggested improvement: show a small Hive Chat status chip such as `Wallet linked: Hive entries validated` or `Link wallet to validate Hive entries`.
+3. The first-message outcome is not obvious. A message is saved immediately, but Board Manager routing is asynchronous and may choose no action. Suggested improvement: after send, show a receipt that says `Saved to Hive Context. Board Manager may use this in future routing; no task has been created yet.`
+4. Network Task eligibility is not visible enough. A new user may expect one Hive message to create a paid task, while the actual gate includes linked wallet, active wallet sync, Network Diagnostic Report, free Network Task capacity, and a matching project need. Suggested improvement: expose an eligibility checklist in Hive or Memory with the current blocker.
+5. Acting on project-linked tasks requires switching surfaces. Hive shows the project task row, but acceptance, refusal, submission, verification, and reward details happen in Tasks. Suggested improvement: add direct `Open in Tasks` actions on Hive task rows and project task previews.
+
 ## Hive Chat
 
 Every signed-in user gets one default `Hive Chat` conversation in the chat sidebar. The main coordination page remains `Hive`. `Hive Chat` is not a temporary composer mode and it is not selected from the chat `+` menu. It is a durable conversation dedicated to talking to the network coordination layer.

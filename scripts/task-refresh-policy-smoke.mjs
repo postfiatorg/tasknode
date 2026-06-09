@@ -54,6 +54,16 @@ const expiredSettle = taskRefreshPolicy({
 assert.equal(expiredSettle.shouldRefreshTaskState, false);
 assert.equal(expiredSettle.shouldForceTaskProjection, false);
 
+const pendingGeneratedProjection = taskRefreshPolicy({
+  activeRequestCount: 0,
+  handoffProjectionPending: true,
+  nowMs,
+  taskSyncStatus: "ready",
+});
+assert.equal(pendingGeneratedProjection.shouldRefreshTaskState, true);
+assert.equal(pendingGeneratedProjection.shouldForceTaskProjection, true);
+assert.equal(pendingGeneratedProjection.handoffProjectionPending, true);
+
 const reviewLoopRefresh = taskRefreshPolicy({
   activeRequestCount: 0,
   nowMs,

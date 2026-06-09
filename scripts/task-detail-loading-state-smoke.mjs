@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   taskDetailControlsBlocked,
+  taskDetailDisplayData,
   taskDetailRefreshErrorState,
 } from "../src/features/tasks/task-detail-loading-state.js";
 
@@ -15,6 +16,19 @@ assert.equal(
   taskDetailControlsBlocked({ loading: true, data: { task: { taskId: "task_1", statusKey: "proposed" } } }),
   false,
   "background task detail refresh must leave existing task controls usable"
+);
+
+const projectionDetail = { task: { taskId: "task_1", statusKey: "accepted", title: "Projected task" }, partial: true };
+const displayDataFromProjection = taskDetailDisplayData({ loading: true, data: null }, projectionDetail);
+assert.equal(
+  displayDataFromProjection,
+  projectionDetail,
+  "task list projection must seed usable detail while rich task detail refreshes"
+);
+assert.equal(
+  taskDetailControlsBlocked({ loading: true, data: displayDataFromProjection }),
+  false,
+  "task detail modal must not block when visible projection data is available"
 );
 
 assert.equal(

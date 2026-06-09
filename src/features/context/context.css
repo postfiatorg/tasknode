@@ -297,7 +297,8 @@
   display: flex;
   flex-direction: column;
   width: min(820px, 100%);
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   padding: 16px 28px 28px;
 }
 
@@ -305,7 +306,12 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  min-height: clamp(560px, calc(100vh - 92px), 980px);
+  height: min(980px, calc(100vh - 92px));
+  height: min(980px, calc(100dvh - 92px));
+  min-height: min(560px, calc(100vh - 92px));
+  min-height: min(560px, calc(100dvh - 92px));
+  max-height: calc(100vh - 92px);
+  max-height: calc(100dvh - 92px);
   overflow: hidden;
   border: 1px solid var(--ctx-border);
   border-radius: 14px;
@@ -314,22 +320,33 @@
 }
 
 .ctx-toolbar {
+  position: sticky;
+  z-index: 20;
+  top: 0;
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 4px;
   min-height: 42px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   padding: 6px 10px;
   border-bottom: 1px solid var(--ctx-border);
   background: var(--ctx-surface);
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .ctx-toolbar-group {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 2px;
 }
 
 .ctx-toolbar-sep {
+  flex: 0 0 auto;
   width: 1px;
   height: 18px;
   margin: 0 6px;
@@ -337,7 +354,7 @@
 }
 
 .ctx-toolbar-spacer {
-  flex: 1;
+  flex: 1 0 12px;
 }
 
 .ctx-tool-btn,
@@ -351,6 +368,7 @@
 
 .ctx-tool-btn {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   width: 30px;
@@ -399,6 +417,7 @@
 
 .ctx-tool-text {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
   height: 28px;
@@ -423,10 +442,10 @@
 }
 
 .ctx-table-picker {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
+  position: fixed;
   z-index: 30;
+  width: max-content;
+  max-width: calc(100vw - 16px);
   padding: 10px 10px 8px;
   border: 1px solid var(--ctx-border);
   border-radius: 12px;
@@ -505,8 +524,8 @@
 
 .ctx-editor-shell {
   position: relative;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: 100%;
   padding-left: 48px;
 }
 
@@ -533,8 +552,7 @@
 }
 
 .ctx-editor {
-  flex: 1;
-  min-height: 0;
+  min-height: 100%;
   padding: 0;
   color: var(--ctx-ink);
   caret-color: var(--ctx-ink);
@@ -642,6 +660,7 @@
 }
 
 .ctx-card-foot {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1265,4 +1284,19 @@
 .ctx-restore-foot span {
   color: var(--ctx-ink-3);
   font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .context-view.context-wireframe {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .ctx-card {
+    height: calc(100vh - 86px);
+    height: calc(100dvh - 86px);
+    min-height: 0;
+    max-height: calc(100vh - 86px);
+    max-height: calc(100dvh - 86px);
+  }
 }

@@ -85,6 +85,22 @@ const sameVersionLowerProjection = appState({
 });
 assert.equal(incomingTaskStateIsStale(fresh, sameVersionLowerProjection), true);
 
+const temporaryReadFailure = appState({
+  generatedAt: "2026-06-08T01:02:00.000Z",
+  handoffState: "none",
+  projectionCount: 0,
+  taskSyncVersion: "",
+});
+temporaryReadFailure.tasks.sync.status = "database_error";
+temporaryReadFailure.tasks.sync.taskSyncVersion = "";
+temporaryReadFailure.tasks.sync.lastSyncedAt = null;
+temporaryReadFailure.tasks.requests.sync.lastUpdatedAt = null;
+temporaryReadFailure.tasks.sync.handoff.latestRequestUpdatedAt = null;
+assert.equal(incomingTaskStateIsStale(fresh, temporaryReadFailure), true);
+const readFailureMerge = mergeAppStateWithMonotonicTasks(fresh, temporaryReadFailure);
+assert.equal(readFailureMerge.tasks.sync.projectionCount, 12);
+assert.equal(readFailureMerge.tasks.sync.handoff.requestHandoffState, "generated_visible");
+
 const sameVersionLowerHandoff = appState({
   handoffState: "failed",
   projectionCount: 12,

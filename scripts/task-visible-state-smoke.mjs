@@ -221,6 +221,49 @@ const generatedRpcTask = task("proposed", {
   title: "Document RPC Failure Reproduction And Impact",
   pft: 1.5,
 });
+const generatedProjectionPendingState = reconcileTaskVisibleState({
+  accountId,
+  linkedWalletAddress: walletAddress,
+  nowMs,
+  tasks: {
+    outstanding: [acceptedCapacityTask, acceptedPortsTask],
+    verification: [verificationRequested],
+    refused: [task("refused", { taskId: "task_refused" })],
+    rewarded: [rewarded],
+    requests: {
+      items: [{
+        ...rpcBrokenRequest,
+        status: "proposed",
+        statusLabel: "Task proposed",
+        generatedTaskId: generatedRpcTask.taskId,
+        isActive: false,
+        isProcessing: false,
+        needsAttention: false,
+        isTerminal: true,
+        lastError: "",
+      }],
+    },
+    sync: {
+      status: "ready",
+      projectionCount: 11,
+      requiresRefresh: false,
+      handoff: {
+        latestRequestId: "req_rpc_broken",
+        latestRequestStatus: "proposed",
+        latestRequestUpdatedAt: new Date(nowMs + 1000).toISOString(),
+        generatedTaskId: generatedRpcTask.taskId,
+        generatedTaskVisible: false,
+        requestHandoffState: "generated_projection_pending",
+      },
+    },
+  },
+});
+assert.equal(generatedProjectionPendingState.activeRequestCount, 0);
+assert.equal(generatedProjectionPendingState.processingRequestCount, 0);
+assert.equal(generatedProjectionPendingState.handoff.requestHandoffState, "generated_projection_pending");
+assert.equal(generatedProjectionPendingState.polling.shouldRefreshTaskState, true);
+assert.equal(generatedProjectionPendingState.polling.shouldForceTaskProjection, true);
+
 const generatedVisibleState = reconcileTaskVisibleState({
   accountId,
   linkedWalletAddress: walletAddress,

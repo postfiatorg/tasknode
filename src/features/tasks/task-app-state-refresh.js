@@ -8,6 +8,11 @@ function numeric(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function temporaryTaskReadFailure(tasks = {}) {
+  const status = String(tasks?.sync?.status || "").trim();
+  return status === "database_error" || status === "integrity_unavailable";
+}
+
 function taskWalletAddress(tasks = {}) {
   return tasks?.sync?.walletAddress || tasks?.requests?.sync?.walletAddress || "";
 }
@@ -63,6 +68,7 @@ export function incomingTaskStateIsStale(current = null, next = null) {
 
   const currentProjectionCount = numeric(current.tasks?.sync?.projectionCount);
   const nextProjectionCount = numeric(next.tasks?.sync?.projectionCount);
+  if (temporaryTaskReadFailure(next.tasks) && nextProjectionCount < currentProjectionCount) return true;
   if (currentVersion === nextVersion && nextProjectionCount < currentProjectionCount) return true;
 
   const currentHandoffRank = handoffRank(current.tasks?.sync?.handoff);
