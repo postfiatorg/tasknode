@@ -5,6 +5,7 @@ import { runDailyAirdropScore } from "./profile-daily-airdrop.js";
 import {
   issueLatestDailyAirdrop,
   listDailyAirdropDebt,
+  listOrphanedDailyAirdropRuns,
   listRetryableDailyAirdropIssuances,
   recoverStaleDailyAirdropIssuances,
 } from "./profile-daily-airdrop-issuance.js";
@@ -408,6 +409,49 @@ export async function runDailyAirdropWorkerOnce({
               "[daily-airdrop-worker] issuance retry failed",
               retryableIssuance.accountId,
               retryableIssuance.runId,
+              error?.message || error
+            );
+          }
+        }
+
+        const orphanedRuns = await listOrphanedDailyAirdropRuns({
+          runDate: checkedRunDate,
+          limit: safeBatchLimit,
+        });
+        for (const orphanedRun of orphanedRuns) {
+          if (!orphanedRun.recipientWallet) continue;
+          try {
+            const issuanceResult = await issueLatestDailyAirdrop({
+              accountId: orphanedRun.accountId,
+              runId: orphanedRun.runId,
+            });
+            const issuance = issuanceResult.issuance || {};
+            if (issuance.status === "submitted") {
+              issued.push({
+                accountId: orphanedRun.accountId,
+                runId: orphanedRun.runId,
+                issuanceId: issuance.id,
+                runDate: checkedRunDate,
+                amountPft: Number(issuance.amountPft || orphanedRun.amountPft || 0),
+                recipientWallet: issuance.recipientWallet || "",
+                txHash: issuance.txHash || "",
+                ledgerIndex: issuance.ledgerIndex || null,
+                alreadySubmitted: Boolean(issuanceResult.alreadySubmitted),
+                recoveredMissingIssuance: true,
+              });
+            }
+          } catch (error) {
+            failed.push({
+              accountId: orphanedRun.accountId,
+              runId: orphanedRun.runId,
+              runDate: checkedRunDate,
+              phase: "recover_missing_issuance",
+              error: error?.message || String(error),
+            });
+            logger.warn?.(
+              "[daily-airdrop-worker] missing-issuance recovery failed",
+              orphanedRun.accountId,
+              orphanedRun.runId,
               error?.message || error
             );
           }

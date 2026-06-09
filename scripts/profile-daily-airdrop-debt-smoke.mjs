@@ -12,13 +12,15 @@ const suffix = `${Date.now()}`;
 const accountId = `acct_airdrop_debt_${suffix}`;
 const runId = `airdrop_debt_run_${suffix}`;
 const issuanceId = `airdrop_debt_issue_${suffix}`;
+const orphanAccountId = `acct_airdrop_debt_orphan_${suffix}`;
+const orphanRunId = `airdrop_debt_orphan_run_${suffix}`;
 const observabilityEventId = `uobs_airdrop_debt_${suffix}`;
 const recipientWallet = Wallet.generate().classicAddress;
 const sourceWallet = Wallet.generate().classicAddress;
 
 async function cleanup() {
   await query("DELETE FROM profile_daily_airdrop_issuances WHERE id = $1", [issuanceId]);
-  await query("DELETE FROM profile_daily_airdrop_runs WHERE id = $1", [runId]);
+  await query("DELETE FROM profile_daily_airdrop_runs WHERE id = ANY($1::text[])", [[runId, orphanRunId]]);
   await query("DELETE FROM user_observability_events WHERE id = $1", [observabilityEventId]);
 }
 
@@ -71,6 +73,25 @@ async function main() {
       [issuanceId, accountId, runId, sourceWallet, recipientWallet]
     );
 
+    await query(
+      `INSERT INTO profile_daily_airdrop_runs (
+         id, account_id, run_date, run_mode, is_canonical, status,
+         daily_airdrop_pft, retention_value_score, what_raised_today,
+         input_hash, input_snapshot, provider, model, prompt_version, prompt_digest,
+         completed_at
+       )
+       VALUES (
+         $1, $2, '2026-01-17'::date, 'production', true, 'completed',
+         7, 80, 'debt smoke orphan', 'sha256:debt-smoke-orphan',
+         $3::jsonb, 'smoke', 'smoke', 'daily_airdrop_v1', 'sha256:prompt', now()
+       )`,
+      [
+        orphanRunId,
+        orphanAccountId,
+        JSON.stringify({ airdrop_recipient: { wallet_address: recipientWallet } }),
+      ]
+    );
+
     const debt = await listDailyAirdropDebt({ sinceDate: "2026-01-17", limit: 10 });
     const row = debt.find((item) => item.issuanceId === issuanceId);
     assert.ok(row);
@@ -80,6 +101,16 @@ async function main() {
     assert.equal(row.retryable, true);
     assert.equal(row.nextAction, "retry_issuance");
     assert.equal(row.amountPft, 9);
+
+    const orphanRow = debt.find((item) => item.runId === orphanRunId);
+    assert.ok(orphanRow, "completed positive run with no issuance row must appear as debt");
+    assert.equal(orphanRow.kind, "issuance_missing");
+    assert.equal(orphanRow.status, "missing_issuance");
+    assert.equal(orphanRow.issuanceId, "");
+    assert.equal(orphanRow.retryable, true);
+    assert.equal(orphanRow.nextAction, "retry_issuance");
+    assert.equal(orphanRow.amountPft, 7);
+    assert.equal(orphanRow.recipientWallet, recipientWallet);
 
     console.log("profile daily airdrop debt smoke ok");
   } finally {

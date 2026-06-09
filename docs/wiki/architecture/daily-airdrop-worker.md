@@ -64,6 +64,14 @@ midnight can still be completed on the next tick. It retries
 `failed_before_submit` issuance rows up to
 `TASKNODE_DAILY_AIRDROP_MAX_ISSUANCE_ATTEMPTS`, default `5`.
 
+The worker also recovers missing-issuance debt inside the same checked dates: a
+completed production run with positive `daily_airdrop_pft` and no issuance row
+at all (for example, a worker crash between scoring completion and the issuance
+claim) is re-issued through the normal fail-closed claim path. The debt command
+reports these rows as kind `issuance_missing` with status `missing_issuance` and
+`nextAction=retry_issuance`; runs whose snapshot has no recipient wallet are
+reported as `inspect` instead and are skipped by automatic recovery.
+
 Run the worker and issue script only after checking failed issuance state:
 
 ```bash

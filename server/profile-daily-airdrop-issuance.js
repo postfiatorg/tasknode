@@ -470,11 +470,54 @@ export async function listRetryableDailyAirdropIssuances({
   return result.rows.map((row) => normalizeIssuance(row));
 }
 
+export async function listOrphanedDailyAirdropRuns({ runDate = "", limit = 25 } = {}) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
+  const result = await query(
+    `SELECT r.id AS run_id,
+            r.account_id,
+            r.run_date,
+            r.daily_airdrop_pft::text AS amount_pft,
+            COALESCE(r.input_snapshot->'airdrop_recipient'->>'wallet_address', '') AS recipient_wallet,
+            r.updated_at
+       FROM profile_daily_airdrop_runs r
+      WHERE ($1::date IS NULL OR r.run_date = $1::date)
+        AND r.run_mode = 'production'
+        AND r.status = 'completed'
+        AND r.daily_airdrop_pft > 0
+        AND NOT EXISTS (
+          SELECT 1
+            FROM profile_daily_airdrop_issuances i
+           WHERE i.run_id = r.id
+        )
+        AND NOT EXISTS (
+          SELECT 1
+            FROM profile_daily_airdrop_issuances submitted
+           WHERE submitted.account_id = r.account_id
+             AND submitted.run_date = r.run_date
+             AND submitted.status = 'submitted'
+        )
+      ORDER BY r.run_date ASC, r.updated_at ASC, r.id ASC
+      LIMIT $2`,
+    [runDate ? dateOnly(runDate) : null, safeLimit]
+  );
+  return result.rows.map((row) => ({
+    runId: row.run_id,
+    accountId: row.account_id,
+    runDate: dateOnly(row.run_date),
+    amountPft: Number(row.amount_pft || 0),
+    recipientWallet: row.recipient_wallet || "",
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+  }));
+}
+
 function nextDebtAction(row = {}) {
   const kind = safeText(row.kind, 80);
   const status = normalizeDailyAirdropIssuanceStatus(row);
   if (kind === "scoring" && status === "running") return "wait_or_reclaim_stale_scoring";
   if (kind === "scoring" && status === "failed") return "retry_scoring";
+  if (kind === "issuance_missing") {
+    return safeText(row.recipient_wallet, 120) ? "retry_issuance" : "inspect";
+  }
   if (status === "failed_before_submit" || status === "pending") return "retry_issuance";
   if (status === "processing_pre_submit") return "wait_or_reclaim_pre_submit";
   if (status === "submitting" || status === "submit_unknown") return "reconcile_before_retry";
@@ -556,12 +599,53 @@ export async function listDailyAirdropDebt({ sinceDate = "", limit = 200 } = {})
                AND complete.run_mode = 'production'
                AND complete.status = 'completed'
           )
+     ),
+     missing_issuance_debt AS (
+       SELECT 'issuance_missing' AS kind,
+              r.account_id,
+              '' AS public_handle,
+              r.run_date,
+              r.id AS run_id,
+              '' AS issuance_id,
+              r.daily_airdrop_pft::text AS amount_pft,
+              COALESCE(r.input_snapshot->'airdrop_recipient'->>'wallet_address', '') AS recipient_wallet,
+              'missing_issuance' AS status,
+              NULL::text AS error_message,
+              '' AS last_error_code,
+              '' AS last_error_message,
+              0::integer AS attempt_count,
+              NULL::timestamptz AS last_attempt_at,
+              NULL::timestamptz AS submission_attempted_at,
+              '' AS signed_tx_hash,
+              '' AS tx_hash,
+              '' AS source_cid,
+              '' AS payload_digest,
+              r.updated_at
+         FROM profile_daily_airdrop_runs r
+        WHERE ($1::date IS NULL OR r.run_date >= $1::date)
+          AND r.run_mode = 'production'
+          AND r.status = 'completed'
+          AND r.daily_airdrop_pft > 0
+          AND NOT EXISTS (
+            SELECT 1
+              FROM profile_daily_airdrop_issuances i
+             WHERE i.run_id = r.id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+              FROM profile_daily_airdrop_issuances submitted
+             WHERE submitted.account_id = r.account_id
+               AND submitted.run_date = r.run_date
+               AND submitted.status = 'submitted'
+          )
      )
      SELECT *
        FROM (
          SELECT * FROM issuance_debt
          UNION ALL
          SELECT * FROM scoring_debt
+         UNION ALL
+         SELECT * FROM missing_issuance_debt
        ) debt
       ORDER BY run_date DESC, updated_at ASC, account_id ASC
       LIMIT $2`,
@@ -594,7 +678,9 @@ export async function listDailyAirdropDebt({ sinceDate = "", limit = 200 } = {})
       amountPft: Number(row.amount_pft || 0),
       recipientWallet: row.recipient_wallet || "",
       status,
-      retryable: row.kind === "issuance" && dailyAirdropIssuanceRetryable(row),
+      retryable:
+        (row.kind === "issuance" && dailyAirdropIssuanceRetryable(row)) ||
+        (row.kind === "issuance_missing" && Boolean(safeText(row.recipient_wallet, 120))),
       lastError: row.last_error_message || row.error_message || "",
       lastErrorCode: row.last_error_code || "",
       attemptCount: Number(row.attempt_count || 0),
