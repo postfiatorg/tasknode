@@ -61,6 +61,9 @@ import taskReviewRewardWorker from "../../../docs/wiki/architecture/task-review-
 import telegramBotChat from "../../../docs/wiki/architecture/telegram-bot-chat.md?raw";
 import turnMemoryWorker from "../../../docs/wiki/architecture/turn-memory-worker.md?raw";
 import userObservabilityLogging from "../../../docs/wiki/architecture/user-observability-logging.md?raw";
+import onboardingWalletFrictionMemo from "../../../docs/wiki/plans/onboarding-wallet-friction-memo-2026-06-08.md?raw";
+import taskNodeProductionCutoverPackage from "../../../docs/wiki/plans/task-node-production-cutover-package-2026-06-09.md?raw";
+import pftasksTransactionShutdownCutoverPlan from "../../../docs/wiki/plans/pftasks-transaction-shutdown-cutover-plan-2026-06-09.md?raw";
 import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-production-scope.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import jobsStandardChatPrompt from "../../../prompts/chat/jobs_standard_chat_codex_style_draft.md?raw";
@@ -97,6 +100,8 @@ const PROMPT_SOURCES = [
       "server/profile-daily-airdrop.js::runDailyAirdropScore",
       "scripts/profile-daily-airdrop-score.mjs",
       "scripts/profile-daily-airdrop-issue.mjs",
+      "scripts/profile-daily-airdrop-debt.mjs",
+      "scripts/profile-daily-airdrop-reconcile.mjs",
       "GET /api/profile/daily-airdrop",
     ],
     content: dailyAirdropPrompt,
@@ -818,6 +823,24 @@ export const DOC_GROUPS = [
         title: "Task Node Production Scope",
         summary: "Single active beta plan: acceptance gates, completed work, and remaining P0/P1 launch scope.",
         markdown: taskNodeProductionScope,
+      },
+      {
+        slug: "onboarding-wallet-friction-memo",
+        title: "Onboarding Wallet Friction Memo",
+        summary: "QA memo for remaining onboarding, task-loading, and multi-wallet capacity friction.",
+        markdown: onboardingWalletFrictionMemo,
+      },
+      {
+        slug: "task-node-production-cutover-package",
+        title: "Task Node Production Cutover Package",
+        summary: "Concrete production cutover package for moving tasknode.postfiat.org to Task Node Official and retiring PFTasks task-side authority.",
+        markdown: taskNodeProductionCutoverPackage,
+      },
+      {
+        slug: "pftasks-transaction-shutdown-cutover-plan",
+        title: "PFTasks Transaction Shutdown Cutover Plan",
+        summary: "Production gate for disabling legacy PFTasks task, reward, airdrop, NFT, bot, and worker writers while keeping wallet sends and seed backups.",
+        markdown: pftasksTransactionShutdownCutoverPlan,
       },
     ],
   },

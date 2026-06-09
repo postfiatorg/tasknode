@@ -11,6 +11,7 @@ For a normal user-facing explanation, start with [User Guide](#docs/user-guide).
 - Chat is where users work.
 - Context is the durable profile of what the user is building and what matters.
 - Tasks are portable work objects that request, accept, submit, verify, and reward through PFTL/IPFS while Postgres provides the fast read model.
+- Hive is the network coordination board and Hive Chat is the default conversation for contributing validated network context.
 - Wallet is identity, rewards, publishing authority, and balance visibility.
 - Memory is lightweight compression of user and assistant turns so future chats can carry continuity.
 - Context Refine is the active specialized chat tool for editing the current context document. Motivation, Brainstorming Context, and Rewrite are not exposed in the interface right now.
@@ -43,7 +44,7 @@ flowchart LR
 - Deployment is documented under Architecture -> Deployment. The current public dev app is `tasknodeofficial-dev` on Fly; local Docker can either use isolated local data or the Fly dev data bridge for QA against the same Postgres rows. Fly releases must use `npm run fly:deploy` so the non-HTTP `worker` process group is started and guarded after deploy.
 - Scheduler, worker, and RPC audit state is documented under Architecture -> System Status and rendered live in Help from `/api/system/status`.
 - Browser-control release testing is documented under Architecture -> [Browser-Control QA](#docs/codex-computer-control-qa).
-- The single active beta plan is documented under Plans -> [Task Node Production Scope](#docs/task-node-production-scope). That page now consolidates production scope, beta acceptance gates, completed implementation areas, contributor trust/reward policy, and the remaining P0/P1 beta work.
+- The single active beta plan is documented under Plans -> [Task Node Production Scope](#docs/task-node-production-scope). That page now consolidates production scope, beta acceptance gates, completed implementation areas, contributor trust/reward policy, and the remaining P0/P1 beta work. Remaining onboarding and wallet-friction recommendations are tracked in Plans -> [Onboarding Wallet Friction Memo](#docs/onboarding-wallet-friction-memo). The production domain migration package is tracked in Plans -> [Task Node Production Cutover Package](#docs/task-node-production-cutover-package).
 
 ## Canonical Wiki Locations
 
@@ -58,7 +59,9 @@ locations instead:
 | Account auth, wallet proof, local vault unlock, and seed custody | [Identity & Wallets](#docs/identity-wallets), [Wallet](#docs/wallet) |
 | Docker, Fly deploys, secrets, process groups, production pause/restart | [Deployment](#docs/deployment) |
 | User-specific support, wallet-scoped eligibility, rewards, memory, profile, Hive, Telegram, and usage logging | [User Observability Logging](#docs/user-observability-logging) |
-| PFTasks to Task Node Official account, wallet, context, task, NFT, and URL cutover | [PFTasks Cutover](#docs/pftasks-cutover) |
+| Hive Chat first-run onboarding, wallet validation, Network Tasks, and onboarding friction | [Hive](#docs/hive) |
+| PFTasks to Task Node Official account, wallet, context, task, NFT, and URL cutover | [Task Node Production Cutover Package](#docs/task-node-production-cutover-package), [PFTasks Cutover](#docs/pftasks-cutover) |
+| PFTasks production transaction shutdown before cutover | [PFTasks Transaction Shutdown Cutover Plan](#docs/pftasks-transaction-shutdown-cutover-plan) |
 | Postgres schema target and context history restore | [Database](#docs/database), [PFTL](#docs/pftl) |
 | Ethereum deposit addresses, xpub custody, balance sync, sweep boundary | [Ethereum Deposit RPC](#docs/ethereum-deposit-rpc), [Wallet](#docs/wallet), [Database](#docs/database) |
 | PFTL task protocol, async task engine, lifecycle replay, evidence and rewards | [Task Generation](#docs/task-generation), [PFTL](#docs/pftl), [Tasks](#docs/tasks) |

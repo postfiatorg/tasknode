@@ -245,6 +245,20 @@ Hive Chat cannot create personal tasks for you. It can record context and explai
 
 Board Manager is an AI-assisted coordination system. It can route, summarize, and recommend network actions through the product workflow. It is not a human manager, and Help should not describe it as one.
 
+### Hive Chat First-Run Path
+
+For a first Hive Chat session:
+
+1. Sign in or create an account.
+2. Choose a Hive handle on Profile.
+3. Link or create a PFT wallet on Wallet.
+4. Open the pinned `Hive Chat` conversation in Chat.
+5. Send a short message describing what you can contribute or what network context the Board Manager should know.
+6. Open Hive to inspect active projects and Board Manager activity.
+7. Open Tasks when a Network Task is proposed, because acceptance, refusal, evidence submission, verification, and reward state happen there.
+
+Hive Context validation means the Hive entry came from an account with a linked PFT wallet. Ordinary Hive Chat messages do not require the wallet vault to be unlocked. Wallet unlock is needed later for signing wallet-bound actions such as accepting a task or submitting evidence.
+
 ### How To Explain Network Tasks
 
 Network Tasks are paid work for the group. They are meant to advance shared Post Fiat projects, not just personal productivity.
@@ -317,6 +331,11 @@ Generated drafts and minted NFTs are different. A generated draft is an app reco
 ### How To Use Them
 
 Open Profile to generate, view, paginate, and mint profile NFTs. Minting requires the linked local wallet vault to be unlocked because the browser signs the NFT mint transaction.
+
+If generation is still running, Profile shows a saved in-progress draft. It is
+safe to leave the page or refresh; return to Profile and the draft will still be
+visible. Completed drafts appear in Profile Studio and the NFT gallery. Failed
+drafts stay visible privately with a retry path.
 
 The app renders NFT images through the profile image proxy so old or migrated IPFS assets can be fetched reliably without the browser trying many gateways directly.
 
