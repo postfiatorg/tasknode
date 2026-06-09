@@ -122,7 +122,10 @@ export function WalletUnlockModal({
           </label>
           <div className="wallet-unlock-warning">
             <AlertTriangle size={13} strokeWidth={1.75} />
-            <span>Unlocking keeps the decrypted phrase in memory only. Lock the vault or log out to clear it.</span>
+            <span>
+              The decrypted phrase stays available in this browser tab, including across page reloads, until you lock
+              the vault, log out, or close the tab. On a shared computer, lock the vault when you are done.
+            </span>
           </div>
           {message && <div className="wallet-unlock-message">{message}</div>}
         </div>
