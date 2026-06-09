@@ -156,6 +156,165 @@ export async function createGeneratedProfileNft({
   return normalizeRecord(result.rows[0]);
 }
 
+export async function createGeneratingProfileNft({
+  accountId = "",
+  walletAddress = "",
+  title = "Task Node Profile NFT",
+  description = "",
+  promptSource = "",
+  promptDigest = "",
+  templateDigest = "",
+  model = "",
+  size = "",
+  quality = "",
+  outputFormat = "",
+} = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  if (!normalizedAccountId) {
+    const error = new Error("profile_nft_account_required");
+    error.status = 401;
+    throw error;
+  }
+
+  const id = `nft_${randomUUID()}`;
+  const createdAt = nowIso();
+  const record = normalizeRecord({
+    id,
+    accountId: normalizedAccountId,
+    walletAddress: safeText(walletAddress, 120),
+    title: safeText(title, 120) || "Task Node Profile NFT",
+    description: safeText(description, 800),
+    status: "generating",
+    promptSource: safeText(promptSource, 80),
+    promptDigest: safeText(promptDigest, 128),
+    templateDigest: safeText(templateDigest, 128),
+    model: safeText(model, 80),
+    size: safeText(size, 40),
+    quality: safeText(quality, 40),
+    outputFormat: safeText(outputFormat, 40),
+    createdAt,
+    updatedAt: createdAt,
+  });
+
+  if (!databaseEnabled()) {
+    runtimeNfts.set(id, record);
+    return record;
+  }
+
+  const result = await query(
+    `INSERT INTO profile_nfts (
+       id, account_id, wallet_address, title, description, status,
+       prompt_source, prompt_digest, template_digest, model, size, quality, output_format
+     )
+     VALUES (
+       $1, $2, $3, $4, $5, 'generating',
+       $6, $7, $8, $9, $10, $11, $12
+     )
+     RETURNING *`,
+    [
+      record.id,
+      record.accountId,
+      record.walletAddress,
+      record.title,
+      record.description,
+      record.promptSource,
+      record.promptDigest,
+      record.templateDigest,
+      record.model,
+      record.size,
+      record.quality,
+      record.outputFormat,
+    ]
+  );
+  return normalizeRecord(result.rows[0]);
+}
+
+export async function markProfileNftGenerated({
+  accountId = "",
+  nftId = "",
+  imageCid = "",
+  imageGatewayUrl = "",
+  imageMimeType = "",
+  imageSizeBytes = 0,
+  imageSha256 = "",
+  promptSource = "",
+  promptDigest = "",
+  templateDigest = "",
+  model = "",
+  size = "",
+  quality = "",
+  outputFormat = "",
+} = {}) {
+  const record = await getProfileNft({ accountId, nftId });
+  if (!record) return null;
+  const generatedAt = nowIso();
+  const normalizedImageCid = safeText(imageCid, 160);
+
+  if (!databaseEnabled()) {
+    const next = normalizeRecord({
+      ...record,
+      status: "generated",
+      imageCid: normalizedImageCid,
+      imageGatewayUrl: safeText(imageGatewayUrl, 500) || gatewayUrlForCid(normalizedImageCid),
+      imageMimeType: safeText(imageMimeType, 120),
+      imageSizeBytes: Math.max(0, Number(imageSizeBytes || 0)),
+      imageSha256: safeText(imageSha256, 128),
+      promptSource: safeText(promptSource, 80) || record.promptSource,
+      promptDigest: safeText(promptDigest, 128) || record.promptDigest,
+      templateDigest: safeText(templateDigest, 128) || record.templateDigest,
+      model: safeText(model, 80) || record.model,
+      size: safeText(size, 40) || record.size,
+      quality: safeText(quality, 40) || record.quality,
+      outputFormat: safeText(outputFormat, 40) || record.outputFormat,
+      error: "",
+      generatedAt,
+      updatedAt: generatedAt,
+    });
+    runtimeNfts.set(record.id, next);
+    return next;
+  }
+
+  const result = await query(
+    `UPDATE profile_nfts
+        SET status = 'generated',
+            image_cid = $3,
+            image_gateway_url = $4,
+            image_mime_type = $5,
+            image_size_bytes = $6,
+            image_sha256 = $7,
+            prompt_source = COALESCE(NULLIF($8, ''), prompt_source),
+            prompt_digest = COALESCE(NULLIF($9, ''), prompt_digest),
+            template_digest = COALESCE(NULLIF($10, ''), template_digest),
+            model = COALESCE(NULLIF($11, ''), model),
+            size = COALESCE(NULLIF($12, ''), size),
+            quality = COALESCE(NULLIF($13, ''), quality),
+            output_format = COALESCE(NULLIF($14, ''), output_format),
+            generated_at = now(),
+            updated_at = now(),
+            error = ''
+      WHERE account_id = $1
+        AND id = $2
+      RETURNING *`,
+    [
+      safeAccountId(accountId),
+      safeText(nftId, 120),
+      normalizedImageCid,
+      safeText(imageGatewayUrl, 500) || gatewayUrlForCid(normalizedImageCid),
+      safeText(imageMimeType, 120),
+      Math.max(0, Number(imageSizeBytes || 0)),
+      safeText(imageSha256, 128),
+      safeText(promptSource, 80),
+      safeText(promptDigest, 128),
+      safeText(templateDigest, 128),
+      safeText(model, 80),
+      safeText(size, 40),
+      safeText(quality, 40),
+      safeText(outputFormat, 40),
+    ]
+  );
+  return result.rows[0] ? normalizeRecord(result.rows[0]) : null;
+}
+
 export async function listProfileNfts(options = {}) {
   options = options && typeof options === "object" ? options : {};
   const { accountId = "", limit = 12, includeWalletless = true } = options;

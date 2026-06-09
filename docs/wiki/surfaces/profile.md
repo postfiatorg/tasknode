@@ -143,6 +143,24 @@ The app shell account avatar uses the same latest active-wallet profile NFT imag
 
 Prompt privacy remains unchanged: the image prompt body is never returned to the browser, never shown in public metadata, and never committed to the public prompt folder.
 
+### Profile NFT Generation Recovery
+
+Profile NFT generation is recoverable from the `profile_nfts` row itself. When
+the user starts generation, the backend creates a durable row with
+`status='generating'` before calling the image provider or pinning to IPFS. The
+Profile Studio and private NFT gallery render that row as an in-progress saved
+draft, and the Studio polls `/api/profile/nfts` while it is pending. The user can
+navigate away, refresh, or close the app; on return, the latest row hydrates the
+Studio back into the same in-progress state.
+
+When generation and IPFS pinning finish, the same row is updated to
+`status='generated'` with the image CID and becomes mintable. If generation
+fails, the same row becomes `status='failed'` with an error message and remains
+visible privately so the user can understand what happened and retry. Pending
+and failed rows are not used as profile avatars and are filtered out of public
+profile output; public profile surfaces only expose generated, prepared, or
+minted NFT rows.
+
 ### Wallet NFT Inventory From Chain
 
 The durable NFT source of truth is the PFTL wallet, not the old PFTasks database and not Task Node Official's `profile_nfts` cache.
@@ -316,7 +334,7 @@ The private profile page renders recommendation cards from `GET /api/profile/rec
 
 Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT airdrop plus a short explanation of what raised the score, what lowered it, and what to improve tomorrow.
 
-Current status: recurring scoring and live issuance are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance claims exactly one `profile_daily_airdrop_issuances` row as `processing` before any PFT signing work, then submits a PFTL payment pointer. Each actual worker run also creates a Hive Mind Agent card that says how much PFT was dispensed and to how many users.
+Current status: recurring scoring, live issuance, stale recovery, and catch-up retries are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance claims exactly one `profile_daily_airdrop_issuances` row as `processing_pre_submit`, marks it `submitting` before the PFTL submit call, and records `submitted` only after transaction proof is persisted. Each actual worker run also creates a Hive Mind Agent card that says how much PFT was dispensed and whether unresolved airdrop debt remains.
 
 ### Private Profile Rendering
 
@@ -329,6 +347,8 @@ Runtime endpoints:
 
 The airdrop hero reads the latest completed `profile_daily_airdrop_runs` row for the signed-in `account_id`. The large headline is the latest daily airdrop amount only. It is labeled `Today's airdrop` only when the paid/scored airdrop date is the current UTC date; otherwise it is labeled `Latest airdrop`. Total earned PFT, including task rewards plus submitted daily airdrops, belongs in the adjacent range chart and summary line.
 
+The hero must distinguish scored and paid state. If `profile_daily_airdrop_issuances.status` is not `submitted`, the visible label says the airdrop was scored but not paid yet and shows the current payout status, such as `Retry pending`, `Preparing payout`, or `Needs reconciliation`. The reward chart counts only submitted airdrops as earned PFT.
+
 Visible fields:
 
 - proposed daily airdrop: `daily_airdrop_pft`;
@@ -338,7 +358,7 @@ Visible fields:
 - rewarded task count from `input_snapshot.reward_totals.rewarded_task_count`;
 - trailing 7-day actual/max PFT: `actual_airdrop_pft_7d` and `max_possible_airdrop_pft_7d`;
 - recipient wallet from `input_snapshot.airdrop_recipient.wallet_address`;
-- paid issuance proof from `profile_daily_airdrop_issuances`;
+- payout status and paid issuance proof from `profile_daily_airdrop_issuances`;
 - model explanations: `what_raised_today`, `what_kept_it_lower`, `to_improve_tomorrow`, and `reasoning_text`.
 
 The private profile does not display `retention_value_score`. The backend still stores that model output for audit and future policy review, but it is not part of the private member-facing panel.
@@ -366,11 +386,11 @@ Excluded work:
 
 The airdrop is one score per identity cloud, not one score per wallet. An account can link, delink, and relink multiple PFT wallets over time, but daily scoring remains keyed by `account_id` and `run_date`.
 
-The identity wallet cloud is built from:
+The worker-visible identity wallet cloud is built from `pftl_sync_wallets`:
 
-- the active linked wallet;
-- wallet link, relink, and delink auth events for the account;
-- reclaim events that remove wallets now claimed by another active account.
+- active `role = 'user'` rows are treated as currently linked wallets;
+- inactive `role = 'user'` rows are treated as historical identity-cloud wallets;
+- non-user roles such as allocation, authority, funding, and airdrop service wallets are excluded.
 
 This prevents a user from farming airdrops by rotating wallets and prevents Task Node authority/funding wallets from being selected just because they appear in chain replay rows.
 
@@ -502,6 +522,14 @@ Important fields:
 - `tx_hash`;
 - `ledger_index`;
 - `payload_digest`.
+- `attempt_count`;
+- `last_attempt_at`;
+- `last_error_code`;
+- `last_error_message`;
+- `submission_attempted_at`;
+- `signed_tx_hash`;
+- `reconciliation_json`;
+- `reconciled_at`.
 
 The issuance uniqueness boundary is one issuance row per `run_id` and one submitted issuance per account/day.
 
@@ -542,6 +570,14 @@ Observed packet:
 
 ### Live Issuance Boundary
 
-Live issuance is owned by `server/profile-daily-airdrop-worker.js` when the worker is enabled. It claims a single `daily_airdrop` lease, scores eligible account/day packets, pays positive airdrops through the existing issuance path, and writes a Hive Mind Agent audit card. `scripts/profile-daily-airdrop-issue.mjs` remains available as a manual operator command for a specific completed run.
+Live issuance is owned by `server/profile-daily-airdrop-worker.js` when the worker is enabled. It claims a single `daily_airdrop` lease, recovers stale rows, checks today plus catch-up dates, scores eligible account/day packets, retries safe pre-submit failures, pays positive airdrops through the existing issuance path, and writes a Hive Mind Agent audit card. `scripts/profile-daily-airdrop-issue.mjs` remains available as a manual operator command for a specific completed run.
 
-Issuance is fail-closed: after a run is claimed as `processing`, another worker cannot publish it. If a failure happens before PFT submission is attempted, the row becomes `failed` and can be retried. If a failure happens after PFT submission is attempted, the row stays `processing` until reconciliation or operator review proves whether a payment happened.
+Issuance is fail-closed: after a run is claimed as `processing_pre_submit`, another worker cannot publish it. If a failure happens before PFT submission is attempted, the row becomes `failed_before_submit` and can be retried. If a failure happens after PFT submission is attempted, the row becomes `submit_unknown` until reconciliation or operator review proves whether a payment happened.
+
+Operator commands:
+
+```bash
+npm run profile-daily-airdrop-worker -- --json
+npm run profile-daily-airdrop-debt -- --json
+npm run profile-daily-airdrop-reconcile -- --run-id=<run_id> --json
+```

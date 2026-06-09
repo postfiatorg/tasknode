@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 process.env.TASKNODE_DATABASE_DISABLED = "true";
 
 const {
+  createGeneratingProfileNft,
   createGeneratedProfileNft,
   getProfileNft,
   listProfileNfts,
+  markProfileNftFailed,
+  markProfileNftGenerated,
   markProfileNftMintPrepared,
   markProfileNftMinted,
 } = await import("../server/repositories/profile-nfts.js");
@@ -40,6 +43,58 @@ const listed = await listProfileNfts({ accountId });
 assert.equal(listed.length, 1);
 assert.equal(listed[0].id, generated.id);
 
+const recovering = await createGeneratingProfileNft({
+  accountId,
+  walletAddress,
+  title: "Recoverable Profile NFT",
+  promptSource: "placeholder",
+  promptDigest: "recover_prompt_digest",
+  templateDigest: "recover_template_digest",
+  model: "gpt-image-2",
+  size: "1024x1024",
+  quality: "high",
+  outputFormat: "png",
+});
+assert.equal(recovering.status, "generating");
+assert.equal(recovering.imageCid, "");
+
+const recoveringListed = await listProfileNfts({ accountId, walletAddress });
+assert.ok(
+  recoveringListed.some((nft) => nft.id === recovering.id && nft.status === "generating"),
+  "generating recovery rows must be visible from the profile NFT list"
+);
+
+const recovered = await markProfileNftGenerated({
+  accountId,
+  nftId: recovering.id,
+  imageCid: "QmRecoveredProfileNftImageCid1111111111111",
+  imageGatewayUrl: "https://dweb.link/ipfs/QmRecoveredProfileNftImageCid1111111111111",
+  imageMimeType: "image/png",
+  imageSizeBytes: 2345,
+  imageSha256: "def456",
+  model: "gpt-image-2",
+  size: "1024x1024",
+  quality: "high",
+  outputFormat: "png",
+});
+assert.equal(recovered.id, recovering.id);
+assert.equal(recovered.status, "generated");
+assert.equal(recovered.imageCid, "QmRecoveredProfileNftImageCid1111111111111");
+assert.equal(recovered.error, "");
+
+const failedDraft = await createGeneratingProfileNft({
+  accountId,
+  walletAddress,
+  title: "Failed Recoverable Profile NFT",
+});
+const failed = await markProfileNftFailed({
+  accountId,
+  nftId: failedDraft.id,
+  error: "OpenAI image generation timed out before returning an image.",
+});
+assert.equal(failed.status, "failed");
+assert.match(failed.error, /timed out/);
+
 const oldWalletNft = await createGeneratedProfileNft({
   accountId,
   walletAddress: oldWalletAddress,
@@ -53,11 +108,13 @@ const walletlessDraft = await createGeneratedProfileNft({
 });
 
 const accountWide = await listProfileNfts({ accountId });
-assert.equal(accountWide.length, 3);
+assert.equal(accountWide.length, 5);
 assert.ok(accountWide.some((nft) => nft.id === oldWalletNft.id));
 
 const currentWalletListed = await listProfileNfts({ accountId, walletAddress });
 assert.ok(currentWalletListed.some((nft) => nft.id === generated.id));
+assert.ok(currentWalletListed.some((nft) => nft.id === recovered.id));
+assert.ok(currentWalletListed.some((nft) => nft.id === failed.id));
 assert.ok(currentWalletListed.some((nft) => nft.id === walletlessDraft.id));
 assert.equal(
   currentWalletListed.some((nft) => nft.id === oldWalletNft.id),
