@@ -2,11 +2,13 @@
 
 Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT airdrop plus a short explanation of what raised the score, what lowered it, and what to improve tomorrow.
 
-Current status: recurring scoring and live issuance are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance claims exactly one `profile_daily_airdrop_issuances` row, marks it `processing` before any PFT signing work, and then submits a PFTL payment pointer. The worker also writes a `Hive Mind Agent` audit card summarizing how much PFT was dispensed and to how many users.
+Current status: recurring scoring, live issuance, stale recovery, and catch-up retries are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance claims exactly one `profile_daily_airdrop_issuances` row as `processing_pre_submit`, marks it `submitting` before calling PFTL submit, and then records `submitted` only after a transaction hash is persisted. The worker also writes a `Hive Mind Agent` audit card summarizing how much PFT was dispensed, which run dates were checked, and any unresolved airdrop debt.
 
 ### Private Profile Read Path
 
 The private profile top section reads the latest completed run through `GET /api/profile/daily-airdrop`. The large headline is the daily airdrop amount only. It says `Today's airdrop` only when that airdrop was scored or paid on the current UTC date; otherwise it says `Latest airdrop`.
+
+Profile copy distinguishes scored from paid state. When an issuance is not `submitted`, the headline says the airdrop was scored but not paid yet and shows the current payout status such as `Retry pending`, `Preparing payout`, or `Needs reconciliation`. The reward chart only counts submitted airdrops as earned PFT.
 
 Displayed airdrop values come from:
 
@@ -193,13 +195,21 @@ zero eligible wallets, zero rewarded tasks, or zero rewarded PFT, scoring throws
 `daily_airdrop_packet_candidate_mismatch`. That state is a data-boundary failure,
 not an eligible zero-airdrop result.
 
-`profile_daily_airdrop_issuances` stores live payment submissions. It is keyed by `run_id` and prevents more than one submitted issuance per account/day. The recurring worker treats any pending, processing, submitted, or failed issuance for an account/day as a stop sign so retries do not blindly double-pay after a partial chain failure.
+`profile_daily_airdrop_issuances` stores live payment submissions. It is keyed by `run_id` and prevents more than one submitted issuance per account/day. The recurring worker treats pending, in-flight, submit-unknown, submitted, and cancelled issuance rows as stop rows for new scoring. Retryable pre-submit failures are handled by the issuance retry path instead of selecting the account as a fresh candidate.
+
+Failed `profile_daily_airdrop_runs` rows are scoring-path state, not money-path state. A failed production scoring row for the same account/day may be reclaimed by the next worker tick, which resets the row to `running` with the new packet and prompt metadata. Completed or running production scoring rows still suppress repeat scoring.
 
 Issuance state is intentionally conservative:
 
-- `processing`: a worker has claimed the run for publication. No other worker may publish it. If a PFT submission has been attempted and the process times out or cannot persist the tx result, the row stays `processing` with an error message until a reconciliation/operator path proves whether payment happened.
+- `pending`: durable row exists but no publish worker has claimed it.
+- `processing_pre_submit`: a worker has claimed the run and may pin/sign, but has not attempted PFTL submission.
+- `failed_before_submit`: no PFT submission was attempted. This state is safe for bounded automatic retry.
+- `submitting`: the signed transaction was recorded and PFTL submission is in progress.
+- `submit_unknown`: submission may have reached PFTL, but the final tx proof was not persisted. This blocks retry until reconciliation.
 - `submitted`: the PFTL payment and pointer are persisted with transaction hash, pointer CID, payload digest, and ledger index.
-- `failed`: no PFT submission was attempted. This can be reclaimed by a manual retry because no on-chain payment risk exists yet.
+- `cancelled`: an operator intentionally closed the row without retry.
+
+Legacy `failed` rows with empty `tx_hash` and null `submitted_at` are treated as `failed_before_submit` for compatibility. Legacy `processing` rows with a submission timestamp are treated as `submit_unknown`.
 
 ### Historical Goodalexander Dry Run
 
@@ -229,17 +239,22 @@ surface doc and the Daily Airdrop Worker runbook.
 Each tick:
 
 1. claims a Postgres-backed `daily_airdrop` lease using the same lease table as Board Manager so multiple app instances do not run the payout loop at the same time;
-2. selects accounts with positive rewarded task work inside the trailing seven-day task packet and no production/pending/submitted/failed airdrop for the current UTC day;
-3. runs the existing DeepSeek/OpenRouter daily airdrop scorer in production mode to create a completed account/day scoring row;
-4. issues the specific scoring run through `issueLatestDailyAirdrop` when the proposed amount is positive;
-5. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.` Zero-payout ticks are recorded at most once per UTC day unless there is a failed account or submitted payout, so the Hive Mind Agent feed does not fill with duplicate zero-result cards after deploy restarts.
+2. reclaims stale `running` scoring rows, stale `processing_pre_submit` issuance rows, and stale `submitting` rows before candidate selection;
+3. checks today plus the previous `TASKNODE_DAILY_AIRDROP_CATCHUP_DAYS` UTC days, defaulting to two catch-up days;
+4. retries `failed_before_submit` issuance rows up to `TASKNODE_DAILY_AIRDROP_MAX_ISSUANCE_ATTEMPTS`;
+5. selects accounts with positive rewarded task work, no same-day in-flight/submitted/cancelled issuance stop row, and no same-day running or completed production scoring row;
+6. runs the existing DeepSeek/OpenRouter daily airdrop scorer in production mode to create a completed account/day scoring row;
+7. issues the specific scoring run through `issueLatestDailyAirdrop` when the proposed amount is positive;
+8. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.` The audit packet includes `runDatesChecked`, recovered stale rows, and unresolved debt counts. Zero-payout ticks are recorded at most once per UTC day unless there is debt, a failed account, or a submitted payout.
 
-`issueLatestDailyAirdrop` is fail-closed for money. It claims a row as `processing` before signing. If failure occurs before a PFT submission is attempted, the row is marked `failed` and can be retried. If failure occurs after submission is attempted, the row remains `processing` so a retry cannot sign another payment until reconciliation has inspected the chain/cache.
+`issueLatestDailyAirdrop` is fail-closed for money. It claims a row as `processing_pre_submit` before signing, writes `submitting` with the signed transaction hash before calling PFTL submission, and writes `submitted` only after tx proof is available. If failure occurs before a PFT submission is attempted, the issuance row is marked `failed_before_submit` and can be retried automatically. If failure occurs after submission is attempted, the row becomes `submit_unknown` so a retry cannot sign another payment until reconciliation has inspected the chain/cache.
 
 The manual operator command remains available:
 
 ```bash
 npm run profile-daily-airdrop-worker -- --json
+npm run profile-daily-airdrop-debt -- --json
+npm run profile-daily-airdrop-reconcile -- --run-id=<run_id> --json
 ```
 
 The older direct commands remain useful for diagnosis:

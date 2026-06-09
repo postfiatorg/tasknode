@@ -337,6 +337,7 @@ export async function runDailyAirdropScore({
   lookbackDays = DEFAULT_LOOKBACK_DAYS,
   maxDailyPft = Number(process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || DEFAULT_MAX_DAILY_PFT),
   model = process.env.TASKNODE_DAILY_AIRDROP_MODEL || DEFAULT_MODEL,
+  scoreAttempts = Number(process.env.TASKNODE_DAILY_AIRDROP_SCORE_ATTEMPTS || 2),
   expectedCandidate = null,
   env = process.env,
 } = {}) {
@@ -377,13 +378,25 @@ export async function runDailyAirdropScore({
     promptDigest: digest,
   });
   try {
-    const response = await scoreDailyAirdropWithOpenRouter({
-      packet,
-      promptText,
-      model,
-      maxDailyPft,
-      env,
-    });
+    const attempts = Math.min(Math.max(Number(scoreAttempts) || 1, 1), 5);
+    let response = null;
+    let lastError = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        response = await scoreDailyAirdropWithOpenRouter({
+          packet,
+          promptText,
+          model,
+          maxDailyPft,
+          env,
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt >= attempts) throw error;
+      }
+    }
+    if (!response) throw lastError || new Error("daily_airdrop_score_failed");
     const normalized = normalizeDailyAirdropOutput(response.output, packet, { maxDailyPft });
     const airdropWindow = await recentDailyAirdropRunWindow({
       accountId,

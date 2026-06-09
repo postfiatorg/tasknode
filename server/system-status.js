@@ -849,7 +849,7 @@ async function jobsPgvectorCorpusItem(tables) {
 }
 
 async function dailyAirdropItem(tables, nowMs) {
-  const [latest, runCounts, issuanceCounts] = await Promise.all([
+  const [latest, runCounts, issuanceCounts, debtSummary] = await Promise.all([
     optionalQuery(
       tables,
       ["profile_daily_airdrop_runs", "board_manager_runs"],
@@ -884,11 +884,100 @@ async function dailyAirdropItem(tables, nowMs) {
         GROUP BY status`,
       [recentFailureWindowMs]
     ),
+    optionalQuery(
+      tables,
+      ["profile_daily_airdrop_runs", "profile_daily_airdrop_issuances"],
+      `WITH issuance_debt AS (
+         SELECT 'issuance' AS kind,
+                i.account_id,
+                i.run_date,
+                i.run_id,
+                i.id AS issuance_id,
+                i.amount_pft::numeric AS amount_pft,
+                CASE
+                  WHEN i.status = 'failed'
+                   AND COALESCE(i.tx_hash, '') = ''
+                   AND i.submitted_at IS NULL THEN 'failed_before_submit'
+                  WHEN i.status = 'processing'
+                   AND i.submission_attempted_at IS NULL THEN 'processing_pre_submit'
+                  WHEN i.status = 'processing' THEN 'submit_unknown'
+                  ELSE i.status
+                END AS status,
+                i.error_message,
+                i.updated_at
+           FROM profile_daily_airdrop_issuances i
+          WHERE i.status IN ('pending', 'processing', 'processing_pre_submit', 'failed', 'failed_before_submit', 'submitting', 'submit_unknown')
+             OR (
+               i.status = 'submitted'
+               AND (COALESCE(i.tx_hash, '') = '' OR i.submitted_at IS NULL)
+             )
+       ),
+       scoring_debt AS (
+         SELECT 'scoring' AS kind,
+                r.account_id,
+                r.run_date,
+                r.id AS run_id,
+                '' AS issuance_id,
+                r.daily_airdrop_pft::numeric AS amount_pft,
+                r.status,
+                r.error_message,
+                r.updated_at
+           FROM profile_daily_airdrop_runs r
+          WHERE r.run_mode = 'production'
+            AND r.status IN ('running', 'failed')
+            AND NOT EXISTS (
+              SELECT 1
+                FROM profile_daily_airdrop_runs complete
+               WHERE complete.account_id = r.account_id
+                 AND complete.run_date = r.run_date
+                 AND complete.run_mode = 'production'
+                 AND complete.status = 'completed'
+            )
+       ),
+       debt AS (
+         SELECT *,
+                CASE
+                  WHEN kind = 'issuance' AND status IN ('failed_before_submit', 'pending') THEN 'retry_issuance'
+                  WHEN kind = 'issuance' AND status IN ('submitting', 'submit_unknown') THEN 'reconcile_before_retry'
+                  WHEN kind = 'issuance' AND status = 'processing_pre_submit' THEN 'wait_or_reclaim_pre_submit'
+                  WHEN kind = 'scoring' AND status = 'running' THEN 'wait_or_reclaim_stale_scoring'
+                  WHEN kind = 'scoring' AND status = 'failed' THEN 'retry_scoring'
+                  ELSE 'inspect'
+                END AS next_action
+           FROM (
+             SELECT * FROM issuance_debt
+             UNION ALL
+             SELECT * FROM scoring_debt
+           ) all_debt
+       )
+       SELECT count(*)::int AS unresolved_count,
+              count(*) FILTER (WHERE kind = 'issuance')::int AS issuance_debt_count,
+              count(*) FILTER (WHERE kind = 'scoring')::int AS scoring_debt_count,
+              count(*) FILTER (WHERE next_action = 'retry_issuance')::int AS retryable_issuance_count,
+              count(*) FILTER (WHERE next_action = 'reconcile_before_retry')::int AS reconcile_count,
+              count(*) FILTER (WHERE next_action IN ('wait_or_reclaim_pre_submit', 'wait_or_reclaim_stale_scoring'))::int AS blocked_count,
+              COALESCE(sum(amount_pft) FILTER (WHERE next_action = 'retry_issuance'), 0)::text AS retryable_pft,
+              min(updated_at) AS oldest_unresolved_at,
+              (array_agg(account_id ORDER BY updated_at ASC, run_id ASC))[1] AS oldest_account_id,
+              (array_agg(run_id ORDER BY updated_at ASC, run_id ASC))[1] AS oldest_run_id,
+              max(error_message) FILTER (WHERE COALESCE(error_message, '') <> '') AS last_error
+         FROM debt`
+    ),
   ]);
   const row = latest.rows[0] || null;
+  const debt = debtSummary.rows[0] || {};
+  const unresolvedDebt = Number(debt.unresolved_count || 0);
+  const reconcileDebt = Number(debt.reconcile_count || 0);
+  const blockedDebt = Number(debt.blocked_count || 0);
   const counts = {
     ...Object.fromEntries(Object.entries(countsFromRows(runCounts.rows)).map(([key, value]) => [`runs_${key}`, value])),
     ...Object.fromEntries(Object.entries(countsFromRows(issuanceCounts.rows)).map(([key, value]) => [`issuances_${key}`, value])),
+    debt_unresolved: unresolvedDebt,
+    debt_issuance: Number(debt.issuance_debt_count || 0),
+    debt_scoring: Number(debt.scoring_debt_count || 0),
+    debt_retryable_issuance: Number(debt.retryable_issuance_count || 0),
+    debt_reconcile: reconcileDebt,
+    debt_blocked: blockedDebt,
   };
   let status = runFreshness({
     enabled: boolEnv(process.env.TASKNODE_DAILY_AIRDROP_WORKER_ENABLED),
@@ -903,6 +992,12 @@ async function dailyAirdropItem(tables, nowMs) {
   const recentFailed = [...runCounts.rows, ...issuanceCounts.rows]
     .reduce((sum, failedRow) => sum + Number(failedRow.recent_failed || 0), 0);
   status = recentFailureStatus(status, recentFailed, "Recent failed records");
+  if (unresolvedDebt > 0) {
+    status = mergeStatus(status, {
+      status: reconcileDebt > 0 || blockedDebt > 0 ? "critical" : "warning",
+      label: reconcileDebt > 0 ? "Airdrop reconciliation needed" : "Airdrop debt unresolved",
+    });
+  }
   return item({
     id: "daily_airdrop_worker",
     category: "memory",
@@ -917,7 +1012,20 @@ async function dailyAirdropItem(tables, nowMs) {
     lastSuccessAt: row?.status === "completed" ? row.completed_at : null,
     staleAfterMs: 48 * hour,
     counts,
-    details: [row?.id && `latest=${row.id}`, row?.source && `source=${row.source}`, row?.run_date && `runDate=${row.run_date}`, row?.run_mode && `mode=${row.run_mode}`],
+    lastError: debt.last_error || "",
+    details: [
+      row?.id && `latest=${row.id}`,
+      row?.source && `source=${row.source}`,
+      row?.run_date && `runDate=${row.run_date}`,
+      row?.run_mode && `mode=${row.run_mode}`,
+      unresolvedDebt > 0 && `unresolvedDebt=${unresolvedDebt}`,
+      Number(debt.retryable_issuance_count || 0) > 0 && `retryableIssuance=${debt.retryable_issuance_count} retryablePft=${debt.retryable_pft}`,
+      reconcileDebt > 0 && `reconcileRequired=${reconcileDebt}`,
+      blockedDebt > 0 && `blockedOrStale=${blockedDebt}`,
+      debt.oldest_unresolved_at && `oldestDebt=${iso(debt.oldest_unresolved_at)}`,
+      debt.oldest_account_id && `oldestDebtAccount=${debt.oldest_account_id}`,
+      debt.oldest_run_id && `oldestDebtRun=${debt.oldest_run_id}`,
+    ],
   });
 }
 

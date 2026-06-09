@@ -66,12 +66,12 @@ async function main() {
 
     const firstClaim = await claimDailyAirdropIssuanceForPublish({ accountId, runId });
     assert.equal(firstClaim.alreadySubmitted, false);
-    assert.equal(firstClaim.issuance.status, "processing");
+    assert.equal(firstClaim.issuance.status, "processing_pre_submit");
     assert.equal(firstClaim.issuance.recipient_wallet, recipientWallet);
 
     await assert.rejects(
       () => claimDailyAirdropIssuanceForPublish({ accountId, runId }),
-      /daily_airdrop_issuance_in_progress/
+      /daily_airdrop_issuance_blocked:processing_pre_submit/
     );
 
     await markDailyAirdropIssuancePublishFailure({
@@ -81,7 +81,7 @@ async function main() {
     });
     await assert.rejects(
       () => claimDailyAirdropIssuanceForPublish({ accountId, runId }),
-      /daily_airdrop_issuance_in_progress/
+      /daily_airdrop_issuance_blocked:submit_unknown/
     );
 
     await query(
@@ -117,7 +117,8 @@ async function main() {
       runId: retryRunId,
     });
     assert.equal(retryAfterSafeFailure.alreadySubmitted, false);
-    assert.equal(retryAfterSafeFailure.issuance.status, "processing");
+    assert.equal(retryAfterSafeFailure.issuance.status, "processing_pre_submit");
+    assert.equal(retryAfterSafeFailure.issuance.attempt_count, 2);
 
     console.log("profile daily airdrop issuance smoke ok");
   } finally {

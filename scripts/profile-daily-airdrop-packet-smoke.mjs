@@ -6,6 +6,10 @@ import {
   buildDailyAirdropTaskRewardPacket,
   runDailyAirdropScore,
 } from "../server/profile-daily-airdrop.js";
+import {
+  createDailyAirdropRun,
+  failDailyAirdropRun,
+} from "../server/repositories/profile-daily-airdrop.js";
 import { registerPftlSyncWallet } from "../server/repositories/pftl-cache.js";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
@@ -141,6 +145,82 @@ async function main() {
       mismatchAccountId,
     ]);
     assert.equal(runs.rows[0].count, 0);
+
+    const retryRunDate = "2026-01-15";
+    const failedRun = await createDailyAirdropRun({
+      id: `airdrop_packet_retry_failed_${suffix}`,
+      accountId,
+      runDate: retryRunDate,
+      runMode: "production",
+      scenarioId: "packet_smoke_first_attempt",
+      isCanonical: true,
+      status: "running",
+      inputHash: "sha256:first",
+      inputSnapshot: { attempt: "first" },
+      provider: "openrouter",
+      model: "smoke-model",
+      promptVersion: "smoke-v1",
+      promptDigest: "digest-first",
+    });
+    await failDailyAirdropRun({
+      id: failedRun.id,
+      errorMessage: "daily_airdrop_model_output_not_json",
+    });
+    const retriedRun = await createDailyAirdropRun({
+      id: `airdrop_packet_retry_second_${suffix}`,
+      accountId,
+      runDate: retryRunDate,
+      runMode: "production",
+      scenarioId: "packet_smoke_second_attempt",
+      isCanonical: true,
+      status: "running",
+      inputHash: "sha256:second",
+      inputSnapshot: { attempt: "second" },
+      provider: "openrouter",
+      model: "smoke-model",
+      promptVersion: "smoke-v1",
+      promptDigest: "digest-second",
+    });
+    assert.equal(retriedRun.id, failedRun.id);
+    assert.equal(retriedRun.status, "running");
+    assert.equal(retriedRun.scenario_id, "packet_smoke_second_attempt");
+    assert.equal(retriedRun.input_hash, "sha256:second");
+    assert.equal(retriedRun.error_message, null);
+    assert.equal(retriedRun.completed_at, null);
+
+    await createDailyAirdropRun({
+      id: `airdrop_packet_completed_${suffix}`,
+      accountId: mismatchAccountId,
+      runDate: retryRunDate,
+      runMode: "production",
+      scenarioId: "packet_smoke_completed",
+      isCanonical: true,
+      status: "completed",
+      inputHash: "sha256:completed",
+      inputSnapshot: { attempt: "completed" },
+      provider: "openrouter",
+      model: "smoke-model",
+      promptVersion: "smoke-v1",
+      promptDigest: "digest-completed",
+    });
+    await assert.rejects(
+      () => createDailyAirdropRun({
+        id: `airdrop_packet_completed_retry_${suffix}`,
+        accountId: mismatchAccountId,
+        runDate: retryRunDate,
+        runMode: "production",
+        scenarioId: "packet_smoke_completed_retry",
+        isCanonical: true,
+        status: "running",
+        inputHash: "sha256:completed-retry",
+        inputSnapshot: { attempt: "completed-retry" },
+        provider: "openrouter",
+        model: "smoke-model",
+        promptVersion: "smoke-v1",
+        promptDigest: "digest-completed-retry",
+      }),
+      /daily_airdrop_production_run_already_exists/
+    );
 
     console.log("profile daily airdrop packet smoke ok");
   } finally {
