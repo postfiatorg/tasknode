@@ -638,6 +638,11 @@ button {
   padding: 6px;
 }
 
+.profile-button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .profile-avatar {
   position: relative;
   display: flex;
@@ -932,6 +937,38 @@ h1 {
 .chat-surface.empty {
   justify-content: center;
   padding: 0 16px;
+}
+
+.chat-surface.loading {
+  justify-content: center;
+  padding: 0 16px;
+}
+
+.chat-loading-panel {
+  display: grid;
+  gap: 8px;
+  width: min(480px, 100%);
+  padding: 24px;
+  border: 1px solid #e5e2dc;
+  border-radius: 8px;
+  background: #fbfaf7;
+  color: #4d4a44;
+  text-align: center;
+}
+
+.chat-loading-panel span {
+  font-size: 13px;
+  color: #77746d;
+}
+
+.chat-loading-panel strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #0d0d0d;
+  font-size: 16px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-empty {
@@ -2393,6 +2430,21 @@ h1 {
   right: 18px;
   color: #77746d;
   font-size: 12px;
+}
+
+.login-loading-options {
+  width: 100%;
+  min-height: 50px;
+  display: grid;
+  place-items: center;
+  margin: 0 0 12px;
+  padding: 0 18px;
+  border: 1px solid #e5e2dc;
+  border-radius: 999px;
+  background: #fbfaf7;
+  color: #4d4a44;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .dialog-message {

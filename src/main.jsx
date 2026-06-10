@@ -88,6 +88,7 @@ import {
   transcriptTextFromThread,
 } from "./features/chat/chat-turns";
 import { plainTextFromBlocks } from "./features/chat/chat-markdown";
+import { chatSurfaceDisplayState, loginProviderDisplayState } from "./features/chat/chat-ui-state.js";
 import { BillingSettings } from "./features/billing/BillingSettings";
 import { IdentityHandleDialog, IdentitySettings } from "./features/identity/IdentityControls.jsx";
 import {
@@ -599,12 +600,14 @@ function App() {
   const hiveUnreadCount = hiveUnreadCountFromAppState(appState);
   const pftBalance = formatPftBalance(appState?.wallet);
   const chatCredit = formatCreditUsd(appState?.usage?.availableCreditUsd || 0);
+  const appStateLoading = !appState && !loadError;
+  const canRenderWorkspaceContent = Boolean(appState);
   const session = appState?.session;
-  const signedIn = isSignedInSession(session);
-  const profileName = profileDisplayName(session);
-  const profileInitials = profileAvatarText(session);
+  const signedIn = canRenderWorkspaceContent && isSignedInSession(session);
+  const profileName = appStateLoading ? "Checking session" : profileDisplayName(session);
+  const profileInitials = appStateLoading ? "TN" : profileAvatarText(session);
   const profileAvatarImages = profileNftImageCandidates(profileAvatarNft);
-  const profileSubtext = profileSessionText(session);
+  const profileSubtext = appStateLoading ? "Loading account" : profileSessionText(session);
   const walletAccountId = signedIn ? session?.accountId || "" : "";
   const linkedWallet =
     signedIn && appState?.wallet?.pftWallet?.status === "linked"
@@ -1484,7 +1487,9 @@ function App() {
               <button
                 className="profile-button"
                 aria-label={signedIn ? `${profileName}, ${profileSubtext}` : "Log in or sign up"}
+                disabled={appStateLoading}
                 onClick={() => {
+                  if (appStateLoading) return;
                   setProfileMenuOpen((open) => !open);
                 }}
                 type="button"
@@ -1629,8 +1634,9 @@ function App() {
         </header>
 
         {loadError && <StatusBanner tone="error">{loadError}</StatusBanner>}
-        {!appState && !loadError && <StatusBanner>Loading product state</StatusBanner>}
+        {appStateLoading && <StatusBanner>Loading product state</StatusBanner>}
 
+        {canRenderWorkspaceContent && (
         <RouteErrorBoundary resetKey={view}>
           {view === "chat" && (
             <ChatSurface
@@ -1725,10 +1731,12 @@ function App() {
             </Suspense>
           )}
         </RouteErrorBoundary>
+        )}
       </section>
 
       {loginOpen && (
         <LoginDialog
+          authLoading={appStateLoading}
           onSessionChange={refreshAppState}
           session={session}
           onClose={() => setLoginOpen(false)}
@@ -1833,6 +1841,7 @@ function ChatSurface({
   const [actualUsage, setActualUsage] = useState(null);
   const [statusTone, setStatusTone] = useState("muted");
   const [sending, setSending] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [composerDragActive, setComposerDragActive] = useState(false);
   const [draftConversationId, setDraftConversationId] = useState(() => newClientConversationId());
@@ -1878,15 +1887,24 @@ function ChatSurface({
     const normalizedConversationId = String(conversationId || "").trim();
     if (!normalizedConversationId) return [];
     const historyPath = chat?.historyPath || "/api/chat/history";
-    if (showLoading && shouldApply()) setTurns([]);
-    const result = await requestJson(`${historyPath}?conversationId=${encodeURIComponent(normalizedConversationId)}`);
-    if (!shouldApply()) return [];
-    if (!result.ok) {
-      throw new Error(result.body?.message || `History returned HTTP ${result.status}.`);
+    if (showLoading && shouldApply()) {
+      setTurns([]);
+      setHistoryLoading(true);
     }
-    const hydrated = normalizeChatMessages(result.body?.messages || []);
-    setTurns(hydrated);
-    return hydrated;
+    try {
+      const result = await requestJson(`${historyPath}?conversationId=${encodeURIComponent(normalizedConversationId)}`);
+      if (!shouldApply()) return [];
+      if (!result.ok) {
+        throw new Error(result.body?.message || `History returned HTTP ${result.status}.`);
+      }
+      const hydrated = normalizeChatMessages(result.body?.messages || []);
+      setTurns(hydrated);
+      if (showLoading) setHistoryLoading(false);
+      return hydrated;
+    } catch (error) {
+      if (showLoading && shouldApply()) setHistoryLoading(false);
+      throw error;
+    }
   }, [chat?.historyPath]);
 
   useEffect(() => {
@@ -1899,11 +1917,13 @@ function ChatSurface({
     setContextEditMode(false);
     setSelectedMode("Help");
     setPlusMenuOpen(false);
+    setHistoryLoading(false);
   }, [signedOut]);
 
   useEffect(() => {
     if (clearedChatRef.current) return;
     if (activeChat?.source === "mock" || activeChat?.source === "server" || activeChat?.source === "live") return;
+    setHistoryLoading(false);
     setTurns(normalizeChatMessages(messages));
   }, [activeChat?.source, messages]);
 
@@ -1919,6 +1939,7 @@ function ChatSurface({
     setSendMessage("");
     setActualUsage(null);
     setStatusTone("muted");
+    setHistoryLoading(false);
     setDraftConversationId(newClientConversationId());
     setEditingMsg(null);
     setShareOpen(false);
@@ -1926,7 +1947,10 @@ function ChatSurface({
   }, [chatResetKey]);
 
   useEffect(() => {
-    if (!activeChat || activeChat.source === "live") return undefined;
+    if (!activeChat || activeChat.source === "live") {
+      setHistoryLoading(false);
+      return undefined;
+    }
     clearedChatRef.current = false;
     setTaskRequestMode(false);
     setContextEditMode(false);
@@ -1935,6 +1959,7 @@ function ChatSurface({
     setStatusTone("muted");
 
     if (activeChat.source !== "server") {
+      setHistoryLoading(false);
       setTurns(createRecentPlaceholderThread(activeChat.title));
       return undefined;
     }
@@ -1950,6 +1975,7 @@ function ChatSurface({
         if (cancelled) return;
         setStatusTone("error");
         setSendMessage(error?.message || "Could not load this conversation.");
+        setHistoryLoading(false);
         setTurns([
           createErrorAssistantTurn(
             `history-error-${Date.now()}`,
@@ -2481,6 +2507,7 @@ function ChatSurface({
     !(isHiveChat && composerStatus.text === "Task Node can make mistakes. Check important info.");
 
   const chatTitle = activeChat?.title || titleFromTurns(turns);
+  const displayState = chatSurfaceDisplayState({ activeChat, turns, historyLoading });
   const hasPromptInput = input.trim().length > 0 || attachments.length > 0;
   const composerExpanded = input.length > 0;
   const composerPlaceholder = taskRequestMode
@@ -2666,8 +2693,13 @@ function ChatSurface({
   );
 
   return (
-    <div className={turns.length === 0 ? "chat-surface empty" : "chat-surface"}>
-      {turns.length === 0 ? (
+    <div className={displayState === "empty" ? "chat-surface empty" : `chat-surface ${displayState}`}>
+      {displayState === "loading" ? (
+        <div className="chat-loading-panel" aria-live="polite">
+          <span>Loading chat</span>
+          <strong>{chatTitle || "Conversation"}</strong>
+        </div>
+      ) : displayState === "empty" ? (
         <div className="chat-empty">
           <h1>{isHiveChat ? HIVE_CHAT_TITLE : "What are you working on?"}</h1>
           {composer}
@@ -5357,10 +5389,11 @@ function themeLabel(theme) {
   return theme[0].toUpperCase() + theme.slice(1);
 }
 
-function LoginDialog({ session, onClose, onSessionChange }) {
+function LoginDialog({ authLoading = false, session, onClose, onSessionChange }) {
   const providers = (session?.accountLinks || []).filter((provider) =>
     ["telegram", "discord", "x", "github"].includes(provider.id) && provider.enabled
   );
+  const providerDisplayState = loginProviderDisplayState({ authLoading, providers });
   const emailProvider = (session?.accountLinks || []).find((provider) => provider.id === "email");
   const devAuth = session?.devAuth;
   const [email, setEmail] = useState("");
@@ -5522,71 +5555,77 @@ function LoginDialog({ session, onClose, onSessionChange }) {
         </button>
         <h2 id="login-title">Log in or sign up</h2>
         <p>You'll get smarter responses and can upload files, images, and more.</p>
-        {providers.map((provider) => (
-          <button
-            key={provider.id}
-            className="provider-row"
-            type="button"
-            onClick={() => startProvider(provider)}
-          >
-            <ProviderIcon id={provider.id} />
-            <span>Continue with {provider.label}</span>
-            {pendingProvider === provider.id && <small>Checking</small>}
-          </button>
-        ))}
-        {message && <div className="dialog-message">{message}</div>}
-        <div className="divider">OR</div>
-        {emailStep === "email" ? (
-          <>
-            <input
-              type="email"
-              placeholder="Email address"
-              aria-label="Email address"
-              onChange={(event) => setEmail(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") continueEmail();
-              }}
-              value={email}
-            />
-            <button
-              className="continue-button"
-              type="button"
-              onClick={continueEmail}
-            >
-              {pendingProvider === "email" ? "Checking" : "Continue"}
-            </button>
-          </>
+        {providerDisplayState === "loading" ? (
+          <div className="login-loading-options" aria-live="polite">Checking login options</div>
         ) : (
-          <div className="email-code-step">
-            <div className="email-code-target">
-              <span>{challenge?.maskedEmail || email}</span>
-              <button type="button" onClick={editEmail}>Edit</button>
-            </div>
-            {devCode && (
-              <div className="dev-code-note">
-                Development code: <strong>{devCode}</strong>
+          <>
+            {providers.map((provider) => (
+              <button
+                key={provider.id}
+                className="provider-row"
+                type="button"
+                onClick={() => startProvider(provider)}
+              >
+                <ProviderIcon id={provider.id} />
+                <span>Continue with {provider.label}</span>
+                {pendingProvider === provider.id && <small>Checking</small>}
+              </button>
+            ))}
+            {message && <div className="dialog-message">{message}</div>}
+            <div className="divider">OR</div>
+            {emailStep === "email" ? (
+              <>
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  aria-label="Email address"
+                  onChange={(event) => setEmail(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") continueEmail();
+                  }}
+                  value={email}
+                />
+                <button
+                  className="continue-button"
+                  type="button"
+                  onClick={continueEmail}
+                >
+                  {pendingProvider === "email" ? "Checking" : "Continue"}
+                </button>
+              </>
+            ) : (
+              <div className="email-code-step">
+                <div className="email-code-target">
+                  <span>{challenge?.maskedEmail || email}</span>
+                  <button type="button" onClick={editEmail}>Edit</button>
+                </div>
+                {devCode && (
+                  <div className="dev-code-note">
+                    Development code: <strong>{devCode}</strong>
+                  </div>
+                )}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Code"
+                  aria-label="Sign-in code"
+                  autoComplete="one-time-code"
+                  onChange={(event) => setCode(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") verifyEmailCode();
+                  }}
+                  value={code}
+                />
+                <button
+                  className="continue-button"
+                  type="button"
+                  onClick={verifyEmailCode}
+                >
+                  {pendingProvider === "email" ? "Checking" : "Continue"}
+                </button>
               </div>
             )}
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="Code"
-              aria-label="Sign-in code"
-              autoComplete="one-time-code"
-              onChange={(event) => setCode(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") verifyEmailCode();
-              }}
-              value={code}
-            />
-            <button
-              className="continue-button"
-              type="button"
-              onClick={verifyEmailCode}
-            >
-              {pendingProvider === "email" ? "Checking" : "Continue"}
-            </button>
-          </div>
+          </>
         )}
       </section>
     </div>
