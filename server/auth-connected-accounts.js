@@ -702,7 +702,7 @@ export function oauthAuthStart(providerId, requestMeta = {}) {
 }
 
 function startGithubAuth(requestMeta = {}) {
-  const redirectUri = providerRedirectUri("github", requestMeta);
+  const redirectUri = providerRedirectUri("github", requestMeta, "GITHUB_REDIRECT_URI");
   if (!redirectUri) {
     return actionResponse({ status: 409, error: "auth_redirect_origin_missing", action: "github_auth_start", message: "GitHub login needs a public Task Node origin.", actionRequired: "Configure TASKNODE_PUBLIC_URL or call the start route from the deployed app origin." });
   }

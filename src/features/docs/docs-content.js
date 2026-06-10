@@ -63,6 +63,7 @@ import turnMemoryWorker from "../../../docs/wiki/architecture/turn-memory-worker
 import userObservabilityLogging from "../../../docs/wiki/architecture/user-observability-logging.md?raw";
 import onboardingWalletFrictionMemo from "../../../docs/wiki/plans/onboarding-wallet-friction-memo-2026-06-08.md?raw";
 import taskNodeProductionCutoverPackage from "../../../docs/wiki/plans/task-node-production-cutover-package-2026-06-09.md?raw";
+import taskNodeProductionCutoverExecutionChecklist from "../../../docs/wiki/plans/task-node-production-cutover-execution-checklist-2026-06-10.md?raw";
 import pftasksTransactionShutdownCutoverPlan from "../../../docs/wiki/plans/pftasks-transaction-shutdown-cutover-plan-2026-06-09.md?raw";
 import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-production-scope.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
@@ -835,6 +836,12 @@ export const DOC_GROUPS = [
         title: "Task Node Production Cutover Package",
         summary: "Concrete production cutover package for moving tasknode.postfiat.org to Task Node Official and retiring PFTasks task-side authority.",
         markdown: taskNodeProductionCutoverPackage,
+      },
+      {
+        slug: "task-node-production-cutover-execution-checklist",
+        title: "Task Node Production Cutover Execution Checklist",
+        summary: "Step-by-step production cutover checklist with live evidence for each executed gate.",
+        markdown: taskNodeProductionCutoverExecutionChecklist,
       },
       {
         slug: "pftasks-transaction-shutdown-cutover-plan",

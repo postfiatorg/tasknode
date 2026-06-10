@@ -19,6 +19,7 @@ export function productionOriginIssues(env = process.env) {
   const publicHost = hostnameOf(publicOrigin);
   if (!publicHost) return [];
   const issues = [];
+  const legacyHosts = new Set(legacyRedirectHosts(env));
 
   const siteOrigin = safeText(env.VITE_SITE_ORIGIN, 300);
   if (siteOrigin && hostnameOf(siteOrigin) !== publicHost) {
@@ -31,12 +32,14 @@ export function productionOriginIssues(env = process.env) {
   for (const [envKey, code] of [
     ["DISCORD_REDIRECT_URI", "discord_redirect_host_mismatch"],
     ["X_REDIRECT_URI", "x_redirect_host_mismatch"],
+    ["GITHUB_REDIRECT_URI", "github_redirect_host_mismatch"],
   ]) {
     const configured = safeText(env[envKey], 300);
-    if (configured && hostnameOf(configured) !== publicHost) {
+    const configuredHost = hostnameOf(configured);
+    if (configured && configuredHost !== publicHost && !legacyHosts.has(configuredHost)) {
       issues.push({
         code,
-        detail: `${envKey} host ${hostnameOf(configured)} does not match public origin host ${publicHost}`,
+        detail: `${envKey} host ${configuredHost} does not match public origin host ${publicHost} or a configured legacy redirect host`,
       });
     }
   }

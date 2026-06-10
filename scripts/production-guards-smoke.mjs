@@ -24,6 +24,7 @@ assert.deepEqual(
     VITE_SITE_ORIGIN: PROD,
     DISCORD_REDIRECT_URI: `${PROD}/api/auth/callback/discord`,
     X_REDIRECT_URI: `${PROD}/api/auth/callback/x`,
+    GITHUB_REDIRECT_URI: `${PROD}/api/auth/callback/github`,
     TELEGRAM_AUTH_WIDGET_DOMAIN: "tasknode.postfiat.org",
   }),
   []
@@ -35,16 +36,32 @@ const issues = productionOriginIssues({
   VITE_SITE_ORIGIN: `https://${DEV_HOST}`,
   DISCORD_REDIRECT_URI: `https://${DEV_HOST}/api/auth/callback/discord`,
   X_REDIRECT_URI: `https://${DEV_HOST}/api/auth/callback/x`,
+  GITHUB_REDIRECT_URI: `https://${DEV_HOST}/api/auth/callback/github`,
   TELEGRAM_AUTH_WIDGET_DOMAIN: DEV_HOST,
 });
 assert.deepEqual(
   issues.map((issue) => issue.code).sort(),
   [
     "discord_redirect_host_mismatch",
+    "github_redirect_host_mismatch",
     "site_origin_host_mismatch",
     "telegram_widget_domain_mismatch",
     "x_redirect_host_mismatch",
   ]
+);
+
+// Legacy redirect hosts may remain in provider dashboards during cutover as
+// long as GET callbacks are redirected back to the production origin.
+assert.deepEqual(
+  productionOriginIssues({
+    TASKNODE_PUBLIC_URL: PROD,
+    VITE_SITE_ORIGIN: PROD,
+    X_REDIRECT_URI: `https://${DEV_HOST}/api/auth/callback/x`,
+    GITHUB_REDIRECT_URI: `https://${DEV_HOST}/api/auth/callback/github`,
+    TASKNODE_LEGACY_REDIRECT_HOSTS: DEV_HOST,
+    TELEGRAM_AUTH_WIDGET_DOMAIN: "tasknode.postfiat.org",
+  }),
+  []
 );
 
 // Unset optional values are not issues; no public origin means no checks.
@@ -56,6 +73,24 @@ const redirectEnv = { TASKNODE_PUBLIC_URL: PROD, TASKNODE_LEGACY_REDIRECT_HOSTS:
 assert.equal(
   legacyHostRedirectTarget({ host: DEV_HOST, pathname: "/wallet", search: "?tab=send", env: redirectEnv }),
   `${PROD}/wallet?tab=send`
+);
+assert.equal(
+  legacyHostRedirectTarget({
+    host: DEV_HOST,
+    pathname: "/api/auth/callback/x",
+    search: "?state=state-id&code=code-id",
+    env: redirectEnv,
+  }),
+  `${PROD}/api/auth/callback/x?state=state-id&code=code-id`
+);
+assert.equal(
+  legacyHostRedirectTarget({
+    host: DEV_HOST,
+    pathname: "/api/auth/callback/github",
+    search: "?state=state-id&code=code-id",
+    env: redirectEnv,
+  }),
+  `${PROD}/api/auth/callback/github?state=state-id&code=code-id`
 );
 assert.equal(
   legacyHostRedirectTarget({ host: `${DEV_HOST}:443`, pathname: "/", search: "", env: redirectEnv }),
