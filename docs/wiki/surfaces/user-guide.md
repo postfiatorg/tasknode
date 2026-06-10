@@ -10,6 +10,125 @@ Task Node is a chat-first, AI-assisted work system where people keep a live cont
 
 The AI parts help generate tasks, explain app state, summarize context, route network work, draft evidence, score some outputs, and make recommendations. The user still controls account actions through the app surfaces. Do not assume that a human reviewed, verified, assigned, or approved something unless the app explicitly says that.
 
+## Screen-by-Screen Feature Map
+
+Use this section when a user asks what Task Node is, where something lives, what a page means, or what to do next.
+
+### Chat Screen
+
+Chat is the main AI workspace. It can answer questions, reason through work, draft task evidence, explain app state, summarize prior work, and help the user decide what to do. It reads the signed-in user's Context, Memory, task state, and recent conversation when those are available.
+
+Chat does not secretly press product buttons. It cannot accept a task, refuse a task, submit evidence, mint an NFT, send PFT, edit Context, or create Hive work unless the user uses an explicit app control.
+
+The chat mode picker changes the provider and behavior:
+
+- `Private Instant` is fast private OpenRouter chat for normal reasoning.
+- `Private Thinking` is slower private OpenRouter reasoning for harder questions.
+- `Discount Thinking` is direct DeepSeek reasoning for lower-cost deeper analysis.
+- `Frontier Instant` is OpenAI frontier chat with prompt-governed web search and file understanding.
+- `Frontier Thinking` is OpenAI frontier reasoning for deeper or more source-heavy work.
+- `Help` is product help. It uses this guide plus the user's available app context to explain what the user is seeing and which surface to use.
+
+The `More` or thinking disclosure on assistant messages can show the source context passed into the model, including retrieved Steve Jobs corpus chunks when available. That Jobs vector database is not a user-facing task system; it is source material used to calibrate product judgment and response style.
+
+### Chat `+` Menu
+
+The `+` menu is where chat becomes an explicit product action.
+
+`Request task` turns the next message into a signed personal task request. It requires a signed-in account, linked wallet, and unlocked wallet vault because the request is published as a wallet-bound task request. The generated task appears later as a proposed task card in Tasks.
+
+`Context Refine` turns the next message into a structured edit request for the user's Context document. It does not require an unlocked wallet because it edits the account-scoped current Context draft. The model returns a proposal card in chat. The user must click `Accept & save`, reject it, or ask for another refine pass.
+
+### Tasks Screen
+
+Tasks is where work cards become real user actions. It shows proposed, accepted, verification, refused, and rewarded task records. Open a task to read the title, objective, steps, requested output, reward, state, and verification requirement.
+
+For a proposed task, the user accepts it if they will do the work or refuses it if it is wrong. For an accepted task, the user submits evidence. For a verification request, the user answers the specific follow-up. Task actions are wallet-bound signing actions and may ask the user to unlock the local wallet vault.
+
+Personal tasks come from the user's own request. Network Tasks come from Hive routing for shared network projects.
+
+### Context Screen
+
+Context is the durable working document that tells Task Node who the user is, what they are building, what matters, and what constraints the assistant should remember. Chat, task generation, Context Refine, and some profile/recommendation flows depend on it.
+
+The editor autosaves the current draft into the account database. That current draft is the normal source used by chat and task generation. The `Saving`, `Saved`, or dirty state describes this current account cache, not necessarily an on-chain publication.
+
+`Publish to PFT` is separate. Publishing encrypts the Context, pins it through IPFS, and writes a PFTL pointer so there is a wallet-scoped history record. Publishing requires a linked and unlocked wallet. Historical Context entries may need wallet unlock to decrypt previews. Cached historical previews are for the browser session and are not the same as the current editable draft.
+
+Line numbers shown in Context and Context Refine are anchors into the normalized plain-text version of the document. They help the edit model and the user refer to the same section; they are not a separate document format.
+
+### Memory Screen
+
+Memory is a compressed record of useful chat history. It helps future chats carry continuity without replaying every conversation. Memory is lower authority than the user's current message and Context. If chat seems stale, update Context first and inspect Memory second.
+
+### Wallet Screen
+
+Wallet is the PFT identity, signing, custody, transaction, top-up, and local vault surface. It shows the linked PFT address, PFT balance, transaction feed, local seed vault state, top-up credit, initiation gift status, send controls, and seed backup controls.
+
+Account login and wallet custody are separate. A connected provider such as email, GitHub, X, Telegram, or Discord proves account identity. A linked PFT wallet signs wallet-bound actions and receives PFT. The seed phrase, private key, wallet password, and decrypted vault are not sent to the server.
+
+`Locked` means the app knows the wallet address but the browser has not decrypted the local vault for signing. `Unlocked` means the browser can sign wallet-bound actions for the current session. Unlock survives normal reloads for the session through encrypted browser storage, locks after inactivity, and clears on lock, logout, local-vault removal, or tab close.
+
+Top-up credit is separate from PFT. Top-up uses an account-scoped Ethereum deposit address for app usage credit, such as model calls. That deposit address is not the PFT wallet and is not where task rewards are paid.
+
+### Profile Screen
+
+Profile has `Private` and `Public` tabs plus a profile visibility toggle.
+
+The private tab is the user's control room. It shows daily airdrop state, identity controls, Profile Studio, PFT generation history, the private NFT gallery, and recommended connections.
+
+The public tab previews what other discoverable users can see: Hive handle, selected public aliases, display wallet, role summary, skills, contribution level, alignment score, lifetime PFT, and public profile NFT gallery. If the profile is hidden, the user should not appear in recommended connection discovery.
+
+### Daily Airdrop On Profile
+
+Daily Airdrop is an account-level PFT distribution based on recent rewarded work and account state. It is not the same as a task reward. Task rewards come from completing individual tasks; the daily airdrop is an additional daily scoring and payout path.
+
+The panel shows the latest or today's airdrop amount, payout status, transaction hash when paid, what raised the score, what kept it lower, and what to improve tomorrow. `Full reasoning` shows the longer scoring explanation when available.
+
+Alignment score is the latest seven-day airdrop alignment score shown on a 0 to 100 scale. In plain English, it compares the account's actual recent airdrop outcome against the maximum possible airdrop signal for that scored window. The public profile explains it as actual airdrop PFT out of possible airdrop PFT over the scored window. It is not a moral score and it is not a human judgment; it is a recent contribution-alignment metric from the daily airdrop scoring run.
+
+### Profile NFT And Minting
+
+Profile Studio generates profile art from the user's recent Task Node profile state. Generation creates a durable draft row first, then calls image generation, pins the image to IPFS, and makes the draft mintable. If the user leaves during generation, the draft remains recoverable and Profile polls until it finishes or fails.
+
+`Regenerate` creates or retries a generated draft. `Mint as NFT` turns a generated draft with an image CID into a wallet-owned PFTL NFT. Minting requires the linked local wallet vault to be unlocked because the browser signs the mint transaction. Mint status moves through preparing, signing, broadcasting, confirming, and minted.
+
+Generated, prepared, and minted NFTs can appear in the private gallery. Public profile shows public-safe active-wallet NFTs, not failed private drafts.
+
+### Recommended Connections
+
+Recommended Connections appears on the private Profile tab. It suggests public/discoverable members who may be useful to know or work with next. Each recommendation shows the member, a reason, supporting signals, and a suggested first move.
+
+Click `View profile` or the member name to open the sanitized member preview. The preview can show their public role summary, skills, lifetime PFT, rewarded task count, public handle, and display wallet. Wallet links can open the explorer or be copied. These interactions do not message that person and do not create a task; they only help the user inspect or contact the right identity outside the recommendation card.
+
+Recommendations require enough public/discoverable member data to compare against. If the user's profile is private, recommendations are off and the user should not be included in other users' recommendation runs.
+
+### Hive Screen
+
+Hive is the group coordination board. It shows shared Post Fiat projects, Network Task routing, contributor activity, Hive Context, and Hive Mind Agent activity. It is where the user inspects network work, not where they accept or submit tasks.
+
+Hive Chat is a pinned chat conversation for contributing network context. A Hive Chat message is saved to Hive Context. The immediate response can explain board state, but it does not create a task by itself. Network Tasks are routed later by the Board Manager when there is a project need, eligible contributor capacity, and a matching user profile.
+
+Hive Context validation means the entry came from an account with a linked PFT wallet. Ordinary Hive Chat messages do not require the wallet vault to be unlocked. Wallet unlock is needed later for signed task actions.
+
+### Telegram Login And Telegram Chat
+
+Telegram can be used as a connected login/provider identity when enabled. Linking Telegram attaches that Telegram identity to the same Task Node account cloud.
+
+Telegram bot chat is a phone-sized delivery surface for Task Node chat. It should be concise, account-aware when linked, and clear about what is missing. Telegram chat does not bypass the app's normal wallet, task, reward, or Context action boundaries.
+
+### Billing And Usage Credit
+
+Billing shows app usage credit and model-run ledger entries. Chat and model features spend usage credit based on provider usage. PFT task rewards and PFT wallet balance are separate from usage credit.
+
+### Help And Docs
+
+Help mode in Chat answers product questions using this guide and available runtime context. The Help/Docs screen exposes user-facing documentation and prompt/source maps. Use Help when the user does not know which page to use or why they are seeing a state.
+
+### Search And Agents
+
+Search is for finding cached prior app records such as conversations, tasks, context entries, or work artifacts. Agents is an advanced external-worker surface for wallet-native workers; most normal users can ignore it until they are operating a separate agent.
+
 ## First Session Checklist
 
 1. Use `Log in or sign up` in the profile/account area to create or enter an account.
