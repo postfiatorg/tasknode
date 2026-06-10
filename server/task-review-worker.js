@@ -12,6 +12,7 @@ import { loadPrompt, promptDigest } from "./prompt-registry.js";
 import { query, transaction } from "./db/pool.js";
 import { getTaskDetail } from "./repositories/tasks.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
+import { moneySeedFromEnv } from "./production-guards.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 
 const TASK_POINTER_SCHEMA = 1;
@@ -114,15 +115,17 @@ function authoritySeed(env = process.env) {
 }
 
 function rewardSeed(env = process.env) {
-  return safeText(
-    env.TASKNODE_REWARD_SEED ||
-      env.TASKNODE_ALLOCATION_SEED ||
-      env.TASKNODE_AUTHORITY_SEED ||
-      env.TASKNODE_SERVICE_SEED ||
-      env.TASKNODE_PFT_FAUCET_SEED ||
-      env.FAUCET_SEED ||
-      ""
-  );
+  return moneySeedFromEnv({
+    env,
+    primaryKeys: ["TASKNODE_REWARD_SEED"],
+    fallbackKeys: [
+      "TASKNODE_ALLOCATION_SEED",
+      "TASKNODE_AUTHORITY_SEED",
+      "TASKNODE_SERVICE_SEED",
+      "TASKNODE_PFT_FAUCET_SEED",
+      "FAUCET_SEED",
+    ],
+  }).seed;
 }
 
 function walletFromSeed(seed, code) {

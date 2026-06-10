@@ -8,6 +8,7 @@ import { buildPftPointerMemo, POINTER_FLAGS } from "./pftl-pointer.js";
 import { preparePftPointerTransaction, submitSignedPftTransaction } from "./pftl-submit.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 import { query, transaction } from "./db/pool.js";
+import { moneySeedFromEnv } from "./production-guards.js";
 import { encryptTasknodePayload } from "./task-payloads.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 
@@ -82,16 +83,18 @@ export function dailyAirdropIssuanceBlocksRetry(rowOrStatus = {}) {
 }
 
 function rewardSeed(env = process.env) {
-  return safeText(
-    env.TASKNODE_DAILY_AIRDROP_SEED ||
-      env.TASKNODE_REWARD_SEED ||
-      env.TASKNODE_ALLOCATION_SEED ||
-      env.TASKNODE_AUTHORITY_SEED ||
-      env.TASKNODE_SERVICE_SEED ||
-      env.TASKNODE_PFT_FAUCET_SEED ||
-      env.FAUCET_SEED ||
-      ""
-  );
+  return moneySeedFromEnv({
+    env,
+    primaryKeys: ["TASKNODE_DAILY_AIRDROP_SEED"],
+    fallbackKeys: [
+      "TASKNODE_REWARD_SEED",
+      "TASKNODE_ALLOCATION_SEED",
+      "TASKNODE_AUTHORITY_SEED",
+      "TASKNODE_SERVICE_SEED",
+      "TASKNODE_PFT_FAUCET_SEED",
+      "FAUCET_SEED",
+    ],
+  }).seed;
 }
 
 function walletFromSeed(seed, code) {

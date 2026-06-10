@@ -5,6 +5,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
 import { startBackgroundWorkers } from "./background-workers.js";
+import {
+  isProductionEnvironment,
+  legacyHostRedirectTarget,
+  moneySeedStartupIssues,
+  productionOriginIssues,
+} from "./production-guards.js";
 import { fetchPftBalance } from "./pftl-balance.js";
 import { handlePftlCacheRoute } from "./pftl-cache-route.js";
 import { fetchWalletTransactions } from "./pftl-transactions.js";
@@ -335,6 +341,23 @@ function assertStartupSecurity() {
     throw new Error(
       "refusing_public_startup_with_ephemeral_runtime_store: configure durable auth/account storage and TASKNODE_RUNTIME_STORE_DURABLE=true, or set an explicit reviewed override"
     );
+  }
+
+  const originIssues = productionOriginIssues();
+  if (originIssues.length > 0) {
+    const summary = originIssues.map((issue) => issue.code).join(",");
+    if (isProductionEnvironment()) {
+      throw new Error(
+        `refusing_public_startup_with_origin_mismatch: ${summary}. ${originIssues.map((issue) => issue.detail).join("; ")}`
+      );
+    }
+    for (const issue of originIssues) {
+      console.warn(`[startup] origin config mismatch: ${issue.code}: ${issue.detail}`);
+    }
+  }
+
+  for (const issue of moneySeedStartupIssues()) {
+    console.warn(`[startup] money seed config: ${issue.code}: ${issue.detail}`);
   }
 }
 
@@ -1004,6 +1027,18 @@ const server = createServer((req, res) => {
       buildId,
       uptimeSeconds: Math.round(process.uptime()),
     });
+    return;
+  }
+
+  const legacyRedirect = legacyHostRedirectTarget({
+    host: req.headers["x-forwarded-host"] || req.headers.host || "",
+    method: req.method,
+    pathname: url.pathname,
+    search: url.search,
+  });
+  if (legacyRedirect) {
+    res.writeHead(301, { location: legacyRedirect, "cache-control": "no-store" });
+    res.end();
     return;
   }
 
