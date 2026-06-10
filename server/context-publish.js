@@ -6,6 +6,7 @@ import { getContextDocument, saveContextHistoryProjection } from "./repositories
 import { contextIpfsPinStatus, pinContextIpfsJson } from "./context-ipfs.js";
 import { buildPftPointerMemo, CONTENT_KIND, POINTER_FLAGS } from "./pftl-pointer.js";
 import { preparePftPointerTransaction, pftlSubmitStatus, submitSignedPftTransaction } from "./pftl-submit.js";
+import { CONTEXT_DOCUMENT_MAX_CHARS } from "../shared/context-budget.js";
 import { normalizeContextBodyForStorage } from "../shared/context-html.js";
 
 const ACTION_ID = "ink_manifest";
@@ -46,7 +47,7 @@ function sha256HexBytes(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function cleanText(value = "", maxLength = 50000) {
+function cleanText(value = "", maxLength = CONTEXT_DOCUMENT_MAX_CHARS) {
   return String(value || "").slice(0, maxLength);
 }
 

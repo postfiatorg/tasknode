@@ -7,6 +7,7 @@ import { normalizeContextHistoryProjection } from "../server/context-history.js"
 import {
   saveContextHistoryProjection,
 } from "../server/repositories/context.js";
+import { CONTEXT_DOCUMENT_MAX_CHARS } from "../shared/context-budget.js";
 
 function argValue(name, fallback = "") {
   const index = process.argv.indexOf(name);
@@ -79,7 +80,7 @@ async function existingContextRevision(accountId) {
 }
 
 async function importContextDocument(document) {
-  const body = String(document.body || "").slice(0, 50_000);
+  const body = String(document.body || "").slice(0, CONTEXT_DOCUMENT_MAX_CHARS);
   const bodyHash = sha256(body);
   const revision = Math.max(1, Number(document.revision || 1));
   const preferredDocumentId = String(document.id || `ctx_${safeKey(document.accountId, "account")}`).slice(0, 180);

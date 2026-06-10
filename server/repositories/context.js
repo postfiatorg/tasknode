@@ -7,9 +7,10 @@ import {
   saveContextDocument as saveRuntimeContextDocument,
   saveContextHistoryProjection as saveRuntimeContextHistoryProjection,
 } from "../runtime-store.js";
+import { CONTEXT_DOCUMENT_MAX_CHARS } from "../../shared/context-budget.js";
 import { normalizeContextBodyForStorage } from "../../shared/context-html.js";
 
-const maxContextBodyLength = 50_000;
+const maxContextBodyLength = CONTEXT_DOCUMENT_MAX_CHARS;
 const maxContextTitleLength = 120;
 const maxContextUpdates = 250;
 const maxTaskEvents = 500;

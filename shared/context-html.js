@@ -1,3 +1,5 @@
+import { CONTEXT_DOCUMENT_MAX_CHARS } from "./context-budget.js";
+
 const allowedContextTags = new Set([
   "b",
   "blockquote",
@@ -75,6 +77,6 @@ export function sanitizeContextHtml(value = "") {
 }
 
 export function normalizeContextBodyForStorage(value = "") {
-  const text = String(value || "").slice(0, 50_000);
+  const text = String(value || "").slice(0, CONTEXT_DOCUMENT_MAX_CHARS);
   return looksLikeContextHtml(text) ? sanitizeContextHtml(text) : text;
 }

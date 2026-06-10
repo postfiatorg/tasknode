@@ -151,7 +151,8 @@ import { ChatSearchModal } from "./features/chat/ChatSearchModal";
 import { formatCreditUsd, formatUsageUsd } from "./formatters";
 import { isSignedInSession } from "./session";
 import { escapeContextHtml, looksLikeContextHtml, sanitizeContextHtml } from "../shared/context-html";
-import { contextLineCount as countContextLines } from "../shared/context-line-map.js";
+import { contextBodyText, contextLineCount as countContextLines } from "../shared/context-line-map.js";
+import { CONTEXT_DOCUMENT_MAX_CHARS, contextBudgetMetrics, TASKGEN_CONTEXT_MAX_CHARS } from "../shared/context-budget.js";
 import "./styles.css";
 import "./features/context/context.css";
 
@@ -3681,7 +3682,7 @@ function extractHydratedContext(payload, plaintext) {
   const text = (pickContextText(source) || (typeof plaintext === "string" ? plaintext : "")).trim();
   return {
     title: pickContextTitle(source),
-    text: text.slice(0, 50000),
+    text: text.slice(0, CONTEXT_DOCUMENT_MAX_CHARS),
     rawPayload: source,
   };
 }
@@ -3904,6 +3905,9 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [contextBudgetHtml, setContextBudgetHtml] = useState(() =>
+    contextBodyToHtml(initialDocument.body || "")
+  );
   const [contextLineCount, setContextLineCount] = useState(() =>
     countContextLines(contextBodyToHtml(initialDocument.body || ""))
   );
@@ -3927,6 +3931,13 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       return window.localStorage?.getItem("tasknode.context.lineNumbers") !== "hidden";
     } catch {
       return true;
+    }
+  });
+  const [contextBudgetOpen, setContextBudgetOpen] = useState(() => {
+    try {
+      return window.localStorage?.getItem("tasknode.context.taskgenBudget") === "open";
+    } catch {
+      return false;
     }
   });
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
@@ -3992,6 +4003,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       setTitle(nextTitle);
       titleRef.current = nextTitle;
       if (editorRef.current) editorRef.current.innerHTML = nextHtml;
+      setContextBudgetHtml(nextHtml);
       const nextLineCount = countContextLines(nextHtml);
       setContextLineCount(nextLineCount);
       refreshContextLineRows(nextLineCount);
@@ -4056,6 +4068,21 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     : historyPointerCount
       ? `${historyPointerCount} cached wallet pointer${historyPointerCount === 1 ? "" : "s"} available.`
       : "No cached PFTL context pointers for the linked wallet yet.";
+  const contextBudget = contextBudgetMetrics(contextBodyText(contextBudgetHtml), {
+    maxChars: TASKGEN_CONTEXT_MAX_CHARS,
+  });
+  const contextBudgetTone = contextBudget.clipped
+    ? "danger"
+    : contextBudget.usagePercent >= 90
+      ? "warn"
+      : "ok";
+  const contextBudgetPercentLabel = `${contextBudget.usagePercent.toLocaleString(undefined, {
+    maximumFractionDigits: 1,
+  })}%`;
+  const contextBudgetIncludedLabel = contextBudget.includedChars.toLocaleString();
+  const contextBudgetMaxLabel = contextBudget.maxChars.toLocaleString();
+  const contextBudgetRemainingLabel = Math.max(0, contextBudget.maxChars - contextBudget.sourceChars).toLocaleString();
+  const contextBudgetOmittedLabel = contextBudget.omittedChars.toLocaleString();
 
   const recomputeDirty = useCallback(() => {
     const currentHtml = editorRef.current?.innerHTML || "";
@@ -4104,6 +4131,14 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
       // Local display preference only.
     }
   }, [lineNumbersVisible]);
+
+  useEffect(() => {
+    try {
+      window.localStorage?.setItem("tasknode.context.taskgenBudget", contextBudgetOpen ? "open" : "closed");
+    } catch {
+      // Local display preference only.
+    }
+  }, [contextBudgetOpen]);
 
   const updateTablePickerPosition = useCallback(() => {
     const anchor = tableWrapRef.current;
@@ -4231,6 +4266,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
         editorRef.current.appendChild(table);
         editorRef.current.appendChild(trailing);
       }
+      setContextBudgetHtml(editorRef.current.innerHTML || "");
       recomputeDirty();
     },
     [canEdit, recomputeDirty, restoreSelection]
@@ -4278,6 +4314,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     const currentBody = sanitizeContextHtml(editorRef.current?.innerHTML || "");
     const currentTitle = titleRef.current;
     const continuedEditing = currentBody !== body || currentTitle !== requestTitle;
+    setContextBudgetHtml(currentBody || contextBodyToHtml(durableDocument.body || ""));
 
     setDocumentState(durableDocument);
     latestContextDocumentRef.current = {
@@ -4317,7 +4354,9 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
 
   const handleEditorInput = () => {
     setSaveMessage("");
-    const nextLineCount = countContextLines(editorRef.current?.innerHTML || "");
+    const currentHtml = editorRef.current?.innerHTML || "";
+    setContextBudgetHtml(currentHtml);
+    const nextLineCount = countContextLines(currentHtml);
     setContextLineCount(nextLineCount);
     refreshContextLineRows(nextLineCount);
     recomputeDirty();
@@ -4363,6 +4402,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     if (text === undefined || text === null) return;
     event.preventDefault();
     document.execCommand("insertText", false, text);
+    handleEditorInput();
     recomputeDirty();
   };
 
@@ -4541,6 +4581,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     setTitle(hydratedContext.title || "Historical PFT Context");
     const hydratedHtml = contextBodyToHtml(hydratedContext.text);
     if (editorRef.current) editorRef.current.innerHTML = hydratedHtml;
+    setContextBudgetHtml(hydratedHtml);
     const nextLineCount = countContextLines(hydratedHtml);
     setContextLineCount(nextLineCount);
     refreshContextLineRows(nextLineCount);
@@ -4598,6 +4639,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
     if (version.type === "current") {
       setTitle(savedTitle);
       if (editorRef.current) editorRef.current.innerHTML = lastSavedHtmlRef.current;
+      setContextBudgetHtml(lastSavedHtmlRef.current);
       const nextLineCount = countContextLines(lastSavedHtmlRef.current);
       setContextLineCount(nextLineCount);
       refreshContextLineRows(nextLineCount);
@@ -4828,12 +4870,40 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
             </div>
           </div>
 
+          {contextBudgetOpen && (
+            <div className={`ctx-budget-panel is-${contextBudgetTone}`} aria-label="Task generation context budget">
+              <div className="ctx-budget-panel-head">
+                <strong>Task generation context</strong>
+                <span>{contextBudgetIncludedLabel} / {contextBudgetMaxLabel} chars</span>
+              </div>
+              <div className="ctx-budget-meter" aria-hidden="true">
+                <span style={{ width: `${Math.min(100, contextBudget.usagePercent)}%` }} />
+              </div>
+              <p>
+                {contextBudget.clipped
+                  ? `Task generation uses the first ${contextBudgetMaxLabel} readable characters. ${contextBudgetOmittedLabel} characters are outside the generation packet.`
+                  : `Task generation can use this full document. ${contextBudgetRemainingLabel} characters remain before clipping.`}
+              </p>
+            </div>
+          )}
+
           <footer className="ctx-card-foot">
             <span className={`ctx-status${dirty ? " is-dirty" : ""}${saving || publishing ? " is-saving" : ""}`} role="status">
               <span className="ctx-status-dot" aria-hidden="true" />
               {statusText}
             </span>
             <div className="ctx-foot-actions">
+              <button
+                aria-expanded={contextBudgetOpen ? "true" : "false"}
+                aria-pressed={contextBudgetOpen ? "true" : "false"}
+                className={`ctx-budget-toggle is-${contextBudgetTone}${contextBudgetOpen ? " is-active" : ""}`}
+                onClick={() => setContextBudgetOpen((open) => !open)}
+                title="Task generation context budget"
+                type="button"
+              >
+                <Database size={13} strokeWidth={2} />
+                <span>{contextBudgetPercentLabel} task context</span>
+              </button>
               <button
                 aria-expanded={versionsOpen ? "true" : "false"}
                 className={`ctx-ghost${versionsOpen ? " is-active" : ""}`}
@@ -5027,7 +5097,7 @@ function ContextView({ context, linkedWalletAddress = "", onContextChange, onHyd
               </span>
             </div>
             {hydrateMessage && <div className="ctx-restore-state">{hydrateMessage}</div>}
-            <pre className="ctx-restore-preview">{contextPreviewText(hydratedContext.text, 50000)}</pre>
+            <pre className="ctx-restore-preview">{contextPreviewText(hydratedContext.text, CONTEXT_DOCUMENT_MAX_CHARS)}</pre>
             <footer className="ctx-restore-foot">
               <span>{hydratedContext.decrypted ? "Decrypted locally from your unlocked vault." : "Fetched historical context."}</span>
               <button className="ctx-version-restore" onClick={closeHydratedPreview} type="button">

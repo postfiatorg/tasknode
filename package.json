@@ -86,6 +86,7 @@
     "hive-project-planning-smoke": "node scripts/hive-project-planning-smoke.mjs",
     "hive-project-rollup-repair": "node scripts/repair-hive-project-rollups.mjs",
     "task-request-unlock-policy-smoke": "node scripts/task-request-unlock-policy-smoke.mjs",
+    "task-request-context-budget-smoke": "node scripts/task-request-context-budget-smoke.mjs",
     "task-request-public-state-smoke": "node scripts/task-request-public-state-smoke.mjs",
     "task-request-handoff-smoke": "node scripts/task-request-handoff-smoke.mjs",
     "task-refresh-policy-smoke": "node scripts/task-refresh-policy-smoke.mjs",

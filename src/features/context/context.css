@@ -360,6 +360,7 @@
 .ctx-tool-btn,
 .ctx-tool-text,
 .ctx-ghost,
+.ctx-budget-toggle,
 .ctx-version-restore,
 .ctx-version-copy,
 .ctx-table-cell {
@@ -403,6 +404,7 @@
 .ctx-tool-btn:focus-visible,
 .ctx-tool-text:focus-visible,
 .ctx-ghost:focus-visible,
+.ctx-budget-toggle:focus-visible,
 .ctx-version-restore:focus-visible,
 .ctx-version-copy:focus-visible {
   outline: 2px solid var(--ctx-ink);
@@ -708,7 +710,110 @@
 .ctx-foot-actions {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
+}
+
+.ctx-budget-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  max-width: 190px;
+  padding: 0 10px;
+  border: 1px solid var(--ctx-border);
+  border-radius: 999px;
+  background: var(--ctx-surface);
+  color: var(--ctx-ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.ctx-budget-toggle span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctx-budget-toggle:hover,
+.ctx-budget-toggle.is-active {
+  border-color: var(--ctx-border-strong);
+  background: var(--ctx-surface);
+  color: var(--ctx-ink);
+}
+
+.ctx-budget-toggle.is-warn {
+  border-color: #eadfbd;
+  background: #fff9e8;
+  color: #8a5b0a;
+}
+
+.ctx-budget-toggle.is-danger {
+  border-color: #f2c7c7;
+  background: #fff4f4;
+  color: #9f1d1d;
+}
+
+.ctx-budget-panel {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--ctx-border);
+  background: var(--ctx-surface);
+}
+
+.ctx-budget-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ctx-ink);
+  font-size: 12.5px;
+}
+
+.ctx-budget-panel-head strong {
+  font-weight: 650;
+}
+
+.ctx-budget-panel-head span {
+  flex: 0 0 auto;
+  color: var(--ctx-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ctx-budget-meter {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--ctx-surface-3);
+}
+
+.ctx-budget-meter span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ctx-ok);
+}
+
+.ctx-budget-panel.is-warn .ctx-budget-meter span {
+  background: #b7791f;
+}
+
+.ctx-budget-panel.is-danger .ctx-budget-meter span {
+  background: #b91c1c;
+}
+
+.ctx-budget-panel p {
+  margin: 0;
+  color: var(--ctx-ink-3);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .ctx-ghost {

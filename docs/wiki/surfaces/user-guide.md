@@ -53,6 +53,8 @@ Context is the durable working document that tells Task Node who the user is, wh
 
 The editor autosaves the current draft into the account database. That current draft is the normal source used by chat and task generation. The `Saving`, `Saved`, or dirty state describes this current account cache, not necessarily an on-chain publication.
 
+Task generation uses up to 60,000 readable characters from the current Context document. The Context footer has a task-context budget toggle that shows the current percentage used and whether any readable characters are outside the generation packet.
+
 `Publish to PFT` is separate. Publishing encrypts the Context, pins it through IPFS, and writes a PFTL pointer so there is a wallet-scoped history record. Publishing requires a linked and unlocked wallet. Historical Context entries may need wallet unlock to decrypt previews. Cached historical previews are for the browser session and are not the same as the current editable draft.
 
 Line numbers shown in Context and Context Refine are anchors into the normalized plain-text version of the document. They help the edit model and the user refer to the same section; they are not a separate document format.
@@ -203,6 +205,8 @@ This is one of the most important surfaces in the app. Bad context produces bad 
 Open Context and keep the document accurate. Write in normal language. Include current priorities, active projects, constraints, preferences, and anything the assistant should not forget.
 
 Update it when your work changes. Remove stale priorities. If the assistant is behaving from old assumptions, check the context document first.
+
+Use the task-context budget toggle when the document gets long. Below 100%, task generation can use the full readable document; above 100%, the earliest 60,000 readable characters are used.
 
 You can edit it directly, or use Refine Context to clean it up without changing the meaning.
 

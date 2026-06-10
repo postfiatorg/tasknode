@@ -18,6 +18,8 @@ import { runPftlCacheReducerOnce } from "./pftl-cache-reducer.js";
 import { upsertTaskRequest } from "./repositories/task-requests.js";
 import { scheduleTaskGenerationQueue } from "./task-generation-worker.js";
 import { taskRequestCanonicalText, taskRequestIntentStart } from "./task-request-intent.js";
+import { contextBodyText } from "./context-line-map.js";
+import { contextBudgetMetrics, TASKGEN_CONTEXT_MAX_CHARS } from "../shared/context-budget.js";
 
 const ACTION_ID = "task_request";
 const TASK_POINTER_SCHEMA = 1;
@@ -215,6 +217,8 @@ export async function buildRequestBundle({ accountId, walletAddress, request, au
     listTaskState({ accountId, walletAddress }),
   ]);
   const contextBody = String(context?.body || "");
+  const contextText = contextBodyText(contextBody);
+  const contextBudget = contextBudgetMetrics(contextText, { maxChars: TASKGEN_CONTEXT_MAX_CHARS });
   const recentMemory = (memoryContext.memories || []).map(memoryProjection);
   const deepMemory = (memoryContext.deepMemories || []).map(memoryProjection);
   return {
@@ -270,9 +274,9 @@ export async function buildRequestBundle({ accountId, walletAddress, request, au
         context_id: context?.id || `ctx_${sha256(accountId).slice(0, 24)}`,
         cid: null,
         digest: `sha256:${sha256(contextBody)}`,
-        summary: compactText(contextBody, 1600),
+        summary: contextBudget.text,
         revision: Number(context?.revision || 0),
-        word_count: wordCount(contextBody),
+        word_count: wordCount(contextText),
       },
       additional_refs: [],
     },

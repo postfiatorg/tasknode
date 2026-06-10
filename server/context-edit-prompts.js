@@ -2,6 +2,7 @@ import { promptDigest, loadPrompt, renderPromptTemplate } from "./prompt-registr
 import { contextDocumentPacket } from "./context-line-map.js";
 import { formatChatMemoryContext } from "./chat-memory-context.js";
 import { formatChatTaskContext } from "./chat-task-context.js";
+import { MODEL_CONTEXT_MAX_CHARS } from "../shared/context-budget.js";
 
 export const contextEditPromptPath = "context/context_edit_jobs_v1.xml";
 export const contextEditPromptText = loadPrompt(contextEditPromptPath);
@@ -48,8 +49,8 @@ export function renderContextEditPrompt({
 } = {}) {
   const packet = contextDocumentPacket(contextDocument || {});
   return renderPromptTemplate(contextEditPromptText, {
-    CONTEXT_DOCUMENT: clip(packet.bodyText, 50000) || "(empty)",
-    CONTEXT_DOCUMENT_WITH_LINE_NUMBERS: clip(packet.lineNumberedText, 65000) || "1 |",
+    CONTEXT_DOCUMENT: clip(packet.bodyText, MODEL_CONTEXT_MAX_CHARS) || "(empty)",
+    CONTEXT_DOCUMENT_WITH_LINE_NUMBERS: clip(packet.lineNumberedText, MODEL_CONTEXT_MAX_CHARS + 15_000) || "1 |",
     CURRENT_CONTEXT_REVISION: [
       `Title: ${packet.title}`,
       `Revision: ${packet.revision}`,
