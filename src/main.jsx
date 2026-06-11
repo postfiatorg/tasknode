@@ -173,6 +173,12 @@ const TASK_REQUEST_CANONICAL_TEXT =
 const TASK_REQUEST_PLACEHOLDER = "Add any relevant details for your task request";
 const HIVE_CHAT_PLACEHOLDER = "Talk to Hive Chat";
 const HIVE_CHAT_TITLE = "Hive Chat";
+const CHAT_STARTER_PROMPTS = [
+  "Help me build my context document",
+  "Give me my first task",
+  "How do I earn PFT?",
+  "What should I do first?",
+];
 const SIGNED_OUT_HELP_HISTORY_LIMIT = 10;
 const SIGNED_OUT_HELP_HISTORY_CHARS = 4000;
 const HIVE_CHAT_NOTIFICATION_REFRESH_MS = 20000;
@@ -486,6 +492,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(initialSidebarOpen);
   const [loginOpen, setLoginOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [logoutConfirming, setLogoutConfirming] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [identityPromptDismissed, setIdentityPromptDismissed] = useState(false);
@@ -563,6 +570,10 @@ function App() {
     document.addEventListener("mousedown", closeMenus);
     return () => document.removeEventListener("mousedown", closeMenus);
   }, []);
+
+  useEffect(() => {
+    if (!profileMenuOpen) setLogoutConfirming(false);
+  }, [profileMenuOpen]);
 
   useEffect(() => {
     if (!settingsOpen && !selectedTask && !chatActionMenu && !walletUnlockOpen) return undefined;
@@ -1593,7 +1604,21 @@ function App() {
                       />
                       <ToolMenuRow icon={LifeBuoy} label="Help" onClick={() => navigateToView("docs")} trailing={<ChevronRight size={14} />} />
                       <div className="menu-divider" />
-                      <ToolMenuRow icon={LogOut} label="Log out" onClick={logOut} />
+                      {logoutConfirming ? (
+                        <div className="profile-menu-logout-confirm">
+                          <span>Log out? Your wallet vault will lock.</span>
+                          <div>
+                            <button className="pill-button" onClick={() => setLogoutConfirming(false)} type="button">
+                              Cancel
+                            </button>
+                            <button className="pill-button dark" onClick={logOut} type="button">
+                              Log out
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <ToolMenuRow icon={LogOut} label="Log out" onClick={() => setLogoutConfirming(true)} />
+                      )}
                     </>
                   ) : (
                     <>
@@ -2746,6 +2771,23 @@ function ChatSurface({
         <div className="chat-empty">
           <h1>{isHiveChat ? HIVE_CHAT_TITLE : "What are you working on?"}</h1>
           {composer}
+          {!signedOut && !isHiveChat && (
+            <div className="chat-starter-prompts">
+              {CHAT_STARTER_PROMPTS.map((prompt) => (
+                <button
+                  className="pill-button"
+                  key={prompt}
+                  onClick={() => {
+                    setInput(prompt);
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                  }}
+                  type="button"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="chat-thread-shell">

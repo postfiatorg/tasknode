@@ -860,6 +860,27 @@ button {
   line-height: 1.35;
 }
 
+.profile-menu-logout-confirm {
+  display: grid;
+  gap: 10px;
+  padding: 8px 12px;
+}
+
+.profile-menu-logout-confirm span {
+  color: #0d0d0d;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.profile-menu-logout-confirm div {
+  display: flex;
+  gap: 8px;
+}
+
+.profile-menu-logout-confirm .pill-button {
+  flex: 1;
+}
+
 .workspace {
   display: flex;
   flex-direction: column;
@@ -986,6 +1007,15 @@ h1 {
   font-weight: 400;
   letter-spacing: 0;
   text-align: center;
+}
+
+.chat-starter-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 0 16px;
 }
 
 .chat-thread-shell {
@@ -2521,6 +2551,19 @@ h1 {
   min-height: 0;
   width: 100%;
   overflow-y: auto;
+}
+
+/* Mark the top edge of the inner scroll region (the app shell itself does not
+   scroll) so users can see where route content gets clipped under the topbar. */
+.route-scroll::before {
+  content: "";
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: block;
+  height: 1px;
+  margin-bottom: -1px;
+  background: #e8e6df;
 }
 
 .tasks-view,
