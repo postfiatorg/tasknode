@@ -504,7 +504,7 @@ Search helps find cached work across app records.
 
 ### How To Use It
 
-Use Search when you are trying to recover a prior conversation, task, context entry, or related work artifact.
+Use Search when you are trying to recover a prior conversation, task, context entry, or related work artifact. The sidebar `Search chats` button searches your own chats by title and message content and opens the matching conversation.
 
 ### How To Explain It
 
