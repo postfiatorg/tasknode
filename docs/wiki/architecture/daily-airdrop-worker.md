@@ -27,6 +27,13 @@ records exist.
 Red means the latest run failed recently, the worker is stale beyond the hard
 threshold, or unresolved submit-unknown/stale debt requires reconciliation.
 
+Fresh in-flight rows are not debt. A `running` production scoring row younger
+than `TASKNODE_DAILY_AIRDROP_SCORE_STALE_MINUTES` (default `45`) and a
+`processing_pre_submit` issuance row younger than
+`TASKNODE_DAILY_AIRDROP_PRE_SUBMIT_STALE_MINUTES` (default `30`) are normal
+payout-tick state and do not flip the status row. Only rows older than those
+worker stale thresholds count as debt/blocked.
+
 ## Debug And Repair
 
 Candidate selection requires a recent positive task reward, no same-day
@@ -46,8 +53,20 @@ fail before writing a completed production run. The expected error is
 `daily_airdrop_packet_candidate_mismatch`. A completed zero run in that scenario
 is a data-boundary bug, not a legitimate ineligible score.
 
-Failed production scoring rows are retryable. The next worker tick reclaims the
-same `profile_daily_airdrop_runs` row, clears the error, and resets it to
+The model's proposed amount is clamped twice before money moves: by
+`TASKNODE_DAILY_AIRDROP_MAX_PFT` (default `10000`) and by a deterministic
+proportionality cap of `TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION` (default
+`0.5`) times the packet's 7-day `total_reward_paid_pft`. A packet with zero
+rewarded PFT caps to zero. The run's `output_json.normalized.deterministic_cap`
+records the cap inputs and a `cap_bound` flag so operators can see when the cap
+clamped the model output.
+
+Failed production scoring rows are retryable. The debt command and the
+system-status airdrop row report them as kind `scoring` with the raw run status
+`failed` and `nextAction=retry_scoring`; issuance-status normalization (which
+maps a money-path `failed` row with no `tx_hash` to `failed_before_submit` /
+`retry_issuance`) never applies to scoring rows. The next worker tick reclaims
+the same `profile_daily_airdrop_runs` row, clears the error, and resets it to
 `running` with the new packet and prompt metadata. Stale `running` rows older
 than `TASKNODE_DAILY_AIRDROP_SCORE_STALE_MINUTES`, default `45`, are marked
 failed with `daily_airdrop_stale_running_reclaimed` so the same account/day can
@@ -81,6 +100,12 @@ npm run profile-daily-airdrop-issue -- --account-id=<account_id> --run-id=<run_i
 npm run profile-daily-airdrop-packet-smoke
 ```
 
+The issue script requires both `--account-id` and `--run-id`: issuing pays the
+exact scoring run, never an implicit "latest completed" run. Claiming an
+issuance also refuses to promote a non-production scoring run; a `dry_run` run
+throws `daily_airdrop_dry_run_promotion_blocked` unless the operator explicitly
+passes `--allow-dry-run-promotion` after confirming the run should be paid.
+
 Failed issuance rows are money-path state. If `tx_hash` is empty and
 `submitted_at` is null, the row is normalized as `failed_before_submit` and can
 be retried after the root cause is fixed. If submission may have happened, the
@@ -91,6 +116,14 @@ payouts are not signed:
 npm run profile-daily-airdrop-reconcile -- --run-id=<run_id> --json
 ```
 
-Only use `--allow-demote` after the cached PFTL transaction search proves no
-matching source wallet, recipient wallet, amount, run id, pointer CID, or signed
-transaction hash exists.
+Reconciliation never trusts a stale cache. Before searching `pftl_transactions`
+it hot-syncs both the source and recipient wallets and runs the cache reducer,
+then records both `pftl_sync_wallets.last_hot_sync_at` watermarks in
+`reconciliation_json` and the script output. Only use `--allow-demote` after the
+cached PFTL transaction search proves no matching source wallet, recipient
+wallet, amount, run id, pointer CID, or signed transaction hash exists; the
+demote is additionally refused (`daily_airdrop_demote_blocked_stale_sync`) when
+either wallet's hot-sync watermark predates the issuance's
+`submission_attempted_at`, because the missing payment may simply not be cached
+yet and a demoted row auto-retries with a second signed payment. Override only
+with `--force-demote-stale-sync` after manually inspecting chain state.

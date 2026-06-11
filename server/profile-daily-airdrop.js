@@ -15,7 +15,14 @@ const PROMPT_PATH = "profile/daily_airdrop_v1.md";
 const PROMPT_VERSION = "daily_airdrop_v1";
 const DEFAULT_MODEL = "deepseek/deepseek-v4-pro";
 const DEFAULT_MAX_DAILY_PFT = 10000;
+const DEFAULT_MAX_REWARD_FRACTION = 0.5;
 const DEFAULT_LOOKBACK_DAYS = 7;
+
+export function dailyAirdropMaxRewardFraction(env = process.env) {
+  const parsed = Number(env.TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION);
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_MAX_REWARD_FRACTION;
+  return parsed;
+}
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -139,6 +146,7 @@ export async function buildDailyAirdropTaskRewardPacket({
   now = new Date(),
   lookbackDays = DEFAULT_LOOKBACK_DAYS,
   maxDailyPft = DEFAULT_MAX_DAILY_PFT,
+  maxRewardFraction = dailyAirdropMaxRewardFraction(),
 } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("daily_airdrop_account_required");
@@ -245,6 +253,8 @@ export async function buildDailyAirdropTaskRewardPacket({
     rewarded_tasks: tasks,
     daily_airdrop_policy: {
       max_daily_pft: maxDailyPft,
+      max_reward_fraction: maxRewardFraction,
+      deterministic_cap_rule: "min(max_daily_pft, floor(max_reward_fraction * total_reward_paid_pft))",
       network_value_heuristic:
         "How much would a crypto network rationally pay today to retain this actor as a community member and contributor?",
       no_work_rule: "zero_if_no_positive_rewarded_task_in_lookback",
@@ -253,12 +263,35 @@ export async function buildDailyAirdropTaskRewardPacket({
   };
 }
 
-export function normalizeDailyAirdropOutput(output = {}, packet = {}, { maxDailyPft = DEFAULT_MAX_DAILY_PFT } = {}) {
+export function normalizeDailyAirdropOutput(
+  output = {},
+  packet = {},
+  { maxDailyPft = DEFAULT_MAX_DAILY_PFT, maxRewardFraction = dailyAirdropMaxRewardFraction() } = {}
+) {
   const hasPositiveRewards = Number(packet?.reward_totals?.rewarded_task_count || 0) > 0;
   const eligibilityStatus = hasPositiveRewards && output.eligibility_status === "eligible" ? "eligible" : "ineligible";
-  const amount = eligibilityStatus === "eligible" ? clampInteger(output.daily_airdrop_pft, 0, maxDailyPft) : 0;
+  const modelAmount = eligibilityStatus === "eligible" ? clampInteger(output.daily_airdrop_pft, 0, maxDailyPft) : 0;
+  // Defense in depth: the paid amount can never exceed a deterministic fraction of the
+  // 7-day rewarded-task PFT in the packet, no matter what the model proposes. A packet
+  // with zero rewarded PFT caps to zero (no payout), which matches candidate eligibility
+  // requiring a recent positive task reward.
+  const fraction = Number.isFinite(Number(maxRewardFraction)) && Number(maxRewardFraction) >= 0
+    ? Number(maxRewardFraction)
+    : DEFAULT_MAX_REWARD_FRACTION;
+  const totalRewardPaidPft = positiveNumber(packet?.reward_totals?.total_reward_paid_pft);
+  const rewardFractionCapPft = Math.min(maxDailyPft, Math.floor(totalRewardPaidPft * fraction));
+  const amount = Math.min(modelAmount, rewardFractionCapPft);
   return {
     daily_airdrop_pft: amount,
+    deterministic_cap: {
+      rule: "min(max_daily_pft, floor(max_reward_fraction * total_reward_paid_pft))",
+      max_daily_pft: maxDailyPft,
+      max_reward_fraction: fraction,
+      total_reward_paid_pft: totalRewardPaidPft,
+      reward_fraction_cap_pft: rewardFractionCapPft,
+      model_daily_airdrop_pft: modelAmount,
+      cap_bound: modelAmount > rewardFractionCapPft,
+    },
     retention_value_score: eligibilityStatus === "eligible" ? clampInteger(output.retention_value_score, 0, 100) : 0,
     what_raised_today: safeText(output.what_raised_today, 1000),
     what_kept_it_lower: safeText(output.what_kept_it_lower, 1000),
@@ -336,6 +369,7 @@ export async function runDailyAirdropScore({
   now = new Date(),
   lookbackDays = DEFAULT_LOOKBACK_DAYS,
   maxDailyPft = Number(process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || DEFAULT_MAX_DAILY_PFT),
+  maxRewardFraction = dailyAirdropMaxRewardFraction(),
   model = process.env.TASKNODE_DAILY_AIRDROP_MODEL || DEFAULT_MODEL,
   scoreAttempts = Number(process.env.TASKNODE_DAILY_AIRDROP_SCORE_ATTEMPTS || 2),
   expectedCandidate = null,
@@ -343,7 +377,7 @@ export async function runDailyAirdropScore({
 } = {}) {
   const promptText = loadPrompt(PROMPT_PATH);
   const digest = promptDigest(promptText);
-  const packet = await buildDailyAirdropTaskRewardPacket({ accountId, now, lookbackDays, maxDailyPft });
+  const packet = await buildDailyAirdropTaskRewardPacket({ accountId, now, lookbackDays, maxDailyPft, maxRewardFraction });
   const expectedRewardedTasks = positiveNumber(expectedCandidate?.rewardedTaskCount);
   const expectedRewardPft = positiveNumber(expectedCandidate?.rewardActualPft);
   const packetRewardedTasks = positiveNumber(packet?.reward_totals?.rewarded_task_count);
@@ -397,7 +431,7 @@ export async function runDailyAirdropScore({
       }
     }
     if (!response) throw lastError || new Error("daily_airdrop_score_failed");
-    const normalized = normalizeDailyAirdropOutput(response.output, packet, { maxDailyPft });
+    const normalized = normalizeDailyAirdropOutput(response.output, packet, { maxDailyPft, maxRewardFraction });
     const airdropWindow = await recentDailyAirdropRunWindow({
       accountId,
       from: packet.lookback.from,

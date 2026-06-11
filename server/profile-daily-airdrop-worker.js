@@ -486,7 +486,11 @@ export async function runDailyAirdropWorkerOnce({
             rewardedTaskCount: score.packet?.reward_totals?.rewarded_task_count || 0,
             rewardPaid7d: score.packet?.reward_totals?.total_reward_paid_pft || 0,
           });
-          if (autoIssueEnabled(env) && Number(score.output.daily_airdrop_pft || 0) > 0) {
+          // Only production scoring runs are issued: claiming an issuance force-promotes
+          // the run to production, and claimDailyAirdropIssuanceForPublish now blocks
+          // dry_run promotion (daily_airdrop_dry_run_promotion_blocked) without an
+          // explicit operator override.
+          if (autoIssueEnabled(env) && normalizedRunMode === "production" && Number(score.output.daily_airdrop_pft || 0) > 0) {
             const issuanceResult = await issueLatestDailyAirdrop({
               accountId: candidate.accountId,
               runId: score.run.id,

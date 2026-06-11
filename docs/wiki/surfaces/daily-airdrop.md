@@ -143,6 +143,33 @@ The model returns:
 
 `reasoning_text` is contributor reasoning. It explains why the member's task packet merits the proposed airdrop. Recipient wallet selection is deterministic and separate from contributor reasoning.
 
+The prompt declares an explicit trust boundary: task titles, reward reasons, and
+any quoted evidence or feedback inside `rewarded_tasks` are user-influenced text
+and are scored as untrusted data, never followed as instructions. Embedded
+amount demands or scorer instructions are treated as fraud signals that lower
+the score.
+
+The paid amount is also deterministically capped in code, independent of the
+model:
+
+```text
+daily_airdrop_pft <=
+  min(
+    TASKNODE_DAILY_AIRDROP_MAX_PFT,            # default 10000
+    floor(
+      TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION   # default 0.5
+      * reward_totals.total_reward_paid_pft        # 7-day rewarded task PFT
+    )
+  )
+```
+
+A packet with zero rewarded PFT caps to zero, which matches candidate
+eligibility (a recent positive task reward is required). The run's
+`output_json.normalized.deterministic_cap` records `max_daily_pft`,
+`max_reward_fraction`, `total_reward_paid_pft`, the resulting
+`reward_fraction_cap_pft`, the raw `model_daily_airdrop_pft`, and a `cap_bound`
+flag so operators can audit when the cap clamped the model.
+
 ### Alignment Score
 
 Alignment score is deterministic. It is not an LLM output.
@@ -197,7 +224,7 @@ not an eligible zero-airdrop result.
 
 `profile_daily_airdrop_issuances` stores live payment submissions. It is keyed by `run_id` and prevents more than one submitted issuance per account/day. The recurring worker treats pending, in-flight, submit-unknown, submitted, and cancelled issuance rows as stop rows for new scoring. Retryable pre-submit failures are handled by the issuance retry path instead of selecting the account as a fresh candidate.
 
-Failed `profile_daily_airdrop_runs` rows are scoring-path state, not money-path state. A failed production scoring row for the same account/day may be reclaimed by the next worker tick, which resets the row to `running` with the new packet and prompt metadata. Completed or running production scoring rows still suppress repeat scoring.
+Failed `profile_daily_airdrop_runs` rows are scoring-path state, not money-path state. Debt tooling and the system-status airdrop row report them with the raw run status `failed` and `nextAction=retry_scoring` (never `failed_before_submit`/`retry_issuance`, which are issuance labels). A failed production scoring row for the same account/day may be reclaimed by the next worker tick, which resets the row to `running` with the new packet and prompt metadata. Completed or running production scoring rows still suppress repeat scoring. Fresh in-flight rows (`running` scoring younger than `TASKNODE_DAILY_AIRDROP_SCORE_STALE_MINUTES`, `processing_pre_submit` issuances younger than `TASKNODE_DAILY_AIRDROP_PRE_SUBMIT_STALE_MINUTES`) are normal payout-tick state and are not counted as debt by the system-status row.
 
 Issuance state is intentionally conservative:
 
@@ -205,7 +232,7 @@ Issuance state is intentionally conservative:
 - `processing_pre_submit`: a worker has claimed the run and may pin/sign, but has not attempted PFTL submission.
 - `failed_before_submit`: no PFT submission was attempted. This state is safe for bounded automatic retry.
 - `submitting`: the signed transaction was recorded and PFTL submission is in progress.
-- `submit_unknown`: submission may have reached PFTL, but the final tx proof was not persisted. This blocks retry until reconciliation.
+- `submit_unknown`: submission may have reached PFTL, but the final tx proof was not persisted. This blocks retry until reconciliation. Reconciliation hot-syncs both money-path wallets before searching the cache and records both `last_hot_sync_at` watermarks in `reconciliation_json`; `--allow-demote` is refused while either watermark predates `submission_attempted_at` (override only with `--force-demote-stale-sync`).
 - `submitted`: the PFTL payment and pointer are persisted with transaction hash, pointer CID, payload digest, and ledger index.
 - `cancelled`: an operator intentionally closed the row without retry.
 
@@ -265,6 +292,12 @@ The older direct commands remain useful for diagnosis:
 npm run profile-daily-airdrop-score -- --account-id <account_id> --run-mode dry_run
 npm run profile-daily-airdrop-issue -- --account-id=<account_id> --run-id=<run_id>
 ```
+
+`profile-daily-airdrop-issue` requires `--run-id`; it pays the exact scoring
+run, never an implicit latest completed run. Claiming an issuance refuses
+non-production runs with `daily_airdrop_dry_run_promotion_blocked`; paying a
+`dry_run` run requires the explicit `--allow-dry-run-promotion` flag. The
+recurring worker only auto-issues runs it scored in `production` mode.
 
 ### Same-Day Repair
 

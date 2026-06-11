@@ -4,6 +4,7 @@ import { closePool, databaseEnabled, query } from "../server/db/pool.js";
 import { migrateDatabase } from "../server/db/migrate.js";
 import {
   buildDailyAirdropTaskRewardPacket,
+  normalizeDailyAirdropOutput,
   runDailyAirdropScore,
 } from "../server/profile-daily-airdrop.js";
 import {
@@ -123,6 +124,40 @@ async function main() {
     assert.equal(packet.reward_totals.rewarded_task_count, 1);
     assert.equal(packet.reward_totals.total_reward_paid_pft, 7.5);
     assert.equal(packet.rewarded_tasks[0].task_id, taskId);
+    assert.equal(packet.daily_airdrop_policy.max_reward_fraction, 0.5);
+    assert.equal(
+      packet.daily_airdrop_policy.deterministic_cap_rule,
+      "min(max_daily_pft, floor(max_reward_fraction * total_reward_paid_pft))"
+    );
+
+    // Deterministic amount cap: the model can never pay more than
+    // max_reward_fraction * the packet's 7-day rewarded PFT, even if it tries.
+    const cappedOutput = normalizeDailyAirdropOutput(
+      { daily_airdrop_pft: 5000, retention_value_score: 99, eligibility_status: "eligible" },
+      packet,
+      { maxDailyPft: 10000, maxRewardFraction: 0.5 }
+    );
+    assert.equal(cappedOutput.daily_airdrop_pft, 3, "5000 PFT proposal clamps to floor(0.5 * 7.5) = 3");
+    assert.equal(cappedOutput.deterministic_cap.cap_bound, true);
+    assert.equal(cappedOutput.deterministic_cap.model_daily_airdrop_pft, 5000);
+    assert.equal(cappedOutput.deterministic_cap.reward_fraction_cap_pft, 3);
+    assert.equal(cappedOutput.deterministic_cap.total_reward_paid_pft, 7.5);
+    assert.equal(cappedOutput.deterministic_cap.max_reward_fraction, 0.5);
+
+    const underCapOutput = normalizeDailyAirdropOutput(
+      { daily_airdrop_pft: 2, retention_value_score: 40, eligibility_status: "eligible" },
+      packet,
+      { maxDailyPft: 10000, maxRewardFraction: 0.5 }
+    );
+    assert.equal(underCapOutput.daily_airdrop_pft, 2, "a proposal under the cap is unchanged");
+    assert.equal(underCapOutput.deterministic_cap.cap_bound, false);
+
+    const zeroBaseOutput = normalizeDailyAirdropOutput(
+      { daily_airdrop_pft: 100, retention_value_score: 80, eligibility_status: "eligible" },
+      { reward_totals: { rewarded_task_count: 1, total_reward_paid_pft: 0 } },
+      { maxDailyPft: 10000, maxRewardFraction: 0.5 }
+    );
+    assert.equal(zeroBaseOutput.daily_airdrop_pft, 0, "a zero rewarded-PFT base caps the payout to zero");
 
     await insertRewardedTask({
       account: mismatchAccountId,
