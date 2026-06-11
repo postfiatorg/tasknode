@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   Activity,
   BookOpen,
-  Bot,
   Bold,
   ChevronDown,
   ChevronRight,
@@ -1394,7 +1393,6 @@ function App() {
               <div className="sidebar-popout">
                 <ToolMenuRow icon={Wand2} label="Context Refine" />
                 <div className="menu-divider" />
-                <ToolMenuRow icon={Bot} label="Agents" />
                 <ToolMenuRow
                   icon={MessageSquare}
                   label="Memory"
