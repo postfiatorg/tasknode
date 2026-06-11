@@ -93,9 +93,12 @@ function emptyTaskState({ walletLinked = false, walletAddress = "" } = {}) {
   };
 }
 
-function activeRequestCount(requests = {}) {
+// Only processing requests (signing/queued/generating/recently published) count
+// toward refresh pressure. Failed requests are attention states: they stay
+// visible in the request strip, but no projection refresh can resolve them.
+function refreshActiveRequestCount(requests = {}) {
   return Array.isArray(requests?.items)
-    ? requests.items.filter((request) => request?.isActive).length
+    ? requests.items.filter((request) => request?.isProcessing).length
     : 0;
 }
 
@@ -116,9 +119,12 @@ function taskProjectionReadErrorState({
       projectionCount: 0,
       lastSyncedAt: null,
       requiresRefresh: true,
+      // A forced sync/reduce write pass against a failing database is the
+      // wrong remediation; the client polls with backoff instead.
+      forceProjectionRefresh: false,
       nextPollMs: 5000,
       refreshReason: "task_projection_read_failed",
-      activeRequestCount: activeRequestCount(requests),
+      activeRequestCount: refreshActiveRequestCount(requests),
       refreshTaskIds: [],
       error: safeText(error?.message || error, 500),
     },
@@ -580,9 +586,7 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
     integrity.totals.processingReducerCount > 0;
   const refresh = taskRefreshMetadata({
     tasks: taskItems,
-    activeRequestCount: Array.isArray(requests?.items)
-      ? requests.items.filter((request) => request?.isActive).length
-      : 0,
+    activeRequestCount: refreshActiveRequestCount(requests),
     handoffProjectionPending,
     projectionRefreshRequired,
     projectionRefreshReason: syncStatus === "indexing_lag"

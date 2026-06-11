@@ -290,9 +290,15 @@ export function mergeTaskStateWithActionReceipts(tasks = {}, receipts = [], {
       : hasLifecycleRefresh && !tasks?.sync?.refreshReason
         ? "task_review_active"
         : tasks?.sync?.refreshReason;
-    const nextPollMs = shouldRefresh
-      ? Math.min(Math.max(Number(tasks?.sync?.nextPollMs || 2500), 1000), 2500)
-      : tasks?.sync?.nextPollMs;
+    const serverNextPollMs = Number(tasks?.sync?.nextPollMs || 0);
+    // Only a pending optimistic receipt may clamp polling down to the fast
+    // 2.5s tier. Otherwise the server-suggested cadence is respected so the
+    // slow 10s tier (and database-error backoff) stays reachable.
+    const nextPollMs = !shouldRefresh
+      ? tasks?.sync?.nextPollMs
+      : hasOptimisticSync
+        ? Math.min(Math.max(serverNextPollMs || 2500, 1000), 2500)
+        : Math.min(Math.max(serverNextPollMs || (hasLifecycleRefresh ? 2500 : 10000), 1000), 30000);
 
     return {
       ...(tasks?.sync || {}),
@@ -304,6 +310,7 @@ export function mergeTaskStateWithActionReceipts(tasks = {}, receipts = [], {
         ...lifecycleRefreshTaskIds,
       ]),
       requiresRefresh: shouldRefresh,
+      forceProjectionRefresh: Boolean(tasks?.sync?.forceProjectionRefresh || hasOptimisticSync),
       nextPollMs,
       refreshReason,
     };
@@ -348,10 +355,11 @@ export function pruneTaskActionReceiptsForTaskState(receipts = [], tasks = {}, {
 }
 
 export function needsLegacyTaskRefresh(tasks = {}) {
-  return allTaskBuckets(tasks).some((task) => {
-    const statusKey = safeText(task?.statusKey, 120).toLowerCase();
-    return taskRequiresRefresh(task?.statusKey || task?.status) || statusKey === "verification_requested";
-  });
+  // Covers review-loop states genuinely awaiting the worker (submitted,
+  // verification_response_submitted, reward_decided). verification_requested
+  // waits on the user's own response and stays on the slow tier; route-open
+  // and focus/visibility refreshes cover cross-device cancels.
+  return allTaskBuckets(tasks).some((task) => taskRequiresRefresh(task?.statusKey || task?.status));
 }
 
 export function taskSyncNoticeForStatus(sync = {}) {
@@ -390,6 +398,7 @@ export function reconcileTaskVisibleState({
   nowMs = Date.now(),
   receipts = [],
   selectedTaskId = "",
+  taskReadFailureCount = 0,
   taskRequestSettleUntilMs = 0,
   tasks = {},
   tasksTab = "outstanding",
@@ -412,12 +421,16 @@ export function reconcileTaskVisibleState({
   const taskSync = visibleTasks?.sync || {};
   const handoffProjectionPending = taskSync?.handoff?.requestHandoffState === "generated_projection_pending";
   const polling = taskRefreshPolicy({
-    activeRequestCount: activeRequests.length,
     handoffProjectionPending: Boolean(taskSync?.handoffProjectionPending || handoffProjectionPending),
     legacyRefreshNeeded: needsLegacyTaskRefresh(visibleTasks),
     nextPollMs: taskSync.nextPollMs,
     nowMs,
+    // Failed requests stay in the attention strip but exert no refresh
+    // pressure; only processing requests keep the fast forced-refresh loop.
+    processingRequestCount: processingRequests.length,
     settleUntilMs: taskRequestSettleUntilMs,
+    taskReadFailureCount,
+    taskSyncForceProjection: Boolean(taskSync.forceProjectionRefresh),
     taskSyncRequiresRefresh: taskSync.requiresRefresh,
     taskSyncStatus: safeText(taskSync.status || "ready", 80),
   });
