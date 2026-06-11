@@ -105,6 +105,7 @@ import {
   truncateCid,
 } from "./features/context/context-view-utils.jsx";
 import { PostFiatLogo, SidebarButton, ToolMenuRow } from "./features/shell/ShellControls";
+import { NetworkTaskEligibilityPanel } from "./features/tasks/NetworkTaskEligibilityPanel.jsx";
 import { TaskDetailModal } from "./features/tasks/TaskDetailModal.jsx";
 import { TaskRequestModal } from "./features/tasks/TaskRequestModal.jsx";
 import { TaskRequestQueue } from "./features/tasks/TaskRequestQueue.jsx";
@@ -3575,6 +3576,8 @@ function TasksView({
             Request task
           </button>
         </div>
+
+        <NetworkTaskEligibilityPanel networkTasks={tasks?.networkTasks} />
 
         <TaskRequestQueue requests={activeRequests} />
 
