@@ -65,7 +65,12 @@ mustInclude(
 );
 mustInclude(
   dailyAirdropPrompt,
-  "deterministically caps the paid amount at `max_daily_pft` and at `max_reward_fraction` times",
+  "The system deterministically caps the paid amount at `max_daily_pft`; if `max_reward_fraction` is present",
+  "daily airdrop prompt"
+);
+mustInclude(
+  dailyAirdropPrompt,
+  "do not assume a low proportional cap unless the packet includes one",
   "daily airdrop prompt"
 );
 

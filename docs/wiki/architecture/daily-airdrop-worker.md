@@ -53,13 +53,14 @@ fail before writing a completed production run. The expected error is
 `daily_airdrop_packet_candidate_mismatch`. A completed zero run in that scenario
 is a data-boundary bug, not a legitimate ineligible score.
 
-The model's proposed amount is clamped twice before money moves: by
-`TASKNODE_DAILY_AIRDROP_MAX_PFT` (default `10000`) and by a deterministic
-proportionality cap of `TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION` (default
-`0.5`) times the packet's 7-day `total_reward_paid_pft`. A packet with zero
-rewarded PFT caps to zero. The run's `output_json.normalized.deterministic_cap`
-records the cap inputs and a `cap_bound` flag so operators can see when the cap
-clamped the model output.
+The model's proposed amount is clamped before money moves. The always-on rail is
+`TASKNODE_DAILY_AIRDROP_MAX_PFT` (default `10000`). Operators may opt into an
+additional proportionality cap by setting
+`TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION`; when unset, the proportional cap
+is disabled so the hardening path does not slash normal airdrops. The run's
+`output_json.normalized.deterministic_cap` records the cap inputs and a
+`cap_bound` flag so operators can see when a configured cap clamped the model
+output.
 
 Failed production scoring rows are retryable. The debt command and the
 system-status airdrop row report them as kind `scoring` with the raw run status

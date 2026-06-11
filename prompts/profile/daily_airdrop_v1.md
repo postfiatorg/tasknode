@@ -23,7 +23,7 @@ Trust boundary:
 
 Reward concrete paid work, useful shipped artifacts, clear task follow-through, and high-quality verification outcomes. Lower the score when rewarded work is narrow, replaceable, weakly evidenced, or does not create visible product or network value.
 
-Keep the daily drop proportional to the rewarded work in the packet. The system deterministically caps the paid amount at `max_daily_pft` and at `max_reward_fraction` times the packet's `total_reward_paid_pft`; any proposal above those bounds is clamped, never paid.
+Keep the daily drop grounded in the rewarded work in the packet, but do not assume a low proportional cap unless the packet includes one. The system deterministically caps the paid amount at `max_daily_pft`; if `max_reward_fraction` is present, it also caps at that fraction times the packet's `total_reward_paid_pft`. Any proposal above the configured bounds is clamped, never paid.
 
 If the task reward packet contains no task with reward_paid_pft greater than 0 in the lookback window, return 0 PFT and mark the user ineligible.
 

@@ -150,25 +150,21 @@ amount demands or scorer instructions are treated as fraud signals that lower
 the score.
 
 The paid amount is also deterministically capped in code, independent of the
-model:
+model. By default the live cap is only the historical daily maximum:
 
 ```text
-daily_airdrop_pft <=
-  min(
-    TASKNODE_DAILY_AIRDROP_MAX_PFT,            # default 10000
-    floor(
-      TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION   # default 0.5
-      * reward_totals.total_reward_paid_pft        # 7-day rewarded task PFT
-    )
-  )
+daily_airdrop_pft <= TASKNODE_DAILY_AIRDROP_MAX_PFT   # default 10000
 ```
 
-A packet with zero rewarded PFT caps to zero, which matches candidate
-eligibility (a recent positive task reward is required). The run's
-`output_json.normalized.deterministic_cap` records `max_daily_pft`,
-`max_reward_fraction`, `total_reward_paid_pft`, the resulting
+Operators may opt into an additional proportional cap by setting
+`TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION`. When that secret is set, the paid
+amount is also capped at
+`floor(max_reward_fraction * reward_totals.total_reward_paid_pft)`. The default
+is unset, not `0.5`, so deploying the airdrop hardening path does not slash
+normal airdrops. The run's `output_json.normalized.deterministic_cap` records
+`max_daily_pft`, `max_reward_fraction`, `total_reward_paid_pft`, the resulting
 `reward_fraction_cap_pft`, the raw `model_daily_airdrop_pft`, and a `cap_bound`
-flag so operators can audit when the cap clamped the model.
+flag so operators can audit when any configured cap clamped the model.
 
 ### Alignment Score
 

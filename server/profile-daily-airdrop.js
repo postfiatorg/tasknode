@@ -15,12 +15,13 @@ const PROMPT_PATH = "profile/daily_airdrop_v1.md";
 const PROMPT_VERSION = "daily_airdrop_v1";
 const DEFAULT_MODEL = "deepseek/deepseek-v4-pro";
 const DEFAULT_MAX_DAILY_PFT = 10000;
-const DEFAULT_MAX_REWARD_FRACTION = 0.5;
 const DEFAULT_LOOKBACK_DAYS = 7;
 
 export function dailyAirdropMaxRewardFraction(env = process.env) {
-  const parsed = Number(env.TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION);
-  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_MAX_REWARD_FRACTION;
+  const raw = env.TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION;
+  if (raw === undefined || String(raw).trim() === "") return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
   return parsed;
 }
 
@@ -67,6 +68,12 @@ function clampNumber(value, min = 0, max = DEFAULT_MAX_DAILY_PFT) {
 function positiveNumber(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function normalizedRewardFraction(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function parseJsonObject(text = "") {
@@ -253,8 +260,10 @@ export async function buildDailyAirdropTaskRewardPacket({
     rewarded_tasks: tasks,
     daily_airdrop_policy: {
       max_daily_pft: maxDailyPft,
-      max_reward_fraction: maxRewardFraction,
-      deterministic_cap_rule: "min(max_daily_pft, floor(max_reward_fraction * total_reward_paid_pft))",
+      max_reward_fraction: normalizedRewardFraction(maxRewardFraction),
+      deterministic_cap_rule: normalizedRewardFraction(maxRewardFraction) === null
+        ? "max_daily_pft"
+        : "min(max_daily_pft, floor(max_reward_fraction * total_reward_paid_pft))",
       network_value_heuristic:
         "How much would a crypto network rationally pay today to retain this actor as a community member and contributor?",
       no_work_rule: "zero_if_no_positive_rewarded_task_in_lookback",
@@ -268,23 +277,25 @@ export function normalizeDailyAirdropOutput(
   packet = {},
   { maxDailyPft = DEFAULT_MAX_DAILY_PFT, maxRewardFraction = dailyAirdropMaxRewardFraction() } = {}
 ) {
-  const hasPositiveRewards = Number(packet?.reward_totals?.rewarded_task_count || 0) > 0;
+  const totalRewardPaidPft = positiveNumber(packet?.reward_totals?.total_reward_paid_pft);
+  const hasPositiveRewards = Number(packet?.reward_totals?.rewarded_task_count || 0) > 0 && totalRewardPaidPft > 0;
   const eligibilityStatus = hasPositiveRewards && output.eligibility_status === "eligible" ? "eligible" : "ineligible";
   const modelAmount = eligibilityStatus === "eligible" ? clampInteger(output.daily_airdrop_pft, 0, maxDailyPft) : 0;
-  // Defense in depth: the paid amount can never exceed a deterministic fraction of the
-  // 7-day rewarded-task PFT in the packet, no matter what the model proposes. A packet
-  // with zero rewarded PFT caps to zero (no payout), which matches candidate eligibility
-  // requiring a recent positive task reward.
-  const fraction = Number.isFinite(Number(maxRewardFraction)) && Number(maxRewardFraction) >= 0
-    ? Number(maxRewardFraction)
-    : DEFAULT_MAX_REWARD_FRACTION;
-  const totalRewardPaidPft = positiveNumber(packet?.reward_totals?.total_reward_paid_pft);
-  const rewardFractionCapPft = Math.min(maxDailyPft, Math.floor(totalRewardPaidPft * fraction));
+  // Defense in depth: the paid amount can never exceed the deterministic
+  // max-daily cap. Operators may additionally opt into a proportional cap with
+  // TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION; it is disabled by default so
+  // deploying this path does not slash normal airdrops.
+  const fraction = normalizedRewardFraction(maxRewardFraction);
+  const rewardFractionCapPft = fraction === null
+    ? maxDailyPft
+    : Math.min(maxDailyPft, Math.floor(totalRewardPaidPft * fraction));
   const amount = Math.min(modelAmount, rewardFractionCapPft);
   return {
     daily_airdrop_pft: amount,
     deterministic_cap: {
-      rule: "min(max_daily_pft, floor(max_reward_fraction * total_reward_paid_pft))",
+      rule: fraction === null
+        ? "max_daily_pft"
+        : "min(max_daily_pft, floor(max_reward_fraction * total_reward_paid_pft))",
       max_daily_pft: maxDailyPft,
       max_reward_fraction: fraction,
       total_reward_paid_pft: totalRewardPaidPft,

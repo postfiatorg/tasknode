@@ -124,14 +124,33 @@ async function main() {
     assert.equal(packet.reward_totals.rewarded_task_count, 1);
     assert.equal(packet.reward_totals.total_reward_paid_pft, 7.5);
     assert.equal(packet.rewarded_tasks[0].task_id, taskId);
-    assert.equal(packet.daily_airdrop_policy.max_reward_fraction, 0.5);
+    assert.equal(packet.daily_airdrop_policy.max_reward_fraction, null);
     assert.equal(
       packet.daily_airdrop_policy.deterministic_cap_rule,
-      "min(max_daily_pft, floor(max_reward_fraction * total_reward_paid_pft))"
+      "max_daily_pft"
     );
 
-    // Deterministic amount cap: the model can never pay more than
-    // max_reward_fraction * the packet's 7-day rewarded PFT, even if it tries.
+    // Default cap is the historical max-daily rail only; the proportional cap is
+    // opt-in so a deploy cannot slash normal airdrops by accident.
+    const defaultOutput = normalizeDailyAirdropOutput(
+      { daily_airdrop_pft: 5000, retention_value_score: 99, eligibility_status: "eligible" },
+      packet,
+      { maxDailyPft: 10000 }
+    );
+    assert.equal(defaultOutput.daily_airdrop_pft, 5000, "unset maxRewardFraction must not slash the model amount");
+    assert.equal(defaultOutput.deterministic_cap.rule, "max_daily_pft");
+    assert.equal(defaultOutput.deterministic_cap.max_reward_fraction, null);
+    assert.equal(defaultOutput.deterministic_cap.cap_bound, false);
+
+    const defaultZeroBaseOutput = normalizeDailyAirdropOutput(
+      { daily_airdrop_pft: 100, retention_value_score: 80, eligibility_status: "eligible" },
+      { reward_totals: { rewarded_task_count: 1, total_reward_paid_pft: 0 } },
+      { maxDailyPft: 10000 }
+    );
+    assert.equal(defaultZeroBaseOutput.daily_airdrop_pft, 0, "zero rewarded-PFT base remains ineligible");
+
+    // When explicitly configured, the proportional cap still works: the model
+    // can never pay more than max_reward_fraction * 7-day rewarded PFT.
     const cappedOutput = normalizeDailyAirdropOutput(
       { daily_airdrop_pft: 5000, retention_value_score: 99, eligibility_status: "eligible" },
       packet,
