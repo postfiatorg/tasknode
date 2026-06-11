@@ -122,7 +122,7 @@ X_OAUTH_CLIENT_TYPE optional; defaults to confidential, set to public only if th
 For Fly dev, configure the X App callback as:
 
 ```text
-https://tasknodeofficial-dev.fly.dev/api/auth/callback/x
+https://tasknode.postfiat.org/api/auth/callback/x
 ```
 
 Email requires one of:

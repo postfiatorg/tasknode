@@ -19,17 +19,65 @@ workers; PFTL owns hot sync, archive sync, WSS, reducer, retention, and RPC
 checks; Hive and Board Operations owns the Board Manager, secretary packets,
 Hive Secretary reports, and active projects.
 
-## Categories
+## Categories And Monitored Items
 
-- Hive and Board Agents: Board Manager decisions, secretary packets, Hive
-  Secretary reports, and active project planning.
-- Task Systems: Network Task generation, user task generation, task review,
-  verification requests, and reward work.
-- PFTL and RPCs: wallet sync, websocket watcher, reducer, retention, current
-  PFTL endpoints, history endpoints, and Ethereum deposit RPC.
-- Memory, Retrieval, Profiles, and Airdrops: Jobs pgvector retrieval, turn
-  memory, deep memory, Network Diagnostic Reports, and daily airdrop scoring or
-  issuance.
+`server/system-status.js` emits four categories. Each row id below is the exact
+`item.id` returned by `/api/system/status`, so the doc and the live response use
+the same names.
+
+### Hive And Board Agents
+
+Board Manager decisions, secretary packets, Hive Secretary reports, and active
+project planning.
+
+- `board_manager`: leased Board Manager scheduler for `global_hive`.
+- `board_manager_secretary_packets`: DeepSeek compression packet used before the
+  Board Manager decision.
+- `hive_secretary`: Hive Secretary report worker.
+- `hive_active_projects`: active project registry helper.
+
+### Task Systems
+
+Network Task generation, user task generation, and task review/reward.
+
+- `network_task_generation`: turns Board Manager allocations into task request
+  bundles.
+- `task_generation`: turns signed task request rows into PFTL task offers.
+- `task_review`: publishes verification requests and terminal reward outcomes.
+
+### PFTL And RPCs
+
+Current and archive RPC paths, websocket watcher, wallet sync, reducer, and
+retention.
+
+- `pftl_hot_sync`: hot wallet transaction polling.
+- `pftl_archive_sync`: archive `account_tx` backfill.
+- `pftl_wss_watcher`: websocket ledger-event subscription.
+- `pftl_cache_reducer`: projects cached pointer events into read models.
+- `pftl_cache_retention`: prunes completed reducer events and optional raw rows.
+- `pftl_current_rpc`: hot path for balance reads, submission, and hot sync. Its
+  status mirrors `pftl_hot_sync` once endpoints are configured.
+- `pftl_history_rpc`: archive-capable history/backfill path. Its status mirrors
+  `pftl_archive_sync` once endpoints are configured.
+- `ethereum_deposit_rpc`: route-triggered top-up sync path, not a background
+  scheduler. It reports `ok` when enabled and RPC-configured, otherwise `disabled`.
+
+### Memory, Retrieval, Profiles, And Airdrops
+
+Jobs pgvector retrieval, chat memory, routing profiles, and daily airdrop
+scoring/issuance.
+
+- `jobs_pgvector_corpus`: Postgres pgvector corpus for Jobs-style retrieval.
+- `chat_turn_memory`: turn memory summarization worker.
+- `deep_memory`: deep memory compression worker.
+- `network_task_profile`: compact routing profiles for future Network Tasks.
+- `daily_airdrop_worker`: daily airdrop scoring and optional PFT issuance, plus
+  unresolved airdrop debt tracking.
+
+The current monitored set is 20 items across these four categories. The summary
+block at the top of the response counts each row by status
+(`ok`/`warning`/`critical`/`unknown`/`disabled`). Transient `warning` rows are
+normal for sync-lag conditions and do not imply a permanent state.
 
 ## Chat Model Pricing
 

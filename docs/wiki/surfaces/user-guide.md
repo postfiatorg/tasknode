@@ -29,6 +29,8 @@ The chat mode picker changes the provider and behavior:
 - `Frontier Thinking` is OpenAI frontier reasoning for deeper or more source-heavy work.
 - `Help` is product help. It uses this guide plus the user's available app context to explain what the user is seeing and which surface to use.
 
+A new empty chat shows four starter prompts for signed-in users: `Help me build my context document`, `Give me my first task`, `How do I earn PFT?`, and `What should I do first?`. Clicking one fills the composer so the user can edit or send it; it does not send by itself.
+
 The `More` or thinking disclosure on assistant messages can show the source context passed into the model, including retrieved Steve Jobs corpus chunks when available. That Jobs vector database is not a user-facing task system; it is source material used to calibrate product judgment and response style.
 
 ### Chat `+` Menu
@@ -37,7 +39,7 @@ The `+` menu is where chat becomes an explicit product action.
 
 `Request task` turns the next message into a signed personal task request. It requires a signed-in account, linked wallet, and unlocked wallet vault because the request is published as a wallet-bound task request. The generated task appears later as a proposed task card in Tasks.
 
-`Context Refine` turns the next message into a structured edit request for the user's Context document. It does not require an unlocked wallet because it edits the account-scoped current Context draft. The model returns a proposal card in chat. The user must click `Accept & save`, reject it, or ask for another refine pass.
+`Context Refine` turns the next message into a structured edit request for the user's Context document. It does not require an unlocked wallet because it edits the account-scoped current Context draft. The model returns a proposal card in chat. The user must click `Accept & save`, reject it, or ask for another refine pass. Context Refine is also reachable from the sidebar `More` menu; that entry opens Chat with refine mode already active.
 
 ### Tasks Screen
 
@@ -46,6 +48,8 @@ Tasks is where work cards become real user actions. It shows proposed, accepted,
 For a proposed task, the user accepts it if they will do the work or refuses it if it is wrong. For an accepted task, the user submits evidence. For a verification request, the user answers the specific follow-up. Task actions are wallet-bound signing actions and may ask the user to unlock the local wallet vault.
 
 Personal tasks come from the user's own request. Network Tasks come from Hive routing for shared network projects.
+
+Tasks also shows a `Network Tasks` eligibility panel. It displays a plain status pill, the routing wallet, and a checklist of the routing gates: signed-in account, linked PFT wallet, active wallet sync, completed Network Diagnostic Report, and free Network Task capacity. It names the next action for the first failing gate and lists any capacity blockers consuming the wallet's slot. The panel auto-expands when the user is not yet routable so the real blocker is visible without clicking.
 
 ### Context Screen
 
@@ -69,7 +73,7 @@ Wallet is the PFT identity, signing, custody, transaction, top-up, and local vau
 
 Account login and wallet custody are separate. A connected provider such as email, GitHub, X, Telegram, or Discord proves account identity. A linked PFT wallet signs wallet-bound actions and receives PFT. The seed phrase, private key, wallet password, and decrypted vault are not sent to the server.
 
-`Locked` means the app knows the wallet address but the browser has not decrypted the local vault for signing. `Unlocked` means the browser can sign wallet-bound actions for the current session. Unlock survives normal reloads for the session through encrypted browser storage, locks after inactivity, and clears on lock, logout, local-vault removal, or tab close.
+`Locked` means the app knows the wallet address but the browser has not decrypted the local vault for signing. `Unlocked` means the browser can sign wallet-bound actions for the current session. Unlock survives normal reloads for the session through encrypted browser storage, locks after inactivity (30 minutes by default), and clears on lock, logout, local-vault removal, or tab close.
 
 Top-up credit is separate from PFT. Top-up uses an account-scoped Ethereum deposit address for app usage credit, such as model calls. That deposit address is not the PFT wallet and is not where task rewards are paid.
 
@@ -129,7 +133,9 @@ Help mode in Chat answers product questions using this guide and available runti
 
 ### Search And Agents
 
-Search is for finding cached prior app records such as conversations, tasks, context entries, or work artifacts. Agents are advanced external wallet-native workers documented in Help; there is no in-app Agents surface yet, so normal users can ignore the concept until they are operating a separate agent.
+Search today is the `Search chats` button in the primary sidebar. It opens a modal that searches the user's own chat conversations by title and message content and opens the matching conversation. It is not yet a cross-surface search over tasks, context entries, or memory; that is the target, not the current behavior.
+
+Agents are advanced external wallet-native workers documented in Help. There is no in-app Agents surface and no Agents sidebar row, so normal users can ignore the concept until they are operating a separate agent.
 
 ## First Session Checklist
 
@@ -161,6 +167,8 @@ Sign in with an available provider. Choose a Hive handle. Link any provider acco
 If you are signed out, start from the `Log in or sign up` control in the profile/account area. You can continue with an enabled provider such as email, GitHub, X, Telegram, or another configured provider. Email sign-in asks for an email address and then a code. After sign-in, the app can save chat history, Context, Memory, Tasks, Wallet state, Profile, and Hive-related state to your account.
 
 Do not confuse provider identity with wallet custody. A connected account can prove who you are. A linked PFT wallet signs wallet-bound actions.
+
+Logging out from the profile menu asks for a confirmation step first and warns that the wallet vault will lock. This prevents an accidental click from ending a signing session.
 
 ### How To Explain It
 
@@ -510,7 +518,7 @@ Search helps find cached work across app records.
 
 ### How To Use It
 
-Use Search when you are trying to recover a prior conversation, task, context entry, or related work artifact. The sidebar `Search chats` button searches your own chats by title and message content and opens the matching conversation.
+Use the sidebar `Search chats` button to recover a prior conversation. It searches your own chats by title and message content and opens the matching conversation. Recovering tasks, context entries, and memory through search is the target, not current behavior; use the Tasks, Context, and Memory surfaces directly for those records today.
 
 ### How To Explain It
 

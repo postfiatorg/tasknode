@@ -77,13 +77,13 @@ For Fly dev:
 fly secrets set TELEGRAM_BOT_WEBHOOK_SECRET=<random secret> -a tasknodeofficial-dev
 curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -H "content-type: application/json" \
-  -d '{"url":"https://tasknodeofficial-dev.fly.dev/api/integrations/telegram/webhook","secret_token":"<random secret>","allowed_updates":["message","callback_query"]}'
+  -d '{"url":"https://tasknode.postfiat.org/api/integrations/telegram/webhook","secret_token":"<random secret>","allowed_updates":["message","callback_query"]}'
 ```
 
 Check readiness:
 
 ```sh
-curl -sS https://tasknodeofficial-dev.fly.dev/api/integrations/telegram/status
+curl -sS https://tasknode.postfiat.org/api/integrations/telegram/status
 ```
 
 ## User Behavior

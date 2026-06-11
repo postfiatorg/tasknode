@@ -1,10 +1,15 @@
 # Task Node Production Cutover Package - 2026-06-09
 
-Status: draft execution package
+Status: executed. The cutover ran on 2026-06-10; production serves Task Node
+Official at `https://tasknode.postfiat.org` from the promoted
+`tasknodeofficial-dev` Fly app. This package is retained as the planning
+record; the step-by-step execution record (with remaining open steps) is the
+[Production Cutover Execution Checklist](#docs/task-node-production-cutover-execution-checklist).
 
 Production target: Task Node Official at `https://tasknode.postfiat.org`.
 
-Current staging source: `https://tasknodeofficial-dev.fly.dev`.
+Former staging source: `https://tasknodeofficial-dev.fly.dev` (now 301-redirects
+to the production domain).
 
 Deprecation target: old PFTasks as the production task system.
 

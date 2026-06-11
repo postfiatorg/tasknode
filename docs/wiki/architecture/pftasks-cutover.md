@@ -2,6 +2,8 @@
 
 This runbook moves a user from the old PFTasks app into Task Node Official without losing custody boundaries or leaving both apps able to issue work for the same wallet.
 
+The product-level cutover executed on 2026-06-10: `https://tasknode.postfiat.org` serves Task Node Official and old PFTasks task-side authority is shut down (see the [Production Cutover Execution Checklist](#docs/task-node-production-cutover-execution-checklist)). This page remains the per-account migration procedure for moving an individual user's wallet, context, and NFT state.
+
 The rule is simple: first make the old app stop acting for the wallet, then link or restore the wallet in the new app, then import only the state that Task Node Official can actually use.
 
 ## Scope
