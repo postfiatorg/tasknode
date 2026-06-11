@@ -162,7 +162,7 @@ The Hive handle is the public name other people see in the network.
 
 ### How To Use It
 
-Sign in with an available provider. Choose a Hive handle. Link any provider accounts you want attached to the same Task Node identity. Decide which aliases, if any, should be public.
+Sign in with an available provider. Choose a Hive handle. Link any provider accounts you want attached to the same Task Node identity. Decide which aliases, if any, should be public. If you link the wrong external account, Settings -> Security -> Connected accounts has a `Disconnect` action with a confirm step; unlinking frees that external account so it can be linked to a different Task Node account, and the app refuses to unlink your only remaining way to sign in.
 
 If you are signed out, start from the `Log in or sign up` control in the profile/account area. You can continue with an enabled provider such as email, GitHub, X, Telegram, or another configured provider. Email sign-in asks for an email address and then a code. After sign-in, the app can save chat history, Context, Memory, Tasks, Wallet state, Profile, and Hive-related state to your account.
 

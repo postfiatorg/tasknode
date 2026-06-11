@@ -5,6 +5,7 @@ import {
   getAccountDeletionAuditSnapshot,
   getEthereumDepositAccount,
   getLinkedWallet,
+  unlinkProviderFromAccount,
 } from "./runtime-store.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 
@@ -53,6 +54,68 @@ export async function handleAccountRoute({
   sessionId = "",
   url,
 }) {
+  if (url.pathname === "/api/account/unlink-provider") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "provider_unlink_method_not_allowed",
+        message: "Use POST to unlink a connected account.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "provider_unlink_login_required",
+        message: "Sign in before unlinking a connected account.",
+      });
+      return true;
+    }
+    const payload = await readJson(req);
+    const provider = String(payload?.provider || "").trim().toLowerCase();
+    if (payload?.confirm !== true) {
+      json(res, 400, {
+        ok: false,
+        error: "provider_unlink_confirmation_required",
+        message: "Confirm the unlink before continuing.",
+      });
+      return true;
+    }
+    const result = unlinkProviderFromAccount({ accountId: session.accountId, provider });
+    if (!result.ok) {
+      const messages = {
+        provider_unlink_unsupported: "This account type cannot be unlinked here.",
+        provider_not_linked: "That provider is not linked to this account.",
+        provider_unlink_last_login_method:
+          "This is the only way to sign in to this account. Link another provider or a verified email before unlinking it.",
+      };
+      json(res, result.error === "provider_unlink_last_login_method" ? 409 : 400, {
+        ok: false,
+        error: result.error,
+        message: messages[result.error] || "The connected account could not be unlinked.",
+      });
+      return true;
+    }
+    await recordUserObservabilityEvent({
+      eventType: "user.account.provider_unlinked",
+      accountId: session.accountId,
+      sourceSurface: "settings_security",
+      sourceRoute: "server/account-routes.js::handleAccountRoute",
+      resultStatus: "ok",
+      detail: {
+        provider: result.provider,
+        remainingLoginMethods: result.remainingLoginMethods,
+      },
+    }).catch(() => null);
+    json(res, 200, {
+      ok: true,
+      provider: result.provider,
+      remainingLoginMethods: result.remainingLoginMethods,
+      message: "Connected account unlinked. It can now be linked to a different Task Node account.",
+    });
+    return true;
+  }
+
   if (url.pathname !== "/api/account/delete") return false;
 
   if (req.method !== "POST") {
