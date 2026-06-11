@@ -3299,19 +3299,30 @@ function TasksView({
   const [tasksTab, setTasksTab] = useState("outstanding");
   const [taskRequestOpen, setTaskRequestOpen] = useState(false);
   const [taskRequestSettleUntilMs, setTaskRequestSettleUntilMs] = useState(0);
+  const [taskReadFailureCount, setTaskReadFailureCount] = useState(0);
   const didAutoSelectTaskTabRef = useRef(false);
   const lastTaskFocusRefreshRef = useRef(0);
   const lastTaskHandoffKeyRef = useRef("");
   const lastTaskProjectionCountRef = useRef(null);
   const lastTaskSyncWarningEventRef = useRef("");
   const previousActiveRequestCountRef = useRef(0);
+  // Stateful exponential-backoff counter for temporary task-read failures.
+  // The pure policy modules stay stateless; each consecutive failing snapshot
+  // increments the counter and the first healthy snapshot resets it.
+  useEffect(() => {
+    const syncStatus = String(tasks?.sync?.status || "");
+    const readFailing = syncStatus === "database_error" || syncStatus === "integrity_unavailable";
+    setTaskReadFailureCount((current) => (readFailing ? Math.min(current + 1, 6) : 0));
+  }, [tasks]);
+
   const visibleState = useMemo(() => reconcileTaskVisibleState({
     accountId,
     linkedWalletAddress,
+    taskReadFailureCount,
     taskRequestSettleUntilMs,
     tasks,
     tasksTab,
-  }), [accountId, linkedWalletAddress, taskRequestSettleUntilMs, tasks, tasksTab]);
+  }), [accountId, linkedWalletAddress, taskReadFailureCount, taskRequestSettleUntilMs, tasks, tasksTab]);
   const {
     activeRequests,
     activeRequestCount,

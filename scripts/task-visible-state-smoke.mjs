@@ -75,8 +75,26 @@ assert.equal(acceptedVisible.outstanding[0].statusKey, "accepted");
 assert.equal(acceptedVisible.counts.outstanding, 1);
 assert.equal(acceptedVisible.totalPftInFlight, 1.5);
 assert.equal(acceptedVisible.sync.requiresRefresh, true);
+// A pending optimistic receipt is the only client state that clamps polling
+// down to the fast 2.5s tier and forces projection refresh.
+assert.equal(acceptedVisible.sync.nextPollMs, 2500);
 assert.equal(acceptedVisible.polling.shouldRefreshTaskState, true);
+assert.equal(acceptedVisible.polling.shouldForceTaskProjection, true);
 assert.equal(acceptedVisible.selectedTask.statusKey, "accepted");
+
+// Without receipts, the server slow tier is respected: an accepted task with
+// server metadata {requiresRefresh:true, nextPollMs:10000} keeps polling at
+// 10s and does not force projection refresh on every poll.
+const acceptedSlowTier = reconcile(tasksWith("outstanding", task("accepted"), {
+  requiresRefresh: true,
+  forceProjectionRefresh: false,
+  nextPollMs: 10000,
+  refreshReason: "task_state_active",
+}));
+assert.equal(acceptedSlowTier.sync.nextPollMs, 10000);
+assert.equal(acceptedSlowTier.polling.shouldRefreshTaskState, true);
+assert.equal(acceptedSlowTier.polling.shouldForceTaskProjection, false);
+assert.equal(acceptedSlowTier.polling.taskRefreshMs, 10000);
 
 const accepted = task("accepted");
 const submitReceipt = taskActionReceiptFromEvidenceResult({
@@ -94,10 +112,21 @@ assert.equal(submittedVisible.outstanding[0].statusKey, "submitted");
 assert.equal(submittedVisible.sync.refreshReason, "task_action_receipt_pending");
 
 const verificationRequested = task("verification_requested");
-const afterReviewRequest = reconcile(tasksWith("verification", verificationRequested), [submitReceipt]);
+// verification_requested waits on the user's own response: the server places
+// it on the slow 10s tier and the client must not clamp it back to 2.5s or
+// force projection refresh.
+const afterReviewRequest = reconcile(tasksWith("verification", verificationRequested, {
+  requiresRefresh: true,
+  forceProjectionRefresh: false,
+  nextPollMs: 10000,
+  refreshReason: "task_state_active",
+}), [submitReceipt]);
 assert.equal(afterReviewRequest.verification[0].statusKey, "verification_requested");
 assert.equal(afterReviewRequest.prunedReceipts.length, 0);
-assert.equal(afterReviewRequest.sync.requiresRefresh, true, "review loop still polls from server metadata");
+assert.equal(afterReviewRequest.sync.requiresRefresh, true, "slow tier still polls from server metadata");
+assert.equal(afterReviewRequest.sync.nextPollMs, 10000, "server slow tier must stay reachable");
+assert.equal(afterReviewRequest.polling.taskRefreshMs, 10000);
+assert.equal(afterReviewRequest.polling.shouldForceTaskProjection, false);
 
 const verificationReceipt = taskActionReceiptFromEvidenceResult({
   accountId,
@@ -114,6 +143,8 @@ assert.equal(awaitingReview.verification[0].statusKey, "verification_response_su
 assert.equal(awaitingReview.counts.verification, 1);
 assert.equal(awaitingReview.totalPftInFlight, 1.5);
 assert.equal(awaitingReview.sync.requiresRefresh, true);
+assert.equal(awaitingReview.sync.nextPollMs, 2500, "pending receipt keeps the fast convergence tier");
+assert.equal(awaitingReview.polling.shouldForceTaskProjection, true);
 
 const rewarded = task("rewarded", { pft: 1.5 });
 const noHardRefresh = reconcile(tasksWith("rewarded", rewarded), [verificationReceipt]);
@@ -139,7 +170,10 @@ assert.equal(staleProposedVisible.verification.length, 1);
 assert.equal(staleProposedVisible.verification[0].statusKey, "verification_requested");
 assert.equal(staleProposedVisible.verification[0].clientActionPending, false);
 assert.equal(staleProposedVisible.verification[0].clientSyncLabel, "");
-assert.equal(staleProposedVisible.sync.requiresRefresh, true);
+// An observed (non-pending) overlay of a slow-tier state no longer forces
+// fast polling; route-open and focus refreshes converge the projection.
+assert.equal(staleProposedVisible.sync.requiresRefresh, false);
+assert.equal(staleProposedVisible.polling.shouldForceTaskProjection, false);
 
 const staleSubmittedVisible = reconcile(tasksWith("outstanding", task("submitted")), [observedVerificationRequest]);
 assert.equal(staleSubmittedVisible.outstanding.length, 0);
@@ -206,15 +240,81 @@ const staleRpcState = reconcileTaskVisibleState({
       status: "ready",
       projectionCount: 11,
       requiresRefresh: true,
-      refreshReason: "task_requests_active",
+      forceProjectionRefresh: false,
+      nextPollMs: 10000,
+      refreshReason: "task_state_active",
     },
   },
 });
 assert.equal(staleRpcState.counts.outstanding, 2);
 assert.equal(staleRpcState.processingRequestCount, 0);
+// The failed request stays visible as an attention state but produces no
+// forced projection refresh; the accepted tasks keep slow-tier polling.
 assert.equal(staleRpcState.attentionRequestCount, 1);
+assert.equal(staleRpcState.activeRequestCount, 1, "failed request stays in the attention strip");
 assert.equal(staleRpcState.polling.shouldRefreshTaskState, true);
-assert.equal(staleRpcState.polling.shouldForceTaskProjection, true);
+assert.equal(staleRpcState.polling.shouldForceTaskProjection, false);
+assert.equal(staleRpcState.polling.taskRefreshMs, 10000);
+
+// A failed request with no active tasks is a pure attention state: it keeps
+// the strip visible but does not keep the page polling for 24 hours.
+const failedRequestOnlyState = reconcileTaskVisibleState({
+  accountId,
+  linkedWalletAddress: walletAddress,
+  nowMs,
+  tasks: {
+    outstanding: [],
+    verification: [],
+    refused: [],
+    rewarded: [rewarded],
+    requests: { items: [rpcBrokenRequest] },
+    sync: {
+      status: "ready",
+      projectionCount: 1,
+      requiresRefresh: false,
+      forceProjectionRefresh: false,
+      nextPollMs: null,
+      refreshReason: "",
+    },
+  },
+});
+assert.equal(failedRequestOnlyState.attentionRequestCount, 1);
+assert.equal(failedRequestOnlyState.activeRequestCount, 1);
+assert.equal(failedRequestOnlyState.processingRequestCount, 0);
+assert.notEqual(failedRequestOnlyState.sync.refreshReason, "task_requests_active");
+assert.equal(failedRequestOnlyState.polling.shouldRefreshTaskState, false);
+assert.equal(failedRequestOnlyState.polling.shouldForceTaskProjection, false);
+
+// database_error responses poll without forcing projection writes, and the
+// caller-supplied failure counter applies exponential backoff: 5s -> 10s -> 30s.
+const databaseErrorTasks = (taskReadFailureCount) => reconcileTaskVisibleState({
+  accountId,
+  linkedWalletAddress: walletAddress,
+  nowMs,
+  taskReadFailureCount,
+  tasks: {
+    outstanding: [],
+    verification: [],
+    refused: [],
+    rewarded: [],
+    requests: { items: [] },
+    sync: {
+      status: "database_error",
+      projectionCount: 0,
+      requiresRefresh: true,
+      forceProjectionRefresh: false,
+      nextPollMs: 5000,
+      refreshReason: "task_projection_read_failed",
+    },
+  },
+});
+const databaseErrorBackoff1 = databaseErrorTasks(1);
+assert.equal(databaseErrorBackoff1.polling.shouldRefreshTaskState, true);
+assert.equal(databaseErrorBackoff1.polling.shouldForceTaskProjection, false);
+assert.equal(databaseErrorBackoff1.polling.taskRefreshMs, 5000);
+assert.equal(databaseErrorTasks(2).polling.taskRefreshMs, 10000);
+assert.equal(databaseErrorTasks(4).polling.taskRefreshMs, 30000);
+assert.ok(databaseErrorBackoff1.taskSyncNotice, "database_error still shows the sync notice");
 
 const generatedRpcTask = task("proposed", {
   taskId: "task_generated_from_rpc_recovery",

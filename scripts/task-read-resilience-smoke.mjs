@@ -16,6 +16,10 @@ try {
 
   assert.equal(state.sync.status, "database_error");
   assert.equal(state.sync.requiresRefresh, true);
+  // A failing projection read must not invite forced sync/reduce write
+  // passes; the client polls at the suggested 5s cadence with backoff.
+  assert.equal(state.sync.forceProjectionRefresh, false);
+  assert.equal(state.sync.nextPollMs, 5000);
   assert.equal(state.sync.refreshReason, "task_projection_read_failed");
   assert.deepEqual(state.outstanding, []);
   assert.ok(state.sync.error);

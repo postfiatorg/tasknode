@@ -48,7 +48,7 @@ Refresh failures must be treated as state-boundary bugs, not one-off task record
 
 The repair belongs in the shared lifecycle and sync contract, not a hard-coded task patch. `shared/task-lifecycle.js` defines canonical lifecycle meaning, `server/repositories/tasks.js` returns the canonical projection and detail read models from `task_projections` and `task_events`, and `src/features/tasks/task-visible-state.js` decides what the browser may temporarily show while projection catches up. `GET /api/tasks` uses the lifecycle contract when returning sync metadata, and the Tasks page uses the reconciled output to keep polling until the projection catches up or reaches a terminal state such as `rewarded`, `refused`, or `cancelled`.
 
-After a successful signed task action, the browser records a short-lived task action receipt in `src/features/tasks/task-action-receipts.js`. That file only creates, stores, loads, and expires receipts. It must not own lifecycle reconciliation. The receipt includes the account, wallet, task ID, expected next state, transaction hash, and timestamp. The list, tab counts, URL-selected task, and detail modal all read the same receipt-aware task state from `task-visible-state.js`. If `GET /api/tasks` or `GET /api/tasks/detail` still returns the older projected status, the receipt keeps the visible card and the open detail modal at the signed state and marks the row as `syncing`. While a receipt is visibly overlaying a task, it forces task polling with projection refresh so terminal states such as `rewarded` replace `Awaiting review` without a hard browser refresh. The detail modal must not repaint an accepted task as proposed just because a stale detail fetch returned before projection catch-up finished. Once the projection reaches that state, advances beyond it, reaches a terminal state, or the receipt expires, the receipt is removed.
+After a successful signed task action, the browser records a short-lived task action receipt in `src/features/tasks/task-action-receipts.js`. That file only creates, stores, loads, and expires receipts. It must not own lifecycle reconciliation. The receipt includes the account, wallet, task ID, expected next state, transaction hash, and timestamp. The list, tab counts, URL-selected task, and detail modal all read the same receipt-aware task state from `task-visible-state.js`. If `GET /api/tasks` or `GET /api/tasks/detail` still returns the older projected status, the receipt keeps the visible card and the open detail modal at the signed state and marks the row as `syncing`. While a pending action receipt is visibly overlaying a task, it forces task polling with projection refresh so terminal states such as `rewarded` replace `Awaiting review` without a hard browser refresh. Observed-state receipts (canonical detail already seen elsewhere) keep the overlay but do not force fast polling. The detail modal must not repaint an accepted task as proposed just because a stale detail fetch returned before projection catch-up finished. Once the projection reaches that state, advances beyond it, reaches a terminal state, or the receipt expires, the receipt is removed.
 
 Ordinary one-task indexing lag is a row-level syncing state, not a product-wide warning. The large sync notice is reserved for reducer failures or broader indexing lag across several task rows.
 
@@ -60,7 +60,7 @@ In plain English:
 4. Terminal states stop active refresh because no later lifecycle event is expected for the normal task loop.
 5. A signed submit, accept, refuse, or cancel result cannot be overwritten by a stale list response while the projection catches up.
 
-Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`, `scripts/task-action-receipts-smoke.mjs`, `scripts/task-detail-optimistic-state-smoke.mjs`, and `scripts/task-visible-state-smoke.mjs`. These checks assert that `verification_requested` stays refreshable, projection lag keeps a proposed task polling, terminal `rewarded` tasks do not keep the page polling forever, stale projections cannot overwrite a signed task action, list/detail overlays follow the same lifecycle progress rules, hard refresh and no-hard-refresh states match, and ordinary one-task lag does not trigger the global sync banner.
+Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`, `scripts/task-action-receipts-smoke.mjs`, `scripts/task-detail-optimistic-state-smoke.mjs`, and `scripts/task-visible-state-smoke.mjs`. These checks assert that worker-facing review-loop states stay on the fast forced-refresh tier while `verification_requested` (which waits on the user) stays on the slow 10s tier, projection lag keeps a proposed task polling, terminal `rewarded` tasks do not keep the page polling forever, stale projections cannot overwrite a signed task action, list/detail overlays follow the same lifecycle progress rules, hard refresh and no-hard-refresh states match, and ordinary one-task lag does not trigger the global sync banner.
 
 ## Task State Convergence
 
@@ -72,7 +72,7 @@ The browser convergence path is:
 
 1. `src/main.jsx::TasksView` calls `reconcileTaskVisibleState` before rendering counts, tabs, task rows, request strips, and sync notices.
 2. `src/features/tasks/task-visible-state.js::reconcileTaskVisibleState` merges server task buckets with any local task-action receipts, computes active request state, and returns the polling policy.
-3. `src/features/tasks/task-visible-state.js::needsLegacyTaskRefresh` keeps review-loop states refreshable until the projection reaches a terminal state.
+3. `src/features/tasks/task-visible-state.js::needsLegacyTaskRefresh` keeps worker-facing review-loop states (`submitted`, `verification_response_submitted`, `reward_decided`) refreshable until the projection moves on.
 4. `src/features/tasks/task-refresh-policy.js::taskRefreshPolicy` decides whether the Tasks surface should keep polling and whether the poll should force projection refresh.
 5. `src/main.jsx::TasksView.refreshCanonicalTaskState` calls `refreshAppState({ taskProjectionRefresh: true })` through the `onRequestSettled` prop.
 6. `src/main.jsx::TasksView` also refreshes canonical task state when the Tasks tab regains browser focus or returns from hidden to visible.
@@ -97,7 +97,7 @@ The common failure pattern is: detail or forensics shows a reward event, `task_p
 
 The `Request task` button opens a modal where the user can describe the kind of work they want. Submitting the modal uses `POST /api/tasks/request` to build a request bundle from the current context document, deep memory, recent memory, recent chats, and existing task queue; encrypt the bundle locally in the browser; pin it to IPFS; encrypt a `pf.task.request.v1` event that points at that bundle; and sign a PFTL `TASK` pointer transaction from the linked user wallet.
 
-After a successful chain submit, the server records a durable `task_requests` row plus the hidden `pf.task.request_intent.v1` chat turn tagged as `source: task_interface` and `status: pftl_request_published`. The Tasks page shows a compact request strip while a user request is actively signing, queued, generating, recently published, or needs attention after a recent failure. Failed requests are not counted as `requests processing`; they are attention states. Operator-only Network Task repair rows are audit records, not user requests, and must not appear as `Needs attention` or count as requests processing. Once a request becomes a proposed task, the request receipt leaves the main UX and the user should interact with the projected task card instead. Chat also supports task request mode from the `+` menu. It uses the same signed request publisher, tags the cache entry as `source: user_chat`, and keeps the receipt in the active chat thread.
+After a successful chain submit, the server records a durable `task_requests` row plus the hidden `pf.task.request_intent.v1` chat turn tagged as `source: task_interface` and `status: pftl_request_published`. The Tasks page shows a compact request strip while a user request is actively signing, queued, generating, recently published, or needs attention after a recent failure. Failed requests are not counted as `requests processing`; they are attention states, and they exert no refresh pressure — no projection refresh can resolve a failed request, so it must not keep the page fast-polling for the 24 hours it stays visible. Operator-only Network Task repair rows are audit records, not user requests, and must not appear as `Needs attention` or count as requests processing. Once a request becomes a proposed task, the request receipt leaves the main UX and the user should interact with the projected task card instead. Chat also supports task request mode from the `+` menu. It uses the same signed request publisher, tags the cache entry as `source: user_chat`, and keeps the receipt in the active chat thread.
 
 A signed request is not the same thing as a proposed task card. Durable task cards appear after `server/task-generation-worker.js` claims the `task_requests` row, decrypts the request bundle, calls the task-generation prompt/model, emits an encrypted `pf.task.offer.v1` pointer from the authority wallet, syncs PFTL, and the reducer projects the offer into `task_projections`.
 
@@ -137,10 +137,37 @@ count.
 The same rule applies after task evidence is submitted. The detail modal calls
 `GET /api/tasks/detail?refreshProjection=1` while polling for the signed
 evidence transaction and the next review state. The Tasks list also forces
-projection refresh while review-loop states such as `submitted`,
-`verification_requested`, `verification_response_submitted`, or `reward_decided`
-are active. A user should not need to reload the browser to see a verification
-request appear after the review worker publishes it.
+projection refresh while states genuinely awaiting the review worker —
+`submitted`, `verification_response_submitted`, or `reward_decided` — are
+active. A user should not need to reload the browser to see a verification
+request appear after the review worker publishes it. `verification_requested`
+is different: the next event is the user's own verification response, so it
+sits on the slow tier; cross-device changes are covered by the route-open and
+focus/visibility refreshes.
+
+The list refresh policy tiers are:
+
+| State / condition | Poll cadence | Forced projection refresh |
+| --- | --- | --- |
+| Pending optimistic action receipt (signed action not yet projected) | 2.5s | Yes |
+| `submitted`, `verification_response_submitted`, `reward_decided` (awaiting worker) | 2.5s | Yes |
+| Processing task requests (signing/queued/generating/recently published) | 2.5s | Yes |
+| Request handoff (`generated_projection_pending`) or post-request settle window | 2.5s | Yes |
+| Projection indexing lag / pending reducer work | 2.5s | Yes |
+| `accepted`, `verification_requested` (awaiting the user) | 10s (server `nextPollMs`) | No |
+| Failed task request (attention state, <24h) | No refresh pressure; strip stays visible | No |
+| `database_error` / `integrity_unavailable` | Backoff: 5s, then 10s, then 30s cap; reset on success | No |
+| Terminal states (`rewarded`, `refused`, `rejected`, `expired`, `cancelled`) | None | No |
+
+The browser only clamps polling down to the 2.5s tier while an optimistic
+action receipt is actually pending; otherwise it respects the server
+`nextPollMs` (floor 1s, ceiling 30s), so the server's slow tier stays
+reachable. On `database_error` or `integrity_unavailable`, the client keeps
+polling app state with exponential backoff but never sets
+`taskProjectionRefresh=1`: a forced sync/reduce write pass against a failing
+database is the wrong remediation. The backoff counter lives in
+`src/main.jsx::TasksView`; the policy math stays pure in
+`src/features/tasks/task-refresh-policy.js::taskReadFailureBackoffMs`.
 
 Submission, lifecycle, and review-worker publication routes also trigger a
 best-effort targeted projection refresh. After the signed transaction returns a
