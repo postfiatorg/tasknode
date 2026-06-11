@@ -1,4 +1,9 @@
 import { databaseEnabled, query } from "../db/pool.js";
+import { getNetworkTaskEligibility } from "./network-tasks.js";
+import {
+  networkTaskProfileRewardThreshold,
+  positiveRewardStats,
+} from "./network-task-profile.js";
 import {
   activeAllocationStatuses,
   digestJson,
@@ -293,6 +298,33 @@ async function accountHiveEntries({ accountId = "", limit = 40 } = {}) {
   return result.rows.map(publicHiveEntry);
 }
 
+async function accountNetworkTaskEligibility({ accountId = "", walletAddress = "" } = {}) {
+  const normalizedAccountId = safeText(accountId, 180);
+  if (!normalizedAccountId) return null;
+  const [eligibility, rewardStats] = await Promise.all([
+    getNetworkTaskEligibility({
+      accountId: normalizedAccountId,
+      walletAddress,
+      recordCapacityEvent: false,
+    }),
+    positiveRewardStats({ accountId: normalizedAccountId }),
+  ]);
+  return {
+    status: safeText(eligibility.status, 80),
+    label: safeText(eligibility.label, 160),
+    nextAction: safeText(eligibility.nextAction, 240),
+    walletLinked: Boolean(eligibility.wallet?.linked),
+    walletSynced: Boolean(eligibility.wallet?.synced),
+    diagnosticReportStatus: safeText(eligibility.profile?.status || "missing", 80),
+    capacityAvailable: Boolean(eligibility.capacity?.available),
+    blockedGates: safeArray(eligibility.gates)
+      .filter((gate) => gate.id !== "board_routing" && gate.status !== "complete")
+      .map((gate) => `${safeText(gate.id, 40)}=${safeText(gate.status, 40)}`),
+    positiveRewardedTaskCount: Number(rewardStats?.positiveRewardedTaskCount || 0),
+    autoReportRewardedTaskThreshold: networkTaskProfileRewardThreshold,
+  };
+}
+
 function summarizeConstraints({ entries = [], tasks = [] } = {}) {
   const reservationRate = latestReservationRate(entries);
   const recentRefusals = safeArray(tasks)
@@ -332,16 +364,18 @@ export async function buildHiveAccountLiveState({
       recentBoardMessages: [],
       latestRelevantBoardRuns: [],
       routingConstraints: {},
+      networkTaskEligibility: null,
       digest: "",
     };
   }
   try {
-    const [networkTasks, openFollowups, recentBoardMessages, latestRelevantBoardRuns, hiveEntries] = await Promise.all([
+    const [networkTasks, openFollowups, recentBoardMessages, latestRelevantBoardRuns, hiveEntries, networkTaskEligibility] = await Promise.all([
       accountNetworkTasks({ accountId: normalizedAccountId, walletAddress: normalizedWallet, limit }),
       accountOpenFollowups({ accountId: normalizedAccountId }),
       accountBoardMessages({ accountId: normalizedAccountId }),
       accountRelevantBoardRuns({ accountId: normalizedAccountId, walletAddress: normalizedWallet }),
       accountHiveEntries({ accountId: normalizedAccountId }),
+      accountNetworkTaskEligibility({ accountId: normalizedAccountId, walletAddress: normalizedWallet }).catch(() => null),
     ]);
     const routingConstraints = summarizeConstraints({ entries: hiveEntries, tasks: networkTasks });
     const liveState = {
@@ -356,6 +390,7 @@ export async function buildHiveAccountLiveState({
       recentBoardMessages,
       latestRelevantBoardRuns,
       routingConstraints,
+      networkTaskEligibility,
     };
     return {
       ...liveState,
@@ -375,6 +410,7 @@ export async function buildHiveAccountLiveState({
       recentBoardMessages: [],
       latestRelevantBoardRuns: [],
       routingConstraints: {},
+      networkTaskEligibility: null,
       digest: "",
     };
   }
@@ -405,6 +441,28 @@ function followupPromptLine(followup = {}) {
   ].filter(Boolean).join(" | ");
 }
 
+function networkTaskEligibilityPromptLines(eligibility = null) {
+  if (!eligibility || !eligibility.status) {
+    return [
+      "- network_task_eligibility: unavailable in this snapshot. Do not assert a specific eligibility blocker; explain the standard gate chain instead.",
+    ];
+  }
+  const blockedGates = safeArray(eligibility.blockedGates).filter(Boolean);
+  return [
+    [
+      `- network_task_eligibility: status=${safeText(eligibility.status, 80)}`,
+      `wallet_linked=${eligibility.walletLinked ? "yes" : "no"}`,
+      `wallet_synced=${eligibility.walletSynced ? "yes" : "no"}`,
+      `diagnostic_report=${safeText(eligibility.diagnosticReportStatus, 80) || "missing"}`,
+      `capacity_available=${eligibility.capacityAvailable ? "yes" : "no"}`,
+      `rewarded_tasks=${Number(eligibility.positiveRewardedTaskCount || 0)}/${Number(eligibility.autoReportRewardedTaskThreshold || 0)} toward automatic Network Diagnostic Report generation`,
+    ].join(" | "),
+    blockedGates.length
+      ? `- network_task_eligibility blocked gates: ${blockedGates.join(", ")} | next_action=${safeText(eligibility.nextAction, 240) || "none"}`
+      : "- network_task_eligibility blocked gates: none; the account is routable and waits on Board Manager project need.",
+  ];
+}
+
 export function formatHiveAccountLiveStateForPrompt(liveState = {}) {
   const state = safeObject(liveState);
   const tasks = safeArray(state.networkTasks);
@@ -417,6 +475,7 @@ export function formatHiveAccountLiveStateForPrompt(liveState = {}) {
     `- wallet=${safeText(state.walletAddress, 120) || "unknown"}`,
     `- snapshot=${safeText(state.snapshotAt, 80) || "unknown"}`,
     `- status=${safeText(state.status, 80) || "unknown"}`,
+    ...networkTaskEligibilityPromptLines(state.networkTaskEligibility),
     reservation.minPft
       ? `- routing_constraint: user-stated minimum Network Task reward is ${reservation.minPft} PFT (source=${reservation.sourceEntryId || "recent_hive_context"})`
       : "- routing_constraint: no explicit user-stated minimum reward found in recent account context",
@@ -440,6 +499,7 @@ export function formatHiveAccountLiveStateForPrompt(liveState = {}) {
       : "- none",
     "Rules:",
     "- If this section conflicts with chat history, compressed Hive context, or secretary packets, trust this section.",
+    "- Answer Network Task eligibility questions from the network_task_eligibility lines above: name the blocked gate and its next_action instead of guessing or inventing a prerequisite ladder.",
     "- Do not say this user has a proposed task, open follow-up, capacity blocker, or reservation-rate conflict unless it appears here.",
     "- If a task here is refused, rewarded, completed, cancelled, expired, rejected, rerouted, or failed, do not describe it as waiting on the user.",
   ].join("\n");

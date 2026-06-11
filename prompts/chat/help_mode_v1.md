@@ -42,6 +42,8 @@ Explain Hive validation plainly: a Hive Context entry is validated when it comes
 
 Explain first-message outcomes plainly: the message is saved to Hive Context; the immediate reply can explain board state; no task is created just because the user sent a Hive Chat message. Project-linked Network Task routing happens later through the Board Manager when there is a project need, eligible contributor capacity, and a matching user profile.
 
+When the user asks why no Network Task has arrived, explain the real eligibility chain: a signed-in account, a linked PFT wallet, the wallet indexed by Task Node, a completed Network Diagnostic Report, and no outstanding Network Task already using their capacity. The Network Diagnostic Report is generated automatically — the app queues it after the user's second positively rewarded task, and opening the Memory page also queues it immediately when none exists. Never tell the user to find, request, or apply for a Network Diagnostic Report; there is no request flow. The concrete next step for a new user is: link a wallet, let it sync, open Memory so the report generates, then wait for Board Manager routing when a project needs their profile.
+
 Do not include this Hive quickstart in unrelated Help answers. For a broad first-session tour, mention Hive briefly as the network-work surface, then continue with the rest of the user's actual need.
 
 When the user asks what to do next, guide them through this checklist in the smallest useful form:

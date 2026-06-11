@@ -11,6 +11,7 @@ const maxClaimLimit = 5;
 const failedAttemptLimit = 3;
 const autoRefreshMs = 24 * 60 * 60 * 1000;
 const rewardThresholdDefault = 2;
+export const networkTaskProfileRewardThreshold = rewardThresholdDefault;
 export const networkTaskProfilePromptVersion = "network_task_profile_v2";
 
 function useDatabase() {
@@ -597,7 +598,7 @@ export async function enqueueNetworkTaskProfileJob({
   return { queued: true, job };
 }
 
-async function positiveRewardStats({ accountId = "" } = {}) {
+export async function positiveRewardStats({ accountId = "" } = {}) {
   if (!useDatabase()) return { positiveRewardedTaskCount: 0, lastRewardedTaskAt: null };
   const normalizedAccountId = safeAccountId(accountId);
   if (!normalizedAccountId) return { positiveRewardedTaskCount: 0, lastRewardedTaskAt: null };
