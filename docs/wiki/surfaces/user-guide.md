@@ -391,9 +391,11 @@ The system tries to route Network Tasks when:
 - the user has a signed-in account;
 - the user has a linked PFT wallet;
 - the wallet is indexed and active;
-- the user has enough task/reward history for a Network Diagnostic Report;
+- the user has a completed Network Diagnostic Report;
 - the user is not already consuming Network Task capacity;
 - Hive has a real project need that matches the user.
+
+The Network Diagnostic Report is generated automatically; there is no way to request it from Hive, Board Manager, or a person. The app queues it after the user's second positively rewarded task (rewarded personal tasks count), and opening the Memory page also queues it right away when the user does not have one yet. If routing looks stuck, the usual fix is: link a PFT wallet, wait for the wallet to finish syncing, then open Memory so the report generates. Do not tell the user that completing personal tasks is required for Network Tasks; rewarded tasks only trigger the report automatically, and opening Memory produces the same report without any task history.
 
 ### How To Explain It
 

@@ -401,6 +401,62 @@ const promptText = formatHiveAccountLiveStateForPrompt({
 assert.match(promptText, /ACCOUNT LIVE STATE - AUTHORITATIVE/);
 assert.match(promptText, /user-stated minimum Network Task reward is 25000 PFT/);
 assert.match(promptText, /Smoke task/);
+assert.match(promptText, /network_task_eligibility: unavailable in this snapshot/);
+
+const eligibilityPromptText = formatHiveAccountLiveStateForPrompt({
+  ok: true,
+  status: "ready",
+  accountId: "acct_smoke",
+  walletAddress: "rSmokeWallet",
+  snapshotAt: "2026-05-31T00:00:00.000Z",
+  networkTasks: [],
+  openFollowups: [],
+  recentBoardMessages: [],
+  routingConstraints: {},
+  networkTaskEligibility: {
+    status: "profile_required",
+    label: "Network profile required",
+    nextAction: "Open Memory and refresh the Network Diagnostic Report.",
+    walletLinked: true,
+    walletSynced: true,
+    diagnosticReportStatus: "missing",
+    capacityAvailable: true,
+    blockedGates: ["routing_profile=action_required"],
+    positiveRewardedTaskCount: 1,
+    autoReportRewardedTaskThreshold: 2,
+  },
+});
+assert.match(eligibilityPromptText, /network_task_eligibility: status=profile_required/);
+assert.match(eligibilityPromptText, /wallet_linked=yes \| wallet_synced=yes \| diagnostic_report=missing \| capacity_available=yes/);
+assert.match(eligibilityPromptText, /rewarded_tasks=1\/2 toward automatic Network Diagnostic Report generation/);
+assert.match(eligibilityPromptText, /blocked gates: routing_profile=action_required \| next_action=Open Memory and refresh the Network Diagnostic Report\./);
+assert.match(eligibilityPromptText, /Answer Network Task eligibility questions from the network_task_eligibility lines above/);
+
+const routableEligibilityPromptText = formatHiveAccountLiveStateForPrompt({
+  ok: true,
+  status: "ready",
+  accountId: "acct_smoke",
+  walletAddress: "rSmokeWallet",
+  snapshotAt: "2026-05-31T00:00:00.000Z",
+  networkTasks: [],
+  openFollowups: [],
+  recentBoardMessages: [],
+  routingConstraints: {},
+  networkTaskEligibility: {
+    status: "available_for_routing",
+    label: "Eligible for Board Manager routing",
+    nextAction: "No manual request is needed.",
+    walletLinked: true,
+    walletSynced: true,
+    diagnosticReportStatus: "completed",
+    capacityAvailable: true,
+    blockedGates: [],
+    positiveRewardedTaskCount: 4,
+    autoReportRewardedTaskThreshold: 2,
+  },
+});
+assert.match(routableEligibilityPromptText, /network_task_eligibility: status=available_for_routing/);
+assert.match(routableEligibilityPromptText, /blocked gates: none; the account is routable and waits on Board Manager project need\./);
 
 const seedValidation = validateSeeds(collectLocalSeeds({ seedFile: args.seedFile }));
 assert.ok(seedValidation.valid.length > 0, "expected at least one local seed in env file or seed file");
