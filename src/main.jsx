@@ -498,6 +498,7 @@ function App() {
   const [chatResetKey, setChatResetKey] = useState(0);
   const [chatSelectionKey, setChatSelectionKey] = useState(0);
   const [chatShareRequestKey, setChatShareRequestKey] = useState(0);
+  const [contextRefinePending, setContextRefinePending] = useState(false);
   const [chatActionMenu, setChatActionMenu] = useState(null);
   const [chatRenameTarget, setChatRenameTarget] = useState(null);
   const [chatDeleteTarget, setChatDeleteTarget] = useState(null);
@@ -936,6 +937,16 @@ function App() {
     },
     [navigateToView]
   );
+
+  const openContextRefine = useCallback(() => {
+    setMoreMenuOpen(false);
+    if (!signedIn) {
+      setLoginOpen(true);
+      return;
+    }
+    setContextRefinePending(true);
+    navigateToView("chat");
+  }, [navigateToView, signedIn]);
 
   useEffect(() => {
     const initialTaskId = taskIdFromLocation();
@@ -1384,7 +1395,7 @@ function App() {
             />
             {moreMenuOpen && sidebarOpen && (
               <div className="sidebar-popout">
-                <ToolMenuRow icon={Wand2} label="Context Refine" />
+                <ToolMenuRow icon={Wand2} label="Context Refine" onClick={openContextRefine} />
                 <div className="menu-divider" />
                 <ToolMenuRow icon={Bot} label="Agents" />
                 <ToolMenuRow
@@ -1646,9 +1657,11 @@ function App() {
               chatSelectionKey={chatSelectionKey}
               chatShareRequestKey={chatShareRequestKey}
               chat={appState?.chat}
+              contextRefinePending={contextRefinePending}
               linkedWalletAddress={linkedWalletAddress}
               onActiveChatChange={setActiveChat}
               onChatSettled={refreshAppState}
+              onContextRefineHandled={() => setContextRefinePending(false)}
               onWalletUnlock={openWalletVaultControl}
               usage={appState?.usage}
               walletSecret={walletSecretRef.current}
@@ -1818,7 +1831,8 @@ function App() {
 
 function ChatSurface({
   accountId = "", activeChat, chat, chatResetKey, chatSelectionKey, chatShareRequestKey,
-  linkedWalletAddress = "", onActiveChatChange, onChatSettled, onWalletUnlock, usage,
+  contextRefinePending = false, linkedWalletAddress = "", onActiveChatChange, onChatSettled,
+  onContextRefineHandled, onWalletUnlock, usage,
   walletSecret = null, walletUnlockPending = false, walletVault = {},
 }) {
   const signedOut = !accountId;
@@ -1995,6 +2009,17 @@ function ChatSurface({
     shareSeenRef.current = chatShareRequestKey;
     if (turns.length > 0) setShareOpen(true);
   }, [chatShareRequestKey, turns.length]);
+
+  useEffect(() => {
+    if (!contextRefinePending) return;
+    onContextRefineHandled?.();
+    if (signedOut) return;
+    setTaskRequestMode(false);
+    setContextEditMode(true);
+    setSendMessage("");
+    setStatusTone("muted");
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, [contextRefinePending, onContextRefineHandled, signedOut]);
 
   useEffect(() => {
     const textarea = inputRef.current;

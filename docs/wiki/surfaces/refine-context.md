@@ -4,7 +4,7 @@ Refine Context cleans up an existing context document while preserving meaning. 
 
 ## User Flow
 
-1. The user opens Refine Context from the tools menu.
+1. The user opens Refine Context from the chat composer `+` menu, or from the sidebar More tools menu. The sidebar entry opens Chat with Context Refine already active. Signed-out users are routed to login because Context Refine is an account action.
 2. The app loads the current context document.
 3. The model proposes a refined version.
 4. The user previews the result.
