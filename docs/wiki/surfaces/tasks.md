@@ -38,6 +38,32 @@ Personal, engineering, proposed, refused, and rewarded non-network tasks can inf
 
 Once an account has at least two positive task rewards, Task Node automatically queues the Network Diagnostic Report job from the task projection/reward path and from the memory worker backfill. The user should not need to open Memory or click refresh for the report to be generated.
 
+## Network Task Eligibility Panel
+
+The Tasks page renders a compact `Network Task Eligibility` panel above the task queue so a contributor can answer "why am I or am I not getting Network Tasks?" without asking Hive Chat. The panel is `src/features/tasks/NetworkTaskEligibilityPanel.jsx`; its display logic is the pure module `src/features/tasks/network-task-eligibility-state.js`.
+
+The panel reads `tasks.networkTasks`, the `getNetworkTaskEligibility` payload that `server/repositories/tasks.js::listTaskState` already attaches to `GET /api/tasks` and the app-state task refresh. It adds no endpoint, no extra polling, and no client-side observability writes; capacity-check events stay owned by the existing server-side eligibility path.
+
+The header always shows the routing wallet prefix being evaluated and the overall status in the production plain language. Server statuses map to plain labels as follows:
+
+| Server status | Plain label |
+| --- | --- |
+| `available_for_routing` | Eligible |
+| `at_capacity` | Capacity blocked |
+| `profile_required`, `profile_pending`, `profile_failed` | Needs more task history |
+| `wallet_sync_pending` | Wallet sync in progress |
+| `setup_required` | Wallet link needed |
+| `sign_in_required` | Sign in required |
+| `unavailable` or unrecognized | Eligibility unavailable |
+
+`validation task needed` and `operator hold` are reserved production-scope labels with no server status yet, so the panel must not synthesize them. `no suitable task right now` is the explanation attached to the Eligible state: an eligible contributor still waits for Hive Board Manager to route work when an active project needs it.
+
+The expanded body shows the gate checklist in routing order with pass/fail marks, the server `detail` copy per gate, and the server `action` copy for the first failing gate as the explicit next step (for the routing-profile gate that is `Open Memory and refresh the Network Diagnostic Report`). Capacity blockers render with the task title (task ID fallback), lifecycle state, blocker kind (allocation, generation job, or proposed task), and the owning wallet prefix or `account-wide` when the blocker has no candidate wallet yet, so multi-wallet contributors can tell wallet-bound blockers from account-scoped ones.
+
+The panel is expanded by default whenever the user is not eligible and collapses to a one-line status when eligible; the user can toggle it either way. If eligibility data is missing or the server reports `unavailable` (signed out before load, database error), the panel says so plainly instead of guessing a checklist.
+
+Regression coverage lives in `scripts/network-task-eligibility-panel-smoke.mjs`: every server status maps to the right plain label, blocker scope labels derive wallet prefix vs `account-wide` correctly, the first failing gate carries the server action copy, and loading/unavailable states stay honest.
+
 ## List And Detail State Consistency
 
 The task list, tab counts, and task detail page must agree because they read the same projected lifecycle. If the detail page says a task is rewarded, the list must not keep showing that task under Verification.
