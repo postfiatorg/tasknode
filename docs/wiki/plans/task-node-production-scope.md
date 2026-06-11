@@ -2,7 +2,19 @@
 
 Date: 2026-06-02
 
-Status: single active beta-readiness plan
+Status: production is live at `https://tasknode.postfiat.org` (cutover executed
+2026-06-10). This page remains the readiness ledger for the launch-surface
+matrix and the P0/P1 work items below; per the operating evidence rule, items
+move to green only with live evidence, not code inspection.
+
+Progress note (2026-06-11): P0-5 (contributor eligibility explainable) is
+implemented — the Tasks surface ships a Network Task Eligibility Panel backed
+by one shared capacity predicate, and Hive Chat answers eligibility from packet
+data; live non-operator evidence is still owed. P0-2 (Context Refine save
+durability) and P0-6 (reward/review idempotency) have hardened implementations
+and passing smokes; the live-evidence bar still applies. P0-1 (non-operator
+Telegram), P0-3/P0-4 (board clarity and consolidation), and P0-7 (provider
+failure UX) remain open.
 
 Contributor trust task: `task_2fa17202f941537b166cef01ee6b66c8`
 
@@ -211,7 +223,7 @@ Reward safeguards for beta:
 
 | Surface | Beta scope | Current state | Current docs |
 | --- | --- | --- | --- |
-| Login and account cloud | Email, GitHub, Telegram, and X login/linking. Discord remains out of launch scope. | GitHub has live evidence. Telegram must be proven with non-operator linking. Email and X need current beta evidence. | [Identity & Wallets](#docs/identity-wallets), [Telegram Bot Chat](#docs/telegram-bot-chat) |
+| Login and account cloud | Email, GitHub, Telegram, and X login/linking. Discord is currently enabled in production but is non-core: no launch promise or support commitment. | GitHub has live evidence. Telegram must be proven with non-operator linking. Email and X need current beta evidence. | [Identity & Wallets](#docs/identity-wallets), [Telegram Bot Chat](#docs/telegram-bot-chat) |
 | Wallet and funding | Wallet creation/link/unlock and top-up accounting for launch-supported assets. | Wallet flow works in QA. USDC evidence exists historically; USDT/ETH need current confirmation before a production claim. | [Wallet](#docs/wallet), [Ethereum Deposit RPC](#docs/ethereum-deposit-rpc), [Deployment](#docs/deployment) |
 | Context | Create, edit, save, reload current context without wallet. Publish remains wallet-bound. | Implemented; live save durability must be rechecked. | [Context](#docs/context), [Encryption](#docs/encryption), [PFTL Usage](#docs/pftl) |
 | Context Refine | Review context, propose edit, apply only after user acceptance. | Implemented; needs fresh live evidence. | [Refine Context](#docs/refine-context), [Chat](#docs/chat) |

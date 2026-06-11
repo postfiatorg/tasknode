@@ -116,7 +116,7 @@ Unknown means the database is disabled or status cannot read a durable source.
 Check the live System Status row first:
 
 ```bash
-curl -fsS https://tasknodeofficial-dev.fly.dev/api/system/status
+curl -fsS https://tasknode.postfiat.org/api/system/status
 ```
 
 Verify Fly process groups when the user expects a machine:

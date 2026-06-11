@@ -233,9 +233,10 @@ Usage/billing:
   set, so it is effectively off in environments without IPFS/PFTL/encryption-key
   configuration.
 - Runtime, API, and frame-smoke coverage.
-- Fly dev deployment through `npm run fly:deploy`, which includes the
-  post-deploy background guard for the non-HTTP `worker` and `board-manager`
-  process groups.
+- Fly production deployment (`https://tasknode.postfiat.org`, promoted
+  `tasknodeofficial-dev` app) through `npm run fly:deploy` /
+  `npm run fly:deploy:prod`, which includes the post-deploy background guard
+  for the non-HTTP `worker` and `board-manager` process groups.
 
 ## Wired But Not Fully Live
 

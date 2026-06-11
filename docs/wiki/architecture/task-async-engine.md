@@ -36,7 +36,7 @@ healthy `/health` response only proves the public `app` process is running. It
 does not prove task generation, review, PFTL cache sync, or reducer loops are
 alive.
 
-Use `npm run fly:deploy` for releases so the post-deploy `npm run
+Use `npm run fly:deploy:prod` for releases so the post-deploy `npm run
 fly:worker-guard` step starts one `worker` machine and enforces
 `restart=always`. If a request row is published but no task offer appears, or a
 task reaches `submitted` but no verification request appears, check

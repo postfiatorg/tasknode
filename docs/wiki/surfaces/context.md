@@ -24,6 +24,11 @@ Context Refine runs through Chat, not a separate Context modal. `src/main.jsx::C
 
 Line numbers are generated from the same normalized HTML-to-text idea used by `server/context-line-map.js`. They are inspection anchors for the user and model packet; the server still validates accepted edits by revision, body hash, and exact `target_before` text before saving.
 
+## Current Limits
+
+- Native editor saves post to `/api/context/edit/save`, and `server/index.js` reads that request body with a 64KB cap. Requests over 64KB fail with `request_too_large` (HTTP 413), so the 120,000-character storage cap is not actually reachable through a single editor save; very large documents fail at the request boundary instead of saving partially.
+- Bodies that do exceed the storage cap on any save path are silently sliced to `CONTEXT_DOCUMENT_MAX_CHARS` by `server/repositories/context.js` before saving. There is no oversize error or visible truncation warning, so content past the cap is dropped without telling the user.
+
 ## Data Model
 
 - Current context: Postgres cache tied to account identity. It stores the latest draft for chat/task grounding and does not retain every autosave as long-term history.

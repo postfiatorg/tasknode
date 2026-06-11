@@ -1,8 +1,12 @@
 # PFTasks Transaction Shutdown Cutover Plan - 2026-06-09
 
-This plan is the production cutover gate for turning the old PFTasks app into a
-non-transactional legacy system before Task Node Official becomes the live
-production surface.
+Status: executed on 2026-06-10 alongside the production cutover; see the
+[Production Cutover Execution Checklist](#docs/task-node-production-cutover-execution-checklist)
+for the as-run record and any steps still open.
+
+This plan was the production cutover gate for turning the old PFTasks app into
+a non-transactional legacy system before Task Node Official became the live
+production surface. It is retained as the planning record.
 
 The account-level migration runbook remains [PFTasks Cutover](#docs/pftasks-cutover).
 This plan is broader: it shuts down old PFTasks task-side writers, workers, bots,

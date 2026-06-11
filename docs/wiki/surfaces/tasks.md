@@ -17,9 +17,9 @@ The Tasks surface is reached from the left navigation. It shows a compact task q
 | Refused | Rejected, refused, expired, or cancelled tasks. | UI may paginate later; chat context currently caps refused history at 10. |
 | Rewarded | Tasks that reached a terminal reward outcome. | UI may paginate later; chat context currently caps rewarded history at 12. |
 
-The top summary shows outstanding count, PFT in flight, synced task-record count, and active request count. Deadlines render as calendar dates, such as `May 20`, while real event and review timestamps render with time and timezone. This prevents date-only deadlines from showing as misleading `12:00 AM` event times.
+The top summary shows outstanding count, PFT in flight, synced task-record count, and — when present — processing and needs-attention request counts. Deadlines render as calendar dates, such as `May 20`, while real event and review timestamps render with time and timezone. This prevents date-only deadlines from showing as misleading `12:00 AM` event times.
 
-`GET /api/tasks` also returns task sync integrity from the cache layer. The sync status can be `ready`, `empty`, `indexing_lag`, or `reducer_attention`. `indexing_lag` means the cache has a newer task pointer than the projected row has consumed. `reducer_attention` means failed reducer work exists for one or more visible tasks. The UI should treat these as indexing states, not as final lifecycle states.
+`GET /api/tasks` also returns task sync integrity from the cache layer. The healthy sync statuses are `ready`, `empty`, `indexing_lag`, and `reducer_attention`. `indexing_lag` means the cache has a newer task pointer than the projected row has consumed. `reducer_attention` means failed reducer work exists for one or more visible tasks. Degraded reads use `database_error` (the projection cache could not be read at all) or `integrity_unavailable` (rows are visible but the integrity check could not finish); both are covered by the backoff policy below. The UI should treat all of these as indexing/read states, not as final lifecycle states.
 
 Network-pushed work appears in the same task queue, not in a separate lifecycle. Visible task labels are intentionally limited to `Personal`, `Network`, or `Alpha`; implementation categories such as engineering are not shown as task types. Project/routing metadata stays in the backing payload and forensics, while the list and detail page focus on the normal task lifecycle: accept or refuse, submit, verify, reward, and audit.
 
@@ -36,7 +36,7 @@ The user-facing routing gates are:
 
 Personal, engineering, proposed, refused, and rewarded non-network tasks can inform routing judgment, but they do not hard-block Network Task eligibility. When these gates are satisfied, the user is ready to receive a Network Task but still waits for Board Manager to choose them for a live project need.
 
-Once an account has at least two positive task rewards, Task Node automatically queues the Network Diagnostic Report job from the task projection/reward path and from the memory worker backfill. The user should not need to open Memory or click refresh for the report to be generated.
+Once an account has at least two positive task rewards, Task Node automatically queues the Network Diagnostic Report job from the task projection/reward path and from the memory worker backfill. Opening Memory also queues the report immediately when the account has none, and the Memory refresh control forces a rebuild. The user should not need to open Memory or click refresh for the report to be generated, and there is no flow for requesting the report from Hive, Board Manager, or an operator.
 
 ## Network Task Eligibility Panel
 
@@ -60,7 +60,7 @@ The header always shows the routing wallet prefix being evaluated and the overal
 
 The expanded body shows the gate checklist in routing order with pass/fail marks, the server `detail` copy per gate, and the server `action` copy for the first failing gate as the explicit next step (for the routing-profile gate that is `Open Memory and refresh the Network Diagnostic Report`). Capacity blockers render with the task title (task ID fallback), lifecycle state, blocker kind (allocation, generation job, or proposed task), and the owning wallet prefix or `account-wide` when the blocker has no candidate wallet yet, so multi-wallet contributors can tell wallet-bound blockers from account-scoped ones.
 
-The panel is expanded by default whenever the user is not eligible and collapses to a one-line status when eligible; the user can toggle it either way. If eligibility data is missing or the server reports `unavailable` (signed out before load, database error), the panel says so plainly instead of guessing a checklist.
+The panel is expanded by default whenever the user is not eligible and the verdict is readable; it collapses to a one-line status when eligible, while loading and `unavailable` states also start collapsed. The user can toggle it either way. If eligibility data is missing or the server reports `unavailable` (signed out before load, database error), the panel says so plainly instead of guessing a checklist.
 
 Regression coverage lives in `scripts/network-task-eligibility-panel-smoke.mjs`: every server status maps to the right plain label, blocker scope labels derive wallet prefix vs `account-wide` correctly, the first failing gate carries the server action copy, and loading/unavailable states stay honest.
 
@@ -368,7 +368,8 @@ Users must be able to stop a task even after it has entered the verification loo
 | --- | --- | --- |
 | Proposed | Refuse task | `refused` |
 | Accepted, submitted, verification requested, awaiting review | Cancel task | `cancelled` |
-| Refused, cancelled, expired, rewarded | No stop action | Terminal state. |
+| Reward pending (`reward_decided`) | No stop action | The authority reward outcome is already in flight. |
+| Refused, rejected, cancelled, expired, rewarded | No stop action | Terminal state. |
 
 The stop action is shown on the Overview tab. Proposed tasks show both `Accept task` and `Refuse task`; accepted or review-loop tasks show the relevant cancel action. If the local seed vault is locked, clicking the action opens the shared wallet unlock flow. If the vault is unlocked, the browser builds an encrypted `pf.task.update.v1` payload and signs a PFTL `TASK_UPDATE` pointer transaction from the linked user wallet.
 

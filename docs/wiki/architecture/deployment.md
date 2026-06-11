@@ -1,16 +1,27 @@
 # Deployment
 
-Task Node Official currently has one public dev deployment on Fly and one local Docker workflow. The two can share the same Fly dev Postgres data when local QA needs to reproduce the live app state.
+Task Node Official is the production task system at
+`https://tasknode.postfiat.org`, served by one Fly deployment plus one local
+Docker workflow. Local QA can share the same Fly Postgres data when it needs to
+reproduce the live app state.
 
 ## Current Deployment
 
 The live app is:
 
 ```text
-https://tasknodeofficial-dev.fly.dev
-Fly app: tasknodeofficial-dev
+https://tasknode.postfiat.org
+Fly app: tasknodeofficial-dev (the promoted dev app keeps its original Fly name)
 Region: ewr
 ```
+
+The production cutover promoted the existing `tasknodeofficial-dev` Fly app
+rather than creating a separate production app, so every `fly ...` command in
+this page still targets `-a tasknodeofficial-dev` even though the public domain
+is `tasknode.postfiat.org`. The old public hostname
+`tasknodeofficial-dev.fly.dev` now 301-redirects GET navigation to the
+production domain (`TASKNODE_LEGACY_REDIRECT_HOSTS` in `fly.toml`); `/health`
+and non-GET API requests are exempt so Fly health checks keep passing.
 
 Fly builds the production Docker image from `Dockerfile` and runs the process definitions in `fly.toml`:
 
@@ -22,8 +33,11 @@ board-manager npm run start:board-manager
 
 Only the `app` process receives HTTP traffic. It serves the built frontend, exposes `/api/*`, and runs the startup migration check. The `worker` and `board-manager` processes are separate Fly machine groups; verify their live state with `fly status -a tasknodeofficial-dev` before assuming background loops are running.
 
-Run Fly releases through `npm run fly:deploy`, not raw `fly deploy`. That
-command deploys the image and then runs `npm run fly:background-guard`, which
+Run Fly releases through `npm run fly:deploy:prod`, not raw `fly deploy`.
+(`fly:deploy:prod` wraps `fly:deploy` with the production confirmation the
+deploy preflight requires now that `fly.toml` carries the production
+hostname.) The wrapped command deploys the image and then runs
+`npm run fly:background-guard`, which
 enforces one running `worker` machine and one running `board-manager` machine
 with `restart=always`. The worker guard also checks that task generation,
 Network Task generation, and task review are enabled. This is necessary because
@@ -49,7 +63,7 @@ explicitly paused that subsystem.
 Operator commands:
 
 ```bash
-npm run fly:deploy
+npm run fly:deploy:prod
 npm run fly:background-guard
 fly status -a tasknodeofficial-dev
 fly logs -a tasknodeofficial-dev
@@ -90,7 +104,7 @@ Use this after deploys, machine stops, or maintenance windows:
 cd /home/pfrpc/repos/tasknodeofficial
 fly status -a tasknodeofficial-dev
 npm run fly:background-guard
-curl -sS https://tasknodeofficial-dev.fly.dev/health
+curl -sS https://tasknode.postfiat.org/health
 ```
 
 Inspect Hive scheduler state:
@@ -189,7 +203,7 @@ Start the public app first, then use the guard and Hive resume path:
 ```bash
 fly machine start <app-machine-id> -a tasknodeofficial-dev
 npm run fly:background-guard
-curl -sS https://tasknodeofficial-dev.fly.dev/health
+curl -sS https://tasknode.postfiat.org/health
 fly ssh console --app tasknodeofficial-dev -C \
   "sh -lc 'cd /app && npm run board-manager:ops -- ensure-scope --cadence-seconds 900 --max-actions-per-hour 60 && npm run board-manager:ops -- resume --reason \"Production restart\" && npm run board-manager:ops -- status'"
 fly status -a tasknodeofficial-dev
@@ -231,19 +245,20 @@ ETH_DEPOSIT_XPUB
 The non-secret deployment values currently visible in the app configuration are:
 
 ```text
-TASKNODE_PUBLIC_URL=https://tasknodeofficial-dev.fly.dev
-VITE_SITE_ORIGIN=https://tasknodeofficial-dev.fly.dev
+TASKNODE_PUBLIC_URL=https://tasknode.postfiat.org
+VITE_SITE_ORIGIN=https://tasknode.postfiat.org
 TASKNODE_ENV=production
 TASKNODE_DEV_AUTH_ENABLED=false
 TASKNODE_DATABASE_ENABLED=true
 TASKNODE_STORE_PATH=/data/runtime-store.json
 TASKNODE_RUNTIME_STORE_DURABLE=true
+TASKNODE_LEGACY_REDIRECT_HOSTS=tasknodeofficial-dev.fly.dev
 EMAIL_DELIVERY_PROVIDER=resend
 EMAIL_FROM=Task Node <login@agti.net>
 TELEGRAM_AUTH_BOT_USERNAME=pftasknodebot
-TELEGRAM_AUTH_WIDGET_DOMAIN=tasknodeofficial-dev.fly.dev
+TELEGRAM_AUTH_WIDGET_DOMAIN=tasknode.postfiat.org
 TELEGRAM_BOT_CHAT_MODE=<optional chat mode>
-DISCORD_REDIRECT_URI=https://tasknodeofficial-dev.fly.dev/api/auth/callback/discord
+DISCORD_REDIRECT_URI=https://tasknode.postfiat.org/api/auth/discord/callback
 ```
 
 To set a Fly secret:
@@ -271,21 +286,25 @@ Resend must mark the sending domain verified before the app can email arbitrary 
 Telegram uses the Telegram Login Widget. BotFather must have this exact domain:
 
 ```text
-tasknodeofficial-dev.fly.dev
+tasknode.postfiat.org
 ```
 
 The Fly app must use the matching widget domain and bot username:
 
 ```text
-TELEGRAM_AUTH_WIDGET_DOMAIN=tasknodeofficial-dev.fly.dev
+TELEGRAM_AUTH_WIDGET_DOMAIN=tasknode.postfiat.org
 TELEGRAM_AUTH_BOT_USERNAME=pftasknodebot
 ```
 
 Telegram bot chat uses the same linked Telegram identity. The bot webhook is:
 
 ```text
-https://tasknodeofficial-dev.fly.dev/api/integrations/telegram/webhook
+https://tasknode.postfiat.org/api/integrations/telegram/webhook
 ```
+
+Verify the registered webhook with `getWebhookInfo` after any domain change;
+the widget domain, webhook URL, and `TASKNODE_PUBLIC_URL` must all agree or
+startup origin checks and Telegram login will fail.
 
 Production requires `TELEGRAM_BOT_WEBHOOK_SECRET`; register the webhook with Telegram using the same `secret_token`. `TELEGRAM_AUTH_BOT_TOKEN` can be reused as the bot token if the login widget and chat bot are the same bot.
 
@@ -351,24 +370,27 @@ not app credit until that ledger row exists.
 
 PFTL is the canonical protocol layer for task requests, task updates, evidence pointers, rewards, context pointers, and wallet-linked activity. Postgres caches the readable projection, but the replayable anchors are CIDs, transaction hashes, wallet addresses, and PFTL memos.
 
-Fly currently uses the rapid Post Fiat testnet websocket endpoint for live
-transaction submission and balance reads. The endpoint presents non-public CA
-TLS, so the deployment must opt in explicitly:
+The PFTL endpoints come from two layers that can disagree, so check both when
+auditing:
 
-```text
-PFTL_WSS_URL=wss://178.156.143.199:6005
-VITE_PFTL_WSS_URL=wss://178.156.143.199:6005
-PFTL_WSS_REJECT_UNAUTHORIZED=false
-TASKNODE_ALLOW_INSECURE_PFTL_TLS=true
-PFTL_RPC_URL=http://178.156.143.199:5005
-PFTL_RPC_URL_FALLBACKS=https://rpc.testnet.postfiat.org
-PFTL_HISTORY_WSS_URL=wss://ws-archive.testnet.postfiat.org
-PFTL_HISTORY_RPC_URL=https://rpc.testnet.postfiat.org:5006/
-```
+- `fly.toml` `[env]` declares the hostname endpoints:
+  `PFTL_WSS_URL=wss://ws.testnet.postfiat.org`,
+  `PFTL_RPC_URL=https://rpc.testnet.postfiat.org`,
+  `PFTL_HISTORY_WSS_URL=wss://ws-archive.testnet.postfiat.org`,
+  `PFTL_HISTORY_RPC_URL=https://rpc.testnet.postfiat.org:5006/`.
+- Fly secrets override `[env]` values with the same name. The live deployment
+  currently overrides at least the browser websocket: `/runtime-config.json`
+  on production reports `pftlWssUrl=wss://178.156.143.199:6005` (the rapid
+  testnet node), not the `fly.toml` hostname. Audit live values with
+  `fly secrets list -a tasknodeofficial-dev` and
+  `curl -sS https://tasknode.postfiat.org/runtime-config.json`.
 
-Do not set `TASKNODE_ALLOW_INSECURE_PFTL_TLS=true` for arbitrary third-party
-endpoints. It is only for the current PFTL rapid node while that node uses a
-self-signed or private-chain certificate.
+The rapid node at `178.156.143.199` presents non-public CA TLS. Pointing the
+server at it requires explicit opt-in (`PFTL_WSS_REJECT_UNAUTHORIZED=false`,
+`TASKNODE_ALLOW_INSECURE_PFTL_TLS=true`). Do not set
+`TASKNODE_ALLOW_INSECURE_PFTL_TLS=true` for arbitrary third-party endpoints; it
+exists only for the rapid node while it uses a self-signed or private-chain
+certificate.
 
 The app should prefer indexed Postgres projections for UI speed, then preserve enough CID and transaction identity to replay or repair chain-derived state.
 
@@ -402,7 +424,7 @@ Important constraints:
 
 - This bridge targets Task Node Official Fly dev data only.
 - Do not point it at PFTasks databases.
-- Browser wallet vaults are origin-local. `localhost:5174` and `tasknodeofficial-dev.fly.dev` do not share encrypted browser seed storage.
+- Browser wallet vaults are origin-local. `localhost:5174`, `tasknodeofficial-dev.fly.dev`, and `tasknode.postfiat.org` do not share encrypted browser seed storage; users who onboarded on the old dev hostname must unlock or restore once on the production domain.
 - Runtime auth/account state is still partly JSON-backed. Use the documented bridge helpers for runtime-store copies instead of hand-editing JSON.
 
 The bridge has a destructive `fly-dev:data:push` helper for the rare case where
@@ -412,14 +434,14 @@ and requires `TASKNODE_ALLOW_FLY_DEV_DATA_PUSH=true` or `--confirm-dev-push`.
 Do not use it as a normal deploy path; normal deploys use git, Fly build, and
 migrations.
 
-## Production Cutover (Promoted Dev App)
+## Production Configuration (Promoted Dev App)
 
 The production domain `tasknode.postfiat.org` is served by promoting this same
 Fly app, not by a separate production app. The decision and gates live in the
 [Task Node Production Cutover Package](#docs/task-node-production-cutover-package).
-What changes at cutover, all on this app:
+The cutover executed on 2026-06-10 (see the [execution checklist](#docs/task-node-production-cutover-execution-checklist)). The standing production configuration on this app:
 
-- `fly.toml` `[env]` is flipped to the production values listed in the
+- `fly.toml` `[env]` carries the production values listed in the
   [PFTasks Transaction Shutdown Cutover Plan](#docs/pftasks-transaction-shutdown-cutover-plan)
   (public URL, site origin, Telegram widget domain, Discord/X redirect URIs).
 - Once `fly.toml` carries a production hostname, `npm run fly:deploy` refuses
@@ -432,28 +454,35 @@ What changes at cutover, all on this app:
   production the workers refuse the development fallback chain
   (allocation/authority/service/faucet seeds) and fail with the existing
   seed-missing error codes instead of signing from the wrong wallet.
-- Set `TASKNODE_LEGACY_REDIRECT_HOSTS=tasknodeofficial-dev.fly.dev` so GET
+- `TASKNODE_LEGACY_REDIRECT_HOSTS=tasknodeofficial-dev.fly.dev` is set so GET
   navigation on the old dev hostname 301-redirects to the production domain.
   `/health` and non-GET API requests are exempt, so Fly health checks and
   in-flight sessions keep working.
 
 ## Deployment Command
 
-Deploy from `main` after checks pass:
+Deploy from the active production branch (currently
+`review-target/tasknode-cutover-readiness-2026-06-09`, the integration branch
+the deployed app is built from), not from a stale `main`. After checks pass:
 
 ```bash
 npm run build
 npm run smoke
 npm run route-smoke
-npm run fly:deploy
+npm run fly:deploy:prod
 ```
+
+`fly.toml` carries the production hostname, so plain `npm run fly:deploy` is
+refused by the deploy preflight unless `TASKNODE_CONFIRM_PRODUCTION_DEPLOY=yes`
+is set; `fly:deploy:prod` is the supported production command and sets the
+confirmation for you.
 
 After deploy:
 
 ```bash
-curl -sS https://tasknodeofficial-dev.fly.dev/health
-SMOKE_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run smoke
-FRAME_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run frame-smoke
+curl -sS https://tasknode.postfiat.org/health
+SMOKE_BASE_URL=https://tasknode.postfiat.org npm run smoke
+FRAME_BASE_URL=https://tasknode.postfiat.org npm run frame-smoke
 npm run fly:background-guard
 fly status -a tasknodeofficial-dev
 ```
@@ -461,13 +490,13 @@ fly status -a tasknodeofficial-dev
 For auth/provider changes, also verify:
 
 ```bash
-curl -sS https://tasknodeofficial-dev.fly.dev/api/auth/providers
+curl -sS https://tasknode.postfiat.org/api/auth/providers
 ```
 
 For email signup:
 
 ```bash
-curl -sS -X POST https://tasknodeofficial-dev.fly.dev/api/auth/email/start \
+curl -sS -X POST https://tasknode.postfiat.org/api/auth/email/start \
   -H 'content-type: application/json' \
   --data '{"email":"user@example.com"}'
 ```
@@ -475,7 +504,7 @@ curl -sS -X POST https://tasknodeofficial-dev.fly.dev/api/auth/email/start \
 For top-up readiness:
 
 ```bash
-curl -sS -X POST https://tasknodeofficial-dev.fly.dev/api/usage/top-up/start
+curl -sS -X POST https://tasknode.postfiat.org/api/usage/top-up/start
 ```
 
 Signed-out callers should receive `usage_top_up_login_required` once Ethereum deposit addresses are configured.
