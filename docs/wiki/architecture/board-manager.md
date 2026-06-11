@@ -108,3 +108,15 @@ the same account links. If an account delinks `rOld` and links `rNew`, an active
 task on `rOld` remains auditable but must not make `rNew` unavailable for
 routing. Pending work without a candidate wallet is the fallback account-level
 blocker until the wallet is known.
+
+Capacity verdicts come from one shared predicate,
+`listNetworkTaskCapacityBlockers` in
+`server/repositories/network-task-capacity.js`, used identically by the
+`initiate_network_task` executor hook, `getNetworkTaskEligibility`, and
+`boardActionPressure.candidateCapacity`. Liveness is allocation-status based
+with no time window (an accepted task older than 24 hours still blocks),
+ignores task class (an active `alpha` allocation blocks a `network` allocation
+and vice versa), excludes allocations whose `task_projections` status is
+terminal, and excludes wallet-bound allocations whose wallet is no longer an
+active linked user wallet. `npm run network-task-capacity-smoke` asserts the
+three call paths agree.

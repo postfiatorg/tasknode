@@ -6,11 +6,15 @@ import {
   recordUserObservabilityEvent,
 } from "./user-observability.js";
 import {
-  activeAllocationStatuses, allocationStatusForTaskStatus, compactCandidate, compactNetworkTaskContent,
+  allocationStatusForTaskStatus, compactCandidate, compactNetworkTaskContent,
   compactProductDoc, compactProject, digestJson, groupNetworkTaskContentText, isCompletedNetworkTask,
   isOutstandingNetworkTask, isStoppedNetworkTask, jsonValue, numeric, rewardBand, safeObject, safeText,
   taskClass, toIso,
 } from "./network-tasks-utils.js";
+import {
+  getNetworkTaskCapacityMetrics,
+  listNetworkTaskCapacityBlockers,
+} from "./network-task-capacity.js";
 
 export { networkTaskRewardPolicy, normalizeNetworkTaskRewardBand } from "./network-tasks-utils.js";
 function useDatabase() { return databaseEnabled(); }
@@ -196,6 +200,14 @@ export async function getNetworkTaskContentSnapshot({
     text,
   };
 }
+// Intentionally does NOT filter candidates by Network Task capacity:
+// - resolveCandidate() must still find an explicitly targeted busy candidate
+//   so the executor can raise the precise `network_task_candidate_at_capacity`
+//   error (instead of a misleading `network_task_candidate_not_eligible`);
+// - the Board Manager source packet needs busy candidates visible, annotated
+//   with their blockers via boardActionPressure.candidateCapacity.
+// Capacity is enforced by listNetworkTaskCapacityBlockers (the shared
+// predicate) at the executor hook, eligibility, and pressure call sites.
 export async function listEligibleNetworkTaskCandidates({ limit = 12 } = {}) {
   if (!useDatabase()) return [];
   const result = await query(
@@ -246,20 +258,6 @@ function eligibilityGate(id, label, status, detail, action = "") {
   };
 }
 
-function eligibilityBlocker(row = {}) {
-  return {
-    source: safeText(row.source || "network_task_allocation", 80),
-    projectId: safeText(row.project_id || row.projectId, 180),
-    taskId: safeText(row.task_id || row.taskId, 180),
-    requestId: safeText(row.request_id || row.requestId, 180),
-    allocationId: safeText(row.allocation_id || row.allocationId || row.id, 180),
-    generationJobId: safeText(row.generation_job_id || row.generationJobId, 180),
-    title: safeText(row.title || row.ref_title || row.project_need_summary || row.projectNeedSummary || "Active Network Task", 240),
-    state: safeText(row.state || row.status || row.allocation_status || row.generation_job_status, 80),
-    updatedAt: toIso(row.updated_at || row.allocation_updated_at || row.job_updated_at),
-  };
-}
-
 export async function getNetworkTaskEligibility({
   accountId = "",
   walletAddress = "",
@@ -277,6 +275,9 @@ export async function getNetworkTaskEligibility({
       requiresActivePftlWalletSync: true,
       requiresCompletedNetworkDiagnosticReport: true,
       capacityConsumedByOutstandingOrPendingNetworkTasks: true,
+      capacityBlocksUntilTaskReachesTerminalState: true,
+      capacityIgnoresTaskClass: true,
+      delinkedWalletTasksDoNotBlockCurrentWallet: true,
       personalTasksDoNotBlockNetworkTasks: true,
       boardManagerSelectsWhenProjectNeedsWork: true,
     },
@@ -366,104 +367,24 @@ export async function getNetworkTaskEligibility({
         [normalizedAccountId, normalizedWalletAddress]
       )
       : Promise.resolve({ rows: [] }),
-    query(
-      `
-        SELECT
-          'active_network_task_capacity' AS source,
-          alloc.id AS allocation_id,
-          alloc.project_id,
-          alloc.allocation_status,
-          alloc.project_need_summary,
-          alloc.updated_at AS allocation_updated_at,
-          job.id AS generation_job_id,
-          job.status AS generation_job_status,
-          job.request_id,
-          job.task_id,
-          job.updated_at AS job_updated_at,
-          refs.title AS ref_title,
-          p.title,
-          COALESCE(p.status, refs.state, job.status, alloc.allocation_status) AS state,
-          COALESCE(p.updated_at, refs.updated_at, job.updated_at, alloc.updated_at) AS updated_at
-        FROM network_task_allocations alloc
-        LEFT JOIN network_task_generation_jobs job
-          ON job.allocation_id = alloc.id
-        LEFT JOIN network_project_task_refs refs
-          ON (
-            (job.task_id <> '' AND refs.task_id = job.task_id)
-            OR (job.request_id <> '' AND refs.request_id = job.request_id)
-          )
-        LEFT JOIN task_projections p
-          ON p.task_id = COALESCE(NULLIF(job.task_id, ''), refs.task_id)
-        WHERE alloc.allocation_status = ANY($1::text[])
-          AND ($2::text = '' OR alloc.candidate_account_id = $2)
-          AND (
-            $3::text = ''
-            OR alloc.candidate_wallet_address = $3
-            OR (
-              $2::text <> ''
-              AND alloc.candidate_account_id = $2
-              AND alloc.candidate_wallet_address = ''
-            )
-          )
-          AND alloc.created_at > now() - interval '24 hours'
-        ORDER BY COALESCE(p.updated_at, refs.updated_at, job.updated_at, alloc.updated_at) DESC,
-                 alloc.id DESC
-        LIMIT 8
-      `,
-      [activeAllocationStatuses, normalizedAccountId, normalizedWalletAddress]
-    ),
-    query(
-      `
-        SELECT
-          count(*) FILTER (
-            WHERE $2::text <> ''
-              AND alloc.candidate_account_id = $2
-          )::int AS account_outstanding_count,
-          count(*) FILTER (
-            WHERE $3::text <> ''
-              AND alloc.candidate_wallet_address = $3
-          )::int AS wallet_outstanding_count,
-          count(*) FILTER (
-            WHERE $2::text <> ''
-              AND alloc.candidate_account_id = $2
-              AND alloc.candidate_wallet_address = ''
-          )::int AS account_only_pending_count,
-          count(*) FILTER (
-            WHERE $2::text <> ''
-              AND alloc.candidate_account_id = $2
-              AND job.status IN ('queued', 'running', 'generated', 'link_failed')
-          )::int AS account_pending_generation_count,
-          count(*) FILTER (
-            WHERE $3::text <> ''
-              AND alloc.candidate_wallet_address = $3
-              AND job.status IN ('queued', 'running', 'generated', 'link_failed')
-          )::int AS wallet_pending_generation_count
-        FROM network_task_allocations alloc
-        LEFT JOIN network_task_generation_jobs job
-          ON job.allocation_id = alloc.id
-        WHERE alloc.allocation_status = ANY($1::text[])
-          AND (
-            ($2::text <> '' AND alloc.candidate_account_id = $2)
-            OR ($3::text <> '' AND alloc.candidate_wallet_address = $3)
-          )
-          AND alloc.created_at > now() - interval '24 hours'
-      `,
-      [activeAllocationStatuses, normalizedAccountId, normalizedWalletAddress]
-    ),
+    // Canonical capacity predicate shared with the Board Manager executor
+    // hook and boardActionPressure.candidateCapacity.
+    listNetworkTaskCapacityBlockers({
+      accountId: normalizedAccountId,
+      walletAddress: normalizedWalletAddress,
+      limit: 8,
+    }),
+    getNetworkTaskCapacityMetrics({
+      accountId: normalizedAccountId,
+      walletAddress: normalizedWalletAddress,
+    }),
   ]);
 
   const profile = profileResult.rows[0] || null;
   const job = jobResult.rows[0] || null;
   const wallet = walletResult.rows[0] || null;
-  const blockers = blockerResult.rows.map(eligibilityBlocker);
-  const capacityMetricsRow = capacityMetricsResult.rows[0] || {};
-  const capacityMetrics = {
-    accountOutstandingCount: Number(capacityMetricsRow.account_outstanding_count || 0),
-    walletOutstandingCount: Number(capacityMetricsRow.wallet_outstanding_count || 0),
-    accountOnlyPendingCount: Number(capacityMetricsRow.account_only_pending_count || 0),
-    accountPendingGenerationCount: Number(capacityMetricsRow.account_pending_generation_count || 0),
-    walletPendingGenerationCount: Number(capacityMetricsRow.wallet_pending_generation_count || 0),
-  };
+  const blockers = blockerResult;
+  const capacityMetrics = capacityMetricsResult;
   const profileStatus = profile
     ? "completed"
     : ["pending", "processing"].includes(job?.status)
@@ -649,22 +570,6 @@ async function resolveCandidate({ decision = {} } = {}) {
   throw error;
 }
 
-async function activeAllocationCount({ accountId = "", walletAddress = "", taskClass = "" } = {}) {
-  const result = await query(
-    `
-      SELECT count(*)::int AS count
-      FROM network_task_allocations
-      WHERE allocation_status = ANY($1::text[])
-        AND ($2::text = '' OR candidate_account_id = $2)
-        AND ($3::text = '' OR candidate_wallet_address = $3)
-        AND ($4::text = '' OR task_class = $4)
-        AND created_at > now() - interval '24 hours'
-    `,
-    [activeAllocationStatuses, safeText(accountId, 180), safeText(walletAddress, 120), safeText(taskClass, 40)]
-  );
-  return Number(result.rows[0]?.count || 0);
-}
-
 function sourcePacketText(source = {}) {
   const project = source.project || {};
   const candidate = source.candidate || {};
@@ -839,11 +744,15 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       intentSemanticKey,
     };
   }
-  const activeCount = await activeAllocationCount({
+  // Canonical capacity predicate (shared with getNetworkTaskEligibility and
+  // boardActionPressure.candidateCapacity): status-based liveness without a
+  // created_at window, cross-class blocking, projection-terminal exclusion,
+  // and delinked-wallet exclusion.
+  const capacityBlockers = await listNetworkTaskCapacityBlockers({
     accountId: candidate.accountId,
     walletAddress: candidate.walletAddress,
-    taskClass: normalizedTaskClass,
   });
+  const activeCount = capacityBlockers.length;
   if (activeCount > 0 && !networkTask.allow_over_capacity) {
     await recordUserObservabilityEvent({
       eventType: "user.network_task.candidate_blocked",
@@ -859,7 +768,15 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
         schema: "pf.task_node.network_task_candidate_decision.v1",
         eligible: false,
         block_reason: "network_task_candidate_at_capacity",
-        active_allocation_count_24h: activeCount,
+        active_capacity_blocker_count: activeCount,
+        capacity_blockers: capacityBlockers.slice(0, 5).map((blocker) => ({
+          kind: blocker.kind,
+          allocation_id: blocker.allocationId,
+          task_id: blocker.taskId,
+          state: blocker.state,
+          task_class: blocker.taskClass,
+          wallet_address: blocker.walletAddress,
+        })),
         task_class: normalizedTaskClass,
       },
       metadata: {
@@ -1025,7 +942,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
         band.max,
         jsonValue({
           cadence_reason: sourceJson.networkTask.cadenceReason,
-          active_allocation_count_24h: activeCount,
+          active_capacity_blocker_count: activeCount,
           accept_window_hours: sourceJson.networkTask.acceptWindowHours,
         }),
         jsonValue({
@@ -1117,7 +1034,7 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
       task_class: normalizedTaskClass,
       reward_min_pft: band.min,
       reward_max_pft: band.max,
-      active_allocation_count_24h: activeCount,
+      active_capacity_blocker_count: activeCount,
     },
     metadata: {
       intentId,
