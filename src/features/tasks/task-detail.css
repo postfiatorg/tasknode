@@ -604,6 +604,19 @@
   min-height: 38px;
 }
 
+/* Stop actions (refuse/cancel) stay available but read as secondary so the
+   expected next action (accept or submit evidence) carries the visual weight. */
+.task-lifecycle-buttons .light-pill {
+  border-color: transparent;
+  background: transparent;
+  color: #6e6b62;
+}
+
+.task-lifecycle-buttons .light-pill:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+  color: #0d0d0d;
+}
+
 .task-action-message {
   margin: 0 !important;
   color: #4a5934 !important;
