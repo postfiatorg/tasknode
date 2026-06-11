@@ -22,25 +22,41 @@ function hasFlag(name) {
 const runId = argValue("--run-id", "");
 const issuanceId = argValue("--issuance-id", "");
 const allowDemote = hasFlag("--allow-demote");
+const forceDemoteStaleSync = hasFlag("--force-demote-stale-sync");
 
 if (!runId && !issuanceId) {
-  console.error("Usage: node scripts/profile-daily-airdrop-reconcile.mjs --run-id=<run_id> [--allow-demote] [--json]");
+  console.error(
+    "Usage: node scripts/profile-daily-airdrop-reconcile.mjs --run-id=<run_id> [--allow-demote] [--force-demote-stale-sync] [--json]"
+  );
   process.exit(1);
 }
 
 try {
   if (!databaseEnabled()) throw new Error("database_not_configured");
-  const result = await reconcileDailyAirdropIssuance({ runId, issuanceId, allowDemote });
+  const result = await reconcileDailyAirdropIssuance({ runId, issuanceId, allowDemote, forceDemoteStaleSync });
   if (hasFlag("--json")) {
     console.log(JSON.stringify(result, null, 2));
   } else {
     console.log(`ok=${result.ok}`);
     console.log(`found=${Boolean(result.found || result.alreadySubmitted)}`);
     console.log(`demoted=${Boolean(result.demoted)}`);
+    console.log(`demote_blocked=${Boolean(result.demoteBlocked)}`);
+    if (result.demoteBlockedReason) console.log(`demote_blocked_reason=${result.demoteBlockedReason}`);
     console.log(`status=${result.issuance?.status || result.status || ""}`);
     if (result.txHash) console.log(`tx_hash=${result.txHash}`);
     if (result.issuance?.id) console.log(`issuance_id=${result.issuance.id}`);
     if (result.issuance?.runId) console.log(`run_id=${result.issuance.runId}`);
+    if (result.syncWatermarks) {
+      console.log(`submission_attempted_at=${result.syncWatermarks.submissionAttemptedAt || ""}`);
+      console.log(
+        `source_wallet_last_hot_sync_at=${result.syncWatermarks.sourceWallet?.lastHotSyncAt || ""}` +
+          ` stale_for_demote=${Boolean(result.syncWatermarks.sourceWallet?.staleForDemote)}`
+      );
+      console.log(
+        `recipient_wallet_last_hot_sync_at=${result.syncWatermarks.recipientWallet?.lastHotSyncAt || ""}` +
+          ` stale_for_demote=${Boolean(result.syncWatermarks.recipientWallet?.staleForDemote)}`
+      );
+    }
   }
 } catch (error) {
   console.error(error?.stack || error?.message || String(error));

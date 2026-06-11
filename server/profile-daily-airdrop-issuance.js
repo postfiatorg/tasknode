@@ -177,7 +177,11 @@ function airdropPayload({ run, issuance, sourceWallet, recipientWallet, amountPf
   };
 }
 
-export async function claimDailyAirdropIssuanceForPublish({ accountId, runId = "" } = {}) {
+export async function claimDailyAirdropIssuanceForPublish({
+  accountId,
+  runId = "",
+  allowDryRunPromotion = false,
+} = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("daily_airdrop_account_required");
   const rewardWallet = walletFromSeed(rewardSeed(), "daily_airdrop_reward_seed_missing");
@@ -197,6 +201,11 @@ export async function claimDailyAirdropIssuanceForPublish({ accountId, runId = "
     );
     const run = runResult.rows[0] || null;
     if (!run) throw new Error("daily_airdrop_completed_run_missing");
+    if (run.run_mode !== "production" && !allowDryRunPromotion) {
+      // Claiming force-promotes the run to production and pays it. Never silently
+      // promote a dry_run (or other non-production) scoring run into a payout.
+      throw new Error("daily_airdrop_dry_run_promotion_blocked");
+    }
     const amountPft = Number(run.daily_airdrop_pft || 0);
     if (!Number.isFinite(amountPft) || amountPft <= 0) throw new Error("daily_airdrop_amount_not_positive");
     const recipientWallet = safeText(run.input_snapshot?.airdrop_recipient?.wallet_address, 120);
@@ -513,9 +522,17 @@ export async function listOrphanedDailyAirdropRuns({ runDate = "", limit = 25 } 
   }));
 }
 
+function dailyAirdropDebtRowStatus(row = {}) {
+  // Scoring rows carry profile_daily_airdrop_runs statuses ('running'/'failed').
+  // Issuance status normalization must not rewrite them (a failed scoring run is
+  // not 'failed_before_submit'; its repair action is retry_scoring, not retry_issuance).
+  if (safeText(row.kind, 80) === "scoring") return safeText(row.status, 80);
+  return normalizeDailyAirdropIssuanceStatus(row);
+}
+
 function nextDebtAction(row = {}) {
   const kind = safeText(row.kind, 80);
-  const status = normalizeDailyAirdropIssuanceStatus(row);
+  const status = dailyAirdropDebtRowStatus(row);
   if (kind === "scoring" && status === "running") return "wait_or_reclaim_stale_scoring";
   if (kind === "scoring" && status === "failed") return "retry_scoring";
   if (kind === "issuance_missing") {
@@ -670,7 +687,7 @@ export async function listDailyAirdropDebt({ sinceDate = "", limit = 200 } = {})
     }
   }
   return result.rows.map((row) => {
-    const status = normalizeDailyAirdropIssuanceStatus(row);
+    const status = dailyAirdropDebtRowStatus(row);
     return {
       kind: row.kind,
       accountId: row.account_id,
@@ -699,10 +716,82 @@ export async function listDailyAirdropDebt({ sinceDate = "", limit = 200 } = {})
   });
 }
 
+async function dailyAirdropReconcileSyncWatermarks({
+  row,
+  sourceWallet,
+  recipientWallet,
+  fetchImpl = fetch,
+} = {}) {
+  // Refresh the local PFTL transaction cache for both money-path wallets before
+  // trusting a negative cache search. A stale cache must never justify demoting
+  // submit_unknown back to a retryable state (that retry signs a second payment).
+  await Promise.all([
+    syncPftlWalletTransactions({
+      walletAddress: sourceWallet,
+      accountId: row.run_account_id || row.account_id,
+      role: "daily_airdrop_reward",
+      limit: 80,
+      maxPages: 1,
+      syncKind: "daily_airdrop_reconcile",
+      fetchImpl,
+    }),
+    syncPftlWalletTransactions({
+      walletAddress: recipientWallet,
+      accountId: row.run_account_id || row.account_id,
+      role: "user",
+      limit: 80,
+      maxPages: 1,
+      syncKind: "daily_airdrop_reconcile",
+      fetchImpl,
+    }),
+  ]).catch(() => null);
+  await runPftlCacheReducerOnce({ batchLimit: 20 }).catch(() => null);
+  const watermarkResult = await query(
+    `SELECT wallet_address, last_hot_sync_at
+       FROM pftl_sync_wallets
+      WHERE wallet_address = ANY($1::text[])`,
+    [[sourceWallet, recipientWallet].filter(Boolean)]
+  );
+  const byWallet = new Map(
+    watermarkResult.rows.map((entry) => [entry.wallet_address, entry.last_hot_sync_at || null])
+  );
+  const submissionAttemptedAt = row.submission_attempted_at
+    ? new Date(row.submission_attempted_at)
+    : null;
+  const toIso = (value) => {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  };
+  const walletWatermark = (walletAddress) => {
+    const lastHotSyncAt = byWallet.get(walletAddress) || null;
+    const syncedAt = lastHotSyncAt ? new Date(lastHotSyncAt) : null;
+    const staleForDemote = Boolean(
+      submissionAttemptedAt &&
+      (!syncedAt || Number.isNaN(syncedAt.getTime()) || syncedAt.getTime() < submissionAttemptedAt.getTime())
+    );
+    return {
+      walletAddress,
+      lastHotSyncAt: toIso(lastHotSyncAt),
+      staleForDemote,
+    };
+  };
+  const source = walletWatermark(sourceWallet);
+  const recipient = walletWatermark(recipientWallet);
+  return {
+    submissionAttemptedAt: toIso(submissionAttemptedAt),
+    sourceWallet: source,
+    recipientWallet: recipient,
+    staleForDemote: source.staleForDemote || recipient.staleForDemote,
+  };
+}
+
 export async function reconcileDailyAirdropIssuance({
   runId = "",
   issuanceId = "",
   allowDemote = false,
+  forceDemoteStaleSync = false,
+  fetchImpl = fetch,
 } = {}) {
   const runFilter = safeText(runId, 120);
   const issueFilter = safeText(issuanceId, 120);
@@ -726,6 +815,12 @@ export async function reconcileDailyAirdropIssuance({
   const amountDrops = safeText(row.amount_drops, 80);
   const sourceWallet = safeText(row.source_wallet, 120);
   const recipientWallet = safeText(row.recipient_wallet, 120);
+  const syncWatermarks = await dailyAirdropReconcileSyncWatermarks({
+    row,
+    sourceWallet,
+    recipientWallet,
+    fetchImpl,
+  });
   const match = await query(
     `SELECT t.tx_hash,
             t.ledger_index,
@@ -784,10 +879,11 @@ export async function reconcileDailyAirdropIssuance({
           txHash: found.tx_hash,
           ledgerIndex: found.ledger_index || null,
           cid: found.cid || "",
+          syncWatermarks,
         }),
       ]
     );
-    return { ok: true, found: true, issuance: updated, txHash: found.tx_hash };
+    return { ok: true, found: true, issuance: updated, txHash: found.tx_hash, syncWatermarks };
   }
   const reconciliation = {
     status: "not_found",
@@ -797,8 +893,36 @@ export async function reconcileDailyAirdropIssuance({
     amountDrops,
     runId: row.run_id,
     issuanceId: row.id,
+    syncWatermarks,
   };
+  if (allowDemote && status === "submit_unknown" && syncWatermarks.staleForDemote && !forceDemoteStaleSync) {
+    // The cached negative is not trustworthy: at least one wallet's hot-sync
+    // watermark predates the submission attempt, so the payment may exist on
+    // chain without being visible in the local cache yet. Refuse the demote;
+    // operators can override with forceDemoteStaleSync after manual chain review.
+    reconciliation.status = "demote_blocked_stale_sync";
+    await query(
+      `UPDATE profile_daily_airdrop_issuances
+          SET reconciliation_json = $2::jsonb,
+              reconciled_at = now(),
+              updated_at = now()
+        WHERE id = $1`,
+      [row.id, JSON.stringify(reconciliation)]
+    );
+    return {
+      ok: true,
+      found: false,
+      demoted: false,
+      demoteBlocked: true,
+      demoteBlockedReason: "daily_airdrop_demote_blocked_stale_sync",
+      status,
+      issuance: normalizeIssuance(row),
+      reconciliation,
+      syncWatermarks,
+    };
+  }
   if (allowDemote && status === "submit_unknown") {
+    reconciliation.forcedDemoteWithStaleSync = Boolean(forceDemoteStaleSync && syncWatermarks.staleForDemote);
     const demoted = await query(
       `UPDATE profile_daily_airdrop_issuances
           SET status = 'failed_before_submit',
@@ -813,7 +937,14 @@ export async function reconcileDailyAirdropIssuance({
         RETURNING *`,
       [row.id, JSON.stringify(reconciliation)]
     );
-    return { ok: true, found: false, demoted: true, issuance: normalizeIssuance(demoted.rows[0] || row) };
+    return {
+      ok: true,
+      found: false,
+      demoted: true,
+      issuance: normalizeIssuance(demoted.rows[0] || row),
+      reconciliation,
+      syncWatermarks,
+    };
   }
   await query(
     `UPDATE profile_daily_airdrop_issuances
@@ -823,11 +954,11 @@ export async function reconcileDailyAirdropIssuance({
       WHERE id = $1`,
     [row.id, JSON.stringify(reconciliation)]
   );
-  return { ok: true, found: false, status, issuance: normalizeIssuance(row), reconciliation };
+  return { ok: true, found: false, status, issuance: normalizeIssuance(row), reconciliation, syncWatermarks };
 }
 
-export async function issueLatestDailyAirdrop({ accountId, runId = "" } = {}) {
-  const claim = await claimDailyAirdropIssuanceForPublish({ accountId, runId });
+export async function issueLatestDailyAirdrop({ accountId, runId = "", allowDryRunPromotion = false } = {}) {
+  const claim = await claimDailyAirdropIssuanceForPublish({ accountId, runId, allowDryRunPromotion });
   if (claim.alreadySubmitted) {
     return {
       ok: true,

@@ -848,46 +848,19 @@ async function jobsPgvectorCorpusItem(tables) {
   });
 }
 
-async function dailyAirdropItem(tables, nowMs) {
-  const [latest, runCounts, issuanceCounts, debtSummary] = await Promise.all([
-    optionalQuery(
-      tables,
-      ["profile_daily_airdrop_runs", "board_manager_runs"],
-      `SELECT id, run_date, run_mode, status, completed_at, updated_at, source
-         FROM (
-           SELECT id, run_date, run_mode, status, completed_at, updated_at, 'score' AS source
-             FROM profile_daily_airdrop_runs
-           UNION ALL
-           SELECT id, NULL::date AS run_date, 'worker' AS run_mode, status, completed_at, updated_at, 'worker' AS source
-             FROM board_manager_runs
-            WHERE manager_id = 'daily_airdrop_worker'
-              AND selected_action = 'daily_airdrop'
-         ) latest
-        ORDER BY COALESCE(completed_at, updated_at) DESC, id DESC
-        LIMIT 1`
-    ),
-    optionalQuery(
-      tables,
-      ["profile_daily_airdrop_runs"],
-      `SELECT status, count(*)::int AS count,
-              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
-         FROM profile_daily_airdrop_runs
-        GROUP BY status`,
-      [recentFailureWindowMs]
-    ),
-    optionalQuery(
-      tables,
-      ["profile_daily_airdrop_issuances"],
-      `SELECT status, count(*)::int AS count,
-              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
-         FROM profile_daily_airdrop_issuances
-        GROUP BY status`,
-      [recentFailureWindowMs]
-    ),
-    optionalQuery(
-      tables,
-      ["profile_daily_airdrop_runs", "profile_daily_airdrop_issuances"],
-      `WITH issuance_debt AS (
+export function dailyAirdropDebtStaleThresholds(env = process.env) {
+  // Mirror the daily airdrop worker's own stale thresholds: fresh in-flight rows
+  // (running scoring, processing_pre_submit issuance) are normal payout-tick state,
+  // not debt; only rows older than the worker would itself reclaim count as debt.
+  return {
+    scoringStaleMinutes: intEnv(env.TASKNODE_DAILY_AIRDROP_SCORE_STALE_MINUTES, 45, { min: 1 }),
+    preSubmitStaleMinutes: intEnv(env.TASKNODE_DAILY_AIRDROP_PRE_SUBMIT_STALE_MINUTES, 30, { min: 1 }),
+  };
+}
+
+// Parameters: $1 scoring stale minutes, $2 pre-submit stale minutes.
+// Exported so smokes can assert the same predicate the status row uses.
+export const DAILY_AIRDROP_DEBT_SUMMARY_SQL = `WITH issuance_debt AS (
          SELECT 'issuance' AS kind,
                 i.account_id,
                 i.run_date,
@@ -907,7 +880,14 @@ async function dailyAirdropItem(tables, nowMs) {
                 i.error_message,
                 i.updated_at
            FROM profile_daily_airdrop_issuances i
-          WHERE i.status IN ('pending', 'processing', 'processing_pre_submit', 'failed', 'failed_before_submit', 'submitting', 'submit_unknown')
+          WHERE i.status IN ('pending', 'failed', 'failed_before_submit', 'submitting', 'submit_unknown')
+             OR (
+               i.status IN ('processing', 'processing_pre_submit')
+               AND (
+                 i.submission_attempted_at IS NOT NULL
+                 OR i.updated_at < now() - ($2::integer * interval '1 minute')
+               )
+             )
              OR (
                i.status = 'submitted'
                AND (COALESCE(i.tx_hash, '') = '' OR i.submitted_at IS NULL)
@@ -926,7 +906,13 @@ async function dailyAirdropItem(tables, nowMs) {
                 r.updated_at
            FROM profile_daily_airdrop_runs r
           WHERE r.run_mode = 'production'
-            AND r.status IN ('running', 'failed')
+            AND (
+              r.status = 'failed'
+              OR (
+                r.status = 'running'
+                AND r.updated_at < now() - ($1::integer * interval '1 minute')
+              )
+            )
             AND NOT EXISTS (
               SELECT 1
                 FROM profile_daily_airdrop_runs complete
@@ -995,7 +981,50 @@ async function dailyAirdropItem(tables, nowMs) {
               (array_agg(account_id ORDER BY updated_at ASC, run_id ASC))[1] AS oldest_account_id,
               (array_agg(run_id ORDER BY updated_at ASC, run_id ASC))[1] AS oldest_run_id,
               max(error_message) FILTER (WHERE COALESCE(error_message, '') <> '') AS last_error
-         FROM debt`
+         FROM debt`;
+
+async function dailyAirdropItem(tables, nowMs) {
+  const { scoringStaleMinutes, preSubmitStaleMinutes } = dailyAirdropDebtStaleThresholds();
+  const [latest, runCounts, issuanceCounts, debtSummary] = await Promise.all([
+    optionalQuery(
+      tables,
+      ["profile_daily_airdrop_runs", "board_manager_runs"],
+      `SELECT id, run_date, run_mode, status, completed_at, updated_at, source
+         FROM (
+           SELECT id, run_date, run_mode, status, completed_at, updated_at, 'score' AS source
+             FROM profile_daily_airdrop_runs
+           UNION ALL
+           SELECT id, NULL::date AS run_date, 'worker' AS run_mode, status, completed_at, updated_at, 'worker' AS source
+             FROM board_manager_runs
+            WHERE manager_id = 'daily_airdrop_worker'
+              AND selected_action = 'daily_airdrop'
+         ) latest
+        ORDER BY COALESCE(completed_at, updated_at) DESC, id DESC
+        LIMIT 1`
+    ),
+    optionalQuery(
+      tables,
+      ["profile_daily_airdrop_runs"],
+      `SELECT status, count(*)::int AS count,
+              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
+         FROM profile_daily_airdrop_runs
+        GROUP BY status`,
+      [recentFailureWindowMs]
+    ),
+    optionalQuery(
+      tables,
+      ["profile_daily_airdrop_issuances"],
+      `SELECT status, count(*)::int AS count,
+              count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - ($1 * interval '1 millisecond'))::int AS recent_failed
+         FROM profile_daily_airdrop_issuances
+        GROUP BY status`,
+      [recentFailureWindowMs]
+    ),
+    optionalQuery(
+      tables,
+      ["profile_daily_airdrop_runs", "profile_daily_airdrop_issuances"],
+      DAILY_AIRDROP_DEBT_SUMMARY_SQL,
+      [scoringStaleMinutes, preSubmitStaleMinutes]
     ),
   ]);
   const row = latest.rows[0] || null;
