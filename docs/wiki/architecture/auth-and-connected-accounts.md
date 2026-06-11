@@ -47,8 +47,15 @@ Unlink rules:
 
 - Lockout guard: the request is refused (`provider_unlink_last_login_method`)
   when removing the provider would leave the account with no way to sign back
-  in. Sign-in methods are a verified primary email or another linked OAuth
-  provider; wallets are identity/custody, not login.
+  in. Sign-in methods are a verified email that survives the unlink or another
+  linked OAuth provider; wallets are identity/custody, not login.
+- Provider-supplied emails follow the provider. `account.emailProvider`
+  records which provider verified the primary email. When that provider is
+  unlinked, the email mapping transfers to a remaining linked provider that
+  verified the same address; otherwise it is removed together with the
+  identity mapping, so a fresh login with that email cannot re-enter the old
+  account and the address is free to attach elsewhere. A provider-owned email
+  does not count as an independent sign-in method for the lockout guard.
 - The provider identity mapping is freed immediately, so the same external
   account can be linked to a different Task Node account afterwards.
 - If the unlinked provider was the account's primary provider, the primary is

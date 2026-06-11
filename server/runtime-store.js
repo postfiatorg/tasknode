@@ -461,6 +461,8 @@ function accountPayload(account) {
     profileVisibility: identityProfile?.profileVisibility || "public",
     profileDiscoverable: identityProfile?.profileDiscoverable !== false,
     primaryProvider: account.primaryProvider || "email",
+    primaryEmailCanonical: account.primaryEmailCanonical || "",
+    emailProvider: account.emailProvider || "",
     linkedProviders: account.linkedProviders || [],
     assurance: account.assurance || "low",
     createdAt: account.createdAt,
@@ -639,6 +641,7 @@ function syncAccountSessions(account) {
     session.hiveHandle = identityProfile?.hiveHandle || "";
     session.publicDisplayName = identityProfile?.publicDisplayName || "";
     session.profileVisibility = identityProfile?.profileVisibility || "public";
+    session.primaryProvider = account.primaryProvider || session.primaryProvider;
     session.linkedProviders = account.linkedProviders || [];
   }
 }
@@ -662,27 +665,56 @@ export function unlinkProviderFromAccount({ accountId = "", provider = "" } = {}
   const target = linked.find((item) => item?.id === normalizedProvider);
   if (!target) return { ok: false, error: "provider_not_linked" };
 
-  // Lockout guard: the account must keep at least one way to sign back in.
-  // Sign-in methods are a verified primary email or another linked OAuth
-  // provider; wallets are identity/custody, not login.
-  const remainingOauth = linked.filter(
-    (item) => item?.id !== normalizedProvider && UNLINKABLE_OAUTH_PROVIDERS.has(item?.id)
+  const remainingProviders = linked.filter((item) => item?.id !== normalizedProvider);
+  const remainingOauth = remainingProviders.filter((item) => UNLINKABLE_OAUTH_PROVIDERS.has(item?.id));
+
+  // The account email is only an independent sign-in method when it did not
+  // come from the provider being unlinked. A provider-supplied email either
+  // transfers to a remaining provider that verified the same address, or it
+  // leaves with the provider so a fresh login with that email cannot re-enter
+  // this account.
+  const emailCanonical = account.primaryEmailCanonical || "";
+  const emailOwnedByTarget = Boolean(emailCanonical) && account.emailProvider === normalizedProvider;
+  const emailHeir = emailOwnedByTarget
+    ? remainingProviders.find(
+        (item) => item?.emailVerified && String(item?.email || "").trim().toLowerCase() === emailCanonical
+      )
+    : null;
+  const emailSurvives = Boolean(
+    emailCanonical && account.primaryEmailVerified && (!emailOwnedByTarget || emailHeir)
   );
-  const hasEmailLogin = Boolean(account.primaryEmailCanonical && account.primaryEmailVerified);
-  if (!hasEmailLogin && remainingOauth.length === 0) {
+
+  // Lockout guard: the account must keep at least one way to sign back in.
+  // Sign-in methods are a surviving verified email or another linked OAuth
+  // provider; wallets are identity/custody, not login.
+  if (!emailSurvives && remainingOauth.length === 0) {
     return { ok: false, error: "provider_unlink_last_login_method" };
   }
 
   const now = new Date().toISOString();
-  account.linkedProviders = linked.filter((item) => item?.id !== normalizedProvider);
+  account.linkedProviders = remainingProviders;
   if (target.providerUserId) {
     const key = identityKey(normalizedProvider, target.providerUserId);
     if (state.accountIdentities[key] === normalizedAccountId) {
       delete state.accountIdentities[key];
     }
   }
+  if (emailOwnedByTarget) {
+    if (emailHeir) {
+      account.emailProvider = emailHeir.id;
+    } else {
+      if (state.accountEmails[emailCanonical] === normalizedAccountId) {
+        delete state.accountEmails[emailCanonical];
+      }
+      delete account.primaryEmailOriginal;
+      delete account.primaryEmailCanonical;
+      delete account.primaryEmailVerified;
+      delete account.emailProvider;
+    }
+  }
   if (account.primaryProvider === normalizedProvider) {
-    account.primaryProvider = hasEmailLogin ? "email" : remainingOauth[0]?.id || "email";
+    // The lockout guard guarantees at least one of these exists.
+    account.primaryProvider = remainingOauth[0]?.id || "email";
   }
   account.updatedAt = now;
   account.lastProviderUnlinkAt = now;
@@ -693,7 +725,7 @@ export function unlinkProviderFromAccount({ accountId = "", provider = "" } = {}
     ok: true,
     provider: normalizedProvider,
     unlinkedUsername: target.username || null,
-    remainingLoginMethods: (hasEmailLogin ? 1 : 0) + remainingOauth.length,
+    remainingLoginMethods: (emailSurvives ? 1 : 0) + remainingOauth.length,
     account: accountPayload(account),
   };
 }
