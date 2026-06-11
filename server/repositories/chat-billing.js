@@ -25,6 +25,7 @@ export {
   listChatConversations,
   markHiveConversationRead,
   renameChatConversation,
+  searchChatConversations,
 } from "./chat-conversations.js";
 
 const creditKinds = new Set(["account_credit", "top_up_credit", "reward_credit", "refund_credit"]);

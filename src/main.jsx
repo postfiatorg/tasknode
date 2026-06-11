@@ -148,6 +148,7 @@ import {
   walletUnlockIdleRemainingMs,
 } from "./features/wallet/wallet-unlocked-session.js";
 import { WalletUnlockModal } from "./features/wallet/WalletUnlockModal";
+import { ChatSearchModal } from "./features/chat/ChatSearchModal";
 import { formatCreditUsd, formatUsageUsd } from "./formatters";
 import { isSignedInSession } from "./session";
 import { escapeContextHtml, looksLikeContextHtml, sanitizeContextHtml } from "../shared/context-html";
@@ -501,6 +502,7 @@ function App() {
   const [chatActionMenu, setChatActionMenu] = useState(null);
   const [chatRenameTarget, setChatRenameTarget] = useState(null);
   const [chatDeleteTarget, setChatDeleteTarget] = useState(null);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [walletUnlockOpen, setWalletUnlockOpen] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(fallbackConfig);
   const [appState, setAppState] = useState(null);
@@ -953,6 +955,7 @@ function App() {
       setSelectedTask(null);
       setLoginOpen(false);
       setWalletUnlockOpen(false);
+      setChatSearchOpen(false);
     }
 
     window.addEventListener("popstate", syncViewFromLocation);
@@ -1329,7 +1332,12 @@ function App() {
             onClick={startNewChat}
             sidebarOpen={sidebarOpen}
           />
-          <SidebarButton icon={Search} label="Search chats" sidebarOpen={sidebarOpen} />
+          <SidebarButton
+            icon={Search}
+            label="Search chats"
+            onClick={() => setChatSearchOpen(true)}
+            sidebarOpen={sidebarOpen}
+          />
           <SidebarButton
             active={view === "tasks"}
             badge={appState?.tasks?.outstanding?.length}
@@ -1772,6 +1780,17 @@ function App() {
           walletSecret={walletSecretRef.current}
           walletUnlockPending={walletUnlockOpen}
           walletVault={walletVaultStatus}
+        />
+      )}
+      {chatSearchOpen && (
+        <ChatSearchModal
+          onClose={() => setChatSearchOpen(false)}
+          onOpenChat={(item) => {
+            setChatSearchOpen(false);
+            openRecentChat(item);
+          }}
+          recentChats={recentChats}
+          signedIn={signedIn}
         />
       )}
       {walletUnlockOpen && linkedWallet && (

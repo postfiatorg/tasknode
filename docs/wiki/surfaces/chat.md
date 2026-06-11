@@ -221,6 +221,12 @@ fly:deploy`, not raw `fly deploy`, so the post-deploy worker guard starts and
 verifies the background worker. If a chat task request was signed but no task
 card appears, check `npm run fly:worker-guard` before editing request rows.
 
+## Chat Search
+
+The sidebar `Search chats` button opens a search overlay (`src/features/chat/ChatSearchModal.jsx`). While the user types, the overlay instantly filters the already-loaded recents by title, and a debounced request to `GET /api/chat/search?q=` searches conversation titles and message content server-side. The route requires a signed-in session, is rate limited, and returns an empty result set for queries shorter than two characters.
+
+Server search lives in `searchChatConversations` in `server/repositories/chat-conversations.js`. Every query is scoped to the session account and includes only `status = 'active'` conversations, so deleted conversations and other accounts' chats are never returned. The Hive conversation is searchable once it exists as a real row in `chat_conversations`. Results return one row per conversation ordered by most recent update, with a short excerpt centered on the matched message text, or the last-message preview for title-only matches. ILIKE wildcards in the user query (`%`, `_`, `\`) are escaped and treated literally. When the database is disabled, search degrades to runtime-store conversation titles plus the recent message window. Selecting a result opens the conversation through the same recents path as the sidebar. Coverage: `scripts/chat-search-smoke.mjs`.
+
 ## Billing And Persistence
 
 Before execution, `server/product-contracts.js` checks login, provider readiness, estimated cost, and available chat credit. The estimate includes the current context document, task context, memory context, estimated Jobs retrieval context, message text, and attachments. After execution, `server/repositories/chat-billing.js` persists the user message, assistant message, provider, model, response ID, token usage, web-search calls, model cost, tool cost, and ledger entry. Memory summarization is queued afterward and is not billed to the user.

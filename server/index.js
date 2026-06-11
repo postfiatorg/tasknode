@@ -37,6 +37,7 @@ import {
   getChatMessages,
   listChatConversations,
   renameChatConversation,
+  searchChatConversations,
   usageLedger,
 } from "./repositories/chat-billing.js";
 import { recordChatFailureObservability } from "./repositories/user-observability.js";
@@ -640,6 +641,28 @@ async function routeApi(req, url, res) {
     json(res, 200, {
       conversationId,
       messages: await getChatMessages({ accountId: session.accountId, conversationId }),
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/chat/search") {
+    if (!session?.accountId) {
+      json(res, 401, { ok: false, error: "chat_search_login_required", message: "Sign in before searching chats." });
+      return true;
+    }
+    const searchQuery = String(url.searchParams.get("q") || "").trim();
+    if (searchQuery.length < 2) {
+      json(res, 200, { ok: true, query: searchQuery, results: [] });
+      return true;
+    }
+    json(res, 200, {
+      ok: true,
+      query: searchQuery,
+      results: await searchChatConversations({
+        accountId: session.accountId,
+        query: searchQuery,
+        limit: url.searchParams.get("limit") || 20,
+      }),
     });
     return true;
   }
