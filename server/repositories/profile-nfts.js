@@ -60,7 +60,11 @@ function runtimeList({ accountId = "", walletAddress = "", hasWalletFilter = fal
       if (record.walletAddress === normalizedWalletAddress) return true;
       return includeWalletless && !record.walletAddress;
     })
-    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+    .sort((a, b) => {
+      const left = String(a.mintedAt || a.updatedAt || "");
+      const right = String(b.mintedAt || b.updatedAt || "");
+      return right.localeCompare(left);
+    });
 }
 
 export async function createGeneratedProfileNft({
@@ -322,7 +326,7 @@ export async function listProfileNfts(options = {}) {
   if (!normalizedAccountId) return [];
   const hasWalletFilter = Object.hasOwn(options, "walletAddress");
   const walletAddress = safeText(options.walletAddress, 120);
-  const boundedLimit = Math.min(Math.max(Number(limit || 12), 1), 40);
+  const boundedLimit = Math.min(Math.max(Number(limit || 12), 1), 240);
 
   if (!databaseEnabled()) {
     return runtimeList({
@@ -342,7 +346,7 @@ export async function listProfileNfts(options = {}) {
               wallet_address = $3
               OR ($4::boolean = true AND wallet_address = '')
             )
-          ORDER BY updated_at DESC
+          ORDER BY minted_at DESC NULLS LAST, updated_at DESC, created_at DESC
           LIMIT $2`,
         [normalizedAccountId, boundedLimit, walletAddress, includeWalletless === true]
       )
@@ -350,7 +354,7 @@ export async function listProfileNfts(options = {}) {
         `SELECT *
            FROM profile_nfts
           WHERE account_id = $1
-          ORDER BY updated_at DESC
+          ORDER BY minted_at DESC NULLS LAST, updated_at DESC, created_at DESC
           LIMIT $2`,
         [normalizedAccountId, boundedLimit]
       );

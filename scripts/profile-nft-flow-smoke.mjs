@@ -122,6 +122,23 @@ assert.equal(
   "current wallet gallery must not include old wallet NFTs"
 );
 
+const collectionAccountId = "account_profile_nft_collection_smoke";
+const collectionWalletAddress = "r4RPpeS2kUE8BjY9LvKbptW8PQVHhVWghS";
+for (let index = 0; index < 67; index += 1) {
+  await createGeneratedProfileNft({
+    accountId: collectionAccountId,
+    walletAddress: collectionWalletAddress,
+    title: `Collection NFT ${index + 1}`,
+    imageCid: `QmCollectionProfileNftImageCid${String(index + 1).padStart(3, "0")}`,
+  });
+}
+const collectionListed = await listProfileNfts({
+  accountId: collectionAccountId,
+  walletAddress: collectionWalletAddress,
+  limit: 120,
+});
+assert.equal(collectionListed.length, 67, "current wallet gallery must support imported NFT collections over 40 rows");
+
 const metadataUri = "ipfs://QmSmokeProfileNftMetadataCid1111111111111111";
 const uriHex = pftUriToHex(metadataUri);
 assert.equal(Buffer.from(uriHex, "hex").toString("utf8"), metadataUri);
@@ -167,5 +184,7 @@ assert.equal(minted.txHash, "ABCDEF123456");
 
 const fetched = await getProfileNft({ accountId, nftId: generated.id });
 assert.equal(fetched.nftTokenId, "000B013A95F14B0044F78A264E41713C64B5F89242540EE2");
+const orderedAfterMint = await listProfileNfts({ accountId, walletAddress });
+assert.equal(orderedAfterMint[0].id, generated.id, "latest minted NFT must stay first after cache imports update older rows");
 
 console.log("profile-nft-flow-smoke ok");

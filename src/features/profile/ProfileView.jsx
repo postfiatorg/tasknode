@@ -709,6 +709,7 @@ function ProfileStudio({
   linkedWalletAddress = "",
   onNftsChange,
   onProfileAvatarChange,
+  onViewGallery,
   onWalletUnlock,
   walletSecret = null,
   walletVault = {},
@@ -774,7 +775,7 @@ function ProfileStudio({
   };
 
   const loadNfts = async ({ hydrateLatest = false } = {}) => {
-    const result = await requestJson("/api/profile/nfts");
+    const result = await requestJson("/api/profile/nfts?limit=120");
     if (!result.ok) return;
     const nextNfts = Array.isArray(result.body?.nfts) ? result.body.nfts : [];
     if (typeof onNftsChange === "function") onNftsChange(nextNfts);
@@ -790,7 +791,7 @@ function ProfileStudio({
 
   useEffect(() => {
     let cancelled = false;
-    requestJson("/api/profile/nfts").then((result) => {
+    requestJson("/api/profile/nfts?limit=120").then((result) => {
       if (cancelled || !result.ok) return;
       const nextNfts = Array.isArray(result.body?.nfts) ? result.body.nfts : [];
       if (typeof onNftsChange === "function") onNftsChange(nextNfts);
@@ -1033,7 +1034,14 @@ function ProfileStudio({
               {generatedNft?.txHash && (
                 <span className="tn-mono" style={{ color: C.ink4, fontSize: 11.5 }}>{shortHash(generatedNft.txHash, 10, 6)}</span>
               )}
-              <a className="tn-link" onClick={(e) => e.preventDefault()} href="#">View in gallery →</a>
+              <button
+                className="tn-link"
+                onClick={() => onViewGallery?.()}
+                style={{ background: "none", border: 0, cursor: "pointer", padding: 0 }}
+                type="button"
+              >
+                View in gallery →
+              </button>
               <button
                 className="tn-btn"
                 onClick={() => {
@@ -1115,7 +1123,7 @@ function NFTGallery({ minted = [], allowMockFallback = true, emptyCopy = "No pro
   }, [page, pageCount]);
 
   return (
-    <section style={{ paddingTop: 64 }}>
+    <section id="profile-nft-gallery" style={{ paddingTop: 64 }}>
       <SectionHead
         eyebrow="NFT gallery"
         sub={`${records.length} profile NFTs · ${mintedCount} minted${records.length > NFT_GALLERY_PAGE_SIZE ? ` · showing ${showingStart}-${showingEnd}` : ""}`}
@@ -1782,6 +1790,9 @@ function PrivateProfile({
     setProfileNfts(nextNfts);
     if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(nextNfts[0] || null);
   }, [onProfileAvatarChange]);
+  const scrollToNftGallery = useCallback(() => {
+    document.getElementById("profile-nft-gallery")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1852,6 +1863,7 @@ function PrivateProfile({
         linkedWalletAddress={linkedWalletAddress}
         onNftsChange={handleNftsChange}
         onProfileAvatarChange={onProfileAvatarChange}
+        onViewGallery={scrollToNftGallery}
         onWalletUnlock={onWalletUnlock}
         walletSecret={walletSecret}
         walletVault={walletVault}

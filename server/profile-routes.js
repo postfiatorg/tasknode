@@ -585,10 +585,11 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       console.warn(`profile nft stale generation sweep failed: ${error?.message || error}`);
     });
     const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const requestedLimit = Number(url.searchParams.get("limit") || 120);
     const nfts = await listProfileNfts({
       accountId: session.accountId,
       walletAddress: linkedWallet.address || "",
-      limit: 24,
+      limit: Number.isFinite(requestedLimit) ? requestedLimit : 120,
     });
     json(res, 200, {
       ok: true,
