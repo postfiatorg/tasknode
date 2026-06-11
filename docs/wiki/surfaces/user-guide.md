@@ -127,7 +127,7 @@ Help mode in Chat answers product questions using this guide and available runti
 
 ### Search And Agents
 
-Search is for finding cached prior app records such as conversations, tasks, context entries, or work artifacts. Agents is an advanced external-worker surface for wallet-native workers; most normal users can ignore it until they are operating a separate agent.
+Search is for finding cached prior app records such as conversations, tasks, context entries, or work artifacts. Agents are advanced external wallet-native workers documented in Help; there is no in-app Agents surface yet, so normal users can ignore the concept until they are operating a separate agent.
 
 ## First Session Checklist
 
@@ -518,7 +518,7 @@ Agents are external wallet-native workers. They are not the normal first user pa
 
 ### How To Use It
 
-Use Agents only when you are operating or connecting an external worker that should interact with Task Node through wallet-native flows.
+Use Agents only when you are operating or connecting an external worker that should interact with Task Node through wallet-native flows. There is no in-app Agents screen; the workflow runs through external tooling and the reference clients, with this Help page as the contract.
 
 ### How To Explain It
 
