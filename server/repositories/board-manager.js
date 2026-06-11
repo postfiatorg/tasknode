@@ -21,6 +21,7 @@ import {
 } from "./board-manager-run-summary.js";
 import { activeBoardManagerJobs } from "./board-manager-agent-jobs.js";
 import { buildBoardManagerActionPressure } from "./board-manager-health.js";
+import { listNetworkTaskCandidateCapacityChecks } from "./network-task-capacity.js";
 import {
   expireOpenBoardManagerFollowups,
   listOpenBoardManagerFollowups,
@@ -736,10 +737,16 @@ export async function buildBoardManagerSourcePacket({
     latestProjectGenerationAgeMs: ageMs(projectPlanning?.generation?.completedAt),
   };
   const compactRecentRuns = recentRuns.map(compactBoardManagerRunForSourcePacket);
+  // Canonical capacity verdicts: the same shared predicate used by the
+  // executor hook and getNetworkTaskEligibility, so the Board Manager's view
+  // of candidate availability cannot drift from enforcement.
+  const candidateCapacityChecks = await listNetworkTaskCandidateCapacityChecks(networkTaskCandidates)
+    .catch(() => null);
   const boardActionPressure = buildBoardManagerActionPressure({
     hiveProjects,
     networkTaskContent,
     networkTaskCandidates,
+    candidateCapacityChecks,
     taskState,
     recentBoardManagerRuns: compactRecentRuns,
     openFollowups,
