@@ -1,6 +1,6 @@
 # Auth And Connected Accounts
 
-Task Node has one account cloud per user. Email, GitHub, Telegram, X, wallets, and future providers should attach to that account cloud instead of creating isolated identities. Discord OAuth code exists as an implemented integration, but Discord is out of the initial production launch scope until the product scope explicitly promotes it.
+Task Node has one account cloud per user. Email, GitHub, Telegram, X, wallets, and future providers should attach to that account cloud instead of creating isolated identities. Discord OAuth is implemented and currently enabled in production (`/api/auth/providers` reports it configured and ready), but it is a non-core surface: it is not a launch-blocking dependency and carries no production support promise until the product scope explicitly promotes it.
 
 The current UI surfaces are:
 
@@ -36,7 +36,7 @@ Telegram login and linking are implemented through Telegram Login Widget:
 
 Telegram can only render the Login Widget on the domain configured in BotFather with `/setdomain`. Localhost is not a reliable test domain for the real Telegram widget. If the app runs on `localhost` while BotFather is configured for a public domain, Telegram returns `Bot domain invalid`. Task Node now blocks that path before loading the widget and returns `telegram_widget_domain_mismatch` with the expected domain.
 
-Discord login and linking are implemented through OAuth, but Discord is out of the initial production launch scope:
+Discord login and linking are implemented through OAuth and currently enabled in production, while remaining outside the core launch surface:
 
 1. `GET /api/auth/start/discord` creates an OAuth state row and state cookie.
 2. The route redirects to Discord OAuth with `identify email`.
@@ -81,7 +81,7 @@ The handle boundary is `server/account-identity.js`:
 
 Provider aliases are attached by the auth linking flow but remain private unless the user discloses them through `POST /api/profile/identity/alias`. `applyAccountAliasVisibility` stores per-provider disclosure settings. `accountIdentityProfile` returns all linked aliases to the signed-in user and returns `publicAliases` only for aliases with explicit public visibility and a public handle or verified-badge disclosure.
 
-This means X, GitHub, Telegram, email, wallet identity, and any explicitly enabled future provider can be used for login, recovery, anti-sybil signals, and operator trust without forcing public correlation. Discord should not be presented as a production launch promise while it remains out of scope. A user who wants public continuity can still choose a matching Hive handle and disclose the verified provider alias.
+This means X, GitHub, Telegram, email, wallet identity, and any explicitly enabled future provider can be used for login, recovery, anti-sybil signals, and operator trust without forcing public correlation. Discord should not be presented as a production launch promise: it is currently enabled but remains a non-core surface without a support commitment. A user who wants public continuity can still choose a matching Hive handle and disclose the verified provider alias.
 
 The current identity product contract is split between this architecture page and `Surfaces -> Profile`.
 
@@ -119,11 +119,22 @@ X_OAUTH_SCOPES optional; defaults to users.read tweet.read
 X_OAUTH_CLIENT_TYPE optional; defaults to confidential, set to public only if the X App type is Native App or Single Page App
 ```
 
-For Fly dev, configure the X App callback as:
+The X App callback currently registered (and set in the app env as
+`X_REDIRECT_URI`) is the legacy host:
 
 ```text
-https://tasknode.postfiat.org/api/auth/callback/x
+https://tasknodeofficial-dev.fly.dev/api/auth/callback/x
 ```
+
+This works in production through the legacy-host redirect bridge: the old
+hostname 301-redirects GET requests (including OAuth callbacks, with `code`
+and `state` preserved) to `tasknode.postfiat.org`, and the production startup
+origin guard explicitly allows redirect URIs whose host is in
+`TASKNODE_LEGACY_REDIRECT_HOSTS`. Live `/api/auth/start/x` therefore reports
+the legacy redirect URI by design. To migrate X off the bridge, change the X
+developer-portal callback and `X_REDIRECT_URI` to
+`https://tasknode.postfiat.org/api/auth/callback/x` together in one step;
+changing either side alone breaks X login.
 
 Email requires one of:
 

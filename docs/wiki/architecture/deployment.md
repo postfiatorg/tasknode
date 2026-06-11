@@ -33,8 +33,11 @@ board-manager npm run start:board-manager
 
 Only the `app` process receives HTTP traffic. It serves the built frontend, exposes `/api/*`, and runs the startup migration check. The `worker` and `board-manager` processes are separate Fly machine groups; verify their live state with `fly status -a tasknodeofficial-dev` before assuming background loops are running.
 
-Run Fly releases through `npm run fly:deploy`, not raw `fly deploy`. That
-command deploys the image and then runs `npm run fly:background-guard`, which
+Run Fly releases through `npm run fly:deploy:prod`, not raw `fly deploy`.
+(`fly:deploy:prod` wraps `fly:deploy` with the production confirmation the
+deploy preflight requires now that `fly.toml` carries the production
+hostname.) The wrapped command deploys the image and then runs
+`npm run fly:background-guard`, which
 enforces one running `worker` machine and one running `board-manager` machine
 with `restart=always`. The worker guard also checks that task generation,
 Network Task generation, and task review are enabled. This is necessary because
@@ -60,7 +63,7 @@ explicitly paused that subsystem.
 Operator commands:
 
 ```bash
-npm run fly:deploy
+npm run fly:deploy:prod
 npm run fly:background-guard
 fly status -a tasknodeofficial-dev
 fly logs -a tasknodeofficial-dev
@@ -458,14 +461,21 @@ The cutover executed on 2026-06-10 (see the [execution checklist](#docs/task-nod
 
 ## Deployment Command
 
-Deploy from `main` after checks pass:
+Deploy from the active production branch (currently
+`review-target/tasknode-cutover-readiness-2026-06-09`, the integration branch
+the deployed app is built from), not from a stale `main`. After checks pass:
 
 ```bash
 npm run build
 npm run smoke
 npm run route-smoke
-npm run fly:deploy
+npm run fly:deploy:prod
 ```
+
+`fly.toml` carries the production hostname, so plain `npm run fly:deploy` is
+refused by the deploy preflight unless `TASKNODE_CONFIRM_PRODUCTION_DEPLOY=yes`
+is set; `fly:deploy:prod` is the supported production command and sets the
+confirmation for you.
 
 After deploy:
 

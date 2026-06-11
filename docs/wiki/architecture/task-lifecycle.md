@@ -79,7 +79,7 @@ Task lifecycle state is shared between server and client through `shared/task-li
 Review-loop states are not final. `submitted`, `verification_requested`, and `verification_response_submitted` can all be followed by worker-published events. The app must keep refreshing projections while a visible task is in one of those states. This prevents a split-brain UX where the detail route has already observed a reward but the list route still shows the older Verification card.
 
 On Fly, the worker-published transitions in this loop require the `worker`
-process group to be running. `npm run fly:deploy` runs the post-deploy worker
+process group to be running. `npm run fly:deploy:prod` runs the post-deploy worker
 guard; manual operator checks can run `npm run fly:worker-guard`. If a task is
 stuck in `submitted`, the first production check is worker liveness and
 `server/task-review-worker.js` logs, not direct mutation of `task_projections`.

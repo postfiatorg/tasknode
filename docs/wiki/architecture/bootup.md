@@ -141,10 +141,11 @@ The public dev app is:
 https://tasknode.postfiat.org
 ```
 
-Use the npm deploy wrapper:
+Use the npm deploy wrapper (production requires the explicit confirmation
+variant):
 
 ```bash
-npm run fly:deploy
+npm run fly:deploy:prod
 ```
 
 Do not use raw `fly deploy` as the normal release path. The npm wrapper deploys
