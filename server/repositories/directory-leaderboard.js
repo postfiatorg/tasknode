@@ -187,7 +187,7 @@ async function queryLeaderboardRows(accountIds = []) {
         WHERE account_id = ANY($1::text[])
           AND status = 'completed'
         ORDER BY account_id, completed_at DESC NULLS LAST, updated_at DESC, created_at DESC
-      ),
+      )
       SELECT candidates.account_id,
              COALESCE(task_stats.network_tasks, 0)::integer AS network_tasks,
              COALESCE(task_stats.personal_tasks, 0)::integer AS personal_tasks,
