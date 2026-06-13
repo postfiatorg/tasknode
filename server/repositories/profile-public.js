@@ -106,6 +106,12 @@ function latestNftImage(nfts = []) {
   return nfts.find((nft) => ["minted", "generated", "prepared"].includes(String(nft.status || "").toLowerCase())) || null;
 }
 
+function publicVisibleNfts(nfts = []) {
+  return (Array.isArray(nfts) ? nfts : []).filter((nft) =>
+    ["minted", "generated", "prepared"].includes(String(nft.status || "").toLowerCase())
+  );
+}
+
 async function queryWalletStats({ accountId }) {
   if (!databaseEnabled()) return [];
   const result = await query(
@@ -333,7 +339,8 @@ export async function buildPublicProfileSnapshotInput({ accountId } = {}) {
       lastTaskAt: stat.lastTaskAt,
     });
   }
-  for (const nft of nfts) {
+  const visibleNfts = publicVisibleNfts(nfts);
+  for (const nft of visibleNfts) {
     if (!nft.walletAddress || walletsByAddress.has(nft.walletAddress)) continue;
     walletsByAddress.set(nft.walletAddress, {
       walletAddress: nft.walletAddress,
@@ -356,7 +363,7 @@ export async function buildPublicProfileSnapshotInput({ accountId } = {}) {
     trailingRewardedTasks: rewardTotals.trailing30dRewardedTasks,
     trailingTaskRewardPft: rewardTotals.trailing30dTaskRewardPft,
   });
-  const primary = primaryWallet({ walletCloud, walletStats, nfts });
+  const primary = primaryWallet({ walletCloud, walletStats, nfts: visibleNfts });
   return {
     schema: "pf.profile.public_snapshot_input.v1",
     account_id: normalizedAccount,
@@ -379,7 +386,7 @@ export async function buildPublicProfileSnapshotInput({ accountId } = {}) {
     },
     contribution_tier: tier,
     recent_rewarded_tasks: recentRewardedTasks,
-    nfts: nfts.map((nft) => ({
+    nfts: visibleNfts.map((nft) => ({
       id: nft.id,
       title: nft.title,
       status: nft.status,
@@ -404,7 +411,7 @@ export function publicProfileFromParts({
   const metrics = packet.reward_totals || {};
   const alignment = packet.alignment || {};
   const tier = packet.contribution_tier || contributionTier();
-  const nftRows = nfts.length ? nfts : [];
+  const nftRows = publicVisibleNfts(nfts.length ? nfts : []);
   const heroNft = latestNftImage(nftRows);
   const identityAccountId = safeText(accountId || packet.account_id, 180);
   const identityProfile = getAccountIdentityProfile({ accountId: identityAccountId }) || {};

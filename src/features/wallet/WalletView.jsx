@@ -1436,7 +1436,10 @@ function WalletLinkModal({
           unlockedAt,
         });
       } catch {
-        await onAppStateChange?.();
+        await onAppStateChange?.({
+          errorMessage: "Failed to load linked wallet state.",
+          taskProjectionRefresh: true,
+        });
         setMessage("Wallet linked, but the encrypted vault could not be saved on this device.");
         setLinking(false);
         return;
@@ -1460,7 +1463,10 @@ function WalletLinkModal({
       setVaultPassword("");
       setVaultPasswordConfirm("");
       setMessage(finalMessage);
-      await onAppStateChange?.();
+      await onAppStateChange?.({
+        errorMessage: "Failed to load linked wallet state.",
+        taskProjectionRefresh: true,
+      });
       if (isCreate) {
         onCreateResult?.({
           ok: verify.body?.ok === true,
@@ -1687,7 +1693,7 @@ function WalletDelinkModal({
           </span>
         </div>
         <div className="wallet-link-warning">
-          Delinking clears the active server wallet link for this account and removes the encrypted local vault from this browser. Relinking requires a fresh signed wallet proof.
+          Delinking clears the active server wallet link for this account and removes the encrypted local vault from this browser. Without your 24-word backup phrase, this app cannot restore the wallet afterwards. Relinking requires a fresh signed wallet proof.
         </div>
         {message && <div className="inline-message">{message}</div>}
         <footer>

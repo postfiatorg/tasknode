@@ -66,7 +66,8 @@ const taskStatusDefinitions = Object.freeze({
     canCancel: true,
     canStop: true,
     canSubmitVerificationEvidence: true,
-    requiresRefresh: true,
+    // The next lifecycle event is the user's own verification response, so this
+    // state stays on the slow poll tier instead of forcing fast refresh.
     reviewLoop: true,
     stopAction: "cancel",
     stopLabel: "Cancel task",
@@ -221,6 +222,7 @@ export function canApplyTaskStopAction(status = "", action = "") {
 export function taskRefreshMetadata({
   tasks = [],
   activeRequestCount = 0,
+  handoffProjectionPending = false,
   projectionRefreshRequired = false,
   projectionRefreshReason = "",
 } = {}) {
@@ -244,13 +246,22 @@ export function taskRefreshMetadata({
   const requestCount = Number(activeRequestCount || 0);
   const refreshTaskIds = [...new Set([...refreshTasks, ...activeTasks])];
   const projectionRefresh = Boolean(projectionRefreshRequired);
-  const requiresRefresh = projectionRefresh || requestCount > 0 || refreshTaskIds.length > 0;
+  const pendingHandoff = Boolean(handoffProjectionPending);
+  const requiresRefresh = projectionRefresh || requestCount > 0 || refreshTaskIds.length > 0 || pendingHandoff;
+  // Fast tier: projection lag, processing requests, request handoff, or
+  // review-loop states genuinely awaiting the worker. Active-but-idle states
+  // (accepted, verification_requested) stay on the slow 10s tier and must not
+  // force projection refresh on every poll.
+  const fastTier = projectionRefresh || requestCount > 0 || pendingHandoff || refreshTasks.length > 0;
 
   return {
     requiresRefresh,
-    nextPollMs: requiresRefresh ? (projectionRefresh || requestCount > 0 || refreshTasks.length > 0 ? 2500 : 10000) : null,
+    forceProjectionRefresh: requiresRefresh && fastTier,
+    nextPollMs: requiresRefresh ? (fastTier ? 2500 : 10000) : null,
     refreshReason: projectionRefresh
       ? String(projectionRefreshReason || "task_projection_refresh").trim()
+      : pendingHandoff
+      ? "task_request_handoff_projection_pending"
       : requestCount > 0
       ? "task_requests_active"
       : refreshTasks.length > 0
@@ -259,6 +270,7 @@ export function taskRefreshMetadata({
           ? "task_state_active"
         : "",
     activeRequestCount: requestCount,
+    handoffProjectionPending: pendingHandoff,
     refreshTaskIds,
   };
 }

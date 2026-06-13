@@ -17,9 +17,9 @@ The Tasks surface is reached from the left navigation. It shows a compact task q
 | Refused | Rejected, refused, expired, or cancelled tasks. | UI may paginate later; chat context currently caps refused history at 10. |
 | Rewarded | Tasks that reached a terminal reward outcome. | UI may paginate later; chat context currently caps rewarded history at 12. |
 
-The top summary shows outstanding count, PFT in flight, synced task-record count, and active request count. Deadlines render as calendar dates, such as `May 20`, while real event and review timestamps render with time and timezone. This prevents date-only deadlines from showing as misleading `12:00 AM` event times.
+The top summary shows outstanding count, PFT in flight, synced task-record count, and — when present — processing and needs-attention request counts. Deadlines render as calendar dates, such as `May 20`, while real event and review timestamps render with time and timezone. This prevents date-only deadlines from showing as misleading `12:00 AM` event times.
 
-`GET /api/tasks` also returns task sync integrity from the cache layer. The sync status can be `ready`, `empty`, `indexing_lag`, or `reducer_attention`. `indexing_lag` means the cache has a newer task pointer than the projected row has consumed. `reducer_attention` means failed reducer work exists for one or more visible tasks. The UI should treat these as indexing states, not as final lifecycle states.
+`GET /api/tasks` also returns task sync integrity from the cache layer. The healthy sync statuses are `ready`, `empty`, `indexing_lag`, and `reducer_attention`. `indexing_lag` means the cache has a newer task pointer than the projected row has consumed. `reducer_attention` means failed reducer work exists for one or more visible tasks. Degraded reads use `database_error` (the projection cache could not be read at all) or `integrity_unavailable` (rows are visible but the integrity check could not finish); both are covered by the backoff policy below. The UI should treat all of these as indexing/read states, not as final lifecycle states.
 
 Network-pushed work appears in the same task queue, not in a separate lifecycle. Visible task labels are intentionally limited to `Personal`, `Network`, or `Alpha`; implementation categories such as engineering are not shown as task types. Project/routing metadata stays in the backing payload and forensics, while the list and detail page focus on the normal task lifecycle: accept or refuse, submit, verify, reward, and audit.
 
@@ -36,7 +36,33 @@ The user-facing routing gates are:
 
 Personal, engineering, proposed, refused, and rewarded non-network tasks can inform routing judgment, but they do not hard-block Network Task eligibility. When these gates are satisfied, the user is ready to receive a Network Task but still waits for Board Manager to choose them for a live project need.
 
-Once an account has at least two positive task rewards, Task Node automatically queues the Network Diagnostic Report job from the task projection/reward path and from the memory worker backfill. The user should not need to open Memory or click refresh for the report to be generated.
+Once an account has at least two positive task rewards, Task Node automatically queues the Network Diagnostic Report job from the task projection/reward path and from the memory worker backfill. Opening Memory also queues the report immediately when the account has none, and the Memory refresh control forces a rebuild. The user should not need to open Memory or click refresh for the report to be generated, and there is no flow for requesting the report from Hive, Board Manager, or an operator.
+
+## Network Task Eligibility Panel
+
+The Tasks page renders a compact `Network Task Eligibility` panel above the task queue so a contributor can answer "why am I or am I not getting Network Tasks?" without asking Hive Chat. The panel is `src/features/tasks/NetworkTaskEligibilityPanel.jsx`; its display logic is the pure module `src/features/tasks/network-task-eligibility-state.js`.
+
+The panel reads `tasks.networkTasks`, the `getNetworkTaskEligibility` payload that `server/repositories/tasks.js::listTaskState` already attaches to `GET /api/tasks` and the app-state task refresh. It adds no endpoint, no extra polling, and no client-side observability writes; capacity-check events stay owned by the existing server-side eligibility path.
+
+The header always shows the routing wallet prefix being evaluated and the overall status in the production plain language. Server statuses map to plain labels as follows:
+
+| Server status | Plain label |
+| --- | --- |
+| `available_for_routing` | Eligible |
+| `at_capacity` | Capacity blocked |
+| `profile_required`, `profile_pending`, `profile_failed` | Needs more task history |
+| `wallet_sync_pending` | Wallet sync in progress |
+| `setup_required` | Wallet link needed |
+| `sign_in_required` | Sign in required |
+| `unavailable` or unrecognized | Eligibility unavailable |
+
+`validation task needed` and `operator hold` are reserved production-scope labels with no server status yet, so the panel must not synthesize them. `no suitable task right now` is the explanation attached to the Eligible state: an eligible contributor still waits for Hive Board Manager to route work when an active project needs it.
+
+The expanded body shows the gate checklist in routing order with pass/fail marks, the server `detail` copy per gate, and the server `action` copy for the first failing gate as the explicit next step (for the routing-profile gate that is `Open Memory and refresh the Network Diagnostic Report`). Capacity blockers render with the task title (task ID fallback), lifecycle state, blocker kind (allocation, generation job, or proposed task), and the owning wallet prefix or `account-wide` when the blocker has no candidate wallet yet, so multi-wallet contributors can tell wallet-bound blockers from account-scoped ones.
+
+The panel is expanded by default whenever the user is not eligible and the verdict is readable; it collapses to a one-line status when eligible, while loading and `unavailable` states also start collapsed. The user can toggle it either way. If eligibility data is missing or the server reports `unavailable` (signed out before load, database error), the panel says so plainly instead of guessing a checklist.
+
+Regression coverage lives in `scripts/network-task-eligibility-panel-smoke.mjs`: every server status maps to the right plain label, blocker scope labels derive wallet prefix vs `account-wide` correctly, the first failing gate carries the server action copy, and loading/unavailable states stay honest.
 
 ## List And Detail State Consistency
 
@@ -48,7 +74,7 @@ Refresh failures must be treated as state-boundary bugs, not one-off task record
 
 The repair belongs in the shared lifecycle and sync contract, not a hard-coded task patch. `shared/task-lifecycle.js` defines canonical lifecycle meaning, `server/repositories/tasks.js` returns the canonical projection and detail read models from `task_projections` and `task_events`, and `src/features/tasks/task-visible-state.js` decides what the browser may temporarily show while projection catches up. `GET /api/tasks` uses the lifecycle contract when returning sync metadata, and the Tasks page uses the reconciled output to keep polling until the projection catches up or reaches a terminal state such as `rewarded`, `refused`, or `cancelled`.
 
-After a successful signed task action, the browser records a short-lived task action receipt in `src/features/tasks/task-action-receipts.js`. That file only creates, stores, loads, and expires receipts. It must not own lifecycle reconciliation. The receipt includes the account, wallet, task ID, expected next state, transaction hash, and timestamp. The list, tab counts, URL-selected task, and detail modal all read the same receipt-aware task state from `task-visible-state.js`. If `GET /api/tasks` or `GET /api/tasks/detail` still returns the older projected status, the receipt keeps the visible card and the open detail modal at the signed state and marks the row as `syncing`. While a receipt is visibly overlaying a task, it forces task polling with projection refresh so terminal states such as `rewarded` replace `Awaiting review` without a hard browser refresh. The detail modal must not repaint an accepted task as proposed just because a stale detail fetch returned before projection catch-up finished. Once the projection reaches that state, advances beyond it, reaches a terminal state, or the receipt expires, the receipt is removed.
+After a successful signed task action, the browser records a short-lived task action receipt in `src/features/tasks/task-action-receipts.js`. That file only creates, stores, loads, and expires receipts. It must not own lifecycle reconciliation. The receipt includes the account, wallet, task ID, expected next state, transaction hash, and timestamp. The list, tab counts, URL-selected task, and detail modal all read the same receipt-aware task state from `task-visible-state.js`. If `GET /api/tasks` or `GET /api/tasks/detail` still returns the older projected status, the receipt keeps the visible card and the open detail modal at the signed state and marks the row as `syncing`. While a pending action receipt is visibly overlaying a task, it forces task polling with projection refresh so terminal states such as `rewarded` replace `Awaiting review` without a hard browser refresh. Observed-state receipts (canonical detail already seen elsewhere) keep the overlay but do not force fast polling. The detail modal must not repaint an accepted task as proposed just because a stale detail fetch returned before projection catch-up finished. Once the projection reaches that state, advances beyond it, reaches a terminal state, or the receipt expires, the receipt is removed.
 
 Ordinary one-task indexing lag is a row-level syncing state, not a product-wide warning. The large sync notice is reserved for reducer failures or broader indexing lag across several task rows.
 
@@ -60,11 +86,44 @@ In plain English:
 4. Terminal states stop active refresh because no later lifecycle event is expected for the normal task loop.
 5. A signed submit, accept, refuse, or cancel result cannot be overwritten by a stale list response while the projection catches up.
 
-Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`, `scripts/task-action-receipts-smoke.mjs`, `scripts/task-detail-optimistic-state-smoke.mjs`, and `scripts/task-visible-state-smoke.mjs`. These checks assert that `verification_requested` stays refreshable, projection lag keeps a proposed task polling, terminal `rewarded` tasks do not keep the page polling forever, stale projections cannot overwrite a signed task action, list/detail overlays follow the same lifecycle progress rules, hard refresh and no-hard-refresh states match, and ordinary one-task lag does not trigger the global sync banner.
+Regression coverage lives in `scripts/task-lifecycle-smoke.mjs`, `scripts/task-action-receipts-smoke.mjs`, `scripts/task-detail-optimistic-state-smoke.mjs`, and `scripts/task-visible-state-smoke.mjs`. These checks assert that worker-facing review-loop states stay on the fast forced-refresh tier while `verification_requested` (which waits on the user) stays on the slow 10s tier, projection lag keeps a proposed task polling, terminal `rewarded` tasks do not keep the page polling forever, stale projections cannot overwrite a signed task action, list/detail overlays follow the same lifecycle progress rules, hard refresh and no-hard-refresh states match, and ordinary one-task lag does not trigger the global sync banner.
+
+## Task State Convergence
+
+When the task list and task detail disagree, first identify which state boundary is stale. Do not repair the literal task row until the boundary is known.
+
+The canonical read model is `task_projections`. `server/repositories/tasks.js::listTaskState` reads it for `GET /api/tasks`; `server/repositories/tasks.js::getTaskDetail` reads it for `GET /api/tasks/detail`; `server/task-routes.js` can force targeted projection work when either endpoint is called with `refreshProjection=1`. If `task_projections.status` is already terminal, such as `rewarded`, but an open browser tab still renders `Awaiting review`, the reducer is not the immediate failure. The browser is holding stale app state.
+
+The browser convergence path is:
+
+1. `src/main.jsx::TasksView` calls `reconcileTaskVisibleState` before rendering counts, tabs, task rows, request strips, and sync notices.
+2. `src/features/tasks/task-visible-state.js::reconcileTaskVisibleState` merges server task buckets with any local task-action receipts, computes active request state, and returns the polling policy.
+3. `src/features/tasks/task-visible-state.js::needsLegacyTaskRefresh` keeps worker-facing review-loop states (`submitted`, `verification_response_submitted`, `reward_decided`) refreshable until the projection moves on.
+4. `src/features/tasks/task-refresh-policy.js::taskRefreshPolicy` decides whether the Tasks surface should keep polling and whether the poll should force projection refresh.
+5. `src/main.jsx::TasksView.refreshCanonicalTaskState` calls `refreshAppState({ taskProjectionRefresh: true })` through the `onRequestSettled` prop.
+6. `src/main.jsx::TasksView` also refreshes canonical task state when the Tasks tab regains browser focus or returns from hidden to visible.
+7. `src/main.jsx::closeTaskDetail` forces a canonical task refresh when the user closes a task detail view and returns to the list.
+
+The detail convergence path is:
+
+1. `src/features/tasks/TaskDetailModal.jsx::commitTaskDetailResult` receives `GET /api/tasks/detail` responses.
+2. `src/features/tasks/task-action-receipts.js::taskActionReceiptFromObservedTask` turns an observed canonical detail status into a receipt-like visible-state update.
+3. `src/features/tasks/task-visible-state.js::overlayTaskDetailWithVisibleState` prevents a stale detail response from moving the modal backward while the projection catches up.
+4. `src/features/tasks/task-visible-state.js::mergeTaskStateWithActionReceipts` applies the same progress rules to the list, so a detail observation such as `rewarded` can advance the visible row instead of leaving the row in `Verification`.
+
+Use this diagnostic order for stale task reports:
+
+1. Query `task_projections` for the task ID. If the status is already the expected terminal state, inspect browser refresh/convergence code first.
+2. Open task Forensics and check `forensics.integrity.projectionBehindCachedPointer`. If true, the cache has a newer pointer than the projection consumed.
+3. Check `pftl_cache_reducer_events` for pending, processing, or failed reducer work for that task ID.
+4. If reducer work is failed or missing, use `npm run task-replay-repair -- --task-id=<task_id> --apply`.
+5. If reducer state is clean but the browser list is stale, verify the Tasks page can refetch app state through `GET /api/tasks?refreshProjection=1`, focus/visibility refresh, modal-close refresh, and receipt pruning.
+
+The common failure pattern is: detail or forensics shows a reward event, `task_projections.status='rewarded'`, but the list still shows `Awaiting review` until a hard refresh. That is a browser state convergence bug. The list must refresh canonical projections when the user returns to the Tasks surface, and it must not rely on a full page reload to replace stale review-loop rows with terminal rows.
 
 The `Request task` button opens a modal where the user can describe the kind of work they want. Submitting the modal uses `POST /api/tasks/request` to build a request bundle from the current context document, deep memory, recent memory, recent chats, and existing task queue; encrypt the bundle locally in the browser; pin it to IPFS; encrypt a `pf.task.request.v1` event that points at that bundle; and sign a PFTL `TASK` pointer transaction from the linked user wallet.
 
-After a successful chain submit, the server records a durable `task_requests` row plus the hidden `pf.task.request_intent.v1` chat turn tagged as `source: task_interface` and `status: pftl_request_published`. The Tasks page only shows a compact in-flight request strip while a user request is actively signing, queued, generating, recently published, or recently failed. Operator-only Network Task repair rows are audit records, not user requests, and must not appear as `Needs attention` or count as requests processing. Once a request becomes a proposed task, the request receipt leaves the main UX and the user should interact with the projected task card instead. Chat also supports task request mode from the `+` menu. It uses the same signed request publisher, tags the cache entry as `source: user_chat`, and keeps the receipt in the active chat thread.
+After a successful chain submit, the server records a durable `task_requests` row plus the hidden `pf.task.request_intent.v1` chat turn tagged as `source: task_interface` and `status: pftl_request_published`. The Tasks page shows a compact request strip while a user request is actively signing, queued, generating, recently published, or needs attention after a recent failure. Failed requests are not counted as `requests processing`; they are attention states, and they exert no refresh pressure — no projection refresh can resolve a failed request, so it must not keep the page fast-polling for the 24 hours it stays visible. Operator-only Network Task repair rows are audit records, not user requests, and must not appear as `Needs attention` or count as requests processing. Once a request becomes a proposed task, the request receipt leaves the main UX and the user should interact with the projected task card instead. Chat also supports task request mode from the `+` menu. It uses the same signed request publisher, tags the cache entry as `source: user_chat`, and keeps the receipt in the active chat thread.
 
 A signed request is not the same thing as a proposed task card. Durable task cards appear after `server/task-generation-worker.js` claims the `task_requests` row, decrypts the request bundle, calls the task-generation prompt/model, emits an encrypted `pf.task.offer.v1` pointer from the authority wallet, syncs PFTL, and the reducer projects the offer into `task_projections`.
 
@@ -79,13 +138,62 @@ appears during the settle window, the UI returns to the `Outstanding` tab. This
 prevents the empty task-list state where a card exists or is about to exist, but
 the user must reload the whole page to see it.
 
+`GET /api/app-state` also returns server-authored request handoff metadata in
+`tasks.sync.handoff`. The browser uses that metadata to distinguish
+`generated_visible`, `generated_projection_pending`, active processing, and
+failed attention states instead of inferring the handoff only from a local
+active-request count. `generated_projection_pending` is an active sync state
+even when the request receipt is no longer shown; it keeps forced projection
+refresh enabled until the generated task card is present in `task_projections`.
+Task app-state application is monotonic: an older task
+snapshot, lower projection count, or lower request handoff rank cannot overwrite
+a newer task snapshot in an open tab even if app-state refresh responses return
+out of order during PFTL/RPC recovery.
+
+Forced projection refresh from `/api/app-state?taskProjectionRefresh=1`,
+`/api/tasks?refreshProjection=1`, and task detail refresh is best-effort and
+coalesced per account/wallet. These routes must not block the app shell while
+PFTL sync, reducer replay, or the Postgres pool is under pressure. If the task
+projection cache cannot be read, the Tasks response returns
+`sync.status='database_error'` with `requiresRefresh=true` instead of an HTTP
+500. Open browser tabs keep the last known task snapshot when a temporary
+database-error response would otherwise replace it with a lower projection
+count.
+
 The same rule applies after task evidence is submitted. The detail modal calls
 `GET /api/tasks/detail?refreshProjection=1` while polling for the signed
 evidence transaction and the next review state. The Tasks list also forces
-projection refresh while review-loop states such as `submitted`,
-`verification_requested`, `verification_response_submitted`, or `reward_decided`
-are active. A user should not need to reload the browser to see a verification
-request appear after the review worker publishes it.
+projection refresh while states genuinely awaiting the review worker —
+`submitted`, `verification_response_submitted`, or `reward_decided` — are
+active. A user should not need to reload the browser to see a verification
+request appear after the review worker publishes it. `verification_requested`
+is different: the next event is the user's own verification response, so it
+sits on the slow tier; cross-device changes are covered by the route-open and
+focus/visibility refreshes.
+
+The list refresh policy tiers are:
+
+| State / condition | Poll cadence | Forced projection refresh |
+| --- | --- | --- |
+| Pending optimistic action receipt (signed action not yet projected) | 2.5s | Yes |
+| `submitted`, `verification_response_submitted`, `reward_decided` (awaiting worker) | 2.5s | Yes |
+| Processing task requests (signing/queued/generating/recently published) | 2.5s | Yes |
+| Request handoff (`generated_projection_pending`) or post-request settle window | 2.5s | Yes |
+| Projection indexing lag / pending reducer work | 2.5s | Yes |
+| `accepted`, `verification_requested` (awaiting the user) | 10s (server `nextPollMs`) | No |
+| Failed task request (attention state, <24h) | No refresh pressure; strip stays visible | No |
+| `database_error` / `integrity_unavailable` | Backoff: 5s, then 10s, then 30s cap; reset on success | No |
+| Terminal states (`rewarded`, `refused`, `rejected`, `expired`, `cancelled`) | None | No |
+
+The browser only clamps polling down to the 2.5s tier while an optimistic
+action receipt is actually pending; otherwise it respects the server
+`nextPollMs` (floor 1s, ceiling 30s), so the server's slow tier stays
+reachable. On `database_error` or `integrity_unavailable`, the client keeps
+polling app state with exponential backoff but never sets
+`taskProjectionRefresh=1`: a forced sync/reduce write pass against a failing
+database is the wrong remediation. The backoff counter lives in
+`src/main.jsx::TasksView`; the policy math stays pure in
+`src/features/tasks/task-refresh-policy.js::taskReadFailureBackoffMs`.
 
 Submission, lifecycle, and review-worker publication routes also trigger a
 best-effort targeted projection refresh. After the signed transaction returns a
@@ -173,6 +281,7 @@ Generated offers must match the browser UX. The task-generation prompts in
 | Public repository proof | `github_commit` should be used only when the user explicitly provides or requests a public commit or repository evidence path. Private/local work should use screenshot, text, file, or mixed evidence. |
 | Plain task speech | Generated task cards must not expose internal compliance shorthand such as conformance, gates, verdicts, priority stacks, or exact-edits rubrics. The worker rejects those cards and retries once with a plain-language repair instruction before failing the request. |
 | URL evidence safety | The review worker may extract public URL evidence, but it does not fetch unsupported schemes, credentialed URLs, localhost, private IP ranges, metadata IPs, or DNS names that resolve to private addresses. Redirects are not followed during evidence extraction. |
+| Context document input | `server/task-request.js` converts the saved rich-text Context document into readable text and includes up to 60,000 compacted characters in `context.primary_context_doc.summary`. The request bundle keeps digest, revision, and word count provenance, but does not include UI budget percentages or clipping telemetry. |
 | Canonical source | The generated task is written into the encrypted `pf.task.offer.v1` IPFS payload and anchored by the authority wallet PFTL pointer. Postgres only projects it for fast reads. |
 
 Network Tasks and Alpha Tasks use the separate network taskgen prompt. The network-task generation worker injects a `network_task` block into the request bundle with project id, task class, routing reason, diagnostic profile digest, and reward band. The Board Manager does not author the concrete task. It queues the allocation and records why the system is routing work to the contributor; `server/task-generation-worker.js` still generates the title, steps, submission requirement, and verification policy.
@@ -206,6 +315,8 @@ Clicking a task opens a task detail popout with three tabs:
 | Forensics | Chain audit view: pointer transactions, CIDs, decrypted payload fields, raw payload, and replay integrity. |
 
 On desktop the task detail covers the Tasks workspace as a smooth in-place pane, not as a separate app screen. The left app shell remains visible so the user keeps their place in the Task Node, and the close pill returns to the task queue. On narrow mobile screens the same detail surface expands to the full viewport because there is not enough horizontal room for a pane.
+
+The detail pane must render immediately from the visible `task_projections` row that backed the clicked task card or URL-selected task. `GET /api/tasks/detail` enriches that seeded view with actions, forensics, wallet roles, submissions, and reward outcome data in the background; it must not block the user behind `Loading task detail` when a visible task projection is already available.
 
 ## Copy Task Flow
 
@@ -257,7 +368,8 @@ Users must be able to stop a task even after it has entered the verification loo
 | --- | --- | --- |
 | Proposed | Refuse task | `refused` |
 | Accepted, submitted, verification requested, awaiting review | Cancel task | `cancelled` |
-| Refused, cancelled, expired, rewarded | No stop action | Terminal state. |
+| Reward pending (`reward_decided`) | No stop action | The authority reward outcome is already in flight. |
+| Refused, rejected, cancelled, expired, rewarded | No stop action | Terminal state. |
 
 The stop action is shown on the Overview tab. Proposed tasks show both `Accept task` and `Refuse task`; accepted or review-loop tasks show the relevant cancel action. If the local seed vault is locked, clicking the action opens the shared wallet unlock flow. If the vault is unlocked, the browser builds an encrypted `pf.task.update.v1` payload and signs a PFTL `TASK_UPDATE` pointer transaction from the linked user wallet.
 
@@ -288,7 +400,7 @@ Screenshot and file uploads use a Task Node styled picker, not the native browse
 8. The server submits the signed transaction and returns the tx hash as soon as PFTL accepts it.
 9. Wallet sync and reducer projection are scheduled asynchronously. The UI should show the publish result immediately, then refresh task state as indexing catches up.
 
-The task detail modal keeps its own local detail state while it is open. After a successful evidence transaction, the modal updates optimistically to `Submitted` or `Awaiting review` and polls task detail for the submitted transaction hash so the user is not left looking at the old prompt while indexing catches up.
+The task detail modal keeps its own local detail state while it is open. It seeds that state from the visible task-list projection, then replaces or enriches it with `GET /api/tasks/detail` when the richer response arrives. After a successful evidence transaction, the modal updates optimistically to `Submitted` or `Awaiting review` and polls task detail for the submitted transaction hash so the user is not left looking at the old prompt while indexing catches up.
 
 The Tasks page refresh policy is driven by the shared lifecycle contract in `shared/task-lifecycle.js` and the server metadata returned by `GET /api/tasks`. Initial submissions can be advanced by the review worker into `Verification requested`; verification responses can be advanced into `Rewarded` after the authority scores the evidence and publishes the terminal `pf.reward.v1` outcome. The list and tab counts should therefore follow the projection cache without a manual browser reload.
 

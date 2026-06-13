@@ -85,6 +85,8 @@ function requestLifecycle(row = {}, status = normalizeRequestStatus(row.status),
   if (isOperatorAuditOnlyTaskRequest({ ...row, metadata })) {
     return {
       isActive: false,
+      isProcessing: false,
+      needsAttention: false,
       isStale: false,
       isTerminal: true,
       canRetry: false,
@@ -93,17 +95,21 @@ function requestLifecycle(row = {}, status = normalizeRequestStatus(row.status),
   }
   const ageMs = requestAgeMs(row.updated_at || row.created_at);
   const generatedTaskId = safeText(row.generated_task_id, 180);
-  const isFailedVisible = status === "failed" && ageMs < 24 * 60 * 60 * 1000;
-  const isPublishedVisible = status === "published" && ageMs < 20 * 60 * 1000 && !generatedTaskId;
-  const isActive = ["signing", "queued", "generating"].includes(status) || isPublishedVisible || isFailedVisible;
+  const hasGeneratedTask = Boolean(generatedTaskId);
+  const isFailedVisible = !hasGeneratedTask && status === "failed" && ageMs < 24 * 60 * 60 * 1000;
+  const isPublishedVisible = !hasGeneratedTask && status === "published" && ageMs < 20 * 60 * 1000;
+  const isProcessing = !hasGeneratedTask && (["signing", "queued", "generating"].includes(status) || isPublishedVisible);
+  const isActive = isProcessing || isFailedVisible;
   const isStale = ["published", "queued", "generating"].includes(status) && ageMs > 2 * 60 * 1000 && !generatedTaskId;
   const isTerminal = ["proposed", "cancelled"].includes(status) || Boolean(generatedTaskId);
 
   return {
     isActive,
+    isProcessing,
+    needsAttention: isFailedVisible,
     isStale,
     isTerminal,
-    canRetry: status === "failed" || isStale,
+    canRetry: !hasGeneratedTask && (status === "failed" || isStale),
     displayUntil: isActive ? toIso(new Date(Date.now() + 20 * 60 * 1000)) : null,
   };
 }
@@ -230,6 +236,14 @@ export async function upsertTaskRequest(request = {}) {
   return { ok: true, request: publicTaskRequest(result.rows[0]) };
 }
 
+export async function getTaskRequestByRequestId(requestId = "") {
+  if (!databaseEnabled()) return null;
+  const normalizedRequestId = safeText(requestId, 180);
+  if (!normalizedRequestId) return null;
+  const result = await query("SELECT * FROM task_requests WHERE request_id = $1", [normalizedRequestId]);
+  return result.rows[0] ? publicTaskRequest(result.rows[0]) : null;
+}
+
 export async function claimTaskGenerationRequests({ limit = 1 } = {}) {
   if (!databaseEnabled()) return [];
   const result = await query(
@@ -239,6 +253,7 @@ export async function claimTaskGenerationRequests({ limit = 1 } = {}) {
         FROM task_requests
         WHERE status IN ('published', 'queued')
           AND request_bundle_cid <> ''
+          AND generated_task_id = ''
         ORDER BY updated_at ASC, created_at ASC, request_id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT $1

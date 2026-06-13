@@ -7,7 +7,7 @@ import {
   getLatestDailyAirdropRun,
   getProfileRewardHistory,
 } from "./repositories/profile-daily-airdrop.js";
-import { listProfileNfts } from "./repositories/profile-nfts.js";
+import { failStaleGeneratingProfileNfts, listProfileNfts } from "./repositories/profile-nfts.js";
 import { getPublicProfile } from "./repositories/profile-public.js";
 import {
   getRecommendedConnectionsState,
@@ -26,11 +26,41 @@ import {
   suggestHiveHandles,
   getLinkedWallet,
 } from "./runtime-store.js";
+import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 
 const recommendedConnectionsPrompt = loadPrompt("profile/recommended_connections_v1.md");
 
 function promptDigest(text = "") {
   return createHash("sha256").update(String(text || ""), "utf8").digest("hex");
+}
+
+function safeEventText(value = "", max = 500) {
+  return String(value || "").trim().slice(0, max);
+}
+
+async function recordProfileObservabilityEvent({
+  eventType = "",
+  accountId = "",
+  resultStatus = "",
+  reasonCode = "",
+  walletAddress = "",
+  sourceRoute = "",
+  metadata = {},
+  metrics = {},
+} = {}) {
+  if (!eventType || !accountId) return;
+  await recordUserObservabilityEvent({
+    eventType,
+    accountId,
+    walletAddress,
+    walletScope: walletAddress ? "active" : "",
+    sourceSurface: "profile",
+    sourceRoute: sourceRoute || "server/profile-routes.js",
+    resultStatus,
+    reasonCode,
+    metadata,
+    metrics,
+  }).catch(() => {});
 }
 
 export async function handleProfileRoute({ getState, json, readJson, req, res, session, url }) {
@@ -133,6 +163,17 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       handle: payload.handle,
       displayName: payload.displayName,
     });
+    await recordProfileObservabilityEvent({
+      eventType: "user.profile_handle.changed",
+      accountId: session.accountId,
+      resultStatus: result.ok ? "saved" : "failed",
+      reasonCode: result.ok ? "" : result.error || "profile_handle_save_failed",
+      sourceRoute: "server/profile-routes.js::/api/profile/handle",
+      metadata: {
+        handle: safeEventText(result.handle || payload.handle, 120),
+        displayNamePresent: Boolean(payload.displayName),
+      },
+    });
     json(res, result.ok ? 200 : result.status || 400, {
       ok: result.ok,
       ...result,
@@ -164,6 +205,19 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       visibility: payload.visibility,
       discloseHandle: payload.discloseHandle,
       discloseVerifiedBadge: payload.discloseVerifiedBadge,
+    });
+    await recordProfileObservabilityEvent({
+      eventType: "user.alias_visibility.changed",
+      accountId: session.accountId,
+      resultStatus: result.ok ? "saved" : "failed",
+      reasonCode: result.ok ? "" : result.error || "profile_alias_visibility_save_failed",
+      sourceRoute: "server/profile-routes.js::/api/profile/identity/alias",
+      metadata: {
+        provider: safeEventText(payload.provider, 80),
+        visibility: safeEventText(payload.visibility, 80),
+        discloseHandle: payload.discloseHandle === true,
+        discloseVerifiedBadge: payload.discloseVerifiedBadge === true,
+      },
     });
     json(res, result.ok ? 200 : result.status || 400, {
       ok: result.ok,
@@ -329,12 +383,32 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
     try {
       const result = await runPublicProfileSnapshot({ accountId: session.accountId });
       const profile = await getPublicProfile({ accountId: session.accountId });
+      await recordProfileObservabilityEvent({
+        eventType: "user.profile.public_snapshot_completed",
+        accountId: session.accountId,
+        resultStatus: result.skipped ? "skipped_current" : "completed",
+        sourceRoute: "server/profile-routes.js::/api/profile/public/regenerate",
+        metadata: {
+          snapshotId: safeEventText(result.snapshot?.snapshotId || result.snapshot?.id, 180),
+          provider: safeEventText(result.provider, 80),
+          model: safeEventText(result.model, 180),
+          promptDigest: safeEventText(result.promptDigest, 180),
+          inputFingerprint: safeEventText(result.inputFingerprint, 180),
+        },
+      });
       json(res, 200, {
         ok: true,
         snapshot: result.snapshot,
         profile,
       });
     } catch (error) {
+      await recordProfileObservabilityEvent({
+        eventType: "user.profile.public_snapshot_completed",
+        accountId: session.accountId,
+        resultStatus: "failed",
+        reasonCode: error?.message || "profile_public_regenerate_failed",
+        sourceRoute: "server/profile-routes.js::/api/profile/public/regenerate",
+      });
       json(res, error?.status || 500, {
         ok: false,
         error: "profile_public_regenerate_failed",
@@ -391,8 +465,27 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
         prompt: recommendedConnectionsPrompt,
         promptDigest: promptDigest(recommendedConnectionsPrompt),
       });
+      await recordProfileObservabilityEvent({
+        eventType: "user.profile.recommended_connections_refreshed",
+        accountId: session.accountId,
+        resultStatus: result.ok === false ? "failed" : result.skipped ? "skipped" : "completed",
+        reasonCode: result.ok === false ? result.error || "recommended_connections_refresh_failed" : result.reason || "",
+        sourceRoute: "server/profile-routes.js::/api/profile/recommended-connections/refresh",
+        metadata: {
+          trigger: safeEventText(payload.trigger || "profile_page", 120),
+          force: payload.force === true,
+          runId: safeEventText(result.runId || result.run?.id, 180),
+        },
+      });
       json(res, result.ok === false ? result.status || 500 : 200, result);
     } catch (error) {
+      await recordProfileObservabilityEvent({
+        eventType: "user.profile.recommended_connections_refreshed",
+        accountId: session.accountId,
+        resultStatus: "failed",
+        reasonCode: error?.message || "recommended_connections_refresh_failed",
+        sourceRoute: "server/profile-routes.js::/api/profile/recommended-connections/refresh",
+      });
       json(res, error?.status || 500, {
         ok: false,
         error: "recommended_connections_refresh_failed",
@@ -426,6 +519,18 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       connectionId: payload.connectionId || payload.connection_id,
       eventType: payload.eventType || payload.event_type,
       metadata: payload.metadata || {},
+    });
+    await recordProfileObservabilityEvent({
+      eventType: "user.profile.recommended_connection_interacted",
+      accountId: session.accountId,
+      resultStatus: result.ok ? "recorded" : "failed",
+      reasonCode: result.ok ? "" : result.error || "recommended_connection_event_failed",
+      sourceRoute: "server/profile-routes.js::/api/profile/recommended-connections/event",
+      metadata: {
+        candidateAccountId: safeEventText(payload.candidateAccountId || payload.candidate_account_id, 180),
+        connectionId: safeEventText(payload.connectionId || payload.connection_id, 180),
+        interactionType: safeEventText(payload.eventType || payload.event_type, 120),
+      },
     });
     json(res, result.ok ? 200 : result.status || 400, result);
     return true;
@@ -476,11 +581,15 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       });
       return true;
     }
+    await failStaleGeneratingProfileNfts({ accountId: session.accountId }).catch((error) => {
+      console.warn(`profile nft stale generation sweep failed: ${error?.message || error}`);
+    });
     const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+    const requestedLimit = Number(url.searchParams.get("limit") || 120);
     const nfts = await listProfileNfts({
       accountId: session.accountId,
       walletAddress: linkedWallet.address || "",
-      limit: 24,
+      limit: Number.isFinite(requestedLimit) ? requestedLimit : 120,
     });
     json(res, 200, {
       ok: true,
@@ -506,6 +615,28 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
           session,
           state,
         });
+  const requestedNftPhase = safeEventText(payload?.phase || "prepare", 40);
+  const nftEventType = url.pathname === "/api/profile/nft/mint"
+    ? result.body?.phase === "minted" || requestedNftPhase === "submit"
+      ? "user.profile.nft_minted"
+      : "user.profile.nft_mint_prepared"
+    : "user.profile.nft_generated";
+  await recordProfileObservabilityEvent({
+    eventType: nftEventType,
+    accountId: session?.accountId || "",
+    walletAddress: result.body?.nft?.walletAddress || "",
+    resultStatus: result.body?.ok ? result.body?.phase || "completed" : "failed",
+    reasonCode: result.body?.ok ? "" : result.body?.error || "profile_nft_failed",
+    sourceRoute: `server/profile-routes.js::${url.pathname}`,
+    metadata: {
+      nftId: safeEventText(result.body?.nft?.id || payload?.nftId, 180),
+      action: safeEventText(result.body?.action, 120),
+      model: safeEventText(result.body?.model || result.body?.nft?.model, 180),
+      promptDigest: safeEventText(result.body?.promptDigest || result.body?.nft?.promptDigest, 180),
+      txHash: safeEventText(result.body?.txHash, 240),
+      nftTokenIdPresent: Boolean(result.body?.nftTokenId),
+    },
+  });
   json(res, result.status, result.body);
   return true;
 }

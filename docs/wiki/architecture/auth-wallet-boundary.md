@@ -92,8 +92,11 @@ offers a retry without creating or relinking another wallet.
 - `Unlocked` is browser-local session state. After a successful unlock, the app
   keeps the decrypted wallet secret in memory and mirrors it into same-tab
   `sessionStorage` so normal app reloads do not force another password prompt.
-  Lock, logout, local-vault removal, account mismatch, or wallet mismatch must
-  clear that session entry.
+  The mirror is AES-GCM ciphertext under a non-extractable IndexedDB key, never
+  plaintext. Lock, logout, local-vault removal, account mismatch, or wallet
+  mismatch must clear that session entry; vault refreshes sweep entries that
+  belong to other accounts; and the unlock auto-locks after
+  `TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES` minutes of inactivity, default 30.
 - A wallet initiation payout must not be sent from wallet proof alone. The
   browser must save or unlock the matching local vault before requesting payout.
 

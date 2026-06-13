@@ -440,13 +440,29 @@ function TodaysBriefing({ airdrop, error = "", loading = false, rewardHistory })
   const taskCount = Number(rewardHistory?.totals?.taskCount || 0);
   const airdropCount = Number(rewardHistory?.totals?.airdropCount || 0);
   const paidAirdrop = airdrop?.issuance?.status === "submitted" ? airdrop.issuance : null;
+  const payoutStatus = airdrop?.issuance?.status || (airdrop ? "scored" : "");
+  const payoutStatusText = {
+    submitted: "Paid",
+    scored: "Scored, payout pending",
+    pending: "Payout queued",
+    processing_pre_submit: "Preparing payout",
+    failed_before_submit: "Retry pending",
+    submitting: "Submission in progress",
+    submit_unknown: "Needs reconciliation",
+    cancelled: "Cancelled",
+  }[payoutStatus] || payoutStatus.replaceAll("_", " ");
+  const payoutStatusTone = paidAirdrop
+    ? C.success
+    : payoutStatus === "submit_unknown" || payoutStatus === "submitting"
+      ? C.rust
+      : C.warning;
   const airdropAmount = Number(paidAirdrop?.amountPft || airdrop?.dailyAirdropPft || 0);
   const alignmentPct = Math.round(Number(airdrop?.alignmentScore7d || 0) * 100);
   const airdropDateSource = paidAirdrop?.submittedAt || airdrop?.completedAt || airdrop?.runDate;
   const runDate = fmtDateLabel(airdropDateSource);
   const isTodaysAirdrop = Boolean(airdropDateSource) && dateKeyUtc(airdropDateSource) === dateKeyUtc(new Date());
   const airdropTitle = `${isTodaysAirdrop ? "Today's" : "Latest"} airdrop${runDate ? ` · ${runDate}` : ""}`;
-  const headlineLabel = paidAirdrop ? "Daily airdrop paid" : "Daily airdrop score";
+  const headlineLabel = paidAirdrop ? "Daily airdrop paid" : "Daily airdrop scored, not paid yet";
   const rewardedTasks = Number(airdrop?.rewardTotals?.rewarded_task_count || 0);
   const hasReasoning = Boolean(String(airdrop?.reasoningText || "").trim());
   const airdropPointIndex = points.findIndex((point) => point.date === dateKeyUtc(airdropDateSource));
@@ -538,6 +554,16 @@ function TodaysBriefing({ airdrop, error = "", loading = false, rewardHistory })
             {fmtPft(airdropAmount)}<span style={{ fontSize: 24, color: C.ink4, fontWeight: 500, marginLeft: 12, letterSpacing: 0 }}>PFT</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13.5, color: C.ink3, flexWrap: "wrap" }}>
+            <span style={{ color: payoutStatusTone, fontWeight: 600 }}>
+              {payoutStatusText}
+            </span>
+            {paidAirdrop?.txHash && (
+              <>
+                <span style={{ color: C.ink5 }}>·</span>
+                <span title={paidAirdrop.txHash}>Tx {paidAirdrop.txHash.slice(0, 10)}...</span>
+              </>
+            )}
+            <span style={{ color: C.ink5 }}>·</span>
             {deltaVs7d !== null && (
               <>
                 <span style={{ color: deltaVs7d >= 0 ? C.success : C.rust, fontWeight: 600 }}>
@@ -655,11 +681,35 @@ function Reasoning({ sign, tone, label, body }) {
   );
 }
 
+function profileNftStatus(nft = {}) {
+  return String(nft?.status || "").trim().toLowerCase();
+}
+
+function profileNftIsGenerating(nft = {}) {
+  return profileNftStatus(nft) === "generating";
+}
+
+function profileNftFailed(nft = {}) {
+  return profileNftStatus(nft) === "failed";
+}
+
+function profileNftCanBecomeAvatar(nft = {}) {
+  const status = profileNftStatus(nft);
+  return Boolean(nft?.imageCid || nft?.imageDataUrl || nft?.imageGatewayUrl) &&
+    status !== "generating" &&
+    status !== "failed";
+}
+
+function latestAvatarNft(nfts = []) {
+  return (Array.isArray(nfts) ? nfts : []).find(profileNftCanBecomeAvatar) || null;
+}
+
 function ProfileStudio({
   accountId = "",
   linkedWalletAddress = "",
   onNftsChange,
   onProfileAvatarChange,
+  onViewGallery,
   onWalletUnlock,
   walletSecret = null,
   walletVault = {},
@@ -682,11 +732,17 @@ function ProfileStudio({
   const palette = palettes[seed % 4];
   const kind = kinds[seed % 4];
   const title = titles[seed % 4];
-  const generating = generationStatus === "generating";
+  const recoveredNftStatus = profileNftStatus(generatedNft);
+  const generationFailed = profileNftFailed(generatedNft);
+  const recoveredGenerationPending = profileNftIsGenerating(generatedNft);
+  const generating = generationStatus === "generating" || recoveredGenerationPending;
   const minting = ["preparing", "signing", "broadcasting", "confirming"].includes(mintPhase);
   const minted = mintPhase === "success" || generatedNft?.status === "minted";
   const currentStep = mintStepForPhase(mintPhase);
-  const generatedImageSrc = imageLoadFailed ? "" : generatedNft?.imageDataUrl || generatedNft?.imageGatewayUrl || "";
+  const generatedImageSrc = imageLoadFailed || recoveredGenerationPending || generationFailed
+    ? ""
+    : generatedNft?.imageDataUrl || generatedNft?.imageGatewayUrl || "";
+  const mintReady = Boolean(generatedNft?.id && generatedNft?.imageCid && !recoveredGenerationPending && !generationFailed);
   const walletReady = Boolean(
     accountId &&
       linkedWalletAddress &&
@@ -697,32 +753,66 @@ function ProfileStudio({
       walletVault?.address === linkedWalletAddress
   );
 
+  const syncGenerationStateFromNft = (nft = null) => {
+    const status = profileNftStatus(nft);
+    if (status === "generating") {
+      setGenerationStatus("generating");
+      setGenerationError("");
+      setMintError("");
+      setMintPhase("idle");
+      return;
+    }
+    if (status === "failed") {
+      setGenerationStatus("idle");
+      setGenerationError(nft?.error || "Profile NFT generation failed.");
+      setMintPhase("idle");
+      return;
+    }
+    if (["generated", "prepared", "minted"].includes(status)) {
+      setGenerationStatus("ready");
+      setGenerationError("");
+    }
+  };
+
   const loadNfts = async ({ hydrateLatest = false } = {}) => {
-    const result = await requestJson("/api/profile/nfts");
+    const result = await requestJson("/api/profile/nfts?limit=120");
     if (!result.ok) return;
     const nextNfts = Array.isArray(result.body?.nfts) ? result.body.nfts : [];
     if (typeof onNftsChange === "function") onNftsChange(nextNfts);
-    if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(result.body?.latest || nextNfts[0] || null);
-    if (hydrateLatest && result.body?.latest) {
-      setGeneratedNft((current) => current || result.body.latest);
+    if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(latestAvatarNft(nextNfts));
+    const latest = result.body?.latest || nextNfts[0] || null;
+    if (hydrateLatest && latest) {
+      setGeneratedNft((current) => latest.id === current?.id
+        ? { ...latest, imageDataUrl: current?.imageDataUrl }
+        : latest);
+      syncGenerationStateFromNft(latest);
     }
   };
 
   useEffect(() => {
     let cancelled = false;
-    requestJson("/api/profile/nfts").then((result) => {
+    requestJson("/api/profile/nfts?limit=120").then((result) => {
       if (cancelled || !result.ok) return;
       const nextNfts = Array.isArray(result.body?.nfts) ? result.body.nfts : [];
       if (typeof onNftsChange === "function") onNftsChange(nextNfts);
-      if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(result.body?.latest || nextNfts[0] || null);
+      if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(latestAvatarNft(nextNfts));
       if (result.body?.latest) {
         setGeneratedNft((current) => current || result.body.latest);
+        syncGenerationStateFromNft(result.body.latest);
       }
     });
     return () => {
       cancelled = true;
     };
   }, [onNftsChange, onProfileAvatarChange]);
+
+  useEffect(() => {
+    if (!generating) return undefined;
+    const interval = window.setInterval(() => {
+      loadNfts({ hydrateLatest: true }).catch(() => null);
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [generating]);
 
   const regenerate = async () => {
     if (minting || generating) return;
@@ -744,6 +834,12 @@ function ProfileStudio({
       await loadNfts({ hydrateLatest: false });
       return;
     }
+    if (result.body?.nft) {
+      setGeneratedNft(result.body.nft);
+      syncGenerationStateFromNft(result.body.nft);
+      await loadNfts({ hydrateLatest: true });
+      return;
+    }
     setGenerationError(result.body?.message || result.body?.error || "Profile NFT generation failed.");
     setGenerationStatus("idle");
   };
@@ -753,6 +849,10 @@ function ProfileStudio({
     setMintError("");
     if (!generatedNft?.id) {
       setMintError("Generate profile art before minting.");
+      return;
+    }
+    if (!mintReady) {
+      setMintError(generationFailed ? "Retry profile art generation before minting." : "Wait for profile art to finish generating.");
       return;
     }
     if (!walletReady) {
@@ -863,7 +963,11 @@ function ProfileStudio({
             {generatedNft?.title || title}
           </h3>
           <div style={{ fontSize: 13.5, color: C.ink3, marginBottom: 20, maxWidth: 480 }}>
-            Mint it as today's identity, or reroll. One free mint per day.
+            {recoveredGenerationPending
+              ? "Generation is still running. You can leave this page; the result will appear here and in the gallery."
+              : generationFailed
+                ? "Generation failed before the image was ready. Retry to create a new recoverable draft."
+                : "Mint it as today's identity, or reroll. One free mint per day."}
           </div>
 
           {!minted && (
@@ -872,10 +976,10 @@ function ProfileStudio({
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 12a9 9 0 1 1-3.4-7.04" /><path d="M21 4v6h-6" />
                 </svg>
-                Regenerate
+                {generationFailed ? "Retry generation" : "Regenerate"}
               </button>
-              <button className="tn-btn-primary" disabled={generating || minting} onClick={mintGeneratedNft} type="button"
-                style={{ border: "none", cursor: "pointer", fontFamily: SANS, fontSize: 13.5, fontWeight: 500 }}>
+              <button className="tn-btn-primary" disabled={generating || minting || !mintReady} onClick={mintGeneratedNft} type="button"
+                style={{ border: "none", cursor: generating || minting || !mintReady ? "not-allowed" : "pointer", fontFamily: SANS, fontSize: 13.5, fontWeight: 500, opacity: generating || minting || !mintReady ? 0.6 : 1 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 6, verticalAlign: -1 }}>
                   <path d="M12 2L14.5 9 22 9.5 16 14 18 22 12 18 6 22 8 14 2 9.5 9.5 9z" />
                 </svg>
@@ -886,7 +990,7 @@ function ProfileStudio({
 
           {generating && (
             <div className="tn-fadeIn" style={{ color: C.ink3, fontSize: 12.5, marginTop: 14, maxWidth: 460 }}>
-              Generating with gpt-image-2, then pinning the image to IPFS.
+              Generating with gpt-image-2, then pinning the image to IPFS. Safe to leave; this draft is saved.
             </div>
           )}
 
@@ -900,6 +1004,12 @@ function ProfileStudio({
             <div className="tn-fadeIn" style={{ color: C.ink4, fontSize: 12.5, marginTop: 14, maxWidth: 460 }}>
               Generated with {generatedNft.model} · prompt {generatedNft.promptDigest.slice(0, 12)}
               {generatedNft.imageCid ? ` · image ${shortHash(generatedNft.imageCid, 8, 6)}` : ""}
+            </div>
+          )}
+
+          {generatedNft?.id && (recoveredGenerationPending || generationFailed) && (
+            <div className="tn-fadeIn" style={{ color: generationFailed ? C.rust : C.ink4, fontSize: 12.5, marginTop: 14, maxWidth: 460 }}>
+              Recovery record {shortHash(generatedNft.id, 12, 6)} · {recoveredNftStatus || "unknown"}
             </div>
           )}
 
@@ -924,7 +1034,14 @@ function ProfileStudio({
               {generatedNft?.txHash && (
                 <span className="tn-mono" style={{ color: C.ink4, fontSize: 11.5 }}>{shortHash(generatedNft.txHash, 10, 6)}</span>
               )}
-              <a className="tn-link" onClick={(e) => e.preventDefault()} href="#">View in gallery →</a>
+              <button
+                className="tn-link"
+                onClick={() => onViewGallery?.()}
+                style={{ background: "none", border: 0, cursor: "pointer", padding: 0 }}
+                type="button"
+              >
+                View in gallery →
+              </button>
               <button
                 className="tn-btn"
                 onClick={() => {
@@ -1006,7 +1123,7 @@ function NFTGallery({ minted = [], allowMockFallback = true, emptyCopy = "No pro
   }, [page, pageCount]);
 
   return (
-    <section style={{ paddingTop: 64 }}>
+    <section id="profile-nft-gallery" style={{ paddingTop: 64 }}>
       <SectionHead
         eyebrow="NFT gallery"
         sub={`${records.length} profile NFTs · ${mintedCount} minted${records.length > NFT_GALLERY_PAGE_SIZE ? ` · showing ${showingStart}-${showingEnd}` : ""}`}
@@ -1073,11 +1190,33 @@ function imageCandidatesForNft(nft = {}) {
     .filter((value, index, list) => list.indexOf(value) === index);
 }
 
+function nftStatusLabel(nft = {}) {
+  const status = profileNftStatus(nft);
+  if (status === "generating") return "Generating";
+  if (status === "failed") return "Failed";
+  if (status === "prepared") return "Prepared";
+  if (status === "minted") return "Minted";
+  if (status === "generated") return "Generated";
+  return nft.status || "Generated";
+}
+
+function nftDateLabel(nft = {}) {
+  const status = profileNftStatus(nft);
+  if (nft.date) return nft.date;
+  if (nft.mintedAt) return fmtDate(new Date(nft.mintedAt));
+  if (status === "generating") return "In progress";
+  if (status === "failed") return "Needs retry";
+  if (nft.generatedAt) return fmtDate(new Date(nft.generatedAt));
+  return "Generated";
+}
+
 function NFTTile({ nft }) {
   const imageCandidates = useMemo(() => imageCandidatesForNft(nft), [nft]);
   const [imageIndex, setImageIndex] = useState(0);
   const imageSrc = imageCandidates[imageIndex] || "";
   const hasImageCid = Boolean(String(nft.imageCid || "").trim());
+  const status = profileNftStatus(nft);
+  const statusLabel = nftStatusLabel(nft);
 
   useEffect(() => {
     setImageIndex(0);
@@ -1130,6 +1269,25 @@ function NFTTile({ nft }) {
               {shortHash(nft.imageCid, 10, 8)}
             </span>
           </div>
+        ) : status === "generating" || status === "failed" ? (
+          <div style={{
+            alignItems: "center",
+            border: `1px solid ${status === "failed" ? C.rust : C.ruleSoft}`,
+            color: status === "failed" ? C.rust : C.ink4,
+            display: "flex",
+            flexDirection: "column",
+            fontSize: 12,
+            gap: 8,
+            height: "100%",
+            justifyContent: "center",
+            padding: 14,
+            textAlign: "center",
+          }}>
+            <span style={{ color: status === "failed" ? C.rust : C.ink3, fontWeight: 650 }}>{statusLabel}</span>
+            <span style={{ lineHeight: 1.35 }}>
+              {status === "failed" ? (nft.error || "Generation failed.") : "Saved draft will finish here."}
+            </span>
+          </div>
         ) : (
           <NFTArt kind={nft.kind || "topology"} palette={nft.palette || "green"} size="100%" />
         )}
@@ -1142,9 +1300,9 @@ function NFTTile({ nft }) {
         {nft.title}
       </div>
       <div style={{ fontSize: 11.5, color: C.ink4, marginTop: 3, display: "flex", gap: 8 }}>
-        <span>{nft.date || (nft.mintedAt ? fmtDate(new Date(nft.mintedAt)) : "Generated")}</span>
+        <span>{nftDateLabel(nft)}</span>
         <span style={{ color: C.ink5 }}>·</span>
-        <span style={{ color: nft.rarity === "Common" ? C.ink4 : C.warning }}>{nft.rarity || nft.status}</span>
+        <span style={{ color: nft.rarity === "Common" ? C.ink4 : status === "failed" ? C.rust : C.warning }}>{nft.rarity || statusLabel}</span>
       </div>
     </div>
   );
@@ -1632,6 +1790,9 @@ function PrivateProfile({
     setProfileNfts(nextNfts);
     if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(nextNfts[0] || null);
   }, [onProfileAvatarChange]);
+  const scrollToNftGallery = useCallback(() => {
+    document.getElementById("profile-nft-gallery")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1702,6 +1863,7 @@ function PrivateProfile({
         linkedWalletAddress={linkedWalletAddress}
         onNftsChange={handleNftsChange}
         onProfileAvatarChange={onProfileAvatarChange}
+        onViewGallery={scrollToNftGallery}
         onWalletUnlock={onWalletUnlock}
         walletSecret={walletSecret}
         walletVault={walletVault}
@@ -1882,6 +2044,33 @@ export function ProfileView({
         </div>
       </div>
     </div>
+    </div>
+  );
+}
+
+export function MemberProfileView({ accountId = "", onBack } = {}) {
+  useStylesheet();
+  return (
+    <div className="route-scroll">
+      <div className="tn-root" style={{ minHeight: "100vh" }}>
+        <div style={{ maxWidth: 980, margin: "0 auto", padding: "34px 36px 140px" }}>
+          <button
+            className="tn-btn"
+            onClick={onBack}
+            style={{ marginBottom: 18, padding: 0 }}
+            type="button"
+          >
+            Directory
+          </button>
+          {accountId ? (
+            <PublicProfile accountId={accountId} profilePublic profileSource="member" />
+          ) : (
+            <div style={{ borderTop: `1px solid ${C.ruleSoft}`, color: C.ink3, fontSize: 13.5, paddingTop: 18 }}>
+              Choose a member from the Directory.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

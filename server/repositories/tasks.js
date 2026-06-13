@@ -70,6 +70,14 @@ function relativeAge(value) {
   return `${days}d ago`;
 }
 
+function maxIso(values = []) {
+  const timestamps = values
+    .map((value) => Date.parse(value || ""))
+    .filter((value) => Number.isFinite(value));
+  if (!timestamps.length) return null;
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
 function emptyTaskState({ walletLinked = false, walletAddress = "" } = {}) {
   return {
     ...taskProductConfig(),
@@ -81,6 +89,58 @@ function emptyTaskState({ walletLinked = false, walletAddress = "" } = {}) {
       walletAddress: walletAddress || null,
       projectionCount: 0, lastSyncedAt: null, requiresRefresh: false, nextPollMs: null,
       refreshReason: "", activeRequestCount: 0, refreshTaskIds: [],
+    },
+  };
+}
+
+// Only processing requests (signing/queued/generating/recently published) count
+// toward refresh pressure. Failed requests are attention states: they stay
+// visible in the request strip, but no projection refresh can resolve them.
+function refreshActiveRequestCount(requests = {}) {
+  return Array.isArray(requests?.items)
+    ? requests.items.filter((request) => request?.isProcessing).length
+    : 0;
+}
+
+function taskProjectionReadErrorState({
+  error,
+  networkTasks,
+  requests,
+  walletAddress = "",
+} = {}) {
+  return {
+    ...emptyTaskState({ walletLinked: true, walletAddress }),
+    networkTasks,
+    requests,
+    sync: {
+      source: "task_projections",
+      status: "database_error",
+      walletAddress,
+      projectionCount: 0,
+      lastSyncedAt: null,
+      requiresRefresh: true,
+      // A forced sync/reduce write pass against a failing database is the
+      // wrong remediation; the client polls with backoff instead.
+      forceProjectionRefresh: false,
+      nextPollMs: 5000,
+      refreshReason: "task_projection_read_failed",
+      activeRequestCount: refreshActiveRequestCount(requests),
+      refreshTaskIds: [],
+      error: safeText(error?.message || error, 500),
+    },
+  };
+}
+
+function emptyTaskReadIntegrity({ error = "" } = {}) {
+  return {
+    byTaskId: new Map(),
+    totals: {
+      pendingReducerCount: 0,
+      processingReducerCount: 0,
+      failedReducerCount: 0,
+      indexingLagCount: 0,
+      integrityUnavailable: Boolean(error),
+      error: safeText(error, 500),
     },
   };
 }
@@ -200,6 +260,55 @@ function groupTasks(tasks) {
   }
 
   return { outstanding, verification, refused, rewarded };
+}
+
+export function taskRequestHandoffState({ requests = {}, taskItems = [] } = {}) {
+  const items = Array.isArray(requests?.items) ? requests.items : [];
+  const latest = items[0] || null;
+  if (!latest) {
+    return {
+      latestRequestId: "",
+      latestRequestStatus: "",
+      latestRequestUpdatedAt: null,
+      generatedTaskId: "",
+      generatedTaskVisible: false,
+      requestHandoffState: "none",
+      lastError: "",
+      isProcessing: false,
+      needsAttention: false,
+    };
+  }
+
+  const generatedTaskId = safeText(latest.generatedTaskId, 180);
+  const visibleTask = generatedTaskId
+    ? taskItems.find((task) => [task.taskId, task.fullId, task.id].some((value) => safeText(value, 180) === generatedTaskId))
+    : null;
+  const status = safeText(latest.status, 80);
+  const generatedTaskVisible = Boolean(visibleTask);
+  const requestHandoffState = generatedTaskId
+    ? generatedTaskVisible
+      ? "generated_visible"
+      : "generated_projection_pending"
+    : latest.needsAttention || status === "failed"
+      ? "failed"
+      : latest.isProcessing || ["signing", "published", "queued", "generating"].includes(status)
+        ? status || "processing"
+        : latest.isTerminal
+          ? "terminal"
+          : "waiting";
+
+  return {
+    latestRequestId: latest.requestId || "",
+    latestRequestStatus: status,
+    latestRequestUpdatedAt: latest.updatedAt || null,
+    generatedTaskId,
+    generatedTaskVisible,
+    visibleTaskId: visibleTask?.taskId || "",
+    requestHandoffState,
+    lastError: latest.lastError || "",
+    isProcessing: Boolean(latest.isProcessing),
+    needsAttention: Boolean(latest.needsAttention),
+  };
 }
 
 function taskActionState(status = "") {
@@ -416,13 +525,21 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
       LIMIT 200
     `,
     [walletAddress, accountId || ""]
-  );
+  ).catch((error) => ({ error }));
+  if (result.error) {
+    return taskProjectionReadErrorState({
+      error: result.error,
+      networkTasks,
+      requests,
+      walletAddress,
+    });
+  }
   const rows = result.rows;
   const integrity = await taskReadIntegrityByTaskId({
     taskIds: rows.map((row) => row.task_id),
     accountId,
     walletAddress,
-  });
+  }).catch((error) => emptyTaskReadIntegrity({ error: error?.message || error }));
   const taskItems = rows.map((row) => {
     const task = publicTask(row);
     const taskIntegrity = integrity.byTaskId.get(row.task_id) || {};
@@ -446,21 +563,31 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
   });
   const grouped = groupTasks(taskItems);
   const lastSyncedAt = rows[0]?.updated_at ? toIso(rows[0].updated_at) : null;
-  const syncStatus = integrity.totals.indexingLagCount > 0
+  const handoff = taskRequestHandoffState({ requests, taskItems });
+  const handoffProjectionPending = handoff.requestHandoffState === "generated_projection_pending";
+  const taskSyncVersion = maxIso([
+    lastSyncedAt,
+    requests?.sync?.lastUpdatedAt,
+    handoff.latestRequestUpdatedAt,
+    ...taskItems.map((task) => task.updatedAt),
+  ]);
+  const syncStatus = integrity.totals.integrityUnavailable
+    ? "integrity_unavailable"
+    : integrity.totals.indexingLagCount > 0
     ? "indexing_lag"
     : integrity.totals.failedReducerCount > 0
       ? "reducer_attention"
       : rows.length > 0
         ? "ready"
         : "empty";
-  const projectionRefreshRequired = syncStatus === "indexing_lag" ||
+  const projectionRefreshRequired = syncStatus === "integrity_unavailable" ||
+    syncStatus === "indexing_lag" ||
     integrity.totals.pendingReducerCount > 0 ||
     integrity.totals.processingReducerCount > 0;
   const refresh = taskRefreshMetadata({
     tasks: taskItems,
-    activeRequestCount: Array.isArray(requests?.items)
-      ? requests.items.filter((request) => request?.isActive).length
-      : 0,
+    activeRequestCount: refreshActiveRequestCount(requests),
+    handoffProjectionPending,
     projectionRefreshRequired,
     projectionRefreshReason: syncStatus === "indexing_lag"
       ? "task_projection_indexing_lag"
@@ -482,6 +609,10 @@ export async function listTaskState({ accountId = "", walletAddress = "" } = {})
       processingReducerCount: integrity.totals.processingReducerCount,
       failedReducerCount: integrity.totals.failedReducerCount,
       indexingLagCount: integrity.totals.indexingLagCount,
+      integrityUnavailable: Boolean(integrity.totals.integrityUnavailable),
+      error: integrity.totals.error || undefined,
+      handoff,
+      taskSyncVersion,
       ...refresh,
     },
   };

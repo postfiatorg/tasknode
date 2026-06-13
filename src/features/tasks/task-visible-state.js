@@ -47,14 +47,36 @@ function requestAgeMs(request = {}, nowMs = Date.now()) {
 
 export function activeTaskRequests(requests = [], { nowMs = Date.now() } = {}) {
   return taskArray(requests).filter((request) => {
+    if (request?.generatedTaskId || request?.isTerminal === true) return false;
     if (request?.isActive === true) return true;
     if (request?.isActive === false) return false;
     const status = safeText(request?.status, 80).toLowerCase();
     if (!status || status === "proposed" || status === "cancelled") return false;
+    if (request?.generatedTaskId) return false;
     if (status === "failed") return requestAgeMs(request, nowMs) < 24 * 60 * 60 * 1000;
     if (["signing", "queued", "generating"].includes(status)) return true;
     if (status === "published") return requestAgeMs(request, nowMs) < 20 * 60 * 1000 && !request.generatedTaskId;
     return false;
+  });
+}
+
+export function processingTaskRequests(requests = [], { nowMs = Date.now() } = {}) {
+  return activeTaskRequests(requests, { nowMs }).filter((request) => {
+    if (request?.isProcessing === true) return true;
+    if (request?.isProcessing === false) return false;
+    const status = safeText(request?.status, 80).toLowerCase();
+    if (["signing", "queued", "generating"].includes(status)) return true;
+    return status === "published" && requestAgeMs(request, nowMs) < 20 * 60 * 1000 && !request.generatedTaskId;
+  });
+}
+
+export function attentionTaskRequests(requests = [], { nowMs = Date.now() } = {}) {
+  return activeTaskRequests(requests, { nowMs }).filter((request) => {
+    if (request?.needsAttention === true) return true;
+    if (request?.needsAttention === false) return false;
+    return safeText(request?.status, 80).toLowerCase() === "failed" &&
+      requestAgeMs(request, nowMs) < 24 * 60 * 60 * 1000 &&
+      !request.generatedTaskId;
   });
 }
 
@@ -132,14 +154,18 @@ export function visibleTaskStateFromTask(task = {}) {
 export function visibleTaskStateFromActionReceipt(receipt = {}) {
   const statusKey = normalizeTaskStatus(receipt?.expectedStatusKey || receipt?.statusKey);
   if (statusKey === TASK_STATUS.unknown) return null;
+  const hasClientSyncLabel = Object.prototype.hasOwnProperty.call(receipt, "clientSyncLabel");
+  const hasClientSyncDetail = Object.prototype.hasOwnProperty.call(receipt, "clientSyncDetail");
+  const clientActionPending = receipt?.clientActionPending === false ? false : true;
   return {
     status: safeText(receipt?.expectedStatus || receipt?.status, 120) || taskStatusLabel(statusKey),
     statusKey,
     txHash: safeText(receipt?.txHash, 180),
-    clientActionPending: true,
-    clientSyncLabel: "syncing",
-    clientSyncDetail:
-      statusKey === TASK_STATUS.submitted
+    clientActionPending,
+    clientSyncLabel: hasClientSyncLabel ? safeText(receipt?.clientSyncLabel, 80) : "syncing",
+    clientSyncDetail: hasClientSyncDetail
+      ? safeText(receipt?.clientSyncDetail, 240)
+      : statusKey === TASK_STATUS.submitted
         ? "Evidence was submitted. Task state is updating."
         : "Task action was signed. Task state is updating.",
     pendingActionReceipt: {
@@ -163,6 +189,8 @@ export function overlayTaskWithVisibleState(task = {}, visibleState = {}, { nowM
   if (!shouldApplyVisibleTaskState(task, visibleState)) return task;
   const statusKey = normalizeTaskStatus(visibleState.statusKey);
   const info = taskStatusInfo(statusKey);
+  const hasClientSyncLabel = Object.prototype.hasOwnProperty.call(visibleState, "clientSyncLabel");
+  const hasClientSyncDetail = Object.prototype.hasOwnProperty.call(visibleState, "clientSyncDetail");
   return {
     ...task,
     status: taskStatusLabel(statusKey),
@@ -174,9 +202,9 @@ export function overlayTaskWithVisibleState(task = {}, visibleState = {}, { nowM
     ago: relativeAge(visibleState.pendingActionReceipt?.createdAt, nowMs) || task.ago,
     updatedAt: visibleState.pendingActionReceipt?.createdAt || task.updatedAt,
     txHash: visibleState.txHash || task.txHash,
-    clientActionPending: true,
-    clientSyncLabel: visibleState.clientSyncLabel || "syncing",
-    clientSyncDetail: visibleState.clientSyncDetail || "Task action was signed. Task state is updating.",
+    clientActionPending: Boolean(visibleState.clientActionPending),
+    clientSyncLabel: hasClientSyncLabel ? visibleState.clientSyncLabel : "syncing",
+    clientSyncDetail: hasClientSyncDetail ? visibleState.clientSyncDetail : "Task action was signed. Task state is updating.",
     metadata: {
       ...(task.metadata || {}),
       optimisticLastTxHash: visibleState.txHash || "",
@@ -200,6 +228,8 @@ export function overlayTaskDetailWithVisibleState(detail = null, visibleState = 
   if (!detail?.task || !shouldRetainVisibleTaskDetailState(detail, visibleState)) return detail;
   const statusKey = normalizeTaskStatus(visibleState.statusKey);
   const statusInfo = taskStatusInfo(statusKey);
+  const hasClientSyncLabel = Object.prototype.hasOwnProperty.call(visibleState, "clientSyncLabel");
+  const hasClientSyncDetail = Object.prototype.hasOwnProperty.call(visibleState, "clientSyncDetail");
 
   return {
     ...detail,
@@ -212,9 +242,9 @@ export function overlayTaskDetailWithVisibleState(detail = null, visibleState = 
       statusTab: statusInfo.tab,
       lifecycle: statusInfo,
       txHash: visibleState.txHash || detail.task.txHash,
-      clientActionPending: visibleState.clientActionPending || detail.task.clientActionPending,
-      clientSyncLabel: visibleState.clientSyncLabel || detail.task.clientSyncLabel,
-      clientSyncDetail: visibleState.clientSyncDetail || detail.task.clientSyncDetail,
+      clientActionPending: Boolean(visibleState.clientActionPending || detail.task.clientActionPending),
+      clientSyncLabel: hasClientSyncLabel ? visibleState.clientSyncLabel : detail.task.clientSyncLabel,
+      clientSyncDetail: hasClientSyncDetail ? visibleState.clientSyncDetail : detail.task.clientSyncDetail,
       metadata: {
         ...(detail.task.metadata || {}),
         optimisticLastTxHash: visibleState.txHash || detail.task.metadata?.optimisticLastTxHash || "",
@@ -260,9 +290,15 @@ export function mergeTaskStateWithActionReceipts(tasks = {}, receipts = [], {
       : hasLifecycleRefresh && !tasks?.sync?.refreshReason
         ? "task_review_active"
         : tasks?.sync?.refreshReason;
-    const nextPollMs = shouldRefresh
-      ? Math.min(Math.max(Number(tasks?.sync?.nextPollMs || 2500), 1000), 2500)
-      : tasks?.sync?.nextPollMs;
+    const serverNextPollMs = Number(tasks?.sync?.nextPollMs || 0);
+    // Only a pending optimistic receipt may clamp polling down to the fast
+    // 2.5s tier. Otherwise the server-suggested cadence is respected so the
+    // slow 10s tier (and database-error backoff) stays reachable.
+    const nextPollMs = !shouldRefresh
+      ? tasks?.sync?.nextPollMs
+      : hasOptimisticSync
+        ? Math.min(Math.max(serverNextPollMs || 2500, 1000), 2500)
+        : Math.min(Math.max(serverNextPollMs || (hasLifecycleRefresh ? 2500 : 10000), 1000), 30000);
 
     return {
       ...(tasks?.sync || {}),
@@ -274,6 +310,7 @@ export function mergeTaskStateWithActionReceipts(tasks = {}, receipts = [], {
         ...lifecycleRefreshTaskIds,
       ]),
       requiresRefresh: shouldRefresh,
+      forceProjectionRefresh: Boolean(tasks?.sync?.forceProjectionRefresh || hasOptimisticSync),
       nextPollMs,
       refreshReason,
     };
@@ -318,15 +355,28 @@ export function pruneTaskActionReceiptsForTaskState(receipts = [], tasks = {}, {
 }
 
 export function needsLegacyTaskRefresh(tasks = {}) {
-  return allTaskBuckets(tasks).some((task) => {
-    const statusKey = safeText(task?.statusKey, 120).toLowerCase();
-    return taskRequiresRefresh(task?.statusKey || task?.status) || statusKey === "verification_requested";
-  });
+  // Covers review-loop states genuinely awaiting the worker (submitted,
+  // verification_response_submitted, reward_decided). verification_requested
+  // waits on the user's own response and stays on the slow tier; route-open
+  // and focus/visibility refreshes cover cross-device cancels.
+  return allTaskBuckets(tasks).some((task) => taskRequiresRefresh(task?.statusKey || task?.status));
 }
 
 export function taskSyncNoticeForStatus(sync = {}) {
   const status = safeText(sync?.status, 80);
   const indexingLagCount = Number(sync?.indexingLagCount || 0);
+  if (status === "database_error") {
+    return {
+      label: "Task state is reconnecting",
+      body: "Task Node could not read the task projection cache. The app will keep retrying without clearing your current task view.",
+    };
+  }
+  if (status === "integrity_unavailable") {
+    return {
+      label: "Task sync check is retrying",
+      body: "Task rows are visible, but the projection integrity check could not finish. The app will keep refreshing task state.",
+    };
+  }
   if (status === "reducer_attention") {
     return {
       label: "Task sync needs attention",
@@ -348,6 +398,7 @@ export function reconcileTaskVisibleState({
   nowMs = Date.now(),
   receipts = [],
   selectedTaskId = "",
+  taskReadFailureCount = 0,
   taskRequestSettleUntilMs = 0,
   tasks = {},
   tasksTab = "outstanding",
@@ -365,13 +416,21 @@ export function reconcileTaskVisibleState({
   const rewarded = taskArray(visibleTasks.rewarded);
   const requests = taskRequestArray(visibleTasks);
   const activeRequests = activeTaskRequests(requests, { nowMs });
+  const processingRequests = processingTaskRequests(requests, { nowMs });
+  const attentionRequests = attentionTaskRequests(requests, { nowMs });
   const taskSync = visibleTasks?.sync || {};
+  const handoffProjectionPending = taskSync?.handoff?.requestHandoffState === "generated_projection_pending";
   const polling = taskRefreshPolicy({
-    activeRequestCount: activeRequests.length,
+    handoffProjectionPending: Boolean(taskSync?.handoffProjectionPending || handoffProjectionPending),
     legacyRefreshNeeded: needsLegacyTaskRefresh(visibleTasks),
     nextPollMs: taskSync.nextPollMs,
     nowMs,
+    // Failed requests stay in the attention strip but exert no refresh
+    // pressure; only processing requests keep the fast forced-refresh loop.
+    processingRequestCount: processingRequests.length,
     settleUntilMs: taskRequestSettleUntilMs,
+    taskReadFailureCount,
+    taskSyncForceProjection: Boolean(taskSync.forceProjectionRefresh),
     taskSyncRequiresRefresh: taskSync.requiresRefresh,
     taskSyncStatus: safeText(taskSync.status || "ready", 80),
   });
@@ -398,6 +457,10 @@ export function reconcileTaskVisibleState({
     requests,
     activeRequests,
     activeRequestCount: activeRequests.length,
+    processingRequests,
+    processingRequestCount: processingRequests.length,
+    attentionRequests,
+    attentionRequestCount: attentionRequests.length,
     allTasks: [...outstanding, ...verification, ...refused, ...rewarded],
     counts,
     totalPftInFlight,
@@ -410,6 +473,7 @@ export function reconcileTaskVisibleState({
     }[tasksTab] || [],
     selectedTask: selectedTaskId ? findTaskById(visibleTasks, selectedTaskId) : null,
     sync: taskSync,
+    handoff: taskSync?.handoff || null,
     taskSyncNotice: shouldForceTaskSyncNotice(taskSync) ? taskSyncNoticeForStatus(taskSync) : null,
     polling,
     prunedReceipts: pruneTaskActionReceiptsForTaskState(receipts, tasks, {

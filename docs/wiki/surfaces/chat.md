@@ -26,6 +26,8 @@ The chat voice is calibrated by the Jobs Markdown prompt in `prompts/chat/jobs_s
 
 When there is no signed-in account, `appState` sets the chat default to Help and marks other chat modes as login-required. The frontend filters the signed-out model picker to Help and disables the `+` menu because Request a task and Context Refine are account actions. Server preflight allows anonymous Help execution only; every other chat mode still returns `chat_login_required`. Anonymous Help sends a bounded `clientHistory` packet containing the recent visible local thread so first-time users can say "sure" or "what do you mean?" without losing continuity. That history is ephemeral transport context only. Anonymous Help responses are not written to chat history, memory, or the billing ledger because there is no account boundary to attach them to.
 
+A new signed-in chat that is not the Hive conversation shows four starter prompt pills under the empty-state composer: `Help me build my context document`, `Give me my first task`, `How do I earn PFT?`, and `What should I do first?`. Clicking a pill prefills the composer text and focuses it; nothing is sent until the user presses send. Signed-out and Hive empty states do not show starter prompts.
+
 Standard chat is advisory by default. It can help the user decide, draft, evaluate, plan, and clarify evidence, but it must not claim it can perform app actions on the user's behalf. The `+` menu starts Request a task or Context Refine. The Tasks panel is where the user accepts or refuses tasks and submits evidence. The Hive panel is where the user views network work and contributes to the network. If chat recommends one of those actions, it should name the surface the user should use instead of saying chat can do the action.
 
 The Jobs layer governs response cadence in the prompt, not by cutting output
@@ -60,7 +62,7 @@ Jobs source text panel.
 
 Chat also has an explicit task-request mode from the `+` menu. That mode is different from ordinary chat. The next send becomes task request detail text and uses the same `POST /api/tasks/request` browser-wallet signing path as the Tasks page modal. It publishes a signed `pf.task.request.v1` pointer, records a durable `task_requests` row, and leaves the actual task card to appear from the PFTL projection after the task-generation worker publishes `pf.task.offer.v1`.
 
-Chat also has a Context Refine mode from the `+` menu. That mode stays in the same chat, changes the composer into `Context Refine`, and sends the next message through the dedicated context-edit route. Context Refine is not a modal and does not require a wallet.
+Chat also has a Context Refine mode from the `+` menu. That mode stays in the same chat, changes the composer into `Context Refine`, and sends the next message through the dedicated context-edit route. Context Refine is not a modal and does not require a wallet. The sidebar More tools menu has a `Context Refine` row that opens Chat with the same mode already active; signed-out users are routed to login instead because Context Refine is an account action.
 
 This page is the current product contract for chat prompt assembly, Jobs
 retrieval, and Context Refine behavior. Historical implementation planning has
@@ -75,10 +77,10 @@ The model picker is not cosmetic. Each option maps to a provider, model default,
 | Mode | Provider | Default model | Selection and override rules | Tools and attachments | Intended use |
 | --- | --- | --- | --- | --- | --- |
 | Private Instant | OpenRouter `/chat/completions` | `deepseek/deepseek-v4-flash` | Uses `CHAT_MODEL_PRIVATE_INSTANT` if set, then `OPENROUTER_MODEL`, then the default. Requires `OPENROUTER_API_KEY` or `OPENROUTER`. | Text, image, PDF, and file parts are sent through OpenRouter chat content. PDF parsing uses the `file-parser` plugin with `OPENROUTER_PDF_ENGINE` or `cloudflare-ai`. Sends `max_tokens=16384`, `reasoning.effort="none"`, `reasoning.exclude=true`, and `provider.require_parameters=true` so the fast route spends its answer budget on visible response text. Web search is intentionally disabled. | Fast private open-source chat. |
-| Private Thinking | OpenRouter `/chat/completions` | `deepseek/deepseek-v4-pro` | Uses `CHAT_MODEL_PRIVATE_THINKING` if set, then `OPENROUTER_MODEL`, then the default. Requires `OPENROUTER_API_KEY` or `OPENROUTER`. | Same attachment path as Private Instant. Adds `reasoning.effort="high"` and `provider.require_parameters=true`. Web search is intentionally disabled. | Slower private open-source reasoning. |
+| Private Thinking | OpenRouter `/chat/completions` | `deepseek/deepseek-v4-pro` | Uses `CHAT_MODEL_PRIVATE_THINKING` if set, then `OPENROUTER_MODEL`, then the default. Requires `OPENROUTER_API_KEY` or `OPENROUTER`. | Same attachment path as Private Instant. Sends `max_tokens=4096` and adds `reasoning.effort="high"` and `provider.require_parameters=true`. Web search is intentionally disabled. | Slower private open-source reasoning. |
 | Discount Thinking | DeepSeek API Direct `/chat/completions` | `deepseek-v4-pro` | Uses `CHAT_MODEL_DISCOUNT_THINKING` if set, then `DEEPSEEK_CHAT_MODEL`, then the default. Requires `DEEPSEEK_API_KEY` or `DEEPSEEK`. | Sends the shared instruction stack, recent history, the user message, and text attachments as plain chat messages. Image, PDF, and binary attachments are not sent to DeepSeek API Direct; the model receives an attachment notice instead. Adds `thinking.type="enabled"`, `reasoning_effort="high"`, and `max_tokens=4096`. Web search is intentionally disabled. | Lower-cost direct DeepSeek reasoning when ZDR routing and multimodal attachments are not required. |
 | Frontier Instant | OpenAI `/responses` | `chat-latest` | Uses `CHAT_MODEL_FRONTIER_INSTANT` if set, otherwise the pinned default. Does not use `OPENAI_MODEL` as a broad override. Requires `OPENAI_API_KEY`. | Text, image, and file inputs are mapped to Responses API input parts. The OpenAI web search tool is available and prompt-governed. The app does not send a hard `max_output_tokens` cap; preflight only reserves an estimated output budget for billing. | Fast frontier chat with optional web and file understanding. |
-| Help | DeepSeek API Direct `/chat/completions` | `deepseek-v4-pro` | Uses `CHAT_MODEL_HELP` if set, then `DEEPSEEK_CHAT_MODEL`, then the default. Requires `DEEPSEEK_API_KEY` or `DEEPSEEK`. | Sends the Help prompt, the normal account context stack, recent history, the user message, text attachments, and the embedded User Guide. Image, PDF, and binary attachments are not sent to DeepSeek API Direct; the model receives an attachment notice instead. Sends `thinking.type="disabled"` and no hard `max_tokens` cap. Web search is intentionally disabled. | Plain-English product help for using Task Node with awareness of the user's context, tasks, wallet, Hive, profile, and next app step. |
+| Help | DeepSeek API Direct `/chat/completions` | `deepseek-v4-pro` | Uses `CHAT_MODEL_HELP` if set, then `DEEPSEEK_CHAT_MODEL`, then the default. Requires `DEEPSEEK_API_KEY` or `DEEPSEEK`. | Sends the Help prompt, the normal account context stack, recent history, the user message, text attachments, and the embedded User Guide. Image, PDF, and binary attachments are not sent to DeepSeek API Direct; the model receives an attachment notice instead. Sends `thinking.type="disabled"` and no hard `max_tokens` cap. Web search is intentionally disabled. | Plain-English product help for using Task Node with awareness of the user's context, tasks, wallet, Hive, profile, and next app step. Hive onboarding guidance is used only for Hive, Hive Chat, Network Task, wallet-validation, or broad first-session questions. |
 | Frontier Thinking | OpenAI `/responses` | `gpt-5.5` | Uses `CHAT_MODEL_FRONTIER_THINKING` if set, otherwise the pinned default. Requires `OPENAI_API_KEY`. | Same attachment path as Frontier Instant. Adds `reasoning.effort="high"`. The OpenAI web search tool is available and prompt-governed. The app does not send a hard `max_output_tokens` cap; preflight only reserves an estimated output budget for billing. | Deeper frontier reasoning, especially when web or files matter. |
 
 Unknown mode strings are rejected with `unknown_chat_mode`. The signed-in app default prefers Frontier Instant when it is enabled; otherwise it chooses the first enabled mode. The signed-out app default is Help.
@@ -94,9 +96,10 @@ fast chat modes. Task Node gives direct DeepSeek chat a 120 second default provi
 budget through `CHAT_PROVIDER_DEEPSEEK_TIMEOUT_MS`, mode-specific
 `CHAT_PROVIDER_HELP_TIMEOUT_MS` or `CHAT_PROVIDER_DISCOUNT_THINKING_TIMEOUT_MS`,
 or `CHAT_PROVIDER_TIMEOUT_MS`.
-When the direct DeepSeek streaming connection terminates before any visible
-assistant text is emitted, the server retries the same request through the
-non-streaming DeepSeek completion path before returning an error to the user.
+When the direct DeepSeek streaming connection terminates for a recoverable
+transport reason before any visible assistant text is emitted and the user has
+not cancelled, the server retries the same request through the non-streaming
+DeepSeek completion path before returning an error to the user.
 
 Frontier modes use the OpenAI Responses API with `store=false`. Task Node passes durable app history from Postgres instead of relying on OpenAI-hosted conversation state. The server exposes the hosted `web_search` tool to Frontier modes and counts observed search calls in usage billing. Frontier chat requests intentionally omit `max_output_tokens`; the app still estimates an output budget for preflight billing, but that estimate is not a hard response cutoff.
 
@@ -137,7 +140,7 @@ The runtime path is:
 
 1. `server/product-contracts.js::chatExecutionPreflight`, `server/chat-router.js::executeChat`, and `server/chat-router.js::executeChatStream` load the current context document alongside chat history, memory context, and task context.
 2. `server/chat-account-context.js::chatContextDocumentForAccount` calls `server/repositories/context.js::getContextDocument` for the signed-in account.
-3. `server/chat-account-context.js::formatChatContextDocument` converts stored rich-text HTML into readable text, removes markup, clips the body to `TASKNODE_CHAT_CONTEXT_DOCUMENT_MAX_CHARS`, and renders `prompts/chat/account_context_document_v1.md`.
+3. `server/chat-account-context.js::formatChatContextDocument` converts stored rich-text HTML into readable text, removes markup, clips the body to `TASKNODE_CHAT_CONTEXT_DOCUMENT_MAX_CHARS` with a 60,000-character default and ceiling, and renders `prompts/chat/account_context_document_v1.md`.
 4. `server/chat-memory-context.js::taskNodeInstructions` renders the context block into the shared instruction payload.
 5. `server/chat-router.js` sends those instructions to OpenAI Responses API as `instructions` or to OpenRouter Chat Completions as the system message.
 
@@ -157,7 +160,7 @@ Because the context document is sent to the provider as part of the chat input, 
 
 ## Context Refine Mode
 
-The `+` menu `Context Refine` action activates an explicit internal `context_edit` chat mode. The visible chat stays in place, but the composer badge and placeholder show `Context Refine` so the user sees the action they selected.
+The `+` menu `Context Refine` action activates an explicit internal `context_edit` chat mode. The visible chat stays in place, but the composer badge and placeholder show `Context Refine` so the user sees the action they selected. The sidebar More tools menu `Context Refine` row activates the same mode: it navigates to Chat and the chat surface enters Context Refine through the same composer state.
 
 Runtime path:
 
@@ -220,6 +223,12 @@ On Fly, step 5 requires the `worker` process group. Release through `npm run
 fly:deploy`, not raw `fly deploy`, so the post-deploy worker guard starts and
 verifies the background worker. If a chat task request was signed but no task
 card appears, check `npm run fly:worker-guard` before editing request rows.
+
+## Chat Search
+
+The sidebar `Search chats` button opens a search overlay (`src/features/chat/ChatSearchModal.jsx`). While the user types, the overlay instantly filters the already-loaded recents by title, and a debounced request to `GET /api/chat/search?q=` searches conversation titles and message content server-side. The route requires a signed-in session, is rate limited, and returns an empty result set for queries shorter than two characters.
+
+Server search lives in `searchChatConversations` in `server/repositories/chat-conversations.js`. Every query is scoped to the session account and includes only `status = 'active'` conversations, so deleted conversations and other accounts' chats are never returned. The Hive conversation is searchable once it exists as a real row in `chat_conversations`. Results return one row per conversation ordered by most recent update, with a short excerpt centered on the matched message text, or the last-message preview for title-only matches. ILIKE wildcards in the user query (`%`, `_`, `\`) are escaped and treated literally. When the database is disabled, search degrades to runtime-store conversation titles plus the recent message window. Selecting a result opens the conversation through the same recents path as the sidebar. Coverage: `scripts/chat-search-smoke.mjs`.
 
 ## Billing And Persistence
 

@@ -2,6 +2,8 @@
 
 Brainstorming Context helps the user explore possible additions or changes to their context document before committing them. It is a thinking surface, not an automatic rewrite.
 
+Not Exposed: Brainstorming Context is not available in the current interface. The chat composer and sidebar tool menus do not include a Brainstorming Context entry. This page records the intended design for when it ships.
+
 ## User Flow
 
 1. The user opens Brainstorming Context.

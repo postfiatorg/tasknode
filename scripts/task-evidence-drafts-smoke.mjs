@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import {
   addUserRequestedEvidenceDraft,
+  evidenceDraftStateHasUserInput,
   evidenceMethodFromContract,
   evidenceValueForDraft,
   MAX_TASK_EVIDENCE_ITEMS,
+  restoreEvidenceDraftState,
   resetEvidenceDrafts,
+  serializeEvidenceDraftState,
+  taskEvidenceDraftStorageKey,
 } from "../src/features/tasks/task-evidence-drafts.js";
 
 const screenshotDefault = resetEvidenceDrafts("screenshot");
@@ -33,5 +37,42 @@ assert.equal(mixedWithSecond.length, 2);
 assert.equal(mixedWithSecond[1].method, "screenshot");
 assert.equal(evidenceMethodFromContract({ submissionRequirement: { type: "github_commit" } }), "commit");
 assert.equal(evidenceMethodFromContract({}, { policy: { verification_type: "screenshot" } }), "screenshot");
+
+const storageKey = taskEvidenceDraftStorageKey({
+  accountId: "acct_test",
+  taskId: "task_test",
+  submissionModeKey: "initial:task_test",
+});
+assert.equal(
+  storageKey,
+  "tasknode_task_evidence_drafts_v1:acct_test:task_test:initial%3Atask_test"
+);
+
+const typedDraftState = {
+  evidenceDrafts: [
+    { ...resetEvidenceDrafts("text")[0], text: "This is the evidence I do not want to lose." },
+    { ...resetEvidenceDrafts("url")[0], method: "url", url: "https://example.com/proof" },
+  ],
+  notes: "Verifier note",
+};
+assert.equal(evidenceDraftStateHasUserInput(typedDraftState), true);
+const serialized = serializeEvidenceDraftState(typedDraftState);
+const restored = restoreEvidenceDraftState(JSON.stringify(serialized), "text");
+assert.equal(restored.evidenceDrafts.length, 2);
+assert.equal(restored.evidenceDrafts[0].method, "text");
+assert.equal(restored.evidenceDrafts[0].text, "This is the evidence I do not want to lose.");
+assert.equal(restored.evidenceDrafts[1].method, "url");
+assert.equal(restored.evidenceDrafts[1].url, "https://example.com/proof");
+assert.equal(restored.notes, "Verifier note");
+
+const fileDraftState = serializeEvidenceDraftState({
+  evidenceDrafts: [
+    { ...resetEvidenceDrafts("file")[0], fileName: "local-only.pdf", file: { name: "local-only.pdf" } },
+  ],
+});
+const restoredFile = restoreEvidenceDraftState(fileDraftState, "file");
+assert.equal(restoredFile.evidenceDrafts[0].method, "file");
+assert.equal(restoredFile.evidenceDrafts[0].fileName, "");
+assert.equal(evidenceValueForDraft(restoredFile.evidenceDrafts[0]), "");
 
 console.log("task evidence drafts smoke ok");

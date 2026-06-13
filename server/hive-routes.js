@@ -19,6 +19,7 @@ import {
 import { getAccountIdentityProfile } from "./runtime-store.js";
 import { decodeTextDataUrl, normalizeChatAttachments } from "./chat-attachment-utils.js";
 import { executeHiveImmediateResponse } from "./hive-immediate-response.js";
+import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 
 const maxHiveAttachmentTextLength = 12_000;
 const maxHiveAttachmentExcerptLength = 800;
@@ -67,6 +68,33 @@ function linkedWalletForSession({ getLinkedWallet, session }) {
   return null;
 }
 
+async function recordHiveObservabilityEvent({
+  eventType = "",
+  accountId = "",
+  walletAddress = "",
+  conversationId = "",
+  resultStatus = "",
+  reasonCode = "",
+  sourceRoute = "",
+  metadata = {},
+  metrics = {},
+} = {}) {
+  if (!eventType || !accountId) return;
+  await recordUserObservabilityEvent({
+    eventType,
+    accountId,
+    walletAddress,
+    walletScope: walletAddress ? "active" : "",
+    conversationId,
+    sourceSurface: "hive",
+    sourceRoute: sourceRoute || "server/hive-routes.js",
+    resultStatus,
+    reasonCode,
+    metadata,
+    metrics,
+  }).catch(() => {});
+}
+
 export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
   if (!["/api/hive/context", "/api/hive/projects", "/api/hive/chat"].includes(url.pathname)) return false;
 
@@ -79,9 +107,19 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       });
       return true;
     }
+    const document = await getHiveProjectsDocument();
+    await recordHiveObservabilityEvent({
+      eventType: "user.hive.project_viewed",
+      accountId: session?.accountId || "",
+      resultStatus: "viewed",
+      sourceRoute: "server/hive-routes.js::/api/hive/projects",
+      metrics: {
+        projectCount: Array.isArray(document?.projects) ? document.projects.length : 0,
+      },
+    });
     json(res, 200, {
       ok: true,
-      document: await getHiveProjectsDocument(),
+      document,
     });
     return true;
   }
@@ -104,6 +142,14 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
     }
     if (req.method === "PATCH") {
       const result = await markHiveConversationRead({ accountId: session.accountId });
+      await recordHiveObservabilityEvent({
+        eventType: "user.hive.board_message_read",
+        accountId: session.accountId,
+        conversationId: hiveConversationIdForAccount(session.accountId),
+        resultStatus: result.ok ? "read" : "failed",
+        reasonCode: result.ok ? "" : result.error || "hive_chat_read_failed",
+        sourceRoute: "server/hive-routes.js::/api/hive/chat",
+      });
       json(res, result.ok ? 200 : result.status || 400, result);
       return true;
     }
@@ -214,6 +260,24 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
   if (secretary?.queued) {
     scheduleHiveSecretaryQueue({ delayMs: 250 });
   }
+  await recordHiveObservabilityEvent({
+    eventType: "user.hive.context_submitted",
+    accountId: session.accountId,
+    walletAddress: linkedWallet?.address || "",
+    conversationId: sourceConversationId,
+    resultStatus: "submitted",
+    sourceRoute: "server/hive-routes.js::/api/hive/context",
+    metadata: {
+      entryId: entry.id,
+      sourceConversationTitlePresent: Boolean(sourceConversationTitle),
+      walletValidated: Boolean(linkedWallet?.address),
+      secretaryQueued: secretary?.queued === true,
+    },
+    metrics: {
+      bodyCharacterCount: body.length,
+      attachmentCount: attachments.length,
+    },
+  });
   let chatTurn = null;
   let chatHistoryWarning = "";
   let immediateResponseWarning = "";

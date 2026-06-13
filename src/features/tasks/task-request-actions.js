@@ -64,6 +64,7 @@ export async function publishTaskRequest({
   requestId = "",
   bundleId = "",
   attachments = [],
+  onProgress = null,
 } = {}) {
   if (!accountId || !walletSecret?.mnemonic || walletSecret.accountId !== accountId) {
     throw new Error("Unlock the local seed vault before requesting a task.");
@@ -83,6 +84,10 @@ export async function publishTaskRequest({
     sourceConversationTitle,
     attachments,
   };
+  const progress = (label) => {
+    if (typeof onProgress === "function") onProgress(label);
+  };
+  progress("Configuring request");
   const walletCore = await import("../../wallet-core");
   const userPubkey = await walletCore.deriveTaskNodePublicKey(walletSecret.mnemonic);
 
@@ -95,11 +100,13 @@ export async function publishTaskRequest({
     throw new Error(config.body?.message || "Task request publishing is not configured.");
   }
 
+  progress("Encrypting request");
   const recipients = [userPubkey, config.body.tasknodeEncryptionPubkey];
   const encryptedBundlePayload = await walletCore.encryptTaskNodePayload({
     plaintext: JSON.stringify(config.body.requestBundle),
     recipientPublicKeys: recipients,
   });
+  progress("Pinning request bundle");
   const bundlePrepared = await requestJson("/api/tasks/request", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -113,6 +120,7 @@ export async function publishTaskRequest({
     throw new Error(bundlePrepared.body?.message || "Task request bundle could not be pinned.");
   }
 
+  progress("Preparing transaction");
   const eventPayload = await buildRequestEvent({
     bundleCid: bundlePrepared.body.bundleCid,
     bundleDigest: bundlePrepared.body.bundleDigest,
@@ -138,11 +146,13 @@ export async function publishTaskRequest({
     throw new Error(prepared.body?.message || "Task request transaction could not be prepared.");
   }
 
+  progress("Signing transaction");
   const signed = walletCore.signPreparedPftlTransaction({
     mnemonic: walletSecret.mnemonic,
     txJson: prepared.body.txJson,
     expectedAddress: linkedWalletAddress,
   });
+  progress("Publishing to PFTL");
   const submitted = await requestJson("/api/tasks/request", {
     method: "POST",
     headers: { "content-type": "application/json" },

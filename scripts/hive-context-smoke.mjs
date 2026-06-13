@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 
 process.env.TASKNODE_DATABASE_DISABLED = "true";
 process.env.TASKNODE_POSTGRES_DISABLED = "true";
@@ -15,6 +16,7 @@ const {
 } = await import("../server/repositories/hive-context.js");
 const { hiveProjectsDocumentForTests } = await import("../server/repositories/hive-projects.js");
 const { handleHiveRoute } = await import("../server/hive-routes.js");
+const { getChatMessages } = await import("../server/repositories/chat-billing.js");
 const {
   formatHiveMindContextForImmediateResponse,
   formatLiveBoardFactsForImmediateResponse,
@@ -266,6 +268,10 @@ assert.match(formattedLiveFacts, /account=account_other/);
 assert.match(formattedLiveFacts, /requesting_user=no/);
 
 const routeAttachmentText = "Hive immediate response should see pasted launch surface context.";
+const routeSmokeCorrelationId = randomUUID().replace(/-/g, "").slice(0, 16);
+const routeSmokeConversationId = `account_account_hive_smoke_hive_${routeSmokeCorrelationId}`;
+const routeSmokeUserMessageId = `msg_hive_context_smoke_${routeSmokeCorrelationId}_user`;
+const routeSmokeAssistantMessageId = `msg_hive_context_smoke_${routeSmokeCorrelationId}_assistant`;
 const originalFetch = globalThis.fetch;
 const originalDeepseekKey = process.env.DEEPSEEK_API_KEY;
 process.env.DEEPSEEK_API_KEY = "sk-hive-context-smoke";
@@ -303,7 +309,7 @@ await handleHiveRoute({
   },
   readJson: async () => ({
     body: "Here is pasted Hive context.",
-    conversationId: "account_account_hive_smoke_hive",
+    conversationId: routeSmokeConversationId,
     conversationTitle: "Hive",
     attachments: [
       {
@@ -314,8 +320,8 @@ await handleHiveRoute({
         dataUrl: `data:text/plain,${encodeURIComponent(routeAttachmentText)}`,
       },
     ],
-    userMessageId: "msg_hive_context_smoke_user",
-    assistantMessageId: "msg_hive_context_smoke_assistant",
+    userMessageId: routeSmokeUserMessageId,
+    assistantMessageId: routeSmokeAssistantMessageId,
   }),
   req: { method: "POST" },
   res: {},
@@ -329,10 +335,25 @@ if (originalDeepseekKey === undefined) {
   process.env.DEEPSEEK_API_KEY = originalDeepseekKey;
 }
 assert.equal(capturedRouteResponse.status, 200);
+assert.match(capturedRouteResponse.body.user.id, /^msg_.+_user$/);
 assert.match(capturedRouteResponse.body.assistant.id, /^msg_.+_assistant$/);
 assert.equal(capturedRouteResponse.body.assistant.provider, "deepseek");
 assert.match(capturedRouteResponse.body.assistant.body, /pasted context/);
 assert.equal(capturedRouteResponse.body.immediateResponseWarning, "");
+const persistedHiveChatMessages = await getChatMessages({
+  accountId: "account_hive_smoke",
+  conversationId: routeSmokeConversationId,
+});
+const persistedHiveUserMessage = persistedHiveChatMessages.find((message) =>
+  message.id === capturedRouteResponse.body.user.id
+);
+const persistedHiveAssistantMessage = persistedHiveChatMessages.find((message) =>
+  message.id === capturedRouteResponse.body.assistant.id
+);
+assert.equal(persistedHiveUserMessage?.body, "Here is pasted Hive context.");
+assert.equal(persistedHiveUserMessage?.metadata?.hiveContextEntryId, capturedRouteResponse.body.entry.id);
+assert.match(persistedHiveAssistantMessage?.body || "", /pasted context/);
+assert.equal(persistedHiveAssistantMessage?.metadata?.kind, "hive_immediate_response");
 assert.match(deepSeekRequestSerialized, /Hive immediate response should see pasted launch surface context/);
 assert.match(deepSeekRequestSerialized, /REQUESTING USER - AUTHORITATIVE/);
 assert.match(deepSeekRequestSerialized, /Account ID: account_hive_smoke/);
@@ -345,6 +366,11 @@ assert.match(deepSeekRequestSerialized, /NETWORK TASK ROUTING POLICY - AUTHORITA
 assert.match(deepSeekRequestSerialized, /Hive Chat cannot create, queue, publish, accept, refuse, or submit personal tasks/);
 assert.match(deepSeekRequestSerialized, /Request task button creates user-requested personal task proposals/);
 assert.match(deepSeekRequestSerialized, /Do not tell a user that completing personal or engineering tasks is required/);
+assert.match(deepSeekRequestSerialized, /generated automatically by the Memory worker/);
+assert.match(deepSeekRequestSerialized, /Never tell a user to find, request, or apply for a Network Diagnostic Report/);
+assert.match(deepSeekRequestSerialized, /queued automatically after the account's second positively rewarded task/);
+assert.match(deepSeekRequestSerialized, /opening Memory generates the same report without any task history/);
+assert.match(deepSeekRequestSerialized, /network_task_eligibility/);
 assert.match(deepSeekRequestSerialized, /Do not offer to generate a personal task as a fallback/);
 assert.match(deepSeekRequestSerialized, /another contributor's outstanding Network Task globally prevents this user/);
 assert.match(deepSeekRequestSerialized, /Personal tasks can be useful work, but they are not Network Tasks/);

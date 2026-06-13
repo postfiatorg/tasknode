@@ -19,6 +19,9 @@ The briefs are not completed code reviews. They are the review queue.
 - `recent_work_pr_review_spec_2026-05-24.md` - current PR-by-PR review plan for
   the recent auth, Fly-data, Hive, Board Manager, network-task, profile,
   airdrop, task UX, chat/memory, database, docs, and prompt work.
+- `claude_fable_codebase_review_request_2026-06-09.md` - cutover-focused
+  codebase review request for Claude Fable, centered on Task Node Official
+  production readiness and old PFTasks retirement.
 - `reviews/` - one review-plan brief per app-visible doc page.
 - `templates/review_plan_template.md` - format for new review briefs.
 

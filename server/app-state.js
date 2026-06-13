@@ -30,7 +30,7 @@ import {
   getContextHistory,
 } from "./repositories/context.js";
 import { listTaskState } from "./repositories/tasks.js";
-import { refreshLinkedWalletTaskProjection } from "./task-projection-refresh.js";
+import { scheduleLinkedWalletTaskProjectionRefresh } from "./task-projection-refresh.js";
 
 const signedOutUsageSummary = Object.freeze({
   currentSpendUsd: 0,
@@ -120,7 +120,7 @@ export async function appState(session = null, { refreshTaskProjection = false }
       }
     : { ...usdcTopUpGrantStatus, creditedUsdcUsd, thresholdUsd: usdcGrantThresholdUsd };
   if (refreshTaskProjection && walletLinked) {
-    await refreshLinkedWalletTaskProjection({
+    scheduleLinkedWalletTaskProjectionRefresh({
       accountId,
       walletAddress: linkedWallet.address,
       syncKind: "task_list_refresh",

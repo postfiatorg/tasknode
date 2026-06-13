@@ -12,7 +12,13 @@ import { taskgenPromptForInput, validateTaskgenOutput } from "../server/task-gen
 import { isSafeEvidenceUrlLiteral } from "../server/task-review-worker.js";
 
 assert.equal(taskStatusTab(TASK_STATUS.verificationRequested), TASK_TABS.verification);
-assert.equal(taskRequiresRefresh(TASK_STATUS.verificationRequested), true);
+// verification_requested waits on the user's own response, so it is a
+// slow-tier state and must not force fast refresh. The states genuinely
+// awaiting the review worker stay on the fast tier.
+assert.equal(taskRequiresRefresh(TASK_STATUS.verificationRequested), false);
+assert.equal(taskRequiresRefresh(TASK_STATUS.submitted), true);
+assert.equal(taskRequiresRefresh(TASK_STATUS.verificationResponseSubmitted), true);
+assert.equal(taskRequiresRefresh(TASK_STATUS.rewardDecided), true);
 assert.equal(taskLifecycleActions(TASK_STATUS.verificationRequested).canSubmitVerificationEvidence, true);
 assert.equal(taskLifecycleActions(TASK_STATUS.proposed).canAccept, true);
 assert.equal(taskLifecycleActions(TASK_STATUS.proposed).canRefuse, true);
@@ -82,6 +88,8 @@ assert.equal(isSafeEvidenceUrlLiteral("http://127.0.0.1:5174").reason, "private_
 assert.equal(isSafeEvidenceUrlLiteral("http://169.254.169.254/latest/meta-data").reason, "private_ip_not_allowed");
 assert.equal(isSafeEvidenceUrlLiteral("https://user:pass@example.com").reason, "credentials_not_allowed");
 
+// verification_requested now sits on the slow 10s tier: the next event is the
+// user's own verification response, not a worker decision.
 const activeReview = taskRefreshMetadata({
   tasks: [
     {
@@ -91,13 +99,25 @@ const activeReview = taskRefreshMetadata({
   ],
 });
 assert.equal(activeReview.requiresRefresh, true);
-assert.equal(activeReview.refreshReason, "task_review_active");
+assert.equal(activeReview.nextPollMs, 10000);
+assert.equal(activeReview.forceProjectionRefresh, false);
+assert.equal(activeReview.refreshReason, "task_state_active");
 assert.deepEqual(activeReview.refreshTaskIds, ["task_review_loop"]);
+
+const submittedReviewLoop = taskRefreshMetadata({
+  tasks: [{ taskId: "task_submitted", statusKey: TASK_STATUS.submitted }],
+});
+assert.equal(submittedReviewLoop.requiresRefresh, true);
+assert.equal(submittedReviewLoop.nextPollMs, 2500);
+assert.equal(submittedReviewLoop.forceProjectionRefresh, true);
+assert.equal(submittedReviewLoop.refreshReason, "task_review_active");
 
 const rewardDecidedLoop = taskRefreshMetadata({
   tasks: [{ taskId: "task_reward_decided", statusKey: TASK_STATUS.rewardDecided }],
 });
 assert.equal(rewardDecidedLoop.requiresRefresh, true);
+assert.equal(rewardDecidedLoop.nextPollMs, 2500);
+assert.equal(rewardDecidedLoop.forceProjectionRefresh, true);
 assert.deepEqual(rewardDecidedLoop.refreshTaskIds, ["task_reward_decided"]);
 
 const acceptedOpenLoop = taskRefreshMetadata({
@@ -105,8 +125,27 @@ const acceptedOpenLoop = taskRefreshMetadata({
 });
 assert.equal(acceptedOpenLoop.requiresRefresh, true);
 assert.equal(acceptedOpenLoop.nextPollMs, 10000);
+assert.equal(acceptedOpenLoop.forceProjectionRefresh, false);
 assert.equal(acceptedOpenLoop.refreshReason, "task_state_active");
 assert.deepEqual(acceptedOpenLoop.refreshTaskIds, ["task_accepted"]);
+
+const processingRequestRefresh = taskRefreshMetadata({
+  activeRequestCount: 1,
+});
+assert.equal(processingRequestRefresh.requiresRefresh, true);
+assert.equal(processingRequestRefresh.nextPollMs, 2500);
+assert.equal(processingRequestRefresh.forceProjectionRefresh, true);
+assert.equal(processingRequestRefresh.refreshReason, "task_requests_active");
+
+const pendingGeneratedProjection = taskRefreshMetadata({
+  handoffProjectionPending: true,
+});
+assert.equal(pendingGeneratedProjection.requiresRefresh, true);
+assert.equal(pendingGeneratedProjection.nextPollMs, 2500);
+assert.equal(pendingGeneratedProjection.forceProjectionRefresh, true);
+assert.equal(pendingGeneratedProjection.refreshReason, "task_request_handoff_projection_pending");
+assert.equal(pendingGeneratedProjection.handoffProjectionPending, true);
+assert.deepEqual(pendingGeneratedProjection.refreshTaskIds, []);
 
 const terminalReward = taskRefreshMetadata({
   tasks: [
@@ -117,6 +156,7 @@ const terminalReward = taskRefreshMetadata({
   ],
 });
 assert.equal(terminalReward.requiresRefresh, false);
+assert.equal(terminalReward.forceProjectionRefresh, false);
 assert.deepEqual(terminalReward.refreshTaskIds, []);
 
 const laggedProposedTask = taskRefreshMetadata({
@@ -126,6 +166,7 @@ const laggedProposedTask = taskRefreshMetadata({
 });
 assert.equal(laggedProposedTask.requiresRefresh, true);
 assert.equal(laggedProposedTask.nextPollMs, 2500);
+assert.equal(laggedProposedTask.forceProjectionRefresh, true);
 assert.equal(laggedProposedTask.refreshReason, "task_projection_indexing_lag");
 assert.deepEqual(laggedProposedTask.refreshTaskIds, []);
 

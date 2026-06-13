@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   appendChatTurn as appendRuntimeChatTurn,
   deleteChatConversation as deleteRuntimeChatConversation,
+  getChatMessages as getRuntimeChatMessages,
   listChatConversations as listRuntimeChatConversations,
   renameChatConversation as renameRuntimeChatConversation,
 } from "../runtime-store.js";
@@ -12,6 +13,9 @@ import {
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 
 const maxConversationLimit = 100;
+const maxSearchLimit = 50;
+const maxSearchQueryLength = 200;
+const searchSnippetLength = 160;
 
 const safeAccountId = (accountId = "") => String(accountId || "").trim().slice(0, 160);
 const safeConversationId = (conversationId = "dev") =>
@@ -412,6 +416,153 @@ export async function listChatConversations({ accountId = "", limit = 30 } = {})
     ...(hiveConversation ? [hiveConversation] : []),
     ...rows.rows.map(publicConversation),
   ].slice(0, normalizedLimit);
+}
+
+function escapeLikePattern(text = "") {
+  return String(text || "").replace(/([\\%_])/g, "\\$1");
+}
+
+function searchSnippet(body = "", queryText = "") {
+  const text = String(body || "").trim().replace(/\s+/g, " ");
+  const matchIndex = text.toLowerCase().indexOf(String(queryText || "").toLowerCase());
+  if (matchIndex < 0) return text.slice(0, searchSnippetLength);
+
+  const contextBudget = Math.max(searchSnippetLength - queryText.length, 40);
+  const start = Math.max(0, matchIndex - Math.floor(contextBudget / 2));
+  const end = Math.min(text.length, start + searchSnippetLength);
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < text.length ? "…" : "";
+  return `${prefix}${text.slice(start, end).trim()}${suffix}`;
+}
+
+function searchResultRow({ accountId = "", conversationId = "", title = "", snippet = "", matchSource = "title", updatedAt = null }) {
+  const kind = isHiveConversation({ accountId, conversationId }) ? "hive" : "";
+  return {
+    id: conversationId,
+    conversationId,
+    kind: kind || undefined,
+    title: kind === "hive" ? HIVE_CHAT_TITLE : cleanTitle(title) || "New chat",
+    snippet: String(snippet || "").slice(0, searchSnippetLength + 2),
+    matchSource,
+    updatedAt: toIso(updatedAt),
+  };
+}
+
+function searchRuntimeChatConversations({ accountId = "", query: searchQuery = "", limit = 20 } = {}) {
+  const loweredQuery = String(searchQuery || "").toLowerCase();
+  const conversations = listRuntimeChatConversations({ accountId, limit: maxConversationLimit });
+  const results = [];
+
+  for (const conversation of conversations) {
+    const conversationId = conversation.conversationId || conversation.id || "";
+    const titleMatch = String(conversation.title || "").toLowerCase().includes(loweredQuery);
+    let matchedBody = "";
+    // Runtime store keeps the recent message window only; degrade to that window honestly.
+    const messages = getRuntimeChatMessages(conversationId);
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const body = String(messages[index]?.body || "");
+      if (body.toLowerCase().includes(loweredQuery)) {
+        matchedBody = body;
+        break;
+      }
+    }
+    if (!titleMatch && !matchedBody) continue;
+
+    results.push(searchResultRow({
+      accountId,
+      conversationId,
+      title: conversation.title || "",
+      snippet: matchedBody
+        ? searchSnippet(matchedBody, searchQuery)
+        : searchSnippet(conversation.lastMessagePreview || "", searchQuery),
+      matchSource: titleMatch ? "title" : "message",
+      updatedAt: conversation.updatedAt || conversation.lastMessageAt || null,
+    }));
+  }
+
+  return results.slice(0, limit);
+}
+
+export async function searchChatConversations({ accountId = "", query: searchQuery = "", limit = 20 } = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  const normalizedQuery = String(searchQuery || "").trim().replace(/\s+/g, " ").slice(0, maxSearchQueryLength);
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 20, 1), maxSearchLimit);
+  if (!normalizedAccountId || normalizedQuery.length < 2) return [];
+
+  if (!useDatabase()) {
+    return searchRuntimeChatConversations({
+      accountId: normalizedAccountId,
+      query: normalizedQuery,
+      limit: normalizedLimit,
+    });
+  }
+
+  const pattern = `%${escapeLikePattern(normalizedQuery)}%`;
+  const titleRows = await query(
+    `
+      SELECT id, title, updated_at, last_message_preview
+      FROM chat_conversations
+      WHERE account_id = $1
+        AND status = 'active'
+        AND title ILIKE $2
+      ORDER BY updated_at DESC, id DESC
+      LIMIT $3
+    `,
+    [normalizedAccountId, pattern, normalizedLimit]
+  );
+  const messageRows = await query(
+    `
+      SELECT matched.conversation_id, matched.body, matched.title, matched.updated_at
+      FROM (
+        SELECT DISTINCT ON (m.conversation_id)
+          m.conversation_id,
+          m.body,
+          c.title,
+          c.updated_at
+        FROM chat_messages m
+        JOIN chat_conversations c
+          ON c.id = m.conversation_id
+         AND c.account_id = $1
+         AND c.status = 'active'
+        WHERE m.account_id = $1
+          AND m.body ILIKE $2
+        ORDER BY m.conversation_id, m.message_order DESC
+      ) matched
+      ORDER BY matched.updated_at DESC, matched.conversation_id DESC
+      LIMIT $3
+    `,
+    [normalizedAccountId, pattern, normalizedLimit]
+  );
+
+  const byConversationId = new Map();
+  for (const row of messageRows.rows) {
+    byConversationId.set(row.conversation_id, searchResultRow({
+      accountId: normalizedAccountId,
+      conversationId: row.conversation_id,
+      title: row.title,
+      snippet: searchSnippet(row.body, normalizedQuery),
+      matchSource: "message",
+      updatedAt: row.updated_at,
+    }));
+  }
+  for (const row of titleRows.rows) {
+    const existing = byConversationId.get(row.id);
+    byConversationId.set(row.id, {
+      ...(existing || searchResultRow({
+        accountId: normalizedAccountId,
+        conversationId: row.id,
+        title: row.title,
+        snippet: searchSnippet(row.last_message_preview || "", normalizedQuery),
+        matchSource: "title",
+        updatedAt: row.updated_at,
+      })),
+      matchSource: "title",
+    });
+  }
+
+  return [...byConversationId.values()]
+    .sort((left, right) => (Date.parse(right.updatedAt || "") || 0) - (Date.parse(left.updatedAt || "") || 0))
+    .slice(0, normalizedLimit);
 }
 
 export async function renameChatConversation({ accountId = "", conversationId = "", title = "" } = {}) {

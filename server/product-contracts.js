@@ -50,6 +50,10 @@ import {
   getChatMessages,
   usageSummary,
 } from "./repositories/chat-billing.js";
+import {
+  recordChatFailureObservability,
+  recordUserObservabilityEvent,
+} from "./repositories/user-observability.js";
 import { loadChatExecutionContext } from "./chat-context-load.js";
 import { normalizeClientChatHistory } from "./chat-client-history.js";
 import { validateChatAttachments } from "./chat-attachment-utils.js";
@@ -123,6 +127,126 @@ function safeEqualText(left = "", right = "") {
   const rightBuffer = Buffer.from(String(right || ""));
   if (leftBuffer.length !== rightBuffer.length) return false;
   return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function safeEventText(value = "", max = 500) {
+  return String(value || "").trim().slice(0, max);
+}
+
+async function recordUsageObservabilityEvent({
+  eventType = "",
+  accountId = "",
+  action = "",
+  resultStatus = "",
+  reasonCode = "",
+  depositAccount = null,
+  creditedEntries = [],
+  metadata = {},
+  metrics = {},
+  sourceRoute = "",
+} = {}) {
+  if (!accountId || !eventType) return;
+  const entries = Array.isArray(creditedEntries) ? creditedEntries : [];
+  await recordUserObservabilityEvent({
+    eventType,
+    accountId,
+    sourceSurface: "billing",
+    sourceRoute: sourceRoute || `server/product-contracts.js::${action || "usage"}`,
+    resultStatus,
+    reasonCode,
+    metrics: {
+      creditedEntryCount: entries.length,
+      creditedAmountUsd: entries.reduce((sum, entry) => sum + Number(entry?.amountUsd || 0), 0),
+      ...metrics,
+    },
+    metadata: {
+      action: safeEventText(action, 120),
+      depositAccountId: safeEventText(depositAccount?.id, 180),
+      depositAddress: safeEventText(depositAccount?.address, 120),
+      creditedLedgerEntryIds: entries.map((entry) => safeEventText(entry?.id, 180)).filter(Boolean),
+      ...metadata,
+    },
+  }).catch(() => {});
+}
+
+function recordAuthObservabilityEvents({
+  accountId = "",
+  provider = "",
+  providerUserId = "",
+  sessionId = "",
+  sourceRoute = "",
+  resultStatus = "",
+  reasonCode = "",
+  includeProviderLinked = true,
+  metadata = {},
+} = {}) {
+  if (!accountId || !provider) return;
+  const common = {
+    accountId,
+    provider,
+    providerUserId,
+    sessionId,
+    sourceSurface: "auth",
+    sourceRoute: sourceRoute || "server/product-contracts.js::auth",
+  };
+  const events = [];
+  if (includeProviderLinked) {
+    events.push(recordUserObservabilityEvent({
+      ...common,
+      eventType: "user.provider.linked",
+      resultStatus: resultStatus || "verified",
+      reasonCode: reasonCode || provider,
+      metadata,
+    }));
+  }
+  events.push(recordUserObservabilityEvent({
+    ...common,
+    eventType: "user.session.started",
+    resultStatus: "started",
+    reasonCode: reasonCode || provider,
+    metadata: {
+      provider,
+      ...metadata,
+    },
+  }));
+  Promise.allSettled(events).catch(() => {});
+}
+
+const clientObservabilityEventTypes = new Set([
+  "user.ui.blocker_shown",
+  "user.ui.sync_warning_shown",
+  "user.ui.action_disabled",
+  "user.ui.action_recovered",
+  "user.wallet.selected",
+]);
+
+function safeClientObject(value, depth = 0) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  for (const [rawKey, rawValue] of Object.entries(value).slice(0, 24)) {
+    const key = safeEventText(rawKey, 80).replace(/[^A-Za-z0-9_.:-]/g, "_");
+    if (!key) continue;
+    if (rawValue === null || rawValue === undefined) {
+      result[key] = "";
+    } else if (typeof rawValue === "boolean") {
+      result[key] = rawValue;
+    } else if (typeof rawValue === "number") {
+      result[key] = Number.isFinite(rawValue) ? rawValue : 0;
+    } else if (typeof rawValue === "string") {
+      result[key] = safeEventText(rawValue, 240);
+    } else if (Array.isArray(rawValue)) {
+      result[key] = rawValue.slice(0, 12).map((item) => (
+        typeof item === "number" && Number.isFinite(item)
+          ? item
+          : typeof item === "boolean"
+            ? item
+            : safeEventText(item, 120)
+      ));
+    } else if (depth < 1) {
+      result[key] = safeClientObject(rawValue, depth + 1);
+    }
+  }
+  return result;
 }
 
 function emailCodeHash({ challengeId, canonicalEmail, code }) {
@@ -776,6 +900,16 @@ export async function chatSend(payload, method, options = {}) {
       provider: estimate?.provider,
       model: estimate?.model,
     });
+    await recordChatFailureObservability({
+      accountId,
+      conversationId,
+      mode,
+      provider: estimate?.provider,
+      model: estimate?.model,
+      status,
+      error,
+      sourceRoute: "server/product-contracts.js::chatSend",
+    }).catch(() => {});
     return {
       status,
       body: {
@@ -1640,6 +1774,37 @@ export async function walletLinkVerify(payload, method, session = null) {
     walletAddress: result.wallet.address,
     reason: challengeResult.challenge.purpose,
   });
+  await Promise.allSettled([
+    recordUserObservabilityEvent({
+      eventType: "user.wallet.linked",
+      accountId: session.accountId,
+      walletAddress: result.wallet.address,
+      walletScope: "active",
+      sourceSurface: "wallet",
+      sourceRoute: "server/product-contracts.js::walletLinkVerify",
+      resultStatus: "linked",
+      reasonCode: challengeResult.challenge.purpose,
+      metadata: {
+        proofPurpose: challengeResult.challenge.purpose,
+        reclaimedWalletCount: Number(result.reclaimedWalletCount || 0),
+        publicKeyPresent: Boolean(publicKey),
+        encryptionPublicKeyPresent: Boolean(tasknodeEncryptionPubkey),
+      },
+    }),
+    recordUserObservabilityEvent({
+      eventType: "user.wallet.selected",
+      accountId: session.accountId,
+      walletAddress: result.wallet.address,
+      walletScope: "active",
+      sourceSurface: "wallet",
+      sourceRoute: "server/product-contracts.js::walletLinkVerify",
+      resultStatus: "selected",
+      reasonCode: challengeResult.challenge.purpose,
+      metadata: {
+        selectionSource: "wallet_link_verify",
+      },
+    }),
+  ]);
 
   const reclaimedWalletCount = Number(result.reclaimedWalletCount || 0);
   const isCreate = challengeResult.challenge.purpose === "wallet_create";
@@ -1787,6 +1952,19 @@ export async function walletDelink(payload, method, session = null) {
     walletAddress: result.wallet.address,
     reason: payload?.reason || "user_delinked",
   });
+  await recordUserObservabilityEvent({
+    eventType: "user.wallet.delinked",
+    accountId: session.accountId,
+    walletAddress: result.wallet.address,
+    walletScope: "historical",
+    sourceSurface: "wallet",
+    sourceRoute: "server/product-contracts.js::walletDelink",
+    resultStatus: "delinked",
+    reasonCode: safeEventText(payload?.reason || "user_requested", 180),
+    metadata: {
+      delinkedAt: result.wallet.delinkedAt || "",
+    },
+  }).catch(() => {});
 
   return {
     status: 200,
@@ -1918,6 +2096,14 @@ export async function usageTopUpStart(payload, method, session = null) {
 
   const result = await getOrCreateVerifiedEthereumTopUpAccount({ accountId });
   if (!result.ok) {
+    await recordUsageObservabilityEvent({
+      eventType: "user.billing.top_up_started",
+      accountId,
+      action: action.id,
+      resultStatus: "failed",
+      reasonCode: result.error || "usage_top_up_unavailable",
+      sourceRoute: "server/product-contracts.js::usageTopUpStart",
+    });
     return actionResponse({
       status: result.status || 409,
       error: result.error || "usage_top_up_unavailable",
@@ -1926,6 +2112,20 @@ export async function usageTopUpStart(payload, method, session = null) {
       actionRequired: result.actionRequired || result.config?.actionRequired || action.actionRequired,
     });
   }
+
+  await recordUsageObservabilityEvent({
+    eventType: "user.billing.top_up_started",
+    accountId,
+    action: action.id,
+    resultStatus: result.created ? "created" : "ready",
+    depositAccount: result.depositAccount,
+    sourceRoute: "server/product-contracts.js::usageTopUpStart",
+    metadata: {
+      network: result.config.network,
+      chainId: result.config.chainId,
+      blockTag: result.config.blockTag,
+    },
+  });
 
   return {
     status: 200,
@@ -1973,6 +2173,14 @@ export async function usageTopUpSync(payload, method, session = null) {
 
   const result = await syncEthereumTopUpAccount({ accountId });
   if (!result.ok) {
+    await recordUsageObservabilityEvent({
+      eventType: "user.billing.refill_sync_failed",
+      accountId,
+      action: action.id,
+      resultStatus: "failed",
+      reasonCode: result.error || "usage_top_up_sync_failed",
+      sourceRoute: "server/product-contracts.js::usageTopUpSync",
+    });
     return actionResponse({
       status: result.status || 502,
       error: result.error || "usage_top_up_sync_failed",
@@ -1982,6 +2190,22 @@ export async function usageTopUpSync(payload, method, session = null) {
         result.error === "eth_deposit_not_configured"
           ? "Configure ETH_DEPOSIT_XPUB before syncing deposits."
           : "Check Ethereum RPC health and retry.",
+    });
+  }
+
+  if ((result.creditedEntries || []).length > 0) {
+    await recordUsageObservabilityEvent({
+      eventType: "user.billing.deposit_observed",
+      accountId,
+      action: action.id,
+      resultStatus: "credited",
+      depositAccount: result.depositAccount,
+      creditedEntries: result.creditedEntries,
+      sourceRoute: "server/product-contracts.js::usageTopUpSync",
+      metadata: {
+        pendingSymbols: result.pendingSymbols || [],
+        syncErrorsPresent: (result.syncErrors || []).length > 0,
+      },
     });
   }
 
@@ -2101,6 +2325,71 @@ export async function usageAdminCredit(payload, method, authorizationHeader = ""
         availableCreditUsd: summary.availableCreditUsd,
         ledgerEntryCount: summary.ledgerEntryCount,
       },
+    },
+  };
+}
+
+export async function userObservabilityClientEvent(payload, method, session = null) {
+  if (method !== "POST") {
+    return actionResponse({
+      status: 405,
+      error: "user_observability_event_method_not_allowed",
+      action: "user_observability_event",
+      message: "User observability events require POST.",
+      actionRequired: "Submit client observability events with POST.",
+    });
+  }
+
+  if (!session?.accountId) {
+    return actionResponse({
+      status: 401,
+      error: "user_observability_login_required",
+      action: "user_observability_event",
+      message: "Sign in before recording user observability events.",
+      actionRequired: "Use an authenticated app session.",
+    });
+  }
+
+  const eventType = safeEventText(payload?.eventType || payload?.event_type, 160);
+  if (!clientObservabilityEventTypes.has(eventType)) {
+    return actionResponse({
+      status: 400,
+      error: "user_observability_event_type_not_allowed",
+      action: "user_observability_event",
+      message: "That client observability event type is not allowed.",
+      actionRequired: "Use one of the documented user UI observability event types.",
+    });
+  }
+
+  const linkedWallet = getLinkedWallet({ accountId: session.accountId });
+  const result = await recordUserObservabilityEvent({
+    eventType,
+    accountId: session.accountId,
+    walletAddress: safeEventText(payload?.walletAddress || payload?.wallet_address || linkedWallet?.address, 120),
+    walletScope: safeEventText(payload?.walletScope || payload?.wallet_scope || (linkedWallet?.address ? "active" : ""), 80),
+    sessionId: session.id,
+    taskId: safeEventText(payload?.taskId || payload?.task_id, 180),
+    conversationId: safeEventText(payload?.conversationId || payload?.conversation_id, 180),
+    projectId: safeEventText(payload?.projectId || payload?.project_id, 180),
+    sourceSurface: safeEventText(payload?.sourceSurface || payload?.source_surface || "client", 120),
+    sourceRoute: safeEventText(payload?.sourceRoute || payload?.source_route || "client", 240),
+    resultStatus: safeEventText(payload?.resultStatus || payload?.result_status || "observed", 120),
+    reasonCode: safeEventText(payload?.reasonCode || payload?.reason_code, 180),
+    decision: safeClientObject(payload?.decision || payload?.decision_json),
+    metrics: safeClientObject(payload?.metrics || payload?.metrics_json),
+    metadata: safeClientObject(payload?.metadata || payload?.metadata_json),
+  });
+
+  return {
+    status: 202,
+    body: {
+      ok: true,
+      action: "user_observability_event",
+      recorded: result?.ok === true,
+      skipped: Boolean(result?.skipped),
+      eventType,
+      eventId: result?.id || "",
+      reason: result?.reason || result?.error || "",
     },
   };
 }
@@ -2306,6 +2595,19 @@ export function authEmailVerify(payload, method) {
     email: consumed.challenge.maskedEmail,
     decision: "session_issued",
   });
+  recordAuthObservabilityEvents({
+    accountId: account.id,
+    provider: "email",
+    sessionId: created.sessionId,
+    sourceRoute: "server/product-contracts.js::authEmailVerify",
+    resultStatus: "verified",
+    reasonCode: "email_challenge_verified",
+    metadata: {
+      emailPresent: true,
+      maskedEmailPresent: Boolean(consumed.challenge.maskedEmail),
+      assurance: "low",
+    },
+  });
 
   return {
     status: 200,
@@ -2350,6 +2652,18 @@ export function authDevStart(payload, method) {
 
   const email = typeof payload?.email === "string" ? payload.email : "";
   const created = createDevSession({ email });
+  recordAuthObservabilityEvents({
+    accountId: created.session?.accountId || "",
+    provider: "dev",
+    sessionId: created.sessionId,
+    sourceRoute: "server/product-contracts.js::authDevStart",
+    reasonCode: "dev_auth_start",
+    includeProviderLinked: false,
+    metadata: {
+      emailProvided: Boolean(email),
+      assurance: "low",
+    },
+  });
 
   return {
     status: 200,

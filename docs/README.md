@@ -41,21 +41,25 @@ is intentionally not live yet.
    Account-scoped Ethereum mainnet deposit addresses for ETH, USDC, and USDT
    top-ups, including custody boundaries and sync behavior.
 
-10. `../full_spec.md`
+10. `wiki/architecture/user-observability-logging.md`
+   Identity-vector logging spec for user, wallet, task, reward, memory, Hive,
+   Telegram, and usage investigations.
+
+11. `../full_spec.md`
    Product/architecture source of truth and active burndown.
 
-11. `../auth_account_spec.md`
+12. `../auth_account_spec.md`
    Auth, provider linking, wallet claim, email login, and delink/relink design.
 
-12. `wiki/architecture/auth-wallet-boundary.md`
+13. `wiki/architecture/auth-wallet-boundary.md`
    Concrete implementation guardrails for wallet auth UX, session refresh,
    wallet proof, local vault state, and regression coverage.
 
-13. `wiki/architecture/resettable-signup-testing.md`
+14. `wiki/architecture/resettable-signup-testing.md`
    Repeatable QA workflow for email signup, identity reset, faucet eligibility,
    and top-up state preservation.
 
-14. `../whip_context.md`
+15. `../whip_context.md`
    Automation handoff instructions and whip shutdown guardrails.
 
 ## Source Of Truth Rules

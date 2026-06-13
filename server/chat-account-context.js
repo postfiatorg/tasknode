@@ -2,11 +2,12 @@ import { loadPrompt, renderPromptTemplate } from "./prompt-registry.js";
 import { getContextDocument } from "./repositories/context.js";
 import { contextBodyText } from "./context-line-map.js";
 import { buildContextDocumentStatus, contextDocumentIsEmpty } from "./chat-context-status.js";
+import { MODEL_CONTEXT_MAX_CHARS } from "../shared/context-budget.js";
 
 const accountContextPrompt = loadPrompt("chat/account_context_document_v1.md");
 const contextDocumentMaxChars = Math.min(
-  Math.max(Number(process.env.TASKNODE_CHAT_CONTEXT_DOCUMENT_MAX_CHARS) || 50_000, 1000),
-  50_000
+  Math.max(Number(process.env.TASKNODE_CHAT_CONTEXT_DOCUMENT_MAX_CHARS) || MODEL_CONTEXT_MAX_CHARS, 1000),
+  MODEL_CONTEXT_MAX_CHARS
 );
 const contextDocumentTimeoutMs = Math.min(
   Math.max(Number(process.env.TASKNODE_CHAT_CONTEXT_DOCUMENT_TIMEOUT_MS) || 1000, 50),

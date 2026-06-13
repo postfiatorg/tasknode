@@ -149,6 +149,61 @@ assert.equal(acceptedReceipt.expectedStatusKey, "accepted");
 const receiptList = appendTaskActionReceipt([], evidenceReceipt, nowMs);
 assert.equal(receiptList.length, 1);
 
+const duplicateEvidenceReceipt = {
+  ...evidenceReceipt,
+  createdAt: new Date(nowMs + 60 * 1000).toISOString(),
+  expiresAt: new Date(nowMs + 60 * 1000 + 10 * 60 * 1000).toISOString(),
+};
+const dedupedList = appendTaskActionReceipt(receiptList, duplicateEvidenceReceipt, nowMs + 60 * 1000);
+assert.equal(
+  dedupedList,
+  receiptList,
+  "an identical receipt (same taskId, status, txHash) must return the same array reference"
+);
+assert.equal(
+  dedupedList[0].expiresAt,
+  evidenceReceipt.expiresAt,
+  "a duplicate receipt must not extend the existing receipt expiry"
+);
+
+const advancingReceipt = taskActionReceiptFromEvidenceResult({
+  accountId,
+  walletAddress,
+  result: {
+    taskId: acceptedTask.taskId,
+    txHash: "SUBMIT_TX",
+    cid: "QmSubmitCid",
+    submissionPayload: { schema: "pf.task.verification_response.v1" },
+  },
+  task: acceptedTask,
+});
+const advancedList = appendTaskActionReceipt(receiptList, advancingReceipt, nowMs);
+assert.notEqual(advancedList, receiptList, "a status-advancing receipt must produce a new array");
+assert.equal(advancedList.length, 1, "a status-advancing receipt must replace the same taskId+txHash receipt");
+assert.equal(advancedList[0].expectedStatusKey, "verification_response_submitted");
+
+const retryReceipt = taskActionReceiptFromEvidenceResult({
+  accountId,
+  walletAddress,
+  result: {
+    taskId: acceptedTask.taskId,
+    txHash: "SUBMIT_TX_RETRY",
+    cid: "QmSubmitCidRetry",
+    submissionPayload: { schema: "pf.task.evidence.v1" },
+  },
+  task: acceptedTask,
+});
+const retriedList = appendTaskActionReceipt(receiptList, retryReceipt, nowMs);
+assert.notEqual(retriedList, receiptList, "a different-txHash receipt must produce a new array");
+assert.equal(retriedList.length, 2, "a different-txHash receipt must append alongside the existing receipt");
+assert.equal(retriedList[0].txHash, "SUBMIT_TX_RETRY");
+assert.equal(retriedList[1].txHash, "SUBMIT_TX");
+
+const expiredNowMs = Date.parse(evidenceReceipt.expiresAt) + 1;
+const remintedList = appendTaskActionReceipt(receiptList, duplicateEvidenceReceipt, expiredNowMs);
+assert.notEqual(remintedList, receiptList, "an expired receipt must be re-mintable instead of deduped");
+assert.equal(remintedList.length, 1);
+
 assert.equal(taskSyncNoticeForStatus({ status: "indexing_lag", indexingLagCount: 1 }), null);
 assert.equal(shouldForceTaskSyncNotice({ status: "indexing_lag", indexingLagCount: 1 }), false);
 assert.equal(shouldForceTaskSyncNotice({ status: "indexing_lag", indexingLagCount: 4 }), true);

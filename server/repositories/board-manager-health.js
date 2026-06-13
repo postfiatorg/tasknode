@@ -55,6 +55,52 @@ function availableCandidates(candidates = [], blockers = []) {
   );
 }
 
+function compactCapacityCheckBlocker(blocker = {}, check = {}) {
+  return {
+    source: safeText(blocker.source || "active_network_task_capacity", 80),
+    kind: safeText(blocker.kind, 40),
+    taskId: safeText(blocker.taskId || blocker.task_id, 180),
+    generationJobId: safeText(blocker.generationJobId || blocker.generation_job_id, 180),
+    allocationId: safeText(blocker.allocationId || blocker.allocation_id, 180),
+    requestId: safeText(blocker.requestId || blocker.request_id, 180),
+    projectId: safeText(blocker.projectId || blocker.project_id, 180),
+    taskClass: safeText(blocker.taskClass || blocker.task_class, 40),
+    title: safeText(blocker.title, 240),
+    state: safeText(blocker.state || blocker.status, 80),
+    candidateAccountId: safeText(blocker.accountId || blocker.candidateAccountId || check.accountId, 180),
+    candidateWalletAddress: safeText(blocker.walletAddress ?? blocker.candidateWalletAddress, 120),
+    updatedAt: blocker.updatedAt || blocker.updated_at || null,
+  };
+}
+
+function normalizeCandidateCapacityCheck(check = {}) {
+  const identity = candidateIdentity(check);
+  const blockers = safeArray(check.blockers).map((blocker) => compactCapacityCheckBlocker(blocker, identity));
+  return {
+    accountId: identity.accountId,
+    walletAddress: identity.walletAddress,
+    availableForNetworkTask: check.availableForNetworkTask !== false && blockers.length === 0,
+    capacityBlockers: blockers,
+  };
+}
+
+function dedupeCapacityBlockers(blockers = []) {
+  const seen = new Set();
+  return safeArray(blockers).filter((blocker) => {
+    const key = blocker.allocationId || blocker.generationJobId || blocker.taskId || JSON.stringify(blocker);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function checkForCandidate(candidate = {}, checks = []) {
+  const identity = candidateIdentity(candidate);
+  return safeArray(checks).find((check) =>
+    check.accountId === identity.accountId && check.walletAddress === identity.walletAddress
+  ) || null;
+}
+
 function activeNetworkTaskCapacityBlockers({
   outstanding = [],
   pendingGeneration = [],
@@ -269,6 +315,12 @@ export function buildBoardManagerActionPressure({
   hiveProjects = {},
   networkTaskContent = {},
   networkTaskCandidates = [],
+  // Canonical per-candidate capacity verdicts from
+  // listNetworkTaskCandidateCapacityChecks (network-task-capacity.js). When
+  // provided, candidateCapacity uses the same shared predicate as the
+  // executor hook and getNetworkTaskEligibility. The legacy snapshot-derived
+  // fallback below only runs when no checks are supplied (e.g. database off).
+  candidateCapacityChecks = null,
   taskState = {},
   recentBoardManagerRuns = [],
   openFollowups = [],
@@ -283,12 +335,22 @@ export function buildBoardManagerActionPressure({
   const stoppedTasks = safeArray(networkTaskContent.stopped);
   const outstandingTasks = safeArray(networkTaskContent.outstanding);
   const pendingTasks = safeArray(networkTaskContent.pendingGeneration);
-  const capacityBlockers = activeNetworkTaskCapacityBlockers({
-    outstanding: networkTaskContent.outstanding,
-    pendingGeneration: networkTaskContent.pendingGeneration,
-  });
+  const capacityChecks = Array.isArray(candidateCapacityChecks)
+    ? candidateCapacityChecks.map(normalizeCandidateCapacityCheck)
+    : null;
+  const capacityBlockers = capacityChecks
+    ? dedupeCapacityBlockers(capacityChecks.flatMap((check) => check.capacityBlockers))
+    : activeNetworkTaskCapacityBlockers({
+      outstanding: networkTaskContent.outstanding,
+      pendingGeneration: networkTaskContent.pendingGeneration,
+    });
   const candidateCount = safeArray(networkTaskCandidates).length;
-  const eligibleCandidates = availableCandidates(networkTaskCandidates, capacityBlockers);
+  const eligibleCandidates = capacityChecks
+    ? safeArray(networkTaskCandidates).filter((candidate) => {
+      const check = checkForCandidate(candidate, capacityChecks);
+      return check ? check.availableForNetworkTask : true;
+    })
+    : availableCandidates(networkTaskCandidates, capacityBlockers);
   const eligibleCandidateCount = eligibleCandidates.length;
   const unavailableCandidateCount = Math.max(0, candidateCount - eligibleCandidateCount);
   const staleHiveSecretary = numeric(freshness.hiveSecretaryAgeMs, 0) > 60 * 60 * 1000;
@@ -348,9 +410,13 @@ export function buildBoardManagerActionPressure({
         personalTasksDoNotAffectNetworkTaskEligibility: true,
         engineeringTasksDoNotAffectNetworkTaskEligibility: true,
         candidateCapacityIsConsumedOnlyByOutstandingOrPendingNetworkTasks: true,
+        capacityBlocksUntilTaskReachesTerminalState: true,
+        capacityIgnoresTaskClass: true,
         walletBoundNetworkTasksOnlyConsumeMatchingWalletCapacity: true,
+        delinkedWalletTasksDoNotBlockCurrentWallet: true,
         accountOnlyPendingWorkConsumesAccountCapacityUntilWalletIsKnown: true,
         personalAndEngineeringTasksAreContextOnly: true,
+        capacityVerdictsUseSharedPredicate: capacityChecks !== null,
       },
       ignoredForCapacity: {
         taskStateRecentCount: safeArray(taskState.recent).length,
@@ -360,7 +426,15 @@ export function buildBoardManagerActionPressure({
         accountId: safeText(candidate.accountId || candidate.account_id, 180),
         walletAddress: safeText(candidate.walletAddress || candidate.wallet_address, 120),
       })),
-      candidates: candidateCapacityRows(networkTaskCandidates, capacityBlockers).slice(0, 12),
+      candidates: (capacityChecks
+        ? capacityChecks.map((check) => ({
+          accountId: check.accountId,
+          walletAddress: check.walletAddress,
+          availableForNetworkTask: check.availableForNetworkTask,
+          capacityBlockers: check.capacityBlockers.slice(0, 3),
+        }))
+        : candidateCapacityRows(networkTaskCandidates, capacityBlockers)
+      ).slice(0, 12),
       activeNetworkTaskCapacityBlockers: capacityBlockers.slice(0, 12),
     },
     signals,

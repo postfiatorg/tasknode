@@ -31,6 +31,7 @@ import {
   walletInitiationAmountPft,
   walletInitiationGrantStatusForState,
 } from "./wallet-initiation-eligibility.js";
+import { CONTEXT_DOCUMENT_MAX_CHARS } from "../shared/context-budget.js";
 
 const defaultStorePath = path.join("/tmp", "tasknodeofficial-runtime-store.json");
 export const sessionCookieName = "tasknode_session";
@@ -644,6 +645,15 @@ function syncAccountSessions(account) {
 
 export function getAccountIdentityProfile({ accountId = "" } = {}) {
   return accountIdentityProfile(state.accounts[String(accountId || "").trim()] || null);
+}
+
+export function listAccountIdentityProfiles() {
+  return Object.values(state.accounts || {})
+    .map((account) => accountIdentityProfile(account, {
+      accounts: state.accounts,
+      includeSuggestions: false,
+    }))
+    .filter(Boolean);
 }
 
 export function getAccountProfileVisibility({ accountId = "" } = {}) {
@@ -1593,7 +1603,7 @@ export function saveContextDocument({ accountId = "", title = "", body = "" } = 
     id: existing?.id || `ctx_${normalizedAccountId}`,
     accountId: normalizedAccountId,
     title: String(title || "Task Node Context").trim().replace(/\s+/g, " ").slice(0, 120) || "Task Node Context",
-    body: String(body || "").slice(0, 50000),
+    body: String(body || "").slice(0, CONTEXT_DOCUMENT_MAX_CHARS),
     revision: Number(existing?.revision || 0) + 1,
     createdAt: existing?.createdAt || now,
     updatedAt: now,

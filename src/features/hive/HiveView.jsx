@@ -1278,7 +1278,7 @@ function operatorForWallet(wallet, operators = {}) {
   return operators[wallet] || { codename: compactWallet(wallet), archetype: "", badge: 0, allotted: false, cap: 0, load: 0, status: "quiet", nft: null };
 }
 
-function compactWallet(wallet = "") {
+export function compactWallet(wallet = "") {
   const normalized = String(wallet || "").trim();
   if (normalized.length <= 12) return normalized || "unassigned";
   return `${normalized.slice(0, 6)}...${normalized.slice(-5)}`;
@@ -1296,7 +1296,7 @@ function shortHash(value = "") {
   return `${normalized.slice(0, 8)}...${normalized.slice(-6)}`;
 }
 
-function formatPft(value) {
+export function formatPft(value) {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return "0";
   return new Intl.NumberFormat("en-US", {
@@ -1304,7 +1304,7 @@ function formatPft(value) {
   }).format(number);
 }
 
-function formatCompactPft(value) {
+export function formatCompactPft(value) {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return "0";
   if (Math.abs(number) < 1000) return formatPft(number);

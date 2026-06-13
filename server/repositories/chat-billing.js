@@ -12,6 +12,10 @@ import {
 } from "../chat-attachment-utils.js";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
 import { hydrateContextEditProposalMetadata } from "./context-edit-chat-metadata.js";
+import {
+  recordBillingCreditAppliedEvent,
+  recordChatTurnObservability,
+} from "./user-observability.js";
 export {
   appendChatUserMessage,
   deleteChatConversation,
@@ -21,6 +25,7 @@ export {
   listChatConversations,
   markHiveConversationRead,
   renameChatConversation,
+  searchChatConversations,
 } from "./chat-conversations.js";
 
 const creditKinds = new Set(["account_credit", "top_up_credit", "reward_credit", "refund_credit"]);
@@ -222,6 +227,7 @@ function publicLedgerEntry(row, extra = {}) {
     model: row.model || undefined,
     mode: row.mode || undefined,
     responseId: row.response_id || undefined,
+    modelRunId: row.model_run_id || undefined,
     inputTokens: Number(row.input_tokens || 0),
     outputTokens: Number(row.output_tokens || 0),
     totalTokens: Number(row.total_tokens || 0),
@@ -423,11 +429,15 @@ async function insertChatAttachments(client, attachments = []) {
 }
 
 export async function appendUsageCredit(options = {}) {
-  if (!useDatabase()) return appendRuntimeUsageCredit(options);
+  if (!useDatabase()) {
+    const entry = appendRuntimeUsageCredit(options);
+    await recordBillingCreditAppliedEvent({ entry }).catch(() => {});
+    return entry;
+  }
 
   const uniqueKey = typeof options.uniqueKey === "string" ? options.uniqueKey.trim().slice(0, 180) : "";
   try {
-    return await transaction(async (client) => {
+    const entry = await transaction(async (client) => {
       const row = await insertLedgerEntry(client, {
         id: `ledger_${randomUUID()}_credit`,
         kind: options.kind || "account_credit",
@@ -457,9 +467,13 @@ export async function appendUsageCredit(options = {}) {
       error.status = 500;
       throw error;
     });
+    await recordBillingCreditAppliedEvent({ entry }).catch(() => {});
+    return entry;
   } catch (error) {
     if (process.env.TASKNODE_POSTGRES_STRICT === "false") {
-      return appendRuntimeUsageCredit(options);
+      const entry = appendRuntimeUsageCredit(options);
+      await recordBillingCreditAppliedEvent({ entry }).catch(() => {});
+      return entry;
     }
     throw error;
   }
@@ -566,7 +580,7 @@ export async function appendChatTurn({
   const status = conversationStatusForInsert(conversationStatus);
 
   try {
-    return await transaction(async (client) => {
+    const persisted = await transaction(async (client) => {
       const existing = await client.query(
         "SELECT id, account_id FROM chat_conversations WHERE id = $1 FOR UPDATE",
         [normalizedConversationId]
@@ -763,11 +777,26 @@ export async function appendChatTurn({
         user: publicMessage(userInsert.rows[0], attachmentRows.map(publicAttachment)),
         assistant: publicMessage(assistantInsert.rows[0]),
         ledgerEntry,
+        modelRunId,
       };
     });
+    await recordChatTurnObservability({
+      accountId: normalizedAccountId,
+      conversationId: normalizedConversationId,
+      mode,
+      provider,
+      model,
+      responseId,
+      modelRunId,
+      user: persisted.user,
+      assistant: persisted.assistant,
+      usage,
+      ledgerEntry: persisted.ledgerEntry,
+    }).catch(() => {});
+    return persisted;
   } catch (error) {
     if (process.env.TASKNODE_POSTGRES_STRICT === "false") {
-      return appendRuntimeChatTurn({
+      const persisted = appendRuntimeChatTurn({
         accountId,
         conversationId,
         mode,
@@ -784,6 +813,19 @@ export async function appendChatTurn({
         attachments,
         usage,
       });
+      await recordChatTurnObservability({
+        accountId: normalizedAccountId,
+        conversationId: normalizedConversationId,
+        mode,
+        provider,
+        model,
+        responseId,
+        user: persisted.user,
+        assistant: persisted.assistant,
+        usage,
+        ledgerEntry: persisted.ledgerEntry,
+      }).catch(() => {});
+      return persisted;
     }
     throw error;
   }

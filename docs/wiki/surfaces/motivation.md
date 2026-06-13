@@ -2,6 +2,8 @@
 
 Motivation is a focused chat tool for turning the user's context into a clear reason to act. It should help the user reconnect a task or project to their stated goals without fabricating personal facts.
 
+Not Exposed: Motivation is not available in the current interface. The chat composer and sidebar tool menus do not include a Motivation entry. This page records the intended design for when it ships.
+
 ## User Flow
 
 1. The user selects Motivation from the tools menu.
@@ -11,7 +13,7 @@ Motivation is a focused chat tool for turning the user's context into a clear re
 
 ## Technical Architecture
 
-The current tool entry is in the sidebar and composer menus in `src/main.jsx`. The correct production shape is a small tool runner that accepts a typed packet: current context, last deep memories, last memory rows, and optional task ID.
+There is no Motivation entry in the current sidebar or composer menus in `src/main.jsx`; the tool was intentionally left out until it has a production-quality flow. The correct production shape is a small tool runner that accepts a typed packet: current context, last deep memories, last memory rows, and optional task ID.
 
 Motivation should use existing chat provider infrastructure rather than a separate billing path. If it becomes a background job, its billing policy must be explicit.
 

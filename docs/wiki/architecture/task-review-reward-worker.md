@@ -19,7 +19,15 @@ System Status row: `task_review`
 Only the production worker should publish verification requests or reward
 outcomes by default. Local Docker and ad hoc development servers can read and
 reduce PFTL state, but task-review publication is blocked unless
-`TASKNODE_TASK_REVIEW_ALLOW_NON_PRODUCTION=true` is explicitly set. This
+`TASKNODE_TASK_REVIEW_ALLOW_NON_PRODUCTION=true` is explicitly set.
+
+Reward signing in production requires an explicit `TASKNODE_REWARD_SEED`. The
+development convenience chain (allocation, authority, service, and faucet seed
+fallbacks in `server/production-guards.js::moneySeedFromEnv`) is refused when
+`TASKNODE_ENV=production`, so a missing reward seed fails loudly with the
+existing seed-missing error code instead of silently signing payouts from a
+different wallet. Startup warns when the worker is enabled without its
+explicit seed. This
 prevents a local database from observing live PFTL task events and emitting a
 second terminal reward outcome outside the Fly publication lock.
 

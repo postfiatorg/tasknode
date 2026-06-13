@@ -1,6 +1,11 @@
 import { renderProfileNftPrompt } from "./profile-nft-prompts.js";
 import { pinIpfsFile } from "./context-ipfs.js";
-import { createGeneratedProfileNft } from "./repositories/profile-nfts.js";
+import {
+  createGeneratingProfileNft,
+  failStaleGeneratingProfileNfts,
+  markProfileNftFailed,
+  markProfileNftGenerated,
+} from "./repositories/profile-nfts.js";
 
 const defaultOpenAiBaseUrl = "https://api.openai.com/v1";
 const defaultProfileNftSize = "1024x1024";
@@ -130,6 +135,10 @@ export async function profileNftGenerateStart({
     };
   }
 
+  await failStaleGeneratingProfileNfts({ accountId: session.accountId }).catch((error) => {
+    console.warn(`profile nft stale generation sweep failed: ${error?.message || error}`);
+  });
+
   const apiKey = safeText(env.OPENAI_API_KEY, 10000);
   if (!apiKey) {
     return {
@@ -189,8 +198,24 @@ export async function profileNftGenerateStart({
     safeText(payload?.outputFormat, 32) ||
     env.PROFILE_NFT_IMAGE_OUTPUT_FORMAT ||
     defaultProfileNftOutputFormat;
+  const title = titleFromSession(session, state);
+  const description = "Generated Task Node profile NFT image. Prompt text remains private.";
+  let recoveryNft = null;
 
   try {
+    recoveryNft = await createGeneratingProfileNft({
+      accountId: session.accountId,
+      walletAddress: linkedWalletAddressFromState(state),
+      title,
+      description,
+      promptSource: rendered.source,
+      promptDigest: rendered.promptDigest,
+      templateDigest: rendered.templateDigest,
+      model,
+      size,
+      quality,
+      outputFormat,
+    });
     const result = await openAiImageGeneration({
       apiKey,
       baseUrl: env.OPENAI_BASE_URL || defaultOpenAiBaseUrl,
@@ -206,12 +231,18 @@ export async function profileNftGenerateStart({
     });
     const imageBase64 = result?.data?.[0]?.b64_json || "";
     if (!imageBase64) {
+      const failedNft = await markProfileNftFailed({
+        accountId: session.accountId,
+        nftId: recoveryNft.id,
+        error: "OpenAI returned no profile NFT image data.",
+      });
       return {
         status: 502,
         body: {
           ok: false,
           error: "profile_nft_image_missing",
           message: "OpenAI returned no profile NFT image data.",
+          nft: failedNft || recoveryNft,
         },
       };
     }
@@ -229,11 +260,9 @@ export async function profileNftGenerateStart({
       },
       env,
     });
-    const nft = await createGeneratedProfileNft({
+    const nft = await markProfileNftGenerated({
       accountId: session.accountId,
-      walletAddress: linkedWalletAddressFromState(state),
-      title: titleFromSession(session, state),
-      description: "Generated Task Node profile NFT image. Prompt text remains private.",
+      nftId: recoveryNft.id,
       imageCid: imagePin.cid,
       imageGatewayUrl: gatewayUrlForCid(imagePin.cid),
       imageMimeType: mimeType,
@@ -265,15 +294,23 @@ export async function profileNftGenerateStart({
       },
     };
   } catch (error) {
+    const message = error?.name === "AbortError"
+      ? "OpenAI image generation timed out before returning an image."
+      : error?.message || "Profile NFT generation failed.";
+    const failedNft = recoveryNft?.id
+      ? await markProfileNftFailed({
+          accountId: session.accountId,
+          nftId: recoveryNft.id,
+          error: message,
+        }).catch(() => null)
+      : null;
     return {
       status: error?.status || (error?.name === "AbortError" ? 504 : 502),
       body: {
         ok: false,
         error: error?.name === "AbortError" ? "profile_nft_generation_timeout" : "profile_nft_generation_failed",
-        message:
-          error?.name === "AbortError"
-            ? "OpenAI image generation timed out before returning an image."
-            : error?.message || "Profile NFT generation failed.",
+        message,
+        nft: failedNft || recoveryNft || undefined,
       },
     };
   }

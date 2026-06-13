@@ -3,6 +3,7 @@ import agents from "../../../docs/wiki/surfaces/agents.md?raw";
 import chat from "../../../docs/wiki/surfaces/chat.md?raw";
 import context from "../../../docs/wiki/surfaces/context.md?raw";
 import dailyAirdrop from "../../../docs/wiki/surfaces/daily-airdrop.md?raw";
+import directory from "../../../docs/wiki/surfaces/directory.md?raw";
 import hive from "../../../docs/wiki/surfaces/hive.md?raw";
 import memory from "../../../docs/wiki/surfaces/memory.md?raw";
 import profile from "../../../docs/wiki/surfaces/profile.md?raw";
@@ -60,6 +61,11 @@ import taskLifecycle from "../../../docs/wiki/architecture/task-lifecycle.md?raw
 import taskReviewRewardWorker from "../../../docs/wiki/architecture/task-review-reward-worker.md?raw";
 import telegramBotChat from "../../../docs/wiki/architecture/telegram-bot-chat.md?raw";
 import turnMemoryWorker from "../../../docs/wiki/architecture/turn-memory-worker.md?raw";
+import userObservabilityLogging from "../../../docs/wiki/architecture/user-observability-logging.md?raw";
+import onboardingWalletFrictionMemo from "../../../docs/wiki/plans/onboarding-wallet-friction-memo-2026-06-08.md?raw";
+import taskNodeProductionCutoverPackage from "../../../docs/wiki/plans/task-node-production-cutover-package-2026-06-09.md?raw";
+import taskNodeProductionCutoverExecutionChecklist from "../../../docs/wiki/plans/task-node-production-cutover-execution-checklist-2026-06-10.md?raw";
+import pftasksTransactionShutdownCutoverPlan from "../../../docs/wiki/plans/pftasks-transaction-shutdown-cutover-plan-2026-06-09.md?raw";
 import taskNodeProductionScope from "../../../docs/wiki/plans/task-node-production-scope.md?raw";
 import taskNodeInstructionsPrompt from "../../../prompts/chat/task_node_instructions_v1.md?raw";
 import jobsStandardChatPrompt from "../../../prompts/chat/jobs_standard_chat_codex_style_draft.md?raw";
@@ -96,6 +102,8 @@ const PROMPT_SOURCES = [
       "server/profile-daily-airdrop.js::runDailyAirdropScore",
       "scripts/profile-daily-airdrop-score.mjs",
       "scripts/profile-daily-airdrop-issue.mjs",
+      "scripts/profile-daily-airdrop-debt.mjs",
+      "scripts/profile-daily-airdrop-reconcile.mjs",
       "GET /api/profile/daily-airdrop",
     ],
     content: dailyAirdropPrompt,
@@ -622,6 +630,7 @@ export const DOC_GROUPS = [
       { slug: "chat", title: "Chat", summary: "The primary work surface.", markdown: chat },
       { slug: "tasks", title: "Tasks", summary: "Portable task lifecycle state.", markdown: tasks },
       { slug: "hive", title: "Hive", summary: "Network project routing and operator coordination.", markdown: hive },
+      { slug: "directory", title: "Directory", summary: "Public discoverable operator leaderboard.", markdown: directory },
       { slug: "wallet", title: "Wallet", summary: "Identity, balances, and custody.", markdown: wallet },
       { slug: "profile", title: "Profile", summary: "Member trust surface and daily airdrop state.", markdown: profile },
       { slug: "context", title: "Context", summary: "Durable working profile.", markdown: context },
@@ -786,6 +795,12 @@ export const DOC_GROUPS = [
         markdown: executionMandate,
       },
       {
+        slug: "user-observability-logging",
+        title: "User Observability Logging",
+        summary: "Identity-vector logging spec for user, wallet, task, reward, memory, Hive, Telegram, and usage investigations.",
+        markdown: userObservabilityLogging,
+      },
+      {
         slug: "defect-repair-rule",
         title: "Defect Repair Rule",
         summary: "Generalized repair rule for concrete user-reported app failures.",
@@ -811,6 +826,30 @@ export const DOC_GROUPS = [
         title: "Task Node Production Scope",
         summary: "Single active beta plan: acceptance gates, completed work, and remaining P0/P1 launch scope.",
         markdown: taskNodeProductionScope,
+      },
+      {
+        slug: "onboarding-wallet-friction-memo",
+        title: "Onboarding Wallet Friction Memo",
+        summary: "QA memo for remaining onboarding, task-loading, and multi-wallet capacity friction.",
+        markdown: onboardingWalletFrictionMemo,
+      },
+      {
+        slug: "task-node-production-cutover-package",
+        title: "Task Node Production Cutover Package",
+        summary: "Concrete production cutover package for moving tasknode.postfiat.org to Task Node Official and retiring PFTasks task-side authority.",
+        markdown: taskNodeProductionCutoverPackage,
+      },
+      {
+        slug: "task-node-production-cutover-execution-checklist",
+        title: "Task Node Production Cutover Execution Checklist",
+        summary: "Step-by-step production cutover checklist with live evidence for each executed gate.",
+        markdown: taskNodeProductionCutoverExecutionChecklist,
+      },
+      {
+        slug: "pftasks-transaction-shutdown-cutover-plan",
+        title: "PFTasks Transaction Shutdown Cutover Plan",
+        summary: "Production gate for disabling legacy PFTasks task, reward, airdrop, NFT, bot, and worker writers while keeping wallet sends and seed backups.",
+        markdown: pftasksTransactionShutdownCutoverPlan,
       },
     ],
   },

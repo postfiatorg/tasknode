@@ -16,7 +16,7 @@ export function TaskRequestModal({
   walletVault = {},
 }) {
   const [detailText, setDetailText] = useState("");
-  const [status, setStatus] = useState({ error: "", pending: false, success: "" });
+  const [status, setStatus] = useState({ error: "", pending: false, pendingLabel: "", success: "" });
   const [focused, setFocused] = useState(false);
   const textareaRef = useRef(null);
   const unlockPolicy = evaluateTaskRequestUnlockPolicy({
@@ -52,12 +52,13 @@ export function TaskRequestModal({
       setStatus({
         error: unlockPolicy.message,
         pending: false,
+        pendingLabel: "",
         success: "",
       });
       return;
     }
 
-    setStatus({ error: "", pending: true, success: "" });
+    setStatus({ error: "", pending: true, pendingLabel: "Configuring request", success: "" });
     const requestId = newClientCorrelationId("req");
     const bundleId = newClientCorrelationId("bundle");
     const conversationId = newClientConversationId();
@@ -75,11 +76,15 @@ export function TaskRequestModal({
         requestedTaskKind: "personal",
         source: "task_interface",
         sourceConversationTitle: "Tasks",
+        onProgress: (label) => {
+          setStatus({ error: "", pending: true, pendingLabel: label, success: "" });
+        },
       });
 
       setStatus({
         error: "",
         pending: false,
+        pendingLabel: "",
         success: `Task request published to PFT. Transaction ${String(result.txHash || "").slice(0, 12)}...`,
       });
       setDetailText("");
@@ -88,6 +93,7 @@ export function TaskRequestModal({
       setStatus({
         error: error?.message || "Task request could not be published.",
         pending: false,
+        pendingLabel: "",
         success: "",
       });
     }
@@ -112,7 +118,7 @@ export function TaskRequestModal({
     </button>
   ) : (
     <button className="task-request-primary" disabled={!canSubmit} type="submit">
-      {status.pending ? "Publishing" : "Request task"}
+      {status.pending ? status.pendingLabel || "Publishing" : "Request task"}
       {!status.pending && <ArrowRight size={14} strokeWidth={2} />}
     </button>
   );
@@ -156,7 +162,9 @@ export function TaskRequestModal({
                 disabled={status.pending}
                 onChange={(event) => {
                   setDetailText(event.target.value);
-                  if (status.error || status.success) setStatus({ error: "", pending: false, success: "" });
+                  if (status.error || status.success) {
+                    setStatus({ error: "", pending: false, pendingLabel: "", success: "" });
+                  }
                 }}
                 onBlur={() => setFocused(false)}
                 onFocus={() => setFocused(true)}
@@ -176,6 +184,12 @@ export function TaskRequestModal({
               <p className="task-request-message">
                 <Check size={14} strokeWidth={2.2} />
                 {status.success}
+              </p>
+            )}
+            {status.pending && (
+              <p className="task-request-message">
+                <Check size={14} strokeWidth={2.2} />
+                {status.pendingLabel || "Publishing to PFTL"}
               </p>
             )}
           </div>

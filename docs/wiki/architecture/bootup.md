@@ -82,8 +82,8 @@ FRAME_BASE_URL=http://127.0.0.1:8080 npm run frame-smoke
 Fly dev smoke:
 
 ```bash
-SMOKE_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run smoke
-FRAME_BASE_URL=https://tasknodeofficial-dev.fly.dev npm run frame-smoke
+SMOKE_BASE_URL=https://tasknode.postfiat.org npm run smoke
+FRAME_BASE_URL=https://tasknode.postfiat.org npm run frame-smoke
 ```
 
 Frame smoke writes screenshots to `/tmp/tasknodeofficial-frame-smoke` unless
@@ -138,13 +138,14 @@ common boot blockers are missing `TASKNODE_AUTH_SECRET`, provider API keys,
 The public dev app is:
 
 ```text
-https://tasknodeofficial-dev.fly.dev
+https://tasknode.postfiat.org
 ```
 
-Use the npm deploy wrapper:
+Use the npm deploy wrapper (production requires the explicit confirmation
+variant):
 
 ```bash
-npm run fly:deploy
+npm run fly:deploy:prod
 ```
 
 Do not use raw `fly deploy` as the normal release path. The npm wrapper deploys
@@ -154,7 +155,7 @@ process groups are started and configured.
 Boot health:
 
 ```bash
-curl -sS https://tasknodeofficial-dev.fly.dev/health
+curl -sS https://tasknode.postfiat.org/health
 fly status -a tasknodeofficial-dev
 npm run fly:background-guard
 ```

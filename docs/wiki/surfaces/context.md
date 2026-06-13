@@ -7,9 +7,10 @@ Context is the user's durable working profile. It is the structured background t
 1. The user edits the current context document.
 2. The app saves the current draft to Postgres by updating the active draft row in place.
 3. The editor shows line numbers that correspond to the plain-text context packet used by Context Refine.
-4. If the user has a wallet, they can publish encrypted context pointers to PFTL.
-5. The PFTL cache projects historical context pointers for the linked wallet.
-6. The user can preview and restore a historical version.
+4. The footer shows task-generation context usage; expanding it shows how much of the 60,000 readable-character task-generation budget the current document uses.
+5. If the user has a wallet, they can publish encrypted context pointers to PFTL.
+6. The PFTL cache projects historical context pointers for the linked wallet.
+7. The user can preview and restore a historical version.
 
 ## Technical Architecture
 
@@ -17,9 +18,16 @@ The context editor is in `src/main.jsx` and `src/features/context/context.css`. 
 
 The context cache repository is `server/repositories/context.js`, backed by `server/db/migrations/003_context_cache.sql`, `server/db/migrations/011_context_history_projection_source.sql`, `server/db/migrations/016_context_current_draft_only.sql`, and `server/db/migrations/017_context_prune_non_current_drafts.sql`. Normal editor saves are a current-draft cache, not immutable history. Historical pointer projection uses `server/context-history.js`, `server/pftl-cache-sync.js`, and `server/pftl-cache-reducer.js`.
 
-Context Refine runs through Chat, not a separate Context modal. `src/main.jsx::ChatSurface` activates `contextMode: "context_edit"` from the `+` menu. `server/context-edit-chat.js` uses `prompts/context/context_edit_jobs_v1.xml`, stores pending proposals in `context_edit_proposals`, and applies accepted proposals through `server/repositories/context.js::saveContextDocument`. The Context page then reloads the saved revision from Postgres.
+The native document storage cap is `CONTEXT_DOCUMENT_MAX_CHARS` from `shared/context-budget.js`, currently 120,000 raw rich-text characters. Model-facing consumers convert the saved rich-text body into readable text first. Task generation uses `TASKGEN_CONTEXT_MAX_CHARS`, currently 60,000 readable compacted characters, so the task engine sees the substantive context text rather than a short raw HTML slice. The Context page budget toggle is UI-only; task request bundles do not include usage percentages or budget telemetry.
+
+Context Refine runs through Chat, not a separate Context modal. `src/main.jsx::ChatSurface` activates `contextMode: "context_edit"` from the chat `+` menu or from the sidebar More tools menu entry, which navigates to Chat and activates the same composer mode. `server/context-edit-chat.js` uses `prompts/context/context_edit_jobs_v1.xml`, stores pending proposals in `context_edit_proposals`, and applies accepted proposals through `server/repositories/context.js::saveContextDocument`. The Context page then reloads the saved revision from Postgres.
 
 Line numbers are generated from the same normalized HTML-to-text idea used by `server/context-line-map.js`. They are inspection anchors for the user and model packet; the server still validates accepted edits by revision, body hash, and exact `target_before` text before saving.
+
+## Current Limits
+
+- Native editor saves post to `/api/context/edit/save`, and `server/index.js` reads that request body with a 64KB cap. Requests over 64KB fail with `request_too_large` (HTTP 413), so the 120,000-character storage cap is not actually reachable through a single editor save; very large documents fail at the request boundary instead of saving partially.
+- Bodies that do exceed the storage cap on any save path are silently sliced to `CONTEXT_DOCUMENT_MAX_CHARS` by `server/repositories/context.js` before saving. There is no oversize error or visible truncation warning, so content past the cap is dropped without telling the user.
 
 ## Data Model
 

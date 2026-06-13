@@ -13,12 +13,16 @@ function quoteIdentifier(value) {
 
 async function archiveAccountRows(client, { accountId = "", archiveId = "" } = {}) {
   const tables = await client.query(
-    `SELECT table_name
-       FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND column_name = 'account_id'
-        AND table_name <> ALL($1::text[])
-      ORDER BY table_name`,
+    `SELECT columns.table_name
+       FROM information_schema.columns columns
+       JOIN information_schema.tables tables
+         ON tables.table_schema = columns.table_schema
+        AND tables.table_name = columns.table_name
+      WHERE columns.table_schema = 'public'
+        AND columns.column_name = 'account_id'
+        AND tables.table_type = 'BASE TABLE'
+        AND columns.table_name <> ALL($1::text[])
+      ORDER BY columns.table_name`,
     [accountDataExclusions]
   );
   const changed = {};

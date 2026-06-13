@@ -62,6 +62,9 @@ const migrations = [
   "052_taskgen_split_prompt_versions.sql",
   "053_recommended_connections.sql",
   "054_ipfs_replication_jobs.sql",
+  "055_user_observability_events.sql",
+  "056_user_identity_vectors.sql",
+  "057_profile_daily_airdrop_remediation.sql",
 ];
 
 let migrated = false;

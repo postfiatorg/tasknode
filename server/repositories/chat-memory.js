@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, databaseStatus, query, transaction } from "../db/pool.js";
+import { recordUserObservabilityEvent } from "./user-observability.js";
 
 const maxListLimit = 200;
 const maxClaimLimit = 10;
@@ -196,7 +197,7 @@ export async function completeChatMemoryJob({ job, summary }) {
   const id = `mem_${randomUUID()}`;
   const conversationTitle = safeText(summary.conversationTitle || job.conversation_title || "New chat", 120);
 
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     const inserted = await client.query(
       `
         INSERT INTO chat_memory_entries (
@@ -276,6 +277,28 @@ export async function completeChatMemoryJob({ job, summary }) {
 
     return { ok: true, entry: publicEntry(inserted.rows[0]), deepMemoryJob };
   });
+  await recordUserObservabilityEvent({
+    eventType: "user.memory.turn_completed",
+    accountId: safeAccountId(job.account_id),
+    conversationId: safeConversationId(job.conversation_id),
+    sourceSurface: "memory",
+    sourceRoute: "server/repositories/chat-memory.js::completeChatMemoryJob",
+    resultStatus: "completed",
+    metadata: {
+      jobId: job.id,
+      entryId: result.entry?.id || "",
+      provider: safeText(summary.provider, 80),
+      model: safeText(summary.model, 160),
+      promptVersion: safeText(summary.promptVersion, 80),
+      deepMemoryQueued: result.deepMemoryJob?.queued === true,
+    },
+    metrics: {
+      inputTokens: Number(summary.usage?.inputTokens || summary.usage?.prompt_tokens || 0),
+      outputTokens: Number(summary.usage?.outputTokens || summary.usage?.completion_tokens || 0),
+      totalTokens: Number(summary.usage?.totalTokens || summary.usage?.total_tokens || 0),
+    },
+  }).catch(() => {});
+  return result;
 }
 
 async function maybeEnqueueDeepMemoryJobsForAccount(client, { accountId = "" } = {}) {
@@ -604,7 +627,7 @@ export async function completeDeepMemoryJob({ job, summary }) {
   const blockIndex = Math.max(1, Number(job.block_index || 1));
   const syntheticId = safeText(job.id, 120);
 
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     const inserted = await client.query(
       `
         INSERT INTO chat_memory_entries (
@@ -684,6 +707,28 @@ export async function completeDeepMemoryJob({ job, summary }) {
 
     return { ok: true, entry: publicEntry(inserted.rows[0]) };
   });
+  await recordUserObservabilityEvent({
+    eventType: "user.memory.deep_completed",
+    accountId: safeAccountId(job.account_id),
+    sourceSurface: "memory",
+    sourceRoute: "server/repositories/chat-memory.js::completeDeepMemoryJob",
+    resultStatus: "completed",
+    metadata: {
+      jobId: job.id,
+      entryId: result.entry?.id || "",
+      blockIndex,
+      provider: safeText(summary.provider, 80),
+      model: safeText(summary.model, 160),
+      promptVersion: safeText(summary.promptVersion, 80),
+    },
+    metrics: {
+      sourceEntryCount: safeIdArray(job.source_entry_ids).length,
+      inputTokens: Number(summary.usage?.inputTokens || summary.usage?.prompt_tokens || 0),
+      outputTokens: Number(summary.usage?.outputTokens || summary.usage?.completion_tokens || 0),
+      totalTokens: Number(summary.usage?.totalTokens || summary.usage?.total_tokens || 0),
+    },
+  }).catch(() => {});
+  return result;
 }
 
 export async function failChatMemoryJob(job, error) {

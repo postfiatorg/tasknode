@@ -10,6 +10,133 @@ Task Node is a chat-first, AI-assisted work system where people keep a live cont
 
 The AI parts help generate tasks, explain app state, summarize context, route network work, draft evidence, score some outputs, and make recommendations. The user still controls account actions through the app surfaces. Do not assume that a human reviewed, verified, assigned, or approved something unless the app explicitly says that.
 
+## Screen-by-Screen Feature Map
+
+Use this section when a user asks what Task Node is, where something lives, what a page means, or what to do next.
+
+### Chat Screen
+
+Chat is the main AI workspace. It can answer questions, reason through work, draft task evidence, explain app state, summarize prior work, and help the user decide what to do. It reads the signed-in user's Context, Memory, task state, and recent conversation when those are available.
+
+Chat does not secretly press product buttons. It cannot accept a task, refuse a task, submit evidence, mint an NFT, send PFT, edit Context, or create Hive work unless the user uses an explicit app control.
+
+The chat mode picker changes the provider and behavior:
+
+- `Private Instant` is fast private OpenRouter chat for normal reasoning.
+- `Private Thinking` is slower private OpenRouter reasoning for harder questions.
+- `Discount Thinking` is direct DeepSeek reasoning for lower-cost deeper analysis.
+- `Frontier Instant` is OpenAI frontier chat with prompt-governed web search and file understanding.
+- `Frontier Thinking` is OpenAI frontier reasoning for deeper or more source-heavy work.
+- `Help` is product help. It uses this guide plus the user's available app context to explain what the user is seeing and which surface to use.
+
+A new empty chat shows four starter prompts for signed-in users: `Help me build my context document`, `Give me my first task`, `How do I earn PFT?`, and `What should I do first?`. Clicking one fills the composer so the user can edit or send it; it does not send by itself.
+
+The `More` or thinking disclosure on assistant messages can show the source context passed into the model, including retrieved Steve Jobs corpus chunks when available. That Jobs vector database is not a user-facing task system; it is source material used to calibrate product judgment and response style.
+
+### Chat `+` Menu
+
+The `+` menu is where chat becomes an explicit product action.
+
+`Request task` turns the next message into a signed personal task request. It requires a signed-in account, linked wallet, and unlocked wallet vault because the request is published as a wallet-bound task request. The generated task appears later as a proposed task card in Tasks.
+
+`Context Refine` turns the next message into a structured edit request for the user's Context document. It does not require an unlocked wallet because it edits the account-scoped current Context draft. The model returns a proposal card in chat. The user must click `Accept & save`, reject it, or ask for another refine pass. Context Refine is also reachable from the sidebar `More` menu; that entry opens Chat with refine mode already active.
+
+### Tasks Screen
+
+Tasks is where work cards become real user actions. It shows proposed, accepted, verification, refused, and rewarded task records. Open a task to read the title, objective, steps, requested output, reward, state, and verification requirement.
+
+For a proposed task, the user accepts it if they will do the work or refuses it if it is wrong. For an accepted task, the user submits evidence. For a verification request, the user answers the specific follow-up. Task actions are wallet-bound signing actions and may ask the user to unlock the local wallet vault.
+
+Personal tasks come from the user's own request. Network Tasks come from Hive routing for shared network projects.
+
+Tasks also shows a `Network Tasks` eligibility panel. It displays a plain status pill, the routing wallet, and a checklist of the routing gates: signed-in account, linked PFT wallet, active wallet sync, completed Network Diagnostic Report, and free Network Task capacity. It names the next action for the first failing gate and lists any capacity blockers consuming the wallet's slot. The panel auto-expands when the user is not yet routable so the real blocker is visible without clicking.
+
+### Context Screen
+
+Context is the durable working document that tells Task Node who the user is, what they are building, what matters, and what constraints the assistant should remember. Chat, task generation, Context Refine, and some profile/recommendation flows depend on it.
+
+The editor autosaves the current draft into the account database. That current draft is the normal source used by chat and task generation. The `Saving`, `Saved`, or dirty state describes this current account cache, not necessarily an on-chain publication.
+
+Task generation uses up to 60,000 readable characters from the current Context document. The Context footer has a task-context budget toggle that shows the current percentage used and whether any readable characters are outside the generation packet.
+
+`Publish to PFT` is separate. Publishing encrypts the Context, pins it through IPFS, and writes a PFTL pointer so there is a wallet-scoped history record. Publishing requires a linked and unlocked wallet. Historical Context entries may need wallet unlock to decrypt previews. Cached historical previews are for the browser session and are not the same as the current editable draft.
+
+Line numbers shown in Context and Context Refine are anchors into the normalized plain-text version of the document. They help the edit model and the user refer to the same section; they are not a separate document format.
+
+### Memory Screen
+
+Memory is a compressed record of useful chat history. It helps future chats carry continuity without replaying every conversation. Memory is lower authority than the user's current message and Context. If chat seems stale, update Context first and inspect Memory second.
+
+### Wallet Screen
+
+Wallet is the PFT identity, signing, custody, transaction, top-up, and local vault surface. It shows the linked PFT address, PFT balance, transaction feed, local seed vault state, top-up credit, initiation gift status, send controls, and seed backup controls.
+
+Account login and wallet custody are separate. A connected provider such as email, GitHub, X, Telegram, or Discord proves account identity. A linked PFT wallet signs wallet-bound actions and receives PFT. The seed phrase, private key, wallet password, and decrypted vault are not sent to the server.
+
+`Locked` means the app knows the wallet address but the browser has not decrypted the local vault for signing. `Unlocked` means the browser can sign wallet-bound actions for the current session. Unlock survives normal reloads for the session through encrypted browser storage, locks after inactivity (30 minutes by default), and clears on lock, logout, local-vault removal, or tab close.
+
+Top-up credit is separate from PFT. Top-up uses an account-scoped Ethereum deposit address for app usage credit, such as model calls. That deposit address is not the PFT wallet and is not where task rewards are paid.
+
+### Profile Screen
+
+Profile has `Private` and `Public` tabs plus a profile visibility toggle.
+
+The private tab is the user's control room. It shows daily airdrop state, identity controls, Profile Studio, PFT generation history, the private NFT gallery, and recommended connections.
+
+The public tab previews what other discoverable users can see: Hive handle, selected public aliases, display wallet, role summary, skills, contribution level, alignment score, lifetime PFT, and public profile NFT gallery. If the profile is hidden, the user should not appear in recommended connection discovery.
+
+### Daily Airdrop On Profile
+
+Daily Airdrop is an account-level PFT distribution based on recent rewarded work and account state. It is not the same as a task reward. Task rewards come from completing individual tasks; the daily airdrop is an additional daily scoring and payout path.
+
+The panel shows the latest or today's airdrop amount, payout status, transaction hash when paid, what raised the score, what kept it lower, and what to improve tomorrow. `Full reasoning` shows the longer scoring explanation when available.
+
+Alignment score is the latest seven-day airdrop alignment score shown on a 0 to 100 scale. In plain English, it compares the account's actual recent airdrop outcome against the maximum possible airdrop signal for that scored window. The public profile explains it as actual airdrop PFT out of possible airdrop PFT over the scored window. It is not a moral score and it is not a human judgment; it is a recent contribution-alignment metric from the daily airdrop scoring run.
+
+### Profile NFT And Minting
+
+Profile Studio generates profile art from the user's recent Task Node profile state. Generation creates a durable draft row first, then calls image generation, pins the image to IPFS, and makes the draft mintable. If the user leaves during generation, the draft remains recoverable and Profile polls until it finishes or fails.
+
+`Regenerate` creates or retries a generated draft. `Mint as NFT` turns a generated draft with an image CID into a wallet-owned PFTL NFT. Minting requires the linked local wallet vault to be unlocked because the browser signs the mint transaction. Mint status moves through preparing, signing, broadcasting, confirming, and minted.
+
+Generated, prepared, and minted NFTs can appear in the private gallery. Public profile shows public-safe active-wallet NFTs, not failed private drafts.
+
+### Recommended Connections
+
+Recommended Connections appears on the private Profile tab. It suggests public/discoverable members who may be useful to know or work with next. Each recommendation shows the member, a reason, supporting signals, and a suggested first move.
+
+Click `View profile` or the member name to open the sanitized member preview. The preview can show their public role summary, skills, lifetime PFT, rewarded task count, public handle, and display wallet. Wallet links can open the explorer or be copied. These interactions do not message that person and do not create a task; they only help the user inspect or contact the right identity outside the recommendation card.
+
+Recommendations require enough public/discoverable member data to compare against. If the user's profile is private, recommendations are off and the user should not be included in other users' recommendation runs.
+
+### Hive Screen
+
+Hive is the group coordination board. It shows shared Post Fiat projects, Network Task routing, contributor activity, Hive Context, and Hive Mind Agent activity. It is where the user inspects network work, not where they accept or submit tasks.
+
+Hive Chat is a pinned chat conversation for contributing network context. A Hive Chat message is saved to Hive Context. The immediate response can explain board state, but it does not create a task by itself. Network Tasks are routed later by the Board Manager when there is a project need, eligible contributor capacity, and a matching user profile.
+
+Hive Context validation means the entry came from an account with a linked PFT wallet. Ordinary Hive Chat messages do not require the wallet vault to be unlocked. Wallet unlock is needed later for signed task actions.
+
+### Telegram Login And Telegram Chat
+
+Telegram can be used as a connected login/provider identity when enabled. Linking Telegram attaches that Telegram identity to the same Task Node account cloud.
+
+Telegram bot chat is a phone-sized delivery surface for Task Node chat. It should be concise, account-aware when linked, and clear about what is missing. Telegram chat does not bypass the app's normal wallet, task, reward, or Context action boundaries.
+
+### Billing And Usage Credit
+
+Billing shows app usage credit and model-run ledger entries. Chat and model features spend usage credit based on provider usage. PFT task rewards and PFT wallet balance are separate from usage credit.
+
+### Help And Docs
+
+Help mode in Chat answers product questions using this guide and available runtime context. The Help/Docs screen exposes user-facing documentation and prompt/source maps. Use Help when the user does not know which page to use or why they are seeing a state.
+
+### Search And Agents
+
+Search today is the `Search chats` button in the primary sidebar. It opens a modal that searches the user's own chat conversations by title and message content and opens the matching conversation. It is not yet a cross-surface search over tasks, context entries, or memory; that is the target, not the current behavior.
+
+Agents are advanced external wallet-native workers documented in Help. There is no in-app Agents surface and no Agents sidebar row, so normal users can ignore the concept until they are operating a separate agent.
+
 ## First Session Checklist
 
 1. Use `Log in or sign up` in the profile/account area to create or enter an account.
@@ -40,6 +167,8 @@ Sign in with an available provider. Choose a Hive handle. Link any provider acco
 If you are signed out, start from the `Log in or sign up` control in the profile/account area. You can continue with an enabled provider such as email, GitHub, X, Telegram, or another configured provider. Email sign-in asks for an email address and then a code. After sign-in, the app can save chat history, Context, Memory, Tasks, Wallet state, Profile, and Hive-related state to your account.
 
 Do not confuse provider identity with wallet custody. A connected account can prove who you are. A linked PFT wallet signs wallet-bound actions.
+
+Logging out from the profile menu asks for a confirmation step first and warns that the wallet vault will lock. This prevents an accidental click from ending a signing session.
 
 ### How To Explain It
 
@@ -84,6 +213,8 @@ This is one of the most important surfaces in the app. Bad context produces bad 
 Open Context and keep the document accurate. Write in normal language. Include current priorities, active projects, constraints, preferences, and anything the assistant should not forget.
 
 Update it when your work changes. Remove stale priorities. If the assistant is behaving from old assumptions, check the context document first.
+
+Use the task-context budget toggle when the document gets long. Below 100%, task generation can use the full readable document; above 100%, the earliest 60,000 readable characters are used.
 
 You can edit it directly, or use Refine Context to clean it up without changing the meaning.
 
@@ -245,6 +376,20 @@ Hive Chat cannot create personal tasks for you. It can record context and explai
 
 Board Manager is an AI-assisted coordination system. It can route, summarize, and recommend network actions through the product workflow. It is not a human manager, and Help should not describe it as one.
 
+### Hive Chat First-Run Path
+
+For a first Hive Chat session:
+
+1. Sign in or create an account.
+2. Choose a Hive handle on Profile.
+3. Link or create a PFT wallet on Wallet.
+4. Open the pinned `Hive Chat` conversation in Chat.
+5. Send a short message describing what you can contribute or what network context the Board Manager should know.
+6. Open Hive to inspect active projects and Board Manager activity.
+7. Open Tasks when a Network Task is proposed, because acceptance, refusal, evidence submission, verification, and reward state happen there.
+
+Hive Context validation means the Hive entry came from an account with a linked PFT wallet. Ordinary Hive Chat messages do not require the wallet vault to be unlocked. Wallet unlock is needed later for signing wallet-bound actions such as accepting a task or submitting evidence.
+
 ### How To Explain Network Tasks
 
 Network Tasks are paid work for the group. They are meant to advance shared Post Fiat projects, not just personal productivity.
@@ -254,9 +399,11 @@ The system tries to route Network Tasks when:
 - the user has a signed-in account;
 - the user has a linked PFT wallet;
 - the wallet is indexed and active;
-- the user has enough task/reward history for a Network Diagnostic Report;
+- the user has a completed Network Diagnostic Report;
 - the user is not already consuming Network Task capacity;
 - Hive has a real project need that matches the user.
+
+The Network Diagnostic Report is generated automatically; there is no way to request it from Hive, Board Manager, or a person. The app queues it after the user's second positively rewarded task (rewarded personal tasks count), and opening the Memory page also queues it right away when the user does not have one yet. If routing looks stuck, the usual fix is: link a PFT wallet, wait for the wallet to finish syncing, then open Memory so the report generates. Do not tell the user that completing personal tasks is required for Network Tasks; rewarded tasks only trigger the report automatically, and opening Memory produces the same report without any task history.
 
 ### How To Explain It
 
@@ -318,6 +465,11 @@ Generated drafts and minted NFTs are different. A generated draft is an app reco
 
 Open Profile to generate, view, paginate, and mint profile NFTs. Minting requires the linked local wallet vault to be unlocked because the browser signs the NFT mint transaction.
 
+If generation is still running, Profile shows a saved in-progress draft. It is
+safe to leave the page or refresh; return to Profile and the draft will still be
+visible. Completed drafts appear in Profile Studio and the NFT gallery. Failed
+drafts stay visible privately with a retry path.
+
 The app renders NFT images through the profile image proxy so old or migrated IPFS assets can be fetched reliably without the browser trying many gateways directly.
 
 If an NFT image cannot be fetched, the app should show an explicit unavailable-image state instead of silently substituting fake art.
@@ -366,7 +518,7 @@ Search helps find cached work across app records.
 
 ### How To Use It
 
-Use Search when you are trying to recover a prior conversation, task, context entry, or related work artifact.
+Use the sidebar `Search chats` button to recover a prior conversation. It searches your own chats by title and message content and opens the matching conversation. Recovering tasks, context entries, and memory through search is the target, not current behavior; use the Tasks, Context, and Memory surfaces directly for those records today.
 
 ### How To Explain It
 
@@ -380,7 +532,7 @@ Agents are external wallet-native workers. They are not the normal first user pa
 
 ### How To Use It
 
-Use Agents only when you are operating or connecting an external worker that should interact with Task Node through wallet-native flows.
+Use Agents only when you are operating or connecting an external worker that should interact with Task Node through wallet-native flows. There is no in-app Agents screen; the workflow runs through external tooling and the reference clients, with this Help page as the contract.
 
 ### How To Explain It
 

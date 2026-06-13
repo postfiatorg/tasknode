@@ -4,8 +4,13 @@ import { closePool, databaseEnabled, query } from "../server/db/pool.js";
 import { migrateDatabase } from "../server/db/migrate.js";
 import {
   buildDailyAirdropTaskRewardPacket,
+  normalizeDailyAirdropOutput,
   runDailyAirdropScore,
 } from "../server/profile-daily-airdrop.js";
+import {
+  createDailyAirdropRun,
+  failDailyAirdropRun,
+} from "../server/repositories/profile-daily-airdrop.js";
 import { registerPftlSyncWallet } from "../server/repositories/pftl-cache.js";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
@@ -119,6 +124,59 @@ async function main() {
     assert.equal(packet.reward_totals.rewarded_task_count, 1);
     assert.equal(packet.reward_totals.total_reward_paid_pft, 7.5);
     assert.equal(packet.rewarded_tasks[0].task_id, taskId);
+    assert.equal(packet.daily_airdrop_policy.max_reward_fraction, null);
+    assert.equal(
+      packet.daily_airdrop_policy.deterministic_cap_rule,
+      "max_daily_pft"
+    );
+
+    // Default cap is the historical max-daily rail only; the proportional cap is
+    // opt-in so a deploy cannot slash normal airdrops by accident.
+    const defaultOutput = normalizeDailyAirdropOutput(
+      { daily_airdrop_pft: 5000, retention_value_score: 99, eligibility_status: "eligible" },
+      packet,
+      { maxDailyPft: 10000 }
+    );
+    assert.equal(defaultOutput.daily_airdrop_pft, 5000, "unset maxRewardFraction must not slash the model amount");
+    assert.equal(defaultOutput.deterministic_cap.rule, "max_daily_pft");
+    assert.equal(defaultOutput.deterministic_cap.max_reward_fraction, null);
+    assert.equal(defaultOutput.deterministic_cap.cap_bound, false);
+
+    const defaultZeroBaseOutput = normalizeDailyAirdropOutput(
+      { daily_airdrop_pft: 100, retention_value_score: 80, eligibility_status: "eligible" },
+      { reward_totals: { rewarded_task_count: 1, total_reward_paid_pft: 0 } },
+      { maxDailyPft: 10000 }
+    );
+    assert.equal(defaultZeroBaseOutput.daily_airdrop_pft, 0, "zero rewarded-PFT base remains ineligible");
+
+    // When explicitly configured, the proportional cap still works: the model
+    // can never pay more than max_reward_fraction * 7-day rewarded PFT.
+    const cappedOutput = normalizeDailyAirdropOutput(
+      { daily_airdrop_pft: 5000, retention_value_score: 99, eligibility_status: "eligible" },
+      packet,
+      { maxDailyPft: 10000, maxRewardFraction: 0.5 }
+    );
+    assert.equal(cappedOutput.daily_airdrop_pft, 3, "5000 PFT proposal clamps to floor(0.5 * 7.5) = 3");
+    assert.equal(cappedOutput.deterministic_cap.cap_bound, true);
+    assert.equal(cappedOutput.deterministic_cap.model_daily_airdrop_pft, 5000);
+    assert.equal(cappedOutput.deterministic_cap.reward_fraction_cap_pft, 3);
+    assert.equal(cappedOutput.deterministic_cap.total_reward_paid_pft, 7.5);
+    assert.equal(cappedOutput.deterministic_cap.max_reward_fraction, 0.5);
+
+    const underCapOutput = normalizeDailyAirdropOutput(
+      { daily_airdrop_pft: 2, retention_value_score: 40, eligibility_status: "eligible" },
+      packet,
+      { maxDailyPft: 10000, maxRewardFraction: 0.5 }
+    );
+    assert.equal(underCapOutput.daily_airdrop_pft, 2, "a proposal under the cap is unchanged");
+    assert.equal(underCapOutput.deterministic_cap.cap_bound, false);
+
+    const zeroBaseOutput = normalizeDailyAirdropOutput(
+      { daily_airdrop_pft: 100, retention_value_score: 80, eligibility_status: "eligible" },
+      { reward_totals: { rewarded_task_count: 1, total_reward_paid_pft: 0 } },
+      { maxDailyPft: 10000, maxRewardFraction: 0.5 }
+    );
+    assert.equal(zeroBaseOutput.daily_airdrop_pft, 0, "a zero rewarded-PFT base caps the payout to zero");
 
     await insertRewardedTask({
       account: mismatchAccountId,
@@ -141,6 +199,82 @@ async function main() {
       mismatchAccountId,
     ]);
     assert.equal(runs.rows[0].count, 0);
+
+    const retryRunDate = "2026-01-15";
+    const failedRun = await createDailyAirdropRun({
+      id: `airdrop_packet_retry_failed_${suffix}`,
+      accountId,
+      runDate: retryRunDate,
+      runMode: "production",
+      scenarioId: "packet_smoke_first_attempt",
+      isCanonical: true,
+      status: "running",
+      inputHash: "sha256:first",
+      inputSnapshot: { attempt: "first" },
+      provider: "openrouter",
+      model: "smoke-model",
+      promptVersion: "smoke-v1",
+      promptDigest: "digest-first",
+    });
+    await failDailyAirdropRun({
+      id: failedRun.id,
+      errorMessage: "daily_airdrop_model_output_not_json",
+    });
+    const retriedRun = await createDailyAirdropRun({
+      id: `airdrop_packet_retry_second_${suffix}`,
+      accountId,
+      runDate: retryRunDate,
+      runMode: "production",
+      scenarioId: "packet_smoke_second_attempt",
+      isCanonical: true,
+      status: "running",
+      inputHash: "sha256:second",
+      inputSnapshot: { attempt: "second" },
+      provider: "openrouter",
+      model: "smoke-model",
+      promptVersion: "smoke-v1",
+      promptDigest: "digest-second",
+    });
+    assert.equal(retriedRun.id, failedRun.id);
+    assert.equal(retriedRun.status, "running");
+    assert.equal(retriedRun.scenario_id, "packet_smoke_second_attempt");
+    assert.equal(retriedRun.input_hash, "sha256:second");
+    assert.equal(retriedRun.error_message, null);
+    assert.equal(retriedRun.completed_at, null);
+
+    await createDailyAirdropRun({
+      id: `airdrop_packet_completed_${suffix}`,
+      accountId: mismatchAccountId,
+      runDate: retryRunDate,
+      runMode: "production",
+      scenarioId: "packet_smoke_completed",
+      isCanonical: true,
+      status: "completed",
+      inputHash: "sha256:completed",
+      inputSnapshot: { attempt: "completed" },
+      provider: "openrouter",
+      model: "smoke-model",
+      promptVersion: "smoke-v1",
+      promptDigest: "digest-completed",
+    });
+    await assert.rejects(
+      () => createDailyAirdropRun({
+        id: `airdrop_packet_completed_retry_${suffix}`,
+        accountId: mismatchAccountId,
+        runDate: retryRunDate,
+        runMode: "production",
+        scenarioId: "packet_smoke_completed_retry",
+        isCanonical: true,
+        status: "running",
+        inputHash: "sha256:completed-retry",
+        inputSnapshot: { attempt: "completed-retry" },
+        provider: "openrouter",
+        model: "smoke-model",
+        promptVersion: "smoke-v1",
+        promptDigest: "digest-completed-retry",
+      }),
+      /daily_airdrop_production_run_already_exists/
+    );
 
     console.log("profile daily airdrop packet smoke ok");
   } finally {

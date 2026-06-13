@@ -64,14 +64,22 @@ async function main() {
   try {
     await insertCompletedRun();
 
-    const firstClaim = await claimDailyAirdropIssuanceForPublish({ accountId, runId });
+    await assert.rejects(
+      () => claimDailyAirdropIssuanceForPublish({ accountId, runId }),
+      /daily_airdrop_dry_run_promotion_blocked/,
+      "claiming a dry_run scoring run without the explicit override must be blocked"
+    );
+    const blockedRun = await query("SELECT run_mode FROM profile_daily_airdrop_runs WHERE id = $1", [runId]);
+    assert.equal(blockedRun.rows[0].run_mode, "dry_run", "a blocked claim must not promote the run");
+
+    const firstClaim = await claimDailyAirdropIssuanceForPublish({ accountId, runId, allowDryRunPromotion: true });
     assert.equal(firstClaim.alreadySubmitted, false);
-    assert.equal(firstClaim.issuance.status, "processing");
+    assert.equal(firstClaim.issuance.status, "processing_pre_submit");
     assert.equal(firstClaim.issuance.recipient_wallet, recipientWallet);
 
     await assert.rejects(
-      () => claimDailyAirdropIssuanceForPublish({ accountId, runId }),
-      /daily_airdrop_issuance_in_progress/
+      () => claimDailyAirdropIssuanceForPublish({ accountId, runId, allowDryRunPromotion: true }),
+      /daily_airdrop_issuance_blocked:processing_pre_submit/
     );
 
     await markDailyAirdropIssuancePublishFailure({
@@ -81,7 +89,7 @@ async function main() {
     });
     await assert.rejects(
       () => claimDailyAirdropIssuanceForPublish({ accountId, runId }),
-      /daily_airdrop_issuance_in_progress/
+      /daily_airdrop_issuance_blocked:submit_unknown/
     );
 
     await query(
@@ -106,6 +114,7 @@ async function main() {
     const retryClaim = await claimDailyAirdropIssuanceForPublish({
       accountId: retryAccountId,
       runId: retryRunId,
+      allowDryRunPromotion: true,
     });
     await markDailyAirdropIssuancePublishFailure({
       issuanceId: retryClaim.issuance.id,
@@ -117,7 +126,8 @@ async function main() {
       runId: retryRunId,
     });
     assert.equal(retryAfterSafeFailure.alreadySubmitted, false);
-    assert.equal(retryAfterSafeFailure.issuance.status, "processing");
+    assert.equal(retryAfterSafeFailure.issuance.status, "processing_pre_submit");
+    assert.equal(retryAfterSafeFailure.issuance.attempt_count, 2);
 
     console.log("profile daily airdrop issuance smoke ok");
   } finally {

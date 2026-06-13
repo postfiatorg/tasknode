@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { closePool, query } from "../server/db/pool.js";
+import { recordUserObservabilityEvent } from "../server/repositories/user-observability.js";
 
 const defaultGatewayBase = "https://dweb.link/ipfs/";
 
@@ -47,6 +48,10 @@ function gatewayUrlForCid(cid = "", gatewayBase = defaultGatewayBase) {
 
 function stableImportId(oldMintId = "") {
   return `nft_pftasks_${safeText(oldMintId, 120).replace(/[^a-zA-Z0-9_-]+/g, "_")}`.slice(0, 160);
+}
+
+function stableImportEventId(nftId = "") {
+  return `uobs_profile_nft_import_${safeText(nftId, 140).replace(/[^a-zA-Z0-9_-]+/g, "_")}`.slice(0, 180);
 }
 
 export function normalizePftasksNftRow(row = {}, { accountId = "", walletAddress = "", gatewayBase = defaultGatewayBase } = {}) {
@@ -221,7 +226,31 @@ async function main() {
 
   const importedIds = [];
   for (const nft of imports) {
-    importedIds.push(await upsertImportedProfileNft(nft));
+    const importedId = await upsertImportedProfileNft(nft);
+    importedIds.push(importedId);
+    if (importedId) {
+      await recordUserObservabilityEvent({
+        id: stableImportEventId(importedId),
+        eventType: "user.profile.nft_imported",
+        accountId: nft.accountId,
+        walletAddress: nft.walletAddress,
+        walletScope: nft.walletAddress ? "active" : "",
+        txHash: nft.txHash,
+        cid: nft.metadataCid || nft.imageCid,
+        sourceSurface: "profile",
+        sourceRoute: "scripts/import-pftasks-profile-nfts.mjs",
+        resultStatus: "imported",
+        reasonCode: "pftasks_import",
+        metadata: {
+          nftId: importedId,
+          legacyMintId: nft.source?.oldMintId || "",
+          metadataCid: nft.metadataCid,
+          imageCid: nft.imageCid,
+          promptSource: nft.promptSource,
+          selected: nft.selected === true,
+        },
+      });
+    }
   }
   await closePool();
   console.log(JSON.stringify({

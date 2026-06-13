@@ -26,6 +26,11 @@ try {
     runDate: argValue("--run-date", undefined),
     lookbackDays: Number(argValue("--lookback-days", process.env.TASKNODE_DAILY_AIRDROP_LOOKBACK_DAYS || "7")),
     batchLimit: Number(argValue("--batch-limit", process.env.TASKNODE_DAILY_AIRDROP_WORKER_BATCH_LIMIT || "10")),
+    catchupDays: Number(argValue("--catchup-days", process.env.TASKNODE_DAILY_AIRDROP_CATCHUP_DAYS || "2")),
+    scoringStaleMinutes: Number(argValue("--scoring-stale-minutes", process.env.TASKNODE_DAILY_AIRDROP_SCORE_STALE_MINUTES || "45")),
+    preSubmitStaleMinutes: Number(argValue("--pre-submit-stale-minutes", process.env.TASKNODE_DAILY_AIRDROP_PRE_SUBMIT_STALE_MINUTES || "30")),
+    submittingStaleMinutes: Number(argValue("--submitting-stale-minutes", process.env.TASKNODE_DAILY_AIRDROP_SUBMITTING_STALE_MINUTES || "30")),
+    maxIssuanceAttempts: Number(argValue("--max-issuance-attempts", process.env.TASKNODE_DAILY_AIRDROP_MAX_ISSUANCE_ATTEMPTS || "5")),
     maxDailyPft: Number(argValue("--max-daily-pft", process.env.TASKNODE_DAILY_AIRDROP_MAX_PFT || "10000")),
     model: argValue("--model", process.env.TASKNODE_DAILY_AIRDROP_MODEL || "deepseek/deepseek-v4-pro"),
     runMode: argValue("--run-mode", process.env.TASKNODE_DAILY_AIRDROP_WORKER_RUN_MODE || "production"),
@@ -39,6 +44,10 @@ try {
     console.log(`scored_count=${result.scoredCount || 0}`);
     console.log(`issued_count=${result.issuedCount || 0}`);
     console.log(`failed_count=${result.failedCount || 0}`);
+    console.log(`debt_count=${result.debtCount || 0}`);
+    console.log(`retryable_debt_count=${result.retryableDebtCount || 0}`);
+    console.log(`reconcile_debt_count=${result.reconcileDebtCount || 0}`);
+    if (result.runDatesChecked?.length) console.log(`run_dates_checked=${result.runDatesChecked.join(",")}`);
     console.log(`total_pft=${result.totalPft || 0}`);
     if (result.agentRun?.runId) console.log(`agent_run_id=${result.agentRun.runId}`);
   }

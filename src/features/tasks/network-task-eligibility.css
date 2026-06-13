@@ -1,0 +1,195 @@
+.network-eligibility-panel {
+  margin: 0 0 24px;
+  border: 1px solid #e3e1da;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.network-eligibility-panel.tone-blocked,
+.network-eligibility-panel.tone-action {
+  border-color: #d9c27a;
+  background: #fff9ea;
+}
+
+.network-eligibility-panel.tone-unavailable {
+  border-color: #d9a3a0;
+  background: #fdf2f1;
+}
+
+.network-eligibility-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.network-eligibility-pill {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #ececec;
+  color: #444440;
+}
+
+.tone-ok .network-eligibility-pill {
+  background: #e3f4ec;
+  color: #116648;
+}
+
+.tone-blocked .network-eligibility-pill,
+.tone-action .network-eligibility-pill {
+  background: #f7e9c4;
+  color: #5b4a1f;
+}
+
+.tone-unavailable .network-eligibility-pill {
+  background: #f5dbd9;
+  color: #7a2f2a;
+}
+
+.network-eligibility-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.network-eligibility-head-copy strong {
+  font-size: 14px;
+}
+
+.network-eligibility-head-copy span {
+  font-size: 12px;
+  color: #6b6b66;
+  font-family: ui-monospace, monospace;
+}
+
+.network-eligibility-caret {
+  margin-left: auto;
+  color: #6b6b66;
+  font-size: 12px;
+}
+
+.network-eligibility-body {
+  padding: 0 16px 14px;
+}
+
+.network-eligibility-summary {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.network-eligibility-error {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #7a2f2a;
+}
+
+.network-eligibility-next {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.network-eligibility-gates {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.network-eligibility-gate {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.network-eligibility-gate-mark {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  margin-top: 1px;
+  background: #ececec;
+  color: #444440;
+}
+
+.network-eligibility-gate.is-pass .network-eligibility-gate-mark {
+  background: #e3f4ec;
+  color: #116648;
+}
+
+.network-eligibility-gate.is-fail .network-eligibility-gate-mark {
+  background: #f7e9c4;
+  color: #5b4a1f;
+}
+
+.network-eligibility-gate strong {
+  font-size: 13px;
+}
+
+.network-eligibility-gate p {
+  margin: 1px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #6b6b66;
+}
+
+.network-eligibility-gate p.network-eligibility-gate-action {
+  font-weight: 600;
+  color: #0d0d0d;
+}
+
+.network-eligibility-blockers {
+  margin-top: 12px;
+}
+
+.network-eligibility-blockers > strong {
+  font-size: 13px;
+}
+
+.network-eligibility-blockers ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.network-eligibility-blocker {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  border: 1px solid #e3e1da;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.network-eligibility-blocker strong {
+  font-size: 13px;
+}
+
+.network-eligibility-blocker span {
+  font-size: 12px;
+  color: #6b6b66;
+  font-family: ui-monospace, monospace;
+}

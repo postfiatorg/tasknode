@@ -24,6 +24,7 @@ import {
   findOpenBoardManagerFollowup,
 } from "./repositories/board-manager-state.js";
 import { buildHiveAccountLiveState } from "./repositories/hive-account-live-state.js";
+import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 
 const projectTypes = new Set([
   "protocol_marketing",
@@ -848,6 +849,46 @@ async function executeMessageUser({ runId, decision, sourcePacket }) {
       message_precondition: messagePreconditionForAudit,
     },
   }).catch((error) => ({ ok: false, error: error?.message || String(error) }));
+  await recordUserObservabilityEvent({
+    eventType: "user.hive.board_message_delivered",
+    accountId,
+    conversationId,
+    projectId,
+    sourceSurface: "hive",
+    sourceRoute: "server/board-manager-actions.js::executeMessageUser",
+    resultStatus: "sent",
+    reasonCode: "message_user",
+    metadata: {
+      boardMessageId: inserted.rows[0]?.id || messageId,
+      runId: safeText(runId, 180),
+      chatMessageId: chatTurn.assistant?.id || assistantMessageId,
+      hiveContextEntryId: target.hiveContextEntryId,
+      sourcePacketDigest: safeText(sourcePacket.sourcePacketDigest, 120),
+      followupId: followup.followup?.id || "",
+      followupCreated: followup.ok === true && followup.idempotent !== true,
+    },
+    metrics: {
+      messageCharacterCount: messageText.length,
+    },
+  }).catch(() => {});
+  if (followup.followup?.id) {
+    await recordUserObservabilityEvent({
+      eventType: "user.hive.followup_opened",
+      accountId,
+      conversationId,
+      projectId,
+      sourceSurface: "hive",
+      sourceRoute: "server/board-manager-actions.js::executeMessageUser",
+      resultStatus: followup.ok === false ? "failed" : followup.idempotent ? "already_open" : "open",
+      reasonCode: followup.ok === false ? followup.error || "followup_open_failed" : "message_user",
+      metadata: {
+        followupId: followup.followup.id,
+        boardMessageId: inserted.rows[0]?.id || messageId,
+        runId: safeText(runId, 180),
+        blockerType: safeText(followup.followup.blockerType || followup.followup.blocker_type, 120),
+      },
+    }).catch(() => {});
+  }
   return {
     executed: true,
     messageId: inserted.rows[0]?.id || "",

@@ -5,6 +5,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { appState } from "./app-state.js";
 import { startBackgroundWorkers } from "./background-workers.js";
+import {
+  isProductionEnvironment,
+  legacyHostRedirectTarget,
+  moneySeedStartupIssues,
+  productionOriginIssues,
+} from "./production-guards.js";
 import { fetchPftBalance } from "./pftl-balance.js";
 import { handlePftlCacheRoute } from "./pftl-cache-route.js";
 import { fetchWalletTransactions } from "./pftl-transactions.js";
@@ -12,7 +18,7 @@ import {
   authCallback, authDevStart, authEmailStart, authEmailVerify, authProviders, authStart, authTelegramAuthorize, chatEstimateStart,
   chatModes, chatSend, chatStreamStart, contextActionStart, contextActions, contextEditSave,
   contextManifestInk, contextHistoryIpfsFetch, devAuthStatus, readiness, taskRequestIntentStart,
-  usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync, walletActionStart, walletActions,
+  usageActions, usageAdminCredit, usageTopUpStart, usageTopUpSync, userObservabilityClientEvent, walletActionStart, walletActions,
   walletLinkStart, walletLinkVerify,
 } from "./product-contracts.js";
 import { executeChatStream, logChatProviderError } from "./chat-router.js";
@@ -31,8 +37,10 @@ import {
   getChatMessages,
   listChatConversations,
   renameChatConversation,
+  searchChatConversations,
   usageLedger,
 } from "./repositories/chat-billing.js";
+import { recordChatFailureObservability } from "./repositories/user-observability.js";
 import { chatConversationExistsForAccount } from "./repositories/chat-conversation-lookup.js";
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
@@ -45,6 +53,7 @@ import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
 import { handleProfileNftImageRoute } from "./profile-nft-image-proxy.js";
 import { handleMemoryRoute } from "./memory-routes.js";
+import { handleDirectoryRoute } from "./directory-routes.js";
 import { handleHiveRoute } from "./hive-routes.js";
 import { handleSystemStatusRoute } from "./system-status.js";
 import { handleTelegramBotRoute } from "./telegram-bot.js";
@@ -157,6 +166,7 @@ function runtimeConfig() {
     analyticsEnabled: process.env.VITE_ANALYTICS_ENABLED !== "false",
     posthogHost: process.env.VITE_POSTHOG_HOST || process.env.POSTHOG_UI_HOST || "",
     posthogKeyPresent: Boolean(process.env.POSTHOG_KEY || process.env.VITE_POSTHOG_KEY),
+    walletUnlockIdleLockMinutes: process.env.TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES || "",
   };
 }
 
@@ -334,6 +344,23 @@ function assertStartupSecurity() {
       "refusing_public_startup_with_ephemeral_runtime_store: configure durable auth/account storage and TASKNODE_RUNTIME_STORE_DURABLE=true, or set an explicit reviewed override"
     );
   }
+
+  const originIssues = productionOriginIssues();
+  if (originIssues.length > 0) {
+    const summary = originIssues.map((issue) => issue.code).join(",");
+    if (isProductionEnvironment()) {
+      throw new Error(
+        `refusing_public_startup_with_origin_mismatch: ${summary}. ${originIssues.map((issue) => issue.detail).join("; ")}`
+      );
+    }
+    for (const issue of originIssues) {
+      console.warn(`[startup] origin config mismatch: ${issue.code}: ${issue.detail}`);
+    }
+  }
+
+  for (const issue of moneySeedStartupIssues()) {
+    console.warn(`[startup] money seed config: ${issue.code}: ${issue.detail}`);
+  }
 }
 
 function isInsideDist(filePath) {
@@ -394,6 +421,13 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/session") {
     const state = await getState();
     json(res, 200, state.session);
+    return true;
+  }
+
+  if (url.pathname === "/api/user-observability/event") {
+    const payload = req.method === "POST" ? await readJson(req, 8192) : {};
+    const result = await userObservabilityClientEvent(payload, req.method, session);
+    json(res, result.status, result.body);
     return true;
   }
 
@@ -612,6 +646,28 @@ async function routeApi(req, url, res) {
     return true;
   }
 
+  if (url.pathname === "/api/chat/search") {
+    if (!session?.accountId) {
+      json(res, 401, { ok: false, error: "chat_search_login_required", message: "Sign in before searching chats." });
+      return true;
+    }
+    const searchQuery = String(url.searchParams.get("q") || "").trim();
+    if (searchQuery.length < 2) {
+      json(res, 200, { ok: true, query: searchQuery, results: [] });
+      return true;
+    }
+    json(res, 200, {
+      ok: true,
+      query: searchQuery,
+      results: await searchChatConversations({
+        accountId: session.accountId,
+        query: searchQuery,
+        limit: url.searchParams.get("limit") || 20,
+      }),
+    });
+    return true;
+  }
+
   if (await handleMemoryRoute({ json, readJson, req, res, session, url })) return true;
 
   if (await handleAccountRoute({
@@ -628,6 +684,8 @@ async function routeApi(req, url, res) {
   if (await handleProfileNftImageRoute({ json, req, res, url })) return true;
 
   if (await handleProfileRoute({ getState, json, readJson, req, res, session, url })) return true;
+
+  if (await handleDirectoryRoute({ json, req, res, session, url })) return true;
 
   if (await handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
 
@@ -699,6 +757,16 @@ async function routeApi(req, url, res) {
           provider: started.estimate?.provider,
           model: started.estimate?.model,
         });
+        await recordChatFailureObservability({
+          accountId: started.chat.accountId,
+          conversationId,
+          mode: started.chat.mode,
+          provider: started.estimate?.provider,
+          model: started.estimate?.model,
+          status: error?.status || 502,
+          error,
+          sourceRoute: "server/index.js::/api/chat/stream",
+        }).catch(() => {});
         writeSse(res, "error", {
           ok: false,
           error: error?.message || "chat_provider_error",
@@ -985,6 +1053,18 @@ const server = createServer((req, res) => {
       buildId,
       uptimeSeconds: Math.round(process.uptime()),
     });
+    return;
+  }
+
+  const legacyRedirect = legacyHostRedirectTarget({
+    host: req.headers["x-forwarded-host"] || req.headers.host || "",
+    method: req.method,
+    pathname: url.pathname,
+    search: url.search,
+  });
+  if (legacyRedirect) {
+    res.writeHead(301, { location: legacyRedirect, "cache-control": "no-store" });
+    res.end();
     return;
   }
 

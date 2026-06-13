@@ -28,10 +28,28 @@ function toIso(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function normalizeIssuanceStatus(row = {}) {
+  const status = row.issuance_status || row.status || "";
+  if (
+    status === "failed" &&
+    !(row.issuance_tx_hash || row.tx_hash) &&
+    !(row.issuance_submitted_at || row.submitted_at)
+  ) {
+    return "failed_before_submit";
+  }
+  if (status === "processing") {
+    return row.issuance_submission_attempted_at || row.submission_attempted_at
+      ? "submit_unknown"
+      : "processing_pre_submit";
+  }
+  return status;
+}
+
 function normalizeDailyAirdropRun(row = null) {
   if (!row) return null;
   const inputSnapshot = row.input_snapshot || row.inputSnapshot || {};
   const outputJson = row.output_json || row.outputJson || {};
+  const issuanceStatus = normalizeIssuanceStatus(row);
   return {
     id: row.id || "",
     accountId: row.account_id || row.accountId || "",
@@ -61,7 +79,8 @@ function normalizeDailyAirdropRun(row = null) {
     output: outputJson,
     issuance: row.issuance_id ? {
       id: row.issuance_id,
-      status: row.issuance_status || "",
+      status: issuanceStatus,
+      rawStatus: row.issuance_status || issuanceStatus,
       sourceWallet: row.issuance_source_wallet || "",
       recipientWallet: row.issuance_recipient_wallet || "",
       amountPft: Number(row.issuance_amount_pft || 0),
@@ -69,6 +88,13 @@ function normalizeDailyAirdropRun(row = null) {
       txHash: row.issuance_tx_hash || "",
       ledgerIndex: row.issuance_ledger_index || null,
       payloadDigest: row.issuance_payload_digest || "",
+      attemptCount: Number(row.issuance_attempt_count || 0),
+      lastErrorCode: row.issuance_last_error_code || "",
+      lastErrorMessage: row.issuance_last_error_message || "",
+      submissionAttemptedAt: toIso(row.issuance_submission_attempted_at),
+      signedTxHash: row.issuance_signed_tx_hash || "",
+      reconciliation: row.issuance_reconciliation_json || {},
+      reconciledAt: toIso(row.issuance_reconciled_at),
       submittedAt: toIso(row.issuance_submitted_at),
       completedAt: toIso(row.issuance_completed_at),
     } : null,
@@ -249,6 +275,13 @@ export async function getLatestDailyAirdropRun({ accountId } = {}) {
             i.tx_hash AS issuance_tx_hash,
             i.ledger_index AS issuance_ledger_index,
             i.payload_digest AS issuance_payload_digest,
+            i.attempt_count AS issuance_attempt_count,
+            i.last_error_code AS issuance_last_error_code,
+            i.last_error_message AS issuance_last_error_message,
+            i.submission_attempted_at AS issuance_submission_attempted_at,
+            i.signed_tx_hash AS issuance_signed_tx_hash,
+            i.reconciliation_json AS issuance_reconciliation_json,
+            i.reconciled_at AS issuance_reconciled_at,
             i.submitted_at AS issuance_submitted_at,
             i.completed_at AS issuance_completed_at
        FROM profile_daily_airdrop_runs r
@@ -414,7 +447,15 @@ export async function listDailyAirdropCandidateAccounts({
                 FROM profile_daily_airdrop_issuances i
                WHERE i.account_id = e.account_id
                  AND i.run_date = b.run_day
-                 AND i.status IN ('pending', 'processing', 'submitted', 'failed')
+                 AND i.status IN (
+                   'pending',
+                   'processing',
+                   'processing_pre_submit',
+                   'submitting',
+                   'submit_unknown',
+                   'submitted',
+                   'cancelled'
+                 )
             )
         AND EXISTS (
               SELECT 1
@@ -460,30 +501,94 @@ export async function createDailyAirdropRun({
 } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("daily_airdrop_account_required");
+  const params = [
+    id,
+    normalizedAccount,
+    runDate,
+    runMode,
+    safeText(scenarioId, 240),
+    Boolean(isCanonical),
+    status,
+    safeText(inputHash, 200),
+    JSON.stringify(inputSnapshot || {}),
+    safeText(provider, 80),
+    safeText(model, 160),
+    safeText(promptVersion, 120),
+    safeText(promptDigest, 120),
+  ];
+  const insertSql = `INSERT INTO profile_daily_airdrop_runs (
+     id, account_id, run_date, run_mode, scenario_id, is_canonical, status,
+     input_hash, input_snapshot, provider, model, prompt_version, prompt_digest
+   )
+   VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13)`;
   const result = await query(
-    `INSERT INTO profile_daily_airdrop_runs (
-       id, account_id, run_date, run_mode, scenario_id, is_canonical, status,
-       input_hash, input_snapshot, provider, model, prompt_version, prompt_digest
-     )
-     VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13)
-     RETURNING *`,
-    [
-      id,
-      normalizedAccount,
-      runDate,
-      runMode,
-      safeText(scenarioId, 240),
-      Boolean(isCanonical),
-      status,
-      safeText(inputHash, 200),
-      JSON.stringify(inputSnapshot || {}),
-      safeText(provider, 80),
-      safeText(model, 160),
-      safeText(promptVersion, 120),
-      safeText(promptDigest, 120),
-    ]
+    runMode === "production"
+      ? `${insertSql}
+         ON CONFLICT (account_id, run_date) WHERE run_mode = 'production'
+         DO UPDATE SET
+              scenario_id = EXCLUDED.scenario_id,
+              is_canonical = EXCLUDED.is_canonical,
+              status = EXCLUDED.status,
+              daily_airdrop_pft = 0,
+              retention_value_score = 0,
+              what_raised_today = NULL,
+              what_kept_it_lower = NULL,
+              to_improve_tomorrow = NULL,
+              eligibility_status = 'ineligible',
+              eligibility_reason = NULL,
+              reasoning_text = NULL,
+              actual_airdrop_pft_7d = 0,
+              max_possible_airdrop_pft_7d = 70000,
+              alignment_score_7d = 0,
+              input_hash = EXCLUDED.input_hash,
+              input_snapshot = EXCLUDED.input_snapshot,
+              output_json = '{}'::jsonb,
+              provider = EXCLUDED.provider,
+              model = EXCLUDED.model,
+              prompt_version = EXCLUDED.prompt_version,
+              prompt_digest = EXCLUDED.prompt_digest,
+              error_message = NULL,
+              updated_at = now(),
+              completed_at = NULL
+          WHERE profile_daily_airdrop_runs.status = 'failed'
+          RETURNING *`
+      : `${insertSql}
+         RETURNING *`,
+    params
   );
+  if (runMode === "production" && !result.rows[0]) {
+    throw new Error("daily_airdrop_production_run_already_exists");
+  }
   return result.rows[0] || null;
+}
+
+export async function reclaimStaleDailyAirdropRuns({
+  staleMinutes = 45,
+  limit = 100,
+} = {}) {
+  const safeStaleMinutes = Math.min(Math.max(Number(staleMinutes) || 45, 1), 24 * 60);
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const result = await query(
+    `WITH stale AS (
+       SELECT id
+         FROM profile_daily_airdrop_runs
+        WHERE run_mode = 'production'
+          AND status = 'running'
+          AND updated_at < now() - ($1::integer * interval '1 minute')
+        ORDER BY updated_at ASC
+        LIMIT $2
+     )
+     UPDATE profile_daily_airdrop_runs r
+        SET status = 'failed',
+            error_message = COALESCE(NULLIF(error_message, ''), 'daily_airdrop_stale_running_reclaimed'),
+            updated_at = now(),
+            completed_at = now()
+       FROM stale
+      WHERE r.id = stale.id
+      RETURNING r.*`,
+    [safeStaleMinutes, safeLimit]
+  );
+  return result.rows.map(normalizeDailyAirdropRun);
 }
 
 export async function completeDailyAirdropRun({

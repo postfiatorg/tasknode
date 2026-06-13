@@ -2,11 +2,13 @@
 
 Daily Airdrop is an account-level private scoring job. It reviews the member's recent rewarded task work and produces a proposed daily PFT airdrop plus a short explanation of what raised the score, what lowered it, and what to improve tomorrow.
 
-Current status: recurring scoring and live issuance are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance claims exactly one `profile_daily_airdrop_issuances` row, marks it `processing` before any PFT signing work, and then submits a PFTL payment pointer. The worker also writes a `Hive Mind Agent` audit card summarizing how much PFT was dispensed and to how many users.
+Current status: recurring scoring, live issuance, stale recovery, and catch-up retries are implemented behind `TASKNODE_DAILY_AIRDROP_WORKER_ENABLED=true`. A scoring run writes `profile_daily_airdrop_runs`; issuance claims exactly one `profile_daily_airdrop_issuances` row as `processing_pre_submit`, marks it `submitting` before calling PFTL submit, and then records `submitted` only after a transaction hash is persisted. The worker also writes a `Hive Mind Agent` audit card summarizing how much PFT was dispensed, which run dates were checked, and any unresolved airdrop debt.
 
 ### Private Profile Read Path
 
 The private profile top section reads the latest completed run through `GET /api/profile/daily-airdrop`. The large headline is the daily airdrop amount only. It says `Today's airdrop` only when that airdrop was scored or paid on the current UTC date; otherwise it says `Latest airdrop`.
+
+Profile copy distinguishes scored from paid state. When an issuance is not `submitted`, the headline says the airdrop was scored but not paid yet and shows the current payout status such as `Retry pending`, `Preparing payout`, or `Needs reconciliation`. The reward chart only counts submitted airdrops as earned PFT.
 
 Displayed airdrop values come from:
 
@@ -141,6 +143,29 @@ The model returns:
 
 `reasoning_text` is contributor reasoning. It explains why the member's task packet merits the proposed airdrop. Recipient wallet selection is deterministic and separate from contributor reasoning.
 
+The prompt declares an explicit trust boundary: task titles, reward reasons, and
+any quoted evidence or feedback inside `rewarded_tasks` are user-influenced text
+and are scored as untrusted data, never followed as instructions. Embedded
+amount demands or scorer instructions are treated as fraud signals that lower
+the score.
+
+The paid amount is also deterministically capped in code, independent of the
+model. By default the live cap is only the historical daily maximum:
+
+```text
+daily_airdrop_pft <= TASKNODE_DAILY_AIRDROP_MAX_PFT   # default 10000
+```
+
+Operators may opt into an additional proportional cap by setting
+`TASKNODE_DAILY_AIRDROP_MAX_REWARD_FRACTION`. When that secret is set, the paid
+amount is also capped at
+`floor(max_reward_fraction * reward_totals.total_reward_paid_pft)`. The default
+is unset, not `0.5`, so deploying the airdrop hardening path does not slash
+normal airdrops. The run's `output_json.normalized.deterministic_cap` records
+`max_daily_pft`, `max_reward_fraction`, `total_reward_paid_pft`, the resulting
+`reward_fraction_cap_pft`, the raw `model_daily_airdrop_pft`, and a `cap_bound`
+flag so operators can audit when any configured cap clamped the model.
+
 ### Alignment Score
 
 Alignment score is deterministic. It is not an LLM output.
@@ -193,13 +218,21 @@ zero eligible wallets, zero rewarded tasks, or zero rewarded PFT, scoring throws
 `daily_airdrop_packet_candidate_mismatch`. That state is a data-boundary failure,
 not an eligible zero-airdrop result.
 
-`profile_daily_airdrop_issuances` stores live payment submissions. It is keyed by `run_id` and prevents more than one submitted issuance per account/day. The recurring worker treats any pending, processing, submitted, or failed issuance for an account/day as a stop sign so retries do not blindly double-pay after a partial chain failure.
+`profile_daily_airdrop_issuances` stores live payment submissions. It is keyed by `run_id` and prevents more than one submitted issuance per account/day. The recurring worker treats pending, in-flight, submit-unknown, submitted, and cancelled issuance rows as stop rows for new scoring. Retryable pre-submit failures are handled by the issuance retry path instead of selecting the account as a fresh candidate.
+
+Failed `profile_daily_airdrop_runs` rows are scoring-path state, not money-path state. Debt tooling and the system-status airdrop row report them with the raw run status `failed` and `nextAction=retry_scoring` (never `failed_before_submit`/`retry_issuance`, which are issuance labels). A failed production scoring row for the same account/day may be reclaimed by the next worker tick, which resets the row to `running` with the new packet and prompt metadata. Completed or running production scoring rows still suppress repeat scoring. Fresh in-flight rows (`running` scoring younger than `TASKNODE_DAILY_AIRDROP_SCORE_STALE_MINUTES`, `processing_pre_submit` issuances younger than `TASKNODE_DAILY_AIRDROP_PRE_SUBMIT_STALE_MINUTES`) are normal payout-tick state and are not counted as debt by the system-status row.
 
 Issuance state is intentionally conservative:
 
-- `processing`: a worker has claimed the run for publication. No other worker may publish it. If a PFT submission has been attempted and the process times out or cannot persist the tx result, the row stays `processing` with an error message until a reconciliation/operator path proves whether payment happened.
+- `pending`: durable row exists but no publish worker has claimed it.
+- `processing_pre_submit`: a worker has claimed the run and may pin/sign, but has not attempted PFTL submission.
+- `failed_before_submit`: no PFT submission was attempted. This state is safe for bounded automatic retry.
+- `submitting`: the signed transaction was recorded and PFTL submission is in progress.
+- `submit_unknown`: submission may have reached PFTL, but the final tx proof was not persisted. This blocks retry until reconciliation. Reconciliation hot-syncs both money-path wallets before searching the cache and records both `last_hot_sync_at` watermarks in `reconciliation_json`; `--allow-demote` is refused while either watermark predates `submission_attempted_at` (override only with `--force-demote-stale-sync`).
 - `submitted`: the PFTL payment and pointer are persisted with transaction hash, pointer CID, payload digest, and ledger index.
-- `failed`: no PFT submission was attempted. This can be reclaimed by a manual retry because no on-chain payment risk exists yet.
+- `cancelled`: an operator intentionally closed the row without retry.
+
+Legacy `failed` rows with empty `tx_hash` and null `submitted_at` are treated as `failed_before_submit` for compatibility. Legacy `processing` rows with a submission timestamp are treated as `submit_unknown`.
 
 ### Historical Goodalexander Dry Run
 
@@ -229,17 +262,24 @@ surface doc and the Daily Airdrop Worker runbook.
 Each tick:
 
 1. claims a Postgres-backed `daily_airdrop` lease using the same lease table as Board Manager so multiple app instances do not run the payout loop at the same time;
-2. selects accounts with positive rewarded task work inside the trailing seven-day task packet and no production/pending/submitted/failed airdrop for the current UTC day;
-3. runs the existing DeepSeek/OpenRouter daily airdrop scorer in production mode to create a completed account/day scoring row;
-4. issues the specific scoring run through `issueLatestDailyAirdrop` when the proposed amount is positive;
-5. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.` Zero-payout ticks are recorded at most once per UTC day unless there is a failed account or submitted payout, so the Hive Mind Agent feed does not fill with duplicate zero-result cards after deploy restarts.
+2. reclaims stale `running` scoring rows, stale `processing_pre_submit` issuance rows, and stale `submitting` rows before candidate selection;
+3. checks today plus the previous `TASKNODE_DAILY_AIRDROP_CATCHUP_DAYS` UTC days, defaulting to two catch-up days;
+4. retries `failed_before_submit` issuance rows up to `TASKNODE_DAILY_AIRDROP_MAX_ISSUANCE_ATTEMPTS`;
+5. selects accounts with positive rewarded task work, no same-day in-flight/submitted/cancelled issuance stop row, and no same-day running or completed production scoring row;
+6. runs the existing DeepSeek/OpenRouter daily airdrop scorer in production mode to create a completed account/day scoring row;
+7. issues the specific scoring run through `issueLatestDailyAirdrop` when the proposed amount is positive;
+8. records a `board_manager_runs` row with internal action `daily_airdrop` and a `board_manager_action_results` row whose summary reads like: `Dispensed 600 PFT to 1 user as part of daily airdrop.` The audit packet includes `runDatesChecked`, recovered stale rows, and unresolved debt counts. Zero-payout ticks are recorded at most once per UTC day unless there is debt, a failed account, or a submitted payout.
 
-`issueLatestDailyAirdrop` is fail-closed for money. It claims a row as `processing` before signing. If failure occurs before a PFT submission is attempted, the row is marked `failed` and can be retried. If failure occurs after submission is attempted, the row remains `processing` so a retry cannot sign another payment until reconciliation has inspected the chain/cache.
+`issueLatestDailyAirdrop` is fail-closed for money. It claims a row as `processing_pre_submit` before signing, writes `submitting` with the signed transaction hash before calling PFTL submission, and writes `submitted` only after tx proof is available. If failure occurs before a PFT submission is attempted, the issuance row is marked `failed_before_submit` and can be retried automatically. If failure occurs after submission is attempted, the row becomes `submit_unknown` so a retry cannot sign another payment until reconciliation has inspected the chain/cache.
+
+A worker crash between completing a positive production scoring run and claiming the issuance row leaves the run with no issuance row at all. Those runs are surfaced as `issuance_missing` debt by `profile-daily-airdrop-debt` and by the system-status airdrop row, and the worker re-claims them through the same fail-closed path on its next tick, so the crash window cannot silently strand an owed payout.
 
 The manual operator command remains available:
 
 ```bash
 npm run profile-daily-airdrop-worker -- --json
+npm run profile-daily-airdrop-debt -- --json
+npm run profile-daily-airdrop-reconcile -- --run-id=<run_id> --json
 ```
 
 The older direct commands remain useful for diagnosis:
@@ -248,6 +288,12 @@ The older direct commands remain useful for diagnosis:
 npm run profile-daily-airdrop-score -- --account-id <account_id> --run-mode dry_run
 npm run profile-daily-airdrop-issue -- --account-id=<account_id> --run-id=<run_id>
 ```
+
+`profile-daily-airdrop-issue` requires `--run-id`; it pays the exact scoring
+run, never an implicit latest completed run. Claiming an issuance refuses
+non-production runs with `daily_airdrop_dry_run_promotion_blocked`; paying a
+`dry_run` run requires the explicit `--allow-dry-run-promotion` flag. The
+recurring worker only auto-issues runs it scored in `production` mode.
 
 ### Same-Day Repair
 

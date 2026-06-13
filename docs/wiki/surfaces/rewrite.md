@@ -2,6 +2,8 @@
 
 Rewrite is a general text transformation tool. It should be explicit about source text, requested tone, and destination. It should not silently change context, memory, or task state.
 
+Not Exposed: Rewrite is not available in the current interface. The chat composer and sidebar tool menus do not include a Rewrite entry. This page records the intended design for when it ships.
+
 ## User Flow
 
 1. The user selects or provides text.
@@ -11,7 +13,7 @@ Rewrite is a general text transformation tool. It should be explicit about sourc
 
 ## Technical Architecture
 
-Rewrite should share the chat provider router in `server/chat-router.js`. The frontend entry points currently live in the tool menus in `src/main.jsx`. A production implementation should pass a structured tool packet rather than relying on ad hoc prompt text.
+Rewrite should share the chat provider router in `server/chat-router.js`. There is no Rewrite entry in the current tool menus in `src/main.jsx`; the tool was intentionally left out until it has a production-quality flow. A production implementation should pass a structured tool packet rather than relying on ad hoc prompt text.
 
 ## Data Model
 
