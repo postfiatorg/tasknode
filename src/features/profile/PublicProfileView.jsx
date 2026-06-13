@@ -183,7 +183,7 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
   );
 }
 
-function ProfileRole({ role = null, snapshot = null, loading = false, error = "", regenerating = false, onRegenerate }) {
+function ProfileRole({ role = null, snapshot = null, loading = false, error = "", regenerating = false, onRegenerate, showRegenerate = true }) {
   const skills = Array.isArray(role?.skills) ? role.skills.filter(Boolean) : [];
   return (
     <section style={{ paddingTop: 56 }}>
@@ -240,15 +240,17 @@ function ProfileRole({ role = null, snapshot = null, loading = false, error = ""
           <div className="tn-eyebrow" style={{ marginBottom: 6 }}>Archetype</div>
           <div style={{ color: C.ink2, fontSize: 13.5, fontWeight: 500 }}>{role?.archetype || "Not scored"}</div>
           {role?.archetypeContrast && <div style={{ color: C.ink4, fontSize: 12.5, marginTop: 2 }}>{role.archetypeContrast}</div>}
-          <button
-            className="tn-btn"
-            disabled={regenerating}
-            onClick={onRegenerate}
-            style={{ fontSize: 12.5, marginTop: 14, padding: 0 }}
-            type="button"
-          >
-            {regenerating ? "Regenerating..." : snapshot?.completedAt ? "Refresh profile" : "Generate profile"}
-          </button>
+          {showRegenerate && (
+            <button
+              className="tn-btn"
+              disabled={regenerating}
+              onClick={onRegenerate}
+              style={{ fontSize: 12.5, marginTop: 14, padding: 0 }}
+              type="button"
+            >
+              {regenerating ? "Regenerating..." : snapshot?.completedAt ? "Refresh profile" : "Generate profile"}
+            </button>
+          )}
           {snapshot?.model && <div style={{ color: C.ink4, fontSize: 11.5, marginTop: 8 }}>{snapshot.model}</div>}
         </div>
       </div>
@@ -421,13 +423,17 @@ function PublicNFTGallery({ nfts = [] }) {
   );
 }
 
-export function PublicProfile({ accountId = "", profilePublic = true } = {}) {
+export function PublicProfile({ accountId = "", profilePublic = true, profileSource = "self" } = {}) {
   const [state, setState] = useState({
     loading: Boolean(accountId),
     error: "",
     profile: null,
     regenerating: false,
   });
+  const memberProfile = profileSource === "member";
+  const profilePath = memberProfile
+    ? `/api/profile/member?accountId=${encodeURIComponent(accountId)}`
+    : "/api/profile/public";
 
   const loadProfile = async () => {
     if (!accountId) {
@@ -435,7 +441,7 @@ export function PublicProfile({ accountId = "", profilePublic = true } = {}) {
       return;
     }
     setState((current) => ({ ...current, loading: true, error: "" }));
-    const result = await requestJson("/api/profile/public");
+    const result = await requestJson(profilePath);
     if (result.ok) {
       setState((current) => ({ ...current, loading: false, error: "", profile: result.body?.profile || null }));
       return;
@@ -456,7 +462,7 @@ export function PublicProfile({ accountId = "", profilePublic = true } = {}) {
       };
     }
     setState((current) => ({ ...current, loading: true, error: "" }));
-    requestJson("/api/profile/public").then((result) => {
+    requestJson(profilePath).then((result) => {
       if (cancelled) return;
       if (result.ok) {
         setState((current) => ({ ...current, loading: false, error: "", profile: result.body?.profile || null }));
@@ -471,10 +477,10 @@ export function PublicProfile({ accountId = "", profilePublic = true } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [accountId]);
+  }, [accountId, profilePath]);
 
   const regenerate = async () => {
-    if (!accountId || state.regenerating) return;
+    if (!accountId || memberProfile || state.regenerating) return;
     setState((current) => ({ ...current, regenerating: true, error: "" }));
     const result = await requestJson("/api/profile/public/regenerate", {
       method: "POST",
@@ -509,6 +515,7 @@ export function PublicProfile({ accountId = "", profilePublic = true } = {}) {
         onRegenerate={regenerate}
         regenerating={state.regenerating}
         role={role}
+        showRegenerate={!memberProfile}
         snapshot={profile?.snapshot || null}
       />
       <CredentialStrip loading={state.loading} metrics={profile?.metrics || {}} />

@@ -53,6 +53,7 @@ import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
 import { handleProfileNftImageRoute } from "./profile-nft-image-proxy.js";
 import { handleMemoryRoute } from "./memory-routes.js";
+import { handleDirectoryRoute } from "./directory-routes.js";
 import { handleHiveRoute } from "./hive-routes.js";
 import { handleSystemStatusRoute } from "./system-status.js";
 import { handleTelegramBotRoute } from "./telegram-bot.js";
@@ -683,6 +684,8 @@ async function routeApi(req, url, res) {
   if (await handleProfileNftImageRoute({ json, req, res, url })) return true;
 
   if (await handleProfileRoute({ getState, json, readJson, req, res, session, url })) return true;
+
+  if (await handleDirectoryRoute({ json, req, res, session, url })) return true;
 
   if (await handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
 

@@ -162,6 +162,8 @@ const MemoryView = lazy(() => import("./features/memory/MemoryView").then((modul
 const DocsView = lazy(() => import("./features/docs/DocsView").then((module) => ({ default: module.DocsView })));
 const HiveView = lazy(() => import("./features/hive/HiveView").then((module) => ({ default: module.HiveView })));
 const ProfilePage = lazy(() => import("./features/profile/ProfileView").then((module) => ({ default: module.ProfileView })));
+const MemberProfilePage = lazy(() => import("./features/profile/ProfileView").then((module) => ({ default: module.MemberProfileView })));
+const DirectoryView = lazy(() => import("./features/directory/DirectoryView").then((module) => ({ default: module.DirectoryView })));
 
 const fallbackConfig = window.__TASKNODE_CONFIG__ || {};
 const CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
@@ -342,7 +344,7 @@ const SETTINGS_PAGES = [
   { key: "billing", label: "Billing", icon: CreditCard },
 ];
 
-const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "hive", "profile", "memory", "docs"]);
+const APP_VIEWS = new Set(["chat", "tasks", "wallet", "context", "hive", "directory", "profile", "memory", "docs"]);
 const EMPTY_WALLET_VAULT_STATUS = {
   available: false,
   unlocked: false,
@@ -435,6 +437,21 @@ function taskIdFromLocation() {
   }
 }
 
+function memberProfileAccountIdFromLocation(hashValue = null) {
+  if (typeof window === "undefined" && hashValue === null) return "";
+  const rawHash = hashValue === null ? window.location.hash : hashValue;
+  const hashPath = String(rawHash || "").replace(/^#\/?/, "").trim();
+  const [pathPart, queryPart = ""] = hashPath.split("?");
+  const parts = pathPart.split("/").filter(Boolean);
+  if ((parts[0] || "").toLowerCase() !== "profile") return "";
+  const rawAccountId = new URLSearchParams(queryPart).get("account") || "";
+  try {
+    return decodeURIComponent(rawAccountId).trim();
+  } catch {
+    return rawAccountId.trim();
+  }
+}
+
 function writeViewLocation(nextView, { replace = false } = {}) {
   if (typeof window === "undefined") return;
   const normalizedView = APP_VIEWS.has(nextView) ? nextView : "chat";
@@ -502,6 +519,7 @@ function App() {
   const [theme, setTheme] = useState("auto");
   const [profileTab, setProfileTab] = useState("private");
   const [profilePublic, setProfilePublic] = useState(true);
+  const [locationHash, setLocationHash] = useState(() => (typeof window === "undefined" ? "" : window.location.hash));
   const [selectedTask, setSelectedTask] = useState(null);
   const [activeChat, setActiveChat] = useState(null);
   const [chatResetKey, setChatResetKey] = useState(0);
@@ -629,6 +647,7 @@ function App() {
       ? appState.wallet.pftWallet
       : null;
   const linkedWalletAddress = linkedWallet?.address || "";
+  const memberProfileAccountId = view === "profile" ? memberProfileAccountIdFromLocation(locationHash) : "";
   const taskVisibleState = useMemo(() => reconcileTaskVisibleState({
     accountId: walletAccountId,
     linkedWalletAddress,
@@ -880,6 +899,7 @@ function App() {
       setSidebarOpen(false);
     }
     writeViewLocation(normalizedView, { replace: options.replace === true });
+    if (typeof window !== "undefined") setLocationHash(window.location.hash);
   }, []);
 
   const openTaskDetail = useCallback((task) => {
@@ -969,8 +989,10 @@ function App() {
     } else {
       writeViewLocation(viewFromLocation(), { replace: true });
     }
+    setLocationHash(window.location.hash);
 
     function syncViewFromLocation() {
+      setLocationHash(window.location.hash);
       setView(viewFromLocation());
       setMoreMenuOpen(false);
       setProfileMenuOpen(false);
@@ -1578,7 +1600,11 @@ function App() {
                       <ToolMenuRow
                         icon={Network}
                         label="Directory"
-                        trailing={<span className="menu-count">#16</span>}
+                        onClick={() => {
+                          navigateToView("directory");
+                          setProfileMenuOpen(false);
+                        }}
+                        trailing={<ChevronRight size={14} strokeWidth={1.75} />}
                       />
                       <TelegramProfileMenuRow
                         linkedProvider={linkedTelegramProvider}
@@ -1664,9 +1690,9 @@ function App() {
           </div>
           {view === "chat" && activeChat && (
             <div className="thread-actions">
-              <button onClick={() => setChatShareRequestKey((key) => key + 1)} type="button">
+              <button aria-label="Share chat" onClick={() => setChatShareRequestKey((key) => key + 1)} title="Share" type="button">
                 <Share size={14} strokeWidth={1.75} />
-                Share
+                <span>Share</span>
               </button>
             </div>
           )}
@@ -1720,6 +1746,11 @@ function App() {
               <HiveView />
             </Suspense>
           )}
+          {view === "directory" && (
+            <Suspense fallback={<StatusBanner>Loading directory</StatusBanner>}>
+              <DirectoryView />
+            </Suspense>
+          )}
           {view === "wallet" && (
             <Suspense fallback={<StatusBanner>Loading wallet</StatusBanner>}>
               <WalletView
@@ -1747,7 +1778,15 @@ function App() {
               walletVault={walletVaultStatus}
             />
           )}
-          {view === "profile" && (
+          {view === "profile" && memberProfileAccountId && (
+            <Suspense fallback={<StatusBanner>Loading profile</StatusBanner>}>
+              <MemberProfilePage
+                accountId={memberProfileAccountId}
+                onBack={() => navigateToView("directory")}
+              />
+            </Suspense>
+          )}
+          {view === "profile" && !memberProfileAccountId && (
             <Suspense fallback={<StatusBanner>Loading profile</StatusBanner>}>
               <ProfilePage
                 accountId={walletAccountId}

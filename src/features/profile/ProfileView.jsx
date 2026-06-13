@@ -2048,4 +2048,31 @@ export function ProfileView({
   );
 }
 
+export function MemberProfileView({ accountId = "", onBack } = {}) {
+  useStylesheet();
+  return (
+    <div className="route-scroll">
+      <div className="tn-root" style={{ minHeight: "100vh" }}>
+        <div style={{ maxWidth: 980, margin: "0 auto", padding: "34px 36px 140px" }}>
+          <button
+            className="tn-btn"
+            onClick={onBack}
+            style={{ marginBottom: 18, padding: 0 }}
+            type="button"
+          >
+            Directory
+          </button>
+          {accountId ? (
+            <PublicProfile accountId={accountId} profilePublic profileSource="member" />
+          ) : (
+            <div style={{ borderTop: `1px solid ${C.ruleSoft}`, color: C.ink3, fontSize: 13.5, paddingTop: 18 }}>
+              Choose a member from the Directory.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default ProfileView;

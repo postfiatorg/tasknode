@@ -17,6 +17,7 @@ const routes = [
   { hash: "#context", labels: ["Context document", "Versions"] },
   { hash: "#tasks", labels: ["Tasks"] },
   { hash: "#hive", labels: ["Hive", "Active projects", "Routing feed", "Allotted operators", "Hive Context"] },
+  { hash: "#directory", labels: ["Directory", "Leaderboard", "operators"] },
   { hash: "#profile", labels: ["Today's airdrop", "Profile Studio", "PFT generation"] },
   { hash: "#memory", labels: ["Memory"] },
   {
