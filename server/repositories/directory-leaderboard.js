@@ -188,14 +188,6 @@ async function queryLeaderboardRows(accountIds = []) {
           AND status = 'completed'
         ORDER BY account_id, completed_at DESC NULLS LAST, updated_at DESC, created_at DESC
       ),
-      identity_vectors AS (
-        SELECT account_id,
-               public_handle,
-               display_name AS identity_display_name,
-               wallets_json
-        FROM user_identity_vectors
-        WHERE account_id = ANY($1::text[])
-      )
       SELECT candidates.account_id,
              COALESCE(task_stats.network_tasks, 0)::integer AS network_tasks,
              COALESCE(task_stats.personal_tasks, 0)::integer AS personal_tasks,
@@ -205,15 +197,22 @@ async function queryLeaderboardRows(accountIds = []) {
              latest_alignment.alignment_score_7d,
              latest_alignment.alignment_completed_at,
              latest_alignment.alignment_run_date,
-             COALESCE(identity_vectors.public_handle, '') AS public_handle,
-             COALESCE(identity_vectors.identity_display_name, '') AS identity_display_name,
-             COALESCE(identity_vectors.wallets_json, '[]'::jsonb) AS wallets_json,
+             COALESCE(latest_handle.public_handle, '') AS public_handle,
+             ''::text AS identity_display_name,
+             '[]'::jsonb AS wallets_json,
              COALESCE(hero_nft.image_cid, '') AS hero_nft_image_cid,
              COALESCE(hero_nft.image_gateway_url, '') AS hero_nft_image_gateway_url
       FROM candidates
       LEFT JOIN task_stats ON task_stats.account_id = candidates.account_id
       LEFT JOIN latest_alignment ON latest_alignment.account_id = candidates.account_id
-      LEFT JOIN identity_vectors ON identity_vectors.account_id = candidates.account_id
+      LEFT JOIN LATERAL (
+        SELECT event.public_handle
+        FROM user_observability_events event
+        WHERE event.account_id = candidates.account_id
+          AND event.public_handle <> ''
+        ORDER BY event.occurred_at DESC, event.id DESC
+        LIMIT 1
+      ) latest_handle ON true
       LEFT JOIN LATERAL (
         SELECT nft.image_cid, nft.image_gateway_url
         FROM profile_nfts nft
