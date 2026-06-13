@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { databaseEnabled, query } from "../db/pool.js";
 
 const runtimeNfts = new Map();
+const publicHeroStatusRank = new Map([
+  ["minted", 0],
+  ["prepared", 1],
+  ["generated", 2],
+]);
 
 const safeAccountId = (value = "") => String(value || "").trim().slice(0, 160);
 const safeText = (value = "", max = 2000) => String(value || "").trim().slice(0, max);
@@ -47,6 +52,30 @@ function normalizeRecord(record = {}) {
     mintedAt: record.minted_at || record.mintedAt || null,
     createdAt: record.created_at || record.createdAt || null,
     updatedAt: record.updated_at || record.updatedAt || null,
+  };
+}
+
+function publicHeroStatus(value = "") {
+  const status = String(value || "").toLowerCase();
+  return publicHeroStatusRank.has(status) ? status : "";
+}
+
+function hasPublicHeroImage(record = {}) {
+  const normalized = normalizeRecord(record);
+  return Boolean(normalized.imageCid || normalized.imageGatewayUrl);
+}
+
+function comparePublicHeroNfts(latestWallet = "") {
+  const preferredWallet = safeText(latestWallet, 120);
+  return (left, right) => {
+    if (Boolean(left.selected) !== Boolean(right.selected)) return left.selected ? -1 : 1;
+    const leftWalletMatch = preferredWallet && left.walletAddress === preferredWallet ? 0 : 1;
+    const rightWalletMatch = preferredWallet && right.walletAddress === preferredWallet ? 0 : 1;
+    if (leftWalletMatch !== rightWalletMatch) return leftWalletMatch - rightWalletMatch;
+    const leftStatus = publicHeroStatusRank.get(publicHeroStatus(left.status)) ?? 99;
+    const rightStatus = publicHeroStatusRank.get(publicHeroStatus(right.status)) ?? 99;
+    if (leftStatus !== rightStatus) return leftStatus - rightStatus;
+    return String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || ""));
   };
 }
 
@@ -359,6 +388,53 @@ export async function listProfileNfts(options = {}) {
         [normalizedAccountId, boundedLimit]
       );
   return result.rows.map(normalizeRecord);
+}
+
+export async function getPublicProfileHeroNft({ accountId = "" } = {}) {
+  const normalizedAccountId = safeAccountId(accountId);
+  if (!normalizedAccountId) return null;
+
+  if (!databaseEnabled()) {
+    const hero = runtimeList({ accountId: normalizedAccountId })
+      .filter((record) => publicHeroStatus(record.status) && hasPublicHeroImage(record))
+      .sort(comparePublicHeroNfts())[0];
+    return hero || null;
+  }
+
+  const result = await query(
+    `WITH task_stats AS (
+       SELECT (ARRAY_AGG(subject_wallet ORDER BY updated_at DESC NULLS LAST, task_id DESC)
+                FILTER (WHERE subject_wallet <> ''))[1] AS latest_wallet
+         FROM task_projections
+        WHERE account_id = $1
+          AND account_id <> ''
+     )
+     SELECT nft.*
+       FROM profile_nfts nft
+       CROSS JOIN task_stats
+      WHERE nft.account_id = $1
+        AND lower(nft.status) IN ('minted', 'prepared', 'generated')
+        AND (
+          COALESCE(nft.image_gateway_url, '') <> ''
+          OR COALESCE(nft.image_cid, '') <> ''
+        )
+      ORDER BY
+        nft.selected DESC,
+        CASE
+          WHEN nft.wallet_address <> '' AND nft.wallet_address = COALESCE(task_stats.latest_wallet, '') THEN 0
+          ELSE 1
+        END ASC,
+        CASE lower(nft.status)
+          WHEN 'minted' THEN 0
+          WHEN 'prepared' THEN 1
+          ELSE 2
+        END ASC,
+        nft.updated_at DESC NULLS LAST,
+        nft.created_at DESC NULLS LAST
+      LIMIT 1`,
+    [normalizedAccountId]
+  );
+  return result.rows[0] ? normalizeRecord(result.rows[0]) : null;
 }
 
 export async function getProfileNft({ accountId = "", nftId = "" } = {}) {

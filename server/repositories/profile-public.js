@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { databaseEnabled, isUniqueViolation, query } from "../db/pool.js";
 import { getAccountWalletCloud } from "../account-wallet-cloud.js";
 import { getAccountIdentityProfile } from "../runtime-store.js";
-import { listProfileNfts } from "./profile-nfts.js";
+import { getPublicProfileHeroNft, listProfileNfts } from "./profile-nfts.js";
 
 const runtimeSnapshots = new Map();
 
@@ -404,6 +404,7 @@ export async function buildPublicProfileSnapshotInput({ accountId } = {}) {
 export function publicProfileFromParts({
   accountId = "",
   input = null,
+  heroNft = null,
   snapshot = null,
   nfts = [],
 } = {}) {
@@ -412,7 +413,14 @@ export function publicProfileFromParts({
   const alignment = packet.alignment || {};
   const tier = packet.contribution_tier || contributionTier();
   const nftRows = publicVisibleNfts(nfts.length ? nfts : []);
-  const heroNft = latestNftImage(nftRows);
+  const heroNftRows = publicVisibleNfts(heroNft ? [heroNft] : []);
+  const profileHeroNft = heroNftRows[0] || latestNftImage(nftRows);
+  const profileNftRows = profileHeroNft && !nftRows.some((nft) =>
+    (profileHeroNft.id && nft.id === profileHeroNft.id) ||
+    (profileHeroNft.imageCid && nft.imageCid === profileHeroNft.imageCid)
+  )
+    ? [profileHeroNft, ...nftRows]
+    : nftRows;
   const identityAccountId = safeText(accountId || packet.account_id, 180);
   const identityProfile = getAccountIdentityProfile({ accountId: identityAccountId }) || {};
   const publicAliases = Array.isArray(identityProfile.publicAliases)
@@ -473,8 +481,8 @@ export function publicProfileFromParts({
       usefulTo: snapshot.usefulTo,
       dataCaveat: snapshot.dataCaveat,
     } : null,
-    nfts: nftRows,
-    heroNft,
+    nfts: profileNftRows,
+    heroNft: profileHeroNft,
     snapshot: snapshot ? {
       snapshotId: snapshot.snapshotId,
       status: snapshot.status,
@@ -550,7 +558,7 @@ export async function getPublicProfile({ accountId } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("profile_public_account_required");
   const walletCloud = getAccountWalletCloud({ accountId: normalizedAccount });
-  const [input, snapshot, nfts] = await Promise.all([
+  const [input, snapshot, nfts, heroNft] = await Promise.all([
     buildPublicProfileSnapshotInput({ accountId: normalizedAccount }),
     getLatestPublicProfileSnapshot({ accountId: normalizedAccount }),
     listProfileNfts({
@@ -558,8 +566,9 @@ export async function getPublicProfile({ accountId } = {}) {
       walletAddress: walletCloud.activeWalletAddress || "",
       limit: 24,
     }),
+    getPublicProfileHeroNft({ accountId: normalizedAccount }),
   ]);
-  return publicProfileFromParts({ accountId: normalizedAccount, input, snapshot, nfts });
+  return publicProfileFromParts({ accountId: normalizedAccount, input, heroNft, snapshot, nfts });
 }
 
 export async function createPublicProfileSnapshotRun({
