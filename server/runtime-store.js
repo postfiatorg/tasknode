@@ -38,6 +38,10 @@ export const sessionCookieName = "tasknode_session";
 export const sessionTtlSeconds = 60 * 60 * 24 * 7;
 const storePath = process.env.TASKNODE_STORE_PATH || defaultStorePath;
 export { normalizeHiveHandle } from "./account-identity.js";
+const walletLoginChallengeMaxActive = (() => {
+  const parsed = Number(process.env.TASKNODE_WALLET_LOGIN_CHALLENGE_CAP || 3000);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 3000;
+})();
 const defaultState = {
   version: 1,
   conversations: {
@@ -431,6 +435,45 @@ function pruneExpiredOAuthStates() {
   }
 
   if (changed) saveState();
+}
+
+export function pruneExpiredWalletChallenges({ save = true } = {}) {
+  const now = Date.now();
+  let changed = false;
+  const activeLoginChallenges = [];
+
+  for (const [challengeId, challenge] of Object.entries(state.walletChallenges)) {
+    if (challenge?.purpose !== "wallet_login") continue;
+    const expiresAt = Date.parse(challenge.expiresAt || "");
+    if (!Number.isFinite(expiresAt) || expiresAt <= now) {
+      delete state.walletChallenges[challengeId];
+      changed = true;
+      continue;
+    }
+    activeLoginChallenges.push([challengeId, challenge]);
+  }
+
+  if (activeLoginChallenges.length > walletLoginChallengeMaxActive) {
+    activeLoginChallenges
+      .sort((left, right) => {
+        const leftIssued = Date.parse(left[1]?.issuedAt || "") || 0;
+        const rightIssued = Date.parse(right[1]?.issuedAt || "") || 0;
+        if (leftIssued !== rightIssued) return leftIssued - rightIssued;
+        return String(left[0]).localeCompare(String(right[0]));
+      })
+      .slice(0, activeLoginChallenges.length - walletLoginChallengeMaxActive)
+      .forEach(([challengeId]) => {
+        delete state.walletChallenges[challengeId];
+        changed = true;
+      });
+  }
+
+  if (changed && save) saveState();
+  return {
+    changed,
+    activeLoginCount: Object.values(state.walletChallenges).filter((challenge) => challenge?.purpose === "wallet_login").length,
+    maxActive: walletLoginChallengeMaxActive,
+  };
 }
 
 function displayNameFromEmail(email) {
@@ -1840,6 +1883,8 @@ export function createWalletLoginChallenge({
   expiresInSeconds = 5 * 60,
   expiresAt = "",
 } = {}) {
+  pruneExpiredWalletChallenges({ save: false });
+
   const normalizedAddress = String(address || "").trim();
   if (!normalizedAddress) {
     return { ok: false, status: 400, error: "wallet_address_required" };
@@ -1866,6 +1911,7 @@ export function createWalletLoginChallenge({
   };
 
   state.walletChallenges[challengeId] = challenge;
+  pruneExpiredWalletChallenges({ save: false });
   saveState();
 
   return { ok: true, challenge };
@@ -1895,11 +1941,13 @@ export function consumeWalletChallenge({ accountId = "", challengeId = "", purpo
 }
 
 export function consumeWalletLoginChallenge({ challengeId = "", address = "" } = {}) {
+  const pruned = pruneExpiredWalletChallenges({ save: false });
   const normalizedAddress = String(address || "").trim();
   const id = String(challengeId || "");
   const challenge = state.walletChallenges[id];
 
   if (!challenge) {
+    if (pruned.changed) saveState();
     return { ok: false, status: 400, error: "invalid_or_expired_challenge" };
   }
 

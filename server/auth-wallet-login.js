@@ -71,6 +71,21 @@ export function authWalletStart(payload = {}, method = "POST", { expiresInSecond
     });
   }
 
+  if (!agentWalletAllowed(address)) {
+    recordAuthEvent({
+      eventType: "wallet_login_denied",
+      provider: "wallet",
+      decision: "allowlist_denied",
+      metadata: { walletAddress: address || null, phase: "start" },
+    });
+    return actionResponse({
+      status: 403,
+      error: "wallet_login_not_allowed",
+      message: "Wallet login is not allowed for this wallet.",
+      actionRequired: "Use an allowlisted agent wallet.",
+    });
+  }
+
   const result = createWalletLoginChallenge({ address, publicKey, expiresInSeconds });
   if (!result.ok) {
     return actionResponse({
@@ -109,6 +124,15 @@ export async function authWalletVerify(payload = {}, method = "POST") {
   const address = safeText(payload?.address, 120);
   const publicKey = safeText(payload?.publicKey || payload?.public_key, 180);
   const signature = safeText(payload?.signature, 500);
+
+  if (!address || !isValidClassicAddress(address)) {
+    return actionResponse({
+      status: 400,
+      error: "wallet_address_invalid",
+      message: "Wallet login requires a valid PFTL classic address.",
+      actionRequired: "Send the agent wallet classic address.",
+    });
+  }
 
   if (!agentWalletAllowed(address)) {
     recordAuthEvent({

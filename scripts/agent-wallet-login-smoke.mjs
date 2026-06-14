@@ -8,6 +8,7 @@ import { Wallet } from "xrpl";
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "tasknode-agent-wallet-login-smoke-"));
 process.env.TASKNODE_STORE_PATH = path.join(tempDir, "runtime-store.json");
 process.env.TASKNODE_DATABASE_DISABLED = "true";
+process.env.TASKNODE_WALLET_LOGIN_CHALLENGE_CAP = "3";
 delete process.env.TASKNODE_AGENT_WALLET_ALLOWLIST;
 
 const { authWalletStart, authWalletVerify } = await import("../server/auth-wallet-login.js");
@@ -49,6 +50,15 @@ async function verifyChallenge(wallet, challenge, overrides = {}) {
 }
 
 try {
+  const invalidVerify = await authWalletVerify({
+    challengeId: "missing",
+    address: "not-a-wallet",
+    publicKey: "",
+    signature: "",
+  }, "POST");
+  assert.equal(invalidVerify.status, 400);
+  assert.equal(invalidVerify.body.error, "wallet_address_invalid");
+
   const wallet = Wallet.generate();
   const address = walletAddress(wallet);
   const start = authWalletStart({ address }, "POST");
@@ -101,6 +111,19 @@ try {
   assert.equal(wrongSigReplay.status, 400);
   assert.equal(wrongSigReplay.body.error, "invalid_or_expired_challenge");
 
+  const startDeniedWallet = Wallet.generate();
+  const startDeniedAddress = walletAddress(startDeniedWallet);
+  process.env.TASKNODE_AGENT_WALLET_ALLOWLIST = walletAddress(Wallet.generate());
+  const startDenied = authWalletStart({ address: startDeniedAddress }, "POST");
+  assert.equal(startDenied.status, 403);
+  assert.equal(startDenied.body.error, "wallet_login_not_allowed");
+  process.env.TASKNODE_AGENT_WALLET_ALLOWLIST = startDeniedAddress;
+  const startAllowed = authWalletStart({ address: startDeniedAddress }, "POST");
+  assert.equal(startAllowed.status, 200);
+  const startAllowedVerify = await verifyChallenge(startDeniedWallet, startAllowed.body.challenge);
+  assert.equal(startAllowedVerify.status, 200);
+  delete process.env.TASKNODE_AGENT_WALLET_ALLOWLIST;
+
   const mismatchWallet = Wallet.generate();
   const mismatchSigner = Wallet.generate();
   const mismatchStart = authWalletStart({ address: walletAddress(mismatchWallet) }, "POST");
@@ -139,8 +162,18 @@ try {
   assert.notEqual(newVerify.body.accountId, firstVerify.body.accountId);
   assert.equal(getLinkedWallet({ accountId: newVerify.body.accountId }).address, walletAddress(newWallet));
 
+  const capWallets = [Wallet.generate(), Wallet.generate(), Wallet.generate(), Wallet.generate()];
+  const capStarts = capWallets.map((capWallet) => authWalletStart({ address: walletAddress(capWallet) }, "POST"));
+  for (const capStart of capStarts) assert.equal(capStart.status, 200);
+  const evictedOldest = await verifyChallenge(capWallets[0], capStarts[0].body.challenge);
+  assert.equal(evictedOldest.status, 400);
+  assert.equal(evictedOldest.body.error, "invalid_or_expired_challenge");
+  const retainedNewest = await verifyChallenge(capWallets[3], capStarts[3].body.challenge);
+  assert.equal(retainedNewest.status, 200);
+
   console.log("agent wallet login smoke ok");
 } finally {
   delete process.env.TASKNODE_AGENT_WALLET_ALLOWLIST;
+  delete process.env.TASKNODE_WALLET_LOGIN_CHALLENGE_CAP;
   await rm(tempDir, { recursive: true, force: true });
 }

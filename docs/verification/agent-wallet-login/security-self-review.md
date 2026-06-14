@@ -7,7 +7,9 @@ Scope: Phase 0 machine-native wallet login for local/dev review. This change add
 - `wallet_login` challenges are stored server-side, single-use, and deleted by `consumeWalletLoginChallenge`.
 - Verification consumes the challenge before signature verification, so a captured challenge cannot be retried after either a successful login or a failed signature attempt.
 - The route-issued TTL is 5 minutes. Expired challenges return `invalid_or_expired_challenge`.
-- Smoke coverage: happy path, reused challenge replay, and expired challenge.
+- Expired `wallet_login` challenges are pruned from the runtime store on challenge start and consume.
+- Active `wallet_login` challenges are capped with oldest-first eviction so `/start` flooding cannot grow runtime memory/disk without bound.
+- Smoke coverage: happy path, reused challenge replay, bad-signature replay burn, expired challenge, and size-cap eviction.
 
 ## Domain Separation
 
@@ -28,8 +30,9 @@ Scope: Phase 0 machine-native wallet login for local/dev review. This change add
 ## Signature Verification
 
 - Verification reuses `server/wallet-proof.js::verifyWalletSignature`.
+- Verification rejects malformed PFTL classic addresses before allowlist/challenge work.
 - That path requires the submitted public key to derive to the submitted address and verifies the signature over the exact stored challenge message.
-- Smoke coverage: wrong signature and public-key/address mismatch.
+- Smoke coverage: malformed verify address, wrong signature, and public-key/address mismatch.
 
 ## Account Binding / No Wallet Hijack
 
@@ -42,9 +45,10 @@ Scope: Phase 0 machine-native wallet login for local/dev review. This change add
 ## Allowlist
 
 - If `TASKNODE_AGENT_WALLET_ALLOWLIST` is present, verification requires an exact address match.
+- Challenge start also applies the allowlist gate, so non-allowlisted wallets cannot accumulate stored challenges.
 - If the env var is absent, the endpoint is open for local/dev use as specified.
 - Allowlist denial happens before challenge consumption so an operator can correct local allowlist config without forcing a fresh challenge.
-- Smoke coverage: allowlist denial, followed by success after allowlisting the same challenge.
+- Smoke coverage: start allowlist denial, verify allowlist denial, followed by success after allowlisting the same challenge.
 
 ## Secret Logging
 
