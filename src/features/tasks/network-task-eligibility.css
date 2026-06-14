@@ -1,195 +1,195 @@
-.network-eligibility-panel {
-  margin: 0 0 24px;
-  border: 1px solid #e3e1da;
-  border-radius: 12px;
-  background: #ffffff;
-  overflow: hidden;
+.net-elig {
+  margin: 8px 0 0;
+  color: #8b8576;
+  font-size: 13px;
+  --ink: #1c1910;
+  --muted: #8b8576;
+  --faint: #b3ac9c;
+  --hair: rgba(28, 25, 16, 0.10);
+  --hair-soft: rgba(28, 25, 16, 0.06);
+  --ok: #2f8a46;
+  --warn: #b06a14;
+  --bad: #b3402e;
 }
 
-.network-eligibility-panel.tone-blocked,
-.network-eligibility-panel.tone-action {
-  border-color: #d9c27a;
-  background: #fff9ea;
-}
-
-.network-eligibility-panel.tone-unavailable {
-  border-color: #d9a3a0;
-  background: #fdf2f1;
-}
-
-.network-eligibility-head {
-  display: flex;
+.net-elig-line {
   align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 12px 16px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
 }
 
-.network-eligibility-pill {
-  flex-shrink: 0;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
+.net-elig-dot {
+  background: var(--faint);
+  border-radius: 50%;
+  flex: 0 0 auto;
+  height: 7px;
+  width: 7px;
+}
+
+.net-elig--ok .net-elig-dot {
+  background: var(--ok);
+}
+
+.net-elig--blocked .net-elig-dot,
+.net-elig--action .net-elig-dot {
+  background: var(--warn);
+}
+
+.net-elig--unavailable .net-elig-dot {
+  background: var(--bad);
+}
+
+.net-elig-label {
+  color: var(--ink);
   font-weight: 600;
-  background: #ececec;
-  color: #444440;
 }
 
-.tone-ok .network-eligibility-pill {
-  background: #e3f4ec;
-  color: #116648;
+.net-elig-meta {
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
 }
 
-.tone-blocked .network-eligibility-pill,
-.tone-action .network-eligibility-pill {
-  background: #f7e9c4;
-  color: #5b4a1f;
+.net-elig-next {
+  color: var(--ink);
 }
 
-.tone-unavailable .network-eligibility-pill {
-  background: #f5dbd9;
-  color: #7a2f2a;
+.net-elig-toggle {
+  all: unset;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  margin-left: auto;
+  text-transform: uppercase;
 }
 
-.network-eligibility-head-copy {
+.net-elig-toggle:hover,
+.net-elig-toggle:focus-visible {
+  box-shadow: inset 0 -1px 0 var(--ink);
+  color: var(--ink);
+}
+
+.net-elig-details {
+  border-top: 1px solid var(--hair);
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  min-width: 0;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
 }
 
-.network-eligibility-head-copy strong {
-  font-size: 14px;
-}
-
-.network-eligibility-head-copy span {
-  font-size: 12px;
-  color: #6b6b66;
-  font-family: ui-monospace, monospace;
-}
-
-.network-eligibility-caret {
-  margin-left: auto;
-  color: #6b6b66;
-  font-size: 12px;
-}
-
-.network-eligibility-body {
-  padding: 0 16px 14px;
-}
-
-.network-eligibility-summary {
-  margin: 0 0 8px;
+.net-elig .net-elig-explain {
+  color: var(--muted);
+  display: block;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 62ch;
 }
 
-.network-eligibility-error {
-  margin: 0 0 8px;
-  font-size: 12px;
-  color: #7a2f2a;
+.net-elig .net-elig-error {
+  color: var(--bad);
 }
 
-.network-eligibility-next {
-  margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.network-eligibility-gates {
+.net-elig-gates,
+.net-elig-blockers ul {
+  list-style: none;
   margin: 0;
   padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
-.network-eligibility-gate {
+.net-elig-gate {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--hair-soft);
   display: flex;
   gap: 10px;
-  align-items: flex-start;
+  padding: 8px 0;
 }
 
-.network-eligibility-gate-mark {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  margin-top: 1px;
-  background: #ececec;
-  color: #444440;
+.net-elig-gate:last-child {
+  border-bottom: 0;
 }
 
-.network-eligibility-gate.is-pass .network-eligibility-gate-mark {
-  background: #e3f4ec;
-  color: #116648;
+.net-elig-gate-mark {
+  color: var(--faint);
+  flex: 0 0 auto;
+  line-height: 1.45;
+  text-align: center;
+  width: 14px;
 }
 
-.network-eligibility-gate.is-fail .network-eligibility-gate-mark {
-  background: #f7e9c4;
-  color: #5b4a1f;
+.net-elig-gate.is-pass .net-elig-gate-mark {
+  color: var(--ok);
 }
 
-.network-eligibility-gate strong {
+.net-elig-gate.is-fail .net-elig-gate-mark {
+  color: var(--warn);
+}
+
+.net-elig-gate b {
+  color: var(--ink);
+  display: block;
   font-size: 13px;
+  font-weight: 600;
 }
 
-.network-eligibility-gate p {
-  margin: 1px 0 0;
+.net-elig-gate small {
+  color: var(--muted);
+  display: block;
   font-size: 12px;
   line-height: 1.4;
-  color: #6b6b66;
 }
 
-.network-eligibility-gate p.network-eligibility-gate-action {
+.net-elig-gate-next {
+  color: var(--ink) !important;
   font-weight: 600;
-  color: #0d0d0d;
+  margin-top: 2px;
 }
 
-.network-eligibility-blockers {
-  margin-top: 12px;
+.net-elig-eyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.network-eligibility-blockers > strong {
+.net-elig-blockers ul {
+  margin-top: 6px;
+}
+
+.net-elig-blockers li {
+  border-bottom: 1px solid var(--hair-soft);
+  padding: 8px 0;
+}
+
+.net-elig-blockers li:last-child {
+  border-bottom: 0;
+}
+
+.net-elig-blockers b {
+  color: var(--ink);
+  display: block;
   font-size: 13px;
+  font-weight: 600;
 }
 
-.network-eligibility-blockers ul {
-  margin: 6px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.network-eligibility-blocker {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 8px 10px;
-  border: 1px solid #e3e1da;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.network-eligibility-blocker strong {
-  font-size: 13px;
-}
-
-.network-eligibility-blocker span {
-  font-size: 12px;
-  color: #6b6b66;
+.net-elig-blockers small {
+  color: var(--faint);
   font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .net-elig-line {
+    align-items: flex-start;
+  }
+
+  .net-elig-toggle {
+    flex-basis: 100%;
+    margin-left: 15px;
+    width: fit-content;
+  }
 }

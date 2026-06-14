@@ -3662,14 +3662,13 @@ function TasksView({
                 </>
               )}
             </p>
+            <NetworkTaskEligibilityPanel networkTasks={tasks?.networkTasks} />
           </div>
           <button className="dark-pill task-request-button" onClick={() => setTaskRequestOpen(true)} type="button">
             <Plus size={16} strokeWidth={2} />
             Request task
           </button>
         </div>
-
-        <NetworkTaskEligibilityPanel networkTasks={tasks?.networkTasks} />
 
         <TaskRequestQueue requests={activeRequests} />
 
