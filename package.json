@@ -137,6 +137,8 @@
     "chat-context-status-smoke": "node scripts/chat-context-status-smoke.mjs",
     "chat-auth-loading-state-smoke": "node scripts/chat-auth-loading-state-smoke.mjs",
     "auth-login-state-fixture": "node scripts/auth-login-state-fixture.mjs",
+    "agent-wallet-login-smoke": "node scripts/agent-wallet-login-smoke.mjs",
+    "agent-wallet-login-client": "node scripts/agent-wallet-login-client.mjs",
     "signup-reset": "node scripts/reset-signup-test-account.mjs",
     "task-time-format-smoke": "node scripts/task-time-format-smoke.mjs",
     "security-smoke": "node scripts/security-smoke.mjs",
