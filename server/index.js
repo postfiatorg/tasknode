@@ -45,6 +45,7 @@ import { chatConversationExistsForAccount } from "./repositories/chat-conversati
 import { migrateDatabase } from "./db/migrate.js";
 import { checkRateLimit } from "./rate-limit.js";
 import { routePolicyForPath, routePolicyRateLimitExtra } from "./route-policies.js";
+import { authWalletStart, authWalletVerify } from "./auth-wallet-login.js";
 import { oauthStateCookieName, responseHeadersForAuthResult } from "./auth-oauth-http.js";
 import { telegramAuthHeaders } from "./auth-connected-accounts.js";
 import { handleTaskReadRoute } from "./task-routes.js";
@@ -452,6 +453,37 @@ async function routeApi(req, url, res) {
   if (url.pathname === "/api/auth/email/verify") {
     const payload = req.method === "POST" ? await readJson(req, 4096) : {};
     const result = authEmailVerify(payload, req.method);
+    const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
+    json(res, result.status, result.body, headers);
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/wallet/start") {
+    const payload = req.method === "POST" ? await readJson(req, 4096) : {};
+    const address = String(payload?.address || "").trim();
+    if (enforceRateLimit(req, res, {
+      route: "auth_wallet_start_address",
+      session: null,
+      extra: address || "missing_address",
+      limit: 5,
+      windowMs: 10 * 60_000,
+    })) return true;
+    const result = authWalletStart(payload, req.method);
+    json(res, result.status, result.body);
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/wallet/verify") {
+    const payload = req.method === "POST" ? await readJson(req, 4096) : {};
+    const address = String(payload?.address || "").trim();
+    if (enforceRateLimit(req, res, {
+      route: "auth_wallet_verify_address",
+      session: null,
+      extra: address || "missing_address",
+      limit: 10,
+      windowMs: 10 * 60_000,
+    })) return true;
+    const result = await authWalletVerify(payload, req.method);
     const headers = result.sessionId ? { "set-cookie": sessionCookie(req, result.sessionId) } : {};
     json(res, result.status, result.body, headers);
     return true;

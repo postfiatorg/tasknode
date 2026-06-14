@@ -448,6 +448,13 @@ function displayNameFromEmail(email) {
     .join(" ");
 }
 
+function displayNameFromWalletAddress(address = "") {
+  const normalized = String(address || "").trim();
+  if (!normalized) return "Task Node Wallet";
+  if (normalized.length <= 16) return `Wallet ${normalized}`;
+  return `Wallet ${normalized.slice(0, 8)}...${normalized.slice(-6)}`;
+}
+
 function accountPayload(account) {
   if (!account) return null;
   const identityProfile = accountIdentityProfile(account, { includeSuggestions: false });
@@ -483,6 +490,7 @@ function providerLabel(provider) {
   if (provider === "x") return "X";
   if (provider === "discord") return "Discord";
   if (provider === "telegram") return "Telegram";
+  if (provider === "wallet") return "Wallet";
   return "Provider";
 }
 
@@ -516,6 +524,21 @@ function devProvider() {
     kind: "development",
     status: "linked",
   };
+}
+
+function linkedWalletProvider({ address = "", publicKey = "" } = {}) {
+  const normalizedAddress = String(address || "").trim();
+  return providerAliasDefaults({
+    id: "wallet",
+    label: "Wallet",
+    kind: "wallet_signature",
+    status: "verified",
+    providerUserId: normalizedAddress,
+    username: normalizedAddress,
+    displayName: displayNameFromWalletAddress(normalizedAddress),
+    profileUrl: null,
+    publicKey: String(publicKey || "").trim() || null,
+  });
 }
 
 function mergeLinkedProvider(account, providerPayload) {
@@ -1770,6 +1793,17 @@ function walletChallengeMessage({ accountId, challengeId, purpose, issuedAt, exp
   ].join("\n");
 }
 
+function walletLoginChallengeMessage({ address, challengeId, issuedAt, expiresAt }) {
+  return [
+    "Post Fiat Task Node wallet login",
+    "Purpose: wallet_login",
+    `Address: ${address}`,
+    `Challenge: ${challengeId}`,
+    `Issued: ${issuedAt}`,
+    `Expires: ${expiresAt}`,
+  ].join("\n");
+}
+
 export function createWalletChallenge({ accountId = "", purpose = "wallet_link" } = {}) {
   if (!accountId) {
     return { ok: false, status: 401, error: "wallet_login_required" };
@@ -1791,6 +1825,43 @@ export function createWalletChallenge({ accountId = "", purpose = "wallet_link" 
       purpose,
       issuedAt,
       expiresAt,
+    }),
+  };
+
+  state.walletChallenges[challengeId] = challenge;
+  saveState();
+
+  return { ok: true, challenge };
+}
+
+export function createWalletLoginChallenge({
+  address = "",
+  publicKey = "",
+  expiresInSeconds = 5 * 60,
+  expiresAt = "",
+} = {}) {
+  const normalizedAddress = String(address || "").trim();
+  if (!normalizedAddress) {
+    return { ok: false, status: 400, error: "wallet_address_required" };
+  }
+
+  const challengeId = randomUUID();
+  const issuedAt = new Date().toISOString();
+  const ttlMs = Math.min(Math.max(Number(expiresInSeconds) || 5 * 60, 1), 10 * 60) * 1000;
+  const resolvedExpiresAt = expiresAt ? new Date(expiresAt).toISOString() : new Date(Date.now() + ttlMs).toISOString();
+  const challenge = {
+    id: challengeId,
+    accountId: "",
+    address: normalizedAddress,
+    publicKey: String(publicKey || "").trim(),
+    purpose: "wallet_login",
+    issuedAt,
+    expiresAt: resolvedExpiresAt,
+    message: walletLoginChallengeMessage({
+      address: normalizedAddress,
+      challengeId,
+      issuedAt,
+      expiresAt: resolvedExpiresAt,
     }),
   };
 
@@ -1823,6 +1894,30 @@ export function consumeWalletChallenge({ accountId = "", challengeId = "", purpo
   return { ok: true, challenge };
 }
 
+export function consumeWalletLoginChallenge({ challengeId = "", address = "" } = {}) {
+  const normalizedAddress = String(address || "").trim();
+  const id = String(challengeId || "");
+  const challenge = state.walletChallenges[id];
+
+  if (!challenge) {
+    return { ok: false, status: 400, error: "invalid_or_expired_challenge" };
+  }
+
+  const valid =
+    challenge.purpose === "wallet_login" &&
+    challenge.address === normalizedAddress &&
+    (Date.parse(challenge.expiresAt || "") || 0) > Date.now();
+
+  delete state.walletChallenges[id];
+  saveState();
+
+  if (!valid) {
+    return { ok: false, status: 400, error: "invalid_or_expired_challenge" };
+  }
+
+  return { ok: true, challenge };
+}
+
 function activeWalletAccountsForAddress(address = "", exceptAccountId = "") {
   const normalizedAddress = String(address || "").trim();
   const normalizedExceptAccountId = exceptAccountId ? safeId(exceptAccountId, "account") : "";
@@ -1833,6 +1928,18 @@ function activeWalletAccountsForAddress(address = "", exceptAccountId = "") {
     if (normalizedExceptAccountId && accountId === normalizedExceptAccountId) return false;
     return String(wallet.address || "").trim() === normalizedAddress;
   });
+}
+
+export function findAccountByLinkedWallet({ address = "" } = {}) {
+  const normalizedAddress = String(address || "").trim();
+  if (!normalizedAddress) return null;
+  const [accountId, wallet] = activeWalletAccountsForAddress(normalizedAddress)[0] || [];
+  if (!accountId || !wallet || !state.accounts[accountId]) return null;
+  return {
+    accountId,
+    account: accountPayload(state.accounts[accountId]),
+    wallet,
+  };
 }
 
 export function accountWalletCloudFacts({ accountId = "" } = {}) {
@@ -1935,6 +2042,86 @@ export function linkWalletToAccount({
   saveState();
 
   return { ok: true, wallet, reclaimedWalletCount: reclaimedOwners.length };
+}
+
+export function resolveOrCreateWalletLoginAccount({
+  address = "",
+  publicKey = "",
+  challengeId = "",
+  signature = "",
+} = {}) {
+  const normalizedAddress = String(address || "").trim();
+  if (!normalizedAddress) {
+    return { ok: false, status: 400, error: "wallet_address_required" };
+  }
+
+  const now = new Date().toISOString();
+  const existing = findAccountByLinkedWallet({ address: normalizedAddress });
+  if (existing?.accountId && state.accounts[existing.accountId]) {
+    const account = state.accounts[existing.accountId];
+    normalizeAccountProfileVisibility(account);
+    mergeLinkedProvider(account, linkedWalletProvider({ address: normalizedAddress, publicKey }));
+    account.assurance = "high";
+    account.updatedAt = now;
+    account.lastProviderLoginAt = now;
+    state.accounts[existing.accountId] = account;
+    saveState();
+    syncAccountSessions(account);
+    return {
+      ok: true,
+      account: accountPayload(account),
+      wallet: existing.wallet,
+      created: false,
+      linked: false,
+      reclaimedWalletCount: 0,
+    };
+  }
+
+  const accountId = stableId(normalizedAddress, "acct_wallet");
+  let account = state.accounts[accountId];
+  if (!account) {
+    account = {
+      id: accountId,
+      status: "active",
+      displayName: displayNameFromWalletAddress(normalizedAddress),
+      primaryProvider: "wallet",
+      assurance: "high",
+      profileVisibility: "public",
+      linkedProviders: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+  normalizeAccountProfileVisibility(account);
+  mergeLinkedProvider(account, linkedWalletProvider({ address: normalizedAddress, publicKey }));
+  account.status = account.status || "active";
+  account.displayName = account.displayName || displayNameFromWalletAddress(normalizedAddress);
+  account.primaryProvider = account.primaryProvider || "wallet";
+  account.assurance = "high";
+  account.updatedAt = now;
+  account.lastProviderLoginAt = now;
+  state.accounts[accountId] = account;
+
+  const linked = linkWalletToAccount({
+    accountId,
+    address: normalizedAddress,
+    publicKey,
+    challengeId,
+    signature,
+    proofPurpose: "wallet_login",
+  });
+  if (!linked.ok) return linked;
+
+  const resolvedAccount = state.accounts[accountId] || account;
+  syncAccountSessions(resolvedAccount);
+  return {
+    ok: true,
+    account: accountPayload(resolvedAccount),
+    wallet: linked.wallet,
+    created: !existing,
+    linked: true,
+    reclaimedWalletCount: Number(linked.reclaimedWalletCount || 0),
+  };
 }
 
 export function delinkWalletFromAccount({
