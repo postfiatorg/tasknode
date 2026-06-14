@@ -1139,6 +1139,117 @@ export async function reclaimStaleNetworkTaskGenerationJobs({ staleMinutes = 5, 
   return reclaimed;
 }
 
+export async function listFailedRequestNetworkTaskGenerationChains({ limit = 10, projectId = "" } = {}) {
+  if (!useDatabase()) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 50);
+  const normalizedProjectId = safeText(projectId, 180);
+  const result = await query(
+    `
+      SELECT
+        job.id AS job_id,
+        job.allocation_id,
+        job.project_id,
+        job.task_class,
+        job.candidate_account_id,
+        job.candidate_wallet_address,
+        job.request_id,
+        job.status AS job_status,
+        job.task_id AS job_task_id,
+        job.created_at AS job_created_at,
+        job.updated_at AS job_updated_at,
+        alloc.allocation_status,
+        alloc.generated_task_id AS allocation_generated_task_id,
+        alloc.task_request_id AS allocation_task_request_id,
+        req.status AS task_request_status,
+        req.generated_task_id AS task_request_generated_task_id,
+        req.last_error AS task_request_last_error,
+        req.updated_at AS task_request_updated_at,
+        now() - LEAST(job.updated_at, req.updated_at, alloc.updated_at) AS stale_age
+      FROM network_task_generation_jobs job
+      JOIN network_task_allocations alloc
+        ON alloc.id = job.allocation_id
+      JOIN task_requests req
+        ON req.request_id = job.request_id
+      WHERE job.status IN ('generated', 'link_failed')
+        AND ($2::text = '' OR job.project_id = $2)
+        AND job.request_id <> ''
+        AND job.task_id = ''
+        AND req.status = 'failed'
+        AND req.generated_task_id = ''
+        AND alloc.allocation_status = 'queued'
+        AND alloc.generated_task_id = ''
+        AND (alloc.task_request_id = '' OR alloc.task_request_id = job.request_id)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM task_projections projection
+          WHERE projection.request_id = job.request_id
+             OR projection.task_id = NULLIF(job.task_id, '')
+             OR projection.task_id = NULLIF(req.generated_task_id, '')
+             OR projection.task_id = NULLIF(alloc.generated_task_id, '')
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM network_project_task_refs refs
+          WHERE refs.request_id = job.request_id
+             OR refs.task_id = NULLIF(job.task_id, '')
+             OR refs.task_id = NULLIF(req.generated_task_id, '')
+             OR refs.task_id = NULLIF(alloc.generated_task_id, '')
+             OR refs.metadata_json->>'generation_job_id' = job.id
+             OR refs.metadata_json->>'allocation_id' = alloc.id
+        )
+      ORDER BY LEAST(job.updated_at, req.updated_at, alloc.updated_at) ASC, job.id ASC
+      LIMIT $1
+    `,
+    [safeLimit, normalizedProjectId]
+  );
+  return result.rows;
+}
+
+export async function recoverFailedRequestNetworkTaskGenerationChains({
+  limit = 10,
+  logger = console,
+  operator = "network_task_generation_worker",
+  projectId = "",
+} = {}) {
+  if (!useDatabase()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const candidates = await listFailedRequestNetworkTaskGenerationChains({ limit, projectId });
+  const recovered = [];
+  for (const candidate of candidates) {
+    try {
+      const result = await failNetworkTaskGenerationChain({
+        allocationId: candidate.allocation_id,
+        jobId: candidate.job_id,
+        requestId: candidate.request_id,
+        reason: `network_task_generation_failed_request_recovered:${safeText(candidate.task_request_last_error, 300) || "task_request_failed"}`,
+        operator,
+      });
+      recovered.push({
+        ok: true,
+        jobId: candidate.job_id,
+        allocationId: candidate.allocation_id,
+        requestId: candidate.request_id,
+        result,
+      });
+    } catch (error) {
+      const message = safeText(error?.message || error, 1000);
+      logger.warn?.("network_task_failed_request_recovery_chain_failed", {
+        jobId: candidate.job_id,
+        allocationId: candidate.allocation_id,
+        requestId: candidate.request_id,
+        error: message,
+      });
+      recovered.push({
+        ok: false,
+        jobId: candidate.job_id,
+        allocationId: candidate.allocation_id,
+        requestId: candidate.request_id,
+        error: message,
+      });
+    }
+  }
+  return { ok: true, checked: candidates.length, recovered };
+}
+
 export async function markNetworkTaskGenerationJobGenerated({
   jobId = "",
   requestId = "",
@@ -1300,14 +1411,18 @@ export async function failNetworkTaskGenerationChain({
 
   const message = safeText(reason, 1000) || "operator marked Network Task generation chain failed";
   const operatorName = safeText(operator, 120) || "operator";
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     const found = await client.query(
       `
         SELECT
           alloc.id AS allocation_id,
+          alloc.project_id,
+          alloc.task_class,
           alloc.allocation_status,
           alloc.task_request_id,
           alloc.generated_task_id AS allocation_task_id,
+          alloc.candidate_account_id,
+          alloc.candidate_wallet_address,
           job.id AS job_id,
           job.status AS job_status,
           job.request_id AS job_request_id,
@@ -1414,8 +1529,42 @@ export async function failNetworkTaskGenerationChain({
       request,
       staleIntentCount: intentResult.rowCount || 0,
       reason: message,
+      observability: {
+        accountId: safeText(row.candidate_account_id, 180),
+        walletAddress: safeText(row.candidate_wallet_address, 180),
+        projectId: safeText(row.project_id, 180),
+        taskClass: safeText(row.task_class, 80),
+        previousAllocationStatus: safeText(row.allocation_status, 80),
+        previousJobStatus: safeText(row.job_status, 80),
+        operator: operatorName,
+      },
     };
   });
+  if (result?.ok) {
+    await recordUserObservabilityEvent({
+      eventType: "user.network_task.generation_job_changed",
+      accountId: result.observability?.accountId || "",
+      walletAddress: result.observability?.walletAddress || "",
+      walletScope: result.observability?.walletAddress ? "candidate_wallet" : "",
+      projectId: result.observability?.projectId || "",
+      allocationId: result.allocation?.id || normalizedAllocationId,
+      generationJobId: result.job?.id || normalizedJobId,
+      requestId: result.request?.request_id || normalizedRequestId,
+      sourceSurface: "tasks",
+      sourceRoute: "server/repositories/network-tasks.js::failNetworkTaskGenerationChain",
+      resultStatus: "failed",
+      reasonCode: message,
+      metadata: {
+        taskClass: result.observability?.taskClass || "",
+        operator: result.observability?.operator || operatorName,
+        previousAllocationStatus: result.observability?.previousAllocationStatus || "",
+        previousJobStatus: result.observability?.previousJobStatus || "",
+        requestStatus: result.request?.status || "",
+        staleIntentCount: Number(result.staleIntentCount || 0),
+      },
+    }).catch(() => {});
+  }
+  return result;
 }
 
 export async function markNetworkTaskOfferLinkFailed({ requestId = "", taskId = "", error = "" } = {}) {

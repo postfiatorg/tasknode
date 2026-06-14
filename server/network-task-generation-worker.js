@@ -12,6 +12,7 @@ import {
   markNetworkTaskGenerationJobGenerated,
   normalizeNetworkTaskRewardBand,
   reclaimStaleNetworkTaskGenerationJobs,
+  recoverFailedRequestNetworkTaskGenerationChains,
   repairNetworkTaskOfferLinks,
 } from "./repositories/network-tasks.js";
 
@@ -210,6 +211,9 @@ export async function processNetworkTaskGenerationQueueOnce({ limit = 1, logger 
   const staleMinutes = Number(process.env.TASKNODE_NETWORK_TASK_GENERATION_STALE_MINUTES || 5);
   await reclaimStaleNetworkTaskGenerationJobs({ staleMinutes }).catch((error) => {
     logger.warn?.("network_task_generation_stale_reclaim_failed", { error: error?.message || String(error) });
+  });
+  await recoverFailedRequestNetworkTaskGenerationChains({ limit, logger }).catch((error) => {
+    logger.warn?.("network_task_failed_request_recovery_failed", { error: error?.message || String(error) });
   });
   await repairNetworkTaskOfferLinks({ limit }).catch((error) => {
     logger.warn?.("network_task_offer_link_repair_failed", { error: error?.message || String(error) });
