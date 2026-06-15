@@ -70,6 +70,7 @@ const project = document.projects.project_public_identity_smoke;
 assert.equal(project.contributors[0].codename, "board-codename");
 assert.equal(project.contributors[0].displayName, "@public-handle");
 assert.equal(document.operators[wallet].codename, "board-codename");
+assert.equal(document.operators[wallet].displayName, "@public-handle");
 assert.equal(document.operators[wallet].hiveHandle, "public-handle");
 assert.equal(project.contributors[0].accountId, "acct_public_identity_smoke");
 assert.equal(project.tasks[0].assignee, wallet);
