@@ -108,6 +108,7 @@ function walletIdentityMap(walletIdentities = [], publicProfileIds = new Set()) 
       publicDisplayName: safeText(identity.publicDisplayName || identity.public_display_name, 120),
       publicAliases: safeArray(identity.publicAliases || identity.public_aliases),
       publicTrustBadges: safeArray(identity.publicTrustBadges || identity.public_trust_badges),
+      nft: identity.nft || publicIdentityNft(identity),
       hasPublicProfile: Boolean(accountId && publicProfileIds.has(accountId)),
     });
   }
@@ -128,6 +129,7 @@ function enrichContributorWithWalletIdentity(contributor = {}, identity = null) 
   }
   contributor.accountId = identity?.accountId || contributor.accountId || "";
   contributor.hasPublicProfile = Boolean(identity?.hasPublicProfile);
+  contributor.nft = contributor.nft || identity?.nft || null;
   return contributor;
 }
 
@@ -136,6 +138,7 @@ function enrichTaskWithWalletIdentity(task = {}, identity = null) {
   task.assigneeHasPublicProfile = Boolean(identity?.hasPublicProfile);
   task.assigneeHandle = identity?.hiveHandle || task.assigneeHandle || "";
   task.assigneeDisplayName = identity?.displayName || task.assigneeDisplayName || "";
+  task.assigneeNft = task.assigneeNft || identity?.nft || null;
   return task;
 }
 
@@ -168,8 +171,11 @@ function applyWalletIdentitiesToProjects(projects = {}, walletIdentities = [], p
 async function publicWalletIdentityForWallet(wallet = "") {
   const key = walletIdentityKey(wallet);
   if (!key) return null;
-  const walletIdentities = listPublicAccountWalletIdentities().filter((identity) =>
-    walletIdentityKey(identity.walletAddress || identity.wallet_address || identity.wallet) === key
+  const walletIdentities = mergeWalletIdentityLists(
+    listPublicAccountWalletIdentities().filter((identity) =>
+      walletIdentityKey(identity.walletAddress || identity.wallet_address || identity.wallet) === key
+    ),
+    await resolveHivePublicWalletIdentities({ wallets: [wallet] })
   );
   const publicProfileIds = await discoverableMemberProfileIds(
     Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)))
@@ -376,11 +382,15 @@ function deriveContributorFromTask(project = {}, task = {}) {
   const taskState = safeText(task.state, 80).toLowerCase();
   const paidPft = taskState === "rewarded" ? numeric(task.pft) : 0;
   const activeLoad = ["proposed", "accepted", "submitted", "verification_requested", "verification_response_submitted"].includes(taskState) ? 1 : 0;
+  const identityLabel = task.assigneeDisplayName || (task.assigneeHandle ? `@${safeText(task.assigneeHandle, 80).replace(/^@+/, "")}` : "");
   return {
     wallet,
     accountId: task.assigneeAccountId || "",
     hasPublicProfile: Boolean(task.assigneeHasPublicProfile),
-    codename: compactWallet(wallet),
+    codename: identityLabel || compactWallet(wallet),
+    displayName: task.assigneeDisplayName || "",
+    hiveHandle: task.assigneeHandle || "",
+    publicDisplayName: task.assigneeDisplayName || "",
     archetype: "Network task contributor",
     badge: 0,
     allotted: true,
@@ -711,6 +721,197 @@ function publicAssigneeNft(nft = null) {
     imageCid: safeText(nft?.imageCid, 180),
     imageGatewayUrl: safeText(nft?.imageGatewayUrl, 500),
   };
+}
+
+function publicIdentityNft(row = {}) {
+  const imageCid = safeText(row.hero_nft_image_cid || row.image_cid, 180);
+  const imageGatewayUrl = safeText(row.hero_nft_image_gateway_url || row.image_gateway_url, 500);
+  if (!imageCid && !imageGatewayUrl) return null;
+  return {
+    title: safeText(row.hero_nft_title || row.title, 180),
+    status: safeText(row.hero_nft_status || row.status, 80),
+    imageCid,
+    imageGatewayUrl,
+  };
+}
+
+function hiveWalletsFromRows({
+  contributorRows = [],
+  taskRows = [],
+  activityRows = [],
+} = {}) {
+  const wallets = new Set();
+  for (const row of safeArray(contributorRows)) {
+    const wallet = safeText(row.wallet_address, 160);
+    if (wallet) wallets.add(wallet);
+  }
+  for (const row of safeArray(taskRows)) {
+    for (const value of [row.projected_subject_wallet, row.subject_wallet, row.assignee_wallet]) {
+      const wallet = safeText(value, 160);
+      if (wallet) wallets.add(wallet);
+    }
+  }
+  for (const row of safeArray(activityRows)) {
+    const wallet = safeText(row.wallet_address, 160);
+    if (wallet) wallets.add(wallet);
+  }
+  return [...wallets];
+}
+
+function mergeWalletIdentity(left = {}, right = {}) {
+  const walletAddress = safeText(left.walletAddress || left.wallet_address || right.walletAddress || right.wallet_address, 160);
+  return {
+    ...left,
+    ...right,
+    accountId: safeText(left.accountId || left.account_id || right.accountId || right.account_id, 180),
+    walletAddress,
+    displayName: safeText(left.displayName || left.display_name || right.displayName || right.display_name, 120),
+    hiveHandle: safeText(left.hiveHandle || left.hive_handle || right.hiveHandle || right.hive_handle, 80),
+    publicDisplayName: safeText(left.publicDisplayName || left.public_display_name || right.publicDisplayName || right.public_display_name, 120),
+    publicAliases: safeArray(left.publicAliases || left.public_aliases).length
+      ? safeArray(left.publicAliases || left.public_aliases)
+      : safeArray(right.publicAliases || right.public_aliases),
+    publicTrustBadges: safeArray(left.publicTrustBadges || left.public_trust_badges).length
+      ? safeArray(left.publicTrustBadges || left.public_trust_badges)
+      : safeArray(right.publicTrustBadges || right.public_trust_badges),
+    nft: left.nft || right.nft || publicIdentityNft(left) || publicIdentityNft(right),
+  };
+}
+
+function mergeWalletIdentityLists(...lists) {
+  const byWallet = new Map();
+  for (const identity of lists.flatMap((list) => safeArray(list))) {
+    const wallet = safeText(identity.walletAddress || identity.wallet_address || identity.wallet, 160);
+    const key = walletIdentityKey(wallet);
+    if (!key) continue;
+    const normalized = { ...identity, walletAddress: wallet };
+    byWallet.set(key, byWallet.has(key) ? mergeWalletIdentity(byWallet.get(key), normalized) : normalized);
+  }
+  return [...byWallet.values()];
+}
+
+async function recommendedProfilesReady(queryImpl = query) {
+  const result = await queryImpl("SELECT to_regclass('public.recommended_connection_profiles') AS profile_table");
+  return Boolean(result.rows[0]?.profile_table);
+}
+
+export async function resolveHivePublicWalletIdentities({
+  wallets = [],
+  queryImpl = query,
+  databaseReady = useDatabase(),
+} = {}) {
+  const uniqueWallets = Array.from(new Set(safeArray(wallets).map((wallet) => safeText(wallet, 160)).filter(Boolean)));
+  if (!uniqueWallets.length || !databaseReady || !await recommendedProfilesReady(queryImpl)) return [];
+  const result = await queryImpl(
+    `
+      WITH wallet_matches AS (
+        SELECT subject_wallet AS wallet_address,
+               account_id,
+               updated_at AS last_seen_at,
+               1 AS source_rank
+        FROM task_projections
+        WHERE subject_wallet = ANY($1::text[])
+          AND subject_wallet <> ''
+          AND account_id <> ''
+        UNION ALL
+        SELECT candidate_wallet_address AS wallet_address,
+               candidate_account_id AS account_id,
+               updated_at AS last_seen_at,
+               2 AS source_rank
+        FROM network_task_allocations
+        WHERE candidate_wallet_address = ANY($1::text[])
+          AND candidate_wallet_address <> ''
+          AND candidate_account_id <> ''
+        UNION ALL
+        SELECT wallet_address,
+               account_id,
+               updated_at AS last_seen_at,
+               3 AS source_rank
+        FROM recommended_connection_profiles
+        WHERE wallet_address = ANY($1::text[])
+          AND wallet_address <> ''
+          AND account_id <> ''
+        UNION ALL
+        SELECT wallet_address,
+               account_id,
+               occurred_at AS last_seen_at,
+               4 AS source_rank
+        FROM user_observability_events
+        WHERE wallet_address = ANY($1::text[])
+          AND wallet_address <> ''
+          AND account_id <> ''
+      ),
+      wallet_accounts AS (
+        SELECT DISTINCT ON (lower(wallet_address))
+               wallet_address,
+               account_id
+        FROM wallet_matches
+        ORDER BY lower(wallet_address), source_rank ASC, last_seen_at DESC NULLS LAST, account_id ASC
+      )
+      SELECT wallet_account.wallet_address,
+             wallet_account.account_id,
+             COALESCE(NULLIF(latest_handle.public_handle, ''), NULLIF(profile.hive_handle, ''), '') AS hive_handle,
+             CASE
+               WHEN COALESCE(latest_handle.public_handle, profile.hive_handle, '') <> ''
+                 THEN '@' || regexp_replace(COALESCE(latest_handle.public_handle, profile.hive_handle), '^@+', '')
+               ELSE COALESCE(NULLIF(profile.display_name, ''), '')
+             END AS display_name,
+             COALESCE(NULLIF(profile.display_name, ''), '') AS public_display_name,
+             COALESCE(hero_nft.title, '') AS hero_nft_title,
+             COALESCE(hero_nft.status, '') AS hero_nft_status,
+             COALESCE(hero_nft.image_cid, '') AS hero_nft_image_cid,
+             COALESCE(hero_nft.image_gateway_url, '') AS hero_nft_image_gateway_url
+      FROM wallet_accounts wallet_account
+      JOIN recommended_connection_profiles profile
+        ON profile.account_id = wallet_account.account_id
+       AND profile.visibility = 'public'
+       AND profile.discoverable = true
+       AND profile.disabled_at IS NULL
+      LEFT JOIN LATERAL (
+        SELECT event.public_handle
+        FROM user_observability_events event
+        WHERE event.account_id = wallet_account.account_id
+          AND event.public_handle <> ''
+        ORDER BY event.occurred_at DESC, event.id DESC
+        LIMIT 1
+      ) latest_handle ON true
+      LEFT JOIN LATERAL (
+        SELECT id, title, status, image_cid, image_gateway_url, selected, created_at, updated_at
+        FROM profile_nfts nft
+        WHERE nft.account_id = wallet_account.account_id
+          AND lower(nft.status) IN ('minted', 'prepared', 'generated')
+          AND (
+            COALESCE(nft.image_gateway_url, '') <> ''
+            OR COALESCE(nft.image_cid, '') <> ''
+          )
+        ORDER BY
+          nft.selected DESC,
+          nft.created_at DESC NULLS LAST,
+          nft.updated_at DESC NULLS LAST,
+          nft.id DESC
+        LIMIT 1
+      ) hero_nft ON true
+      ORDER BY wallet_account.wallet_address ASC
+    `,
+    [uniqueWallets]
+  );
+  return result.rows
+    .map((row) => ({
+      accountId: safeText(row.account_id, 180),
+      walletAddress: safeText(row.wallet_address, 160),
+      displayName: safeText(row.display_name, 120),
+      hiveHandle: safeText(row.hive_handle, 80).replace(/^@+/, ""),
+      publicDisplayName: safeText(row.public_display_name, 120),
+      publicAliases: row.hive_handle ? [{
+        provider: "hive",
+        label: "Hive",
+        handle: safeText(row.hive_handle, 80).replace(/^@+/, ""),
+        verified: false,
+      }] : [],
+      publicTrustBadges: [],
+      nft: publicIdentityNft(row),
+    }))
+    .filter((identity) => identity.accountId && identity.walletAddress && identity.displayName);
 }
 
 export const publicHiveTaskDetailFields = [
@@ -1051,7 +1252,16 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
     projectIds: projectsResult.rows.map((row) => row.id),
   });
   const projectPlanning = await latestHiveProjectPlanningState().catch(() => null);
-  const walletIdentities = listPublicAccountWalletIdentities();
+  const walletIdentities = mergeWalletIdentityLists(
+    listPublicAccountWalletIdentities(),
+    await resolveHivePublicWalletIdentities({
+      wallets: hiveWalletsFromRows({
+        contributorRows: contributorsResult.rows,
+        taskRows: tasksResult.rows,
+        activityRows: activityResult.rows,
+      }),
+    })
+  );
   const publicProfileIds = await discoverableMemberProfileIds(
     Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)))
   );
