@@ -48,6 +48,49 @@ function compactList(items = [], maxItems = 4, maxChars = 280) {
   return safeArray(items).map((item) => safeText(item, maxChars)).filter(Boolean).slice(0, maxItems);
 }
 
+export function buildNetworkTaskRequestContext({ source = {}, job = {}, reward = { min: 10000, max: 50000 } } = {}) {
+  const sourceObject = safeObject(source);
+  return {
+    schema: "pf.hive.network_task_request.v1",
+    allocation_id: job.allocation_id,
+    generation_job_id: job.id,
+    project_id: job.project_id,
+    project_type: sourceObject.project?.type || "",
+    task_class: job.task_class,
+    source_payload_digest: job.source_payload_digest,
+    routing_profile_digest: sourceObject.candidate?.profileDigest || "",
+    project_title: sourceObject.project?.title || "",
+    project_summary: sourceObject.project?.summary || "",
+    project_document: {
+      title: sourceObject.project_document?.title || sourceObject.projectDocument?.title || "",
+      summary: sourceObject.project_document?.summary || sourceObject.projectDocument?.summary || "",
+      project_status: sourceObject.project_document?.projectStatus || sourceObject.projectDocument?.projectStatus || "",
+      key_points: compactList(sourceObject.project_document?.keyPoints || sourceObject.projectDocument?.keyPoints),
+      blocked_or_unclear: compactList(sourceObject.project_document?.blockedOrUnclear || sourceObject.projectDocument?.blockedOrUnclear),
+      next_actions: compactList(sourceObject.project_document?.nextActions || sourceObject.projectDocument?.nextActions),
+    },
+    reward_band_pft: {
+      min: reward.min,
+      max: reward.max,
+    },
+    project_need_summary: sourceObject.networkTask?.projectNeedSummary || "",
+    routing_reason: sourceObject.networkTask?.allocationReasonSummary || "",
+    operator_standing_policy: safeArray(sourceObject.operatorStandingPolicy || sourceObject.operator_standing_policy).slice(0, 12),
+    generation_quality_policy: safeObject(sourceObject.generationQualityPolicy || sourceObject.generation_quality_policy),
+    prior_output_corpus: safeObject(sourceObject.priorOutputCorpus || sourceObject.prior_output_corpus),
+    task_lineage: {
+      lineage_task_ids: safeArray(sourceObject.taskLineage?.lineageTaskIds || sourceObject.taskLineage?.lineage_task_ids || sourceObject.networkTask?.lineageTaskIds || sourceObject.networkTask?.lineage_task_ids).slice(0, 12),
+      referenced_outputs: safeArray(sourceObject.taskLineage?.referencedOutputs || sourceObject.taskLineage?.referenced_outputs || sourceObject.networkTask?.referencedOutputs || sourceObject.networkTask?.referenced_outputs).slice(0, 12),
+      deduped_against: safeArray(sourceObject.taskLineage?.dedupedAgainst || sourceObject.taskLineage?.deduped_against || sourceObject.networkTask?.dedupedAgainst || sourceObject.networkTask?.deduped_against).slice(0, 12),
+      why_not_duplicate: safeText(sourceObject.taskLineage?.whyNotDuplicate || sourceObject.taskLineage?.why_not_duplicate || sourceObject.networkTask?.whyNotDuplicate || sourceObject.networkTask?.why_not_duplicate, 1200),
+    },
+    action_output: sourceObject.networkTask?.actionOutput || sourceObject.networkTask?.action_output || "",
+    delivery_surface: sourceObject.networkTask?.deliverySurface || sourceObject.networkTask?.delivery_surface || "",
+    recipient_or_reviewer: sourceObject.networkTask?.recipientOrReviewer || sourceObject.networkTask?.recipient_or_reviewer || "",
+    escalation_stage: sourceObject.networkTask?.escalationStage || sourceObject.networkTask?.escalation_stage || "",
+  };
+}
+
 export async function createTaskRequestForNetworkJob(job = {}) {
   const source = safeObject(job.source_payload_json);
   const reward = normalizeNetworkTaskRewardBand({
@@ -100,32 +143,7 @@ export async function createTaskRequestForNetworkJob(job = {}) {
     request,
     authorityWallet: tasknodeKey.serviceAddress || "",
   });
-  requestBundle.network_task = {
-    schema: "pf.hive.network_task_request.v1",
-    allocation_id: job.allocation_id,
-    generation_job_id: job.id,
-    project_id: job.project_id,
-    project_type: source.project?.type || "",
-    task_class: job.task_class,
-    source_payload_digest: job.source_payload_digest,
-    routing_profile_digest: source.candidate?.profileDigest || "",
-    project_title: source.project?.title || "",
-    project_summary: source.project?.summary || "",
-    project_document: {
-      title: source.project_document?.title || source.projectDocument?.title || "",
-      summary: source.project_document?.summary || source.projectDocument?.summary || "",
-      project_status: source.project_document?.projectStatus || source.projectDocument?.projectStatus || "",
-      key_points: compactList(source.project_document?.keyPoints || source.projectDocument?.keyPoints),
-      blocked_or_unclear: compactList(source.project_document?.blockedOrUnclear || source.projectDocument?.blockedOrUnclear),
-      next_actions: compactList(source.project_document?.nextActions || source.projectDocument?.nextActions),
-    },
-    reward_band_pft: {
-      min: reward.min,
-      max: reward.max,
-    },
-    project_need_summary: source.networkTask?.projectNeedSummary || "",
-    routing_reason: source.networkTask?.allocationReasonSummary || "",
-  };
+  requestBundle.network_task = buildNetworkTaskRequestContext({ source, job, reward });
   requestBundle.policy = {
     ...safeObject(requestBundle.policy),
     task_policy_version: "task-policy-network-v1",

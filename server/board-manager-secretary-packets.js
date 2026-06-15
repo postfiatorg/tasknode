@@ -162,6 +162,100 @@ function normalizeContextRequest(value = {}) {
   };
 }
 
+function normalizeOperatorStandingPolicy(value = []) {
+  return safeArray(value)
+    .slice(0, 16)
+    .map((item) => {
+      const input = safeObject(item);
+      return {
+        source_id: safeText(input.source_id || input.sourceId || input.id, 180),
+        source_account_id: safeText(input.source_account_id || input.sourceAccountId || input.account_id || input.accountId, 180),
+        created_at: safeText(input.created_at || input.createdAt, 80),
+        directive: safeText(input.directive || input.body || input.text, 1200),
+        active_scope: safeText(input.active_scope || input.activeScope || "global", 80) || "global",
+        generation_implication: safeText(
+          input.generation_implication ||
+            input.generationImplication ||
+            "Preserve as operator policy context for Network Task shape, routing, and output decisions.",
+          900
+        ),
+      };
+    })
+    .filter((item) => item.directive || item.source_id);
+}
+
+function normalizeGenerationQualityPolicy(value = {}) {
+  const input = safeObject(value);
+  return {
+    documentation_only_default: safeText(
+      input.documentation_only_default || input.documentationOnlyDefault || "low_value_unless_action_coupled",
+      120
+    ) || "low_value_unless_action_coupled",
+    requires_concrete_action_output: clampBoolean(
+      input.requires_concrete_action_output ?? input.requiresConcreteActionOutput,
+      true
+    ),
+    escalation_ladder: safeText(input.escalation_ladder || input.escalationLadder || "document_to_action_v1", 120) ||
+      "document_to_action_v1",
+    operator_constraints_summary: safeText(input.operator_constraints_summary || input.operatorConstraintsSummary, 1200),
+  };
+}
+
+function normalizePriorOutputCorpusSummary(value = {}) {
+  const input = safeObject(value);
+  return {
+    projects_covered: safeArray(input.projects_covered || input.projectsCovered)
+      .slice(0, 12)
+      .map((item) => safeText(item, 180))
+      .filter(Boolean),
+    recent_outputs: safeArray(input.recent_outputs || input.recentOutputs)
+      .slice(0, 18)
+      .map((item) => {
+        if (typeof item === "string") return safeText(item, 700);
+        const output = safeObject(item);
+        return {
+          task_id: safeText(output.task_id || output.taskId, 180),
+          project_id: safeText(output.project_id || output.projectId, 180),
+          title: safeText(output.title, 240),
+          summary: safeText(output.summary || output.description, 700),
+          state: safeText(output.state || output.status, 80),
+        };
+      })
+      .filter((item) => typeof item === "string" ? item : item.task_id || item.title || item.summary),
+    repeated_themes: safeArray(input.repeated_themes || input.repeatedThemes)
+      .slice(0, 12)
+      .map((item) => safeText(item, 700))
+      .filter(Boolean),
+    open_actionable_items: safeArray(input.open_actionable_items || input.openActionableItems)
+      .slice(0, 12)
+      .map((item) => safeText(item, 700))
+      .filter(Boolean),
+  };
+}
+
+function normalizeDeduplicationWatchlist(value = []) {
+  return safeArray(value)
+    .slice(0, 16)
+    .map((item) => {
+      const input = safeObject(item);
+      return {
+        theme: safeText(input.theme, 240),
+        project_id: safeText(input.project_id || input.projectId, 180),
+        prior_task_ids: safeArray(input.prior_task_ids || input.priorTaskIds)
+          .slice(0, 10)
+          .map((taskId) => safeText(taskId, 180))
+          .filter(Boolean),
+        prior_cids: safeArray(input.prior_cids || input.priorCids)
+          .slice(0, 10)
+          .map((cid) => safeText(cid, 240))
+          .filter(Boolean),
+        why_not_repeat: safeText(input.why_not_repeat || input.whyNotRepeat, 900),
+        next_action_suggestion: safeText(input.next_action_suggestion || input.nextActionSuggestion, 900),
+      };
+    })
+    .filter((item) => item.theme || item.prior_task_ids.length || item.prior_cids.length || item.next_action_suggestion);
+}
+
 export function normalizeBoardManagerSecretaryPacket(output = {}) {
   const input = safeObject(output);
   const motionState = safeText(input.motion_state || input.motionState, 80).toLowerCase();
@@ -210,6 +304,12 @@ export function normalizeBoardManagerSecretaryPacket(output = {}) {
     network_task_summary: safeText(input.network_task_summary || input.networkTaskSummary, 1600),
     candidate_summary: safeText(input.candidate_summary || input.candidateSummary, 1200),
     recent_run_summary: safeText(input.recent_run_summary || input.recentRunSummary, 1200),
+    operator_standing_policy: normalizeOperatorStandingPolicy(input.operator_standing_policy || input.operatorStandingPolicy),
+    generation_quality_policy: normalizeGenerationQualityPolicy(input.generation_quality_policy || input.generationQualityPolicy),
+    prior_output_corpus_summary: normalizePriorOutputCorpusSummary(
+      input.prior_output_corpus_summary || input.priorOutputCorpusSummary
+    ),
+    deduplication_watchlist: normalizeDeduplicationWatchlist(input.deduplication_watchlist || input.deduplicationWatchlist),
     facts_to_preserve: safeArray(input.facts_to_preserve || input.factsToPreserve)
       .slice(0, 24)
       .map((item) => safeText(item, 500))
@@ -225,6 +325,27 @@ function packetText(packet = {}) {
     .join("\n") || "None";
   const projects = safeArray(packet.project_summaries)
     .map((project) => `- ${project.project_id || project.title}: ${project.status || project.next_needed || ""}`.trim())
+    .filter(Boolean)
+    .join("\n") || "None";
+  const standingPolicy = safeArray(packet.operator_standing_policy)
+    .map((policy) =>
+      `- [${policy.source_id || "source"} ${policy.created_at || ""} ${policy.active_scope || "global"}] ${policy.directive || ""} -> ${policy.generation_implication || ""}`.trim()
+    )
+    .filter(Boolean)
+    .join("\n") || "None";
+  const generationPolicy = safeObject(packet.generation_quality_policy);
+  const corpusSummary = safeObject(packet.prior_output_corpus_summary);
+  const recentOutputs = safeArray(corpusSummary.recent_outputs)
+    .map((output) => {
+      if (typeof output === "string") return `- ${output}`;
+      return `- ${output.task_id || output.title || "output"} ${output.project_id || ""}: ${output.summary || output.title || ""}`.trim();
+    })
+    .filter(Boolean)
+    .join("\n") || "None";
+  const dedupWatchlist = safeArray(packet.deduplication_watchlist)
+    .map((item) =>
+      `- ${item.theme || item.project_id || "theme"}: prior tasks ${(item.prior_task_ids || []).join(", ") || "none"}; prior CIDs ${(item.prior_cids || []).join(", ") || "none"}; next ${item.next_action_suggestion || "unspecified"}`.trim()
+    )
     .filter(Boolean)
     .join("\n") || "None";
   return [
@@ -264,6 +385,24 @@ function packetText(packet = {}) {
     "",
     "Recent Board Manager runs",
     packet.recent_run_summary || "No recent run summary.",
+    "",
+    "Operator standing policy",
+    standingPolicy,
+    "",
+    "Generation quality policy",
+    `documentation_only_default: ${generationPolicy.documentation_only_default || "low_value_unless_action_coupled"}`,
+    `requires_concrete_action_output: ${generationPolicy.requires_concrete_action_output ? "true" : "false"}`,
+    `escalation_ladder: ${generationPolicy.escalation_ladder || "document_to_action_v1"}`,
+    generationPolicy.operator_constraints_summary || "",
+    "",
+    "Prior output corpus summary",
+    `Projects covered: ${safeArray(corpusSummary.projects_covered).join(", ") || "none"}`,
+    `Repeated themes: ${safeArray(corpusSummary.repeated_themes).join("; ") || "none"}`,
+    `Open actionable items: ${safeArray(corpusSummary.open_actionable_items).join("; ") || "none"}`,
+    recentOutputs,
+    "",
+    "Deduplication watchlist",
+    dedupWatchlist,
     "",
     "Facts to preserve",
     safeArray(packet.facts_to_preserve).map((fact) => `- ${fact}`).join("\n") || "None",
@@ -314,6 +453,8 @@ function buildActionTargetRegistry(sourcePacket = {}) {
         sourceConversationId: safeText(entry.sourceConversationId, 180),
         walletValidated: Boolean(entry.walletValidated),
         walletAddress: safeText(entry.walletAddress, 120),
+        bodyPreview: safeText(entry.body, 500),
+        generationPolicyHint: Boolean(safeText(entry.body, 2000)),
         createdAt: entry.createdAt || null,
       };
       if (item.id) hiveContextEntries.push(item);
@@ -617,6 +758,7 @@ export function buildBoardManagerSecretaryDecisionPacket({
   secretaryPacket = {},
   reused = false,
 } = {}) {
+  const normalizedSecretaryJson = normalizeBoardManagerSecretaryPacket(secretaryPacket.packetJson);
   const packetCore = {
     schema: "pf.hive.board_manager.decision_source.v1",
     sourceMode: "deepseek_secretary_packet",
@@ -630,6 +772,29 @@ export function buildBoardManagerSecretaryDecisionPacket({
     boardActionPressure: safeObject(sourcePacket.boardActionPressure),
     openFollowups: safeArray(sourcePacket.openFollowups).slice(0, 20),
     actionTargetRegistry: buildActionTargetRegistry(sourcePacket),
+    operatorStandingPolicy: normalizeOperatorStandingPolicy(
+      sourcePacket.operatorStandingPolicy ||
+        sourcePacket.operator_standing_policy ||
+        normalizedSecretaryJson.operator_standing_policy
+    ),
+    generationQualityPolicy: normalizeGenerationQualityPolicy(
+      sourcePacket.generationQualityPolicy ||
+        sourcePacket.generation_quality_policy ||
+        normalizedSecretaryJson.generation_quality_policy
+    ),
+    networkTaskOutputCorpus: safeObject(sourcePacket.networkTaskOutputCorpus || sourcePacket.network_task_output_corpus),
+    priorOutputCorpusSummary: normalizePriorOutputCorpusSummary(
+      sourcePacket.priorOutputCorpusSummary ||
+        sourcePacket.prior_output_corpus_summary ||
+        sourcePacket.networkTaskOutputCorpus?.summary ||
+        normalizedSecretaryJson.prior_output_corpus_summary
+    ),
+    deduplicationWatchlist: normalizeDeduplicationWatchlist(
+      sourcePacket.deduplicationWatchlist ||
+        sourcePacket.deduplication_watchlist ||
+        sourcePacket.networkTaskOutputCorpus?.deduplicationWatchlist ||
+        normalizedSecretaryJson.deduplication_watchlist
+    ),
     secretaryPacket: {
       id: safeText(secretaryPacket.id, 180),
       packetType: safeText(secretaryPacket.packetType || "board_triage", 80),
@@ -640,7 +805,7 @@ export function buildBoardManagerSecretaryDecisionPacket({
       model: safeText(secretaryPacket.model || boardManagerSecretaryModel(), 120),
       promptVersion: safeText(secretaryPacket.promptVersion || promptVersion, 120),
       createdAt: secretaryPacket.createdAt || null,
-      packetJson: normalizeBoardManagerSecretaryPacket(secretaryPacket.packetJson),
+      packetJson: normalizedSecretaryJson,
       packetText: safeText(secretaryPacket.packetText, 20000),
       usage: safeObject(secretaryPacket.usage),
     },

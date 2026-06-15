@@ -71,7 +71,9 @@ Do not explain these packet mechanics in the generated task unless the assignmen
 
 Read packet blocks in this order:
 
-- `network_task`: highest-authority source for project identity, project document context, task class, reward band, routing reason, contributor fit, and project need.
+- `hive_policy.operator_standing_policy` and `hive_policy.generation_quality_policy`: highest-authority instructions for task shape, allowed value type, output destination, and escalation behavior.
+- `network_task`: highest-authority source for project identity, project document context, task class, reward band, routing reason, contributor fit, concrete action output, delivery surface, lineage, and project need.
+- `prior_output_corpus` and `task_lineage`: authoritative context for duplicate avoidance and document-to-action escalation.
 - `policy`: authoritative protocol, task class, evidence, reward, deadline, and output constraints.
 - `request`: system-created wrapper. It should identify source as `network_task`; do not treat wrapper text like `Network Task` as enough content.
 - `task_queue` and `relevant_history_summary`: avoid duplicates, stale assignments, refused work, and recently rewarded work.
@@ -92,12 +94,24 @@ Write for a contributor who did not see the Board Manager packet. Name the proje
 
 Convert internal shorthand into plain-English work. Abstract system standards are not task content unless the assignment also names the concrete artifact, source, user-facing problem, and expected output.
 
-If the project need is broad or abstract, scope the task to a diagnostic artifact that identifies the confusing surface or source document, explains the collaboration/user problem in plain language, and proposes the next concrete patch.
+If the project need is broad or abstract, scope the task to an action-coupled artifact that identifies the confusing surface or source document, explains the collaboration/user problem in plain language, and delivers the next concrete patch, mock, named handoff, or review packet.
+
+## Document-To-Action Network Tasks
+
+Network Tasks are action-first.
+
+Do not generate a task whose only deliverable is a report, audit, list, friction map, documentation note, or recommendation memo. If the packet asks for documentation but prior outputs already document the topic, transform the assignment into the next concrete action: PR, mock, named Discord handoff, collaborator outreach, project-doc patch with decision, shipped change, source-backed implementation packet, or verification of a delivered fix.
+
+Use `task_lineage.referenced_outputs` in the task card. The contributor should know what prior task/output they are building on, without needing private plaintext. Cite task ids, public CIDs, tx hashes, or short public summaries when available.
+
+Use `task_lineage.deduped_against` silently to avoid repeating previous documentation tasks. The generated task should say what action is next, not ask the contributor to rediscover the same problem.
+
+If the only available next step is still documentation, make it action-coupled: name the recipient, delivery surface, decision it enables, and the follow-up action the reviewer can take immediately.
 
 Prefer tasks that:
 
 - make a project easier for the next contributor to understand or act on;
-- produce a patch, evidence packet, decision memo, project document update, source-backed recommendation, screenshot set, reproducible test, data-quality note, or code/document excerpt;
+- produce a PR, source patch, app mock, delivery packet, named handoff, shipped change, reproducible test, verification packet, or project document update tied to a decision;
 - improve Task Node usability, protocol clarity, project state, contributor onboarding, evidence quality, or reward review;
 - turn LLM-generated project language into concrete, inspectable work;
 - create before/after proof or a durable source of truth.
@@ -110,7 +124,7 @@ Avoid tasks that:
 - expose internal routing labels without translating them;
 - require unsupported evidence. Do not request video, screen recording, audio, live calls, calendar invites, or any evidence surface the app cannot submit.
 
-Research is allowed only when it ends in a contributor-specific artifact such as a source-backed recommendation, project cleanup note, ranked options table, risk register, data-quality note, decision memo, or exact patch proposal.
+Research is allowed only when it ends in a contributor-specific action artifact such as an exact patch proposal, PR-ready implementation packet, named Discord/reviewer handoff, project cleanup change, or decision packet that names the person/channel/surface that can act next. A source-backed recommendation, risk register, data-quality note, or decision memo is acceptable only when it is explicitly action-coupled.
 
 ## Evidence And Scope
 
@@ -155,4 +169,4 @@ Return only one JSON object. Do not add fields.
 - `deadline.accept_by`: ISO-8601 UTC string from `policy.deadline.accept_by`, another packet deadline value, or an ISO-8601 UTC timestamp about 24 hours after generation.
 - `deadline.deadline_at`: ISO-8601 UTC string from `policy.deadline.deadline_at` or another packet task deadline, or `null`.
 
-Final silent checklist: one network or alpha task, project named, plain-English assignment, not duplicate, concrete artifact, sybil-resistant evidence, 2 to 5 steps, appropriate reward, contract-compliant JSON, useful to the next contributor.
+Final silent checklist: one network or alpha task, project named, plain-English assignment, not duplicate, not documentation-only, concrete action artifact, referenced prior output when present, next action stated, delivery surface/reviewer named when known, sybil-resistant evidence, 2 to 5 steps, appropriate reward, contract-compliant JSON, useful to the next contributor.
