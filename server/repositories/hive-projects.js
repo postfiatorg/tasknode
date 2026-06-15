@@ -116,7 +116,11 @@ function walletIdentityMap(walletIdentities = [], publicProfileIds = new Set()) 
 
 function enrichContributorWithWalletIdentity(contributor = {}, identity = null) {
   if (identity?.displayName) {
-    contributor.codename = identity.displayName;
+    // Keep the operator's Hive codename as the displayed name; expose the public
+    // profile displayName as a separate fallback field (the frontend's
+    // operatorDisplayName prefers codename, then displayName). Overwriting codename
+    // here blanked routing-feed names when displayName was empty/odd.
+    contributor.displayName = identity.displayName;
     contributor.hiveHandle = identity.hiveHandle || contributor.hiveHandle || "";
     contributor.publicDisplayName = identity.publicDisplayName || contributor.publicDisplayName || "";
     contributor.publicAliases = identity.publicAliases || contributor.publicAliases || [];
