@@ -11,6 +11,29 @@ function normalizeText(value) {
   return String(value).trim();
 }
 
+function clampInteger(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(parsed)));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readRetryAttempts(env = process.env) {
+  return clampInteger(env.TASKNODE_IPFS_READ_RETRY_ATTEMPTS, 3, 1, 6);
+}
+
+function readRetryBackoffMs(env = process.env) {
+  return clampInteger(env.TASKNODE_IPFS_READ_RETRY_BACKOFF_MS, 600, 0, 3_000);
+}
+
+function readRetryDelayMs(attemptIndex, env = process.env) {
+  const base = readRetryBackoffMs(env);
+  return Math.min(3_000, Math.round(base * (attemptIndex <= 1 ? 1 : 2.5)));
+}
+
 function sha256Hex(value) {
   const data = typeof value === "string" || Buffer.isBuffer(value)
     ? value
@@ -138,8 +161,15 @@ export async function fetchAndDecryptTasknodePayload({
   cid,
   env = process.env,
   fetchIpfsJson = fetchContextIpfsJson,
+  sleepFn = sleep,
 } = {}) {
-  const fetched = await fetchIpfsJson({ cid });
+  let fetched = null;
+  const attempts = readRetryAttempts(env);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    fetched = await fetchIpfsJson({ cid });
+    if (fetched?.ok) break;
+    if (attempt < attempts) await sleepFn(readRetryDelayMs(attempt, env));
+  }
   if (!fetched?.ok) throw new Error(fetched?.error || "task_ipfs_fetch_failed");
   const payload = await decryptTasknodeServicePayload({ blob: fetched.payload, env });
   return {
