@@ -179,6 +179,13 @@ export const apiRoutePolicies = [
     rateLimit: { limit: 300, windowMs: tenMinutes, extra: "pathname" },
   },
   {
+    id: "profile_nft_pfp",
+    prefix: "/api/profile/nft/pfp/",
+    methods: ["GET"],
+    auth: "none",
+    rateLimit: { limit: 600, windowMs: tenMinutes, extra: "pathname" },
+  },
+  {
     id: "chat_stream",
     path: "/api/chat/stream",
     methods: ["POST"],

@@ -52,7 +52,7 @@ import { handleTaskReadRoute } from "./task-routes.js";
 import { handleAccountRoute } from "./account-routes.js";
 import { contextEditProposalAction } from "./context-edit-actions.js";
 import { handleProfileRoute } from "./profile-routes.js";
-import { handleProfileNftImageRoute } from "./profile-nft-image-proxy.js";
+import { handleProfileNftImageRoute, handleProfileNftPfpRoute } from "./profile-nft-image-proxy.js";
 import { handleMemoryRoute } from "./memory-routes.js";
 import { handleDirectoryRoute } from "./directory-routes.js";
 import { handleHiveRoute } from "./hive-routes.js";
@@ -713,6 +713,7 @@ async function routeApi(req, url, res) {
     url,
   })) return true;
 
+  if (await handleProfileNftPfpRoute({ json, req, res, url })) return true;
   if (await handleProfileNftImageRoute({ json, req, res, url })) return true;
 
   if (await handleProfileRoute({ getState, json, readJson, req, res, session, url })) return true;

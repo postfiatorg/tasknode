@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, ArrowLeft, ArrowUpRight, Check, ChevronDown, ChevronRight, Copy, Flag, X } from "lucide-react";
 import { requestJson } from "../../api";
+import { profileNftImageCandidates } from "../profile/profile-nft-images.js";
 import "./hive.css";
 
 const PROJECT_DETAIL_PAGE_SIZE = 8;
@@ -809,21 +810,8 @@ function ProjectTaskRow({ task, last = false, onOpenTask, operators = {}, projec
   );
 }
 
-function imageCandidatesForNft(nft = {}) {
-  const candidates = [nft.imageDataUrl];
-  if (nft.imageCid) {
-    candidates.push(`/api/profile/nft/image/${encodeURIComponent(nft.imageCid)}`);
-  } else {
-    candidates.push(nft.imageGatewayUrl);
-  }
-  return candidates
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .filter((value, index, list) => list.indexOf(value) === index);
-}
-
 function HiveProfileBadge({ nft = null, size = 20, variant = 0 }) {
-  const imageCandidates = useMemo(() => imageCandidatesForNft(nft || {}), [nft]);
+  const imageCandidates = useMemo(() => profileNftImageCandidates(nft || {}, { avatarCssSize: size }), [nft, size]);
   const [imageIndex, setImageIndex] = useState(0);
   const imageSrc = imageCandidates[imageIndex] || "";
 
@@ -839,6 +827,7 @@ function HiveProfileBadge({ nft = null, size = 20, variant = 0 }) {
       className="hive-profile-badge"
       decoding="async"
       height={size}
+      loading="lazy"
       onError={() => setImageIndex((index) => index + 1)}
       src={imageSrc}
       width={size}
