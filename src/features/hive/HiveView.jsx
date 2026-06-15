@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
+import { Activity, ArrowLeft, ArrowUpRight, Check, ChevronDown, ChevronRight, Copy, Flag, X } from "lucide-react";
 import { requestJson } from "../../api";
 import "./hive.css";
 
@@ -7,8 +7,12 @@ const PROJECT_DETAIL_PAGE_SIZE = 8;
 
 export function HiveView() {
   const [selectedProject, setSelectedProject] = useState(null);
+  const [selectedHiveTask, setSelectedHiveTask] = useState(null);
   const [projectDocument, setProjectDocument] = useState(null);
   const [projectStatus, setProjectStatus] = useState("loading");
+  const openHiveTask = useCallback((task) => {
+    if (task?.taskId) setSelectedHiveTask(task);
+  }, []);
 
   const loadProjectDocument = useCallback(async ({ showLoading = false, shouldApply = () => true } = {}) => {
     if (showLoading && shouldApply()) setProjectStatus("loading");
@@ -42,6 +46,7 @@ export function HiveView() {
       {selectedProject ? (
         <ProjectDetail
           onBack={() => setSelectedProject(null)}
+          onOpenTask={openHiveTask}
           operators={projectDocument?.operators || {}}
           project={projectDocument?.projects?.[selectedProject] || null}
           status={projectStatus}
@@ -49,15 +54,22 @@ export function HiveView() {
       ) : (
         <HiveIndex
           onSelectProject={setSelectedProject}
+          onOpenTask={openHiveTask}
           projectDocument={projectDocument}
           projectStatus={projectStatus}
+        />
+      )}
+      {selectedHiveTask && (
+        <HiveTaskPopout
+          initialTask={selectedHiveTask}
+          onClose={() => setSelectedHiveTask(null)}
         />
       )}
     </div>
   );
 }
 
-function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
+function HiveIndex({ onOpenTask, onSelectProject, projectDocument, projectStatus }) {
   const [hiveContext, setHiveContext] = useState(null);
   const [hiveSecretary, setHiveSecretary] = useState(null);
   const [boardManager, setBoardManager] = useState(null);
@@ -131,6 +143,7 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
       <Section title="Active projects" subtitle="What the hive is routing operators to">
         <ProjectGrid
           document={projectDocument}
+          onOpenTask={onOpenTask}
           onSelectProject={onSelectProject}
           status={projectStatus}
         />
@@ -143,7 +156,9 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
               entry={entry}
               key={entry.id || `${entry.wallet}-${entry.task}-${index}`}
               last={index === list.length - 1}
+              onOpenTask={onOpenTask}
               operators={projectDocument?.operators || {}}
+              project={projectDocument?.projects?.[entry.projectId] || { name: entry.project }}
             />
           ))}
           {projectStatus === "loading" && <div className="hive-empty-project">Loading project feed.</div>}
@@ -188,7 +203,7 @@ function HiveIndex({ onSelectProject, projectDocument, projectStatus }) {
   );
 }
 
-function ProjectGrid({ document, onSelectProject, status }) {
+function ProjectGrid({ document, onOpenTask, onSelectProject, status }) {
   const projects = document?.projects || {};
   const projectIds = document?.projectIds || [];
   if (status === "loading") {
@@ -205,6 +220,7 @@ function ProjectGrid({ document, onSelectProject, status }) {
       {projectIds.map((id) => (
         <ProjectCard
           key={id}
+          onOpenTask={onOpenTask}
           operators={document?.operators || {}}
           project={projects[id] || {}}
           onClick={() => onSelectProject(id)}
@@ -214,7 +230,7 @@ function ProjectGrid({ document, onSelectProject, status }) {
   );
 }
 
-function ProjectDetail({ onBack, operators, project, status }) {
+function ProjectDetail({ onBack, onOpenTask, operators, project, status }) {
   const [taskPage, setTaskPage] = useState(1);
   const [activityPage, setActivityPage] = useState(1);
   const projectTasks = project?.tasks || [];
@@ -302,7 +318,9 @@ function ProjectDetail({ onBack, operators, project, status }) {
                 <ProjectTaskRow
                   key={task.id || `${task.title}-${task.state}`}
                   last={index === taskPageState.rows.length - 1}
+                  onOpenTask={onOpenTask}
                   operators={operators}
+                  project={project}
                   task={task}
                 />
               ))}
@@ -330,7 +348,9 @@ function ProjectDetail({ onBack, operators, project, status }) {
                   entry={entry}
                   key={entry.id || `${entry.wallet}-${entry.task}`}
                   last={index === activityPageState.rows.length - 1}
+                  onOpenTask={onOpenTask}
                   operators={operators}
+                  project={project}
                 />
               ))}
               <PaginationControls
@@ -465,7 +485,7 @@ function Section({ title, subtitle, children, layerNumber = "" }) {
   );
 }
 
-function ProjectCard({ operators, project, onClick }) {
+function ProjectCard({ onOpenTask, operators, project, onClick }) {
   const previewWallets = (project.contributors || []).map((contributor) => contributor.wallet).slice(0, 4);
   const contributorCount = project.contributors?.length || 0;
   const taskCount = project.tasks?.length || 0;
@@ -474,13 +494,18 @@ function ProjectCard({ operators, project, onClick }) {
   const nextTask = project.nextTask || null;
 
   return (
-    <button className="hive-project-card" onClick={onClick} type="button">
-      <span className="hive-project-card-title">{project.name}</span>
-      <span className="hive-project-type">{project.type}</span>
-      <p>{project.summary}</p>
+    <article className="hive-project-card">
+      <button className="hive-project-card-main" onClick={onClick} type="button">
+        <span className="hive-project-card-title">{project.name}</span>
+        <span className="hive-project-type">{project.type}</span>
+        <p>{project.summary}</p>
+      </button>
       <ProjectNextTaskPreview
         nextTask={nextTask}
+        onOpenTask={onOpenTask}
+        operators={operators}
         pendingGenerationCount={pendingGenerationCount}
+        project={project}
       />
       <span className="hive-card-contributors">
         {hasAllocatedContributors && (
@@ -503,26 +528,34 @@ function ProjectCard({ operators, project, onClick }) {
           )}
         </span>
       </span>
-      <span className="hive-project-card-foot">
+      <button className="hive-project-card-foot" onClick={onClick} type="button">
         <span>
           <strong>{taskCount}</strong> task {taskCount === 1 ? "row" : "rows"}
         </span>
         <span className="hive-pft">{formatPft(project.pft)} PFT routed</span>
         <ChevronRight size={14} strokeWidth={1.8} />
-      </span>
-    </button>
+      </button>
+    </article>
   );
 }
 
-function ProjectNextTaskPreview({ nextTask, pendingGenerationCount = 0 }) {
+function ProjectNextTaskPreview({ nextTask, onOpenTask, operators = {}, pendingGenerationCount = 0, project = {} }) {
   if (nextTask) {
+    const canOpen = Boolean(nextTask.taskId && onOpenTask);
+    const TaskTag = canOpen ? "button" : "span";
+    const taskProps = canOpen
+      ? {
+          onClick: () => onOpenTask(hiveTaskSeed(nextTask, { operators, project })),
+          type: "button",
+        }
+      : {};
     return (
-      <span className="hive-project-next-task">
+      <TaskTag className={`hive-project-next-task${canOpen ? " is-clickable" : ""}`} {...taskProps}>
         <small>Next reward task</small>
         <strong>{nextTask.title}</strong>
         <em>{actionLabel(nextTask.state)} · {formatPft(nextTask.pft)} PFT</em>
         {nextTask.nextAction && <span>{nextTask.nextAction}</span>}
-      </span>
+      </TaskTag>
     );
   }
   const blocker = pendingGenerationCount > 0
@@ -536,18 +569,132 @@ function ProjectNextTaskPreview({ nextTask, pendingGenerationCount = 0 }) {
   );
 }
 
-function FeedRow({ entry, last = false, operators = {} }) {
+function profileHref(accountId = "") {
+  const normalized = String(accountId || "").trim();
+  return normalized ? `#/profile?account=${encodeURIComponent(normalized)}` : "";
+}
+
+function operatorHandle(operator = {}) {
+  return String(operator.hiveHandle || operator.handle || "").replace(/^@+/, "").trim();
+}
+
+function operatorDisplayName(operator = {}, wallet = "") {
+  const handle = operatorHandle(operator);
+  return operator.codename || operator.displayName || operator.publicDisplayName || (handle ? `@${handle}` : "") || compactWallet(wallet);
+}
+
+function HiveProfileIdentity({
+  children = null,
+  className = "",
+  copyClassName = "",
+  operator = {},
+  showBadge = true,
+  size = 20,
+  wallet = "",
+}) {
+  const accountId = String(operator.accountId || "").trim();
+  const canLink = Boolean(accountId && operator.hasPublicProfile);
+  const href = canLink ? profileHref(accountId) : "";
+  const label = operatorDisplayName(operator, wallet);
+  const walletLabel = compactWallet(wallet);
+  const handle = operatorHandle(operator);
+  const secondary = handle ? `@${handle}${wallet ? ` · ${walletLabel}` : ""}` : walletLabel;
+  const Tag = canLink ? "a" : "span";
+  const tagProps = canLink
+    ? {
+        href,
+        onClick: (event) => event.stopPropagation(),
+        "aria-label": `Open ${label} public profile`,
+      }
+    : {};
+
+  return (
+    <Tag className={`hive-profile-identity ${className} ${canLink ? "is-link" : ""}`} {...tagProps}>
+      {showBadge && <HiveProfileBadge nft={operator.nft} size={size} variant={operator.badge || 0} />}
+      <span className={`hive-profile-copy ${copyClassName}`}>
+        <strong>{label}</strong>
+        {secondary && label !== secondary && <small>{secondary}</small>}
+        {children}
+      </span>
+      {canLink && <ArrowUpRight className="hive-profile-go" size={13} strokeWidth={1.8} />}
+    </Tag>
+  );
+}
+
+function assigneeForTask(task = {}, operators = {}) {
+  const wallet = task.assignee || task.wallet || "";
+  const operator = wallet ? operatorForWallet(wallet, operators) : {};
+  return wallet
+    ? {
+        wallet,
+        accountId: task.assigneeAccountId || operator.accountId || task.accountId || "",
+        codename: task.assigneeDisplayName || operator.codename || compactWallet(wallet),
+        handle: task.assigneeHandle || operator.hiveHandle || task.hiveHandle || "",
+        hasPublicProfile: Boolean(task.assigneeHasPublicProfile || operator.hasPublicProfile || task.hasPublicProfile),
+        badge: operator.badge || task.badge || 0,
+        nft: task.assigneeNft || operator.nft || null,
+      }
+    : null;
+}
+
+function hiveTaskSeed(source = {}, { operators = {}, project = {} } = {}) {
+  const taskId = source.taskId || source.task_id || "";
+  const assignee = assigneeForTask(source, operators);
+  return {
+    id: taskId || source.id || "",
+    taskId,
+    title: source.title || source.task || "Hive task",
+    kind: "Network task",
+    state: source.state || source.action || "proposed",
+    pft: Number(source.pft || source.rewardPft || 0),
+    age: source.age || source.time || source.updatedAt || "",
+    summary: source.summary || source.description || "",
+    nextAction: source.nextAction || taskNextAction(source.state || source.action),
+    project: {
+      id: source.projectId || project.id || "",
+      name: source.project || project.name || "",
+      type: source.projectType || project.type || "",
+    },
+    assignee,
+    review: null,
+    timeline: [],
+  };
+}
+
+function hiveTaskClickProps(seed = {}, onOpenTask = null) {
+  if (!seed.taskId || typeof onOpenTask !== "function") return { className: "", props: {} };
+  return {
+    className: "is-clickable",
+    props: {
+      onClick: (event) => {
+        if (event.target?.closest?.("a")) return;
+        onOpenTask(seed);
+      },
+      onKeyDown: (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onOpenTask(seed);
+      },
+      role: "button",
+      tabIndex: 0,
+    },
+  };
+}
+
+function FeedRow({ entry, last = false, onOpenTask, operators = {}, project = {} }) {
   const operator = operatorForWallet(entry.wallet, operators);
-  const walletLabel = compactWallet(entry.wallet);
   const timeLabel = String(entry.time || "").trim();
   const showTime = timeLabel && timeLabel.toLowerCase() !== "indexed";
+  const seed = hiveTaskSeed(entry, { operators, project });
+  const clickProps = hiveTaskClickProps(seed, onOpenTask);
   return (
-    <div className={`hive-feed-row ${last ? "is-last" : ""}`}>
-      <HiveProfileBadge nft={operator.nft} size={24} variant={operator.badge} />
-      <span className="hive-feed-operator">
-        <strong>{operator.codename}</strong>
-        {operator.codename !== walletLabel && <small>{walletLabel}</small>}
-      </span>
+    <div className={`hive-feed-row ${last ? "is-last" : ""} ${clickProps.className}`} {...clickProps.props}>
+      <HiveProfileIdentity
+        className="hive-feed-profile"
+        operator={operator}
+        size={24}
+        wallet={entry.wallet}
+      />
       <span className={`hive-action is-${entry.action}`}>{actionLabel(entry.action)}</span>
       <span className="hive-feed-copy">
         {entry.task}
@@ -563,16 +710,17 @@ function AllottedOperatorRow({ wallet, operator, last = false }) {
   const resolvedOperator = operator || operatorForWallet(wallet);
   const loadPercent = resolvedOperator.cap ? Math.round((resolvedOperator.load / resolvedOperator.cap) * 100) : 0;
   const active = resolvedOperator.status === "active";
-  const walletLabel = compactWallet(wallet);
   const focusTask = (resolvedOperator.currentTasks || [])[0] || null;
 
   return (
     <div className={`hive-operator-row ${last ? "is-last" : ""}`}>
-      <HiveProfileBadge nft={resolvedOperator.nft} size={26} variant={resolvedOperator.badge} />
-      <span className="hive-operator-id">
-        <strong>{resolvedOperator.codename}</strong>
-        {resolvedOperator.codename !== walletLabel && <small>{walletLabel}</small>}
-      </span>
+      <HiveProfileIdentity
+        className="hive-operator-profile"
+        copyClassName="hive-operator-id"
+        operator={resolvedOperator}
+        size={26}
+        wallet={wallet}
+      />
       <span className={`hive-presence ${active ? "is-active" : "is-quiet"}`} />
       <span className="hive-operator-role">
         <span>{resolvedOperator.archetype}</span>
@@ -598,10 +746,15 @@ function ContributorCard({ contributor }) {
     <div className="hive-contributor-card">
       <HiveProfileBadge nft={contributor.nft} size={36} variant={contributor.badge} />
       <div className="hive-contributor-main">
-        <span>
-          <strong>{contributor.codename || "Operator"}</strong>
+        <HiveProfileIdentity
+          className="hive-contributor-profile"
+          copyClassName="hive-contributor-title"
+          operator={contributor}
+          showBadge={false}
+          wallet={contributor.wallet}
+        >
           {contributor.role === "lead" && <small>lead</small>}
-        </span>
+        </HiveProfileIdentity>
         <code>{contributor.wallet}</code>
         <p>{focusTask ? `Working on ${focusTask.title}` : contributor.archetype}</p>
       </div>
@@ -616,16 +769,16 @@ function ContributorCard({ contributor }) {
   );
 }
 
-function ProjectTaskRow({ task, last = false, operators = {} }) {
+function ProjectTaskRow({ task, last = false, onOpenTask, operators = {}, project = {} }) {
   const state = taskState(task.state);
-  const operator = task.assignee ? operatorForWallet(task.assignee, operators) : null;
   const age = String(task.age || "").trim();
-  const walletLabel = compactWallet(task.assignee);
-  const assigneeLabel = operator?.codename || walletLabel;
   const nextAction = task.nextAction || taskNextAction(task.state);
+  const assignee = assigneeForTask(task, operators);
+  const seed = hiveTaskSeed(task, { operators, project });
+  const clickProps = hiveTaskClickProps(seed, onOpenTask);
 
   return (
-    <div className={`hive-task-row ${last ? "is-last" : ""} ${state.dim ? "is-dim" : ""}`}>
+    <div className={`hive-task-row ${last ? "is-last" : ""} ${state.dim ? "is-dim" : ""} ${clickProps.className}`} {...clickProps.props}>
       <span className={`hive-task-dot ${state.ring ? "is-ring" : ""} is-${state.tone}`} />
       <span className="hive-task-main">
         <strong>{task.title}</strong>
@@ -636,14 +789,14 @@ function ProjectTaskRow({ task, last = false, operators = {} }) {
         {nextAction && <small className="hive-task-next">Next: {nextAction}</small>}
       </span>
       <span className="hive-task-assignee">
-        {task.assignee ? (
-          <>
-            <HiveProfileBadge nft={task.assigneeNft} size={20} variant={operator?.badge || 0} />
-            <span className="hive-task-assignee-label">
-              <span>{assigneeLabel}</span>
-              {assigneeLabel !== walletLabel && <small>{walletLabel}</small>}
-            </span>
-          </>
+        {assignee ? (
+          <HiveProfileIdentity
+            className="hive-task-assignee-profile"
+            copyClassName="hive-task-assignee-label"
+            operator={assignee}
+            size={20}
+            wallet={assignee.wallet}
+          />
         ) : (
           <em>unassigned</em>
         )}
@@ -693,17 +846,25 @@ function HiveProfileBadge({ nft = null, size = 20, variant = 0 }) {
   );
 }
 
-function ActivityRow({ entry, last = false, operators = {} }) {
+function ActivityRow({ entry, last = false, onOpenTask, operators = {}, project = {} }) {
   const state = taskState(entry.action);
   const operator = operatorForWallet(entry.wallet, operators);
-  const walletLabel = compactWallet(entry.wallet);
-  const operatorLabel = operator.codename || walletLabel;
   const timeLabel = String(entry.time || "").trim() || formatContextTime(entry.updatedAt || entry.createdAt);
   const hasPft = entry.pft !== null && entry.pft !== undefined && entry.pft !== "";
   const nextAction = entry.nextAction || taskNextAction(entry.action);
+  const profileOperator = {
+    ...operator,
+    accountId: entry.accountId || operator.accountId || "",
+    codename: entry.displayName || operator.codename || compactWallet(entry.wallet),
+    handle: entry.hiveHandle || operator.hiveHandle || "",
+    hasPublicProfile: Boolean(entry.hasPublicProfile || operator.hasPublicProfile),
+    nft: entry.nft || operator.nft || null,
+  };
+  const seed = hiveTaskSeed(entry, { operators, project });
+  const clickProps = hiveTaskClickProps(seed, onOpenTask);
 
   return (
-    <div className={`hive-task-row hive-activity-task-row ${last ? "is-last" : ""} ${state.dim ? "is-dim" : ""}`}>
+    <div className={`hive-task-row hive-activity-task-row ${last ? "is-last" : ""} ${state.dim ? "is-dim" : ""} ${clickProps.className}`} {...clickProps.props}>
       <span className={`hive-task-dot ${state.ring ? "is-ring" : ""} is-${state.tone}`} />
       <span className="hive-task-main">
         <strong>{entry.task || "Project activity"}</strong>
@@ -714,16 +875,349 @@ function ActivityRow({ entry, last = false, operators = {} }) {
         {nextAction && <small className="hive-task-next">Acknowledged: {nextAction}</small>}
       </span>
       <span className="hive-task-assignee">
-        <HiveProfileBadge nft={operator.nft} size={20} variant={operator.badge} />
-        <span className="hive-task-assignee-label">
-          <span>{operatorLabel}</span>
-          {operatorLabel !== walletLabel && <small>{walletLabel}</small>}
-        </span>
+        <HiveProfileIdentity
+          className="hive-task-assignee-profile"
+          copyClassName="hive-task-assignee-label"
+          operator={profileOperator}
+          size={20}
+          wallet={entry.wallet}
+        />
       </span>
       <span className={`hive-task-pft ${hasPft ? "" : "is-empty"}`}>
         <strong>{hasPft ? formatPft(entry.pft) : "—"}</strong>
         <small>PFT</small>
       </span>
+    </div>
+  );
+}
+
+const HIVE_TASK_LIFECYCLE = [
+  { key: "proposed", label: "Proposed" },
+  { key: "accepted", label: "Accepted" },
+  { key: "submitted", label: "Submitted" },
+  { key: "verification", label: "Verification" },
+  { key: "rewarded", label: "Rewarded" },
+];
+
+const HIVE_TASK_TONES = {
+  proposed: "amber",
+  accepted: "green",
+  submitted: "green",
+  verification_requested: "amber",
+  verification_response_submitted: "green",
+  verification_response: "green",
+  reward_decided: "muted",
+  rewarded: "muted",
+  paid: "muted",
+};
+
+function hiveTaskLifecycleIndex(state = "") {
+  const key = String(state || "").toLowerCase();
+  if (["rewarded", "paid", "reward_decided"].includes(key)) return 4;
+  if (["verification_requested", "verification_response_submitted", "verification_response"].includes(key)) return 3;
+  if (key === "submitted") return 2;
+  if (key === "accepted") return 1;
+  return 0;
+}
+
+function hiveTaskTone(state = "") {
+  return HIVE_TASK_TONES[String(state || "").toLowerCase()] || "muted";
+}
+
+function hiveTaskLabel(state = "") {
+  return String(state || "unknown").replace(/_/g, " ");
+}
+
+function shortPublicReference(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text.length <= 18 ? text : `${text.slice(0, 9)}…${text.slice(-7)}`;
+}
+
+function nftHasImage(nft = null) {
+  return Boolean(nft?.imageCid || nft?.imageGatewayUrl || nft?.imageDataUrl);
+}
+
+function assigneeFromDetail(detailTask = {}, fallbackAssignee = null) {
+  const wallet = detailTask.assignee || fallbackAssignee?.wallet || "";
+  if (!wallet && !fallbackAssignee) return null;
+  const detailNft = nftHasImage(detailTask.assigneeNft) ? detailTask.assigneeNft : null;
+  return {
+    wallet,
+    accountId: detailTask.assigneeAccountId || fallbackAssignee?.accountId || "",
+    codename: detailTask.assigneeDisplayName || fallbackAssignee?.codename || compactWallet(wallet),
+    handle: detailTask.assigneeHandle || fallbackAssignee?.handle || "",
+    hasPublicProfile: Boolean(detailTask.assigneeHasPublicProfile || fallbackAssignee?.hasPublicProfile),
+    badge: fallbackAssignee?.badge || 0,
+    nft: detailNft || fallbackAssignee?.nft || null,
+  };
+}
+
+function mergeHiveTaskDetail(initialTask = {}, detailBody = null) {
+  const detailTask = detailBody?.task || {};
+  const taskId = detailTask.taskId || detailTask.id || initialTask.taskId || initialTask.id || "";
+  return {
+    ...initialTask,
+    ...detailTask,
+    id: detailTask.id || detailTask.taskId || initialTask.id || taskId,
+    taskId,
+    title: detailTask.title || initialTask.title || "Hive task",
+    kind: detailTask.kind || initialTask.kind || "Network task",
+    state: detailTask.state || initialTask.state || "proposed",
+    pft: Number(detailTask.pft ?? initialTask.pft ?? 0),
+    age: detailTask.age || initialTask.age || "",
+    summary: detailTask.summary || initialTask.summary || "",
+    description: detailTask.description || initialTask.description || "",
+    nextAction: detailTask.nextAction || initialTask.nextAction || taskNextAction(detailTask.state || initialTask.state),
+    project: {
+      id: detailTask.project?.id || initialTask.project?.id || "",
+      name: detailTask.project?.name || initialTask.project?.name || "Hive project",
+      type: detailTask.project?.type || initialTask.project?.type || "network",
+    },
+    assignee: assigneeFromDetail(detailTask, initialTask.assignee || null),
+    review: detailBody?.review || initialTask.review || null,
+    timeline: detailBody?.timeline || initialTask.timeline || [],
+  };
+}
+
+function hasReviewContent(review = null) {
+  if (!review) return false;
+  const submissions = Array.isArray(review.submissions) ? review.submissions : [];
+  const verification = review.verification || {};
+  const outcome = review.outcome || {};
+  return Boolean(
+    submissions.length ||
+    verification.request ||
+    verification.response ||
+    outcome.decision ||
+    outcome.reason ||
+    Number(outcome.rewardPft || 0)
+  );
+}
+
+function HiveTaskPopout({ initialTask, onClose }) {
+  const [mounted, setMounted] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [loadStatus, setLoadStatus] = useState("loading");
+  const [task, setTask] = useState(() => mergeHiveTaskDetail(initialTask));
+
+  useEffect(() => {
+    setTask(mergeHiveTaskDetail(initialTask));
+    setLoadStatus(initialTask?.taskId ? "loading" : "error");
+  }, [initialTask]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setMounted(true));
+    const onKey = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDetail() {
+      if (!initialTask?.taskId) return;
+      try {
+        const result = await requestJson(`/api/hive/task-detail?taskId=${encodeURIComponent(initialTask.taskId)}`);
+        if (cancelled) return;
+        if (!result.ok) {
+          setLoadStatus("error");
+          return;
+        }
+        setTask(mergeHiveTaskDetail(initialTask, result.body));
+        setLoadStatus("ready");
+      } catch {
+        if (!cancelled) setLoadStatus("error");
+      }
+    }
+    loadDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialTask]);
+
+  const reached = hiveTaskLifecycleIndex(task.state);
+  const tone = hiveTaskTone(task.state);
+  const assignee = task.assignee || null;
+  const canLinkAssignee = Boolean(assignee?.accountId && assignee?.hasPublicProfile);
+  const OperatorTag = canLinkAssignee ? "a" : "div";
+  const operatorProps = canLinkAssignee
+    ? {
+        href: profileHref(assignee.accountId),
+        "aria-label": `Open ${assignee.codename || compactWallet(assignee.wallet)} public profile`,
+      }
+    : {};
+  const review = task.review || null;
+  const submissions = Array.isArray(review?.submissions) ? review.submissions : [];
+  const verification = review?.verification || {};
+  const outcome = review?.outcome || {};
+  const timeline = Array.isArray(task.timeline) && task.timeline.length
+    ? task.timeline
+    : [{
+        action: task.state,
+        label: task.nextAction || taskNextAction(task.state),
+        time: task.age || "",
+        txHash: "",
+        cid: "",
+      }];
+
+  function copyId() {
+    navigator.clipboard?.writeText(task.taskId || task.id).catch(() => {});
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1400);
+  }
+
+  return (
+    <div className="htp-layer">
+      <div className={`htp-wash${mounted ? " is-mounted" : ""}`} onClick={onClose} role="presentation" />
+      <section
+        aria-labelledby="htp-title"
+        aria-modal="true"
+        className={`htp-modal${mounted ? " is-mounted" : ""}`}
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="htp-header">
+          <span className="htp-kicker">
+            <Flag size={11} strokeWidth={1.9} />
+            {task.kind}
+            <i>·</i>
+            <span className="htp-kicker-project">{task.project?.name || "Hive project"}</span>
+          </span>
+          <button className="htp-close" onClick={onClose} type="button">
+            <X size={14} strokeWidth={1.8} />
+            Close
+          </button>
+        </header>
+
+        <div className="htp-body">
+          <h2 id="htp-title">{task.title}</h2>
+          <button className="htp-id" onClick={copyId} type="button">
+            {task.taskId || task.id}
+            {copied ? <Check size={11} strokeWidth={1.9} /> : <Copy size={11} strokeWidth={1.7} />}
+          </button>
+
+          <ol aria-label="Task lifecycle" className="htp-stepper">
+            {HIVE_TASK_LIFECYCLE.map((step, index) => {
+              const status = index < reached ? "done" : index === reached ? "current" : "todo";
+              return (
+                <li className={`htp-step is-${status}`} key={step.key}>
+                  <span className="htp-step-dot" />
+                  <span className="htp-step-label">{step.label}</span>
+                  {index < HIVE_TASK_LIFECYCLE.length - 1 && <span className="htp-step-bar" />}
+                </li>
+              );
+            })}
+          </ol>
+
+          <div className="htp-stats">
+            <div>
+              <small>Reward</small>
+              <span className="htp-reward">{formatPft(task.pft)}<em>PFT</em></span>
+            </div>
+            <div>
+              <small>Status</small>
+              <span className={`htp-state is-${tone}`}>
+                <i /> {hiveTaskLabel(task.state)}
+              </span>
+            </div>
+            <div>
+              <small>Project</small>
+              <span>{task.project?.type || "network"}</span>
+            </div>
+            <div>
+              <small>Last event</small>
+              <span>{task.age || (loadStatus === "loading" ? "Loading" : "Indexed")}</span>
+            </div>
+          </div>
+
+          <section className="htp-section">
+            <h3>Routed to</h3>
+            {assignee ? (
+              <OperatorTag className={`htp-operator${canLinkAssignee ? " is-link" : ""}`} {...operatorProps}>
+                <HiveProfileBadge nft={assignee.nft} size={34} variant={assignee.badge} />
+                <span className="htp-operator-copy">
+                  <strong>{assignee.codename || compactWallet(assignee.wallet)}</strong>
+                  <small>{assignee.handle ? `@${assignee.handle} · ` : ""}{compactWallet(assignee.wallet)}</small>
+                </span>
+                {canLinkAssignee && <ArrowUpRight className="htp-operator-go" size={15} strokeWidth={1.8} />}
+              </OperatorTag>
+            ) : (
+              <div className="htp-operator is-empty">
+                <em>Unassigned — open for routing</em>
+              </div>
+            )}
+          </section>
+
+          <section className="htp-section">
+            <h3>About this task</h3>
+            <p className="htp-summary">{task.summary || task.description || "No public summary has been indexed for this Hive task yet."}</p>
+            {task.nextAction && (
+              <p className="htp-next"><span>Next</span>{task.nextAction}</p>
+            )}
+            {loadStatus === "error" && (
+              <p className="htp-load-note">The public task-detail projection could not be loaded. Showing the Hive snapshot.</p>
+            )}
+          </section>
+
+          {hasReviewContent(review) && (
+            <section className="htp-section">
+              <h3>Work &amp; review</h3>
+              <div className="htp-review">
+                {submissions.map((submission, index) => (
+                  <div className="htp-review-row" key={`${submission.type || "submission"}-${index}`}>
+                    <span className="htp-review-tag">{submission.type || "Submission"}</span>
+                    <p>{submission.summary}</p>
+                  </div>
+                ))}
+                {(verification.request || verification.response) && (
+                  <div className="htp-review-row is-verify">
+                    <span className="htp-review-tag">Verification</span>
+                    {verification.request && <p><strong>Asked.</strong> {verification.request}</p>}
+                    {verification.response && <p><strong>Answered.</strong> {verification.response}</p>}
+                  </div>
+                )}
+                {(outcome.decision || outcome.reason || Number(outcome.rewardPft || 0)) && (
+                  <div className="htp-review-outcome">
+                    <span>{outcome.decision || "Reward outcome"} · {formatPft(outcome.rewardPft)} PFT</span>
+                    {outcome.reason && <p>{outcome.reason}</p>}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          <section className="htp-section">
+            <h3>Timeline</h3>
+            <ul className="htp-timeline">
+              {timeline.map((event, index) => (
+                <li className={`htp-tl-row is-${hiveTaskTone(event.action)}`} key={`${event.action || "event"}-${event.time || index}`}>
+                  <span className="htp-tl-dot" />
+                  <span className="htp-tl-copy">
+                    <span className="htp-tl-label">{event.label || actionLabel(event.action)}</span>
+                    {(event.txHash || event.cid) && (
+                      <span className="htp-tl-meta">
+                        {event.txHash && <code>tx {shortPublicReference(event.txHash)}</code>}
+                        {event.cid && <code>cid {shortPublicReference(event.cid)}</code>}
+                      </span>
+                    )}
+                  </span>
+                  <time>{event.time}</time>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <footer className="htp-foot">
+            <p>Public network-task record. Operators are routed by the Board Manager; this view is read-only.</p>
+          </footer>
+        </div>
+      </section>
     </div>
   );
 }

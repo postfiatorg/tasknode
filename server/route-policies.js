@@ -110,6 +110,7 @@ export const apiRoutePolicies = [
   { id: "network_task_profile", path: "/api/memory/network-task-profile", methods: ["GET", "POST"], auth: "session" },
   { id: "directory_leaderboard", path: "/api/directory/leaderboard", methods: ["GET"], auth: "optional" },
   { id: "hive_projects", path: "/api/hive/projects", methods: ["GET"], auth: "optional" },
+  { id: "hive_task_detail", path: "/api/hive/task-detail", methods: ["GET"], auth: "optional" },
   { id: "hive_context", path: "/api/hive/context", methods: ["GET", "POST"], auth: "handler" },
   { id: "hive_chat", path: "/api/hive/chat", methods: ["GET", "POST", "PATCH"], auth: "session" },
   { id: "profile_daily_airdrop", path: "/api/profile/daily-airdrop", methods: ["GET"], auth: "session" },

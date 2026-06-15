@@ -66,6 +66,7 @@
     "board-manager-micro-summary-smoke": "node scripts/board-manager-micro-summary-smoke.mjs",
     "board-manager-action-hooks-smoke": "node scripts/board-manager-action-hooks-smoke.mjs",
     "board-manager-action-pressure-smoke": "node scripts/board-manager-action-pressure-smoke.mjs",
+    "hive-clickable-smoke": "node scripts/hive-clickable-smoke.mjs",
     "board-manager-message-repair": "node scripts/board-manager-message-delivery-repair.mjs",
     "board-manager:codex": "node scripts/board-manager-codex-exec.mjs",
     "board-manager:model": "node scripts/board-manager-model-exec.mjs",
