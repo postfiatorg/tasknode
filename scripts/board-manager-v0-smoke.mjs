@@ -423,6 +423,42 @@ assert.equal(openRouterDecision.decision.action, "message_user");
 assert.equal(openRouterDecision.usage.reasoningTokens, 25);
 assert.equal(openRouterDecision.usage.costUsd, 0.000625);
 
+const repairFetchBodies = [];
+const repairedOpenRouterDecision = await fetchBoardManagerDecision({
+  sourcePacket: packet,
+  fetchImpl: async (_url, options = {}) => {
+    repairFetchBodies.push(JSON.parse(options.body));
+    const content = repairFetchBodies.length === 1
+      ? "{\"action\":\"message_user\",\"target_type\":\"account\",\"target_id\":\"acct_1\",\"reason\":\"bad\", \"confidence\":1,\"decision_basis\":{\"source_facts\":[\"x\"] \"tradeoffs\":[]}}"
+      : JSON.stringify(smokeDecisionOutput);
+    return {
+      ok: true,
+      async text() {
+        return JSON.stringify({
+          id: `or_board_manager_repair_${repairFetchBodies.length}`,
+          model: "qwen/qwen3.7-max",
+          choices: [{ message: { content } }],
+          usage: {
+            prompt_tokens: repairFetchBodies.length === 1 ? 100 : 120,
+            completion_tokens: repairFetchBodies.length === 1 ? 50 : 55,
+            total_tokens: repairFetchBodies.length === 1 ? 150 : 175,
+            reasoning_tokens: repairFetchBodies.length === 1 ? 25 : 30,
+            cost: repairFetchBodies.length === 1 ? 0.000625 : 0.00075,
+          },
+        });
+      },
+    };
+  },
+});
+assert.equal(repairFetchBodies.length, 2);
+assert.equal(repairFetchBodies[1].messages.at(-2).role, "assistant");
+assert.match(repairFetchBodies[1].messages.at(-1).content, /not valid JSON/i);
+assert.equal(repairFetchBodies[1].response_format.type, "json_schema");
+assert.equal(repairedOpenRouterDecision.decision.action, "message_user");
+assert.equal(repairedOpenRouterDecision.usage.repairAttempted, true);
+assert.equal(repairedOpenRouterDecision.usage.totalTokens, 325);
+assert.equal(repairedOpenRouterDecision.usage.reasoningTokens, 55);
+
 let capturedOpenAiBody = null;
 const openAiDecision = await fetchBoardManagerDecision({
   sourcePacket: packet,
