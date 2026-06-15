@@ -36,9 +36,10 @@ function usage() {
     "  --execute             Generate thumbnails. Default is dry-run.",
     "  --limit <n>           Max image CIDs to scan. Default: 100.",
     "  --sizes <csv>         Thumbnail sizes. Default: 48,96,192.",
-    "  --concurrency <n>     Concurrent thumbnail generations. Default: 3.",
+    "  --concurrency <n>     Concurrent thumbnail generations. Default: 1.",
     "",
     "The script is idempotent: existing durable cache files are reused.",
+    "Run it on the app machine so thumbnails are written to the mounted /data cache.",
   ].join("\n");
 }
 
@@ -93,7 +94,8 @@ async function main() {
   const execute = hasArg("--execute");
   const limit = numberArg("--limit", 100, { min: 1, max: 1000 });
   const sizes = sizeArgs();
-  const concurrency = numberArg("--concurrency", 3, { min: 1, max: 12 });
+  const concurrency = numberArg("--concurrency", 1, { min: 1, max: 4 });
+  process.env.TASKNODE_PROFILE_NFT_THUMBNAIL_GENERATION_CONCURRENCY = String(concurrency);
   const cids = await profileNftImageCids({ limit });
   const jobs = cids.flatMap((record) => sizes.map((size) => ({ ...record, size })));
 

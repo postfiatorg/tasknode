@@ -223,6 +223,7 @@ try {
     req: { method: "GET", headers: {} },
     res: thumbnailRouteRes,
     url: new URL(`http://tasknode.local/api/profile/nft/pfp/${thumbnailCid}?size=500`),
+    env: { ...thumbnailEnv, TASKNODE_PROFILE_NFT_PFP_SYNC_GENERATE: "1" },
     fetchThumbnail: async ({ cid: requestedCid, size }) => {
       assert.equal(requestedCid, thumbnailCid);
       assert.equal(size, 192);
@@ -260,6 +261,44 @@ try {
   assert.equal(thumbnailNotModifiedRes.headers.etag, `"${thumbnailCid}:pfp:96:webp"`);
   assert.equal(thumbnailNotModifiedRes.body.length, 0);
 
+  const warmingCacheDir = await mkdtemp(path.join(os.tmpdir(), "tasknode-pfp-warming-"));
+  try {
+    let asyncWarmCalled = false;
+    const warmingRouteRes = createResponseCapture();
+    const startedAt = Date.now();
+    const handledWarmingRoute = await handleProfileNftPfpRoute({
+      json,
+      req: { method: "GET", headers: {} },
+      res: warmingRouteRes,
+      url: new URL(`http://tasknode.local/api/profile/nft/pfp/${thumbnailCid}warm?size=96`),
+      env: { TASKNODE_PROFILE_NFT_THUMBNAIL_CACHE_DIR: warmingCacheDir },
+      fetchThumbnail: async () => {
+        asyncWarmCalled = true;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return {
+          ok: true,
+          cid: `${thumbnailCid}warm`,
+          size: 96,
+          format: "webp",
+          bytes: thumbnail.bytes,
+          contentType: "image/webp",
+          cache: "miss",
+        };
+      },
+    });
+    assert.equal(handledWarmingRoute, true);
+    assert.ok(Date.now() - startedAt < 100);
+    assert.equal(warmingRouteRes.statusCode, 200);
+    assert.equal(warmingRouteRes.headers["cache-control"], "no-store, max-age=0");
+    assert.equal(warmingRouteRes.headers["content-type"], "image/svg+xml; charset=utf-8");
+    assert.equal(warmingRouteRes.headers["x-profile-nft-thumbnail-cache"], "warming");
+    assert.ok(warmingRouteRes.body.length < 1024);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(asyncWarmCalled, true);
+  } finally {
+    await rm(warmingCacheDir, { force: true, recursive: true });
+  }
+
   let pfpSingleFlightFetchCount = 0;
   const pfpSingleFlightCacheDir = await mkdtemp(path.join(os.tmpdir(), "tasknode-pfp-flight-"));
   try {
@@ -286,6 +325,40 @@ try {
     }
   } finally {
     await rm(pfpSingleFlightCacheDir, { force: true, recursive: true });
+  }
+
+  let boundedActive = 0;
+  let boundedMaxActive = 0;
+  const pfpBoundedCacheDir = await mkdtemp(path.join(os.tmpdir(), "tasknode-pfp-bounded-"));
+  try {
+    const boundedResults = await Promise.all(Array.from({ length: 5 }, (_, index) => fetchProfileNftPfpThumbnail({
+      cid: `${thumbnailCid}bound${index}`,
+      size: 96,
+      env: {
+        TASKNODE_PROFILE_NFT_THUMBNAIL_CACHE_DIR: pfpBoundedCacheDir,
+        TASKNODE_PROFILE_NFT_THUMBNAIL_GENERATION_CONCURRENCY: "2",
+      },
+      fetchImage: async ({ cid: requestedCid }) => {
+        boundedActive += 1;
+        boundedMaxActive = Math.max(boundedMaxActive, boundedActive);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        boundedActive -= 1;
+        return {
+          ok: true,
+          cid: requestedCid,
+          bytes: sourcePng,
+          contentType: "image/png",
+          cache: "miss",
+        };
+      },
+    })));
+    assert.ok(boundedMaxActive <= 2);
+    for (const result of boundedResults) {
+      assert.equal(result.ok, true);
+      assert.equal(result.contentType, "image/webp");
+    }
+  } finally {
+    await rm(pfpBoundedCacheDir, { force: true, recursive: true });
   }
 } finally {
   await rm(thumbnailCacheDir, { force: true, recursive: true });
