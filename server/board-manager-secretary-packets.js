@@ -127,19 +127,176 @@ function sourcePacketText(sourcePacket = {}) {
   return redactSensitiveText(JSON.stringify(sourcePacket, null, 2));
 }
 
+function secretaryMessages(sourcePacket = {}) {
+  return [
+    { role: "system", content: secretaryPrompt },
+    {
+      role: "user",
+      content: [
+        "Return JSON only. Compress this Board Manager source packet for a downstream action-deciding model.",
+        "",
+        "BOARD MANAGER SOURCE PACKET JSON",
+        sourcePacketText(sourcePacket),
+      ].join("\n"),
+    },
+  ];
+}
+
 function parseJsonOutput(text = "") {
   const raw = safeText(text, 2_000_000);
   if (!raw) throw new Error("board_manager_secretary_empty_output");
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced?.[1]) return JSON.parse(fenced[1]);
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(raw.slice(start, end + 1));
-    throw new Error("board_manager_secretary_invalid_json");
+  const candidates = [raw];
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) candidates.push(fenced[1]);
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start >= 0 && end > start) candidates.push(raw.slice(start, end + 1));
+  let lastError = null;
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return JSON.parse(candidate);
+    } catch (error) {
+      lastError = error;
+    }
   }
+  const message = safeText(lastError?.message || "invalid JSON", 500);
+  throw new Error(`board_manager_secretary_invalid_json:${message}`);
+}
+
+function isJsonOutputParseError(error) {
+  if (error instanceof SyntaxError) return true;
+  const message = safeText(error?.message, 500);
+  return message === "board_manager_secretary_empty_output" ||
+    message.startsWith("board_manager_secretary_invalid_json") ||
+    /JSON|Unexpected|Expected|unterminated|parse/i.test(message);
+}
+
+function boardManagerSecretaryRepairMessages({ sourcePacket = {}, invalidText = "", parseError = "" } = {}) {
+  return [
+    ...secretaryMessages(sourcePacket),
+    {
+      role: "assistant",
+      content: safeText(invalidText, 20000),
+    },
+    {
+      role: "user",
+      content: [
+        "The previous assistant message was not valid JSON and could not be parsed.",
+        `Parser error: ${safeText(parseError, 500)}`,
+        "Repair the same Board Manager Secretary packet now.",
+        "Return exactly one JSON object matching the packet contract. Do not add prose, markdown, comments, or trailing text.",
+        "Preserve operator_standing_policy, generation_quality_policy, prior_output_corpus_summary, deduplication_watchlist, and facts_to_preserve.",
+      ].join("\n"),
+    },
+  ];
+}
+
+function compactPressureSummary(sourcePacket = {}) {
+  const summary = safeObject(sourcePacket?.boardActionPressure?.summary);
+  return Object.entries(summary)
+    .slice(0, 12)
+    .map(([key, value]) => `${key}=${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
+    .join(", ");
+}
+
+function sourceProjectSummaries(sourcePacket = {}) {
+  const projects = safeObject(sourcePacket?.hiveProjects?.projects || sourcePacket?.projects);
+  return Object.values(projects)
+    .slice(0, 12)
+    .map((project) => {
+      const item = safeObject(project);
+      return {
+        project_id: safeText(item.id || item.project_id || item.projectId, 180),
+        title: safeText(item.title || item.name, 240),
+        state: safeText(item.state || item.status || "unknown", 80),
+        live_task_count: Math.max(0, Math.round(Number(item.liveTaskCount ?? item.live_task_count ?? item.taskCount ?? 0) || 0)),
+        contributor_count: Math.max(0, Math.round(Number(item.contributorCount ?? item.contributor_count ?? 0) || 0)),
+        status: safeText(item.status || item.summary || item.objective, 900),
+        next_needed: safeText(item.nextNeeded || item.next_needed || item.next_actions || "", 900),
+      };
+    })
+    .filter((item) => item.project_id || item.title || item.status);
+}
+
+function fallbackFactsToPreserve({
+  sourcePacket = {},
+  operatorStandingPolicy = [],
+  priorOutputCorpusSummary = {},
+  deduplicationWatchlist = [],
+} = {}) {
+  const corpus = safeObject(priorOutputCorpusSummary);
+  const recentOutputIds = safeArray(corpus.recent_outputs)
+    .map((item) => typeof item === "string" ? item : safeObject(item).task_id || safeObject(item).taskId)
+    .filter(Boolean);
+  const dedupTaskIds = safeArray(deduplicationWatchlist)
+    .flatMap((item) => safeArray(item.prior_task_ids || item.priorTaskIds))
+    .filter(Boolean);
+  return [
+    safeText(sourcePacket.sourcePacketDigest, 120) ? `source_packet_digest:${safeText(sourcePacket.sourcePacketDigest, 120)}` : "",
+    ...safeArray(operatorStandingPolicy).map((item) => `operator_policy:${item.source_id || item.sourceId || "source"}`),
+    ...recentOutputIds.map((taskId) => `prior_output:${safeText(taskId, 180)}`),
+    ...dedupTaskIds.map((taskId) => `dedup_against:${safeText(taskId, 180)}`),
+  ].filter(Boolean).slice(0, 24);
+}
+
+function boardManagerSecretaryFallbackPacket({ sourcePacket = {}, parseError = "" } = {}) {
+  const pressure = safeObject(sourcePacket?.boardActionPressure?.summary);
+  const requiresAction = clampBoolean(pressure.requiresAction ?? pressure.requires_action, false);
+  const operatorStandingPolicy = normalizeOperatorStandingPolicy(
+    sourcePacket.operatorStandingPolicy || sourcePacket.operator_standing_policy
+  );
+  const generationQualityPolicy = normalizeGenerationQualityPolicy(
+    sourcePacket.generationQualityPolicy || sourcePacket.generation_quality_policy
+  );
+  const priorOutputCorpusSummary = normalizePriorOutputCorpusSummary(
+    sourcePacket.priorOutputCorpusSummary ||
+      sourcePacket.prior_output_corpus_summary ||
+      sourcePacket.networkTaskOutputCorpus?.summary ||
+      sourcePacket.network_task_output_corpus?.summary
+  );
+  const deduplicationWatchlist = normalizeDeduplicationWatchlist(
+    sourcePacket.deduplicationWatchlist ||
+      sourcePacket.deduplication_watchlist ||
+      sourcePacket.networkTaskOutputCorpus?.deduplicationWatchlist ||
+      sourcePacket.network_task_output_corpus?.deduplicationWatchlist
+  );
+  const candidateCount = Math.max(
+    safeArray(sourcePacket.networkTaskCandidates).length,
+    Number(pressure.eligibleCandidateCount || pressure.eligible_candidate_count || 0) || 0
+  );
+  const corpusOutputCount = safeArray(sourcePacket.networkTaskOutputCorpus?.outputs || sourcePacket.network_task_output_corpus?.outputs).length ||
+    safeArray(priorOutputCorpusSummary.recent_outputs).length;
+  const normalized = normalizeBoardManagerSecretaryPacket({
+    motion_state: requiresAction ? "needs_attention" : "moving",
+    requires_attention: requiresAction,
+    do_nothing_allowed: !requiresAction,
+    board_summary: "Source-derived Secretary fallback packet created because the Secretary model returned malformed JSON after one repair attempt.",
+    reason_summary: [
+      "The fallback preserves deterministic source facts and non-compressible generation policy instead of failing the Board Manager worker.",
+      `Parse error: ${safeText(parseError, 300) || "unknown"}`,
+    ].join(" "),
+    staleness_summary: "No model-authored staleness summary was available; downstream decision model must rely on preserved source packet pressure and freshness fields.",
+    action_pressure_summary: compactPressureSummary(sourcePacket) || "No deterministic action pressure summary was present.",
+    recommended_context_request: { packet_type: "board_triage", target_type: "none", target_id: "", reason: "" },
+    attention_targets: [],
+    project_summaries: sourceProjectSummaries(sourcePacket),
+    network_task_summary: `${corpusOutputCount} prior network-task corpus outputs preserved for reference and deduplication.`,
+    candidate_summary: `${candidateCount} network-task candidate(s) preserved from the source packet.`,
+    recent_run_summary: `${safeArray(sourcePacket.recentBoardManagerRuns).length} recent Board Manager run(s) were present in the source packet.`,
+    operator_standing_policy: operatorStandingPolicy,
+    generation_quality_policy: generationQualityPolicy,
+    prior_output_corpus_summary: priorOutputCorpusSummary,
+    deduplication_watchlist: deduplicationWatchlist,
+    facts_to_preserve: fallbackFactsToPreserve({
+      sourcePacket,
+      operatorStandingPolicy,
+      priorOutputCorpusSummary,
+      deduplicationWatchlist,
+    }),
+    redaction_count: 0,
+  });
+  return normalized;
 }
 
 function clampBoolean(value, fallback = false) {
@@ -508,58 +665,92 @@ export async function fetchBoardManagerSecretaryPacket({
   const timeout = setTimeout(() => controller.abort(), secretaryTimeoutMs());
   const startedAt = Date.now();
   try {
-    const response = await fetchImpl(`${(process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: secretaryPrompt },
-          {
-            role: "user",
-            content: [
-              "Return JSON only. Compress this Board Manager source packet for a downstream action-deciding model.",
-              "",
-              "BOARD MANAGER SOURCE PACKET JSON",
-              sourcePacketText(sourcePacket),
-            ].join("\n"),
-          },
-        ],
-        thinking: { type: "enabled" },
-        reasoning_effort: secretaryReasoningEffort(),
-        response_format: { type: "json_object" },
-        temperature: 0,
-        max_tokens: Math.max(2500, Number(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MAX_TOKENS || 6000)),
-        stream: false,
-      }),
-    });
-    const bodyText = await response.text();
-    const body = bodyText ? JSON.parse(bodyText) : {};
-    if (!response.ok) {
-      const error = new Error(body?.error?.message || body?.message || `DeepSeek Board Manager Secretary HTTP ${response.status}`);
-      error.status = response.status;
-      throw error;
+    const requestPacket = async (messages) => {
+      const response = await fetchImpl(`${(process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          thinking: { type: "enabled" },
+          reasoning_effort: secretaryReasoningEffort(),
+          response_format: { type: "json_object" },
+          temperature: 0,
+          max_tokens: Math.max(2500, Number(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MAX_TOKENS || 6000)),
+          stream: false,
+        }),
+      });
+      const bodyText = await response.text();
+      const body = bodyText ? JSON.parse(bodyText) : {};
+      if (!response.ok) {
+        const error = new Error(body?.error?.message || body?.message || `DeepSeek Board Manager Secretary HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      return {
+        body,
+        outputText: body?.choices?.[0]?.message?.content || "",
+      };
+    };
+
+    let response = await requestPacket(secretaryMessages(sourcePacket));
+    let parsed;
+    let repairAttempted = false;
+    let repairFailed = false;
+    const firstUsage = deepSeekUsage(response.body);
+    try {
+      parsed = parseJsonOutput(response.outputText);
+    } catch (error) {
+      if (!isJsonOutputParseError(error)) throw error;
+      repairAttempted = true;
+      response = await requestPacket(boardManagerSecretaryRepairMessages({
+        sourcePacket,
+        invalidText: response.outputText,
+        parseError: error?.message || String(error),
+      }));
+      try {
+        parsed = parseJsonOutput(response.outputText);
+      } catch (repairError) {
+        if (!isJsonOutputParseError(repairError)) throw repairError;
+        repairFailed = true;
+        parsed = boardManagerSecretaryFallbackPacket({
+          sourcePacket,
+          parseError: repairError?.message || String(repairError),
+        });
+        response = {
+          ...response,
+          outputText: JSON.stringify(parsed),
+        };
+      }
     }
-    const outputText = body?.choices?.[0]?.message?.content || "";
-    const packet = normalizeBoardManagerSecretaryPacket(parseJsonOutput(outputText));
+    const packet = normalizeBoardManagerSecretaryPacket(parsed);
     if (!packet.board_summary && !packet.reason_summary) {
       throw new Error("board_manager_secretary_missing_summary");
     }
+    const usage = deepSeekUsage(response.body);
+    if (repairAttempted) {
+      usage.inputTokens += firstUsage.inputTokens;
+      usage.outputTokens += firstUsage.outputTokens;
+      usage.totalTokens += firstUsage.totalTokens;
+      usage.reasoningTokens += firstUsage.reasoningTokens;
+      usage.repairAttempted = true;
+      usage.repairFailed = repairFailed;
+    }
     return {
       packet,
-      outputText,
+      outputText: response.outputText,
       packetText: packetText(packet),
       provider: "deepseek",
-      model: body?.model || model,
-      responseId: safeText(body?.id, 200),
+      model: response.body?.model || model,
+      responseId: safeText(response.body?.id, 200),
       promptVersion,
       promptDigest: promptDigest(secretaryPrompt),
       usage: {
-        ...deepSeekUsage(body),
+        ...usage,
         latencyMs: Date.now() - startedAt,
       },
     };

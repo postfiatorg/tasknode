@@ -267,6 +267,139 @@ assert.equal(result.packet.motion_state, "needs_attention");
 assert.equal(result.packet.recommended_context_request.target_id, "task_node");
 assert.equal(result.usage.inputTokens, 1000);
 
+function deepSeekResponse({ content, id = "deepseek_secretary_response", inputTokens = 10, outputTokens = 5 } = {}) {
+  return {
+    ok: true,
+    async text() {
+      return JSON.stringify({
+        id,
+        model: "deepseek-v4-pro",
+        choices: [{ message: { content } }],
+        usage: {
+          prompt_tokens: inputTokens,
+          completion_tokens: outputTokens,
+          total_tokens: inputTokens + outputTokens,
+        },
+      });
+    },
+  };
+}
+
+const repairedPacketJson = {
+  schema: "pf.hive.board_manager.secretary_packet.v1",
+  motion_state: "needs_attention",
+  requires_attention: true,
+  do_nothing_allowed: false,
+  board_summary: "Repair packet preserved the active operator policy.",
+  reason_summary: "The first secretary response was malformed, then repaired.",
+  staleness_summary: "Prior documentation exists.",
+  action_pressure_summary: "Eligible candidate exists.",
+  network_task_summary: "Use prior outputs as lineage.",
+  candidate_summary: "One candidate is eligible.",
+  recent_run_summary: "No recent run handled this.",
+  operator_standing_policy: [
+    {
+      source_id: "hivectx_stop_docs",
+      directive: "Stop documentation-only network tasks; escalate prior docs to action.",
+      active_scope: "global",
+      generation_implication: "Preserve as non-compressible task-shape policy.",
+    },
+  ],
+  generation_quality_policy: {
+    documentation_only_default: "low_value_unless_action_coupled",
+    requires_concrete_action_output: true,
+    escalation_ladder: "document_to_action_v1",
+  },
+  prior_output_corpus_summary: {
+    recent_outputs: [{ task_id: "task_doc_1", title: "Document workflow friction", summary: "Prior doc exists." }],
+    repeated_themes: ["workflow friction: task_doc_1"],
+  },
+  deduplication_watchlist: [
+    {
+      theme: "workflow friction",
+      prior_task_ids: ["task_doc_1"],
+      why_not_repeat: "The theme was already documented.",
+      next_action_suggestion: "Convert the prior document into a PR-ready handoff.",
+    },
+  ],
+  facts_to_preserve: ["hivectx_stop_docs", "task_doc_1"],
+};
+
+const repairCalls = [];
+const repairedResult = await fetchBoardManagerSecretaryPacket({
+  sourcePacket: rawSourcePacket,
+  fetchImpl: async (_url, options = {}) => {
+    const body = JSON.parse(options.body);
+    repairCalls.push(body);
+    if (repairCalls.length === 1) {
+      return deepSeekResponse({
+        content: '{"schema":"pf.hive.board_manager.secretary_packet.v1","motion_state":"needs_attention","board_summary":',
+        id: "deepseek_secretary_invalid_then_repair_a",
+        inputTokens: 20,
+        outputTokens: 8,
+      });
+    }
+    return deepSeekResponse({
+      content: JSON.stringify(repairedPacketJson),
+      id: "deepseek_secretary_invalid_then_repair_b",
+      inputTokens: 30,
+      outputTokens: 12,
+    });
+  },
+});
+assert.equal(repairCalls.length, 2);
+assert.match(repairCalls[1].messages.at(-1).content, /previous assistant message was not valid JSON/i);
+assert.equal(repairedResult.packet.motion_state, "needs_attention");
+assert.equal(repairedResult.packet.operator_standing_policy[0].source_id, "hivectx_stop_docs");
+assert.equal(repairedResult.usage.inputTokens, 50);
+assert.equal(repairedResult.usage.outputTokens, 20);
+assert.equal(repairedResult.usage.repairAttempted, true);
+assert.equal(repairedResult.usage.repairFailed, false);
+
+const fallbackSourcePacket = {
+  ...rawSourcePacket,
+  operatorStandingPolicy: repairedPacketJson.operator_standing_policy,
+  generationQualityPolicy: {
+    documentationOnlyDefault: "low_value_unless_action_coupled",
+    requiresConcreteActionOutput: true,
+    escalationLadder: "document_to_action_v1",
+    operatorConstraintsSummary: "Stop documentation-only network tasks; escalate prior docs to action.",
+  },
+  priorOutputCorpusSummary: repairedPacketJson.prior_output_corpus_summary,
+  deduplicationWatchlist: repairedPacketJson.deduplication_watchlist,
+  networkTaskOutputCorpus: {
+    outputs: [{ taskId: "task_doc_1", title: "Document workflow friction" }],
+    summary: repairedPacketJson.prior_output_corpus_summary,
+    deduplicationWatchlist: repairedPacketJson.deduplication_watchlist,
+  },
+};
+let fallbackCallCount = 0;
+const fallbackResult = await fetchBoardManagerSecretaryPacket({
+  sourcePacket: fallbackSourcePacket,
+  fetchImpl: async () => {
+    fallbackCallCount += 1;
+    return deepSeekResponse({
+      content: fallbackCallCount === 1
+        ? '{"schema":"pf.hive.board_manager.secretary_packet.v1","motion_state":'
+        : '{"schema":"pf.hive.board_manager.secretary_packet.v1","motion_state":"needs_attention","reason_summary":',
+      id: `deepseek_secretary_invalid_fallback_${fallbackCallCount}`,
+      inputTokens: 11,
+      outputTokens: 7,
+    });
+  },
+});
+assert.equal(fallbackCallCount, 2);
+assert.equal(fallbackResult.packet.motion_state, "needs_attention");
+assert.match(fallbackResult.packet.board_summary, /fallback packet/i);
+assert.equal(fallbackResult.packet.operator_standing_policy[0].source_id, "hivectx_stop_docs");
+assert.equal(fallbackResult.packet.generation_quality_policy.requires_concrete_action_output, true);
+assert.equal(fallbackResult.packet.prior_output_corpus_summary.recent_outputs[0].task_id, "task_doc_1");
+assert.equal(fallbackResult.packet.deduplication_watchlist[0].prior_task_ids[0], "task_doc_1");
+assert.ok(fallbackResult.packet.facts_to_preserve.some((fact) => fact.includes("source_packet_digest")));
+assert.equal(fallbackResult.usage.repairAttempted, true);
+assert.equal(fallbackResult.usage.repairFailed, true);
+assert.doesNotThrow(() => JSON.parse(fallbackResult.outputText));
+
 const normalized = normalizeBoardManagerSecretaryPacket({
   motionState: "moving",
   doNothingAllowed: true,
