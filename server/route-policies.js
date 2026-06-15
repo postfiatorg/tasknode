@@ -164,6 +164,13 @@ export const apiRoutePolicies = [
     rateLimit: { limit: 10, windowMs: tenMinutes },
   },
   {
+    id: "profile_nft_select",
+    path: "/api/profile/nft/select",
+    methods: ["POST"],
+    auth: "session",
+    rateLimit: { limit: 30, windowMs: tenMinutes },
+  },
+  {
     id: "profile_nft_image",
     prefix: "/api/profile/nft/image/",
     methods: ["GET"],

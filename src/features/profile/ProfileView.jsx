@@ -43,6 +43,7 @@ const fmtDateTime = (value = "") => {
   return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 };
 const NFT_GALLERY_PAGE_SIZE = 10;
+const NFT_GALLERY_LIMIT = 240;
 const shortHash = (value = "", head = 8, tail = 6) => {
   const text = String(value || "");
   return text.length > head + tail + 3 ? `${text.slice(0, head)}…${text.slice(-tail)}` : text;
@@ -700,8 +701,15 @@ function profileNftCanBecomeAvatar(nft = {}) {
     status !== "failed";
 }
 
+function profileNftCreatedTime(nft = {}) {
+  const date = new Date(nft?.createdAt || nft?.generatedAt || nft?.mintedAt || 0);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
 function latestAvatarNft(nfts = []) {
-  return (Array.isArray(nfts) ? nfts : []).find(profileNftCanBecomeAvatar) || null;
+  const eligible = (Array.isArray(nfts) ? nfts : []).filter(profileNftCanBecomeAvatar);
+  return eligible.find((nft) => nft.selected) || eligible
+    .sort((left, right) => profileNftCreatedTime(right) - profileNftCreatedTime(left))[0] || null;
 }
 
 function ProfileStudio({
@@ -775,10 +783,10 @@ function ProfileStudio({
   };
 
   const loadNfts = async ({ hydrateLatest = false } = {}) => {
-    const result = await requestJson("/api/profile/nfts?limit=120");
+    const result = await requestJson(`/api/profile/nfts?limit=${NFT_GALLERY_LIMIT}`);
     if (!result.ok) return;
     const nextNfts = Array.isArray(result.body?.nfts) ? result.body.nfts : [];
-    if (typeof onNftsChange === "function") onNftsChange(nextNfts);
+    if (typeof onNftsChange === "function") onNftsChange(nextNfts, result.body?.total);
     if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(latestAvatarNft(nextNfts));
     const latest = result.body?.latest || nextNfts[0] || null;
     if (hydrateLatest && latest) {
@@ -791,10 +799,10 @@ function ProfileStudio({
 
   useEffect(() => {
     let cancelled = false;
-    requestJson("/api/profile/nfts?limit=120").then((result) => {
+    requestJson(`/api/profile/nfts?limit=${NFT_GALLERY_LIMIT}`).then((result) => {
       if (cancelled || !result.ok) return;
       const nextNfts = Array.isArray(result.body?.nfts) ? result.body.nfts : [];
-      if (typeof onNftsChange === "function") onNftsChange(nextNfts);
+      if (typeof onNftsChange === "function") onNftsChange(nextNfts, result.body?.total);
       if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(latestAvatarNft(nextNfts));
       if (result.body?.latest) {
         setGeneratedNft((current) => current || result.body.latest);
@@ -1103,10 +1111,20 @@ function PFTTimeseries({ error = "", history, loading = false, onRangeChange, ra
   );
 }
 
-function NFTGallery({ minted = [], allowMockFallback = true, emptyCopy = "No profile NFTs yet." }) {
+function NFTGallery({
+  minted = [],
+  total = null,
+  allowMockFallback = true,
+  emptyCopy = "No profile NFTs yet.",
+  onSetProfilePicture = null,
+  selectingNftId = "",
+} = {}) {
   const [page, setPage] = useState(0);
-  const records = minted.length ? minted : (allowMockFallback ? NFT_DATA : []);
+  const usingMockFallback = !minted.length && allowMockFallback;
+  const records = minted.length ? minted : (usingMockFallback ? NFT_DATA : []);
   const mintedCount = records.filter((n) => (n.status || "").toLowerCase() === "minted" || n.rarity).length;
+  const totalCount = usingMockFallback ? records.length : (Number.isFinite(Number(total)) ? Number(total) : records.length);
+  const countLabel = totalCount > records.length ? `${records.length} of ${totalCount}` : `${totalCount}`;
   const pageCount = Math.max(1, Math.ceil(records.length / NFT_GALLERY_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
   const start = currentPage * NFT_GALLERY_PAGE_SIZE;
@@ -1126,13 +1144,20 @@ function NFTGallery({ minted = [], allowMockFallback = true, emptyCopy = "No pro
     <section id="profile-nft-gallery" style={{ paddingTop: 64 }}>
       <SectionHead
         eyebrow="NFT gallery"
-        sub={`${records.length} profile NFTs · ${mintedCount} minted${records.length > NFT_GALLERY_PAGE_SIZE ? ` · showing ${showingStart}-${showingEnd}` : ""}`}
+        sub={`${countLabel} profile NFTs · ${mintedCount} minted${records.length > NFT_GALLERY_PAGE_SIZE ? ` · showing ${showingStart}-${showingEnd}` : ""}`}
       />
 
       {records.length > 0 ? (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 32 }}>
-            {visibleRecords.map(n => <NFTTile key={n.id} nft={n} />)}
+            {visibleRecords.map(n => (
+              <NFTTile
+                key={n.id}
+                nft={n}
+                onSetProfilePicture={onSetProfilePicture}
+                selecting={selectingNftId === n.id}
+              />
+            ))}
           </div>
           {pageCount > 1 && (
             <div style={{ alignItems: "center", display: "flex", gap: 18, justifyContent: "space-between", marginTop: 24 }}>
@@ -1210,13 +1235,15 @@ function nftDateLabel(nft = {}) {
   return "Generated";
 }
 
-function NFTTile({ nft }) {
+function NFTTile({ nft, onSetProfilePicture = null, selecting = false }) {
   const imageCandidates = useMemo(() => imageCandidatesForNft(nft), [nft]);
   const [imageIndex, setImageIndex] = useState(0);
   const imageSrc = imageCandidates[imageIndex] || "";
   const hasImageCid = Boolean(String(nft.imageCid || "").trim());
   const status = profileNftStatus(nft);
   const statusLabel = nftStatusLabel(nft);
+  const canBecomeProfilePicture = profileNftCanBecomeAvatar(nft);
+  const selected = nft.selected === true;
 
   useEffect(() => {
     setImageIndex(0);
@@ -1236,6 +1263,23 @@ function NFTTile({ nft }) {
         overflow: "hidden",
         position: "relative",
       }}>
+        {selected && (
+          <div style={{
+            background: "rgba(31, 27, 22, 0.78)",
+            borderRadius: 999,
+            color: C.paper3,
+            fontSize: 11,
+            fontWeight: 650,
+            left: 10,
+            lineHeight: 1,
+            padding: "7px 9px",
+            position: "absolute",
+            top: 10,
+            zIndex: 2,
+          }}>
+            Profile picture
+          </div>
+        )}
         {imageSrc ? (
           <img
             alt={nft.title || "Profile NFT"}
@@ -1304,6 +1348,26 @@ function NFTTile({ nft }) {
         <span style={{ color: C.ink5 }}>·</span>
         <span style={{ color: nft.rarity === "Common" ? C.ink4 : status === "failed" ? C.rust : C.warning }}>{nft.rarity || statusLabel}</span>
       </div>
+      {canBecomeProfilePicture && typeof onSetProfilePicture === "function" && (
+        <button
+          className="tn-btn"
+          disabled={selected || selecting}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSetProfilePicture(nft);
+          }}
+          style={{
+            color: selected ? C.success : C.ink3,
+            fontSize: 12.5,
+            marginTop: 8,
+            opacity: selecting ? 0.6 : 1,
+            padding: 0,
+          }}
+          type="button"
+        >
+          {selected ? "Profile picture" : selecting ? "Setting..." : "Set as profile picture"}
+        </button>
+      )}
     </div>
   );
 }
@@ -1783,16 +1847,53 @@ function PrivateProfile({
   walletVault = {},
 } = {}) {
   const [profileNfts, setProfileNfts] = useState([]);
+  const [profileNftTotal, setProfileNftTotal] = useState(null);
+  const [selectingNftId, setSelectingNftId] = useState("");
+  const [nftSelectionError, setNftSelectionError] = useState("");
   const [airdropState, setAirdropState] = useState({ loading: Boolean(accountId), error: "", latest: null });
   const [rewardRange, setRewardRange] = useState("28d");
   const [rewardHistoryState, setRewardHistoryState] = useState({ loading: Boolean(accountId), error: "", history: null });
-  const handleNftsChange = useCallback((nextNfts = []) => {
+  const handleNftsChange = useCallback((nextNfts = [], total = null) => {
     setProfileNfts(nextNfts);
-    if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(nextNfts[0] || null);
+    if (Number.isFinite(Number(total))) setProfileNftTotal(Number(total));
+    else setProfileNftTotal(nextNfts.length);
+    if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(latestAvatarNft(nextNfts));
   }, [onProfileAvatarChange]);
   const scrollToNftGallery = useCallback(() => {
     document.getElementById("profile-nft-gallery")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
+  const setProfilePicture = useCallback(async (nft = {}) => {
+    if (!nft?.id || selectingNftId) return;
+    setSelectingNftId(nft.id);
+    setNftSelectionError("");
+    const previousNfts = profileNfts;
+    const optimistic = profileNfts.map((record) => ({
+      ...record,
+      selected: record.id === nft.id,
+    }));
+    setProfileNfts(optimistic);
+    if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(latestAvatarNft(optimistic));
+    const result = await requestJson("/api/profile/nft/select", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nftId: nft.id }),
+    });
+    setSelectingNftId("");
+    if (!result.ok || !result.body?.nft) {
+      setProfileNfts(previousNfts);
+      if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(latestAvatarNft(previousNfts));
+      setNftSelectionError(result.body?.message || result.body?.error || "Profile picture could not be updated.");
+      return;
+    }
+    const selectedNft = result.body.nft;
+    const confirmed = profileNfts.map((record) => ({
+      ...record,
+      ...(record.id === selectedNft.id ? selectedNft : {}),
+      selected: record.id === selectedNft.id,
+    }));
+    setProfileNfts(confirmed);
+    if (typeof onProfileAvatarChange === "function") onProfileAvatarChange(latestAvatarNft(confirmed));
+  }, [onProfileAvatarChange, profileNfts, selectingNftId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1875,7 +1976,18 @@ function PrivateProfile({
         onRangeChange={setRewardRange}
         range={rewardRange}
       />
-      <NFTGallery minted={profileNfts.length ? profileNfts : NFT_DATA} />
+      {nftSelectionError && (
+        <div style={{ color: C.rust, fontSize: 13.5, marginTop: 28 }}>
+          {nftSelectionError}
+        </div>
+      )}
+      <NFTGallery
+        allowMockFallback={false}
+        minted={profileNfts}
+        onSetProfilePicture={setProfilePicture}
+        selectingNftId={selectingNftId}
+        total={profileNftTotal}
+      />
       <ConnectionsCard accountId={accountId} pftlExplorerUrl={pftlExplorerUrl} profilePublic={profilePublic} />
     </div>
   );

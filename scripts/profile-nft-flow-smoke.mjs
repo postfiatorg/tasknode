@@ -135,7 +135,7 @@ for (let index = 0; index < 67; index += 1) {
 const collectionListed = await listProfileNfts({
   accountId: collectionAccountId,
   walletAddress: collectionWalletAddress,
-  limit: 120,
+  limit: 240,
 });
 assert.equal(collectionListed.length, 67, "current wallet gallery must support imported NFT collections over 40 rows");
 
@@ -185,6 +185,6 @@ assert.equal(minted.txHash, "ABCDEF123456");
 const fetched = await getProfileNft({ accountId, nftId: generated.id });
 assert.equal(fetched.nftTokenId, "000B013A95F14B0044F78A264E41713C64B5F89242540EE2");
 const orderedAfterMint = await listProfileNfts({ accountId, walletAddress });
-assert.equal(orderedAfterMint[0].id, generated.id, "latest minted NFT must stay first after cache imports update older rows");
+assert.equal(orderedAfterMint[0].id, walletlessDraft.id, "profile NFT list must default to newest created row, not latest minted row");
 
 console.log("profile-nft-flow-smoke ok");

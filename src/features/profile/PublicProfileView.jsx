@@ -314,6 +314,7 @@ function PublicNFTTile({ nft }) {
   const imageCandidates = useMemo(() => imageCandidatesForNft(nft), [nft]);
   const [imageIndex, setImageIndex] = useState(0);
   const imageSrc = imageCandidates[imageIndex] || "";
+  const selected = nft.selected === true;
 
   useEffect(() => {
     setImageIndex(0);
@@ -321,7 +322,24 @@ function PublicNFTTile({ nft }) {
 
   return (
     <div className="tn-lift" style={{ cursor: "pointer" }}>
-      <div style={{ aspectRatio: "1 / 1", background: C.paper2, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
+      <div style={{ aspectRatio: "1 / 1", background: C.paper2, borderRadius: 12, marginBottom: 10, overflow: "hidden", position: "relative" }}>
+        {selected && (
+          <div style={{
+            background: "rgba(31, 27, 22, 0.78)",
+            borderRadius: 999,
+            color: C.paper3,
+            fontSize: 11,
+            fontWeight: 650,
+            left: 10,
+            lineHeight: 1,
+            padding: "7px 9px",
+            position: "absolute",
+            top: 10,
+            zIndex: 2,
+          }}>
+            Profile picture
+          </div>
+        )}
         {imageSrc ? (
           <img
             alt={nft.title || "Profile NFT"}
@@ -357,9 +375,11 @@ function PublicNFTTile({ nft }) {
   );
 }
 
-function PublicNFTGallery({ nfts = [] }) {
+function PublicNFTGallery({ nfts = [], total = null }) {
   const [page, setPage] = useState(0);
   const mintedCount = nfts.filter((nft) => String(nft.status || "").toLowerCase() === "minted").length;
+  const totalCount = Number.isFinite(Number(total)) ? Number(total) : nfts.length;
+  const countLabel = totalCount > nfts.length ? `${nfts.length} of ${totalCount}` : `${totalCount}`;
   const pageCount = Math.max(1, Math.ceil(nfts.length / NFT_GALLERY_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
   const start = currentPage * NFT_GALLERY_PAGE_SIZE;
@@ -379,7 +399,7 @@ function PublicNFTGallery({ nfts = [] }) {
     <section style={{ paddingTop: 64 }}>
       <SectionHead
         eyebrow="NFT gallery"
-        sub={`${nfts.length} profile NFTs · ${mintedCount} minted${nfts.length > NFT_GALLERY_PAGE_SIZE ? ` · showing ${showingStart}-${showingEnd}` : ""}`}
+        sub={`${countLabel} profile NFTs · ${mintedCount} minted${nfts.length > NFT_GALLERY_PAGE_SIZE ? ` · showing ${showingStart}-${showingEnd}` : ""}`}
       />
       {nfts.length > 0 ? (
         <>
@@ -519,7 +539,7 @@ export function PublicProfile({ accountId = "", profilePublic = true, profileSou
         snapshot={profile?.snapshot || null}
       />
       <CredentialStrip loading={state.loading} metrics={profile?.metrics || {}} />
-      <PublicNFTGallery nfts={profile?.nfts || []} />
+      <PublicNFTGallery nfts={profile?.nfts || []} total={profile?.nftTotal} />
     </div>
   );
 }

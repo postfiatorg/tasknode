@@ -2,7 +2,7 @@
 
 Profile is the member-facing trust surface. It should explain what the system knows about the account, what the member has earned, what profile image/NFT state exists, and which private account-level reads are available.
 
-The profile is account-scoped. Wallets can change over time, but the profile belongs to the signup identity cloud, not to a single current wallet. Profile NFT ownership is the exception: NFT library reads are scoped to the currently linked wallet, with walletless generated drafts included until they are minted. Old-wallet NFT rows stay historical and must not render as the current wallet's gallery or avatar.
+The profile is account-scoped. Wallets can change over time, but the profile belongs to the signup identity cloud, not to a single current wallet. Profile NFT rows are account-scoped cache records across current and historical wallets. The user can mark one account-owned NFT as the selected profile picture; public avatar surfaces prefer that selected row and otherwise fall back to the newest usable row by `created_at`.
 
 ## Hive Handle And Public Aliases
 
@@ -53,13 +53,13 @@ Runtime endpoints:
 
 The deterministic fields come from Postgres and runtime wallet-link state:
 
-- primary/display wallet from the account wallet cloud, task history, and active-wallet profile NFT rows;
+- primary/display wallet from the account wallet cloud, task history, and account-scoped profile NFT rows;
 - lifetime task reward PFT from `task_projections.reward_actual_pft > 0`;
 - lifetime daily airdrop PFT from submitted `profile_daily_airdrop_issuances`;
 - total lifetime PFT as task rewards plus issued airdrops;
 - alignment score from the latest completed `profile_daily_airdrop_runs.alignment_score_7d`;
 - contribution tier from positive task rewards in the trailing 30 days;
-- public NFT gallery from active-wallet `profile_nfts` rows plus walletless generated drafts.
+- public NFT gallery from account-scoped public `profile_nfts` rows, up to the bounded 240-row response cap.
 
 The model-generated fields come from `profile_public_snapshots`:
 
@@ -135,11 +135,11 @@ The public page does not expose `T3 / T4` style labels because they read like ar
 
 ### Public NFT Gallery
 
-The public NFT gallery renders real `profile_nfts` rows only. It filters rows to the account's currently linked wallet and walletless generated drafts. It does not show NFTs minted or generated for a delinked or historical wallet. If the current wallet has no generated or minted profile NFTs, the page shows an empty state instead of procedural placeholder art.
+The public NFT gallery renders real `profile_nfts` rows only. It returns the account's usable public profile NFT history across current and historical wallets, bounded to 240 rows, and includes a total count so the UI can distinguish a complete list from a capped one. Failed and still-generating rows are private-only and do not render on public profiles.
 
-Private and public NFT galleries render 10 NFT tiles per page. Pagination is client-side over cached `profile_nfts` rows, and gallery images remain lazy-loaded through `/api/profile/nft/image/:cid` when an `imageCid` exists. This prevents large migrated NFT libraries from expanding the profile page or eagerly opening every image request at once.
+Private and public NFT galleries render 10 NFT tiles per page. Pagination is client-side over cached `profile_nfts` rows, and gallery images remain lazy-loaded through `/api/profile/nft/image/:cid` when an `imageCid` exists. Owners can use `POST /api/profile/nft/select` from the gallery to set one account-owned NFT as the profile picture; the setter clears any previous selection in the same transaction. This prevents large migrated NFT libraries from expanding the profile page or eagerly opening every image request at once.
 
-The app shell account avatar uses the same latest active-wallet profile NFT image as the public profile hero when one exists. If the current wallet has no profile NFT image, the shell falls back to account initials.
+The app shell account avatar uses the same selected/newest profile NFT image as the public profile hero when one exists. If the account has no usable profile NFT image, the shell falls back to account initials.
 
 Prompt privacy remains unchanged: the image prompt body is never returned to the browser, never shown in public metadata, and never committed to the public prompt folder.
 
@@ -215,7 +215,7 @@ Local PFTL endpoints may use self-signed TLS. For those internal endpoints only,
 
 If IPFS metadata cannot be fetched, the inventory still returns the NFT token id, decoded metadata URI, metadata CID, and `metadataFetch` status. Cache import only upserts rows with both `metadataCid` and `imageCid`; retry unreachable metadata later or use the old PFTasks cache import only as a historical fallback when preserving already-known image CIDs during cutover.
 
-Profile NFT rendering should not make the browser depend on one public gateway for every gallery tile. For rows with an `imageCid`, the browser uses the same-origin image proxy at `/api/profile/nft/image/:cid`; the server validates the CID, fetches through configured IPFS gateways, rejects non-image content, enforces an 8 MB default size limit, and caches successful image bytes in memory. Browser-side public gateway URLs are used only for legacy rows that do not have an `imageCid`. Gallery tiles use lazy image loading so a profile with many NFTs does not eagerly request every full-size IPFS image at once.
+Profile NFT rendering should not make the browser depend on one public gateway for every gallery tile. For rows with an `imageCid`, the browser uses the same-origin image proxy at `/api/profile/nft/image/:cid`; the server validates the CID, fetches through configured IPFS gateways, rejects non-image content, enforces an 8 MB default size limit, and caches successful image bytes in memory for 24 hours by default. Because CIDs are immutable, successful proxy responses use `Cache-Control: public, max-age=31536000, immutable`, an ETag derived from the CID, and conditional `If-None-Match` 304 handling. Concurrent same-CID misses share one in-flight gateway fetch. Browser-side public gateway URLs are used only for legacy rows that do not have an `imageCid`. Gallery tiles use lazy image loading so a profile with many NFTs does not eagerly request every full-size IPFS image at once.
 
 Cache import for a linked Task Node Official account:
 
