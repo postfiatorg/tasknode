@@ -672,6 +672,14 @@ class TaskNodeAgentClient:
             "attachments": [],
         }
         config = self.request("POST", "/api/tasks/request", json_body=request_payload)
+        request_payload = {
+            **request_payload,
+            "requestId": config.get("requestId") or request_payload.get("requestId") or "",
+            "bundleId": config.get("bundleId") or request_payload.get("bundleId") or "",
+            "requestText": config.get("requestText") or request_payload.get("requestText") or "",
+            "userDetailText": config.get("userDetailText") or request_payload.get("userDetailText") or "",
+            "requestedTaskKind": config.get("requestedTaskKind") or request_payload.get("requestedTaskKind") or "",
+        }
         encrypted_bundle = tasknode_encrypted_payload(
             config["requestBundle"],
             wallet=self.wallet,

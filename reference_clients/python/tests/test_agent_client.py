@@ -211,6 +211,8 @@ class AgentClientTests(unittest.TestCase):
         self.assertEqual(result.payload["schema"], "pf.task.request.v1")
         self.assertTrue(result.signed.verified)
         self.assertEqual([call["json"]["phase"] for call in http.calls], ["config", "prepare_bundle", "prepare"])
+        self.assertEqual([call["json"].get("requestId") for call in http.calls[1:]], ["req_1", "req_1"])
+        self.assertEqual([call["json"].get("bundleId") for call in http.calls[1:]], ["bundle_1", "bundle_1"])
 
     def test_publish_context_signs_without_submit(self):
         http = FakeSession([
