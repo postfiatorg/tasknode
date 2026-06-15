@@ -56,6 +56,7 @@
     "context-line-map-parity-smoke": "node scripts/context-line-map-parity-smoke.mjs",
     "profile-nft-prompt-smoke": "node scripts/profile-nft-prompt-smoke.mjs",
     "profile-nft-flow-smoke": "node scripts/profile-nft-flow-smoke.mjs",
+    "profile-nft-selection-smoke": "node scripts/profile-nft-selection-smoke.mjs",
     "production-guards-smoke": "node scripts/production-guards-smoke.mjs",
     "profile-nft-recovery-smoke": "node scripts/profile-nft-recovery-smoke.mjs",
     "network-task-profile-smoke": "node scripts/network-task-profile-smoke.mjs",

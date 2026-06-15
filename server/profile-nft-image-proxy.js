@@ -8,11 +8,12 @@ const DEFAULT_GATEWAYS = [
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_BYTES = 8_388_608;
-const DEFAULT_CACHE_TTL_MS = 30 * 60_000;
-const DEFAULT_CACHE_MAX_BYTES = 80 * 1024 * 1024;
+const DEFAULT_CACHE_TTL_MS = 24 * 60 * 60_000;
+const DEFAULT_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 const allowedContentTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 const imageCache = new Map();
+const imageFetchFlights = new Map();
 let imageCacheBytes = 0;
 
 function safeText(value = "", max = 2000) {
@@ -57,6 +58,10 @@ function cacheGet(cid, ttlMs) {
 }
 
 function cacheSet(cid, value, maxCacheBytes) {
+  const previous = imageCache.get(cid);
+  if (previous) {
+    imageCacheBytes -= previous.bytes.length;
+  }
   imageCache.set(cid, value);
   imageCacheBytes += value.bytes.length;
   while (imageCacheBytes > maxCacheBytes && imageCache.size > 0) {
@@ -72,6 +77,19 @@ function gatewayUrl(gateway = "", cid = "") {
 
 function cleanContentType(value = "") {
   return String(value || "").split(";")[0].trim().toLowerCase();
+}
+
+function profileNftImageEtag(cid = "") {
+  return `"${String(cid || "").trim()}"`;
+}
+
+function ifNoneMatchMatches(value = "", etag = "") {
+  const normalizedEtag = String(etag || "").trim();
+  if (!value || !normalizedEtag) return false;
+  return String(value)
+    .split(",")
+    .map((entry) => entry.trim())
+    .some((entry) => entry === "*" || entry === normalizedEtag || entry === `W/${normalizedEtag}`);
 }
 
 async function responseBytes(response, maxBytes) {
@@ -163,66 +181,80 @@ export async function fetchProfileNftImage({
     };
   }
 
-  const boundedTimeoutMs = numericEnv(timeoutMs ?? env.TASKNODE_PROFILE_NFT_IMAGE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, 1000, 60000);
-  const boundedMaxBytes = numericEnv(maxBytes ?? env.TASKNODE_PROFILE_NFT_IMAGE_MAX_BYTES, DEFAULT_MAX_BYTES, 1024, 32 * 1024 * 1024);
-  const gatewayList = Array.isArray(gateways) && gateways.length ? gateways : profileNftImageGatewayList(env);
-  const attempts = [];
+  const existingFlight = imageFetchFlights.get(normalizedCid);
+  if (existingFlight) return existingFlight;
 
-  const fetches = gatewayList.map(async (gateway) => {
+  const flight = (async () => {
+    const boundedTimeoutMs = numericEnv(timeoutMs ?? env.TASKNODE_PROFILE_NFT_IMAGE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, 1000, 60000);
+    const boundedMaxBytes = numericEnv(maxBytes ?? env.TASKNODE_PROFILE_NFT_IMAGE_MAX_BYTES, DEFAULT_MAX_BYTES, 1024, 32 * 1024 * 1024);
+    const gatewayList = Array.isArray(gateways) && gateways.length ? gateways : profileNftImageGatewayList(env);
+    const attempts = [];
+
+    const fetches = gatewayList.map(async (gateway) => {
+      try {
+        return await fetchFromGateway({
+          cid: normalizedCid,
+          gateway,
+          fetchImpl,
+          maxBytes: boundedMaxBytes,
+          timeoutMs: boundedTimeoutMs,
+        });
+      } catch (error) {
+        attempts.push({
+          gateway: safeText(gateway, 160),
+          error: safeText(error?.message || "profile_nft_image_gateway_failed", 120),
+        });
+        throw error;
+      }
+    });
+
     try {
-      return await fetchFromGateway({
+      const result = await Promise.any(fetches);
+      const cachedValue = {
+        bytes: result.bytes,
+        contentType: result.contentType,
+        gateway: result.gateway,
+        fetchedAt: result.fetchedAt,
+        cachedAt: Date.now(),
+      };
+      if (ttlMs > 0) {
+        cacheSet(
+          normalizedCid,
+          cachedValue,
+          numericEnv(maxCacheBytes ?? env.TASKNODE_PROFILE_NFT_IMAGE_CACHE_MAX_BYTES, DEFAULT_CACHE_MAX_BYTES, 1_000_000, 512 * 1024 * 1024)
+        );
+      }
+      return {
+        ok: true,
         cid: normalizedCid,
-        gateway,
-        fetchImpl,
-        maxBytes: boundedMaxBytes,
-        timeoutMs: boundedTimeoutMs,
-      });
-    } catch (error) {
-      attempts.push({
-        gateway: safeText(gateway, 160),
-        error: safeText(error?.message || "profile_nft_image_gateway_failed", 120),
-      });
-      throw error;
+        ...cachedValue,
+        cache: "miss",
+      };
+    } catch {
+      await Promise.allSettled(fetches);
     }
-  });
 
-  try {
-    const result = await Promise.any(fetches);
-    const cachedValue = {
-      bytes: result.bytes,
-      contentType: result.contentType,
-      gateway: result.gateway,
-      fetchedAt: result.fetchedAt,
-      cachedAt: Date.now(),
-    };
-    if (ttlMs > 0) {
-      cacheSet(
-        normalizedCid,
-        cachedValue,
-        numericEnv(maxCacheBytes ?? env.TASKNODE_PROFILE_NFT_IMAGE_CACHE_MAX_BYTES, DEFAULT_CACHE_MAX_BYTES, 1_000_000, 512 * 1024 * 1024)
-      );
-    }
     return {
-      ok: true,
+      ok: false,
+      status: 502,
+      error: "profile_nft_image_fetch_failed",
+      message: "Profile NFT image CID could not be fetched from configured IPFS gateways.",
       cid: normalizedCid,
-      ...cachedValue,
-      cache: "miss",
+      attempts,
     };
-  } catch {
-    await Promise.allSettled(fetches);
-  }
+  })();
 
-  return {
-    ok: false,
-    status: 502,
-    error: "profile_nft_image_fetch_failed",
-    message: "Profile NFT image CID could not be fetched from configured IPFS gateways.",
-    cid: normalizedCid,
-    attempts,
-  };
+  imageFetchFlights.set(normalizedCid, flight);
+  try {
+    return await flight;
+  } finally {
+    if (imageFetchFlights.get(normalizedCid) === flight) {
+      imageFetchFlights.delete(normalizedCid);
+    }
+  }
 }
 
-export async function handleProfileNftImageRoute({ json, req, res, url } = {}) {
+export async function handleProfileNftImageRoute({ json, req, res, url, fetchImage = fetchProfileNftImage } = {}) {
   if (!url.pathname.startsWith("/api/profile/nft/image/")) return false;
   if (req.method !== "GET") {
     json(res, 405, {
@@ -234,7 +266,20 @@ export async function handleProfileNftImageRoute({ json, req, res, url } = {}) {
   }
 
   const cid = decodeURIComponent(url.pathname.slice("/api/profile/nft/image/".length));
-  const result = await fetchProfileNftImage({ cid });
+  const normalizedCid = normalizeContextCid(safeText(cid, 180));
+  const etag = profileNftImageEtag(normalizedCid);
+  const cacheHeaders = {
+    "cache-control": "public, max-age=31536000, immutable",
+    etag,
+    "x-content-type-options": "nosniff",
+  };
+  if (isValidContextCid(normalizedCid) && ifNoneMatchMatches(req.headers?.["if-none-match"], etag)) {
+    res.writeHead(304, cacheHeaders);
+    res.end();
+    return true;
+  }
+
+  const result = await fetchImage({ cid: normalizedCid || cid });
   if (!result.ok) {
     json(res, result.status || 502, result);
     return true;
@@ -243,8 +288,7 @@ export async function handleProfileNftImageRoute({ json, req, res, url } = {}) {
   res.writeHead(200, {
     "content-type": result.contentType,
     "content-length": String(result.bytes.length),
-    "cache-control": "public, max-age=86400, stale-while-revalidate=604800",
-    "x-content-type-options": "nosniff",
+    ...cacheHeaders,
     "x-profile-nft-image-cache": result.cache || "miss",
   });
   res.end(result.bytes);

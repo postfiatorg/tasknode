@@ -684,7 +684,7 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
         JOIN task_projections projection
           ON projection.task_id = refs.task_id
         LEFT JOIN LATERAL (
-          SELECT title, status, image_cid, image_gateway_url, selected, updated_at
+          SELECT id, title, status, image_cid, image_gateway_url, selected, created_at, updated_at
           FROM profile_nfts
           WHERE wallet_address = COALESCE(NULLIF(projection.subject_wallet, ''), refs.assignee_wallet)
             AND wallet_address <> ''
@@ -695,12 +695,9 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
             )
           ORDER BY
             selected DESC,
-            CASE status
-              WHEN 'minted' THEN 0
-              WHEN 'prepared' THEN 1
-              ELSE 2
-            END ASC,
-            updated_at DESC
+            created_at DESC NULLS LAST,
+            updated_at DESC NULLS LAST,
+            id DESC
           LIMIT 1
         ) nft ON true
         WHERE refs.task_id <> ''

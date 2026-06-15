@@ -7,7 +7,7 @@ import {
   getLatestDailyAirdropRun,
   getProfileRewardHistory,
 } from "./repositories/profile-daily-airdrop.js";
-import { failStaleGeneratingProfileNfts, listProfileNfts } from "./repositories/profile-nfts.js";
+import { countProfileNfts, failStaleGeneratingProfileNfts, listProfileNfts, setSelectedProfileNft } from "./repositories/profile-nfts.js";
 import { getPublicProfile } from "./repositories/profile-public.js";
 import {
   getRecommendedConnectionsState,
@@ -24,7 +24,6 @@ import {
   setAccountHiveHandle,
   setAccountProfileVisibility,
   suggestHiveHandles,
-  getLinkedWallet,
 } from "./runtime-store.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
 
@@ -82,6 +81,7 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
       "/api/profile/nfts",
       "/api/profile/nft/generate",
       "/api/profile/nft/mint",
+      "/api/profile/nft/select",
     ].includes(url.pathname)
   ) {
     return false;
@@ -584,17 +584,65 @@ export async function handleProfileRoute({ getState, json, readJson, req, res, s
     await failStaleGeneratingProfileNfts({ accountId: session.accountId }).catch((error) => {
       console.warn(`profile nft stale generation sweep failed: ${error?.message || error}`);
     });
-    const linkedWallet = getLinkedWallet({ accountId: session.accountId });
-    const requestedLimit = Number(url.searchParams.get("limit") || 120);
+    const requestedLimit = Number(url.searchParams.get("limit") || 240);
     const nfts = await listProfileNfts({
       accountId: session.accountId,
-      walletAddress: linkedWallet.address || "",
-      limit: Number.isFinite(requestedLimit) ? requestedLimit : 120,
+      limit: Number.isFinite(requestedLimit) ? requestedLimit : 240,
     });
+    const total = await countProfileNfts({ accountId: session.accountId });
     json(res, 200, {
       ok: true,
       nfts,
+      total,
       latest: nfts[0] || null,
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/profile/nft/select") {
+    if (req.method !== "POST") {
+      json(res, 405, {
+        ok: false,
+        error: "profile_nft_select_method_not_allowed",
+        message: "Profile NFT selection requires POST.",
+      });
+      return true;
+    }
+    if (!session?.accountId) {
+      json(res, 401, {
+        ok: false,
+        error: "profile_nft_select_login_required",
+        message: "Sign in before selecting a profile NFT.",
+      });
+      return true;
+    }
+    const payload = await readJson(req, 65536);
+    const nft = await setSelectedProfileNft({
+      accountId: session.accountId,
+      nftId: payload?.nftId,
+    });
+    if (!nft) {
+      json(res, 404, {
+        ok: false,
+        error: "profile_nft_not_found",
+        message: "That profile NFT was not found for this account.",
+      });
+      return true;
+    }
+    await recordProfileObservabilityEvent({
+      eventType: "user.profile.nft_selected",
+      accountId: session.accountId,
+      walletAddress: nft.walletAddress || "",
+      resultStatus: "selected",
+      sourceRoute: "server/profile-routes.js::/api/profile/nft/select",
+      metadata: {
+        nftId: safeEventText(nft.id, 180),
+        imageCidPresent: Boolean(nft.imageCid),
+      },
+    });
+    json(res, 200, {
+      ok: true,
+      nft,
     });
     return true;
   }

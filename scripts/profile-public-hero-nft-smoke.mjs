@@ -52,4 +52,67 @@ const hiddenProfile = publicProfileFromParts({
 
 assert.equal(hiddenProfile.heroNft, null);
 
+const selectedProfile = publicProfileFromParts({
+  accountId,
+  input: {
+    account_id: accountId,
+    identity: {},
+    reward_totals: {},
+    alignment: {},
+  },
+  nfts: [
+    {
+      id: "nft_newest_unselected",
+      accountId,
+      title: "Newest unselected",
+      status: "generated",
+      imageCid: "QmNewestUnselectedProfileNftSmoke",
+      createdAt: "2026-06-15T12:00:00.000Z",
+      selected: false,
+    },
+    {
+      id: "nft_selected_older",
+      accountId,
+      title: "Selected older",
+      status: "minted",
+      imageCid: "QmSelectedOlderProfileNftSmoke",
+      createdAt: "2026-06-01T12:00:00.000Z",
+      selected: true,
+    },
+  ],
+});
+assert.equal(selectedProfile.heroNft?.id, "nft_selected_older");
+assert.equal(selectedProfile.nfts[0]?.id, "nft_selected_older");
+
+const createdAtProfile = publicProfileFromParts({
+  accountId,
+  input: {
+    account_id: accountId,
+    identity: {},
+    reward_totals: {},
+    alignment: {},
+  },
+  nfts: [
+    {
+      id: "nft_old_late_mint",
+      accountId,
+      title: "Old created but later minted",
+      status: "minted",
+      imageCid: "QmOldLateMintProfileNftSmoke",
+      createdAt: "2026-05-01T12:00:00.000Z",
+      mintedAt: "2026-06-15T12:00:00.000Z",
+    },
+    {
+      id: "nft_new_created",
+      accountId,
+      title: "New created",
+      status: "generated",
+      imageCid: "QmNewCreatedProfileNftSmoke",
+      createdAt: "2026-06-10T12:00:00.000Z",
+      mintedAt: "2026-05-02T12:00:00.000Z",
+    },
+  ],
+});
+assert.equal(createdAtProfile.heroNft?.id, "nft_new_created");
+
 console.log("profile public hero nft smoke ok");
