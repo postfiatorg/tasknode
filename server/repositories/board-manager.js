@@ -104,6 +104,14 @@ const emptyBoardManagerPayload = Object.freeze({
     project_need_summary: "",
     routing_reason: "",
     cadence_reason: "",
+    action_output: "",
+    delivery_surface: "",
+    recipient_or_reviewer: "",
+    escalation_stage: "",
+    lineage_task_ids: [],
+    referenced_outputs: [],
+    deduped_against: [],
+    why_not_duplicate: "",
     reward_min_pft: 10000,
     reward_max_pft: 50000,
     accept_window_hours: 24,
@@ -140,6 +148,43 @@ function safeArray(value) {
 
 function jsonValue(value) {
   return JSON.stringify(value && typeof value === "object" ? value : {});
+}
+
+function normalizeLineageTaskIds(value = []) {
+  return safeArray(value)
+    .slice(0, 12)
+    .map((item) => safeText(item, 180))
+    .filter(Boolean);
+}
+
+function normalizeReferencedOutputs(value = []) {
+  return safeArray(value)
+    .slice(0, 12)
+    .map((item) => {
+      const input = safeObject(item);
+      return {
+        task_id: safeText(input.task_id || input.taskId, 180),
+        cid: safeText(input.cid || input.source_cid || input.sourceCid, 240),
+        tx_hash: safeText(input.tx_hash || input.txHash || input.source_tx_hash || input.sourceTxHash, 180),
+        summary: safeText(input.summary || input.title || input.description, 700),
+        how_used: safeText(input.how_used || input.howUsed, 700),
+      };
+    })
+    .filter((item) => item.task_id || item.cid || item.tx_hash || item.summary);
+}
+
+function normalizeDedupedAgainst(value = []) {
+  return safeArray(value)
+    .slice(0, 12)
+    .map((item) => {
+      const input = safeObject(item);
+      return {
+        task_id: safeText(input.task_id || input.taskId, 180),
+        theme: safeText(input.theme || input.title, 240),
+        reason_not_repeated: safeText(input.reason_not_repeated || input.reasonNotRepeated || input.reason, 700),
+      };
+    })
+    .filter((item) => item.task_id || item.theme || item.reason_not_repeated);
 }
 
 function normalizePayload(payload = {}) {
@@ -201,6 +246,14 @@ function normalizePayload(payload = {}) {
       project_need_summary: safeText(networkTask.project_need_summary || networkTask.projectNeedSummary, 2000),
       routing_reason: safeText(networkTask.routing_reason || networkTask.routingReason, 1800),
       cadence_reason: safeText(networkTask.cadence_reason || networkTask.cadenceReason, 700),
+      action_output: safeText(networkTask.action_output || networkTask.actionOutput, 1200),
+      delivery_surface: safeText(networkTask.delivery_surface || networkTask.deliverySurface, 120),
+      recipient_or_reviewer: safeText(networkTask.recipient_or_reviewer || networkTask.recipientOrReviewer, 240),
+      escalation_stage: safeText(networkTask.escalation_stage || networkTask.escalationStage, 120),
+      lineage_task_ids: normalizeLineageTaskIds(networkTask.lineage_task_ids || networkTask.lineageTaskIds),
+      referenced_outputs: normalizeReferencedOutputs(networkTask.referenced_outputs || networkTask.referencedOutputs),
+      deduped_against: normalizeDedupedAgainst(networkTask.deduped_against || networkTask.dedupedAgainst),
+      why_not_duplicate: safeText(networkTask.why_not_duplicate || networkTask.whyNotDuplicate, 1200),
       reward_min_pft: rewardBand.min,
       reward_max_pft: rewardBand.max,
       accept_window_hours: Math.min(
@@ -458,6 +511,261 @@ async function currentTaskRequests({ limit = 20 } = {}) {
   }));
 }
 
+export function buildHiveGenerationQualityPolicy({ operatorConstraintsSummary = "" } = {}) {
+  return {
+    schema: "pf.hive.generation_quality_policy.v1",
+    documentationOnlyDefault: "low_value_unless_action_coupled",
+    requiresConcreteActionOutput: true,
+    escalationLadder: "document_to_action_v1",
+    operatorConstraintsSummary: safeText(operatorConstraintsSummary, 1200),
+  };
+}
+
+function contextEntries(document = {}) {
+  return safeArray(document.groups).flatMap((group) =>
+    safeArray(group.entries).map((entry) => ({
+      id: safeText(entry.id, 180),
+      accountId: safeText(entry.accountId || group.accountId, 180),
+      displayName: safeText(entry.displayName || group.displayName, 120),
+      body: safeText(entry.body, 1600),
+      sourceConversationId: safeText(entry.sourceConversationId, 180),
+      walletValidated: Boolean(entry.walletValidated),
+      walletAddress: safeText(entry.walletAddress, 120),
+      createdAt: entry.createdAt || group.latestAt || null,
+    }))
+  ).filter((entry) => entry.id || entry.body);
+}
+
+export function extractOperatorStandingPolicy({
+  hiveContext = {},
+  hiveSecretarySource = {},
+  recentBoardManagerRuns: runs = [],
+} = {}) {
+  const entries = contextEntries(compactContextDocument(hiveContext))
+    .sort((left, right) => (Date.parse(right.createdAt || "") || 0) - (Date.parse(left.createdAt || "") || 0))
+    .slice(0, 16)
+    .map((entry) => ({
+      source_id: entry.id,
+      source_account_id: entry.accountId,
+      created_at: entry.createdAt || "",
+      directive: entry.body,
+      active_scope: "global",
+      generation_implication: "Preserve as non-compressible operator context for Network Task shape, routing, and output decisions.",
+    }));
+  const secretaryFacts = safeArray(hiveSecretarySource?.sourceJson?.facts_to_preserve || hiveSecretarySource?.facts_to_preserve)
+    .slice(0, 8)
+    .map((fact, index) => ({
+      source_id: `secretary_fact_${index + 1}`,
+      source_account_id: "",
+      created_at: hiveSecretarySource?.sourceJson?.generated_at || "",
+      directive: safeText(fact, 1200),
+      active_scope: "global",
+      generation_implication: "Preserve from the pre-compression Secretary source as operator policy context.",
+    }))
+    .filter((item) => item.directive);
+  const runPolicyFacts = safeArray(runs)
+    .flatMap((run) => safeArray(run?.decision?.decision_basis?.source_facts || run?.decisionBasis?.sourceFacts))
+    .slice(0, 8)
+    .map((fact, index) => ({
+      source_id: `recent_run_fact_${index + 1}`,
+      source_account_id: "",
+      created_at: "",
+      directive: safeText(fact, 1200),
+      active_scope: "global",
+      generation_implication: "Preserve recent Board Manager basis as continuity context for the next generation decision.",
+    }))
+    .filter((item) => item.directive);
+  const seen = new Set();
+  return [...entries, ...secretaryFacts, ...runPolicyFacts]
+    .filter((item) => {
+      const key = `${item.source_id}:${item.directive}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 24);
+}
+
+function compactEventSummary(payload = {}) {
+  const input = safeObject(payload);
+  const rewardScore = safeObject(input.reward_score || input.score);
+  return safeText(
+    input.submission_summary ||
+      input.evidence_summary ||
+      input.verification_summary ||
+      input.review_summary ||
+      input.summary ||
+      rewardScore.user_feedback ||
+      rewardScore.reason ||
+      input.reward_summary ||
+      input.reason ||
+      "",
+    900
+  );
+}
+
+function compactCorpusRow(row = {}) {
+  const sourcePayload = safeObject(row.source_payload_json);
+  const sourceNetworkTask = safeObject(sourcePayload.networkTask || sourcePayload.network_task);
+  const eventPayload = safeObject(row.latest_event_payload);
+  const sourceCids = [
+    row.latest_source_cid,
+    safeArray(sourceNetworkTask.referencedOutputs).find((item) => item?.cid)?.cid,
+  ].map((cid) => safeText(cid, 240)).filter(Boolean);
+  const sourceTxHashes = [
+    row.latest_source_tx_hash,
+    safeArray(sourceNetworkTask.referencedOutputs).find((item) => item?.txHash || item?.tx_hash)?.txHash,
+  ].map((txHash) => safeText(txHash, 180)).filter(Boolean);
+  return {
+    taskId: safeText(row.task_id, 180),
+    requestId: safeText(row.request_id, 180),
+    projectId: safeText(row.project_id || sourcePayload.project?.id, 180),
+    state: safeText(row.status || row.ref_state, 80),
+    title: safeText(row.title || row.ref_title, 240),
+    summary: safeText(row.description || row.project_need_summary || sourceNetworkTask.projectNeedSummary, 900),
+    assigneeWallet: safeText(row.assignee_wallet || row.subject_wallet || row.candidate_wallet_address, 120),
+    candidateAccountId: safeText(row.candidate_account_id, 180),
+    rewardPft: Number(row.reward_actual_pft || row.reward_offer_pft || row.ref_reward_pft || 0),
+    projectNeedSummary: safeText(row.project_need_summary || sourceNetworkTask.projectNeedSummary, 700),
+    routingReason: safeText(row.allocation_reason_summary || sourceNetworkTask.allocationReasonSummary, 700),
+    eventSummary: compactEventSummary(eventPayload),
+    eventType: safeText(row.latest_event_type, 120),
+    sourceCids: [...new Set(sourceCids)].slice(0, 4),
+    sourceTxHashes: [...new Set(sourceTxHashes)].slice(0, 4),
+    actionOutput: safeText(sourceNetworkTask.actionOutput || sourceNetworkTask.action_output, 700),
+    deliverySurface: safeText(sourceNetworkTask.deliverySurface || sourceNetworkTask.delivery_surface, 120),
+    escalationStage: safeText(sourceNetworkTask.escalationStage || sourceNetworkTask.escalation_stage, 120),
+    updatedAt: iso(row.updated_at || row.ref_updated_at),
+    createdAt: iso(row.created_at || row.ref_created_at),
+  };
+}
+
+function corpusTheme(task = {}) {
+  return safeText(task.title || task.projectNeedSummary || task.summary, 240)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(document|write|map|review|inspect|trace|draft|create|submit|task|report|friction|fixes|fix|and|the|for|with|to|a|an)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .slice(0, 4)
+    .join(" ");
+}
+
+export function compactNetworkTaskOutputCorpusForBoardManager(rows = [], { limit = 36 } = {}) {
+  const outputs = safeArray(rows).map(compactCorpusRow).filter((item) => item.taskId || item.requestId).slice(0, limit);
+  const projectsCovered = [...new Set(outputs.map((item) => item.projectId).filter(Boolean))].slice(0, 16);
+  const themeGroups = new Map();
+  for (const output of outputs) {
+    const theme = corpusTheme(output);
+    if (!theme) continue;
+    const group = themeGroups.get(theme) || [];
+    group.push(output);
+    themeGroups.set(theme, group);
+  }
+  const repeatedThemes = [...themeGroups.entries()]
+    .filter(([, items]) => items.length > 1)
+    .slice(0, 12)
+    .map(([theme, items]) => `${theme}: ${items.slice(0, 5).map((item) => item.taskId || item.requestId).join(", ")}`);
+  const deduplicationWatchlist = [...themeGroups.entries()]
+    .filter(([, items]) => items.length > 1)
+    .slice(0, 12)
+    .map(([theme, items]) => ({
+      theme,
+      project_id: safeText(items[0]?.projectId, 180),
+      prior_task_ids: items.map((item) => item.taskId).filter(Boolean).slice(0, 8),
+      prior_cids: [...new Set(items.flatMap((item) => item.sourceCids || []))].slice(0, 8),
+      why_not_repeat: "Prior outputs already cover this theme; use them as lineage and choose the next concrete action.",
+      next_action_suggestion: "Escalate documented findings into a PR, mock, named handoff, project patch, or verification task.",
+    }));
+  return {
+    schema: "pf.hive.network_task_output_corpus.v1",
+    generatedAt: new Date().toISOString(),
+    summary: {
+      projects_covered: projectsCovered,
+      recent_outputs: outputs.slice(0, 12).map((item) => ({
+        task_id: item.taskId,
+        project_id: item.projectId,
+        title: item.title,
+        summary: item.eventSummary || item.summary || item.projectNeedSummary,
+        state: item.state,
+      })),
+      repeated_themes: repeatedThemes,
+      open_actionable_items: outputs
+        .filter((item) => ["proposed", "accepted", "submitted", "verification_requested"].includes(item.state))
+        .slice(0, 10)
+        .map((item) => `${item.taskId || item.requestId}: ${item.title || item.projectNeedSummary}`),
+    },
+    outputs,
+    deduplicationWatchlist,
+  };
+}
+
+export async function getNetworkTaskOutputCorpus({ limit = 36 } = {}) {
+  if (!useDatabase()) return compactNetworkTaskOutputCorpusForBoardManager([]);
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 36, 1), 80);
+  const result = await query(
+    `
+      SELECT
+        refs.project_id,
+        refs.task_id,
+        refs.request_id,
+        refs.title AS ref_title,
+        refs.state AS ref_state,
+        refs.assignee_wallet,
+        refs.reward_pft AS ref_reward_pft,
+        refs.created_at AS ref_created_at,
+        refs.updated_at AS ref_updated_at,
+        p.status,
+        p.title,
+        p.description,
+        p.reward_offer_pft,
+        p.reward_actual_pft,
+        p.subject_wallet,
+        p.created_at,
+        p.updated_at,
+        alloc.candidate_account_id,
+        alloc.candidate_wallet_address,
+        alloc.project_need_summary,
+        alloc.allocation_reason_summary,
+        job.source_payload_json,
+        latest_event.event_type AS latest_event_type,
+        latest_event.source_tx_hash AS latest_source_tx_hash,
+        latest_event.source_cid AS latest_source_cid,
+        latest_event.payload_json AS latest_event_payload
+      FROM network_project_task_refs refs
+      LEFT JOIN task_projections p
+        ON p.task_id = refs.task_id
+      LEFT JOIN network_task_generation_jobs job
+        ON (
+          (refs.task_id <> '' AND job.task_id = refs.task_id)
+          OR (refs.request_id <> '' AND job.request_id = refs.request_id)
+        )
+      LEFT JOIN network_task_allocations alloc
+        ON alloc.id = job.allocation_id
+      LEFT JOIN LATERAL (
+        SELECT e.event_type, e.source_tx_hash, e.source_cid, e.payload_json
+        FROM task_events e
+        WHERE e.task_id = refs.task_id
+          AND e.event_type IN (
+            'pf.task.submission.v1',
+            'pf.task.verification_request.v1',
+            'pf.task.verification_response.v1',
+            'pf.reward.v1'
+          )
+        ORDER BY e.occurred_at DESC, e.id DESC
+        LIMIT 1
+      ) latest_event ON true
+      WHERE refs.source = 'network_task_generation'
+      ORDER BY COALESCE(p.updated_at, refs.updated_at, job.updated_at, alloc.updated_at, refs.created_at) DESC,
+               refs.id DESC
+      LIMIT $1
+    `,
+    [normalizedLimit]
+  );
+  return compactNetworkTaskOutputCorpusForBoardManager(result.rows, { limit: normalizedLimit });
+}
+
 function internalRunFilterSql(includeInternal = false) {
   return includeInternal
     ? ""
@@ -476,6 +784,11 @@ function boardManagerSourceLogSnapshot(packet = {}) {
     freshness: safeObject(source.freshness),
     boardActionPressure: safeObject(source.boardActionPressure),
     networkTaskCandidates: safeArray(source.networkTaskCandidates).slice(0, 20),
+    operatorStandingPolicy: safeArray(source.operatorStandingPolicy).slice(0, 24),
+    generationQualityPolicy: safeObject(source.generationQualityPolicy),
+    networkTaskOutputCorpus: safeObject(source.networkTaskOutputCorpus),
+    priorOutputCorpusSummary: safeObject(source.priorOutputCorpusSummary),
+    deduplicationWatchlist: safeArray(source.deduplicationWatchlist).slice(0, 16),
     routingConstraints: safeObject(source.routingConstraints),
     openFollowups: safeArray(source.openFollowups).slice(0, 20),
     hiveProjects: safeObject(source.hiveProjects),
@@ -705,12 +1018,13 @@ export async function buildBoardManagerSourcePacket({
     hiveProjects,
     projectPlanning,
     projectRegistry,
-    taskState,
-    taskRequests,
-    networkTaskContent,
-    networkTaskCandidates,
-    recentRuns,
-    routingConstraints,
+	    taskState,
+	    taskRequests,
+	    networkTaskContent,
+	    networkTaskOutputCorpus,
+	    networkTaskCandidates,
+	    recentRuns,
+	    routingConstraints,
     openFollowups,
   ] = await Promise.all([
     getHiveContextDocument({ limit }),
@@ -719,12 +1033,13 @@ export async function buildBoardManagerSourcePacket({
     getHiveProjectsDocument({ includeEmptyActive: true }),
     latestHiveProjectPlanningState().catch(() => null),
     currentProjectRegistry({ limit: 60 }),
-    currentTaskState({ limit: 12 }),
-    currentTaskRequests({ limit: 8 }),
-    getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 12, stoppedLimit: 6, pendingLimit: 6 }).catch(() => null),
-    listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
-    recentBoardManagerRuns({ limit: 20 }),
-    buildHiveRoutingConstraintsSnapshot({ limit: 120 }).catch(() => ({ ok: false, status: "unavailable", accounts: [] })),
+	    currentTaskState({ limit: 12 }),
+	    currentTaskRequests({ limit: 8 }),
+	    getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 12, stoppedLimit: 6, pendingLimit: 6 }).catch(() => null),
+	    getNetworkTaskOutputCorpus({ limit: 36 }).catch(() => compactNetworkTaskOutputCorpusForBoardManager([])),
+	    listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
+	    recentBoardManagerRuns({ limit: 20 }),
+	    buildHiveRoutingConstraintsSnapshot({ limit: 120 }).catch(() => ({ ok: false, status: "unavailable", accounts: [] })),
     expireOpenBoardManagerFollowups()
       .then(() => resolveStaleBoardManagerFollowups())
       .then(() => listOpenBoardManagerFollowups({ limit: 20 }))
@@ -736,9 +1051,17 @@ export async function buildBoardManagerSourcePacket({
     hiveSecretaryAgeMs: ageMs(hiveSecretaryState?.report?.completedAt),
     latestProjectGenerationAgeMs: ageMs(projectPlanning?.generation?.completedAt),
   };
-  const compactRecentRuns = recentRuns.map(compactBoardManagerRunForSourcePacket);
-  // Canonical capacity verdicts: the same shared predicate used by the
-  // executor hook and getNetworkTaskEligibility, so the Board Manager's view
+	  const compactRecentRuns = recentRuns.map(compactBoardManagerRunForSourcePacket);
+	  const operatorStandingPolicy = extractOperatorStandingPolicy({
+	    hiveContext,
+	    hiveSecretarySource,
+	    recentBoardManagerRuns: compactRecentRuns,
+	  });
+	  const generationQualityPolicy = buildHiveGenerationQualityPolicy({
+	    operatorConstraintsSummary: operatorStandingPolicy.map((item) => item.directive).filter(Boolean).slice(0, 4).join(" | "),
+	  });
+	  // Canonical capacity verdicts: the same shared predicate used by the
+	  // executor hook and getNetworkTaskEligibility, so the Board Manager's view
   // of candidate availability cannot drift from enforcement.
   const candidateCapacityChecks = await listNetworkTaskCandidateCapacityChecks(networkTaskCandidates)
     .catch(() => null);
@@ -768,10 +1091,15 @@ export async function buildBoardManagerSourcePacket({
     projectPlanning,
     projectRegistry: compactProjectRegistryForBoardManager(projectRegistry),
     taskState: compactTaskStateForBoardManager(taskState),
-    taskRequests: compactTaskRequestsForBoardManager(taskRequests),
-    networkTaskContent: compactNetworkTaskContentForBoardManager(networkTaskContent),
-    networkTaskCandidates,
-    routingConstraints,
+	    taskRequests: compactTaskRequestsForBoardManager(taskRequests),
+	    networkTaskContent: compactNetworkTaskContentForBoardManager(networkTaskContent),
+	    networkTaskOutputCorpus,
+	    operatorStandingPolicy,
+	    generationQualityPolicy,
+	    priorOutputCorpusSummary: safeObject(networkTaskOutputCorpus?.summary),
+	    deduplicationWatchlist: safeArray(networkTaskOutputCorpus?.deduplicationWatchlist).slice(0, 16),
+	    networkTaskCandidates,
+	    routingConstraints,
     openFollowups,
     recentBoardManagerRuns: compactRecentRuns,
     executionPolicy: {

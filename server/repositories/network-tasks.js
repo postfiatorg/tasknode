@@ -8,7 +8,7 @@ import {
 import {
   allocationStatusForTaskStatus, compactCandidate, compactNetworkTaskContent,
   compactProductDoc, compactProject, digestJson, groupNetworkTaskContentText, isCompletedNetworkTask,
-  isOutstandingNetworkTask, isStoppedNetworkTask, jsonValue, numeric, rewardBand, safeObject, safeText,
+  isOutstandingNetworkTask, isStoppedNetworkTask, jsonValue, numeric, rewardBand, safeArray, safeObject, safeText,
   taskClass, toIso,
 } from "./network-tasks-utils.js";
 import {
@@ -574,6 +574,36 @@ function sourcePacketText(source = {}) {
   const project = source.project || {};
   const candidate = source.candidate || {};
   const networkTask = source.networkTask || {};
+  const lineage = source.taskLineage || {};
+  const priorOutputLines = safeArray(source.priorOutputCorpus?.outputs)
+    .slice(0, 12)
+    .map((output) => {
+      const ids = [
+        output.taskId || output.task_id,
+        safeArray(output.sourceCids || output.source_cids).join(", "),
+        safeArray(output.sourceTxHashes || output.source_tx_hashes).join(", "),
+      ].map((item) => safeText(item, 240)).filter(Boolean).join(" | ");
+      return `- ${ids || output.title || "prior output"}: ${safeText(output.eventSummary || output.summary || output.projectNeedSummary, 420)}`;
+    })
+    .filter(Boolean);
+  const referencedLines = safeArray(lineage.referencedOutputs || lineage.referenced_outputs)
+    .map((item) => {
+      const output = safeObject(item);
+      return `- ${safeText(output.task_id || output.taskId, 180)} ${safeText(output.cid, 240)} ${safeText(output.tx_hash || output.txHash, 180)}: ${safeText(output.summary || output.how_used || output.howUsed, 420)}`.trim();
+    })
+    .filter(Boolean);
+  const dedupLines = safeArray(lineage.dedupedAgainst || lineage.deduped_against)
+    .map((item) => {
+      const output = safeObject(item);
+      return `- ${safeText(output.task_id || output.taskId, 180)} ${safeText(output.theme, 240)}: ${safeText(output.reason_not_repeated || output.reasonNotRepeated || output.reason, 420)}`.trim();
+    })
+    .filter(Boolean);
+  const policyLines = safeArray(source.operatorStandingPolicy || source.operator_standing_policy)
+    .map((item) => {
+      const policy = safeObject(item);
+      return `- [${safeText(policy.source_id || policy.sourceId, 180)}] ${safeText(policy.directive, 700)} -> ${safeText(policy.generation_implication || policy.generationImplication, 420)}`.trim();
+    })
+    .filter(Boolean);
   return [
     "NETWORK TASK GENERATION SOURCE",
     "",
@@ -589,11 +619,238 @@ function sourcePacketText(source = {}) {
     "Routing rationale",
     networkTask.allocationReasonSummary || source.decision?.reason || "",
     "",
+    "Operator standing policy",
+    policyLines.join("\n") || "None",
+    "",
+    "Generation quality policy",
+    `documentationOnlyDefault: ${source.generationQualityPolicy?.documentationOnlyDefault || "low_value_unless_action_coupled"}`,
+    `requiresConcreteActionOutput: ${source.generationQualityPolicy?.requiresConcreteActionOutput ? "true" : "false"}`,
+    `escalationLadder: ${source.generationQualityPolicy?.escalationLadder || "document_to_action_v1"}`,
+    "",
+    "Concrete action/output",
+    networkTask.actionOutput || "Not specified by Board Manager.",
+    `Delivery surface: ${networkTask.deliverySurface || "unspecified"}`,
+    `Recipient/reviewer: ${networkTask.recipientOrReviewer || "unspecified"}`,
+    `Escalation stage: ${networkTask.escalationStage || "unspecified"}`,
+    "",
+    "Lineage and referenced prior outputs",
+    referencedLines.join("\n") || "None",
+    "",
+    "Deduped against",
+    dedupLines.join("\n") || "None",
+    lineage.whyNotDuplicate || "",
+    "",
+    "Prior output corpus",
+    priorOutputLines.join("\n") || "None",
+    "",
     "Candidate",
     `Account: ${candidate.accountId}`,
     `Wallet: ${candidate.walletAddress}`,
     candidate.profileText || "No Network Diagnostic Report text available.",
   ].join("\n");
+}
+
+export function formatNetworkTaskGenerationSourceText(source = {}) {
+  return sourcePacketText(source);
+}
+
+function normalizeTaskIds(value = []) {
+  return safeArray(value)
+    .slice(0, 12)
+    .map((item) => safeText(item, 180))
+    .filter(Boolean);
+}
+
+function normalizeReferencedOutputs(value = []) {
+  return safeArray(value)
+    .slice(0, 12)
+    .map((item) => {
+      const input = safeObject(item);
+      return {
+        task_id: safeText(input.task_id || input.taskId, 180),
+        cid: safeText(input.cid || input.source_cid || input.sourceCid, 240),
+        tx_hash: safeText(input.tx_hash || input.txHash || input.source_tx_hash || input.sourceTxHash, 180),
+        summary: safeText(input.summary || input.title || input.description, 700),
+        how_used: safeText(input.how_used || input.howUsed, 700),
+      };
+    })
+    .filter((item) => item.task_id || item.cid || item.tx_hash || item.summary);
+}
+
+function normalizeDedupedAgainst(value = []) {
+  return safeArray(value)
+    .slice(0, 12)
+    .map((item) => {
+      const input = safeObject(item);
+      return {
+        task_id: safeText(input.task_id || input.taskId, 180),
+        theme: safeText(input.theme || input.title, 240),
+        reason_not_repeated: safeText(input.reason_not_repeated || input.reasonNotRepeated || input.reason, 700),
+      };
+    })
+    .filter((item) => item.task_id || item.theme || item.reason_not_repeated);
+}
+
+function compactOperatorStandingPolicy(value = []) {
+  return safeArray(value)
+    .slice(0, 12)
+    .map((item) => {
+      const input = safeObject(item);
+      return {
+        source_id: safeText(input.source_id || input.sourceId || input.id, 180),
+        source_account_id: safeText(input.source_account_id || input.sourceAccountId || input.account_id || input.accountId, 180),
+        created_at: safeText(input.created_at || input.createdAt, 80),
+        directive: safeText(input.directive || input.body || input.text, 900),
+        active_scope: safeText(input.active_scope || input.activeScope || "global", 80) || "global",
+        generation_implication: safeText(input.generation_implication || input.generationImplication, 700),
+      };
+    })
+    .filter((item) => item.directive || item.source_id);
+}
+
+function compactGenerationQualityPolicy(value = {}) {
+  const input = safeObject(value);
+  return {
+    schema: safeText(input.schema || "pf.hive.generation_quality_policy.v1", 120),
+    documentationOnlyDefault: safeText(
+      input.documentationOnlyDefault || input.documentation_only_default || "low_value_unless_action_coupled",
+      120
+    ) || "low_value_unless_action_coupled",
+    requiresConcreteActionOutput: input.requiresConcreteActionOutput ?? input.requires_concrete_action_output ?? true,
+    escalationLadder: safeText(input.escalationLadder || input.escalation_ladder || "document_to_action_v1", 120) ||
+      "document_to_action_v1",
+    operatorConstraintsSummary: safeText(input.operatorConstraintsSummary || input.operator_constraints_summary, 900),
+  };
+}
+
+function compactPriorOutputCorpus(value = {}, { projectId = "", candidate = {} } = {}) {
+  const corpus = safeObject(value);
+  const outputs = safeArray(corpus.outputs)
+    .filter((output) => {
+      const item = safeObject(output);
+      const outputProjectId = safeText(item.projectId || item.project_id, 180);
+      const accountId = safeText(item.candidateAccountId || item.candidate_account_id, 180);
+      const wallet = safeText(item.candidateWalletAddress || item.candidate_wallet_address || item.assigneeWallet || item.assignee_wallet, 120);
+      return (
+        outputProjectId === projectId ||
+        accountId === candidate.accountId ||
+        wallet === candidate.walletAddress ||
+        (!projectId && !candidate.accountId && !candidate.walletAddress)
+      );
+    })
+    .slice(0, 24)
+    .map((output) => {
+      const item = safeObject(output);
+      return {
+        taskId: safeText(item.taskId || item.task_id, 180),
+        requestId: safeText(item.requestId || item.request_id, 180),
+        projectId: safeText(item.projectId || item.project_id, 180),
+        state: safeText(item.state || item.status, 80),
+        title: safeText(item.title, 240),
+        summary: safeText(item.eventSummary || item.event_summary || item.summary || item.projectNeedSummary || item.project_need_summary, 700),
+        assigneeWallet: safeText(item.assigneeWallet || item.assignee_wallet, 120),
+        candidateAccountId: safeText(item.candidateAccountId || item.candidate_account_id, 180),
+        rewardPft: Number(item.rewardPft || item.reward_pft || 0),
+        sourceCids: safeArray(item.sourceCids || item.source_cids).slice(0, 4).map((cid) => safeText(cid, 240)).filter(Boolean),
+        sourceTxHashes: safeArray(item.sourceTxHashes || item.source_tx_hashes).slice(0, 4).map((tx) => safeText(tx, 180)).filter(Boolean),
+        actionOutput: safeText(item.actionOutput || item.action_output, 700),
+        deliverySurface: safeText(item.deliverySurface || item.delivery_surface, 120),
+        escalationStage: safeText(item.escalationStage || item.escalation_stage, 120),
+      };
+    });
+  return {
+    schema: safeText(corpus.schema || "pf.hive.network_task_output_corpus.v1", 120),
+    summary: safeObject(corpus.summary),
+    outputs: outputs.length ? outputs : safeArray(corpus.outputs).slice(0, 12),
+    deduplicationWatchlist: safeArray(corpus.deduplicationWatchlist || corpus.deduplication_watchlist).slice(0, 12),
+  };
+}
+
+export function buildNetworkTaskGenerationSource({
+  runId = "",
+  decision = {},
+  sourcePacket = {},
+  project = {},
+  projectDocument = null,
+  candidate = {},
+  normalizedTaskClass = "network",
+  band = { min: 10000, max: 50000 },
+  projectNeedSummary = "",
+  allocationReasonSummary = "",
+  cadenceReason = "",
+  acceptWindowHours = 24,
+} = {}) {
+  const payload = safeObject(decision.payload);
+  const networkTask = safeObject(payload.network_task || payload.networkTask);
+  const taskLineage = {
+    lineageTaskIds: normalizeTaskIds(networkTask.lineage_task_ids || networkTask.lineageTaskIds),
+    referencedOutputs: normalizeReferencedOutputs(networkTask.referenced_outputs || networkTask.referencedOutputs),
+    dedupedAgainst: normalizeDedupedAgainst(networkTask.deduped_against || networkTask.dedupedAgainst),
+    whyNotDuplicate: safeText(networkTask.why_not_duplicate || networkTask.whyNotDuplicate, 1200),
+  };
+  return {
+    schema: "pf.hive.network_task_generation_source.v1",
+    generated_at: new Date().toISOString(),
+    board_manager_run_id: safeText(runId, 180),
+    board_manager_source_digest: safeText(sourcePacket.sourcePacketDigest, 180),
+    decision: {
+      action: decision.action,
+      target_type: decision.target_type,
+      target_id: decision.target_id,
+      reason: decision.reason,
+      confidence: decision.confidence,
+      summary: payload.summary,
+      next_steps: payload.next_steps,
+      decision_basis: safeObject(decision.decision_basis || decision.decisionBasis),
+    },
+    project: compactProject(project),
+    project_document: compactProductDoc(projectDocument),
+    candidate,
+    operatorStandingPolicy: compactOperatorStandingPolicy(sourcePacket.operatorStandingPolicy || sourcePacket.operator_standing_policy),
+    generationQualityPolicy: compactGenerationQualityPolicy(sourcePacket.generationQualityPolicy || sourcePacket.generation_quality_policy),
+    priorOutputCorpus: compactPriorOutputCorpus(sourcePacket.networkTaskOutputCorpus || sourcePacket.priorOutputCorpus, {
+      projectId: safeText(project.id, 180),
+      candidate,
+    }),
+    taskLineage,
+    networkTask: {
+      taskClass: normalizedTaskClass,
+      projectNeedSummary,
+      allocationReasonSummary,
+      cadenceReason,
+      actionOutput: safeText(networkTask.action_output || networkTask.actionOutput, 1200),
+      deliverySurface: safeText(networkTask.delivery_surface || networkTask.deliverySurface, 120),
+      recipientOrReviewer: safeText(networkTask.recipient_or_reviewer || networkTask.recipientOrReviewer, 240),
+      escalationStage: safeText(networkTask.escalation_stage || networkTask.escalationStage, 120),
+      lineageTaskIds: taskLineage.lineageTaskIds,
+      referencedOutputs: taskLineage.referencedOutputs,
+      dedupedAgainst: taskLineage.dedupedAgainst,
+      whyNotDuplicate: taskLineage.whyNotDuplicate,
+      rewardMinPft: band.min,
+      rewardMaxPft: band.max,
+      acceptWindowHours,
+    },
+    policy: {
+      taskLifecycle: "normal_pftl_task_engine",
+      supportedEvidence: ["text", "url", "github_commit", "screenshot", "file", "mixed"],
+      rewardBandPft: [band.min, band.max],
+      boardManagerDoesNotAuthorTaskText: true,
+      generationPolicy: compactGenerationQualityPolicy(sourcePacket.generationQualityPolicy || sourcePacket.generation_quality_policy),
+    },
+  };
+}
+
+function networkTaskIntelligenceMetadata(sourceJson = {}) {
+  return {
+    operatorStandingPolicy: safeArray(sourceJson.operatorStandingPolicy),
+    generationQualityPolicy: safeObject(sourceJson.generationQualityPolicy),
+    priorOutputCorpusSummary: safeObject(sourceJson.priorOutputCorpus?.summary),
+    taskLineage: safeObject(sourceJson.taskLineage),
+    actionOutput: safeText(sourceJson.networkTask?.actionOutput, 1200),
+    deliverySurface: safeText(sourceJson.networkTask?.deliverySurface, 120),
+    recipientOrReviewer: safeText(sourceJson.networkTask?.recipientOrReviewer, 240),
+    escalationStage: safeText(sourceJson.networkTask?.escalationStage, 120),
+  };
 }
 
 function normalizedIntentText(value = "") {
@@ -786,47 +1043,29 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
     }).catch(() => {});
     throw new Error("network_task_candidate_at_capacity");
   }
-  const productDoc = await currentProjectProductDoc(projectId);
-  const idSuffix = idempotencyKey.replace(/^network_task:/, "").slice(0, 32);
-  const intentId = `netintent_${idSuffix}`;
-  const allocationId = `netalloc_${idSuffix}`;
-  const jobId = `nettaskjob_${idSuffix}`;
-  const expiresAt = new Date(Date.now() + acceptWindowHours * 60 * 60 * 1000);
-  const sourceJson = {
-    schema: "pf.hive.network_task_generation_source.v1",
-    generated_at: new Date().toISOString(),
-    board_manager_run_id: safeText(runId, 180),
-    board_manager_source_digest: safeText(sourcePacket.sourcePacketDigest, 180),
-    decision: {
-      action: decision.action,
-      target_type: decision.target_type,
-      target_id: decision.target_id,
-      reason: decision.reason,
-      confidence: decision.confidence,
-      summary: payload.summary,
-      next_steps: payload.next_steps,
-    },
-    project: compactProject(project),
-    project_document: compactProductDoc(productDoc),
-    candidate,
-      networkTask: {
-        taskClass: normalizedTaskClass,
-        projectNeedSummary,
-        allocationReasonSummary,
-        cadenceReason,
-        rewardMinPft: band.min,
-        rewardMaxPft: band.max,
-        acceptWindowHours,
-      },
-    policy: {
-      taskLifecycle: "normal_pftl_task_engine",
-      supportedEvidence: ["text", "url", "github_commit", "screenshot", "file", "mixed"],
-      rewardBandPft: [band.min, band.max],
-      boardManagerDoesNotAuthorTaskText: true,
-    },
-  };
-  const sourceDigest = digestJson(sourceJson);
-  const sourceText = sourcePacketText(sourceJson);
+	  const productDoc = await currentProjectProductDoc(projectId);
+	  const idSuffix = idempotencyKey.replace(/^network_task:/, "").slice(0, 32);
+	  const intentId = `netintent_${idSuffix}`;
+	  const allocationId = `netalloc_${idSuffix}`;
+	  const jobId = `nettaskjob_${idSuffix}`;
+	  const expiresAt = new Date(Date.now() + acceptWindowHours * 60 * 60 * 1000);
+	  const sourceJson = buildNetworkTaskGenerationSource({
+	    runId,
+	    decision,
+	    sourcePacket,
+	    project,
+	    projectDocument: productDoc,
+	    candidate,
+	    normalizedTaskClass,
+	    band,
+	    projectNeedSummary,
+	    allocationReasonSummary,
+	    cadenceReason,
+	    acceptWindowHours,
+	  });
+	  const intelligenceMetadata = networkTaskIntelligenceMetadata(sourceJson);
+	  const sourceDigest = digestJson(sourceJson);
+	  const sourceText = sourcePacketText(sourceJson);
   await transaction(async (client) => {
     await client.query(
       `
@@ -882,13 +1121,14 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
         jobId,
         sourceDigest,
         safeText(runId, 180),
-        jsonValue({
-          board_manager_run_id: safeText(runId, 180),
-          board_manager_source_digest: safeText(sourcePacket.sourcePacketDigest, 180),
-          idempotency_key: idempotencyKey,
-        }),
-      ]
-    );
+	        jsonValue({
+	          board_manager_run_id: safeText(runId, 180),
+	          board_manager_source_digest: safeText(sourcePacket.sourcePacketDigest, 180),
+	          idempotency_key: idempotencyKey,
+	          network_task_intelligence: intelligenceMetadata,
+	        }),
+	      ]
+	    );
     await client.query(
       `
         INSERT INTO network_task_allocations (
@@ -945,15 +1185,16 @@ export async function enqueueNetworkTaskGenerationFromBoardDecision({
           active_capacity_blocker_count: activeCount,
           accept_window_hours: sourceJson.networkTask.acceptWindowHours,
         }),
-        jsonValue({
-          board_manager_run_id: safeText(runId, 180),
-          board_manager_reason: decision.reason,
-          board_manager_source_digest: safeText(sourcePacket.sourcePacketDigest, 180),
-          source_payload_digest: sourceDigest,
-          idempotency_key: idempotencyKey,
-        }),
-        expiresAt.toISOString(),
-      ]
+	        jsonValue({
+	          board_manager_run_id: safeText(runId, 180),
+	          board_manager_reason: decision.reason,
+	          board_manager_source_digest: safeText(sourcePacket.sourcePacketDigest, 180),
+	          source_payload_digest: sourceDigest,
+	          idempotency_key: idempotencyKey,
+	          network_task_intelligence: intelligenceMetadata,
+	        }),
+	        expiresAt.toISOString(),
+	      ]
     );
     await client.query(
       `

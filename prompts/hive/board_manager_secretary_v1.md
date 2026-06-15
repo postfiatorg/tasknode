@@ -13,6 +13,12 @@ Rules:
 - Separate facts from interpretation.
 - Prefer concise plain English over internal jargon.
 - Do not invent tasks, contributors, project state, rewards, or user messages.
+- Operator standing directives that affect task shape, task routing, output destination, contributor targeting, or project priority are non-compressible. Preserve them as explicit structured facts even if they are repeated, angry, terse, or conflict with older project documents.
+- Never replace a current stop/avoid/shift directive with "no explicit constraints" unless the source packet contains a newer operator directive that clearly supersedes it.
+- If the operator directs the board away from documentation-only work, preserve that as an active generation policy and include the concrete implications for task shape.
+- Documentation-only Network Tasks are low-value by default. The downstream Board Manager should prefer concrete action/output tasks: collaboration, PR, mock, shipped change, named handoff, Discord delivery, source-backed patch packet, or verification of a shipped fix.
+- If prior tasks already documented a topic, the next task should act on the prior output, not re-document the same topic.
+- Preserve task ids, CIDs, tx hashes, contributor accounts/wallets, and summaries for prior outputs the downstream Board Manager should reference or dedup against.
 - If the board is stalled, say exactly why.
 - If the board can safely do nothing, explain why.
 - If attention is required, identify the smallest concrete target the downstream Board Manager should inspect or act on.
@@ -64,10 +70,42 @@ Return this JSON shape:
   ],
   "network_task_summary": "Summary of outstanding, completed, stopped, and pending Network Tasks.",
   "candidate_summary": "Summary of contributor availability and routing capacity.",
-  "recent_run_summary": "Summary of recent Board Manager runs and whether they already handled the current issue.",
-  "facts_to_preserve": [
-    "Exact fact, ID, or constraint the downstream Board Manager must not lose."
-  ],
+	  "recent_run_summary": "Summary of recent Board Manager runs and whether they already handled the current issue.",
+	  "operator_standing_policy": [
+	    {
+	      "source_id": "",
+	      "source_account_id": "",
+	      "created_at": "",
+	      "directive": "",
+	      "active_scope": "global | project | contributor | task_type",
+	      "generation_implication": ""
+	    }
+	  ],
+	  "generation_quality_policy": {
+	    "documentation_only_default": "low_value_unless_action_coupled",
+	    "requires_concrete_action_output": true,
+	    "escalation_ladder": "document_to_action_v1",
+	    "operator_constraints_summary": ""
+	  },
+	  "prior_output_corpus_summary": {
+	    "projects_covered": [],
+	    "recent_outputs": [],
+	    "repeated_themes": [],
+	    "open_actionable_items": []
+	  },
+	  "deduplication_watchlist": [
+	    {
+	      "theme": "",
+	      "project_id": "",
+	      "prior_task_ids": [],
+	      "prior_cids": [],
+	      "why_not_repeat": "",
+	      "next_action_suggestion": ""
+	    }
+	  ],
+	  "facts_to_preserve": [
+	    "Exact fact, ID, or constraint the downstream Board Manager must not lose."
+	  ],
   "redaction_count": 0
 }
 ```

@@ -109,6 +109,10 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function isNetworkGeneratedRequest(request = {}) {
   const source = safeText(request.source, 80).toLowerCase();
   const requestedKind = safeText(request.requestedTaskKind || request.requested_task_kind, 80).toLowerCase();
@@ -222,9 +226,11 @@ function recentMessages(bundle = {}) {
   }).filter((message) => message.content).slice(-16);
 }
 
-function projectTaskgenInput(bundle = {}, { bundleCid = "", bundleDigest = "" } = {}) {
+export function projectTaskgenInput(bundle = {}, { bundleCid = "", bundleDigest = "" } = {}) {
   const contextDoc = safeObject(bundle.context?.primary_context_doc);
   const relevantHistory = Array.isArray(bundle.relevant_history?.items) ? bundle.relevant_history.items : [];
+  const networkTask = safeObject(bundle.network_task);
+  const taskLineage = safeObject(networkTask.task_lineage);
   return {
     schema: "pf.taskgen.input.v1",
     request_bundle: {
@@ -250,6 +256,17 @@ function projectTaskgenInput(bundle = {}, { bundleCid = "", bundleDigest = "" } 
     },
     task_queue: bundle.task_queue || {},
     network_task: bundle.network_task || null,
+    hive_policy: {
+      operator_standing_policy: safeArray(networkTask.operator_standing_policy),
+      generation_quality_policy: safeObject(networkTask.generation_quality_policy),
+    },
+    prior_output_corpus: networkTask.prior_output_corpus || {},
+    task_lineage: taskLineage,
+    operator_transparency: {
+      referenced_outputs: safeArray(taskLineage.referenced_outputs),
+      deduped_against: safeArray(taskLineage.deduped_against),
+      escalation_stage: safeText(networkTask.escalation_stage, 120),
+    },
     wallet: bundle.wallet || {},
     policy: bundle.policy || {},
   };
