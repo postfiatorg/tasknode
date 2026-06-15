@@ -88,8 +88,10 @@ const dbIdentities = await resolveHivePublicWalletIdentities({
     if (sql.includes("to_regclass('public.recommended_connection_profiles')")) {
       return { rows: [{ profile_table: "recommended_connection_profiles" }] };
     }
-    assert.deepEqual(params, [[dbWallet]]);
-    assert.match(sql, /FROM task_projections/);
+    assert.deepEqual(params, [[dbWallet], [dbAccountId], [dbWallet]]);
+    assert.match(sql, /FROM unnest\(\$1::text\[\], \$2::text\[\]\)/);
+    assert.doesNotMatch(sql, /FROM task_projections/);
+    assert.doesNotMatch(sql, /FROM network_task_allocations/);
     assert.match(sql, /FROM user_observability_events/);
     assert.match(sql, /profile.visibility = 'public'/);
     assert.match(sql, /profile.discoverable = true/);
@@ -107,6 +109,7 @@ const dbIdentities = await resolveHivePublicWalletIdentities({
       }],
     };
   },
+  walletAccounts: [{ walletAddress: dbWallet, accountId: dbAccountId }],
 });
 assert.equal(dbIdentities.length, 1);
 assert.equal(dbIdentities[0].displayName, "@sanemi");
