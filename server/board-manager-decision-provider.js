@@ -177,6 +177,36 @@ function boardManagerJsonRepairMessages({ sourcePacket = {}, invalidText = "", p
   ];
 }
 
+function boardManagerMalformedJsonFallbackDecision({ sourcePacket = {}, parseError = "" } = {}) {
+  return {
+    action: "do_nothing",
+    target_type: "",
+    target_id: "",
+    reason: "Board Manager provider returned malformed JSON after a repair attempt; failing closed with no board mutation.",
+    confidence: 0,
+    decision_basis: {
+      source_facts: [
+        `source_packet_digest:${safeText(sourcePacket.sourcePacketDigest, 120) || "unknown"}`,
+        "OpenRouter returned malformed Board Manager JSON after one schema-guided repair attempt.",
+      ],
+      tradeoffs: [
+        "Skipping this turn preserves board state instead of executing an unvalidated or partially parsed model decision.",
+      ],
+      rejected_actions: [
+        {
+          action: "initiate_network_task",
+          reason: "No valid provider decision was available for runtime validation.",
+        },
+      ],
+      risk_notes: [
+        `Provider JSON parse error: ${safeText(parseError, 240) || "unknown"}`,
+      ],
+      next_check: "Retry on the next Board Manager cadence and inspect provider formatting if this repeats.",
+    },
+    payload: {},
+  };
+}
+
 function openRouterUsage(body = {}) {
   const usage = body.usage || {};
   return {
@@ -322,6 +352,7 @@ async function fetchOpenRouterBoardManagerDecision({
     let response = await requestDecision(boardManagerDecisionInput({ sourcePacket }));
     let parsed;
     let repairAttempted = false;
+    let repairFailed = false;
     let firstUsage = openRouterUsage(response.body);
     try {
       parsed = parseJsonOutputText(response.text);
@@ -333,7 +364,20 @@ async function fetchOpenRouterBoardManagerDecision({
         invalidText: response.text,
         parseError: error?.message || String(error),
       }));
-      parsed = parseJsonOutputText(response.text);
+      try {
+        parsed = parseJsonOutputText(response.text);
+      } catch (repairError) {
+        if (!isJsonOutputParseError(repairError)) throw repairError;
+        repairFailed = true;
+        parsed = boardManagerMalformedJsonFallbackDecision({
+          sourcePacket,
+          parseError: repairError?.message || String(repairError),
+        });
+        response = {
+          ...response,
+          text: JSON.stringify(parsed),
+        };
+      }
     }
     const usage = openRouterUsage(response.body);
     if (repairAttempted) {
@@ -343,6 +387,7 @@ async function fetchOpenRouterBoardManagerDecision({
       usage.reasoningTokens += firstUsage.reasoningTokens;
       usage.costUsd += firstUsage.costUsd;
       usage.repairAttempted = true;
+      usage.repairFailed = repairFailed;
     }
     return {
       decision: normalizeBoardManagerDecision(parsed),
