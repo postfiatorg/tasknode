@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from http.cookies import SimpleCookie
 import json
 import os
 import stat
+import time
 from typing import Any
 from urllib.parse import urljoin
 
@@ -22,7 +24,11 @@ from .wallets import ProtocolWallet, wallet_from_seed
 
 DEFAULT_BASE_URL = "http://localhost:5174"
 DEFAULT_SECRET_FILE = "/home/pfrpc/repos/tasknode_agent_wallets.json"
+DEFAULT_SESSION_STORE = "/home/pfrpc/repos/tasknode_agent_sessions.json"
 DEFAULT_PFTL_NETWORK_ID = 21338
+SESSION_COOKIE_NAME = "tasknode_session"
+SESSION_EXPIRY_SKEW_SECONDS = 300
+MAX_RATE_LIMIT_SLEEP_SECONDS = 60
 TASKNODE_AGENT_DESTINATION = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
 
 
@@ -79,6 +85,74 @@ def _body_json(response: Any) -> Any:
         return response.json()
     except Exception:
         return getattr(response, "text", "")
+
+
+def _status_code(response: Any) -> int:
+    return int(getattr(response, "status_code", getattr(response, "status", 0)) or 0)
+
+
+def _response_headers(response: Any) -> Any:
+    return getattr(response, "headers", {}) or {}
+
+
+def _header_value(headers: Any, key: str) -> str:
+    if not headers:
+        return ""
+    getter = getattr(headers, "get", None)
+    if callable(getter):
+        return str(getter(key) or getter(key.lower()) or getter(key.title()) or "")
+    return ""
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _session_expires_soon(expires_at: str, *, skew_seconds: int = SESSION_EXPIRY_SKEW_SECONDS) -> bool:
+    parsed = _parse_iso_datetime(expires_at)
+    if not parsed:
+        return True
+    return (parsed - datetime.now(timezone.utc)).total_seconds() <= skew_seconds
+
+
+def _secure_parent_dir(path: str) -> None:
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
+def _write_json_0600(path: str, payload: dict[str, Any]) -> None:
+    _secure_parent_dir(path)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    os.chmod(tmp_path, 0o600)
+    os.replace(tmp_path, path)
+    os.chmod(path, 0o600)
+
+
+def _read_json_0600(path: str) -> dict[str, Any]:
+    if not path or not os.path.exists(path):
+        return {}
+    _require_0600(path)
+    with open(path, "r", encoding="utf-8") as handle:
+        try:
+            data = json.load(handle)
+        except json.JSONDecodeError:
+            return {}
+    return data if isinstance(data, dict) else {}
 
 
 def message_to_hex(message: str) -> str:
@@ -284,6 +358,8 @@ class TaskNodeAgentClient:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = 30,
         http: requests.Session | None = None,
+        session_store_path: str | None = None,
+        sleep_fn=time.sleep,
     ):
         self.wallet = wallet
         self.base_url = str(base_url or DEFAULT_BASE_URL).rstrip("/") + "/"
@@ -291,6 +367,13 @@ class TaskNodeAgentClient:
         self.http = http or requests.Session()
         self.account_id: str | None = None
         self.session_expires_at: str | None = None
+        self.session_store_path = (
+            str(session_store_path)
+            if session_store_path is not None
+            else str(os.environ.get("TASKNODE_AGENT_SESSION_STORE") or DEFAULT_SESSION_STORE)
+        )
+        self.sleep_fn = sleep_fn
+        self._load_cached_session()
 
     @property
     def address(self) -> str:
@@ -298,6 +381,139 @@ class TaskNodeAgentClient:
 
     def _url(self, path: str) -> str:
         return urljoin(self.base_url, str(path or "").lstrip("/"))
+
+    def _request_once(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[Any, Any, int]:
+        response = self.http.request(
+            method.upper(),
+            self._url(path),
+            json=json_body,
+            params=params,
+            timeout=self.timeout,
+        )
+        body = _body_json(response)
+        return response, body, _status_code(response)
+
+    def _retry_after_seconds(self, response: Any, body: Any) -> float:
+        raw = ""
+        if isinstance(body, dict):
+            raw = body.get("retryAfterSeconds") or body.get("retry_after_seconds") or ""
+        if raw == "":
+            raw = _header_value(_response_headers(response), "retry-after")
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            value = 1.0
+        return max(0.0, min(float(MAX_RATE_LIMIT_SLEEP_SECONDS), value))
+
+    def _request_with_rate_limit_retry(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[Any, Any, int]:
+        response, body, status_code = self._request_once(method, path, json_body=json_body, params=params)
+        if status_code != 429:
+            return response, body, status_code
+        self.sleep_fn(self._retry_after_seconds(response, body))
+        return self._request_once(method, path, json_body=json_body, params=params)
+
+    def _session_store(self) -> dict[str, Any]:
+        if not self.session_store_path:
+            return {}
+        return _read_json_0600(self.session_store_path)
+
+    def _write_session_store(self, data: dict[str, Any]) -> None:
+        if not self.session_store_path:
+            return
+        _write_json_0600(self.session_store_path, data)
+
+    def _session_token_from_response(self, response: Any) -> str:
+        set_cookie = _header_value(_response_headers(response), "set-cookie")
+        if set_cookie:
+            cookie = SimpleCookie()
+            try:
+                cookie.load(set_cookie)
+                token = cookie.get(SESSION_COOKIE_NAME)
+                if token:
+                    return str(token.value or "").strip()
+            except Exception:
+                pass
+            marker = f"{SESSION_COOKIE_NAME}="
+            start = set_cookie.find(marker)
+            if start >= 0:
+                value = set_cookie[start + len(marker):].split(";", 1)[0]
+                return value.strip()
+        cookies = getattr(self.http, "cookies", None)
+        getter = getattr(cookies, "get", None)
+        if callable(getter):
+            return str(getter(SESSION_COOKIE_NAME) or "").strip()
+        return ""
+
+    def _install_session_token(self, token: str) -> None:
+        normalized = str(token or "").strip()
+        if not normalized:
+            return
+        cookies = getattr(self.http, "cookies", None)
+        setter = getattr(cookies, "set", None)
+        if callable(setter):
+            setter(SESSION_COOKIE_NAME, normalized, path="/")
+
+    def _clear_session_cookie(self) -> None:
+        cookies = getattr(self.http, "cookies", None)
+        clearer = getattr(cookies, "clear", None)
+        if callable(clearer):
+            try:
+                clearer(domain=None, path="/", name=SESSION_COOKIE_NAME)
+            except Exception:
+                try:
+                    del cookies[SESSION_COOKIE_NAME]
+                except Exception:
+                    pass
+
+    def _load_cached_session(self) -> bool:
+        store = self._session_store()
+        entry = store.get(self.wallet.address) if isinstance(store, dict) else None
+        if not isinstance(entry, dict):
+            return False
+        token = str(entry.get("session_token") or "").strip()
+        expires_at = str(entry.get("expires_at") or "").strip()
+        if not token or _session_expires_soon(expires_at):
+            return False
+        self._install_session_token(token)
+        self.session_expires_at = expires_at
+        self.account_id = str(entry.get("account_id") or "cached_session")
+        return True
+
+    def _persist_session(self, *, token: str, expires_at: str, account_id: str = "") -> None:
+        if not token or not expires_at:
+            return
+        store = self._session_store()
+        store[self.wallet.address] = {
+            "session_token": token,
+            "expires_at": expires_at,
+            "account_id": account_id,
+        }
+        self._write_session_store(store)
+
+    def _discard_cached_session(self) -> None:
+        self._clear_session_cookie()
+        self.account_id = None
+        self.session_expires_at = None
+        if not self.session_store_path or not os.path.exists(self.session_store_path):
+            return
+        store = self._session_store()
+        if self.wallet.address in store:
+            del store[self.wallet.address]
+            self._write_session_store(store)
 
     def request(
         self,
@@ -312,17 +528,15 @@ class TaskNodeAgentClient:
     ) -> Any:
         if auth and not self.account_id:
             self.login()
-        response = self.http.request(
-            method.upper(),
-            self._url(path),
-            json=json_body,
+        response, body, status_code = self._request_with_rate_limit_retry(
+            method,
+            path,
+            json_body=json_body,
             params=params,
-            timeout=self.timeout,
         )
-        body = _body_json(response)
-        status_code = int(getattr(response, "status_code", getattr(response, "status", 0)) or 0)
         if status_code == 401 and auth and relogin:
-            self.login()
+            self._discard_cached_session()
+            self.login(force=True)
             return self.request(
                 method,
                 path,
@@ -336,15 +550,20 @@ class TaskNodeAgentClient:
             raise TaskNodeApiError(status_code, body)
         return body
 
-    def login(self) -> dict[str, Any]:
-        start_response = self.http.request(
+    def login(self, *, force: bool = False) -> dict[str, Any]:
+        if not force and self._load_cached_session():
+            return {
+                "ok": True,
+                "accountId": self.account_id,
+                "address": self.wallet.address,
+                "session": {"expiresAt": self.session_expires_at},
+                "cached": True,
+            }
+        start_response, start, start_status = self._request_with_rate_limit_retry(
             "POST",
-            self._url("/api/auth/wallet/start"),
-            json={"address": self.wallet.address, "publicKey": self.wallet.wallet.public_key},
-            timeout=self.timeout,
+            "/api/auth/wallet/start",
+            json_body={"address": self.wallet.address, "publicKey": self.wallet.wallet.public_key},
         )
-        start = _body_json(start_response)
-        start_status = int(getattr(start_response, "status_code", getattr(start_response, "status", 0)) or 0)
         if start_status >= 400:
             raise TaskNodeApiError(start_status, start)
         challenge = start.get("challenge") if isinstance(start, dict) else None
@@ -352,19 +571,16 @@ class TaskNodeAgentClient:
             raise TaskNodeApiError(start_status or 500, start, "wallet login challenge response was incomplete")
 
         proof = sign_wallet_login_challenge(self.wallet, challenge["message"])
-        verify_response = self.http.request(
+        verify_response, verified, verify_status = self._request_with_rate_limit_retry(
             "POST",
-            self._url("/api/auth/wallet/verify"),
-            json={
+            "/api/auth/wallet/verify",
+            json_body={
                 "challengeId": challenge["id"],
                 "address": proof["address"],
                 "publicKey": proof["publicKey"],
                 "signature": proof["signature"],
             },
-            timeout=self.timeout,
         )
-        verified = _body_json(verify_response)
-        verify_status = int(getattr(verify_response, "status_code", getattr(verify_response, "status", 0)) or 0)
         if verify_status >= 400:
             raise TaskNodeApiError(verify_status, verified)
         if not isinstance(verified, dict) or not verified.get("accountId"):
@@ -372,6 +588,9 @@ class TaskNodeAgentClient:
         self.account_id = str(verified["accountId"])
         session = verified.get("session") or {}
         self.session_expires_at = session.get("expiresAt") or session.get("expires_at")
+        token = self._session_token_from_response(verify_response)
+        if token and self.session_expires_at:
+            self._persist_session(token=token, expires_at=self.session_expires_at, account_id=self.account_id)
         return verified
 
     def tasks(self, **params: Any) -> dict[str, Any]:

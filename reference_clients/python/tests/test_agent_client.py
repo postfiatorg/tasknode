@@ -1,3 +1,8 @@
+from datetime import datetime, timedelta, timezone
+import json
+import os
+import stat
+import tempfile
 import unittest
 from urllib.parse import urlparse
 
@@ -24,9 +29,10 @@ SMOKE_MNEMONIC = (
 
 
 class FakeResponse:
-    def __init__(self, status_code=200, body=None):
+    def __init__(self, status_code=200, body=None, headers=None):
         self.status_code = status_code
         self._body = body if body is not None else {}
+        self.headers = headers or {}
         self.text = ""
 
     def json(self):
@@ -97,8 +103,32 @@ def config_response(wallet, service):
 
 class AgentClientTests(unittest.TestCase):
     def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.session_store = os.path.join(self.tmp.name, "agent_sessions.json")
         self.wallet = wallet_from_seed("agent", SMOKE_MNEMONIC)
         self.service = generate_identity("task_node_service")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def client(self, *, http, **kwargs):
+        return TaskNodeAgentClient(self.wallet, http=http, session_store_path=self.session_store, **kwargs)
+
+    def future_expiry(self):
+        return (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+
+    def write_session_store(self, token="cached_token", expires_at=None, account_id="acct_cached"):
+        payload = {
+            self.wallet.address: {
+                "session_token": token,
+                "expires_at": expires_at or self.future_expiry(),
+                "account_id": account_id,
+            }
+        }
+        with open(self.session_store, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        os.chmod(self.session_store, 0o600)
+        return payload
 
     def test_wallet_login_signs_challenge_and_reads_tasks(self):
         message = "tasknode.wallet_login.v1:unit-test"
@@ -120,7 +150,7 @@ class AgentClientTests(unittest.TestCase):
             verify,
             FakeResponse(200, {"ok": True, "networkTasks": {"status": "profile_required", "gates": []}}),
         ])
-        client = TaskNodeAgentClient(self.wallet, http=http)
+        client = self.client(http=http)
 
         body = client.tasks()
 
@@ -139,12 +169,74 @@ class AgentClientTests(unittest.TestCase):
             FakeResponse(200, {"ok": True, "accountId": "acct_agent"}),
             FakeResponse(200, {"ok": True, "items": []}),
         ])
-        client = TaskNodeAgentClient(self.wallet, http=http)
+        client = self.client(http=http)
 
         result = client.tasks()
 
         self.assertEqual(result["items"], [])
         self.assertEqual([call["path"] for call in http.calls].count("/api/auth/wallet/start"), 2)
+
+    def test_second_process_reuses_cached_session_without_login_call(self):
+        self.write_session_store(token="cached_session_token", account_id="acct_cached")
+        http = FakeSession([
+            FakeResponse(200, {"ok": True, "networkTasks": {"status": "available_for_routing", "gates": []}}),
+        ])
+        client = self.client(http=http)
+
+        result = client.tasks()
+
+        self.assertEqual(client.account_id, "acct_cached")
+        self.assertEqual(result["networkTasks"]["status"], "available_for_routing")
+        self.assertEqual([call["path"] for call in http.calls], ["/api/tasks"])
+
+    def test_401_discards_cached_session_reauthenticates_once_and_overwrites_cache(self):
+        self.write_session_store(token="old_session_token", account_id="acct_cached")
+        message = "tasknode.wallet_login.v1:reauth"
+
+        def verify(call):
+            return FakeResponse(
+                200,
+                {
+                    "ok": True,
+                    "accountId": "acct_agent",
+                    "session": {"expiresAt": self.future_expiry()},
+                },
+                headers={"set-cookie": "tasknode_session=new_session_token; HttpOnly; SameSite=Lax; Path=/"},
+            )
+
+        http = FakeSession([
+            FakeResponse(401, {"ok": False, "error": "session_expired"}),
+            FakeResponse(200, {"ok": True, "challenge": {"id": "ch_reauth", "message": message}}),
+            verify,
+            FakeResponse(200, {"ok": True, "items": []}),
+        ])
+        client = self.client(http=http)
+
+        result = client.tasks()
+
+        with open(self.session_store, "r", encoding="utf-8") as handle:
+            cached = json.load(handle)
+        self.assertEqual(result["items"], [])
+        self.assertEqual([call["path"] for call in http.calls].count("/api/auth/wallet/start"), 1)
+        self.assertEqual([call["path"] for call in http.calls].count("/api/auth/wallet/verify"), 1)
+        self.assertEqual(cached[self.wallet.address]["session_token"], "new_session_token")
+        self.assertEqual(cached[self.wallet.address]["account_id"], "acct_agent")
+        self.assertEqual(stat.S_IMODE(os.stat(self.session_store).st_mode), 0o600)
+
+    def test_429_backs_off_once_and_retries_request(self):
+        sleeps = []
+        http = FakeSession([
+            FakeResponse(429, {"ok": False, "retryAfterSeconds": 2}),
+            FakeResponse(200, {"ok": True, "items": []}),
+        ])
+        client = self.client(http=http, sleep_fn=sleeps.append)
+        client.account_id = "acct_agent"
+
+        result = client.tasks()
+
+        self.assertEqual(result["items"], [])
+        self.assertEqual(sleeps, [2.0])
+        self.assertEqual([call["path"] for call in http.calls], ["/api/tasks", "/api/tasks"])
 
     def test_accept_task_uses_config_prepare_and_returns_verified_signature_without_submit(self):
         prepared = {"phase": "prepared", "txJson": prepared_pointer_tx(self.wallet, kind="TASK_UPDATE")}
@@ -152,7 +244,7 @@ class AgentClientTests(unittest.TestCase):
             FakeResponse(200, config_response(self.wallet, self.service)),
             FakeResponse(200, prepared),
         ])
-        client = TaskNodeAgentClient(self.wallet, http=http)
+        client = self.client(http=http)
         client.account_id = "acct_agent"
 
         result = client.accept_task("task_test", reason="Unit test accept", submit=False)
@@ -173,7 +265,7 @@ class AgentClientTests(unittest.TestCase):
             FakeResponse(200, config_response(self.wallet, self.service)),
             FakeResponse(200, {"phase": "prepared", "txJson": verification_tx}),
         ])
-        client = TaskNodeAgentClient(self.wallet, http=http)
+        client = self.client(http=http)
         client.account_id = "acct_agent"
 
         submission = client.submit_evidence("task_test", evidence_text="done", submit=False)
@@ -203,7 +295,7 @@ class AgentClientTests(unittest.TestCase):
             FakeResponse(200, {"phase": "bundle_prepared", "bundleCid": "bafkreibundle", "bundleDigest": "sha256:abc"}),
             FakeResponse(200, {"phase": "prepared", "txJson": prepared_pointer_tx(self.wallet, kind="TASK", cid="bafkreirequest")}),
         ])
-        client = TaskNodeAgentClient(self.wallet, http=http)
+        client = self.client(http=http)
         client.account_id = "acct_agent"
 
         result = client.request_task(user_detail_text="local unit test", submit=False)
@@ -219,7 +311,7 @@ class AgentClientTests(unittest.TestCase):
             FakeResponse(200, {"phase": "config", "tasknodeEncryptionPubkey": self.service.public_key_b64}),
             FakeResponse(200, {"phase": "prepared", "txJson": prepared_pointer_tx(self.wallet, kind="CONTEXT", cid="bafkreicontext")}),
         ])
-        client = TaskNodeAgentClient(self.wallet, http=http)
+        client = self.client(http=http)
         client.account_id = "acct_agent"
 
         result = client.publish_context(title="Agent", body="<p>Context</p>", submit=False)
