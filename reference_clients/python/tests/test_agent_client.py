@@ -1,0 +1,255 @@
+import unittest
+from urllib.parse import urlparse
+
+from xrpl.core.keypairs import is_valid_message
+
+from tasknode_pftl.agent_client import (
+    TASKNODE_AGENT_DESTINATION,
+    TaskNodeAgentClient,
+    build_synthetic_signed_pointer,
+    message_to_hex,
+    sign_prepared_transaction,
+    tasknode_encrypted_payload,
+    verify_signed_transaction_blob,
+)
+from tasknode_pftl.encryption import generate_identity
+from tasknode_pftl.pointers import Pointer, build_memo
+from tasknode_pftl.wallets import wallet_from_seed
+
+
+SMOKE_MNEMONIC = (
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon "
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
+)
+
+
+class FakeResponse:
+    def __init__(self, status_code=200, body=None):
+        self.status_code = status_code
+        self._body = body if body is not None else {}
+        self.text = ""
+
+    def json(self):
+        return self._body
+
+
+class FakeSession:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def request(self, method, url, json=None, params=None, timeout=None):
+        path = urlparse(url).path
+        call = {
+            "method": method,
+            "path": path,
+            "json": json,
+            "params": params,
+            "timeout": timeout,
+        }
+        self.calls.append(call)
+        if not self.responses:
+            raise AssertionError(f"unexpected request: {method} {path}")
+        response = self.responses.pop(0)
+        if callable(response):
+            response = response(call)
+        return response
+
+
+def prepared_pointer_tx(wallet, *, kind="TASK_UPDATE", task_id="task_test", cid="bafkreitestcid"):
+    memo = build_memo(Pointer(cid=cid, kind=kind, schema=1, task_id=task_id))
+    return {
+        "TransactionType": "Payment",
+        "Account": wallet.address,
+        "Destination": TASKNODE_AGENT_DESTINATION,
+        "Amount": "1",
+        "Fee": "12",
+        "Sequence": 1,
+        "LastLedgerSequence": 1000,
+        "NetworkID": 21338,
+        "Memos": [
+            {
+                "Memo": {
+                    "MemoType": memo["memo_type"].upper(),
+                    "MemoFormat": memo["memo_format"].upper(),
+                    "MemoData": memo["memo_data"].upper(),
+                }
+            }
+        ],
+    }
+
+
+def config_response(wallet, service):
+    return {
+        "phase": "config",
+        "taskId": "task_test",
+        "submissionMode": "initial_submission",
+        "tasknodeEncryptionPubkey": service.public_key_b64,
+        "tasknodeServiceAddress": TASKNODE_AGENT_DESTINATION,
+        "wallets": {
+            "user": wallet.address,
+            "authority": TASKNODE_AGENT_DESTINATION,
+            "allocation": "rAllocation11111111111111111111111111111",
+        },
+        "pointer": {"kind": "TASK_UPDATE", "schema": 1, "flags": 1},
+    }
+
+
+class AgentClientTests(unittest.TestCase):
+    def setUp(self):
+        self.wallet = wallet_from_seed("agent", SMOKE_MNEMONIC)
+        self.service = generate_identity("task_node_service")
+
+    def test_wallet_login_signs_challenge_and_reads_tasks(self):
+        message = "tasknode.wallet_login.v1:unit-test"
+
+        def verify(call):
+            body = call["json"]
+            self.assertEqual(body["address"], self.wallet.address)
+            self.assertTrue(
+                is_valid_message(
+                    bytes.fromhex(message_to_hex(message)),
+                    bytes.fromhex(body["signature"]),
+                    body["publicKey"],
+                )
+            )
+            return FakeResponse(200, {"ok": True, "accountId": "acct_agent", "session": {"expiresAt": "2099-01-01T00:00:00Z"}})
+
+        http = FakeSession([
+            FakeResponse(200, {"ok": True, "challenge": {"id": "ch_1", "message": message}}),
+            verify,
+            FakeResponse(200, {"ok": True, "networkTasks": {"status": "profile_required", "gates": []}}),
+        ])
+        client = TaskNodeAgentClient(self.wallet, http=http)
+
+        body = client.tasks()
+
+        self.assertEqual(client.account_id, "acct_agent")
+        self.assertEqual(body["networkTasks"]["status"], "profile_required")
+        self.assertEqual([call["path"] for call in http.calls], ["/api/auth/wallet/start", "/api/auth/wallet/verify", "/api/tasks"])
+
+    def test_request_reauthenticates_once_on_expired_session(self):
+        challenge = {"id": "ch_1", "message": "login one"}
+        challenge_two = {"id": "ch_2", "message": "login two"}
+        http = FakeSession([
+            FakeResponse(200, {"ok": True, "challenge": challenge}),
+            FakeResponse(200, {"ok": True, "accountId": "acct_agent"}),
+            FakeResponse(401, {"ok": False, "error": "session_expired"}),
+            FakeResponse(200, {"ok": True, "challenge": challenge_two}),
+            FakeResponse(200, {"ok": True, "accountId": "acct_agent"}),
+            FakeResponse(200, {"ok": True, "items": []}),
+        ])
+        client = TaskNodeAgentClient(self.wallet, http=http)
+
+        result = client.tasks()
+
+        self.assertEqual(result["items"], [])
+        self.assertEqual([call["path"] for call in http.calls].count("/api/auth/wallet/start"), 2)
+
+    def test_accept_task_uses_config_prepare_and_returns_verified_signature_without_submit(self):
+        prepared = {"phase": "prepared", "txJson": prepared_pointer_tx(self.wallet, kind="TASK_UPDATE")}
+        http = FakeSession([
+            FakeResponse(200, config_response(self.wallet, self.service)),
+            FakeResponse(200, prepared),
+        ])
+        client = TaskNodeAgentClient(self.wallet, http=http)
+        client.account_id = "acct_agent"
+
+        result = client.accept_task("task_test", reason="Unit test accept", submit=False)
+
+        self.assertTrue(result.submit_skipped)
+        self.assertEqual(result.payload["schema"], "pf.task.update.v1")
+        self.assertEqual(result.payload["transition"], "accepted")
+        self.assertTrue(result.signed.verified)
+        self.assertEqual(verify_signed_transaction_blob(result.signed.tx_blob, expected_address=self.wallet.address)["pointers"][0]["kind"], "TASK_UPDATE")
+        self.assertEqual(len(http.calls), 2)
+
+    def test_submission_and_verification_response_sign_without_submit(self):
+        submission_tx = prepared_pointer_tx(self.wallet, kind="TASK_SUBMISSION", task_id="task_test", cid="bafkreisubmission")
+        verification_tx = prepared_pointer_tx(self.wallet, kind="TASK_SUBMISSION", task_id="task_test", cid="bafkreiverification")
+        http = FakeSession([
+            FakeResponse(200, config_response(self.wallet, self.service)),
+            FakeResponse(200, {"phase": "prepared", "txJson": submission_tx}),
+            FakeResponse(200, config_response(self.wallet, self.service)),
+            FakeResponse(200, {"phase": "prepared", "txJson": verification_tx}),
+        ])
+        client = TaskNodeAgentClient(self.wallet, http=http)
+        client.account_id = "acct_agent"
+
+        submission = client.submit_evidence("task_test", evidence_text="done", submit=False)
+        response = client.respond_verification("task_test", response_text="confirmed", submit=False)
+
+        self.assertEqual(submission.payload["schema"], "pf.task.submission.v1")
+        self.assertEqual(response.payload["schema"], "pf.task.verification_response.v1")
+        self.assertTrue(submission.signed.verified)
+        self.assertTrue(response.signed.verified)
+
+    def test_request_task_signs_bundle_and_event_prepare_without_submit(self):
+        request_bundle = {"bundle_id": "bundle_1", "request": {"request_id": "req_1"}}
+        config = {
+            "phase": "config",
+            "requestId": "req_1",
+            "bundleId": "bundle_1",
+            "requestText": "Request a task.",
+            "userDetailText": "local unit test",
+            "requestedTaskKind": "personal",
+            "requestBundle": request_bundle,
+            "tasknodeEncryptionPubkey": self.service.public_key_b64,
+            "tasknodeServiceAddress": TASKNODE_AGENT_DESTINATION,
+            "wallets": {"user": self.wallet.address, "authority": TASKNODE_AGENT_DESTINATION},
+        }
+        http = FakeSession([
+            FakeResponse(200, config),
+            FakeResponse(200, {"phase": "bundle_prepared", "bundleCid": "bafkreibundle", "bundleDigest": "sha256:abc"}),
+            FakeResponse(200, {"phase": "prepared", "txJson": prepared_pointer_tx(self.wallet, kind="TASK", cid="bafkreirequest")}),
+        ])
+        client = TaskNodeAgentClient(self.wallet, http=http)
+        client.account_id = "acct_agent"
+
+        result = client.request_task(user_detail_text="local unit test", submit=False)
+
+        self.assertEqual(result.payload["schema"], "pf.task.request.v1")
+        self.assertTrue(result.signed.verified)
+        self.assertEqual([call["json"]["phase"] for call in http.calls], ["config", "prepare_bundle", "prepare"])
+
+    def test_publish_context_signs_without_submit(self):
+        http = FakeSession([
+            FakeResponse(200, {"phase": "config", "tasknodeEncryptionPubkey": self.service.public_key_b64}),
+            FakeResponse(200, {"phase": "prepared", "txJson": prepared_pointer_tx(self.wallet, kind="CONTEXT", cid="bafkreicontext")}),
+        ])
+        client = TaskNodeAgentClient(self.wallet, http=http)
+        client.account_id = "acct_agent"
+
+        result = client.publish_context(title="Agent", body="<p>Context</p>", submit=False)
+
+        self.assertEqual(result.payload["schema"], "tasknode.context.v1")
+        self.assertTrue(result.signed.verified)
+
+    def test_tasknode_encrypted_payload_matches_app_envelope(self):
+        payload = {"schema": "unit", "ok": True}
+        encrypted = tasknode_encrypted_payload(payload, wallet=self.wallet, tasknode_encryption_pubkey=self.service.public_key_b64)
+
+        self.assertEqual(encrypted["version"], 1)
+        self.assertEqual(encrypted["enc"], "ENC_X25519_XCHACHA20P1305")
+        self.assertTrue(encrypted["content_hash"])
+        self.assertEqual(len(encrypted["recipients"]), 2)
+
+    def test_sign_prepared_transaction_rejects_account_mismatch(self):
+        tx = prepared_pointer_tx(self.wallet)
+        tx["Account"] = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+
+        with self.assertRaises(ValueError):
+            sign_prepared_transaction(tx, self.wallet, expected_address=self.wallet.address)
+
+    def test_synthetic_signing_proof_verifies_task_update_submission_and_verification_response(self):
+        proofs = [
+            build_synthetic_signed_pointer(self.wallet, kind="TASK_UPDATE", task_id="task_accept_proof"),
+            build_synthetic_signed_pointer(self.wallet, kind="TASK_SUBMISSION", task_id="task_submission_proof"),
+            build_synthetic_signed_pointer(self.wallet, kind="TASK_SUBMISSION", task_id="task_verification_response_proof"),
+        ]
+
+        self.assertTrue(all(proof["ok"] for proof in proofs))
+        self.assertEqual([proof["verification"]["pointers"][0]["kind"] for proof in proofs], ["TASK_UPDATE", "TASK_SUBMISSION", "TASK_SUBMISSION"])
+
+if __name__ == "__main__":
+    unittest.main()
