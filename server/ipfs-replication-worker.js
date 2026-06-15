@@ -11,7 +11,6 @@ const DEFAULT_INTERVAL_MS = 60_000;
 const DEFAULT_INITIAL_DELAY_MS = 10_000;
 const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_PIN_TIMEOUT_MS = 240_000;
-const MAX_VERIFY_BYTES = 1_048_576;
 
 let timer = null;
 let initialTimer = null;
@@ -50,29 +49,74 @@ function payloadClassIsImage(payloadClass = "") {
   return klass === "profile_nft_image" || klass === "profile_nft_thumbnail";
 }
 
-function payloadClassIsJson(payloadClass = "") {
-  return !payloadClassIsImage(payloadClass);
+function replicationConcurrency(env = process.env) {
+  return clampInteger(env.TASKNODE_IPFS_REPLICATION_CONCURRENCY, 6, 1, 20);
 }
 
-async function readLimitedBytes(response, maxBytes = MAX_VERIFY_BYTES) {
+async function readFirstByte(response) {
   const reader = response.body?.getReader();
-  if (!reader) return new Uint8Array();
-  const chunks = [];
-  let total = 0;
-  while (true) {
+  if (!reader) return 0;
+  try {
     const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) throw new Error("ipfs_replication_verify_too_large");
-    chunks.push(value);
+    return done ? 0 : Number(value?.byteLength || 0);
+  } finally {
+    await reader.cancel().catch(() => {});
   }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
+}
+
+function responseContentType(response) {
+  return safeText(response.headers?.get?.("content-type"), 200).toLowerCase();
+}
+
+function verifyContentType({ contentType = "", payloadClass = "", strictContentType = false, env = process.env } = {}) {
+  if (strictContentType && payloadClassIsImage(payloadClass) && !contentType.startsWith("image/")) {
+    return { ok: false, error: "content_type_mismatch", contentType, gateway: gatewayBase(env) };
   }
-  return bytes;
+  return null;
+}
+
+async function verifyHead({ url, payloadClass, env, fetchImpl, signal, strictContentType }) {
+  const response = await fetchImpl(url, {
+    method: "HEAD",
+    headers: { accept: payloadClassIsImage(payloadClass) ? "image/*,*/*" : "application/json,*/*" },
+    signal,
+  });
+  const contentType = responseContentType(response);
+  if (!response.ok) return { ok: false, fallback: true, status: response.status, contentType };
+  const contentTypeError = verifyContentType({ contentType, payloadClass, strictContentType, env });
+  if (contentTypeError) return contentTypeError;
+  return {
+    ok: true,
+    gateway: gatewayBase(env),
+    contentType,
+    verifyMethod: "HEAD",
+  };
+}
+
+async function verifyRangeGet({ url, payloadClass, env, fetchImpl, signal, strictContentType }) {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    headers: {
+      accept: payloadClassIsImage(payloadClass) ? "image/*,*/*" : "application/json,*/*",
+      range: "bytes=0-0",
+    },
+    signal,
+  });
+  const contentType = responseContentType(response);
+  if (!response.ok && response.status !== 206) {
+    return { ok: false, error: `clean_gateway_http_${response.status}`, status: response.status, gateway: gatewayBase(env) };
+  }
+  const contentTypeError = verifyContentType({ contentType, payloadClass, strictContentType, env });
+  if (contentTypeError) return contentTypeError;
+  const byteCount = await readFirstByte(response);
+  if (!byteCount) return { ok: false, error: "clean_gateway_empty_response", gateway: gatewayBase(env) };
+  return {
+    ok: true,
+    gateway: gatewayBase(env),
+    contentType,
+    sizeBytes: byteCount,
+    verifyMethod: response.status === 206 ? "GET_RANGE" : "GET_RANGE_200",
+  };
 }
 
 export async function verifyCidOnCleanGateway({
@@ -90,39 +134,40 @@ export async function verifyCidOnCleanGateway({
   const timeout = setTimeout(() => controller.abort(), safeTimeout);
   const url = cidGatewayUrl({ cid: normalizedCid, env });
   try {
-    const response = await fetchImpl(url, {
-      method: "GET",
-      headers: { accept: payloadClassIsImage(payloadClass) ? "image/*,*/*" : "application/json,*/*" },
+    const head = await verifyHead({
+      url,
+      payloadClass,
+      env,
+      fetchImpl,
       signal: controller.signal,
+      strictContentType,
     });
-    if (!response.ok) {
-      return { ok: false, error: `clean_gateway_http_${response.status}`, status: response.status, gateway: gatewayBase(env) };
+    if (head.ok) {
+      return {
+        ok: true,
+        cid: normalizedCid,
+        gateway: head.gateway,
+        contentType: head.contentType,
+        verifyMethod: head.verifyMethod,
+      };
     }
-    const contentType = safeText(response.headers?.get?.("content-type"), 200).toLowerCase();
-    if (strictContentType && payloadClassIsImage(payloadClass) && !contentType.startsWith("image/")) {
-      return { ok: false, error: "content_type_mismatch", contentType, gateway: gatewayBase(env) };
-    }
-    const bytes = await readLimitedBytes(response);
-    if (!bytes.byteLength) return { ok: false, error: "clean_gateway_empty_response", gateway: gatewayBase(env) };
-    if (payloadClassIsJson(payloadClass)) {
-      try {
-        JSON.parse(new TextDecoder().decode(bytes));
-      } catch (error) {
-        return {
-          ok: false,
-          error: "json_parse_failed",
-          detail: safeText(error?.message, 300),
-          contentType,
-          gateway: gatewayBase(env),
-        };
-      }
-    }
+    if (!head.fallback) return head;
+    const ranged = await verifyRangeGet({
+      url,
+      payloadClass,
+      env,
+      fetchImpl,
+      signal: controller.signal,
+      strictContentType,
+    });
+    if (!ranged.ok) return ranged;
     return {
       ok: true,
       cid: normalizedCid,
-      gateway: gatewayBase(env),
-      contentType,
-      sizeBytes: bytes.byteLength,
+      gateway: ranged.gateway,
+      contentType: ranged.contentType,
+      sizeBytes: ranged.sizeBytes,
+      verifyMethod: ranged.verifyMethod,
     };
   } catch (error) {
     return {
@@ -327,45 +372,75 @@ export async function processIpfsReplicationJob({
 export async function processIpfsReplicationJobsOnce({
   env = process.env,
   fetchImpl = fetch,
+  jobProcessor = processIpfsReplicationJob,
+  claimJobs = claimIpfsReplicationJobs,
+  markFailed = markIpfsReplicationJobFailed,
   logger = console,
   workerId = `ipfs_replication_${hostname()}_${process.pid}`,
   limit = env.TASKNODE_IPFS_REPLICATION_BATCH_LIMIT,
   sourceRefPrefix = "",
 } = {}) {
-  const claimed = await claimIpfsReplicationJobs({
+  const claimed = await claimJobs({
     workerId,
     limit: clampInteger(limit, 10, 1, 100),
     sourceRefPrefix,
   });
   if (claimed.skipped) return { ok: true, skipped: true, reason: claimed.reason, processed: 0 };
   const results = [];
-  for (const job of claimed.jobs) {
-    try {
-      const result = await processIpfsReplicationJob({ job, env, fetchImpl });
-      results.push({ ok: result.ok, jobId: job.id, cid: job.cid, status: result.job?.status || "" });
-    } catch (error) {
-      logger.warn?.("ipfs_replication_job_failed", {
-        jobId: job.id,
-        cid: job.cid,
-        error: error?.message || String(error),
+  const jobs = Array.isArray(claimed.jobs) ? claimed.jobs : [];
+  let nextIndex = 0;
+  const processNext = async () => {
+    while (nextIndex < jobs.length) {
+      const job = jobs[nextIndex];
+      nextIndex += 1;
+      const index = nextIndex - 1;
+      results[index] = await processClaimedIpfsReplicationJob({
+        job,
+        env,
+        fetchImpl,
+        jobProcessor,
+        logger,
+        markFailed,
       });
-      await markIpfsReplicationJobFailed({
-        id: job.id,
-        error: error?.message || String(error),
-        retry: true,
-        retryDelayMs: retryDelayForAttempts(job.attempts, env),
-      }).catch(() => {});
-      results.push({ ok: false, jobId: job.id, cid: job.cid, error: error?.message || String(error) });
     }
-  }
+  };
+  const workerCount = Math.min(replicationConcurrency(env), Math.max(1, jobs.length));
+  await Promise.all(Array.from({ length: workerCount }, processNext));
   const failed = results.filter((result) => result.ok === false).length;
   return {
     ok: failed === 0,
-    claimed: claimed.jobs.length,
+    claimed: jobs.length,
     processed: results.length,
     failed,
     results,
   };
+}
+
+async function processClaimedIpfsReplicationJob({
+  job,
+  env = process.env,
+  fetchImpl = fetch,
+  jobProcessor = processIpfsReplicationJob,
+  logger = console,
+  markFailed = markIpfsReplicationJobFailed,
+} = {}) {
+  try {
+    const result = await jobProcessor({ job, env, fetchImpl });
+    return { ok: result.ok, jobId: job.id, cid: job.cid, status: result.job?.status || "" };
+  } catch (error) {
+    logger.warn?.("ipfs_replication_job_failed", {
+      jobId: job.id,
+      cid: job.cid,
+      error: error?.message || String(error),
+    });
+    await markFailed({
+      id: job.id,
+      error: error?.message || String(error),
+      retry: true,
+      retryDelayMs: retryDelayForAttempts(job.attempts, env),
+    }).catch(() => {});
+    return { ok: false, jobId: job.id, cid: job.cid, error: error?.message || String(error) };
+  }
 }
 
 export function startIpfsReplicationWorker({
