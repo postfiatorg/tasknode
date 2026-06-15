@@ -135,7 +135,7 @@ async function recommendedProfilesReady() {
   return Boolean(result.rows[0]?.profile_table);
 }
 
-async function discoverableMemberProfileIds(accountIds = []) {
+export async function discoverableMemberProfileIds(accountIds = []) {
   if (!accountIds.length || !await recommendedProfilesReady()) return new Set();
   const result = await query(
     `
