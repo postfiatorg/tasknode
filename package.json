@@ -126,6 +126,7 @@
     "profile-public-snapshot": "node scripts/profile-public-snapshot.mjs",
     "profile-nft-import-pftasks": "node scripts/import-pftasks-profile-nfts.mjs",
     "profile-nft-image-proxy-smoke": "node scripts/profile-nft-image-proxy-smoke.mjs",
+    "profile-nft-thumbnail-warm": "node scripts/profile-nft-thumbnail-warm.mjs",
     "profile-nft-cid-repin": "node scripts/profile-nft-cid-repin.mjs",
     "profile-nft-cid-repin-smoke": "node scripts/profile-nft-cid-repin-smoke.mjs",
     "wallet-nft-inventory": "node scripts/wallet-nft-inventory.mjs",
@@ -195,6 +196,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "ripple-keypairs": "^2.0.0",
+    "sharp": "^0.34.5",
     "ws": "^8.19.0",
     "xrpl": "^4.6.0"
   },

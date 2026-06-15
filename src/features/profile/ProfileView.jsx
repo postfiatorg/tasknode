@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { requestJson } from "../../api";
 import { ProfileIdentityCard } from "./ProfileIdentityCard.jsx";
 import { PublicProfile } from "./PublicProfileView.jsx";
+import { profileNftImageCandidates } from "./profile-nft-images.js";
 
 const C = {
   paper:    "#F4EFE6",
@@ -1203,16 +1204,7 @@ function NFTGallery({
 }
 
 function imageCandidatesForNft(nft = {}) {
-  const candidates = [nft.imageDataUrl];
-  if (nft.imageCid) {
-    candidates.push(`/api/profile/nft/image/${encodeURIComponent(nft.imageCid)}`);
-  } else {
-    candidates.push(nft.imageGatewayUrl);
-  }
-  return candidates
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .filter((value, index, list) => list.indexOf(value) === index);
+  return profileNftImageCandidates(nft);
 }
 
 function nftStatusLabel(nft = {}) {
@@ -1390,7 +1382,10 @@ function connectionInitials(connection = {}) {
 }
 
 function ConnectionAvatar({ connection = {}, size = 48 } = {}) {
-  const imageCandidates = useMemo(() => imageCandidatesForNft(connection.heroNft || {}), [connection.heroNft]);
+  const imageCandidates = useMemo(
+    () => profileNftImageCandidates(connection.heroNft || {}, { avatarCssSize: size }),
+    [connection.heroNft, size]
+  );
   const [imageIndex, setImageIndex] = useState(0);
   const imageSrc = imageCandidates[imageIndex] || "";
 
@@ -1414,10 +1409,12 @@ function ConnectionAvatar({ connection = {}, size = 48 } = {}) {
       width: size,
     }}>
       {imageSrc ? (
-        <img
-          alt={`${connectionLabel(connection)} profile NFT`}
-          onError={() => setImageIndex((index) => index + 1)}
-          src={imageSrc}
+	        <img
+	          alt={`${connectionLabel(connection)} profile NFT`}
+	          decoding="async"
+	          loading="lazy"
+	          onError={() => setImageIndex((index) => index + 1)}
+	          src={imageSrc}
           style={{ display: "block", height: "100%", objectFit: "cover", width: "100%" }}
         />
       ) : (
