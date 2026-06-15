@@ -168,14 +168,17 @@ function applyWalletIdentitiesToProjects(projects = {}, walletIdentities = [], p
   return projects;
 }
 
-async function publicWalletIdentityForWallet(wallet = "") {
+async function publicWalletIdentityForWallet(wallet = "", accountId = "") {
   const key = walletIdentityKey(wallet);
   if (!key) return null;
   const walletIdentities = mergeWalletIdentityLists(
     listPublicAccountWalletIdentities().filter((identity) =>
       walletIdentityKey(identity.walletAddress || identity.wallet_address || identity.wallet) === key
     ),
-    await resolveHivePublicWalletIdentities({ wallets: [wallet] })
+    await resolveHivePublicWalletIdentities({
+      wallets: [wallet],
+      walletAccounts: accountId ? [{ walletAddress: wallet, accountId }] : [],
+    })
   );
   const publicProfileIds = await discoverableMemberProfileIds(
     Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)))
@@ -257,7 +260,7 @@ function publicTask(row = {}) {
     title: safeText(row.projected_title || row.title, 240),
     state,
     assignee: safeText(row.projected_subject_wallet || row.assignee_wallet, 120),
-    assigneeAccountId: "",
+    assigneeAccountId: safeText(row.projected_account_id || row.account_id || row.assignee_account_id, 180),
     assigneeHasPublicProfile: false,
     assigneeHandle: "",
     assigneeDisplayName: "",
@@ -758,6 +761,20 @@ function hiveWalletsFromRows({
   return [...wallets];
 }
 
+function hiveWalletAccountsFromRows({ taskRows = [] } = {}) {
+  const pairs = [];
+  const seen = new Set();
+  for (const row of safeArray(taskRows)) {
+    const wallet = safeText(row.projected_subject_wallet || row.subject_wallet || row.assignee_wallet, 160);
+    const accountId = safeText(row.projected_account_id || row.account_id || row.assignee_account_id, 180);
+    const key = `${wallet.toLowerCase()}:${accountId}`;
+    if (!wallet || !accountId || seen.has(key)) continue;
+    seen.add(key);
+    pairs.push({ walletAddress: wallet, accountId });
+  }
+  return pairs;
+}
+
 function mergeWalletIdentity(left = {}, right = {}) {
   const walletAddress = safeText(left.walletAddress || left.wallet_address || right.walletAddress || right.wallet_address, 160);
   return {
@@ -797,47 +814,34 @@ async function recommendedProfilesReady(queryImpl = query) {
 
 export async function resolveHivePublicWalletIdentities({
   wallets = [],
+  walletAccounts = [],
   queryImpl = query,
   databaseReady = useDatabase(),
 } = {}) {
   const uniqueWallets = Array.from(new Set(safeArray(wallets).map((wallet) => safeText(wallet, 160)).filter(Boolean)));
-  if (!uniqueWallets.length || !databaseReady || !await recommendedProfilesReady(queryImpl)) return [];
+  const accountPairs = safeArray(walletAccounts)
+    .map((pair) => ({
+      walletAddress: safeText(pair.walletAddress || pair.wallet_address || pair.wallet, 160),
+      accountId: safeText(pair.accountId || pair.account_id, 180),
+    }))
+    .filter((pair) => pair.walletAddress && pair.accountId);
+  const pairWallets = accountPairs.map((pair) => pair.walletAddress);
+  const allWallets = Array.from(new Set([...uniqueWallets, ...pairWallets]));
+  if (!allWallets.length || !databaseReady || !await recommendedProfilesReady(queryImpl)) return [];
   const result = await queryImpl(
     `
-      WITH wallet_matches AS (
-        SELECT subject_wallet AS wallet_address,
-               account_id,
-               updated_at AS last_seen_at,
-               1 AS source_rank
-        FROM task_projections
-        WHERE subject_wallet = ANY($1::text[])
-          AND subject_wallet <> ''
+      WITH input_wallet_accounts AS (
+        SELECT wallet_address, account_id, ordinal::integer AS source_rank
+        FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS input(wallet_address, account_id, ordinal)
+        WHERE wallet_address <> ''
           AND account_id <> ''
-        UNION ALL
-        SELECT candidate_wallet_address AS wallet_address,
-               candidate_account_id AS account_id,
-               updated_at AS last_seen_at,
-               2 AS source_rank
-        FROM network_task_allocations
-        WHERE candidate_wallet_address = ANY($1::text[])
-          AND candidate_wallet_address <> ''
-          AND candidate_account_id <> ''
-        UNION ALL
+      ),
+      profile_wallet_accounts AS (
         SELECT wallet_address,
                account_id,
-               updated_at AS last_seen_at,
-               3 AS source_rank
+               1000000 AS source_rank
         FROM recommended_connection_profiles
-        WHERE wallet_address = ANY($1::text[])
-          AND wallet_address <> ''
-          AND account_id <> ''
-        UNION ALL
-        SELECT wallet_address,
-               account_id,
-               occurred_at AS last_seen_at,
-               4 AS source_rank
-        FROM user_observability_events
-        WHERE wallet_address = ANY($1::text[])
+        WHERE wallet_address = ANY($3::text[])
           AND wallet_address <> ''
           AND account_id <> ''
       ),
@@ -845,8 +849,12 @@ export async function resolveHivePublicWalletIdentities({
         SELECT DISTINCT ON (lower(wallet_address))
                wallet_address,
                account_id
-        FROM wallet_matches
-        ORDER BY lower(wallet_address), source_rank ASC, last_seen_at DESC NULLS LAST, account_id ASC
+        FROM (
+          SELECT * FROM input_wallet_accounts
+          UNION ALL
+          SELECT * FROM profile_wallet_accounts
+        ) matches
+        ORDER BY lower(wallet_address), source_rank ASC, account_id ASC
       )
       SELECT wallet_account.wallet_address,
              wallet_account.account_id,
@@ -893,7 +901,11 @@ export async function resolveHivePublicWalletIdentities({
       ) hero_nft ON true
       ORDER BY wallet_account.wallet_address ASC
     `,
-    [uniqueWallets]
+    [
+      accountPairs.map((pair) => pair.walletAddress),
+      accountPairs.map((pair) => pair.accountId),
+      allWallets,
+    ]
   );
   return result.rows
     .map((row) => ({
@@ -1051,7 +1063,7 @@ export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, 
   const timeline = eventsResult.rows.map((eventRow, index) => publicReducerEvent(eventRow, index));
   const publicTimeline = publicTimelineRows(eventsResult.rows);
   const task = publicHiveTaskFromProjection(row);
-  enrichTaskWithWalletIdentity(task, await publicWalletIdentityForWallet(task.assignee));
+  enrichTaskWithWalletIdentity(task, await publicWalletIdentityForWallet(task.assignee, task.assigneeAccountId));
   const metadata = safeObject(row.metadata_json);
   const submissions = publicSubmissionSummaries(metadata);
   const verification = publicVerificationSummary(timeline) || { request: "", response: "" };
@@ -1187,6 +1199,7 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
         SELECT refs.*,
                projection.status AS projected_status,
                projection.title AS projected_title,
+               projection.account_id AS projected_account_id,
                projection.subject_wallet AS projected_subject_wallet,
                CASE
                  WHEN projection.status = 'rewarded' THEN projection.reward_actual_pft
@@ -1259,6 +1272,9 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
         contributorRows: contributorsResult.rows,
         taskRows: tasksResult.rows,
         activityRows: activityResult.rows,
+      }),
+      walletAccounts: hiveWalletAccountsFromRows({
+        taskRows: tasksResult.rows,
       }),
     })
   );
