@@ -19,7 +19,7 @@ const document = hiveProjectsDocumentForTests({
     {
       project_id: "project_public_identity_smoke",
       wallet_address: wallet,
-      codename: "stale-board-label",
+      codename: "board-codename",
       archetype: "Network contributor",
       status: "active",
       cap: 1,
@@ -65,9 +65,14 @@ const document = hiveProjectsDocumentForTests({
 });
 
 const project = document.projects.project_public_identity_smoke;
-assert.equal(project.contributors[0].codename, "@public-handle");
-assert.equal(document.operators[wallet].codename, "@public-handle");
+// The Hive board codename is the displayed name and must be preserved; the public
+// profile displayName is exposed as a separate fallback field (not a replacement).
+assert.equal(project.contributors[0].codename, "board-codename");
+assert.equal(project.contributors[0].displayName, "@public-handle");
+assert.equal(document.operators[wallet].codename, "board-codename");
+assert.equal(document.operators[wallet].displayName, "@public-handle");
 assert.equal(document.operators[wallet].hiveHandle, "public-handle");
+assert.equal(project.contributors[0].accountId, "acct_public_identity_smoke");
 assert.equal(project.tasks[0].assignee, wallet);
 assert.equal(project.activity[0].wallet, wallet);
 

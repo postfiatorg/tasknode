@@ -116,7 +116,11 @@ function walletIdentityMap(walletIdentities = [], publicProfileIds = new Set()) 
 
 function enrichContributorWithWalletIdentity(contributor = {}, identity = null) {
   if (identity?.displayName) {
-    contributor.codename = identity.displayName;
+    // Keep the operator's Hive codename as the displayed name; expose the public
+    // profile displayName as a separate fallback field (the frontend's
+    // operatorDisplayName prefers codename, then displayName). Overwriting codename
+    // here blanked routing-feed names when displayName was empty/odd.
+    contributor.displayName = identity.displayName;
     contributor.hiveHandle = identity.hiveHandle || contributor.hiveHandle || "";
     contributor.publicDisplayName = identity.publicDisplayName || contributor.publicDisplayName || "";
     contributor.publicAliases = identity.publicAliases || contributor.publicAliases || [];
@@ -214,6 +218,7 @@ function publicContributor(row = {}) {
     accountId: "",
     hasPublicProfile: false,
     codename: safeText(row.codename, 120),
+    displayName: "",
     archetype: safeText(row.archetype, 180),
     badge: intValue(row.badge_variant),
     allotted: Boolean(row.allotted),
@@ -288,6 +293,7 @@ function operatorMap(projects = {}) {
       if (!contributor.wallet) continue;
       const operator = {
         codename: contributor.codename || "Operator",
+        displayName: contributor.displayName || "",
         archetype: contributor.archetype || "",
         badge: contributor.badge || 0,
         allotted: Boolean(contributor.allotted),
@@ -415,6 +421,7 @@ function mergeContributor(left = {}, right = {}) {
   return {
     ...left,
     codename: left.codename || right.codename,
+    displayName: left.displayName || right.displayName || "",
     archetype: left.archetype || right.archetype,
     badge: intValue(left.badge) || intValue(right.badge),
     allotted: Boolean(left.allotted || right.allotted),
