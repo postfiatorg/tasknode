@@ -10,6 +10,7 @@ from xrpl.core.keypairs import is_valid_message
 
 from tasknode_pftl.agent_client import (
     TASKNODE_AGENT_DESTINATION,
+    TaskNodeApiError,
     TaskNodeAgentClient,
     build_synthetic_signed_pointer,
     message_to_hex,
@@ -98,6 +99,33 @@ def config_response(wallet, service):
             "allocation": "rAllocation11111111111111111111111111111",
         },
         "pointer": {"kind": "TASK_UPDATE", "schema": 1, "flags": 1},
+    }
+
+
+def context_response(*, pointer_count=0, revision=0, latest_pointer=None):
+    return {
+        "document": {
+            "id": "ctx_agent",
+            "title": "Agent Context",
+            "body": "<p>existing</p>",
+            "revision": revision,
+        },
+        "history": {
+            "revision": pointer_count,
+            "pointerCount": pointer_count,
+            "latestContextPointer": latest_pointer,
+        },
+    }
+
+
+def prepared_context_response(wallet, *, cid="bafkreicontext", revision=1):
+    return {
+        "phase": "prepared",
+        "cid": cid,
+        "txJson": prepared_pointer_tx(wallet, kind="CONTEXT", cid=cid),
+        "pointer": {"kind": "CONTEXT", "schema": 1, "cid": cid},
+        "context": {"id": "ctx_agent", "revision": revision, "wordCount": 2},
+        "transaction": {"destination": TASKNODE_AGENT_DESTINATION},
     }
 
 
@@ -318,6 +346,118 @@ class AgentClientTests(unittest.TestCase):
 
         self.assertEqual(result.payload["schema"], "tasknode.context.v1")
         self.assertTrue(result.signed.verified)
+
+    def test_ensure_context_published_publishes_fresh_account_and_verifies(self):
+        http = FakeSession([
+            FakeResponse(200, context_response(pointer_count=0, revision=0)),
+            FakeResponse(200, {"ok": True, "document": {"revision": 1}}),
+            FakeResponse(200, {"phase": "config", "tasknodeEncryptionPubkey": self.service.public_key_b64}),
+            FakeResponse(200, prepared_context_response(self.wallet, revision=1)),
+            FakeResponse(200, {"phase": "submitted", "cid": "bafkreicontext", "txHash": "ABC123"}),
+            FakeResponse(
+                200,
+                context_response(
+                    pointer_count=1,
+                    revision=1,
+                    latest_pointer={"cid": "bafkreicontext", "txHash": "ABC123"},
+                ),
+            ),
+        ])
+        client = self.client(http=http)
+        client.account_id = "acct_agent"
+
+        result = client.ensure_context_published(title="Agent", body="<p>Context</p>")
+
+        self.assertEqual(
+            result,
+            {
+                "published": True,
+                "revision": 1,
+                "cid": "bafkreicontext",
+                "pointerTx": "ABC123",
+                "pointerCount": 1,
+            },
+        )
+        self.assertEqual(
+            [call["path"] for call in http.calls],
+            [
+                "/api/context",
+                "/api/context/edit/save",
+                "/api/context/manifest/ink",
+                "/api/context/manifest/ink",
+                "/api/context/manifest/ink",
+                "/api/context",
+            ],
+        )
+        self.assertEqual([call["json"].get("phase") for call in http.calls[2:5]], ["config", "prepare", "submit"])
+
+    def test_ensure_context_published_noops_when_pointer_exists(self):
+        pointer = {"cid": "bafkreiexisting", "txHash": "EXISTING123"}
+        http = FakeSession([
+            FakeResponse(200, context_response(pointer_count=1, revision=4, latest_pointer=pointer)),
+        ])
+        client = self.client(http=http)
+        client.account_id = "acct_agent"
+
+        result = client.ensure_context_published(title="Agent", body="<p>Context</p>")
+
+        self.assertEqual(
+            result,
+            {
+                "published": False,
+                "reason": "already_published",
+                "pointerCount": 1,
+                "revision": 4,
+                "latestContextPointer": pointer,
+            },
+        )
+        self.assertEqual([call["path"] for call in http.calls], ["/api/context"])
+
+    def test_ensure_context_published_force_republishes_existing_pointer(self):
+        http = FakeSession([
+            FakeResponse(200, context_response(pointer_count=1, revision=4, latest_pointer={"cid": "old"})),
+            FakeResponse(200, {"ok": True, "document": {"revision": 5}}),
+            FakeResponse(200, {"phase": "config", "tasknodeEncryptionPubkey": self.service.public_key_b64}),
+            FakeResponse(200, prepared_context_response(self.wallet, cid="bafkreiforced", revision=5)),
+            FakeResponse(200, {"phase": "submitted", "cid": "bafkreiforced", "txHash": "FORCED123"}),
+            FakeResponse(
+                200,
+                context_response(
+                    pointer_count=2,
+                    revision=5,
+                    latest_pointer={"cid": "bafkreiforced", "txHash": "FORCED123"},
+                ),
+            ),
+        ])
+        client = self.client(http=http)
+        client.account_id = "acct_agent"
+
+        result = client.ensure_context_published(title="Agent", body="<p>Forced</p>", force=True)
+
+        self.assertTrue(result["published"])
+        self.assertEqual(result["cid"], "bafkreiforced")
+        self.assertEqual(result["pointerTx"], "FORCED123")
+        self.assertEqual(result["pointerCount"], 2)
+        self.assertEqual([call["json"].get("phase") for call in http.calls[2:5]], ["config", "prepare", "submit"])
+
+    def test_ensure_context_published_raises_when_post_publish_read_has_no_pointer(self):
+        http = FakeSession([
+            FakeResponse(200, context_response(pointer_count=0, revision=0)),
+            FakeResponse(200, {"ok": True, "document": {"revision": 1}}),
+            FakeResponse(200, {"phase": "config", "tasknodeEncryptionPubkey": self.service.public_key_b64}),
+            FakeResponse(200, prepared_context_response(self.wallet, revision=1)),
+            FakeResponse(200, {"phase": "submitted", "cid": "bafkreicontext", "txHash": "ABC123"}),
+            FakeResponse(200, context_response(pointer_count=0, revision=1)),
+        ])
+        client = self.client(http=http)
+        client.account_id = "acct_agent"
+
+        with self.assertRaises(TaskNodeApiError) as raised:
+            client.ensure_context_published(title="Agent", body="<p>Context</p>")
+
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertEqual(raised.exception.body["error"], "context_publish_not_pinned")
+        self.assertEqual([call["json"].get("phase") for call in http.calls[2:5]], ["config", "prepare", "submit"])
 
     def test_tasknode_encrypted_payload_matches_app_envelope(self):
         payload = {"schema": "unit", "ok": True}

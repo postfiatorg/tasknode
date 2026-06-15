@@ -80,6 +80,13 @@ def _safe_text(value: Any = "", limit: int = 4000) -> str:
     return str(value or "").strip()[:limit]
 
 
+def _safe_int(value: Any = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _body_json(response: Any) -> Any:
     try:
         return response.json()
@@ -694,6 +701,55 @@ class TaskNodeAgentClient:
                 },
             )
         return SignedFlowResult(config=config, prepared=prepared, signed=signed, payload=payload, submitted=submitted)
+
+    def ensure_context_published(self, *, title: str, body: str, force: bool = False) -> dict[str, Any]:
+        current = self.context_document()
+        history = current.get("history") if isinstance(current, dict) else {}
+        document = current.get("document") if isinstance(current, dict) else {}
+        pointer_count = _safe_int(history.get("pointerCount") if isinstance(history, dict) else 0)
+        latest_pointer = history.get("latestContextPointer") if isinstance(history, dict) else None
+        revision = _safe_int(document.get("revision") if isinstance(document, dict) else current.get("revision") if isinstance(current, dict) else 0)
+
+        if pointer_count >= 1 and latest_pointer is not None and not force:
+            return {
+                "published": False,
+                "reason": "already_published",
+                "pointerCount": pointer_count,
+                "revision": revision,
+                "latestContextPointer": latest_pointer,
+            }
+
+        saved = self.save_context(title=title, body=body, revision=revision)
+        saved_document = saved.get("document") if isinstance(saved, dict) else {}
+        publish_revision = _safe_int(saved_document.get("revision") if isinstance(saved_document, dict) else revision)
+        published = self.publish_context(title=title, body=body, revision=publish_revision, submit=True)
+
+        verified = self.context_document()
+        verified_history = verified.get("history") if isinstance(verified, dict) else {}
+        verified_document = verified.get("document") if isinstance(verified, dict) else {}
+        verified_pointer_count = _safe_int(verified_history.get("pointerCount") if isinstance(verified_history, dict) else 0)
+        verified_latest_pointer = verified_history.get("latestContextPointer") if isinstance(verified_history, dict) else None
+        if verified_pointer_count < 1 or verified_latest_pointer is None:
+            raise TaskNodeApiError(
+                502,
+                {
+                    "ok": False,
+                    "error": "context_publish_not_pinned",
+                    "message": "Context publish completed but no pinned context pointer was visible on the follow-up read.",
+                    "pointerCount": verified_pointer_count,
+                    "latestContextPointer": verified_latest_pointer,
+                },
+                "context publish did not actually pin a context pointer",
+            )
+
+        submitted = published.submitted or {}
+        return {
+            "published": True,
+            "revision": _safe_int(verified_document.get("revision") if isinstance(verified_document, dict) else publish_revision),
+            "cid": submitted.get("cid") or published.prepared.get("cid"),
+            "pointerTx": submitted.get("txHash") or submitted.get("tx_hash") or published.signed.tx_hash,
+            "pointerCount": verified_pointer_count,
+        }
 
     def accept_task(
         self,
