@@ -357,13 +357,40 @@ function normalizeStoredWalletVault(value) {
   }
 }
 
-function vaultStatusFromVault({ accountId, vault, storage = "" }) {
+function normalizeVaultPersistence(value) {
+  return value === "persistent" || value === "volatile" || value === "unknown" ? value : "unknown";
+}
+
+export async function walletVaultPersistence() {
+  try {
+    const storage = globalThis.navigator?.storage;
+    if (!storage || typeof storage.persisted !== "function") return "unknown";
+    return await storage.persisted() ? "persistent" : "volatile";
+  } catch {
+    return "unknown";
+  }
+}
+
+async function persistenceFromRequestResult(persistent) {
+  if (persistent) return "persistent";
+  const current = await walletVaultPersistence();
+  if (current === "persistent") return "persistent";
+  const storage = globalThis.navigator?.storage;
+  if (storage && (typeof storage.persist === "function" || typeof storage.persisted === "function")) {
+    return "volatile";
+  }
+  return "unknown";
+}
+
+export function vaultStatusFromVault({ accountId, vault, storage = "", persistence = "unknown" }) {
+  const normalizedPersistence = normalizeVaultPersistence(persistence);
   if (!vault) {
     return {
       available: false,
       unlocked: false,
       accountId,
       address: null,
+      persistence: normalizedPersistence,
     };
   }
 
@@ -378,6 +405,7 @@ function vaultStatusFromVault({ accountId, vault, storage = "" }) {
     createdAt: vault.createdAt || null,
     updatedAt: vault.updatedAt || null,
     storage: storage || "local",
+    persistence: normalizedPersistence,
     kdf: vault.encryption?.kdf?.name || "PBKDF2",
     hash: vault.encryption?.kdf?.hash || "SHA-256",
     iterations: vault.encryption?.kdf?.iterations || TASKNODE_VAULT_KDF_ITERATIONS,
@@ -513,6 +541,7 @@ export function localWalletVaultStatus({ accountId }) {
       unlocked: false,
       accountId: null,
       address: null,
+      persistence: "unknown",
     };
   }
 
@@ -522,32 +551,51 @@ export function localWalletVaultStatus({ accountId }) {
 
 export async function localWalletVaultStatusAsync({ accountId }) {
   const normalizedAccountId = String(accountId || "").trim();
+  const persistence = await walletVaultPersistence();
   if (!normalizedAccountId) {
     return {
       available: false,
       unlocked: false,
       accountId: null,
       address: null,
+      persistence,
     };
   }
 
   const indexedDbVault = await loadIndexedDbWalletVault({ accountId: normalizedAccountId });
   if (indexedDbVault) {
-    return vaultStatusFromVault({ accountId: normalizedAccountId, vault: indexedDbVault, storage: "indexedDB" });
+    return vaultStatusFromVault({
+      accountId: normalizedAccountId,
+      vault: indexedDbVault,
+      storage: "indexedDB",
+      persistence,
+    });
   }
 
   const localStorageVault = loadLocalStorageWalletVault({ accountId: normalizedAccountId });
   if (localStorageVault) {
     try {
       await saveVaultToIndexedDb({ accountId: normalizedAccountId, vault: localStorageVault });
-      await requestPersistentVaultStorage();
+      const persistent = await requestPersistentVaultStorage();
+      const nextPersistence = await persistenceFromRequestResult(persistent);
+      return vaultStatusFromVault({
+        accountId: normalizedAccountId,
+        vault: localStorageVault,
+        storage: "localStorage",
+        persistence: nextPersistence,
+      });
     } catch {
       // Keep reporting the fallback vault; persistence can be blocked in private/in-app browsers.
     }
-    return vaultStatusFromVault({ accountId: normalizedAccountId, vault: localStorageVault, storage: "localStorage" });
+    return vaultStatusFromVault({
+      accountId: normalizedAccountId,
+      vault: localStorageVault,
+      storage: "localStorage",
+      persistence,
+    });
   }
 
-  return vaultStatusFromVault({ accountId: normalizedAccountId, vault: null });
+  return vaultStatusFromVault({ accountId: normalizedAccountId, vault: null, persistence });
 }
 
 export async function saveEncryptedMnemonicVault({
@@ -610,9 +658,11 @@ export async function saveEncryptedMnemonicVault({
   let saved = false;
   let lastError = null;
   let savedStorage = "";
+  let persistence = await walletVaultPersistence();
   try {
     await saveVaultToIndexedDb({ accountId: normalizedAccountId, vault });
-    await requestPersistentVaultStorage();
+    const persistent = persistence === "persistent" ? true : await requestPersistentVaultStorage();
+    persistence = await persistenceFromRequestResult(persistent);
     saved = true;
     savedStorage = "indexedDB";
   } catch (error) {
@@ -633,6 +683,7 @@ export async function saveEncryptedMnemonicVault({
     accountId: normalizedAccountId,
     vault,
     storage: savedStorage || "localStorage",
+    persistence,
   });
 }
 
