@@ -722,19 +722,8 @@
   gap: 6px;
 }
 
-.wallet-confirm-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #3d3d3d;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.wallet-confirm-row input {
-  width: 15px;
-  height: 15px;
-  accent-color: #0d0d0d;
+.wallet-backup-word-field {
+  flex: 1 1 280px;
 }
 
 .wallet-creation-result-modal {

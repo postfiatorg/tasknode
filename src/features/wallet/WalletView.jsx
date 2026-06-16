@@ -67,6 +67,19 @@ function seedWordCount(value) {
   return normalized ? normalized.split(" ").length : 0;
 }
 
+export function verifyBackupWord({ normalizedMnemonic = "", index = 0, input = "" } = {}) {
+  const words = normalizeSeedInput(normalizedMnemonic).split(" ").filter(Boolean);
+  const wordIndex = Number(index);
+  if (!Number.isInteger(wordIndex) || wordIndex < 1 || wordIndex > words.length) return false;
+  return String(input || "").trim().toLowerCase() === words[wordIndex - 1];
+}
+
+function randomWordIndex(wordCount) {
+  const count = Number(wordCount) || 0;
+  if (!Number.isInteger(count) || count < 1) return 0;
+  return Math.floor(Math.random() * count) + 1;
+}
+
 export function WalletView({
   onAppStateChange,
   onLoginRequired,
@@ -1299,7 +1312,8 @@ function WalletLinkModal({
   const isCreate = action?.id === "create_start";
   const [walletCore, setWalletCore] = useState(null);
   const [mnemonic, setMnemonic] = useState("");
-  const [seedConfirmed, setSeedConfirmed] = useState(false);
+  const [verifyWord, setVerifyWord] = useState("");
+  const [verifyWordIndex, setVerifyWordIndex] = useState(0);
   const [vaultPassword, setVaultPassword] = useState("");
   const [vaultPasswordConfirm, setVaultPasswordConfirm] = useState("");
   const [message, setMessage] = useState("");
@@ -1307,6 +1321,11 @@ function WalletLinkModal({
   const normalized = walletCore?.normalizeMnemonic?.(mnemonic) || normalizeSeedInput(mnemonic);
   const wordCount = walletCore?.mnemonicWordCount?.(mnemonic) || seedWordCount(mnemonic);
   const valid = walletCore?.isValidTaskNodeMnemonic?.(mnemonic) || false;
+  const backupWordVerified = !isCreate || verifyBackupWord({
+    normalizedMnemonic: normalized,
+    index: verifyWordIndex,
+    input: verifyWord,
+  });
   const passwordReady = vaultPassword.length >= 10;
   const passwordsMatch = Boolean(vaultPassword) && vaultPassword === vaultPasswordConfirm;
   const vaultStatus = !vaultPassword
@@ -1325,7 +1344,12 @@ function WalletLinkModal({
     import("../../wallet-core")
       .then((module) => {
         if (active) setWalletCore(module);
-        if (active && isCreate) setMnemonic(module.generateTaskNodeMnemonic());
+        if (active && isCreate) {
+          const generatedMnemonic = module.generateTaskNodeMnemonic();
+          setMnemonic(generatedMnemonic);
+          setVerifyWord("");
+          setVerifyWordIndex(randomWordIndex(module.mnemonicWordCount(generatedMnemonic)));
+        }
       })
       .catch(() => {
         if (active) setMessage("Wallet tools could not be loaded.");
@@ -1338,9 +1362,15 @@ function WalletLinkModal({
 
   function regenerateMnemonic() {
     if (!walletCore?.generateTaskNodeMnemonic) return;
-    setMnemonic(walletCore.generateTaskNodeMnemonic());
-    setSeedConfirmed(false);
+    const generatedMnemonic = walletCore.generateTaskNodeMnemonic();
+    setMnemonic(generatedMnemonic);
+    setVerifyWord("");
+    setVerifyWordIndex(randomWordIndex(walletCore.mnemonicWordCount(generatedMnemonic)));
     setMessage("");
+  }
+
+  function backupWordMismatchMessage() {
+    return `That word doesn't match — re-check word #${verifyWordIndex}.`;
   }
 
   if (valid) {
@@ -1373,8 +1403,8 @@ function WalletLinkModal({
       setMessage("Enter a valid 24-word recovery phrase.");
       return;
     }
-    if (isCreate && !seedConfirmed) {
-      setMessage("Confirm that you saved the recovery phrase before creating this wallet.");
+    if (isCreate && !backupWordVerified) {
+      setMessage(backupWordMismatchMessage());
       return;
     }
     if (!passwordReady) {
@@ -1466,7 +1496,8 @@ function WalletLinkModal({
       }
 
       setMnemonic("");
-      setSeedConfirmed(false);
+      setVerifyWord("");
+      setVerifyWordIndex(0);
       setVaultPassword("");
       setVaultPasswordConfirm("");
       setMessage(finalMessage);
@@ -1531,16 +1562,23 @@ function WalletLinkModal({
               <RefreshCw size={13} strokeWidth={1.8} />
               Regenerate
             </button>
-            <label className="wallet-confirm-row">
+            <label className="wallet-seed-field compact wallet-backup-word-field">
+              <span>To confirm you saved it, type word #{verifyWordIndex || "—"} from your recovery phrase.</span>
               <input
-                checked={seedConfirmed}
+                autoCapitalize="none"
+                autoComplete="off"
+                autoCorrect="off"
                 onChange={(event) => {
-                  setSeedConfirmed(event.target.checked);
+                  setVerifyWord(event.target.value);
                   setMessage("");
                 }}
-                type="checkbox"
+                onBlur={() => {
+                  if (verifyWord && !backupWordVerified) setMessage(backupWordMismatchMessage());
+                }}
+                spellCheck={false}
+                type="text"
+                value={verifyWord}
               />
-              <span>I saved this recovery phrase.</span>
             </label>
           </div>
         )}
@@ -1600,7 +1638,7 @@ function WalletLinkModal({
           <button className="light-pill" onClick={onClose} type="button">
             Cancel
           </button>
-          <button className="dark-pill" disabled={linking} onClick={linkWallet} type="button">
+          <button className="dark-pill" disabled={linking || (isCreate && !backupWordVerified)} onClick={linkWallet} type="button">
             {linking
               ? isCreate
                 ? "Creating"
