@@ -18,7 +18,10 @@ import {
   completeHiveProjectProductDoc,
 } from "./repositories/hive-project-product-docs.js";
 import { applyCanonicalHiveProject } from "./hive-project-canonical.js";
-import { enqueueNetworkTaskGenerationFromBoardDecision } from "./repositories/network-tasks.js";
+import {
+  enqueueNetworkTaskGenerationFromBoardDecision,
+  syncNetworkTaskProjection,
+} from "./repositories/network-tasks.js";
 import {
   createBoardManagerFollowup,
   findOpenBoardManagerFollowup,
@@ -1363,7 +1366,8 @@ async function executeCancelNetworkTask({ runId, decision, sourcePacket }) {
       SELECT tp.task_id, tp.status, tp.title, tp.reward_actual_pft,
              (refs.task_id IS NOT NULL) AS is_network_task
       FROM task_projections tp
-      LEFT JOIN network_project_task_refs refs ON refs.task_id = tp.task_id
+      LEFT JOIN network_project_task_refs refs
+        ON refs.task_id = tp.task_id AND refs.source = 'network_task_generation'
       WHERE tp.task_id = $1
       LIMIT 1
     `,
@@ -1443,13 +1447,26 @@ async function executeCancelNetworkTask({ runId, decision, sourcePacket }) {
     };
   }
 
+  // Propagate the terminal status to the network-task mirror tables
+  // (network_project_task_refs / network_task_allocations / intents / project
+  // counts / followups) so they do not lag behind the projection. The projection
+  // terminal write above is the reward-safety boundary; this sync is consistency
+  // only. Best-effort: a failure leaves mirrors stale until the next batch sync
+  // and does not undo the cancel.
+  let mirrorSync = { ok: true, skipped: true, reason: "not_invoked" };
+  try {
+    mirrorSync = await syncNetworkTaskProjection({ taskId });
+  } catch (error) {
+    mirrorSync = { ok: false, error: safeText(error?.message || error, 500) };
+  }
+
   // Capacity is released automatically: listNetworkTaskCapacityBlockers excludes
   // tasks whose task_projections.status is terminal, so this cancelled/refused
   // task no longer blocks the candidate. The agent_cancelled metadata marker,
   // together with the reducer persist-time guard in repositories/tasks.js,
-  // prevents the PFTL cache reducer from reviving this task on a later
-  // re-derivation (e.g. a lagging contributor pointer), so it can never reach
-  // the reward queue.
+  // prevents the PFTL cache reducer from reviving this task on ANY later
+  // re-derivation (a lagging contributor pointer or even a stale reward pointer),
+  // so it can never reach the reward queue and can never be marked rewarded.
   return {
     executed: true,
     taskId,
@@ -1457,6 +1474,7 @@ async function executeCancelNetworkTask({ runId, decision, sourcePacket }) {
     transition,
     cancelReason,
     referencedTaskIds,
+    mirrorSync,
   };
 }
 
