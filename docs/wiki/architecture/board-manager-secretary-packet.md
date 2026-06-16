@@ -20,6 +20,52 @@ The packet is keyed by a semantic source digest. Generated timestamps, trigger
 names, freshness counters, and no-op Board Manager runs do not force a new
 provider call.
 
+## Non-Compressible Policy Fields
+
+The Secretary packet is allowed to compress noisy board state, but it must not
+compress away current operator routing intent. The prompt requires these fields
+as first-class packet members:
+
+- `operator_standing_policy`
+- `generation_quality_policy`
+- `prior_output_corpus_summary`
+- `deduplication_watchlist`
+
+The prompt marks operator standing directives, no-documentation-only generation
+policy, and prior task ids/CIDs/tx hashes as non-compressible facts
+(`prompts/hive/board_manager_secretary_v1.md:16`,
+`prompts/hive/board_manager_secretary_v1.md:74`). The runtime normalizer
+preserves those fields (`server/board-manager-secretary-packets.js:464`), and
+the text form printed for the Board Manager includes dedicated sections for
+operator standing policy, generation quality policy, prior output corpus, and
+deduplication watchlist (`server/board-manager-secretary-packets.js:478`).
+
+This is the boundary that prevents the old failure mode where the Secretary
+packet said no explicit current constraints were set even while the operator had
+active stop-docs or rerouting instructions in Hive Context.
+
+## Generation Policy Handoff
+
+`generation_quality_policy` is model-facing policy, not executable gating. It
+tells the Board Manager and downstream task generator that documentation-only
+Network Tasks are low value by default, that prior documentation should escalate
+to action, and that repeated task shapes should be deduped against the prior
+output corpus. The packet carries the deduplication watchlist so the decision
+model can cite what it referenced and avoided in `decision_basis`; no Secretary
+field directly rejects, caps, blocks, or rewards a task in code.
+
+## JSON Repair And Fallback
+
+Secretary output is parsed as JSON. If DeepSeek returns malformed JSON, the
+runtime makes one repair request that explicitly preserves the
+non-compressible generation fields (`server/board-manager-secretary-packets.js:180`,
+`server/board-manager-secretary-packets.js:702`). If repair also fails, the
+runtime writes a source-derived fallback packet instead of failing open or
+dropping operator policy (`server/board-manager-secretary-packets.js:243`).
+That fallback states it was created because the model returned malformed JSON
+and includes deterministic source facts plus the non-compressible generation
+policy.
+
 ## Status Derivation
 
 Green means the latest packet row exists and is `current`.

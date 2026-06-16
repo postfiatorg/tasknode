@@ -84,6 +84,28 @@ Pinata is the current simple pinning path. A self-hosted IPFS node can be added 
 
 The gateway list for task indexing is assembled from `TASKNODE_IPFS_GATEWAY`, then the comma-separated `TASKNODE_IPFS_GATEWAYS`, then `IPFS_GATEWAY_FALLBACKS`, then built-in defaults (`https://pft-ipfs-testnet-clean.fly.dev/ipfs/`, Pinata, `dweb.link`, `ipfs.io`), then legacy `IPFS_GATEWAY_URL`. Note the fetch itself is a concurrent race (`Promise.any`) across the assembled list, not a sequential fallback: every configured gateway is queried in parallel and the first successful response wins, so list position controls membership, not priority. Retired PFTasks/Fly gateways should not be default app reads; pass them explicitly only to inventory or recovery tools when investigating legacy CIDs.
 
+New writes are also replicated into the clean first-party cluster through the
+durable `ipfs_replication_jobs` queue. The replication worker claims a batch and
+processes jobs with bounded concurrency from
+`TASKNODE_IPFS_REPLICATION_CONCURRENCY` (default 6) instead of serially
+verifying one CID at a time (`server/ipfs-replication-worker.js:52`,
+`server/ipfs-replication-worker.js:372`). Verification is by existence: `HEAD`
+to the clean gateway, falling back to ranged `GET bytes=0-0` when a gateway
+returns 405. 2xx and 206 are accepted; the old full-body verification download,
+JSON parse, and 1 MiB cap are not used on this path
+(`server/ipfs-replication-worker.js:78`,
+`server/ipfs-replication-worker.js:96`). Operator requeue uses
+`scripts/ipfs-replication-requeue.mjs`, which is dry-run by default and mutates
+terminal jobs only with `--execute`.
+
+Encrypted task payload reads add a bounded retry around the IPFS JSON fetch so a
+transient gateway miss does not immediately surface as an undecryptable payload.
+`TASKNODE_IPFS_READ_RETRY_ATTEMPTS` defaults to 3 and
+`TASKNODE_IPFS_READ_RETRY_BACKOFF_MS` defaults to 600 ms. The retry happens only
+while `fetchIpfsJson` returns `!ok`; once ciphertext is fetched, decryption
+errors are not retried or masked (`server/task-payloads.js:24`,
+`server/task-payloads.js:160`).
+
 Profile NFT image rendering follows the same policy through `/api/profile/nft/image/:cid`. `TASKNODE_PROFILE_NFT_IMAGE_GATEWAYS` can override the proxy list, but the default proxy reads from the clean first-party gateway before public fallbacks. As of June 6, 2026 at 20:40 UTC, all 79 public profile NFT metadata, thumbnail, and image CIDs in the current Task Node database resolve through the clean first-party gateway. Do not replace unresolved minted artifacts with new CIDs. Profile galleries must show an explicit unavailable-image state for any future CID failure until the original blocks are recovered.
 
 ## Diagram

@@ -13,7 +13,7 @@ The endpoint returns:
 - the generated timestamp;
 - the current default rank formula metadata.
 
-Rows are keyed by `account_id`. Task counts and reward totals come from `task_projections.reward_actual_pft > 0`. Alignment is the latest completed `profile_daily_airdrop_runs.alignment_score_7d` converted to 0-100. Hero avatars use the selected/latest usable `profile_nfts` image fields and render through the same CID proxy candidate order as Profile avatars.
+Rows are keyed by `account_id`. Task counts and reward totals come from `task_projections.reward_actual_pft > 0`. Alignment is the latest completed `profile_daily_airdrop_runs.alignment_score_7d` converted to 0-100. Hero avatars prefer the selected usable `profile_nfts` row and otherwise fall back to the newest usable row by `created_at`. The frontend uses the shared profile NFT image helper, so Directory row avatars request cached PFP thumbnails such as `/api/profile/nft/pfp/<cid>?size=96` instead of the full-resolution gallery image.
 
 ## Ranking
 
@@ -28,6 +28,12 @@ This weighting is intentionally marked open. It is a configurable default, not f
 ## Public Profile Links
 
 Rows link to `#/profile?account=<accountId>` only when the existing member-profile route would allow that account. The route fetches `/api/profile/member?accountId=<accountId>` and renders the public profile view. Operators without an allowed public member profile render as inert rows, not dead links.
+
+The link and avatar rules are intentionally the same as Hive's public identity
+surface: profile links require `hasPublicProfile`, while NFT avatar data is
+returned only for operators already admitted by the public+discoverable
+Directory visibility gate. The Directory does not expose private or
+non-discoverable accounts.
 
 ## Open Decisions
 

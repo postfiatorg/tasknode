@@ -23,6 +23,73 @@ System Status row: `board_manager`
 - Current Hive action results are rendered in the Hive surface as inspectable
   agent activity.
 
+## Generation Intelligence
+
+The Board Manager source packet now treats operator routing intent as
+first-class generation context, not incidental prose that can disappear during
+compression. `server/repositories/board-manager.js` extracts
+`operatorStandingPolicy` from Hive Context, Secretary facts, and recent run
+facts, builds the default `generationQualityPolicy`, and adds a bounded
+`networkTaskOutputCorpus` with prior task ids, public CIDs/tx hashes, summaries,
+repeated themes, and a `deduplicationWatchlist`
+(`server/repositories/board-manager.js:514`,
+`server/repositories/board-manager.js:539`,
+`server/repositories/board-manager.js:607`). The corpus builder is bounded by
+recent project-linked task rows and compact event summaries; it does not decrypt
+or inject raw private evidence.
+
+`prompts/hive/board_manager_v1.md` makes Network Task generation action-first:
+pure documentation-only tasks are low value by model policy, the preferred next
+step after a document is an action or delivery handoff, and
+`decision_basis.source_facts` should cite prior task ids, CIDs, or tx hashes
+when the decision relies on prior work (`prompts/hive/board_manager_v1.md:59`,
+`prompts/hive/board_manager_v1.md:87`). This is prompt policy and model
+context. It is not a deterministic code gate, task cap, blocklist, reward cap,
+or automatic rejection rule.
+
+`payload.network_task` carries model-authored audit/context fields so operators
+can see what the Board Manager intended the downstream task generator to use:
+`action_output`, `delivery_surface`, `recipient_or_reviewer`,
+`escalation_stage`, `lineage_task_ids`, `referenced_outputs`,
+`deduped_against`, and `why_not_duplicate`
+(`server/repositories/board-manager.js:100`,
+`server/repositories/board-manager.js:153`). These fields are preserved in the
+normalized decision payload (`server/repositories/board-manager.js:242`) and
+flow to Network Task generation for transparency. They do not approve, reject,
+or suppress work in code.
+
+The document-to-action ladder used by the prompts is:
+
+1. If the prior output only documents a problem, the next task should require a
+   concrete action such as a PR, mock, Discord handoff, direct collaboration,
+   field test, or shipped artifact.
+2. If a fix or mock already exists, the next task should route review,
+   integration, publishing, or operator handoff instead of asking another member
+   to re-document the same issue.
+3. If the corpus shows overlapping prior outputs, the Board Manager should name
+   what it referenced and what it deduped against in
+   `decision_basis.source_facts`, `referenced_outputs`, and
+   `deduped_against`.
+
+## JSON Handling Hardening
+
+The Board Manager decision provider parses strict JSON, retries once with a
+schema-guided repair prompt when provider output is malformed, and then fails
+closed with `do_nothing` if repair also returns malformed JSON
+(`server/board-manager-decision-provider.js:139`,
+`server/board-manager-decision-provider.js:161`,
+`server/board-manager-decision-provider.js:180`,
+`server/board-manager-decision-provider.js:352`). A fail-closed decision
+records why no board mutation executed, so malformed provider text cannot become
+an unvalidated action.
+
+The Secretary packet path has the same shape: it repairs malformed JSON once,
+then writes a deterministic source-derived fallback packet that preserves
+non-compressible operator policy and generation-quality fields instead of
+silently dropping them (`server/board-manager-secretary-packets.js:180`,
+`server/board-manager-secretary-packets.js:243`,
+`server/board-manager-secretary-packets.js:702`).
+
 ## Status Derivation
 
 Green means the `global_hive` scope is enabled and the latest completed run is

@@ -31,6 +31,34 @@ worker closes the allocation/job/intent chain through
 Those failures are audit records, not work the user can act on, so they must not
 appear in the Tasks request strip as `Needs attention`.
 
+## Network Taskgen Input Context
+
+For Network/Alpha requests, `projectTaskgenInput` now exposes the Board
+Manager's Hive-generation context to the taskgen model:
+
+- `hive_policy.operator_standing_policy`
+- `hive_policy.generation_quality_policy`
+- `prior_output_corpus`
+- `task_lineage`
+- `operator_transparency.referenced_outputs`
+- `operator_transparency.deduped_against`
+- `operator_transparency.escalation_stage`
+
+The fields are populated from the encrypted request bundle's `network_task`
+block (`server/task-generation-worker.js:229`). The network taskgen prompt
+treats `hive_policy`, the concrete `network_task` packet, prior output corpus,
+and task lineage as the highest-authority task-shape inputs
+(`prompts/task_engine/taskgen_network_v1.md:70`). Its document-to-action
+section instructs the model to avoid documentation-only tasks by default,
+reference prior outputs, dedup silently, and move already-documented work toward
+PRs, mocks, Discord handoffs, collaboration, reviews, or shipped changes
+(`prompts/task_engine/taskgen_network_v1.md:99`).
+
+This is context and prompt policy only. The worker still follows the normal
+claim, decrypt, model-call, encrypt, publish, and replay path. It does not add
+hard-coded gates, reward caps, wallet bans, deterministic documentation-task
+rejection, or alternate lifecycle rules.
+
 ## Debug And Repair
 
 Use the lifecycle smoke and replay repair:

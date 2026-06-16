@@ -43,6 +43,23 @@ read-only Hive task pop-out. That pop-out is scoped to network-project tasks
 only and surfaces public lifecycle summary fields, public tx hashes, and CIDs;
 it never decrypts or returns raw evidence plaintext.
 
+Public identity resolution is wallet-scoped but account-aware. The Hive project
+repository resolves task assignees, operators, contributors, and feed actors to
+`accountId`, `hasPublicProfile`, public handle, display name fallback, and
+selected profile NFT/PFP only when the account is already public and
+discoverable (`server/repositories/hive-projects.js:86`,
+`server/repositories/hive-projects.js:860`). The frontend uses the same pattern
+as Directory: if `hasPublicProfile` is true, the identity badge/name is an
+`#/profile?account=<accountId>` link; otherwise it renders as inert text
+(`src/features/hive/HiveView.jsx:587`). This applies to routing feed rows,
+allotted-operator rows, contributor cards, project task assignees, activity
+rows, and task pop-out assignees.
+
+The routing feed preserves the Hive codename as the primary displayed operator
+name. Public `displayName` is exposed as a separate fallback field, not a
+replacement, so wallet feed names do not get clobbered by profile display names
+(`server/repositories/hive-projects.js:118`).
+
 Project IDs are part of the product surface. The project detail header should expose the stable `network_projects.id` so operators can refer to a project in tasks, docs, and chat without ambiguity.
 
 ## New User Quickstart
@@ -271,6 +288,37 @@ Current endpoints:
 - `GET /api/hive/chat` returns the signed-in account's Hive chat state.
 - `PATCH /api/hive/chat` marks the signed-in account's unread Board Manager Hive messages as read.
 - `POST /api/hive/chat` re-enables the default Hive chat after a user disables it.
+
+The public task-detail endpoint first joins `network_project_task_refs` to
+`task_projections` and `network_projects`; if no project-linked row exists, it
+returns `hive_task_not_found` before reading `task_events`
+(`server/repositories/hive-projects.js:1007`). This is the hard data boundary
+that keeps personal/private task ids out of the public Hive pop-out.
+
+The explicit public field contract is stored as
+`publicHiveTaskDetailFields` (`server/repositories/hive-projects.js:929`). The
+response may include only:
+
+- task identity and display fields: `task.id`, `task.taskId`,
+  `task.requestId`, `task.title`, `task.state`, `task.kind`, `task.summary`,
+  `task.description`, `task.source`, `task.createdAt`, `task.updatedAt`,
+  `task.age`, and `task.nextAction`;
+- public assignee fields: `task.assignee`, `task.assigneeAccountId`,
+  `task.assigneeHasPublicProfile`, `task.assigneeHandle`,
+  `task.assigneeDisplayName`, and selected `task.assigneeNft` title/status/CID
+  fields;
+- public reward/project fields: `task.pft`, `task.project.id`,
+  `task.project.name`, and `task.project.type`;
+- public work/review summaries: `review.submissions[].type`,
+  `review.submissions[].summary`, `review.verification.request`,
+  `review.verification.response`, `review.outcome.decision`,
+  `review.outcome.rewardPft`, and `review.outcome.reason`;
+- timeline audit fields: `timeline[].action`, `timeline[].label`,
+  `timeline[].time`, `timeline[].txHash`, and `timeline[].cid`.
+
+The pop-out is read-only. It has no accept, submit, verify, wallet signing, or
+lifecycle controls; those stay on the Tasks surface for the owner/operator
+workflow.
 
 ## Technical Architecture
 
