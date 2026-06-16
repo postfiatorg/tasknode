@@ -45,7 +45,7 @@ async function seedProject(projectId) {
   );
 }
 
-async function seedProjection({ taskId, accountId, wallet, status, taskKind = "network", rewardActualPft = null }) {
+async function seedProjection({ taskId, accountId, wallet, status, taskKind = "network", rewardActualPft = 0 }) {
   await query(
     `INSERT INTO task_projections (task_id, account_id, subject_wallet, status, title, task_kind, source, reward_actual_pft)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -63,7 +63,7 @@ async function seedRef({ taskId, projectId, source, state, wallet, rewardPft = 1
   await query(
     `INSERT INTO network_project_task_refs (id, project_id, task_id, request_id, title, state, assignee_wallet, reward_pft, source, metadata_json)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, '{}'::jsonb)
-     ON CONFLICT (task_id) DO UPDATE SET
+     ON CONFLICT (id) DO UPDATE SET
        state = EXCLUDED.state,
        source = EXCLUDED.source,
        assignee_wallet = EXCLUDED.assignee_wallet,
