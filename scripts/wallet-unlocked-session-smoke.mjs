@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   createUnlockedWalletSessionStore,
+  createSessionStorageKeyStore,
   walletUnlockIdleLockMs,
   walletUnlockIdleLockMinutes,
 } from "../src/features/wallet/wallet-unlocked-session.js";
@@ -123,5 +124,76 @@ assert.ok(await store.read({ accountId: unlock.accountId }));
 store.clearAll();
 assert.equal(await store.read({ accountId: unlock.accountId }), null);
 assert.equal(storage.raw.size, 0);
+
+// --- Regression: the unlock must survive a reload (key co-located with envelope) ---
+// The AES key now lives in the SAME storage as the encrypted envelope, so a
+// fresh store + fresh key store reading that storage (the reload analog) can
+// still decrypt. Previously the key lived in IndexedDB while the envelope lived
+// in sessionStorage; when IndexedDB was partitioned/evicted on reload (Windows
+// Edge Tracking Prevention, Chrome storage partitioning, InPrivate/incognito),
+// the key was lost and every reload forced a full seed re-entry.
+const reloadStorage = fakeStorage();
+const reloadStoreA = createUnlockedWalletSessionStore({
+  storage: reloadStorage,
+  keyStore: createSessionStorageKeyStore(reloadStorage),
+});
+assert.equal(await reloadStoreA.save(unlock), true);
+assert.ok(
+  reloadStorage.getItem("tasknode:wallet-unlocked-session:aes-key"),
+  "AES key is co-located in storage with the envelope"
+);
+// Fresh store + fresh key store, same storage == page reload.
+const reloadStoreB = createUnlockedWalletSessionStore({
+  storage: reloadStorage,
+  keyStore: createSessionStorageKeyStore(reloadStorage),
+});
+assert.deepEqual(
+  await reloadStoreB.read({ accountId: unlock.accountId, expectedAddress: unlock.address }),
+  unlock,
+  "unlock survives a reload within the idle window"
+);
+reloadStoreB.clearAll();
+assert.equal(
+  reloadStorage.getItem("tasknode:wallet-unlocked-session:aes-key"),
+  null,
+  "clearAll also drops the co-located AES key"
+);
+
+// --- Idle auto-lock can be disabled with 0 / "0" (previously 0 fell back to 30) ---
+assert.equal(walletUnlockIdleLockMs(0), 0, "0 disables the idle lock");
+assert.equal(walletUnlockIdleLockMs("0"), 0, '"0" disables the idle lock');
+const idleStorage = fakeStorage();
+let idleNow = Date.parse("2026-06-09T00:00:00.000Z");
+const idleStore = createUnlockedWalletSessionStore({
+  storage: idleStorage,
+  keyStore: createSessionStorageKeyStore(idleStorage),
+  now: () => idleNow,
+});
+assert.equal(await idleStore.save(unlock), true);
+idleNow += 10 * 24 * 60_000; // far past any idle window
+assert.deepEqual(
+  await idleStore.read({ accountId: unlock.accountId, expectedAddress: unlock.address, idleLockMs: 0 }),
+  unlock,
+  "idle disabled (0) keeps the session alive indefinitely"
+);
+assert.equal(
+  await idleStore.read({ accountId: unlock.accountId, idleLockMs: walletUnlockIdleLockMs() }),
+  null,
+  "default idle window still locks an idle session"
+);
+
+// --- A null restored session surfaces as the wallet gate the UI shows ---
+const { evaluateTaskSigningUnlockPolicy } = await import("../src/features/tasks/task-request-unlock-policy.js");
+const lockedPolicy = evaluateTaskSigningUnlockPolicy({
+  accountId: unlock.accountId,
+  linkedWalletAddress: unlock.address,
+  walletSecret: null,
+  walletVault: { available: true, unlocked: true, address: unlock.address },
+});
+assert.equal(lockedPolicy.allowed, false);
+assert.ok(
+  ["unlock", "open_wallet"].includes(lockedPolicy.action),
+  `locked session offers a wallet action (got ${lockedPolicy.action})`
+);
 
 console.log("wallet unlocked session smoke ok");
