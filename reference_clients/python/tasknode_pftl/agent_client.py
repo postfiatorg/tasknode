@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from http.cookies import SimpleCookie
 import json
 import os
-import stat
 import time
 from typing import Any
 from urllib.parse import urljoin
@@ -23,22 +21,19 @@ from .wallets import ProtocolWallet, wallet_from_seed
 
 
 DEFAULT_BASE_URL = "http://localhost:5174"
-DEFAULT_SECRET_FILE = "/home/pfrpc/repos/tasknode_agent_wallets.json"
-DEFAULT_SESSION_STORE = "/home/pfrpc/repos/tasknode_agent_sessions.json"
 DEFAULT_PFTL_NETWORK_ID = 21338
-SESSION_COOKIE_NAME = "tasknode_session"
-SESSION_EXPIRY_SKEW_SECONDS = 300
 MAX_RATE_LIMIT_SLEEP_SECONDS = 60
+SESSION_EXPIRY_SKEW_SECONDS = 300
 TASKNODE_AGENT_DESTINATION = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
 
 
 class TaskNodeApiError(RuntimeError):
     def __init__(self, status_code: int, body: Any, message: str | None = None):
         self.status_code = int(status_code)
-        self.body = body
+        self.body = _redact_sensitive(body)
         reason = message or ""
-        if not reason and isinstance(body, dict):
-            reason = str(body.get("message") or body.get("error") or "")
+        if not reason and isinstance(self.body, dict):
+            reason = str(self.body.get("message") or self.body.get("error") or "")
         super().__init__(reason or f"Task Node API returned HTTP {self.status_code}")
 
 
@@ -80,13 +75,6 @@ def _safe_text(value: Any = "", limit: int = 4000) -> str:
     return str(value or "").strip()[:limit]
 
 
-def _safe_int(value: Any = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
 def _body_json(response: Any) -> Any:
     try:
         return response.json()
@@ -106,12 +94,12 @@ def _header_value(headers: Any, key: str) -> str:
     if not headers:
         return ""
     getter = getattr(headers, "get", None)
-    if callable(getter):
-        return str(getter(key) or getter(key.lower()) or getter(key.title()) or "")
-    return ""
+    if not callable(getter):
+        return ""
+    return str(getter(key) or getter(key.lower()) or getter(key.title()) or "")
 
 
-def _parse_iso_datetime(value: str) -> datetime | None:
+def _parse_iso_datetime(value: str | None) -> datetime | None:
     text = str(value or "").strip()
     if not text:
         return None
@@ -126,40 +114,25 @@ def _parse_iso_datetime(value: str) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def _session_expires_soon(expires_at: str, *, skew_seconds: int = SESSION_EXPIRY_SKEW_SECONDS) -> bool:
+def _expires_soon(expires_at: str | None) -> bool:
     parsed = _parse_iso_datetime(expires_at)
-    if not parsed:
-        return True
-    return (parsed - datetime.now(timezone.utc)).total_seconds() <= skew_seconds
+    if parsed is None:
+        return False
+    return (parsed - datetime.now(timezone.utc)).total_seconds() <= SESSION_EXPIRY_SKEW_SECONDS
 
 
-def _secure_parent_dir(path: str) -> None:
-    parent = os.path.dirname(os.path.abspath(path))
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-
-
-def _write_json_0600(path: str, payload: dict[str, Any]) -> None:
-    _secure_parent_dir(path)
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-    os.chmod(tmp_path, 0o600)
-    os.replace(tmp_path, path)
-    os.chmod(path, 0o600)
-
-
-def _read_json_0600(path: str) -> dict[str, Any]:
-    if not path or not os.path.exists(path):
-        return {}
-    _require_0600(path)
-    with open(path, "r", encoding="utf-8") as handle:
-        try:
-            data = json.load(handle)
-        except json.JSONDecodeError:
-            return {}
-    return data if isinstance(data, dict) else {}
+def _redact_sensitive(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            if str(key).lower() in {"seed", "mnemonic", "secret", "privatekey", "private_key"}:
+                redacted[key] = "[redacted]"
+            else:
+                redacted[key] = _redact_sensitive(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_sensitive(item) for item in value]
+    return value
 
 
 def message_to_hex(message: str) -> str:
@@ -295,92 +268,27 @@ def build_synthetic_signed_pointer(
     }
 
 
-def _require_0600(path: str) -> None:
-    mode = stat.S_IMODE(os.stat(path).st_mode)
-    if mode & 0o077:
-        raise PermissionError(f"{path} must not be readable by group/other")
-
-
-def _wallet_entries_from_secret(data: Any) -> list[dict[str, Any]]:
-    if isinstance(data, list):
-        return [entry for entry in data if isinstance(entry, dict)]
-    if isinstance(data, dict):
-        for key in ("wallets", "agentWallets", "agents"):
-            if isinstance(data.get(key), list):
-                return [entry for entry in data[key] if isinstance(entry, dict)]
-        entries = []
-        for key, value in data.items():
-            if isinstance(value, dict):
-                entry = {**value}
-                entry.setdefault("address", key)
-                entries.append(entry)
-        if entries:
-            return entries
-    raise ValueError("agent wallet secret file must contain wallet entries")
-
-
-def load_agent_wallets(path: str = DEFAULT_SECRET_FILE, *, strict_permissions: bool = True) -> list[ProtocolWallet]:
-    if strict_permissions:
-        _require_0600(path)
-    with open(path, "r", encoding="utf-8") as handle:
-        data = json.load(handle)
-    wallets = []
-    for index, entry in enumerate(_wallet_entries_from_secret(data)):
-        seed = entry.get("mnemonic") or entry.get("seed") or entry.get("secret")
-        if not seed:
-            continue
-        role = str(entry.get("role") or entry.get("label") or f"agent_{index + 1}")
-        wallet = wallet_from_seed(role, str(seed))
-        expected_address = str(entry.get("address") or entry.get("classicAddress") or "").strip()
-        if expected_address and expected_address != wallet.address:
-            raise ValueError(f"agent wallet entry {index + 1} address mismatch")
-        wallets.append(wallet)
-    if not wallets:
-        raise ValueError("no agent wallets found in secret file")
-    return wallets
-
-
-def load_agent_wallet(
-    path: str = DEFAULT_SECRET_FILE,
-    *,
-    address: str | None = None,
-    index: int = 0,
-    strict_permissions: bool = True,
-) -> ProtocolWallet:
-    wallets = load_agent_wallets(path, strict_permissions=strict_permissions)
-    if address:
-        wanted = str(address).strip()
-        for wallet in wallets:
-            if wallet.address == wanted:
-                return wallet
-        raise ValueError("requested agent wallet address was not found")
-    return wallets[int(index)]
-
-
 class TaskNodeAgentClient:
     def __init__(
         self,
-        wallet: ProtocolWallet,
+        base_url: str,
+        seed: str | None = None,
         *,
-        base_url: str = DEFAULT_BASE_URL,
         timeout: float = 30,
         http: requests.Session | None = None,
-        session_store_path: str | None = None,
         sleep_fn=time.sleep,
     ):
-        self.wallet = wallet
+        resolved_seed = seed if seed is not None else os.environ.get("TASKNODE_AGENT_WALLET_SEED")
+        if not resolved_seed:
+            raise ValueError("TASKNODE_AGENT_WALLET_SEED is required unless seed= is provided")
+        self.wallet = wallet_from_seed("agent", str(resolved_seed))
         self.base_url = str(base_url or DEFAULT_BASE_URL).rstrip("/") + "/"
         self.timeout = timeout
         self.http = http or requests.Session()
+        self.sleep_fn = sleep_fn
         self.account_id: str | None = None
         self.session_expires_at: str | None = None
-        self.session_store_path = (
-            str(session_store_path)
-            if session_store_path is not None
-            else str(os.environ.get("TASKNODE_AGENT_SESSION_STORE") or DEFAULT_SESSION_STORE)
-        )
-        self.sleep_fn = sleep_fn
-        self._load_cached_session()
+        self._submitted_once: set[tuple[str, str, str]] = set()
 
     @property
     def address(self) -> str:
@@ -388,6 +296,17 @@ class TaskNodeAgentClient:
 
     def _url(self, path: str) -> str:
         return urljoin(self.base_url, str(path or "").lstrip("/"))
+
+    def _clear_session_state(self) -> None:
+        self.account_id = None
+        self.session_expires_at = None
+        cookies = getattr(self.http, "cookies", None)
+        clearer = getattr(cookies, "clear", None)
+        if callable(clearer):
+            try:
+                clearer(domain=None, path="/", name="tasknode_session")
+            except Exception:
+                pass
 
     def _request_once(
         self,
@@ -433,95 +352,6 @@ class TaskNodeAgentClient:
         self.sleep_fn(self._retry_after_seconds(response, body))
         return self._request_once(method, path, json_body=json_body, params=params)
 
-    def _session_store(self) -> dict[str, Any]:
-        if not self.session_store_path:
-            return {}
-        return _read_json_0600(self.session_store_path)
-
-    def _write_session_store(self, data: dict[str, Any]) -> None:
-        if not self.session_store_path:
-            return
-        _write_json_0600(self.session_store_path, data)
-
-    def _session_token_from_response(self, response: Any) -> str:
-        set_cookie = _header_value(_response_headers(response), "set-cookie")
-        if set_cookie:
-            cookie = SimpleCookie()
-            try:
-                cookie.load(set_cookie)
-                token = cookie.get(SESSION_COOKIE_NAME)
-                if token:
-                    return str(token.value or "").strip()
-            except Exception:
-                pass
-            marker = f"{SESSION_COOKIE_NAME}="
-            start = set_cookie.find(marker)
-            if start >= 0:
-                value = set_cookie[start + len(marker):].split(";", 1)[0]
-                return value.strip()
-        cookies = getattr(self.http, "cookies", None)
-        getter = getattr(cookies, "get", None)
-        if callable(getter):
-            return str(getter(SESSION_COOKIE_NAME) or "").strip()
-        return ""
-
-    def _install_session_token(self, token: str) -> None:
-        normalized = str(token or "").strip()
-        if not normalized:
-            return
-        cookies = getattr(self.http, "cookies", None)
-        setter = getattr(cookies, "set", None)
-        if callable(setter):
-            setter(SESSION_COOKIE_NAME, normalized, path="/")
-
-    def _clear_session_cookie(self) -> None:
-        cookies = getattr(self.http, "cookies", None)
-        clearer = getattr(cookies, "clear", None)
-        if callable(clearer):
-            try:
-                clearer(domain=None, path="/", name=SESSION_COOKIE_NAME)
-            except Exception:
-                try:
-                    del cookies[SESSION_COOKIE_NAME]
-                except Exception:
-                    pass
-
-    def _load_cached_session(self) -> bool:
-        store = self._session_store()
-        entry = store.get(self.wallet.address) if isinstance(store, dict) else None
-        if not isinstance(entry, dict):
-            return False
-        token = str(entry.get("session_token") or "").strip()
-        expires_at = str(entry.get("expires_at") or "").strip()
-        if not token or _session_expires_soon(expires_at):
-            return False
-        self._install_session_token(token)
-        self.session_expires_at = expires_at
-        self.account_id = str(entry.get("account_id") or "cached_session")
-        return True
-
-    def _persist_session(self, *, token: str, expires_at: str, account_id: str = "") -> None:
-        if not token or not expires_at:
-            return
-        store = self._session_store()
-        store[self.wallet.address] = {
-            "session_token": token,
-            "expires_at": expires_at,
-            "account_id": account_id,
-        }
-        self._write_session_store(store)
-
-    def _discard_cached_session(self) -> None:
-        self._clear_session_cookie()
-        self.account_id = None
-        self.session_expires_at = None
-        if not self.session_store_path or not os.path.exists(self.session_store_path):
-            return
-        store = self._session_store()
-        if self.wallet.address in store:
-            del store[self.wallet.address]
-            self._write_session_store(store)
-
     def request(
         self,
         method: str,
@@ -533,16 +363,16 @@ class TaskNodeAgentClient:
         allow_error: bool = False,
         relogin: bool = True,
     ) -> Any:
-        if auth and not self.account_id:
-            self.login()
-        response, body, status_code = self._request_with_rate_limit_retry(
+        if auth:
+            self.ensure_session()
+        _response, body, status_code = self._request_with_rate_limit_retry(
             method,
             path,
             json_body=json_body,
             params=params,
         )
         if status_code == 401 and auth and relogin:
-            self._discard_cached_session()
+            self._clear_session_state()
             self.login(force=True)
             return self.request(
                 method,
@@ -557,8 +387,13 @@ class TaskNodeAgentClient:
             raise TaskNodeApiError(status_code, body)
         return body
 
+    def ensure_session(self) -> dict[str, Any] | None:
+        if self.account_id and not _expires_soon(self.session_expires_at):
+            return None
+        return self.login(force=True)
+
     def login(self, *, force: bool = False) -> dict[str, Any]:
-        if not force and self._load_cached_session():
+        if self.account_id and not force and not _expires_soon(self.session_expires_at):
             return {
                 "ok": True,
                 "accountId": self.account_id,
@@ -574,10 +409,10 @@ class TaskNodeAgentClient:
         if start_status >= 400:
             raise TaskNodeApiError(start_status, start)
         challenge = start.get("challenge") if isinstance(start, dict) else None
-        if not challenge or not challenge.get("id") or not challenge.get("message"):
+        if not isinstance(challenge, dict) or not challenge.get("id") or not challenge.get("message"):
             raise TaskNodeApiError(start_status or 500, start, "wallet login challenge response was incomplete")
 
-        proof = sign_wallet_login_challenge(self.wallet, challenge["message"])
+        proof = sign_wallet_login_challenge(self.wallet, str(challenge["message"]))
         verify_response, verified, verify_status = self._request_with_rate_limit_retry(
             "POST",
             "/api/auth/wallet/verify",
@@ -595,13 +430,13 @@ class TaskNodeAgentClient:
         self.account_id = str(verified["accountId"])
         session = verified.get("session") or {}
         self.session_expires_at = session.get("expiresAt") or session.get("expires_at")
-        token = self._session_token_from_response(verify_response)
-        if token and self.session_expires_at:
-            self._persist_session(token=token, expires_at=self.session_expires_at, account_id=self.account_id)
         return verified
 
-    def tasks(self, **params: Any) -> dict[str, Any]:
+    def list_tasks(self, **params: Any) -> dict[str, Any]:
         return self.request("GET", "/api/tasks", params=params)
+
+    def tasks(self, **params: Any) -> dict[str, Any]:
+        return self.list_tasks(**params)
 
     def task_detail(self, task_id: str, **params: Any) -> dict[str, Any]:
         return self.request("GET", "/api/tasks/detail", params={"taskId": task_id, **params})
@@ -615,169 +450,53 @@ class TaskNodeAgentClient:
             params["agentLogs"] = agent_logs
         return self.request("GET", "/api/hive/context", params=params)
 
-    def hive_say(self, message: str, *, conversation_id: str = "agent-phase1a") -> dict[str, Any]:
+    def hive_say(self, message: str) -> dict[str, Any]:
         return self.request(
             "POST",
             "/api/hive/context",
-            json_body={"message": message, "conversationId": conversation_id, "conversationTitle": "Agent"},
+            json_body={"message": _safe_text(message, 12000), "conversationTitle": "Agent"},
         )
 
-    def profile(self) -> dict[str, Any]:
-        return self.request("GET", "/api/profile/identity")
-
-    def profile_identity(self) -> dict[str, Any]:
-        return self.request("GET", "/api/profile/identity")
-
-    def public_profile(self) -> dict[str, Any]:
-        return self.request("GET", "/api/profile/public")
-
-    def memory(self, **params: Any) -> dict[str, Any]:
-        return self.request("GET", "/api/memory", params=params)
-
-    def network_task_profile(self, *, force: bool = False) -> dict[str, Any]:
-        method = "POST" if force else "GET"
-        return self.request(method, "/api/memory/network-task-profile")
-
-    def ensure_eligible(self) -> dict[str, Any]:
-        profile = self.network_task_profile(force=True)
-        tasks = self.tasks()
-        eligibility = tasks.get("networkTasks") or tasks.get("networkTaskEligibility") or {}
-        gates = eligibility.get("gates") or eligibility.get("gateView") or []
-        return {
-            "profile": profile,
-            "tasks": tasks,
-            "status": eligibility.get("status") or eligibility.get("networkStatus") or tasks.get("networkStatus"),
-            "gates": gates,
-        }
-
-    def context_document(self) -> dict[str, Any]:
-        return self.request("GET", "/api/context")
-
-    def save_context(self, *, title: str, body: str, revision: int | None = None) -> dict[str, Any]:
-        payload: dict[str, Any] = {"title": title, "body": body}
-        if revision is not None:
-            payload["revision"] = revision
-        return self.request("POST", "/api/context/edit/save", json_body=payload)
-
-    def publish_context(self, *, title: str, body: str, revision: int = 0, submit: bool = False) -> SignedFlowResult:
-        config = self.request("POST", "/api/context/manifest/ink", json_body={"phase": "config"})
-        payload = {
-            "schema": "tasknode.context.v1",
-            "title": _safe_text(title or "Task Node Context", 120),
-            "body": str(body or ""),
-            "body_format": "html",
-            "revision": int(revision or 0),
-            "published_at": _utcnow(),
-        }
-        encrypted = tasknode_encrypted_payload(
-            payload,
-            wallet=self.wallet,
-            tasknode_encryption_pubkey=config["tasknodeEncryptionPubkey"],
-        )
-        prepared = self.request(
-            "POST",
-            "/api/context/manifest/ink",
-            json_body={
-                "phase": "prepare",
-                "encryptedPayload": encrypted,
-                "title": payload["title"],
-                "body": payload["body"],
-                "wordCount": len(payload["body"].split()),
-            },
-        )
-        signed = sign_prepared_transaction(prepared["txJson"], self.wallet, expected_address=self.wallet.address)
-        submitted = None
-        if submit:
-            submitted = self.request(
-                "POST",
-                "/api/context/manifest/ink",
-                json_body={
-                    "phase": "submit",
-                    "cid": prepared.get("cid"),
-                    "signedTxBlob": signed.tx_blob,
-                    "pointer": prepared.get("pointer"),
-                    "context": prepared.get("context"),
-                    "transaction": prepared.get("transaction"),
-                },
-            )
-        return SignedFlowResult(config=config, prepared=prepared, signed=signed, payload=payload, submitted=submitted)
-
-    def ensure_context_published(self, *, title: str, body: str, force: bool = False) -> dict[str, Any]:
-        current = self.context_document()
-        history = current.get("history") if isinstance(current, dict) else {}
-        document = current.get("document") if isinstance(current, dict) else {}
-        pointer_count = _safe_int(history.get("pointerCount") if isinstance(history, dict) else 0)
-        latest_pointer = history.get("latestContextPointer") if isinstance(history, dict) else None
-        revision = _safe_int(document.get("revision") if isinstance(document, dict) else current.get("revision") if isinstance(current, dict) else 0)
-
-        if pointer_count >= 1 and latest_pointer is not None and not force:
-            return {
-                "published": False,
-                "reason": "already_published",
-                "pointerCount": pointer_count,
-                "revision": revision,
-                "latestContextPointer": latest_pointer,
-            }
-
-        saved = self.save_context(title=title, body=body, revision=revision)
-        saved_document = saved.get("document") if isinstance(saved, dict) else {}
-        publish_revision = _safe_int(saved_document.get("revision") if isinstance(saved_document, dict) else revision)
-        published = self.publish_context(title=title, body=body, revision=publish_revision, submit=True)
-
-        verified = self.context_document()
-        verified_history = verified.get("history") if isinstance(verified, dict) else {}
-        verified_document = verified.get("document") if isinstance(verified, dict) else {}
-        verified_pointer_count = _safe_int(verified_history.get("pointerCount") if isinstance(verified_history, dict) else 0)
-        verified_latest_pointer = verified_history.get("latestContextPointer") if isinstance(verified_history, dict) else None
-        if verified_pointer_count < 1 or verified_latest_pointer is None:
+    def _reserve_submit(self, flow: str, task_id: str, phase: str) -> None:
+        key = (_safe_text(flow, 80), _safe_text(task_id, 180), _safe_text(phase, 80))
+        if key in self._submitted_once:
             raise TaskNodeApiError(
-                502,
+                409,
                 {
                     "ok": False,
-                    "error": "context_publish_not_pinned",
-                    "message": "Context publish completed but no pinned context pointer was visible on the follow-up read.",
-                    "pointerCount": verified_pointer_count,
-                    "latestContextPointer": verified_latest_pointer,
+                    "error": "agent_double_submit_blocked",
+                    "message": "submit=True was already used for this task and phase in this client process",
                 },
-                "context publish did not actually pin a context pointer",
             )
+        self._submitted_once.add(key)
 
-        submitted = published.submitted or {}
-        return {
-            "published": True,
-            "revision": _safe_int(verified_document.get("revision") if isinstance(verified_document, dict) else publish_revision),
-            "cid": submitted.get("cid") or published.prepared.get("cid"),
-            "pointerTx": submitted.get("txHash") or submitted.get("tx_hash") or published.signed.tx_hash,
-            "pointerCount": verified_pointer_count,
-        }
+    def accept_task(self, task_id: str, *, submit: bool = False) -> SignedFlowResult:
+        """Preview or submit a task-acceptance pointer.
 
-    def accept_task(
-        self,
-        task_id: str,
-        *,
-        reason: str = "",
-        detail: dict[str, Any] | None = None,
-        submit: bool = False,
-    ) -> SignedFlowResult:
-        return self._task_action(task_id, task_action="accept", reason=reason, detail=detail, submit=submit)
+        ``submit=False`` is the default preview mode and does not publish
+        anything on-ledger. ``submit=True`` publishes an irreversible PFTL task
+        update pointer, guarded against duplicate submit calls in this client.
+        """
+        return self._task_action(task_id, task_action="accept", reason="Agent accepted the task.", submit=submit)
 
     def _task_action(
         self,
         task_id: str,
         *,
         task_action: str,
-        reason: str = "",
-        detail: dict[str, Any] | None = None,
+        reason: str,
         submit: bool = False,
     ) -> SignedFlowResult:
         task_id = _safe_text(task_id, 180)
+        if submit:
+            self._reserve_submit("task_action", task_id, task_action)
         config = self.request(
             "POST",
             "/api/tasks/action",
             json_body={"phase": "config", "taskId": task_id, "taskAction": task_action},
         )
-        transition = "accepted" if task_action == "accept" else "refused" if task_action == "refuse" else "cancelled"
-        wallets = (detail or {}).get("wallets") or config.get("wallets") or {}
+        transition = "accepted" if task_action == "accept" else task_action
+        wallets = config.get("wallets") or {}
         created_at = _utcnow()
         base_payload = {
             "schema": "pf.task.update.v1",
@@ -791,7 +510,7 @@ class TaskNodeAgentClient:
             "allocation_wallet": wallets.get("allocation") or "",
             "transition": transition,
             "status_after": transition,
-            "reason": _safe_text(reason, 2000) or "Agent accepted the task.",
+            "reason": _safe_text(reason, 2000),
             f"{transition}_at": created_at,
         }
         payload = {**base_payload, "event_id": event_id_for(base_payload)}
@@ -823,59 +542,62 @@ class TaskNodeAgentClient:
             )
         return SignedFlowResult(config=config, prepared=prepared, signed=signed, payload=payload, submitted=submitted)
 
-    def submit_evidence(
-        self,
-        task_id: str,
-        *,
-        evidence_text: str,
-        notes: str = "",
-        verification_response: bool = False,
-        submit: bool = False,
-    ) -> SignedFlowResult:
-        return self._task_submission(
-            task_id,
-            evidence_text=evidence_text,
-            notes=notes,
-            verification_response=verification_response,
-            submit=submit,
-        )
+    def submit_evidence(self, task_id: str, evidence: str | dict[str, Any], *, submit: bool = False) -> SignedFlowResult:
+        """Preview or submit task evidence.
+
+        ``submit=False`` is the default preview mode and does not publish
+        anything on-ledger. ``submit=True`` publishes an irreversible PFTL task
+        submission pointer, guarded against duplicate submit calls in this
+        client.
+        """
+        return self._task_submission(task_id, evidence=evidence, verification_response=False, submit=submit)
 
     def respond_verification(
         self,
         task_id: str,
+        response: str | dict[str, Any],
         *,
-        response_text: str,
-        notes: str = "",
         submit: bool = False,
     ) -> SignedFlowResult:
-        return self._task_submission(
-            task_id,
-            evidence_text=response_text,
-            notes=notes,
-            verification_response=True,
-            submit=submit,
-        )
+        """Preview or submit a verification response.
+
+        ``submit=False`` is the default preview mode and does not publish
+        anything on-ledger. ``submit=True`` publishes an irreversible PFTL
+        verification-response pointer, guarded against duplicate submit calls
+        in this client.
+        """
+        return self._task_submission(task_id, evidence=response, verification_response=True, submit=submit)
+
+    def _evidence_text_and_notes(self, evidence: str | dict[str, Any]) -> tuple[str, str]:
+        if isinstance(evidence, dict):
+            text = evidence.get("text") or evidence.get("value") or evidence.get("evidence") or evidence.get("response")
+            notes = evidence.get("notes") or ""
+            return _safe_text(text, 120000), _safe_text(notes, 8000)
+        return _safe_text(evidence, 120000), ""
 
     def _task_submission(
         self,
         task_id: str,
         *,
-        evidence_text: str,
-        notes: str = "",
-        verification_response: bool = False,
+        evidence: str | dict[str, Any],
+        verification_response: bool,
         submit: bool = False,
     ) -> SignedFlowResult:
         task_id = _safe_text(task_id, 180)
+        phase = "verification_response" if verification_response else "evidence"
+        if submit:
+            self._reserve_submit("task_submission", task_id, phase)
+        evidence_text, notes = self._evidence_text_and_notes(evidence)
         config = self.request("POST", "/api/tasks/submission", json_body={"phase": "config", "taskId": task_id})
         mode = "verification_response" if verification_response else config.get("submissionMode") or "initial_submission"
         schema = "pf.task.verification_response.v1" if mode == "verification_response" else "pf.task.submission.v1"
         wallets = config.get("wallets") or {}
         created_at = _utcnow()
-        evidence = {
+        evidence_item = {
             "index": 1,
             "artifact_type": "text",
-            "value": _safe_text(evidence_text, 120000),
-            "notes": _safe_text(notes, 8000),
+            "value": evidence_text,
+            "notes": notes,
         }
         base_payload = {
             "schema": schema,
@@ -891,16 +613,16 @@ class TaskNodeAgentClient:
             "artifact_type": "text",
             "evidence_type": "text",
             "evidence_count": 1,
-            "evidence_items": [evidence],
-            "evidence": evidence,
+            "evidence_items": [evidence_item],
+            "evidence": evidence_item,
         }
         if mode == "verification_response":
             base_payload["responded_at"] = created_at
-            base_payload["response_text"] = _safe_text(evidence_text, 120000)
-            base_payload["response"] = evidence
+            base_payload["response_text"] = evidence_text
+            base_payload["response"] = evidence_item
         else:
             base_payload["submitted_at"] = created_at
-            base_payload["submission"] = evidence
+            base_payload["submission"] = evidence_item
         payload = {**base_payload, "event_id": event_id_for(base_payload)}
         encrypted = tasknode_encrypted_payload(
             payload,
@@ -932,28 +654,38 @@ class TaskNodeAgentClient:
     def request_task(
         self,
         *,
-        user_detail_text: str = "",
+        message: str = "",
         requested_task_kind: str = "personal",
         conversation_id: str = "",
         submit: bool = False,
     ) -> SignedFlowResult:
+        """Preview or submit a signed task request.
+
+        ``submit=False`` is the default preview mode and does not publish
+        anything on-ledger. ``submit=True`` publishes an irreversible PFTL task
+        request pointer, guarded against duplicate submit calls after the
+        server assigns a request id.
+        """
         request_payload = {
             "phase": "config",
-            "conversationId": conversation_id,
-            "userDetailText": _safe_text(user_detail_text, 8000),
-            "requestedTaskKind": requested_task_kind,
+            "conversationId": _safe_text(conversation_id, 180),
+            "userDetailText": _safe_text(message, 8000),
+            "requestedTaskKind": _safe_text(requested_task_kind or "personal", 80),
             "source": "agent_capability_client",
             "sourceConversationTitle": "Agent",
             "attachments": [],
         }
         config = self.request("POST", "/api/tasks/request", json_body=request_payload)
+        request_id = _safe_text(config.get("requestId") or "", 180)
+        if submit:
+            self._reserve_submit("task_request", request_id or "pending", "request")
         request_payload = {
             **request_payload,
-            "requestId": config.get("requestId") or request_payload.get("requestId") or "",
-            "bundleId": config.get("bundleId") or request_payload.get("bundleId") or "",
-            "requestText": config.get("requestText") or request_payload.get("requestText") or "",
-            "userDetailText": config.get("userDetailText") or request_payload.get("userDetailText") or "",
-            "requestedTaskKind": config.get("requestedTaskKind") or request_payload.get("requestedTaskKind") or "",
+            "requestId": request_id,
+            "bundleId": config.get("bundleId") or "",
+            "requestText": config.get("requestText") or "",
+            "userDetailText": config.get("userDetailText") or request_payload["userDetailText"],
+            "requestedTaskKind": config.get("requestedTaskKind") or request_payload["requestedTaskKind"],
         }
         encrypted_bundle = tasknode_encrypted_payload(
             config["requestBundle"],
@@ -971,7 +703,7 @@ class TaskNodeAgentClient:
             "protocol": "tasknode.pftl",
             "created_at": created_at,
             "chain": config.get("chain") or "pftl-testnet",
-            "request_id": config.get("requestId") or "",
+            "request_id": request_id,
             "actor_wallet": self.wallet.address,
             "subject_wallet": self.wallet.address,
             "authority_wallet": (config.get("wallets") or {}).get("authority") or config.get("tasknodeServiceAddress") or "",
@@ -982,8 +714,8 @@ class TaskNodeAgentClient:
                 "digest": bundle_prepared.get("bundleDigest") or "",
             },
             "request_text": config.get("requestText") or "",
-            "user_detail_text": config.get("userDetailText") or _safe_text(user_detail_text, 8000),
-            "requested_task_kind": config.get("requestedTaskKind") or requested_task_kind,
+            "user_detail_text": request_payload["userDetailText"],
+            "requested_task_kind": request_payload["requestedTaskKind"],
         }
         event_payload = {**event_base, "event_id": event_id_for(event_base)}
         encrypted_event = tasknode_encrypted_payload(
