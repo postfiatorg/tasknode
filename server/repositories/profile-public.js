@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { databaseEnabled, isUniqueViolation, query } from "../db/pool.js";
 import { getAccountWalletCloud } from "../account-wallet-cloud.js";
 import { getAccountIdentityProfile } from "../runtime-store.js";
-import { getPublicProfileHeroNft, listProfileNfts } from "./profile-nfts.js";
+import { countProfileNfts, getPublicProfileHeroNft, listProfileNfts } from "./profile-nfts.js";
 
 const runtimeSnapshots = new Map();
 
@@ -102,8 +102,19 @@ function contributionTier({ trailingRewardedTasks = 0, trailingTaskRewardPft = 0
   };
 }
 
+function sortPublicNfts(nfts = []) {
+  return publicVisibleNfts(nfts)
+    .sort((left, right) => {
+      if (Boolean(left.selected) !== Boolean(right.selected)) return left.selected ? -1 : 1;
+      const leftCreated = String(left.createdAt || left.generatedAt || left.mintedAt || "");
+      const rightCreated = String(right.createdAt || right.generatedAt || right.mintedAt || "");
+      if (leftCreated !== rightCreated) return rightCreated.localeCompare(leftCreated);
+      return String(right.updatedAt || "").localeCompare(String(left.updatedAt || ""));
+    });
+}
+
 function latestNftImage(nfts = []) {
-  return nfts.find((nft) => ["minted", "generated", "prepared"].includes(String(nft.status || "").toLowerCase())) || null;
+  return sortPublicNfts(nfts)[0] || null;
 }
 
 function publicVisibleNfts(nfts = []) {
@@ -303,8 +314,8 @@ export async function buildPublicProfileSnapshotInput({ accountId } = {}) {
     queryRecentRewardedTasks({ accountId: normalizedAccount, limit: 24 }),
     listProfileNfts({
       accountId: normalizedAccount,
-      walletAddress: walletCloud.activeWalletAddress || "",
-      limit: 12,
+      limit: 240,
+      publicOnly: true,
     }),
   ]);
   const cloudWallets = walletCloud.wallets.map((wallet) => ({
@@ -407,19 +418,20 @@ export function publicProfileFromParts({
   heroNft = null,
   snapshot = null,
   nfts = [],
+  nftTotal = null,
 } = {}) {
   const packet = input || {};
   const metrics = packet.reward_totals || {};
   const alignment = packet.alignment || {};
   const tier = packet.contribution_tier || contributionTier();
-  const nftRows = publicVisibleNfts(nfts.length ? nfts : []);
+  const nftRows = sortPublicNfts(nfts.length ? nfts : []);
   const heroNftRows = publicVisibleNfts(heroNft ? [heroNft] : []);
   const profileHeroNft = heroNftRows[0] || latestNftImage(nftRows);
   const profileNftRows = profileHeroNft && !nftRows.some((nft) =>
     (profileHeroNft.id && nft.id === profileHeroNft.id) ||
     (profileHeroNft.imageCid && nft.imageCid === profileHeroNft.imageCid)
   )
-    ? [profileHeroNft, ...nftRows]
+    ? [profileHeroNft, ...nftRows.slice(0, 239)]
     : nftRows;
   const identityAccountId = safeText(accountId || packet.account_id, 180);
   const identityProfile = getAccountIdentityProfile({ accountId: identityAccountId }) || {};
@@ -482,6 +494,7 @@ export function publicProfileFromParts({
       dataCaveat: snapshot.dataCaveat,
     } : null,
     nfts: profileNftRows,
+    nftTotal: Number.isFinite(Number(nftTotal)) ? Number(nftTotal) : profileNftRows.length,
     heroNft: profileHeroNft,
     snapshot: snapshot ? {
       snapshotId: snapshot.snapshotId,
@@ -557,18 +570,18 @@ export async function getCompletedPublicProfileSnapshotByFingerprint({
 export async function getPublicProfile({ accountId } = {}) {
   const normalizedAccount = safeText(accountId, 180);
   if (!normalizedAccount) throw new Error("profile_public_account_required");
-  const walletCloud = getAccountWalletCloud({ accountId: normalizedAccount });
-  const [input, snapshot, nfts, heroNft] = await Promise.all([
+  const [input, snapshot, nfts, nftTotal, heroNft] = await Promise.all([
     buildPublicProfileSnapshotInput({ accountId: normalizedAccount }),
     getLatestPublicProfileSnapshot({ accountId: normalizedAccount }),
     listProfileNfts({
       accountId: normalizedAccount,
-      walletAddress: walletCloud.activeWalletAddress || "",
-      limit: 24,
+      limit: 240,
+      publicOnly: true,
     }),
+    countProfileNfts({ accountId: normalizedAccount, publicOnly: true }),
     getPublicProfileHeroNft({ accountId: normalizedAccount }),
   ]);
-  return publicProfileFromParts({ accountId: normalizedAccount, input, heroNft, snapshot, nfts });
+  return publicProfileFromParts({ accountId: normalizedAccount, input, heroNft, nftTotal, snapshot, nfts });
 }
 
 export async function createPublicProfileSnapshotRun({

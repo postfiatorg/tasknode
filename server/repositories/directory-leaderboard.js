@@ -135,7 +135,7 @@ async function recommendedProfilesReady() {
   return Boolean(result.rows[0]?.profile_table);
 }
 
-async function discoverableMemberProfileIds(accountIds = []) {
+export async function discoverableMemberProfileIds(accountIds = []) {
   if (!accountIds.length || !await recommendedProfilesReady()) return new Set();
   const result = await query(
     `
@@ -224,17 +224,9 @@ async function queryLeaderboardRows(accountIds = []) {
           )
         ORDER BY
           nft.selected DESC,
-          CASE
-            WHEN nft.wallet_address <> '' AND nft.wallet_address = COALESCE(task_stats.latest_wallet, '') THEN 0
-            ELSE 1
-          END ASC,
-          CASE lower(nft.status)
-            WHEN 'minted' THEN 0
-            WHEN 'prepared' THEN 1
-            ELSE 2
-          END ASC,
+          nft.created_at DESC NULLS LAST,
           nft.updated_at DESC NULLS LAST,
-          nft.created_at DESC NULLS LAST
+          nft.id DESC
         LIMIT 1
       ) hero_nft ON true
       WHERE COALESCE(task_stats.tasks_rewarded, 0) > 0

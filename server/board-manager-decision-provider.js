@@ -151,6 +151,62 @@ function parseJsonOutputText(text = "") {
   }
 }
 
+function isJsonOutputParseError(error) {
+  if (error instanceof SyntaxError) return true;
+  const message = safeText(error?.message, 500);
+  return message === "board_manager_provider_invalid_json" ||
+    /JSON|Unexpected|Expected|unterminated|parse/i.test(message);
+}
+
+function boardManagerJsonRepairMessages({ sourcePacket = {}, invalidText = "", parseError = "" } = {}) {
+  return [
+    ...boardManagerDecisionInput({ sourcePacket }),
+    {
+      role: "assistant",
+      content: safeText(invalidText, 20000),
+    },
+    {
+      role: "user",
+      content: [
+        "The previous assistant message was not valid JSON and could not be parsed.",
+        `Parser error: ${safeText(parseError, 500)}`,
+        "Repair the same Board Manager decision now.",
+        "Return exactly one JSON object matching the schema. Do not add prose, markdown, comments, or trailing text.",
+      ].join("\n"),
+    },
+  ];
+}
+
+function boardManagerMalformedJsonFallbackDecision({ sourcePacket = {}, parseError = "" } = {}) {
+  return {
+    action: "do_nothing",
+    target_type: "",
+    target_id: "",
+    reason: "Board Manager provider returned malformed JSON after a repair attempt; failing closed with no board mutation.",
+    confidence: 0,
+    decision_basis: {
+      source_facts: [
+        `source_packet_digest:${safeText(sourcePacket.sourcePacketDigest, 120) || "unknown"}`,
+        "OpenRouter returned malformed Board Manager JSON after one schema-guided repair attempt.",
+      ],
+      tradeoffs: [
+        "Skipping this turn preserves board state instead of executing an unvalidated or partially parsed model decision.",
+      ],
+      rejected_actions: [
+        {
+          action: "initiate_network_task",
+          reason: "No valid provider decision was available for runtime validation.",
+        },
+      ],
+      risk_notes: [
+        `Provider JSON parse error: ${safeText(parseError, 240) || "unknown"}`,
+      ],
+      next_check: "Retry on the next Board Manager cadence and inspect provider formatting if this repeats.",
+    },
+    payload: {},
+  };
+}
+
 function openRouterUsage(body = {}) {
   const usage = body.usage || {};
   return {
@@ -249,55 +305,100 @@ async function fetchOpenRouterBoardManagerDecision({
   const timeout = setTimeout(() => controller.abort(), providerTimeoutMs());
   const startedAt = Date.now();
   try {
-    const response = await fetchImpl(`${(process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-        "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
-        "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-        "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
-      },
-      body: JSON.stringify({
-        model,
-        messages: boardManagerDecisionInput({ sourcePacket }),
-        reasoning: { effort: reasoningEffort },
-        response_format: openRouterResponseFormat(),
-        provider: {
-          data_collection: "deny",
-          require_parameters: true,
+    const requestDecision = async (messages) => {
+      const response = await fetchImpl(`${(process.env.OPENROUTER_BASE_URL || defaultOpenRouterBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+          "http-referer": process.env.OPENROUTER_REFERER || process.env.TASKNODE_PUBLIC_URL || "https://tasknodeofficial-dev.fly.dev",
+          "x-title": process.env.OPENROUTER_TITLE || "Task Node Official",
+          "x-openrouter-title": process.env.OPENROUTER_TITLE || "Task Node Official",
         },
-        temperature: 0,
-        max_tokens: Math.max(4000, Number(process.env.TASKNODE_BOARD_MANAGER_MAX_OUTPUT_TOKENS || 12000)),
-        usage: { include: true },
-        metadata: {
-          app: "tasknodeofficial",
-          worker: "board_manager",
-          prompt_version: boardManagerPromptVersion,
-          source_packet_digest: safeText(sourcePacket.sourcePacketDigest, 120),
-        },
-      }),
-    });
-    const bodyText = await response.text();
-    const body = bodyText ? JSON.parse(bodyText) : {};
-    if (!response.ok) {
-      const error = new Error(body?.error?.message || body?.message || `OpenRouter Board Manager HTTP ${response.status}`);
-      error.status = response.status;
-      throw error;
+        body: JSON.stringify({
+          model,
+          messages,
+          reasoning: { effort: reasoningEffort },
+          response_format: openRouterResponseFormat(),
+          provider: {
+            data_collection: "deny",
+            require_parameters: true,
+          },
+          temperature: 0,
+          max_tokens: Math.max(4000, Number(process.env.TASKNODE_BOARD_MANAGER_MAX_OUTPUT_TOKENS || 12000)),
+          usage: { include: true },
+          metadata: {
+            app: "tasknodeofficial",
+            worker: "board_manager",
+            prompt_version: boardManagerPromptVersion,
+            source_packet_digest: safeText(sourcePacket.sourcePacketDigest, 120),
+          },
+        }),
+      });
+      const bodyText = await response.text();
+      const body = bodyText ? JSON.parse(bodyText) : {};
+      if (!response.ok) {
+        const error = new Error(body?.error?.message || body?.message || `OpenRouter Board Manager HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      return {
+        body,
+        text: body?.choices?.[0]?.message?.content || "",
+      };
+    };
+
+    let response = await requestDecision(boardManagerDecisionInput({ sourcePacket }));
+    let parsed;
+    let repairAttempted = false;
+    let repairFailed = false;
+    let firstUsage = openRouterUsage(response.body);
+    try {
+      parsed = parseJsonOutputText(response.text);
+    } catch (error) {
+      if (!isJsonOutputParseError(error)) throw error;
+      repairAttempted = true;
+      response = await requestDecision(boardManagerJsonRepairMessages({
+        sourcePacket,
+        invalidText: response.text,
+        parseError: error?.message || String(error),
+      }));
+      try {
+        parsed = parseJsonOutputText(response.text);
+      } catch (repairError) {
+        if (!isJsonOutputParseError(repairError)) throw repairError;
+        repairFailed = true;
+        parsed = boardManagerMalformedJsonFallbackDecision({
+          sourcePacket,
+          parseError: repairError?.message || String(repairError),
+        });
+        response = {
+          ...response,
+          text: JSON.stringify(parsed),
+        };
+      }
     }
-    const text = body?.choices?.[0]?.message?.content || "";
-    const parsed = parseJsonOutputText(text);
+    const usage = openRouterUsage(response.body);
+    if (repairAttempted) {
+      usage.inputTokens += firstUsage.inputTokens;
+      usage.outputTokens += firstUsage.outputTokens;
+      usage.totalTokens += firstUsage.totalTokens;
+      usage.reasoningTokens += firstUsage.reasoningTokens;
+      usage.costUsd += firstUsage.costUsd;
+      usage.repairAttempted = true;
+      usage.repairFailed = repairFailed;
+    }
     return {
       decision: normalizeBoardManagerDecision(parsed),
-      outputText: text,
+      outputText: response.text,
       provider: "openrouter",
-      model: body?.model || model,
-      responseId: safeText(body?.id, 200),
+      model: response.body?.model || model,
+      responseId: safeText(response.body?.id, 200),
       promptDigest: promptDigest(boardManagerPrompt),
       promptVersion: boardManagerPromptVersion,
       usage: {
-        ...openRouterUsage(body),
+        ...usage,
         latencyMs: Date.now() - startedAt,
       },
     };

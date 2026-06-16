@@ -8,7 +8,7 @@ import {
 } from "./repositories/chat-billing.js";
 import { scheduleHiveSecretaryQueue } from "./hive-secretary-worker.js";
 import { getBoardManagerAgentFeed, getBoardManagerUserMessages } from "./repositories/board-manager.js";
-import { getHiveProjectsDocument } from "./repositories/hive-projects.js";
+import { getHiveProjectsDocument, getPublicHiveTaskDetail } from "./repositories/hive-projects.js";
 import {
   enqueueHiveSecretaryJob,
   getHiveContextDocument,
@@ -96,7 +96,7 @@ async function recordHiveObservabilityEvent({
 }
 
 export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
-  if (!["/api/hive/context", "/api/hive/projects", "/api/hive/chat"].includes(url.pathname)) return false;
+  if (!["/api/hive/context", "/api/hive/projects", "/api/hive/task-detail", "/api/hive/chat"].includes(url.pathname)) return false;
 
   if (url.pathname === "/api/hive/projects") {
     if (req.method !== "GET") {
@@ -121,6 +121,20 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       ok: true,
       document,
     });
+    return true;
+  }
+
+  if (url.pathname === "/api/hive/task-detail") {
+    if (req.method !== "GET") {
+      json(res, 405, {
+        ok: false,
+        error: "hive_task_detail_method_not_allowed",
+        message: "Hive task detail supports GET.",
+      });
+      return true;
+    }
+    const result = await getPublicHiveTaskDetail({ taskId: url.searchParams.get("taskId") || "" });
+    json(res, result.ok ? 200 : result.status || 400, result);
     return true;
   }
 

@@ -110,6 +110,7 @@ export const apiRoutePolicies = [
   { id: "network_task_profile", path: "/api/memory/network-task-profile", methods: ["GET", "POST"], auth: "session" },
   { id: "directory_leaderboard", path: "/api/directory/leaderboard", methods: ["GET"], auth: "optional" },
   { id: "hive_projects", path: "/api/hive/projects", methods: ["GET"], auth: "optional" },
+  { id: "hive_task_detail", path: "/api/hive/task-detail", methods: ["GET"], auth: "optional" },
   { id: "hive_context", path: "/api/hive/context", methods: ["GET", "POST"], auth: "handler" },
   { id: "hive_chat", path: "/api/hive/chat", methods: ["GET", "POST", "PATCH"], auth: "session" },
   { id: "profile_daily_airdrop", path: "/api/profile/daily-airdrop", methods: ["GET"], auth: "session" },
@@ -164,11 +165,25 @@ export const apiRoutePolicies = [
     rateLimit: { limit: 10, windowMs: tenMinutes },
   },
   {
+    id: "profile_nft_select",
+    path: "/api/profile/nft/select",
+    methods: ["POST"],
+    auth: "session",
+    rateLimit: { limit: 30, windowMs: tenMinutes },
+  },
+  {
     id: "profile_nft_image",
     prefix: "/api/profile/nft/image/",
     methods: ["GET"],
     auth: "none",
     rateLimit: { limit: 300, windowMs: tenMinutes, extra: "pathname" },
+  },
+  {
+    id: "profile_nft_pfp",
+    prefix: "/api/profile/nft/pfp/",
+    methods: ["GET"],
+    auth: "none",
+    rateLimit: { limit: 600, windowMs: tenMinutes, extra: "pathname" },
   },
   {
     id: "chat_stream",

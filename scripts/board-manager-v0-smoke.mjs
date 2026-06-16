@@ -423,6 +423,80 @@ assert.equal(openRouterDecision.decision.action, "message_user");
 assert.equal(openRouterDecision.usage.reasoningTokens, 25);
 assert.equal(openRouterDecision.usage.costUsd, 0.000625);
 
+const repairFetchBodies = [];
+const repairedOpenRouterDecision = await fetchBoardManagerDecision({
+  sourcePacket: packet,
+  fetchImpl: async (_url, options = {}) => {
+    repairFetchBodies.push(JSON.parse(options.body));
+    const content = repairFetchBodies.length === 1
+      ? "{\"action\":\"message_user\",\"target_type\":\"account\",\"target_id\":\"acct_1\",\"reason\":\"bad\", \"confidence\":1,\"decision_basis\":{\"source_facts\":[\"x\"] \"tradeoffs\":[]}}"
+      : JSON.stringify(smokeDecisionOutput);
+    return {
+      ok: true,
+      async text() {
+        return JSON.stringify({
+          id: `or_board_manager_repair_${repairFetchBodies.length}`,
+          model: "qwen/qwen3.7-max",
+          choices: [{ message: { content } }],
+          usage: {
+            prompt_tokens: repairFetchBodies.length === 1 ? 100 : 120,
+            completion_tokens: repairFetchBodies.length === 1 ? 50 : 55,
+            total_tokens: repairFetchBodies.length === 1 ? 150 : 175,
+            reasoning_tokens: repairFetchBodies.length === 1 ? 25 : 30,
+            cost: repairFetchBodies.length === 1 ? 0.000625 : 0.00075,
+          },
+        });
+      },
+    };
+  },
+});
+assert.equal(repairFetchBodies.length, 2);
+assert.equal(repairFetchBodies[1].messages.at(-2).role, "assistant");
+assert.match(repairFetchBodies[1].messages.at(-1).content, /not valid JSON/i);
+assert.equal(repairFetchBodies[1].response_format.type, "json_schema");
+assert.equal(repairedOpenRouterDecision.decision.action, "message_user");
+assert.equal(repairedOpenRouterDecision.usage.repairAttempted, true);
+assert.equal(repairedOpenRouterDecision.usage.totalTokens, 325);
+assert.equal(repairedOpenRouterDecision.usage.reasoningTokens, 55);
+
+let malformedFetchCount = 0;
+const malformedFallbackDecision = await fetchBoardManagerDecision({
+  sourcePacket: packet,
+  fetchImpl: async () => {
+    malformedFetchCount += 1;
+    return {
+      ok: true,
+      async text() {
+        return JSON.stringify({
+          id: `or_board_manager_malformed_${malformedFetchCount}`,
+          model: "qwen/qwen3.7-max",
+          choices: [
+            {
+              message: {
+                content: "{\"action\":\"message_user\",\"payload\":{\"network_task\":{\"referenced_outputs\":[{\"task_id\":\"task_a\"} {\"task_id\":\"task_b\"}]}}",
+              },
+            },
+          ],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            reasoning_tokens: 25,
+            cost: 0.000625,
+          },
+        });
+      },
+    };
+  },
+});
+assert.equal(malformedFetchCount, 2);
+assert.equal(malformedFallbackDecision.decision.action, "do_nothing");
+assert.match(malformedFallbackDecision.decision.reason, /malformed JSON/i);
+assert.equal(malformedFallbackDecision.decision.confidence, 0);
+assert.equal(malformedFallbackDecision.usage.repairAttempted, true);
+assert.equal(malformedFallbackDecision.usage.repairFailed, true);
+assert.equal(malformedFallbackDecision.usage.totalTokens, 300);
+
 let capturedOpenAiBody = null;
 const openAiDecision = await fetchBoardManagerDecision({
   sourcePacket: packet,

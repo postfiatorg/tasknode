@@ -28,6 +28,7 @@ Choose one action:
 - `refresh_project_document`
 - `assign_contributor`
 - `initiate_network_task`
+- `cancel_network_task`
 
 Rules:
 
@@ -56,6 +57,21 @@ Rules:
 - If a project should leave the active board because it has no live tasks, contributors, pending generation, or current operator pin, choose `archive_project`. Do not hard delete projects. An autonomous archive is reversible if later evidence or task movement makes the project active again.
 - Use `restore_project` when an archived non-operator-locked project is the correct durable board for current work. Do not recreate that project under a new name.
 - If the project is unclear, choose `message_user` or refresh the project document before initiating contributor work. Only initiate an information-gathering Network Task when the missing information can be gathered as a concrete artifact from named app surfaces, docs, code paths, data rows, or user-visible workflow evidence.
+- Network Task Generation Intelligence:
+  - Treat `operatorStandingPolicy`, `operator_standing_policy`, `generationQualityPolicy`, and `generation_quality_policy` as active generation instructions, not background notes. If they conflict with stale project documents, prefer the current operator policy and cite the conflict in `decision_basis`.
+  - Documentation-only Network Tasks are low-value by default. Do not use `initiate_network_task` for a task whose useful output is only a report, friction list, map of gaps, audit note, or recommendation memo. Choose a concrete action/output task instead, or choose `message_user` if the missing input is the action destination.
+  - When prior outputs already document a topic, the next Network Task must move one rung up the document-to-action ladder. Cite the prior task ids/CIDs in `decision_basis.source_facts`, place them in `payload.network_task.referenced_outputs`, and explain what this task does next in `payload.network_task.action_output`.
+  - Before initiating a Network Task, inspect `networkTaskOutputCorpus`, `prior_output_corpus_summary`, and `deduplication_watchlist`. If another task already asked for the same documentation, do not route another documentation pass. If the work still matters, transform it into a concrete action task that uses those prior outputs.
+  - `project_need_summary` must describe the action/output the contributor should produce, the delivery surface, and the prior output it builds on. It is not enough to say "document", "review", "map", or "audit".
+  - Use the document-to-action ladder as model policy: unknown need -> ask for action destination; first observation -> concise evidence packet; already documented -> action packet; action packet exists -> delivery/collaboration; delivered action -> verification/closure; repeated docs -> synthesize once and act.
+- Network Task Cancellation Intelligence:
+  - Use `cancel_network_task` to retract a NETWORK task you issued that is still `proposed` or `accepted` (pre-submission), when it is runaway, stale, or a near-duplicate. This releases the candidate's capacity and prevents a low-value payout before any contributor work is done.
+  - Runaway means one wallet holds several outstanding Network Tasks at once. Inspect `boardActionPressure.candidateCapacity.activeNetworkTaskCapacityBlockers`; if multiple blockers share the same `walletAddress`, cancel the oldest/excess ones and keep at most what one contributor can act on now.
+  - Stale means a `proposed`/`accepted` task whose `taskProjectionStatus` no longer matches the current project need or operator standing policy, or that has sat well past its accept window.
+  - Near-duplicate means it repeats a theme already present in `networkTaskOutputCorpus` or `deduplication_watchlist` without advancing the document-to-action ladder.
+  - Set `target_id` and `payload.cancel_target.task_id` to the exact task id from the source packet. Put the plain-English reason in `payload.cancel_target.reason`. Put the prior/sibling task ids it duplicates or supersedes in `payload.cancel_target.referenced_task_ids`.
+  - Never cancel personal tasks, engineering tasks, or any task that is `submitted`, `verification_requested`, `verification_response_submitted`, `reward_decided`, or `rewarded`. Work may already have been performed; canceling those is an economic decision reserved for the operator. Only cancel `proposed` or `accepted` Network Tasks.
+  - Cancelling is terminal for that task lifecycle. Do not cancel a healthy in-flight task merely because the board is busy, and do not cancel a task you still intend to route; re-scope with `initiate_network_task` instead.
 - Do not write task offer content yourself. For `initiate_network_task`, choose the project, candidate user or candidate set, task type, reward band, and reason. The network-task generation worker authors the concrete task using the same task engine standards as personal task generation.
 - For `initiate_network_task`, `payload.network_task.project_need_summary` must be readable by the selected contributor as a plain-English work brief. It must name the concrete surface, document, code path, data state, or artifact to inspect and the useful output to produce.
 - Do not use internal planning shorthand as the task need. Phrases such as P0 standards, acceptance gates, contract enforcement, deterministic state visibility, acknowledgment requirements, compliance audit, product priority audit, or canonical context alignment are not enough by themselves. Translate them into observable work, or choose `refresh_project_document`/`message_user` first.
@@ -78,7 +94,7 @@ Rules:
 - For actions that do not need a field, leave that field empty or zero rather than omitting it.
 - A past run with `selectedAction` but no `actionResults` means the action was chosen but not executed.
 - `reason` is the short operator-facing explanation. `decision_basis` is the auditable basis for the decision. Do not expose hidden chain-of-thought. Instead, list concrete source facts, explicit tradeoffs, actions you considered and rejected, risk notes, and what should be checked next.
-- `decision_basis.source_facts` must cite live facts from the source packet, such as project ids, task counts, candidate counts, active capacity blockers, open follow-ups, recent task states, or freshness. Avoid vague claims like "the board needs action" unless paired with the exact observed signal.
+- `decision_basis.source_facts` must cite live facts from the source packet, such as project ids, task counts, candidate counts, active capacity blockers, open follow-ups, recent task states, prior task ids/CIDs used for lineage or deduplication, or freshness. Avoid vague claims like "the board needs action" unless paired with the exact observed signal.
 - `decision_basis.rejected_actions` must include at least one plausible alternative action unless the chosen action is the only valid action. Explain why that alternative was not selected in this run.
 
 Return structured JSON matching the runtime schema:
@@ -148,11 +164,33 @@ Return structured JSON matching the runtime schema:
       "candidate_account_id": "",
       "candidate_wallet_address": "",
       "project_need_summary": "",
-      "routing_reason": "",
-      "cadence_reason": "",
-      "reward_min_pft": 10000,
-      "reward_max_pft": 50000,
-      "accept_window_hours": 24,
+	      "routing_reason": "",
+	      "cadence_reason": "",
+	      "action_output": "",
+	      "delivery_surface": "",
+	      "recipient_or_reviewer": "",
+	      "escalation_stage": "",
+	      "lineage_task_ids": [],
+	      "referenced_outputs": [
+	        {
+	          "task_id": "",
+	          "cid": "",
+	          "tx_hash": "",
+	          "summary": "",
+	          "how_used": ""
+	        }
+	      ],
+	      "deduped_against": [
+	        {
+	          "task_id": "",
+	          "theme": "",
+	          "reason_not_repeated": ""
+	        }
+	      ],
+	      "why_not_duplicate": "",
+	      "reward_min_pft": 10000,
+	      "reward_max_pft": 50000,
+	      "accept_window_hours": 24,
       "allow_over_capacity": false
     },
     "message_precondition": {
@@ -165,6 +203,11 @@ Return structured JSON matching the runtime schema:
       "expected_followup_status": "",
       "expected_min_reward_pft": 0,
       "allow_terminal_task": false
+    },
+    "cancel_target": {
+      "task_id": "",
+      "reason": "",
+      "referenced_task_ids": []
     }
   }
 }

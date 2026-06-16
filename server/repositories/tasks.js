@@ -1119,12 +1119,25 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
           authority_wallet = EXCLUDED.authority_wallet,
           allocation_wallet = EXCLUDED.allocation_wallet,
           request_id = EXCLUDED.request_id,
-          status = EXCLUDED.status,
+          status = CASE
+            -- A Board-Manager-cancelled task is server-terminal: the reducer may
+            -- never revive it, including to 'rewarded'. agent_cancelled is only
+            -- ever written together with a terminal cancelled/refused status, so
+            -- a later cache replay (even a stale reward pointer) must not change
+            -- the status or mark the task rewarded.
+            WHEN task_projections.metadata_json ? 'agent_cancelled'
+            THEN task_projections.status
+            ELSE EXCLUDED.status
+          END,
           title = EXCLUDED.title,
           description = EXCLUDED.description,
           task_kind = EXCLUDED.task_kind,
           reward_offer_pft = EXCLUDED.reward_offer_pft,
-          reward_actual_pft = EXCLUDED.reward_actual_pft,
+          reward_actual_pft = CASE
+            WHEN task_projections.metadata_json ? 'agent_cancelled'
+            THEN task_projections.reward_actual_pft
+            ELSE EXCLUDED.reward_actual_pft
+          END,
           request_bundle_cid = EXCLUDED.request_bundle_cid,
           context_cid = EXCLUDED.context_cid,
           submission_type = EXCLUDED.submission_type,
@@ -1136,7 +1149,11 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
           last_event_tx_hash = EXCLUDED.last_event_tx_hash,
           last_event_cid = EXCLUDED.last_event_cid,
           source = EXCLUDED.source,
-          metadata_json = EXCLUDED.metadata_json,
+          metadata_json = CASE
+            WHEN task_projections.metadata_json ? 'agent_cancelled'
+            THEN task_projections.metadata_json || EXCLUDED.metadata_json
+            ELSE EXCLUDED.metadata_json
+          END,
           updated_at = now()
       `,
       [

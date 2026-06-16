@@ -36,6 +36,13 @@ its current state, reward amount, and next action. If no reward-bearing task is
 available, the card shows the honest blocker: either a queued generation job or
 that no reward-bearing task is available right now.
 
+Hive operator identities link to `#/profile?account=<accountId>` only when the
+wallet resolves to an account that already has a public discoverable profile.
+Hive task rows, routing-feed rows, activity rows, and next-task previews open a
+read-only Hive task pop-out. That pop-out is scoped to network-project tasks
+only and surfaces public lifecycle summary fields, public tx hashes, and CIDs;
+it never decrypts or returns raw evidence plaintext.
+
 Project IDs are part of the product surface. The project detail header should expose the stable `network_projects.id` so operators can refer to a project in tasks, docs, and chat without ambiguity.
 
 ## New User Quickstart
@@ -258,6 +265,7 @@ If no current product document exists, the About section shows the static projec
 Current endpoints:
 
 - `GET /api/hive/projects` returns active network projects, project task rows, contributor rollups, activity rows, and the latest Hive Secretary input reference.
+- `GET /api/hive/task-detail?taskId=<taskId>` returns a public read-only detail document for a network-project task only. Non-project personal/private task IDs are rejected before task event rows are read.
 - `GET /api/hive/context` returns the grouped Hive Context document, Hive Secretary report/job state, and public Board Manager action feed. If the viewer is signed in, it also includes that account's private Board Manager messages. If the signed-in viewer passes `agentLogs=full`, Board Manager feed rows include expandable stored run logs for the Hive Mind Agent tab.
 - `POST /api/hive/context` stores one signed-in user's Hive chat entry, records the user message in the Hive conversation, and queues Hive Secretary when the user has a linked wallet.
 - `GET /api/hive/chat` returns the signed-in account's Hive chat state.
@@ -293,7 +301,7 @@ The production app does not import from `mocks/hive.jsx`. The mock is preserved 
 - `scripts/board-manager-ops.mjs` provides operator commands for status, enqueue, pause, resume, and scope setup.
 - `schemas/board-manager-action.schema.json` constrains the Board Manager model output.
 - `server/repositories/hive-context.js` persists raw Hive Context entries, Secretary jobs, and Secretary reports.
-- `server/repositories/hive-projects.js` reads active network projects, links the latest Secretary report as a project input, and derives routing feed/operator rollups from project task refs when explicit contributor/activity rows are absent. The routing feed, project tasks, and project activity sort by event/update timestamp descending before rendering. Contributor, operator, task-assignee, and activity rows use the selected profile NFT/PFP from `profile_nfts` when available, falling back to the generated badge only when no image exists.
+- `server/repositories/hive-projects.js` reads active network projects, links the latest Secretary report as a project input, derives routing feed/operator rollups from project task refs when explicit contributor/activity rows are absent, and serves the public network-project task detail pop-out payload. The routing feed, project tasks, and project activity sort by event/update timestamp descending before rendering. Contributor, operator, task-assignee, and activity rows use the selected profile NFT/PFP from `profile_nfts` when available, falling back to the generated badge only when no image exists.
 - `server/repositories/hive-project-product-docs.js` builds a single-project source packet, reads the current product document, and inserts a new current product document while superseding the old one.
 - `server/repositories/hive-project-planning.js` persists active-project planner jobs and completed generations, then upserts `network_projects`.
 - `server/db/migrations/027_hive_context_entries.sql` creates the Hive Context table.

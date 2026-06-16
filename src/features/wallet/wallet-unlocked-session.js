@@ -1,10 +1,7 @@
 const UNLOCKED_SESSION_PREFIX = "tasknode:wallet-unlocked-session:v2:";
 const LEGACY_UNLOCKED_SESSION_PREFIXES = ["tasknode:wallet-unlocked-session:v1:"];
 const LAST_ACTIVE_KEY = "tasknode:wallet-unlocked-session:last-active";
-const SESSION_KEY_DB_NAME = "tasknode-wallet-session-keys";
-const SESSION_KEY_DB_VERSION = 1;
-const SESSION_KEY_DB_STORE = "keys";
-const SESSION_KEY_ID = "aes-gcm-v1";
+const SESSION_CRYPTO_KEY_STORAGE_KEY = "tasknode:wallet-unlocked-session:aes-key";
 
 export const DEFAULT_WALLET_UNLOCK_IDLE_LOCK_MINUTES = 30;
 
@@ -16,6 +13,9 @@ export function walletUnlockIdleLockMs(rawMinutes) {
   const configured = rawMinutes !== undefined
     ? rawMinutes
     : globalThis.__TASKNODE_CONFIG__?.walletUnlockIdleLockMinutes;
+  // Explicit 0 / "0" disables the idle auto-lock entirely (set
+  // TASKNODE_WALLET_UNLOCK_IDLE_LOCK_MINUTES=0 to turn it off).
+  if (configured === 0 || configured === "0") return 0;
   const minutes = Number(configured || DEFAULT_WALLET_UNLOCK_IDLE_LOCK_MINUTES);
   const bounded = Number.isFinite(minutes) && minutes > 0
     ? Math.min(Math.max(minutes, 1), 24 * 60)
@@ -94,64 +94,76 @@ function base64ToBytes(text = "") {
   return bytes;
 }
 
-function browserIndexedDbKeyStore() {
-  const hasIndexedDb = typeof globalThis !== "undefined" && Boolean(globalThis.indexedDB);
-  // Without IndexedDB the encryption key cannot outlive this page load, so a
-  // reload simply re-prompts for the vault password instead of restoring.
-  let memoryKey = null;
-  if (!hasIndexedDb) {
-    return {
-      get: async () => memoryKey,
-      set: async (key) => {
-        memoryKey = key;
-      },
-    };
+// The AES-GCM key is co-located with the encrypted envelope in the SAME
+// sessionStorage, so a reload restores both together. The previous design kept
+// the key in IndexedDB and the envelope in sessionStorage; on browsers that
+// partition or evict IndexedDB on reload (Windows Edge Tracking Prevention,
+// Chrome storage partitioning, InPrivate/incognito, some corporate policies)
+// the key was lost while the envelope survived, so every reload failed to
+// decrypt and forced a full seed re-entry. sessionStorage persists across
+// reloads within the tab, so the unlock now survives a reload within the idle
+// window. The key is exportable only so it can be serialized next to the
+// envelope; both are already reachable by any script with sessionStorage
+// access, so this does not lower the threat model versus the prior split-store
+// design (the real boundaries are the per-tab sessionStorage lifecycle and the
+// idle auto-lock).
+export function createSessionStorageKeyStore(storage, cryptoObj = globalThis.crypto) {
+  const subtle = cryptoObj?.subtle || null;
+  const memoryKey = { current: null };
+
+  async function importFromBytes(bytes) {
+    if (!subtle) return null;
+    return subtle.importKey("raw", bytes, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
   }
 
-  function openDb() {
-    return new Promise((resolve, reject) => {
-      const request = globalThis.indexedDB.open(SESSION_KEY_DB_NAME, SESSION_KEY_DB_VERSION);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(SESSION_KEY_DB_STORE)) {
-          db.createObjectStore(SESSION_KEY_DB_STORE, { keyPath: "id" });
-        }
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error("INDEXEDDB_OPEN_FAILED"));
-      request.onblocked = () => reject(new Error("INDEXEDDB_OPEN_BLOCKED"));
-    });
-  }
-
-  async function withStore(mode, callback) {
-    const db = await openDb();
+  function readStored() {
     try {
-      return await new Promise((resolve, reject) => {
-        const tx = db.transaction(SESSION_KEY_DB_STORE, mode);
-        const store = tx.objectStore(SESSION_KEY_DB_STORE);
-        let callbackResult = null;
-        tx.oncomplete = () => resolve(callbackResult);
-        tx.onerror = () => reject(tx.error || new Error("INDEXEDDB_TRANSACTION_FAILED"));
-        tx.onabort = () => reject(tx.error || new Error("INDEXEDDB_TRANSACTION_ABORTED"));
-        const request = callback(store);
-        if (request) {
-          request.onsuccess = () => {
-            callbackResult = request.result || null;
-          };
-        }
-      });
-    } finally {
-      db.close();
+      return storage ? storage.getItem(SESSION_CRYPTO_KEY_STORAGE_KEY) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeStored(value) {
+    try {
+      if (storage) storage.setItem(SESSION_CRYPTO_KEY_STORAGE_KEY, value);
+    } catch {
+      /* ignore quota / disabled storage */
     }
   }
 
   return {
     get: async () => {
-      const record = await withStore("readonly", (store) => store.get(SESSION_KEY_ID));
-      return record?.key || null;
+      if (!subtle) return memoryKey.current;
+      const stored = readStored();
+      if (stored) {
+        try {
+          return await importFromBytes(base64ToBytes(stored));
+        } catch {
+          /* fall through to in-memory key */
+        }
+      }
+      return memoryKey.current;
     },
     set: async (key) => {
-      await withStore("readwrite", (store) => store.put({ id: SESSION_KEY_ID, key }));
+      if (!subtle) {
+        memoryKey.current = key;
+        return;
+      }
+      try {
+        const raw = await subtle.exportKey("raw", key);
+        writeStored(bytesToBase64(new Uint8Array(raw)));
+      } catch {
+        memoryKey.current = key;
+      }
+    },
+    clear: () => {
+      memoryKey.current = null;
+      try {
+        if (storage) storage.removeItem(SESSION_CRYPTO_KEY_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
     },
   };
 }
@@ -162,7 +174,7 @@ export function createUnlockedWalletSessionStore({
   keyStore = null,
   now = () => Date.now(),
 } = {}) {
-  const keys = keyStore || browserIndexedDbKeyStore();
+  const keys = keyStore || createSessionStorageKeyStore(storage, cryptoObj);
   const subtle = cryptoObj?.subtle || null;
   let keyPromise = null;
 
@@ -172,7 +184,9 @@ export function createUnlockedWalletSessionStore({
       keyPromise = (async () => {
         const existing = await keys.get().catch(() => null);
         if (existing) return existing;
-        const generated = await subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+        // Extractable so the key can be serialized into sessionStorage next to
+        // the envelope (see createSessionStorageKeyStore).
+        const generated = await subtle.generateKey({ name: "AES-GCM", length: 256 }, true, [
           "encrypt",
           "decrypt",
         ]);
@@ -206,6 +220,7 @@ export function createUnlockedWalletSessionStore({
       if (isUnlockedSessionKey(key)) storage.removeItem(key);
     }
     storage.removeItem(LAST_ACTIVE_KEY);
+    keys.clear?.();
     return true;
   }
 

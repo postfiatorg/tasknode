@@ -1,5 +1,9 @@
 import { databaseEnabled, query, transaction } from "../db/pool.js";
 import { listPublicAccountWalletIdentities } from "../runtime-store.js";
+import { publicReducerEvent } from "../task-forensics-format.js";
+import { taskRewardOutcome } from "../task-reward-outcome.js";
+import { currentVerificationRequest } from "../task-verification-view.js";
+import { discoverableMemberProfileIds } from "./directory-leaderboard.js";
 import { latestHiveProjectPlanningState, projectHasOperatorArchiveLock } from "./hive-project-planning.js";
 import { getCurrentProjectProductDocs } from "./hive-project-product-docs.js";
 
@@ -90,45 +94,96 @@ function walletIdentityDisplayName(identity = {}) {
   );
 }
 
-function walletIdentityMap(walletIdentities = []) {
+function walletIdentityMap(walletIdentities = [], publicProfileIds = new Set()) {
   const identities = new Map();
   for (const identity of safeArray(walletIdentities)) {
     const key = walletIdentityKey(identity.walletAddress || identity.wallet_address || identity.wallet);
     const displayName = walletIdentityDisplayName(identity);
     if (!key || !displayName) continue;
+    const accountId = safeText(identity.accountId || identity.account_id, 180);
     identities.set(key, {
-      accountId: safeText(identity.accountId || identity.account_id, 180),
+      accountId,
       displayName,
       hiveHandle: safeText(identity.hiveHandle || identity.hive_handle, 80),
       publicDisplayName: safeText(identity.publicDisplayName || identity.public_display_name, 120),
       publicAliases: safeArray(identity.publicAliases || identity.public_aliases),
       publicTrustBadges: safeArray(identity.publicTrustBadges || identity.public_trust_badges),
+      nft: identity.nft || publicIdentityNft(identity),
+      hasPublicProfile: Boolean(accountId && publicProfileIds.has(accountId)),
     });
   }
   return identities;
 }
 
 function enrichContributorWithWalletIdentity(contributor = {}, identity = null) {
-  if (!identity?.displayName) return contributor;
-  contributor.codename = identity.displayName;
-  contributor.accountId = identity.accountId || contributor.accountId || "";
-  contributor.hiveHandle = identity.hiveHandle || contributor.hiveHandle || "";
-  contributor.publicDisplayName = identity.publicDisplayName || contributor.publicDisplayName || "";
-  contributor.publicAliases = identity.publicAliases || contributor.publicAliases || [];
-  contributor.publicTrustBadges = identity.publicTrustBadges || contributor.publicTrustBadges || [];
+  if (identity?.displayName) {
+    // Keep the operator's Hive codename as the displayed name; expose the public
+    // profile displayName as a separate fallback field (the frontend's
+    // operatorDisplayName prefers codename, then displayName). Overwriting codename
+    // here blanked routing-feed names when displayName was empty/odd.
+    contributor.displayName = identity.displayName;
+    contributor.hiveHandle = identity.hiveHandle || contributor.hiveHandle || "";
+    contributor.publicDisplayName = identity.publicDisplayName || contributor.publicDisplayName || "";
+    contributor.publicAliases = identity.publicAliases || contributor.publicAliases || [];
+    contributor.publicTrustBadges = identity.publicTrustBadges || contributor.publicTrustBadges || [];
+  }
+  contributor.accountId = identity?.accountId || contributor.accountId || "";
+  contributor.hasPublicProfile = Boolean(identity?.hasPublicProfile);
+  contributor.nft = contributor.nft || identity?.nft || null;
   return contributor;
 }
 
-function applyWalletIdentitiesToProjects(projects = {}, walletIdentities = []) {
-  const identities = walletIdentityMap(walletIdentities);
+function enrichTaskWithWalletIdentity(task = {}, identity = null) {
+  task.assigneeAccountId = identity?.accountId || task.assigneeAccountId || "";
+  task.assigneeHasPublicProfile = Boolean(identity?.hasPublicProfile);
+  task.assigneeHandle = identity?.hiveHandle || task.assigneeHandle || "";
+  task.assigneeDisplayName = identity?.displayName || task.assigneeDisplayName || "";
+  task.assigneeNft = task.assigneeNft || identity?.nft || null;
+  return task;
+}
+
+function enrichActivityWithWalletIdentity(entry = {}, identity = null) {
+  entry.accountId = identity?.accountId || entry.accountId || "";
+  entry.hasPublicProfile = Boolean(identity?.hasPublicProfile);
+  entry.hiveHandle = identity?.hiveHandle || entry.hiveHandle || "";
+  entry.displayName = identity?.displayName || entry.displayName || "";
+  return entry;
+}
+
+function applyWalletIdentitiesToProjects(projects = {}, walletIdentities = [], publicProfileIds = new Set()) {
+  const identities = walletIdentityMap(walletIdentities, publicProfileIds);
   if (identities.size === 0) return projects;
 
   for (const project of Object.values(projects)) {
     for (const contributor of safeArray(project.contributors)) {
       enrichContributorWithWalletIdentity(contributor, identities.get(walletIdentityKey(contributor.wallet)));
     }
+    for (const task of safeArray(project.tasks)) {
+      enrichTaskWithWalletIdentity(task, identities.get(walletIdentityKey(task.assignee)));
+    }
+    for (const entry of safeArray(project.activity)) {
+      enrichActivityWithWalletIdentity(entry, identities.get(walletIdentityKey(entry.wallet)));
+    }
   }
   return projects;
+}
+
+async function publicWalletIdentityForWallet(wallet = "", accountId = "") {
+  const key = walletIdentityKey(wallet);
+  if (!key) return null;
+  const walletIdentities = mergeWalletIdentityLists(
+    listPublicAccountWalletIdentities().filter((identity) =>
+      walletIdentityKey(identity.walletAddress || identity.wallet_address || identity.wallet) === key
+    ),
+    await resolveHivePublicWalletIdentities({
+      wallets: [wallet],
+      walletAccounts: accountId ? [{ walletAddress: wallet, accountId }] : [],
+    })
+  );
+  const publicProfileIds = await discoverableMemberProfileIds(
+    Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)))
+  );
+  return walletIdentityMap(walletIdentities, publicProfileIds).get(key) || null;
 }
 
 function publicProject(row = {}) {
@@ -169,7 +224,10 @@ function publicProject(row = {}) {
 function publicContributor(row = {}) {
   return {
     wallet: safeText(row.wallet_address, 120),
+    accountId: "",
+    hasPublicProfile: false,
     codename: safeText(row.codename, 120),
+    displayName: "",
     archetype: safeText(row.archetype, 180),
     badge: intValue(row.badge_variant),
     allotted: Boolean(row.allotted),
@@ -202,6 +260,10 @@ function publicTask(row = {}) {
     title: safeText(row.projected_title || row.title, 240),
     state,
     assignee: safeText(row.projected_subject_wallet || row.assignee_wallet, 120),
+    assigneeAccountId: safeText(row.projected_account_id || row.account_id || row.assignee_account_id, 180),
+    assigneeHasPublicProfile: false,
+    assigneeHandle: "",
+    assigneeDisplayName: "",
     pft: numeric(projectedReward),
     nextAction: taskNextAction(state),
     age: safeText(row.age_label, 80),
@@ -217,6 +279,11 @@ function publicActivity(row = {}) {
     id: safeText(row.id, 180),
     projectId: safeText(row.project_id, 180),
     wallet: safeText(row.wallet_address, 120),
+    taskId: safeText(row.task_id || safeObject(row.metadata_json).taskId || safeObject(row.metadata_json).task_id, 180),
+    accountId: "",
+    hasPublicProfile: false,
+    hiveHandle: "",
+    displayName: "",
     action: safeText(row.action, 80),
     task: safeText(row.task_title, 240),
     time: safeText(row.time_label, 80),
@@ -235,6 +302,7 @@ function operatorMap(projects = {}) {
       if (!contributor.wallet) continue;
       const operator = {
         codename: contributor.codename || "Operator",
+        displayName: contributor.displayName || "",
         archetype: contributor.archetype || "",
         badge: contributor.badge || 0,
         allotted: Boolean(contributor.allotted),
@@ -246,6 +314,7 @@ function operatorMap(projects = {}) {
         currentTasks: safeArray(contributor.currentTasks),
         nft: contributor.nft || null,
         accountId: contributor.accountId || "",
+        hasPublicProfile: Boolean(contributor.hasPublicProfile),
         hiveHandle: contributor.hiveHandle || "",
         publicDisplayName: contributor.publicDisplayName || "",
         publicAliases: safeArray(contributor.publicAliases),
@@ -300,6 +369,10 @@ function projectNextTask(project = {}) {
     title: task.title,
     state: task.state,
     assignee: task.assignee,
+    assigneeAccountId: task.assigneeAccountId || "",
+    assigneeHasPublicProfile: Boolean(task.assigneeHasPublicProfile),
+    assigneeHandle: task.assigneeHandle || "",
+    assigneeDisplayName: task.assigneeDisplayName || "",
     pft: numeric(task.pft),
     nextAction: task.nextAction || taskNextAction(task.state),
     updatedAt: task.updatedAt || task.createdAt || "",
@@ -312,9 +385,15 @@ function deriveContributorFromTask(project = {}, task = {}) {
   const taskState = safeText(task.state, 80).toLowerCase();
   const paidPft = taskState === "rewarded" ? numeric(task.pft) : 0;
   const activeLoad = ["proposed", "accepted", "submitted", "verification_requested", "verification_response_submitted"].includes(taskState) ? 1 : 0;
+  const identityLabel = task.assigneeDisplayName || (task.assigneeHandle ? `@${safeText(task.assigneeHandle, 80).replace(/^@+/, "")}` : "");
   return {
     wallet,
-    codename: compactWallet(wallet),
+    accountId: task.assigneeAccountId || "",
+    hasPublicProfile: Boolean(task.assigneeHasPublicProfile),
+    codename: identityLabel || compactWallet(wallet),
+    displayName: task.assigneeDisplayName || "",
+    hiveHandle: task.assigneeHandle || "",
+    publicDisplayName: task.assigneeDisplayName || "",
     archetype: "Network task contributor",
     badge: 0,
     allotted: true,
@@ -355,6 +434,7 @@ function mergeContributor(left = {}, right = {}) {
   return {
     ...left,
     codename: left.codename || right.codename,
+    displayName: left.displayName || right.displayName || "",
     archetype: left.archetype || right.archetype,
     badge: intValue(left.badge) || intValue(right.badge),
     allotted: Boolean(left.allotted || right.allotted),
@@ -368,6 +448,7 @@ function mergeContributor(left = {}, right = {}) {
     currentTasks,
     nft: left.nft || right.nft || null,
     accountId: left.accountId || right.accountId || "",
+    hasPublicProfile: Boolean(left.hasPublicProfile || right.hasPublicProfile),
     hiveHandle: left.hiveHandle || right.hiveHandle || "",
     publicDisplayName: left.publicDisplayName || right.publicDisplayName || "",
     publicAliases: safeArray(left.publicAliases).length ? left.publicAliases : safeArray(right.publicAliases),
@@ -397,6 +478,11 @@ function deriveActivityFromTask(project = {}, task = {}) {
     id: `project_task_activity_${task.taskId}`,
     projectId: project.id,
     wallet: task.assignee,
+    taskId: task.taskId,
+    accountId: task.assigneeAccountId || "",
+    hasPublicProfile: Boolean(task.assigneeHasPublicProfile),
+    hiveHandle: task.assigneeHandle || "",
+    displayName: task.assigneeDisplayName || "",
     action,
     task: task.title,
     time: task.age || "",
@@ -489,6 +575,7 @@ function documentFromRows({
   latestSecretary = null,
   projectPlanning = null,
   walletIdentities = [],
+  publicProfileIds = new Set(),
   includeEmptyActive = false,
 } = {}) {
   const projects = Object.fromEntries(projectRows.map((row) => {
@@ -516,8 +603,8 @@ function documentFromRows({
     const project = projects[doc.projectId];
     if (project) project.productDocument = doc;
   }
+  applyWalletIdentitiesToProjects(projects, walletIdentities, publicProfileIds);
   populateDerivedProjectRollups(projects);
-  applyWalletIdentitiesToProjects(projects, walletIdentities);
 
   const visibleProjects = Object.fromEntries(
     Object.values(projects)
@@ -565,6 +652,448 @@ function documentFromRows({
         }
       : null,
     projectPlanning,
+  };
+}
+
+function publicSummaryText(value = "", max = 900) {
+  return safeText(value, max).replace(/\s+/g, " ");
+}
+
+function publicSubmissionSummaries(metadata = {}) {
+  return safeArray(metadata.submissionSummaries)
+    .map((summary, index) => ({
+      type: publicSummaryText(summary?.type || summary?.label || `Submission ${index + 1}`, 120),
+      summary: publicSummaryText(summary?.summary || summary?.description || "", 900),
+    }))
+    .filter((summary) => summary.type || summary.summary)
+    .slice(0, 6);
+}
+
+function publicTimelineRows(rows = []) {
+  return safeArray(rows)
+    .map((row, index) => publicReducerEvent(row, index))
+    .map((event) => ({
+      action: safeText(event.schema || event.label, 120),
+      label: safeText(event.label, 180),
+      time: toIso(event.observedAt),
+      txHash: safeText(event.txHash, 240),
+      cid: safeText(event.cid, 240),
+    }))
+    .filter((event) => event.label)
+    .slice(0, 40);
+}
+
+function latestTimelineEvent(timeline = [], schema = "") {
+  const normalized = safeText(schema, 120);
+  for (let index = safeArray(timeline).length - 1; index >= 0; index -= 1) {
+    const event = timeline[index];
+    if (safeText(event.schema, 120) === normalized) return event;
+  }
+  return null;
+}
+
+function publicVerificationSummary(timeline = []) {
+  const request = currentVerificationRequest(timeline);
+  const response = latestTimelineEvent(timeline, "pf.task.verification_response.v1");
+  if (!request && !response) return null;
+  return {
+    request: request ? publicSummaryText(request.body || request.ask, 900) : "",
+    response: response ? "Verification response submitted." : "",
+  };
+}
+
+function publicRewardOutcome(outcome = null) {
+  if (!outcome) {
+    return {
+      decision: "",
+      rewardPft: 0,
+      reason: "",
+    };
+  }
+  return {
+    decision: publicSummaryText(outcome.decision || outcome.title || outcome.status, 120),
+    rewardPft: numeric(outcome.rewardPft),
+    reason: publicSummaryText(outcome.reason || outcome.userFeedback || outcome.summary, 900),
+  };
+}
+
+function publicAssigneeNft(nft = null) {
+  return {
+    title: safeText(nft?.title, 180),
+    status: safeText(nft?.status, 80),
+    imageCid: safeText(nft?.imageCid, 180),
+    imageGatewayUrl: safeText(nft?.imageGatewayUrl, 500),
+  };
+}
+
+function publicIdentityNft(row = {}) {
+  const imageCid = safeText(row.hero_nft_image_cid || row.image_cid, 180);
+  const imageGatewayUrl = safeText(row.hero_nft_image_gateway_url || row.image_gateway_url, 500);
+  if (!imageCid && !imageGatewayUrl) return null;
+  return {
+    title: safeText(row.hero_nft_title || row.title, 180),
+    status: safeText(row.hero_nft_status || row.status, 80),
+    imageCid,
+    imageGatewayUrl,
+  };
+}
+
+function hiveWalletsFromRows({
+  contributorRows = [],
+  taskRows = [],
+  activityRows = [],
+} = {}) {
+  const wallets = new Set();
+  for (const row of safeArray(contributorRows)) {
+    const wallet = safeText(row.wallet_address, 160);
+    if (wallet) wallets.add(wallet);
+  }
+  for (const row of safeArray(taskRows)) {
+    for (const value of [row.projected_subject_wallet, row.subject_wallet, row.assignee_wallet]) {
+      const wallet = safeText(value, 160);
+      if (wallet) wallets.add(wallet);
+    }
+  }
+  for (const row of safeArray(activityRows)) {
+    const wallet = safeText(row.wallet_address, 160);
+    if (wallet) wallets.add(wallet);
+  }
+  return [...wallets];
+}
+
+function hiveWalletAccountsFromRows({ taskRows = [] } = {}) {
+  const pairs = [];
+  const seen = new Set();
+  for (const row of safeArray(taskRows)) {
+    const wallet = safeText(row.projected_subject_wallet || row.subject_wallet || row.assignee_wallet, 160);
+    const accountId = safeText(row.projected_account_id || row.account_id || row.assignee_account_id, 180);
+    const key = `${wallet.toLowerCase()}:${accountId}`;
+    if (!wallet || !accountId || seen.has(key)) continue;
+    seen.add(key);
+    pairs.push({ walletAddress: wallet, accountId });
+  }
+  return pairs;
+}
+
+function mergeWalletIdentity(left = {}, right = {}) {
+  const walletAddress = safeText(left.walletAddress || left.wallet_address || right.walletAddress || right.wallet_address, 160);
+  return {
+    ...left,
+    ...right,
+    accountId: safeText(left.accountId || left.account_id || right.accountId || right.account_id, 180),
+    walletAddress,
+    displayName: safeText(left.displayName || left.display_name || right.displayName || right.display_name, 120),
+    hiveHandle: safeText(left.hiveHandle || left.hive_handle || right.hiveHandle || right.hive_handle, 80),
+    publicDisplayName: safeText(left.publicDisplayName || left.public_display_name || right.publicDisplayName || right.public_display_name, 120),
+    publicAliases: safeArray(left.publicAliases || left.public_aliases).length
+      ? safeArray(left.publicAliases || left.public_aliases)
+      : safeArray(right.publicAliases || right.public_aliases),
+    publicTrustBadges: safeArray(left.publicTrustBadges || left.public_trust_badges).length
+      ? safeArray(left.publicTrustBadges || left.public_trust_badges)
+      : safeArray(right.publicTrustBadges || right.public_trust_badges),
+    nft: left.nft || right.nft || publicIdentityNft(left) || publicIdentityNft(right),
+  };
+}
+
+function mergeWalletIdentityLists(...lists) {
+  const byWallet = new Map();
+  for (const identity of lists.flatMap((list) => safeArray(list))) {
+    const wallet = safeText(identity.walletAddress || identity.wallet_address || identity.wallet, 160);
+    const key = walletIdentityKey(wallet);
+    if (!key) continue;
+    const normalized = { ...identity, walletAddress: wallet };
+    byWallet.set(key, byWallet.has(key) ? mergeWalletIdentity(byWallet.get(key), normalized) : normalized);
+  }
+  return [...byWallet.values()];
+}
+
+async function recommendedProfilesReady(queryImpl = query) {
+  const result = await queryImpl("SELECT to_regclass('public.recommended_connection_profiles') AS profile_table");
+  return Boolean(result.rows[0]?.profile_table);
+}
+
+export async function resolveHivePublicWalletIdentities({
+  wallets = [],
+  walletAccounts = [],
+  queryImpl = query,
+  databaseReady = useDatabase(),
+} = {}) {
+  const uniqueWallets = Array.from(new Set(safeArray(wallets).map((wallet) => safeText(wallet, 160)).filter(Boolean)));
+  const accountPairs = safeArray(walletAccounts)
+    .map((pair) => ({
+      walletAddress: safeText(pair.walletAddress || pair.wallet_address || pair.wallet, 160),
+      accountId: safeText(pair.accountId || pair.account_id, 180),
+    }))
+    .filter((pair) => pair.walletAddress && pair.accountId);
+  const pairWallets = accountPairs.map((pair) => pair.walletAddress);
+  const allWallets = Array.from(new Set([...uniqueWallets, ...pairWallets]));
+  if (!allWallets.length || !databaseReady || !await recommendedProfilesReady(queryImpl)) return [];
+  const result = await queryImpl(
+    `
+      WITH input_wallet_accounts AS (
+        SELECT wallet_address, account_id, ordinal::integer AS source_rank
+        FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS input(wallet_address, account_id, ordinal)
+        WHERE wallet_address <> ''
+          AND account_id <> ''
+      ),
+      profile_wallet_accounts AS (
+        SELECT wallet_address,
+               account_id,
+               1000000 AS source_rank
+        FROM recommended_connection_profiles
+        WHERE wallet_address = ANY($3::text[])
+          AND wallet_address <> ''
+          AND account_id <> ''
+      ),
+      wallet_accounts AS (
+        SELECT DISTINCT ON (lower(wallet_address))
+               wallet_address,
+               account_id
+        FROM (
+          SELECT * FROM input_wallet_accounts
+          UNION ALL
+          SELECT * FROM profile_wallet_accounts
+        ) matches
+        ORDER BY lower(wallet_address), source_rank ASC, account_id ASC
+      )
+      SELECT wallet_account.wallet_address,
+             wallet_account.account_id,
+             COALESCE(NULLIF(latest_handle.public_handle, ''), NULLIF(profile.hive_handle, ''), '') AS hive_handle,
+             CASE
+               WHEN COALESCE(latest_handle.public_handle, profile.hive_handle, '') <> ''
+                 THEN '@' || regexp_replace(COALESCE(latest_handle.public_handle, profile.hive_handle), '^@+', '')
+               ELSE COALESCE(NULLIF(profile.display_name, ''), '')
+             END AS display_name,
+             COALESCE(NULLIF(profile.display_name, ''), '') AS public_display_name,
+             COALESCE(hero_nft.title, '') AS hero_nft_title,
+             COALESCE(hero_nft.status, '') AS hero_nft_status,
+             COALESCE(hero_nft.image_cid, '') AS hero_nft_image_cid,
+             COALESCE(hero_nft.image_gateway_url, '') AS hero_nft_image_gateway_url
+      FROM wallet_accounts wallet_account
+      JOIN recommended_connection_profiles profile
+        ON profile.account_id = wallet_account.account_id
+       AND profile.visibility = 'public'
+       AND profile.discoverable = true
+       AND profile.disabled_at IS NULL
+      LEFT JOIN LATERAL (
+        SELECT event.public_handle
+        FROM user_observability_events event
+        WHERE event.account_id = wallet_account.account_id
+          AND event.public_handle <> ''
+        ORDER BY event.occurred_at DESC, event.id DESC
+        LIMIT 1
+      ) latest_handle ON true
+      LEFT JOIN LATERAL (
+        SELECT id, title, status, image_cid, image_gateway_url, selected, created_at, updated_at
+        FROM profile_nfts nft
+        WHERE nft.account_id = wallet_account.account_id
+          AND lower(nft.status) IN ('minted', 'prepared', 'generated')
+          AND (
+            COALESCE(nft.image_gateway_url, '') <> ''
+            OR COALESCE(nft.image_cid, '') <> ''
+          )
+        ORDER BY
+          nft.selected DESC,
+          nft.created_at DESC NULLS LAST,
+          nft.updated_at DESC NULLS LAST,
+          nft.id DESC
+        LIMIT 1
+      ) hero_nft ON true
+      ORDER BY wallet_account.wallet_address ASC
+    `,
+    [
+      accountPairs.map((pair) => pair.walletAddress),
+      accountPairs.map((pair) => pair.accountId),
+      allWallets,
+    ]
+  );
+  return result.rows
+    .map((row) => ({
+      accountId: safeText(row.account_id, 180),
+      walletAddress: safeText(row.wallet_address, 160),
+      displayName: safeText(row.display_name, 120),
+      hiveHandle: safeText(row.hive_handle, 80).replace(/^@+/, ""),
+      publicDisplayName: safeText(row.public_display_name, 120),
+      publicAliases: row.hive_handle ? [{
+        provider: "hive",
+        label: "Hive",
+        handle: safeText(row.hive_handle, 80).replace(/^@+/, ""),
+        verified: false,
+      }] : [],
+      publicTrustBadges: [],
+      nft: publicIdentityNft(row),
+    }))
+    .filter((identity) => identity.accountId && identity.walletAddress && identity.displayName);
+}
+
+export const publicHiveTaskDetailFields = [
+  "ok",
+  "task.id",
+  "task.taskId",
+  "task.requestId",
+  "task.title",
+  "task.state",
+  "task.assignee",
+  "task.assigneeAccountId",
+  "task.assigneeHasPublicProfile",
+  "task.assigneeHandle",
+  "task.assigneeDisplayName",
+  "task.pft",
+  "task.nextAction",
+  "task.age",
+  "task.source",
+  "task.createdAt",
+  "task.updatedAt",
+  "task.assigneeNft.title",
+  "task.assigneeNft.status",
+  "task.assigneeNft.imageCid",
+  "task.assigneeNft.imageGatewayUrl",
+  "task.kind",
+  "task.summary",
+  "task.description",
+  "task.project.id",
+  "task.project.name",
+  "task.project.type",
+  "review.submissions[].type",
+  "review.submissions[].summary",
+  "review.verification.request",
+  "review.verification.response",
+  "review.outcome.decision",
+  "review.outcome.rewardPft",
+  "review.outcome.reason",
+  "timeline[].action",
+  "timeline[].label",
+  "timeline[].time",
+  "timeline[].txHash",
+  "timeline[].cid",
+];
+
+export function publicHiveTaskDetailFieldsForPayload(value, path = "") {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.flatMap((item) => publicHiveTaskDetailFieldsForPayload(item, `${path}[]`))));
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).filter(([key]) => key !== "publicFields");
+    if (!entries.length) return path ? [path] : [];
+    return Array.from(new Set(entries.flatMap(([key, child]) => publicHiveTaskDetailFieldsForPayload(child, path ? `${path}.${key}` : key))));
+  }
+  return path ? [path] : [];
+}
+
+function publicHiveTaskFromProjection(row = {}) {
+  const projected = publicTask({
+    ...row,
+    project_id: row.project_id,
+    projected_status: row.status,
+    projected_title: row.title,
+    projected_subject_wallet: row.subject_wallet,
+    projected_reward_pft: row.status === "rewarded" ? row.reward_actual_pft : row.reward_offer_pft,
+    projected_updated_at: row.updated_at,
+  });
+  return {
+    ...projected,
+    assigneeNft: publicAssigneeNft(projected.assigneeNft),
+    kind: projected.source === "task_projections" ? "Network task" : "Network task",
+    summary: publicSummaryText(row.description || row.submission_requirement_text || "", 1200),
+    description: publicSummaryText(row.description || "", 1600),
+    project: {
+      id: safeText(row.project_id, 180),
+      name: safeText(row.project_title, 180),
+      type: typeLabel(row.project_type),
+    },
+  };
+}
+
+export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, databaseReady = useDatabase() } = {}) {
+  const normalizedTaskId = safeText(taskId, 180);
+  if (!normalizedTaskId) {
+    return {
+      ok: false,
+      status: 400,
+      error: "hive_task_id_required",
+      message: "A taskId query parameter is required.",
+    };
+  }
+  if (!databaseReady) {
+    return {
+      ok: false,
+      status: 503,
+      error: "database_not_configured",
+      message: "Hive task detail requires the database-backed task projection.",
+    };
+  }
+
+  const taskResult = await queryImpl(
+    `
+      SELECT projection.*,
+             refs.project_id,
+             project.title AS project_title,
+             project.type AS project_type
+      FROM network_project_task_refs refs
+      JOIN network_projects project
+        ON project.id = refs.project_id
+      JOIN task_projections projection
+        ON projection.task_id = refs.task_id
+      WHERE refs.task_id = $1
+        AND refs.task_id <> ''
+      LIMIT 1
+    `,
+    [normalizedTaskId]
+  );
+  const row = taskResult.rows[0] || null;
+  if (!row) {
+    return {
+      ok: false,
+      status: 404,
+      error: "hive_task_not_found",
+      message: "No public Hive task projection was found for this task.",
+    };
+  }
+
+  const eventsResult = await queryImpl(
+    `
+      SELECT *
+      FROM task_events
+      WHERE task_id = $1
+      ORDER BY occurred_at ASC, id ASC
+      LIMIT 200
+    `,
+    [normalizedTaskId]
+  );
+  const timeline = eventsResult.rows.map((eventRow, index) => publicReducerEvent(eventRow, index));
+  const publicTimeline = publicTimelineRows(eventsResult.rows);
+  const task = publicHiveTaskFromProjection(row);
+  enrichTaskWithWalletIdentity(task, await publicWalletIdentityForWallet(task.assignee, task.assigneeAccountId));
+  const metadata = safeObject(row.metadata_json);
+  const submissions = publicSubmissionSummaries(metadata);
+  const verification = publicVerificationSummary(timeline) || { request: "", response: "" };
+  const outcome = publicRewardOutcome(taskRewardOutcome({
+    offeredPft: row.reward_offer_pft,
+    task,
+    timeline,
+  }));
+
+  const response = {
+    ok: true,
+    task,
+    review: {
+      submissions,
+      verification,
+      outcome,
+    },
+    timeline: publicTimeline.length
+      ? publicTimeline
+      : [{
+          action: task.state,
+          label: taskNextAction(task.state),
+          time: task.updatedAt || task.createdAt || "",
+          txHash: "",
+          cid: "",
+        }],
+  };
+  return {
+    ...response,
+    publicFields: publicHiveTaskDetailFieldsForPayload(response),
   };
 }
 
@@ -670,6 +1199,7 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
         SELECT refs.*,
                projection.status AS projected_status,
                projection.title AS projected_title,
+               projection.account_id AS projected_account_id,
                projection.subject_wallet AS projected_subject_wallet,
                CASE
                  WHEN projection.status = 'rewarded' THEN projection.reward_actual_pft
@@ -684,7 +1214,7 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
         JOIN task_projections projection
           ON projection.task_id = refs.task_id
         LEFT JOIN LATERAL (
-          SELECT title, status, image_cid, image_gateway_url, selected, updated_at
+          SELECT id, title, status, image_cid, image_gateway_url, selected, created_at, updated_at
           FROM profile_nfts
           WHERE wallet_address = COALESCE(NULLIF(projection.subject_wallet, ''), refs.assignee_wallet)
             AND wallet_address <> ''
@@ -695,12 +1225,9 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
             )
           ORDER BY
             selected DESC,
-            CASE status
-              WHEN 'minted' THEN 0
-              WHEN 'prepared' THEN 1
-              ELSE 2
-            END ASC,
-            updated_at DESC
+            created_at DESC NULLS LAST,
+            updated_at DESC NULLS LAST,
+            id DESC
           LIMIT 1
         ) nft ON true
         WHERE refs.task_id <> ''
@@ -738,7 +1265,22 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
     projectIds: projectsResult.rows.map((row) => row.id),
   });
   const projectPlanning = await latestHiveProjectPlanningState().catch(() => null);
-  const walletIdentities = listPublicAccountWalletIdentities();
+  const walletIdentities = mergeWalletIdentityLists(
+    listPublicAccountWalletIdentities(),
+    await resolveHivePublicWalletIdentities({
+      wallets: hiveWalletsFromRows({
+        contributorRows: contributorsResult.rows,
+        taskRows: tasksResult.rows,
+        activityRows: activityResult.rows,
+      }),
+      walletAccounts: hiveWalletAccountsFromRows({
+        taskRows: tasksResult.rows,
+      }),
+    })
+  );
+  const publicProfileIds = await discoverableMemberProfileIds(
+    Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)))
+  );
 
   return documentFromRows({
     projectRows: projectsResult.rows,
@@ -750,6 +1292,7 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
     latestSecretary: secretaryResult.rows[0] || null,
     projectPlanning,
     walletIdentities,
+    publicProfileIds,
     includeEmptyActive,
   });
 }

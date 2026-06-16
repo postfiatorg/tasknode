@@ -127,19 +127,176 @@ function sourcePacketText(sourcePacket = {}) {
   return redactSensitiveText(JSON.stringify(sourcePacket, null, 2));
 }
 
+function secretaryMessages(sourcePacket = {}) {
+  return [
+    { role: "system", content: secretaryPrompt },
+    {
+      role: "user",
+      content: [
+        "Return JSON only. Compress this Board Manager source packet for a downstream action-deciding model.",
+        "",
+        "BOARD MANAGER SOURCE PACKET JSON",
+        sourcePacketText(sourcePacket),
+      ].join("\n"),
+    },
+  ];
+}
+
 function parseJsonOutput(text = "") {
   const raw = safeText(text, 2_000_000);
   if (!raw) throw new Error("board_manager_secretary_empty_output");
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced?.[1]) return JSON.parse(fenced[1]);
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(raw.slice(start, end + 1));
-    throw new Error("board_manager_secretary_invalid_json");
+  const candidates = [raw];
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) candidates.push(fenced[1]);
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start >= 0 && end > start) candidates.push(raw.slice(start, end + 1));
+  let lastError = null;
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return JSON.parse(candidate);
+    } catch (error) {
+      lastError = error;
+    }
   }
+  const message = safeText(lastError?.message || "invalid JSON", 500);
+  throw new Error(`board_manager_secretary_invalid_json:${message}`);
+}
+
+function isJsonOutputParseError(error) {
+  if (error instanceof SyntaxError) return true;
+  const message = safeText(error?.message, 500);
+  return message === "board_manager_secretary_empty_output" ||
+    message.startsWith("board_manager_secretary_invalid_json") ||
+    /JSON|Unexpected|Expected|unterminated|parse/i.test(message);
+}
+
+function boardManagerSecretaryRepairMessages({ sourcePacket = {}, invalidText = "", parseError = "" } = {}) {
+  return [
+    ...secretaryMessages(sourcePacket),
+    {
+      role: "assistant",
+      content: safeText(invalidText, 20000),
+    },
+    {
+      role: "user",
+      content: [
+        "The previous assistant message was not valid JSON and could not be parsed.",
+        `Parser error: ${safeText(parseError, 500)}`,
+        "Repair the same Board Manager Secretary packet now.",
+        "Return exactly one JSON object matching the packet contract. Do not add prose, markdown, comments, or trailing text.",
+        "Preserve operator_standing_policy, generation_quality_policy, prior_output_corpus_summary, deduplication_watchlist, and facts_to_preserve.",
+      ].join("\n"),
+    },
+  ];
+}
+
+function compactPressureSummary(sourcePacket = {}) {
+  const summary = safeObject(sourcePacket?.boardActionPressure?.summary);
+  return Object.entries(summary)
+    .slice(0, 12)
+    .map(([key, value]) => `${key}=${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
+    .join(", ");
+}
+
+function sourceProjectSummaries(sourcePacket = {}) {
+  const projects = safeObject(sourcePacket?.hiveProjects?.projects || sourcePacket?.projects);
+  return Object.values(projects)
+    .slice(0, 12)
+    .map((project) => {
+      const item = safeObject(project);
+      return {
+        project_id: safeText(item.id || item.project_id || item.projectId, 180),
+        title: safeText(item.title || item.name, 240),
+        state: safeText(item.state || item.status || "unknown", 80),
+        live_task_count: Math.max(0, Math.round(Number(item.liveTaskCount ?? item.live_task_count ?? item.taskCount ?? 0) || 0)),
+        contributor_count: Math.max(0, Math.round(Number(item.contributorCount ?? item.contributor_count ?? 0) || 0)),
+        status: safeText(item.status || item.summary || item.objective, 900),
+        next_needed: safeText(item.nextNeeded || item.next_needed || item.next_actions || "", 900),
+      };
+    })
+    .filter((item) => item.project_id || item.title || item.status);
+}
+
+function fallbackFactsToPreserve({
+  sourcePacket = {},
+  operatorStandingPolicy = [],
+  priorOutputCorpusSummary = {},
+  deduplicationWatchlist = [],
+} = {}) {
+  const corpus = safeObject(priorOutputCorpusSummary);
+  const recentOutputIds = safeArray(corpus.recent_outputs)
+    .map((item) => typeof item === "string" ? item : safeObject(item).task_id || safeObject(item).taskId)
+    .filter(Boolean);
+  const dedupTaskIds = safeArray(deduplicationWatchlist)
+    .flatMap((item) => safeArray(item.prior_task_ids || item.priorTaskIds))
+    .filter(Boolean);
+  return [
+    safeText(sourcePacket.sourcePacketDigest, 120) ? `source_packet_digest:${safeText(sourcePacket.sourcePacketDigest, 120)}` : "",
+    ...safeArray(operatorStandingPolicy).map((item) => `operator_policy:${item.source_id || item.sourceId || "source"}`),
+    ...recentOutputIds.map((taskId) => `prior_output:${safeText(taskId, 180)}`),
+    ...dedupTaskIds.map((taskId) => `dedup_against:${safeText(taskId, 180)}`),
+  ].filter(Boolean).slice(0, 24);
+}
+
+function boardManagerSecretaryFallbackPacket({ sourcePacket = {}, parseError = "" } = {}) {
+  const pressure = safeObject(sourcePacket?.boardActionPressure?.summary);
+  const requiresAction = clampBoolean(pressure.requiresAction ?? pressure.requires_action, false);
+  const operatorStandingPolicy = normalizeOperatorStandingPolicy(
+    sourcePacket.operatorStandingPolicy || sourcePacket.operator_standing_policy
+  );
+  const generationQualityPolicy = normalizeGenerationQualityPolicy(
+    sourcePacket.generationQualityPolicy || sourcePacket.generation_quality_policy
+  );
+  const priorOutputCorpusSummary = normalizePriorOutputCorpusSummary(
+    sourcePacket.priorOutputCorpusSummary ||
+      sourcePacket.prior_output_corpus_summary ||
+      sourcePacket.networkTaskOutputCorpus?.summary ||
+      sourcePacket.network_task_output_corpus?.summary
+  );
+  const deduplicationWatchlist = normalizeDeduplicationWatchlist(
+    sourcePacket.deduplicationWatchlist ||
+      sourcePacket.deduplication_watchlist ||
+      sourcePacket.networkTaskOutputCorpus?.deduplicationWatchlist ||
+      sourcePacket.network_task_output_corpus?.deduplicationWatchlist
+  );
+  const candidateCount = Math.max(
+    safeArray(sourcePacket.networkTaskCandidates).length,
+    Number(pressure.eligibleCandidateCount || pressure.eligible_candidate_count || 0) || 0
+  );
+  const corpusOutputCount = safeArray(sourcePacket.networkTaskOutputCorpus?.outputs || sourcePacket.network_task_output_corpus?.outputs).length ||
+    safeArray(priorOutputCorpusSummary.recent_outputs).length;
+  const normalized = normalizeBoardManagerSecretaryPacket({
+    motion_state: requiresAction ? "needs_attention" : "moving",
+    requires_attention: requiresAction,
+    do_nothing_allowed: !requiresAction,
+    board_summary: "Source-derived Secretary fallback packet created because the Secretary model returned malformed JSON after one repair attempt.",
+    reason_summary: [
+      "The fallback preserves deterministic source facts and non-compressible generation policy instead of failing the Board Manager worker.",
+      `Parse error: ${safeText(parseError, 300) || "unknown"}`,
+    ].join(" "),
+    staleness_summary: "No model-authored staleness summary was available; downstream decision model must rely on preserved source packet pressure and freshness fields.",
+    action_pressure_summary: compactPressureSummary(sourcePacket) || "No deterministic action pressure summary was present.",
+    recommended_context_request: { packet_type: "board_triage", target_type: "none", target_id: "", reason: "" },
+    attention_targets: [],
+    project_summaries: sourceProjectSummaries(sourcePacket),
+    network_task_summary: `${corpusOutputCount} prior network-task corpus outputs preserved for reference and deduplication.`,
+    candidate_summary: `${candidateCount} network-task candidate(s) preserved from the source packet.`,
+    recent_run_summary: `${safeArray(sourcePacket.recentBoardManagerRuns).length} recent Board Manager run(s) were present in the source packet.`,
+    operator_standing_policy: operatorStandingPolicy,
+    generation_quality_policy: generationQualityPolicy,
+    prior_output_corpus_summary: priorOutputCorpusSummary,
+    deduplication_watchlist: deduplicationWatchlist,
+    facts_to_preserve: fallbackFactsToPreserve({
+      sourcePacket,
+      operatorStandingPolicy,
+      priorOutputCorpusSummary,
+      deduplicationWatchlist,
+    }),
+    redaction_count: 0,
+  });
+  return normalized;
 }
 
 function clampBoolean(value, fallback = false) {
@@ -160,6 +317,100 @@ function normalizeContextRequest(value = {}) {
     target_id: safeText(input.target_id || input.targetId, 240),
     reason: safeText(input.reason, 1000),
   };
+}
+
+function normalizeOperatorStandingPolicy(value = []) {
+  return safeArray(value)
+    .slice(0, 16)
+    .map((item) => {
+      const input = safeObject(item);
+      return {
+        source_id: safeText(input.source_id || input.sourceId || input.id, 180),
+        source_account_id: safeText(input.source_account_id || input.sourceAccountId || input.account_id || input.accountId, 180),
+        created_at: safeText(input.created_at || input.createdAt, 80),
+        directive: safeText(input.directive || input.body || input.text, 1200),
+        active_scope: safeText(input.active_scope || input.activeScope || "global", 80) || "global",
+        generation_implication: safeText(
+          input.generation_implication ||
+            input.generationImplication ||
+            "Preserve as operator policy context for Network Task shape, routing, and output decisions.",
+          900
+        ),
+      };
+    })
+    .filter((item) => item.directive || item.source_id);
+}
+
+function normalizeGenerationQualityPolicy(value = {}) {
+  const input = safeObject(value);
+  return {
+    documentation_only_default: safeText(
+      input.documentation_only_default || input.documentationOnlyDefault || "low_value_unless_action_coupled",
+      120
+    ) || "low_value_unless_action_coupled",
+    requires_concrete_action_output: clampBoolean(
+      input.requires_concrete_action_output ?? input.requiresConcreteActionOutput,
+      true
+    ),
+    escalation_ladder: safeText(input.escalation_ladder || input.escalationLadder || "document_to_action_v1", 120) ||
+      "document_to_action_v1",
+    operator_constraints_summary: safeText(input.operator_constraints_summary || input.operatorConstraintsSummary, 1200),
+  };
+}
+
+function normalizePriorOutputCorpusSummary(value = {}) {
+  const input = safeObject(value);
+  return {
+    projects_covered: safeArray(input.projects_covered || input.projectsCovered)
+      .slice(0, 12)
+      .map((item) => safeText(item, 180))
+      .filter(Boolean),
+    recent_outputs: safeArray(input.recent_outputs || input.recentOutputs)
+      .slice(0, 18)
+      .map((item) => {
+        if (typeof item === "string") return safeText(item, 700);
+        const output = safeObject(item);
+        return {
+          task_id: safeText(output.task_id || output.taskId, 180),
+          project_id: safeText(output.project_id || output.projectId, 180),
+          title: safeText(output.title, 240),
+          summary: safeText(output.summary || output.description, 700),
+          state: safeText(output.state || output.status, 80),
+        };
+      })
+      .filter((item) => typeof item === "string" ? item : item.task_id || item.title || item.summary),
+    repeated_themes: safeArray(input.repeated_themes || input.repeatedThemes)
+      .slice(0, 12)
+      .map((item) => safeText(item, 700))
+      .filter(Boolean),
+    open_actionable_items: safeArray(input.open_actionable_items || input.openActionableItems)
+      .slice(0, 12)
+      .map((item) => safeText(item, 700))
+      .filter(Boolean),
+  };
+}
+
+function normalizeDeduplicationWatchlist(value = []) {
+  return safeArray(value)
+    .slice(0, 16)
+    .map((item) => {
+      const input = safeObject(item);
+      return {
+        theme: safeText(input.theme, 240),
+        project_id: safeText(input.project_id || input.projectId, 180),
+        prior_task_ids: safeArray(input.prior_task_ids || input.priorTaskIds)
+          .slice(0, 10)
+          .map((taskId) => safeText(taskId, 180))
+          .filter(Boolean),
+        prior_cids: safeArray(input.prior_cids || input.priorCids)
+          .slice(0, 10)
+          .map((cid) => safeText(cid, 240))
+          .filter(Boolean),
+        why_not_repeat: safeText(input.why_not_repeat || input.whyNotRepeat, 900),
+        next_action_suggestion: safeText(input.next_action_suggestion || input.nextActionSuggestion, 900),
+      };
+    })
+    .filter((item) => item.theme || item.prior_task_ids.length || item.prior_cids.length || item.next_action_suggestion);
 }
 
 export function normalizeBoardManagerSecretaryPacket(output = {}) {
@@ -210,6 +461,12 @@ export function normalizeBoardManagerSecretaryPacket(output = {}) {
     network_task_summary: safeText(input.network_task_summary || input.networkTaskSummary, 1600),
     candidate_summary: safeText(input.candidate_summary || input.candidateSummary, 1200),
     recent_run_summary: safeText(input.recent_run_summary || input.recentRunSummary, 1200),
+    operator_standing_policy: normalizeOperatorStandingPolicy(input.operator_standing_policy || input.operatorStandingPolicy),
+    generation_quality_policy: normalizeGenerationQualityPolicy(input.generation_quality_policy || input.generationQualityPolicy),
+    prior_output_corpus_summary: normalizePriorOutputCorpusSummary(
+      input.prior_output_corpus_summary || input.priorOutputCorpusSummary
+    ),
+    deduplication_watchlist: normalizeDeduplicationWatchlist(input.deduplication_watchlist || input.deduplicationWatchlist),
     facts_to_preserve: safeArray(input.facts_to_preserve || input.factsToPreserve)
       .slice(0, 24)
       .map((item) => safeText(item, 500))
@@ -225,6 +482,27 @@ function packetText(packet = {}) {
     .join("\n") || "None";
   const projects = safeArray(packet.project_summaries)
     .map((project) => `- ${project.project_id || project.title}: ${project.status || project.next_needed || ""}`.trim())
+    .filter(Boolean)
+    .join("\n") || "None";
+  const standingPolicy = safeArray(packet.operator_standing_policy)
+    .map((policy) =>
+      `- [${policy.source_id || "source"} ${policy.created_at || ""} ${policy.active_scope || "global"}] ${policy.directive || ""} -> ${policy.generation_implication || ""}`.trim()
+    )
+    .filter(Boolean)
+    .join("\n") || "None";
+  const generationPolicy = safeObject(packet.generation_quality_policy);
+  const corpusSummary = safeObject(packet.prior_output_corpus_summary);
+  const recentOutputs = safeArray(corpusSummary.recent_outputs)
+    .map((output) => {
+      if (typeof output === "string") return `- ${output}`;
+      return `- ${output.task_id || output.title || "output"} ${output.project_id || ""}: ${output.summary || output.title || ""}`.trim();
+    })
+    .filter(Boolean)
+    .join("\n") || "None";
+  const dedupWatchlist = safeArray(packet.deduplication_watchlist)
+    .map((item) =>
+      `- ${item.theme || item.project_id || "theme"}: prior tasks ${(item.prior_task_ids || []).join(", ") || "none"}; prior CIDs ${(item.prior_cids || []).join(", ") || "none"}; next ${item.next_action_suggestion || "unspecified"}`.trim()
+    )
     .filter(Boolean)
     .join("\n") || "None";
   return [
@@ -264,6 +542,24 @@ function packetText(packet = {}) {
     "",
     "Recent Board Manager runs",
     packet.recent_run_summary || "No recent run summary.",
+    "",
+    "Operator standing policy",
+    standingPolicy,
+    "",
+    "Generation quality policy",
+    `documentation_only_default: ${generationPolicy.documentation_only_default || "low_value_unless_action_coupled"}`,
+    `requires_concrete_action_output: ${generationPolicy.requires_concrete_action_output ? "true" : "false"}`,
+    `escalation_ladder: ${generationPolicy.escalation_ladder || "document_to_action_v1"}`,
+    generationPolicy.operator_constraints_summary || "",
+    "",
+    "Prior output corpus summary",
+    `Projects covered: ${safeArray(corpusSummary.projects_covered).join(", ") || "none"}`,
+    `Repeated themes: ${safeArray(corpusSummary.repeated_themes).join("; ") || "none"}`,
+    `Open actionable items: ${safeArray(corpusSummary.open_actionable_items).join("; ") || "none"}`,
+    recentOutputs,
+    "",
+    "Deduplication watchlist",
+    dedupWatchlist,
     "",
     "Facts to preserve",
     safeArray(packet.facts_to_preserve).map((fact) => `- ${fact}`).join("\n") || "None",
@@ -314,6 +610,8 @@ function buildActionTargetRegistry(sourcePacket = {}) {
         sourceConversationId: safeText(entry.sourceConversationId, 180),
         walletValidated: Boolean(entry.walletValidated),
         walletAddress: safeText(entry.walletAddress, 120),
+        bodyPreview: safeText(entry.body, 500),
+        generationPolicyHint: Boolean(safeText(entry.body, 2000)),
         createdAt: entry.createdAt || null,
       };
       if (item.id) hiveContextEntries.push(item);
@@ -367,58 +665,92 @@ export async function fetchBoardManagerSecretaryPacket({
   const timeout = setTimeout(() => controller.abort(), secretaryTimeoutMs());
   const startedAt = Date.now();
   try {
-    const response = await fetchImpl(`${(process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: secretaryPrompt },
-          {
-            role: "user",
-            content: [
-              "Return JSON only. Compress this Board Manager source packet for a downstream action-deciding model.",
-              "",
-              "BOARD MANAGER SOURCE PACKET JSON",
-              sourcePacketText(sourcePacket),
-            ].join("\n"),
-          },
-        ],
-        thinking: { type: "enabled" },
-        reasoning_effort: secretaryReasoningEffort(),
-        response_format: { type: "json_object" },
-        temperature: 0,
-        max_tokens: Math.max(2500, Number(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MAX_TOKENS || 6000)),
-        stream: false,
-      }),
-    });
-    const bodyText = await response.text();
-    const body = bodyText ? JSON.parse(bodyText) : {};
-    if (!response.ok) {
-      const error = new Error(body?.error?.message || body?.message || `DeepSeek Board Manager Secretary HTTP ${response.status}`);
-      error.status = response.status;
-      throw error;
+    const requestPacket = async (messages) => {
+      const response = await fetchImpl(`${(process.env.DEEPSEEK_BASE_URL || defaultDeepSeekBaseUrl).replace(/\/+$/, "")}/chat/completions`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          thinking: { type: "enabled" },
+          reasoning_effort: secretaryReasoningEffort(),
+          response_format: { type: "json_object" },
+          temperature: 0,
+          max_tokens: Math.max(2500, Number(process.env.TASKNODE_BOARD_MANAGER_SECRETARY_MAX_TOKENS || 6000)),
+          stream: false,
+        }),
+      });
+      const bodyText = await response.text();
+      const body = bodyText ? JSON.parse(bodyText) : {};
+      if (!response.ok) {
+        const error = new Error(body?.error?.message || body?.message || `DeepSeek Board Manager Secretary HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      return {
+        body,
+        outputText: body?.choices?.[0]?.message?.content || "",
+      };
+    };
+
+    let response = await requestPacket(secretaryMessages(sourcePacket));
+    let parsed;
+    let repairAttempted = false;
+    let repairFailed = false;
+    const firstUsage = deepSeekUsage(response.body);
+    try {
+      parsed = parseJsonOutput(response.outputText);
+    } catch (error) {
+      if (!isJsonOutputParseError(error)) throw error;
+      repairAttempted = true;
+      response = await requestPacket(boardManagerSecretaryRepairMessages({
+        sourcePacket,
+        invalidText: response.outputText,
+        parseError: error?.message || String(error),
+      }));
+      try {
+        parsed = parseJsonOutput(response.outputText);
+      } catch (repairError) {
+        if (!isJsonOutputParseError(repairError)) throw repairError;
+        repairFailed = true;
+        parsed = boardManagerSecretaryFallbackPacket({
+          sourcePacket,
+          parseError: repairError?.message || String(repairError),
+        });
+        response = {
+          ...response,
+          outputText: JSON.stringify(parsed),
+        };
+      }
     }
-    const outputText = body?.choices?.[0]?.message?.content || "";
-    const packet = normalizeBoardManagerSecretaryPacket(parseJsonOutput(outputText));
+    const packet = normalizeBoardManagerSecretaryPacket(parsed);
     if (!packet.board_summary && !packet.reason_summary) {
       throw new Error("board_manager_secretary_missing_summary");
     }
+    const usage = deepSeekUsage(response.body);
+    if (repairAttempted) {
+      usage.inputTokens += firstUsage.inputTokens;
+      usage.outputTokens += firstUsage.outputTokens;
+      usage.totalTokens += firstUsage.totalTokens;
+      usage.reasoningTokens += firstUsage.reasoningTokens;
+      usage.repairAttempted = true;
+      usage.repairFailed = repairFailed;
+    }
     return {
       packet,
-      outputText,
+      outputText: response.outputText,
       packetText: packetText(packet),
       provider: "deepseek",
-      model: body?.model || model,
-      responseId: safeText(body?.id, 200),
+      model: response.body?.model || model,
+      responseId: safeText(response.body?.id, 200),
       promptVersion,
       promptDigest: promptDigest(secretaryPrompt),
       usage: {
-        ...deepSeekUsage(body),
+        ...usage,
         latencyMs: Date.now() - startedAt,
       },
     };
@@ -617,6 +949,7 @@ export function buildBoardManagerSecretaryDecisionPacket({
   secretaryPacket = {},
   reused = false,
 } = {}) {
+  const normalizedSecretaryJson = normalizeBoardManagerSecretaryPacket(secretaryPacket.packetJson);
   const packetCore = {
     schema: "pf.hive.board_manager.decision_source.v1",
     sourceMode: "deepseek_secretary_packet",
@@ -630,6 +963,29 @@ export function buildBoardManagerSecretaryDecisionPacket({
     boardActionPressure: safeObject(sourcePacket.boardActionPressure),
     openFollowups: safeArray(sourcePacket.openFollowups).slice(0, 20),
     actionTargetRegistry: buildActionTargetRegistry(sourcePacket),
+    operatorStandingPolicy: normalizeOperatorStandingPolicy(
+      sourcePacket.operatorStandingPolicy ||
+        sourcePacket.operator_standing_policy ||
+        normalizedSecretaryJson.operator_standing_policy
+    ),
+    generationQualityPolicy: normalizeGenerationQualityPolicy(
+      sourcePacket.generationQualityPolicy ||
+        sourcePacket.generation_quality_policy ||
+        normalizedSecretaryJson.generation_quality_policy
+    ),
+    networkTaskOutputCorpus: safeObject(sourcePacket.networkTaskOutputCorpus || sourcePacket.network_task_output_corpus),
+    priorOutputCorpusSummary: normalizePriorOutputCorpusSummary(
+      sourcePacket.priorOutputCorpusSummary ||
+        sourcePacket.prior_output_corpus_summary ||
+        sourcePacket.networkTaskOutputCorpus?.summary ||
+        normalizedSecretaryJson.prior_output_corpus_summary
+    ),
+    deduplicationWatchlist: normalizeDeduplicationWatchlist(
+      sourcePacket.deduplicationWatchlist ||
+        sourcePacket.deduplication_watchlist ||
+        sourcePacket.networkTaskOutputCorpus?.deduplicationWatchlist ||
+        normalizedSecretaryJson.deduplication_watchlist
+    ),
     secretaryPacket: {
       id: safeText(secretaryPacket.id, 180),
       packetType: safeText(secretaryPacket.packetType || "board_triage", 80),
@@ -640,7 +996,7 @@ export function buildBoardManagerSecretaryDecisionPacket({
       model: safeText(secretaryPacket.model || boardManagerSecretaryModel(), 120),
       promptVersion: safeText(secretaryPacket.promptVersion || promptVersion, 120),
       createdAt: secretaryPacket.createdAt || null,
-      packetJson: normalizeBoardManagerSecretaryPacket(secretaryPacket.packetJson),
+      packetJson: normalizedSecretaryJson,
       packetText: safeText(secretaryPacket.packetText, 20000),
       usage: safeObject(secretaryPacket.usage),
     },

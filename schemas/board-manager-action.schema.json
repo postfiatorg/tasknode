@@ -16,7 +16,8 @@
         "restore_project",
         "refresh_project_document",
         "assign_contributor",
-        "initiate_network_task"
+        "initiate_network_task",
+        "cancel_network_task"
       ]
     },
     "target_type": {
@@ -78,7 +79,8 @@
                   "restore_project",
                   "refresh_project_document",
                   "assign_contributor",
-                  "initiate_network_task"
+                  "initiate_network_task",
+                  "cancel_network_task"
                 ]
               },
               "reason": {
@@ -114,7 +116,8 @@
         "project_document",
         "contributor",
         "network_task",
-        "message_precondition"
+        "message_precondition",
+        "cancel_target"
       ],
       "properties": {
         "summary": {
@@ -348,6 +351,14 @@
             "project_need_summary",
             "routing_reason",
             "cadence_reason",
+            "action_output",
+            "delivery_surface",
+            "recipient_or_reviewer",
+            "escalation_stage",
+            "lineage_task_ids",
+            "referenced_outputs",
+            "deduped_against",
+            "why_not_duplicate",
             "reward_min_pft",
             "reward_max_pft",
             "accept_window_hours",
@@ -377,6 +388,88 @@
             "cadence_reason": {
               "type": "string",
               "maxLength": 700
+            },
+            "action_output": {
+              "type": "string",
+              "maxLength": 1200
+            },
+            "delivery_surface": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "recipient_or_reviewer": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "escalation_stage": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "lineage_task_ids": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "string",
+                "maxLength": 180
+              }
+            },
+            "referenced_outputs": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["task_id", "cid", "tx_hash", "summary", "how_used"],
+                "properties": {
+                  "task_id": {
+                    "type": "string",
+                    "maxLength": 180
+                  },
+                  "cid": {
+                    "type": "string",
+                    "maxLength": 240
+                  },
+                  "tx_hash": {
+                    "type": "string",
+                    "maxLength": 180
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 700
+                  },
+                  "how_used": {
+                    "type": "string",
+                    "maxLength": 700
+                  }
+                }
+              }
+            },
+            "deduped_against": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["task_id", "theme", "reason_not_repeated"],
+                "properties": {
+                  "task_id": {
+                    "type": "string",
+                    "maxLength": 180
+                  },
+                  "theme": {
+                    "type": "string",
+                    "maxLength": 240
+                  },
+                  "reason_not_repeated": {
+                    "type": "string",
+                    "maxLength": 700
+                  }
+                }
+              }
+            },
+            "why_not_duplicate": {
+              "type": "string",
+              "maxLength": 1200
             },
             "reward_min_pft": {
               "type": "number",
@@ -464,6 +557,29 @@
             },
             "allow_terminal_task": {
               "type": "boolean"
+            }
+          }
+        },
+        "cancel_target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["task_id", "reason", "referenced_task_ids"],
+          "properties": {
+            "task_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "referenced_task_ids": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "string",
+                "maxLength": 180
+              }
             }
           }
         }
