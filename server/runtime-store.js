@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import {
@@ -146,7 +146,18 @@ function loadState() {
 
 function saveState() {
   mkdirSync(path.dirname(storePath), { recursive: true });
-  writeFileSync(storePath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+  const tempPath = `${storePath}.tmp`;
+  try {
+    writeFileSync(tempPath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+    renameSync(tempPath, storePath);
+  } catch (error) {
+    try {
+      if (existsSync(tempPath)) unlinkSync(tempPath);
+    } catch {
+      // Best-effort cleanup only; the existing store file remains intact.
+    }
+    throw error;
+  }
 }
 
 function conversationMessages(conversationId) {

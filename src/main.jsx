@@ -352,6 +352,7 @@ const EMPTY_WALLET_VAULT_STATUS = {
   address: null,
   publicKey: null,
   lastUnlockedAt: null,
+  persistence: "unknown",
 };
 const WALLET_BALANCE_REFRESH_MS = 1000;
 const WALLET_REALTIME_BALANCE_REFRESH_DELAY_MS = 0;
@@ -729,19 +730,26 @@ function App() {
         const nextStatus = typeof walletCore.localWalletVaultStatusAsync === "function"
           ? await walletCore.localWalletVaultStatusAsync({ accountId: effectiveAccountId })
           : walletCore.localWalletVaultStatus({ accountId: effectiveAccountId });
+        const persistence = typeof walletCore.walletVaultPersistence === "function"
+          ? await walletCore.walletVaultPersistence()
+          : nextStatus?.persistence || "unknown";
+        const nextStatusWithPersistence = {
+          ...nextStatus,
+          persistence: nextStatus?.persistence && nextStatus.persistence !== "unknown" ? nextStatus.persistence : persistence,
+        };
         const currentSecret = walletSecretRef.current;
-        const canRestoreUnlock = Boolean(preserveUnlock && nextStatus?.available && nextStatus?.address);
+        const canRestoreUnlock = Boolean(preserveUnlock && nextStatusWithPersistence?.available && nextStatusWithPersistence?.address);
         const inMemorySecretMatches =
           canRestoreUnlock &&
           currentSecret?.accountId === effectiveAccountId &&
-          currentSecret?.address === nextStatus.address &&
+          currentSecret?.address === nextStatusWithPersistence.address &&
           currentSecret?.mnemonic;
         const sessionSecret = inMemorySecretMatches
           ? null
           : canRestoreUnlock
             ? await readUnlockedWalletSession({
               accountId: effectiveAccountId,
-              expectedAddress: nextStatus.address,
+              expectedAddress: nextStatusWithPersistence.address,
             })
             : null;
         const activeSecret = inMemorySecretMatches ? currentSecret : sessionSecret;
@@ -754,11 +762,11 @@ function App() {
         }
 
         setWalletVaultStatus((current) => ({
-          ...nextStatus,
+          ...nextStatusWithPersistence,
           unlocked: Boolean(activeSecret),
           lastUnlockedAt: activeSecret ? activeSecret.unlockedAt || current.lastUnlockedAt : null,
         }));
-        return nextStatus;
+        return nextStatusWithPersistence;
       } catch {
         walletSecretRef.current = null;
         clearUnlockedWalletSession({ accountId: effectiveAccountId });

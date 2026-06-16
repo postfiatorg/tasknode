@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   ChevronRight,
@@ -92,6 +93,7 @@ export function WalletView({
   const [delinkOpen, setDelinkOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
+  const [vaultPersistenceWarningDismissed, setVaultPersistenceWarningDismissed] = useState(false);
   const [creationResult, setCreationResult] = useState(null);
   const [creationRetrying, setCreationRetrying] = useState(false);
   const [grantClaiming, setGrantClaiming] = useState(false);
@@ -122,6 +124,14 @@ export function WalletView({
   const vaultAvailable = Boolean(walletVault?.available && walletVault?.address === linkedWallet.address);
   const vaultUnlocked = Boolean(vaultAvailable && walletVault?.unlocked);
   const vaultDisplay = walletVaultDisplayState(walletVault, linkedWallet.address);
+  const vaultPersistence = walletVault?.persistence || "unknown";
+  const storagePersistenceUnsupported = vaultPersistence === "unknown" && typeof globalThis.navigator?.storage === "undefined";
+  const showVaultPersistenceWarning = Boolean(
+    walletLinked &&
+    vaultAvailable &&
+    !vaultPersistenceWarningDismissed &&
+    (vaultPersistence === "volatile" || storagePersistenceUnsupported)
+  );
   const signedIn = isSignedInSession(session);
   const initiationGift = wallet?.initiationGift || {};
   const usdcTopUpGift = wallet?.usdcTopUpInitiationGift || {};
@@ -190,6 +200,10 @@ export function WalletView({
       current === "Sign in before linking a seed wallet." ? "" : current
     );
   }, [signedIn]);
+
+  useEffect(() => {
+    setVaultPersistenceWarningDismissed(false);
+  }, [linkedWallet.address, vaultPersistence]);
 
   const walletDepositSignature = topUpDataSignature({ depositAccount: wallet?.ethereumDeposit });
 
@@ -686,6 +700,20 @@ export function WalletView({
         {(balanceStatusLabel || balanceError || message) && (
           <div className="wallet-inline-status" role="status">
             {message || [balanceStatusLabel, balanceError].filter(Boolean).join(" · ")}
+          </div>
+        )}
+
+        {showVaultPersistenceWarning && (
+          <div className="wallet-inline-status is-warning is-dismissible" role="status">
+            <AlertTriangle size={15} strokeWidth={1.8} />
+            <span>Your browser may clear this wallet after a period of inactivity. Save your 24-word recovery phrase so you can restore it.</span>
+            <button
+              aria-label="Dismiss wallet storage warning"
+              onClick={() => setVaultPersistenceWarningDismissed(true)}
+              type="button"
+            >
+              <X size={14} strokeWidth={2} />
+            </button>
           </div>
         )}
 
