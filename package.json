@@ -138,6 +138,7 @@
     "wallet-state-regression": "node scripts/wallet-state-regression.mjs",
     "wallet-vault-durability-smoke": "node scripts/wallet-vault-durability-smoke.mjs",
     "wallet-unlocked-session-smoke": "node scripts/wallet-unlocked-session-smoke.mjs",
+    "verified-seed-backup-smoke": "node scripts/verified-seed-backup-smoke.mjs",
     "route-smoke": "node scripts/route-smoke.mjs",
     "chat-attachment-smoke": "node scripts/chat-attachment-smoke.mjs",
     "chat-context-status-smoke": "node scripts/chat-context-status-smoke.mjs",
