@@ -244,7 +244,7 @@ export function WalletView({
     }
     if (requireSignedInForWalletLink()) {
       setMessage("");
-      setWalletProofAction(linkAction);
+      setWalletProofAction(walletLinked ? relinkAction || linkAction : linkAction);
       setLinkOpen(true);
     }
   }
@@ -435,8 +435,11 @@ export function WalletView({
     if (action.id === "link_start") {
       if (!requireSignedInForWalletLink()) return;
       setMessage("");
-      if (!walletLinked || !vaultAvailable) {
+      if (!walletLinked) {
         setWalletProofAction(linkAction);
+        setLinkOpen(true);
+      } else if (!vaultAvailable) {
+        setWalletProofAction(relinkAction || linkAction);
         setLinkOpen(true);
       } else if (vaultUnlocked) {
         onWalletVaultLock?.();
