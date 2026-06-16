@@ -18,7 +18,10 @@ import {
   completeHiveProjectProductDoc,
 } from "./repositories/hive-project-product-docs.js";
 import { applyCanonicalHiveProject } from "./hive-project-canonical.js";
-import { enqueueNetworkTaskGenerationFromBoardDecision } from "./repositories/network-tasks.js";
+import {
+  enqueueNetworkTaskGenerationFromBoardDecision,
+  syncNetworkTaskProjection,
+} from "./repositories/network-tasks.js";
 import {
   createBoardManagerFollowup,
   findOpenBoardManagerFollowup,
@@ -1342,6 +1345,139 @@ async function executeInitiateNetworkTask({ runId, decision, sourcePacket }) {
   };
 }
 
+async function executeCancelNetworkTask({ runId, decision, sourcePacket }) {
+  const cancelTarget = safeObject(decision.payload?.cancel_target);
+  const taskId = safeText(
+    cancelTarget.task_id || cancelTarget.taskId || decision.target_id,
+    180
+  );
+  if (!taskId) throw new Error("board_manager_cancel_network_task_missing_task_id");
+  const cancelReason = safeText(cancelTarget.reason || decision.reason, 1000);
+  const referencedTaskIds = safeArray(cancelTarget.referenced_task_ids || cancelTarget.referencedTaskIds)
+    .map((item) => safeText(item, 180))
+    .filter(Boolean)
+    .slice(0, 12);
+
+  // Only the Board Manager issues Network Tasks, so it may retract its own
+  // proposed/accepted offers. Confirm the target is a cancellable NETWORK task
+  // before mutating anything; personal/engineering tasks are never touched.
+  const existing = await query(
+    `
+      SELECT tp.task_id, tp.status, tp.title, tp.reward_actual_pft,
+             (refs.task_id IS NOT NULL) AS is_network_task
+      FROM task_projections tp
+      LEFT JOIN network_project_task_refs refs
+        ON refs.task_id = tp.task_id AND refs.source = 'network_task_generation'
+      WHERE tp.task_id = $1
+      LIMIT 1
+    `,
+    [taskId]
+  );
+  const task = existing.rows[0];
+  if (!task) {
+    return { executed: false, skipped: true, reason: "board_manager_cancel_task_not_found", taskId };
+  }
+  if (!task.is_network_task) {
+    return {
+      executed: false,
+      skipped: true,
+      reason: "board_manager_cancel_task_not_network",
+      taskId,
+      status: task.status,
+    };
+  }
+  const status = String(task.status || "").toLowerCase();
+  // proposed/accepted only: pre-submission. Anything past acceptance may already
+  // hold delivered work; canceling there is an economic decision for the operator.
+  if (!["proposed", "accepted"].includes(status)) {
+    return {
+      executed: false,
+      skipped: true,
+      reason: "board_manager_cancel_task_not_cancellable_state",
+      taskId,
+      status,
+    };
+  }
+  // Defense-in-depth on reward integrity: never terminalize anything that
+  // already paid. Unreachable given the status guard, but reward safety never
+  // depends on a single check.
+  if (status === "rewarded" || Number(task.reward_actual_pft || 0) > 0) {
+    return {
+      executed: false,
+      skipped: true,
+      reason: "board_manager_cancel_task_already_rewarded",
+      taskId,
+      status,
+    };
+  }
+
+  // proposed -> refused, accepted -> cancelled (matches shared/task-lifecycle.js
+  // stop transitions). Race-safe: the WHERE only mutates rows still in a
+  // cancellable state, so a concurrent transition cannot be clobbered.
+  const transition = status === "proposed" ? "refused" : "cancelled";
+  const audit = {
+    agent_cancelled: true,
+    agent_cancelled_by: "board_manager",
+    agent_cancelled_reason: cancelReason,
+    agent_cancelled_run_id: safeText(runId, 180),
+    agent_cancelled_source_packet_digest: safeText(sourcePacket?.sourcePacketDigest, 120),
+    agent_cancelled_transition: transition,
+    agent_cancelled_referenced_task_ids: referencedTaskIds,
+    agent_cancelled_at: new Date().toISOString(),
+  };
+  const updated = await query(
+    `
+      UPDATE task_projections
+      SET status = $2,
+          metadata_json = COALESCE(metadata_json, '{}'::jsonb) || $3::jsonb,
+          updated_at = now()
+      WHERE task_id = $1
+        AND status = ANY($4::text[])
+      RETURNING task_id, status
+    `,
+    [taskId, transition, jsonValue(audit), ["proposed", "accepted"]]
+  );
+  if (!updated.rows[0]) {
+    return {
+      executed: false,
+      skipped: true,
+      reason: "board_manager_cancel_task_state_changed",
+      taskId,
+      status,
+    };
+  }
+
+  // Propagate the terminal status to the network-task mirror tables
+  // (network_project_task_refs / network_task_allocations / intents / project
+  // counts / followups) so they do not lag behind the projection. The projection
+  // terminal write above is the reward-safety boundary; this sync is consistency
+  // only. Best-effort: a failure leaves mirrors stale until the next batch sync
+  // and does not undo the cancel.
+  let mirrorSync = { ok: true, skipped: true, reason: "not_invoked" };
+  try {
+    mirrorSync = await syncNetworkTaskProjection({ taskId });
+  } catch (error) {
+    mirrorSync = { ok: false, error: safeText(error?.message || error, 500) };
+  }
+
+  // Capacity is released automatically: listNetworkTaskCapacityBlockers excludes
+  // tasks whose task_projections.status is terminal, so this cancelled/refused
+  // task no longer blocks the candidate. The agent_cancelled metadata marker,
+  // together with the reducer persist-time guard in repositories/tasks.js,
+  // prevents the PFTL cache reducer from reviving this task on ANY later
+  // re-derivation (a lagging contributor pointer or even a stale reward pointer),
+  // so it can never reach the reward queue and can never be marked rewarded.
+  return {
+    executed: true,
+    taskId,
+    status: updated.rows[0].status,
+    transition,
+    cancelReason,
+    referencedTaskIds,
+    mirrorSync,
+  };
+}
+
 export async function executeBoardManagerDecision({
   runId = "",
   decision = {},
@@ -1389,6 +1525,13 @@ export async function executeBoardManagerDecision({
         break;
       case "initiate_network_task":
         result = await executeInitiateNetworkTask({
+          runId,
+          decision: normalizedDecision,
+          sourcePacket,
+        });
+        break;
+      case "cancel_network_task":
+        result = await executeCancelNetworkTask({
           runId,
           decision: normalizedDecision,
           sourcePacket,

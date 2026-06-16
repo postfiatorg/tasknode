@@ -49,6 +49,7 @@ export const boardManagerActions = Object.freeze([
   "refresh_project_document",
   "assign_contributor",
   "initiate_network_task",
+  "cancel_network_task",
 ]);
 
 export const boardManagerInternalActions = Object.freeze([
@@ -128,6 +129,11 @@ const emptyBoardManagerPayload = Object.freeze({
     expected_min_reward_pft: 0,
     allow_terminal_task: false,
   },
+  cancel_target: {
+    task_id: "",
+    reason: "",
+    referenced_task_ids: [],
+  },
 });
 
 function useDatabase() {
@@ -194,6 +200,7 @@ function normalizePayload(payload = {}) {
   const contributor = safeObject(input.contributor);
   const networkTask = safeObject(input.network_task || input.networkTask);
   const messagePrecondition = safeObject(input.message_precondition || input.messagePrecondition);
+  const cancelTarget = safeObject(input.cancel_target || input.cancelTarget);
   const rewardBand = normalizeNetworkTaskRewardBand({
     min: networkTask.reward_min_pft ?? networkTask.rewardMinPft,
     max: networkTask.reward_max_pft ?? networkTask.rewardMaxPft,
@@ -289,6 +296,14 @@ function normalizePayload(payload = {}) {
         Number(messagePrecondition.expected_min_reward_pft ?? messagePrecondition.expectedMinRewardPft ?? 0) || 0
       ),
       allow_terminal_task: Boolean(messagePrecondition.allow_terminal_task || messagePrecondition.allowTerminalTask),
+    },
+    cancel_target: {
+      task_id: safeText(cancelTarget.task_id || cancelTarget.taskId, 180),
+      reason: safeText(cancelTarget.reason, 1000),
+      referenced_task_ids: safeArray(cancelTarget.referenced_task_ids || cancelTarget.referencedTaskIds)
+        .map((item) => safeText(item, 180))
+        .filter(Boolean)
+        .slice(0, 12),
     },
   };
 }
