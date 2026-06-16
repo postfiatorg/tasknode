@@ -311,7 +311,7 @@ export function WalletView({
     }
     if (!vaultAvailable) {
       setMessage("Save the matching local seed vault before sending PFT.");
-      setWalletProofAction(linkAction);
+      setWalletProofAction(relinkAction || linkAction);
       setLinkOpen(true);
       return;
     }
