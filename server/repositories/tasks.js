@@ -1119,7 +1119,13 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
           authority_wallet = EXCLUDED.authority_wallet,
           allocation_wallet = EXCLUDED.allocation_wallet,
           request_id = EXCLUDED.request_id,
-          status = EXCLUDED.status,
+          status = CASE
+            WHEN task_projections.metadata_json ? 'agent_cancelled'
+              AND task_projections.status IN ('cancelled', 'refused')
+              AND COALESCE(EXCLUDED.status, '') <> 'rewarded'
+            THEN task_projections.status
+            ELSE EXCLUDED.status
+          END,
           title = EXCLUDED.title,
           description = EXCLUDED.description,
           task_kind = EXCLUDED.task_kind,
@@ -1136,7 +1142,11 @@ export async function importTaskReplayReceipt(receipt, { sourceRef = "", source 
           last_event_tx_hash = EXCLUDED.last_event_tx_hash,
           last_event_cid = EXCLUDED.last_event_cid,
           source = EXCLUDED.source,
-          metadata_json = EXCLUDED.metadata_json,
+          metadata_json = CASE
+            WHEN task_projections.metadata_json ? 'agent_cancelled'
+            THEN task_projections.metadata_json || EXCLUDED.metadata_json
+            ELSE EXCLUDED.metadata_json
+          END,
           updated_at = now()
       `,
       [

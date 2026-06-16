@@ -16,7 +16,8 @@
         "restore_project",
         "refresh_project_document",
         "assign_contributor",
-        "initiate_network_task"
+        "initiate_network_task",
+        "cancel_network_task"
       ]
     },
     "target_type": {
@@ -78,7 +79,8 @@
                   "restore_project",
                   "refresh_project_document",
                   "assign_contributor",
-                  "initiate_network_task"
+                  "initiate_network_task",
+                  "cancel_network_task"
                 ]
               },
               "reason": {
@@ -114,7 +116,8 @@
         "project_document",
         "contributor",
         "network_task",
-        "message_precondition"
+        "message_precondition",
+        "cancel_target"
       ],
       "properties": {
         "summary": {
@@ -554,6 +557,29 @@
             },
             "allow_terminal_task": {
               "type": "boolean"
+            }
+          }
+        },
+        "cancel_target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["task_id", "reason", "referenced_task_ids"],
+          "properties": {
+            "task_id": {
+              "type": "string",
+              "maxLength": 180
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "referenced_task_ids": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "string",
+                "maxLength": 180
+              }
             }
           }
         }

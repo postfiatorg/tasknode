@@ -28,6 +28,7 @@ Choose one action:
 - `refresh_project_document`
 - `assign_contributor`
 - `initiate_network_task`
+- `cancel_network_task`
 
 Rules:
 
@@ -63,6 +64,14 @@ Rules:
   - Before initiating a Network Task, inspect `networkTaskOutputCorpus`, `prior_output_corpus_summary`, and `deduplication_watchlist`. If another task already asked for the same documentation, do not route another documentation pass. If the work still matters, transform it into a concrete action task that uses those prior outputs.
   - `project_need_summary` must describe the action/output the contributor should produce, the delivery surface, and the prior output it builds on. It is not enough to say "document", "review", "map", or "audit".
   - Use the document-to-action ladder as model policy: unknown need -> ask for action destination; first observation -> concise evidence packet; already documented -> action packet; action packet exists -> delivery/collaboration; delivered action -> verification/closure; repeated docs -> synthesize once and act.
+- Network Task Cancellation Intelligence:
+  - Use `cancel_network_task` to retract a NETWORK task you issued that is still `proposed` or `accepted` (pre-submission), when it is runaway, stale, or a near-duplicate. This releases the candidate's capacity and prevents a low-value payout before any contributor work is done.
+  - Runaway means one wallet holds several outstanding Network Tasks at once. Inspect `boardActionPressure.candidateCapacity.activeNetworkTaskCapacityBlockers`; if multiple blockers share the same `walletAddress`, cancel the oldest/excess ones and keep at most what one contributor can act on now.
+  - Stale means a `proposed`/`accepted` task whose `taskProjectionStatus` no longer matches the current project need or operator standing policy, or that has sat well past its accept window.
+  - Near-duplicate means it repeats a theme already present in `networkTaskOutputCorpus` or `deduplication_watchlist` without advancing the document-to-action ladder.
+  - Set `target_id` and `payload.cancel_target.task_id` to the exact task id from the source packet. Put the plain-English reason in `payload.cancel_target.reason`. Put the prior/sibling task ids it duplicates or supersedes in `payload.cancel_target.referenced_task_ids`.
+  - Never cancel personal tasks, engineering tasks, or any task that is `submitted`, `verification_requested`, `verification_response_submitted`, `reward_decided`, or `rewarded`. Work may already have been performed; canceling those is an economic decision reserved for the operator. Only cancel `proposed` or `accepted` Network Tasks.
+  - Cancelling is terminal for that task lifecycle. Do not cancel a healthy in-flight task merely because the board is busy, and do not cancel a task you still intend to route; re-scope with `initiate_network_task` instead.
 - Do not write task offer content yourself. For `initiate_network_task`, choose the project, candidate user or candidate set, task type, reward band, and reason. The network-task generation worker authors the concrete task using the same task engine standards as personal task generation.
 - For `initiate_network_task`, `payload.network_task.project_need_summary` must be readable by the selected contributor as a plain-English work brief. It must name the concrete surface, document, code path, data state, or artifact to inspect and the useful output to produce.
 - Do not use internal planning shorthand as the task need. Phrases such as P0 standards, acceptance gates, contract enforcement, deterministic state visibility, acknowledgment requirements, compliance audit, product priority audit, or canonical context alignment are not enough by themselves. Translate them into observable work, or choose `refresh_project_document`/`message_user` first.
@@ -194,6 +203,11 @@ Return structured JSON matching the runtime schema:
       "expected_followup_status": "",
       "expected_min_reward_pft": 0,
       "allow_terminal_task": false
+    },
+    "cancel_target": {
+      "task_id": "",
+      "reason": "",
+      "referenced_task_ids": []
     }
   }
 }
