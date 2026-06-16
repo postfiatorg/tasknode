@@ -254,7 +254,7 @@ image.
 The thumbnail generation lane is intentionally bounded. A global generation
 slot count is controlled by
 `TASKNODE_PROFILE_NFT_THUMBNAIL_GENERATION_CONCURRENCY`, and the waiting queue
-is bounded by `TASKNODE_PROFILE_NFT_THUMBNAIL_QUEUE_LIMIT`
+is bounded by `TASKNODE_PROFILE_NFT_THUMBNAIL_GENERATION_QUEUE_MAX`
 (`server/profile-nft-image-proxy.js:7`, `server/profile-nft-image-proxy.js:364`).
 When the lane is saturated, direct thumbnail generation returns 429 instead of
 opening unbounded gateway and CPU work. For public avatar requests, a cold cache
