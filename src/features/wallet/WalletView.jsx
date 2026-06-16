@@ -142,7 +142,7 @@ export function WalletView({
   const networkTone = networkLabel === "Network live" ? "live" : networkLabel === "Network issue" ? "error" : "muted";
   const walletAddressLabel = walletLinked ? shortWalletAddress(linkedWallet.address) : "No wallet linked";
   const vaultStatusLabel = vaultUnlocked ? "Unlocked" : vaultAvailable ? "Locked" : walletLinked ? "Not saved" : "Seed not linked";
-  const primaryActionLabel = !walletLinked ? "Create wallet" : !vaultAvailable ? "Link wallet" : vaultUnlocked ? "Lock" : "Unlock";
+  const primaryActionLabel = !walletLinked ? "Create wallet" : !vaultAvailable ? "Restore vault" : vaultUnlocked ? "Lock" : "Unlock";
   const syncTopUpDeposits = useEthereumTopUpSync({
     enabled: signedIn,
     onSynced: async () => {
@@ -244,7 +244,7 @@ export function WalletView({
     }
     if (requireSignedInForWalletLink()) {
       setMessage("");
-      setWalletProofAction(linkAction);
+      setWalletProofAction(walletLinked ? relinkAction || linkAction : linkAction);
       setLinkOpen(true);
     }
   }
@@ -311,7 +311,7 @@ export function WalletView({
     }
     if (!vaultAvailable) {
       setMessage("Save the matching local seed vault before sending PFT.");
-      setWalletProofAction(linkAction);
+      setWalletProofAction(relinkAction || linkAction);
       setLinkOpen(true);
       return;
     }
@@ -435,8 +435,11 @@ export function WalletView({
     if (action.id === "link_start") {
       if (!requireSignedInForWalletLink()) return;
       setMessage("");
-      if (!walletLinked || !vaultAvailable) {
+      if (!walletLinked) {
         setWalletProofAction(linkAction);
+        setLinkOpen(true);
+      } else if (!vaultAvailable) {
+        setWalletProofAction(relinkAction || linkAction);
         setLinkOpen(true);
       } else if (vaultUnlocked) {
         onWalletVaultLock?.();
@@ -641,10 +644,10 @@ export function WalletView({
             <div className="wallet-actions">
               <button
                 className="wallet-primary-action"
-                onClick={() => startWalletAction(!walletLinked ? createAction || linkAction : linkAction)}
+                onClick={() => startWalletAction(!walletLinked ? createAction || linkAction : !vaultAvailable ? relinkAction || linkAction : linkAction)}
                 type="button"
               >
-                {!walletLinked ? <Plus size={16} strokeWidth={2} /> : vaultUnlocked ? <Lock size={16} strokeWidth={2} /> : walletLinked && vaultAvailable ? <Unlock size={16} strokeWidth={2} /> : <Link2 size={16} strokeWidth={2} />}
+                {!walletLinked ? <Plus size={16} strokeWidth={2} /> : vaultUnlocked ? <Lock size={16} strokeWidth={2} /> : vaultAvailable ? <Unlock size={16} strokeWidth={2} /> : <RefreshCw size={16} strokeWidth={2} />}
                 {primaryActionLabel}
               </button>
               {!walletLinked && (
@@ -1440,7 +1443,11 @@ function WalletLinkModal({
           errorMessage: "Failed to load linked wallet state.",
           taskProjectionRefresh: true,
         });
-        setMessage("Wallet linked, but the encrypted vault could not be saved on this device.");
+        setMessage(
+          isCreate
+            ? "Wallet linked, but the local vault could NOT be saved on this device (private/incognito mode or storage blocked). Save your 24-word recovery phrase now — you will need it to restore the vault next session."
+            : "Wallet linked, but the encrypted vault could not be saved on this device."
+        );
         setLinking(false);
         return;
       }
