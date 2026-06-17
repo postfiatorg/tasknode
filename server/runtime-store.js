@@ -720,6 +720,61 @@ function syncAccountSessions(account) {
   }
 }
 
+const UNLINKABLE_OAUTH_PROVIDERS = new Set(["github", "telegram", "x", "discord"]);
+
+export function unlinkProviderFromAccount({ accountId = "", provider = "" } = {}) {
+  const normalizedAccountId = String(accountId || "").trim();
+  const normalizedProvider = String(provider || "").trim().toLowerCase();
+  if (!normalizedAccountId || !normalizedProvider) {
+    return { ok: false, error: "provider_unlink_invalid" };
+  }
+  if (!UNLINKABLE_OAUTH_PROVIDERS.has(normalizedProvider)) {
+    return { ok: false, error: "provider_unlink_unsupported" };
+  }
+
+  const account = state.accounts[normalizedAccountId];
+  if (!account) return { ok: false, error: "account_not_found" };
+
+  const linked = Array.isArray(account.linkedProviders) ? account.linkedProviders : [];
+  const target = linked.find((item) => item?.id === normalizedProvider);
+  if (!target) return { ok: false, error: "provider_not_linked" };
+
+  // Lockout guard: the account must keep at least one way to sign back in.
+  // Sign-in methods are a verified primary email or another linked OAuth
+  // provider; wallets are identity/custody, not login.
+  const remainingOauth = linked.filter(
+    (item) => item?.id !== normalizedProvider && UNLINKABLE_OAUTH_PROVIDERS.has(item?.id)
+  );
+  const hasEmailLogin = Boolean(account.primaryEmailCanonical && account.primaryEmailVerified);
+  if (!hasEmailLogin && remainingOauth.length === 0) {
+    return { ok: false, error: "provider_unlink_last_login_method" };
+  }
+
+  const now = new Date().toISOString();
+  account.linkedProviders = linked.filter((item) => item?.id !== normalizedProvider);
+  if (target.providerUserId) {
+    const key = identityKey(normalizedProvider, target.providerUserId);
+    if (state.accountIdentities[key] === normalizedAccountId) {
+      delete state.accountIdentities[key];
+    }
+  }
+  if (account.primaryProvider === normalizedProvider) {
+    account.primaryProvider = hasEmailLogin ? "email" : remainingOauth[0]?.id || "email";
+  }
+  account.updatedAt = now;
+  account.lastProviderUnlinkAt = now;
+  syncAccountSessions(account);
+  saveState();
+
+  return {
+    ok: true,
+    provider: normalizedProvider,
+    unlinkedUsername: target.username || null,
+    remainingLoginMethods: (hasEmailLogin ? 1 : 0) + remainingOauth.length,
+    account: accountPayload(account),
+  };
+}
+
 export function getAccountIdentityProfile({ accountId = "" } = {}) {
   return accountIdentityProfile(state.accounts[String(accountId || "").trim()] || null);
 }
@@ -928,7 +983,12 @@ export function getOrCreateProviderAccount({
   }
 
   if (!accountId) {
-    accountId = stableId(key, "acct_oauth");
+    const derivedId = stableId(key, "acct_oauth");
+    // Account ids are derived from the founding identity. If that identity was
+    // later unlinked, its mapping is gone but the derived account still
+    // exists; a fresh login with the identity must found a NEW account, not
+    // silently re-enter the old one.
+    accountId = state.accounts[derivedId] ? stableId(`${key}:refound:${now}`, "acct_oauth") : derivedId;
   }
 
   let account = state.accounts[accountId];

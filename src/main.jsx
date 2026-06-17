@@ -5281,6 +5281,32 @@ function SecuritySettings({ onAppStateChange, session }) {
   ).length;
   const [message, setMessage] = useState("");
   const [pendingProvider, setPendingProvider] = useState("");
+  const [confirmingUnlink, setConfirmingUnlink] = useState("");
+
+  async function unlinkProvider(provider) {
+    setPendingProvider(provider.id);
+    setMessage("");
+    try {
+      const result = await requestJson("/api/account/unlink-provider", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: provider.id, confirm: true }),
+      });
+      if (result.ok) {
+        setMessage(result.body?.message || `${provider.label} unlinked.`);
+        await onAppStateChange?.();
+      } else {
+        setMessage(
+          result.body?.message || result.body?.error || `${provider.label} could not be unlinked.`
+        );
+      }
+    } catch (error) {
+      setMessage(error?.message || `${provider.label} could not be unlinked.`);
+    } finally {
+      setPendingProvider("");
+      setConfirmingUnlink("");
+    }
+  }
 
   async function startProviderLink(provider) {
     if (!signedIn) {
@@ -5322,8 +5348,11 @@ function SecuritySettings({ onAppStateChange, session }) {
           {providers.map((provider) => (
             <ConnectedAccountRow
               key={provider.id}
+              confirmingUnlink={confirmingUnlink === provider.id}
               linkedProviders={linkedProviders}
               onLink={startProviderLink}
+              onUnlink={unlinkProvider}
+              onUnlinkConfirmChange={(open) => setConfirmingUnlink(open ? provider.id : "")}
               pending={pendingProvider === provider.id}
               provider={provider}
               signedIn={signedIn}
@@ -5340,7 +5369,16 @@ function SecuritySettings({ onAppStateChange, session }) {
   );
 }
 
-function ConnectedAccountRow({ linkedProviders, onLink, pending, provider, signedIn }) {
+function ConnectedAccountRow({
+  confirmingUnlink = false,
+  linkedProviders,
+  onLink,
+  onUnlink,
+  onUnlinkConfirmChange,
+  pending,
+  provider,
+  signedIn,
+}) {
   const linkedProvider = linkedProviders.find((item) => item?.id === provider.id);
   const linked = Boolean(linkedProvider);
   const status = linked
@@ -5358,10 +5396,23 @@ function ConnectedAccountRow({ linkedProviders, onLink, pending, provider, signe
       </span>
       <div>
         <strong>{provider.label}</strong>
-        <small>{status}</small>
+        <small>{confirmingUnlink ? `Unlink ${provider.label}? You can relink it later.` : status}</small>
       </div>
       {linked ? (
-        <em>Linked</em>
+        confirmingUnlink ? (
+          <span className="connected-unlink-confirm">
+            <button disabled={pending} onClick={() => onUnlinkConfirmChange?.(false)} type="button">
+              Keep
+            </button>
+            <button disabled={pending} onClick={() => onUnlink?.(provider)} type="button">
+              {pending ? "Unlinking" : "Unlink"}
+            </button>
+          </span>
+        ) : (
+          <button disabled={!signedIn || pending} onClick={() => onUnlinkConfirmChange?.(true)} type="button">
+            Disconnect
+          </button>
+        )
       ) : (
         <button
           disabled={!signedIn || !provider.enabled || pending}
