@@ -32,8 +32,8 @@ Rules carried forward:
     capability-profile smoke coverage.
 - [ ] Phase C - Evidence Evaluation Orc
   - Branch: `feat/bm-phase-c-evidence-orc`
-  - PR: pending
-  - Status: implementation in progress
+  - PR: #76
+  - Status: ready for review
   - Scope: read-only artifact evaluation packet builder, persistence table,
     Board Manager/Hive task-detail surfacing, agent read helpers, evidence-orc
     smoke coverage.
