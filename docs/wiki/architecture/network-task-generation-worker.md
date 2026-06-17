@@ -41,6 +41,15 @@ contributor to complete and prove. Sybil resistance comes from concrete
 artifacts, before/after evidence, source-backed judgment, app/project
 inspection, and reviewable provenance, not from wallet addresses alone.
 
+The current prompt contract is action-first. A Network Task may still ask for a
+document when the model believes that is the right artifact, but pure
+documentation-only work is low value by default. When prior project-linked work
+already documented a problem, the next task should escalate to a concrete
+output or delivery surface such as a PR, mock, Discord handoff, review packet,
+collaboration, or shipped change. This is a model policy in
+`prompts/task_engine/taskgen_network_v1.md`, not a hard-coded rejection rule in
+the worker.
+
 ## Packet Lineage
 
 Board Manager is the Hive decision worker. It reads Hive context, active project
@@ -54,15 +63,26 @@ evidence requirement.
 The packet chain is:
 
 1. Board Manager emits `payload.network_task` with candidate ids, task class,
-   reward min/max, `project_need_summary`, `routing_reason`, and cadence fields.
+   reward min/max, `project_need_summary`, `routing_reason`, cadence fields,
+   and model-authored context/audit fields such as `action_output`,
+   `delivery_surface`, `referenced_outputs`, `deduped_against`, and
+   `escalation_stage`.
 2. `server/repositories/network-tasks.js` records that intent in
    `network_task_allocations` and creates a `network_task_generation_jobs` row
    with the source payload, digest, candidate, project, task class, reward band,
-   and prompt version.
+   prompt version, operator policy, generation quality policy, prior-output
+   corpus, task lineage, and transparency metadata
+   (`server/repositories/network-tasks.js:573`,
+   `server/repositories/network-tasks.js:769`).
 3. `server/network-task-generation-worker.js` builds a normal encrypted
    `pf.task.request_bundle.v1`, sets the request source to `network_task`, and
    appends a `network_task` block with schema
-   `pf.hive.network_task_request.v1`.
+   `pf.hive.network_task_request.v1`. That block includes
+   `operator_standing_policy`, `generation_quality_policy`,
+   `prior_output_corpus`, `task_lineage`, `action_output`,
+   `delivery_surface`, and related transparency fields
+   (`server/network-task-generation-worker.js:51`,
+   `server/network-task-generation-worker.js:94`).
 4. `server/task-generation-worker.js` decrypts the request bundle, projects it
    into `pf.taskgen.input.v1`, and selects
    `prompts/task_engine/taskgen_network_v1.md` when the `network_task` block or
@@ -73,10 +93,15 @@ The packet chain is:
 
 The generator should interpret `project_need_summary` as the closest request,
 `routing_reason` as contributor-fit context, `project_document` as the operating
-picture, policy/reward fields as hard constraints, and the contributor's
+picture, `hive_policy` and prior-output corpus as top-authority context for task
+shape, policy/reward fields as hard constraints, and the contributor's
 context/memory/chat as adaptation signals. Normal generated tasks should not
 explain this packet chain unless the assignment itself is about documenting or
 debugging Network Task generation.
+
+The generation intelligence fields are context plumbing only. They do not alter
+capacity checks, stale-chain recovery, semantic idempotency, task lifecycle
+projection, PFTL signing, encryption, or reward settlement.
 
 ## Status Derivation
 

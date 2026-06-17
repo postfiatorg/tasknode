@@ -1,20 +1,41 @@
 # IPFS New Write Replication
 
-Task Node currently has two different IPFS states:
+Task Node writes through the current pinning ingress, records durable
+`ipfs_replication_jobs`, and uses a background worker to copy new task, reward,
+context, airdrop, and profile NFT CIDs into the clean first-party IPFS cluster.
+Pinata remains a write ingress and fallback provider; the product contract is
+that new CIDs become first-party readable and that replay readers have bounded
+fallbacks while replication catches up.
 
-- Historical profile NFT CIDs and sampled replay-window CIDs have been migrated
-  into the clean first-party gateway.
-- New task, reward, context, airdrop, and profile NFT writes still enter through
-  Pinata and are not automatically copied into the clean first-party IPFS
-  cluster.
+The shipped throughput fix keeps the queue durable but removes the old
+sequential/full-body verification bottleneck:
 
-That second point is the live product gap. A newly published reward CID can be
-available through Pinata or `ipfs.io` while timing out on
-`https://pft-ipfs-testnet-clean.fly.dev/ipfs/<cid>`. When that happens, a
-sequential reader can stall task projection, Deathmarch, or any other
-PFTL-pointer replay path.
+- `processIpfsReplicationJobsOnce` claims a batch and processes it with bounded
+  concurrency from `TASKNODE_IPFS_REPLICATION_CONCURRENCY` (default 6, bounded
+  in code) while preserving per-job try/catch and `markFailed` semantics
+  (`server/ipfs-replication-worker.js:52`,
+  `server/ipfs-replication-worker.js:372`).
+- Clean-gateway verification is by existence: `HEAD` first, then a ranged
+  `GET bytes=0-0` fallback for gateways that reject `HEAD`. 2xx and 206 are
+  accepted (`server/ipfs-replication-worker.js:78`,
+  `server/ipfs-replication-worker.js:96`,
+  `server/ipfs-replication-worker.js:122`). The old full-body download,
+  `JSON.parse`, and 1 MiB verification cap were removed because CIDs are already
+  content addressed.
+- Strict image content-type validation remains available behind the existing
+  environment flag; the default clean-gateway check does not need to download
+  the whole object.
+- Encrypted task payload reads use bounded retry around the IPFS JSON fetch:
+  `TASKNODE_IPFS_READ_RETRY_ATTEMPTS` defaults to 3 and
+  `TASKNODE_IPFS_READ_RETRY_BACKOFF_MS` defaults to 600 ms
+  (`server/task-payloads.js:24`, `server/task-payloads.js:160`). Retries happen
+  only when fetching the CID fails, never after decryption begins.
+- `scripts/ipfs-replication-requeue.mjs` is the guarded operator tool for
+  terminal job requeue. It defaults to dry-run and mutates only with
+  `--execute` (`scripts/ipfs-replication-requeue.mjs:23`,
+  `scripts/ipfs-replication-requeue.mjs:107`).
 
-## Target State
+## Product Contract
 
 Every new Task Node CID must be:
 
@@ -41,7 +62,7 @@ profile NFT.
 - A CID is not first-party healthy just because Pinata or a public gateway can
   serve it.
 
-## Required Implementation
+## Implemented Pipeline
 
 ### 1. Keep Concurrent Gateway Reads
 
@@ -53,11 +74,11 @@ can serve a fresh CID.
 This is a read-path resilience fix. It does not replace first-party
 replication.
 
-### 2. Add A Durable CID Replication Queue
+### 2. Durable CID Replication Queue
 
 Create a durable queue table: `ipfs_replication_jobs`.
 
-Required fields:
+Core fields:
 
 - `id`
 - `cid`
@@ -134,17 +155,18 @@ If queue insertion fails after the CID has already been pinned, the app should
 log the failure loudly and retry through an operator repair command. Do not
 pretend the CID is first-party healthy.
 
-### 4. Build A First-Party Repin Worker
+### 4. First-Party Repin Worker
 
-The worker should:
+The worker:
 
 1. select queued or retryable CIDs;
 2. ask the clean cluster to pin the exact CID;
 3. verify replica count through cluster status;
-4. verify HTTP read through the clean gateway;
+4. verifies HTTP existence through the clean gateway with `HEAD`, falling back
+   to ranged `GET bytes=0-0`;
 5. mark the job `verified` only after the exact CID is served.
 
-The worker needs bounded attempts and clear failure codes. Typical failures:
+The worker has bounded attempts and clear failure codes. Typical failures:
 
 - clean gateway timeout;
 - Kubo provider discovery failure;

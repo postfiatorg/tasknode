@@ -50,6 +50,8 @@ Runtime endpoints:
 
 - `GET /api/profile/public`
 - `POST /api/profile/public/regenerate`
+- `GET /api/profile/nfts`
+- `POST /api/profile/nft/select`
 
 The deterministic fields come from Postgres and runtime wallet-link state:
 
@@ -215,7 +217,73 @@ Local PFTL endpoints may use self-signed TLS. For those internal endpoints only,
 
 If IPFS metadata cannot be fetched, the inventory still returns the NFT token id, decoded metadata URI, metadata CID, and `metadataFetch` status. Cache import only upserts rows with both `metadataCid` and `imageCid`; retry unreachable metadata later or use the old PFTasks cache import only as a historical fallback when preserving already-known image CIDs during cutover.
 
-Profile NFT rendering should not make the browser depend on one public gateway for every gallery tile. For rows with an `imageCid`, the browser uses the same-origin image proxy at `/api/profile/nft/image/:cid`; the server validates the CID, fetches through configured IPFS gateways, rejects non-image content, enforces an 8 MB default size limit, and caches successful image bytes in memory for 24 hours by default. Because CIDs are immutable, successful proxy responses use `Cache-Control: public, max-age=31536000, immutable`, an ETag derived from the CID, and conditional `If-None-Match` 304 handling. Concurrent same-CID misses share one in-flight gateway fetch. Browser-side public gateway URLs are used only for legacy rows that do not have an `imageCid`. Gallery tiles use lazy image loading so a profile with many NFTs does not eagerly request every full-size IPFS image at once.
+Profile NFT rendering should not make the browser depend on one public gateway
+for every gallery tile. For rows with an `imageCid`, full-resolution gallery and
+hero images use the same-origin image proxy at `/api/profile/nft/image/:cid`;
+the server validates the CID, fetches through configured IPFS gateways, rejects
+non-image content, enforces an 8 MB default size limit, and caches successful
+image bytes in memory for 24 hours by default
+(`server/profile-nft-image-proxy.js:218`). Because CIDs are immutable,
+successful proxy responses use `Cache-Control: public, max-age=31536000,
+immutable`, an ETag derived from the CID, and conditional `If-None-Match` 304
+handling (`server/profile-nft-image-proxy.js:95`). Concurrent same-CID misses
+share one in-flight gateway fetch. Browser-side public gateway URLs are used
+only for legacy rows that do not have an `imageCid`. Gallery tiles use
+`loading="lazy"` and `decoding="async"` so a profile with many NFTs does not
+eagerly request every full-size IPFS image at once.
+
+### Profile NFT PFP Thumbnails
+
+Small avatars must not request the full-resolution NFT image. Avatar surfaces
+use:
+
+```text
+GET /api/profile/nft/pfp/<cid>?size=48|96|192
+```
+
+The server derives a square thumbnail with `sharp`, encodes WebP by default
+with PNG fallback, and stores the result in a durable `/data` disk cache keyed
+by CID, size, and format (`server/profile-nft-image-proxy.js:323`,
+`server/profile-nft-image-proxy.js:350`). Successful thumbnail responses are
+immutable and conditional-cacheable with an ETag derived from CID, size, and
+format (`server/profile-nft-image-proxy.js:95`,
+`server/profile-nft-image-proxy.js:400`). The source image is fetched once
+through the same gateway-race and single-flight proxy path as the full-size
+image.
+
+The thumbnail generation lane is intentionally bounded. A global generation
+slot count is controlled by
+`TASKNODE_PROFILE_NFT_THUMBNAIL_GENERATION_CONCURRENCY`, and the waiting queue
+is bounded by `TASKNODE_PROFILE_NFT_THUMBNAIL_GENERATION_QUEUE_MAX`
+(`server/profile-nft-image-proxy.js:7`, `server/profile-nft-image-proxy.js:364`).
+When the lane is saturated, direct thumbnail generation returns 429 instead of
+opening unbounded gateway and CPU work. For public avatar requests, a cold cache
+miss serves an instant same-origin SVG placeholder, marks it `no-store`, adds a
+short retry hint, and schedules asynchronous background warming
+(`server/profile-nft-image-proxy.js:480`,
+`server/profile-nft-image-proxy.js:519`). This exists because unbounded
+on-demand thumbnail generation during a cold cache saturated app connections in
+production; the shipped behavior in PR #63 makes cold misses cheap and lets
+warm thumbnails replace placeholders on the next load.
+
+Frontend avatar helpers use the thumbnail route at roughly 2x the rendered CSS
+size, while full-resolution profile gallery and hero views keep using
+`/api/profile/nft/image/:cid` (`src/features/profile/profile-nft-images.js:1`).
+Directory rows, Hive profile badges, recommended-connection cards, and compact
+profile avatars therefore download small cached thumbnails instead of multi-MB
+PNG originals.
+
+The warmer script pre-generates durable thumbnails and is idempotent. Run it on
+the app machine where `/data` is mounted, not on a worker machine with a
+different filesystem:
+
+```bash
+node scripts/profile-nft-thumbnail-warm.mjs --execute --limit 1000 --sizes 48,96,192 --concurrency 1
+```
+
+Without `--execute` it prints the planned CID/thumbnail count only
+(`scripts/profile-nft-thumbnail-warm.mjs:31`,
+`scripts/profile-nft-thumbnail-warm.mjs:89`).
 
 Cache import for a linked Task Node Official account:
 
