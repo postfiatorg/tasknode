@@ -108,10 +108,11 @@ Return this JSON shape:
 	  ],
 	  "capability_gap_summary": {
 	    "schema": "pf.hive.board_manager.capability_gap_summary.v1",
-	    "status": "phase_a_instrumentation_only_no_enforcement",
+	    "status": "phase_b_capability_profiles_context_only",
 	    "enforcement": "none_context_only",
 	    "requirement_count": 0,
 	    "candidate_count": 0,
+	    "verified_capability_count": 0,
 	    "gap_count": 0,
 	    "task_work_types": [
 	      {

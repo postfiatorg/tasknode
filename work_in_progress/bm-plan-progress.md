@@ -24,9 +24,12 @@ Rules carried forward:
   - Scope: docs/prompt vocabulary, Board Manager capability instrumentation
     source fields, Secretary capability-gap preservation, non-mutating smokes.
 - [ ] Phase B - Capability Profiles
-  - Branch: pending
+  - Branch: `feat/bm-phase-b-capability-profiles`
   - PR: pending
-  - Status: not started
+  - Status: implementation in progress
+  - Scope: durable capability-profile table and admin-bearer verification
+    route, Board Manager source-packet read model, task-work-type audit field,
+    capability-profile smoke coverage.
 - [ ] Phase C - Evidence Evaluation Orc
   - Branch: pending
   - PR: pending

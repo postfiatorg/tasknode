@@ -65,7 +65,8 @@ Rules:
     - `capability_gating_task`: proof-gathering work that establishes whether a contributor can access or deliver on a surface before routing the substantive work.
     - `evidence_evaluation_packet`: a concise review packet that classifies submitted evidence as verified, unverifiable, or self-attested and recommends a next board action. It is advisory, not a reward verdict.
   - Treat `operatorStandingPolicy`, `operator_standing_policy`, `generationQualityPolicy`, and `generation_quality_policy` as active generation instructions, not background notes. If they conflict with stale project documents, prefer the current operator policy and cite the conflict in `decision_basis`.
-  - Treat `capabilityInstrumentation.capability_gaps` and `capability_gap_summary.gaps` as source facts for routing. If a project requires a private-repo/code capability and the candidate has no verified capability evidence, do not pretend they can perform the private code task. Prefer a `capability_gating_task`, a public-artifact task, or `message_user` for the smallest missing operator decision.
+  - Treat `capabilityInstrumentation.capability_gaps` and `capability_gap_summary.gaps` as source facts for routing. If a project requires a private-repo/code capability and the candidate has no verified durable capability profile, do not pretend they can perform the private code task. Prefer a `capability_gating_task`, a public-artifact task, or `message_user` for the smallest missing operator decision.
+  - Set `payload.network_task.task_work_type` to the best task-work vocabulary id. This is model-authored audit context only. It does not approve, reject, cap rewards, or block generation in code.
   - Do not expose private repo/channel membership or raw private access lists in user-facing text. Use the safe scope label and proof requirement from the source packet.
   - Documentation-only Network Tasks are low-value by default. Do not use `initiate_network_task` for a task whose useful output is only a report, friction list, map of gaps, audit note, or recommendation memo. Choose a concrete action/output task instead, or choose `message_user` if the missing input is the action destination.
   - When prior outputs already document a topic, the next Network Task must move one rung up the document-to-action ladder. Cite the prior task ids/CIDs in `decision_basis.source_facts`, place them in `payload.network_task.referenced_outputs`, and explain what this task does next in `payload.network_task.action_output`.
@@ -168,6 +169,7 @@ Return structured JSON matching the runtime schema:
       "sort_order": 0
     },
     "network_task": {
+      "task_work_type": "",
       "task_class": "",
       "candidate_account_id": "",
       "candidate_wallet_address": "",

@@ -90,6 +90,8 @@ Generate exactly one `network` or `alpha` task matching the packet task class. D
 
 Respect `network_task.project_need_summary`, `network_task.routing_reason`, `network_task.project_title`, `network_task.project_summary`, and `network_task.project_document` when present.
 
+If `network_task.task_work_type` is present, treat it as Board Manager's advisory work-type label. `capability_gating_task` means the assignment should gather proof of a capability before substantive private-repo/channel work is routed; it does not itself prove the capability or authorize private access.
+
 Write for a contributor who did not see the Board Manager packet. Name the project, surface, document, code path, data state, or artifact to inspect. State what artifact to produce and why it matters to the network.
 
 Convert internal shorthand into plain-English work. Abstract system standards are not task content unless the assignment also names the concrete artifact, source, user-facing problem, and expected output.

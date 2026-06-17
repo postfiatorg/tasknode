@@ -439,8 +439,8 @@ function normalizeCapabilityGapSummary(value = {}) {
   const rawGaps = safeArray(input.gaps || input.capability_gaps || input.capabilityGaps);
   return {
     schema: "pf.hive.board_manager.capability_gap_summary.v1",
-    status: safeText(input.status || "phase_a_instrumentation_only_no_enforcement", 120) ||
-      "phase_a_instrumentation_only_no_enforcement",
+    status: safeText(input.status || "phase_b_capability_profiles_context_only", 120) ||
+      "phase_b_capability_profiles_context_only",
     enforcement: safeText(input.enforcement || "none_context_only", 120) || "none_context_only",
     requirement_count: Math.max(
       0,
@@ -453,6 +453,12 @@ function normalizeCapabilityGapSummary(value = {}) {
     gap_count: Math.max(
       0,
       Math.round(Number(input.gap_count ?? input.gapCount ?? summary.gap_count ?? summary.gapCount ?? rawGaps.length) || 0)
+    ),
+    verified_capability_count: Math.max(
+      0,
+      Math.round(
+        Number(input.verified_capability_count ?? input.verifiedCapabilityCount ?? summary.verified_capability_count ?? summary.verifiedCapabilityCount ?? 0) || 0
+      )
     ),
     task_work_types: safeArray(input.task_work_types || input.taskWorkTypes || input.task_work_type_vocabulary || input.taskWorkTypeVocabulary)
       .slice(0, 8)
@@ -648,7 +654,7 @@ function packetText(packet = {}) {
     "Capability gap summary",
     `status: ${capabilityGapSummary.status || "phase_a_instrumentation_only_no_enforcement"}`,
     `enforcement: ${capabilityGapSummary.enforcement || "none_context_only"}`,
-    `requirements: ${capabilityGapSummary.requirement_count || 0}; candidates: ${capabilityGapSummary.candidate_count || 0}; gaps: ${capabilityGapSummary.gap_count || 0}`,
+    `requirements: ${capabilityGapSummary.requirement_count || 0}; candidates: ${capabilityGapSummary.candidate_count || 0}; verified capabilities: ${capabilityGapSummary.verified_capability_count || 0}; gaps: ${capabilityGapSummary.gap_count || 0}`,
     capabilityGaps,
     "",
     "Facts to preserve",

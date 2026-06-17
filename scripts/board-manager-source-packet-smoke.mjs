@@ -262,6 +262,8 @@ async function main() {
     )));
     assert.match(packet.networkTaskContent.text, /Completed task description/);
     assert.equal(packet.capabilityInstrumentation.schema, "pf.hive.board_manager.capability_instrumentation.v1");
+    assert.equal(packet.capabilityInstrumentation.status, "phase_b_capability_profiles_context_only");
+    assert.equal(packet.capabilityInstrumentation.capability_profile_status, "persistent_capability_profiles_enabled_context_only");
     assert.equal(packet.capabilityInstrumentation.enforcement, "none_context_only");
     assert.equal(packet.capabilityInstrumentation.summary.requirement_count, 1);
     assert.ok(packet.capabilityInstrumentation.task_work_type_vocabulary.some((item) => item.id === "capability_gating_task"));

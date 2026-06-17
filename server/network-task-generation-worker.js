@@ -75,6 +75,7 @@ export function buildNetworkTaskRequestContext({ source = {}, job = {}, reward =
     },
     project_need_summary: sourceObject.networkTask?.projectNeedSummary || "",
     routing_reason: sourceObject.networkTask?.allocationReasonSummary || "",
+    task_work_type: sourceObject.networkTask?.taskWorkType || sourceObject.networkTask?.task_work_type || "",
     operator_standing_policy: safeArray(sourceObject.operatorStandingPolicy || sourceObject.operator_standing_policy).slice(0, 12),
     generation_quality_policy: safeObject(sourceObject.generationQualityPolicy || sourceObject.generation_quality_policy),
     prior_output_corpus: safeObject(sourceObject.priorOutputCorpus || sourceObject.prior_output_corpus),
