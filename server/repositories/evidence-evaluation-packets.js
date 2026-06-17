@@ -172,7 +172,8 @@ async function resolveUrlArtifact(url = "", { fetchUrlExcerptImpl = fetchUrlExce
     ok: false,
     error: safeText(error?.message || error, 300),
   }));
-  if (!fetched?.ok) {
+  const fetchedOk = fetched?.ok === true || fetched?.status === "extracted";
+  if (!fetchedOk) {
     return {
       artifact_type: github?.resolver || "url",
       resolver: github?.resolver || "safe_url",

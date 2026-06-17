@@ -4,7 +4,8 @@ import { publicReducerEvent } from "../task-forensics-format.js";
 import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
 import { discoverableMemberProfileIds } from "./directory-leaderboard.js";
-import { listEvidenceEvaluationPackets } from "./evidence-evaluation-packets.js";
+import { listMachineOperatorDisclosures } from "./capability-profiles.js";
+import { listEvidenceEvaluationPackets, listEvidenceEvaluationPacketsForBoardManager } from "./evidence-evaluation-packets.js";
 import { latestHiveProjectPlanningState, projectHasOperatorArchiveLock } from "./hive-project-planning.js";
 import { getCurrentProjectProductDocs } from "./hive-project-product-docs.js";
 
@@ -22,6 +23,14 @@ function safeArray(value) {
 
 function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function emptyOperatorDisclosure() {
+  return {
+    isMachineOperator: false,
+    label: "",
+    kind: "",
+  };
 }
 
 function numeric(value) {
@@ -95,7 +104,7 @@ function walletIdentityDisplayName(identity = {}) {
   );
 }
 
-function walletIdentityMap(walletIdentities = [], publicProfileIds = new Set()) {
+function walletIdentityMap(walletIdentities = [], publicProfileIds = new Set(), operatorDisclosures = {}) {
   const identities = new Map();
   for (const identity of safeArray(walletIdentities)) {
     const key = walletIdentityKey(identity.walletAddress || identity.wallet_address || identity.wallet);
@@ -111,6 +120,7 @@ function walletIdentityMap(walletIdentities = [], publicProfileIds = new Set()) 
       publicTrustBadges: safeArray(identity.publicTrustBadges || identity.public_trust_badges),
       nft: identity.nft || publicIdentityNft(identity),
       hasPublicProfile: Boolean(accountId && publicProfileIds.has(accountId)),
+      operatorDisclosure: accountId ? operatorDisclosures[accountId] || null : null,
     });
   }
   return identities;
@@ -131,6 +141,7 @@ function enrichContributorWithWalletIdentity(contributor = {}, identity = null) 
   contributor.accountId = identity?.accountId || contributor.accountId || "";
   contributor.hasPublicProfile = Boolean(identity?.hasPublicProfile);
   contributor.nft = contributor.nft || identity?.nft || null;
+  contributor.operatorDisclosure = identity?.operatorDisclosure || contributor.operatorDisclosure || null;
   return contributor;
 }
 
@@ -140,6 +151,7 @@ function enrichTaskWithWalletIdentity(task = {}, identity = null) {
   task.assigneeHandle = identity?.hiveHandle || task.assigneeHandle || "";
   task.assigneeDisplayName = identity?.displayName || task.assigneeDisplayName || "";
   task.assigneeNft = task.assigneeNft || identity?.nft || null;
+  task.assigneeOperatorDisclosure = identity?.operatorDisclosure || task.assigneeOperatorDisclosure || null;
   return task;
 }
 
@@ -148,11 +160,12 @@ function enrichActivityWithWalletIdentity(entry = {}, identity = null) {
   entry.hasPublicProfile = Boolean(identity?.hasPublicProfile);
   entry.hiveHandle = identity?.hiveHandle || entry.hiveHandle || "";
   entry.displayName = identity?.displayName || entry.displayName || "";
+  entry.operatorDisclosure = identity?.operatorDisclosure || entry.operatorDisclosure || null;
   return entry;
 }
 
-function applyWalletIdentitiesToProjects(projects = {}, walletIdentities = [], publicProfileIds = new Set()) {
-  const identities = walletIdentityMap(walletIdentities, publicProfileIds);
+function applyWalletIdentitiesToProjects(projects = {}, walletIdentities = [], publicProfileIds = new Set(), operatorDisclosures = {}) {
+  const identities = walletIdentityMap(walletIdentities, publicProfileIds, operatorDisclosures);
   if (identities.size === 0) return projects;
 
   for (const project of Object.values(projects)) {
@@ -184,7 +197,10 @@ async function publicWalletIdentityForWallet(wallet = "", accountId = "") {
   const publicProfileIds = await discoverableMemberProfileIds(
     Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)))
   );
-  return walletIdentityMap(walletIdentities, publicProfileIds).get(key) || null;
+  const operatorDisclosures = await listMachineOperatorDisclosures({
+    accountIds: Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean))),
+  }).catch(() => ({}));
+  return walletIdentityMap(walletIdentities, publicProfileIds, operatorDisclosures).get(key) || null;
 }
 
 function publicProject(row = {}) {
@@ -227,6 +243,7 @@ function publicContributor(row = {}) {
     wallet: safeText(row.wallet_address, 120),
     accountId: "",
     hasPublicProfile: false,
+    operatorDisclosure: null,
     codename: safeText(row.codename, 120),
     displayName: "",
     archetype: safeText(row.archetype, 180),
@@ -265,6 +282,7 @@ function publicTask(row = {}) {
     assigneeHasPublicProfile: false,
     assigneeHandle: "",
     assigneeDisplayName: "",
+    assigneeOperatorDisclosure: emptyOperatorDisclosure(),
     pft: numeric(projectedReward),
     nextAction: taskNextAction(state),
     age: safeText(row.age_label, 80),
@@ -285,6 +303,7 @@ function publicActivity(row = {}) {
     hasPublicProfile: false,
     hiveHandle: "",
     displayName: "",
+    operatorDisclosure: null,
     action: safeText(row.action, 80),
     task: safeText(row.task_title, 240),
     time: safeText(row.time_label, 80),
@@ -320,6 +339,7 @@ function operatorMap(projects = {}) {
         publicDisplayName: contributor.publicDisplayName || "",
         publicAliases: safeArray(contributor.publicAliases),
         publicTrustBadges: safeArray(contributor.publicTrustBadges),
+        operatorDisclosure: contributor.operatorDisclosure || null,
       };
       operators[contributor.wallet] = operators[contributor.wallet]
         ? mergeContributor(operators[contributor.wallet], operator)
@@ -327,6 +347,61 @@ function operatorMap(projects = {}) {
     }
   }
   return operators;
+}
+
+function buildOrcOperationsSummary({
+  operators = {},
+  evidencePackets = [],
+} = {}) {
+  const machineOperators = Object.entries(operators)
+    .filter(([, operator]) => operator.operatorDisclosure?.isMachineOperator)
+    .map(([wallet, operator]) => ({
+      wallet,
+      accountId: safeText(operator.accountId, 180),
+      handle: safeText(operator.hiveHandle, 80),
+      displayName: safeText(operator.displayName || operator.publicDisplayName || operator.codename, 120),
+      label: safeText(operator.operatorDisclosure?.label, 80) || "Orc operator",
+      kind: safeText(operator.operatorDisclosure?.kind, 80),
+      status: safeText(operator.status, 80) || "active",
+      currentTaskCount: safeArray(operator.currentTasks).length,
+      capabilities: safeArray(operator.operatorDisclosure?.capabilities).slice(0, 6),
+    }))
+    .slice(0, 12);
+  const capabilitySummary = machineOperators
+    .flatMap((operator) =>
+      safeArray(operator.capabilities).map((profile) => ({
+        accountId: operator.accountId,
+        capabilityType: safeText(profile.capabilityType, 80),
+        scopeLabel: safeText(profile.scopeLabel, 180),
+        status: safeText(profile.status, 80),
+        evidenceTaskId: safeText(profile.evidenceTaskId, 180),
+        verifiedAt: toIso(profile.verifiedAt),
+        expiresAt: toIso(profile.expiresAt),
+      }))
+    )
+    .slice(0, 16);
+  const latestEvaluationPacket = safeArray(evidencePackets)[0] || null;
+  return {
+    schema: "pf.hive.orc_operations.v1",
+    generatedAt: new Date().toISOString(),
+    identityPolicy: "machine operator disclosure follows normal public/discoverable profile visibility",
+    runtimeSource: "boardManager.feed from /api/hive/context",
+    machineOperators,
+    capabilityProfiles: capabilitySummary,
+    lastEvaluationPacket: latestEvaluationPacket ? {
+      id: latestEvaluationPacket.id,
+      taskId: latestEvaluationPacket.taskId,
+      projectId: latestEvaluationPacket.projectId,
+      packetStatus: latestEvaluationPacket.packetStatus,
+      evaluatorId: latestEvaluationPacket.evaluatorId,
+      summary: latestEvaluationPacket.summary,
+      recommendation: latestEvaluationPacket.recommendation,
+      counts: latestEvaluationPacket.counts,
+      artifactVerdicts: safeArray(latestEvaluationPacket.artifactVerdicts).slice(0, 6),
+      updatedAt: latestEvaluationPacket.updatedAt || latestEvaluationPacket.createdAt,
+    } : null,
+    safety: "Seeds, session tokens, local runtime paths, and private payload plaintext are never included.",
+  };
 }
 
 function taskNextAction(state = "") {
@@ -454,6 +529,7 @@ function mergeContributor(left = {}, right = {}) {
     publicDisplayName: left.publicDisplayName || right.publicDisplayName || "",
     publicAliases: safeArray(left.publicAliases).length ? left.publicAliases : safeArray(right.publicAliases),
     publicTrustBadges: safeArray(left.publicTrustBadges).length ? left.publicTrustBadges : safeArray(right.publicTrustBadges),
+    operatorDisclosure: left.operatorDisclosure || right.operatorDisclosure || null,
   };
 }
 
@@ -577,6 +653,8 @@ function documentFromRows({
   projectPlanning = null,
   walletIdentities = [],
   publicProfileIds = new Set(),
+  operatorDisclosures = {},
+  evidencePackets = [],
   includeEmptyActive = false,
 } = {}) {
   const projects = Object.fromEntries(projectRows.map((row) => {
@@ -604,7 +682,7 @@ function documentFromRows({
     const project = projects[doc.projectId];
     if (project) project.productDocument = doc;
   }
-  applyWalletIdentitiesToProjects(projects, walletIdentities, publicProfileIds);
+  applyWalletIdentitiesToProjects(projects, walletIdentities, publicProfileIds, operatorDisclosures);
   populateDerivedProjectRollups(projects);
 
   const visibleProjects = Object.fromEntries(
@@ -631,6 +709,10 @@ function documentFromRows({
   const activeOperators = Object.values(operators).filter((operator) => operator.status === "active").length;
   const tasksInFlight = Object.values(visibleProjects).reduce((sum, project) => sum + safeArray(project.tasks).length, 0);
   const pftRouted = Object.values(visibleProjects).reduce((sum, project) => sum + numeric(project.pft), 0);
+  const orcOperations = buildOrcOperationsSummary({
+    operators,
+    evidencePackets,
+  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -638,6 +720,7 @@ function documentFromRows({
     projects: visibleProjects,
     operators,
     routingFeed,
+    orcOperations,
     stats: {
       activeProjects: projectIds.length,
       operatorsOnline: activeOperators,
@@ -939,6 +1022,9 @@ export const publicHiveTaskDetailFields = [
   "task.assigneeHasPublicProfile",
   "task.assigneeHandle",
   "task.assigneeDisplayName",
+  "task.assigneeOperatorDisclosure.isMachineOperator",
+  "task.assigneeOperatorDisclosure.label",
+  "task.assigneeOperatorDisclosure.kind",
   "task.pft",
   "task.nextAction",
   "task.age",
@@ -1306,9 +1392,12 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
       }),
     })
   );
-  const publicProfileIds = await discoverableMemberProfileIds(
-    Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)))
-  );
+  const identityAccountIds = Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)));
+  const publicProfileIds = await discoverableMemberProfileIds(identityAccountIds);
+  const [operatorDisclosures, evidencePackets] = await Promise.all([
+    listMachineOperatorDisclosures({ accountIds: identityAccountIds }).catch(() => ({})),
+    listEvidenceEvaluationPacketsForBoardManager({ limit: 12 }).catch(() => []),
+  ]);
 
   return documentFromRows({
     projectRows: projectsResult.rows,
@@ -1321,6 +1410,8 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
     projectPlanning,
     walletIdentities,
     publicProfileIds,
+    operatorDisclosures,
+    evidencePackets,
     includeEmptyActive,
   });
 }
