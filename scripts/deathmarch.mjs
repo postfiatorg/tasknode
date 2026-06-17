@@ -18,6 +18,7 @@ const DEFAULT_DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
 const DEFAULT_DEEPSEEK_TIMEOUT_MS = 20000;
 const DEFAULT_DISCORD_TIMEOUT_MS = 10000;
+const CLASSIFIER_FAILURE_CATEGORY = "confidential task (classification unavailable)";
 const TASK_KIND_LABELS = new Set(["TASK", "TASK_UPDATE", "TASK_SUBMISSION", "REWARD"]);
 const TASK_SCHEMAS = new Set([
   "pf.task.request.v1",
@@ -485,28 +486,6 @@ function eventTextBlob(event = {}) {
   ].filter(Boolean).join("\n");
 }
 
-function directionalLevelOneCategory(text = "") {
-  const normalized = text.toLowerCase();
-  if (/\b(trading|market|alpha|portfolio|equity|crypto|sector|signal|autocorrelation|frequency|ticker|execution)\b/.test(normalized)) {
-    return "market or trading-related task";
-  }
-  if (/\b(termination|fire|firing|layoff|legal|lawyer|attorney|client|confidential|nda)\b/.test(normalized)) {
-    return "confidential legal, client, or team-decision task";
-  }
-  if (/\b(investor|fundraise|lp|vc|customer|sales|contract)\b/.test(normalized)) {
-    return "confidential business interaction task";
-  }
-  return "confidential task";
-}
-
-function redactLevelTwoText(text = "") {
-  return safeText(text, 5000)
-    .replace(/\b(client|customer|investor|lp|vc|fund|partner|prospect)\s+([A-Z][\w.-]*(?:\s+[A-Z][\w.-]*){0,3})/g, "$1 [redacted]")
-    .replace(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s+(Capital|Ventures|Partners|Management|Labs|Technologies|Group|LLC|Inc|Corp)\b/g, "[redacted organization]")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted email]")
-    .replace(/\+?\d[\d().\-\s]{7,}\d/g, "[redacted phone]");
-}
-
 function compactEvidenceItemDetail(item = {}) {
   const evidence = safeObject(item);
   const file = safeObject(evidence.file);
@@ -760,8 +739,96 @@ export function formatDeathmarchDiscordMessage({ summary = "", event = {} } = {}
   return lines.join("\n");
 }
 
-export function sanitizeEventForAnonymity(event = {}, anonymity = 3) {
+function safeClassificationCategory(value = "") {
+  return safeText(value || "confidential task", 120) || "confidential task";
+}
+
+function safeClassifierFallback() {
+  return { level: 1, category: CLASSIFIER_FAILURE_CATEGORY };
+}
+
+function parseClassifierJson(content = "") {
+  const parsed = JSON.parse(safeText(content, 2000));
+  const object = safeObject(parsed);
+  const level = clampInteger(object.level, 0, 1, 3);
+  if (!level) throw new Error("deathmarch_classifier_level_invalid");
+  return {
+    level,
+    category: safeClassificationCategory(object.category || "classified task"),
+  };
+}
+
+function deathmarchClassifierPrompt() {
+  return [
+    "You classify Task Node Death March event disclosure risk.",
+    "Return strict JSON only: {\"level\":1|2|3,\"category\":\"short directional category\"}.",
+    "",
+    "Level 1: trading IP, legal, team, client-confidential, or strategy-confidential work.",
+    "Use level 1 for market/trading strategy, instruments, tickers, alpha, portfolio, legal, HR/team decisions, client-confidential work, or anything whose details should not be disclosed.",
+    "Level 2: business interactions. Client, investor, customer, organization, contact, sales, fundraising, or partner interactions where broad action may be described but names/contact details must be redacted.",
+    "Level 3: public network, protocol, product, open documentation, open-source, and ordinary Task Node/Hive work where the event details are safe to disclose.",
+    "",
+    "When uncertain, choose the more restrictive lower level.",
+  ].join("\n");
+}
+
+export async function classifyEventAnonymity({
+  event,
+  env = process.env,
+  fetchImpl = fetch,
+} = {}) {
+  const apiKey = safeText(env.DEEPSEEK_API_KEY || env.DEATHMARCH_DEEPSEEK_API_KEY, 4000);
+  if (!apiKey) return safeClassifierFallback();
+  const requestBody = {
+    model: env.DEATHMARCH_DEEPSEEK_CLASSIFY_MODEL || env.DEATHMARCH_DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL,
+    messages: [
+      { role: "system", content: deathmarchClassifierPrompt() },
+      {
+        role: "user",
+        content: JSON.stringify({
+          instruction: "Classify this event for Death March Discord disclosure.",
+          event_text: eventTextBlob(event),
+        }, null, 2),
+      },
+    ],
+    temperature: 0,
+    max_tokens: 120,
+  };
+  try {
+    const response = await fetchWithTimeout(fetchImpl, env.DEATHMARCH_DEEPSEEK_BASE_URL || DEFAULT_DEEPSEEK_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(requestBody),
+    }, clampInteger(
+      env.DEATHMARCH_DEEPSEEK_TIMEOUT_MS,
+      DEFAULT_DEEPSEEK_TIMEOUT_MS,
+      1000,
+      120000
+    ), "deepseek_classifier_timeout");
+    const bodyText = await response.text();
+    if (!response.ok) return safeClassifierFallback();
+    const body = bodyText ? JSON.parse(bodyText) : null;
+    const content = safeText(body?.choices?.[0]?.message?.content, 2000);
+    if (!content) return safeClassifierFallback();
+    return parseClassifierJson(content);
+  } catch {
+    return safeClassifierFallback();
+  }
+}
+
+function effectiveAnonymityLevel({ globalFloor = 3, classifiedLevel = 3 } = {}) {
+  return Math.min(
+    clampInteger(globalFloor, 3, 1, 3),
+    clampInteger(classifiedLevel, 1, 1, 3)
+  );
+}
+
+export function sanitizeEventForAnonymity(event = {}, anonymity = 3, classification = {}) {
   const level = clampInteger(anonymity, 3, 1, 3);
+  const category = safeClassificationCategory(classification.category || event.category || "classified task");
   const txHash = event.txHash;
   const base = {
     anonymity_level: level,
@@ -773,9 +840,10 @@ export function sanitizeEventForAnonymity(event = {}, anonymity = 3) {
   };
   if (level === 1) {
     return {
-      ...base,
+      level,
+      category,
       disclosure_policy: "heavily redacted directional disclosure only",
-      directional_category: directionalLevelOneCategory(eventTextBlob(event)),
+      directional_category: category,
       public_instruction:
         "Do not disclose task title, sector, instrument, client, investor, team member, legal subject, evidence text, or named strategy.",
     };
@@ -783,14 +851,30 @@ export function sanitizeEventForAnonymity(event = {}, anonymity = 3) {
   if (level === 2) {
     return {
       ...base,
+      category,
       disclosure_policy: "business interaction disclosure with names redacted",
-      event: JSON.parse(redactLevelTwoText(JSON.stringify(publicPayloadFields(event)))),
+      public_instruction: "Redact client, investor, customer, organization names, and contact details.",
+      event: publicPayloadFields(event),
     };
   }
   return {
     ...base,
+    category,
     disclosure_policy: "network or public protocol work; full disclosure allowed from this packet",
+    public_instruction: "Full disclosure is allowed for the event details in this packet.",
     event: publicPayloadFields(event),
+  };
+}
+
+function formatEventForAnonymity(event = {}, sanitized = {}) {
+  if (clampInteger(sanitized.anonymity_level || sanitized.level, 3, 1, 3) !== 1) return sanitized;
+  return {
+    ...sanitized,
+    tx_hash: event.txHash,
+    cid: event.cid,
+    task_id: event.taskId,
+    action_kind: event.actionKind,
+    occurred_at: event.occurredAt,
   };
 }
 
@@ -803,13 +887,20 @@ async function readPrompt() {
 export async function callDeepSeekSummary({
   event,
   anonymity,
+  classification = null,
   env = process.env,
   fetchImpl = fetch,
 } = {}) {
   const apiKey = safeText(env.DEEPSEEK_API_KEY || env.DEATHMARCH_DEEPSEEK_API_KEY, 4000);
   if (!apiKey) throw new Error("deepseek_api_key_missing");
   const prompt = await readPrompt();
-  const sanitized = sanitizeEventForAnonymity(event, anonymity);
+  const classified = classification || await classifyEventAnonymity({ event, env, fetchImpl });
+  const level = effectiveAnonymityLevel({
+    globalFloor: anonymity,
+    classifiedLevel: classified.level,
+  });
+  const sanitized = sanitizeEventForAnonymity(event, level, classified);
+  const formatEvent = formatEventForAnonymity(event, sanitized);
   const requestBody = {
     model: env.DEATHMARCH_DEEPSEEK_MODEL || DEFAULT_DEEPSEEK_MODEL,
     messages: [
@@ -867,11 +958,11 @@ export async function callDeepSeekSummary({
       message.reasoning_content ? `reasoning_tokens_only=${safeText(message.reasoning_content, 10000).length}` : "",
     ].filter(Boolean).join(",");
     if (env.DEATHMARCH_DETERMINISTIC_FALLBACK !== "false") {
-      return formatDeathmarchDiscordMessage({ summary: "", event: sanitized });
+      return formatDeathmarchDiscordMessage({ summary: "", event: formatEvent });
     }
     throw new Error(`deepseek_api_error:empty_response${detail ? `:${detail}` : ""}`);
   }
-  return formatDeathmarchDiscordMessage({ summary: content, event: sanitized });
+  return formatDeathmarchDiscordMessage({ summary: content, event: formatEvent });
 }
 
 export async function postToDiscord({
@@ -981,7 +1072,8 @@ export async function processDeathmarchEvents({
   }
   for (const event of candidates) {
     try {
-      const summary = await callDeepSeekSummary({ event, anonymity, env, fetchImpl });
+      const classification = await classifyEventAnonymity({ event, env, fetchImpl });
+      const summary = await callDeepSeekSummary({ event, anonymity, classification, env, fetchImpl });
       if (dryRun) {
         stdout(summary);
         results.push({ ok: true, dryRun: true, eventKey: event.eventKey, summary });
