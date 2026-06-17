@@ -19,8 +19,8 @@ Rules carried forward:
 
 - [ ] Phase A - Specification and Instrumentation
   - Branch: `feat/bm-phase-a-spec-instrumentation`
-  - PR: pending
-  - Status: in progress
+  - PR: #74
+  - Status: ready for review
   - Scope: docs/prompt vocabulary, Board Manager capability instrumentation
     source fields, Secretary capability-gap preservation, non-mutating smokes.
 - [ ] Phase B - Capability Profiles
