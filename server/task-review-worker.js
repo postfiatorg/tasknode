@@ -22,6 +22,10 @@ const REWARD_PROMPT_PATH = "task_engine/reward_scoring_v1.md";
 const REWARD_PROMPT_VERSION = "reward_scoring_v1";
 const PFT_DROPS_PER_PFT = 1_000_000;
 const REWARD_CARRIER_DROPS = "1";
+const URL_EXCERPT_MAX_CHARS = 6000;
+const URL_FETCH_TIMEOUT_MS = 8000;
+const URL_REDIRECT_MAX_HOPS = 5;
+const TASK_REVIEW_USER_AGENT = "TaskNodeOfficialTaskReview/0.1";
 
 const verificationResponseFormat = {
   type: "json_schema",
@@ -418,13 +422,13 @@ export function isSafeEvidenceUrlLiteral(url = "") {
   }
 }
 
-async function resolveSafeEvidenceUrl(url = "") {
+async function resolveSafeEvidenceUrl(url = "", { lookupFn = lookup } = {}) {
   const literal = isSafeEvidenceUrlLiteral(url);
   if (!literal.ok) return literal;
   const hostname = hostnameValue(literal.url.hostname);
   if (!isIP(hostname)) {
     try {
-      const addresses = await lookup(hostname, { all: true });
+      const addresses = await lookupFn(hostname, { all: true });
       if (!addresses.length) return { ok: false, reason: "dns_no_addresses" };
       if (addresses.some((entry) => isPrivateIpAddress(entry.address))) {
         return { ok: false, reason: "dns_private_ip_not_allowed" };
@@ -436,10 +440,87 @@ async function resolveSafeEvidenceUrl(url = "") {
   return literal;
 }
 
-async function fetchUrlExcerpt(url = "") {
+function headerValue(headers, name) {
+  const getter = headers?.get;
+  return typeof getter === "function" ? safeText(getter.call(headers, name) || "", 2000) : "";
+}
+
+function decodeHtmlEntities(value = "") {
+  return String(value || "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => {
+      const codepoint = Number.parseInt(hex, 16);
+      return Number.isFinite(codepoint) && codepoint >= 0 && codepoint <= 0x10ffff ? String.fromCodePoint(codepoint) : "";
+    })
+    .replace(/&#(\d+);/g, (_match, decimal) => {
+      const codepoint = Number.parseInt(decimal, 10);
+      return Number.isFinite(codepoint) && codepoint >= 0 && codepoint <= 0x10ffff ? String.fromCodePoint(codepoint) : "";
+    });
+}
+
+function collapseWhitespace(value = "") {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function stripHtmlToText(html = "") {
+  const withoutBoilerplate = String(html || "")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<noscript\b[\s\S]*?<\/noscript\s*>/gi, " ")
+    .replace(/<template\b[\s\S]*?<\/template\s*>/gi, " ")
+    .replace(/<nav\b[\s\S]*?<\/nav\s*>/gi, " ")
+    .replace(/<header\b[\s\S]*?<\/header\s*>/gi, " ")
+    .replace(/<footer\b[\s\S]*?<\/footer\s*>/gi, " ")
+    .replace(/<form\b[\s\S]*?<\/form\s*>/gi, " ")
+    .replace(/<title\b[\s\S]*?<\/title\s*>/gi, " ")
+    .replace(/<[^>]+>/g, " ");
+  return collapseWhitespace(decodeHtmlEntities(withoutBoilerplate));
+}
+
+function extractHtmlTitle(html = "") {
+  const raw = String(html || "").match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i)?.[1] || "";
+  return safeText(collapseWhitespace(decodeHtmlEntities(raw.replace(/<[^>]+>/g, " "))), 300);
+}
+
+function isHtmlResponse(response, text = "") {
+  const contentType = headerValue(response?.headers, "content-type").toLowerCase();
+  if (contentType.includes("text/html") || contentType.includes("application/xhtml")) return true;
+  if (contentType) return false;
+  return /^\s*<!doctype html\b/i.test(text) || /^\s*<html\b/i.test(text);
+}
+
+async function fetchOnceWithTimeout(fetchImpl, url, options = {}) {
+  const controller = new AbortController();
+  const timerId = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS);
+  try {
+    return await fetchImpl(url, {
+      ...options,
+      headers: {
+        "user-agent": TASK_REVIEW_USER_AGENT,
+        ...(options.headers || {}),
+      },
+      redirect: "manual",
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timerId);
+  }
+}
+
+async function fetchWithSafeRedirects(url = "", {
+  fetchImpl = fetch,
+  lookupFn = lookup,
+  maxRedirects = URL_REDIRECT_MAX_HOPS,
+} = {}) {
   const value = safeText(url, 1000);
-  if (!value) return null;
-  const safety = await resolveSafeEvidenceUrl(value);
+  let safety = await resolveSafeEvidenceUrl(value, { lookupFn });
   if (!safety.ok) {
     return {
       status: "blocked",
@@ -447,38 +528,162 @@ async function fetchUrlExcerpt(url = "") {
       error: safety.reason || "evidence_url_not_allowed",
     };
   }
-  let timerId = null;
-  try {
-    const controller = new AbortController();
-    timerId = setTimeout(() => controller.abort(), 8000);
-    const response = await fetch(safety.url.href, {
-      headers: { "user-agent": "TaskNodeOfficialTaskReview/0.1" },
-      redirect: "manual",
-      signal: controller.signal,
-    });
+
+  for (let hop = 0; hop <= maxRedirects; hop += 1) {
+    const response = await fetchOnceWithTimeout(fetchImpl, safety.url.href);
     if (response.status >= 300 && response.status < 400) {
+      const location = headerValue(response.headers, "location");
+      if (!location) {
+        return {
+          status: "redirect_not_followed",
+          url: safety.url.href,
+          http_status: response.status,
+          location: "",
+        };
+      }
+      if (hop >= maxRedirects) {
+        return {
+          status: "too_many_redirects",
+          url: safety.url.href,
+          http_status: response.status,
+          location,
+        };
+      }
+      const redirectTarget = new URL(location, safety.url.href).href;
+      const nextSafety = await resolveSafeEvidenceUrl(redirectTarget, { lookupFn });
+      if (!nextSafety.ok) {
+        return {
+          status: "blocked",
+          url: redirectTarget,
+          http_status: response.status,
+          error: nextSafety.reason || "evidence_url_not_allowed",
+        };
+      }
+      safety = nextSafety;
+      continue;
+    }
+    return {
+      status: "fetched",
+      url: safety.url.href,
+      response,
+    };
+  }
+
+  return {
+    status: "too_many_redirects",
+    url: safety.url.href,
+  };
+}
+
+async function responseExcerpt({ response, url, sourceUrl = "" } = {}) {
+  const text = await response.text();
+  const html = isHtmlResponse(response, text);
+  const title = html ? extractHtmlTitle(text) : "";
+  const excerpt = html
+    ? safeText(stripHtmlToText(text), URL_EXCERPT_MAX_CHARS)
+    : safeText(text, URL_EXCERPT_MAX_CHARS);
+  return {
+    status: response.ok ? "extracted" : "http_error",
+    url,
+    ...(sourceUrl && sourceUrl !== url ? { source_url: sourceUrl } : {}),
+    http_status: response.status,
+    title,
+    excerpt,
+  };
+}
+
+function parseGistUrl(url = "") {
+  try {
+    const parsed = new URL(safeText(url, 1000));
+    if (hostnameValue(parsed.hostname) !== "gist.github.com") return null;
+    const [user, id] = parsed.pathname.split("/").filter(Boolean);
+    if (!user || !id) return null;
+    return { user, id };
+  } catch {
+    return null;
+  }
+}
+
+async function gistApiExcerpt({ id, sourceUrl, fetchImpl, lookupFn }) {
+  const apiUrl = `https://api.github.com/gists/${encodeURIComponent(id)}`;
+  const fetched = await fetchWithSafeRedirects(apiUrl, { fetchImpl, lookupFn });
+  if (fetched.status !== "fetched") return fetched;
+  const bodyText = await fetched.response.text();
+  if (!fetched.response.ok) {
+    return {
+      status: "http_error",
+      url: fetched.url,
+      source_url: sourceUrl,
+      http_status: fetched.response.status,
+      title: "",
+      excerpt: safeText(bodyText, URL_EXCERPT_MAX_CHARS),
+    };
+  }
+  try {
+    const body = JSON.parse(bodyText);
+    const files = Object.values(safeObject(body.files));
+    const excerpt = files
+      .map((file) => {
+        const filename = safeText(file?.filename || "gist-file", 160);
+        const content = safeText(file?.content || "", URL_EXCERPT_MAX_CHARS);
+        return content ? `# ${filename}\n${content}` : "";
+      })
+      .filter(Boolean)
+      .join("\n\n");
+    return {
+      status: "extracted",
+      url: fetched.url,
+      source_url: sourceUrl,
+      http_status: fetched.response.status,
+      title: safeText(body.description || `GitHub Gist ${id}`, 300),
+      excerpt: safeText(excerpt, URL_EXCERPT_MAX_CHARS),
+    };
+  } catch (error) {
+    return {
+      status: "fetch_failed",
+      url: fetched.url,
+      source_url: sourceUrl,
+      error: `gist_api_parse_failed:${safeText(error?.message || error, 300)}`,
+    };
+  }
+}
+
+async function fetchGistExcerpt({ sourceUrl, gist, fetchImpl, lookupFn }) {
+  const rawUrl = `https://gist.githubusercontent.com/${encodeURIComponent(gist.user)}/${encodeURIComponent(gist.id)}/raw`;
+  const fetched = await fetchWithSafeRedirects(rawUrl, { fetchImpl, lookupFn });
+  if (fetched.status === "fetched") {
+    if (fetched.response.ok) {
+      const rawResult = await responseExcerpt({ response: fetched.response, url: fetched.url, sourceUrl });
       return {
-        status: "redirect_not_followed",
-        url: safety.url.href,
-        http_status: response.status,
-        location: safeText(response.headers.get("location") || "", 1000),
+        ...rawResult,
+        title: rawResult.title || `GitHub Gist ${gist.user}/${gist.id}`,
       };
     }
-    const text = await response.text();
-    return {
-      status: response.ok ? "extracted" : "http_error",
-      url: safety.url.href,
-      http_status: response.status,
-      excerpt: safeText(text.replace(/\s+/g, " "), 6000),
-    };
+    return gistApiExcerpt({ id: gist.id, sourceUrl, fetchImpl, lookupFn });
+  }
+  if (fetched.status === "http_error" || fetched.status === "fetch_failed") {
+    return gistApiExcerpt({ id: gist.id, sourceUrl, fetchImpl, lookupFn });
+  }
+  return fetched;
+}
+
+export async function fetchUrlExcerpt(url = "", { fetchImpl = fetch, lookupFn = lookup } = {}) {
+  const value = safeText(url, 1000);
+  if (!value) return null;
+  const gist = parseGistUrl(value);
+  try {
+    if (gist) {
+      return await fetchGistExcerpt({ sourceUrl: value, gist, fetchImpl, lookupFn });
+    }
+    const fetched = await fetchWithSafeRedirects(value, { fetchImpl, lookupFn });
+    if (fetched.status !== "fetched") return fetched;
+    return responseExcerpt({ response: fetched.response, url: fetched.url });
   } catch (error) {
     return {
       status: "fetch_failed",
       url: value,
       error: safeText(error?.message || error, 500),
     };
-  } finally {
-    if (timerId) clearTimeout(timerId);
   }
 }
 
