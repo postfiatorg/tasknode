@@ -105,6 +105,7 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
   const displayHandle = identity.hiveHandle ? `@${identity.hiveHandle}` : "";
   const displayName = identity.displayName || displayHandle || "Hive contributor";
   const publicAliases = Array.isArray(identity.publicAliases) ? identity.publicAliases : [];
+  const operatorDisclosure = identity.operatorDisclosure || null;
   const totalPft = metrics.lifetimeTotalPft || 0;
   const taskPft = metrics.lifetimeTaskRewardPft || 0;
   const airdropPft = metrics.lifetimeAirdropPft || 0;
@@ -123,6 +124,11 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
             {displayHandle && displayHandle !== displayName && (
               <span className="tn-mono" style={{ color: C.ink3, fontSize: 14 }}>
                 {displayHandle}
+              </span>
+            )}
+            {operatorDisclosure?.isMachineOperator && (
+              <span style={{ border: `1px solid ${C.ruleSoft}`, borderRadius: 999, color: C.ink2, fontSize: 12, fontWeight: 700, padding: "4px 8px", textTransform: "uppercase" }}>
+                {operatorDisclosure.label || "Orc operator"}
               </span>
             )}
             {displayHandle && (

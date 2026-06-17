@@ -69,6 +69,31 @@ const document = hiveProjectsDocumentForTests({
     },
   ],
   publicProfileIds: new Set([accountId]),
+  operatorDisclosures: {
+    [accountId]: {
+      isMachineOperator: true,
+      label: "Orc operator",
+      kind: "evidence_evaluation_orc",
+      capabilities: [{
+        capabilityType: "evidence_evaluation_orc",
+        scopeLabel: "Task Node Core Product",
+        status: "verified",
+        evidenceTaskId: "task_capability_orc",
+      }],
+    },
+  },
+  evidencePackets: [{
+    id: "evalpkt_hive_clickable",
+    taskId: "task_hive_clickable_network",
+    projectId: "project_hive_clickable_smoke",
+    packetStatus: "ready",
+    evaluatorId: "evidence_evaluation_orc",
+    summary: "1 verified artifact(s), 0 self-attested claim(s), 0 unverified artifact(s).",
+    recommendation: "Evidence includes independently resolvable public artifacts.",
+    counts: { verified: 1, self_attested: 0, unverified: 0 },
+    artifactVerdicts: [{ status: "verified", label: "postfiatorg/tasknodeofficial#1" }],
+    updatedAt: "2026-06-15T09:46:00.000Z",
+  }],
 });
 
 const project = document.projects.project_hive_clickable_smoke;
@@ -76,12 +101,23 @@ assert.equal(project.contributors[0].accountId, accountId);
 assert.equal(project.contributors[0].hasPublicProfile, true);
 assert.equal(document.operators[wallet].accountId, accountId);
 assert.equal(document.operators[wallet].hasPublicProfile, true);
+assert.equal(document.operators[wallet].operatorDisclosure.isMachineOperator, true);
 assert.equal(project.tasks[0].assigneeAccountId, accountId);
 assert.equal(project.tasks[0].assigneeHasPublicProfile, true);
+assert.equal(project.tasks[0].assigneeOperatorDisclosure.isMachineOperator, true);
 assert.equal(project.activity[0].accountId, accountId);
 assert.equal(project.activity[0].hasPublicProfile, true);
+assert.equal(project.activity[0].operatorDisclosure.isMachineOperator, true);
 assert.equal(project.nextTask.assigneeAccountId, accountId);
 assert.equal(project.nextTask.assigneeHasPublicProfile, true);
+assert.equal(document.orcOperations.machineOperators[0].accountId, accountId);
+assert.equal(document.orcOperations.capabilityProfiles[0].capabilityType, "evidence_evaluation_orc");
+assert.equal(document.orcOperations.capabilityProfiles[0].scopeLabel, "Task Node Core Product");
+assert.equal(JSON.stringify(document.orcOperations.capabilityProfiles).includes("repo_pr_access"), false);
+assert.equal(document.orcOperations.lastEvaluationPacket.id, "evalpkt_hive_clickable");
+assert.equal(document.orcOperations.safety.includes("Seeds"), true);
+assert.equal(JSON.stringify(document.orcOperations).includes("sessionPath"), false);
+assert.equal(JSON.stringify(document.orcOperations).includes("tasknode_agent_wallets"), false);
 
 function publicPayloadPaths(value, path = "") {
   if (Array.isArray(value)) {

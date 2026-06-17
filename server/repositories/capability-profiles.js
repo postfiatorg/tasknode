@@ -51,6 +51,26 @@ function normalizeCapabilityStatus(value = "") {
   return "declared";
 }
 
+function machineOperatorKind(profile = {}) {
+  const capabilityType = normalizeCapabilityType(profile.capability_type || profile.capabilityType);
+  const metadata = safeObject(profile.metadata_json || profile.metadata);
+  const rawMetadataKind = normalizeCapabilityType(metadata.operator_kind || metadata.operatorKind || metadata.machine_operator_kind || metadata.machineOperatorKind);
+  const metadataKind = rawMetadataKind === "unspecified_capability" ? "" : rawMetadataKind;
+  if (metadata.machine_operator === true || metadata.machineOperator === true || metadata.is_machine_operator === true || metadata.isMachineOperator === true) {
+    return metadataKind || capabilityType || "machine_operator";
+  }
+  if ([
+    "machine_operator",
+    "orc_operator",
+    "tasknode_agent",
+    "tasknode_agent_client",
+    "evidence_evaluation_orc",
+  ].includes(capabilityType)) {
+    return capabilityType;
+  }
+  return "";
+}
+
 function capabilityProfileId({ accountId = "", projectId = "", capabilityType = "", scopeDigest = "" } = {}) {
   return `cap_${digestText([accountId, projectId, capabilityType, scopeDigest].join("|")).slice(0, 32)}`;
 }
@@ -87,6 +107,68 @@ export function normalizeCapabilityProfileRow(row = {}) {
     created_at: toIso(row.created_at || row.createdAt),
     updated_at: toIso(row.updated_at || row.updatedAt),
   };
+}
+
+export function publicMachineOperatorDisclosureFromProfiles(profiles = []) {
+  const verifiedProfiles = safeArray(profiles)
+    .map(normalizeCapabilityProfileRow)
+    .filter((profile) => profile.verified && machineOperatorKind(profile));
+  if (!verifiedProfiles.length) return null;
+  const primary = verifiedProfiles[0];
+  const metadata = safeObject(primary.metadata);
+  return {
+    isMachineOperator: true,
+    label: safeText(metadata.public_label || metadata.publicLabel, 80) || "Orc operator",
+    kind: machineOperatorKind(primary),
+    mandateUrl: safeText(metadata.mandate_url || metadata.mandateUrl, 500),
+    capabilities: verifiedProfiles.slice(0, 6).map((profile) => ({
+      id: profile.id,
+      capabilityType: profile.capability_type,
+      scopeLabel: profile.scope_label,
+      status: profile.effective_status,
+      evidenceTaskId: profile.evidence_task_id,
+      verifiedAt: profile.verified_at,
+      expiresAt: profile.expires_at,
+    })),
+    safety: "No seed, session token, private payload plaintext, or runtime secret is exposed.",
+  };
+}
+
+export async function listMachineOperatorDisclosures({
+  accountIds = [],
+  queryImpl = query,
+  databaseReady = databaseEnabled(),
+} = {}) {
+  if (!databaseReady && queryImpl === query) return {};
+  if (queryImpl === query && !(await capabilityTableExists())) return {};
+  const normalizedAccountIds = [...new Set(safeArray(accountIds).map((item) => safeText(item, 180)).filter(Boolean))];
+  if (!normalizedAccountIds.length) return {};
+  const result = await queryImpl(
+    `
+      SELECT *
+      FROM board_manager_capability_profiles
+      WHERE account_id = ANY($1::text[])
+        AND status = 'verified'
+        AND revoked_at IS NULL
+        AND (
+          expires_at IS NULL
+          OR expires_at > now()
+        )
+      ORDER BY verified_at DESC NULLS LAST, updated_at DESC, id ASC
+    `,
+    [normalizedAccountIds]
+  );
+  const grouped = new Map();
+  for (const row of result.rows) {
+    const profile = normalizeCapabilityProfileRow(row);
+    if (!machineOperatorKind(profile)) continue;
+    const list = grouped.get(profile.account_id) || [];
+    list.push(profile);
+    grouped.set(profile.account_id, list);
+  }
+  return Object.fromEntries(
+    [...grouped.entries()].map(([accountId, profiles]) => [accountId, publicMachineOperatorDisclosureFromProfiles(profiles)])
+  );
 }
 
 export function normalizeCapabilityProfileInput({
