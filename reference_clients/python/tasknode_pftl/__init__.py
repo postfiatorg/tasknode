@@ -6,6 +6,7 @@ PFTL. Do not point this client at XRP mainnet or XRP testnet.
 """
 
 __all__ = [
+    "agent_client",
     "config",
     "encryption",
     "ipfs",
