@@ -610,6 +610,7 @@ function sourcePacketText(source = {}) {
     `Project: ${project.title || project.id}`,
     `Project ID: ${project.id}`,
     `Project type: ${project.type}`,
+    `Task work type: ${networkTask.taskWorkType || "unspecified"}`,
     `Task class: ${networkTask.taskClass}`,
     `Reward band: ${networkTask.rewardMinPft} to ${networkTask.rewardMaxPft} PFT`,
     "",
@@ -814,6 +815,7 @@ export function buildNetworkTaskGenerationSource({
     }),
     taskLineage,
     networkTask: {
+      taskWorkType: safeText(networkTask.task_work_type || networkTask.taskWorkType, 80),
       taskClass: normalizedTaskClass,
       projectNeedSummary,
       allocationReasonSummary,
@@ -846,6 +848,7 @@ function networkTaskIntelligenceMetadata(sourceJson = {}) {
     generationQualityPolicy: safeObject(sourceJson.generationQualityPolicy),
     priorOutputCorpusSummary: safeObject(sourceJson.priorOutputCorpus?.summary),
     taskLineage: safeObject(sourceJson.taskLineage),
+    taskWorkType: safeText(sourceJson.networkTask?.taskWorkType, 80),
     actionOutput: safeText(sourceJson.networkTask?.actionOutput, 1200),
     deliverySurface: safeText(sourceJson.networkTask?.deliverySurface, 120),
     recipientOrReviewer: safeText(sourceJson.networkTask?.recipientOrReviewer, 240),

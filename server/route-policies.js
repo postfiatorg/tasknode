@@ -118,6 +118,13 @@ export const apiRoutePolicies = [
   { id: "directory_leaderboard", path: "/api/directory/leaderboard", methods: ["GET"], auth: "optional" },
   { id: "hive_projects", path: "/api/hive/projects", methods: ["GET"], auth: "optional" },
   { id: "hive_task_detail", path: "/api/hive/task-detail", methods: ["GET"], auth: "optional" },
+  {
+    id: "hive_capability_profile",
+    path: "/api/hive/capability-profile",
+    methods: ["POST"],
+    auth: "admin_bearer",
+    rateLimit: { limit: 30, windowMs: tenMinutes },
+  },
   { id: "hive_context", path: "/api/hive/context", methods: ["GET", "POST"], auth: "handler" },
   { id: "hive_chat", path: "/api/hive/chat", methods: ["GET", "POST", "PATCH"], auth: "session" },
   { id: "profile_daily_airdrop", path: "/api/profile/daily-airdrop", methods: ["GET"], auth: "session" },

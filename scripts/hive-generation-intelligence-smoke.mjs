@@ -237,6 +237,7 @@ const normalizedDecision = normalizeBoardManagerDecision({
   payload: {
     summary: "Use prior workflow reports to produce a PR-ready action packet.",
     network_task: {
+      task_work_type: "code_task",
       task_class: "network",
       candidate_account_id: "acct_contributor",
       candidate_wallet_address: "rContributorWallet",
@@ -273,6 +274,7 @@ const normalizedDecision = normalizeBoardManagerDecision({
   },
 });
 const normalizedNetworkTask = normalizedDecision.payload.network_task;
+assert.equal(normalizedNetworkTask.task_work_type, "code_task");
 assert.equal(normalizedNetworkTask.action_output, "PR-ready acceptance-flow patch packet plus Discord handoff.");
 assert.equal(normalizedNetworkTask.delivery_surface, "discord_message");
 assert.deepEqual(normalizedNetworkTask.lineage_task_ids, ["task_doc_1", "task_doc_2"]);
@@ -316,6 +318,7 @@ const sourceJson = buildNetworkTaskGenerationSource({
   acceptWindowHours: 24,
 });
 assert.equal(sourceJson.networkTask.actionOutput, normalizedNetworkTask.action_output);
+assert.equal(sourceJson.networkTask.taskWorkType, "code_task");
 assert.equal(sourceJson.networkTask.deliverySurface, "discord_message");
 assert.equal(sourceJson.taskLineage.referencedOutputs[0].task_id, "task_doc_1");
 assert.equal(sourceJson.taskLineage.dedupedAgainst[0].task_id, "task_doc_2");
@@ -342,6 +345,7 @@ const requestContext = buildNetworkTaskRequestContext({
   reward: { min: 10000, max: 50000 },
 });
 assert.equal(requestContext.action_output, normalizedNetworkTask.action_output);
+assert.equal(requestContext.task_work_type, "code_task");
 assert.equal(requestContext.task_lineage.referenced_outputs[0].task_id, "task_doc_1");
 assert.equal(requestContext.operator_standing_policy[0].source_id, "hivectx_stop_docs");
 assert.equal(requestContext.prior_output_corpus.outputs.length, 2);
@@ -380,6 +384,7 @@ const responseFormat = boardManagerResponseFormat();
 const networkTaskSchema = responseFormat.schema.properties.payload.properties.network_task;
 for (const field of [
   "action_output",
+  "task_work_type",
   "delivery_surface",
   "recipient_or_reviewer",
   "escalation_stage",

@@ -45,14 +45,14 @@ This is the boundary that prevents the old failure mode where the Secretary
 packet said no explicit current constraints were set even while the operator had
 active stop-docs or rerouting instructions in Hive Context.
 
-`capability_gap_summary` is the Phase A capability handoff. It is derived from
+`capability_gap_summary` is the capability-profile handoff. It is derived from
 `capabilityInstrumentation` in the source packet and preserves the task-work
 vocabulary (`code_task`, `documentation_task`, `capability_gating_task`,
 `evidence_evaluation_packet`), the number of explicit project capability
-requirements, and compact capability gaps. Gaps identify the project,
-candidate, capability type, safe scope label, candidate status, and recommended
-proof task shape. They do not include raw private membership lists or server
-secrets.
+requirements, the count of durable verified capability rows, and compact
+capability gaps. Gaps identify the project, candidate, capability type, safe
+scope label, candidate status, and recommended proof task shape. They do not
+include raw private membership lists or server secrets.
 
 ## Generation Policy Handoff
 
@@ -67,7 +67,10 @@ field directly rejects, caps, blocks, or rewards a task in code.
 `capability_gap_summary` follows the same rule: it is model-facing context for
 choosing between code work, proof-gathering work, public-artifact work, or an
 operator follow-up. It is not a deterministic access gate, wallet ban,
-blocklist, reward cap, or automatic rejection rule.
+blocklist, reward cap, or automatic rejection rule. Durable verified capability
+rows are stored in `board_manager_capability_profiles`; Network Diagnostic
+Report claims remain declared context unless a reviewed operator writes a
+verified row.
 
 ## JSON Repair And Fallback
 

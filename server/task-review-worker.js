@@ -95,6 +95,10 @@ function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(",")}]`;
   if (value && typeof value === "object") {
@@ -720,6 +724,106 @@ async function processedEvidenceFromPayload(payload = {}) {
   return {
     schema: "tasknode.processed_evidence.v1",
     artifacts,
+  };
+}
+
+function artifactUrl(artifact = {}) {
+  return safeText(artifact.url || artifact.source_url || safeObject(artifact.source).url || "", 1000);
+}
+
+function artifactLabel(artifact = {}, fallback = "Evidence artifact") {
+  const source = safeObject(artifact.source);
+  const url = artifactUrl(artifact);
+  if (artifact.title) return safeText(artifact.title, 240);
+  if (source.file_name) return safeText(source.file_name, 240);
+  if (url) {
+    try {
+      const parsed = new URL(url);
+      return safeText(parsed.hostname, 240);
+    } catch {
+      return safeText(url, 240);
+    }
+  }
+  return fallback;
+}
+
+function classifyProcessedEvidenceArtifact(artifact = {}, {
+  phase = "",
+  fetchedUrls = new Set(),
+} = {}) {
+  const type = safeText(artifact.artifact_type || artifact.artifactType || "text", 80) || "text";
+  const status = safeText(artifact.status, 80);
+  const url = artifactUrl(artifact);
+  const digestInput = url || artifact.excerpt || artifactLabel(artifact);
+  if (url && fetchedUrls.has(url) && status === "provided") return null;
+  if (url) {
+    const verified = status === "extracted" || artifact.ok === true;
+    const failed = ["blocked", "fetch_failed", "http_error", "too_many_redirects", "redirect_not_followed"].includes(status) || artifact.ok === false;
+    return {
+      phase,
+      artifact_type: type,
+      resolver: type === "github_commit" ? "github_commit" : "safe_url",
+      status: verified ? "verified" : failed ? "unverified" : "self_attested",
+      label: artifactLabel(artifact, "URL evidence"),
+      url,
+      value_digest: digestInput ? `sha256:${sha256(digestInput)}` : "",
+      reason: verified
+        ? "Public URL content was fetched through the SSRF-safe evidence resolver."
+        : failed
+          ? safeText(artifact.error || `URL evidence could not be independently fetched (${status || "unknown"}).`, 300)
+          : "URL was submitted but no resolver result was available in processed evidence.",
+    };
+  }
+  return {
+    phase,
+    artifact_type: type,
+    resolver: "text_or_file_claim",
+    status: "self_attested",
+    label: artifactLabel(artifact, type === "file" ? "File evidence" : "Text evidence"),
+    value_digest: digestInput ? `sha256:${sha256(digestInput)}` : "",
+    reason: "Evidence was submitted as text/file material without an independently resolvable public artifact.",
+  };
+}
+
+function buildRewardEvidenceEvaluationContext({ initial = {}, verification = {} } = {}) {
+  const groups = [
+    ["initial_submission", initial],
+    ["verification_response", verification],
+  ];
+  const artifactVerdicts = [];
+  for (const [phase, packet] of groups) {
+    const artifacts = safeArray(safeObject(packet).artifacts).slice(0, 12);
+    const fetchedUrls = new Set(
+      artifacts
+        .filter((artifact) => artifactUrl(artifact) && artifact.status && artifact.status !== "provided")
+        .map(artifactUrl)
+    );
+    for (const artifact of artifacts) {
+      const verdict = classifyProcessedEvidenceArtifact(artifact, { phase, fetchedUrls });
+      if (verdict) artifactVerdicts.push(verdict);
+    }
+  }
+  const counts = artifactVerdicts.reduce(
+    (acc, verdict) => {
+      if (verdict.status === "verified") acc.verified += 1;
+      else if (verdict.status === "unverified") acc.unverified += 1;
+      else acc.self_attested += 1;
+      return acc;
+    },
+    { verified: 0, self_attested: 0, unverified: 0 }
+  );
+  const summary = `${counts.verified} verified public artifact(s), ${counts.self_attested} self-attested claim(s), ${counts.unverified} unverified artifact(s).`;
+  return {
+    schema: "tasknode.reward_evidence_evaluation_context.v1",
+    lifecycle_boundary: "advisory_context_only_no_reward_rule_change",
+    summary,
+    counts,
+    artifact_verdicts: artifactVerdicts.slice(0, 24),
+    scoring_guidance: [
+      "Verified public artifacts can support completion when they match the task contract.",
+      "Self-attested claims are useful context but should not be treated as independently proven.",
+      "Unverified external-action claims should lower evidence confidence unless other evidence corroborates them.",
+    ],
   };
 }
 
@@ -1551,6 +1655,10 @@ async function processVerificationResponse(row, { logger = console } = {}) {
       processedEvidenceFromPayload(initialSubmission),
       processedEvidenceFromPayload(verificationResponse),
     ]);
+    const evidenceEvaluation = buildRewardEvidenceEvaluationContext({
+      initial: processedInitial,
+      verification: processedVerification,
+    });
     const offerPft = Number(taskOffer?.reward_offer?.amount_estimate_pft || row.reward_offer_pft || 0);
     const scoring = await callOpenAiJson({
       promptPath: REWARD_PROMPT_PATH,
@@ -1565,6 +1673,7 @@ async function processVerificationResponse(row, { logger = console } = {}) {
           initial: processedInitial,
           verification: processedVerification,
         },
+        evidence_evaluation: evidenceEvaluation,
       },
     });
     const score = normalizeRewardScore(scoring.output, offerPft);
@@ -1702,6 +1811,7 @@ async function processVerificationResponse(row, { logger = console } = {}) {
 }
 
 export const taskReviewWorkerInternals = {
+  buildRewardEvidenceEvaluationContext,
   latestRewardPaymentEvent,
   normalizeReward,
   rewardPaymentGuardBlocksRetry,
@@ -1782,5 +1892,6 @@ export const taskReviewWorkerInternalsForTests = {
   isRewardReviewPayload,
   taskReviewPublisherPermission,
   timelineEventPublishedRef,
+  buildRewardEvidenceEvaluationContext,
   buildRewardOutcomePayload,
 };

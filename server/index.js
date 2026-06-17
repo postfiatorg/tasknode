@@ -56,6 +56,7 @@ import { handleProfileNftImageRoute, handleProfileNftPfpRoute } from "./profile-
 import { handleMemoryRoute } from "./memory-routes.js";
 import { handleDirectoryRoute } from "./directory-routes.js";
 import { handleHiveRoute } from "./hive-routes.js";
+import { handleCapabilityProfileRoute } from "./capability-profile-routes.js";
 import { handleSystemStatusRoute } from "./system-status.js";
 import { handleTelegramBotRoute } from "./telegram-bot.js";
 import { walletSendPrepare, walletSendSubmit } from "./wallet-send.js";
@@ -719,6 +720,8 @@ async function routeApi(req, url, res) {
   if (await handleProfileRoute({ getState, json, readJson, req, res, session, url })) return true;
 
   if (await handleDirectoryRoute({ json, req, res, session, url })) return true;
+
+  if (await handleCapabilityProfileRoute({ json, readJson, req, res, url })) return true;
 
   if (await handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url })) return true;
 

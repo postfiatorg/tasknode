@@ -24,18 +24,30 @@ Rules carried forward:
   - Scope: docs/prompt vocabulary, Board Manager capability instrumentation
     source fields, Secretary capability-gap preservation, non-mutating smokes.
 - [ ] Phase B - Capability Profiles
-  - Branch: pending
-  - PR: pending
-  - Status: not started
+  - Branch: `feat/bm-phase-b-capability-profiles`
+  - PR: #75
+  - Status: ready for review
+  - Scope: durable capability-profile table and admin-bearer verification
+    route, Board Manager source-packet read model, task-work-type audit field,
+    capability-profile smoke coverage.
 - [ ] Phase C - Evidence Evaluation Orc
-  - Branch: pending
-  - PR: pending
-  - Status: not started
+  - Branch: `feat/bm-phase-c-evidence-orc`
+  - PR: #76
+  - Status: ready for review
+  - Scope: read-only artifact evaluation packet builder, persistence table,
+    Board Manager/Hive task-detail surfacing, agent read helpers, evidence-orc
+    smoke coverage.
 - [ ] Phase D - Prompt/Taskgen Integration
-  - Branch: pending
-  - PR: pending
-  - Status: not started
+  - Branch: `feat/bm-phase-d-prompt-taskgen`
+  - PR: #77
+  - Status: ready for review
+  - Scope: stronger private-repo capability guidance in Board Manager/taskgen
+    prompts, reward-scoring evidence-verification context, and focused prompt
+    smoke coverage. Context only; no reward/lifecycle mutation.
 - [ ] Phase E - Orc UI
-  - Branch: pending
-  - PR: pending
-  - Status: not started
+  - Branch: `feat/bm-phase-e-orc-ui`
+  - PR: #78
+  - Status: ready for review
+  - Scope: public machine-operator badges, Hive Orc Operations panel,
+    evidence-packet visibility, and runtime heartbeat/error display. UI only
+    plus safe read-model fields; no secrets or private payload plaintext.

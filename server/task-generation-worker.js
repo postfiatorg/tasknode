@@ -263,6 +263,7 @@ export function projectTaskgenInput(bundle = {}, { bundleCid = "", bundleDigest 
     prior_output_corpus: networkTask.prior_output_corpus || {},
     task_lineage: taskLineage,
     operator_transparency: {
+      task_work_type: safeText(networkTask.task_work_type, 80),
       referenced_outputs: safeArray(taskLineage.referenced_outputs),
       deduped_against: safeArray(taskLineage.deduped_against),
       escalation_stage: safeText(networkTask.escalation_stage, 120),
