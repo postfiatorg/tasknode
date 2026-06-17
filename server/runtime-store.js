@@ -522,6 +522,8 @@ function accountPayload(account) {
     profileVisibility: identityProfile?.profileVisibility || "public",
     profileDiscoverable: identityProfile?.profileDiscoverable !== false,
     primaryProvider: account.primaryProvider || "email",
+    primaryEmailCanonical: account.primaryEmailCanonical || "",
+    emailProvider: account.emailProvider || "",
     linkedProviders: account.linkedProviders || [],
     assurance: account.assurance || "low",
     createdAt: account.createdAt,
@@ -716,11 +718,23 @@ function syncAccountSessions(account) {
     session.hiveHandle = identityProfile?.hiveHandle || "";
     session.publicDisplayName = identityProfile?.publicDisplayName || "";
     session.profileVisibility = identityProfile?.profileVisibility || "public";
+    session.primaryProvider = account.primaryProvider || session.primaryProvider;
     session.linkedProviders = account.linkedProviders || [];
   }
 }
 
 const UNLINKABLE_OAUTH_PROVIDERS = new Set(["github", "telegram", "x", "discord"]);
+
+function hasVerifiedEmailLogin(account, canonicalEmail = "") {
+  const canonical = String(canonicalEmail || "").trim().toLowerCase();
+  return Boolean(
+    account?.id
+    && canonical
+    && account.primaryEmailVerified
+    && account.primaryEmailCanonical === canonical
+    && state.accountEmails[canonical] === account.id
+  );
+}
 
 export function unlinkProviderFromAccount({ accountId = "", provider = "" } = {}) {
   const normalizedAccountId = String(accountId || "").trim();
@@ -739,27 +753,52 @@ export function unlinkProviderFromAccount({ accountId = "", provider = "" } = {}
   const target = linked.find((item) => item?.id === normalizedProvider);
   if (!target) return { ok: false, error: "provider_not_linked" };
 
+  const remainingProviders = linked.filter((item) => item?.id !== normalizedProvider);
+  const remainingOauth = remainingProviders.filter((item) => UNLINKABLE_OAUTH_PROVIDERS.has(item?.id));
+
+  // Email-code login is independent from provider provenance. If the account
+  // still owns a verified email mapping, unlinking an OAuth provider must not
+  // lock the user out just because that provider last verified the same email.
+  const emailCanonical = account.primaryEmailCanonical || "";
+  const emailOwnedByTarget = Boolean(emailCanonical) && account.emailProvider === normalizedProvider;
+  const emailHeir = emailOwnedByTarget
+    ? remainingProviders.find(
+        (item) => item?.emailVerified && String(item?.email || "").trim().toLowerCase() === emailCanonical
+      )
+    : null;
+  const emailSurvives = hasVerifiedEmailLogin(account, emailCanonical);
+
   // Lockout guard: the account must keep at least one way to sign back in.
-  // Sign-in methods are a verified primary email or another linked OAuth
+  // Sign-in methods are a surviving verified email or another linked OAuth
   // provider; wallets are identity/custody, not login.
-  const remainingOauth = linked.filter(
-    (item) => item?.id !== normalizedProvider && UNLINKABLE_OAUTH_PROVIDERS.has(item?.id)
-  );
-  const hasEmailLogin = Boolean(account.primaryEmailCanonical && account.primaryEmailVerified);
-  if (!hasEmailLogin && remainingOauth.length === 0) {
+  if (!emailSurvives && remainingOauth.length === 0) {
     return { ok: false, error: "provider_unlink_last_login_method" };
   }
 
   const now = new Date().toISOString();
-  account.linkedProviders = linked.filter((item) => item?.id !== normalizedProvider);
+  account.linkedProviders = remainingProviders;
   if (target.providerUserId) {
     const key = identityKey(normalizedProvider, target.providerUserId);
     if (state.accountIdentities[key] === normalizedAccountId) {
       delete state.accountIdentities[key];
     }
   }
+  if (emailOwnedByTarget) {
+    if (emailSurvives) {
+      account.emailProvider = emailHeir?.id || "email";
+    } else {
+      if (state.accountEmails[emailCanonical] === normalizedAccountId) {
+        delete state.accountEmails[emailCanonical];
+      }
+      delete account.primaryEmailOriginal;
+      delete account.primaryEmailCanonical;
+      delete account.primaryEmailVerified;
+      delete account.emailProvider;
+    }
+  }
   if (account.primaryProvider === normalizedProvider) {
-    account.primaryProvider = hasEmailLogin ? "email" : remainingOauth[0]?.id || "email";
+    // The lockout guard guarantees at least one of these exists.
+    account.primaryProvider = remainingOauth[0]?.id || "email";
   }
   account.updatedAt = now;
   account.lastProviderUnlinkAt = now;
@@ -770,7 +809,7 @@ export function unlinkProviderFromAccount({ accountId = "", provider = "" } = {}
     ok: true,
     provider: normalizedProvider,
     unlinkedUsername: target.username || null,
-    remainingLoginMethods: (hasEmailLogin ? 1 : 0) + remainingOauth.length,
+    remainingLoginMethods: (emailSurvives ? 1 : 0) + remainingOauth.length,
     account: accountPayload(account),
   };
 }
@@ -1016,10 +1055,11 @@ export function getOrCreateProviderAccount({
   account.lastProviderLoginAt = now;
 
   if (emailCanonical && (!account.primaryEmailCanonical || account.primaryEmailCanonical === emailCanonical)) {
+    const emailAlreadySignsIn = hasVerifiedEmailLogin(account, emailCanonical);
     account.primaryEmailOriginal = email;
     account.primaryEmailCanonical = emailCanonical;
     account.primaryEmailVerified = true;
-    account.emailProvider = normalizedProvider;
+    account.emailProvider = emailAlreadySignsIn ? account.emailProvider || "email" : normalizedProvider;
     account.emailLastSeenAt = now;
     if (!state.accountEmails[emailCanonical] || state.accountEmails[emailCanonical] === accountId) {
       state.accountEmails[emailCanonical] = accountId;
@@ -1092,10 +1132,11 @@ export function linkProviderToAccount({
   account.lastProviderLinkAt = now;
 
   if (emailCanonical && (!account.primaryEmailCanonical || account.primaryEmailCanonical === emailCanonical)) {
+    const emailAlreadySignsIn = hasVerifiedEmailLogin(account, emailCanonical);
     account.primaryEmailOriginal = email;
     account.primaryEmailCanonical = emailCanonical;
     account.primaryEmailVerified = true;
-    account.emailProvider = normalizedProvider;
+    account.emailProvider = emailAlreadySignsIn ? account.emailProvider || "email" : normalizedProvider;
     account.emailLastSeenAt = now;
     state.accountEmails[emailCanonical] = targetAccountId;
   }
