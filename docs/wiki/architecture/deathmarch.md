@@ -34,12 +34,17 @@ Optional:
 export DEATHMARCH_WALLET=rPo8GkCA9YMKzuJGTHbj11kdVfPqSJHxNx
 export DEATHMARCH_SEED_FILE=deathmarchseed.txt
 export DEATHMARCH_DEEPSEEK_MODEL=deepseek-v4-pro
+export DEATHMARCH_DEEPSEEK_CLASSIFY_MODEL=deepseek-v4-pro
 export DEATHMARCH_DEEPSEEK_BASE_URL=https://api.deepseek.com/chat/completions
 export DEATHMARCH_DEEPSEEK_TIMEOUT_MS=20000
 export DEATHMARCH_DISCORD_TIMEOUT_MS=10000
 export DEATHMARCH_ANONYMITY_LEVEL=3
 export DEATHMARCH_STATE_PATH=.deathmarch-state.json
 ```
+
+`DEATHMARCH_ANONYMITY_LEVEL` is a redaction floor, not a disclosure override.
+The per-event classifier can always choose a lower, more restrictive level.
+The effective level is `min(DEATHMARCH_ANONYMITY_LEVEL, classified level)`.
 
 `DEATHMARCH_DEEPSEEK_MAX_TOKENS` is intentionally unset by default. Set it only
 for a temporary provider-cost cap. If DeepSeek returns an empty content message
@@ -161,7 +166,14 @@ Task: `task_cdd241775a0a65ddae909bae3b771d29`
 tx: 7005B006FDFF2C30F8914BC050A4B3B6C6FC72305F65A1ACD8CE8CB77BBF7C0C
 ```
 
-DeepSeek writes only the plain-English explanation sentence. The harness adds the action heading, optional task title, task id, and exactly one `tx:` line. Generated summaries should not echo internal checklists, acceptance gates, verification rubrics, or color-coded visibility models from the task brief.
+Each event makes two DeepSeek calls before posting: a fast classifier and then
+the summarizer. The classifier returns strict JSON `{level, category}`. The
+summarizer receives only the packet allowed by that effective level. DeepSeek
+writes only the plain-English explanation sentence. The harness adds the action
+heading, optional task title when disclosure allows it, task id, and exactly one
+`tx:` line. Generated summaries should not echo internal checklists, acceptance
+gates, verification rubrics, or color-coded visibility models from the task
+brief.
 
 Submission updates must include the submitted artifact or response detail when it is safe to disclose:
 
@@ -185,7 +197,16 @@ The harness does not post legacy `pf.task.reward_decision.v1` events and does no
 
 ## DeepSeek Failure Behavior
 
-There is no local summary fallback. If DeepSeek API Direct fails or returns an empty response, the harness reports the DeepSeek API error and does not post a Discord message for that event.
+Classifier failure is safe-side. If the classifier API fails, returns non-JSON,
+or returns an invalid level, the event is treated as Level 1 with category
+`confidential task (classification unavailable)`. The raw event content is not
+sent to the summarizer in that case.
+
+There is no local summary fallback for a failed summary call. If the summarizer
+API fails, the harness reports the DeepSeek API error and does not post a
+Discord message for that event. If the summarizer returns an empty content
+message after spending tokens on reasoning, the deterministic event formatter
+still formats the already-sanitized packet.
 
 ## Anonymity Levels
 
@@ -193,17 +214,22 @@ Level 1: trading IP and legal/team/client-confidential work.
 
 - Heavily redacted.
 - Directional category only.
-- Does not pass task title, sector, instrument, ticker, client, investor, team member, evidence text, or named strategy to DeepSeek.
+- Does not pass task title, sector, instrument, ticker, client, investor, team member, evidence text, named strategy, or any other raw event content to the summarizer.
 - Example acceptable output: `User requested a market or trading-related task. tx: ...`
 
 Level 2: business interactions.
 
-- Redacts client, investor, customer, and organization names.
+- The summarizer is instructed to redact client, investor, customer, organization names, and contact details.
 - Can describe the broad action.
 
 Level 3: network tasks and ordinary protocol work.
 
 - Can disclose the task/action details present in the event packet.
+
+The L1/L2/L3 decision is model-authored and per-event. It is intentionally not
+implemented as local keyword or regular-expression matching, because the
+classification boundary must handle paraphrases and adjacent sensitive content
+instead of only known strings.
 
 ## State
 

@@ -7,6 +7,7 @@ import { wordlist } from "@scure/bip39/wordlists/english.js";
 
 import {
   callDeepSeekSummary,
+  classifyEventAnonymity,
   deathmarchEnvWithSeedFile,
   decryptTasknodeUserMnemonicPayload,
   formatDeathmarchDiscordMessage,
@@ -16,6 +17,20 @@ import {
   tasknodePublicKeyFromUserMnemonic,
 } from "./deathmarch.mjs";
 import { encryptTasknodePayload } from "../server/task-payloads.js";
+
+function deepseekResponse(content) {
+  return {
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      choices: [{ message: { content } }],
+    }),
+  };
+}
+
+function deepseekClassifierResponse({ level, category }) {
+  return deepseekResponse(JSON.stringify({ level, category }));
+}
 
 const sensitiveEvent = {
   schema: "pf.task.request.v1",
@@ -34,7 +49,7 @@ const sensitiveEvent = {
   },
 };
 
-const levelOne = sanitizeEventForAnonymity(sensitiveEvent, 1);
+const levelOne = sanitizeEventForAnonymity(sensitiveEvent, 1, { category: "market or trading-related task" });
 const levelOneText = JSON.stringify(levelOne);
 assert.equal(levelOne.directional_category, "market or trading-related task");
 assert.equal(levelOneText.includes("autocorrelation"), false);
@@ -44,8 +59,8 @@ assert.equal(levelOneText.includes("NVDA"), false);
 
 const levelTwo = sanitizeEventForAnonymity(sensitiveEvent, 2);
 const levelTwoText = JSON.stringify(levelTwo);
-assert.equal(levelTwoText.includes("client ACME Capital"), false);
-assert.equal(levelTwoText.includes("[redacted]") || levelTwoText.includes("[redacted organization]"), true);
+assert.equal(levelTwo.public_instruction.includes("Redact client"), true);
+assert.equal(levelTwoText.includes("client ACME Capital"), true);
 
 const requestEvent = {
   schema: "pf.task.request.v1",
@@ -185,6 +200,7 @@ await assert.rejects(
   () => callDeepSeekSummary({
     event: sensitiveEvent,
     anonymity: 3,
+    classification: { level: 3, category: "public protocol work" },
     env: {
       DEEPSEEK_API_KEY: "test",
       DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
@@ -202,6 +218,7 @@ let deepseekRequestBody = null;
 const deterministicFallback = await callDeepSeekSummary({
   event: rewardPaymentEvent,
   anonymity: 3,
+  classification: { level: 3, category: "public protocol work" },
   env: {
     DEEPSEEK_API_KEY: "test",
     DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
@@ -226,6 +243,7 @@ assert.equal(deterministicFallback.includes("Recorded terminal reward outcome: 1
 assert.equal(deterministicFallback.endsWith("tx: B3D7B19EA7E5D9CB7A5BE9E70696D3E6"), true);
 
 const posted = [];
+const deepseekBodies = [];
 const result = await processDeathmarchEvents({
   events: [sensitiveEvent],
   anonymity: 3,
@@ -238,17 +256,11 @@ const result = await processDeathmarchEvents({
   },
   fetchImpl: async (url, options) => {
     if (String(url).includes("deepseek")) {
-      return {
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({
-          choices: [{
-            message: {
-              content: "User requested a Task Node task. tx: ABCDEF1234567890",
-            },
-          }],
-        }),
-      };
+      const body = JSON.parse(options.body);
+      deepseekBodies.push(body);
+      return deepseekBodies.length === 1
+        ? deepseekClassifierResponse({ level: 1, category: "market or trading-related task" })
+        : deepseekResponse("User requested a market or trading-related task. tx: ABCDEF1234567890");
     }
     posted.push(JSON.parse(options.body));
     return { ok: true, status: 204, text: async () => "" };
@@ -256,12 +268,111 @@ const result = await processDeathmarchEvents({
 });
 
 assert.equal(result.posted, 1);
+assert.equal(deepseekBodies.length, 2);
+const l1SummarizerBody = JSON.stringify(deepseekBodies[1]);
+assert.equal(l1SummarizerBody.includes("autocorrelation"), false);
+assert.equal(l1SummarizerBody.includes("tech sector"), false);
+assert.equal(l1SummarizerBody.includes("ACME"), false);
+assert.equal(l1SummarizerBody.includes("NVDA"), false);
+assert.equal(l1SummarizerBody.includes("market or trading-related task"), true);
 assert.equal(posted.length, 1);
 assert.equal(posted[0].content.includes("**Task requested**"), true);
-assert.equal(posted[0].content.includes("User requested a Task Node task."), true);
+assert.equal(posted[0].content.includes("User requested a market or trading-related task."), true);
+assert.equal(posted[0].content.includes("autocorrelation"), false);
+assert.equal(posted[0].content.includes("ACME"), false);
+assert.equal(posted[0].content.includes("NVDA"), false);
 assert.equal((posted[0].content.match(/tx:/g) || []).length, 1);
 assert.equal(posted[0].content.endsWith("tx: ABCDEF1234567890"), true);
 assert.deepEqual(posted[0].allowed_mentions, { parse: [] });
+
+const publicProtocolEvent = {
+  schema: "pf.task.offer.v1",
+  actionKind: "task_offer",
+  taskId: "task_public_protocol",
+  txHash: "PUBLIC1234567890",
+  cid: "QmPublicProtocol",
+  memoIndex: 0,
+  occurredAt: "2026-06-01T00:00:00.000Z",
+  eventKey: "PUBLIC1234567890:0:QmPublicProtocol:pf.task.offer.v1",
+  payload: {
+    schema: "pf.task.offer.v1",
+    task_id: "task_public_protocol",
+    title: "Publish Death March Protocol Notes",
+    description: "Write public Task Node protocol notes for Discord operators.",
+  },
+};
+const publicPosts = [];
+const publicDeepseekBodies = [];
+const publicResult = await processDeathmarchEvents({
+  events: [publicProtocolEvent],
+  anonymity: 3,
+  dryRun: false,
+  noState: true,
+  env: {
+    DEEPSEEK_API_KEY: "test",
+    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
+  },
+  fetchImpl: async (url, options) => {
+    if (String(url).includes("deepseek")) {
+      const body = JSON.parse(options.body);
+      publicDeepseekBodies.push(body);
+      return publicDeepseekBodies.length === 1
+        ? deepseekClassifierResponse({ level: 3, category: "public protocol work" })
+        : deepseekResponse("A public protocol task was proposed.");
+    }
+    publicPosts.push(JSON.parse(options.body));
+    return { ok: true, status: 204, text: async () => "" };
+  },
+});
+assert.equal(publicResult.posted, 1);
+assert.equal(publicDeepseekBodies.length, 2);
+assert.equal(JSON.stringify(publicDeepseekBodies[1]).includes("Publish Death March Protocol Notes"), true);
+assert.equal(publicPosts[0].content.includes("**Publish Death March Protocol Notes**"), true);
+assert.equal(publicPosts[0].content.includes("A public protocol task was proposed."), true);
+
+const failedClassifierPosts = [];
+const failedClassifierBodies = [];
+const failedClassifierResult = await processDeathmarchEvents({
+  events: [sensitiveEvent],
+  anonymity: 3,
+  dryRun: false,
+  noState: true,
+  env: {
+    DEEPSEEK_API_KEY: "test",
+    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+    DEATHMARCH_DISCORD_WEBHOOK_URL: "https://discord.invalid/webhook",
+  },
+  fetchImpl: async (url, options) => {
+    if (String(url).includes("deepseek")) {
+      const body = JSON.parse(options.body);
+      failedClassifierBodies.push(body);
+      return failedClassifierBodies.length === 1
+        ? deepseekResponse("not json")
+        : deepseekResponse("User requested a confidential task. tx: ABCDEF1234567890");
+    }
+    failedClassifierPosts.push(JSON.parse(options.body));
+    return { ok: true, status: 204, text: async () => "" };
+  },
+});
+assert.equal(failedClassifierResult.posted, 1);
+assert.equal(failedClassifierBodies.length, 2);
+const failedClassifierSummaryBody = JSON.stringify(failedClassifierBodies[1]);
+assert.equal(failedClassifierSummaryBody.includes("autocorrelation"), false);
+assert.equal(failedClassifierSummaryBody.includes("ACME"), false);
+assert.equal(failedClassifierSummaryBody.includes("confidential task (classification unavailable)"), true);
+assert.equal(failedClassifierPosts[0].content.includes("autocorrelation"), false);
+assert.equal(failedClassifierPosts[0].content.includes("confidential task"), true);
+
+const classifiedDirect = await classifyEventAnonymity({
+  event: publicProtocolEvent,
+  env: {
+    DEEPSEEK_API_KEY: "test",
+    DEATHMARCH_DEEPSEEK_BASE_URL: "https://deepseek.invalid",
+  },
+  fetchImpl: async () => deepseekClassifierResponse({ level: 3, category: "public protocol work" }),
+});
+assert.deepEqual(classifiedDirect, { level: 3, category: "public protocol work" });
 
 let deepseekCalls = 0;
 const continuedPosts = [];
@@ -278,18 +389,10 @@ const continuedAfterEventFailure = await processDeathmarchEvents({
   fetchImpl: async (url, options) => {
     if (String(url).includes("deepseek")) {
       deepseekCalls += 1;
-      if (deepseekCalls === 1) throw new Error("deepseek_api_timeout");
-      return {
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({
-          choices: [{
-            message: {
-              content: "Reward was recorded. tx: B3D7B19EA7E5D9CB7A5BE9E70696D3E6",
-            },
-          }],
-        }),
-      };
+      if (deepseekCalls === 1) return deepseekClassifierResponse({ level: 1, category: "confidential task" });
+      if (deepseekCalls === 2) throw new Error("deepseek_api_timeout");
+      if (deepseekCalls === 3) return deepseekClassifierResponse({ level: 3, category: "public reward outcome" });
+      return deepseekResponse("Reward was recorded. tx: B3D7B19EA7E5D9CB7A5BE9E70696D3E6");
     }
     continuedPosts.push(JSON.parse(options.body));
     return { ok: true, status: 204, text: async () => "" };
