@@ -45,6 +45,9 @@ Rules carried forward:
     prompts, reward-scoring evidence-verification context, and focused prompt
     smoke coverage. Context only; no reward/lifecycle mutation.
 - [ ] Phase E - Orc UI
-  - Branch: pending
+  - Branch: `feat/bm-phase-e-orc-ui`
   - PR: pending
-  - Status: not started
+  - Status: in progress
+  - Scope: public machine-operator badges, Hive Orc Operations panel,
+    evidence-packet visibility, and runtime heartbeat/error display. UI only
+    plus safe read-model fields; no secrets or private payload plaintext.

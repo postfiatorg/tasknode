@@ -1,5 +1,6 @@
 import { databaseEnabled, query } from "../db/pool.js";
 import { listDiscoverableAccountWalletIdentities } from "../runtime-store.js";
+import { listMachineOperatorDisclosures } from "./capability-profiles.js";
 
 const leaderboardLimit = Math.max(1, Number(process.env.DIRECTORY_LEADERBOARD_LIMIT || 200));
 const leaderboardCacheMs = Math.max(0, Number(process.env.DIRECTORY_LEADERBOARD_CACHE_MS || 30_000));
@@ -241,9 +242,10 @@ async function buildBaseDocument() {
   const identities = listDiscoverableAccountWalletIdentities();
   const identityByAccount = publicIdentityMap(identities);
   const accountIds = Array.from(identityByAccount.keys());
-  const [rows, profileIds] = await Promise.all([
+  const [rows, profileIds, operatorDisclosures] = await Promise.all([
     queryLeaderboardRows(accountIds),
     discoverableMemberProfileIds(accountIds),
+    listMachineOperatorDisclosures({ accountIds }).catch(() => ({})),
   ]);
 
   const operators = rows
@@ -271,6 +273,7 @@ async function buildBaseDocument() {
         alignmentRunDate: dateLabel(row.alignment_run_date),
         heroNft: heroNftFromRow(row),
         hasPublicProfile: profileIds.has(accountId),
+        operatorDisclosure: operatorDisclosures[accountId] || null,
         tasksRewarded: intValue(row.tasks_rewarded),
         score: directoryLeaderboardScore({ alignment, networkTasks, personalTasks, rewards }),
       };

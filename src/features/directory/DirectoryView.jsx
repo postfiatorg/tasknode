@@ -113,6 +113,9 @@ function OperatorIdentity({ operator }) {
           @{operator.handle || "operator"}
           {operator.isYou && <em>You</em>}
         </strong>
+        {operator.operatorDisclosure?.isMachineOperator && (
+          <span className="directory-machine-badge">{operator.operatorDisclosure.label || "Orc operator"}</span>
+        )}
         <small>{compactWallet(operator.wallet)}</small>
       </span>
     </span>
