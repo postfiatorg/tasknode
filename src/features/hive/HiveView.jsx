@@ -965,6 +965,7 @@ function mergeHiveTaskDetail(initialTask = {}, detailBody = null) {
     },
     assignee: assigneeFromDetail(detailTask, initialTask.assignee || null),
     review: detailBody?.review || initialTask.review || null,
+    evaluationPackets: detailBody?.evaluationPackets || initialTask.evaluationPackets || [],
     timeline: detailBody?.timeline || initialTask.timeline || [],
   };
 }
@@ -1043,6 +1044,7 @@ function HiveTaskPopout({ initialTask, onClose }) {
     : {};
   const review = task.review || null;
   const submissions = Array.isArray(review?.submissions) ? review.submissions : [];
+  const evaluationPackets = Array.isArray(task.evaluationPackets) ? task.evaluationPackets : [];
   const verification = review?.verification || {};
   const outcome = review?.outcome || {};
   const timeline = Array.isArray(task.timeline) && task.timeline.length
@@ -1177,6 +1179,30 @@ function HiveTaskPopout({ initialTask, onClose }) {
                     {outcome.reason && <p>{outcome.reason}</p>}
                   </div>
                 )}
+              </div>
+            </section>
+          )}
+
+          {evaluationPackets.length > 0 && (
+            <section className="htp-section">
+              <h3>Evidence evaluation</h3>
+              <div className="htp-review">
+                {evaluationPackets.slice(0, 3).map((packet) => (
+                  <div className="htp-review-row" key={packet.id || `${packet.taskId}-${packet.updatedAt}`}>
+                    <span className="htp-review-tag">{packet.packetStatus || "Packet"}</span>
+                    <p>{packet.summary}</p>
+                    {packet.recommendation && <p><strong>Next.</strong> {packet.recommendation}</p>}
+                    {Array.isArray(packet.artifactVerdicts) && packet.artifactVerdicts.length > 0 && (
+                      <div className="htp-review-artifacts">
+                        {packet.artifactVerdicts.slice(0, 4).map((verdict, index) => (
+                          <code key={`${verdict.status || "verdict"}-${verdict.label || index}`}>
+                            {verdict.status || "unknown"} · {verdict.label || verdict.artifactType || "artifact"}
+                          </code>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </section>
           )}

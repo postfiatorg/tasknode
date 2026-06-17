@@ -2035,6 +2035,22 @@ button.hive-project-next-task:focus-visible {
   font-weight: 600;
 }
 
+.htp-review-artifacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.htp-review-artifacts code {
+  background: rgba(44, 37, 29, 0.04);
+  border: 1px solid var(--hive-border);
+  border-radius: 6px;
+  color: var(--hive-muted);
+  font-size: 10.5px;
+  padding: 3px 6px;
+}
+
 .htp-review-outcome {
   background: var(--hive-green-soft);
   border: 1px solid rgba(91, 138, 85, 0.25);

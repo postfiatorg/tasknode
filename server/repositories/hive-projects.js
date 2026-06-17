@@ -4,6 +4,7 @@ import { publicReducerEvent } from "../task-forensics-format.js";
 import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
 import { discoverableMemberProfileIds } from "./directory-leaderboard.js";
+import { listEvidenceEvaluationPackets } from "./evidence-evaluation-packets.js";
 import { latestHiveProjectPlanningState, projectHasOperatorArchiveLock } from "./hive-project-planning.js";
 import { getCurrentProjectProductDocs } from "./hive-project-product-docs.js";
 
@@ -961,6 +962,26 @@ export const publicHiveTaskDetailFields = [
   "review.outcome.decision",
   "review.outcome.rewardPft",
   "review.outcome.reason",
+  "evaluationPackets[].id",
+  "evaluationPackets[].taskId",
+  "evaluationPackets[].projectId",
+  "evaluationPackets[].packetStatus",
+  "evaluationPackets[].evaluatorId",
+  "evaluationPackets[].summary",
+  "evaluationPackets[].recommendation",
+  "evaluationPackets[].sourceDigest",
+  "evaluationPackets[].counts.verified",
+  "evaluationPackets[].counts.self_attested",
+  "evaluationPackets[].counts.unverified",
+  "evaluationPackets[].artifactVerdicts[].artifactType",
+  "evaluationPackets[].artifactVerdicts[].resolver",
+  "evaluationPackets[].artifactVerdicts[].status",
+  "evaluationPackets[].artifactVerdicts[].label",
+  "evaluationPackets[].artifactVerdicts[].reason",
+  "evaluationPackets[].artifactVerdicts[].cid",
+  "evaluationPackets[].artifactVerdicts[].txHash",
+  "evaluationPackets[].createdAt",
+  "evaluationPackets[].updatedAt",
   "timeline[].action",
   "timeline[].label",
   "timeline[].time",
@@ -1072,6 +1093,12 @@ export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, 
     task,
     timeline,
   }));
+  const evaluationPackets = await listEvidenceEvaluationPackets({
+    taskIds: [normalizedTaskId],
+    limit: 6,
+    queryImpl,
+    databaseReady,
+  }).catch(() => []);
 
   const response = {
     ok: true,
@@ -1081,6 +1108,7 @@ export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, 
       verification,
       outcome,
     },
+    evaluationPackets,
     timeline: publicTimeline.length
       ? publicTimeline
       : [{

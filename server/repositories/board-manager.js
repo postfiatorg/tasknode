@@ -40,6 +40,7 @@ import {
   listCapabilityProfilesForBoardManager,
   normalizeCapabilityType,
 } from "./capability-profiles.js";
+import { listEvidenceEvaluationPacketsForBoardManager } from "./evidence-evaluation-packets.js";
 
 export { formatBoardManagerAgentJob, formatBoardManagerAgentRun } from "./board-manager-run-summary.js";
 
@@ -1043,6 +1044,7 @@ function boardManagerSourceLogSnapshot(packet = {}) {
     operatorStandingPolicy: safeArray(source.operatorStandingPolicy).slice(0, 24),
     generationQualityPolicy: safeObject(source.generationQualityPolicy),
     networkTaskOutputCorpus: safeObject(source.networkTaskOutputCorpus),
+    evidenceEvaluationPackets: safeArray(source.evidenceEvaluationPackets).slice(0, 24),
     priorOutputCorpusSummary: safeObject(source.priorOutputCorpusSummary),
     deduplicationWatchlist: safeArray(source.deduplicationWatchlist).slice(0, 16),
     capabilityInstrumentation: safeObject(source.capabilityInstrumentation),
@@ -1279,6 +1281,7 @@ export async function buildBoardManagerSourcePacket({
 	    taskRequests,
 	    networkTaskContent,
 	    networkTaskOutputCorpus,
+	    evidenceEvaluationPackets,
 	    networkTaskCandidates,
 	    recentRuns,
 	    routingConstraints,
@@ -1294,6 +1297,7 @@ export async function buildBoardManagerSourcePacket({
 	    currentTaskRequests({ limit: 8 }),
 	    getNetworkTaskContentSnapshot({ completedLimit: 5, outstandingLimit: 12, stoppedLimit: 6, pendingLimit: 6 }).catch(() => null),
 	    getNetworkTaskOutputCorpus({ limit: 36 }).catch(() => compactNetworkTaskOutputCorpusForBoardManager([])),
+	    listEvidenceEvaluationPacketsForBoardManager({ limit: 24 }).catch(() => []),
 	    listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
 	    recentBoardManagerRuns({ limit: 20 }),
 	    buildHiveRoutingConstraintsSnapshot({ limit: 120 }).catch(() => ({ ok: false, status: "unavailable", accounts: [] })),
@@ -1361,6 +1365,7 @@ export async function buildBoardManagerSourcePacket({
 	    taskRequests: compactTaskRequestsForBoardManager(taskRequests),
 	    networkTaskContent: compactNetworkTaskContentForBoardManager(networkTaskContent),
 	    networkTaskOutputCorpus,
+	    evidenceEvaluationPackets,
 	    operatorStandingPolicy,
 	    generationQualityPolicy,
 	    priorOutputCorpusSummary: safeObject(networkTaskOutputCorpus?.summary),

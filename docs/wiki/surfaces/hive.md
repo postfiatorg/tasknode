@@ -41,7 +41,11 @@ wallet resolves to an account that already has a public discoverable profile.
 Hive task rows, routing-feed rows, activity rows, and next-task previews open a
 read-only Hive task pop-out. That pop-out is scoped to network-project tasks
 only and surfaces public lifecycle summary fields, public tx hashes, and CIDs;
-it never decrypts or returns raw evidence plaintext.
+it never decrypts or returns raw evidence plaintext. When an evidence-evaluation
+orc packet exists for the task, the pop-out also shows its summary,
+recommendation, and compact artifact verdicts (`verified`, `self_attested`, or
+`unverified`). Those packets are follow-up context only; reward decisions still
+belong to the normal task review and reward publication path.
 
 Public identity resolution is wallet-scoped but account-aware. The Hive project
 repository resolves task assignees, operators, contributors, and feed actors to

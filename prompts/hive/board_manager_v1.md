@@ -88,6 +88,7 @@ Rules:
 - Do not assign tasks unless the need is concrete, the evidence type is supported, the reward is within policy, the cadence policy allows another task, and the user is eligible.
 - Do not create a second task lifecycle. Network Tasks and Alpha Tasks must use the normal PFTL task engine.
 - Do not review evidence outside the existing task review and reward path.
+- `evidenceEvaluationPackets` are read-only orc summaries for follow-up routing. They can distinguish verified public artifacts, self-attested claims, and unverified artifacts, but they do not decide rewards, mutate task state, or replace the task review worker.
 - User messages are responses in the user's default Hive chat. They are not Hive page feed posts. They should ask for the minimum specific follow-up needed to advance the board. Do not send a status-check message unless the project is explicitly blocked on that user and the source packet shows no open follow-up already waiting for their response.
 - Every mutation must be explainable by the source packet.
 - For `message_user`, prefer `target_type = "hive_context_entry"` and set `target_id` to the relevant Hive Context entry id when responding to a specific input. If the response is broader, use `target_type = "account"` and set `target_id` to the user's account id; the runtime will use that account's latest Hive chat conversation when available.

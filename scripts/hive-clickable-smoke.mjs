@@ -96,10 +96,43 @@ function publicPayloadPaths(value, path = "") {
 }
 
 let eventQueryCount = 0;
+let packetQueryCount = 0;
 const networkDetail = await getPublicHiveTaskDetail({
   taskId: "task_hive_clickable_network",
   databaseReady: true,
   queryImpl: async (sql, params) => {
+    if (sql.includes("to_regclass('public.board_manager_evidence_evaluation_packets')")) {
+      return { rows: [{ name: "board_manager_evidence_evaluation_packets" }] };
+    }
+    if (sql.includes("FROM board_manager_evidence_evaluation_packets")) {
+      packetQueryCount += 1;
+      return {
+        rows: [{
+          id: "evalpkt_hive_clickable",
+          task_id: "task_hive_clickable_network",
+          project_id: "project_hive_clickable_smoke",
+          packet_status: "ready",
+          evaluator_id: "evidence_evaluation_orc",
+          summary: "1 verified artifact(s), 0 self-attested claim(s), 0 unverified artifact(s).",
+          recommendation: "Evidence includes independently resolvable public artifacts.",
+          source_digest: "packet_digest",
+          packet_json: {
+            counts: { verified: 1, self_attested: 0, unverified: 0 },
+            artifact_verdicts: [{
+              artifact_type: "github_pr",
+              resolver: "github_pr",
+              status: "verified",
+              label: "postfiatorg/tasknodeofficial#1",
+              reason: "Public GitHub artifact resolved.",
+              event_cid: "bafybeihiveclickablesubmission",
+              event_tx_hash: "ABC123SUBMIT",
+            }],
+          },
+          created_at: "2026-06-15T09:45:00.000Z",
+          updated_at: "2026-06-15T09:46:00.000Z",
+        }],
+      };
+    }
     assert.equal(params[0], "task_hive_clickable_network");
     if (sql.includes("FROM network_project_task_refs")) {
       return {
@@ -199,11 +232,14 @@ const networkDetail = await getPublicHiveTaskDetail({
 
 assert.equal(networkDetail.ok, true);
 assert.equal(eventQueryCount, 1);
+assert.equal(packetQueryCount, 1);
 assert.equal(networkDetail.task.taskId, "task_hive_clickable_network");
 assert.equal(networkDetail.review.submissions[0].summary, "Submitted a concise proof that the read-only Hive pop-out opens.");
 assert.equal(networkDetail.review.verification.request, "Confirm the exact component opened.");
 assert.equal(networkDetail.review.verification.response, "Verification response submitted.");
 assert.equal(networkDetail.review.outcome.reason, "The proof satisfied the public Hive pop-out check.");
+assert.equal(networkDetail.evaluationPackets[0].id, "evalpkt_hive_clickable");
+assert.equal(networkDetail.evaluationPackets[0].artifactVerdicts[0].status, "verified");
 assert.equal(networkDetail.timeline.at(-1).txHash, "ABC123REWARD");
 assert.equal(networkDetail.timeline.at(-1).cid, "bafybeihiveclickablereward");
 assert.deepEqual(

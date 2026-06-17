@@ -31,9 +31,12 @@ Rules carried forward:
     route, Board Manager source-packet read model, task-work-type audit field,
     capability-profile smoke coverage.
 - [ ] Phase C - Evidence Evaluation Orc
-  - Branch: pending
+  - Branch: `feat/bm-phase-c-evidence-orc`
   - PR: pending
-  - Status: not started
+  - Status: implementation in progress
+  - Scope: read-only artifact evaluation packet builder, persistence table,
+    Board Manager/Hive task-detail surfacing, agent read helpers, evidence-orc
+    smoke coverage.
 - [ ] Phase D - Prompt/Taskgen Integration
   - Branch: pending
   - PR: pending

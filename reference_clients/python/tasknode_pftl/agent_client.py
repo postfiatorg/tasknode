@@ -576,6 +576,29 @@ class TaskNodeAgentClient:
     def hive_projects(self) -> dict[str, Any]:
         return self.request("GET", "/api/hive/projects")
 
+    def hive_task_detail(self, task_id: str) -> dict[str, Any]:
+        return self.request("GET", "/api/hive/task-detail", params={"taskId": _safe_text(task_id, 180)})
+
+    def hive_project_tasks(self) -> list[dict[str, Any]]:
+        document = self.hive_projects()
+        projects = ((document.get("document") or {}).get("projects") if isinstance(document, dict) else {}) or {}
+        tasks: list[dict[str, Any]] = []
+        for project_id, project in projects.items():
+            if not isinstance(project, dict):
+                continue
+            project_tasks = project.get("tasks") or []
+            if not isinstance(project_tasks, list):
+                continue
+            for task in project_tasks:
+                if not isinstance(task, dict):
+                    continue
+                tasks.append({
+                    **task,
+                    "projectId": task.get("projectId") or project.get("id") or project_id,
+                    "projectTitle": project.get("title") or project.get("name") or "",
+                })
+        return tasks
+
     def hive_context(self, *, limit: int = 120, agent_logs: str | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {"limit": limit}
         if agent_logs:
