@@ -127,7 +127,7 @@ function IdentityHero({ profile = null, loading = false, profilePublic = true })
               </span>
             )}
             {operatorDisclosure?.isMachineOperator && (
-              <span style={{ border: `1px solid ${C.line}`, borderRadius: 999, color: C.ink2, fontSize: 12, fontWeight: 700, padding: "4px 8px", textTransform: "uppercase" }}>
+              <span style={{ border: `1px solid ${C.ruleSoft}`, borderRadius: 999, color: C.ink2, fontSize: 12, fontWeight: 700, padding: "4px 8px", textTransform: "uppercase" }}>
                 {operatorDisclosure.label || "Orc operator"}
               </span>
             )}

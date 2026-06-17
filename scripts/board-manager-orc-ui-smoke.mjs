@@ -29,6 +29,7 @@ assert.equal(disclosure.isMachineOperator, true);
 assert.equal(disclosure.label, "Orc operator");
 assert.equal(disclosure.kind, "evidence_evaluation_orc");
 assert.equal(disclosure.capabilities[0].evidenceTaskId, "task_orc_capability");
+assert.equal("evidenceRef" in disclosure.capabilities[0], false);
 assert.equal(JSON.stringify(disclosure).includes("walletSeed"), false);
 assert.equal(JSON.stringify(disclosure).includes("mnemonic"), false);
 assert.equal(JSON.stringify(disclosure).includes("tasknode_session"), false);

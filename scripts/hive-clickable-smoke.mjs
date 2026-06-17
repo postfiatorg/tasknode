@@ -82,15 +82,6 @@ const document = hiveProjectsDocumentForTests({
       }],
     },
   },
-  capabilityProfiles: [{
-    account_id: accountId,
-    capability_type: "evidence_evaluation_orc",
-    scope_label: "Task Node Core Product",
-    effective_status: "verified",
-    verified: true,
-    evidence_task_id: "task_capability_orc",
-    verified_at: "2026-06-15T08:00:00.000Z",
-  }],
   evidencePackets: [{
     id: "evalpkt_hive_clickable",
     taskId: "task_hive_clickable_network",
@@ -120,6 +111,9 @@ assert.equal(project.activity[0].operatorDisclosure.isMachineOperator, true);
 assert.equal(project.nextTask.assigneeAccountId, accountId);
 assert.equal(project.nextTask.assigneeHasPublicProfile, true);
 assert.equal(document.orcOperations.machineOperators[0].accountId, accountId);
+assert.equal(document.orcOperations.capabilityProfiles[0].capabilityType, "evidence_evaluation_orc");
+assert.equal(document.orcOperations.capabilityProfiles[0].scopeLabel, "Task Node Core Product");
+assert.equal(JSON.stringify(document.orcOperations.capabilityProfiles).includes("repo_pr_access"), false);
 assert.equal(document.orcOperations.lastEvaluationPacket.id, "evalpkt_hive_clickable");
 assert.equal(document.orcOperations.safety.includes("Seeds"), true);
 assert.equal(JSON.stringify(document.orcOperations).includes("sessionPath"), false);

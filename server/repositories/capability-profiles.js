@@ -54,7 +54,8 @@ function normalizeCapabilityStatus(value = "") {
 function machineOperatorKind(profile = {}) {
   const capabilityType = normalizeCapabilityType(profile.capability_type || profile.capabilityType);
   const metadata = safeObject(profile.metadata_json || profile.metadata);
-  const metadataKind = normalizeCapabilityType(metadata.operator_kind || metadata.operatorKind || metadata.machine_operator_kind || metadata.machineOperatorKind);
+  const rawMetadataKind = normalizeCapabilityType(metadata.operator_kind || metadata.operatorKind || metadata.machine_operator_kind || metadata.machineOperatorKind);
+  const metadataKind = rawMetadataKind === "unspecified_capability" ? "" : rawMetadataKind;
   if (metadata.machine_operator === true || metadata.machineOperator === true || metadata.is_machine_operator === true || metadata.isMachineOperator === true) {
     return metadataKind || capabilityType || "machine_operator";
   }
@@ -126,7 +127,6 @@ export function publicMachineOperatorDisclosureFromProfiles(profiles = []) {
       scopeLabel: profile.scope_label,
       status: profile.effective_status,
       evidenceTaskId: profile.evidence_task_id,
-      evidenceRef: profile.evidence_url_or_ref,
       verifiedAt: profile.verified_at,
       expiresAt: profile.expires_at,
     })),

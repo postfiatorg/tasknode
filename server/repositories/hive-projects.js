@@ -4,7 +4,7 @@ import { publicReducerEvent } from "../task-forensics-format.js";
 import { taskRewardOutcome } from "../task-reward-outcome.js";
 import { currentVerificationRequest } from "../task-verification-view.js";
 import { discoverableMemberProfileIds } from "./directory-leaderboard.js";
-import { listCapabilityProfilesForBoardManager, listMachineOperatorDisclosures } from "./capability-profiles.js";
+import { listMachineOperatorDisclosures } from "./capability-profiles.js";
 import { listEvidenceEvaluationPackets, listEvidenceEvaluationPacketsForBoardManager } from "./evidence-evaluation-packets.js";
 import { latestHiveProjectPlanningState, projectHasOperatorArchiveLock } from "./hive-project-planning.js";
 import { getCurrentProjectProductDocs } from "./hive-project-product-docs.js";
@@ -351,7 +351,6 @@ function operatorMap(projects = {}) {
 
 function buildOrcOperationsSummary({
   operators = {},
-  capabilityProfiles = [],
   evidencePackets = [],
 } = {}) {
   const machineOperators = Object.entries(operators)
@@ -368,17 +367,19 @@ function buildOrcOperationsSummary({
       capabilities: safeArray(operator.operatorDisclosure?.capabilities).slice(0, 6),
     }))
     .slice(0, 12);
-  const capabilitySummary = safeArray(capabilityProfiles)
-    .filter((profile) => profile?.verified || profile?.effective_status === "verified")
-    .slice(0, 16)
-    .map((profile) => ({
-      accountId: safeText(profile.account_id || profile.accountId, 180),
-      capabilityType: safeText(profile.capability_type || profile.capabilityType, 80),
-      scopeLabel: safeText(profile.scope_label || profile.scopeLabel, 180),
-      evidenceTaskId: safeText(profile.evidence_task_id || profile.evidenceTaskId, 180),
-      verifiedAt: toIso(profile.verified_at || profile.verifiedAt),
-      expiresAt: toIso(profile.expires_at || profile.expiresAt),
-    }));
+  const capabilitySummary = machineOperators
+    .flatMap((operator) =>
+      safeArray(operator.capabilities).map((profile) => ({
+        accountId: operator.accountId,
+        capabilityType: safeText(profile.capabilityType, 80),
+        scopeLabel: safeText(profile.scopeLabel, 180),
+        status: safeText(profile.status, 80),
+        evidenceTaskId: safeText(profile.evidenceTaskId, 180),
+        verifiedAt: toIso(profile.verifiedAt),
+        expiresAt: toIso(profile.expiresAt),
+      }))
+    )
+    .slice(0, 16);
   const latestEvaluationPacket = safeArray(evidencePackets)[0] || null;
   return {
     schema: "pf.hive.orc_operations.v1",
@@ -653,7 +654,6 @@ function documentFromRows({
   walletIdentities = [],
   publicProfileIds = new Set(),
   operatorDisclosures = {},
-  capabilityProfiles = [],
   evidencePackets = [],
   includeEmptyActive = false,
 } = {}) {
@@ -711,7 +711,6 @@ function documentFromRows({
   const pftRouted = Object.values(visibleProjects).reduce((sum, project) => sum + numeric(project.pft), 0);
   const orcOperations = buildOrcOperationsSummary({
     operators,
-    capabilityProfiles,
     evidencePackets,
   });
 
@@ -1395,9 +1394,8 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
   );
   const identityAccountIds = Array.from(new Set(walletIdentities.map((identity) => safeText(identity.accountId || identity.account_id, 180)).filter(Boolean)));
   const publicProfileIds = await discoverableMemberProfileIds(identityAccountIds);
-  const [operatorDisclosures, capabilityProfiles, evidencePackets] = await Promise.all([
+  const [operatorDisclosures, evidencePackets] = await Promise.all([
     listMachineOperatorDisclosures({ accountIds: identityAccountIds }).catch(() => ({})),
-    listCapabilityProfilesForBoardManager({ accountIds: identityAccountIds, projectIds: projectsResult.rows.map((row) => row.id), limit: 120 }).catch(() => []),
     listEvidenceEvaluationPacketsForBoardManager({ limit: 12 }).catch(() => []),
   ]);
 
@@ -1413,7 +1411,6 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
     walletIdentities,
     publicProfileIds,
     operatorDisclosures,
-    capabilityProfiles,
     evidencePackets,
     includeEmptyActive,
   });
