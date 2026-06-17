@@ -139,6 +139,7 @@
     "wallet-vault-durability-smoke": "node scripts/wallet-vault-durability-smoke.mjs",
     "wallet-unlocked-session-smoke": "node scripts/wallet-unlocked-session-smoke.mjs",
     "verified-seed-backup-smoke": "node scripts/verified-seed-backup-smoke.mjs",
+    "url-evidence-extraction-smoke": "node scripts/url-evidence-extraction-smoke.mjs",
     "route-smoke": "node scripts/route-smoke.mjs",
     "chat-attachment-smoke": "node scripts/chat-attachment-smoke.mjs",
     "chat-context-status-smoke": "node scripts/chat-context-status-smoke.mjs",
