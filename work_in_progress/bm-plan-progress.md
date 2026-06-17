@@ -39,8 +39,8 @@ Rules carried forward:
     smoke coverage.
 - [ ] Phase D - Prompt/Taskgen Integration
   - Branch: `feat/bm-phase-d-prompt-taskgen`
-  - PR: pending
-  - Status: in progress
+  - PR: #77
+  - Status: ready for review
   - Scope: stronger private-repo capability guidance in Board Manager/taskgen
     prompts, reward-scoring evidence-verification context, and focused prompt
     smoke coverage. Context only; no reward/lifecycle mutation.
