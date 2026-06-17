@@ -40,6 +40,10 @@ import {
   listCapabilityProfilesForBoardManager,
   normalizeCapabilityType,
 } from "./capability-profiles.js";
+import {
+  createEvidenceEvaluationPacketForTask,
+  listEvidenceEvaluationPacketsForBoardManager,
+} from "./evidence-evaluation-packets.js";
 
 export { formatBoardManagerAgentJob, formatBoardManagerAgentRun } from "./board-manager-run-summary.js";
 
@@ -1022,6 +1026,45 @@ export async function getNetworkTaskOutputCorpus({ limit = 36 } = {}) {
   return compactNetworkTaskOutputCorpusForBoardManager(result.rows, { limit: normalizedLimit });
 }
 
+export async function ensureRecentEvidenceEvaluationPackets({
+  corpus = null,
+  limit = 8,
+  fetchUrlExcerptImpl = undefined,
+  queryImpl = undefined,
+} = {}) {
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 8, 1), 20);
+  const candidates = safeArray(corpus?.outputs)
+    .filter((item) => item?.taskId && [
+      "submitted",
+      "verification_requested",
+      "verification_response_submitted",
+      "reward_decided",
+      "rewarded",
+      "paid",
+    ].includes(safeText(item.state, 80).toLowerCase()))
+    .slice(0, normalizedLimit);
+  const results = [];
+  for (const item of candidates) {
+    const result = await createEvidenceEvaluationPacketForTask({
+      taskId: item.taskId,
+      evaluatorId: "evidence_evaluation_orc",
+      ...(fetchUrlExcerptImpl ? { fetchUrlExcerptImpl } : {}),
+      ...(queryImpl ? { queryImpl } : {}),
+      persist: true,
+    }).catch((error) => ({
+      ok: false,
+      taskId: item.taskId,
+      error: safeText(error?.message || error, 500),
+    }));
+    results.push(result);
+  }
+  return {
+    attempted: candidates.length,
+    createdOrUpdated: results.filter((result) => result?.ok).length,
+    results,
+  };
+}
+
 function internalRunFilterSql(includeInternal = false) {
   return includeInternal
     ? ""
@@ -1043,6 +1086,7 @@ function boardManagerSourceLogSnapshot(packet = {}) {
     operatorStandingPolicy: safeArray(source.operatorStandingPolicy).slice(0, 24),
     generationQualityPolicy: safeObject(source.generationQualityPolicy),
     networkTaskOutputCorpus: safeObject(source.networkTaskOutputCorpus),
+    evidenceEvaluationPackets: safeArray(source.evidenceEvaluationPackets).slice(0, 24),
     priorOutputCorpusSummary: safeObject(source.priorOutputCorpusSummary),
     deduplicationWatchlist: safeArray(source.deduplicationWatchlist).slice(0, 16),
     capabilityInstrumentation: safeObject(source.capabilityInstrumentation),
@@ -1304,6 +1348,16 @@ export async function buildBoardManagerSourcePacket({
   ]);
 
   const generatedAt = new Date().toISOString();
+  const evidenceEvaluationRefresh = await ensureRecentEvidenceEvaluationPackets({
+    corpus: networkTaskOutputCorpus,
+    limit: 8,
+  }).catch((error) => ({
+    attempted: 0,
+    createdOrUpdated: 0,
+    error: safeText(error?.message || error, 500),
+  }));
+  const evidenceEvaluationPackets = await listEvidenceEvaluationPacketsForBoardManager({ limit: 24 })
+    .catch(() => []);
   const freshness = {
     hiveSecretaryAgeMs: ageMs(hiveSecretaryState?.report?.completedAt),
     latestProjectGenerationAgeMs: ageMs(projectPlanning?.generation?.completedAt),
@@ -1361,6 +1415,8 @@ export async function buildBoardManagerSourcePacket({
 	    taskRequests: compactTaskRequestsForBoardManager(taskRequests),
 	    networkTaskContent: compactNetworkTaskContentForBoardManager(networkTaskContent),
 	    networkTaskOutputCorpus,
+	    evidenceEvaluationPackets,
+	    evidenceEvaluationRefresh,
 	    operatorStandingPolicy,
 	    generationQualityPolicy,
 	    priorOutputCorpusSummary: safeObject(networkTaskOutputCorpus?.summary),

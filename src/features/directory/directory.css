@@ -303,6 +303,22 @@
   margin-top: 2px;
 }
 
+.directory-machine-badge {
+  border: 0.5px solid rgba(75, 111, 79, 0.34);
+  border-radius: 999px;
+  color: var(--directory-green);
+  display: inline-flex;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .directory-row-stats {
   display: contents;
 }

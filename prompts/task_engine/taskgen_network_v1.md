@@ -92,6 +92,10 @@ Respect `network_task.project_need_summary`, `network_task.routing_reason`, `net
 
 If `network_task.task_work_type` is present, treat it as Board Manager's advisory work-type label. `capability_gating_task` means the assignment should gather proof of a capability before substantive private-repo/channel work is routed; it does not itself prove the capability or authorize private access.
 
+For `code_task`, identify whether the source packet is asking for private-repo work or public artifact work. If the project requires private Task Node repository access and the packet does not include a verified durable capability profile for that exact repo/scope, do not write a task that asks the contributor to change private code. Write a capability-gating assignment or a public-artifact assignment instead: prove repo/PR access, produce a PR-ready patch packet outside the private repo, or deliver a mock/handoff the operator can act on.
+
+If the packet does include verified private-repo capability for the selected contributor, the generated code task must require reviewable engineering evidence such as a PR URL, commit URL, branch diff, failing/passing test output, or before/after screenshots tied to the named code path. Do not accept "I sent it on Discord" or "I can access the repo" as enough evidence for substantive code work.
+
 Write for a contributor who did not see the Board Manager packet. Name the project, surface, document, code path, data state, or artifact to inspect. State what artifact to produce and why it matters to the network.
 
 Convert internal shorthand into plain-English work. Abstract system standards are not task content unless the assignment also names the concrete artifact, source, user-facing problem, and expected output.
@@ -127,6 +131,10 @@ Avoid tasks that:
 - require unsupported evidence. Do not request video, screen recording, audio, live calls, calendar invites, or any evidence surface the app cannot submit.
 
 Research is allowed only when it ends in a contributor-specific action artifact such as an exact patch proposal, PR-ready implementation packet, named Discord/reviewer handoff, project cleanup change, or decision packet that names the person/channel/surface that can act next. A source-backed recommendation, risk register, data-quality note, or decision memo is acceptable only when it is explicitly action-coupled.
+
+## Capability And External-Action Evidence
+
+External action claims must be easy to review. For PRs, commits, mocks, Discord handoffs, collaborator outreach, or published artifacts, ask for a URL, screenshot, file, or concise evidence packet that lets the reviewer classify each claim as verified, self-attested, or unverified. If the only available proof will be self-attestation, scope the task as a handoff/evidence packet rather than treating the external action as complete.
 
 ## Evidence And Scope
 

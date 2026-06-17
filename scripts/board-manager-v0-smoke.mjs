@@ -46,6 +46,7 @@ assert.ok(packet.sourcePacketDigest.length >= 40);
 assert.deepEqual(packet.actionRegistry, boardManagerActions);
 assert.equal(packet.boardActionPressure.schema, "pf.hive.board_action_pressure.v1");
 assert.equal(packet.boardActionPressure.policy.emptyActiveProjectRequiresAction, true);
+assert.deepEqual(packet.evidenceEvaluationPackets, []);
 
 const stalledBoard = buildBoardManagerActionPressure({
   hiveProjects: {

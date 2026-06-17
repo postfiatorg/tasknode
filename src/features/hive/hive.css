@@ -420,6 +420,23 @@ button.hive-project-next-task:focus-visible {
   white-space: nowrap;
 }
 
+.hive-machine-badge {
+  align-self: flex-start;
+  border: 0.5px solid rgba(91, 138, 85, 0.35);
+  border-radius: 999px;
+  color: var(--hive-green);
+  display: inline-flex;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  margin-top: 3px;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hive-profile-go {
   color: var(--hive-muted-2);
   flex: none;
@@ -711,6 +728,145 @@ button.hive-project-next-task:focus-visible {
   color: var(--hive-muted);
   font-size: 12.5px;
   margin: 14px 0 0;
+}
+
+.hive-orc-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.hive-orc-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.hive-orc-header strong {
+  color: var(--hive-ink);
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hive-orc-header small {
+  color: var(--hive-muted);
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.4;
+  margin-top: 3px;
+}
+
+.hive-orc-runtime {
+  align-items: center;
+  border: 0.5px solid rgba(91, 138, 85, 0.26);
+  border-radius: 999px;
+  color: var(--hive-green);
+  display: inline-flex;
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+  padding: 5px 9px;
+}
+
+.hive-orc-runtime.is-failed {
+  border-color: rgba(168, 118, 26, 0.42);
+  color: var(--hive-amber);
+}
+
+.hive-orc-runtime.is-quiet {
+  border-color: var(--hive-border);
+  color: var(--hive-muted);
+}
+
+.hive-orc-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hive-orc-card {
+  border-top: 0.5px solid var(--hive-border);
+  padding-top: 11px;
+}
+
+.hive-orc-card h3 {
+  color: var(--hive-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.hive-orc-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.hive-orc-card dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.hive-orc-card dt,
+.hive-orc-packet span {
+  color: var(--hive-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.hive-orc-card dd {
+  color: var(--hive-ink-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.hive-orc-list {
+  display: grid;
+  gap: 7px;
+}
+
+.hive-orc-list article {
+  display: grid;
+  gap: 3px;
+}
+
+.hive-orc-list strong {
+  color: var(--hive-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.hive-orc-list small,
+.hive-orc-list span,
+.hive-orc-packet p {
+  color: var(--hive-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.hive-orc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hive-orc-chips code {
+  background: #fbfaf6;
+  border: 0.5px solid var(--hive-border);
+  border-radius: 999px;
+  color: var(--hive-ink-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.8px;
+  padding: 4px 7px;
+}
+
+.hive-orc-packet {
+  display: grid;
+  gap: 7px;
 }
 
 .hive-context-raw {
@@ -2035,6 +2191,22 @@ button.hive-project-next-task:focus-visible {
   font-weight: 600;
 }
 
+.htp-review-artifacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.htp-review-artifacts code {
+  background: rgba(44, 37, 29, 0.04);
+  border: 1px solid var(--hive-border);
+  border-radius: 6px;
+  color: var(--hive-muted);
+  font-size: 10.5px;
+  padding: 3px 6px;
+}
+
 .htp-review-outcome {
   background: var(--hive-green-soft);
   border: 1px solid rgba(91, 138, 85, 0.25);
@@ -2167,7 +2339,8 @@ button.hive-project-next-task:focus-visible {
   }
 
   .hive-project-grid,
-  .hive-contributor-grid {
+  .hive-contributor-grid,
+  .hive-orc-grid {
     grid-template-columns: 1fr;
   }
 

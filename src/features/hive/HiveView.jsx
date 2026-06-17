@@ -190,6 +190,14 @@ function HiveIndex({ onOpenTask, onSelectProject, projectDocument, projectStatus
         </div>
       </Section>
 
+      <Section title="Orc Operations" subtitle="Machine operators, evidence packets, and runtime health">
+        <OrcOperationsPanel
+          boardManager={boardManager}
+          operations={projectDocument?.orcOperations || null}
+          status={projectStatus}
+        />
+      </Section>
+
       <Section title="Hive Context" subtitle="User-submitted network context, grouped by contributor">
         <HiveContextPanel
           context={hiveContext}
@@ -584,6 +592,15 @@ function operatorDisplayName(operator = {}, wallet = "") {
   return operator.codename || operator.displayName || operator.publicDisplayName || (handle ? `@${handle}` : "") || compactWallet(wallet);
 }
 
+function MachineOperatorBadge({ className = "", disclosure = null }) {
+  if (!disclosure?.isMachineOperator) return null;
+  return (
+    <span className={`hive-machine-badge ${className}`}>
+      {disclosure.label || "Orc operator"}
+    </span>
+  );
+}
+
 function HiveProfileIdentity({
   children = null,
   className = "",
@@ -615,6 +632,7 @@ function HiveProfileIdentity({
       <span className={`hive-profile-copy ${copyClassName}`}>
         <strong>{label}</strong>
         {secondary && label !== secondary && <small>{secondary}</small>}
+        <MachineOperatorBadge disclosure={operator.operatorDisclosure} />
         {children}
       </span>
       {canLink && <ArrowUpRight className="hive-profile-go" size={13} strokeWidth={1.8} />}
@@ -634,6 +652,7 @@ function assigneeForTask(task = {}, operators = {}) {
         hasPublicProfile: Boolean(task.assigneeHasPublicProfile || operator.hasPublicProfile || task.hasPublicProfile),
         badge: operator.badge || task.badge || 0,
         nft: task.assigneeNft || operator.nft || null,
+        operatorDisclosure: task.assigneeOperatorDisclosure || operator.operatorDisclosure || task.operatorDisclosure || null,
       }
     : null;
 }
@@ -847,6 +866,7 @@ function ActivityRow({ entry, last = false, onOpenTask, operators = {}, project 
     codename: entry.displayName || operator.codename || compactWallet(entry.wallet),
     handle: entry.hiveHandle || operator.hiveHandle || "",
     hasPublicProfile: Boolean(entry.hasPublicProfile || operator.hasPublicProfile),
+    operatorDisclosure: entry.operatorDisclosure || operator.operatorDisclosure || null,
     nft: entry.nft || operator.nft || null,
   };
   const seed = hiveTaskSeed(entry, { operators, project });
@@ -937,6 +957,7 @@ function assigneeFromDetail(detailTask = {}, fallbackAssignee = null) {
     codename: detailTask.assigneeDisplayName || fallbackAssignee?.codename || compactWallet(wallet),
     handle: detailTask.assigneeHandle || fallbackAssignee?.handle || "",
     hasPublicProfile: Boolean(detailTask.assigneeHasPublicProfile || fallbackAssignee?.hasPublicProfile),
+    operatorDisclosure: detailTask.assigneeOperatorDisclosure || fallbackAssignee?.operatorDisclosure || null,
     badge: fallbackAssignee?.badge || 0,
     nft: detailNft || fallbackAssignee?.nft || null,
   };
@@ -965,6 +986,7 @@ function mergeHiveTaskDetail(initialTask = {}, detailBody = null) {
     },
     assignee: assigneeFromDetail(detailTask, initialTask.assignee || null),
     review: detailBody?.review || initialTask.review || null,
+    evaluationPackets: detailBody?.evaluationPackets || initialTask.evaluationPackets || [],
     timeline: detailBody?.timeline || initialTask.timeline || [],
   };
 }
@@ -1043,6 +1065,7 @@ function HiveTaskPopout({ initialTask, onClose }) {
     : {};
   const review = task.review || null;
   const submissions = Array.isArray(review?.submissions) ? review.submissions : [];
+  const evaluationPackets = Array.isArray(task.evaluationPackets) ? task.evaluationPackets : [];
   const verification = review?.verification || {};
   const outcome = review?.outcome || {};
   const timeline = Array.isArray(task.timeline) && task.timeline.length
@@ -1133,6 +1156,7 @@ function HiveTaskPopout({ initialTask, onClose }) {
                 <span className="htp-operator-copy">
                   <strong>{assignee.codename || compactWallet(assignee.wallet)}</strong>
                   <small>{assignee.handle ? `@${assignee.handle} · ` : ""}{compactWallet(assignee.wallet)}</small>
+                  <MachineOperatorBadge disclosure={assignee.operatorDisclosure} />
                 </span>
                 {canLinkAssignee && <ArrowUpRight className="htp-operator-go" size={15} strokeWidth={1.8} />}
               </OperatorTag>
@@ -1177,6 +1201,30 @@ function HiveTaskPopout({ initialTask, onClose }) {
                     {outcome.reason && <p>{outcome.reason}</p>}
                   </div>
                 )}
+              </div>
+            </section>
+          )}
+
+          {evaluationPackets.length > 0 && (
+            <section className="htp-section">
+              <h3>Evidence evaluation</h3>
+              <div className="htp-review">
+                {evaluationPackets.slice(0, 3).map((packet) => (
+                  <div className="htp-review-row" key={packet.id || `${packet.taskId}-${packet.updatedAt}`}>
+                    <span className="htp-review-tag">{packet.packetStatus || "Packet"}</span>
+                    <p>{packet.summary}</p>
+                    {packet.recommendation && <p><strong>Next.</strong> {packet.recommendation}</p>}
+                    {Array.isArray(packet.artifactVerdicts) && packet.artifactVerdicts.length > 0 && (
+                      <div className="htp-review-artifacts">
+                        {packet.artifactVerdicts.slice(0, 4).map((verdict, index) => (
+                          <code key={`${verdict.status || "verdict"}-${verdict.label || index}`}>
+                            {verdict.status || "unknown"} · {verdict.label || verdict.artifactType || "artifact"}
+                          </code>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </section>
           )}
@@ -1369,6 +1417,133 @@ function HiveContextInputs({
         </section>
       )}
     </>
+  );
+}
+
+function boardManagerRuntime(boardManager = null) {
+  const feed = Array.isArray(boardManager?.feed) ? boardManager.feed : [];
+  const entry = feed[0] || null;
+  if (!entry) {
+    return {
+      state: "quiet",
+      label: "No heartbeat",
+      lastHeartbeat: "",
+      currentTask: "",
+      lastAction: "",
+      lastError: "",
+    };
+  }
+  const failed = entry.state === "failed" || Boolean(entry.error);
+  const resultError = Array.isArray(entry.actionResults)
+    ? entry.actionResults.find((result) => result?.error)?.error || ""
+    : "";
+  return {
+    state: failed ? "failed" : entry.state || "recorded",
+    label: failed ? "Needs attention" : "Running",
+    lastHeartbeat: entry.completedAt || entry.startedAt || "",
+    currentTask: [entry.action || entry.label, entry.targetId].filter(Boolean).join(" · "),
+    lastAction: entry.summary || entry.reason || entry.microSummaryText || "",
+    lastError: entry.error || resultError || (failed ? entry.reason || "" : ""),
+  };
+}
+
+function OrcOperationsPanel({ boardManager = null, operations = null, status = "loading" }) {
+  const runtime = boardManagerRuntime(boardManager);
+  const machineOperators = Array.isArray(operations?.machineOperators) ? operations.machineOperators : [];
+  const capabilityProfiles = Array.isArray(operations?.capabilityProfiles) ? operations.capabilityProfiles : [];
+  const packet = operations?.lastEvaluationPacket || null;
+  const loading = status === "loading" && !operations;
+  return (
+    <div className="hive-card hive-orc-panel">
+      <header className="hive-orc-header">
+        <span>
+          <strong>Orc Operations</strong>
+          <small>{loading ? "Loading operations state" : operations?.safety || "No secrets or private payload plaintext are exposed."}</small>
+        </span>
+        <span className={`hive-orc-runtime is-${runtime.state}`}>
+          <Activity size={13} strokeWidth={1.8} />
+          {runtime.label}
+        </span>
+      </header>
+
+      <div className="hive-orc-grid">
+        <section className="hive-orc-card">
+          <h3>Runtime</h3>
+          <dl>
+            <div>
+              <dt>Last heartbeat</dt>
+              <dd>{runtime.lastHeartbeat ? formatContextTime(runtime.lastHeartbeat) : "Not recorded"}</dd>
+            </div>
+            <div>
+              <dt>Current/last action</dt>
+              <dd>{runtime.currentTask || "No current action"}</dd>
+            </div>
+            <div>
+              <dt>Last result</dt>
+              <dd>{runtime.lastAction || "No recent result"}</dd>
+            </div>
+            {runtime.lastError && (
+              <div>
+                <dt>Last error</dt>
+                <dd>{runtime.lastError}</dd>
+              </div>
+            )}
+          </dl>
+        </section>
+
+        <section className="hive-orc-card">
+          <h3>Machine operators</h3>
+          {machineOperators.length ? (
+            <div className="hive-orc-list">
+              {machineOperators.map((operator) => (
+                <article key={operator.accountId || operator.wallet || operator.kind}>
+                  <strong>{operator.displayName || operator.handle || compactWallet(operator.wallet)}</strong>
+                  <small>{operator.label || "Orc operator"} · {operator.kind || "machine_operator"}</small>
+                  <span>{operator.currentTaskCount || 0} active task{operator.currentTaskCount === 1 ? "" : "s"}</span>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="hive-context-empty">No public/discoverable machine operators are marked yet.</p>
+          )}
+        </section>
+
+        <section className="hive-orc-card">
+          <h3>Capability profile</h3>
+          {capabilityProfiles.length ? (
+            <div className="hive-orc-chips">
+              {capabilityProfiles.slice(0, 8).map((profile) => (
+                <code key={`${profile.accountId}-${profile.capabilityType}-${profile.scopeLabel}`}>
+                  {profile.capabilityType} · {profile.scopeLabel || "global"}
+                </code>
+              ))}
+            </div>
+          ) : (
+            <p className="hive-context-empty">No verified machine capability profiles are surfaced in this view.</p>
+          )}
+        </section>
+
+        <section className="hive-orc-card">
+          <h3>Last evaluation packet</h3>
+          {packet ? (
+            <div className="hive-orc-packet">
+              <span>{packet.packetStatus || "packet"} · {packet.evaluatorId || "evidence orc"}</span>
+              <p>{packet.summary}</p>
+              {packet.recommendation && <p><strong>Next.</strong> {packet.recommendation}</p>}
+              <div className="hive-orc-chips">
+                {Array.isArray(packet.artifactVerdicts) && packet.artifactVerdicts.slice(0, 4).map((verdict, index) => (
+                  <code key={`${verdict.status || "verdict"}-${verdict.label || index}`}>
+                    {verdict.status || "unknown"} · {verdict.label || verdict.artifactType || "artifact"}
+                  </code>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="hive-context-empty">No evidence evaluation packet has been surfaced yet.</p>
+          )}
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -1758,7 +1933,7 @@ function projectTypeLabel(value = "") {
 }
 
 function operatorForWallet(wallet, operators = {}) {
-  return operators[wallet] || { codename: compactWallet(wallet), archetype: "", badge: 0, allotted: false, cap: 0, load: 0, status: "quiet", nft: null };
+  return operators[wallet] || { codename: compactWallet(wallet), archetype: "", badge: 0, allotted: false, cap: 0, load: 0, status: "quiet", nft: null, operatorDisclosure: null };
 }
 
 export function compactWallet(wallet = "") {

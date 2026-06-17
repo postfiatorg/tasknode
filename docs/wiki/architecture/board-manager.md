@@ -121,6 +121,33 @@ is persisted into Network Task generation source metadata and the encrypted
 request bundle as audit context. It is not part of semantic idempotency and does
 not approve, reject, or suppress any task in code.
 
+## Evidence Evaluation Packets
+
+Phase C adds read-only evidence-evaluation packets for Network Tasks. Packets
+live in `board_manager_evidence_evaluation_packets`
+(`server/db/migrations/059_board_manager_evidence_evaluation_packets.sql`) and
+are produced by repository helpers in
+`server/repositories/evidence-evaluation-packets.js`.
+
+The packet builder reads public Network Task lifecycle evidence, resolves
+artifacts, and writes a concise packet with:
+
+- packet id, task id, project id, evaluator id, status, summary, and
+  recommendation;
+- artifact verdicts for public GitHub PR/commit URLs, safe URLs/gists, Discord
+  message links, and text claims;
+- counts of verified, self-attested, and unverified artifacts.
+
+The resolver reuses `fetchUrlExcerpt` from `server/task-review-worker.js` for
+safe URL/gist fetching. Discord links remain self-attested unless a reviewed bot
+credential and channel policy is added later. Packets store digests and concise
+summaries, not raw private evidence plaintext.
+
+`buildBoardManagerSourcePacket` includes recent `evidenceEvaluationPackets` so
+Board Manager can route follow-up work using packet ids and recommendations.
+This is advisory context only. Evidence packets do not mutate task lifecycle,
+capacity, reward scoring, PFTL pointers, custody, or payment state.
+
 ## JSON Handling Hardening
 
 The Board Manager decision provider parses strict JSON, retries once with a

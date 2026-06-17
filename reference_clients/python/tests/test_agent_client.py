@@ -214,6 +214,45 @@ class AgentClientTests(unittest.TestCase):
         self.assertEqual(body["networkTasks"]["status"], "profile_required")
         self.assertEqual([call["path"] for call in http.calls], ["/api/auth/wallet/start", "/api/auth/wallet/verify", "/api/tasks"])
 
+    def test_hive_project_tasks_and_task_detail_are_read_only(self):
+        self.write_session_store()
+        http = FakeSession([
+            FakeResponse(200, {
+                "ok": True,
+                "document": {
+                    "projects": {
+                        "project_one": {
+                            "id": "project_one",
+                            "title": "Project One",
+                            "tasks": [
+                                {"taskId": "task_one", "title": "Read task one"},
+                                {"taskId": "task_two", "title": "Read task two", "projectId": "explicit_project"},
+                            ],
+                        }
+                    }
+                },
+            }),
+            FakeResponse(200, {
+                "ok": True,
+                "task": {"taskId": "task_one"},
+                "evaluationPackets": [{"id": "evalpkt_one"}],
+            }),
+        ])
+        client = self.client(http=http)
+
+        tasks = client.hive_project_tasks()
+        detail = client.hive_task_detail("task_one")
+
+        self.assertEqual(tasks[0]["projectId"], "project_one")
+        self.assertEqual(tasks[0]["projectTitle"], "Project One")
+        self.assertEqual(tasks[1]["projectId"], "explicit_project")
+        self.assertEqual(detail["evaluationPackets"][0]["id"], "evalpkt_one")
+        self.assertEqual(
+            [(call["method"], call["path"]) for call in http.calls],
+            [("GET", "/api/hive/projects"), ("GET", "/api/hive/task-detail")],
+        )
+        self.assertEqual(http.calls[1]["params"], {"taskId": "task_one"})
+
     def test_request_reauthenticates_once_on_expired_session(self):
         challenge = {"id": "ch_1", "message": "login one"}
         challenge_two = {"id": "ch_2", "message": "login two"}
