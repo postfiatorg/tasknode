@@ -35,6 +35,15 @@ import {
   compactTaskRequestsForBoardManager,
   compactTaskStateForBoardManager,
 } from "./board-manager-source-compact.js";
+import {
+  capabilityScopeDigest,
+  listCapabilityProfilesForBoardManager,
+  normalizeCapabilityType,
+} from "./capability-profiles.js";
+import {
+  createEvidenceEvaluationPacketForTask,
+  listEvidenceEvaluationPacketsForBoardManager,
+} from "./evidence-evaluation-packets.js";
 
 export { formatBoardManagerAgentJob, formatBoardManagerAgentRun } from "./board-manager-run-summary.js";
 
@@ -99,6 +108,7 @@ const emptyBoardManagerPayload = Object.freeze({
     sort_order: 0,
   },
   network_task: {
+    task_work_type: "",
     task_class: "",
     candidate_account_id: "",
     candidate_wallet_address: "",
@@ -247,6 +257,7 @@ function normalizePayload(payload = {}) {
       sort_order: Math.max(0, Math.round(Number(contributor.sort_order ?? contributor.sortOrder ?? 0) || 0)),
     },
     network_task: {
+      task_work_type: safeText(networkTask.task_work_type || networkTask.taskWorkType, 80),
       task_class: safeText(networkTask.task_class || networkTask.taskClass, 40),
       candidate_account_id: safeText(networkTask.candidate_account_id || networkTask.candidateAccountId, 180),
       candidate_wallet_address: safeText(networkTask.candidate_wallet_address || networkTask.candidateWalletAddress, 120),
@@ -536,6 +547,240 @@ export function buildHiveGenerationQualityPolicy({ operatorConstraintsSummary = 
   };
 }
 
+export const boardManagerTaskWorkTypeVocabulary = Object.freeze([
+  {
+    id: "code_task",
+    label: "Code task",
+    definition: "Requires changing, reviewing, or proving access to code, pull requests, commits, deployment artifacts, or repository state.",
+    evidence_standard: "Needs a resolvable PR/commit/build artifact or an approved capability proof before private-repo work is sensible.",
+  },
+  {
+    id: "documentation_task",
+    label: "Documentation task",
+    definition: "Produces a report, memo, friction list, map, audit note, or recommendation without requiring the contributor to take an external action.",
+    evidence_standard: "Low-value unless explicitly coupled to a concrete action/output and prior-output lineage.",
+  },
+  {
+    id: "capability_gating_task",
+    label: "Capability-gating task",
+    definition: "Asks the contributor to prove they can access or deliver on a surface before routing the substantive work.",
+    evidence_standard: "Needs a capability proof artifact such as an accessible PR URL, integration-backed access check, or operator-reviewed attestation.",
+  },
+  {
+    id: "evidence_evaluation_packet",
+    label: "Evidence-evaluation packet",
+    definition: "A concise review packet that classifies submitted evidence as verified, unverifiable, or self-attested and recommends the next board action.",
+    evidence_standard: "Advisory context only; never a reward verdict or hidden task lifecycle mutation.",
+  },
+]);
+
+function normalizeCapabilityRequirement(value = {}, { projectId = "" } = {}) {
+  const input = typeof value === "string" ? { capability_type: value } : safeObject(value);
+  const capabilityType = normalizeCapabilityType(
+    input.capability_type || input.capabilityType || input.type || input.id || input.capability || "unspecified_capability"
+  );
+  const rawScope = safeText(
+    input.scope || input.scope_ref || input.scopeRef || input.repository || input.repo || input.channel || "",
+    500
+  );
+  const scopeLabel = safeText(
+    input.scope_label || input.scopeLabel || input.surface_label || input.surfaceLabel || input.label || capabilityType,
+    180
+  );
+  const visibility = safeText(input.visibility || input.exposure || "internal", 80).toLowerCase();
+  return {
+    requirement_id: safeText(input.requirement_id || input.requirementId || `${projectId || "project"}:${capabilityType}`, 240),
+    project_id: safeText(projectId, 180),
+    capability_type: capabilityType,
+    scope_label: scopeLabel || capabilityType,
+    scope_digest: capabilityScopeDigest(rawScope || scopeLabel || capabilityType),
+    visibility: ["public", "internal", "private"].includes(visibility) ? visibility : "internal",
+    status: "required",
+    proof_task_type: "capability_gating_task",
+    public_exposure: "do_not_expose_private_membership",
+  };
+}
+
+function capabilityRequirementsFromProject(project = {}) {
+  const metadata = safeObject(project.metadata || project.metadata_json);
+  const routing = safeObject(metadata.routing_constraints || metadata.routingConstraints);
+  const rawRequirements = [
+    ...safeArray(metadata.required_capabilities),
+    ...safeArray(metadata.requiredCapabilities),
+    ...safeArray(metadata.capability_requirements),
+    ...safeArray(metadata.capabilityRequirements),
+    ...safeArray(routing.required_capabilities),
+    ...safeArray(routing.requiredCapabilities),
+  ];
+  const seen = new Set();
+  return rawRequirements
+    .map((item) => normalizeCapabilityRequirement(item, { projectId: project.id }))
+    .filter((item) => {
+      const key = `${item.project_id}:${item.capability_type}:${item.scope_digest}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return item.capability_type;
+    })
+    .slice(0, 8);
+}
+
+function normalizeCandidateCapabilityEvidence(value = {}, { source = "candidate_profile" } = {}) {
+  const input = typeof value === "string" ? { capability_type: value } : safeObject(value);
+  const rawType = input.capability_type || input.capabilityType || input.type || input.id || input.capability || "";
+  if (!safeText(rawType, 120)) return null;
+  const capabilityType = normalizeCapabilityType(rawType);
+  const rawScope = safeText(
+    input.scope || input.scope_ref || input.scopeRef || input.repository || input.repo || input.channel || "",
+    500
+  );
+  return {
+    capability_type: capabilityType,
+    scope_label: safeText(input.scope_label || input.scopeLabel || input.surface_label || input.surfaceLabel || input.label || capabilityType, 180),
+    scope_digest: capabilityScopeDigest(rawScope || input.scope_label || input.scopeLabel || capabilityType),
+    project_id: safeText(input.project_id || input.projectId, 180),
+    status: safeText(input.status || source, 80).toLowerCase(),
+    evidence_task_id: safeText(input.evidence_task_id || input.evidenceTaskId || input.task_id || input.taskId, 180),
+    source,
+  };
+}
+
+function candidateCapabilityEvidence(candidate = {}) {
+  const profileOutput = safeObject(candidate.profileOutput || candidate.profile_output || candidate.output_json);
+  const capabilityBlock = safeObject(profileOutput.capabilities || profileOutput.capability_profile || profileOutput.capabilityProfile);
+  const profileClaimRaw = [
+    ...safeArray(profileOutput.verified_capabilities),
+    ...safeArray(profileOutput.verifiedCapabilities),
+    ...safeArray(capabilityBlock.verified),
+    ...safeArray(capabilityBlock.verified_capabilities),
+    ...safeArray(capabilityBlock.verifiedCapabilities),
+  ];
+  const declaredRaw = [
+    ...safeArray(profileOutput.declared_capabilities),
+    ...safeArray(profileOutput.declaredCapabilities),
+    ...safeArray(capabilityBlock.declared),
+    ...safeArray(capabilityBlock.declared_capabilities),
+    ...safeArray(capabilityBlock.declaredCapabilities),
+    ...safeArray(capabilityBlock.items),
+  ];
+  const declared = [...profileClaimRaw, ...declaredRaw]
+    .map((item) => normalizeCandidateCapabilityEvidence(item, { source: "declared_profile_capability" }))
+    .filter(Boolean)
+    .slice(0, 12);
+  return { declared };
+}
+
+function normalizeDurableCapability(profile = {}) {
+  return {
+    capability_type: normalizeCapabilityType(profile.capability_type || profile.capabilityType),
+    scope_label: safeText(profile.scope_label || profile.scopeLabel, 180),
+    scope_digest: safeText(profile.scope_digest || profile.scopeDigest, 80),
+    project_id: safeText(profile.project_id || profile.projectId, 180),
+    status: safeText(profile.effective_status || profile.status, 80).toLowerCase(),
+    evidence_task_id: safeText(profile.evidence_task_id || profile.evidenceTaskId, 180),
+    evidence_url_or_ref: safeText(profile.evidence_url_or_ref || profile.evidenceUrlOrRef, 500),
+    verified_by: safeText(profile.verified_by || profile.verifiedBy, 180),
+    verified_at: profile.verified_at || profile.verifiedAt || null,
+    expires_at: profile.expires_at || profile.expiresAt || null,
+    source: "board_manager_capability_profile",
+  };
+}
+
+function candidateSatisfiesRequirement(candidate = {}, requirement = {}) {
+  return safeArray(candidate.verified_capabilities).some((capability) => {
+    if (capability.capability_type !== requirement.capability_type) return false;
+    if (capability.project_id && requirement.project_id && capability.project_id !== requirement.project_id) return false;
+    if (!requirement.scope_digest) return true;
+    return capability.scope_digest === requirement.scope_digest;
+  });
+}
+
+export function buildBoardManagerCapabilityInstrumentation({
+  projectRegistry = [],
+  networkTaskCandidates = [],
+  capabilityProfiles = [],
+} = {}) {
+  const projects = safeArray(projectRegistry).slice(0, 24);
+  const durableProfilesByAccount = new Map();
+  for (const profile of safeArray(capabilityProfiles)) {
+    const normalized = normalizeDurableCapability(profile);
+    const accountId = safeText(profile.account_id || profile.accountId, 180);
+    if (!accountId) continue;
+    const list = durableProfilesByAccount.get(accountId) || [];
+    list.push(normalized);
+    durableProfilesByAccount.set(accountId, list);
+  }
+  const candidates = safeArray(networkTaskCandidates).slice(0, 20).map((candidate) => {
+    const evidence = candidateCapabilityEvidence(candidate);
+    const accountId = safeText(candidate.accountId || candidate.account_id, 180);
+    const durableCapabilities = safeArray(durableProfilesByAccount.get(accountId));
+    const verifiedCapabilities = durableCapabilities
+      .filter((item) => item.status === "verified")
+      .slice(0, 20);
+    const otherProfiles = durableCapabilities
+      .filter((item) => item.status !== "verified")
+      .slice(0, 12);
+    return {
+      account_id: accountId,
+      wallet_address: safeText(candidate.walletAddress || candidate.wallet_address, 120),
+      profile_id: safeText(candidate.profileId || candidate.profile_id, 180),
+      verified_capabilities: verifiedCapabilities,
+      declared_capabilities: evidence.declared,
+      non_verified_capability_profiles: otherProfiles,
+      capability_source: verifiedCapabilities.length
+        ? "board_manager_capability_profiles"
+        : evidence.declared.length
+          ? "network_task_profile_output_declared_only"
+          : "none_recorded",
+    };
+  });
+  const projectCapabilityRequirements = projects
+    .flatMap((project) => capabilityRequirementsFromProject(project))
+    .slice(0, 40);
+  const capabilityGaps = [];
+  for (const requirement of projectCapabilityRequirements) {
+    for (const candidate of candidates) {
+      if (!candidate.account_id && !candidate.wallet_address) continue;
+      if (candidateSatisfiesRequirement(candidate, requirement)) continue;
+      capabilityGaps.push({
+        project_id: requirement.project_id,
+        candidate_account_id: candidate.account_id,
+        candidate_wallet_address: candidate.wallet_address,
+        capability_type: requirement.capability_type,
+        scope_label: requirement.scope_label,
+        scope_digest: requirement.scope_digest,
+        candidate_status: "missing_verified_capability",
+        recommended_task_work_type: "capability_gating_task",
+        privacy_note: "Do not expose private repo/channel membership; route proof-gathering work or ask the operator for verification.",
+      });
+      if (capabilityGaps.length >= 48) break;
+    }
+    if (capabilityGaps.length >= 48) break;
+  }
+  return {
+    schema: "pf.hive.board_manager.capability_instrumentation.v1",
+    status: "phase_b_capability_profiles_context_only",
+    task_work_type_vocabulary: boardManagerTaskWorkTypeVocabulary,
+    capability_profile_status: "persistent_capability_profiles_enabled_context_only",
+    project_capability_requirements: projectCapabilityRequirements,
+    candidate_capabilities: candidates,
+    capability_gaps: capabilityGaps,
+    summary: {
+      requirement_count: projectCapabilityRequirements.length,
+      candidate_count: candidates.length,
+      verified_capability_count: candidates.reduce((count, candidate) => count + candidate.verified_capabilities.length, 0),
+      gap_count: capabilityGaps.length,
+      has_private_scope_requirements: projectCapabilityRequirements.some((item) => item.visibility === "private"),
+    },
+    open_questions_reserved_for_alex: [
+      "which repos count as private code surfaces",
+      "who can mark a capability verified",
+      "whether capability-gating tasks are paid",
+      "which Discord channels can be system-verified",
+    ],
+    enforcement: "none_context_only",
+  };
+}
+
 function contextEntries(document = {}) {
   return safeArray(document.groups).flatMap((group) =>
     safeArray(group.entries).map((entry) => ({
@@ -781,6 +1026,45 @@ export async function getNetworkTaskOutputCorpus({ limit = 36 } = {}) {
   return compactNetworkTaskOutputCorpusForBoardManager(result.rows, { limit: normalizedLimit });
 }
 
+export async function ensureRecentEvidenceEvaluationPackets({
+  corpus = null,
+  limit = 8,
+  fetchUrlExcerptImpl = undefined,
+  queryImpl = undefined,
+} = {}) {
+  const normalizedLimit = Math.min(Math.max(Number(limit) || 8, 1), 20);
+  const candidates = safeArray(corpus?.outputs)
+    .filter((item) => item?.taskId && [
+      "submitted",
+      "verification_requested",
+      "verification_response_submitted",
+      "reward_decided",
+      "rewarded",
+      "paid",
+    ].includes(safeText(item.state, 80).toLowerCase()))
+    .slice(0, normalizedLimit);
+  const results = [];
+  for (const item of candidates) {
+    const result = await createEvidenceEvaluationPacketForTask({
+      taskId: item.taskId,
+      evaluatorId: "evidence_evaluation_orc",
+      ...(fetchUrlExcerptImpl ? { fetchUrlExcerptImpl } : {}),
+      ...(queryImpl ? { queryImpl } : {}),
+      persist: true,
+    }).catch((error) => ({
+      ok: false,
+      taskId: item.taskId,
+      error: safeText(error?.message || error, 500),
+    }));
+    results.push(result);
+  }
+  return {
+    attempted: candidates.length,
+    createdOrUpdated: results.filter((result) => result?.ok).length,
+    results,
+  };
+}
+
 function internalRunFilterSql(includeInternal = false) {
   return includeInternal
     ? ""
@@ -802,8 +1086,10 @@ function boardManagerSourceLogSnapshot(packet = {}) {
     operatorStandingPolicy: safeArray(source.operatorStandingPolicy).slice(0, 24),
     generationQualityPolicy: safeObject(source.generationQualityPolicy),
     networkTaskOutputCorpus: safeObject(source.networkTaskOutputCorpus),
+    evidenceEvaluationPackets: safeArray(source.evidenceEvaluationPackets).slice(0, 24),
     priorOutputCorpusSummary: safeObject(source.priorOutputCorpusSummary),
     deduplicationWatchlist: safeArray(source.deduplicationWatchlist).slice(0, 16),
+    capabilityInstrumentation: safeObject(source.capabilityInstrumentation),
     routingConstraints: safeObject(source.routingConstraints),
     openFollowups: safeArray(source.openFollowups).slice(0, 20),
     hiveProjects: safeObject(source.hiveProjects),
@@ -1062,6 +1348,16 @@ export async function buildBoardManagerSourcePacket({
   ]);
 
   const generatedAt = new Date().toISOString();
+  const evidenceEvaluationRefresh = await ensureRecentEvidenceEvaluationPackets({
+    corpus: networkTaskOutputCorpus,
+    limit: 8,
+  }).catch((error) => ({
+    attempted: 0,
+    createdOrUpdated: 0,
+    error: safeText(error?.message || error, 500),
+  }));
+  const evidenceEvaluationPackets = await listEvidenceEvaluationPacketsForBoardManager({ limit: 24 })
+    .catch(() => []);
   const freshness = {
     hiveSecretaryAgeMs: ageMs(hiveSecretaryState?.report?.completedAt),
     latestProjectGenerationAgeMs: ageMs(projectPlanning?.generation?.completedAt),
@@ -1072,9 +1368,19 @@ export async function buildBoardManagerSourcePacket({
 	    hiveSecretarySource,
 	    recentBoardManagerRuns: compactRecentRuns,
 	  });
-	  const generationQualityPolicy = buildHiveGenerationQualityPolicy({
-	    operatorConstraintsSummary: operatorStandingPolicy.map((item) => item.directive).filter(Boolean).slice(0, 4).join(" | "),
-	  });
+  const generationQualityPolicy = buildHiveGenerationQualityPolicy({
+    operatorConstraintsSummary: operatorStandingPolicy.map((item) => item.directive).filter(Boolean).slice(0, 4).join(" | "),
+  });
+  const capabilityProfiles = await listCapabilityProfilesForBoardManager({
+    accountIds: networkTaskCandidates.map((candidate) => candidate.accountId || candidate.account_id).filter(Boolean),
+    projectIds: projectRegistry.map((project) => project.id).filter(Boolean),
+    limit: 240,
+  }).catch(() => []);
+  const capabilityInstrumentation = buildBoardManagerCapabilityInstrumentation({
+    projectRegistry,
+    networkTaskCandidates,
+    capabilityProfiles,
+  });
 	  // Canonical capacity verdicts: the same shared predicate used by the
 	  // executor hook and getNetworkTaskEligibility, so the Board Manager's view
   // of candidate availability cannot drift from enforcement.
@@ -1109,10 +1415,14 @@ export async function buildBoardManagerSourcePacket({
 	    taskRequests: compactTaskRequestsForBoardManager(taskRequests),
 	    networkTaskContent: compactNetworkTaskContentForBoardManager(networkTaskContent),
 	    networkTaskOutputCorpus,
+	    evidenceEvaluationPackets,
+	    evidenceEvaluationRefresh,
 	    operatorStandingPolicy,
 	    generationQualityPolicy,
 	    priorOutputCorpusSummary: safeObject(networkTaskOutputCorpus?.summary),
 	    deduplicationWatchlist: safeArray(networkTaskOutputCorpus?.deduplicationWatchlist).slice(0, 16),
+	    capabilityInstrumentation,
+	    taskWorkTypeVocabulary: boardManagerTaskWorkTypeVocabulary,
 	    networkTaskCandidates,
 	    routingConstraints,
     openFollowups,

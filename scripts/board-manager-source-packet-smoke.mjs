@@ -15,10 +15,16 @@ const outstandingTaskId = `task_board_packet_outstanding_${suffix}`;
 const pendingAllocationId = `netalloc_board_packet_${suffix}`;
 const pendingJobId = `nettaskjob_board_packet_${suffix}`;
 const pendingRequestId = `req_board_packet_${suffix}`;
+const candidateAccountId = `acct_board_packet_candidate_${suffix}`;
+const candidateWallet = `rBoardPacketCandidate${suffix.slice(-8)}`;
+const candidateProfileId = `netprofile_board_packet_${suffix}`;
+const privateRepoScope = "github:private/tasknodeofficial";
 
 async function cleanup() {
   await query("DELETE FROM task_events WHERE task_id = ANY($1::text[])", [[completedTaskId, outstandingTaskId]]);
   await query("DELETE FROM task_projections WHERE task_id = ANY($1::text[])", [[completedTaskId, outstandingTaskId]]);
+  await query("DELETE FROM network_task_profiles WHERE account_id = $1 OR id = $2", [candidateAccountId, candidateProfileId]);
+  await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = $1", [candidateWallet]);
   await query("DELETE FROM network_projects WHERE id = $1", [projectId]);
 }
 
@@ -38,6 +44,63 @@ async function main() {
         VALUES ($1, 'Protocol Applications', 'Board source packet smoke', 'Smoke project.', 'Verify Board Manager task content awareness.', 'active', 'smoke', 1)
       `,
       [projectId]
+    );
+
+    await query(
+      `
+        UPDATE network_projects
+        SET metadata_json = $2::jsonb
+        WHERE id = $1
+      `,
+      [
+        projectId,
+        JSON.stringify({
+          required_capabilities: [
+            {
+              capability_type: "repo_pr_access",
+              scope: privateRepoScope,
+              scope_label: "Task Node private repo PR access",
+              visibility: "private",
+            },
+          ],
+        }),
+      ]
+    );
+
+    await query(
+      `
+        INSERT INTO pftl_sync_wallets (wallet_address, account_id, role, status, priority, last_hot_sync_at)
+        VALUES ($1, $2, 'user', 'active', 100, now())
+        ON CONFLICT (wallet_address) DO UPDATE SET
+          account_id = EXCLUDED.account_id,
+          role = EXCLUDED.role,
+          status = EXCLUDED.status,
+          priority = EXCLUDED.priority,
+          last_hot_sync_at = EXCLUDED.last_hot_sync_at
+      `,
+      [candidateWallet, candidateAccountId]
+    );
+
+    await query(
+      `
+        INSERT INTO network_task_profiles (
+          id, account_id, status, source_packet_digest, output_json, output_text,
+          provider, model, prompt_version, prompt_digest, completed_at
+        )
+        VALUES ($1, $2, 'completed', $3, $4::jsonb, $5, 'smoke', 'smoke', 'network_task_profile_v2', 'smoke_digest', now())
+      `,
+      [
+        candidateProfileId,
+        candidateAccountId,
+        `profile_digest_${suffix}`,
+        JSON.stringify({
+          summary: "Candidate has general product review experience but no verified private repo PR capability.",
+          capabilities: {
+            declared: [{ capability_type: "docs_review", scope_label: "Documentation review", status: "declared" }],
+          },
+        }),
+        "Candidate profile: docs review only; no verified private repo PR capability.",
+      ]
     );
 
     await query(
@@ -198,6 +261,23 @@ async function main() {
       task.projectNeedSummary.includes("Pending project need")
     )));
     assert.match(packet.networkTaskContent.text, /Completed task description/);
+    assert.equal(packet.capabilityInstrumentation.schema, "pf.hive.board_manager.capability_instrumentation.v1");
+    assert.equal(packet.capabilityInstrumentation.status, "phase_b_capability_profiles_context_only");
+    assert.equal(packet.capabilityInstrumentation.capability_profile_status, "persistent_capability_profiles_enabled_context_only");
+    assert.equal(packet.capabilityInstrumentation.enforcement, "none_context_only");
+    assert.equal(packet.capabilityInstrumentation.summary.requirement_count, 1);
+    assert.ok(packet.capabilityInstrumentation.task_work_type_vocabulary.some((item) => item.id === "capability_gating_task"));
+    assert.ok(packet.capabilityInstrumentation.capability_gaps.some((gap) => (
+      gap.project_id === projectId &&
+      gap.candidate_account_id === candidateAccountId &&
+      gap.capability_type === "repo_pr_access" &&
+      gap.recommended_task_work_type === "capability_gating_task"
+    )));
+    assert.equal(
+      JSON.stringify(packet.capabilityInstrumentation).includes(privateRepoScope),
+      false,
+      "capability instrumentation must not expose the raw private repo scope"
+    );
 
     console.log("board manager source packet smoke ok");
   } finally {

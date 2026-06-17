@@ -345,6 +345,7 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
+            "task_work_type",
             "task_class",
             "candidate_account_id",
             "candidate_wallet_address",
@@ -365,6 +366,10 @@
             "allow_over_capacity"
           ],
           "properties": {
+            "task_work_type": {
+              "type": "string",
+              "enum": ["", "code_task", "documentation_task", "capability_gating_task", "evidence_evaluation_packet"]
+            },
             "task_class": {
               "type": "string",
               "enum": ["", "network", "alpha"]

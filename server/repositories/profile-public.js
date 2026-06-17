@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { databaseEnabled, isUniqueViolation, query } from "../db/pool.js";
 import { getAccountWalletCloud } from "../account-wallet-cloud.js";
 import { getAccountIdentityProfile } from "../runtime-store.js";
+import { listMachineOperatorDisclosures } from "./capability-profiles.js";
 import { countProfileNfts, getPublicProfileHeroNft, listProfileNfts } from "./profile-nfts.js";
 
 const runtimeSnapshots = new Map();
@@ -419,6 +420,7 @@ export function publicProfileFromParts({
   snapshot = null,
   nfts = [],
   nftTotal = null,
+  operatorDisclosure = null,
 } = {}) {
   const packet = input || {};
   const metrics = packet.reward_totals || {};
@@ -466,6 +468,7 @@ export function publicProfileFromParts({
       activeWallet: safeText(packet.identity?.active_wallet, 160),
       displayWallet: safeText(packet.identity?.primary_wallet || packet.identity?.active_wallet, 160),
       walletCount: toNumber(packet.identity?.wallet_count),
+      operatorDisclosure,
     },
     metrics: {
       lifetimeTaskRewardPft: roundPft(metrics.lifetimeTaskRewardPft),
@@ -581,7 +584,16 @@ export async function getPublicProfile({ accountId } = {}) {
     countProfileNfts({ accountId: normalizedAccount, publicOnly: true }),
     getPublicProfileHeroNft({ accountId: normalizedAccount }),
   ]);
-  return publicProfileFromParts({ accountId: normalizedAccount, input, heroNft, nftTotal, snapshot, nfts });
+  const operatorDisclosures = await listMachineOperatorDisclosures({ accountIds: [normalizedAccount] }).catch(() => ({}));
+  return publicProfileFromParts({
+    accountId: normalizedAccount,
+    input,
+    heroNft,
+    nftTotal,
+    snapshot,
+    nfts,
+    operatorDisclosure: operatorDisclosures[normalizedAccount] || null,
+  });
 }
 
 export async function createPublicProfileSnapshotRun({

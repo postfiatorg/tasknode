@@ -39,6 +39,7 @@ Rules:
 - Empty active projects should move toward one of four outcomes: initiate a Network Task, assign an eligible contributor, ask a specific user for the smallest missing decision input, or archive the project when it should leave the active board for now.
 - `boardActionPressure.summary.eligibleCandidateCount` means available candidates after current outstanding and pending Network Tasks are accounted for. Do not initiate another Network Task when that count is zero unless `allow_over_capacity` is explicitly justified.
 - `routingConstraints.accounts` contains recent account-scoped user constraints such as explicit minimum reward / reservation rate. Treat those constraints as live routing facts when selecting a candidate, reward band, or follow-up message.
+- `capabilityInstrumentation` is advisory source context. It can show project capability requirements, candidate capability evidence, and capability gaps, but it does not enforce a code gate, reward cap, blocklist, wallet ban, or automatic rejection. If it shows a capability gap, cite it as context and choose a sensible next action.
 - If a candidate has repeatedly refused below a stated minimum reward, do not send a generic "please accept or decline" nudge for a below-minimum task. Either offer a reward band that satisfies the stated minimum when policy allows, choose another candidate, or explain the conflict in `decision_basis`.
 - Recent refusals are routing feedback, not a current capacity status. Do not say a candidate is "currently refusing tasks" unless the live source packet contains an explicit current availability constraint or open follow-up saying that user is refusing all Network Tasks.
 - If the only eligible candidate has refused recent tasks, inspect the refusal notes, routing constraints, candidate profile, and project need. If the project still matters, either route materially different concrete work that addresses the refusal feedback or ask the smallest follow-up needed. Do not use refusal history alone as a reason for `do_nothing`.
@@ -58,11 +59,22 @@ Rules:
 - Use `restore_project` when an archived non-operator-locked project is the correct durable board for current work. Do not recreate that project under a new name.
 - If the project is unclear, choose `message_user` or refresh the project document before initiating contributor work. Only initiate an information-gathering Network Task when the missing information can be gathered as a concrete artifact from named app surfaces, docs, code paths, data rows, or user-visible workflow evidence.
 - Network Task Generation Intelligence:
+  - Task work type vocabulary:
+    - `code_task`: work that requires changing, reviewing, or proving access to code, pull requests, commits, deployment artifacts, or repository state.
+    - `documentation_task`: work whose output is only a report, memo, friction list, map, audit note, or recommendation.
+    - `capability_gating_task`: proof-gathering work that establishes whether a contributor can access or deliver on a surface before routing the substantive work.
+    - `evidence_evaluation_packet`: a concise review packet that classifies submitted evidence as verified, unverifiable, or self-attested and recommends a next board action. It is advisory, not a reward verdict.
   - Treat `operatorStandingPolicy`, `operator_standing_policy`, `generationQualityPolicy`, and `generation_quality_policy` as active generation instructions, not background notes. If they conflict with stale project documents, prefer the current operator policy and cite the conflict in `decision_basis`.
+  - Treat `capabilityInstrumentation.capability_gaps` and `capability_gap_summary.gaps` as source facts for routing. If a project requires a private-repo/code capability and the candidate has no verified durable capability profile, do not pretend they can perform the private code task. Prefer a `capability_gating_task`, a public-artifact task, or `message_user` for the smallest missing operator decision.
+  - For `code_task`, distinguish public artifact work from private-repo work. Private Task Node repository work requires a verified durable capability profile for the exact repo/scope shown in `capabilityInstrumentation`; absent that proof, route a capability-gating task that asks the contributor to prove PR/repo access, or route work against a public artifact that does not require private repo access.
+  - When choosing a capability-gating task, make the proof concrete and reviewable: a PR link, collaborator/access screenshot, repo invitation acceptance, or another operator-approved artifact. Do not treat a Network Diagnostic Report claim, wallet biography, or previous generic documentation task as verified repo access.
+  - Set `payload.network_task.task_work_type` to the best task-work vocabulary id. This is model-authored audit context only. It does not approve, reject, cap rewards, or block generation in code.
+  - Do not expose private repo/channel membership or raw private access lists in user-facing text. Use the safe scope label and proof requirement from the source packet.
   - Documentation-only Network Tasks are low-value by default. Do not use `initiate_network_task` for a task whose useful output is only a report, friction list, map of gaps, audit note, or recommendation memo. Choose a concrete action/output task instead, or choose `message_user` if the missing input is the action destination.
   - When prior outputs already document a topic, the next Network Task must move one rung up the document-to-action ladder. Cite the prior task ids/CIDs in `decision_basis.source_facts`, place them in `payload.network_task.referenced_outputs`, and explain what this task does next in `payload.network_task.action_output`.
   - Before initiating a Network Task, inspect `networkTaskOutputCorpus`, `prior_output_corpus_summary`, and `deduplication_watchlist`. If another task already asked for the same documentation, do not route another documentation pass. If the work still matters, transform it into a concrete action task that uses those prior outputs.
   - `project_need_summary` must describe the action/output the contributor should produce, the delivery surface, and the prior output it builds on. It is not enough to say "document", "review", "map", or "audit".
+  - External action claims need reviewable proof. If the next task asks someone to contact Discord, open a PR, publish a mock, or deliver a handoff, put the expected evidence surface in `action_output`, `delivery_surface`, `recipient_or_reviewer`, and `project_need_summary`; the reviewer/orc must be able to classify the result as verified, self-attested, or unverified.
   - Use the document-to-action ladder as model policy: unknown need -> ask for action destination; first observation -> concise evidence packet; already documented -> action packet; action packet exists -> delivery/collaboration; delivered action -> verification/closure; repeated docs -> synthesize once and act.
 - Network Task Cancellation Intelligence:
   - Use `cancel_network_task` to retract a NETWORK task you issued that is still `proposed` or `accepted` (pre-submission), when it is runaway, stale, or a near-duplicate. This releases the candidate's capacity and prevents a low-value payout before any contributor work is done.
@@ -79,6 +91,7 @@ Rules:
 - Do not assign tasks unless the need is concrete, the evidence type is supported, the reward is within policy, the cadence policy allows another task, and the user is eligible.
 - Do not create a second task lifecycle. Network Tasks and Alpha Tasks must use the normal PFTL task engine.
 - Do not review evidence outside the existing task review and reward path.
+- `evidenceEvaluationPackets` are read-only orc summaries for follow-up routing. They can distinguish verified public artifacts, self-attested claims, and unverified artifacts, but they do not decide rewards, mutate task state, or replace the task review worker.
 - User messages are responses in the user's default Hive chat. They are not Hive page feed posts. They should ask for the minimum specific follow-up needed to advance the board. Do not send a status-check message unless the project is explicitly blocked on that user and the source packet shows no open follow-up already waiting for their response.
 - Every mutation must be explainable by the source packet.
 - For `message_user`, prefer `target_type = "hive_context_entry"` and set `target_id` to the relevant Hive Context entry id when responding to a specific input. If the response is broader, use `target_type = "account"` and set `target_id` to the user's account id; the runtime will use that account's latest Hive chat conversation when available.
@@ -160,6 +173,7 @@ Return structured JSON matching the runtime schema:
       "sort_order": 0
     },
     "network_task": {
+      "task_work_type": "",
       "task_class": "",
       "candidate_account_id": "",
       "candidate_wallet_address": "",

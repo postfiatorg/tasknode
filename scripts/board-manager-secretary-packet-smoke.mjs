@@ -84,6 +84,30 @@ const rawSourcePacket = {
       walletAddress: "rHiveValidatedWallet",
     },
   ],
+  capabilityInstrumentation: {
+    schema: "pf.hive.board_manager.capability_instrumentation.v1",
+    status: "phase_a_instrumentation_only_no_enforcement",
+    enforcement: "none_context_only",
+    task_work_type_vocabulary: [
+      { id: "code_task", label: "Code task", definition: "Requires code/PR proof." },
+      { id: "capability_gating_task", label: "Capability-gating task", definition: "Requires access proof before substantive work." },
+      { id: "evidence_evaluation_packet", label: "Evidence-evaluation packet", definition: "Classifies evidence without deciding rewards." },
+    ],
+    summary: { requirement_count: 1, candidate_count: 1, gap_count: 1 },
+    capability_gaps: [
+      {
+        project_id: "task_node",
+        candidate_account_id: "acct_1",
+        capability_type: "repo_pr_access",
+        scope_label: "Task Node private repo PR access",
+        scope_digest: "scope_digest_smoke",
+        candidate_status: "missing_verified_capability",
+        recommended_task_work_type: "capability_gating_task",
+        privacy_note: "Do not expose private repo/channel membership.",
+      },
+    ],
+    open_questions_reserved_for_alex: ["who can mark a capability verified"],
+  },
   hiveProjects: {
     generatedAt: "2026-05-24T01:00:00.000Z",
     projects: {
@@ -234,6 +258,29 @@ const result = await fetchBoardManagerSecretaryPacket({
                   network_task_summary: "One refused Network Task exists.",
                   candidate_summary: "One eligible contributor exists.",
                   recent_run_summary: "No recent run already handled this source state.",
+                  capability_gap_summary: {
+                    status: "phase_a_instrumentation_only_no_enforcement",
+                    enforcement: "none_context_only",
+                    requirement_count: 1,
+                    candidate_count: 1,
+                    gap_count: 1,
+                    task_work_types: [
+                      { id: "code_task", label: "Code task", definition: "Requires code/PR proof." },
+                      { id: "capability_gating_task", label: "Capability-gating task", definition: "Requires access proof before substantive work." },
+                    ],
+                    gaps: [
+                      {
+                        project_id: "task_node",
+                        candidate_account_id: "acct_1",
+                        capability_type: "repo_pr_access",
+                        scope_label: "Task Node private repo PR access",
+                        candidate_status: "missing_verified_capability",
+                        recommended_task_work_type: "capability_gating_task",
+                        privacy_note: "Do not expose private repo/channel membership.",
+                      },
+                    ],
+                    open_questions_reserved_for_alex: ["who can mark a capability verified"],
+                  },
                   facts_to_preserve: ["task_refused", "task_node"],
                   redaction_count: 0,
                 }),
@@ -260,11 +307,15 @@ assert.equal(capturedBody.stream, false);
 assert.match(capturedBody.messages[0].content, /Output valid JSON only/);
 assert.match(capturedBody.messages[0].content, /do not summarize the board as globally capacity-blocked/);
 assert.match(capturedBody.messages[1].content, /BOARD MANAGER SOURCE PACKET JSON/);
+assert.match(capturedBody.messages[1].content, /capabilityInstrumentation/);
+assert.match(capturedBody.messages[1].content, /capability_gating_task/);
 
 assert.equal(result.provider, "deepseek");
 assert.equal(result.model, "deepseek-v4-pro");
 assert.equal(result.packet.motion_state, "needs_attention");
 assert.equal(result.packet.recommended_context_request.target_id, "task_node");
+assert.equal(result.packet.capability_gap_summary.gaps[0].recommended_task_work_type, "capability_gating_task");
+assert.equal(result.packet.capability_gap_summary.enforcement, "none_context_only");
 assert.equal(result.usage.inputTokens, 1000);
 
 function deepSeekResponse({ content, id = "deepseek_secretary_response", inputTokens = 10, outputTokens = 5 } = {}) {
@@ -322,6 +373,24 @@ const repairedPacketJson = {
       next_action_suggestion: "Convert the prior document into a PR-ready handoff.",
     },
   ],
+  capability_gap_summary: {
+    status: "phase_a_instrumentation_only_no_enforcement",
+    enforcement: "none_context_only",
+    requirement_count: 1,
+    candidate_count: 1,
+    gap_count: 1,
+    task_work_types: [{ id: "capability_gating_task", label: "Capability-gating task", definition: "Prove access first." }],
+    gaps: [
+      {
+        project_id: "task_node",
+        candidate_account_id: "acct_1",
+        capability_type: "repo_pr_access",
+        scope_label: "Task Node private repo PR access",
+        candidate_status: "missing_verified_capability",
+        recommended_task_work_type: "capability_gating_task",
+      },
+    ],
+  },
   facts_to_preserve: ["hivectx_stop_docs", "task_doc_1"],
 };
 
@@ -395,6 +464,8 @@ assert.equal(fallbackResult.packet.operator_standing_policy[0].source_id, "hivec
 assert.equal(fallbackResult.packet.generation_quality_policy.requires_concrete_action_output, true);
 assert.equal(fallbackResult.packet.prior_output_corpus_summary.recent_outputs[0].task_id, "task_doc_1");
 assert.equal(fallbackResult.packet.deduplication_watchlist[0].prior_task_ids[0], "task_doc_1");
+assert.equal(fallbackResult.packet.capability_gap_summary.gaps[0].recommended_task_work_type, "capability_gating_task");
+assert.ok(fallbackResult.packet.facts_to_preserve.some((fact) => fact.includes("capability_gap:task_node:repo_pr_access:acct_1")));
 assert.ok(fallbackResult.packet.facts_to_preserve.some((fact) => fact.includes("source_packet_digest")));
 assert.equal(fallbackResult.usage.repairAttempted, true);
 assert.equal(fallbackResult.usage.repairFailed, true);
@@ -433,7 +504,9 @@ assert.equal(decisionPacket.secretaryPacket.packetJson.motion_state, "needs_atte
 assert.equal(decisionPacket.actionTargetRegistry.accounts[0]?.accountId, "acct_1");
 assert.equal(decisionPacket.actionTargetRegistry.hiveContextEntries[0]?.sourceConversationId, "conv_hive_1");
 assert.equal(decisionPacket.actionTargetRegistry.contributorCandidates[0]?.walletAddress, "rHiveValidatedWallet");
+assert.equal(decisionPacket.capabilityGapSummary.gaps[0].capability_type, "repo_pr_access");
+assert.equal(decisionPacket.capabilityGapSummary.gaps[0].recommended_task_work_type, "capability_gating_task");
 assert.ok(decisionPacket.sourcePacketDigest.length >= 40);
-assert.ok(JSON.stringify(decisionPacket).length < JSON.stringify(rawSourcePacket).length + result.packetText.length + 2000);
+assert.ok(JSON.stringify(decisionPacket).length < JSON.stringify(rawSourcePacket).length + result.packetText.length + 5000);
 
 console.log("board manager secretary packet smoke ok");

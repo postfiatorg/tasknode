@@ -71,6 +71,83 @@ The document-to-action ladder used by the prompts is:
    `decision_basis.source_facts`, `referenced_outputs`, and
    `deduped_against`.
 
+## Capability Instrumentation
+
+The Board Manager source packet also carries capability instrumentation. This
+is context only, not enforcement. `server/repositories/board-manager.js` builds
+`capabilityInstrumentation` from optional project metadata, eligible candidate
+profiles, and durable capability-profile rows in
+`board_manager_capability_profiles` (`server/db/migrations/058_board_manager_capability_profiles.sql`).
+The packet can describe:
+
+- `code_task`: work that requires code, PR, commit, deployment, or repository
+  proof.
+- `documentation_task`: report/memo/audit work whose output is only prose.
+- `capability_gating_task`: proof-gathering work that establishes whether a
+  contributor can access or deliver on a surface before substantive work is
+  routed.
+- `evidence_evaluation_packet`: an advisory packet that classifies submitted
+  evidence as verified, unverifiable, or self-attested.
+
+Capability requirements are read only when a project explicitly declares them
+in metadata (`required_capabilities`, `requiredCapabilities`,
+`capability_requirements`, or `routingConstraints.requiredCapabilities`).
+Candidates default to no verified private-surface capability until a durable
+capability-profile row says so. Network Diagnostic Report output and profile
+claims are preserved only as declared context; they do not become verified repo
+or channel access. A verified capability row is scoped by account, project,
+capability type, safe scope label, scope digest, evidence reference, verifier,
+timestamp, and optional expiry. Expired and revoked rows are visible as audit
+context but do not satisfy a capability requirement.
+
+The instrumentation deliberately avoids exposing private repo/channel
+membership. Raw scopes are converted to safe labels and short digests. The
+Board Manager may cite a missing verified capability as context, ask for a
+capability proof, route a public-artifact task, or ask the operator for the
+smallest missing decision. It must not treat this field as a deterministic
+gate, wallet ban, reward cap, blocklist, or automatic rejection rule.
+
+Reviewed operators can verify or revoke capability profiles through
+`POST /api/hive/capability-profile`, guarded by
+`TASKNODE_CAPABILITY_PROFILE_ADMIN_TOKEN`
+(`server/capability-profile-routes.js`). The route writes only the durable
+capability-profile audit row; it does not mutate task lifecycle, capacity,
+reward, custody, or public directory state. Long-term verifier authority and
+whether proof tasks are paid remain operator policy decisions.
+
+When Board Manager chooses `initiate_network_task`, `payload.network_task` also
+carries model-authored `task_work_type` using the vocabulary above. This value
+is persisted into Network Task generation source metadata and the encrypted
+request bundle as audit context. It is not part of semantic idempotency and does
+not approve, reject, or suppress any task in code.
+
+## Evidence Evaluation Packets
+
+Phase C adds read-only evidence-evaluation packets for Network Tasks. Packets
+live in `board_manager_evidence_evaluation_packets`
+(`server/db/migrations/059_board_manager_evidence_evaluation_packets.sql`) and
+are produced by repository helpers in
+`server/repositories/evidence-evaluation-packets.js`.
+
+The packet builder reads public Network Task lifecycle evidence, resolves
+artifacts, and writes a concise packet with:
+
+- packet id, task id, project id, evaluator id, status, summary, and
+  recommendation;
+- artifact verdicts for public GitHub PR/commit URLs, safe URLs/gists, Discord
+  message links, and text claims;
+- counts of verified, self-attested, and unverified artifacts.
+
+The resolver reuses `fetchUrlExcerpt` from `server/task-review-worker.js` for
+safe URL/gist fetching. Discord links remain self-attested unless a reviewed bot
+credential and channel policy is added later. Packets store digests and concise
+summaries, not raw private evidence plaintext.
+
+`buildBoardManagerSourcePacket` includes recent `evidenceEvaluationPackets` so
+Board Manager can route follow-up work using packet ids and recommendations.
+This is advisory context only. Evidence packets do not mutate task lifecycle,
+capacity, reward scoring, PFTL pointers, custody, or payment state.
+
 ## JSON Handling Hardening
 
 The Board Manager decision provider parses strict JSON, retries once with a
