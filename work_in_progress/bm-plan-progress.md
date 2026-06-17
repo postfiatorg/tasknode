@@ -38,9 +38,12 @@ Rules carried forward:
     Board Manager/Hive task-detail surfacing, agent read helpers, evidence-orc
     smoke coverage.
 - [ ] Phase D - Prompt/Taskgen Integration
-  - Branch: pending
+  - Branch: `feat/bm-phase-d-prompt-taskgen`
   - PR: pending
-  - Status: not started
+  - Status: in progress
+  - Scope: stronger private-repo capability guidance in Board Manager/taskgen
+    prompts, reward-scoring evidence-verification context, and focused prompt
+    smoke coverage. Context only; no reward/lifecycle mutation.
 - [ ] Phase E - Orc UI
   - Branch: pending
   - PR: pending

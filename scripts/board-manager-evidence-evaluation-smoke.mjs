@@ -66,9 +66,17 @@ const fetchedUrls = [];
 async function fetchUrlExcerptImpl(url) {
   fetchedUrls.push(url);
   if (url.includes("example.invalid")) return { ok: false, error: "dns_lookup_failed" };
+  if (url.includes("gist.github.com")) {
+    return {
+      status: "extracted",
+      title: "GitHub Gist raw content",
+      excerpt: "Clean public artifact excerpt from the shared task-review URL resolver.",
+      url,
+    };
+  }
   return {
     ok: true,
-    title: url.includes("gist.github.com") ? "GitHub Gist raw content" : "GitHub Pull Request",
+    title: "GitHub Pull Request",
     excerpt: "Clean public artifact excerpt from the shared task-review URL resolver.",
     url,
   };
