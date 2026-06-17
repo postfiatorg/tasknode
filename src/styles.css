@@ -4581,6 +4581,11 @@ h1 {
   font-size: 12px;
 }
 
+.connected-unlink-confirm {
+  display: inline-flex;
+  gap: 6px;
+}
+
 .connected-account-row button,
 .connected-account-row em {
   display: inline-flex;

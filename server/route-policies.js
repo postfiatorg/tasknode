@@ -48,6 +48,13 @@ export const apiRoutePolicies = [
   { id: "auth_logout", path: "/api/auth/logout", methods: ["POST"], auth: "optional" },
   { id: "auth_providers", path: "/api/auth/providers", methods: ["GET"], auth: "none" },
   { id: "account_delete", path: "/api/account/delete", methods: ["POST"], auth: "session", rateLimit: { limit: 3, windowMs: tenMinutes } },
+  {
+    id: "account_unlink_provider",
+    path: "/api/account/unlink-provider",
+    methods: ["POST"],
+    auth: "session",
+    rateLimit: { limit: 5, windowMs: tenMinutes },
+  },
   { id: "auth_telegram_authorize", path: "/api/auth/telegram/authorize", methods: ["GET"], auth: "oauth_state" },
   { id: "auth_start_provider", pattern: /^\/api\/auth\/start\/[^/]+$/, methods: ["GET"], auth: "optional" },
   { id: "auth_callback_provider", pattern: /^\/api\/auth\/callback\/[^/]+$/, methods: ["GET"], auth: "oauth_state" },

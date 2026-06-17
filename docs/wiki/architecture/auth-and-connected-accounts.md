@@ -36,6 +36,37 @@ Telegram login and linking are implemented through Telegram Login Widget:
 
 Telegram can only render the Login Widget on the domain configured in BotFather with `/setdomain`. Localhost is not a reliable test domain for the real Telegram widget. If the app runs on `localhost` while BotFather is configured for a public domain, Telegram returns `Bot domain invalid`. Task Node now blocks that path before loading the widget and returns `telegram_widget_domain_mismatch` with the expected domain.
 
+## Unlinking A Connected Account
+
+Signed-in users can unlink GitHub, Telegram, X, or Discord from Settings ->
+Security -> Connected accounts. The row's `Disconnect` button arms an inline
+confirm step before calling `POST /api/account/unlink-provider` (session auth,
+rate limited, explicit `confirm: true` required).
+
+Unlink rules:
+
+- Lockout guard: the request is refused (`provider_unlink_last_login_method`)
+  when removing the provider would leave the account with no way to sign back
+  in. Sign-in methods are a verified email that survives the unlink or another
+  linked OAuth provider; wallets are identity/custody, not login.
+- Verified email-code login is independent from provider provenance. If the
+  account still owns a verified `primaryEmailCanonical` mapping, that email
+  counts as a surviving sign-in method even when the provider being unlinked
+  also verified the same address. `account.emailProvider` records provenance
+  for display/audit only; unlinking an OAuth provider must not remove a
+  surviving email-code login.
+- The provider identity mapping is freed immediately, so the same external
+  account can be linked to a different Task Node account afterwards.
+- If the unlinked provider was the account's primary provider, the primary is
+  reassigned to a remaining sign-in method.
+- Live sessions are updated in place (the Security panel reflects the change
+  without re-login), and a `user.account.provider_unlinked` observability
+  event records the action.
+- Founding-identity safety: account ids are derived from the identity that
+  created the account. A founding identity that has been unlinked does not
+  re-enter its old account on a later login; it founds a fresh account
+  instead. `npm run account-unlink-provider-smoke` pins all of these rules.
+
 Discord login and linking are implemented through OAuth and currently enabled in production, while remaining outside the core launch surface:
 
 1. `GET /api/auth/start/discord` creates an OAuth state row and state cookie.
