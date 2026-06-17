@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import inspect
 import json
 import os
 import stat
@@ -9,6 +10,7 @@ from urllib.parse import urlparse
 
 from xrpl.core.keypairs import is_valid_message
 
+from tasknode_pftl import agent_client as agent_client_module
 from tasknode_pftl.agent_client import (
     TASKNODE_AGENT_DESTINATION,
     TaskNodeApiError,
@@ -149,19 +151,24 @@ class AgentClientTests(unittest.TestCase):
                 TaskNodeAgentClient(http=FakeSession([]))
 
     def test_env_seed_does_not_read_shared_wallet_file(self):
-        # H2: constructing from an env seed must never read the shared
-        # multi-wallet file. The session-store read is allowed (different file).
-        real_open = open
-
+        # H2: constructing from an env seed must not fall back to any seed file.
         def guard(path, *args, **kwargs):
-            if "tasknode_agent_wallets" in str(path):
-                raise AssertionError("client must not read the shared wallet file")
-            return real_open(path, *args, **kwargs)
+            raise AssertionError(f"constructor must not read a seed file: {path}")
 
         with patch.dict(os.environ, {"TASKNODE_AGENT_WALLET_SEED": SMOKE_MNEMONIC}, clear=True):
             with patch("builtins.open", side_effect=guard):
-                client = TaskNodeAgentClient(http=FakeSession([]))
+                client = TaskNodeAgentClient(http=FakeSession([]), session_store_path=self.session_store)
         self.assertEqual(client.address, self.wallet.address)
+
+    def test_module_exposes_no_shared_wallet_file_loader(self):
+        source = inspect.getsource(agent_client_module)
+
+        self.assertFalse(hasattr(agent_client_module, "DEFAULT_SECRET_FILE"))
+        self.assertFalse(hasattr(agent_client_module, "load_agent_wallet"))
+        self.assertFalse(hasattr(agent_client_module, "load_agent_wallets"))
+        self.assertNotIn("DEFAULT_SECRET_FILE", source)
+        self.assertNotIn("load_agent_wallet", source)
+        self.assertNotIn("tasknode_agent_" + "wallets.json", source)
 
     def future_expiry(self):
         return (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
@@ -304,6 +311,32 @@ class AgentClientTests(unittest.TestCase):
         self.assertTrue(result.signed.verified)
         self.assertEqual(verify_signed_transaction_blob(result.signed.tx_blob, expected_address=self.wallet.address)["pointers"][0]["kind"], "TASK_UPDATE")
         self.assertEqual(len(http.calls), 2)
+        self.assertEqual(client._submitted_once, set())
+
+    def test_accept_task_submit_true_blocks_duplicate_submit_phase(self):
+        prepared = {"phase": "prepared", "txJson": prepared_pointer_tx(self.wallet, kind="TASK_UPDATE")}
+        http = FakeSession([
+            FakeResponse(200, config_response(self.wallet, self.service)),
+            FakeResponse(200, prepared),
+            FakeResponse(200, {"phase": "submitted", "txHash": "SUBMIT1"}),
+            FakeResponse(200, config_response(self.wallet, self.service)),
+            FakeResponse(200, prepared),
+        ])
+        client = self.client(http=http)
+        client.account_id = "acct_agent"
+
+        result = client.accept_task("task_test", reason="Unit test accept", submit=True)
+
+        self.assertFalse(result.submit_skipped)
+        self.assertIn(("task_action", "task_test", "accept"), client._submitted_once)
+        with self.assertRaises(TaskNodeApiError) as raised:
+            client.accept_task("task_test", reason="Unit test accept", submit=True)
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(raised.exception.body["error"], "agent_double_submit_blocked")
+        self.assertEqual(
+            [call["json"]["phase"] for call in http.calls],
+            ["config", "prepare", "submit", "config", "prepare"],
+        )
 
     def test_submission_and_verification_response_sign_without_submit(self):
         submission_tx = prepared_pointer_tx(self.wallet, kind="TASK_SUBMISSION", task_id="task_test", cid="bafkreisubmission")

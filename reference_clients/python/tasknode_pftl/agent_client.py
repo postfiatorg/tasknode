@@ -23,7 +23,6 @@ from .wallets import ProtocolWallet, wallet_from_seed
 
 
 DEFAULT_BASE_URL = "http://localhost:5174"
-DEFAULT_SECRET_FILE = "/home/pfrpc/repos/tasknode_agent_wallets.json"
 DEFAULT_SESSION_STORE = "/home/pfrpc/repos/tasknode_agent_sessions.json"
 DEFAULT_PFTL_NETWORK_ID = 21338
 SESSION_COOKIE_NAME = "tasknode_session"
@@ -153,7 +152,9 @@ def _write_json_0600(path: str, payload: dict[str, Any]) -> None:
 def _read_json_0600(path: str) -> dict[str, Any]:
     if not path or not os.path.exists(path):
         return {}
-    _require_0600(path)
+    mode = stat.S_IMODE(os.stat(path).st_mode)
+    if mode & 0o077:
+        raise PermissionError(f"{path} must not be readable by group/other")
     with open(path, "r", encoding="utf-8") as handle:
         try:
             data = json.load(handle)
@@ -295,68 +296,6 @@ def build_synthetic_signed_pointer(
     }
 
 
-def _require_0600(path: str) -> None:
-    mode = stat.S_IMODE(os.stat(path).st_mode)
-    if mode & 0o077:
-        raise PermissionError(f"{path} must not be readable by group/other")
-
-
-def _wallet_entries_from_secret(data: Any) -> list[dict[str, Any]]:
-    if isinstance(data, list):
-        return [entry for entry in data if isinstance(entry, dict)]
-    if isinstance(data, dict):
-        for key in ("wallets", "agentWallets", "agents"):
-            if isinstance(data.get(key), list):
-                return [entry for entry in data[key] if isinstance(entry, dict)]
-        entries = []
-        for key, value in data.items():
-            if isinstance(value, dict):
-                entry = {**value}
-                entry.setdefault("address", key)
-                entries.append(entry)
-        if entries:
-            return entries
-    raise ValueError("agent wallet secret file must contain wallet entries")
-
-
-def load_agent_wallets(path: str = DEFAULT_SECRET_FILE, *, strict_permissions: bool = True) -> list[ProtocolWallet]:
-    if strict_permissions:
-        _require_0600(path)
-    with open(path, "r", encoding="utf-8") as handle:
-        data = json.load(handle)
-    wallets = []
-    for index, entry in enumerate(_wallet_entries_from_secret(data)):
-        seed = entry.get("mnemonic") or entry.get("seed") or entry.get("secret")
-        if not seed:
-            continue
-        role = str(entry.get("role") or entry.get("label") or f"agent_{index + 1}")
-        wallet = wallet_from_seed(role, str(seed))
-        expected_address = str(entry.get("address") or entry.get("classicAddress") or "").strip()
-        if expected_address and expected_address != wallet.address:
-            raise ValueError(f"agent wallet entry {index + 1} address mismatch")
-        wallets.append(wallet)
-    if not wallets:
-        raise ValueError("no agent wallets found in secret file")
-    return wallets
-
-
-def load_agent_wallet(
-    path: str = DEFAULT_SECRET_FILE,
-    *,
-    address: str | None = None,
-    index: int = 0,
-    strict_permissions: bool = True,
-) -> ProtocolWallet:
-    wallets = load_agent_wallets(path, strict_permissions=strict_permissions)
-    if address:
-        wanted = str(address).strip()
-        for wallet in wallets:
-            if wallet.address == wanted:
-                return wallet
-        raise ValueError("requested agent wallet address was not found")
-    return wallets[int(index)]
-
-
 class TaskNodeAgentClient:
     def __init__(
         self,
@@ -380,6 +319,7 @@ class TaskNodeAgentClient:
         self.http = http or requests.Session()
         self.account_id: str | None = None
         self.session_expires_at: str | None = None
+        self._submitted_once: set[tuple[str, str, str]] = set()
         self.session_store_path = (
             str(session_store_path)
             if session_store_path is not None
@@ -527,6 +467,27 @@ class TaskNodeAgentClient:
         if self.wallet.address in store:
             del store[self.wallet.address]
             self._write_session_store(store)
+
+    def _reserve_submit(self, flow: str, task_id: str, phase: str) -> None:
+        key = (
+            _safe_text(flow, 80) or "flow",
+            _safe_text(task_id, 180) or "task",
+            _safe_text(phase, 80) or "submit",
+        )
+        if key in self._submitted_once:
+            raise TaskNodeApiError(
+                409,
+                {
+                    "ok": False,
+                    "error": "agent_double_submit_blocked",
+                    "flow": key[0],
+                    "taskId": key[1],
+                    "phase": key[2],
+                    "message": "This client already submitted this flow/task/phase in this process.",
+                },
+                "agent double submit blocked",
+            )
+        self._submitted_once.add(key)
 
     def request(
         self,
@@ -694,6 +655,7 @@ class TaskNodeAgentClient:
         signed = sign_prepared_transaction(prepared["txJson"], self.wallet, expected_address=self.wallet.address)
         submitted = None
         if submit:
+            self._reserve_submit("context_publish", "context", f"revision:{revision}")
             submitted = self.request(
                 "POST",
                 "/api/context/manifest/ink",
@@ -814,6 +776,7 @@ class TaskNodeAgentClient:
         signed = sign_prepared_transaction(prepared["txJson"], self.wallet, expected_address=self.wallet.address)
         submitted = None
         if submit:
+            self._reserve_submit("task_action", task_id, task_action)
             submitted = self.request(
                 "POST",
                 "/api/tasks/action",
@@ -921,6 +884,7 @@ class TaskNodeAgentClient:
         signed = sign_prepared_transaction(prepared["txJson"], self.wallet, expected_address=self.wallet.address)
         submitted = None
         if submit:
+            self._reserve_submit("task_submission", task_id, mode)
             submitted = self.request(
                 "POST",
                 "/api/tasks/submission",
@@ -1011,6 +975,11 @@ class TaskNodeAgentClient:
         signed = sign_prepared_transaction(prepared["txJson"], self.wallet, expected_address=self.wallet.address)
         submitted = None
         if submit:
+            self._reserve_submit(
+                "task_request",
+                config.get("requestId") or request_payload.get("requestId") or "request",
+                "request",
+            )
             submitted = self.request(
                 "POST",
                 "/api/tasks/request",
