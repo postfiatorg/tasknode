@@ -25,8 +25,8 @@ Rules carried forward:
     source fields, Secretary capability-gap preservation, non-mutating smokes.
 - [ ] Phase B - Capability Profiles
   - Branch: `feat/bm-phase-b-capability-profiles`
-  - PR: pending
-  - Status: implementation in progress
+  - PR: #75
+  - Status: ready for review
   - Scope: durable capability-profile table and admin-bearer verification
     route, Board Manager source-packet read model, task-work-type audit field,
     capability-profile smoke coverage.
