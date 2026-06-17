@@ -15,6 +15,7 @@ const {
 } = await import("../server/board-manager-secretary-packets.js");
 const {
   buildHiveGenerationQualityPolicy,
+  buildBoardManagerCapabilityInstrumentation,
   compactNetworkTaskOutputCorpusForBoardManager,
   extractOperatorStandingPolicy,
   normalizeBoardManagerDecision,
@@ -114,6 +115,42 @@ assert.equal(corpus.outputs.length, 2);
 assert.ok(corpus.summary.repeated_themes.length >= 1);
 assert.ok(corpus.deduplicationWatchlist[0].prior_task_ids.includes("task_doc_1"));
 
+const capabilityInstrumentation = buildBoardManagerCapabilityInstrumentation({
+  projectRegistry: [
+    {
+      id: "task_node_core",
+      title: "Task Node Core Product",
+      metadata: {
+        required_capabilities: [
+          {
+            capability_type: "repo_pr_access",
+            scope: "github:private/tasknodeofficial",
+            scope_label: "Task Node private repo PR access",
+            visibility: "private",
+          },
+        ],
+      },
+    },
+  ],
+  networkTaskCandidates: [
+    {
+      accountId: "acct_contributor",
+      walletAddress: "rContributorWallet",
+      profileId: "netprofile_contributor",
+      profileOutput: {
+        capabilities: {
+          declared: [{ capability_type: "docs_review", scope_label: "Documentation review" }],
+        },
+      },
+    },
+  ],
+});
+assert.equal(capabilityInstrumentation.enforcement, "none_context_only");
+assert.equal(capabilityInstrumentation.summary.requirement_count, 1);
+assert.equal(capabilityInstrumentation.summary.gap_count, 1);
+assert.equal(capabilityInstrumentation.capability_gaps[0].recommended_task_work_type, "capability_gating_task");
+assert.equal(JSON.stringify(capabilityInstrumentation).includes("github:private/tasknodeofficial"), false);
+
 const secretaryPacket = normalizeBoardManagerSecretaryPacket({
   motion_state: "needs_attention",
   requires_attention: true,
@@ -130,11 +167,13 @@ const secretaryPacket = normalizeBoardManagerSecretaryPacket({
   generation_quality_policy: generationQualityPolicy,
   prior_output_corpus_summary: corpus.summary,
   deduplication_watchlist: corpus.deduplicationWatchlist,
+  capability_gap_summary: capabilityInstrumentation,
   facts_to_preserve: ["hivectx_stop_docs", "task_doc_1", "task_doc_2"],
 });
 assert.equal(secretaryPacket.operator_standing_policy[0].source_id, "hivectx_stop_docs");
 assert.equal(secretaryPacket.generation_quality_policy.escalation_ladder, "document_to_action_v1");
 assert.ok(secretaryPacket.deduplication_watchlist.length >= 1);
+assert.equal(secretaryPacket.capability_gap_summary.gaps[0].recommended_task_work_type, "capability_gating_task");
 assert.doesNotMatch(
   `${secretaryPacket.reason_summary} ${secretaryPacket.facts_to_preserve.join(" ")}`,
   /no explicit current constraints/i
@@ -153,6 +192,7 @@ const compressedDecisionSource = buildBoardManagerSecretaryDecisionPacket({
     networkTaskOutputCorpus: corpus,
     priorOutputCorpusSummary: corpus.summary,
     deduplicationWatchlist: corpus.deduplicationWatchlist,
+    capabilityInstrumentation,
     networkTaskCandidates: [{ accountId: "acct_contributor", walletAddress: "rContributorWallet", displayName: "Contributor" }],
     executionPolicy: {},
   },
@@ -175,6 +215,8 @@ assert.match(compressedDecisionSource.operatorStandingPolicy[0].directive, /Stop
 assert.equal(compressedDecisionSource.generationQualityPolicy.requires_concrete_action_output, true);
 assert.equal(compressedDecisionSource.networkTaskOutputCorpus.outputs.length, 2);
 assert.ok(compressedDecisionSource.deduplicationWatchlist.length >= 1);
+assert.equal(compressedDecisionSource.capabilityGapSummary.gaps[0].capability_type, "repo_pr_access");
+assert.equal(compressedDecisionSource.capabilityGapSummary.gaps[0].recommended_task_work_type, "capability_gating_task");
 
 const normalizedDecision = normalizeBoardManagerDecision({
   action: "initiate_network_task",
@@ -325,8 +367,11 @@ const boardManagerPrompt = readFileSync(join(repoRoot, "prompts/hive/board_manag
 const taskgenPrompt = readFileSync(join(repoRoot, "prompts/task_engine/taskgen_network_v1.md"), "utf8");
 const secretaryPrompt = readFileSync(join(repoRoot, "prompts/hive/board_manager_secretary_v1.md"), "utf8");
 assert.match(secretaryPrompt, /non-compressible/i);
+assert.match(secretaryPrompt, /capability_gap_summary/);
 assert.match(boardManagerPrompt, /Network Task Generation Intelligence/);
 assert.match(boardManagerPrompt, /document-to-action ladder/i);
+assert.match(boardManagerPrompt, /capability_gating_task/);
+assert.match(boardManagerPrompt, /evidence_evaluation_packet/);
 assert.match(taskgenPrompt, /Document-To-Action Network Tasks/);
 assert.match(taskgenPrompt, /Do not generate a task whose only deliverable is a report/i);
 assert.match(taskgenPrompt, /task_lineage\.referenced_outputs/);

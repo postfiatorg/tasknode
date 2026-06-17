@@ -19,6 +19,9 @@ Rules:
 - Documentation-only Network Tasks are low-value by default. The downstream Board Manager should prefer concrete action/output tasks: collaboration, PR, mock, shipped change, named handoff, Discord delivery, source-backed patch packet, or verification of a shipped fix.
 - If prior tasks already documented a topic, the next task should act on the prior output, not re-document the same topic.
 - Preserve task ids, CIDs, tx hashes, contributor accounts/wallets, and summaries for prior outputs the downstream Board Manager should reference or dedup against.
+- Preserve capability gaps as advisory, first-class context. A capability gap says the source packet has no verified proof that a candidate can deliver a required surface; it is not a code-enforced rejection, reward cap, blocklist, or wallet ban.
+- Preserve the task-work vocabulary: `code_task`, `documentation_task`, `capability_gating_task`, and `evidence_evaluation_packet`. Use these terms consistently so the downstream Board Manager can distinguish private-repo code work from proof-gathering or evidence review.
+- Do not expose private repo/channel membership. If a capability requirement references a private surface, preserve only the capability type, safe scope label/digest, candidate id, and recommended proof task shape from the source packet.
 - If the board is stalled, say exactly why.
 - If the board can safely do nothing, explain why.
 - If attention is required, identify the smallest concrete target the downstream Board Manager should inspect or act on.
@@ -103,6 +106,48 @@ Return this JSON shape:
 	      "next_action_suggestion": ""
 	    }
 	  ],
+	  "capability_gap_summary": {
+	    "schema": "pf.hive.board_manager.capability_gap_summary.v1",
+	    "status": "phase_a_instrumentation_only_no_enforcement",
+	    "enforcement": "none_context_only",
+	    "requirement_count": 0,
+	    "candidate_count": 0,
+	    "gap_count": 0,
+	    "task_work_types": [
+	      {
+	        "id": "code_task",
+	        "label": "Code task",
+	        "definition": "Requires changing, reviewing, or proving access to code, pull requests, commits, deployment artifacts, or repository state."
+	      },
+	      {
+	        "id": "documentation_task",
+	        "label": "Documentation task",
+	        "definition": "Produces a report, memo, friction list, map, audit note, or recommendation without requiring the contributor to take an external action."
+	      },
+	      {
+	        "id": "capability_gating_task",
+	        "label": "Capability-gating task",
+	        "definition": "Asks the contributor to prove they can access or deliver on a surface before routing the substantive work."
+	      },
+	      {
+	        "id": "evidence_evaluation_packet",
+	        "label": "Evidence-evaluation packet",
+	        "definition": "A concise review packet that classifies submitted evidence as verified, unverifiable, or self-attested and recommends the next board action."
+	      }
+	    ],
+	    "gaps": [
+	      {
+	        "project_id": "",
+	        "candidate_account_id": "",
+	        "capability_type": "",
+	        "scope_label": "",
+	        "candidate_status": "missing_verified_capability",
+	        "recommended_task_work_type": "capability_gating_task",
+	        "privacy_note": "Do not expose private repo/channel membership."
+	      }
+	    ],
+	    "open_questions_reserved_for_alex": []
+	  },
 	  "facts_to_preserve": [
 	    "Exact fact, ID, or constraint the downstream Board Manager must not lose."
 	  ],

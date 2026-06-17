@@ -536,6 +536,221 @@ export function buildHiveGenerationQualityPolicy({ operatorConstraintsSummary = 
   };
 }
 
+export const boardManagerTaskWorkTypeVocabulary = Object.freeze([
+  {
+    id: "code_task",
+    label: "Code task",
+    definition: "Requires changing, reviewing, or proving access to code, pull requests, commits, deployment artifacts, or repository state.",
+    evidence_standard: "Needs a resolvable PR/commit/build artifact or an approved capability proof before private-repo work is sensible.",
+  },
+  {
+    id: "documentation_task",
+    label: "Documentation task",
+    definition: "Produces a report, memo, friction list, map, audit note, or recommendation without requiring the contributor to take an external action.",
+    evidence_standard: "Low-value unless explicitly coupled to a concrete action/output and prior-output lineage.",
+  },
+  {
+    id: "capability_gating_task",
+    label: "Capability-gating task",
+    definition: "Asks the contributor to prove they can access or deliver on a surface before routing the substantive work.",
+    evidence_standard: "Needs a capability proof artifact such as an accessible PR URL, integration-backed access check, or operator-reviewed attestation.",
+  },
+  {
+    id: "evidence_evaluation_packet",
+    label: "Evidence-evaluation packet",
+    definition: "A concise review packet that classifies submitted evidence as verified, unverifiable, or self-attested and recommends the next board action.",
+    evidence_standard: "Advisory context only; never a reward verdict or hidden task lifecycle mutation.",
+  },
+]);
+
+function normalizeCapabilityType(value = "") {
+  return safeText(value, 80)
+    .toLowerCase()
+    .replace(/[^a-z0-9_:-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "") || "unspecified_capability";
+}
+
+function capabilityScopeDigest(value = "") {
+  const normalized = safeText(value, 500).toLowerCase();
+  if (!normalized) return "";
+  return digestJson({ scope: normalized }).slice(0, 16);
+}
+
+function normalizeCapabilityRequirement(value = {}, { projectId = "" } = {}) {
+  const input = typeof value === "string" ? { capability_type: value } : safeObject(value);
+  const capabilityType = normalizeCapabilityType(
+    input.capability_type || input.capabilityType || input.type || input.id || input.capability || "unspecified_capability"
+  );
+  const rawScope = safeText(
+    input.scope || input.scope_ref || input.scopeRef || input.repository || input.repo || input.channel || "",
+    500
+  );
+  const scopeLabel = safeText(
+    input.scope_label || input.scopeLabel || input.surface_label || input.surfaceLabel || input.label || capabilityType,
+    180
+  );
+  const visibility = safeText(input.visibility || input.exposure || "internal", 80).toLowerCase();
+  return {
+    requirement_id: safeText(input.requirement_id || input.requirementId || `${projectId || "project"}:${capabilityType}`, 240),
+    project_id: safeText(projectId, 180),
+    capability_type: capabilityType,
+    scope_label: scopeLabel || capabilityType,
+    scope_digest: capabilityScopeDigest(rawScope || scopeLabel || capabilityType),
+    visibility: ["public", "internal", "private"].includes(visibility) ? visibility : "internal",
+    status: "required",
+    proof_task_type: "capability_gating_task",
+    public_exposure: "do_not_expose_private_membership",
+  };
+}
+
+function capabilityRequirementsFromProject(project = {}) {
+  const metadata = safeObject(project.metadata || project.metadata_json);
+  const routing = safeObject(metadata.routing_constraints || metadata.routingConstraints);
+  const rawRequirements = [
+    ...safeArray(metadata.required_capabilities),
+    ...safeArray(metadata.requiredCapabilities),
+    ...safeArray(metadata.capability_requirements),
+    ...safeArray(metadata.capabilityRequirements),
+    ...safeArray(routing.required_capabilities),
+    ...safeArray(routing.requiredCapabilities),
+  ];
+  const seen = new Set();
+  return rawRequirements
+    .map((item) => normalizeCapabilityRequirement(item, { projectId: project.id }))
+    .filter((item) => {
+      const key = `${item.project_id}:${item.capability_type}:${item.scope_digest}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return item.capability_type;
+    })
+    .slice(0, 8);
+}
+
+function normalizeCandidateCapabilityEvidence(value = {}, { source = "candidate_profile" } = {}) {
+  const input = typeof value === "string" ? { capability_type: value } : safeObject(value);
+  const rawType = input.capability_type || input.capabilityType || input.type || input.id || input.capability || "";
+  if (!safeText(rawType, 120)) return null;
+  const capabilityType = normalizeCapabilityType(rawType);
+  const rawScope = safeText(
+    input.scope || input.scope_ref || input.scopeRef || input.repository || input.repo || input.channel || "",
+    500
+  );
+  return {
+    capability_type: capabilityType,
+    scope_label: safeText(input.scope_label || input.scopeLabel || input.surface_label || input.surfaceLabel || input.label || capabilityType, 180),
+    scope_digest: capabilityScopeDigest(rawScope || input.scope_label || input.scopeLabel || capabilityType),
+    status: safeText(input.status || source, 80).toLowerCase(),
+    evidence_task_id: safeText(input.evidence_task_id || input.evidenceTaskId || input.task_id || input.taskId, 180),
+    source,
+  };
+}
+
+function candidateCapabilityEvidence(candidate = {}) {
+  const profileOutput = safeObject(candidate.profileOutput || candidate.profile_output || candidate.output_json);
+  const capabilityBlock = safeObject(profileOutput.capabilities || profileOutput.capability_profile || profileOutput.capabilityProfile);
+  const verifiedRaw = [
+    ...safeArray(profileOutput.verified_capabilities),
+    ...safeArray(profileOutput.verifiedCapabilities),
+    ...safeArray(capabilityBlock.verified),
+    ...safeArray(capabilityBlock.verified_capabilities),
+    ...safeArray(capabilityBlock.verifiedCapabilities),
+  ];
+  const declaredRaw = [
+    ...safeArray(profileOutput.declared_capabilities),
+    ...safeArray(profileOutput.declaredCapabilities),
+    ...safeArray(capabilityBlock.declared),
+    ...safeArray(capabilityBlock.declared_capabilities),
+    ...safeArray(capabilityBlock.declaredCapabilities),
+    ...safeArray(capabilityBlock.items),
+  ];
+  const verified = verifiedRaw
+    .map((item) => normalizeCandidateCapabilityEvidence(item, { source: "verified_profile_capability" }))
+    .filter(Boolean)
+    .slice(0, 12);
+  const declared = declaredRaw
+    .map((item) => normalizeCandidateCapabilityEvidence(item, { source: "declared_profile_capability" }))
+    .filter(Boolean)
+    .filter((item) => !verified.some((verifiedItem) =>
+      verifiedItem.capability_type === item.capability_type && verifiedItem.scope_digest === item.scope_digest
+    ))
+    .slice(0, 12);
+  return { verified, declared };
+}
+
+function candidateSatisfiesRequirement(candidate = {}, requirement = {}) {
+  return safeArray(candidate.verified_capabilities).some((capability) => {
+    if (capability.capability_type !== requirement.capability_type) return false;
+    if (!requirement.scope_digest) return true;
+    return capability.scope_digest === requirement.scope_digest || !capability.scope_digest;
+  });
+}
+
+export function buildBoardManagerCapabilityInstrumentation({
+  projectRegistry = [],
+  networkTaskCandidates = [],
+} = {}) {
+  const projects = safeArray(projectRegistry).slice(0, 24);
+  const candidates = safeArray(networkTaskCandidates).slice(0, 20).map((candidate) => {
+    const evidence = candidateCapabilityEvidence(candidate);
+    return {
+      account_id: safeText(candidate.accountId || candidate.account_id, 180),
+      wallet_address: safeText(candidate.walletAddress || candidate.wallet_address, 120),
+      profile_id: safeText(candidate.profileId || candidate.profile_id, 180),
+      verified_capabilities: evidence.verified,
+      declared_capabilities: evidence.declared,
+      capability_source: evidence.verified.length || evidence.declared.length
+        ? "network_task_profile_output"
+        : "none_recorded_phase_a",
+    };
+  });
+  const projectCapabilityRequirements = projects
+    .flatMap((project) => capabilityRequirementsFromProject(project))
+    .slice(0, 40);
+  const capabilityGaps = [];
+  for (const requirement of projectCapabilityRequirements) {
+    for (const candidate of candidates) {
+      if (!candidate.account_id && !candidate.wallet_address) continue;
+      if (candidateSatisfiesRequirement(candidate, requirement)) continue;
+      capabilityGaps.push({
+        project_id: requirement.project_id,
+        candidate_account_id: candidate.account_id,
+        candidate_wallet_address: candidate.wallet_address,
+        capability_type: requirement.capability_type,
+        scope_label: requirement.scope_label,
+        scope_digest: requirement.scope_digest,
+        candidate_status: "missing_verified_capability",
+        recommended_task_work_type: "capability_gating_task",
+        privacy_note: "Do not expose private repo/channel membership; route proof-gathering work or ask the operator for verification.",
+      });
+      if (capabilityGaps.length >= 48) break;
+    }
+    if (capabilityGaps.length >= 48) break;
+  }
+  return {
+    schema: "pf.hive.board_manager.capability_instrumentation.v1",
+    status: "phase_a_instrumentation_only_no_enforcement",
+    task_work_type_vocabulary: boardManagerTaskWorkTypeVocabulary,
+    capability_profile_status: "persistent_capability_profiles_not_yet_implemented_phase_b",
+    project_capability_requirements: projectCapabilityRequirements,
+    candidate_capabilities: candidates,
+    capability_gaps: capabilityGaps,
+    summary: {
+      requirement_count: projectCapabilityRequirements.length,
+      candidate_count: candidates.length,
+      gap_count: capabilityGaps.length,
+      has_private_scope_requirements: projectCapabilityRequirements.some((item) => item.visibility === "private"),
+    },
+    open_questions_reserved_for_alex: [
+      "which repos count as private code surfaces",
+      "who can mark a capability verified",
+      "whether capability-gating tasks are paid",
+      "which Discord channels can be system-verified",
+    ],
+    enforcement: "none_context_only",
+  };
+}
+
 function contextEntries(document = {}) {
   return safeArray(document.groups).flatMap((group) =>
     safeArray(group.entries).map((entry) => ({
@@ -804,6 +1019,7 @@ function boardManagerSourceLogSnapshot(packet = {}) {
     networkTaskOutputCorpus: safeObject(source.networkTaskOutputCorpus),
     priorOutputCorpusSummary: safeObject(source.priorOutputCorpusSummary),
     deduplicationWatchlist: safeArray(source.deduplicationWatchlist).slice(0, 16),
+    capabilityInstrumentation: safeObject(source.capabilityInstrumentation),
     routingConstraints: safeObject(source.routingConstraints),
     openFollowups: safeArray(source.openFollowups).slice(0, 20),
     hiveProjects: safeObject(source.hiveProjects),
@@ -1072,9 +1288,13 @@ export async function buildBoardManagerSourcePacket({
 	    hiveSecretarySource,
 	    recentBoardManagerRuns: compactRecentRuns,
 	  });
-	  const generationQualityPolicy = buildHiveGenerationQualityPolicy({
-	    operatorConstraintsSummary: operatorStandingPolicy.map((item) => item.directive).filter(Boolean).slice(0, 4).join(" | "),
-	  });
+  const generationQualityPolicy = buildHiveGenerationQualityPolicy({
+    operatorConstraintsSummary: operatorStandingPolicy.map((item) => item.directive).filter(Boolean).slice(0, 4).join(" | "),
+  });
+  const capabilityInstrumentation = buildBoardManagerCapabilityInstrumentation({
+    projectRegistry,
+    networkTaskCandidates,
+  });
 	  // Canonical capacity verdicts: the same shared predicate used by the
 	  // executor hook and getNetworkTaskEligibility, so the Board Manager's view
   // of candidate availability cannot drift from enforcement.
@@ -1113,6 +1333,8 @@ export async function buildBoardManagerSourcePacket({
 	    generationQualityPolicy,
 	    priorOutputCorpusSummary: safeObject(networkTaskOutputCorpus?.summary),
 	    deduplicationWatchlist: safeArray(networkTaskOutputCorpus?.deduplicationWatchlist).slice(0, 16),
+	    capabilityInstrumentation,
+	    taskWorkTypeVocabulary: boardManagerTaskWorkTypeVocabulary,
 	    networkTaskCandidates,
 	    routingConstraints,
     openFollowups,

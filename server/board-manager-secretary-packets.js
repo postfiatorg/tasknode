@@ -186,7 +186,7 @@ function boardManagerSecretaryRepairMessages({ sourcePacket = {}, invalidText = 
         `Parser error: ${safeText(parseError, 500)}`,
         "Repair the same Board Manager Secretary packet now.",
         "Return exactly one JSON object matching the packet contract. Do not add prose, markdown, comments, or trailing text.",
-        "Preserve operator_standing_policy, generation_quality_policy, prior_output_corpus_summary, deduplication_watchlist, and facts_to_preserve.",
+        "Preserve operator_standing_policy, generation_quality_policy, prior_output_corpus_summary, deduplication_watchlist, capability_gap_summary, and facts_to_preserve.",
       ].join("\n"),
     },
   ];
@@ -224,6 +224,7 @@ function fallbackFactsToPreserve({
   operatorStandingPolicy = [],
   priorOutputCorpusSummary = {},
   deduplicationWatchlist = [],
+  capabilityGapSummary = {},
 } = {}) {
   const corpus = safeObject(priorOutputCorpusSummary);
   const recentOutputIds = safeArray(corpus.recent_outputs)
@@ -232,11 +233,22 @@ function fallbackFactsToPreserve({
   const dedupTaskIds = safeArray(deduplicationWatchlist)
     .flatMap((item) => safeArray(item.prior_task_ids || item.priorTaskIds))
     .filter(Boolean);
+  const capabilityGapFacts = safeArray(capabilityGapSummary.gaps)
+    .map((gap) => {
+      const item = safeObject(gap);
+      const projectId = safeText(item.project_id || item.projectId, 180);
+      const capabilityType = safeText(item.capability_type || item.capabilityType, 120);
+      const candidateAccountId = safeText(item.candidate_account_id || item.candidateAccountId, 180);
+      if (!projectId && !capabilityType && !candidateAccountId) return "";
+      return `capability_gap:${projectId || "project"}:${capabilityType || "capability"}:${candidateAccountId || "candidate"}`;
+    })
+    .filter(Boolean);
   return [
     safeText(sourcePacket.sourcePacketDigest, 120) ? `source_packet_digest:${safeText(sourcePacket.sourcePacketDigest, 120)}` : "",
     ...safeArray(operatorStandingPolicy).map((item) => `operator_policy:${item.source_id || item.sourceId || "source"}`),
     ...recentOutputIds.map((taskId) => `prior_output:${safeText(taskId, 180)}`),
     ...dedupTaskIds.map((taskId) => `dedup_against:${safeText(taskId, 180)}`),
+    ...capabilityGapFacts,
   ].filter(Boolean).slice(0, 24);
 }
 
@@ -260,6 +272,12 @@ function boardManagerSecretaryFallbackPacket({ sourcePacket = {}, parseError = "
       sourcePacket.deduplication_watchlist ||
       sourcePacket.networkTaskOutputCorpus?.deduplicationWatchlist ||
       sourcePacket.network_task_output_corpus?.deduplicationWatchlist
+  );
+  const capabilityGapSummary = normalizeCapabilityGapSummary(
+    sourcePacket.capabilityGapSummary ||
+      sourcePacket.capability_gap_summary ||
+      sourcePacket.capabilityInstrumentation ||
+      sourcePacket.capability_instrumentation
   );
   const candidateCount = Math.max(
     safeArray(sourcePacket.networkTaskCandidates).length,
@@ -288,11 +306,13 @@ function boardManagerSecretaryFallbackPacket({ sourcePacket = {}, parseError = "
     generation_quality_policy: generationQualityPolicy,
     prior_output_corpus_summary: priorOutputCorpusSummary,
     deduplication_watchlist: deduplicationWatchlist,
+    capability_gap_summary: capabilityGapSummary,
     facts_to_preserve: fallbackFactsToPreserve({
       sourcePacket,
       operatorStandingPolicy,
       priorOutputCorpusSummary,
       deduplicationWatchlist,
+      capabilityGapSummary,
     }),
     redaction_count: 0,
   });
@@ -413,6 +433,62 @@ function normalizeDeduplicationWatchlist(value = []) {
     .filter((item) => item.theme || item.prior_task_ids.length || item.prior_cids.length || item.next_action_suggestion);
 }
 
+function normalizeCapabilityGapSummary(value = {}) {
+  const input = safeObject(value);
+  const summary = safeObject(input.summary);
+  const rawGaps = safeArray(input.gaps || input.capability_gaps || input.capabilityGaps);
+  return {
+    schema: "pf.hive.board_manager.capability_gap_summary.v1",
+    status: safeText(input.status || "phase_a_instrumentation_only_no_enforcement", 120) ||
+      "phase_a_instrumentation_only_no_enforcement",
+    enforcement: safeText(input.enforcement || "none_context_only", 120) || "none_context_only",
+    requirement_count: Math.max(
+      0,
+      Math.round(Number(input.requirement_count ?? input.requirementCount ?? summary.requirement_count ?? summary.requirementCount ?? 0) || 0)
+    ),
+    candidate_count: Math.max(
+      0,
+      Math.round(Number(input.candidate_count ?? input.candidateCount ?? summary.candidate_count ?? summary.candidateCount ?? 0) || 0)
+    ),
+    gap_count: Math.max(
+      0,
+      Math.round(Number(input.gap_count ?? input.gapCount ?? summary.gap_count ?? summary.gapCount ?? rawGaps.length) || 0)
+    ),
+    task_work_types: safeArray(input.task_work_types || input.taskWorkTypes || input.task_work_type_vocabulary || input.taskWorkTypeVocabulary)
+      .slice(0, 8)
+      .map((item) => {
+        const type = safeObject(item);
+        return {
+          id: safeText(type.id, 80),
+          label: safeText(type.label, 120),
+          definition: safeText(type.definition, 500),
+        };
+      })
+      .filter((item) => item.id || item.label),
+    gaps: rawGaps
+      .slice(0, 16)
+      .map((item) => {
+        const gap = safeObject(item);
+        return {
+          project_id: safeText(gap.project_id || gap.projectId, 180),
+          candidate_account_id: safeText(gap.candidate_account_id || gap.candidateAccountId, 180),
+          capability_type: safeText(gap.capability_type || gap.capabilityType, 120),
+          scope_label: safeText(gap.scope_label || gap.scopeLabel, 180),
+          candidate_status: safeText(gap.candidate_status || gap.candidateStatus, 120),
+          recommended_task_work_type: safeText(gap.recommended_task_work_type || gap.recommendedTaskWorkType, 120),
+          privacy_note: safeText(gap.privacy_note || gap.privacyNote, 500),
+        };
+      })
+      .filter((item) => item.project_id || item.candidate_account_id || item.capability_type),
+    open_questions_reserved_for_alex: safeArray(
+      input.open_questions_reserved_for_alex || input.openQuestionsReservedForAlex || input.open_questions || input.openQuestions
+    )
+      .slice(0, 8)
+      .map((item) => safeText(item, 300))
+      .filter(Boolean),
+  };
+}
+
 export function normalizeBoardManagerSecretaryPacket(output = {}) {
   const input = safeObject(output);
   const motionState = safeText(input.motion_state || input.motionState, 80).toLowerCase();
@@ -467,6 +543,7 @@ export function normalizeBoardManagerSecretaryPacket(output = {}) {
       input.prior_output_corpus_summary || input.priorOutputCorpusSummary
     ),
     deduplication_watchlist: normalizeDeduplicationWatchlist(input.deduplication_watchlist || input.deduplicationWatchlist),
+    capability_gap_summary: normalizeCapabilityGapSummary(input.capability_gap_summary || input.capabilityGapSummary),
     facts_to_preserve: safeArray(input.facts_to_preserve || input.factsToPreserve)
       .slice(0, 24)
       .map((item) => safeText(item, 500))
@@ -502,6 +579,13 @@ function packetText(packet = {}) {
   const dedupWatchlist = safeArray(packet.deduplication_watchlist)
     .map((item) =>
       `- ${item.theme || item.project_id || "theme"}: prior tasks ${(item.prior_task_ids || []).join(", ") || "none"}; prior CIDs ${(item.prior_cids || []).join(", ") || "none"}; next ${item.next_action_suggestion || "unspecified"}`.trim()
+    )
+    .filter(Boolean)
+    .join("\n") || "None";
+  const capabilityGapSummary = safeObject(packet.capability_gap_summary);
+  const capabilityGaps = safeArray(capabilityGapSummary.gaps)
+    .map((gap) =>
+      `- ${gap.project_id || "project"} / ${gap.candidate_account_id || "candidate"}: ${gap.capability_type || "capability"} -> ${gap.candidate_status || "unknown"}; next ${gap.recommended_task_work_type || "unspecified"}`.trim()
     )
     .filter(Boolean)
     .join("\n") || "None";
@@ -560,6 +644,12 @@ function packetText(packet = {}) {
     "",
     "Deduplication watchlist",
     dedupWatchlist,
+    "",
+    "Capability gap summary",
+    `status: ${capabilityGapSummary.status || "phase_a_instrumentation_only_no_enforcement"}`,
+    `enforcement: ${capabilityGapSummary.enforcement || "none_context_only"}`,
+    `requirements: ${capabilityGapSummary.requirement_count || 0}; candidates: ${capabilityGapSummary.candidate_count || 0}; gaps: ${capabilityGapSummary.gap_count || 0}`,
+    capabilityGaps,
     "",
     "Facts to preserve",
     safeArray(packet.facts_to_preserve).map((fact) => `- ${fact}`).join("\n") || "None",
@@ -985,6 +1075,13 @@ export function buildBoardManagerSecretaryDecisionPacket({
         sourcePacket.deduplication_watchlist ||
         sourcePacket.networkTaskOutputCorpus?.deduplicationWatchlist ||
         normalizedSecretaryJson.deduplication_watchlist
+    ),
+    capabilityInstrumentation: safeObject(sourcePacket.capabilityInstrumentation || sourcePacket.capability_instrumentation),
+    capabilityGapSummary: normalizeCapabilityGapSummary(
+      sourcePacket.capabilityGapSummary ||
+        sourcePacket.capability_gap_summary ||
+        sourcePacket.capabilityInstrumentation ||
+        normalizedSecretaryJson.capability_gap_summary
     ),
     secretaryPacket: {
       id: safeText(secretaryPacket.id, 180),

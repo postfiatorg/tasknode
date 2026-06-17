@@ -71,6 +71,39 @@ The document-to-action ladder used by the prompts is:
    `decision_basis.source_facts`, `referenced_outputs`, and
    `deduped_against`.
 
+## Capability Instrumentation
+
+The Board Manager source packet also carries Phase A capability instrumentation.
+This is context only, not enforcement. `server/repositories/board-manager.js`
+builds `capabilityInstrumentation` from optional project metadata and current
+candidate profile output. The packet can describe:
+
+- `code_task`: work that requires code, PR, commit, deployment, or repository
+  proof.
+- `documentation_task`: report/memo/audit work whose output is only prose.
+- `capability_gating_task`: proof-gathering work that establishes whether a
+  contributor can access or deliver on a surface before substantive work is
+  routed.
+- `evidence_evaluation_packet`: an advisory packet that classifies submitted
+  evidence as verified, unverifiable, or self-attested.
+
+Capability requirements are read only when a project explicitly declares them
+in metadata (`required_capabilities`, `requiredCapabilities`,
+`capability_requirements`, or `routingConstraints.requiredCapabilities`).
+Until persistent capability profiles exist, candidates default to no verified
+capabilities unless their latest Network Diagnostic Report output already
+contains a structured verified-capability block. Missing proof appears in
+`capabilityInstrumentation.capability_gaps` with a recommended
+`capability_gating_task` next step.
+
+The instrumentation deliberately avoids exposing private repo/channel
+membership. Raw scopes are converted to safe labels and short digests. The
+Board Manager may cite a missing verified capability as context, ask for a
+capability proof, route a public-artifact task, or ask the operator for the
+smallest missing decision. It must not treat this field as a deterministic
+gate, wallet ban, reward cap, blocklist, or automatic rejection rule. Durable
+capability storage and verifier policy are later-phase work.
+
 ## JSON Handling Hardening
 
 The Board Manager decision provider parses strict JSON, retries once with a
