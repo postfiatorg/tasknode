@@ -7,35 +7,6 @@ WHERE COALESCE(source, '') = 'directory_polish_local_fixture'
    OR COALESCE(source, '') = 'board_manager_cancel_network_task_smoke'
    OR task_id LIKE 'task_cancel_paid_%';
 
-CREATE TEMP TABLE tasknode_projection_fixture_cleanup_accounts ON COMMIT DROP AS
-SELECT DISTINCT account_id
-FROM task_projections
-WHERE task_id IN (SELECT task_id FROM tasknode_projection_fixture_cleanup_tasks)
-  AND account_id <> ''
-UNION
-SELECT DISTINCT account_id
-FROM recommended_connection_profiles
-WHERE COALESCE(packet_json->>'directoryPolishFixture', 'false') = 'true'
-   OR COALESCE(packet_digest, '') LIKE 'directory_polish_%'
-   OR COALESCE(network_profile_id, '') LIKE 'directory_polish_%'
-   OR COALESCE(network_profile_digest, '') LIKE 'directory_polish_%'
-   OR COALESCE(embedding_model, '') = 'directory-polish-local'
-UNION
-SELECT DISTINCT account_id
-FROM profile_nfts
-WHERE COALESCE(metadata_json->>'directoryPolishFixture', 'false') = 'true'
-   OR id LIKE 'directory_polish_%'
-   OR COALESCE(model, '') = 'directory-polish'
-UNION
-SELECT DISTINCT account_id
-FROM profile_daily_airdrop_runs
-WHERE id LIKE 'directory_polish_%'
-   OR COALESCE(input_hash, '') LIKE 'directory_polish_%'
-   OR COALESCE(input_snapshot->>'directoryPolishFixture', 'false') = 'true'
-   OR COALESCE(output_json->>'directoryPolishFixture', 'false') = 'true'
-   OR COALESCE(model, '') = 'directory-polish'
-   OR COALESCE(prompt_version, '') = 'local-only';
-
 DELETE FROM pftl_pointer_observations
 WHERE task_id IN (SELECT task_id FROM tasknode_projection_fixture_cleanup_tasks);
 
@@ -58,42 +29,35 @@ DELETE FROM network_task_allocations
 WHERE generated_task_id IN (SELECT task_id FROM tasknode_projection_fixture_cleanup_tasks);
 
 DELETE FROM user_observability_events
-WHERE account_id IN (SELECT account_id FROM tasknode_projection_fixture_cleanup_accounts)
-   OR wallet_address LIKE 'rDirQa%'
+WHERE wallet_address LIKE 'rDirQa%'
    OR COALESCE(metadata_json->>'directoryPolishFixture', 'false') = 'true';
 
 DELETE FROM profile_public_snapshots
-WHERE account_id IN (SELECT account_id FROM tasknode_projection_fixture_cleanup_accounts)
-   OR COALESCE(input_snapshot->>'directoryPolishFixture', 'false') = 'true'
+WHERE COALESCE(input_snapshot->>'directoryPolishFixture', 'false') = 'true'
    OR COALESCE(output_json->>'directoryPolishFixture', 'false') = 'true';
 
 DELETE FROM network_task_profile_jobs
-WHERE account_id IN (SELECT account_id FROM tasknode_projection_fixture_cleanup_accounts)
-   OR COALESCE(source_packet_json->>'directoryPolishFixture', 'false') = 'true'
+WHERE COALESCE(source_packet_json->>'directoryPolishFixture', 'false') = 'true'
    OR COALESCE(source_packet_text, '') ILIKE '%directory polish%';
 
 DELETE FROM network_task_profiles
-WHERE account_id IN (SELECT account_id FROM tasknode_projection_fixture_cleanup_accounts)
-   OR COALESCE(source_packet_json->>'directoryPolishFixture', 'false') = 'true'
+WHERE COALESCE(source_packet_json->>'directoryPolishFixture', 'false') = 'true'
    OR COALESCE(source_packet_text, '') ILIKE '%directory polish%';
 
 DELETE FROM recommended_connection_profiles
-WHERE account_id IN (SELECT account_id FROM tasknode_projection_fixture_cleanup_accounts)
-   OR COALESCE(packet_json->>'directoryPolishFixture', 'false') = 'true'
+WHERE COALESCE(packet_json->>'directoryPolishFixture', 'false') = 'true'
    OR COALESCE(packet_digest, '') LIKE 'directory_polish_%'
    OR COALESCE(network_profile_id, '') LIKE 'directory_polish_%'
    OR COALESCE(network_profile_digest, '') LIKE 'directory_polish_%'
    OR COALESCE(embedding_model, '') = 'directory-polish-local';
 
 DELETE FROM profile_nfts
-WHERE account_id IN (SELECT account_id FROM tasknode_projection_fixture_cleanup_accounts)
-   OR COALESCE(metadata_json->>'directoryPolishFixture', 'false') = 'true'
+WHERE COALESCE(metadata_json->>'directoryPolishFixture', 'false') = 'true'
    OR id LIKE 'directory_polish_%'
    OR COALESCE(model, '') = 'directory-polish';
 
 DELETE FROM profile_daily_airdrop_runs
-WHERE account_id IN (SELECT account_id FROM tasknode_projection_fixture_cleanup_accounts)
-   OR id LIKE 'directory_polish_%'
+WHERE id LIKE 'directory_polish_%'
    OR COALESCE(input_hash, '') LIKE 'directory_polish_%'
    OR COALESCE(input_snapshot->>'directoryPolishFixture', 'false') = 'true'
    OR COALESCE(output_json->>'directoryPolishFixture', 'false') = 'true'
