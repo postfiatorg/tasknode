@@ -11,8 +11,25 @@ System Status row: `task_generation`
 - Worker module: `server/task-generation-worker.js`.
 - Prompts: `prompts/task_engine/taskgen_personal_v1.md` for personal requests and `prompts/task_engine/taskgen_network_v1.md` for Network/Alpha routing packets.
 - Source table: `task_requests`.
+- Replay table: `taskgen_replay_cache`.
 - Output protocol event: `pf.task.offer.v1`.
 - Projection target: `task_projections` through PFTL reducer replay.
+
+## Retry Idempotency
+
+Task generation is not expected to make identical prose from a fresh model call.
+It is expected to avoid publishing a different live task for the same generation
+input. The worker builds a replay key from request bundle CID/digest, source
+payload digest, taskgen input digest, prompt digest, model, task class, and
+reward/deadline policy versions. Before calling the provider, it checks
+`taskgen_replay_cache`.
+
+- If normalized taskgen output is already stored for the replay key, the worker
+  reuses that output and does not call the provider again.
+- If an offer CID and tx hash are already stored for the replay key, the worker
+  reuses the recorded offer and does not pin or submit a new `pf.task.offer.v1`.
+- If source facts, prompt/model, request bundle, or policy versions change, the
+  replay key changes and generation can intentionally produce a new task.
 
 ## Status Derivation
 
