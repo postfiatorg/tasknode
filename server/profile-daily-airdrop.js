@@ -10,6 +10,7 @@ import {
   resolveDailyAirdropRecipientWallet,
   resolveDailyAirdropWalletCloud,
 } from "./repositories/profile-daily-airdrop.js";
+import { canonicalRewardedTaskProjectionSql } from "./repositories/task-projection-integrity.js";
 
 const PROMPT_PATH = "profile/daily_airdrop_v1.md";
 const PROMPT_VERSION = "daily_airdrop_v1";
@@ -199,7 +200,7 @@ export async function buildDailyAirdropTaskRewardPacket({
        LEFT JOIN reward_events r ON r.task_id = p.task_id
       WHERE p.account_id = $1
         AND p.subject_wallet = ANY($4::text[])
-        AND p.reward_actual_pft > 0
+        AND ${canonicalRewardedTaskProjectionSql("p")}
         AND COALESCE(r.occurred_at, p.last_event_at, p.updated_at) >= $2::timestamptz
         AND COALESCE(r.occurred_at, p.last_event_at, p.updated_at) <= $3::timestamptz
       ORDER BY COALESCE(r.occurred_at, p.last_event_at, p.updated_at) DESC, p.task_id ASC

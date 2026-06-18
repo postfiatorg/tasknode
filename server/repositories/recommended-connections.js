@@ -14,6 +14,7 @@ import {
 } from "../runtime-store.js";
 import { getLatestNetworkTaskProfile } from "./network-task-profile.js";
 import { buildPublicProfileSnapshotInput, getLatestPublicProfileSnapshot } from "./profile-public.js";
+import { nonFixtureTaskProjectionSql } from "./task-projection-integrity.js";
 
 export const recommendedConnectionsPromptVersion = "recommended_connections_v1";
 const weeklyRefreshMs = 7 * 24 * 60 * 60 * 1000;
@@ -106,6 +107,7 @@ async function latestTaskWallet({ accountId = "" } = {}) {
       FROM task_projections
       WHERE account_id = $1
         AND subject_wallet <> ''
+        AND ${nonFixtureTaskProjectionSql("task_projections")}
       ORDER BY updated_at DESC NULLS LAST,
                task_id DESC
       LIMIT 1
@@ -210,6 +212,7 @@ async function currentTaskContext({ accountId = "", limit = 8 } = {}) {
              reward_actual_pft, submission_requirement_text, updated_at
       FROM task_projections
       WHERE account_id = $1
+        AND ${nonFixtureTaskProjectionSql("task_projections")}
         AND status IN (
           'proposed',
           'accepted',

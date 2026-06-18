@@ -1,6 +1,13 @@
 import { databaseEnabled, query } from "../db/pool.js";
 import { listDiscoverableAccountWalletIdentities } from "../runtime-store.js";
 import { listMachineOperatorDisclosures } from "./capability-profiles.js";
+import {
+  canonicalRewardedTaskProjectionSql,
+  nonFixtureAirdropRunSql,
+  nonFixtureProfileNftSql,
+  nonFixtureRecommendedProfileSql,
+  nonFixtureTaskProjectionSql,
+} from "./task-projection-integrity.js";
 
 const leaderboardLimit = Math.max(1, Number(process.env.DIRECTORY_LEADERBOARD_LIMIT || 200));
 const leaderboardCacheMs = Math.max(0, Number(process.env.DIRECTORY_LEADERBOARD_CACHE_MS || 30_000));
@@ -141,11 +148,12 @@ export async function discoverableMemberProfileIds(accountIds = []) {
   const result = await query(
     `
       SELECT account_id
-      FROM recommended_connection_profiles
-      WHERE account_id = ANY($1::text[])
-        AND visibility = 'public'
-        AND discoverable = true
-        AND disabled_at IS NULL
+      FROM recommended_connection_profiles profile
+      WHERE profile.account_id = ANY($1::text[])
+        AND profile.visibility = 'public'
+        AND profile.discoverable = true
+        AND profile.disabled_at IS NULL
+        AND ${nonFixtureRecommendedProfileSql("profile")}
     `,
     [accountIds]
   );
@@ -160,23 +168,24 @@ async function queryLeaderboardRows(accountIds = []) {
         SELECT unnest($1::text[]) AS account_id
       ),
       task_stats AS (
-        SELECT account_id,
+        SELECT p.account_id,
                COUNT(*) FILTER (
-                 WHERE reward_actual_pft > 0
-                   AND lower(COALESCE(task_kind, '')) = 'network'
+                 WHERE ${canonicalRewardedTaskProjectionSql("p")}
+                   AND lower(COALESCE(p.task_kind, '')) = 'network'
                )::integer AS network_tasks,
                COUNT(*) FILTER (
-                 WHERE reward_actual_pft > 0
-                   AND lower(COALESCE(task_kind, '')) = 'personal'
+                 WHERE ${canonicalRewardedTaskProjectionSql("p")}
+                   AND lower(COALESCE(p.task_kind, '')) = 'personal'
                )::integer AS personal_tasks,
-               COUNT(*) FILTER (WHERE reward_actual_pft > 0)::integer AS tasks_rewarded,
-               COALESCE(SUM(reward_actual_pft) FILTER (WHERE reward_actual_pft > 0), 0)::text AS reward_pft,
-               (ARRAY_AGG(subject_wallet ORDER BY updated_at DESC NULLS LAST, task_id DESC)
-                 FILTER (WHERE subject_wallet <> ''))[1] AS latest_wallet
-        FROM task_projections
-        WHERE account_id = ANY($1::text[])
-          AND account_id <> ''
-        GROUP BY account_id
+               COUNT(*) FILTER (WHERE ${canonicalRewardedTaskProjectionSql("p")})::integer AS tasks_rewarded,
+               COALESCE(SUM(p.reward_actual_pft) FILTER (WHERE ${canonicalRewardedTaskProjectionSql("p")}), 0)::text AS reward_pft,
+               (ARRAY_AGG(p.subject_wallet ORDER BY p.updated_at DESC NULLS LAST, p.task_id DESC)
+                 FILTER (WHERE p.subject_wallet <> '' AND ${canonicalRewardedTaskProjectionSql("p")}))[1] AS latest_wallet
+        FROM task_projections p
+        WHERE p.account_id = ANY($1::text[])
+          AND p.account_id <> ''
+          AND ${nonFixtureTaskProjectionSql("p")}
+        GROUP BY p.account_id
       ),
       latest_alignment AS (
         SELECT DISTINCT ON (account_id)
@@ -184,10 +193,11 @@ async function queryLeaderboardRows(accountIds = []) {
                alignment_score_7d::text AS alignment_score_7d,
                completed_at AS alignment_completed_at,
                run_date AS alignment_run_date
-        FROM profile_daily_airdrop_runs
-        WHERE account_id = ANY($1::text[])
-          AND status = 'completed'
-        ORDER BY account_id, completed_at DESC NULLS LAST, updated_at DESC, created_at DESC
+        FROM profile_daily_airdrop_runs run
+        WHERE run.account_id = ANY($1::text[])
+          AND run.status = 'completed'
+          AND ${nonFixtureAirdropRunSql("run")}
+        ORDER BY run.account_id, run.completed_at DESC NULLS LAST, run.updated_at DESC, run.created_at DESC
       )
       SELECT candidates.account_id,
              COALESCE(task_stats.network_tasks, 0)::integer AS network_tasks,
@@ -219,6 +229,7 @@ async function queryLeaderboardRows(accountIds = []) {
         FROM profile_nfts nft
         WHERE nft.account_id = candidates.account_id
           AND lower(nft.status) IN ('minted', 'prepared', 'generated')
+          AND ${nonFixtureProfileNftSql("nft")}
           AND (
             COALESCE(nft.image_gateway_url, '') <> ''
             OR COALESCE(nft.image_cid, '') <> ''
