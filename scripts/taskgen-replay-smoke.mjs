@@ -11,7 +11,10 @@ import {
   recordTaskgenReplayGenerated,
   recordTaskgenReplayPublished,
 } from "../server/repositories/taskgen-replay-cache.js";
-import { taskgenReplayIdentity } from "../server/task-generation-worker.js";
+import {
+  refreshTaskgenReplayDeadlineForPublish,
+  taskgenReplayIdentity,
+} from "../server/task-generation-worker.js";
 
 process.env.TASKNODE_TASKGEN_MODEL = "taskgen-replay-smoke-model";
 
@@ -115,6 +118,46 @@ assert.equal(hasPublishedTaskgenReplay({
   offerTxHash: "ABC",
 }), true);
 
+const completeTaskgenOutput = {
+  schema: "pf.taskgen.output.v1",
+  title: "Replay smoke",
+  description: "Verify replay cache behavior with a concrete smoke fixture.",
+  task_kind: "network",
+  steps: [
+    "Inspect the replay cache fixture.",
+    "Record the observed replay behavior.",
+  ],
+  submission_requirement: {
+    type: "text",
+    criteria: "Submit the replay cache observation.",
+  },
+  verification_policy: {
+    followup_required: false,
+    mode: "standard",
+    verification_type: "text",
+  },
+  reward_offer: {
+    amount_estimate_pft: "2.50",
+  },
+  deadline: {
+    accept_by: "2026-06-18T12:00:00.000Z",
+    deadline_at: "2026-06-18T13:00:00.000Z",
+  },
+};
+const refreshedForPublish = refreshTaskgenReplayDeadlineForPublish(
+  {
+    output: completeTaskgenOutput,
+    metadata: { provider: "smoke", model: identity.model },
+  },
+  taskInput.policy,
+  { nowMs: Date.parse("2026-06-18T14:00:00.000Z") }
+);
+assert.equal(refreshedForPublish.refreshed, true);
+assert.equal(refreshedForPublish.staleAcceptBy, "2026-06-18T12:00:00.000Z");
+assert.equal(refreshedForPublish.taskgen.output.deadline.accept_by, "2026-06-19T14:00:00.000Z");
+assert.equal(refreshedForPublish.taskgen.output.deadline.deadline_at, null);
+assert.equal(refreshedForPublish.taskgen.metadata.replay_deadline_refreshed, true);
+
 if (databaseEnabled()) {
   await migrateDatabase();
   await query("DELETE FROM taskgen_replay_cache WHERE replay_key = $1", [identity.replay_key]);
@@ -124,23 +167,37 @@ if (databaseEnabled()) {
     identity,
     taskId: "task_replay_smoke",
     subjectWallet: "rReplaySmoke",
-    taskgenOutput: { title: "Replay smoke", reward_offer: { amount_estimate_pft: "2.50" } },
+    taskgenOutput: completeTaskgenOutput,
     taskgenMetadata: { provider: "smoke", model: identity.model },
   });
   const generated = await getTaskgenReplay(identity.replay_key);
   assert.equal(hasGeneratedTaskgenReplay(generated), true);
   assert.equal(hasPublishedTaskgenReplay(generated), false);
+  assert.equal(generated.taskgenOutput.deadline.accept_by, "2026-06-18T12:00:00.000Z");
+  await recordTaskgenReplayGenerated({
+    replayKey: identity.replay_key,
+    identity,
+    taskId: "task_replay_smoke_refreshed",
+    subjectWallet: "rReplaySmoke",
+    taskgenOutput: refreshedForPublish.taskgen.output,
+    taskgenMetadata: refreshedForPublish.taskgen.metadata,
+  });
+  const refreshedGenerated = await getTaskgenReplay(identity.replay_key);
+  assert.equal(refreshedGenerated.status, "generated");
+  assert.equal(refreshedGenerated.offerTxHash, "");
+  assert.equal(refreshedGenerated.taskId, "task_replay_smoke_refreshed");
+  assert.equal(refreshedGenerated.taskgenOutput.deadline.accept_by, "2026-06-19T14:00:00.000Z");
   await recordTaskgenReplayPublished({
     replayKey: identity.replay_key,
     identity,
-    taskId: "task_replay_smoke",
+    taskId: "task_replay_smoke_refreshed",
     subjectWallet: "rReplaySmoke",
     offerCid: "QmReplaySmokeOffer",
     offerDigest: "sha256:offer",
     offerTxHash: "ABC",
-    taskgenOutput: { title: "Replay smoke", reward_offer: { amount_estimate_pft: "2.50" } },
-    taskgenMetadata: { provider: "smoke", model: identity.model },
-    offerPayload: { task_id: "task_replay_smoke", title: "Replay smoke" },
+    taskgenOutput: refreshedForPublish.taskgen.output,
+    taskgenMetadata: refreshedForPublish.taskgen.metadata,
+    offerPayload: { task_id: "task_replay_smoke_refreshed", title: "Replay smoke" },
   });
   const published = await getTaskgenReplay(identity.replay_key);
   assert.equal(hasPublishedTaskgenReplay(published), true);

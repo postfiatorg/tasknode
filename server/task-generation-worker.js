@@ -39,6 +39,8 @@ const TASKGEN_NETWORK_PROMPT = {
   path: "task_engine/taskgen_network_v1.md",
   version: "taskgen_network_v1",
 };
+const TASKGEN_REPLAY_ACCEPT_BY_MIN_FRESH_MS = 5 * 60 * 1000;
+const TASKGEN_REPLAY_ACCEPT_BY_FALLBACK_MS = 24 * 60 * 60 * 1000;
 
 const taskgenResponseFormat = {
   type: "json_schema",
@@ -476,6 +478,58 @@ function taskgenFromReplay(replay = {}, identity = {}) {
   };
 }
 
+export function refreshTaskgenReplayDeadlineForPublish(taskgen = {}, policy = {}, { nowMs = Date.now() } = {}) {
+  const normalizedOutput = validateTaskgenOutput(safeObject(taskgen.output), policy);
+  const acceptByMs = Date.parse(normalizedOutput.deadline?.accept_by || "");
+  const deadlineAtText = safeText(normalizedOutput.deadline?.deadline_at, 80);
+  const deadlineAtMs = Date.parse(deadlineAtText);
+  const minFreshMs = Number(nowMs) + TASKGEN_REPLAY_ACCEPT_BY_MIN_FRESH_MS;
+  const acceptByStale = !Number.isFinite(acceptByMs) || acceptByMs <= minFreshMs;
+  const deadlineAtStale = Boolean(deadlineAtText) && (!Number.isFinite(deadlineAtMs) || deadlineAtMs <= minFreshMs);
+  if (!acceptByStale && !deadlineAtStale) {
+    return {
+      taskgen: {
+        ...taskgen,
+        output: normalizedOutput,
+      },
+      refreshed: false,
+      staleAcceptBy: "",
+    };
+  }
+
+  const refreshedAcceptBy = acceptByStale
+    ? new Date(Number(nowMs) + TASKGEN_REPLAY_ACCEPT_BY_FALLBACK_MS).toISOString()
+    : normalizedOutput.deadline.accept_by;
+  const refreshedAcceptByMs = Date.parse(refreshedAcceptBy);
+  const refreshedDeadlineAt = deadlineAtText && Number.isFinite(deadlineAtMs) && deadlineAtMs > refreshedAcceptByMs
+    ? normalizedOutput.deadline.deadline_at
+    : null;
+  const refreshedOutput = {
+    ...normalizedOutput,
+    deadline: {
+      ...normalizedOutput.deadline,
+      accept_by: refreshedAcceptBy,
+      deadline_at: refreshedDeadlineAt,
+    },
+  };
+  return {
+    taskgen: {
+      ...taskgen,
+      output: refreshedOutput,
+      metadata: {
+        ...safeObject(taskgen.metadata),
+        output_digest: sha256(refreshedOutput),
+        replay_deadline_refreshed: true,
+        replay_deadline_refreshed_at: new Date(Number(nowMs)).toISOString(),
+        replay_deadline_stale_accept_by: acceptByStale ? safeText(normalizedOutput.deadline?.accept_by, 80) : "",
+        replay_deadline_stale_deadline_at: deadlineAtStale ? deadlineAtText : "",
+      },
+    },
+    refreshed: true,
+    staleAcceptBy: acceptByStale ? safeText(normalizedOutput.deadline?.accept_by, 80) : "",
+  };
+}
+
 function offerFromReplay(replay = {}) {
   return {
     taskId: replay.taskId || "",
@@ -735,21 +789,6 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
         ? taskgenFromReplay(replay, replayIdentity)
         : await generateTaskWithOpenAi(taskInput);
       let offer = replayedPublishedOffer ? offerFromReplay(replay) : null;
-      if (!replayedGeneratedOutput) {
-        const generatedTaskId = taskIdForOffer({
-          authorityWallet: authorityWallet.classicAddress,
-          requestBundleCid: request.requestBundleCid,
-          output: taskgen.output,
-        });
-        await recordTaskgenReplayGenerated({
-          replayKey: replayIdentity.replay_key,
-          identity: replayIdentity,
-          taskId: generatedTaskId,
-          subjectWallet: safeText(requestBundle.subject_wallet || request.subjectWallet, 120),
-          taskgenOutput: taskgen.output,
-          taskgenMetadata: taskgen.metadata,
-        });
-      }
       if (replayedGeneratedOutput && !offer) {
         offer = await findPublishedTaskgenOfferByTaskId({
           taskId: replay.taskId,
@@ -789,6 +828,23 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
         }
       }
       if (!offer) {
+        const publishReady = refreshTaskgenReplayDeadlineForPublish(taskgen, taskInput.policy || {});
+        taskgen = publishReady.taskgen;
+        if (!replayedGeneratedOutput || publishReady.refreshed) {
+          const generatedTaskId = taskIdForOffer({
+            authorityWallet: authorityWallet.classicAddress,
+            requestBundleCid: request.requestBundleCid,
+            output: taskgen.output,
+          });
+          await recordTaskgenReplayGenerated({
+            replayKey: replayIdentity.replay_key,
+            identity: replayIdentity,
+            taskId: generatedTaskId,
+            subjectWallet: safeText(requestBundle.subject_wallet || request.subjectWallet, 120),
+            taskgenOutput: taskgen.output,
+            taskgenMetadata: taskgen.metadata,
+          });
+        }
         offer = await publishOffer({
           request,
           requestBundle,

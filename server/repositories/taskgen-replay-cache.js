@@ -155,9 +155,17 @@ export async function recordTaskgenReplayGenerated({
         task_class = COALESCE(NULLIF(EXCLUDED.task_class, ''), taskgen_replay_cache.task_class),
         reward_policy_version = COALESCE(NULLIF(EXCLUDED.reward_policy_version, ''), taskgen_replay_cache.reward_policy_version),
         deadline_policy_version = COALESCE(NULLIF(EXCLUDED.deadline_policy_version, ''), taskgen_replay_cache.deadline_policy_version),
-        task_id = COALESCE(NULLIF(taskgen_replay_cache.task_id, ''), EXCLUDED.task_id),
-        subject_wallet = COALESCE(NULLIF(taskgen_replay_cache.subject_wallet, ''), EXCLUDED.subject_wallet),
+        task_id = CASE
+          WHEN taskgen_replay_cache.status = 'published' THEN taskgen_replay_cache.task_id
+          ELSE COALESCE(NULLIF(EXCLUDED.task_id, ''), taskgen_replay_cache.task_id)
+        END,
+        subject_wallet = CASE
+          WHEN taskgen_replay_cache.status = 'published' THEN taskgen_replay_cache.subject_wallet
+          ELSE COALESCE(NULLIF(EXCLUDED.subject_wallet, ''), taskgen_replay_cache.subject_wallet)
+        END,
         taskgen_output_json = CASE
+          WHEN taskgen_replay_cache.status = 'published' THEN taskgen_replay_cache.taskgen_output_json
+          WHEN EXCLUDED.taskgen_output_json <> '{}'::jsonb THEN EXCLUDED.taskgen_output_json
           WHEN taskgen_replay_cache.taskgen_output_json = '{}'::jsonb THEN EXCLUDED.taskgen_output_json
           ELSE taskgen_replay_cache.taskgen_output_json
         END,
@@ -167,7 +175,10 @@ export async function recordTaskgenReplayGenerated({
           WHEN taskgen_replay_cache.status = 'published' THEN 'published'
           ELSE 'generated'
         END,
-        generated_at = COALESCE(taskgen_replay_cache.generated_at, now()),
+        generated_at = CASE
+          WHEN taskgen_replay_cache.status = 'published' THEN taskgen_replay_cache.generated_at
+          ELSE now()
+        END,
         last_error = '',
         updated_at = now()
       RETURNING *
