@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled } from "../db/pool.js";
 import { query } from "../db/pool.js";
+import {
+  canonicalRewardedTaskProjectionSql,
+  nonFixtureTaskProjectionSql,
+} from "./task-projection-integrity.js";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -148,18 +152,19 @@ export async function resolveDailyAirdropRecipientWallet({
     `WITH candidates AS (
        SELECT unnest($2::text[]) AS wallet_address
      ),
-     ranked AS (
-       SELECT c.wallet_address,
-              COUNT(p.task_id)::integer AS task_count,
-              COUNT(p.task_id) FILTER (WHERE p.reward_actual_pft > 0)::integer AS rewarded_task_count,
-              COALESCE(SUM(p.reward_actual_pft), 0)::numeric AS reward_paid_pft,
-              MAX(p.updated_at) AS last_task_at,
-              CASE WHEN c.wallet_address = $3 THEN 1 ELSE 0 END AS active_rank
-         FROM candidates c
-         LEFT JOIN task_projections p
-           ON p.account_id = $1
-          AND p.subject_wallet = c.wallet_address
-        GROUP BY c.wallet_address
+	     ranked AS (
+	       SELECT c.wallet_address,
+	              COUNT(p.task_id)::integer AS task_count,
+	              COUNT(p.task_id) FILTER (WHERE ${canonicalRewardedTaskProjectionSql("p")})::integer AS rewarded_task_count,
+	              COALESCE(SUM(p.reward_actual_pft) FILTER (WHERE ${canonicalRewardedTaskProjectionSql("p")}), 0)::numeric AS reward_paid_pft,
+	              MAX(p.updated_at) AS last_task_at,
+	              CASE WHEN c.wallet_address = $3 THEN 1 ELSE 0 END AS active_rank
+	         FROM candidates c
+	         LEFT JOIN task_projections p
+	           ON p.account_id = $1
+	          AND p.subject_wallet = c.wallet_address
+	          AND ${nonFixtureTaskProjectionSql("p")}
+	        GROUP BY c.wallet_address
      )
      SELECT wallet_address,
             task_count,
@@ -332,9 +337,9 @@ export async function getProfileRewardHistory({ accountId, range = "28d" } = {})
               MAX(COALESCE(r.occurred_at, p.last_event_at, p.updated_at)) AS last_reward_at
          FROM task_projections p
          LEFT JOIN reward_events r ON r.task_id = p.task_id
-        WHERE p.account_id = $1
-          AND p.reward_actual_pft > 0
-          AND timezone('UTC', COALESCE(r.occurred_at, p.last_event_at, p.updated_at))::date
+	        WHERE p.account_id = $1
+	          AND ${canonicalRewardedTaskProjectionSql("p")}
+	          AND timezone('UTC', COALESCE(r.occurred_at, p.last_event_at, p.updated_at))::date
               BETWEEN (SELECT start_day FROM bounds) AND (SELECT end_day FROM bounds)
         GROUP BY 1
      ),
@@ -430,9 +435,9 @@ export async function listDailyAirdropCandidateAccounts({
          FROM task_projections p
          LEFT JOIN reward_events r ON r.task_id = p.task_id
          CROSS JOIN bounds b
-        WHERE p.account_id <> ''
-          AND p.reward_actual_pft > 0
-          AND COALESCE(r.occurred_at, p.last_event_at, p.updated_at) >= b.lookback_start
+	        WHERE p.account_id <> ''
+	          AND ${canonicalRewardedTaskProjectionSql("p")}
+	          AND COALESCE(r.occurred_at, p.last_event_at, p.updated_at) >= b.lookback_start
           AND COALESCE(r.occurred_at, p.last_event_at, p.updated_at) < b.run_day_end
         GROUP BY p.account_id
      )

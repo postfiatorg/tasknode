@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { databaseEnabled, query, transaction } from "../db/pool.js";
+import { nonFixtureProfileNftSql } from "./task-projection-integrity.js";
 
 const runtimeNfts = new Map();
 const publicHeroStatusRank = new Map([
@@ -63,6 +64,15 @@ function publicHeroStatus(value = "") {
 function hasPublicHeroImage(record = {}) {
   const normalized = normalizeRecord(record);
   return Boolean(normalized.imageCid || normalized.imageGatewayUrl);
+}
+
+function isFixtureProfileNft(record = {}) {
+  const normalized = normalizeRecord(record);
+  return Boolean(
+    normalized.metadataJson?.directoryPolishFixture === true ||
+      safeText(normalized.id, 160).startsWith("directory_polish_") ||
+      safeText(normalized.model, 120) === "directory-polish"
+  );
 }
 
 function comparePublicHeroNfts() {
@@ -368,7 +378,7 @@ export async function listProfileNfts(options = {}) {
       hasWalletFilter,
       includeWalletless,
     })
-      .filter((record) => !publicOnly || (publicHeroStatus(record.status) && hasPublicHeroImage(record)))
+      .filter((record) => !publicOnly || (publicHeroStatus(record.status) && hasPublicHeroImage(record) && !isFixtureProfileNft(record)))
       .slice(0, boundedLimit);
   }
 
@@ -382,6 +392,7 @@ export async function listProfileNfts(options = {}) {
               OR ($4::boolean = true AND wallet_address = '')
             )
             ${publicFilter}
+            AND ${nonFixtureProfileNftSql("profile_nfts")}
           ORDER BY created_at DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC
           LIMIT $2`,
         [normalizedAccountId, boundedLimit, walletAddress, includeWalletless === true]
@@ -391,6 +402,7 @@ export async function listProfileNfts(options = {}) {
            FROM profile_nfts
           WHERE account_id = $1
             ${publicFilter}
+            AND ${nonFixtureProfileNftSql("profile_nfts")}
           ORDER BY created_at DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC
           LIMIT $2`,
         [normalizedAccountId, boundedLimit]
@@ -412,7 +424,7 @@ export async function countProfileNfts(options = {}) {
       walletAddress,
       hasWalletFilter,
       includeWalletless,
-    }).filter((record) => !publicOnly || (publicHeroStatus(record.status) && hasPublicHeroImage(record))).length;
+    }).filter((record) => !publicOnly || (publicHeroStatus(record.status) && hasPublicHeroImage(record) && !isFixtureProfileNft(record))).length;
   }
 
   const publicFilter = publicOnly === true
@@ -431,14 +443,16 @@ export async function countProfileNfts(options = {}) {
               wallet_address = $2
               OR ($3::boolean = true AND wallet_address = '')
             )
-            ${publicFilter}`,
+            ${publicFilter}
+            AND ${nonFixtureProfileNftSql("profile_nfts")}`,
         [normalizedAccountId, walletAddress, includeWalletless === true]
       )
     : await query(
         `SELECT COUNT(*)::integer AS total
            FROM profile_nfts
           WHERE account_id = $1
-            ${publicFilter}`,
+            ${publicFilter}
+            AND ${nonFixtureProfileNftSql("profile_nfts")}`,
         [normalizedAccountId]
       );
   return Number(result.rows[0]?.total || 0);
@@ -450,16 +464,17 @@ export async function getPublicProfileHeroNft({ accountId = "" } = {}) {
 
   if (!databaseEnabled()) {
     const hero = runtimeList({ accountId: normalizedAccountId })
-      .filter((record) => publicHeroStatus(record.status) && hasPublicHeroImage(record))
+      .filter((record) => publicHeroStatus(record.status) && hasPublicHeroImage(record) && !isFixtureProfileNft(record))
       .sort(comparePublicHeroNfts())[0];
     return hero || null;
   }
 
   const result = await query(
     `SELECT nft.*
-       FROM profile_nfts nft
+      FROM profile_nfts nft
       WHERE nft.account_id = $1
         AND lower(nft.status) IN ('minted', 'prepared', 'generated')
+        AND ${nonFixtureProfileNftSql("nft")}
         AND (
           COALESCE(nft.image_gateway_url, '') <> ''
           OR COALESCE(nft.image_cid, '') <> ''

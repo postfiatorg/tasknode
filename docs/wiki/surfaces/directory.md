@@ -13,7 +13,7 @@ The endpoint returns:
 - the generated timestamp;
 - the current default rank formula metadata.
 
-Rows are keyed by `account_id`. Task counts and reward totals come from `task_projections.reward_actual_pft > 0`. Alignment is the latest completed `profile_daily_airdrop_runs.alignment_score_7d` converted to 0-100. Hero avatars prefer the selected usable `profile_nfts` row and otherwise fall back to the newest usable row by `created_at`. The frontend uses the shared profile NFT image helper, so Directory row avatars request cached PFP thumbnails such as `/api/profile/nft/pfp/<cid>?size=96` instead of the full-resolution gallery image.
+Rows are keyed by `account_id`. Task counts and reward totals come from canonical rewarded task projections only: positive `reward_actual_pft`, nonzero `event_count`, and non-empty `last_event_tx_hash` plus `last_event_cid`. Local fixture rows such as `directory_polish_local_fixture`, `directoryPolishFixture`, `directory_polish_*`, and cancel-smoke projections are excluded from leaderboard, profile, reward-history, airdrop, identity-vector, and Orc review queue reads. Alignment is the latest completed non-fixture `profile_daily_airdrop_runs.alignment_score_7d` converted to 0-100. Hero avatars prefer the selected usable non-fixture `profile_nfts` row and otherwise fall back to the newest usable row by `created_at`. The frontend uses the shared profile NFT image helper, so Directory row avatars request cached PFP thumbnails such as `/api/profile/nft/pfp/<cid>?size=96` instead of the full-resolution gallery image.
 
 ## Ranking
 

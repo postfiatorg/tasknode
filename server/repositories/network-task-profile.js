@@ -4,6 +4,10 @@ import { getChatMemoryContext } from "./chat-memory.js";
 import { getContextDocument } from "./context.js";
 import { buildPublicProfileSnapshotInput, getLatestPublicProfileSnapshot } from "./profile-public.js";
 import { recordUserObservabilityEvent } from "./user-observability.js";
+import {
+  canonicalRewardedTaskProjectionSql,
+  nonFixtureTaskProjectionSql,
+} from "./task-projection-integrity.js";
 import { normalizeTaskStatus, taskStatusLabel, taskStatusTab } from "../../shared/task-lifecycle.js";
 import { formatTaskTimestamp } from "../../shared/task-time-format.js";
 
@@ -466,6 +470,7 @@ export async function getLiveTaskRoutingContext({ accountId = "" } = {}) {
       FROM task_projections p
       WHERE p.account_id = $1
         AND p.status <> 'unknown'
+        AND ${nonFixtureTaskProjectionSql("p")}
       ORDER BY p.updated_at DESC, p.task_id DESC
       LIMIT 200
     `,
@@ -608,7 +613,7 @@ export async function positiveRewardStats({ accountId = "" } = {}) {
              MAX(updated_at) AS last_rewarded_task_at
       FROM task_projections
       WHERE account_id = $1
-        AND reward_actual_pft > 0
+        AND ${canonicalRewardedTaskProjectionSql("task_projections")}
     `,
     [normalizedAccountId]
   );
@@ -698,7 +703,7 @@ export async function enqueueNetworkTaskProfilesForRewardedAccounts({
                MAX(updated_at) AS last_rewarded_task_at
         FROM task_projections
         WHERE account_id <> ''
-          AND reward_actual_pft > 0
+          AND ${canonicalRewardedTaskProjectionSql("task_projections")}
         GROUP BY account_id
         HAVING COUNT(task_id) >= $1
       ),

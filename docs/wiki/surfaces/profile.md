@@ -56,7 +56,7 @@ Runtime endpoints:
 The deterministic fields come from Postgres and runtime wallet-link state:
 
 - primary/display wallet from the account wallet cloud, task history, and account-scoped profile NFT rows;
-- lifetime task reward PFT from `task_projections.reward_actual_pft > 0`;
+- lifetime task reward PFT from canonical rewarded `task_projections` rows with positive `reward_actual_pft`, nonzero `event_count`, and non-empty `last_event_tx_hash` plus `last_event_cid`;
 - lifetime daily airdrop PFT from submitted `profile_daily_airdrop_issuances`;
 - total lifetime PFT as task rewards plus issued airdrops;
 - alignment score from the latest completed `profile_daily_airdrop_runs.alignment_score_7d`;
@@ -441,7 +441,7 @@ Visible fields:
 
 The private profile does not display `retention_value_score`. The backend still stores that model output for audit and future policy review, but it is not part of the private member-facing panel.
 
-The top chart and PFT generation chart read actual earned PFT rows. They aggregate task rewards from `task_projections.reward_actual_pft > 0` and daily airdrops from `profile_daily_airdrop_issuances.status = 'submitted'`. Until reward categories exist as first-class data, the chart is a single earned-PFT series rather than fabricated personal/network/alpha layers. The daily airdrop headline must not reuse the chart's total-earned number or imply that task rewards are the same thing as the airdrop payout.
+The top chart and PFT generation chart read actual earned PFT rows. They aggregate task rewards from canonical rewarded `task_projections` rows and daily airdrops from `profile_daily_airdrop_issuances.status = 'submitted'`. Local fixture rows such as `directory_polish_local_fixture`, `directoryPolishFixture`, `directory_polish_*`, and cancel-smoke projections are excluded. Until reward categories exist as first-class data, the chart is a single earned-PFT series rather than fabricated personal/network/alpha layers. The daily airdrop headline must not reuse the chart's total-earned number or imply that task rewards are the same thing as the airdrop payout.
 
 ### Evidence Packet
 
@@ -450,7 +450,7 @@ The scorer builds one compact task reward packet from Postgres task projections 
 Included work:
 
 - only tasks tied to the account's identity wallet cloud;
-- only tasks with `reward_paid_pft > 0`;
+- only tasks with `reward_paid_pft > 0` and canonical reward backing (`event_count`, last CID, and last tx hash);
 - only tasks inside the trailing lookback window, currently 7 days;
 - task title, kind, status, reward offer, reward outcome, reward reason, completion score, evidence quality, event CIDs, and transaction hashes.
 

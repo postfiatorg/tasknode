@@ -4,6 +4,11 @@ import { getAccountWalletCloud } from "../account-wallet-cloud.js";
 import { getAccountIdentityProfile } from "../runtime-store.js";
 import { listMachineOperatorDisclosures } from "./capability-profiles.js";
 import { countProfileNfts, getPublicProfileHeroNft, listProfileNfts } from "./profile-nfts.js";
+import {
+  canonicalRewardedTaskProjectionSql,
+  nonFixtureAirdropRunSql,
+  nonFixtureTaskProjectionSql,
+} from "./task-projection-integrity.js";
 
 const runtimeSnapshots = new Map();
 
@@ -118,24 +123,35 @@ function latestNftImage(nfts = []) {
   return sortPublicNfts(nfts)[0] || null;
 }
 
+function fixtureProfileNft(nft = {}) {
+  const metadata = objectFromValue(nft.metadataJson || nft.metadata_json);
+  return Boolean(
+    metadata.directoryPolishFixture === true ||
+      safeText(nft.id || "", 160).startsWith("directory_polish_") ||
+      safeText(nft.model || "", 120) === "directory-polish"
+  );
+}
+
 function publicVisibleNfts(nfts = []) {
   return (Array.isArray(nfts) ? nfts : []).filter((nft) =>
-    ["minted", "generated", "prepared"].includes(String(nft.status || "").toLowerCase())
+    ["minted", "generated", "prepared"].includes(String(nft.status || "").toLowerCase()) &&
+      !fixtureProfileNft(nft)
   );
 }
 
 async function queryWalletStats({ accountId }) {
   if (!databaseEnabled()) return [];
   const result = await query(
-    `SELECT subject_wallet AS wallet_address,
-            COUNT(task_id)::integer AS task_count,
-            COUNT(task_id) FILTER (WHERE reward_actual_pft > 0)::integer AS rewarded_task_count,
-            COALESCE(SUM(reward_actual_pft), 0)::text AS reward_pft,
-            MAX(updated_at) AS last_task_at
-       FROM task_projections
-      WHERE account_id = $1
-        AND subject_wallet <> ''
-      GROUP BY subject_wallet
+    `SELECT p.subject_wallet AS wallet_address,
+            COUNT(p.task_id)::integer AS task_count,
+            COUNT(p.task_id) FILTER (WHERE ${canonicalRewardedTaskProjectionSql("p")})::integer AS rewarded_task_count,
+            COALESCE(SUM(p.reward_actual_pft) FILTER (WHERE ${canonicalRewardedTaskProjectionSql("p")}), 0)::text AS reward_pft,
+            MAX(p.updated_at) AS last_task_at
+       FROM task_projections p
+      WHERE p.account_id = $1
+        AND p.subject_wallet <> ''
+        AND ${nonFixtureTaskProjectionSql("p")}
+      GROUP BY p.subject_wallet
       ORDER BY task_count DESC, rewarded_task_count DESC, reward_pft DESC, last_task_at DESC NULLS LAST`,
     [safeText(accountId, 180)]
   );
@@ -176,7 +192,7 @@ async function queryRewardTotals({ accountId }) {
          FROM task_projections p
          LEFT JOIN reward_events r ON r.task_id = p.task_id
         WHERE p.account_id = $1
-          AND p.reward_actual_pft > 0
+          AND ${canonicalRewardedTaskProjectionSql("p")}
      ),
      task_totals AS (
        SELECT COALESCE(SUM(reward_actual_pft), 0)::text AS lifetime_task_reward_pft,
@@ -220,6 +236,7 @@ async function queryLatestAlignment({ accountId }) {
        FROM profile_daily_airdrop_runs
       WHERE account_id = $1
         AND status = 'completed'
+        AND ${nonFixtureAirdropRunSql("profile_daily_airdrop_runs")}
       ORDER BY completed_at DESC NULLS LAST, updated_at DESC, created_at DESC
       LIMIT 1`,
     [safeText(accountId, 180)]
@@ -266,7 +283,7 @@ async function queryRecentRewardedTasks({ accountId, limit = 12 } = {}) {
        FROM task_projections p
        LEFT JOIN reward_events r ON r.task_id = p.task_id
       WHERE p.account_id = $1
-        AND p.reward_actual_pft > 0
+        AND ${canonicalRewardedTaskProjectionSql("p")}
       ORDER BY COALESCE(r.occurred_at, p.last_event_at, p.updated_at) DESC, p.task_id ASC
       LIMIT $2`,
     [safeText(accountId, 180), Math.min(Math.max(Number(limit || 12), 1), 30)]

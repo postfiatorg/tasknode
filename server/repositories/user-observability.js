@@ -9,6 +9,10 @@ import {
   listAccountIdentityProfiles,
   listPublicAccountWalletIdentities,
 } from "../runtime-store.js";
+import {
+  nonFixtureRecommendedProfileSql,
+  nonFixtureTaskProjectionSql,
+} from "./task-projection-integrity.js";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -175,6 +179,7 @@ async function postgresWalletsForAccount({ accountId = "", walletAddress = "" } 
       SELECT account_id, subject_wallet AS wallet_address, max(updated_at) AS updated_at, count(*)::int AS task_count
       FROM task_projections
       WHERE subject_wallet <> ''
+        AND ${nonFixtureTaskProjectionSql("task_projections")}
         AND (
           ($1::text <> '' AND account_id = $1)
           OR ($2::text <> '' AND subject_wallet = $2)
@@ -298,10 +303,11 @@ async function postgresAccountMatches({ walletAddress = "", handle = "" } = {}) 
           FROM pftl_sync_wallets
           WHERE wallet_address = $1
           UNION ALL
-          SELECT account_id, subject_wallet AS wallet_address, 'task_projections' AS source
-          FROM task_projections
-          WHERE subject_wallet = $1
-          UNION ALL
+	          SELECT account_id, subject_wallet AS wallet_address, 'task_projections' AS source
+	          FROM task_projections
+	          WHERE subject_wallet = $1
+	            AND ${nonFixtureTaskProjectionSql("task_projections")}
+	          UNION ALL
           SELECT candidate_account_id AS account_id, candidate_wallet_address AS wallet_address, 'network_task_allocations' AS source
           FROM network_task_allocations
           WHERE candidate_wallet_address = $1
@@ -324,8 +330,11 @@ async function postgresAccountMatches({ walletAddress = "", handle = "" } = {}) 
       `
         SELECT account_id, wallet_address, hive_handle, display_name, 'recommended_connection_profiles' AS source
         FROM recommended_connection_profiles
-        WHERE lower(hive_handle) = $1
-           OR lower(display_name) LIKE '%' || $1 || '%'
+        WHERE (
+          lower(hive_handle) = $1
+          OR lower(display_name) LIKE '%' || $1 || '%'
+        )
+          AND ${nonFixtureRecommendedProfileSql("recommended_connection_profiles")}
         LIMIT 20
       `,
       [normalizedHandle]
