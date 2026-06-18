@@ -65,6 +65,7 @@ const migrations = [
   "055_user_observability_events.sql",
   "056_user_identity_vectors.sql",
   "057_profile_daily_airdrop_remediation.sql",
+  "058_taskgen_replay_cache.sql",
 ];
 
 let migrated = false;

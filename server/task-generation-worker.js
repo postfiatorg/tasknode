@@ -17,6 +17,16 @@ import {
   failNetworkTaskGenerationChain,
   markNetworkTaskOfferLinkFailed,
 } from "./repositories/network-tasks.js";
+import {
+  buildTaskgenReplayKey,
+  findPublishedTaskgenOfferByTaskId,
+  getTaskgenReplay,
+  hasGeneratedTaskgenReplay,
+  hasPublishedTaskgenReplay,
+  markTaskgenReplayFailed,
+  recordTaskgenReplayGenerated,
+  recordTaskgenReplayPublished,
+} from "./repositories/taskgen-replay-cache.js";
 import { encryptTasknodePayload, fetchAndDecryptTasknodePayload } from "./task-payloads.js";
 import { taskPayloadRecipientPublicKeys } from "./task-payload-recipients.js";
 
@@ -395,6 +405,91 @@ export function validateTaskgenOutput(output = {}, policy = {}) {
   return normalized;
 }
 
+export function taskgenReplayIdentity({
+  taskInput = {},
+  request = {},
+  requestBundle = {},
+  requestBundleCid = "",
+  requestBundleDigest = "",
+} = {}) {
+  const taskgenPrompt = taskgenPromptForInput(taskInput);
+  const systemPrompt = loadPrompt(taskgenPrompt.path);
+  const policy = safeObject(taskInput.policy);
+  const networkTask = safeObject(taskInput.network_task);
+  const requestObject = safeObject(taskInput.request);
+  const model = safeText(process.env.TASKNODE_TASKGEN_MODEL || "chat-latest", 120);
+  const taskClass = safeText(
+    policy.task_class ??
+      policy.taskClass ??
+      networkTask.task_class ??
+      networkTask.taskClass ??
+      requestObject.requestedTaskKind ??
+      requestObject.requested_task_kind ??
+      request.requestedTaskKind ??
+      request.requested_task_kind ??
+      "personal",
+    80
+  ).toLowerCase() || "personal";
+  const identity = {
+    schema: "pf.taskgen.replay_identity.v1",
+    request_id: safeText(request.requestId || request.request_id || requestObject.request_id, 180),
+    request_bundle_cid: safeText(requestBundleCid || request.requestBundleCid || request.request_bundle_cid, 240),
+    request_bundle_digest: safeText(requestBundleDigest, 180),
+    source_payload_digest: safeText(networkTask.source_payload_digest || networkTask.sourcePayloadDigest, 180),
+    input_packet_digest: sha256(taskInput),
+    prompt_version: taskgenPrompt.version,
+    prompt_path: taskgenPrompt.path,
+    prompt_digest: promptDigest(systemPrompt),
+    model,
+    task_class: taskClass,
+    reward_policy_version: safeText(policy.reward_policy_version || policy.rewardPolicyVersion, 120),
+    deadline_policy_version: safeText(
+      policy.deadline_policy_version ||
+        policy.deadlinePolicyVersion ||
+        policy.task_policy_version ||
+        policy.taskPolicyVersion ||
+        "",
+      120
+    ),
+    generation_policy_version: safeText(policy.generation_policy_version || policy.generationPolicyVersion, 120),
+    bundle_id: safeText(requestBundle.bundle_id || request.bundleId || request.bundle_id, 180),
+  };
+  return {
+    ...identity,
+    replay_key: buildTaskgenReplayKey(identity),
+  };
+}
+
+function taskgenFromReplay(replay = {}, identity = {}) {
+  return {
+    output: safeObject(replay.taskgenOutput),
+    metadata: {
+      ...safeObject(replay.taskgenMetadata),
+      replayed: true,
+      replay_key: replay.replayKey || identity.replay_key || "",
+      replay_status: replay.status || "",
+      input_packet_digest: replay.inputPacketDigest || identity.input_packet_digest || "",
+      prompt_version: replay.promptVersion || identity.prompt_version || "",
+      prompt_digest: replay.promptDigest || identity.prompt_digest || "",
+      model: replay.model || identity.model || "",
+    },
+  };
+}
+
+function offerFromReplay(replay = {}) {
+  return {
+    taskId: replay.taskId || "",
+    subjectWallet: replay.subjectWallet || "",
+    offerPayload: safeObject(replay.offerPayload),
+    offerCid: replay.offerCid || "",
+    offerDigest: replay.offerDigest || "",
+    txHash: replay.offerTxHash || "",
+    ledgerIndex: null,
+    engineResult: "replayed",
+    replayed: true,
+  };
+}
+
 async function generateTaskWithOpenAi(taskInput) {
   const apiKey = safeText(process.env.OPENAI_API_KEY);
   if (!apiKey) throw new Error("openai_api_key_missing");
@@ -459,7 +554,7 @@ function taskIdForOffer({ authorityWallet = "", requestBundleCid = "", output = 
   return `task_${sha256([authorityWallet, requestBundleCid, sha256(output)].join(":")).slice(0, 32)}`;
 }
 
-async function publishOffer({ request, requestBundle, taskgen, tasknodeKey, authorityWallet }) {
+async function publishOffer({ request, requestBundle, taskgen, tasknodeKey, authorityWallet, requestBundleDigest = "" }) {
   const subjectWallet = safeText(requestBundle.subject_wallet || request.subjectWallet, 120);
   if (!subjectWallet) throw new Error("task_request_subject_wallet_missing");
   const requestBundleCid = safeText(request.requestBundleCid, 240);
@@ -505,7 +600,7 @@ async function publishOffer({ request, requestBundle, taskgen, tasknodeKey, auth
     generation: {
       ...taskgen.metadata,
       request_bundle_cid: requestBundleCid,
-      request_bundle_digest: contextDoc.digest || "",
+      request_bundle_digest: requestBundleDigest,
     },
   };
   const recipientPublicKeys = await taskPayloadRecipientPublicKeys({
@@ -614,6 +709,7 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
   const requests = await claimTaskGenerationRequests({ limit });
   const results = [];
   for (const request of requests) {
+    let replayIdentity = null;
     try {
       const requestBundleResult = await fetchAndDecryptTasknodePayload({ cid: request.requestBundleCid });
       const requestBundle = safeObject(requestBundleResult.payload);
@@ -625,8 +721,95 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
       const tasknodeKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
       if (!tasknodeKey?.publicKey) throw new Error("tasknode_encryption_key_missing");
       const authorityWallet = taskAuthorityWallet();
-      const taskgen = await generateTaskWithOpenAi(taskInput);
-      const offer = await publishOffer({ request, requestBundle, taskgen, tasknodeKey, authorityWallet });
+      replayIdentity = taskgenReplayIdentity({
+        taskInput,
+        request,
+        requestBundle,
+        requestBundleCid: request.requestBundleCid,
+        requestBundleDigest,
+      });
+      const replay = await getTaskgenReplay(replayIdentity.replay_key);
+      const replayedPublishedOffer = hasPublishedTaskgenReplay(replay);
+      const replayedGeneratedOutput = hasGeneratedTaskgenReplay(replay);
+      let taskgen = replayedGeneratedOutput
+        ? taskgenFromReplay(replay, replayIdentity)
+        : await generateTaskWithOpenAi(taskInput);
+      let offer = replayedPublishedOffer ? offerFromReplay(replay) : null;
+      if (!replayedGeneratedOutput) {
+        const generatedTaskId = taskIdForOffer({
+          authorityWallet: authorityWallet.classicAddress,
+          requestBundleCid: request.requestBundleCid,
+          output: taskgen.output,
+        });
+        await recordTaskgenReplayGenerated({
+          replayKey: replayIdentity.replay_key,
+          identity: replayIdentity,
+          taskId: generatedTaskId,
+          subjectWallet: safeText(requestBundle.subject_wallet || request.subjectWallet, 120),
+          taskgenOutput: taskgen.output,
+          taskgenMetadata: taskgen.metadata,
+        });
+      }
+      if (replayedGeneratedOutput && !offer) {
+        offer = await findPublishedTaskgenOfferByTaskId({
+          taskId: replay.taskId,
+          requestId: request.requestId,
+        });
+        if (!offer) {
+          await syncOfferProjection({
+            accountId: request.accountId,
+            subjectWallet: safeText(requestBundle.subject_wallet || request.subjectWallet, 120),
+            authorityWallet: authorityWallet.classicAddress,
+            allocationWallet: safeText(requestBundle.wallet?.allocation_wallet, 120),
+          }).catch((error) => {
+            logger.warn?.("taskgen_replay_pre_publish_sync_failed", {
+              requestId: request.requestId,
+              taskId: replay.taskId,
+              error: error?.message || String(error),
+            });
+          });
+          offer = await findPublishedTaskgenOfferByTaskId({
+            taskId: replay.taskId,
+            requestId: request.requestId,
+          });
+        }
+        if (offer) {
+          await recordTaskgenReplayPublished({
+            replayKey: replayIdentity.replay_key,
+            identity: replayIdentity,
+            taskId: offer.taskId,
+            subjectWallet: offer.subjectWallet,
+            offerCid: offer.offerCid,
+            offerDigest: offer.offerDigest,
+            offerTxHash: offer.txHash,
+            taskgenOutput: taskgen.output,
+            taskgenMetadata: taskgen.metadata,
+            offerPayload: offer.offerPayload,
+          });
+        }
+      }
+      if (!offer) {
+        offer = await publishOffer({
+          request,
+          requestBundle,
+          taskgen,
+          tasknodeKey,
+          authorityWallet,
+          requestBundleDigest,
+        });
+        await recordTaskgenReplayPublished({
+          replayKey: replayIdentity.replay_key,
+          identity: replayIdentity,
+          taskId: offer.taskId,
+          subjectWallet: offer.subjectWallet,
+          offerCid: offer.offerCid,
+          offerDigest: offer.offerDigest,
+          offerTxHash: offer.txHash,
+          taskgenOutput: taskgen.output,
+          taskgenMetadata: taskgen.metadata,
+          offerPayload: offer.offerPayload,
+        });
+      }
       const sync = await syncOfferProjection({
         accountId: request.accountId,
         subjectWallet: offer.subjectWallet,
@@ -641,7 +824,11 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
           offerCid: offer.offerCid,
           offerTxHash: offer.txHash,
           generatedTask: offer.offerPayload,
-          taskgen: taskgen.metadata,
+          taskgen: {
+            ...taskgen.metadata,
+            replay_key: replayIdentity.replay_key,
+            replayed_offer: offer.replayed === true,
+          },
           sync,
         },
       });
@@ -664,9 +851,18 @@ export async function processTaskGenerationQueueOnce({ limit = 1, logger = conso
           error: error?.message || String(error),
         });
       });
-      results.push({ ok: true, requestId: request.requestId, taskId: offer.taskId, txHash: offer.txHash });
+      results.push({
+        ok: true,
+        requestId: request.requestId,
+        taskId: offer.taskId,
+        txHash: offer.txHash,
+        replayed: offer.replayed === true,
+      });
     } catch (error) {
       const message = safeText(error?.message || error, 1000);
+      if (replayIdentity?.replay_key) {
+        await markTaskgenReplayFailed({ replayKey: replayIdentity.replay_key, error: message }).catch(() => null);
+      }
       const failure = await markGenerationFailure({ request, message, logger });
       logger.warn?.("task_generation_request_failed", {
         requestId: request.requestId,
