@@ -46,10 +46,7 @@ export function resetAgentQualityGateRateLimitsForTests() {
 }
 
 export function agentOriginForTaskSession(session = null, payload = {}, walletAddress = "") {
-  const origin = agentOriginForWalletSession(session, {
-    ...payload,
-    walletAddress: payload?.walletAddress || payload?.address || walletAddress,
-  });
+  const origin = agentOriginForWalletSession(session, payload, walletAddress);
   if (!origin) return null;
   return {
     ...origin,

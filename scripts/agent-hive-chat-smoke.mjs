@@ -78,7 +78,7 @@ try {
       conversationTitle: "Hive",
       metadata: { purpose: "agent_hive_chat_smoke" },
       agentHandle: "grashnuk",
-      walletAddress: "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW",
+      walletAddress: "rSpoofedPayloadWallet",
     },
     session: { accountId: "acct_agent_hive", displayName: "Grashnuk", primaryProvider: "wallet" },
     linkedWallet: { status: "linked", address: "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW" },
@@ -87,6 +87,7 @@ try {
   assert.equal(trusted.body.entry.metadata.senderType, "machine_agent");
   assert.equal(trusted.body.entry.metadata.agentOrigin.actorType, "machine_agent");
   assert.equal(trusted.body.entry.metadata.agentOrigin.agentHandle, "grashnuk");
+  assert.equal(trusted.body.entry.metadata.agentOrigin.walletAddress, "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW");
   assert.equal(trusted.body.user.metadata.senderType, "machine_agent");
   assert.equal(trusted.body.user.metadata.agentOrigin.walletAddress, "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW");
   assert.equal(trusted.body.orcWorkJournal.reason, "database_disabled");

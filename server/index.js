@@ -80,6 +80,12 @@ function resolveChatWriteConversationId(session, requestedId = "") {
   });
 }
 
+function agentOriginForCurrentWalletSession(session = null, payload = {}) {
+  const linkedWallet = session?.accountId ? getLinkedWallet({ accountId: session.accountId }) : null;
+  const walletAddress = linkedWallet?.status === "linked" ? linkedWallet.address || "" : "";
+  return agentOriginForWalletSession(session, payload, walletAddress);
+}
+
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".js", "text/javascript; charset=utf-8"],
@@ -732,7 +738,7 @@ async function routeApi(req, url, res) {
     const started = await chatStreamStart(
       { ...payload, accountId: session?.accountId || "", conversationId },
       req.method,
-      { agentOrigin: agentOriginForWalletSession(session, payload) }
+      { agentOrigin: agentOriginForCurrentWalletSession(session, payload) }
     );
 
     if (!started.stream) {
@@ -830,7 +836,7 @@ async function routeApi(req, url, res) {
     const result = await chatSend(
       { ...payload, accountId: session?.accountId || "", conversationId },
       req.method,
-      { agentOrigin: agentOriginForWalletSession(session, payload) }
+      { agentOrigin: agentOriginForCurrentWalletSession(session, payload) }
     );
     json(res, result.status, result.body);
     return true;

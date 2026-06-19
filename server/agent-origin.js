@@ -52,7 +52,19 @@ export function normalizeMachineAgentOrigin(value = {}) {
   };
 }
 
-export function agentOriginForWalletSession(session, payload = {}) {
+function verifiedSessionWalletAddress(session = null, walletAddress = "") {
+  // Wallet identity must come from server-resolved session/account state. Client
+  // metadata may label the agent, but it cannot bind or override the wallet.
+  return safeAgentText(
+    walletAddress ||
+      session?.walletAddress ||
+      session?.wallet?.address ||
+      session?.metadata?.walletAddress,
+    120
+  );
+}
+
+export function agentOriginForWalletSession(session, payload = {}, walletAddress = "") {
   if (session?.primaryProvider !== "wallet") return null;
   const metadata = payload?.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
     ? payload.metadata
@@ -62,6 +74,7 @@ export function agentOriginForWalletSession(session, payload = {}) {
     : metadata.agentOrigin && typeof metadata.agentOrigin === "object" && !Array.isArray(metadata.agentOrigin)
       ? metadata.agentOrigin
       : {};
+  const boundWalletAddress = verifiedSessionWalletAddress(session, walletAddress);
   return {
     agent: true,
     actorType: "machine_agent",
@@ -72,10 +85,7 @@ export function agentOriginForWalletSession(session, payload = {}) {
       payload?.agentHandle || payload?.agent || metadata.agentHandle || requested.agentHandle || requested.handle,
       80
     ),
-    walletAddress: safeAgentText(
-      payload?.walletAddress || payload?.address || metadata.walletAddress || requested.walletAddress || requested.address,
-      120
-    ),
+    walletAddress: boundWalletAddress,
     client: safeAgentText(payload?.client || metadata.client || requested.client || "TaskNodeAgentClient", 120),
   };
 }

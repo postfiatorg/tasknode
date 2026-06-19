@@ -179,6 +179,10 @@ app:
 - successful login reuses the session cache instead of re-authenticating every
   command;
 - signed task actions use `TaskNodeAgentClient` and its no-double-submit guard.
+- server-side agent origin binding uses the wallet resolved from the active
+  session/account path. Client metadata may supply an agent handle or client
+  label, but it cannot assert or override `walletAddress` for chat, Hive chat,
+  task actions, rate limits, or Orc work-journal attribution.
 
 `orcctl agent onboard` registers an Orc in `orc_agents`, assigns the charter,
 and prints the public wallet allowlist entry that the operator must add to Fly
