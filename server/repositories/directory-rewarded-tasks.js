@@ -1,7 +1,8 @@
 import { databaseEnabled, query } from "../db/pool.js";
 import { listDiscoverableAccountWalletIdentities } from "../runtime-store.js";
 import { listEvidenceEvaluationPackets } from "./evidence-evaluation-packets.js";
-import { canonicalRewardedTaskProjectionSql } from "./task-projection-integrity.js";
+import { deriveNetworkTaskStatusPacketFromRow } from "./network-task-status.js";
+import { nonFixtureTaskProjectionSql } from "./task-projection-integrity.js";
 
 export const DIRECTORY_REWARDED_TASKS_DEFAULT_LIMIT = 100;
 export const DIRECTORY_REWARDED_TASKS_MAX_LIMIT = 500;
@@ -94,8 +95,10 @@ async function queryRewardedTaskRows({
              p.account_id,
              p.subject_wallet,
              p.task_kind,
+             p.status,
              p.title,
              p.description,
+             p.reward_offer_pft::text AS reward_offer_pft,
              p.reward_actual_pft::text AS reward_actual_pft,
              p.request_bundle_cid,
              p.last_event_tx_hash,
@@ -103,9 +106,21 @@ async function queryRewardedTaskRows({
              p.event_count,
              p.last_event_at,
              p.updated_at,
+             p.metadata_json,
              refs.project_id,
              refs.source AS project_ref_source,
              project.title AS project_title,
+             alloc.id AS allocation_id,
+             alloc.allocation_status,
+             alloc.generated_task_id AS allocation_generated_task_id,
+             alloc.task_request_id AS allocation_task_request_id,
+             job.id AS generation_job_id,
+             job.status AS generation_job_status,
+             job.task_id AS generation_job_task_id,
+             job.request_id AS generation_job_request_id,
+             job.offer_cid AS generation_job_offer_cid,
+             job.offer_tx_hash AS generation_job_offer_tx_hash,
+             job.last_error AS generation_job_last_error,
              latest_event.source_tx_hash AS latest_event_tx_hash,
              latest_event.source_cid AS latest_event_cid,
              latest_event.occurred_at AS latest_event_at
@@ -114,7 +129,8 @@ async function queryRewardedTaskRows({
         ON visible.account_id = p.account_id
       LEFT JOIN LATERAL (
         SELECT refs.project_id,
-               refs.source
+               refs.source,
+               refs.metadata_json
         FROM network_project_task_refs refs
         WHERE refs.task_id = p.task_id
           AND refs.task_id <> ''
@@ -126,6 +142,28 @@ async function queryRewardedTaskRows({
       LEFT JOIN network_projects project
         ON project.id = refs.project_id
       LEFT JOIN LATERAL (
+        SELECT job.*
+        FROM network_task_generation_jobs job
+        WHERE job.task_id = p.task_id
+           OR (p.request_id <> '' AND job.request_id = p.request_id)
+           OR (refs.metadata_json->>'generation_job_id' <> '' AND job.id = refs.metadata_json->>'generation_job_id')
+        ORDER BY (job.task_id = p.task_id) DESC,
+                 job.updated_at DESC NULLS LAST,
+                 job.id DESC
+        LIMIT 1
+      ) job ON true
+      LEFT JOIN LATERAL (
+        SELECT alloc.*
+        FROM network_task_allocations alloc
+        WHERE alloc.generated_task_id = p.task_id
+           OR (p.request_id <> '' AND alloc.task_request_id = p.request_id)
+           OR (job.allocation_id <> '' AND alloc.id = job.allocation_id)
+        ORDER BY (alloc.generated_task_id = p.task_id) DESC,
+                 alloc.updated_at DESC NULLS LAST,
+                 alloc.id DESC
+        LIMIT 1
+      ) alloc ON true
+      LEFT JOIN LATERAL (
         SELECT event.source_tx_hash,
                event.source_cid,
                event.occurred_at
@@ -135,7 +173,11 @@ async function queryRewardedTaskRows({
         LIMIT 1
       ) latest_event ON true
       WHERE lower(COALESCE(p.task_kind, '')) = $2
-        AND ${canonicalRewardedTaskProjectionSql("p")}
+        AND p.status = 'rewarded'
+        AND COALESCE(p.event_count, 0) > 0
+        AND COALESCE(p.last_event_tx_hash, '') <> ''
+        AND COALESCE(p.last_event_cid, '') <> ''
+        AND ${nonFixtureTaskProjectionSql("p")}
       ORDER BY COALESCE(latest_event.occurred_at, p.last_event_at, p.updated_at) DESC NULLS LAST,
                p.reward_actual_pft DESC,
                p.task_id ASC
@@ -194,6 +236,7 @@ export async function getDirectoryRewardedTasksDocument({
     const accountId = safeText(row.account_id, 180);
     const identity = identityByAccount.get(accountId) || {};
     const projectId = safeText(row.project_id, 180);
+    const statusPacket = deriveNetworkTaskStatusPacketFromRow(row);
     return {
       taskId,
       taskKind: normalizedTaskKind,
@@ -205,6 +248,7 @@ export async function getDirectoryRewardedTasksDocument({
       title: safeText(row.title, 240),
       description: safeText(row.description, 1600),
       rewardActualPft: numeric(row.reward_actual_pft),
+      statusPacket,
       requestBundleCid: safeText(row.request_bundle_cid, 240),
       lastEvent: {
         txHash: safeText(row.last_event_tx_hash || row.latest_event_tx_hash, 180),

@@ -72,6 +72,7 @@ const migrations = [
   "062_orc_agents_and_activity.sql",
   "063_orc_task_reviews.sql",
   "064_orc_review_queue_public_items.sql",
+  "065_network_task_status_packets.sql",
 ];
 
 let migrated = false;

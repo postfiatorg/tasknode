@@ -23,7 +23,7 @@ const queryImpl = async (sql, params = []) => {
   assert.match(sql, /FROM task_projections p/);
   assert.match(sql, /JOIN visible_accounts visible/);
   assert.match(sql, /network_project_task_refs refs/);
-  assert.match(sql, /reward_actual_pft > 0/);
+  assert.match(sql, /p.status = 'rewarded'/);
   if (params[1] === "personal") {
     return {
       rows: [{
@@ -31,8 +31,10 @@ const queryImpl = async (sql, params = []) => {
         account_id: "acct_public_operator",
         subject_wallet: "rPublicOperatorWallet",
         task_kind: "personal",
+        status: "rewarded",
         title: "Personal rewarded task",
         description: "Public profile task summary.",
+        reward_offer_pft: "7.5",
         reward_actual_pft: "7.5",
         request_bundle_cid: "bafyPersonalRequest",
         last_event_tx_hash: "tx_personal_reward",
@@ -40,6 +42,7 @@ const queryImpl = async (sql, params = []) => {
         event_count: 3,
         last_event_at: "2026-06-18T12:00:00.000Z",
         updated_at: "2026-06-18T12:00:00.000Z",
+        metadata_json: {},
         project_id: "",
         project_ref_source: "",
         project_title: "",
@@ -50,32 +53,65 @@ const queryImpl = async (sql, params = []) => {
     };
   }
   return {
-    rows: [{
-      task_id: "task_network_rewarded",
-      account_id: "acct_public_operator",
-      subject_wallet: "rPublicOperatorWallet",
-      task_kind: "network",
-      title: "Network rewarded task",
-      description: "Public network task summary.",
-      reward_actual_pft: "42",
-      request_bundle_cid: "bafyNetworkRequest",
-      last_event_tx_hash: "tx_network_reward",
-      last_event_cid: "bafyNetworkReward",
-      event_count: 5,
-      last_event_at: "2026-06-18T13:00:00.000Z",
-      updated_at: "2026-06-18T13:00:00.000Z",
-      project_id: "project_core",
-      project_ref_source: "network_task_generation",
-      project_title: "Task Node Core Product",
-      latest_event_tx_hash: "tx_network_reward",
-      latest_event_cid: "bafyNetworkReward",
-      latest_event_at: "2026-06-18T13:00:00.000Z",
-    }],
+    rows: [
+      {
+        task_id: "task_network_rewarded",
+        account_id: "acct_public_operator",
+        subject_wallet: "rPublicOperatorWallet",
+        task_kind: "network",
+        status: "rewarded",
+        title: "Network rewarded task",
+        description: "Public network task summary.",
+        reward_offer_pft: "42",
+        reward_actual_pft: "42",
+        request_bundle_cid: "bafyNetworkRequest",
+        last_event_tx_hash: "tx_network_reward",
+        last_event_cid: "bafyNetworkReward",
+        event_count: 5,
+        last_event_at: "2026-06-18T13:00:00.000Z",
+        updated_at: "2026-06-18T13:00:00.000Z",
+        metadata_json: {},
+        project_id: "project_core",
+        project_ref_source: "network_task_generation",
+        project_title: "Task Node Core Product",
+        allocation_status: "completed",
+        generation_job_status: "published",
+        latest_event_tx_hash: "tx_network_reward",
+        latest_event_cid: "bafyNetworkReward",
+        latest_event_at: "2026-06-18T13:00:00.000Z",
+      },
+      {
+        task_id: "task_network_zero_reward",
+        account_id: "acct_public_operator",
+        subject_wallet: "rPublicOperatorWallet",
+        task_kind: "network",
+        status: "rewarded",
+        title: "Network zero-reward task",
+        description: "Public network task closed with zero PFT.",
+        reward_offer_pft: "42",
+        reward_actual_pft: "0",
+        request_bundle_cid: "bafyNetworkZeroRequest",
+        last_event_tx_hash: "tx_network_zero_reward",
+        last_event_cid: "bafyNetworkZeroReward",
+        event_count: 5,
+        last_event_at: "2026-06-18T12:30:00.000Z",
+        updated_at: "2026-06-18T12:30:00.000Z",
+        metadata_json: {},
+        project_id: "project_core",
+        project_ref_source: "network_task_generation",
+        project_title: "Task Node Core Product",
+        allocation_status: "completed",
+        generation_job_status: "published",
+        latest_event_tx_hash: "tx_network_zero_reward",
+        latest_event_cid: "bafyNetworkZeroReward",
+        latest_event_at: "2026-06-18T12:30:00.000Z",
+      },
+    ],
   };
 };
 
 const evaluationPacketReader = async ({ taskIds }) => {
-  assert.deepEqual(taskIds, ["task_network_rewarded"]);
+  assert.deepEqual(taskIds, ["task_network_rewarded", "task_network_zero_reward"]);
   return [{
     id: "evalpkt_network_rewarded",
     taskId: "task_network_rewarded",
@@ -102,16 +138,20 @@ const networkDocument = await getDirectoryRewardedTasksDocument({
 
 assert.equal(networkDocument.ok, true);
 assert.equal(networkDocument.taskKind, "network");
-assert.equal(networkDocument.tasks.length, 1);
+assert.equal(networkDocument.tasks.length, 2);
 assert.equal(networkDocument.tasks[0].taskId, "task_network_rewarded");
 assert.equal(networkDocument.tasks[0].operator.handle, "public-operator");
 assert.equal(networkDocument.tasks[0].operator.wallet, "rPublicOperatorWallet");
 assert.equal(networkDocument.tasks[0].rewardActualPft, 42);
+assert.equal(networkDocument.tasks[0].statusPacket.rewardMovement, "paid_positive");
 assert.equal(networkDocument.tasks[0].requestBundleCid, "bafyNetworkRequest");
 assert.equal(networkDocument.tasks[0].lastEvent.cid, "bafyNetworkReward");
 assert.equal(networkDocument.tasks[0].eventCount, 5);
 assert.equal(networkDocument.tasks[0].hiveTaskDetailUrl, "/api/hive/task-detail?taskId=task_network_rewarded");
 assert.equal(networkDocument.tasks[0].evaluationPacket.summary, "Public evidence packet summary.");
+assert.equal(networkDocument.tasks[1].taskId, "task_network_zero_reward");
+assert.equal(networkDocument.tasks[1].rewardActualPft, 0);
+assert.equal(networkDocument.tasks[1].statusPacket.rewardMovement, "closed_zero");
 assert.equal(networkDocument.policy.privateEvidence, "excluded");
 
 const personalDocument = await getDirectoryRewardedTasksDocument({

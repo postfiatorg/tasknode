@@ -1,5 +1,6 @@
 import { databaseEnabled, query } from "../db/pool.js";
 import { getDirectoryRewardedTasksDocument } from "./directory-rewarded-tasks.js";
+import { packetNeedsReview } from "./network-task-status.js";
 
 function safeText(value = "", max = 4000) {
   return String(value || "").trim().slice(0, max);
@@ -37,6 +38,7 @@ export function directoryRewardedTaskToReviewItem(task = {}) {
   const lastEvent = safeObject(task.lastEvent);
   const project = safeObject(task.project);
   const evaluationPacket = safeObject(task.evaluationPacket);
+  const statusPacket = safeObject(task.statusPacket);
   return {
     task_id: safeText(task.taskId || task.task_id, 180),
     source_mode: "directory_public",
@@ -61,6 +63,7 @@ export function directoryRewardedTaskToReviewItem(task = {}) {
       directoryPolicy: safeObject(task.policy),
       project: project.id ? project : null,
       evaluationPacket: evaluationPacket.id || evaluationPacket.summary ? evaluationPacket : null,
+      statusPacket: statusPacket.schema ? statusPacket : null,
     },
   };
 }
@@ -91,7 +94,7 @@ function publicReviewItemsUpsertSql() {
         metadata_json jsonb
       )
       WHERE COALESCE(task_id, '') <> ''
-        AND source_mode IN ('directory_public', 'hive_public_detail')
+        AND source_mode IN ('directory_public', 'hive_public_detail', 'network_status_packet')
     ),
     upserted AS (
       INSERT INTO orc_task_review_items (
@@ -208,9 +211,12 @@ export async function ingestDirectoryRewardedTasksIntoReviewQueue({
     .filter((item) => (
       item.task_id &&
       item.task_kind === "network" &&
-      item.reward_actual_pft > 0 &&
-      item.last_event_tx_hash &&
-      item.last_event_cid
+      packetNeedsReview(safeObject(item.metadata_json).statusPacket) &&
+      (
+        item.last_event_tx_hash ||
+        item.last_event_cid ||
+        safeObject(item.metadata_json).statusPacket?.repairRequired === true
+      )
     ));
   if (!execute) {
     return {

@@ -328,7 +328,7 @@ ALTER TABLE orc_task_review_items
   DROP CONSTRAINT IF EXISTS orc_task_review_items_source_mode_check;
 ALTER TABLE orc_task_review_items
   ADD CONSTRAINT orc_task_review_items_source_mode_check
-    CHECK (source_mode = ANY(ARRAY['local_projection', 'directory_public', 'hive_public_detail']::text[]));
+    CHECK (source_mode = ANY(ARRAY['local_projection', 'directory_public', 'hive_public_detail', 'network_status_packet']::text[]));
 
 CREATE INDEX IF NOT EXISTS orc_task_review_items_source_idx
   ON orc_task_review_items (source_mode, last_seen_at DESC);
@@ -380,7 +380,21 @@ SELECT
   COALESCE(p.created_at, p.updated_at, now()),
   COALESCE(p.last_event_at, p.updated_at, now()),
   p.last_event_tx_hash,
-  jsonb_build_object('ingestedFrom', 'task_projections'),
+  jsonb_build_object(
+    'ingestedFrom', 'task_projections',
+    'statusPacket', jsonb_build_object(
+      'schema', 'pf.task_node.network_task_status_packet.v1',
+      'allocationState', 'published',
+      'taskState', 'rewarded',
+      'rewardMovement', CASE
+        WHEN lower(COALESCE(p.metadata_json->'reward_payment_guard'->>'status', '')) IN ('submitting', 'submitted', 'submit_unknown', 'duplicate_guarded', 'duplicate') THEN 'duplicate_guarded'
+        WHEN p.reward_actual_pft > 0 THEN 'paid_positive'
+        ELSE 'closed_zero'
+      END,
+      'repairRequired', false,
+      'repairReason', ''
+    )
+  ),
   now(),
   now()
 FROM task_projections p
@@ -395,7 +409,6 @@ LEFT JOIN LATERAL (
 ) refs ON true
 WHERE lower(COALESCE(NULLIF(p.task_kind, ''), p.metadata_json->'generatedTask'->>'task_kind', '')) = 'network'
   AND p.status = 'rewarded'
-  AND p.reward_actual_pft > 0
   AND COALESCE(p.event_count, 0) > 0
   AND COALESCE(p.last_event_tx_hash, '') <> ''
   AND COALESCE(p.last_event_cid, '') <> ''
@@ -412,7 +425,7 @@ ON CONFLICT (task_id) DO UPDATE SET
   task_kind = COALESCE(NULLIF(EXCLUDED.task_kind, ''), orc_task_review_items.task_kind),
   task_status = COALESCE(NULLIF(EXCLUDED.task_status, ''), orc_task_review_items.task_status),
   reward_offer_pft = CASE WHEN EXCLUDED.reward_offer_pft > 0 THEN EXCLUDED.reward_offer_pft ELSE orc_task_review_items.reward_offer_pft END,
-  reward_actual_pft = CASE WHEN EXCLUDED.reward_actual_pft > 0 THEN EXCLUDED.reward_actual_pft ELSE orc_task_review_items.reward_actual_pft END,
+  reward_actual_pft = EXCLUDED.reward_actual_pft,
   request_bundle_cid = COALESCE(NULLIF(EXCLUDED.request_bundle_cid, ''), orc_task_review_items.request_bundle_cid),
   last_event_cid = COALESCE(NULLIF(EXCLUDED.last_event_cid, ''), orc_task_review_items.last_event_cid),
   last_event_tx_hash = COALESCE(NULLIF(EXCLUDED.last_event_tx_hash, ''), orc_task_review_items.last_event_tx_hash),
@@ -445,6 +458,7 @@ SELECT
   item.task_kind,
   item.event_count,
   item.metadata_json AS item_metadata_json,
+  item.metadata_json->'statusPacket' AS status_packet_json,
   COALESCE(s.disposition, 'not_reviewed') AS review_disposition,
   COALESCE(s.action_required, false) AS action_required,
   s.action_owner,
@@ -464,11 +478,24 @@ FROM orc_task_review_items item
 LEFT JOIN orc_task_review_states s
   ON s.task_id = item.task_id
 WHERE lower(COALESCE(item.task_kind, '')) = 'network'
-  AND item.task_status = 'rewarded'
-  AND item.reward_actual_pft > 0
-  AND COALESCE(item.event_count, 0) > 0
-  AND COALESCE(item.last_event_tx_hash, '') <> ''
-  AND COALESCE(item.last_event_cid, '') <> '';
+  AND (
+    (
+      item.task_status = 'rewarded'
+      AND (
+        item.reward_actual_pft > 0
+        OR item.metadata_json->'statusPacket'->>'rewardMovement' IN ('closed_zero', 'duplicate_guarded')
+      )
+    )
+    OR COALESCE(item.metadata_json->'statusPacket'->>'repairRequired', 'false') = 'true'
+  )
+  AND (
+    (
+      COALESCE(item.event_count, 0) > 0
+      AND COALESCE(item.last_event_tx_hash, '') <> ''
+      AND COALESCE(item.last_event_cid, '') <> ''
+    )
+    OR COALESCE(item.metadata_json->'statusPacket'->>'repairRequired', 'false') = 'true'
+  );
 
 SELECT jsonb_build_object(
   'ok', true,

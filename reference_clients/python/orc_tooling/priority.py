@@ -312,7 +312,7 @@ def build_directory_rewarded_task_packet(row: dict[str, Any]) -> dict[str, Any]:
         "taskId": row.get("taskId") or row.get("task_id"),
         "title": row.get("title"),
         "kind": row.get("taskKind") or row.get("task_kind") or "Network",
-        "status": "rewarded",
+        "status": row.get("taskStatus") or row.get("task_status") or "rewarded",
         "rewardPft": row.get("rewardPft") or row.get("rewardActualPft") or row.get("reward_actual_pft") or row.get("reward_pft"),
         "rewardOffer": {
             "offerPft": row.get("rewardOfferPft") or row.get("reward_offer_pft"),
@@ -329,6 +329,7 @@ def build_directory_rewarded_task_packet(row: dict[str, Any]) -> dict[str, Any]:
             "taskUpdatedAt": row.get("updatedAt") or row.get("updated_at"),
             "itemSourceMode": row.get("queueItemSourceMode") or row.get("source_mode") or "",
         },
+        "statusPacket": row.get("statusPacket") or row.get("status_packet") or row.get("status_packet_json") or _safe_dict(row.get("item_metadata_json")).get("statusPacket") or {},
         "sourceContributor": {
             "accountId": row.get("accountId") or row.get("account_id") or operator.get("accountId"),
             "walletAddress": row.get("wallet") or row.get("walletAddress") or row.get("wallet_address") or row.get("operator_wallet") or operator.get("wallet"),
@@ -338,7 +339,7 @@ def build_directory_rewarded_task_packet(row: dict[str, Any]) -> dict[str, Any]:
         "sourceEvidence": {
             "submissionSummary": _safe_text(row.get("publicSummary") or row.get("description"), 1200),
             "verificationResponseSummary": "",
-            "rewardDecision": "rewarded",
+            "rewardDecision": row.get("taskStatus") or row.get("task_status") or "rewarded",
             "rewardReason": "",
             "rewardUserFeedback": "",
         },
@@ -358,6 +359,7 @@ def heuristic_priority_score(packet: dict[str, Any]) -> dict[str, Any]:
     status = _safe_text(packet.get("status"), 120).lower()
     source_mode = _safe_text(packet.get("sourceMode"), 80)
     review_queue_state = _safe_dict(packet.get("reviewQueue"))
+    status_packet = _safe_dict(packet.get("statusPacket"))
     deadline_hours = _deadline_hours(packet.get("deadline"))
 
     integrity_hits = _keyword_hits(text, {
@@ -407,6 +409,10 @@ def heuristic_priority_score(packet: dict[str, Any]) -> dict[str, Any]:
     if status == "accepted":
         urgency += 3.0
     if source_mode == "review_queue" and _safe_text(review_queue_state.get("disposition"), 80) == "not_reviewed":
+        urgency += 1.0
+    if status_packet.get("repairRequired") is True:
+        urgency += 3.0
+    if _safe_text(status_packet.get("rewardMovement"), 80) in {"closed_zero", "duplicate_guarded"}:
         urgency += 1.0
     if deadline_hours is not None:
         if deadline_hours <= 0:
@@ -943,7 +949,7 @@ def prioritize_review_queue(
             )
             tasks = _safe_list(_safe_dict(review_packet).get("tasks"))
             if not tasks:
-                if _safe_text(row.get("source_mode"), 80) in {"directory_public", "hive_public_detail"}:
+                if _safe_text(row.get("source_mode"), 80) in {"directory_public", "hive_public_detail", "network_status_packet"}:
                     packet = build_directory_rewarded_task_packet({
                         **row,
                         "sourceMode": "review_queue",
@@ -951,6 +957,7 @@ def prioritize_review_queue(
                         "reviewDisposition": row.get("review_disposition"),
                         "updatedAt": row.get("task_updated_at"),
                         "rewardActualPft": row.get("reward_actual_pft"),
+                        "statusPacket": row.get("status_packet_json") or _safe_dict(row.get("item_metadata_json")).get("statusPacket") or {},
                         "publicSummary": row.get("description") or _safe_dict(row.get("item_metadata_json")).get("publicSummary") or "",
                     })
                 else:
