@@ -46,7 +46,9 @@ from orc_tooling import (
     network_triage_decision,
     next_network_triage_item,
     normalize_review_state_record,
+    onboard_orc_agent,
     operator_status,
+    orc_agent_onboard_sql,
     paste_chip_count,
     outstanding_task_briefs,
     prioritize_directory_rewarded_tasks,
@@ -2084,6 +2086,129 @@ class OrcToolingTests(unittest.TestCase):
         directive = build_dispatch_directive({"task_id": "task_source", "title": "Useful report", "reward_actual_pft": "100"})
         self.assertIn("task_source", directive)
         self.assertIn("shared Orc loop", directive)
+
+    def test_orc_agent_onboard_sql_registers_agent_charter_and_allowlist(self):
+        sql = orc_agent_onboard_sql({
+            "id": "orc_agent_grashnuk",
+            "handle": "grashnuk",
+            "agentId": "grashnuk",
+            "accountId": "acct_orc",
+            "walletAddress": "rAgentWallet",
+            "role": "operator",
+            "status": "active",
+            "active": True,
+            "runtimeKind": "codex",
+            "tmuxTarget": "grashnuk:0.0",
+            "capacityLimit": 1,
+            "metadata": {
+                "schema": "pf.orc.agent_onboard.v1",
+                "charter": "Review network tasks and open concrete follow-ups.",
+            },
+            "allowlistEnvKey": "TASKNODE_AGENT_WALLET_ALLOWLIST",
+        })
+
+        self.assertIn("INSERT INTO orc_agents", sql)
+        self.assertIn("ON CONFLICT (id) DO UPDATE", sql)
+        self.assertIn("pf.orc.agent_onboard.v1", sql)
+        self.assertIn("Review network tasks and open concrete follow-ups.", sql)
+        self.assertIn("TASKNODE_AGENT_WALLET_ALLOWLIST", sql)
+        self.assertIn("fly secrets set", sql)
+
+    def test_onboard_orc_agent_upserts_registry_and_outputs_allowlist_entry(self):
+        calls = []
+
+        def fake_runner(command, **kwargs):
+            calls.append(command)
+            self.assertEqual(command[0], "psql")
+            self.assertIn("INSERT INTO orc_agents", command[-1])
+            self.assertIn("route repo-access work", command[-1])
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({
+                    "ok": True,
+                    "id": "orc_agent_thrakul",
+                    "handle": "thrakul",
+                    "agent_id": "thrakul",
+                    "account_id": "acct_thrakul",
+                    "wallet_address": "rThrakulWallet",
+                    "role": "operator",
+                    "status": "active",
+                    "active": True,
+                    "runtime_kind": "codex",
+                    "tmux_target": "thrakul:0.0",
+                    "capacity_limit": 1,
+                    "allowlistEnvKey": "TASKNODE_AGENT_WALLET_ALLOWLIST",
+                    "allowlistEntry": "rThrakulWallet",
+                    "flyCommandHint": (
+                        "fly secrets set TASKNODE_AGENT_WALLET_ALLOWLIST="
+                        "\"<existing_allowlist>,rThrakulWallet\" -a tasknodeofficial-dev"
+                    ),
+                    "secretPrinted": False,
+                }),
+                stderr="",
+            )
+
+        result = onboard_orc_agent(
+            handle="@Thrakul",
+            wallet_address="rThrakulWallet",
+            account_id="acct_thrakul",
+            charter="route repo-access work to this orc",
+            database_url="postgres://unit",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result["agent"]["handle"], "thrakul")
+        self.assertEqual(result["agent"]["accountId"], "acct_thrakul")
+        self.assertEqual(result["allowlist"]["entry"], "rThrakulWallet")
+        self.assertEqual(result["allowlist"]["operatorMustApply"], True)
+        self.assertEqual(result["charterAssigned"], True)
+        self.assertEqual(result["secretPrinted"], False)
+
+    def test_orcctl_agent_onboard_cli_prints_allowlist_entry(self):
+        with patch("orc_tooling.orcctl._run_json", return_value={
+            "ok": True,
+            "id": "orc_agent_burzghash",
+            "handle": "burzghash",
+            "agent_id": "burzghash",
+            "account_id": "",
+            "wallet_address": "rBurzghashWallet",
+            "role": "operator",
+            "status": "active",
+            "active": True,
+            "runtime_kind": "codex",
+            "tmux_target": "burzghash:0.0",
+            "capacity_limit": 1,
+            "allowlistEnvKey": "TASKNODE_AGENT_WALLET_ALLOWLIST",
+            "allowlistEntry": "rBurzghashWallet",
+            "flyCommandHint": (
+                "fly secrets set TASKNODE_AGENT_WALLET_ALLOWLIST="
+                "\"<existing_allowlist>,rBurzghashWallet\" -a tasknodeofficial-dev"
+            ),
+            "secretPrinted": False,
+        }):
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                exit_code = orcctl_module.main([
+                    "--database-url",
+                    "postgres://unit",
+                    "agent",
+                    "onboard",
+                    "--handle",
+                    "burzghash",
+                    "--wallet-address",
+                    "rBurzghashWallet",
+                    "--charter",
+                    "Pick up repo-access network tasks and report concise evidence.",
+                ])
+
+        self.assertEqual(exit_code, 0)
+        output = json.loads(buffer.getvalue())
+        self.assertEqual(output["agent"]["handle"], "burzghash")
+        self.assertEqual(output["allowlist"]["entry"], "rBurzghashWallet")
+        self.assertEqual(output["allowlist"]["entryToAppend"], "rBurzghashWallet")
+        self.assertIn("TASKNODE_AGENT_WALLET_ALLOWLIST", output["allowlist"]["flyCommandHint"])
+        self.assertEqual(output["secretPrinted"], False)
 
     def test_run_journal_summary_reads_jsonl_without_secrets(self):
         with tempfile.TemporaryDirectory() as tmpdir:
