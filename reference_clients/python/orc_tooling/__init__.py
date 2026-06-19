@@ -43,9 +43,11 @@ from .review import (
     resolve_identity,
 )
 from .review_state import (
+    FOLLOWUP_CLOSEABLE_TASK_STATUSES,
     normalize_review_state_record,
     review_disposition_requires_action,
     review_state_ontology,
+    stale_followup_closures,
 )
 from .runtime import (
     DEFAULT_ORC_RUNTIME_DIR,
@@ -62,6 +64,7 @@ from .orcctl import (
     append_run_journal,
     build_followup_request_text,
     classify_review,
+    close_followup,
     compact_review_task,
     is_probable_fixture_review_row,
     operator_status,
@@ -93,6 +96,7 @@ __all__ = [
     "DEFAULT_ORC_AGENT",
     "DEFAULT_ORC_RUNTIME_DIR",
     "DEFAULT_PRIORITY_MODEL",
+    "FOLLOWUP_CLOSEABLE_TASK_STATUSES",
     "NETWORK_CAPACITY_NOTE",
     "NETWORK_TRIAGE_CAPABILITY_VERSION",
     "PRIORITY_PROMPT_VERSION",
@@ -108,6 +112,7 @@ __all__ = [
     "classify_review",
     "classify_pane_text",
     "claim_next_runtime_directive",
+    "close_followup",
     "compact_review_task",
     "complete_runtime_directive",
     "dispatch_orc",
@@ -153,6 +158,7 @@ __all__ = [
     "run_duplicate_reward_monitor",
     "review_disposition_requires_action",
     "review_state_ontology",
+    "stale_followup_closures",
     "runtime_status",
     "summarize_signed_flow",
     "sanity_check_priority",

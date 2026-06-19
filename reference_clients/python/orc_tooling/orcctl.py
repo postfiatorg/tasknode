@@ -17,11 +17,13 @@ from .review import build_rewarded_network_task_review_packet
 from .review_integrity_policy import apply_reward_clawback_integrity_policy
 from .review_state import (
     ACTION_REQUIRED_DISPOSITIONS,
+    FOLLOWUP_CLOSEABLE_TASK_STATUSES,
     REVIEW_DISPOSITIONS,
     get_review_state,
     normalize_review_state_record,
     review_queue_item,
     review_state_summary,
+    stale_followup_closures,
     upsert_review_state,
 )
 
@@ -32,13 +34,7 @@ NETWORK_CAPACITY_NOTE = (
 DEFAULT_RUN_JOURNAL_PATH = "~/.cache/tasknode/orc_run_journal.jsonl"
 FOLLOWUP_DISPOSITIONS = {"reviewed_follow_up", "reviewed_integrity_follow_up"}
 TERMINAL_TASK_STATUSES = {
-    "rewarded",
-    "rejected",
-    "cancelled",
-    "canceled",
-    "expired",
-    "failed",
-    "completed",
+    *FOLLOWUP_CLOSEABLE_TASK_STATUSES,
 }
 WEAK_ACTION_PHRASES = {
     "write a memo",
@@ -93,6 +89,23 @@ def _safe_list(value: Any) -> list[Any]:
 
 def _safe_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _review_metadata(review_record: dict[str, Any]) -> dict[str, Any]:
+    return dict(_safe_dict(review_record.get("metadata_json") or review_record.get("metadata")))
+
+
+def _review_labels(review_record: dict[str, Any], snake_key: str, camel_key: str) -> list[str]:
+    values = review_record.get(snake_key)
+    if values is None:
+        values = review_record.get(camel_key)
+    if isinstance(values, str):
+        return [values]
+    return [str(value) for value in _safe_list(values) if str(value or "")]
+
+
+def _review_text(review_record: dict[str, Any], snake_key: str, camel_key: str = "", limit: int = 4000) -> str:
+    return _safe_text(review_record.get(snake_key) if review_record.get(snake_key) is not None else review_record.get(camel_key), limit)
 
 
 def _utcnow() -> str:
@@ -189,12 +202,33 @@ def _group_summary(tasks: dict[str, Any], group: str) -> dict[str, Any]:
     }
 
 
-def operator_status(*, client: Any | None = None, database_url: str | None = None) -> dict[str, Any]:
+def operator_status(
+    *,
+    client: Any | None = None,
+    database_url: str | None = None,
+    close_stale: bool = False,
+) -> dict[str, Any]:
     active_client = client or build_client()
     login = active_client.login()
     tasks = active_client.tasks(refreshProjection="1")
     network = _safe_dict(tasks.get("networkTasks") or tasks.get("networkTaskEligibility"))
     review_summary = review_state_summary(database_url=database_url)
+    stale_followups = stale_followup_closures(database_url=database_url)
+    stale_rows = [_safe_dict(row) for row in _safe_list(_safe_dict(stale_followups).get("rows"))]
+    closed_stale: list[dict[str, Any]] = []
+    if close_stale:
+        for row in stale_rows:
+            source_task_id = _safe_text(row.get("sourceTaskId"), 180)
+            followup_task_id = _safe_text(row.get("followupTaskId"), 180)
+            if not source_task_id or not followup_task_id:
+                continue
+            closed_stale.append(close_followup(
+                source_task_id,
+                followup_task_id=followup_task_id,
+                payment_tx=_safe_text(row.get("followupRewardTx"), 180),
+                client=active_client,
+                database_url=database_url,
+            ))
     context_summary: dict[str, Any] = {}
     try:
         context = active_client.context_document()
@@ -238,6 +272,13 @@ def operator_status(*, client: Any | None = None, database_url: str | None = Non
         },
         "reviewQueue": _safe_dict(review_summary).get("counts", {}),
         "reviewIntegrityControls": _safe_dict(review_summary).get("integrityControls", {}),
+        "staleFollowups": {
+            "count": len(stale_rows),
+            "closeable": stale_rows,
+            "closedCount": len(closed_stale),
+            "closed": closed_stale,
+            "closeStaleExecuted": bool(close_stale),
+        },
         "context": context_summary,
         "secretPrinted": False,
     })
@@ -539,6 +580,70 @@ def build_followup_request_text(review_record: dict[str, Any], *, extra: str = "
     )
 
 
+def _review_state_update_from_existing(
+    existing: dict[str, Any],
+    *,
+    disposition: str | None = None,
+    action_required: bool | None = None,
+    summary: str = "",
+    recommended_action: str = "",
+    metadata: dict[str, Any] | None = None,
+    source_task_ids: list[str] | None = None,
+    source_cids: list[str] | None = None,
+    source_tx_hashes: list[str] | None = None,
+    reviewer_handle: str = "",
+    reviewer_wallet: str = "",
+) -> dict[str, Any]:
+    task_id = _review_text(existing, "task_id", "taskId", 180)
+    if not task_id:
+        raise ValueError("source review task id is required")
+    existing_metadata = _review_metadata(existing)
+    if metadata:
+        existing_metadata.update(metadata)
+    existing_source_tasks = _review_labels(existing, "source_task_ids", "sourceTaskIds")
+    for source_task_id in source_task_ids or []:
+        clean = _safe_text(source_task_id, 180)
+        if clean and clean not in existing_source_tasks:
+            existing_source_tasks.append(clean)
+    existing_source_cids = _review_labels(existing, "source_cids", "sourceCids")
+    for cid in source_cids or []:
+        clean = _safe_text(cid, 180)
+        if clean and clean not in existing_source_cids:
+            existing_source_cids.append(clean)
+    existing_source_txs = _review_labels(existing, "source_tx_hashes", "sourceTxHashes")
+    for tx_hash in source_tx_hashes or []:
+        clean = _safe_text(tx_hash, 180)
+        if clean and clean not in existing_source_txs:
+            existing_source_txs.append(clean)
+    return normalize_review_state_record(
+        task_id=task_id,
+        disposition=disposition or _review_text(existing, "disposition", "reviewDisposition", 120) or "not_reviewed",
+        action_required=action_required if action_required is not None else bool(existing.get("action_required") or existing.get("actionRequired")),
+        action_owner=_review_text(existing, "action_owner", "actionOwner", 160),
+        confidence=_review_text(existing, "confidence", "confidence", 40) or "medium",
+        categories=_review_labels(existing, "categories", "categories"),
+        integrity_signals=_review_labels(existing, "integrity_signals", "integritySignals"),
+        summary=summary or _review_text(existing, "summary", "review_summary", 12000),
+        recommended_action=recommended_action or _review_text(existing, "recommended_action", "recommendedAction", 12000),
+        reviewer_handle=reviewer_handle or _review_text(existing, "reviewer_handle", "reviewerHandle", 160) or DEFAULT_ORC_AGENT,
+        reviewer_wallet=reviewer_wallet or _review_text(existing, "reviewer_wallet", "reviewerWallet", 160) or DEFAULT_EXPECTED_WALLET_ADDRESS,
+        source_task_ids=existing_source_tasks,
+        source_cids=existing_source_cids,
+        source_tx_hashes=existing_source_txs,
+        metadata=existing_metadata,
+    )
+
+
+def _extract_followup_task_id(result: dict[str, Any]) -> str:
+    return _safe_text(
+        result.get("generatedTaskId")
+        or result.get("generated_task_id")
+        or result.get("followupTaskId")
+        or result.get("taskId"),
+        180,
+    )
+
+
 def request_followup_task(
     task_id: str,
     *,
@@ -552,7 +657,37 @@ def request_followup_task(
     if disposition not in ACTION_REQUIRED_DISPOSITIONS:
         raise ValueError(f"review state {disposition or 'not_reviewed'} does not require follow-up")
     request_text = build_followup_request_text(review_record, extra=extra)
-    return request_personal_task(request_text, submit=submit, client=client, requested_task_kind="personal")
+    result = request_personal_task(request_text, submit=submit, client=client, requested_task_kind="personal")
+    request_id = _safe_text(result.get("requestId"), 180)
+    followup_task_id = _extract_followup_task_id(result)
+    linkage = {
+        "followup_request_id": request_id,
+        "followup_request_submitted": bool(result.get("submitted")),
+        "followup_requested_at": _utcnow(),
+        "followup_status": _safe_text(result.get("requestStatus"), 120) or ("requested" if result.get("submitted") else "previewed"),
+        "followup_bundle_cid": _safe_text(result.get("bundleCid"), 180),
+        "followup_request_cid": _safe_text(result.get("eventCid"), 180),
+        "followup_request_tx": _safe_text(result.get("txHash"), 180) if result.get("submitted") else "",
+        "user_signal_status": _safe_text(_review_metadata(review_record).get("user_signal_status"), 120) or "not_sent",
+    }
+    if followup_task_id:
+        linkage["followup_task_id"] = followup_task_id
+    record = _review_state_update_from_existing(
+        review_record,
+        metadata=linkage,
+        source_task_ids=[task_id, followup_task_id],
+        source_cids=[linkage["followup_bundle_cid"], linkage["followup_request_cid"]],
+        source_tx_hashes=[linkage["followup_request_tx"]],
+    )
+    updated = upsert_review_state(record, database_url=database_url)
+    result["reviewState"] = {
+        "taskId": task_id,
+        "followupRequestId": request_id,
+        "followupTaskId": followup_task_id,
+        "metadata": linkage,
+        "updated": bool(updated),
+    }
+    return result
 
 
 def _detail_task(detail: dict[str, Any]) -> dict[str, Any]:
@@ -562,60 +697,78 @@ def _detail_task(detail: dict[str, Any]) -> dict[str, Any]:
 def close_followup(
     source_task_id: str,
     *,
-    followup_task_id: str,
+    followup_task_id: str = "",
     payment_tx: str = "",
     signal_message_id: str = "",
+    no_code_needed_proof: str = "",
     client: Any | None = None,
     database_url: str | None = None,
 ) -> dict[str, Any]:
     clean_followup = _safe_text(followup_task_id, 180)
-    if not clean_followup:
-        raise ValueError("followup_task_id is required")
+    clean_proof = _safe_text(no_code_needed_proof, 4000)
+    if not clean_followup and not clean_proof:
+        raise ValueError("followup_task_id or no_code_needed_proof is required")
     active_client = client or build_client()
-    active_client.login()
-    detail = active_client.task_detail(clean_followup)
-    task = _detail_task(detail)
-    status = _task_status(task).lower()
-    if status not in TERMINAL_TASK_STATUSES:
-        raise ValueError(f"follow-up task is not terminal: {status or 'unknown'}")
+    detail: dict[str, Any] = {}
+    task: dict[str, Any] = {}
+    reward_outcome: dict[str, Any] = {}
+    status = "no_code_needed" if clean_proof and not clean_followup else ""
+    if clean_followup:
+        active_client.login()
+        detail = active_client.task_detail(clean_followup)
+        task = _detail_task(detail)
+        status = _task_status(task).lower()
+        if status not in TERMINAL_TASK_STATUSES:
+            raise ValueError(f"follow-up task is not terminal: {status or 'unknown'}")
+        reward_outcome = _safe_dict(detail.get("rewardOutcome") or detail.get("reward") or {})
     existing = get_review_state(source_task_id, database_url=database_url)
-    metadata = _safe_dict(existing.get("metadata_json") or existing.get("metadata"))
-    metadata.update({
-        "followupTaskId": clean_followup,
+    reward_tx = (
+        _safe_text(payment_tx, 180)
+        or _safe_text(reward_outcome.get("txHash") or reward_outcome.get("tx_hash"), 180)
+        or _safe_text(task.get("lastEventTxHash") or task.get("txHash"), 180)
+    )
+    reward_cid = (
+        _safe_text(reward_outcome.get("cid") or reward_outcome.get("eventCid") or reward_outcome.get("sourceCid"), 180)
+        or _safe_text(task.get("lastEventCid") or task.get("cid"), 180)
+    )
+    metadata = {
+        "followup_status": status,
+        "followup_closed_at": _utcnow(),
+        "followup_reward_tx": reward_tx,
+        "followup_reward_cid": reward_cid,
+        "followup_no_code_needed_proof": clean_proof,
+        "user_signal_status": "sent" if _safe_text(signal_message_id, 240) else _safe_text(_review_metadata(existing).get("user_signal_status"), 120) or "not_sent",
+        "user_signal_message_id": _safe_text(signal_message_id, 240),
+        # Backward-compatible aliases for older local Orc tooling.
         "followupStatus": status,
-        "paymentTx": _safe_text(payment_tx, 180),
+        "paymentTx": reward_tx,
         "signalMessageId": _safe_text(signal_message_id, 240),
-    })
-    categories = existing.get("categories") or []
-    if isinstance(categories, str):
-        categories = [categories]
-    existing_source_cids = existing.get("source_cids") or existing.get("sourceCids") or []
-    if isinstance(existing_source_cids, str):
-        existing_source_cids = [existing_source_cids]
-    existing_source_txs = existing.get("source_tx_hashes") or existing.get("sourceTxHashes") or []
-    if isinstance(existing_source_txs, str):
-        existing_source_txs = [existing_source_txs]
-    record = normalize_review_state_record(
-        task_id=source_task_id,
+    }
+    if clean_followup:
+        metadata["followup_task_id"] = clean_followup
+        metadata["followupTaskId"] = clean_followup
+    summary = (
+        _review_text(existing, "summary", "review_summary", 4000)
+        or (
+            f"Follow-up completed by {clean_followup}."
+            if clean_followup
+            else "Follow-up closed with explicit no-code-needed proof."
+        )
+    )
+    record = _review_state_update_from_existing(
+        existing,
         disposition="reviewed_follow_up_completed",
         action_required=False,
-        confidence=existing.get("confidence") or "medium",
-        categories=list(categories),
-        summary=(
-            _safe_text(existing.get("summary"), 4000)
-            or f"Follow-up completed by {clean_followup}."
+        summary=summary,
+        recommended_action=(
+            "No current action remains; explicit no-code-needed proof was recorded."
+            if clean_proof and not clean_followup
+            else "No current action remains; follow-up task reached terminal status."
         ),
-        recommended_action="No current action remains; follow-up task reached terminal status.",
-        reviewer_handle=existing.get("reviewer_handle") or DEFAULT_ORC_AGENT,
-        reviewer_wallet=existing.get("reviewer_wallet") or DEFAULT_EXPECTED_WALLET_ADDRESS,
-        source_task_ids=[source_task_id, clean_followup],
-        source_cids=[str(value) for value in existing_source_cids if str(value or "")],
-        source_tx_hashes=[
-            str(value)
-            for value in [*existing_source_txs, payment_tx]
-            if str(value or "")
-        ],
         metadata=metadata,
+        source_task_ids=[source_task_id, clean_followup],
+        source_cids=[reward_cid],
+        source_tx_hashes=[reward_tx],
     )
     return upsert_review_state(record, database_url=database_url)
 
@@ -895,7 +1048,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--journal-path", default=DEFAULT_RUN_JOURNAL_PATH, help="JSONL run journal for mutating task actions.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("status", help="Show compact Orc operating state.")
+    status_parser = subparsers.add_parser("status", help="Show compact Orc operating state.")
+    status_parser.add_argument("--close-stale", action="store_true", help="Close stale follow-up reviews that already have terminal task evidence.")
 
     review_parser = subparsers.add_parser("review", help="Review rewarded Network Task packets.")
     review_sub = review_parser.add_subparsers(dest="review_command", required=True)
@@ -960,9 +1114,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     close_parser = subparsers.add_parser("close-followup", help="Close a source review after terminal follow-up proof.")
     close_parser.add_argument("source_task_id")
-    close_parser.add_argument("--followup-task-id", required=True)
+    close_parser.add_argument("--followup-task-id", default="")
     close_parser.add_argument("--payment-tx", default="")
     close_parser.add_argument("--signal-message-id", default="")
+    close_parser.add_argument("--no-code-needed-proof", default="")
 
     task_parser = subparsers.add_parser("task", help="Operate Orc task lifecycle actions.")
     task_sub = task_parser.add_subparsers(dest="task_command", required=True)
@@ -1007,7 +1162,11 @@ def main(argv: list[str] | None = None) -> int:
     database_url = args.database_url or None
     try:
         if args.command == "status":
-            payload = operator_status(client=_client_from_args(args), database_url=database_url)
+            payload = operator_status(
+                client=_client_from_args(args),
+                database_url=database_url,
+                close_stale=args.close_stale,
+            )
         elif args.command == "review" and args.review_command == "next":
             payload = review_next(
                 task_id=args.task_id,
@@ -1080,6 +1239,7 @@ def main(argv: list[str] | None = None) -> int:
                 followup_task_id=args.followup_task_id,
                 payment_tx=args.payment_tx,
                 signal_message_id=args.signal_message_id,
+                no_code_needed_proof=args.no_code_needed_proof,
                 client=_client_from_args(args),
                 database_url=database_url,
             )

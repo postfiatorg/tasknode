@@ -59,6 +59,12 @@ ACTION_REQUIRED_DISPOSITIONS = {
     "reviewed_integrity_follow_up",
     "reviewed_unclear",
 }
+FOLLOWUP_CLOSEABLE_TASK_STATUSES = (
+    "rewarded",
+    "refused",
+    "cancelled",
+    "canceled",
+)
 
 
 def _safe_text(value: Any, limit: int = 4000) -> str:
@@ -777,10 +783,100 @@ SELECT jsonb_build_object(
     return redact_secrets(_run_json(db_url, sql) or {})
 
 
+def stale_followup_closures(
+    *,
+    limit: int = 25,
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    ensure_review_state_schema(database_url=database_url)
+    db_url = tasknode_database_url(database_url)
+    followup_dispositions = _text_array_literal(sorted(ACTION_REQUIRED_DISPOSITIONS))
+    closeable_statuses = _text_array_literal(list(FOLLOWUP_CLOSEABLE_TASK_STATUSES))
+    sql = f"""
+WITH candidates AS (
+  SELECT
+    s.task_id AS source_task_id,
+    s.disposition,
+    s.action_required,
+    s.summary,
+    s.recommended_action,
+    s.metadata_json,
+    COALESCE(
+      NULLIF(s.metadata_json->>'followup_task_id', ''),
+      NULLIF(s.metadata_json->>'followupTaskId', '')
+    ) AS linked_followup_task_id,
+    COALESCE(
+      NULLIF(s.metadata_json->>'followup_request_id', ''),
+      NULLIF(s.metadata_json->>'followupRequestId', '')
+    ) AS linked_followup_request_id
+  FROM orc_task_review_states s
+  WHERE s.disposition = ANY({followup_dispositions})
+    AND COALESCE(s.action_required, true) IS true
+    AND COALESCE(s.metadata_json->>'followup_closed_at', '') = ''
+),
+resolved AS (
+  SELECT
+    c.*,
+    p.task_id AS followup_task_id,
+    p.request_id AS followup_request_id,
+    lower(COALESCE(p.status, '')) AS followup_status,
+    p.status AS followup_status_raw,
+    p.reward_actual_pft::text AS followup_reward_actual_pft,
+    p.last_event_tx_hash AS followup_reward_tx,
+    p.last_event_cid AS followup_reward_cid,
+    p.updated_at AS followup_updated_at
+  FROM candidates c
+  JOIN LATERAL (
+    SELECT p.*
+    FROM task_projections p
+    WHERE (
+      c.linked_followup_task_id <> ''
+      AND p.task_id = c.linked_followup_task_id
+    )
+    OR (
+      c.linked_followup_request_id <> ''
+      AND p.request_id = c.linked_followup_request_id
+    )
+    ORDER BY p.updated_at DESC NULLS LAST, p.task_id DESC
+    LIMIT 1
+  ) p ON true
+)
+SELECT jsonb_build_object(
+  'ok', true,
+  'count', count(*),
+  'rows', COALESCE(jsonb_agg(jsonb_build_object(
+    'sourceTaskId', source_task_id,
+    'disposition', disposition,
+    'summary', COALESCE(summary, ''),
+    'recommendedAction', COALESCE(recommended_action, ''),
+    'followupRequestId', COALESCE(linked_followup_request_id, followup_request_id, ''),
+    'followupTaskId', followup_task_id,
+    'followupStatus', followup_status_raw,
+    'followupRewardActualPft', followup_reward_actual_pft,
+    'followupRewardTx', COALESCE(followup_reward_tx, ''),
+    'followupRewardCid', COALESCE(followup_reward_cid, ''),
+    'followupUpdatedAt', followup_updated_at,
+    'closeCommand', 'uv run orcctl close-followup ' || source_task_id || ' --followup-task-id ' || followup_task_id
+  ) ORDER BY followup_updated_at DESC NULLS LAST, source_task_id), '[]'::jsonb),
+  'closeableStatuses', {sql_literal(json.dumps(FOLLOWUP_CLOSEABLE_TASK_STATUSES))}::jsonb,
+  'secretPrinted', false
+)
+FROM (
+  SELECT *
+  FROM resolved
+  WHERE followup_status = ANY({closeable_statuses})
+  ORDER BY followup_updated_at DESC NULLS LAST, source_task_id
+  LIMIT {_safe_int(limit)}
+) row;
+"""
+    return redact_secrets(_run_json(db_url, sql) or {})
+
+
 def review_state_ontology() -> dict[str, Any]:
     return {
         "dispositions": REVIEW_DISPOSITIONS,
         "actionRequiredDispositions": sorted(ACTION_REQUIRED_DISPOSITIONS),
+        "followupCloseableTaskStatuses": list(FOLLOWUP_CLOSEABLE_TASK_STATUSES),
         "categories": sorted(FOLLOW_UP_CATEGORIES),
         "integritySignals": sorted(INTEGRITY_SIGNALS),
         "confidence": sorted(CONFIDENCE_LEVELS),

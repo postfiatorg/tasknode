@@ -63,13 +63,28 @@ def summarize_signed_flow(
     submitted = result.submitted or {}
     task_view = tasks or {}
     network_view = task_view.get("networkTasks") or task_view.get("networkTaskEligibility") or {}
+    request_id = result.config.get("requestId") or result.payload.get("request_id")
+    generated_task_id = ""
+    request_status = ""
+    requests_view = task_view.get("requests") or {}
+    request_rows = []
+    if isinstance(requests_view, dict):
+        request_rows = requests_view.get("requests") or requests_view.get("items") or []
+    for request in request_rows if isinstance(request_rows, list) else []:
+        if not isinstance(request, dict):
+            continue
+        current_request_id = request.get("requestId") or request.get("request_id") or request.get("requestFullId")
+        if request_id and current_request_id == request_id:
+            generated_task_id = request.get("generatedTaskId") or request.get("generated_task_id") or ""
+            request_status = request.get("status") or request.get("state") or ""
+            break
     return {
         "ok": True,
         "address": address,
         "loginCached": bool((login or {}).get("cached")),
         "requestText": request_text,
         "requestedTaskKind": requested_task_kind,
-        "requestId": result.config.get("requestId") or result.payload.get("request_id"),
+        "requestId": request_id,
         "bundleId": result.config.get("bundleId"),
         "bundleCid": submitted.get("bundleCid") or result.payload.get("request_bundle", {}).get("cid"),
         "eventCid": submitted.get("cid") or submitted.get("eventCid") or result.prepared.get("cid"),
@@ -77,6 +92,8 @@ def summarize_signed_flow(
         "engineResult": submitted.get("engineResult") or submitted.get("engine_result"),
         "accepted": submitted.get("accepted"),
         "submitted": result.submitted is not None,
+        "requestStatus": request_status,
+        "generatedTaskId": generated_task_id,
         "networkStatus": network_view.get("status") or task_view.get("networkStatus"),
         "secretPrinted": False,
     }
