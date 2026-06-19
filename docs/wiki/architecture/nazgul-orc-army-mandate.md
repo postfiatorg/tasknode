@@ -86,6 +86,12 @@ tmux send-keys -t <pane> -l '<directive>'; sleep 1; tmux send-keys -t <pane> Ent
   deliberately admits positive-paid, zero-closed, duplicate-guarded, and
   repair-required rows so Orcs do not confuse operational repair with reward
   outcome.
+- Review rows can also carry ledger-adjacent integrity controls. Executable
+  reward/clawback artifacts receive the signal
+  `executable_reward_clawback_artifact` plus control marker
+  `no_signing_no_fund_movement`, requiring independent Orc review before
+  operational use. This is not a fraud accusation and it does not enforce,
+  sign, claw back, ban, or move funds; Sauron owns those decisions.
 
 ## Guardrails — reserved actions (escalate to Sauron, never execute)
 

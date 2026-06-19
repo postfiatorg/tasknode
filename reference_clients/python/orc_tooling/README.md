@@ -39,6 +39,15 @@ uv run orcctl close-followup task_original_... --followup-task-id task_followup_
 Nazgûl shared-state summaries read `orc_task_reviews`, `orc_run_journal`, and
 `orc_operator_interactions` when those Postgres tables are present.
 
+Ledger-adjacent executable reward/clawback artifacts are treated as controls,
+not accusations. If a rewarded Network review item in `reward_accounting` or
+`security` includes an executable script that alters rewards or performs a
+clawback, Orc tooling adds the integrity signal
+`executable_reward_clawback_artifact` and metadata control marker
+`no_signing_no_fund_movement`. That marker means an independent Orc review is
+required before operational use and no signer authorization has been recorded;
+it does not ban, claw back, sign, move funds, or label the contributor as fraud.
+
 Important invariant:
 
 ```text

@@ -14,6 +14,7 @@ from .payload import redact_secrets
 from .payload import task_payload
 from .priority import DEFAULT_PRIORITY_MODEL, next_network_triage_item, triage_network_work
 from .review import build_rewarded_network_task_review_packet
+from .review_integrity_policy import apply_reward_clawback_integrity_policy
 from .review_state import (
     ACTION_REQUIRED_DISPOSITIONS,
     REVIEW_DISPOSITIONS,
@@ -236,6 +237,7 @@ def operator_status(*, client: Any | None = None, database_url: str | None = Non
             ),
         },
         "reviewQueue": _safe_dict(review_summary).get("counts", {}),
+        "reviewIntegrityControls": _safe_dict(review_summary).get("integrityControls", {}),
         "context": context_summary,
         "secretPrinted": False,
     })
@@ -284,6 +286,22 @@ def compact_review_task(task: dict[str, Any], *, include_raw: bool = False) -> d
     if include_raw:
         packet["rawReviewTask"] = task
     return redact_secrets(packet)
+
+
+def _review_task_integrity_policy(
+    review_item: dict[str, Any],
+    *,
+    categories: list[str] | None = None,
+    integrity_signals: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    applied = apply_reward_clawback_integrity_policy(
+        categories=categories or [],
+        integrity_signals=integrity_signals or [],
+        metadata=metadata or {},
+        review_item=review_item,
+    )
+    return _safe_dict(applied.get("metadata")).get("integrityControl") or {}
 
 
 def review_next(
@@ -389,11 +407,29 @@ def review_next(
     status_packet = _safe_dict(queue_row.get("status_packet_json") or _safe_dict(queue_row.get("item_metadata_json")).get("statusPacket"))
     if status_packet:
         compact["statusPacket"] = status_packet
+    review_categories = review_state.get("categories") or queue_row.get("categories") or []
+    if isinstance(review_categories, str):
+        review_categories = [review_categories]
+    review_integrity = review_state.get("integrity_signals") or queue_row.get("integrity_signals") or []
+    if isinstance(review_integrity, str):
+        review_integrity = [review_integrity]
+    review_metadata = _safe_dict(review_state.get("metadata_json") or review_state.get("metadata") or {})
+    integrity_policy = _review_task_integrity_policy(
+        _safe_dict(tasks[0]),
+        categories=list(review_categories),
+        integrity_signals=list(review_integrity),
+        metadata=review_metadata,
+    )
+    if integrity_policy:
+        compact["integrityPolicy"] = integrity_policy
     compact["reviewState"] = {
         "disposition": review_state.get("disposition") or queue_row.get("review_disposition") or "not_reviewed",
         "actionRequired": review_state.get("action_required") or queue_row.get("action_required") or False,
         "summary": review_state.get("summary") or queue_row.get("review_summary") or "",
         "recommendedAction": review_state.get("recommended_action") or queue_row.get("recommended_action") or "",
+        "categories": list(review_categories),
+        "integritySignals": list(review_integrity),
+        "integrityControl": _safe_dict(review_metadata.get("integrityControl")) or integrity_policy,
     }
     if queue_row.get("triage"):
         compact["triage"] = queue_row["triage"]
@@ -439,14 +475,32 @@ def classify_review(
     database_url: str | None = None,
 ) -> dict[str, Any]:
     validate_followup_action(disposition, recommended_action)
+    review_item: dict[str, Any] = {}
+    try:
+        packet = build_rewarded_network_task_review_packet(
+            task_id=task_id,
+            limit=1,
+            text_limit=2500,
+            include_raw_events=False,
+            database_url=database_url,
+        )
+        review_item = _safe_dict(_safe_list(_safe_dict(packet).get("tasks"))[0]) if _safe_list(_safe_dict(packet).get("tasks")) else {}
+    except Exception:
+        review_item = {}
+    policy = apply_reward_clawback_integrity_policy(
+        categories=categories or [],
+        integrity_signals=integrity_signals or [],
+        metadata=metadata or {},
+        review_item=review_item,
+    )
     record = normalize_review_state_record(
         task_id=task_id,
         disposition=disposition,
         action_required=action_required,
         action_owner=action_owner,
         confidence=confidence,
-        categories=categories or [],
-        integrity_signals=integrity_signals or [],
+        categories=policy["categories"],
+        integrity_signals=policy["integritySignals"],
         summary=summary,
         recommended_action=recommended_action,
         reviewer_handle=reviewer_handle,
@@ -454,7 +508,7 @@ def classify_review(
         source_task_ids=source_task_ids or [],
         source_cids=source_cids or [],
         source_tx_hashes=source_tx_hashes or [],
-        metadata=metadata or {},
+        metadata=policy["metadata"],
     )
     return upsert_review_state(record, database_url=database_url)
 

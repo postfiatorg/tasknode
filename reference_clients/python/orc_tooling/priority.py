@@ -13,6 +13,7 @@ from tasknode_pftl.config import PftlConfig
 
 from .client import build_client
 from .payload import extract_task_payload, redact_secrets
+from .review_integrity_policy import apply_reward_clawback_integrity_policy
 from .review import build_rewarded_network_task_review_packet
 from .review_state import REVIEW_DISPOSITIONS, review_queue
 
@@ -243,6 +244,14 @@ def build_review_queue_reward_packet(
     reward = _review_task_reward_score(review_task)
     review = _safe_dict(review_state)
     verification_requests = _safe_list(review_task.get("verificationRequests"))
+    categories = _safe_list(review.get("categories"))
+    integrity_applied = apply_reward_clawback_integrity_policy(
+        categories=[str(item) for item in categories],
+        integrity_signals=[str(item) for item in _safe_list(review.get("integrity_signals") or review.get("integritySignals"))],
+        metadata=_safe_dict(review.get("metadata_json") or review.get("metadata")),
+        review_item=review_task,
+    )
+    integrity_policy = _safe_dict(_safe_dict(integrity_applied.get("metadata")).get("integrityControl"))
     return redact_secrets({
         "schema": "pf.orc.network_task_priority_packet.v1",
         "promptVersion": PRIORITY_PROMPT_VERSION,
@@ -277,7 +286,9 @@ def build_review_queue_reward_packet(
             "summary": _safe_text(review.get("review_summary") or review.get("summary"), 1200),
             "recommendedAction": _safe_text(review.get("recommended_action") or review.get("recommendedAction"), 1200),
             "taskUpdatedAt": review.get("task_updated_at") or review_task.get("updatedAt"),
+            "integritySignals": _safe_list(integrity_applied.get("integritySignals")),
         },
+        "integrityPolicy": integrity_policy or {},
         "sourceContributor": {
             "accountId": review_task.get("accountId"),
             "walletAddress": review_task.get("walletAddress"),
@@ -303,6 +314,13 @@ def build_review_queue_reward_packet(
 def build_directory_rewarded_task_packet(row: dict[str, Any]) -> dict[str, Any]:
     last_event = _safe_dict(row.get("lastEvent"))
     operator = _safe_dict(row.get("operator"))
+    integrity_applied = apply_reward_clawback_integrity_policy(
+        categories=[str(item) for item in _safe_list(row.get("categories"))],
+        integrity_signals=[str(item) for item in _safe_list(row.get("integrity_signals") or row.get("integritySignals"))],
+        metadata=_safe_dict(row.get("item_metadata_json") or row.get("metadata")),
+        review_item=row,
+    )
+    integrity_policy = _safe_dict(_safe_dict(integrity_applied.get("metadata")).get("integrityControl"))
     return redact_secrets({
         "schema": "pf.orc.network_task_priority_packet.v1",
         "promptVersion": PRIORITY_PROMPT_VERSION,
@@ -328,7 +346,9 @@ def build_directory_rewarded_task_packet(row: dict[str, Any]) -> dict[str, Any]:
             "disposition": row.get("reviewDisposition") or "not_reviewed",
             "taskUpdatedAt": row.get("updatedAt") or row.get("updated_at"),
             "itemSourceMode": row.get("queueItemSourceMode") or row.get("source_mode") or "",
+            "integritySignals": _safe_list(integrity_applied.get("integritySignals")),
         },
+        "integrityPolicy": integrity_policy or {},
         "statusPacket": row.get("statusPacket") or row.get("status_packet") or row.get("status_packet_json") or _safe_dict(row.get("item_metadata_json")).get("statusPacket") or {},
         "sourceContributor": {
             "accountId": row.get("accountId") or row.get("account_id") or operator.get("accountId"),
@@ -360,6 +380,7 @@ def heuristic_priority_score(packet: dict[str, Any]) -> dict[str, Any]:
     source_mode = _safe_text(packet.get("sourceMode"), 80)
     review_queue_state = _safe_dict(packet.get("reviewQueue"))
     status_packet = _safe_dict(packet.get("statusPacket"))
+    integrity_policy = _safe_dict(packet.get("integrityPolicy"))
     deadline_hours = _deadline_hours(packet.get("deadline"))
 
     integrity_hits = _keyword_hits(text, {
@@ -414,6 +435,8 @@ def heuristic_priority_score(packet: dict[str, Any]) -> dict[str, Any]:
         urgency += 3.0
     if _safe_text(status_packet.get("rewardMovement"), 80) in {"closed_zero", "duplicate_guarded"}:
         urgency += 1.0
+    if integrity_policy.get("controlMarker") == "no_signing_no_fund_movement":
+        urgency += 1.5
     if deadline_hours is not None:
         if deadline_hours <= 0:
             urgency = 10.0
@@ -466,12 +489,16 @@ def heuristic_priority_score(packet: dict[str, Any]) -> dict[str, Any]:
         red_flags.append("broad_or_passive_scope")
     if source_mode == "review_queue" and not _safe_text(_safe_dict(packet.get("sourceEvidence")).get("submissionSummary"), 80):
         red_flags.append("source_submission_summary_missing")
+    if integrity_policy.get("controlMarker") == "no_signing_no_fund_movement":
+        red_flags.append("requires_independent_orc_review_no_signing_no_fund_movement")
 
     reasons = []
     if source_mode == "review_queue":
         reasons.append("Item is an unreviewed rewarded Network submission in the shared Orc review queue.")
     if integrity_hits:
         reasons.append("Integrity/reward-abuse language makes delay risk higher.")
+    if integrity_policy.get("controlMarker") == "no_signing_no_fund_movement":
+        reasons.append("Ledger-adjacent executable artifact needs independent review; no signing or fund movement is authorized.")
     if protocol_hits:
         reasons.append("Packet touches core task, reward, routing, Hive, or protocol behavior.")
     if tooling_hits:
@@ -529,6 +556,7 @@ def normalize_priority_result(raw: dict[str, Any], packet: dict[str, Any], *, sc
     result_task_id = _safe_text(raw.get("taskId"), 180) or task_id
     source_contributor = _safe_dict(packet.get("sourceContributor"))
     review_queue = _safe_dict(packet.get("reviewQueue"))
+    integrity_policy = _safe_dict(packet.get("integrityPolicy"))
     proposal = _safe_text(
         raw.get("taskProposalDescription")
         or packet.get("taskProposalDescription")
@@ -560,6 +588,8 @@ def normalize_priority_result(raw: dict[str, Any], packet: dict[str, Any], *, sc
         "taskProposalDescription": proposal,
         "rewardPft": packet.get("rewardPft"),
         "reviewDisposition": review_queue.get("disposition"),
+        "integritySignals": [_safe_text(item, 160) for item in _safe_list(review_queue.get("integritySignals"))],
+        "integrityPolicy": integrity_policy,
         "priorityScore": priority_score,
         "rankBucket": bucket,
         "urgencyScore": round(_clamp(raw.get("urgencyScore"), 0, 10, 0), 1),
@@ -886,6 +916,9 @@ def first_network_triage_item(priorities: list[dict[str, Any]]) -> dict[str, Any
                 "reward_actual_pft": item.get("rewardPft"),
                 "reviewDisposition": item.get("reviewDisposition"),
                 "review_disposition": item.get("reviewDisposition"),
+                "integritySignals": item.get("integritySignals") or [],
+                "integrity_signals": item.get("integritySignals") or [],
+                "integrityPolicy": _safe_dict(item.get("integrityPolicy")),
                 "priorityScore": item.get("priorityScore"),
                 "rankBucket": item.get("rankBucket"),
                 "sourceMode": item.get("sourceMode"),
