@@ -18,6 +18,7 @@ from orc_tooling import (
     build_hive_signal_command,
     build_review_queue_reward_packet,
     build_task_reward_packet,
+    classify_review,
     classify_pane_text,
     claim_next_runtime_directive,
     compact_review_task,
@@ -66,7 +67,12 @@ from orc_tooling import (
 )
 from tasknode_pftl.wallets import wallet_from_seed
 from orc_tooling.nazgul import next_dispatch_item
-from orc_tooling.review_state import ensure_review_state_schema, upsert_review_state
+from orc_tooling.review_integrity_policy import (
+    EXECUTABLE_REWARD_CLAWBACK_SIGNAL,
+    NO_SIGNING_NO_FUND_MOVEMENT_MARKER,
+    apply_reward_clawback_integrity_policy,
+)
+from orc_tooling.review_state import ensure_review_state_schema, review_state_summary, upsert_review_state
 
 
 SMOKE_MNEMONIC = (
@@ -458,6 +464,42 @@ class OrcToolingTests(unittest.TestCase):
         score = heuristic_priority_score(packet)
         self.assertIn("shared Orc review queue", score["reasons"][0])
 
+    def test_review_queue_reward_packet_prioritizes_executable_reward_clawback_control(self):
+        packet = build_review_queue_reward_packet(
+            {
+                "taskId": "task_reward_script",
+                "title": "Create reward clawback runner",
+                "accountId": "acct_user",
+                "walletAddress": "rUser",
+                "status": "rewarded",
+                "rewardActualPft": "30000",
+                "executionPayload": {
+                    "description": "Build reward-accounting reconciliation tooling.",
+                    "steps": ["Inspect reward rows", "Prepare script"],
+                    "submissionRequirement": {"type": "text", "criteria": "Submit script and evidence."},
+                    "verificationPolicy": {"mode": "standard_followup"},
+                    "networkTask": {"project_id": "task_node_core_product"},
+                },
+                "submissions": [{
+                    "artifacts": [{
+                        "value": (
+                            "Executable artifact: gist.github.com/example/reward-clawback.mjs. "
+                            "Run node scripts/reward-clawback.mjs --execute to update reward rows."
+                        ),
+                    }],
+                }],
+                "rewardEvents": [{"score": {"decision": "reward", "reason": "Useful reward accounting artifact."}}],
+                "sourcePointers": {"lastEventCid": "QmLast", "lastEventTxHash": "TXLAST"},
+            },
+            review_state={"categories": ["reward_accounting"], "review_disposition": "not_reviewed"},
+        )
+        score = heuristic_priority_score(packet)
+
+        self.assertIn(EXECUTABLE_REWARD_CLAWBACK_SIGNAL, packet["reviewQueue"]["integritySignals"])
+        self.assertEqual(packet["integrityPolicy"]["controlMarker"], NO_SIGNING_NO_FUND_MOVEMENT_MARKER)
+        self.assertIn("requires_independent_orc_review_no_signing_no_fund_movement", score["redFlags"])
+        self.assertIn("no signing or fund movement", " ".join(score["reasons"]))
+
     def test_directory_rewarded_task_packet_marks_leaderboard_source(self):
         packet = build_directory_rewarded_task_packet({
             "accountId": "acct_gmoney",
@@ -815,6 +857,63 @@ class OrcToolingTests(unittest.TestCase):
                 summary="Bad evidence.",
             )
 
+    def test_executable_reward_clawback_artifact_gets_integrity_control(self):
+        review_item = {
+            "taskId": "task_reward_script",
+            "title": "Build reward clawback execution script",
+            "executionPayload": {"description": "Create the reward-accounting repair artifact."},
+            "submissions": [{
+                "artifacts": [{
+                    "url": "https://gist.github.com/example/reward-clawback",
+                    "value": (
+                        "Executable artifact: node scripts/reward-clawback.mjs --execute "
+                        "will update reward_actual_pft rows and submit payment reconciliation."
+                    ),
+                }],
+            }],
+        }
+
+        policy = apply_reward_clawback_integrity_policy(
+            categories=["reward_accounting"],
+            metadata={},
+            review_item=review_item,
+        )
+        control = policy["metadata"]["integrityControl"]
+
+        self.assertIn(EXECUTABLE_REWARD_CLAWBACK_SIGNAL, policy["integritySignals"])
+        self.assertEqual(control["controlMarker"], NO_SIGNING_NO_FUND_MOVEMENT_MARKER)
+        self.assertEqual(control["humanSignerAuthorization"], "none_recorded")
+        self.assertEqual(control["independentOrcReviewRequired"], True)
+        self.assertEqual(control["operationalUseAllowed"], False)
+        self.assertEqual(control["contributorAccusation"], False)
+
+    def test_plain_documentation_task_does_not_get_reward_clawback_control(self):
+        policy = apply_reward_clawback_integrity_policy(
+            categories=["docs"],
+            metadata={},
+            review_item={
+                "taskId": "task_docs",
+                "title": "Document reward workflow friction",
+                "submissions": [{"artifacts": [{"value": "Plain text observations. No executable artifact."}]}],
+            },
+        )
+
+        self.assertNotIn(EXECUTABLE_REWARD_CLAWBACK_SIGNAL, policy["integritySignals"])
+        self.assertNotIn("integrityControl", policy["metadata"])
+
+    def test_review_state_normalization_records_explicit_integrity_control(self):
+        record = normalize_review_state_record(
+            task_id="task_reward_script",
+            disposition="reviewed_integrity_follow_up",
+            categories=["reward_accounting"],
+            integrity_signals=[EXECUTABLE_REWARD_CLAWBACK_SIGNAL],
+            summary="Executable reward artifact needs independent review before use.",
+        )
+
+        control = record["metadata"]["integrityControl"]
+        self.assertEqual(control["controlMarker"], NO_SIGNING_NO_FUND_MOVEMENT_MARKER)
+        self.assertEqual(control["independentOrcReviewRequired"], True)
+
     def test_review_state_ontology_exposes_shared_table_and_dispositions(self):
         ontology = review_state_ontology()
 
@@ -824,6 +923,7 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(ontology["queueView"], "orc_task_review_queue")
         self.assertIn("reviewed_no_action", ontology["dispositions"])
         self.assertIn("reviewed_follow_up_completed", ontology["dispositions"])
+        self.assertIn(EXECUTABLE_REWARD_CLAWBACK_SIGNAL, ontology["integritySignals"])
         self.assertTrue(review_disposition_requires_action("reviewed_follow_up"))
         self.assertFalse(review_disposition_requires_action("reviewed_follow_up_completed"))
         self.assertFalse(review_disposition_requires_action("reviewed_no_action"))
@@ -885,6 +985,31 @@ class OrcToolingTests(unittest.TestCase):
         self.assertIn("),\nreview_insert AS (", sql)
         self.assertIn(")\nSELECT to_jsonb(upsert)", sql)
         self.assertIn("'review_id'", sql)
+
+    def test_review_state_summary_reports_integrity_controls_for_sauron(self):
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            return {
+                "ok": True,
+                "counts": {"not_reviewed": 1},
+                "integrityControls": {
+                    "executable_reward_clawback_artifact": 1,
+                    "no_signing_no_fund_movement": 1,
+                    "independentOrcReviewRequired": 1,
+                },
+                "secretPrinted": False,
+            }
+
+        with patch("orc_tooling.review_state.ensure_review_state_schema", return_value={"ok": True}):
+            with patch("orc_tooling.review_state.tasknode_database_url", return_value="postgres://unit"):
+                with patch("orc_tooling.review_state._run_json", side_effect=fake_run_json):
+                    result = review_state_summary(database_url="postgres://unit")
+
+        self.assertEqual(result["integrityControls"]["no_signing_no_fund_movement"], 1)
+        self.assertIn(EXECUTABLE_REWARD_CLAWBACK_SIGNAL, calls[0])
+        self.assertIn("integrityControls", calls[0])
 
     def test_completed_follow_up_is_terminal_without_action_required(self):
         record = normalize_review_state_record(
@@ -970,6 +1095,45 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["task"]["statusPacket"]["rewardMovement"], "paid_positive")
         self.assertEqual(result["task"]["publicHiveTaskDetailUrl"], "/api/hive/task-detail?taskId=task_public_only")
         self.assertIn("reward routing leakage", result["task"]["evidenceSummary"])
+
+    def test_classify_review_auto_flags_executable_reward_clawback_evidence(self):
+        review_task = {
+            "taskId": "task_reward_script",
+            "title": "Create reward clawback runner",
+            "submissions": [{
+                "artifacts": [{
+                    "value": (
+                        "Gist: https://gist.github.com/example/reward-clawback.mjs. "
+                        "Run node scripts/reward-clawback.mjs --execute to update reward rows."
+                    ),
+                }],
+            }],
+        }
+        captured = []
+
+        def fake_upsert(record, **kwargs):
+            captured.append(record)
+            return {"task_id": record["taskId"], "metadata_json": record["metadata"], "secretPrinted": False}
+
+        with patch("orc_tooling.orcctl.build_rewarded_network_task_review_packet", return_value={"tasks": [review_task]}), \
+            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert):
+            result = classify_review(
+                "task_reward_script",
+                disposition="reviewed_integrity_follow_up",
+                categories=["reward_accounting"],
+                summary="Executable reward artifact requires independent review before operational use.",
+                recommended_action=(
+                    "Verify the script in an independent Orc review, test it against fixture data, "
+                    "and escalate to Sauron before any signing or fund movement."
+                ),
+            )
+
+        self.assertEqual(result["task_id"], "task_reward_script")
+        self.assertIn(EXECUTABLE_REWARD_CLAWBACK_SIGNAL, captured[0]["integritySignals"])
+        self.assertEqual(
+            captured[0]["metadata"]["integrityControl"]["controlMarker"],
+            NO_SIGNING_NO_FUND_MOVEMENT_MARKER,
+        )
 
     def test_nazgul_dispatch_item_uses_shared_triage(self):
         with patch("orc_tooling.nazgul.next_network_triage_item", return_value={

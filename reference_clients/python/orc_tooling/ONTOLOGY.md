@@ -116,7 +116,17 @@ uv run orc-review-state set task_... \
 
 Integrity follow-up requires at least one integrity signal such as
 `suspected_sybil_cluster`, `generic_ai_response`, `fabricated_evidence`,
-`nonresponsive_submission`, or `reward_abuse_pattern`.
+`nonresponsive_submission`, `reward_abuse_pattern`, or
+`executable_reward_clawback_artifact`.
+
+`executable_reward_clawback_artifact` is a separation-of-duties control for
+ledger-adjacent artifacts, not an accusation. Orc tooling applies it when a
+review item categorized as `reward_accounting` or `security` includes an
+executable artifact that alters rewards or performs clawback. The review
+metadata then carries `integrityControl.controlMarker =
+no_signing_no_fund_movement`, `independentOrcReviewRequired = true`, and
+`humanSignerAuthorization = none_recorded`. The marker is recommend-only:
+Sauron owns any signer approval, fund movement, clawback, ban, or enforcement.
 
 `orc_task_reviews` is append-only history for Orc/Nazgûl accounting.
 `orc_task_review_states` is the current-state table used by the queue view and

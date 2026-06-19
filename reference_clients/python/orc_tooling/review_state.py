@@ -8,6 +8,10 @@ from uuid import uuid4
 from tasknode_pftl.app_data import sql_literal, tasknode_database_url
 
 from .payload import redact_secrets
+from .review_integrity_policy import (
+    EXECUTABLE_REWARD_CLAWBACK_SIGNAL,
+    apply_reward_clawback_integrity_policy,
+)
 
 
 REVIEW_DISPOSITIONS = {
@@ -39,6 +43,7 @@ FOLLOW_UP_CATEGORIES = {
 
 INTEGRITY_SIGNALS = {
     "duplicate_submission",
+    EXECUTABLE_REWARD_CLAWBACK_SIGNAL,
     "fabricated_evidence",
     "generic_ai_response",
     "impossible_or_unverifiable_claim",
@@ -128,6 +133,14 @@ def normalize_review_state_record(
     normalized_confidence = _safe_text(confidence or "medium", 40).lower()
     normalized_categories = _normalized_labels(list(categories or []))
     normalized_integrity = _normalized_labels(list(integrity_signals or []))
+    policy = apply_reward_clawback_integrity_policy(
+        categories=normalized_categories,
+        integrity_signals=normalized_integrity,
+        metadata=metadata or {},
+    )
+    normalized_categories = policy["categories"]
+    normalized_integrity = policy["integritySignals"]
+    normalized_metadata = policy["metadata"]
     normalized_source_tasks = _normalized_labels(list(source_task_ids or []))
     if normalized_task_id and normalized_task_id not in normalized_source_tasks:
         normalized_source_tasks.insert(0, normalized_task_id)
@@ -164,7 +177,7 @@ def normalize_review_state_record(
         "sourceTaskIds": normalized_source_tasks,
         "sourceCids": [_safe_text(value, 160) for value in source_cids or [] if _safe_text(value, 160)],
         "sourceTxHashes": [_safe_text(value, 160) for value in source_tx_hashes or [] if _safe_text(value, 160)],
-        "metadata": metadata or {},
+        "metadata": normalized_metadata,
         "secretPrinted": False,
     })
 
@@ -727,18 +740,39 @@ FROM (
 def review_state_summary(*, database_url: str | None = None) -> dict[str, Any]:
     ensure_review_state_schema(database_url=database_url)
     db_url = tasknode_database_url(database_url)
-    sql = """
+    sql = f"""
 WITH counts AS (
   SELECT review_disposition, count(*) AS total
   FROM orc_task_review_queue
   GROUP BY review_disposition
+),
+integrity_controls AS (
+  SELECT
+    count(*) FILTER (
+      WHERE {sql_literal(EXECUTABLE_REWARD_CLAWBACK_SIGNAL)} = ANY(COALESCE(integrity_signals, ARRAY[]::text[]))
+    ) AS executable_reward_clawback_artifact,
+    count(*) FILTER (
+      WHERE metadata_json->'integrityControl'->>'controlMarker' = 'no_signing_no_fund_movement'
+    ) AS no_signing_no_fund_movement,
+    count(*) FILTER (
+      WHERE metadata_json->'integrityControl'->>'independentOrcReviewRequired' = 'true'
+    ) AS independent_orc_review_required
+  FROM orc_task_review_states
 )
 SELECT jsonb_build_object(
   'ok', true,
-  'counts', COALESCE(jsonb_object_agg(review_disposition, total), '{}'::jsonb),
+  'counts', COALESCE((SELECT jsonb_object_agg(review_disposition, total) FROM counts), '{{}}'::jsonb),
+  'integrityControls', (
+    SELECT jsonb_build_object(
+      'executable_reward_clawback_artifact', executable_reward_clawback_artifact,
+      'no_signing_no_fund_movement', no_signing_no_fund_movement,
+      'independentOrcReviewRequired', independent_orc_review_required
+    )
+    FROM integrity_controls
+  ),
   'secretPrinted', false
 )
-FROM counts;
+;
 """
     return redact_secrets(_run_json(db_url, sql) or {})
 
