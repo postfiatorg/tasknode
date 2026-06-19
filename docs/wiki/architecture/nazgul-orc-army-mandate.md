@@ -95,8 +95,11 @@ tmux send-keys -t <pane> -l '<directive>'; sleep 1; tmux send-keys -t <pane> Ent
 
 ## Guardrails — reserved actions (escalate to Sauron, never execute)
 
-- **Enforcement against humans:** bans, slashes, reward claw-backs, Sybil
-  labels applied to live accounts. *Recommend only.*
+- **Enforcement against humans:** account blacklisting/bans, Sybil labels
+  applied to live accounts. *Recommend only; Sauron executes.* **Clawback of
+  paid PFT is not possible** — never recommend it; already-paid PFT is
+  non-recoverable, and remediation for proven abuse is blacklisting the account,
+  not fund recovery (Sauron ruling, 2026-06-19).
 - **Real money / mainnet / payout policy:** any change to reward amounts, payout
   routing, or economic parameters. Task-Node real-reward/mainnet is gated.
 - **Prod deploys:** merging to `main` is authorized for orc-tooling/docs under
