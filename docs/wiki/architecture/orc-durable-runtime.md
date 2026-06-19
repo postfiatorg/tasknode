@@ -68,6 +68,13 @@ two workers claiming the same Orc queue do not receive the same directive. A
 partial unique index on active claimed `worker_id` prevents a worker from owning
 multiple live claims at the same time.
 
+Before each Postgres claim, the runtime can recover one stale `claimed` row for
+the requested Orc when `claimed_at` is older than the configured TTL. The
+default is six hours (`TASKNODE_ORC_RUNTIME_CLAIM_TTL_SECONDS=21600`), and `0`
+disables the recovery pass. Recovery is scoped to the requested Orc queue; it
+does not scan or steal other Orcs' active work. The previous worker and claim
+timestamp are retained in `metadata_json.lastStaleClaimRecovery`.
+
 ### JSONL Local Fallback
 
 Default local mailbox:
@@ -88,11 +95,12 @@ uv run orc-runtime complete orcdirective_... --status completed --result-json '{
 uv run orc-runtime run-once --orc grashnuk --worker-id grashnuk-runtime-1
 ```
 
-`run-once` is deliberately a prototype executor. It proves claim/complete
-durability; on JSONL fallback it records `claimed_only`, while the Postgres enum
-path records `completed` with `result.mode = prototype_no_executor`. It does
-not run Codex, submit task transactions, spend rewards, or mutate Task Node
-board state.
+`run-once` is deliberately a prototype claim helper. Without an embedded
+executor it claims one directive and returns `result.mode =
+prototype_claim_only` in the command output, but it does not mark the directive
+completed. A real supervised worker must complete the directive after it
+actually invokes the Orc capability. The command does not run Codex, submit task
+transactions, spend rewards, or mutate Task Node board state.
 
 ## JSONL Event Contract
 
@@ -160,7 +168,7 @@ uv run python -m unittest tests/test_orc_tooling.py
 uv run --with ruff ruff check orc_tooling tests/test_orc_tooling.py
 ```
 
-The tests cover durable enqueue/claim/complete, prototype `run-once`, and
-`dispatch-runtime` queueing without tmux injection. Set
+The tests cover durable enqueue/claim/complete, stale-claim recovery, prototype
+claim-only `run-once`, and `dispatch-runtime` queueing without tmux injection. Set
 `TASKNODE_ORC_RUNTIME_POSTGRES_TEST_URL` to a disposable Postgres database URL
 to exercise the SKIP LOCKED claim path with concurrent workers.

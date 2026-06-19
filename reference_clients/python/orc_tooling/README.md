@@ -188,8 +188,16 @@ without double-assignment. When no database URL is configured, the commands
 fall back to the local JSONL mailbox at
 `~/.cache/tasknode/orc_runtime/orc_runtime_events.jsonl`.
 
+The claim path also recovers stale Postgres claims for the requested Orc before
+selecting ordinary queued work. The default stale-claim TTL is six hours and can
+be overridden with `TASKNODE_ORC_RUNTIME_CLAIM_TTL_SECONDS` or
+`--claim-ttl-seconds`; use `0` only when recovery should be disabled. Recovery
+updates the stale row to the new worker in one transaction and records the
+previous claim in `metadata_json.lastStaleClaimRecovery`.
+
 The prototype executor does not run Codex or submit task transactions. It only
-claims a directive and marks it terminal so the queue primitive can be tested.
+claims a directive and returns a `prototype_claim_only` result in the command
+output. It does not mark the row completed without a real embedded executor.
 Production execution still needs the supervised worker described in
 `docs/wiki/architecture/orc-durable-runtime.md`.
 

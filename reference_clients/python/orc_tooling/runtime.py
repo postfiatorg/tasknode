@@ -16,6 +16,8 @@ from .payload import redact_secrets
 
 DEFAULT_ORC_RUNTIME_DIR = "~/.cache/tasknode/orc_runtime"
 DEFAULT_ORC_RUNTIME_EVENTS_FILE = "orc_runtime_events.jsonl"
+DEFAULT_ORC_RUNTIME_CLAIM_TTL_SECONDS = 6 * 60 * 60
+ORC_RUNTIME_CLAIM_TTL_ENV = "TASKNODE_ORC_RUNTIME_CLAIM_TTL_SECONDS"
 ORC_RUNTIME_DIRECTIVES_SCHEMA = "pf.orc.runtime_directives.v1"
 RUNTIME_EVENT_ENQUEUED = "directive_enqueued"
 RUNTIME_EVENT_CLAIMED = "directive_claimed"
@@ -55,6 +57,19 @@ def _configured_database_url(database_url: str | None = None) -> str:
         if value:
             return value
     return ""
+
+
+def _runtime_claim_ttl_seconds(value: int | float | str | None = None) -> int:
+    raw = value
+    if raw is None:
+        raw = os.environ.get(ORC_RUNTIME_CLAIM_TTL_ENV, "")
+    if raw in (None, ""):
+        return DEFAULT_ORC_RUNTIME_CLAIM_TTL_SECONDS
+    try:
+        parsed = int(float(str(raw).strip()))
+    except (TypeError, ValueError):
+        return DEFAULT_ORC_RUNTIME_CLAIM_TTL_SECONDS
+    return max(0, min(parsed, 7 * 24 * 60 * 60))
 
 
 def _run_psql(database_url: str, sql: str) -> str:
@@ -368,10 +383,12 @@ def _postgres_claim_next_runtime_directive(
     database_url: str,
     orc: str,
     worker_id: str = "",
+    claim_ttl_seconds: int | None = None,
 ) -> dict[str, Any]:
     ensure_orc_runtime_directives_schema(database_url=database_url)
     normalized_orc = _safe_text(orc, 120).lstrip("@").lower()
     clean_worker = _safe_text(worker_id, 180) or f"orcworker_{uuid4()}"
+    ttl_seconds = _runtime_claim_ttl_seconds(claim_ttl_seconds)
     sql = f"""
 BEGIN;
 WITH busy AS (
@@ -379,17 +396,51 @@ WITH busy AS (
   FROM orc_runtime_directives
   WHERE status = 'claimed'
     AND worker_id = {sql_literal(clean_worker)}
+    AND NOT (
+      {ttl_seconds} > 0
+      AND claimed_at IS NOT NULL
+      AND claimed_at < now() - make_interval(secs => {ttl_seconds})
+    )
   LIMIT 1
 ),
-candidate AS (
+stale_candidate AS (
+  SELECT directive_id
+  FROM orc_runtime_directives
+  WHERE {ttl_seconds} > 0
+    AND status = 'claimed'
+    AND lower(ltrim(orc, '@')) = {sql_literal(normalized_orc)}
+    AND claimed_at IS NOT NULL
+    AND claimed_at < now() - make_interval(secs => {ttl_seconds})
+    AND NOT EXISTS (SELECT 1 FROM busy)
+  ORDER BY claimed_at ASC, directive_id ASC
+  FOR UPDATE SKIP LOCKED
+  LIMIT 1
+),
+stale_selected AS (
+  SELECT
+    d.directive_id,
+    d.worker_id AS previous_worker_id,
+    d.claimed_at AS previous_claimed_at
+  FROM orc_runtime_directives d
+  JOIN stale_candidate c
+    ON c.directive_id = d.directive_id
+  FOR UPDATE
+),
+queued_candidate AS (
   SELECT directive_id
   FROM orc_runtime_directives
   WHERE status = 'queued'
     AND lower(ltrim(orc, '@')) = {sql_literal(normalized_orc)}
     AND NOT EXISTS (SELECT 1 FROM busy)
+    AND NOT EXISTS (SELECT 1 FROM stale_selected)
   ORDER BY created_at ASC, directive_id ASC
   FOR UPDATE SKIP LOCKED
   LIMIT 1
+),
+candidate AS (
+  SELECT directive_id, true AS recovered_stale FROM stale_selected
+  UNION ALL
+  SELECT directive_id, false AS recovered_stale FROM queued_candidate
 ),
 updated AS (
   UPDATE orc_runtime_directives d
@@ -398,10 +449,23 @@ updated AS (
     worker_id = {sql_literal(clean_worker)},
     claimed_at = now(),
     attempt_count = attempt_count + 1,
+    metadata_json = CASE
+      WHEN c.recovered_stale THEN
+        COALESCE(d.metadata_json, '{{}}'::jsonb) || jsonb_build_object(
+          'lastStaleClaimRecovery',
+          jsonb_build_object(
+            'workerId', COALESCE((SELECT previous_worker_id FROM stale_selected LIMIT 1), ''),
+            'claimedAt', (SELECT previous_claimed_at FROM stale_selected LIMIT 1),
+            'recoveredAt', now(),
+            'claimTtlSeconds', {ttl_seconds}
+          )
+        )
+      ELSE d.metadata_json
+    END,
     updated_at = now()
   FROM candidate c
   WHERE d.directive_id = c.directive_id
-  RETURNING d.*
+  RETURNING d.*, c.recovered_stale
 )
 SELECT jsonb_build_object(
   'ok', true,
@@ -409,6 +473,8 @@ SELECT jsonb_build_object(
   'workerBusy', EXISTS (SELECT 1 FROM busy),
   'orc', {sql_literal(orc)},
   'workerId', {sql_literal(clean_worker)},
+  'claimTtlSeconds', {ttl_seconds},
+  'staleClaimRecovered', COALESCE((SELECT recovered_stale FROM updated LIMIT 1), false),
   'backend', 'postgres',
   'directive', COALESCE((SELECT {_directive_json_sql("updated")} FROM updated), '{{}}'::jsonb),
   'secretPrinted', false
@@ -590,6 +656,7 @@ def claim_next_runtime_directive(
     worker_id: str = "",
     runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR,
     database_url: str | None = None,
+    claim_ttl_seconds: int | None = None,
 ) -> dict[str, Any]:
     clean_orc = _safe_text(orc, 120).lstrip("@")
     if not clean_orc:
@@ -600,6 +667,7 @@ def claim_next_runtime_directive(
             database_url=db_url,
             orc=clean_orc,
             worker_id=worker_id,
+            claim_ttl_seconds=claim_ttl_seconds,
         )
     normalized_orc = clean_orc.lower()
     clean_worker = _safe_text(worker_id, 180) or f"orcworker_{uuid4()}"
@@ -714,6 +782,7 @@ def run_runtime_once(
     worker_id: str = "",
     runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR,
     database_url: str | None = None,
+    claim_ttl_seconds: int | None = None,
     executor: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     claimed = claim_next_runtime_directive(
@@ -721,21 +790,30 @@ def run_runtime_once(
         worker_id=worker_id,
         runtime_dir=runtime_dir,
         database_url=database_url,
+        claim_ttl_seconds=claim_ttl_seconds,
     )
     if not claimed.get("claimed"):
         return claimed
     directive = _safe_dict(claimed.get("directive"))
-    if executor:
-        result = executor(directive)
-        status = _safe_text(result.get("status"), 80) or "completed"
-    else:
+    if not executor:
         result = {
-            "mode": "prototype_no_executor",
-            "nextStep": "A production Orc runtime would hand this directive to a supervised Codex worker process.",
+            "mode": "prototype_claim_only",
+            "nextStep": "A production Orc runtime must hand this claimed directive to a supervised worker before completing it.",
             "directivePreview": _safe_text(directive.get("directive"), 500),
             "secretPrinted": False,
         }
-        status = "completed" if _configured_database_url(database_url) else "claimed_only"
+        preview = dict(directive)
+        preview["result"] = result
+        return redact_secrets({
+            "ok": True,
+            "claimed": True,
+            "completed": False,
+            "backend": claimed.get("backend"),
+            "directive": preview,
+            "secretPrinted": False,
+        })
+    result = executor(directive)
+    status = _safe_text(result.get("status"), 80) or "completed"
     completed = complete_runtime_directive(
         directive_id=directive["directiveId"],
         status=status,

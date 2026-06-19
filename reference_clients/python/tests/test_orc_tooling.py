@@ -1776,7 +1776,7 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(final_status["statusCounts"]["completed"], 1)
         self.assertEqual(final_status["directives"][0]["metadata"]["privateKey"], "[REDACTED]")
 
-    def test_orc_runtime_run_once_claims_without_tmux_or_codex_execution(self):
+    def test_orc_runtime_run_once_claims_only_without_real_executor(self):
         with patch.dict(os.environ, {}, clear=True):
             with tempfile.TemporaryDirectory() as tmpdir:
                 enqueue_runtime_directive(
@@ -1789,10 +1789,10 @@ class OrcToolingTests(unittest.TestCase):
                 status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
 
         self.assertEqual(result["claimed"], True)
-        self.assertEqual(result["completed"], True)
-        self.assertEqual(result["directive"]["status"], "claimed_only")
-        self.assertEqual(result["directive"]["result"]["mode"], "prototype_no_executor")
-        self.assertEqual(status["statusCounts"]["claimed_only"], 1)
+        self.assertEqual(result["completed"], False)
+        self.assertEqual(result["directive"]["status"], "claimed")
+        self.assertEqual(result["directive"]["result"]["mode"], "prototype_claim_only")
+        self.assertEqual(status["statusCounts"]["claimed"], 1)
 
     def test_dispatch_orc_runtime_queues_without_tmux_injection(self):
         recorded = []
@@ -1859,6 +1859,49 @@ class OrcToolingTests(unittest.TestCase):
         self.assertIn("status = 'queued'", claim_sql)
         self.assertIn("status = 'claimed'", claim_sql)
         self.assertIn("UPDATE orc_runtime_directives", claim_sql)
+        self.assertIn("stale_candidate AS", claim_sql)
+        self.assertIn("staleClaimRecovered", claim_sql)
+
+    def test_orc_runtime_postgres_claim_recovers_stale_claims_for_same_orc(self):
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            if "stale_candidate AS" in sql:
+                return {
+                    "ok": True,
+                    "claimed": True,
+                    "workerBusy": False,
+                    "orc": "grashnuk",
+                    "workerId": "worker-b",
+                    "claimTtlSeconds": 42,
+                    "staleClaimRecovered": True,
+                    "backend": "postgres",
+                    "directive": {
+                        "directiveId": "orcdirective_reclaimed",
+                        "status": "claimed",
+                        "workerId": "worker-b",
+                        "secretPrinted": False,
+                    },
+                    "secretPrinted": False,
+                }
+            return {"ok": True, "secretPrinted": False}
+
+        with patch("orc_tooling.runtime._run_json", side_effect=fake_run_json):
+            result = claim_next_runtime_directive(
+                orc="grashnuk",
+                worker_id="worker-b",
+                database_url="postgres://unit",
+                claim_ttl_seconds=42,
+            )
+
+        claim_sql = "\n".join(calls)
+        self.assertEqual(result["claimed"], True)
+        self.assertEqual(result["staleClaimRecovered"], True)
+        self.assertEqual(result["claimTtlSeconds"], 42)
+        self.assertIn("AND lower(ltrim(orc, '@')) = 'grashnuk'", claim_sql)
+        self.assertIn("claimed_at < now() - make_interval(secs => 42)", claim_sql)
+        self.assertIn("lastStaleClaimRecovery", claim_sql)
 
     def test_orc_runtime_postgres_complete_is_idempotent_for_terminal_row(self):
         calls = []
