@@ -792,6 +792,108 @@ def task_observe(task_id: str, *, client: Any | None = None) -> dict[str, Any]:
     return task_payload(task_id, client=client)
 
 
+GENERIC_VERIFICATION_MARKERS = (
+    "submit mixed",
+    "submit the script file",
+    "submit the public artifact url",
+    "submit the public artifact",
+    "submit the code bundle",
+    "submit the changed file paths",
+)
+
+
+def _verification_text_from_authenticated(detail: dict[str, Any]) -> str:
+    task = _safe_dict(detail.get("task")) or detail
+    verification = _safe_dict(task.get("verification"))
+    return _safe_text(
+        verification.get("request")
+        or verification.get("body")
+        or verification.get("title")
+        or task.get("verificationRequest")
+        or task.get("verificationPrompt"),
+        6000,
+    )
+
+
+def _verification_text_from_hive(detail: dict[str, Any]) -> str:
+    review = _safe_dict(detail.get("review"))
+    verification = _safe_dict(review.get("verification"))
+    return _safe_text(verification.get("request") or verification.get("body") or verification.get("title"), 6000)
+
+
+def _is_generic_verification_text(text: str) -> bool:
+    normalized = _safe_text(text, 6000).lower()
+    return bool(normalized) and any(marker in normalized for marker in GENERIC_VERIFICATION_MARKERS)
+
+
+def _hive_outcome(detail: dict[str, Any]) -> dict[str, Any]:
+    review = _safe_dict(detail.get("review"))
+    outcome = _safe_dict(review.get("outcome"))
+    task = _safe_dict(detail.get("task"))
+    return {
+        "decision": _safe_text(outcome.get("decision"), 120),
+        "rewardPft": outcome.get("rewardPft") or task.get("pft"),
+        "reason": _safe_text(outcome.get("reason"), 6000),
+    }
+
+
+def inspect_verification_request(task_id: str, *, client: Any | None = None) -> dict[str, Any]:
+    active_client = client or build_client()
+    active_client.login()
+    authenticated_detail = active_client.task_detail(task_id)
+    hive_detail: dict[str, Any] = {}
+    hive_error = ""
+    try:
+        hive_detail = active_client.hive_task_detail(task_id)
+    except Exception as exc:  # pragma: no cover - live API fallback
+        hive_error = f"{type(exc).__name__}: {exc}"
+
+    authenticated_task = _safe_dict(authenticated_detail.get("task")) or authenticated_detail
+    hive_task = _safe_dict(hive_detail.get("task"))
+    authenticated_request = _verification_text_from_authenticated(authenticated_detail)
+    hive_request = _verification_text_from_hive(hive_detail)
+    authenticated_generic = _is_generic_verification_text(authenticated_request)
+    hive_specific = bool(hive_request) and hive_request != authenticated_request and not _is_generic_verification_text(hive_request)
+    warnings: list[str] = []
+    if authenticated_generic and hive_specific:
+        warnings.append("authenticated_detail_generic_public_hive_specific")
+    if authenticated_request and hive_request and authenticated_request != hive_request:
+        warnings.append("verification_request_sources_differ")
+    if hive_error:
+        warnings.append("public_hive_detail_unavailable")
+
+    selected_source = "public_hive" if hive_specific else "authenticated"
+    selected_request = hive_request if selected_source == "public_hive" else authenticated_request
+    review = _safe_dict(hive_detail.get("review"))
+    hive_verification = _safe_dict(review.get("verification"))
+    return redact_secrets({
+        "ok": True,
+        "taskId": task_id,
+        "selectedSource": selected_source,
+        "selectedVerificationRequest": selected_request,
+        "warnings": warnings,
+        "authenticated": {
+            "status": authenticated_task.get("status") or authenticated_task.get("statusKey"),
+            "verificationRequest": authenticated_request,
+            "isGenericVerificationRequest": authenticated_generic,
+        },
+        "publicHive": {
+            "available": bool(hive_detail),
+            "error": hive_error,
+            "state": hive_task.get("state") or hive_task.get("status"),
+            "verificationRequest": hive_request,
+            "verificationResponse": _safe_text(hive_verification.get("response"), 6000),
+            "outcome": _hive_outcome(hive_detail),
+        },
+        "operatorGuidance": (
+            "Use selectedVerificationRequest for the response. If warnings include "
+            "authenticated_detail_generic_public_hive_specific, do not answer the generic "
+            "authenticated prompt; answer the specific public Hive follow-up."
+        ),
+        "secretPrinted": False,
+    })
+
+
 def run_personal_task(
     task_id: str,
     *,
@@ -968,6 +1070,11 @@ def build_parser() -> argparse.ArgumentParser:
     task_sub = task_parser.add_subparsers(dest="task_command", required=True)
     task_detail_parser = task_sub.add_parser("detail", help="Read task detail through the agent client.")
     task_detail_parser.add_argument("task_id")
+    task_verification_parser = task_sub.add_parser(
+        "verification-request",
+        help="Compare authenticated and public Hive verification follow-up text.",
+    )
+    task_verification_parser.add_argument("task_id")
     task_accept_parser = task_sub.add_parser("accept", help="Accept a proposed task with submit=true.")
     task_accept_parser.add_argument("task_id")
     task_accept_parser.add_argument("--reason", default="")
@@ -1085,6 +1192,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "task" and args.task_command == "detail":
             payload = task_observe(args.task_id, client=_client_from_args(args))
+        elif args.command == "task" and args.task_command == "verification-request":
+            payload = inspect_verification_request(args.task_id, client=_client_from_args(args))
         elif args.command == "task" and args.task_command == "accept":
             payload = task_accept(args.task_id, reason=args.reason, client=_client_from_args(args), journal_path=args.journal_path)
         elif args.command == "task" and args.task_command == "submit":
