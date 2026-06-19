@@ -71,6 +71,7 @@ const migrations = [
   "061_projection_fixture_cleanup.sql",
   "062_orc_agents_and_activity.sql",
   "063_orc_task_reviews.sql",
+  "064_orc_review_queue_public_items.sql",
 ];
 
 let migrated = false;

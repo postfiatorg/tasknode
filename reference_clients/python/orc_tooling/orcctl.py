@@ -19,6 +19,7 @@ from .review_state import (
     REVIEW_DISPOSITIONS,
     get_review_state,
     normalize_review_state_record,
+    review_queue_item,
     review_state_summary,
     upsert_review_state,
 )
@@ -315,6 +316,10 @@ def review_next(
                 "secretPrinted": False,
             }
         selected_task_id = _safe_text(queue_row.get("task_id") or queue_row.get("taskId"), 180)
+    else:
+        queue_row = review_queue_item(selected_task_id, database_url=database_url)
+    if selected_task_id and not queue_row.get("source_mode"):
+        queue_row = review_queue_item(selected_task_id, database_url=database_url) or queue_row
 
     packet = build_rewarded_network_task_review_packet(
         task_id=selected_task_id,
@@ -325,14 +330,61 @@ def review_next(
     )
     tasks = _safe_list(_safe_dict(packet).get("tasks"))
     if not tasks:
-        return {
-            "ok": False,
-            "error": "task_review_packet_missing",
+        if _safe_text(queue_row.get("source_mode"), 80) not in {"directory_public", "hive_public_detail"}:
+            return {
+                "ok": False,
+                "error": "task_review_packet_missing",
+                "taskId": selected_task_id,
+                "secretPrinted": False,
+            }
+        tasks = [{
             "taskId": selected_task_id,
-            "secretPrinted": False,
-        }
+            "title": queue_row.get("title"),
+            "accountId": queue_row.get("account_id"),
+            "walletAddress": queue_row.get("wallet_address"),
+            "status": queue_row.get("task_status") or "rewarded",
+            "rewardOfferPft": queue_row.get("reward_offer_pft"),
+            "rewardActualPft": queue_row.get("reward_actual_pft"),
+            "executionPayload": {
+                "description": _safe_text(_safe_dict(queue_row.get("item_metadata_json")).get("publicSummary") or queue_row.get("description"), text_limit),
+                "steps": [],
+                "submissionRequirement": {
+                    "type": "public_directory_packet",
+                    "criteria": "Review the public Directory rewarded-task packet and public Hive detail URL if present.",
+                },
+                "verificationPolicy": {},
+                "networkTask": {
+                    "project_id": _safe_dict(_safe_dict(queue_row.get("item_metadata_json")).get("project")).get("id") or "",
+                },
+            },
+            "networkAllocation": {},
+            "submissions": [{
+                "artifacts": [{
+                    "value": _safe_text(queue_row.get("description"), text_limit),
+                    "url": queue_row.get("public_hive_task_detail_url") or "",
+                }],
+            }],
+            "verificationResponses": [],
+            "rewardEvents": [{
+                "score": {
+                    "decision": "rewarded",
+                    "reason": "Public Directory rewarded-task packet.",
+                },
+            }],
+            "sourcePointers": {
+                "requestBundleCid": queue_row.get("request_bundle_cid"),
+                "lastEventCid": queue_row.get("last_event_cid"),
+                "lastEventTxHash": queue_row.get("last_event_tx_hash"),
+            },
+            "publicHiveTaskDetailUrl": queue_row.get("public_hive_task_detail_url"),
+            "queueItemSourceMode": queue_row.get("source_mode"),
+        }]
     review_state = get_review_state(selected_task_id, database_url=database_url)
     compact = compact_review_task(_safe_dict(tasks[0]), include_raw=include_raw)
+    if queue_row.get("public_hive_task_detail_url"):
+        compact["publicHiveTaskDetailUrl"] = queue_row["public_hive_task_detail_url"]
+    if queue_row.get("source_mode"):
+        compact["queueItemSourceMode"] = queue_row["source_mode"]
     compact["reviewState"] = {
         "disposition": review_state.get("disposition") or queue_row.get("review_disposition") or "not_reviewed",
         "actionRequired": review_state.get("action_required") or queue_row.get("action_required") or False,
@@ -824,8 +876,8 @@ def build_parser() -> argparse.ArgumentParser:
     priority_parser.add_argument(
         "--source",
         choices=["directory-rewarded-tasks", "review-queue", "operator-outstanding"],
-        default="directory-rewarded-tasks",
-        help="directory-rewarded-tasks ranks the Directory-backed rewarded Network task population; review-queue ranks local Orc review-state rows; operator-outstanding ranks this Orc's current offers.",
+        default="review-queue",
+        help="review-queue ranks the unified Orc review queue; directory-rewarded-tasks ranks the live Directory API directly; operator-outstanding ranks this Orc's current offers.",
     )
     priority_parser.add_argument("--max-tasks", type=int, default=20, help="Maximum Orc outstanding offers when --source operator-outstanding.")
     priority_parser.add_argument("--candidate-limit", type=int, default=25, help="Maximum shared review-queue rows to inspect.")

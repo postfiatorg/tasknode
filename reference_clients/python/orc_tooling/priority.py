@@ -301,20 +301,22 @@ def build_review_queue_reward_packet(
 
 
 def build_directory_rewarded_task_packet(row: dict[str, Any]) -> dict[str, Any]:
+    last_event = _safe_dict(row.get("lastEvent"))
+    operator = _safe_dict(row.get("operator"))
     return redact_secrets({
         "schema": "pf.orc.network_task_priority_packet.v1",
         "promptVersion": PRIORITY_PROMPT_VERSION,
-        "sourceMode": "directory_rewarded_tasks",
+        "sourceMode": row.get("sourceMode") or row.get("source_mode") or "directory_rewarded_tasks",
         "generatedAt": _utcnow(),
         "currentDateUtc": datetime.now(timezone.utc).date().isoformat(),
         "taskId": row.get("taskId") or row.get("task_id"),
         "title": row.get("title"),
         "kind": row.get("taskKind") or row.get("task_kind") or "Network",
         "status": "rewarded",
-        "rewardPft": row.get("rewardPft") or row.get("reward_pft"),
+        "rewardPft": row.get("rewardPft") or row.get("rewardActualPft") or row.get("reward_actual_pft") or row.get("reward_pft"),
         "rewardOffer": {
             "offerPft": row.get("rewardOfferPft") or row.get("reward_offer_pft"),
-            "actualPft": row.get("rewardPft") or row.get("reward_pft"),
+            "actualPft": row.get("rewardPft") or row.get("rewardActualPft") or row.get("reward_actual_pft") or row.get("reward_pft"),
         },
         "objective": _safe_text(row.get("description"), 5000),
         "steps": [],
@@ -325,15 +327,16 @@ def build_directory_rewarded_task_packet(row: dict[str, Any]) -> dict[str, Any]:
         "reviewQueue": {
             "disposition": row.get("reviewDisposition") or "not_reviewed",
             "taskUpdatedAt": row.get("updatedAt") or row.get("updated_at"),
+            "itemSourceMode": row.get("queueItemSourceMode") or row.get("source_mode") or "",
         },
         "sourceContributor": {
-            "accountId": row.get("accountId") or row.get("account_id"),
-            "walletAddress": row.get("wallet") or row.get("walletAddress") or row.get("wallet_address"),
-            "handle": row.get("handle"),
+            "accountId": row.get("accountId") or row.get("account_id") or operator.get("accountId"),
+            "walletAddress": row.get("wallet") or row.get("walletAddress") or row.get("wallet_address") or row.get("operator_wallet") or operator.get("wallet"),
+            "handle": row.get("handle") or row.get("operator_handle") or operator.get("handle"),
             "displayName": row.get("displayName"),
         },
         "sourceEvidence": {
-            "submissionSummary": "",
+            "submissionSummary": _safe_text(row.get("publicSummary") or row.get("description"), 1200),
             "verificationResponseSummary": "",
             "rewardDecision": "rewarded",
             "rewardReason": "",
@@ -342,8 +345,8 @@ def build_directory_rewarded_task_packet(row: dict[str, Any]) -> dict[str, Any]:
         "sourcePointers": {
             "requestBundleCid": row.get("requestBundleCid") or row.get("request_bundle_cid"),
             "contextCid": row.get("contextCid") or row.get("context_cid"),
-            "lastEventCid": row.get("lastEventCid") or row.get("last_event_cid"),
-            "lastEventTxHash": row.get("lastEventTxHash") or row.get("last_event_tx_hash"),
+            "lastEventCid": row.get("lastEventCid") or row.get("last_event_cid") or last_event.get("cid"),
+            "lastEventTxHash": row.get("lastEventTxHash") or row.get("last_event_tx_hash") or last_event.get("txHash"),
         },
         "secretPrinted": False,
     })
@@ -940,9 +943,21 @@ def prioritize_review_queue(
             )
             tasks = _safe_list(_safe_dict(review_packet).get("tasks"))
             if not tasks:
-                packet_errors.append({"taskId": task_id, "error": "review_packet_missing"})
-                continue
-            packet = build_review_queue_reward_packet(_safe_dict(tasks[0]), review_state=row)
+                if _safe_text(row.get("source_mode"), 80) in {"directory_public", "hive_public_detail"}:
+                    packet = build_directory_rewarded_task_packet({
+                        **row,
+                        "sourceMode": "review_queue",
+                        "queueItemSourceMode": row.get("source_mode"),
+                        "reviewDisposition": row.get("review_disposition"),
+                        "updatedAt": row.get("task_updated_at"),
+                        "rewardActualPft": row.get("reward_actual_pft"),
+                        "publicSummary": row.get("description") or _safe_dict(row.get("item_metadata_json")).get("publicSummary") or "",
+                    })
+                else:
+                    packet_errors.append({"taskId": task_id, "error": "review_packet_missing"})
+                    continue
+            else:
+                packet = build_review_queue_reward_packet(_safe_dict(tasks[0]), review_state=row)
             heuristic = normalize_priority_result(heuristic_priority_score(packet), packet, scored_by="heuristic")
             scored_candidates.append((packet, heuristic))
         except Exception as exc:
@@ -1061,7 +1076,7 @@ def prioritize_directory_rewarded_tasks(
 
 def prioritize_network_work(
     *,
-    source: str = "directory_rewarded_tasks",
+    source: str = "review_queue",
     client: Any | None = None,
     model: str = DEFAULT_PRIORITY_MODEL,
     use_openrouter: bool = True,
