@@ -42,6 +42,10 @@ const recentFailureStatus = (status, count, label = "Recent failures") => (
   Number(count || 0) > 0 ? mergeStatus(status, { status: "warning", label }) : status
 );
 
+function safeText(value = "", max = 1000) {
+  return String(value || "").trim().slice(0, max);
+}
+
 export function networkTaskSpendWindowDays(value = DEFAULT_NETWORK_TASK_SPEND_DAYS) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_NETWORK_TASK_SPEND_DAYS;
@@ -111,6 +115,249 @@ export async function readNetworkTaskSpendByDay({
       taskCount: rows.reduce((sum, row) => sum + row.taskCount, 0),
     },
   };
+}
+
+function agentActivityUnavailable({ enabled = false, reason = "database_unavailable" } = {}) {
+  return {
+    ok: true,
+    enabled,
+    reason,
+    summary: {
+      agentCount: 0,
+      activeAgentCount: 0,
+      currentTaskCount: 0,
+      recentActionCount: 0,
+      rewardedTaskCount: 0,
+      rewardActualPft: 0,
+    },
+    agents: [],
+  };
+}
+
+function normalizeAgentActivityRows({
+  agents = [],
+  tasks = [],
+  actions = [],
+} = {}) {
+  const tasksByAgent = new Map();
+  for (const row of tasks) {
+    const agentId = safeText(row.agent_id, 180);
+    if (!agentId) continue;
+    const list = tasksByAgent.get(agentId) || [];
+    list.push({
+      taskId: safeText(row.task_id, 180),
+      title: safeText(row.title, 220),
+      status: safeText(row.status, 80),
+      taskKind: safeText(row.task_kind, 80),
+      rewardOfferPft: Number(row.reward_offer_pft || 0),
+      rewardActualPft: Number(row.reward_actual_pft || 0),
+      updatedAt: iso(row.updated_at),
+    });
+    tasksByAgent.set(agentId, list);
+  }
+
+  const actionsByAgent = new Map();
+  for (const row of actions) {
+    const agentId = safeText(row.agent_id, 180);
+    if (!agentId) continue;
+    const list = actionsByAgent.get(agentId) || [];
+    list.push({
+      action: safeText(row.task_action, 120),
+      status: safeText(row.status, 80),
+      outcomeStatus: safeText(row.outcome_status, 120),
+      blocker: safeText(row.blocker, 160),
+      taskId: safeText(row.source_task_id, 180),
+      followupTaskId: safeText(row.followup_task_id, 180),
+      txHash: safeText(row.tx_hash, 240),
+      cid: safeText(row.event_cid, 240),
+      createdAt: iso(row.created_at),
+    });
+    actionsByAgent.set(agentId, list);
+  }
+
+  const normalizedAgents = agents.map((row) => {
+    const agentId = safeText(row.id, 180);
+    const currentTasks = (tasksByAgent.get(agentId) || []).filter((task) => task.status !== "rewarded").slice(0, 5);
+    const recentRewards = (tasksByAgent.get(agentId) || []).filter((task) => task.status === "rewarded").slice(0, 3);
+    return {
+      id: agentId,
+      handle: safeText(row.handle, 120),
+      agentId: safeText(row.agent_id, 180),
+      role: safeText(row.role || "operator", 80) || "operator",
+      status: safeText(row.status || "active", 80) || "active",
+      active: row.active !== false,
+      currentTask: currentTasks[0] || null,
+      currentTasks,
+      recentActions: (actionsByAgent.get(agentId) || []).slice(0, 5),
+      rewards: {
+        taskCount: Number(row.rewarded_task_count || 0),
+        totalPft: Number(row.reward_actual_pft || 0),
+        recent: recentRewards,
+      },
+      updatedAt: iso(row.updated_at),
+    };
+  });
+
+  return {
+    ok: true,
+    enabled: true,
+    reason: "available",
+    summary: {
+      agentCount: normalizedAgents.length,
+      activeAgentCount: normalizedAgents.filter((agent) => agent.active).length,
+      currentTaskCount: normalizedAgents.reduce((sum, agent) => sum + agent.currentTasks.length, 0),
+      recentActionCount: normalizedAgents.reduce((sum, agent) => sum + agent.recentActions.length, 0),
+      rewardedTaskCount: normalizedAgents.reduce((sum, agent) => sum + agent.rewards.taskCount, 0),
+      rewardActualPft: normalizedAgents.reduce((sum, agent) => sum + agent.rewards.totalPft, 0),
+    },
+    agents: normalizedAgents,
+  };
+}
+
+export async function readAgentActivity({
+  tables = new Map(),
+  databaseReady = databaseEnabled(),
+  queryImpl = query,
+  limit = 24,
+} = {}) {
+  const cappedLimit = Math.min(48, Math.max(1, Math.round(Number(limit) || 24)));
+  if (!databaseReady) return agentActivityUnavailable({ reason: "database_disabled" });
+  if (tables.get("orc_agents") !== true) return agentActivityUnavailable({ reason: "orc_agents_missing" });
+  if (tables.get("task_projections") !== true) {
+    return agentActivityUnavailable({ enabled: true, reason: "task_projections_missing" });
+  }
+
+  const agentsResult = await queryImpl(
+    `SELECT
+       agents.id,
+       agents.handle,
+       agents.agent_id,
+       agents.role,
+       agents.status,
+       agents.active,
+       agents.updated_at,
+       count(p.task_id) FILTER (WHERE p.status = 'rewarded')::int AS rewarded_task_count,
+       COALESCE(sum(p.reward_actual_pft) FILTER (WHERE p.status = 'rewarded'), 0)::text AS reward_actual_pft
+     FROM (
+       SELECT id, handle, agent_id, account_id, wallet_address, role, status, active, updated_at, created_at
+       FROM orc_agents
+       ORDER BY
+         COALESCE(active, true) DESC,
+         CASE WHEN lower(COALESCE(status, '')) IN ('active', 'idle', 'available') THEN 0 ELSE 1 END,
+         COALESCE(updated_at, created_at) DESC,
+         handle ASC
+       LIMIT $1
+     ) agents
+     LEFT JOIN task_projections p
+       ON (
+         (agents.account_id <> '' AND p.account_id = agents.account_id) OR
+         (agents.wallet_address <> '' AND p.subject_wallet = agents.wallet_address)
+       )
+       AND COALESCE(p.source, '') <> 'directory_polish_local_fixture'
+       AND COALESCE(p.metadata_json->>'directoryPolishFixture', 'false') <> 'true'
+     GROUP BY agents.id, agents.handle, agents.agent_id, agents.role, agents.status, agents.active, agents.updated_at, agents.created_at
+     ORDER BY
+       COALESCE(agents.active, true) DESC,
+       CASE WHEN lower(COALESCE(agents.status, '')) IN ('active', 'idle', 'available') THEN 0 ELSE 1 END,
+       COALESCE(agents.updated_at, agents.created_at) DESC,
+       agents.handle ASC`,
+    [cappedLimit]
+  );
+
+  const agents = agentsResult.rows;
+  if (!agents.length) {
+    return normalizeAgentActivityRows({ agents: [], tasks: [], actions: [] });
+  }
+
+  const [tasksResult, actionsResult] = await Promise.all([
+    queryImpl(
+      `WITH agents AS (
+         SELECT id, account_id, wallet_address
+         FROM orc_agents
+         ORDER BY
+           COALESCE(active, true) DESC,
+           CASE WHEN lower(COALESCE(status, '')) IN ('active', 'idle', 'available') THEN 0 ELSE 1 END,
+           COALESCE(updated_at, created_at) DESC,
+           handle ASC
+         LIMIT $1
+       ),
+       matched AS (
+         SELECT
+           agents.id AS agent_id,
+           p.task_id,
+           p.title,
+           p.status,
+           p.task_kind,
+           p.reward_offer_pft::text AS reward_offer_pft,
+           p.reward_actual_pft::text AS reward_actual_pft,
+           p.updated_at,
+           row_number() OVER (
+             PARTITION BY agents.id, p.status = 'rewarded'
+             ORDER BY p.updated_at DESC, p.task_id DESC
+           ) AS rank
+         FROM agents
+         JOIN task_projections p
+           ON (
+             (agents.account_id <> '' AND p.account_id = agents.account_id) OR
+             (agents.wallet_address <> '' AND p.subject_wallet = agents.wallet_address)
+           )
+          AND p.status IN ('proposed', 'accepted', 'submitted', 'verification_requested', 'verification_response_submitted', 'reward_decided', 'rewarded')
+          AND COALESCE(p.source, '') <> 'directory_polish_local_fixture'
+          AND COALESCE(p.metadata_json->>'directoryPolishFixture', 'false') <> 'true'
+       )
+       SELECT *
+       FROM matched
+       WHERE rank <= CASE WHEN status = 'rewarded' THEN 3 ELSE 5 END
+       ORDER BY agent_id ASC, status = 'rewarded' ASC, updated_at DESC`,
+      [cappedLimit]
+    ),
+    tables.get("orc_work_journal") === true
+      ? queryImpl(
+        `WITH agents AS (
+           SELECT id, handle, agent_id
+           FROM orc_agents
+           ORDER BY
+             COALESCE(active, true) DESC,
+             CASE WHEN lower(COALESCE(status, '')) IN ('active', 'idle', 'available') THEN 0 ELSE 1 END,
+             COALESCE(updated_at, created_at) DESC,
+             handle ASC
+           LIMIT $1
+         ),
+         matched AS (
+           SELECT
+             agents.id AS agent_id,
+             journal.task_action,
+             journal.status,
+             journal.outcome_status,
+             journal.blocker,
+             journal.source_task_id,
+             journal.followup_task_id,
+             journal.tx_hash,
+             journal.event_cid,
+             journal.created_at,
+             row_number() OVER (
+               PARTITION BY agents.id
+               ORDER BY journal.created_at DESC, journal.id DESC
+             ) AS rank
+           FROM agents
+           JOIN orc_work_journal journal
+             ON lower(journal.operator_handle) = lower(agents.handle)
+             OR lower(journal.operator_handle) = lower(agents.agent_id)
+         )
+         SELECT *
+         FROM matched
+         WHERE rank <= 5
+         ORDER BY agent_id ASC, created_at DESC`,
+        [cappedLimit]
+      )
+      : { rows: [] },
+  ]);
+
+  return normalizeAgentActivityRows({
+    agents,
+    tasks: tasksResult.rows,
+    actions: actionsResult.rows,
+  });
 }
 
 function usageNumber(usage = {}, keys = []) {
@@ -1425,11 +1672,12 @@ export async function readSystemStatus({
   const nowMs = generatedAt.getTime();
   const database = databaseStatus();
   if (!databaseEnabled()) {
-    const [categories, chatPricing, networkTaskSpendByDay, boardManagerDailyCost] = await Promise.all([
+    const [categories, chatPricing, networkTaskSpendByDay, boardManagerDailyCost, agentActivity] = await Promise.all([
       categoryItems(new Map(), nowMs),
       chatPricingStatus(),
       readNetworkTaskSpendByDay({ tables: new Map(), days: networkSpendDays }),
       readBoardManagerDailyCost({ tables: new Map(), days: boardManagerCostDays }),
+      readAgentActivity({ tables: new Map(), databaseReady: false }),
     ]);
     return {
       ok: true,
@@ -1439,15 +1687,17 @@ export async function readSystemStatus({
       chatPricing,
       networkTaskSpendByDay,
       boardManagerDailyCost,
+      agentActivity,
       categories,
     };
   }
   const tables = await tableMap();
-  const [categories, chatPricing, networkTaskSpendByDay, boardManagerDailyCost] = await Promise.all([
+  const [categories, chatPricing, networkTaskSpendByDay, boardManagerDailyCost, agentActivity] = await Promise.all([
     categoryItems(tables, nowMs),
     chatPricingStatus(),
     readNetworkTaskSpendByDay({ tables, days: networkSpendDays }),
     readBoardManagerDailyCost({ tables, days: boardManagerCostDays }),
+    readAgentActivity({ tables }),
   ]);
   return {
     ok: true,
@@ -1457,6 +1707,7 @@ export async function readSystemStatus({
     chatPricing,
     networkTaskSpendByDay,
     boardManagerDailyCost,
+    agentActivity,
     categories,
   };
 }

@@ -158,6 +158,7 @@ function MarkdownArticle({ markdown }) {
 
 function SystemStatusPage({ onOpenDocPage }) {
   const [state, setState] = useState({ loading: true, status: null, error: "" });
+  const [showAgentActivity, setShowAgentActivity] = useState(true);
   const [showNetworkSpend, setShowNetworkSpend] = useState(false);
   const [showBoardManagerCost, setShowBoardManagerCost] = useState(false);
 
@@ -208,6 +209,13 @@ function SystemStatusPage({ onOpenDocPage }) {
             Database: {status.database?.enabled ? "enabled" : "not enabled"} · durable: {status.database?.durable ? "yes" : "no"}
           </p>
           {status.chatPricing && <SystemPricingPanel pricing={status.chatPricing} />}
+          {status.agentActivity && (
+            <SystemAgentActivityPanel
+              activity={status.agentActivity}
+              expanded={showAgentActivity}
+              onToggle={() => setShowAgentActivity((value) => !value)}
+            />
+          )}
           {status.boardManagerDailyCost && (
             <SystemBoardManagerCostPanel
               cost={status.boardManagerDailyCost}
@@ -236,6 +244,91 @@ function SystemStatusPage({ onOpenDocPage }) {
             ))}
           </div>
         </>
+      )}
+    </section>
+  );
+}
+
+function SystemAgentActivityPanel({ activity, expanded, onToggle }) {
+  const summary = activity?.summary || {};
+  const agents = Array.isArray(activity?.agents) ? activity.agents : [];
+  return (
+    <section className="system-agent-activity-panel" aria-label="Orc agent activity">
+      <button
+        className="system-network-spend-toggle system-agent-activity-toggle"
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <ChevronRight className={expanded ? "is-expanded" : ""} size={15} strokeWidth={1.9} />
+        <span>Orc agent activity</span>
+        <strong>{Number(summary.activeAgentCount || 0).toLocaleString()} active</strong>
+        <em>
+          {Number(summary.currentTaskCount || 0).toLocaleString()} current tasks ·{" "}
+          {formatPft(summary.rewardActualPft)} PFT
+        </em>
+      </button>
+      {expanded && (
+        <div className="system-agent-activity-list">
+          {activity.enabled === false && <p>Orc agent activity tables are not available.</p>}
+          {activity.enabled !== false && agents.length === 0 && <p>No registered Orc agents found.</p>}
+          {agents.map((agent) => (
+            <article className="system-agent-activity-card" key={agent.id || agent.handle}>
+              <div className="system-agent-activity-card-title">
+                <div>
+                  <h3>{agent.handle || agent.agentId || "Unnamed agent"}</h3>
+                  <p>{agent.role || "operator"} · {agent.status || "unknown"}</p>
+                </div>
+                <span>{agent.active ? "active" : "inactive"}</span>
+              </div>
+              <div className="system-agent-activity-grid">
+                <div>
+                  <strong>Current task</strong>
+                  {agent.currentTask ? (
+                    <p>
+                      {agent.currentTask.title || agent.currentTask.taskId} · {agent.currentTask.status}
+                    </p>
+                  ) : (
+                    <p>No active task</p>
+                  )}
+                </div>
+                <div>
+                  <strong>Rewards</strong>
+                  <p>
+                    {Number(agent.rewards?.taskCount || 0).toLocaleString()} tasks ·{" "}
+                    {formatPft(agent.rewards?.totalPft)} PFT
+                  </p>
+                </div>
+              </div>
+              {agent.currentTasks?.length > 1 && (
+                <ul className="system-agent-activity-list-compact">
+                  {agent.currentTasks.slice(1, 4).map((task) => (
+                    <li key={task.taskId}>
+                      <span>{task.title || task.taskId}</span>
+                      <em>{task.status}</em>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {agent.recentActions?.length > 0 && (
+                <div className="system-agent-recent-actions">
+                  <strong>Recent actions</strong>
+                  <ul>
+                    {agent.recentActions.slice(0, 4).map((action, index) => (
+                      <li key={`${agent.id}-action-${index}`}>
+                        <span>{action.action || "agent_action"}</span>
+                        <em>
+                          {action.outcomeStatus || action.status || "recorded"}
+                          {action.taskId ? ` · ${shortId(action.taskId)}` : ""}
+                        </em>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -600,6 +693,12 @@ function formatDateTime(value) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function shortId(value = "") {
+  const text = String(value || "");
+  if (text.length <= 14) return text;
+  return `${text.slice(0, 7)}...${text.slice(-4)}`;
 }
 
 function MarkdownBlock({ block }) {

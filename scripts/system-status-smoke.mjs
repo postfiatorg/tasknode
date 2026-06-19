@@ -32,6 +32,16 @@ assert.equal(status.chatPricing.live.status, "disabled");
 assert.equal(status.networkTaskSpendByDay.enabled, false);
 assert.equal(status.networkTaskSpendByDay.windowDays, 30);
 assert.deepEqual(status.networkTaskSpendByDay.totals, { totalPft: 0, taskCount: 0 });
+assert.equal(status.agentActivity.enabled, false);
+assert.equal(status.agentActivity.reason, "database_disabled");
+assert.deepEqual(status.agentActivity.summary, {
+  agentCount: 0,
+  activeAgentCount: 0,
+  currentTaskCount: 0,
+  recentActionCount: 0,
+  rewardedTaskCount: 0,
+  rewardActualPft: 0,
+});
 assert.equal(status.boardManagerDailyCost.enabled, false);
 assert.equal(status.boardManagerDailyCost.windowDays, 30);
 assert.deepEqual(status.boardManagerDailyCost.totals, {

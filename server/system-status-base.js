@@ -23,6 +23,8 @@ const trackedTables = [
   "network_task_generation_jobs",
   "network_task_profile_jobs",
   "network_task_profiles",
+  "orc_agents",
+  "orc_work_journal",
   "pftl_cache_maintenance_runs",
   "pftl_cache_reducer_events",
   "pftl_cache_watcher_state",
