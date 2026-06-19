@@ -19,12 +19,20 @@ const candidateAccountId = `acct_board_packet_candidate_${suffix}`;
 const candidateWallet = `rBoardPacketCandidate${suffix.slice(-8)}`;
 const candidateProfileId = `netprofile_board_packet_${suffix}`;
 const privateRepoScope = "github:private/tasknodeofficial";
+const orcAgentId = `orc_board_packet_${suffix}`;
+const orcAccountId = `acct_board_packet_orc_${suffix}`;
+const orcWallet = `rBoardPacketOrc${suffix.slice(-8)}`;
+const orcTaskId = `task_board_packet_orc_${suffix}`;
 
 async function cleanup() {
-  await query("DELETE FROM task_events WHERE task_id = ANY($1::text[])", [[completedTaskId, outstandingTaskId]]);
-  await query("DELETE FROM task_projections WHERE task_id = ANY($1::text[])", [[completedTaskId, outstandingTaskId]]);
+  await query("DELETE FROM orc_operator_interactions WHERE orc_handle = $1", ["grashnuk_smoke"]);
+  await query("DELETE FROM orc_run_journal WHERE orc_handle = $1", ["grashnuk_smoke"]);
+  await query("DELETE FROM orc_task_review_states WHERE task_id = $1", [completedTaskId]);
+  await query("DELETE FROM orc_agents WHERE id = $1 OR handle = $2", [orcAgentId, "grashnuk_smoke"]);
+  await query("DELETE FROM task_events WHERE task_id = ANY($1::text[])", [[completedTaskId, outstandingTaskId, orcTaskId]]);
+  await query("DELETE FROM task_projections WHERE task_id = ANY($1::text[])", [[completedTaskId, outstandingTaskId, orcTaskId]]);
   await query("DELETE FROM network_task_profiles WHERE account_id = $1 OR id = $2", [candidateAccountId, candidateProfileId]);
-  await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = $1", [candidateWallet]);
+  await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = ANY($1::text[])", [[candidateWallet, orcWallet]]);
   await query("DELETE FROM network_projects WHERE id = $1", [projectId]);
 }
 
@@ -79,6 +87,51 @@ async function main() {
           last_hot_sync_at = EXCLUDED.last_hot_sync_at
       `,
       [candidateWallet, candidateAccountId]
+    );
+
+    await query(
+      `
+        INSERT INTO pftl_sync_wallets (wallet_address, account_id, role, status, priority, last_hot_sync_at)
+        VALUES ($1, $2, 'user', 'active', 100, now())
+        ON CONFLICT (wallet_address) DO UPDATE SET
+          account_id = EXCLUDED.account_id,
+          role = EXCLUDED.role,
+          status = EXCLUDED.status,
+          priority = EXCLUDED.priority,
+          last_hot_sync_at = EXCLUDED.last_hot_sync_at
+      `,
+      [orcWallet, orcAccountId]
+    );
+
+    await query(
+      `
+        INSERT INTO orc_agents (
+          id, handle, agent_id, account_id, wallet_address, role, status, active,
+          runtime_kind, tmux_target, capacity_limit, metadata_json
+        )
+        VALUES ($1, 'grashnuk_smoke', 'agent_grashnuk_smoke', $2, $3, 'operator',
+          'active', true, 'codex', 'grashnuk:0.0', 1, $4::jsonb)
+      `,
+      [
+        orcAgentId,
+        orcAccountId,
+        orcWallet,
+        JSON.stringify({ sessionPath: "/home/pfrpc/repos/tasknode_agent_sessions.json" }),
+      ]
+    );
+
+    await query(
+      `
+        INSERT INTO task_projections (
+          task_id, account_id, subject_wallet, request_id, status, title, description,
+          task_kind, reward_offer_pft, reward_actual_pft, metadata_json, updated_at
+        )
+        VALUES ($1, $2, $3, 'req_orc_packet_smoke', 'accepted',
+          'Orc Accounting Active Task Smoke',
+          'Active Orc Network Task visible to Board Manager accounting.',
+          'network', 10000, 0, '{}'::jsonb, now() - interval '2 minutes')
+      `,
+      [orcTaskId, orcAccountId, orcWallet]
     );
 
     await query(
@@ -151,6 +204,46 @@ async function main() {
           },
         }),
       ]
+    );
+
+    await query(
+      `
+        INSERT INTO orc_task_review_states (
+          task_id, disposition, action_required, action_owner, confidence,
+          categories, integrity_signals, summary, recommended_action,
+          reviewer_handle, reviewer_wallet, source_task_ids, source_cids,
+          source_tx_hashes, reviewed_at, updated_at
+        )
+        VALUES ($1, 'reviewed_follow_up', true, 'operator', 'high',
+          ARRAY['task_routing']::text[], ARRAY[]::text[],
+          'Orc review says this completed task needs a concrete follow-up.',
+          'Route a concrete action task instead of another documentation pass.',
+          'grashnuk_smoke', $2, ARRAY[$1]::text[], ARRAY[$3]::text[],
+          ARRAY[$4]::text[], now(), now())
+      `,
+      [completedTaskId, orcWallet, `cid_completed_${suffix}`, `tx_completed_${suffix}`]
+    );
+
+    await query(
+      `
+        INSERT INTO orc_run_journal (
+          id, orc_handle, agent_id, command, phase, status, task_id, cid, tx_hash
+        )
+        VALUES ($1, 'grashnuk_smoke', 'agent_grashnuk_smoke', 'review-task',
+          'complete', 'ok', $2, $3, $4)
+      `,
+      [`orcrun_${suffix}`, completedTaskId, `cid_completed_${suffix}`, `tx_completed_${suffix}`]
+    );
+
+    await query(
+      `
+        INSERT INTO orc_operator_interactions (
+          id, orc_handle, interaction_type, directive, issue, status
+        )
+        VALUES ($1, 'grashnuk_smoke', 'directive',
+          'Review duplicate documentation rewards.', '', 'recorded')
+      `,
+      [`orcint_${suffix}`]
     );
 
     await query(
@@ -278,6 +371,26 @@ async function main() {
       false,
       "capability instrumentation must not expose the raw private repo scope"
     );
+    assert.equal(packet.orcOperations.schema, "pf.hive.board_manager.orc_operations.v1");
+    assert.equal(packet.orcOperations.enforcement, "none_context_only");
+    assert.equal(packet.orcOperations.summary.activeAgentCount >= 1, true);
+    assert.ok(packet.orcOperations.agents.some((agent) => (
+      agent.handle === "grashnuk_smoke" &&
+      agent.accountId === orcAccountId &&
+      agent.walletAddress === orcWallet &&
+      agent.currentTasks.outstandingNetworkTaskCount === 1
+    )));
+    assert.ok(packet.orcOperations.reviewQueue.recent.some((review) => (
+      review.taskId === completedTaskId &&
+      review.actionRequired === true &&
+      review.reviewerHandle === "grashnuk_smoke"
+    )));
+    assert.ok(packet.orcOperations.operatorInteractions.recent.some((interaction) => (
+      interaction.orcHandle === "grashnuk_smoke" &&
+      interaction.interactionType === "directive"
+    )));
+    assert.equal(JSON.stringify(packet.orcOperations).includes("tasknode_agent_sessions"), false);
+    assert.equal(JSON.stringify(packet.orcOperations).includes("grashnuk:0.0"), false);
 
     console.log("board manager source packet smoke ok");
   } finally {

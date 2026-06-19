@@ -186,7 +186,7 @@ function boardManagerSecretaryRepairMessages({ sourcePacket = {}, invalidText = 
         `Parser error: ${safeText(parseError, 500)}`,
         "Repair the same Board Manager Secretary packet now.",
         "Return exactly one JSON object matching the packet contract. Do not add prose, markdown, comments, or trailing text.",
-        "Preserve operator_standing_policy, generation_quality_policy, prior_output_corpus_summary, deduplication_watchlist, capability_gap_summary, and facts_to_preserve.",
+        "Preserve operator_standing_policy, generation_quality_policy, prior_output_corpus_summary, deduplication_watchlist, capability_gap_summary, orc_operations_summary, and facts_to_preserve.",
       ].join("\n"),
     },
   ];
@@ -225,6 +225,7 @@ function fallbackFactsToPreserve({
   priorOutputCorpusSummary = {},
   deduplicationWatchlist = [],
   capabilityGapSummary = {},
+  orcOperationsSummary = {},
 } = {}) {
   const corpus = safeObject(priorOutputCorpusSummary);
   const recentOutputIds = safeArray(corpus.recent_outputs)
@@ -243,13 +244,26 @@ function fallbackFactsToPreserve({
       return `capability_gap:${projectId || "project"}:${capabilityType || "capability"}:${candidateAccountId || "candidate"}`;
     })
     .filter(Boolean);
+  const orcFacts = safeArray(orcOperationsSummary.agents)
+    .map((agent) => {
+      const item = safeObject(agent);
+      const handle = safeText(item.handle || item.agent_id || item.account_id, 120);
+      if (!handle) return "";
+      return `orc_agent:${handle}:status=${safeText(item.status, 80) || "unknown"}:network_tasks=${Math.max(0, Math.round(Number(item.outstanding_network_task_count || 0) || 0))}`;
+    })
+    .filter(Boolean);
+  const orcReviewFacts = Math.max(0, Math.round(Number(orcOperationsSummary.action_required_review_count || 0) || 0)) > 0
+    ? [`orc_reviews:action_required=${Math.max(0, Math.round(Number(orcOperationsSummary.action_required_review_count || 0) || 0))}`]
+    : [];
   return [
     safeText(sourcePacket.sourcePacketDigest, 120) ? `source_packet_digest:${safeText(sourcePacket.sourcePacketDigest, 120)}` : "",
     ...safeArray(operatorStandingPolicy).map((item) => `operator_policy:${item.source_id || item.sourceId || "source"}`),
     ...recentOutputIds.map((taskId) => `prior_output:${safeText(taskId, 180)}`),
     ...dedupTaskIds.map((taskId) => `dedup_against:${safeText(taskId, 180)}`),
     ...capabilityGapFacts,
-  ].filter(Boolean).slice(0, 24);
+    ...orcFacts,
+    ...orcReviewFacts,
+  ].filter(Boolean).slice(0, 32);
 }
 
 function boardManagerSecretaryFallbackPacket({ sourcePacket = {}, parseError = "" } = {}) {
@@ -279,6 +293,9 @@ function boardManagerSecretaryFallbackPacket({ sourcePacket = {}, parseError = "
       sourcePacket.capabilityInstrumentation ||
       sourcePacket.capability_instrumentation
   );
+  const orcOperationsSummary = normalizeOrcOperationsSummary(
+    sourcePacket.orcOperations || sourcePacket.orc_operations || sourcePacket.orcOperationsSummary || sourcePacket.orc_operations_summary
+  );
   const candidateCount = Math.max(
     safeArray(sourcePacket.networkTaskCandidates).length,
     Number(pressure.eligibleCandidateCount || pressure.eligible_candidate_count || 0) || 0
@@ -307,12 +324,14 @@ function boardManagerSecretaryFallbackPacket({ sourcePacket = {}, parseError = "
     prior_output_corpus_summary: priorOutputCorpusSummary,
     deduplication_watchlist: deduplicationWatchlist,
     capability_gap_summary: capabilityGapSummary,
+    orc_operations_summary: orcOperationsSummary,
     facts_to_preserve: fallbackFactsToPreserve({
       sourcePacket,
       operatorStandingPolicy,
       priorOutputCorpusSummary,
       deduplicationWatchlist,
       capabilityGapSummary,
+      orcOperationsSummary,
     }),
     redaction_count: 0,
   });
@@ -495,6 +514,97 @@ function normalizeCapabilityGapSummary(value = {}) {
   };
 }
 
+function normalizeOrcOperationsSummary(value = {}) {
+  const input = safeObject(value);
+  const summary = safeObject(input.summary || input);
+  const agents = safeArray(input.agents)
+    .slice(0, 12)
+    .map((item) => {
+      const agent = safeObject(item);
+      const currentTasks = safeObject(agent.currentTasks || agent.current_tasks);
+      const reviews = safeObject(agent.reviews);
+      return {
+        handle: safeText(agent.handle, 120),
+        agent_id: safeText(agent.agent_id || agent.agentId, 180),
+        account_id: safeText(agent.account_id || agent.accountId, 180),
+        wallet_address: safeText(agent.wallet_address || agent.walletAddress, 120),
+        status: safeText(agent.status || "active", 80),
+        active: clampBoolean(agent.active, true),
+        routing_eligible: clampBoolean(agent.routingEligible ?? agent.routing_eligible, false),
+        outstanding_network_task_count: Math.max(
+          0,
+          Math.round(Number(currentTasks.outstandingNetworkTaskCount ?? currentTasks.outstanding_network_task_count ?? 0) || 0)
+        ),
+        pending_generation_count: Math.max(
+          0,
+          Math.round(Number(currentTasks.pendingGenerationCount ?? currentTasks.pending_generation_count ?? 0) || 0)
+        ),
+        action_required_review_count: Math.max(
+          0,
+          Math.round(Number(reviews.actionRequiredCount ?? reviews.action_required_count ?? 0) || 0)
+        ),
+      };
+    })
+    .filter((item) => item.handle || item.account_id || item.wallet_address);
+  const recentReviews = safeArray(input.reviewQueue?.recent || input.review_queue?.recent)
+    .slice(0, 8)
+    .map((item) => {
+      const review = safeObject(item);
+      return {
+        task_id: safeText(review.task_id || review.taskId, 180),
+        disposition: safeText(review.disposition || "not_reviewed", 120),
+        action_required: clampBoolean(review.action_required ?? review.actionRequired, false),
+        reviewer_handle: safeText(review.reviewer_handle || review.reviewerHandle, 120),
+        summary: safeText(review.summary, 700),
+        recommended_action: safeText(review.recommended_action || review.recommendedAction, 700),
+      };
+    })
+    .filter((item) => item.task_id || item.summary || item.recommended_action);
+  const recentInteractions = safeArray(input.operatorInteractions?.recent || input.operator_interactions?.recent)
+    .slice(0, 8)
+    .map((item) => {
+      const interaction = safeObject(item);
+      return {
+        orc_handle: safeText(interaction.orc_handle || interaction.orcHandle, 120),
+        interaction_type: safeText(interaction.interaction_type || interaction.interactionType, 80),
+        status: safeText(interaction.status, 80),
+        directive: safeText(interaction.directive, 700),
+        issue: safeText(interaction.issue, 700),
+        created_at: safeText(interaction.created_at || interaction.createdAt, 80),
+      };
+    })
+    .filter((item) => item.orc_handle || item.directive || item.issue);
+  return {
+    schema: "pf.hive.board_manager.orc_operations_summary.v1",
+    enforcement: safeText(input.enforcement || "none_context_only", 120) || "none_context_only",
+    agent_count: Math.max(0, Math.round(Number(summary.agentCount ?? summary.agent_count ?? agents.length) || 0)),
+    active_agent_count: Math.max(0, Math.round(Number(summary.activeAgentCount ?? summary.active_agent_count ?? 0) || 0)),
+    available_for_routing_count: Math.max(
+      0,
+      Math.round(Number(summary.availableForRoutingCount ?? summary.available_for_routing_count ?? 0) || 0)
+    ),
+    outstanding_orc_network_task_count: Math.max(
+      0,
+      Math.round(Number(summary.outstandingOrcNetworkTaskCount ?? summary.outstanding_orc_network_task_count ?? 0) || 0)
+    ),
+    pending_orc_generation_count: Math.max(
+      0,
+      Math.round(Number(summary.pendingOrcGenerationCount ?? summary.pending_orc_generation_count ?? 0) || 0)
+    ),
+    action_required_review_count: Math.max(
+      0,
+      Math.round(Number(summary.actionRequiredReviewCount ?? summary.action_required_review_count ?? 0) || 0)
+    ),
+    recent_interaction_count: Math.max(
+      0,
+      Math.round(Number(summary.recentInteractionCount ?? summary.recent_interaction_count ?? 0) || 0)
+    ),
+    agents,
+    recent_reviews: recentReviews,
+    recent_operator_interactions: recentInteractions,
+  };
+}
+
 export function normalizeBoardManagerSecretaryPacket(output = {}) {
   const input = safeObject(output);
   const motionState = safeText(input.motion_state || input.motionState, 80).toLowerCase();
@@ -550,6 +660,7 @@ export function normalizeBoardManagerSecretaryPacket(output = {}) {
     ),
     deduplication_watchlist: normalizeDeduplicationWatchlist(input.deduplication_watchlist || input.deduplicationWatchlist),
     capability_gap_summary: normalizeCapabilityGapSummary(input.capability_gap_summary || input.capabilityGapSummary),
+    orc_operations_summary: normalizeOrcOperationsSummary(input.orc_operations_summary || input.orcOperationsSummary),
     facts_to_preserve: safeArray(input.facts_to_preserve || input.factsToPreserve)
       .slice(0, 24)
       .map((item) => safeText(item, 500))
@@ -592,6 +703,19 @@ function packetText(packet = {}) {
   const capabilityGaps = safeArray(capabilityGapSummary.gaps)
     .map((gap) =>
       `- ${gap.project_id || "project"} / ${gap.candidate_account_id || "candidate"}: ${gap.capability_type || "capability"} -> ${gap.candidate_status || "unknown"}; next ${gap.recommended_task_work_type || "unspecified"}`.trim()
+    )
+    .filter(Boolean)
+    .join("\n") || "None";
+  const orcOperationsSummary = safeObject(packet.orc_operations_summary);
+  const orcAgents = safeArray(orcOperationsSummary.agents)
+    .map((agent) =>
+      `- ${agent.handle || agent.agent_id || agent.account_id || "orc"}: ${agent.status || "unknown"}; routing=${agent.routing_eligible ? "yes" : "no"}; network_tasks=${agent.outstanding_network_task_count || 0}; pending_generation=${agent.pending_generation_count || 0}; reviews_action_required=${agent.action_required_review_count || 0}`.trim()
+    )
+    .filter(Boolean)
+    .join("\n") || "None";
+  const orcReviews = safeArray(orcOperationsSummary.recent_reviews)
+    .map((review) =>
+      `- ${review.task_id || "task"}: ${review.disposition || "unknown"}${review.action_required ? " action_required" : ""}; ${review.summary || review.recommended_action || ""}`.trim()
     )
     .filter(Boolean)
     .join("\n") || "None";
@@ -656,6 +780,13 @@ function packetText(packet = {}) {
     `enforcement: ${capabilityGapSummary.enforcement || "none_context_only"}`,
     `requirements: ${capabilityGapSummary.requirement_count || 0}; candidates: ${capabilityGapSummary.candidate_count || 0}; verified capabilities: ${capabilityGapSummary.verified_capability_count || 0}; gaps: ${capabilityGapSummary.gap_count || 0}`,
     capabilityGaps,
+    "",
+    "Orc operations summary",
+    `enforcement: ${orcOperationsSummary.enforcement || "none_context_only"}`,
+    `agents: ${orcOperationsSummary.agent_count || 0}; active: ${orcOperationsSummary.active_agent_count || 0}; routeable: ${orcOperationsSummary.available_for_routing_count || 0}; action-required reviews: ${orcOperationsSummary.action_required_review_count || 0}`,
+    orcAgents,
+    "Recent Orc reviews",
+    orcReviews,
     "",
     "Facts to preserve",
     safeArray(packet.facts_to_preserve).map((fact) => `- ${fact}`).join("\n") || "None",
@@ -724,6 +855,14 @@ function buildActionTargetRegistry(sourcePacket = {}) {
   for (const candidate of safeArray(sourcePacket?.networkTaskCandidates)) {
     const accountId = safeText(candidate.accountId || candidate.account_id, 180);
     const displayName = safeText(candidate.displayName || candidate.display_name, 120);
+    const walletAddress = safeText(candidate.walletAddress || candidate.wallet_address, 120);
+    addAccount({ accountId, displayName });
+    addContributor({ accountId, displayName, walletAddress });
+  }
+
+  for (const candidate of safeArray(sourcePacket?.orcOperations?.routingCandidates || sourcePacket?.orc_operations?.routingCandidates)) {
+    const accountId = safeText(candidate.accountId || candidate.account_id, 180);
+    const displayName = safeText(candidate.handle || candidate.displayName || candidate.display_name, 120);
     const walletAddress = safeText(candidate.walletAddress || candidate.wallet_address, 120);
     addAccount({ accountId, displayName });
     addContributor({ accountId, displayName, walletAddress });
@@ -1088,6 +1227,13 @@ export function buildBoardManagerSecretaryDecisionPacket({
         sourcePacket.capability_gap_summary ||
         sourcePacket.capabilityInstrumentation ||
         normalizedSecretaryJson.capability_gap_summary
+    ),
+    orcOperations: safeObject(sourcePacket.orcOperations || sourcePacket.orc_operations),
+    orcOperationsSummary: normalizeOrcOperationsSummary(
+      sourcePacket.orcOperations ||
+        sourcePacket.orc_operations ||
+        sourcePacket.orcOperationsSummary ||
+        normalizedSecretaryJson.orc_operations_summary
     ),
     secretaryPacket: {
       id: safeText(secretaryPacket.id, 180),

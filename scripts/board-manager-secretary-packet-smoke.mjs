@@ -84,6 +84,68 @@ const rawSourcePacket = {
       walletAddress: "rHiveValidatedWallet",
     },
   ],
+  orcOperations: {
+    schema: "pf.hive.board_manager.orc_operations.v1",
+    enforcement: "none_context_only",
+    summary: {
+      agentCount: 1,
+      activeAgentCount: 1,
+      availableForRoutingCount: 1,
+      outstandingOrcNetworkTaskCount: 0,
+      pendingOrcGenerationCount: 0,
+      actionRequiredReviewCount: 1,
+      recentInteractionCount: 1,
+    },
+    agents: [
+      {
+        handle: "grashnuk",
+        agentId: "agent_grashnuk",
+        accountId: "acct_orc_grashnuk",
+        walletAddress: "rGrashnukWallet",
+        status: "active",
+        active: true,
+        routingEligible: true,
+        currentTasks: {
+          outstandingNetworkTaskCount: 0,
+          pendingGenerationCount: 0,
+        },
+        reviews: {
+          actionRequiredCount: 1,
+        },
+      },
+    ],
+    routingCandidates: [
+      {
+        source: "orc_agents",
+        role: "orc_operator",
+        handle: "grashnuk",
+        agentId: "agent_grashnuk",
+        accountId: "acct_orc_grashnuk",
+        walletAddress: "rGrashnukWallet",
+      },
+    ],
+    reviewQueue: {
+      recent: [
+        {
+          taskId: "task_orc_review",
+          disposition: "reviewed_follow_up",
+          actionRequired: true,
+          reviewerHandle: "grashnuk",
+          summary: "Needs operator follow-up.",
+        },
+      ],
+    },
+    operatorInteractions: {
+      recent: [
+        {
+          orcHandle: "grashnuk",
+          interactionType: "directive",
+          status: "recorded",
+          directive: "Review duplicate reward evidence.",
+        },
+      ],
+    },
+  },
   capabilityInstrumentation: {
     schema: "pf.hive.board_manager.capability_instrumentation.v1",
     status: "phase_a_instrumentation_only_no_enforcement",
@@ -465,7 +527,10 @@ assert.equal(fallbackResult.packet.generation_quality_policy.requires_concrete_a
 assert.equal(fallbackResult.packet.prior_output_corpus_summary.recent_outputs[0].task_id, "task_doc_1");
 assert.equal(fallbackResult.packet.deduplication_watchlist[0].prior_task_ids[0], "task_doc_1");
 assert.equal(fallbackResult.packet.capability_gap_summary.gaps[0].recommended_task_work_type, "capability_gating_task");
+assert.equal(fallbackResult.packet.orc_operations_summary.active_agent_count, 1);
+assert.equal(fallbackResult.packet.orc_operations_summary.agents[0].handle, "grashnuk");
 assert.ok(fallbackResult.packet.facts_to_preserve.some((fact) => fact.includes("capability_gap:task_node:repo_pr_access:acct_1")));
+assert.ok(fallbackResult.packet.facts_to_preserve.some((fact) => fact.includes("orc_agent:grashnuk")));
 assert.ok(fallbackResult.packet.facts_to_preserve.some((fact) => fact.includes("source_packet_digest")));
 assert.equal(fallbackResult.usage.repairAttempted, true);
 assert.equal(fallbackResult.usage.repairFailed, true);
@@ -504,9 +569,14 @@ assert.equal(decisionPacket.secretaryPacket.packetJson.motion_state, "needs_atte
 assert.equal(decisionPacket.actionTargetRegistry.accounts[0]?.accountId, "acct_1");
 assert.equal(decisionPacket.actionTargetRegistry.hiveContextEntries[0]?.sourceConversationId, "conv_hive_1");
 assert.equal(decisionPacket.actionTargetRegistry.contributorCandidates[0]?.walletAddress, "rHiveValidatedWallet");
+assert.ok(decisionPacket.actionTargetRegistry.contributorCandidates.some((candidate) => (
+  candidate.accountId === "acct_orc_grashnuk" &&
+  candidate.walletAddress === "rGrashnukWallet"
+)));
 assert.equal(decisionPacket.capabilityGapSummary.gaps[0].capability_type, "repo_pr_access");
 assert.equal(decisionPacket.capabilityGapSummary.gaps[0].recommended_task_work_type, "capability_gating_task");
+assert.equal(decisionPacket.orcOperationsSummary.active_agent_count, 1);
 assert.ok(decisionPacket.sourcePacketDigest.length >= 40);
-assert.ok(JSON.stringify(decisionPacket).length < JSON.stringify(rawSourcePacket).length + result.packetText.length + 5000);
+assert.ok(JSON.stringify(decisionPacket).length < JSON.stringify(rawSourcePacket).length + result.packetText.length + 8000);
 
 console.log("board manager secretary packet smoke ok");

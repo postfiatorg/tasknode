@@ -194,6 +194,10 @@ function sourceAccountIds(sourcePacket = {}) {
     const accountId = safeText(candidate.accountId || candidate.account_id, 180);
     if (accountId) ids.add(accountId);
   }
+  for (const candidate of sourcePacket?.orcOperations?.routingCandidates || sourcePacket?.orc_operations?.routingCandidates || []) {
+    const accountId = safeText(candidate.accountId || candidate.account_id, 180);
+    if (accountId) ids.add(accountId);
+  }
   return ids;
 }
 
@@ -248,6 +252,14 @@ function sourceContributorCandidates(sourcePacket = {}) {
     addCandidate({
       accountId: candidate.accountId || candidate.account_id,
       displayName: candidate.displayName || candidate.display_name,
+      walletAddress: candidate.walletAddress || candidate.wallet_address,
+    });
+  }
+
+  for (const candidate of sourcePacket?.orcOperations?.routingCandidates || sourcePacket?.orc_operations?.routingCandidates || []) {
+    addCandidate({
+      accountId: candidate.accountId || candidate.account_id,
+      displayName: candidate.handle || candidate.displayName || candidate.display_name,
       walletAddress: candidate.walletAddress || candidate.wallet_address,
     });
   }

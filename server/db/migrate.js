@@ -69,6 +69,7 @@ const migrations = [
   "059_board_manager_evidence_evaluation_packets.sql",
   "060_taskgen_replay_cache.sql",
   "061_projection_fixture_cleanup.sql",
+  "062_orc_agents_and_activity.sql",
 ];
 
 let migrated = false;

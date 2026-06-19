@@ -315,6 +315,7 @@ export function buildBoardManagerActionPressure({
   hiveProjects = {},
   networkTaskContent = {},
   networkTaskCandidates = [],
+  orcOperations = {},
   // Canonical per-candidate capacity verdicts from
   // listNetworkTaskCandidateCapacityChecks (network-task-capacity.js). When
   // provided, candidateCapacity uses the same shared predicate as the
@@ -353,6 +354,7 @@ export function buildBoardManagerActionPressure({
     : availableCandidates(networkTaskCandidates, capacityBlockers);
   const eligibleCandidateCount = eligibleCandidates.length;
   const unavailableCandidateCount = Math.max(0, candidateCount - eligibleCandidateCount);
+  const orcSummary = safeObject(orcOperations.summary);
   const staleHiveSecretary = numeric(freshness.hiveSecretaryAgeMs, 0) > 60 * 60 * 1000;
   const activeProjects = projects.filter((project) => safeText(project.status, 80).toLowerCase() === "active");
   const recentUserFollowup = hasRecentUserFollowup({ recentBoardManagerRuns });
@@ -400,6 +402,11 @@ export function buildBoardManagerActionPressure({
       candidateCount,
       eligibleCandidateCount,
       unavailableCandidateCount,
+      activeOrcAgentCount: numeric(orcSummary.activeAgentCount, 0),
+      availableOrcRoutingCandidateCount: numeric(orcSummary.availableForRoutingCount, 0),
+      outstandingOrcNetworkTaskCount: numeric(orcSummary.outstandingOrcNetworkTaskCount, 0),
+      pendingOrcGenerationCount: numeric(orcSummary.pendingOrcGenerationCount, 0),
+      orcActionRequiredReviewCount: numeric(orcSummary.actionRequiredReviewCount, 0),
       activeNetworkTaskCapacityBlockerCount: capacityBlockers.length,
       staleHiveSecretary,
       recentUserFollowup,
