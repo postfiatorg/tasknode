@@ -27,4 +27,3 @@ Recommended action: update the automated blocklist generator or current blocklis
 ```bash
 node scripts/sybil-blocklist-regression.mjs --graph /tmp/orc_blocklist_regression_sources/fund_flow/sample_graph.json --blocklist /tmp/orc_blocklist_regression_sources/blocklist_generator/blocklist_patch.json --base /tmp/orc_blocklist_regression_sources/blocklist_generator/base_blocklist.json
 ```
-
