@@ -110,18 +110,25 @@ This is the shared Network Task triage capability. `orcctl prioritize-network`,
 result (`orc_network_task_triage_v1`) so Orc panes do not disagree about the
 next task, next command, source mode, review disposition, or follow-up action.
 
-By default the command reads Task Node's Directory-backed rewarded-task API,
-`/api/directory/rewarded-tasks?taskKind=network`, so it ranks the same public
-discoverable operator population shown in the Directory leaderboard. It builds
-compact rewarded-submission packets and asks OpenRouter model `z-ai/glm-5.2`
-to score the top heuristic-ranked candidates. It also computes a deterministic
-local heuristic and returns sanity warnings when the model score diverges
-sharply, omits reasons, or returns inconsistent task ids.
+By default the command reads the unified `orc_task_review_queue`. That queue is
+backed by `orc_task_review_items`, which preserves local `task_projections`
+forensic rows and also accepts public Directory rewarded-task packets ingested
+from `/api/directory/rewarded-tasks?taskKind=network`. It builds compact
+rewarded-submission packets and asks OpenRouter model `z-ai/glm-5.2` to score
+the top heuristic-ranked candidates. It also computes a deterministic local
+heuristic and returns sanity warnings when the model score diverges sharply,
+omits reasons, or returns inconsistent task ids.
 
-Use the local shared review-state table explicitly with:
+Refresh the queue from the public Directory source:
 
 ```bash
-uv run orcctl prioritize-network --source review-queue
+npm run orc-review-queue-ingestion -- --execute
+```
+
+Rank the live Directory API directly, without using the shared queue:
+
+```bash
+uv run orcctl prioritize-network --source directory-rewarded-tasks
 ```
 
 Rank only the current Orc's offered Network tasks with:
@@ -229,9 +236,12 @@ uv run orc-review-state set task_... \
   --recommended-action "Route to core onboarding backlog."
 ```
 
-This creates `orc_task_review_states` plus `orc_task_review_queue` in the Task
-Node Postgres read model. Other orcs can read the same table/view to burn down
-rewarded Network Task submissions by disposition.
+This creates `orc_task_review_states`, `orc_task_review_items`, and
+`orc_task_review_queue` in the Task Node Postgres read model. Other orcs can
+read the same table/view to burn down rewarded Network Task submissions by
+disposition. Local projection rows win over public Directory packets on
+conflict; public packets only fill missing queue items or newer public event
+pointers.
 
 ## Send Hive Chat Follow-Ups
 

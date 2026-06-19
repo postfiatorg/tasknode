@@ -74,6 +74,11 @@ tmux send-keys -t <pane> -l '<directive>'; sleep 1; tmux send-keys -t <pane> Ent
   `escalate`. The manager oversees via commands + shared DB state
   (`orc_agents`, `orc_activity`, `orc_run_journal`, `orc_operator_interactions`),
   not raw pane-scraping alone.
+- Shared review work is read from `orc_task_review_queue`, now backed by
+  `orc_task_review_items`: local `task_projections` rows remain the richest
+  `local_projection` source, while public Directory rewarded-task packets can be
+  ingested as `directory_public` rows so all orcs see the same public rewarded
+  task population.
 
 ## Guardrails — reserved actions (escalate to Sauron, never execute)
 

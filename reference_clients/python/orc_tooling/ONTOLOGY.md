@@ -87,9 +87,12 @@ Primary dispositions are mutually exclusive:
 - `reviewed_duplicate_or_superseded`: already captured, duplicated, or
   superseded.
 
-`orc_task_review_queue` left joins rewarded Network Tasks to
-`orc_task_review_states` and coalesces missing rows to `not_reviewed`, so burn
-down starts with:
+`orc_task_review_queue` left joins `orc_task_review_items` to
+`orc_task_review_states` and coalesces missing rows to `not_reviewed`. Review
+items include local `task_projections` rows as `local_projection` plus public
+Directory rewarded-task packets as `directory_public`. Local projection rows are
+the richer forensic source and win on conflict; public packets only fill gaps or
+newer public event pointers. Burn down starts with:
 
 ```bash
 uv run orc-review-state queue --disposition not_reviewed --limit 20
@@ -112,4 +115,6 @@ Integrity follow-up requires at least one integrity signal such as
 
 `orc_task_reviews` is append-only history for Orc/Nazgûl accounting.
 `orc_task_review_states` is the current-state table used by the queue view and
-follow-up logic.
+follow-up logic. `orc_task_review_items` is the durable ingestion table that
+makes public rewarded tasks visible to every Orc even when a local projection row
+is absent.

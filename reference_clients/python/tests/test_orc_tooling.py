@@ -517,6 +517,35 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(summary["priorities"][0]["rewardPft"], "30000")
         self.assertEqual(summary["priorities"][0]["rank"], 1)
 
+    def test_prioritize_review_queue_scores_public_ingested_row_without_local_projection(self):
+        queue_row = {
+            "task_id": "task_public_only",
+            "source_mode": "directory_public",
+            "title": "Public rewarded routing report",
+            "account_id": "acct_public",
+            "wallet_address": "rPublic",
+            "operator_handle": "publicorc",
+            "description": "Public Directory packet describes reward routing leakage.",
+            "reward_actual_pft": "25000",
+            "request_bundle_cid": "bafyRequest",
+            "last_event_cid": "bafyReward",
+            "last_event_tx_hash": "TXREWARD",
+            "event_count": 4,
+            "public_hive_task_detail_url": "/api/hive/task-detail?taskId=task_public_only",
+            "review_disposition": "not_reviewed",
+            "task_updated_at": "2026-06-19T01:00:00Z",
+        }
+        with patch("orc_tooling.priority.review_queue", return_value={"rows": [queue_row]}), \
+            patch("orc_tooling.priority.build_rewarded_network_task_review_packet", return_value={"tasks": []}):
+            summary = prioritize_review_queue(use_openrouter=False, candidate_limit=10)
+
+        self.assertEqual(summary["count"], 1)
+        self.assertEqual(summary["priorities"][0]["taskId"], "task_public_only")
+        self.assertEqual(summary["priorities"][0]["sourceMode"], "review_queue")
+        self.assertEqual(summary["priorities"][0]["walletAddress"], "rPublic")
+        self.assertIn("reward routing leakage", summary["priorities"][0]["taskProposalDescription"])
+        self.assertEqual(summary["packetErrorCount"], 0)
+
     def test_priority_fixture_filter_matches_review_fixture_rows(self):
         self.assertTrue(is_probable_fixture_priority_row({
             "task_id": "task_cancel_paid_123",
@@ -543,11 +572,11 @@ class OrcToolingTests(unittest.TestCase):
         self.assertIn("Verify reward leakage", summary["priorities"][0]["taskProposalDescription"])
         self.assertEqual(client.last_request[1], "/api/directory/rewarded-tasks")
 
-    def test_prioritize_network_work_defaults_to_directory_source(self):
-        with patch("orc_tooling.priority.prioritize_directory_rewarded_tasks", return_value={"ok": True, "source": "directory_rewarded_tasks"}):
+    def test_prioritize_network_work_defaults_to_review_queue_source(self):
+        with patch("orc_tooling.priority.prioritize_review_queue", return_value={"ok": True, "source": "review_queue"}):
             summary = prioritize_network_work(use_openrouter=False)
 
-        self.assertEqual(summary["source"], "directory_rewarded_tasks")
+        self.assertEqual(summary["source"], "review_queue")
 
     def test_prioritize_network_tasks_can_run_heuristic_only(self):
         client = FakePayloadClient()
@@ -783,6 +812,7 @@ class OrcToolingTests(unittest.TestCase):
 
         self.assertEqual(ontology["table"], "orc_task_review_states")
         self.assertEqual(ontology["historyTable"], "orc_task_reviews")
+        self.assertEqual(ontology["itemsTable"], "orc_task_review_items")
         self.assertEqual(ontology["queueView"], "orc_task_review_queue")
         self.assertIn("reviewed_no_action", ontology["dispositions"])
         self.assertIn("reviewed_follow_up_completed", ontology["dispositions"])
@@ -805,8 +835,12 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["ok"], True)
         self.assertIn("CREATE TABLE IF NOT EXISTS orc_task_review_states", sql)
         self.assertIn("CREATE TABLE IF NOT EXISTS orc_task_reviews", sql)
-        self.assertIn("CREATE OR REPLACE VIEW orc_task_review_queue", sql)
+        self.assertIn("CREATE TABLE IF NOT EXISTS orc_task_review_items", sql)
+        self.assertIn("DROP VIEW IF EXISTS orc_task_review_queue", sql)
+        self.assertIn("CREATE VIEW orc_task_review_queue", sql)
+        self.assertIn("FROM orc_task_review_items item", sql)
         self.assertIn("'historyTable', 'orc_task_reviews'", sql)
+        self.assertIn("'itemsTable', 'orc_task_review_items'", sql)
 
     def test_upsert_review_state_appends_history_row(self):
         record = normalize_review_state_record(
@@ -877,11 +911,45 @@ class OrcToolingTests(unittest.TestCase):
                 "nextCommand": "uv run orcctl review next --task-id task_ranked",
             },
         }), patch("orc_tooling.orcctl.build_rewarded_network_task_review_packet", return_value={"tasks": [review_task]}), \
-            patch("orc_tooling.orcctl.get_review_state", return_value={"disposition": "not_reviewed"}):
+            patch("orc_tooling.orcctl.get_review_state", return_value={"disposition": "not_reviewed"}), \
+            patch("orc_tooling.orcctl.review_queue_item", return_value={}):
             result = review_next()
 
         self.assertEqual(result["task"]["taskId"], "task_ranked")
         self.assertEqual(result["task"]["triage"]["capability"], NETWORK_TRIAGE_CAPABILITY_VERSION)
+
+    def test_review_next_renders_public_ingested_row_without_local_projection(self):
+        queue_row = {
+            "task_id": "task_public_only",
+            "source_mode": "directory_public",
+            "title": "Public rewarded routing report",
+            "account_id": "acct_public",
+            "wallet_address": "rPublic",
+            "description": "Public Directory packet describes reward routing leakage.",
+            "reward_actual_pft": "25000",
+            "reward_offer_pft": "0",
+            "task_status": "rewarded",
+            "request_bundle_cid": "bafyRequest",
+            "last_event_cid": "bafyReward",
+            "last_event_tx_hash": "TXREWARD",
+            "public_hive_task_detail_url": "/api/hive/task-detail?taskId=task_public_only",
+            "review_disposition": "not_reviewed",
+            "item_metadata_json": {
+                "project": {"id": "task_node_core_product"},
+            },
+        }
+        with patch("orc_tooling.orcctl.review_queue_item", return_value=queue_row), \
+            patch("orc_tooling.orcctl.build_rewarded_network_task_review_packet", return_value={"tasks": []}), \
+            patch("orc_tooling.orcctl.get_review_state", return_value={}):
+            result = review_next(task_id="task_public_only")
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["task"]["taskId"], "task_public_only")
+        self.assertEqual(result["task"]["walletAddress"], "rPublic")
+        self.assertEqual(result["task"]["rewardActualPft"], "25000")
+        self.assertEqual(result["task"]["queueItemSourceMode"], "directory_public")
+        self.assertEqual(result["task"]["publicHiveTaskDetailUrl"], "/api/hive/task-detail?taskId=task_public_only")
+        self.assertIn("reward routing leakage", result["task"]["evidenceSummary"])
 
     def test_nazgul_dispatch_item_uses_shared_triage(self):
         with patch("orc_tooling.nazgul.next_network_triage_item", return_value={
