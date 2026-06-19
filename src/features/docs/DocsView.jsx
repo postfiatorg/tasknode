@@ -158,6 +158,7 @@ function MarkdownArticle({ markdown }) {
 
 function SystemStatusPage({ onOpenDocPage }) {
   const [state, setState] = useState({ loading: true, status: null, error: "" });
+  const [showNetworkSpend, setShowNetworkSpend] = useState(false);
 
   async function loadStatus() {
     setState((current) => ({ ...current, loading: true, error: "" }));
@@ -206,6 +207,13 @@ function SystemStatusPage({ onOpenDocPage }) {
             Database: {status.database?.enabled ? "enabled" : "not enabled"} · durable: {status.database?.durable ? "yes" : "no"}
           </p>
           {status.chatPricing && <SystemPricingPanel pricing={status.chatPricing} />}
+          {status.networkTaskSpendByDay && (
+            <SystemNetworkSpendPanel
+              spend={status.networkTaskSpendByDay}
+              expanded={showNetworkSpend}
+              onToggle={() => setShowNetworkSpend((value) => !value)}
+            />
+          )}
           <div className="system-status-categories">
             {status.categories?.map((category) => (
               <section className="system-status-category" key={category.id}>
@@ -220,6 +228,48 @@ function SystemStatusPage({ onOpenDocPage }) {
             ))}
           </div>
         </>
+      )}
+    </section>
+  );
+}
+
+function SystemNetworkSpendPanel({ spend, expanded, onToggle }) {
+  const rows = Array.isArray(spend?.rows) ? spend.rows : [];
+  const totals = spend?.totals || {};
+  const maxTotal = rows.reduce((max, row) => Math.max(max, Number(row.totalPft || 0)), 0);
+  return (
+    <section className="system-network-spend-panel" aria-label="Network task spend by day">
+      <button
+        className="system-network-spend-toggle"
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <ChevronRight className={expanded ? "is-expanded" : ""} size={15} strokeWidth={1.9} />
+        <span>Network task spend by day</span>
+        <strong>{formatPft(totals.totalPft)} PFT</strong>
+        <em>{Number(totals.taskCount || 0).toLocaleString()} tasks · {spend.windowDays || 30}d</em>
+      </button>
+      {expanded && (
+        <div className="system-network-spend-list">
+          {rows.length === 0 && (
+            <p>{spend.enabled === false ? "Database spend data is not available." : "No paid Network Tasks in this window."}</p>
+          )}
+          {rows.map((row) => {
+            const total = Number(row.totalPft || 0);
+            const width = maxTotal > 0 ? Math.max(4, Math.round((total / maxTotal) * 100)) : 0;
+            return (
+              <div className="system-network-spend-row" key={row.date}>
+                <span>{formatDateOnly(row.date)}</span>
+                <div aria-hidden="true">
+                  <i style={{ width: `${width}%` }} />
+                </div>
+                <strong>{formatPft(total)} PFT</strong>
+                <em>{Number(row.taskCount || 0).toLocaleString()} tasks</em>
+              </div>
+            );
+          })}
+        </div>
       )}
     </section>
   );
@@ -455,6 +505,24 @@ function formatCompactNumber(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return "n/a";
   return numeric.toLocaleString();
+}
+
+function formatPft(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "0";
+  return numeric.toLocaleString(undefined, {
+    maximumFractionDigits: numeric >= 1000 ? 0 : 2,
+  });
+}
+
+function formatDateOnly(value) {
+  if (!value) return "n/a";
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return String(value).slice(0, 10);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(date);
 }
 
 function formatDateTime(value) {

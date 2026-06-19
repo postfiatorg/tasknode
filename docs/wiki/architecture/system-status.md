@@ -12,6 +12,10 @@ not a worker health row. It is an audit snapshot of the current chat-mode
 provider contracts from `server/chat-router.js`, plus cached live OpenRouter
 model metadata from `https://openrouter.ai/api/v1/models`.
 
+The page also includes a collapsed Network Task spend audit toggle. It reads
+`networkTaskSpendByDay` from `/api/system/status` and shows total PFT spent on
+rewarded Network Tasks by UTC reward day for a bounded window.
+
 Each status row links to the functional Help page that owns that system. Several
 rows may share the same page when they are part of one product boundary. For
 example, Task Generation owns offer generation, review, verification, and reward
@@ -110,6 +114,22 @@ automatically a Task Node private route unless it is compatible with that reques
 policy. The direct DeepSeek V4 Pro reference price is shown because it explains
 the public `$0.87/M output` headline and backs Discount Thinking and Help. It is
 not a Task Node private/ZDR chat route.
+
+## Network Task Spend By Day
+
+`server/system-status.js::readNetworkTaskSpendByDay` aggregates
+`task_projections` rows where the task is a rewarded Network Task with positive
+PFT paid. It uses a 30-day default window with a 90-day maximum. Reward day is
+based on `last_event_at`, falling back to `updated_at`, in UTC.
+
+The query reuses
+`server/repositories/task-projection-integrity.js::canonicalRewardedTaskProjectionSql`
+so local fixture rows, zero-reward rows, and incomplete reward projections are
+excluded the same way other rewarded-task audit surfaces exclude them.
+
+The UI keeps this section collapsed by default. When opened, it displays one row
+per day with total PFT and task count, newest first. The toggle is an audit view
+only; it does not move funds, change rewards, or alter task state.
 
 ## Status Rules
 
