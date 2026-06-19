@@ -49,9 +49,9 @@ pay":
   an agent, not impersonating a human). Transparency, not stealth.
 - **Verification gate:** agent-submitted work goes through the same evidence verification as
   humans; rewards only on verified acceptance. No self-verification.
-- **Anti-self-dealing:** an agent may not create a task and then be the sole completer of it
-  for reward (the action-vocab gate already blocks trivial self-request→complete). Reward
-  requires a requesting party that is not the agent.
+- **Anti-self-verification:** an agent may request and submit evidence for its own concrete
+  task, but it may not answer the verification prompt or approve its own work. Reward still
+  requires the normal independent verification/reward path.
 - **Rate / volume ceilings per period** to bound runaway loops.
 - **Auditability:** every autonomous action writes `orc_work_journal`; Nazgûl reviews via
   `nazgul status`; anomalies escalate.
@@ -71,9 +71,11 @@ pay":
   `TASKNODE_AGENT_TASK_VERIFICATION_RESPONSE_RATE_LIMIT_MAX`, and matching
   `_RATE_LIMIT_WINDOW_MS` values, with `TASKNODE_AGENT_QUALITY_GATE_WINDOW_MS` as the shared
   default window.
-- Agent self-dealing is blocked server-side: an agent cannot submit or respond to verification
-  on a task whose `task_requests` row shows the same agent account+wallet requested it through
-  `agent_capability_client`. Board-routed Network Tasks with `source=network_task_generation`
+- Agent self-verification is blocked server-side: an agent cannot respond to verification on
+  a task whose `task_requests` row shows the same agent account+wallet requested it through
+  `agent_capability_client`. Initial evidence submission for that self-requested task is
+  allowed so the agent can execute its own accepted work, but reward still depends on
+  independent verification. Board-routed Network Tasks with `source=network_task_generation`
   are not blocked by this guard.
 - Reward amounts, payout policy, bans, clawbacks, and public-chain enforcement remain outside
   these guardrails and are reserved for Alex/Sauron.
@@ -95,7 +97,7 @@ autonomy, multi-worker. Build once the behaviors are proven under Option A.
   assigned/that fit its capability.
 - Must: label itself an agent; submit verifiable evidence; respect rate ceilings; log to
   `orc_work_journal`.
-- Must NOT: self-deal (create+sole-complete for reward), impersonate humans, execute
+- Must NOT: self-verify or approve its own reward, impersonate humans, execute
   bans/deploys/money moves/policy, farm low-value tasks.
 - Escalates: anything reserved, or anything uncertain, to Sauron via the Nazgûl.
 
@@ -112,7 +114,7 @@ autonomy, multi-worker. Build once the behaviors are proven under Option A.
 2. **Agent chat client** — add `chat(send/recv)` to `TaskNodeAgentClient` (`/api/chat/*`).
 3. **Hive-chat agent path** — confirm/enable agent send/read to Hive chat.
 4. **Identity disclosure** — agent messages/actions carry a machine/agent label.
-5. **Quality gates** — anti-self-dealing + rate ceilings + verification enforcement +
+5. **Quality gates** — anti-self-verification + rate ceilings + verification enforcement +
    journaling (verify the existing gates cover an autonomous reward-earning actor).
 6. **Charter + self-loop (Option A)** — write Grashnuk's charter, hand it the standing
    mission, let the keep-alive drive it; Nazgûl supervises via `nazgul status`.

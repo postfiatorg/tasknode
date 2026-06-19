@@ -64,8 +64,8 @@ const selfDealing = agentSelfDealingDecision({
   taskRequest: selfRequest,
   action: "task_submission",
 });
-assert.equal(selfDealing.ok, false);
-assert.equal(selfDealing.error, "agent_self_dealing_blocked");
+assert.equal(selfDealing.ok, true);
+assert.equal(selfDealing.reason, "self_requested_submission_allowed_independent_verification_required");
 
 const selfVerify = agentSelfDealingDecision({
   agentOrigin,

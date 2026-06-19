@@ -181,14 +181,24 @@ export function agentSelfDealingDecision({
     requestWallet === safeText(walletAddress, 120)
   );
   if (!selfRequested) return { ok: true, skipped: true, reason: "not_agent_self_requested" };
+  const normalizedAction = safeText(action || "task_submission", 80).toLowerCase();
+  if (normalizedAction !== "task_verification_response") {
+    return {
+      ok: true,
+      skipped: false,
+      reason: "self_requested_submission_allowed_independent_verification_required",
+      action,
+      requestId,
+    };
+  }
   return {
     ok: false,
     error: "agent_self_dealing_blocked",
     status: 409,
     action,
     requestId,
-    message: "Agent self-dealing is blocked: an agent cannot complete or verify a task it requested for itself.",
-    actionRequired: "Use Network Tasks assigned by the board, or have a non-agent requesting party own the task request.",
+    message: "Agent self-verification is blocked: an agent cannot answer verification on a task it requested for itself.",
+    actionRequired: "Use an independent verifier for the submitted evidence before any reward decision.",
   };
 }
 
