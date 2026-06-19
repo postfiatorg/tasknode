@@ -1,0 +1,286 @@
+{
+  "schema": "tasknode.xrpl_contagion_monitor_state.v1",
+  "generatedAt": "2026-06-19T20:16:06.823Z",
+  "alerts": [
+    {
+      "schema": "tasknode.xrpl_contagion_alert.v1",
+      "alertId": "alert_1",
+      "eventIndex": 3,
+      "eventId": "stream_evt_004",
+      "observedAt": "2026-06-19T18:40:12.000Z",
+      "policy": {
+        "enforcementAllowed": false,
+        "mode": "recommend_only_review_alert"
+      },
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "threshold": 60,
+      "triggerTxHash": "D77A9DC000000000000000000000000000000000000000000000000000004",
+      "amountScore": 0.24,
+      "componentDensity": 0.2222,
+      "degreeCentrality": 0.4444,
+      "firstSeen": "2026-06-19T18:40:00.000Z",
+      "knownPeers": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+      ],
+      "lastSeen": "2026-06-19T18:40:12.000Z",
+      "priorRiskPeers": [
+        "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 1 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2222"
+      ],
+      "riskPeerCount": 4,
+      "riskScore": 76.6,
+      "sourceInPft": 2,
+      "sourceOutPft": 0.5,
+      "wallet": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "weightedDegreePft": 2.5
+    },
+    {
+      "schema": "tasknode.xrpl_contagion_alert.v1",
+      "alertId": "alert_2",
+      "eventIndex": 9,
+      "eventId": "stream_evt_010",
+      "observedAt": "2026-06-19T18:41:04.000Z",
+      "policy": {
+        "enforcementAllowed": false,
+        "mode": "recommend_only_review_alert"
+      },
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "threshold": 60,
+      "triggerTxHash": "D77A9DC000000000000000000000000000000000000000000000000000010",
+      "amountScore": 0.2,
+      "componentDensity": 0.2273,
+      "degreeCentrality": 0.3333,
+      "firstSeen": "2026-06-19T18:40:30.000Z",
+      "knownPeers": [
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-06-19T18:41:04.000Z",
+      "priorRiskPeers": [
+        "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 1 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2273"
+      ],
+      "riskPeerCount": 4,
+      "riskScore": 61.3,
+      "sourceInPft": 1,
+      "sourceOutPft": 1.1,
+      "wallet": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "weightedDegreePft": 2.1
+    },
+    {
+      "schema": "tasknode.xrpl_contagion_alert.v1",
+      "alertId": "alert_3",
+      "eventIndex": 9,
+      "eventId": "stream_evt_010",
+      "observedAt": "2026-06-19T18:41:04.000Z",
+      "policy": {
+        "enforcementAllowed": false,
+        "mode": "recommend_only_review_alert"
+      },
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "threshold": 60,
+      "triggerTxHash": "D77A9DC000000000000000000000000000000000000000000000000000010",
+      "amountScore": 0.34,
+      "componentDensity": 0.2273,
+      "degreeCentrality": 0.4167,
+      "firstSeen": "2026-05-18T15:40:50.000Z",
+      "knownPeers": [
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-06-19T18:40:30.000Z",
+      "priorRiskPeers": [
+        "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 2 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2273"
+      ],
+      "riskPeerCount": 5,
+      "riskScore": 81.1,
+      "sourceInPft": 0.750004,
+      "sourceOutPft": 2.750003,
+      "wallet": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "weightedDegreePft": 3.500007
+    },
+    {
+      "schema": "tasknode.xrpl_contagion_alert.v1",
+      "alertId": "alert_4",
+      "eventIndex": 10,
+      "eventId": "stream_evt_011",
+      "observedAt": "2026-06-19T18:41:08.000Z",
+      "policy": {
+        "enforcementAllowed": false,
+        "mode": "recommend_only_review_alert"
+      },
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "threshold": 60,
+      "triggerTxHash": "D77A9DC000000000000000000000000000000000000000000000000000011",
+      "amountScore": 0.33,
+      "componentDensity": 0.2364,
+      "degreeCentrality": 0.4167,
+      "firstSeen": "2026-06-19T18:40:00.000Z",
+      "knownPeers": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+      ],
+      "lastSeen": "2026-06-19T18:41:08.000Z",
+      "priorRiskPeers": [
+        "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 2 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2364"
+      ],
+      "riskPeerCount": 5,
+      "riskScore": 81.4,
+      "sourceInPft": 2,
+      "sourceOutPft": 1.45,
+      "wallet": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "weightedDegreePft": 3.45
+    },
+    {
+      "schema": "tasknode.xrpl_contagion_alert.v1",
+      "alertId": "alert_5",
+      "eventIndex": 10,
+      "eventId": "stream_evt_011",
+      "observedAt": "2026-06-19T18:41:08.000Z",
+      "policy": {
+        "enforcementAllowed": false,
+        "mode": "recommend_only_review_alert"
+      },
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "threshold": 60,
+      "triggerTxHash": "D77A9DC000000000000000000000000000000000000000000000000000011",
+      "amountScore": 0.22,
+      "componentDensity": 0.2364,
+      "degreeCentrality": 0.4167,
+      "firstSeen": "2026-06-19T18:40:30.000Z",
+      "knownPeers": [
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-06-19T18:41:08.000Z",
+      "priorRiskPeers": [
+        "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 2 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2364"
+      ],
+      "riskPeerCount": 5,
+      "riskScore": 81.3,
+      "sourceInPft": 1.2,
+      "sourceOutPft": 1.1,
+      "wallet": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "weightedDegreePft": 2.3
+    }
+  ],
+  "highRiskByWallet": {
+    "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB": {
+      "riskScore": 81.1,
+      "source": "alert_3"
+    },
+    "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7": {
+      "riskScore": 69.4,
+      "source": "baseline.secondaryRisk"
+    },
+    "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n": {
+      "riskScore": 81.4,
+      "source": "alert_4"
+    },
+    "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC": {
+      "riskScore": 81.3,
+      "source": "alert_5"
+    }
+  },
+  "knownWallets": {
+    "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB": {
+      "clusterId": "sybil_003",
+      "source": "input.flagged_wallets",
+      "wallet": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB"
+    },
+    "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE": {
+      "clusterId": "sybil_003",
+      "source": "input.flagged_wallets",
+      "wallet": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE"
+    },
+    "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E": {
+      "clusterId": "sybil_003",
+      "source": "input.flagged_wallets",
+      "wallet": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+    },
+    "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj": {
+      "clusterId": "sybil_003",
+      "source": "input.flagged_wallets",
+      "wallet": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj"
+    },
+    "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4": {
+      "clusterId": "sybil_003",
+      "source": "input.flagged_wallets",
+      "wallet": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+    }
+  },
+  "priorRiskWallets": {
+    "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB": {
+      "riskScore": 75.6,
+      "source": "baseline.secondaryRisk"
+    },
+    "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7": {
+      "riskScore": 69.4,
+      "source": "baseline.secondaryRisk"
+    }
+  },
+  "seenTxHashes": [
+    "D77A9DC000000000000000000000000000000000000000000000000000000001",
+    "D77A9DC000000000000000000000000000000000000000000000000000002",
+    "D77A9DC000000000000000000000000000000000000000000000000000003",
+    "D77A9DC000000000000000000000000000000000000000000000000000004",
+    "D77A9DC000000000000000000000000000000000000000000000000000005",
+    "D77A9DC000000000000000000000000000000000000000000000000000006",
+    "D77A9DC000000000000000000000000000000000000000000000000000007",
+    "D77A9DC000000000000000000000000000000000000000000000000000008",
+    "D77A9DC000000000000000000000000000000000000000000000000000009",
+    "D77A9DC000000000000000000000000000000000000000000000000000010",
+    "D77A9DC000000000000000000000000000000000000000000000000000011"
+  ]
+}

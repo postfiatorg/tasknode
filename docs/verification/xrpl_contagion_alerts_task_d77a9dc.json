@@ -1,0 +1,1050 @@
+{
+  "schema": "tasknode.xrpl_contagion_risk_monitor.v1",
+  "generatedAt": "2026-06-19T20:16:06.823Z",
+  "lineage": [
+    {
+      "taskId": "task_bab6bd892538d7d4fa0f7ac586b89929",
+      "description": "XRPL Wallet Linkage Graph Analyzer",
+      "rewardCid": "QmdZ99NTL6CUtrRr4xApf4rMwzgsALutkqDEizVaFk2AoR"
+    },
+    {
+      "taskId": "task_2ec03c162f35f5060453d1f5476fadf2",
+      "description": "XRPL Sybil Fund Flow Graph Script",
+      "rewardCid": "QmefkU6HW2okwUeuVVNuuDkwcNzGqfu7dyX3358RCX7QRr"
+    },
+    {
+      "taskId": "task_2285dae2ad470ea16fdb47ed0390f84f",
+      "description": "Prior reward-integrity Sybil lineage"
+    }
+  ],
+  "inputs": {
+    "baseline": "/home/pfrpc/repos/grashnuk-runtime/docs/verification/xrpl_wallet_linkage_graph_report_task_bab6bd.json",
+    "events": "/home/pfrpc/repos/grashnuk-runtime/docs/verification/xrpl_contagion_stream_task_d77a9dc.json",
+    "inputSchema": "tasknode.xrpl_contagion_stream_fixture.v1",
+    "priorHighRiskFromBaseline": 2,
+    "priorTaskCid": "QmefkU6HW2okwUeuVVNuuDkwcNzGqfu7dyX3358RCX7QRr"
+  },
+  "policy": {
+    "enforcementAllowed": false,
+    "highRiskThreshold": 60,
+    "mode": "recommend_only_read_only_monitor",
+    "note": "Alerts are review leads. They are not bans, blocklist entries, clawback instructions, or proof of sybil behavior.",
+    "watchThreshold": 40
+  },
+  "ingest": {
+    "duplicateTxHashes": 0,
+    "eventsIncluded": 11,
+    "eventsRaw": 11,
+    "skipped": 0,
+    "skippedReasons": {}
+  },
+  "graph": {
+    "components": [
+      {
+        "amountPft": 134.300007,
+        "componentId": "component_1",
+        "density": 0.2364,
+        "directedEdgeCount": 26,
+        "knownWalletCount": 5,
+        "members": [
+          "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+          "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+          "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+          "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+          "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+          "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+          "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+        ],
+        "possibleDirectedEdges": 110,
+        "priorRiskWalletCount": 2,
+        "walletCount": 11
+      },
+      {
+        "amountPft": 0.1,
+        "componentId": "component_2",
+        "density": 0.5,
+        "directedEdgeCount": 1,
+        "knownWalletCount": 0,
+        "members": [
+          "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+          "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj"
+        ],
+        "possibleDirectedEdges": 2,
+        "priorRiskWalletCount": 0,
+        "walletCount": 2
+      }
+    ],
+    "edges": [
+      {
+        "amountPft": 25,
+        "firstSeen": "2026-05-18T15:39:00.000Z",
+        "lastSeen": "2026-05-18T15:39:00.000Z",
+        "source": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "target": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "txCount": 1,
+        "txHashes": [
+          "2C72150F89A1D8AF05032E41FFEAE1FE077E7A3DE3A109C08B0E3068777BDFE6"
+        ]
+      },
+      {
+        "amountPft": 25,
+        "firstSeen": "2026-05-18T15:38:50.000Z",
+        "lastSeen": "2026-05-18T15:38:50.000Z",
+        "source": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "target": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "txCount": 1,
+        "txHashes": [
+          "098A9EEAB1E4074A320747C898E4198E5C56777B76DCA4FCD920A125E6592610"
+        ]
+      },
+      {
+        "amountPft": 25,
+        "firstSeen": "2026-05-18T15:39:10.000Z",
+        "lastSeen": "2026-05-18T15:39:10.000Z",
+        "source": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "target": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "txCount": 1,
+        "txHashes": [
+          "902ACD29BE9F69DBAEFA621D8FBCA6A9F70ECA7D1C4D9B38C3A233446709AB8B"
+        ]
+      },
+      {
+        "amountPft": 25,
+        "firstSeen": "2026-05-18T15:38:32.000Z",
+        "lastSeen": "2026-05-18T15:38:32.000Z",
+        "source": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "target": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "txCount": 1,
+        "txHashes": [
+          "9A3D01C71D5F0E2DA9972E3BA514593A793CA95F0E362F6489FBD6BD2D07F0AE"
+        ]
+      },
+      {
+        "amountPft": 25,
+        "firstSeen": "2026-05-18T15:38:22.000Z",
+        "lastSeen": "2026-05-18T15:38:22.000Z",
+        "source": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "target": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "txCount": 1,
+        "txHashes": [
+          "1783F5DD1AC3DBDF25683B0394417F42026EBB83244D2D013E383B730CC310B8"
+        ]
+      },
+      {
+        "amountPft": 1.75,
+        "firstSeen": "2026-06-19T18:40:12.000Z",
+        "lastSeen": "2026-06-19T18:40:12.000Z",
+        "source": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "target": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000004"
+        ]
+      },
+      {
+        "amountPft": 1,
+        "firstSeen": "2026-06-19T18:40:30.000Z",
+        "lastSeen": "2026-06-19T18:40:30.000Z",
+        "source": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "target": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000006"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-05-18T15:43:20.000Z",
+        "lastSeen": "2026-05-18T15:43:20.000Z",
+        "source": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+        "target": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "txCount": 1,
+        "txHashes": [
+          "A8E7D7D2D49014B3828785669934C573F7C7EA21A292D0B82D083C806C18C19A"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-05-18T15:43:40.000Z",
+        "lastSeen": "2026-05-18T15:43:40.000Z",
+        "source": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+        "target": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "txCount": 1,
+        "txHashes": [
+          "4529F804C26BB4452B10678F7C3B3AD39664C51BEF7E56D9E5579B9DF23C6F62"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-05-18T15:42:00.000Z",
+        "lastSeen": "2026-05-18T15:42:00.000Z",
+        "source": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+        "target": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "txCount": 1,
+        "txHashes": [
+          "91FC8F6FB7154BD9E19B2E2A15ED23A70AA1E1172343B8E9C15D0B6FB0FD7411"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-05-18T15:42:18.000Z",
+        "lastSeen": "2026-05-18T15:42:18.000Z",
+        "source": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+        "target": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "txCount": 1,
+        "txHashes": [
+          "55F9FA84144DE904DDDF8B5D815F9E3474EB964E3ED6A0E988F22F43669EA2F5"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-05-18T15:42:49.000Z",
+        "lastSeen": "2026-05-18T15:42:49.000Z",
+        "source": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+        "target": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "txCount": 1,
+        "txHashes": [
+          "4B7D02FA85AA22D2C449C8FD3F7F5B068B04CDE5725B90B6D7BF21F0927B308A"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-06-19T18:40:20.000Z",
+        "lastSeen": "2026-06-19T18:40:20.000Z",
+        "source": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+        "target": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000005"
+        ]
+      },
+      {
+        "amountPft": 0.5,
+        "firstSeen": "2026-06-19T18:40:35.000Z",
+        "lastSeen": "2026-06-19T18:40:35.000Z",
+        "source": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "target": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000007"
+        ]
+      },
+      {
+        "amountPft": 0.3,
+        "firstSeen": "2026-06-19T18:41:00.000Z",
+        "lastSeen": "2026-06-19T18:41:00.000Z",
+        "source": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "target": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000009"
+        ]
+      },
+      {
+        "amountPft": 0.3,
+        "firstSeen": "2026-06-19T18:41:04.000Z",
+        "lastSeen": "2026-06-19T18:41:04.000Z",
+        "source": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "target": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000010"
+        ]
+      },
+      {
+        "amountPft": 0.25,
+        "firstSeen": "2026-06-19T18:40:00.000Z",
+        "lastSeen": "2026-06-19T18:40:00.000Z",
+        "source": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "target": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000000001"
+        ]
+      },
+      {
+        "amountPft": 0.25,
+        "firstSeen": "2026-06-19T18:40:05.000Z",
+        "lastSeen": "2026-06-19T18:40:05.000Z",
+        "source": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+        "target": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000002"
+        ]
+      },
+      {
+        "amountPft": 0.25,
+        "firstSeen": "2026-06-19T18:40:08.000Z",
+        "lastSeen": "2026-06-19T18:40:08.000Z",
+        "source": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+        "target": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000003"
+        ]
+      },
+      {
+        "amountPft": 0.2,
+        "firstSeen": "2026-06-19T18:41:08.000Z",
+        "lastSeen": "2026-06-19T18:41:08.000Z",
+        "source": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+        "target": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000011"
+        ]
+      },
+      {
+        "amountPft": 0.1,
+        "firstSeen": "2026-06-19T18:40:50.000Z",
+        "lastSeen": "2026-06-19T18:40:50.000Z",
+        "source": "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+        "target": "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+        "txCount": 1,
+        "txHashes": [
+          "D77A9DC000000000000000000000000000000000000000000000000000008"
+        ]
+      },
+      {
+        "amountPft": 0.000002,
+        "firstSeen": "2026-05-18T15:40:50.000Z",
+        "lastSeen": "2026-05-18T15:41:02.000Z",
+        "source": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "target": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "txCount": 2,
+        "txHashes": [
+          "FBDB6FA65DEC6B1480B529843CE2AEB686B6921F6AAC63F9C23D07DEE987A5BC",
+          "5804DA92A41FDFA53590E62900942607D2B625776A51075865B7879B864EFF33"
+        ]
+      },
+      {
+        "amountPft": 0.000001,
+        "firstSeen": "2026-05-18T15:41:06.000Z",
+        "lastSeen": "2026-05-18T15:41:06.000Z",
+        "source": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "target": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "txCount": 1,
+        "txHashes": [
+          "5C93A70C9F3B0E251F3E78F50432578095E53768928677AE684D1F9B5C7B33E9"
+        ]
+      },
+      {
+        "amountPft": 0.000001,
+        "firstSeen": "2026-05-18T15:41:04.000Z",
+        "lastSeen": "2026-05-18T15:41:04.000Z",
+        "source": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "target": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "txCount": 1,
+        "txHashes": [
+          "0A7B932C2D5C7E46905D7E8C2E5A63204D15F898611C88DF83C3B1E7C46C3021"
+        ]
+      },
+      {
+        "amountPft": 0.000001,
+        "firstSeen": "2026-05-18T15:41:00.000Z",
+        "lastSeen": "2026-05-18T15:41:00.000Z",
+        "source": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "target": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "txCount": 1,
+        "txHashes": [
+          "8A98DCC9EA89757A40D32BBC76FA9153485D70D84C1EDB8E51341DB74E08F8E8"
+        ]
+      },
+      {
+        "amountPft": 0.000001,
+        "firstSeen": "2026-05-18T15:41:02.000Z",
+        "lastSeen": "2026-05-18T15:41:02.000Z",
+        "source": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "target": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "txCount": 1,
+        "txHashes": [
+          "AB460DD825CF70CCD161E3A6FA52FFF68076C4CD282D7B203B82ACB47DA1F514"
+        ]
+      },
+      {
+        "amountPft": 0.000001,
+        "firstSeen": "2026-05-18T15:40:50.000Z",
+        "lastSeen": "2026-05-18T15:40:50.000Z",
+        "source": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "target": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "txCount": 1,
+        "txHashes": [
+          "858766C85E71B0BFA892D51700696F9754A032A996E0F356F541E3599A230D64"
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "clusterId": null,
+        "degree": 5,
+        "degreeCentrality": 0.4167,
+        "firstSeen": "2026-06-19T18:40:30.000Z",
+        "flaggedKnown": false,
+        "inPft": 1.2,
+        "inTx": 2,
+        "lastSeen": "2026-06-19T18:41:08.000Z",
+        "outPft": 1.1,
+        "outTx": 3,
+        "peers": [
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+          "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+          "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+        ],
+        "wallet": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "weightedDegreePft": 2.3
+      },
+      {
+        "clusterId": "sybil_003",
+        "degree": 5,
+        "degreeCentrality": 0.4167,
+        "firstSeen": "2026-05-18T15:38:50.000Z",
+        "flaggedKnown": true,
+        "inPft": 26.300001,
+        "inTx": 5,
+        "lastSeen": "2026-06-19T18:41:00.000Z",
+        "outPft": 0.000001,
+        "outTx": 1,
+        "peers": [
+          "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+          "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "wallet": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "weightedDegreePft": 26.300002
+      },
+      {
+        "clusterId": null,
+        "degree": 5,
+        "degreeCentrality": 0.4167,
+        "firstSeen": "2026-05-18T15:40:50.000Z",
+        "flaggedKnown": false,
+        "inPft": 0.750004,
+        "inTx": 5,
+        "lastSeen": "2026-06-19T18:40:30.000Z",
+        "outPft": 2.750003,
+        "outTx": 5,
+        "peers": [
+          "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+          "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+          "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+        ],
+        "wallet": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "weightedDegreePft": 3.500007
+      },
+      {
+        "clusterId": null,
+        "degree": 5,
+        "degreeCentrality": 0.4167,
+        "firstSeen": "2026-06-19T18:40:00.000Z",
+        "flaggedKnown": false,
+        "inPft": 2,
+        "inTx": 2,
+        "lastSeen": "2026-06-19T18:41:08.000Z",
+        "outPft": 1.45,
+        "outTx": 4,
+        "peers": [
+          "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+          "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+        ],
+        "wallet": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+        "weightedDegreePft": 3.45
+      },
+      {
+        "clusterId": null,
+        "degree": 5,
+        "degreeCentrality": 0.4167,
+        "firstSeen": "2026-05-18T15:38:22.000Z",
+        "flaggedKnown": false,
+        "inPft": 0,
+        "inTx": 0,
+        "lastSeen": "2026-05-18T15:39:10.000Z",
+        "outPft": 125,
+        "outTx": 5,
+        "peers": [
+          "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+          "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+          "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+        ],
+        "wallet": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "weightedDegreePft": 125
+      },
+      {
+        "clusterId": "sybil_003",
+        "degree": 4,
+        "degreeCentrality": 0.3333,
+        "firstSeen": "2026-05-18T15:39:10.000Z",
+        "flaggedKnown": true,
+        "inPft": 26.3,
+        "inTx": 4,
+        "lastSeen": "2026-06-19T18:41:04.000Z",
+        "outPft": 0,
+        "outTx": 0,
+        "peers": [
+          "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+          "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+          "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "wallet": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "weightedDegreePft": 26.3
+      },
+      {
+        "clusterId": "sybil_003",
+        "degree": 4,
+        "degreeCentrality": 0.3333,
+        "firstSeen": "2026-05-18T15:38:22.000Z",
+        "flaggedKnown": true,
+        "inPft": 26.250001,
+        "inTx": 4,
+        "lastSeen": "2026-06-19T18:40:35.000Z",
+        "outPft": 0.000001,
+        "outTx": 1,
+        "peers": [
+          "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+          "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "wallet": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "weightedDegreePft": 26.250002
+      },
+      {
+        "clusterId": "sybil_003",
+        "degree": 3,
+        "degreeCentrality": 0.25,
+        "firstSeen": "2026-05-18T15:39:00.000Z",
+        "flaggedKnown": true,
+        "inPft": 25.75,
+        "inTx": 2,
+        "lastSeen": "2026-06-19T18:40:00.000Z",
+        "outPft": 0.25,
+        "outTx": 1,
+        "peers": [
+          "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+          "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "wallet": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "weightedDegreePft": 26
+      },
+      {
+        "clusterId": null,
+        "degree": 3,
+        "degreeCentrality": 0.25,
+        "firstSeen": "2026-05-18T15:42:00.000Z",
+        "flaggedKnown": false,
+        "inPft": 0,
+        "inTx": 0,
+        "lastSeen": "2026-05-18T15:42:49.000Z",
+        "outPft": 2.25,
+        "outTx": 3,
+        "peers": [
+          "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+        ],
+        "wallet": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+        "weightedDegreePft": 2.25
+      },
+      {
+        "clusterId": "sybil_003",
+        "degree": 3,
+        "degreeCentrality": 0.25,
+        "firstSeen": "2026-05-18T15:38:32.000Z",
+        "flaggedKnown": true,
+        "inPft": 25.750001,
+        "inTx": 3,
+        "lastSeen": "2026-05-18T15:43:20.000Z",
+        "outPft": 0.000002,
+        "outTx": 2,
+        "peers": [
+          "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "wallet": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "weightedDegreePft": 25.750003
+      },
+      {
+        "clusterId": null,
+        "degree": 2,
+        "degreeCentrality": 0.1667,
+        "firstSeen": "2026-05-18T15:43:20.000Z",
+        "flaggedKnown": false,
+        "inPft": 0,
+        "inTx": 0,
+        "lastSeen": "2026-05-18T15:43:40.000Z",
+        "outPft": 1.5,
+        "outTx": 2,
+        "peers": [
+          "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+          "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+        ],
+        "wallet": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+        "weightedDegreePft": 1.5
+      },
+      {
+        "clusterId": null,
+        "degree": 1,
+        "degreeCentrality": 0.0833,
+        "firstSeen": "2026-06-19T18:40:50.000Z",
+        "flaggedKnown": false,
+        "inPft": 0,
+        "inTx": 0,
+        "lastSeen": "2026-06-19T18:40:50.000Z",
+        "outPft": 0.1,
+        "outTx": 1,
+        "peers": [
+          "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj"
+        ],
+        "wallet": "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+        "weightedDegreePft": 0.1
+      },
+      {
+        "clusterId": null,
+        "degree": 1,
+        "degreeCentrality": 0.0833,
+        "firstSeen": "2026-06-19T18:40:50.000Z",
+        "flaggedKnown": false,
+        "inPft": 0.1,
+        "inTx": 1,
+        "lastSeen": "2026-06-19T18:40:50.000Z",
+        "outPft": 0,
+        "outTx": 0,
+        "peers": [
+          "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4"
+        ],
+        "wallet": "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+        "weightedDegreePft": 0.1
+      }
+    ],
+    "stats": {
+      "alertsEmitted": 5,
+      "components": 2,
+      "directedEdges": 27,
+      "knownWallets": 5,
+      "nodes": 13,
+      "priorHighRiskWallets": 2,
+      "secondaryWallets": 8
+    }
+  },
+  "alerts": [
+    {
+      "schema": "tasknode.xrpl_contagion_alert.v1",
+      "alertId": "alert_1",
+      "eventIndex": 3,
+      "eventId": "stream_evt_004",
+      "observedAt": "2026-06-19T18:40:12.000Z",
+      "policy": {
+        "enforcementAllowed": false,
+        "mode": "recommend_only_review_alert"
+      },
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "threshold": 60,
+      "triggerTxHash": "D77A9DC000000000000000000000000000000000000000000000000000004",
+      "amountScore": 0.24,
+      "componentDensity": 0.2222,
+      "degreeCentrality": 0.4444,
+      "firstSeen": "2026-06-19T18:40:00.000Z",
+      "knownPeers": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+      ],
+      "lastSeen": "2026-06-19T18:40:12.000Z",
+      "priorRiskPeers": [
+        "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 1 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2222"
+      ],
+      "riskPeerCount": 4,
+      "riskScore": 76.6,
+      "sourceInPft": 2,
+      "sourceOutPft": 0.5,
+      "wallet": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "weightedDegreePft": 2.5
+    },
+    {
+      "schema": "tasknode.xrpl_contagion_alert.v1",
+      "alertId": "alert_2",
+      "eventIndex": 9,
+      "eventId": "stream_evt_010",
+      "observedAt": "2026-06-19T18:41:04.000Z",
+      "policy": {
+        "enforcementAllowed": false,
+        "mode": "recommend_only_review_alert"
+      },
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "threshold": 60,
+      "triggerTxHash": "D77A9DC000000000000000000000000000000000000000000000000000010",
+      "amountScore": 0.2,
+      "componentDensity": 0.2273,
+      "degreeCentrality": 0.3333,
+      "firstSeen": "2026-06-19T18:40:30.000Z",
+      "knownPeers": [
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-06-19T18:41:04.000Z",
+      "priorRiskPeers": [
+        "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 1 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2273"
+      ],
+      "riskPeerCount": 4,
+      "riskScore": 61.3,
+      "sourceInPft": 1,
+      "sourceOutPft": 1.1,
+      "wallet": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "weightedDegreePft": 2.1
+    },
+    {
+      "schema": "tasknode.xrpl_contagion_alert.v1",
+      "alertId": "alert_3",
+      "eventIndex": 9,
+      "eventId": "stream_evt_010",
+      "observedAt": "2026-06-19T18:41:04.000Z",
+      "policy": {
+        "enforcementAllowed": false,
+        "mode": "recommend_only_review_alert"
+      },
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "threshold": 60,
+      "triggerTxHash": "D77A9DC000000000000000000000000000000000000000000000000000010",
+      "amountScore": 0.34,
+      "componentDensity": 0.2273,
+      "degreeCentrality": 0.4167,
+      "firstSeen": "2026-05-18T15:40:50.000Z",
+      "knownPeers": [
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-06-19T18:40:30.000Z",
+      "priorRiskPeers": [
+        "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 2 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2273"
+      ],
+      "riskPeerCount": 5,
+      "riskScore": 81.1,
+      "sourceInPft": 0.750004,
+      "sourceOutPft": 2.750003,
+      "wallet": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "weightedDegreePft": 3.500007
+    },
+    {
+      "schema": "tasknode.xrpl_contagion_alert.v1",
+      "alertId": "alert_4",
+      "eventIndex": 10,
+      "eventId": "stream_evt_011",
+      "observedAt": "2026-06-19T18:41:08.000Z",
+      "policy": {
+        "enforcementAllowed": false,
+        "mode": "recommend_only_review_alert"
+      },
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "threshold": 60,
+      "triggerTxHash": "D77A9DC000000000000000000000000000000000000000000000000000011",
+      "amountScore": 0.33,
+      "componentDensity": 0.2364,
+      "degreeCentrality": 0.4167,
+      "firstSeen": "2026-06-19T18:40:00.000Z",
+      "knownPeers": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+      ],
+      "lastSeen": "2026-06-19T18:41:08.000Z",
+      "priorRiskPeers": [
+        "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 2 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2364"
+      ],
+      "riskPeerCount": 5,
+      "riskScore": 81.4,
+      "sourceInPft": 2,
+      "sourceOutPft": 1.45,
+      "wallet": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "weightedDegreePft": 3.45
+    },
+    {
+      "schema": "tasknode.xrpl_contagion_alert.v1",
+      "alertId": "alert_5",
+      "eventIndex": 10,
+      "eventId": "stream_evt_011",
+      "observedAt": "2026-06-19T18:41:08.000Z",
+      "policy": {
+        "enforcementAllowed": false,
+        "mode": "recommend_only_review_alert"
+      },
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "threshold": 60,
+      "triggerTxHash": "D77A9DC000000000000000000000000000000000000000000000000000011",
+      "amountScore": 0.22,
+      "componentDensity": 0.2364,
+      "degreeCentrality": 0.4167,
+      "firstSeen": "2026-06-19T18:40:30.000Z",
+      "knownPeers": [
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-06-19T18:41:08.000Z",
+      "priorRiskPeers": [
+        "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 2 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2364"
+      ],
+      "riskPeerCount": 5,
+      "riskScore": 81.3,
+      "sourceInPft": 1.2,
+      "sourceOutPft": 1.1,
+      "wallet": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "weightedDegreePft": 2.3
+    }
+  ],
+  "riskLedger": [
+    {
+      "amountScore": 0.34,
+      "componentDensity": 0.2364,
+      "degreeCentrality": 0.4167,
+      "firstSeen": "2026-05-18T15:40:50.000Z",
+      "knownPeers": [
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-06-19T18:40:30.000Z",
+      "priorRiskPeers": [
+        "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 2 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2364"
+      ],
+      "riskPeerCount": 5,
+      "riskScore": 81.4,
+      "sourceInPft": 0.750004,
+      "sourceOutPft": 2.750003,
+      "wallet": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "weightedDegreePft": 3.500007,
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority"
+    },
+    {
+      "amountScore": 0.33,
+      "componentDensity": 0.2364,
+      "degreeCentrality": 0.4167,
+      "firstSeen": "2026-06-19T18:40:00.000Z",
+      "knownPeers": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+      ],
+      "lastSeen": "2026-06-19T18:41:08.000Z",
+      "priorRiskPeers": [
+        "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+        "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 2 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2364"
+      ],
+      "riskPeerCount": 5,
+      "riskScore": 81.4,
+      "sourceInPft": 2,
+      "sourceOutPft": 1.45,
+      "wallet": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "weightedDegreePft": 3.45,
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority"
+    },
+    {
+      "amountScore": 0.22,
+      "componentDensity": 0.2364,
+      "degreeCentrality": 0.4167,
+      "firstSeen": "2026-06-19T18:40:30.000Z",
+      "knownPeers": [
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-06-19T18:41:08.000Z",
+      "priorRiskPeers": [
+        "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n"
+      ],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "adjacent to 2 prior high-risk wallet(s)",
+        "funds multiple risk-source wallets",
+        "receives from multiple risk-source wallets",
+        "has bidirectional flow with risk-source wallets",
+        "component density 0.2364"
+      ],
+      "riskPeerCount": 5,
+      "riskScore": 81.3,
+      "sourceInPft": 1.2,
+      "sourceOutPft": 1.1,
+      "wallet": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "weightedDegreePft": 2.3,
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority"
+    },
+    {
+      "amountScore": 12,
+      "componentDensity": 0.2364,
+      "degreeCentrality": 0.4167,
+      "firstSeen": "2026-05-18T15:38:22.000Z",
+      "knownPeers": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-05-18T15:39:10.000Z",
+      "priorRiskPeers": [],
+      "reasons": [
+        "adjacent to 5 known-cluster wallet(s)",
+        "funds multiple risk-source wallets",
+        "component density 0.2364"
+      ],
+      "riskPeerCount": 5,
+      "riskScore": 69.3,
+      "sourceInPft": 0,
+      "sourceOutPft": 125,
+      "wallet": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "weightedDegreePft": 125,
+      "recommendation": "review_raw_transactions_and_operator_identity_before_any_enforcement",
+      "riskBand": "high_review_priority"
+    },
+    {
+      "amountScore": 0.22,
+      "componentDensity": 0.2364,
+      "degreeCentrality": 0.25,
+      "firstSeen": "2026-05-18T15:42:00.000Z",
+      "knownPeers": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+      ],
+      "lastSeen": "2026-05-18T15:42:49.000Z",
+      "priorRiskPeers": [],
+      "reasons": [
+        "adjacent to 3 known-cluster wallet(s)",
+        "funds multiple risk-source wallets",
+        "component density 0.2364"
+      ],
+      "riskPeerCount": 3,
+      "riskScore": 44,
+      "sourceInPft": 0,
+      "sourceOutPft": 2.25,
+      "wallet": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "weightedDegreePft": 2.25,
+      "recommendation": "continue_monitoring",
+      "riskBand": "watch"
+    },
+    {
+      "amountScore": 0.14,
+      "componentDensity": 0.2364,
+      "degreeCentrality": 0.1667,
+      "firstSeen": "2026-05-18T15:43:20.000Z",
+      "knownPeers": [
+        "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-05-18T15:43:40.000Z",
+      "priorRiskPeers": [],
+      "reasons": [
+        "adjacent to 2 known-cluster wallet(s)",
+        "funds multiple risk-source wallets",
+        "component density 0.2364"
+      ],
+      "riskPeerCount": 2,
+      "riskScore": 37.1,
+      "sourceInPft": 0,
+      "sourceOutPft": 1.5,
+      "wallet": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "weightedDegreePft": 1.5,
+      "recommendation": "continue_monitoring",
+      "riskBand": "below_watch"
+    }
+  ],
+  "summary": {
+    "alertWallets": [
+      "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC"
+    ],
+    "interpretation": "Live event stream produced high-priority contagion review alerts. Review raw transaction lineage before any enforcement.",
+    "newAlerts": 5,
+    "status": "review_required"
+  }
+}

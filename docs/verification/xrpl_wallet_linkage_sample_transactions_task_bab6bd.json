@@ -1,0 +1,156 @@
+{
+  "schema": "tasknode.xrpl_wallet_linkage_sample.v1",
+  "note": "Representative offline sample for task_bab6bd892538d7d4fa0f7ac586b89929. Addresses are public XRPL/PFTL-style addresses from prior Sybil-flow fixtures. This is read-only analysis input, not an enforcement list.",
+  "flagged_wallets": [
+    "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+    "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+    "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+    "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+    "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+  ],
+  "clusters": {
+    "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB": "sybil_003",
+    "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE": "sybil_003",
+    "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E": "sybil_003",
+    "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj": "sybil_003",
+    "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4": "sybil_003"
+  },
+  "transactions": [
+    {
+      "tx_hash": "1783F5DD1AC3DBDF25683B0394417F42026EBB83244D2D013E383B730CC310B8",
+      "src": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "dst": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "amount_drops": "25000000",
+      "timestamp": "2026-05-18T15:38:22.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "9A3D01C71D5F0E2DA9972E3BA514593A793CA95F0E362F6489FBD6BD2D07F0AE",
+      "src": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "dst": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "amount_drops": "25000000",
+      "timestamp": "2026-05-18T15:38:32.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "098A9EEAB1E4074A320747C898E4198E5C56777B76DCA4FCD920A125E6592610",
+      "src": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "dst": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "amount_drops": "25000000",
+      "timestamp": "2026-05-18T15:38:50.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "2C72150F89A1D8AF05032E41FFEAE1FE077E7A3DE3A109C08B0E3068777BDFE6",
+      "src": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "dst": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "amount_drops": "25000000",
+      "timestamp": "2026-05-18T15:39:00.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "902ACD29BE9F69DBAEFA621D8FBCA6A9F70ECA7D1C4D9B38C3A233446709AB8B",
+      "src": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "dst": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "amount_drops": "25000000",
+      "timestamp": "2026-05-18T15:39:10.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "FBDB6FA65DEC6B1480B529843CE2AEB686B6921F6AAC63F9C23D07DEE987A5BC",
+      "src": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "dst": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "amount_drops": "1",
+      "timestamp": "2026-05-18T15:40:50.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "858766C85E71B0BFA892D51700696F9754A032A996E0F356F541E3599A230D64",
+      "src": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "dst": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "amount_drops": "1",
+      "timestamp": "2026-05-18T15:40:50.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "8A98DCC9EA89757A40D32BBC76FA9153485D70D84C1EDB8E51341DB74E08F8E8",
+      "src": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "dst": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "amount_drops": "1",
+      "timestamp": "2026-05-18T15:41:00.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "5804DA92A41FDFA53590E62900942607D2B625776A51075865B7879B864EFF33",
+      "src": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "dst": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "amount_drops": "1",
+      "timestamp": "2026-05-18T15:41:02.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "AB460DD825CF70CCD161E3A6FA52FFF68076C4CD282D7B203B82ACB47DA1F514",
+      "src": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "dst": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "amount_drops": "1",
+      "timestamp": "2026-05-18T15:41:02.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "0A7B932C2D5C7E46905D7E8C2E5A63204D15F898611C88DF83C3B1E7C46C3021",
+      "src": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "dst": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "amount_drops": "1",
+      "timestamp": "2026-05-18T15:41:04.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "5C93A70C9F3B0E251F3E78F50432578095E53768928677AE684D1F9B5C7B33E9",
+      "src": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "dst": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "amount_drops": "1",
+      "timestamp": "2026-05-18T15:41:06.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "91FC8F6FB7154BD9E19B2E2A15ED23A70AA1E1172343B8E9C15D0B6FB0FD7411",
+      "src": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "dst": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "amount_drops": "750000",
+      "timestamp": "2026-05-18T15:42:00.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "55F9FA84144DE904DDDF8B5D815F9E3474EB964E3ED6A0E988F22F43669EA2F5",
+      "src": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "dst": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "amount_drops": "750000",
+      "timestamp": "2026-05-18T15:42:18.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "4B7D02FA85AA22D2C449C8FD3F7F5B068B04CDE5725B90B6D7BF21F0927B308A",
+      "src": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "dst": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "amount_drops": "750000",
+      "timestamp": "2026-05-18T15:42:49.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "A8E7D7D2D49014B3828785669934C573F7C7EA21A292D0B82D083C806C18C19A",
+      "src": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "dst": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "amount_drops": "750000",
+      "timestamp": "2026-05-18T15:43:20.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "tx_hash": "4529F804C26BB4452B10678F7C3B3AD39664C51BEF7E56D9E5579B9DF23C6F62",
+      "src": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "dst": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "amount_drops": "750000",
+      "timestamp": "2026-05-18T15:43:40.000Z",
+      "tx_type": "Payment"
+    }
+  ]
+}

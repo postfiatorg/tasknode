@@ -40,6 +40,7 @@ from orc_tooling import (
     FOLLOWUP_CLOSEABLE_TASK_STATUSES,
     heuristic_priority_score,
     inject_directive,
+    inspect_verification_request,
     is_probable_fixture_priority_row,
     is_probable_fixture_review_row,
     nazgul_status,
@@ -265,6 +266,48 @@ class FakePayloadClient:
     def task_detail(self, task_id):
         self.detail_calls.append(task_id)
         return detail_payload(task_id=task_id, network=task_id == "task_network")
+
+
+class FakeVerificationClient:
+    def __init__(self):
+        self.logged_in = False
+        self.task_detail_calls = []
+        self.hive_detail_calls = []
+
+    def login(self):
+        self.logged_in = True
+        return {"ok": True, "cached": True}
+
+    def task_detail(self, task_id):
+        self.task_detail_calls.append(task_id)
+        return {
+            "task": {
+                "taskId": task_id,
+                "status": "Verification requested",
+                "verification": {
+                    "title": "Submit Mixed",
+                    "body": "Submit the script file, sample input files, generated JSON output, and the command used to run the tool.",
+                },
+            }
+        }
+
+    def hive_task_detail(self, task_id):
+        self.hive_detail_calls.append(task_id)
+        return {
+            "ok": True,
+            "task": {"taskId": task_id, "state": "rewarded", "pft": 18000},
+            "review": {
+                "verification": {
+                    "request": "From the generated file, provide the full JSON entry for wallet rwdm72...",
+                    "response": "Verification response submitted.",
+                },
+                "outcome": {
+                    "decision": "partial_reward",
+                    "rewardPft": 18000,
+                    "reason": "The exact requested JSON entry was not provided.",
+                },
+            },
+        }
 
 
 class FakeDirectoryClient:
@@ -556,6 +599,21 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(payload["networkContext"]["sourcePayloadDigest"], "abc123")
         self.assertEqual(payload["sourcePointers"]["requestBundleCid"], "QmBundle")
         self.assertEqual(payload["secretPrinted"], False)
+
+    def test_inspect_verification_request_warns_when_hive_has_specific_followup(self):
+        client = FakeVerificationClient()
+
+        result = inspect_verification_request("task_verify", client=client)
+
+        self.assertTrue(client.logged_in)
+        self.assertEqual(client.task_detail_calls, ["task_verify"])
+        self.assertEqual(client.hive_detail_calls, ["task_verify"])
+        self.assertEqual(result["selectedSource"], "public_hive")
+        self.assertIn("full JSON entry", result["selectedVerificationRequest"])
+        self.assertIn("authenticated_detail_generic_public_hive_specific", result["warnings"])
+        self.assertTrue(result["authenticated"]["isGenericVerificationRequest"])
+        self.assertEqual(result["publicHive"]["outcome"]["decision"], "partial_reward")
+        self.assertIn("exact requested JSON entry", result["publicHive"]["outcome"]["reason"])
 
     def test_visible_task_payloads_can_filter_network_tasks(self):
         client = FakePayloadClient()
