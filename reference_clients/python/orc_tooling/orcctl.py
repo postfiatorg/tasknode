@@ -12,14 +12,13 @@ from .client import DEFAULT_EXPECTED_WALLET_ADDRESS, DEFAULT_ORC_AGENT, DEFAULT_
 from .hive_signal import run_hive_signal
 from .payload import redact_secrets
 from .payload import task_payload
-from .priority import DEFAULT_PRIORITY_MODEL, prioritize_network_work
+from .priority import DEFAULT_PRIORITY_MODEL, next_network_triage_item, triage_network_work
 from .review import build_rewarded_network_task_review_packet
 from .review_state import (
     ACTION_REQUIRED_DISPOSITIONS,
     REVIEW_DISPOSITIONS,
     get_review_state,
     normalize_review_state_record,
-    review_queue,
     review_state_summary,
     upsert_review_state,
 )
@@ -299,11 +298,14 @@ def review_next(
     selected_task_id = _safe_text(task_id, 180)
     queue_row: dict[str, Any] = {}
     if not selected_task_id:
-        queue = review_queue(disposition=disposition, limit=500, database_url=database_url)
-        rows = _safe_list(_safe_dict(queue).get("rows"))
-        if not include_fixtures:
-            rows = [row for row in rows if isinstance(row, dict) and not is_probable_fixture_review_row(row)]
-        if not rows:
+        queue_row = next_network_triage_item(
+            source="review_queue",
+            candidate_limit=500,
+            disposition=disposition,
+            include_fixtures=include_fixtures,
+            database_url=database_url,
+        )
+        if not queue_row:
             return {
                 "ok": True,
                 "count": 0,
@@ -312,8 +314,7 @@ def review_next(
                 "includeFixtures": include_fixtures,
                 "secretPrinted": False,
             }
-        queue_row = _safe_dict(rows[0])
-        selected_task_id = _safe_text(queue_row.get("task_id"), 180)
+        selected_task_id = _safe_text(queue_row.get("task_id") or queue_row.get("taskId"), 180)
 
     packet = build_rewarded_network_task_review_packet(
         task_id=selected_task_id,
@@ -338,6 +339,8 @@ def review_next(
         "summary": review_state.get("summary") or queue_row.get("review_summary") or "",
         "recommendedAction": review_state.get("recommended_action") or queue_row.get("recommended_action") or "",
     }
+    if queue_row.get("triage"):
+        compact["triage"] = queue_row["triage"]
     compact["classificationOptions"] = sorted(REVIEW_DISPOSITIONS)
     return redact_secrets({
         "ok": True,
@@ -933,7 +936,7 @@ def main(argv: list[str] | None = None) -> int:
                 database_url=database_url,
             )
         elif args.command == "prioritize-network":
-            payload = prioritize_network_work(
+            payload = triage_network_work(
                 source=args.source,
                 client=_client_from_args(args),
                 model=args.model,
