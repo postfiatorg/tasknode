@@ -19,6 +19,7 @@ from .review_state import REVIEW_DISPOSITIONS, review_queue
 
 DEFAULT_PRIORITY_MODEL = "z-ai/glm-5.2"
 PRIORITY_PROMPT_VERSION = "orc_network_task_priority_v1"
+NETWORK_TRIAGE_CAPABILITY_VERSION = "orc_network_task_triage_v1"
 
 PRIORITY_SYSTEM_PROMPT = """You are a Task Node Orc Network Task prioritization scorer.
 
@@ -714,11 +715,12 @@ def prioritize_network_tasks(
             warnings.append("openrouter_provider_error")
         model_score.update({
             "rank": 0,
+            "sourceMode": packet.get("sourceMode"),
             "heuristicScore": heuristic,
             "sanityWarnings": warnings,
             "providerError": provider_error,
         })
-        results.append(redact_secrets(model_score))
+        results.append(redact_secrets(with_network_triage(model_score)))
 
     results.sort(key=lambda item: (
         -_number(item.get("priorityScore"), 0),
@@ -727,6 +729,8 @@ def prioritize_network_tasks(
     ))
     for index, item in enumerate(results, start=1):
         item["rank"] = index
+        if isinstance(item.get("triage"), dict):
+            item["triage"]["rank"] = index
 
     payload = {
         "ok": True,
@@ -781,7 +785,104 @@ def _score_priority_packet(
         "providerError": provider_error,
         "openrouterSkipped": openrouter_skipped,
     })
-    return redact_secrets(model_score)
+    return redact_secrets(with_network_triage(model_score))
+
+
+def _review_command(task_id: str) -> str:
+    return f"uv run orcctl review next --task-id {task_id}"
+
+
+def _classify_command(task_id: str) -> str:
+    return (
+        f"uv run orcctl review classify {task_id} "
+        "--disposition <reviewed_no_action|reviewed_follow_up|reviewed_integrity_follow_up|reviewed_unclear> "
+        '--summary "<source-backed summary>"'
+    )
+
+
+def network_triage_decision(priority: dict[str, Any]) -> dict[str, Any]:
+    task_id = _safe_text(priority.get("taskId"), 180)
+    source_mode = _safe_text(priority.get("sourceMode") or priority.get("source"), 80)
+    rank_bucket = _safe_text(priority.get("rankBucket"), 80)
+    disposition = _safe_text(priority.get("reviewDisposition"), 120) or "not_reviewed"
+    if source_mode == "operator_outstanding":
+        decision = "work_assigned_network_task"
+        next_command = f"uv run orcctl task detail {task_id}"
+        commands = [
+            next_command,
+            f"uv run orcctl task accept {task_id}",
+            f"uv run orcctl task submit {task_id} --evidence-file <path>",
+        ]
+    elif rank_bucket == "refuse_or_escalate":
+        decision = "escalate_or_refuse"
+        next_command = _review_command(task_id)
+        commands = [next_command, _classify_command(task_id)]
+    elif disposition in {"reviewed_follow_up", "reviewed_integrity_follow_up", "reviewed_unclear"}:
+        decision = "continue_required_followup"
+        next_command = f"uv run orcctl request-followup {task_id}"
+        commands = [
+            _review_command(task_id),
+            next_command,
+            f"uv run orcctl close-followup {task_id} --followup-task-id <task_id>",
+        ]
+    else:
+        decision = "review_rewarded_network_task"
+        next_command = _review_command(task_id)
+        commands = [
+            next_command,
+            _classify_command(task_id),
+            f"uv run orcctl signal-user {task_id} --message <message>",
+        ]
+    return redact_secrets({
+        "capability": NETWORK_TRIAGE_CAPABILITY_VERSION,
+        "taskId": task_id,
+        "sourceMode": source_mode,
+        "rank": priority.get("rank") or 0,
+        "priorityScore": priority.get("priorityScore"),
+        "rankBucket": rank_bucket,
+        "reviewDisposition": disposition,
+        "decision": decision,
+        "nextCommand": next_command,
+        "commands": commands,
+        "requiresAction": decision in {
+            "continue_required_followup",
+            "review_rewarded_network_task",
+            "work_assigned_network_task",
+        },
+        "secretPrinted": False,
+    })
+
+
+def with_network_triage(priority: dict[str, Any]) -> dict[str, Any]:
+    priority["triage"] = network_triage_decision(priority)
+    priority["nextCommand"] = priority["triage"]["nextCommand"]
+    return priority
+
+
+def first_network_triage_item(priorities: list[dict[str, Any]]) -> dict[str, Any]:
+    for item in priorities:
+        if not isinstance(item, dict):
+            continue
+        triage = _safe_dict(item.get("triage"))
+        if triage.get("requiresAction", True):
+            return redact_secrets({
+                "taskId": item.get("taskId"),
+                "task_id": item.get("taskId"),
+                "title": item.get("title"),
+                "walletAddress": item.get("walletAddress"),
+                "wallet_address": item.get("walletAddress"),
+                "accountId": item.get("accountId"),
+                "account_id": item.get("accountId"),
+                "rewardActualPft": item.get("rewardPft"),
+                "reward_actual_pft": item.get("rewardPft"),
+                "reviewDisposition": item.get("reviewDisposition"),
+                "review_disposition": item.get("reviewDisposition"),
+                "priorityScore": item.get("priorityScore"),
+                "rankBucket": item.get("rankBucket"),
+                "sourceMode": item.get("sourceMode"),
+                "triage": triage,
+            })
+    return {}
 
 
 def _ranked_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -792,6 +893,8 @@ def _ranked_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ))
     for index, item in enumerate(results, start=1):
         item["rank"] = index
+        if isinstance(item.get("triage"), dict):
+            item["triage"]["rank"] = index
     return results
 
 
@@ -1004,3 +1107,75 @@ def prioritize_network_work(
             include_prompt=include_prompt,
         )
     raise ValueError("source must be directory-rewarded-tasks, review-queue, or operator-outstanding")
+
+
+def triage_network_work(
+    *,
+    source: str = "review_queue",
+    client: Any | None = None,
+    model: str = DEFAULT_PRIORITY_MODEL,
+    use_openrouter: bool = False,
+    max_tasks: int = 20,
+    candidate_limit: int = 25,
+    model_limit: int = 10,
+    disposition: str = "not_reviewed",
+    task_kind: str = "network",
+    include_prompt: bool = False,
+    include_fixtures: bool = False,
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    priority = prioritize_network_work(
+        source=source,
+        client=client,
+        model=model,
+        use_openrouter=use_openrouter,
+        max_tasks=max_tasks,
+        candidate_limit=candidate_limit,
+        model_limit=model_limit,
+        disposition=disposition,
+        task_kind=task_kind,
+        include_prompt=include_prompt,
+        include_fixtures=include_fixtures,
+        database_url=database_url,
+    )
+    priorities = [
+        with_network_triage(item)
+        for item in _safe_list(_safe_dict(priority).get("priorities"))
+        if isinstance(item, dict)
+    ]
+    return redact_secrets({
+        "ok": bool(_safe_dict(priority).get("ok", True)),
+        "capability": NETWORK_TRIAGE_CAPABILITY_VERSION,
+        "generatedAt": priority.get("generatedAt") or _utcnow(),
+        "source": priority.get("source") or source,
+        "promptVersion": PRIORITY_PROMPT_VERSION,
+        "priorityModel": priority.get("model") or model,
+        "openrouterAttempted": bool(priority.get("openrouterAttempted")),
+        "count": len(priorities),
+        "nextItem": first_network_triage_item(priorities),
+        "priorities": priorities,
+        "packetErrors": priority.get("packetErrors") or [],
+        "secretPrinted": False,
+    })
+
+
+def next_network_triage_item(
+    *,
+    source: str = "review_queue",
+    client: Any | None = None,
+    candidate_limit: int = 25,
+    disposition: str = "not_reviewed",
+    include_fixtures: bool = False,
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    triage = triage_network_work(
+        source=source,
+        client=client,
+        use_openrouter=False,
+        candidate_limit=candidate_limit,
+        model_limit=0,
+        disposition=disposition,
+        include_fixtures=include_fixtures,
+        database_url=database_url,
+    )
+    return _safe_dict(triage.get("nextItem"))

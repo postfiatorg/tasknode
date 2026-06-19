@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from orc_tooling import (
     NETWORK_CAPACITY_NOTE,
+    NETWORK_TRIAGE_CAPABILITY_VERSION,
     PRIORITY_PROMPT_VERSION,
     append_run_journal,
     build_dispatch_directive,
@@ -31,6 +32,8 @@ from orc_tooling import (
     is_probable_fixture_priority_row,
     is_probable_fixture_review_row,
     nazgul_status,
+    network_triage_decision,
+    next_network_triage_item,
     normalize_review_state_record,
     operator_status,
     paste_chip_count,
@@ -42,6 +45,7 @@ from orc_tooling import (
     priority_prompt,
     request_personal_task,
     review_disposition_requires_action,
+    review_next,
     review_state_ontology,
     run_hive_followup,
     run_hive_signal,
@@ -49,11 +53,13 @@ from orc_tooling import (
     run_journal_summary,
     sanity_check_priority,
     summarize_signed_flow,
+    triage_network_work,
     validate_followup_action,
     visible_task_payloads,
     wait_for_orc_idle,
 )
 from tasknode_pftl.wallets import wallet_from_seed
+from orc_tooling.nazgul import next_dispatch_item
 from orc_tooling.review_state import ensure_review_state_schema, upsert_review_state
 
 
@@ -548,7 +554,65 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(summary["priorities"][0]["taskId"], "task_network")
         self.assertEqual(summary["priorities"][0]["rank"], 1)
         self.assertEqual(summary["priorities"][0]["scoredBy"], "heuristic")
+        self.assertEqual(summary["priorities"][0]["triage"]["capability"], NETWORK_TRIAGE_CAPABILITY_VERSION)
+        self.assertEqual(summary["priorities"][0]["triage"]["decision"], "work_assigned_network_task")
+        self.assertIn("uv run orcctl task detail task_network", summary["priorities"][0]["nextCommand"])
         self.assertEqual(summary["secretPrinted"], False)
+
+    def test_network_triage_decision_is_the_shared_review_contract(self):
+        triage = network_triage_decision({
+            "taskId": "task_source",
+            "sourceMode": "review_queue",
+            "rankBucket": "do_first",
+            "reviewDisposition": "not_reviewed",
+            "priorityScore": 88,
+            "rank": 1,
+        })
+
+        self.assertEqual(triage["capability"], NETWORK_TRIAGE_CAPABILITY_VERSION)
+        self.assertEqual(triage["decision"], "review_rewarded_network_task")
+        self.assertEqual(triage["nextCommand"], "uv run orcctl review next --task-id task_source")
+        self.assertIn("uv run orcctl review classify task_source", triage["commands"][1])
+        self.assertEqual(triage["requiresAction"], True)
+
+    def test_triage_network_work_wraps_priorities_and_exposes_next_item(self):
+        priority_payload = {
+            "ok": True,
+            "source": "review_queue",
+            "generatedAt": "2026-06-19T00:00:00Z",
+            "model": "heuristic",
+            "openrouterAttempted": False,
+            "priorities": [
+                {
+                    "taskId": "task_first",
+                    "title": "First",
+                    "sourceMode": "review_queue",
+                    "rank": 1,
+                    "rankBucket": "do_first",
+                    "priorityScore": 90,
+                    "reviewDisposition": "not_reviewed",
+                    "rewardPft": "30000",
+                }
+            ],
+        }
+        with patch("orc_tooling.priority.prioritize_network_work", return_value=priority_payload):
+            summary = triage_network_work(source="review_queue", use_openrouter=False)
+
+        self.assertEqual(summary["capability"], NETWORK_TRIAGE_CAPABILITY_VERSION)
+        self.assertEqual(summary["nextItem"]["taskId"], "task_first")
+        self.assertEqual(summary["nextItem"]["triage"]["nextCommand"], "uv run orcctl review next --task-id task_first")
+        self.assertEqual(summary["priorities"][0]["triage"]["decision"], "review_rewarded_network_task")
+
+    def test_next_network_triage_item_returns_the_ranked_shared_item(self):
+        with patch("orc_tooling.priority.triage_network_work", return_value={
+            "nextItem": {
+                "taskId": "task_ranked",
+                "triage": {"capability": NETWORK_TRIAGE_CAPABILITY_VERSION},
+            }
+        }):
+            item = next_network_triage_item(source="review_queue")
+
+        self.assertEqual(item["taskId"], "task_ranked")
 
     def test_priority_sanity_check_flags_large_model_delta(self):
         warnings = sanity_check_priority(
@@ -782,6 +846,48 @@ class OrcToolingTests(unittest.TestCase):
 
         self.assertEqual(record["disposition"], "reviewed_follow_up_completed")
         self.assertEqual(record["actionRequired"], False)
+
+    def test_review_next_uses_shared_triage_selection_not_first_queue_row(self):
+        review_task = {
+            "taskId": "task_ranked",
+            "title": "Ranked source task",
+            "accountId": "acct_user",
+            "walletAddress": "rUser",
+            "status": "rewarded",
+            "rewardActualPft": "30000",
+            "executionPayload": {
+                "description": "Verify a reward-integrity finding.",
+                "steps": ["Inspect evidence"],
+                "submissionRequirement": {"type": "text", "criteria": "Proof"},
+            },
+            "submissions": [{"artifacts": [{"value": "Reward leakage evidence."}]}],
+            "sourcePointers": {"lastEventCid": "QmLast", "lastEventTxHash": "TXLAST"},
+        }
+        with patch("orc_tooling.orcctl.next_network_triage_item", return_value={
+            "task_id": "task_ranked",
+            "review_disposition": "not_reviewed",
+            "triage": {
+                "capability": NETWORK_TRIAGE_CAPABILITY_VERSION,
+                "nextCommand": "uv run orcctl review next --task-id task_ranked",
+            },
+        }), patch("orc_tooling.orcctl.build_rewarded_network_task_review_packet", return_value={"tasks": [review_task]}), \
+            patch("orc_tooling.orcctl.get_review_state", return_value={"disposition": "not_reviewed"}):
+            result = review_next()
+
+        self.assertEqual(result["task"]["taskId"], "task_ranked")
+        self.assertEqual(result["task"]["triage"]["capability"], NETWORK_TRIAGE_CAPABILITY_VERSION)
+
+    def test_nazgul_dispatch_item_uses_shared_triage(self):
+        with patch("orc_tooling.nazgul.next_network_triage_item", return_value={
+            "taskId": "task_ranked",
+            "title": "Ranked source task",
+            "rewardActualPft": "30000",
+            "triage": {"capability": NETWORK_TRIAGE_CAPABILITY_VERSION},
+        }):
+            item = next_dispatch_item()
+
+        self.assertEqual(item["taskId"], "task_ranked")
+        self.assertEqual(item["triage"]["capability"], NETWORK_TRIAGE_CAPABILITY_VERSION)
 
     def test_duplicate_reward_followup_message_is_informational_and_grounded(self):
         message = duplicate_reward_followup_message()

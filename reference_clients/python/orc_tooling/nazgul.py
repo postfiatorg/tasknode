@@ -16,7 +16,8 @@ from tasknode_pftl.app_data import sql_literal, tasknode_database_url
 
 from .orcctl import DEFAULT_RUN_JOURNAL_PATH
 from .payload import redact_secrets
-from .review_state import review_queue, review_state_summary
+from .priority import next_network_triage_item
+from .review_state import review_state_summary
 
 
 DEFAULT_ORC_HANDLE = "orc"
@@ -653,26 +654,28 @@ def redirect_orc(
 
 
 def next_dispatch_item(*, database_url: str | None = None, limit: int = 25) -> dict[str, Any]:
-    queue = review_queue(disposition="not_reviewed", limit=limit, database_url=database_url)
-    for row in _safe_list(_safe_dict(queue).get("rows")):
-        if not isinstance(row, dict):
-            continue
-        disposition = _safe_text(row.get("review_disposition"), 80)
-        blocked = _safe_text(row.get("action_owner"), 120).lower() in {"blocked", "nazgul_blocked"}
-        if disposition == "not_reviewed" and not blocked:
-            return redact_secrets(row)
-    return {}
+    return next_network_triage_item(
+        source="review_queue",
+        candidate_limit=limit,
+        disposition="not_reviewed",
+        database_url=database_url,
+    )
 
 
 def build_dispatch_directive(item: dict[str, Any]) -> str:
     task_id = _safe_text(item.get("task_id") or item.get("taskId"), 180)
     title = _safe_text(item.get("title"), 300)
     reward = _safe_text(item.get("reward_actual_pft") or item.get("rewardActualPft"), 80)
-    return (
+    next_command = _safe_text(_safe_dict(item.get("triage")).get("nextCommand"), 500)
+    header = (
         "Orc directive: review this rewarded Network Task using the shared Orc loop. "
         f"Source task: {task_id}. "
         f"Title: {title}. "
         f"Reward: {reward} PFT. "
+    )
+    if next_command:
+        header += f"Shared triage next command: {next_command}. "
+    return header + (
         "Inspect the canonical packet, classify the source task, request a scoped Personal follow-up only if actionable, "
         "execute any follow-up genuinely, close review state, and signal the user when useful. "
         "Report concise evidence, tx/CID pointers, and blockers."

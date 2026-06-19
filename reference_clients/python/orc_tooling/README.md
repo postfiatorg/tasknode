@@ -90,6 +90,11 @@ cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
 uv run orcctl prioritize-network
 ```
 
+This is the shared Network Task triage capability. `orcctl prioritize-network`,
+`orcctl review next`, and `nazgul dispatch` all consume the same ranked triage
+result (`orc_network_task_triage_v1`) so Orc panes do not disagree about the
+next task, next command, source mode, review disposition, or follow-up action.
+
 By default the command reads Task Node's Directory-backed rewarded-task API,
 `/api/directory/rewarded-tasks?taskKind=network`, so it ranks the same public
 discoverable operator population shown in the Directory leaderboard. It builds
