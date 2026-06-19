@@ -138,8 +138,10 @@ uv run orc-runtime complete orcdirective_... --status completed --result-json '{
 ```
 
 When a database URL is configured, the runtime uses `orc_runtime_directives`
-with `SELECT ... FOR UPDATE SKIP LOCKED`. Without a database URL it falls back
-to the local JSONL mailbox for development only.
+with `SELECT ... FOR UPDATE SKIP LOCKED`. The Postgres claim path recovers stale
+claims for the requested Orc after the configured TTL so a crashed worker does
+not wedge the queue permanently. Without a database URL it falls back to the
+local JSONL mailbox for development only.
 
 ## Work And Review Flow
 

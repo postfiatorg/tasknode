@@ -42,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     claim = subparsers.add_parser("claim", help="Claim the next queued directive for one Orc.")
     claim.add_argument("--orc", required=True)
     claim.add_argument("--worker-id", default="")
+    claim.add_argument("--claim-ttl-seconds", type=int, default=None, help="Recover claimed rows older than this many seconds before claiming; 0 disables recovery.")
 
     complete = subparsers.add_parser("complete", help="Mark a claimed directive terminal.")
     complete.add_argument("directive_id")
@@ -49,9 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
     complete.add_argument("--worker-id", default="")
     complete.add_argument("--result-json", type=_load_json_object, default={})
 
-    run_once = subparsers.add_parser("run-once", help="Claim and complete one directive with the prototype executor.")
+    run_once = subparsers.add_parser("run-once", help="Claim one directive with the prototype executor; it does not complete without a real embedded executor.")
     run_once.add_argument("--orc", required=True)
     run_once.add_argument("--worker-id", default="")
+    run_once.add_argument("--claim-ttl-seconds", type=int, default=None, help="Recover claimed rows older than this many seconds before claiming; 0 disables recovery.")
 
     status = subparsers.add_parser("status", help="Show reconstructed runtime state.")
     status.add_argument("--orc", default="")
@@ -78,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
                 worker_id=args.worker_id,
                 runtime_dir=args.runtime_dir,
                 database_url=database_url,
+                claim_ttl_seconds=args.claim_ttl_seconds,
             )
         elif args.command == "complete":
             payload = complete_runtime_directive(
@@ -94,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
                 worker_id=args.worker_id,
                 runtime_dir=args.runtime_dir,
                 database_url=database_url,
+                claim_ttl_seconds=args.claim_ttl_seconds,
             )
         elif args.command == "status":
             payload = runtime_status(runtime_dir=args.runtime_dir, orc=args.orc, database_url=database_url)
