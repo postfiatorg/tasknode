@@ -676,6 +676,126 @@
   padding-left: 18px;
 }
 
+.system-agent-activity-panel {
+  margin-top: 16px;
+  border: 1px solid #e8e6df;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.system-agent-activity-list {
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.system-agent-activity-list > p {
+  margin: 0;
+  color: #6b6b66;
+  font-size: 13px;
+}
+
+.system-agent-activity-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #eeeae2;
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+
+.system-agent-activity-card-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.system-agent-activity-card-title h3 {
+  margin: 0;
+  color: #1f1f1c;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.system-agent-activity-card-title p,
+.system-agent-activity-grid p {
+  margin: 3px 0 0;
+  color: #5c5a54;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.system-agent-activity-card-title span {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #f2faf2;
+  color: #2f6d37;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.system-agent-activity-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(140px, 0.8fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.system-agent-activity-grid > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #eeeae2;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.system-agent-activity-grid strong,
+.system-agent-recent-actions strong {
+  display: block;
+  color: #8a8880;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.system-agent-activity-list-compact,
+.system-agent-recent-actions ul {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.system-agent-activity-list-compact li,
+.system-agent-recent-actions li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  color: #5c5a54;
+  font-size: 12px;
+}
+
+.system-agent-activity-list-compact span,
+.system-agent-recent-actions span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.system-agent-activity-list-compact em,
+.system-agent-recent-actions em {
+  color: #6b6b66;
+  font-style: normal;
+}
+
+.system-agent-recent-actions {
+  margin-top: 12px;
+}
+
 .system-status-jobs {
   display: grid;
   gap: 10px;
@@ -868,7 +988,8 @@
   }
 
   .system-pricing-heading,
-  .system-pricing-card-title {
+  .system-pricing-card-title,
+  .system-agent-activity-card-title {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -891,5 +1012,11 @@
   .system-network-spend-row em {
     grid-column: 2;
     text-align: left;
+  }
+
+  .system-agent-activity-grid,
+  .system-agent-activity-list-compact li,
+  .system-agent-recent-actions li {
+    grid-template-columns: 1fr;
   }
 }

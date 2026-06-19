@@ -618,7 +618,7 @@ export const DOC_GROUPS = [
       {
         slug: "system-status-home",
         title: "System Status",
-        summary: "Live audit view for schedulers, workers, and RPC dependencies.",
+        summary: "Live audit view for schedulers, workers, RPC dependencies, and Orc agent activity.",
         markdown: systemStatus,
         component: "system-status",
       },

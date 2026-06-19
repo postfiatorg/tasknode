@@ -21,6 +21,13 @@ reads `boardManagerDailyCost` from `/api/system/status` and shows operational
 LLM provider cost in USD by UTC day. This is separate from Network Task PFT
 reward spend.
 
+The page also includes an Orc agent activity panel. It reads `agentActivity`
+from `/api/system/status` and shows registered `orc_agents`, each agent's
+current task summary from `task_projections`, recent `orc_work_journal`
+actions, and rewarded-task totals/recent rewards. This is read-only
+observability; it does not assign tasks, advance lifecycle state, verify work,
+or move rewards.
+
 Each status row links to the functional Help page that owns that system. Several
 rows may share the same page when they are part of one product boundary. For
 example, Task Generation owns offer generation, review, verification, and reward
@@ -148,6 +155,28 @@ The response returns daily rows with `{date, runs, inputTokens, outputTokens,
 totalTokens, costUsd}` plus totals. The Docs UI keeps this section collapsed by
 default and labels it as operational LLM cost in USD so it is not confused with
 Network Task PFT reward spend.
+
+## Orc Agent Activity
+
+`server/system-status.js::readAgentActivity` reads the existing Orc registry and
+activity tables without mutating them. It requires `orc_agents` and
+`task_projections`; when `orc_work_journal` exists, it adds the most recent
+bounded journal rows per agent. The response is top-level `agentActivity`, not a
+health category, so it does not change the red/amber/green scheduler summary.
+
+The payload contains:
+
+- `summary.agentCount`, `activeAgentCount`, `currentTaskCount`,
+  `recentActionCount`, `rewardedTaskCount`, and `rewardActualPft`;
+- one entry per bounded `orc_agents` row with handle, role, status, active flag,
+  current task, current task list, recent journal actions, and reward totals;
+- recent reward tasks with task id, title, status, kind, PFT values, and
+  `updatedAt`.
+
+The query is bounded by a 24-agent default and 48-agent maximum. Per-agent task
+lists are capped to five current tasks and three recent rewards; per-agent
+journal actions are capped to five. The status page renders this as an
+operational card above the worker category rows.
 
 ## Status Rules
 
