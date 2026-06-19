@@ -39,6 +39,11 @@ uv run orcctl close-followup task_original_... --followup-task-id task_followup_
 Nazgûl shared-state summaries read `orc_task_reviews`, `orc_run_journal`,
 `orc_operator_interactions`, and the linked `orc_work_journal` when those
 Postgres tables are present.
+Board Manager source packets also read `orc_review_rollups`, a bounded
+manager-internal view that aggregates reviewed outcomes by contributor
+account/wallet and task category. Rollups carry counts, controlled integrity
+signal labels, latest reviewed task id, and timestamps only; raw review summary
+text and recommendation text are intentionally excluded.
 
 Ledger-adjacent executable reward/clawback artifacts are treated as controls,
 not accusations. If a rewarded Network review item in `reward_accounting` or
@@ -266,10 +271,12 @@ uv run orc-review-state set task_... \
   --recommended-action "Route to core onboarding backlog."
 ```
 
-This creates `orc_task_review_states`, `orc_task_review_items`, and
-`orc_task_review_queue` in the Task Node Postgres read model. Other orcs can
-read the same table/view to burn down rewarded Network Task submissions by
-disposition. Local projection rows win over public Directory packets on
+This creates `orc_task_review_states`, `orc_task_review_items`,
+`orc_task_review_queue`, and `orc_review_rollups` in the Task Node Postgres read
+model. Other orcs can read the same table/view to burn down rewarded Network
+Task submissions by disposition. The Board Manager consumes the rollups as
+context only; they do not enforce fraud findings, bans, reward changes, or task
+lifecycle changes. Local projection rows win over public Directory packets on
 conflict; public packets only fill missing queue items or newer public event
 pointers.
 

@@ -255,6 +255,21 @@ function fallbackFactsToPreserve({
   const orcReviewFacts = Math.max(0, Math.round(Number(orcOperationsSummary.action_required_review_count || 0) || 0)) > 0
     ? [`orc_reviews:action_required=${Math.max(0, Math.round(Number(orcOperationsSummary.action_required_review_count || 0) || 0))}`]
     : [];
+  const orcRollupFacts = safeArray(orcOperationsSummary.review_rollups)
+    .slice(0, 8)
+    .map((rollup) => {
+      const item = safeObject(rollup);
+      const wallet = safeText(item.wallet_address || item.walletAddress, 120);
+      const account = safeText(item.account_id || item.accountId, 180);
+      const category = safeText(item.category || "uncategorized", 120);
+      const integrityCount = Math.max(
+        0,
+        Math.round(Number(item.integrity_follow_up_count ?? item.integrityFollowUpCount ?? 0) || 0)
+      );
+      if (!wallet && !account) return "";
+      return `orc_review_rollup:${account || wallet}:${category}:integrity_follow_up=${integrityCount}`;
+    })
+    .filter(Boolean);
   return [
     safeText(sourcePacket.sourcePacketDigest, 120) ? `source_packet_digest:${safeText(sourcePacket.sourcePacketDigest, 120)}` : "",
     ...safeArray(operatorStandingPolicy).map((item) => `operator_policy:${item.source_id || item.sourceId || "source"}`),
@@ -263,6 +278,7 @@ function fallbackFactsToPreserve({
     ...capabilityGapFacts,
     ...orcFacts,
     ...orcReviewFacts,
+    ...orcRollupFacts,
   ].filter(Boolean).slice(0, 32);
 }
 
@@ -574,6 +590,51 @@ function normalizeOrcOperationsSummary(value = {}) {
       };
     })
     .filter((item) => item.orc_handle || item.directive || item.issue);
+  const reviewRollupsSource = safeArray(
+    input.reviewRollups?.recent ||
+      input.review_rollups?.recent ||
+      input.reviewRollups ||
+      input.review_rollups
+  );
+  const reviewRollups = reviewRollupsSource
+    .slice(0, 10)
+    .map((item) => {
+      const rollup = safeObject(item);
+      const lastAction = safeObject(rollup.lastReviewedAction || rollup.last_reviewed_action);
+      return {
+        account_id: safeText(rollup.account_id || rollup.accountId, 180),
+        wallet_address: safeText(rollup.wallet_address || rollup.walletAddress, 120),
+        category: safeText(rollup.category || "uncategorized", 120) || "uncategorized",
+        reviewed_count: Math.max(0, Math.round(Number(rollup.reviewed_count ?? rollup.reviewedCount ?? 0) || 0)),
+        action_required_count: Math.max(
+          0,
+          Math.round(Number(rollup.action_required_count ?? rollup.actionRequiredCount ?? 0) || 0)
+        ),
+        integrity_follow_up_count: Math.max(
+          0,
+          Math.round(Number(rollup.integrity_follow_up_count ?? rollup.integrityFollowUpCount ?? 0) || 0)
+        ),
+        resolved_review_count: Math.max(
+          0,
+          Math.round(Number(rollup.resolved_review_count ?? rollup.resolvedReviewCount ?? 0) || 0)
+        ),
+        high_value_category: clampBoolean(rollup.high_value_category ?? rollup.highValueCategory, false),
+        repeated_integrity_signals: safeArray(rollup.repeated_integrity_signals || rollup.repeatedIntegritySignals)
+          .slice(0, 6)
+          .map((signal) => safeText(signal, 120))
+          .filter(Boolean),
+        integrity_signal_counts: safeObject(rollup.integrity_signal_counts || rollup.integritySignalCounts),
+        last_reviewed_action: {
+          task_id: safeText(lastAction.task_id || lastAction.taskId, 180),
+          disposition: safeText(lastAction.disposition, 120),
+          action_required: clampBoolean(lastAction.action_required ?? lastAction.actionRequired, false),
+          reviewer_handle: safeText(lastAction.reviewer_handle || lastAction.reviewerHandle, 120),
+          updated_at: safeText(lastAction.updated_at || lastAction.updatedAt, 80),
+        },
+        last_review_at: safeText(rollup.last_review_at || rollup.lastReviewAt, 80),
+      };
+    })
+    .filter((item) => item.account_id || item.wallet_address);
   return {
     schema: "pf.hive.board_manager.orc_operations_summary.v1",
     enforcement: safeText(input.enforcement || "none_context_only", 120) || "none_context_only",
@@ -599,11 +660,21 @@ function normalizeOrcOperationsSummary(value = {}) {
       0,
       Math.round(Number(summary.reviewHistoryCount ?? summary.review_history_count ?? 0) || 0)
     ),
+    review_rollup_count: Math.max(0, Math.round(Number(summary.reviewRollupCount ?? summary.review_rollup_count ?? reviewRollups.length) || 0)),
+    integrity_follow_up_rollup_count: Math.max(
+      0,
+      Math.round(Number(summary.integrityFollowUpRollupCount ?? summary.integrity_follow_up_rollup_count ?? 0) || 0)
+    ),
+    repeated_integrity_signal_rollup_count: Math.max(
+      0,
+      Math.round(Number(summary.repeatedIntegritySignalRollupCount ?? summary.repeated_integrity_signal_rollup_count ?? 0) || 0)
+    ),
     recent_interaction_count: Math.max(
       0,
       Math.round(Number(summary.recentInteractionCount ?? summary.recent_interaction_count ?? 0) || 0)
     ),
     agents,
+    review_rollups: reviewRollups,
     recent_reviews: recentReviews,
     recent_operator_interactions: recentInteractions,
   };
@@ -723,6 +794,12 @@ function packetText(packet = {}) {
     )
     .filter(Boolean)
     .join("\n") || "None";
+  const orcRollups = safeArray(orcOperationsSummary.review_rollups)
+    .map((rollup) =>
+      `- ${rollup.account_id || rollup.wallet_address || "contributor"} / ${rollup.category || "uncategorized"}: reviewed=${rollup.reviewed_count || 0}; action_required=${rollup.action_required_count || 0}; integrity_follow_up=${rollup.integrity_follow_up_count || 0}; repeated=${safeArray(rollup.repeated_integrity_signals).join(", ") || "none"}; latest=${safeObject(rollup.last_reviewed_action).task_id || "none"}`.trim()
+    )
+    .filter(Boolean)
+    .join("\n") || "None";
   return [
     "BOARD MANAGER SECRETARY PACKET",
     "",
@@ -787,8 +864,10 @@ function packetText(packet = {}) {
     "",
     "Orc operations summary",
     `enforcement: ${orcOperationsSummary.enforcement || "none_context_only"}`,
-    `agents: ${orcOperationsSummary.agent_count || 0}; active: ${orcOperationsSummary.active_agent_count || 0}; routeable: ${orcOperationsSummary.available_for_routing_count || 0}; review history: ${orcOperationsSummary.review_history_count || 0}; action-required reviews: ${orcOperationsSummary.action_required_review_count || 0}`,
+    `agents: ${orcOperationsSummary.agent_count || 0}; active: ${orcOperationsSummary.active_agent_count || 0}; routeable: ${orcOperationsSummary.available_for_routing_count || 0}; review history: ${orcOperationsSummary.review_history_count || 0}; action-required reviews: ${orcOperationsSummary.action_required_review_count || 0}; rollups: ${orcOperationsSummary.review_rollup_count || 0}; integrity-follow-up rollups: ${orcOperationsSummary.integrity_follow_up_rollup_count || 0}`,
     orcAgents,
+    "Orc review rollups (manager-internal triage signals; not public fraud findings)",
+    orcRollups,
     "Recent Orc reviews",
     orcReviews,
     "",

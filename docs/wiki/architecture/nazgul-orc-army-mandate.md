@@ -104,6 +104,12 @@ tmux send-keys -t <pane> -l '<directive>'; sleep 1; tmux send-keys -t <pane> Ent
   to the source task, follow-up request/task, event CID, tx hash, operator
   handle, blocker, and terminal outcome so `nazgul status` can account for what
   work was assigned and what actually closed.
+- Reviewed outcomes feed back into Board Manager routing context through
+  `orc_review_rollups`, a bounded view over `orc_task_review_states` joined to
+  review items/projections by account, wallet, and task category. The source
+  packet carries counts, repeated integrity-signal labels, last reviewed task
+  id, and timestamps only. It does not carry raw review text, accusations,
+  reward decisions, bans, or enforcement instructions.
 
 ## Guardrails — reserved actions (escalate to Sauron, never execute)
 
@@ -141,8 +147,9 @@ next priority, and escalates only the reserved actions above.
 - **Phase 6 — orc-accounting in the Hive Mind.** `orc_agents` + orc activity in
   the Board Manager source packet (migration `062_orc_agents_and_activity.sql`,
   PR #83), plus the linked `orc_work_journal` assignment/outcome ledger
-  (migration `066_orc_work_journal.sql`). **In progress.** The Board Manager
-  must reason about orc operators the same way it reasons about human
+  (migration `066_orc_work_journal.sql`) and review-outcome rollups for routing
+  context (migration `067_orc_review_rollups.sql`). **In progress.** The Board
+  Manager must reason about orc operators the same way it reasons about human
   contributors.
 
 ## Non-goals
