@@ -33,6 +33,8 @@ const MAX_BOARD_MANAGER_COST_DAYS = 90;
 const BOARD_MANAGER_MODEL_PRICING = Object.freeze({
   "z-ai/glm-5.2": { inputUsdPerMillion: 1.2, outputUsdPerMillion: 4.1 },
   "qwen/qwen3.7-max": { inputUsdPerMillion: 2.5, outputUsdPerMillion: 7.5 },
+  "deepseek-v4-pro": { inputUsdPerMillion: 0.435, outputUsdPerMillion: 0.87 },
+  "deepseek/deepseek-v4-pro": { inputUsdPerMillion: 0.435, outputUsdPerMillion: 0.87 },
   "gpt-5.5-pro": { inputUsdPerMillion: 15, outputUsdPerMillion: 120 },
 });
 
@@ -151,6 +153,7 @@ function normalizeBoardManagerCostRows(rows = []) {
     const totalTokens = usageNumber(usage, ["totalTokens", "total_tokens", "total"]);
     const effectiveTotalTokens = totalTokens || inputTokens + outputTokens;
     const costUsd = boardManagerUsageCostUsd({ usage, model: row.model });
+    if (inputTokens <= 0 && outputTokens <= 0 && effectiveTotalTokens <= 0 && costUsd <= 0) continue;
     const current = byDate.get(date) || {
       date,
       runs: 0,
