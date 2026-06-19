@@ -47,6 +47,14 @@ from .review_state import (
     review_disposition_requires_action,
     review_state_ontology,
 )
+from .runtime import (
+    DEFAULT_ORC_RUNTIME_DIR,
+    claim_next_runtime_directive,
+    complete_runtime_directive,
+    enqueue_runtime_directive,
+    run_runtime_once,
+    runtime_status,
+)
 from .reward_monitor import duplicate_reward_monitor_sql, run_duplicate_reward_monitor
 from .tasks import extract_task_brief, outstanding_task_briefs
 from .orcctl import (
@@ -66,6 +74,7 @@ from .nazgul import (
     build_dispatch_directive,
     classify_pane_text,
     dispatch_orc,
+    dispatch_orc_runtime,
     escalate_orc,
     inject_directive,
     load_orc_registry,
@@ -82,6 +91,7 @@ __all__ = [
     "DEFAULT_DUPLICATE_REWARD_TASK_ID",
     "DEFAULT_EXPECTED_WALLET_ADDRESS",
     "DEFAULT_ORC_AGENT",
+    "DEFAULT_ORC_RUNTIME_DIR",
     "DEFAULT_PRIORITY_MODEL",
     "NETWORK_CAPACITY_NOTE",
     "NETWORK_TRIAGE_CAPABILITY_VERSION",
@@ -97,11 +107,15 @@ __all__ = [
     "build_hive_signal_command",
     "classify_review",
     "classify_pane_text",
+    "claim_next_runtime_directive",
     "compact_review_task",
+    "complete_runtime_directive",
     "dispatch_orc",
+    "dispatch_orc_runtime",
     "duplicate_reward_followup_message",
     "duplicate_reward_monitor_sql",
     "escalate_orc",
+    "enqueue_runtime_directive",
     "extract_task_brief",
     "extract_task_payload",
     "extract_evidence_artifacts",
@@ -135,9 +149,11 @@ __all__ = [
     "run_duplicate_reward_followup",
     "run_hive_followup",
     "run_hive_signal",
+    "run_runtime_once",
     "run_duplicate_reward_monitor",
     "review_disposition_requires_action",
     "review_state_ontology",
+    "runtime_status",
     "summarize_signed_flow",
     "sanity_check_priority",
     "task_payload",

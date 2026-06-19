@@ -19,11 +19,15 @@ from orc_tooling import (
     build_review_queue_reward_packet,
     build_task_reward_packet,
     classify_pane_text,
+    claim_next_runtime_directive,
     compact_review_task,
+    complete_runtime_directive,
     dispatch_orc,
+    dispatch_orc_runtime,
     duplicate_reward_monitor_sql,
     duplicate_reward_followup_message,
     escalate_orc,
+    enqueue_runtime_directive,
     extract_evidence_artifacts,
     extract_task_brief,
     extract_task_payload,
@@ -49,8 +53,10 @@ from orc_tooling import (
     review_state_ontology,
     run_hive_followup,
     run_hive_signal,
+    run_runtime_once,
     run_duplicate_reward_monitor,
     run_journal_summary,
+    runtime_status,
     sanity_check_priority,
     summarize_signed_flow,
     triage_network_work,
@@ -888,6 +894,83 @@ class OrcToolingTests(unittest.TestCase):
 
         self.assertEqual(item["taskId"], "task_ranked")
         self.assertEqual(item["triage"]["capability"], NETWORK_TRIAGE_CAPABILITY_VERSION)
+
+    def test_orc_runtime_mailbox_claims_and_completes_durable_directive(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            queued = enqueue_runtime_directive(
+                orc="grashnuk",
+                task_id="task_source",
+                directive="Review task_source.",
+                source="unit",
+                metadata={"safe": "ok", "privateKey": "redacted"},
+                runtime_dir=tmpdir,
+            )
+            first_status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+            claimed = claim_next_runtime_directive(orc="grashnuk", worker_id="worker-a", runtime_dir=tmpdir)
+            second_claim = claim_next_runtime_directive(orc="grashnuk", worker_id="worker-b", runtime_dir=tmpdir)
+            completed = complete_runtime_directive(
+                directive_id=queued["directiveId"],
+                status="completed",
+                result={"summary": "done"},
+                worker_id="worker-a",
+                runtime_dir=tmpdir,
+            )
+            final_status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+
+        self.assertEqual(queued["queued"], True)
+        self.assertEqual(first_status["statusCounts"]["queued"], 1)
+        self.assertEqual(claimed["claimed"], True)
+        self.assertEqual(claimed["directive"]["workerId"], "worker-a")
+        self.assertEqual(second_claim["claimed"], False)
+        self.assertEqual(completed["completed"], True)
+        self.assertEqual(final_status["statusCounts"]["completed"], 1)
+        self.assertEqual(final_status["directives"][0]["metadata"]["privateKey"], "[REDACTED]")
+
+    def test_orc_runtime_run_once_claims_without_tmux_or_codex_execution(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            enqueue_runtime_directive(
+                orc="grashnuk",
+                task_id="task_source",
+                directive="Review task_source.",
+                runtime_dir=tmpdir,
+            )
+            result = run_runtime_once(orc="grashnuk", worker_id="worker-a", runtime_dir=tmpdir)
+            status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+
+        self.assertEqual(result["claimed"], True)
+        self.assertEqual(result["completed"], True)
+        self.assertEqual(result["directive"]["status"], "claimed_only")
+        self.assertEqual(result["directive"]["result"]["mode"], "prototype_no_executor")
+        self.assertEqual(status["statusCounts"]["claimed_only"], 1)
+
+    def test_dispatch_orc_runtime_queues_without_tmux_injection(self):
+        recorded = []
+
+        def fake_recorder(**kwargs):
+            recorded.append(kwargs)
+            return {"ok": True, "id": "orcint_runtime", "interaction_type": kwargs["interaction_type"]}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = dispatch_orc_runtime(
+                "grashnuk",
+                orcs_json=json.dumps([{"name": "grashnuk", "tmuxTarget": "grashnuk:0.0"}]),
+                runtime_dir=tmpdir,
+                recorder=fake_recorder,
+                item_reader=lambda **kwargs: {
+                    "task_id": "task_source",
+                    "title": "Audit reward leakage",
+                    "reward_actual_pft": "30000",
+                    "review_disposition": "not_reviewed",
+                },
+            )
+            status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["action"], "dispatch_runtime")
+        self.assertEqual(result["runtime"]["queued"], True)
+        self.assertEqual(status["statusCounts"]["queued"], 1)
+        self.assertEqual(recorded[0]["interaction_type"], "dispatch_runtime")
+        self.assertIn("task_source", recorded[0]["directive"])
 
     def test_duplicate_reward_followup_message_is_informational_and_grounded(self):
         message = duplicate_reward_followup_message()

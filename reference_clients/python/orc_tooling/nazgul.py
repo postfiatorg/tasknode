@@ -18,6 +18,7 @@ from .orcctl import DEFAULT_RUN_JOURNAL_PATH
 from .payload import redact_secrets
 from .priority import next_network_triage_item
 from .review_state import review_state_summary
+from .runtime import DEFAULT_ORC_RUNTIME_DIR, enqueue_runtime_directive
 
 
 DEFAULT_ORC_HANDLE = "orc"
@@ -723,6 +724,74 @@ def dispatch_orc(
     return redact_secrets(result)
 
 
+def dispatch_orc_runtime(
+    orc_name: str,
+    *,
+    orcs_json: str = "",
+    database_url: str | None = None,
+    runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR,
+    recorder: Callable[..., dict[str, Any]] | None = None,
+    item_reader: Callable[..., dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    item = item_reader(database_url=database_url) if item_reader else next_dispatch_item(database_url=database_url)
+    clean_orc = _safe_text(orc_name, 120).lstrip("@")
+    if not item:
+        return {
+            "ok": True,
+            "orc": clean_orc,
+            "action": "dispatch_runtime",
+            "dispatched": False,
+            "message": "No non-blocked work item found.",
+            "secretPrinted": False,
+        }
+    orc = find_orc(load_orc_registry(orcs_json=orcs_json, database_url=database_url), orc_name)
+    directive = build_dispatch_directive(item)
+    queued = enqueue_runtime_directive(
+        orc=orc.get("name") or clean_orc,
+        directive=directive,
+        task_id=_safe_text(item.get("task_id") or item.get("taskId"), 180),
+        source="nazgul.dispatch_runtime",
+        metadata={
+            "workItem": {
+                "taskId": item.get("task_id") or item.get("taskId"),
+                "title": item.get("title"),
+                "rewardActualPft": item.get("reward_actual_pft") or item.get("rewardActualPft"),
+                "triage": item.get("triage") or {},
+            },
+            "agentId": orc.get("agentId"),
+            "wallet": orc.get("wallet"),
+        },
+        runtime_dir=runtime_dir,
+    )
+    record = recorder or record_operator_interaction
+    interaction = record(
+        orc=orc.get("name") or clean_orc,
+        interaction_type="dispatch_runtime",
+        directive=directive,
+        status="queued",
+        metadata={
+            "directiveId": queued.get("directiveId"),
+            "runtimeDir": runtime_dir,
+            "workItem": item.get("task_id") or item.get("taskId"),
+        },
+        database_url=database_url,
+    )
+    return redact_secrets({
+        "ok": True,
+        "orc": orc.get("name"),
+        "action": "dispatch_runtime",
+        "dispatched": True,
+        "runtime": queued,
+        "operatorInteraction": interaction,
+        "workItem": {
+            "taskId": item.get("task_id") or item.get("taskId"),
+            "title": item.get("title"),
+            "rewardActualPft": item.get("reward_actual_pft") or item.get("rewardActualPft"),
+        },
+        "secretPrinted": False,
+    })
+
+
 def escalate_orc(
     orc_name: str,
     issue: str,
@@ -759,6 +828,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--database-url", default="", help="Override Task Node Postgres URL.")
     parser.add_argument("--orcs-json", default="", help="JSON string or path containing [{name, tmuxTarget, wallet}].")
     parser.add_argument("--journal-path", default=DEFAULT_RUN_JOURNAL_PATH, help="orc_run_journal JSONL fallback path.")
+    parser.add_argument("--runtime-dir", default=DEFAULT_ORC_RUNTIME_DIR, help="Durable Orc runtime mailbox directory.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     status_parser = subparsers.add_parser("status", help="Show all Orcs at a glance.")
@@ -776,6 +846,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     dispatch_parser = subparsers.add_parser("dispatch", help="Pull next non-blocked work item and inject it.")
     dispatch_parser.add_argument("orc")
+
+    dispatch_runtime_parser = subparsers.add_parser("dispatch-runtime", help="Pull next work item and enqueue it into the durable Orc runtime.")
+    dispatch_runtime_parser.add_argument("orc")
 
     escalate_parser = subparsers.add_parser("escalate", help="Record an issue for Sauron.")
     escalate_parser.add_argument("orc")
@@ -814,6 +887,13 @@ def main(argv: list[str] | None = None) -> int:
                 args.orc,
                 orcs_json=args.orcs_json,
                 database_url=database_url,
+            )
+        elif args.command == "dispatch-runtime":
+            payload = dispatch_orc_runtime(
+                args.orc,
+                orcs_json=args.orcs_json,
+                database_url=database_url,
+                runtime_dir=args.runtime_dir,
             )
         elif args.command == "escalate":
             payload = escalate_orc(

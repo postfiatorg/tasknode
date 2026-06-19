@@ -72,6 +72,21 @@ chip, then send Enter. `nazgul dispatch` pulls the next non-blocked
 `nazgul escalate` records `orc_operator_interactions` and prints a Sauron-facing
 message in the JSON output.
 
+Phase 5 adds a durable runtime prototype that avoids tmux injection:
+
+```bash
+uv run nazgul dispatch-runtime grashnuk
+uv run orc-runtime status --orc grashnuk
+uv run orc-runtime run-once --orc grashnuk --worker-id grashnuk-runtime-1
+```
+
+`dispatch-runtime` writes an append-only directive event to
+`~/.cache/tasknode/orc_runtime/orc_runtime_events.jsonl`. `orc-runtime` can
+claim and complete those directives without reading or writing a tmux pane. The
+prototype executor marks directives `claimed_only`; production execution still
+needs the supervised worker described in
+`docs/wiki/architecture/orc-durable-runtime.md`.
+
 Orc panes can be configured with:
 
 ```bash
