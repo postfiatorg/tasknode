@@ -101,8 +101,8 @@ try {
     throw new Error("Private Instant must default to pinned OpenRouter DeepSeek V4 Flash.");
   }
 
-  if (modelForMode("Private Thinking") !== "deepseek/deepseek-v4-pro") {
-    throw new Error("Private Thinking must default to pinned OpenRouter DeepSeek V4 Pro.");
+  if (modelForMode("Private Thinking") !== "z-ai/glm-5.2") {
+    throw new Error("Private Thinking must default to pinned OpenRouter GLM 5.2.");
   }
 
   if (modelForMode("Discount Thinking") !== "deepseek-v4-pro") {
@@ -142,6 +142,10 @@ try {
 
   if (actualChatCost("Frontier Thinking", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 35) {
     throw new Error("Frontier Thinking gpt-5.5 pricing drifted from the configured OpenAI token rates.");
+  }
+
+  if (actualChatCost("Private Thinking", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 5.3) {
+    throw new Error("Private Thinking GLM 5.2 pricing drifted from configured OpenRouter token rates.");
   }
 
   if (actualChatCost("Discount Thinking", { inputTokens: 1_000_000, outputTokens: 1_000_000 }) !== 1.305) {
@@ -614,14 +618,16 @@ try {
   });
 
   if (
-    openRouterThinkingRequest.reasoning?.effort !== "high" ||
+    openRouterThinkingRequest.reasoning?.effort !== "xhigh" ||
     openRouterThinkingRequest.reasoning?.exclude !== true ||
+    openRouterThinkingRequest.provider?.zdr !== true ||
+    openRouterThinkingRequest.provider?.data_collection !== "deny" ||
     openRouterThinkingRequest.provider?.require_parameters !== true ||
-    openRouterThinkingRequest.provider?.order?.[0] !== "novita" ||
-    openRouterThinkingRequest.provider?.only?.includes("deepinfra") !== true ||
+    openRouterThinkingRequest.provider?.order?.[0] !== "z-ai" ||
+    openRouterThinkingRequest.provider?.only?.includes("novita") !== true ||
     openRouterThinkingRequest.max_tokens !== 4096
   ) {
-    throw new Error(`Private Thinking must use OpenRouter high reasoning with strict provider routing: ${JSON.stringify(openRouterThinkingRequest)}`);
+    throw new Error(`Private Thinking must use OpenRouter xhigh GLM reasoning with strict ZDR provider routing: ${JSON.stringify(openRouterThinkingRequest)}`);
   }
 
   const deepSeekThinkingRequest = deepSeekChatRequest({

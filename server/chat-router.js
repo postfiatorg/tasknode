@@ -64,13 +64,13 @@ export const chatModePrices = {
     providerOrder: ["parasail", "siliconflow", "atlas-cloud", "deepinfra", "akashml", "novita"],
   },
   "Private Thinking": {
-    inputUsdPerMillion: 1.74,
-    outputUsdPerMillion: 3.48,
+    inputUsdPerMillion: 1.2,
+    outputUsdPerMillion: 4.1,
     provider: "openrouter",
-    defaultModel: "deepseek/deepseek-v4-pro",
+    defaultModel: "z-ai/glm-5.2",
     maxOutputTokens: 4096,
-    reasoningEffort: "high",
-    providerOrder: ["novita", "atlas-cloud", "siliconflow", "deepinfra"],
+    reasoningEffort: "xhigh",
+    providerOrder: ["z-ai", "wafer", "fireworks", "novita"],
   },
   "Discount Thinking": {
     inputUsdPerMillion: 0.435,

@@ -36,7 +36,9 @@ assert.deepEqual(status.networkTaskSpendByDay.totals, { totalPft: 0, taskCount: 
 const pricingModes = new Map(status.chatPricing.modes.map((mode) => [mode.mode, mode]));
 assert.equal(pricingModes.get("Private Instant")?.model, "deepseek/deepseek-v4-flash");
 assert.equal(pricingModes.get("Private Instant")?.maxOutputTokens, 16384);
-assert.equal(pricingModes.get("Private Thinking")?.model, "deepseek/deepseek-v4-pro");
+assert.equal(pricingModes.get("Private Thinking")?.model, "z-ai/glm-5.2");
+assert.equal(pricingModes.get("Private Thinking")?.reasoning, "xhigh");
+assert.equal(pricingModes.get("Private Thinking")?.providerOrder.includes("z-ai"), true);
 assert.equal(pricingModes.get("Private Thinking")?.providerOrder.includes("novita"), true);
 assert.equal(pricingModes.get("Discount Thinking")?.model, "deepseek-v4-pro");
 assert.equal(pricingModes.get("Discount Thinking")?.providerLabel, "DeepSeek API Direct");

@@ -18,7 +18,7 @@ let pricingCache = null;
 
 const modeDescriptions = {
   "Private Instant": "Fast ZDR OpenRouter route using DeepSeek V4 Flash with reasoning disabled.",
-  "Private Thinking": "ZDR OpenRouter route using DeepSeek V4 Pro with high reasoning and an explicit provider allowlist.",
+  "Private Thinking": "ZDR OpenRouter route using GLM 5.2 with xhigh private reasoning and an explicit provider allowlist.",
   "Discount Thinking": "Direct DeepSeek API route using DeepSeek V4 Pro high reasoning at the current direct discount price.",
   "Frontier Instant": "OpenAI Responses route for fast frontier chat with prompt-governed web search.",
   Help: "Direct DeepSeek API route for plain-English Task Node product help with account context and the user guide injected.",
@@ -41,6 +41,7 @@ const providerSlugAliases = {
   streamlake: "streamlake",
   together: "together",
   venice: "venice",
+  zai: "z-ai",
 };
 
 function pricingEnabled() {
