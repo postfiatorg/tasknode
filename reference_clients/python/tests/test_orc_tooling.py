@@ -50,6 +50,8 @@ from orc_tooling import (
     prioritize_network_tasks,
     prioritize_review_queue,
     priority_prompt,
+    record_operator_interaction,
+    redirect_orc,
     request_personal_task,
     request_followup_task,
     review_disposition_requires_action,
@@ -76,7 +78,14 @@ from orc_tooling.review_integrity_policy import (
     NO_SIGNING_NO_FUND_MOVEMENT_MARKER,
     apply_reward_clawback_integrity_policy,
 )
-from orc_tooling.review_state import ensure_review_state_schema, review_state_summary, upsert_review_state
+from orc_tooling.review_state import (
+    append_orc_work_journal,
+    ensure_review_state_schema,
+    normalize_orc_work_journal_record,
+    orc_work_journal_insert_sql,
+    review_state_summary,
+    upsert_review_state,
+)
 
 
 SMOKE_MNEMONIC = (
@@ -929,13 +938,19 @@ class OrcToolingTests(unittest.TestCase):
             "metadata_json": {"followup_request_id": "req_followup"},
         }
         captured = []
+        ledger_rows = []
 
         def fake_upsert(record, **kwargs):
             captured.append(record)
             return {"ok": True, "task_id": record["taskId"], "metadata_json": record["metadata"]}
 
+        def fake_ledger(record, **kwargs):
+            ledger_rows.append(record)
+            return {"ok": True, "inserted": True, "source_task_id": record["sourceTaskId"]}
+
         with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
-            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert):
+            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert), \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=fake_ledger):
             result = close_followup(
                 "task_source",
                 followup_task_id="task_followup",
@@ -954,6 +969,15 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(metadata["followup_reward_cid"], "QmReward")
         self.assertEqual(metadata["user_signal_status"], "sent")
         self.assertIn("task_followup", record["sourceTaskIds"])
+        self.assertEqual(result["workJournal"]["inserted"], True)
+        self.assertEqual(ledger_rows[0]["taskAction"], "close_followup")
+        self.assertEqual(ledger_rows[0]["sourceTaskId"], "task_source")
+        self.assertEqual(ledger_rows[0]["followupRequestId"], "req_followup")
+        self.assertEqual(ledger_rows[0]["followupTaskId"], "task_followup")
+        self.assertEqual(ledger_rows[0]["eventCid"], "QmReward")
+        self.assertEqual(ledger_rows[0]["txHash"], "TXREWARD")
+        self.assertEqual(ledger_rows[0]["outcomeStatus"], "rewarded")
+        self.assertTrue(ledger_rows[0]["terminal"])
 
     def test_stale_followup_query_filters_to_closeable_terminal_statuses(self):
         calls = []
@@ -1114,8 +1138,11 @@ class OrcToolingTests(unittest.TestCase):
         self.assertIn("network_status_packet", sql)
         self.assertIn("status_packet_json", sql)
         self.assertIn("closed_zero", sql)
+        self.assertIn("CREATE TABLE IF NOT EXISTS orc_work_journal", sql)
+        self.assertIn("orc_work_journal_idempotency_idx", sql)
         self.assertIn("'historyTable', 'orc_task_reviews'", sql)
         self.assertIn("'itemsTable', 'orc_task_review_items'", sql)
+        self.assertIn("'workJournalTable', 'orc_work_journal'", sql)
 
     def test_upsert_review_state_appends_history_row(self):
         record = normalize_review_state_record(
@@ -1149,6 +1176,60 @@ class OrcToolingTests(unittest.TestCase):
         self.assertIn("),\nreview_insert AS (", sql)
         self.assertIn(")\nSELECT to_jsonb(upsert)", sql)
         self.assertIn("'review_id'", sql)
+
+    def test_orc_work_journal_is_append_only_with_event_idempotency(self):
+        dispatch = normalize_orc_work_journal_record(
+            interaction_id="orcint_unit",
+            source_task_id="task_source",
+            review_disposition="not_reviewed",
+            task_action="dispatch",
+            operator_handle="orc-alpha",
+            status="submitted",
+        )
+        closed = normalize_orc_work_journal_record(
+            interaction_id="orcint_unit",
+            source_task_id="task_source",
+            review_disposition="reviewed_follow_up_completed",
+            followup_task_id="task_followup",
+            task_action="close_followup",
+            event_cid="QmReward",
+            tx_hash="TXREWARD",
+            operator_handle="orc-alpha",
+            status="closed",
+            outcome_status="rewarded",
+            terminal=True,
+        )
+
+        self.assertNotEqual(dispatch["idempotencyKey"], closed["idempotencyKey"])
+        dispatch_sql = orc_work_journal_insert_sql(dispatch)
+        closed_sql = orc_work_journal_insert_sql(closed)
+        self.assertIn("INSERT INTO orc_work_journal", dispatch_sql)
+        self.assertIn("ON CONFLICT DO NOTHING", dispatch_sql)
+        self.assertIn("ON CONFLICT DO NOTHING", closed_sql)
+        self.assertNotIn("UPDATE ORC_WORK_JOURNAL", dispatch_sql.upper())
+        self.assertNotIn("UPDATE ORC_WORK_JOURNAL", closed_sql.upper())
+
+    def test_append_orc_work_journal_inserts_normalized_row(self):
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            if "INSERT INTO orc_work_journal" in sql:
+                return {"ok": True, "inserted": True, "source_task_id": "task_source", "secretPrinted": False}
+            return {"ok": True, "secretPrinted": False}
+
+        with patch("orc_tooling.review_state.ensure_orc_work_journal_schema", return_value={"ok": True}), \
+            patch("orc_tooling.review_state.tasknode_database_url", return_value="postgres://unit"), \
+            patch("orc_tooling.review_state._run_json", side_effect=fake_run_json):
+            result = append_orc_work_journal({
+                "interactionId": "orcint_unit",
+                "sourceTaskId": "task_source",
+                "taskAction": "dispatch",
+                "operatorHandle": "orc-alpha",
+            })
+
+        self.assertEqual(result["inserted"], True)
+        self.assertIn("INSERT INTO orc_work_journal", calls[0])
 
     def test_review_state_summary_reports_integrity_controls_for_sauron(self):
         calls = []
@@ -1387,6 +1468,10 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(status["statusCounts"]["queued"], 1)
         self.assertEqual(recorded[0]["interaction_type"], "dispatch_runtime")
         self.assertIn("task_source", recorded[0]["directive"])
+        self.assertEqual(recorded[0]["metadata"]["sourceTaskId"], "task_source")
+        self.assertEqual(recorded[0]["metadata"]["reviewDisposition"], "not_reviewed")
+        self.assertEqual(recorded[0]["metadata"]["taskAction"], "dispatch_runtime")
+        self.assertEqual(recorded[0]["metadata"]["workItem"]["taskId"], "task_source")
 
     def test_duplicate_reward_followup_message_is_informational_and_grounded(self):
         message = duplicate_reward_followup_message()
@@ -1510,6 +1595,108 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(summary["sharedState"]["reviewQueue"]["not_reviewed"], 7)
         self.assertEqual(summary["secretPrinted"], False)
 
+    def test_record_operator_interaction_appends_work_journal_for_known_source_task(self):
+        calls = []
+
+        def fake_runner(command, **kwargs):
+            sql = command[-1]
+            calls.append(sql)
+            if "INSERT INTO orc_operator_interactions" in sql:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps({
+                        "ok": True,
+                        "id": "orcint_unit",
+                        "orc_handle": "orc-alpha",
+                        "interaction_type": "dispatch",
+                        "status": "submitted",
+                        "secretPrinted": False,
+                    }),
+                    stderr="",
+                )
+            if "INSERT INTO orc_work_journal" in sql:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps({
+                        "ok": True,
+                        "inserted": True,
+                        "source_task_id": "task_source",
+                        "task_action": "dispatch",
+                        "secretPrinted": False,
+                    }),
+                    stderr="",
+                )
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"ok": True}), stderr="")
+
+        result = record_operator_interaction(
+            orc="orc-alpha",
+            interaction_type="dispatch",
+            directive="Review task_source.",
+            status="submitted",
+            metadata={
+                "sourceTaskId": "task_source",
+                "reviewDisposition": "not_reviewed",
+                "taskAction": "dispatch",
+            },
+            database_url="postgres://unit",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(result["workJournal"]["inserted"], True)
+        self.assertEqual(result["workJournal"]["source_task_id"], "task_source")
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS orc_work_journal" in sql for sql in calls))
+        self.assertTrue(any("INSERT INTO orc_work_journal" in sql for sql in calls))
+
+    def test_redirect_orc_appends_work_journal_when_directive_names_source_task(self):
+        calls = []
+
+        def fake_runner(command, **kwargs):
+            calls.append(command)
+            if command[0] == "tmux":
+                if command[:2] == ["tmux", "capture-pane"]:
+                    return SimpleNamespace(returncode=0, stdout="[Pasted Content 500 chars]\n", stderr="")
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            sql = command[-1]
+            if "INSERT INTO orc_operator_interactions" in sql:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps({
+                        "ok": True,
+                        "id": "orcint_redirect",
+                        "orc_handle": "orc-alpha",
+                        "interaction_type": "redirect",
+                        "status": "submitted",
+                        "secretPrinted": False,
+                    }),
+                    stderr="",
+                )
+            if "INSERT INTO orc_work_journal" in sql:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps({
+                        "ok": True,
+                        "inserted": True,
+                        "source_task_id": "task_redirected",
+                        "task_action": "redirect",
+                        "secretPrinted": False,
+                    }),
+                    stderr="",
+                )
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"ok": True}), stderr="")
+
+        result = redirect_orc(
+            "orc-alpha",
+            "Review task_redirected and report blockers.",
+            orcs_json=json.dumps([{"name": "orc-alpha", "tmuxTarget": "orc-alpha:0.0"}]),
+            database_url="postgres://unit",
+            runner=fake_runner,
+            sleeper=lambda seconds: None,
+        )
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["operatorInteraction"]["workJournal"]["source_task_id"], "task_redirected")
+        self.assertTrue(any(command[:2] == ["tmux", "send-keys"] for command in calls))
+
     def test_wait_for_orc_idle_requires_stable_non_working_capture(self):
         captures = iter([
             "Working (running command)\n",
@@ -1611,6 +1798,10 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["workItem"]["taskId"], "task_source")
         self.assertEqual(recorded[0]["interaction_type"], "dispatch")
         self.assertIn("task_source", recorded[0]["directive"])
+        self.assertEqual(recorded[0]["metadata"]["sourceTaskId"], "task_source")
+        self.assertEqual(recorded[0]["metadata"]["reviewDisposition"], "not_reviewed")
+        self.assertEqual(recorded[0]["metadata"]["taskAction"], "dispatch")
+        self.assertEqual(recorded[0]["metadata"]["workItem"]["taskId"], "task_source")
         self.assertEqual(commands[-1], ["tmux", "send-keys", "-t", "orc-alpha:0.0", "Enter"])
 
     def test_escalate_orc_records_operator_interaction_and_prints_for_sauron(self):

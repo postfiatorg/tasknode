@@ -44,7 +44,9 @@ from .review import (
 )
 from .review_state import (
     FOLLOWUP_CLOSEABLE_TASK_STATUSES,
+    append_orc_work_journal,
     normalize_review_state_record,
+    normalize_orc_work_journal_record,
     review_disposition_requires_action,
     review_state_ontology,
     stale_followup_closures,
@@ -101,6 +103,7 @@ __all__ = [
     "NETWORK_TRIAGE_CAPABILITY_VERSION",
     "PRIORITY_PROMPT_VERSION",
     "append_run_journal",
+    "append_orc_work_journal",
     "build_review_queue_reward_packet",
     "build_directory_rewarded_task_packet",
     "build_task_reward_packet",
@@ -129,6 +132,7 @@ __all__ = [
     "inject_directive",
     "is_probable_fixture_priority_row",
     "normalize_review_state_record",
+    "normalize_orc_work_journal_record",
     "network_triage_decision",
     "next_network_triage_item",
     "is_probable_fixture_review_row",

@@ -17,13 +17,19 @@ from tasknode_pftl.app_data import sql_literal, tasknode_database_url
 from .orcctl import DEFAULT_RUN_JOURNAL_PATH
 from .payload import redact_secrets
 from .priority import next_network_triage_item
-from .review_state import review_state_summary
+from .review_state import (
+    normalize_orc_work_journal_record,
+    orc_work_journal_insert_sql,
+    orc_work_journal_schema_sql,
+    review_state_summary,
+)
 from .runtime import DEFAULT_ORC_RUNTIME_DIR, enqueue_runtime_directive
 
 
 DEFAULT_ORC_HANDLE = "orc"
 DEFAULT_ORC_TMUX_TARGET = "orc:0.0"
 PASTE_CHIP_PATTERN = re.compile(r"\[Pasted Content [^\]]+\]")
+TASK_ID_PATTERN = re.compile(r"\btask_[A-Za-z0-9][A-Za-z0-9_-]*\b")
 WORKING_PATTERN = re.compile(r"Working \(", re.IGNORECASE)
 ERROR_PATTERNS = (
     "traceback",
@@ -57,6 +63,108 @@ def _safe_list(value: Any) -> list[Any]:
 
 def _safe_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _first_text(*values: Any, limit: int = 4000) -> str:
+    for value in values:
+        text = _safe_text(value, limit)
+        if text:
+            return text
+    return ""
+
+
+def _first_task_id_from_text(*values: Any) -> str:
+    for value in values:
+        match = TASK_ID_PATTERN.search(_safe_text(value, 100000))
+        if match:
+            return match.group(0)
+    return ""
+
+
+def _work_item(metadata: dict[str, Any]) -> dict[str, Any]:
+    item = metadata.get("workItem") or metadata.get("work_item") or {}
+    if isinstance(item, dict):
+        return item
+    if _safe_text(item, 180):
+        return {"taskId": _safe_text(item, 180)}
+    return {}
+
+
+def _journal_record_from_interaction(
+    *,
+    interaction: dict[str, Any],
+    orc: str,
+    interaction_type: str,
+    directive: str = "",
+    issue: str = "",
+    status: str = "recorded",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    meta = _safe_dict(metadata)
+    item = _work_item(meta)
+    clean_type = _safe_text(interaction_type, 80).lower()
+    source_task_id = _first_text(
+        meta.get("sourceTaskId"),
+        meta.get("source_task_id"),
+        meta.get("taskId"),
+        meta.get("task_id"),
+        item.get("sourceTaskId"),
+        item.get("source_task_id"),
+        item.get("taskId"),
+        item.get("task_id"),
+        _first_task_id_from_text(directive, issue),
+        limit=180,
+    )
+    followup_task_id = _first_text(
+        meta.get("followupTaskId"),
+        meta.get("followup_task_id"),
+        item.get("followupTaskId"),
+        item.get("followup_task_id"),
+        limit=180,
+    )
+    if not source_task_id and not followup_task_id:
+        return {}
+    return normalize_orc_work_journal_record(
+        interaction_id=_safe_text(interaction.get("id") or interaction.get("interaction_id"), 180),
+        source_task_id=source_task_id,
+        review_disposition=_first_text(
+            meta.get("reviewDisposition"),
+            meta.get("review_disposition"),
+            item.get("reviewDisposition"),
+            item.get("review_disposition"),
+            limit=120,
+        ),
+        followup_request_id=_first_text(
+            meta.get("followupRequestId"),
+            meta.get("followup_request_id"),
+            item.get("followupRequestId"),
+            item.get("followup_request_id"),
+            limit=180,
+        ),
+        followup_task_id=followup_task_id,
+        task_action=_first_text(meta.get("taskAction"), meta.get("task_action"), clean_type, limit=120),
+        event_cid=_first_text(meta.get("eventCid"), meta.get("event_cid"), item.get("eventCid"), item.get("event_cid"), limit=180),
+        tx_hash=_first_text(meta.get("txHash"), meta.get("tx_hash"), item.get("txHash"), item.get("tx_hash"), limit=180),
+        operator_handle=orc,
+        blocker=_first_text(meta.get("blocker"), issue if clean_type == "escalation" else "", limit=4000),
+        status=status,
+        outcome_status=_first_text(meta.get("outcomeStatus"), meta.get("outcome_status"), limit=120),
+        terminal=bool(meta.get("terminal")),
+        metadata=meta,
+    )
+
+
+def record_orc_work_journal(
+    record: dict[str, Any],
+    *,
+    database_url: str | None = None,
+    runner: Runner = subprocess.run,
+) -> dict[str, Any]:
+    if not record:
+        return {}
+    return redact_secrets(
+        _run_json(tasknode_database_url(database_url), orc_work_journal_insert_sql(record), runner=runner) or {}
+    )
 
 
 def _utcnow() -> str:
@@ -386,6 +494,56 @@ FROM orc_operator_interactions;
         database_url=database_url,
         runner=runner,
     )
+    summary["orcWorkJournal"] = _psql_summary(
+        "orc_work_journal",
+        """
+WITH recent AS (
+  SELECT
+    interaction_id,
+    source_task_id,
+    review_disposition,
+    followup_request_id,
+    followup_task_id,
+    task_action,
+    event_cid,
+    tx_hash,
+    operator_handle,
+    blocker,
+    status,
+    outcome_status,
+    terminal,
+    created_at
+  FROM orc_work_journal
+  ORDER BY created_at DESC
+  LIMIT 10
+)
+SELECT jsonb_build_object(
+  'count', (SELECT count(*)::int FROM orc_work_journal),
+  'lastEntryAt', (SELECT max(created_at)::text FROM orc_work_journal),
+  'recent', COALESCE((
+    SELECT jsonb_agg(jsonb_build_object(
+      'interactionId', interaction_id,
+      'sourceTaskId', source_task_id,
+      'reviewDisposition', review_disposition,
+      'followupRequestId', followup_request_id,
+      'followupTaskId', followup_task_id,
+      'taskAction', task_action,
+      'eventCid', event_cid,
+      'txHash', tx_hash,
+      'operatorHandle', operator_handle,
+      'blocker', blocker,
+      'status', status,
+      'outcomeStatus', outcome_status,
+      'terminal', terminal,
+      'createdAt', created_at
+    ) ORDER BY created_at DESC)
+    FROM recent
+  ), '[]'::jsonb)
+);
+""",
+        database_url=database_url,
+        runner=runner,
+    )
     return redact_secrets(summary)
 
 
@@ -563,7 +721,7 @@ def ensure_operator_interaction_schema(
     runner: Runner = subprocess.run,
 ) -> dict[str, Any]:
     db_url = tasknode_database_url(database_url)
-    sql = """
+    sql = f"""
 CREATE TABLE IF NOT EXISTS orc_operator_interactions (
   id text PRIMARY KEY,
   orc_handle text NOT NULL DEFAULT '',
@@ -571,7 +729,7 @@ CREATE TABLE IF NOT EXISTS orc_operator_interactions (
   directive text NOT NULL DEFAULT '',
   issue text NOT NULL DEFAULT '',
   status text NOT NULL DEFAULT 'recorded',
-  metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  metadata_json jsonb NOT NULL DEFAULT '{{}}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -579,6 +737,8 @@ CREATE INDEX IF NOT EXISTS orc_operator_interactions_orc_idx
   ON orc_operator_interactions (orc_handle, created_at DESC);
 CREATE INDEX IF NOT EXISTS orc_operator_interactions_type_idx
   ON orc_operator_interactions (interaction_type, created_at DESC);
+
+{orc_work_journal_schema_sql()}
 
 SELECT jsonb_build_object('ok', true, 'table', 'orc_operator_interactions', 'secretPrinted', false);
 """
@@ -617,7 +777,19 @@ WITH inserted AS (
 SELECT to_jsonb(inserted) || jsonb_build_object('ok', true, 'secretPrinted', false)
 FROM inserted;
 """
-    return redact_secrets(_run_json(tasknode_database_url(database_url), sql, runner=runner) or {})
+    interaction = redact_secrets(_run_json(tasknode_database_url(database_url), sql, runner=runner) or {})
+    journal = _journal_record_from_interaction(
+        interaction=interaction,
+        orc=orc,
+        interaction_type=interaction_type,
+        directive=directive,
+        issue=issue,
+        status=status,
+        metadata=metadata,
+    )
+    if journal:
+        interaction["workJournal"] = record_orc_work_journal(journal, database_url=database_url, runner=runner)
+    return redact_secrets(interaction)
 
 
 def redirect_orc(
@@ -630,20 +802,28 @@ def redirect_orc(
     sleeper: Sleeper = time.sleep,
     recorder: Callable[..., dict[str, Any]] | None = None,
     interaction_type: str = "redirect",
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     orc = find_orc(load_orc_registry(orcs_json=orcs_json, database_url=database_url, runner=runner), orc_name)
     injected = inject_directive(orc, directive, runner=runner, sleeper=sleeper)
     interaction: dict[str, Any] = {}
     if injected.get("ok"):
         record = recorder or record_operator_interaction
-        interaction = record(
-            orc=orc.get("name") or orc_name,
-            interaction_type=interaction_type,
-            directive=directive,
-            status="submitted",
-            metadata={"tmuxTarget": orc.get("tmuxTarget"), "chipCount": injected.get("chipCount")},
-            database_url=database_url,
-        )
+        record_kwargs = {
+            "orc": orc.get("name") or orc_name,
+            "interaction_type": interaction_type,
+            "directive": directive,
+            "status": "submitted",
+            "metadata": {
+                "tmuxTarget": orc.get("tmuxTarget"),
+                "chipCount": injected.get("chipCount"),
+                **_safe_dict(metadata),
+            },
+            "database_url": database_url,
+        }
+        if recorder is None:
+            record_kwargs["runner"] = runner
+        interaction = record(**record_kwargs)
     return redact_secrets({
         "ok": bool(injected.get("ok")),
         "orc": orc.get("name"),
@@ -661,6 +841,22 @@ def next_dispatch_item(*, database_url: str | None = None, limit: int = 25) -> d
         disposition="not_reviewed",
         database_url=database_url,
     )
+
+
+def _dispatch_work_metadata(item: dict[str, Any], *, task_action: str) -> dict[str, Any]:
+    work_item = {
+        "taskId": item.get("task_id") or item.get("taskId"),
+        "title": item.get("title"),
+        "rewardActualPft": item.get("reward_actual_pft") or item.get("rewardActualPft"),
+        "reviewDisposition": item.get("review_disposition") or item.get("reviewDisposition"),
+        "triage": item.get("triage") or {},
+    }
+    return {
+        "workItem": work_item,
+        "sourceTaskId": work_item["taskId"],
+        "reviewDisposition": work_item["reviewDisposition"],
+        "taskAction": task_action,
+    }
 
 
 def build_dispatch_directive(item: dict[str, Any]) -> str:
@@ -713,6 +909,7 @@ def dispatch_orc(
         sleeper=sleeper,
         recorder=recorder,
         interaction_type="dispatch",
+        metadata=_dispatch_work_metadata(item, task_action="dispatch"),
     )
     result["action"] = "dispatch"
     result["dispatched"] = bool(result.get("ok"))
@@ -752,12 +949,7 @@ def dispatch_orc_runtime(
         task_id=_safe_text(item.get("task_id") or item.get("taskId"), 180),
         source="nazgul.dispatch_runtime",
         metadata={
-            "workItem": {
-                "taskId": item.get("task_id") or item.get("taskId"),
-                "title": item.get("title"),
-                "rewardActualPft": item.get("reward_actual_pft") or item.get("rewardActualPft"),
-                "triage": item.get("triage") or {},
-            },
+            **_dispatch_work_metadata(item, task_action="dispatch_runtime"),
             "agentId": orc.get("agentId"),
             "wallet": orc.get("wallet"),
         },
@@ -772,7 +964,7 @@ def dispatch_orc_runtime(
         metadata={
             "directiveId": queued.get("directiveId"),
             "runtimeDir": runtime_dir,
-            "workItem": item.get("task_id") or item.get("taskId"),
+            **_dispatch_work_metadata(item, task_action="dispatch_runtime"),
         },
         database_url=database_url,
     )
@@ -804,13 +996,19 @@ def escalate_orc(
     clean_issue = _safe_text(issue, 100000)
     if not clean_issue:
         raise ValueError("issue is required")
+    source_task_id = _first_task_id_from_text(clean_issue)
     record = recorder or record_operator_interaction
     interaction = record(
         orc=clean_orc,
         interaction_type="escalation",
         issue=clean_issue,
         status="open",
-        metadata={"source": "nazgul_cli"},
+        metadata={
+            "source": "nazgul_cli",
+            "sourceTaskId": source_task_id,
+            "taskAction": "escalation",
+            "blocker": clean_issue,
+        },
         database_url=database_url,
     )
     return redact_secrets({
