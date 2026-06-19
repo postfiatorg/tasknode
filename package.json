@@ -31,6 +31,7 @@
     "mock-boundary-check": "node scripts/mock-boundary-check.mjs",
     "prompt-boundary-check": "node scripts/prompt-boundary-check.mjs",
     "system-status-smoke": "node scripts/system-status-smoke.mjs",
+    "system-status-network-spend-smoke": "node scripts/system-status-network-spend-smoke.mjs",
     "chat-markdown-smoke": "node scripts/chat-markdown-smoke.mjs",
     "chat-spirit-prompt-smoke": "node scripts/chat-spirit-prompt-smoke.mjs",
     "chat-memory-worker-request-smoke": "node scripts/chat-memory-worker-request-smoke.mjs",

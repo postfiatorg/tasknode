@@ -6,6 +6,7 @@ import {
   jobsEmbeddingModel,
   jobsEmbeddingProvider,
 } from "./embedding-provider.js";
+import { canonicalRewardedTaskProjectionSql } from "./repositories/task-projection-integrity.js";
 import {
   boolEnv,
   countsFromRows,
@@ -25,10 +26,77 @@ import {
 import { chatPricingStatus } from "./model-pricing-status.js";
 
 const recentFailureWindowMs = 24 * hour;
+const DEFAULT_NETWORK_TASK_SPEND_DAYS = 30;
+const MAX_NETWORK_TASK_SPEND_DAYS = 90;
 
 const recentFailureStatus = (status, count, label = "Recent failures") => (
   Number(count || 0) > 0 ? mergeStatus(status, { status: "warning", label }) : status
 );
+
+export function networkTaskSpendWindowDays(value = DEFAULT_NETWORK_TASK_SPEND_DAYS) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_NETWORK_TASK_SPEND_DAYS;
+  return Math.min(MAX_NETWORK_TASK_SPEND_DAYS, Math.max(1, Math.round(parsed)));
+}
+
+function normalizeNetworkTaskSpendRows(rows = []) {
+  return rows.map((row) => ({
+    date: String(row.date || "").slice(0, 10),
+    totalPft: Number(row.total_pft || row.totalPft || 0),
+    taskCount: Number(row.task_count || row.taskCount || 0),
+  })).filter((row) => row.date);
+}
+
+export async function readNetworkTaskSpendByDay({
+  tables = new Map(),
+  days = DEFAULT_NETWORK_TASK_SPEND_DAYS,
+  databaseReady = databaseEnabled(),
+  queryImpl = query,
+} = {}) {
+  const windowDays = networkTaskSpendWindowDays(days);
+  if (!databaseReady || tables.get("task_projections") !== true) {
+    return {
+      ok: true,
+      enabled: false,
+      windowDays,
+      rows: [],
+      totals: { totalPft: 0, taskCount: 0 },
+    };
+  }
+
+  const result = await queryImpl(
+    `WITH rewarded_network_tasks AS (
+       SELECT
+         (COALESCE(p.last_event_at, p.updated_at) AT TIME ZONE 'UTC')::date AS reward_day,
+         p.reward_actual_pft::numeric AS reward_actual_pft
+       FROM task_projections p
+       WHERE p.status = 'rewarded'
+         AND lower(COALESCE(NULLIF(p.task_kind, ''), p.metadata_json->'generatedTask'->>'task_kind', '')) = 'network'
+         AND ${canonicalRewardedTaskProjectionSql("p")}
+         AND (COALESCE(p.last_event_at, p.updated_at) AT TIME ZONE 'UTC')::date >=
+             (timezone('UTC', now())::date - ($1::integer - 1))
+     )
+     SELECT
+       reward_day::text AS date,
+       COALESCE(sum(reward_actual_pft), 0)::text AS total_pft,
+       count(*)::int AS task_count
+     FROM rewarded_network_tasks
+     GROUP BY reward_day
+     ORDER BY reward_day DESC`,
+    [windowDays]
+  );
+  const rows = normalizeNetworkTaskSpendRows(result.rows);
+  return {
+    ok: true,
+    enabled: true,
+    windowDays,
+    rows,
+    totals: {
+      totalPft: rows.reduce((sum, row) => sum + row.totalPft, 0),
+      taskCount: rows.reduce((sum, row) => sum + row.taskCount, 0),
+    },
+  };
+}
 
 async function boardManagerItem(tables, nowMs) {
   const cadenceFallback = intEnv(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS, 120, { min: 60, max: 86400 });
@@ -1212,14 +1280,15 @@ async function categoryItems(tables, nowMs) {
   ];
 }
 
-export async function readSystemStatus() {
+export async function readSystemStatus({ networkSpendDays = DEFAULT_NETWORK_TASK_SPEND_DAYS } = {}) {
   const generatedAt = new Date();
   const nowMs = generatedAt.getTime();
   const database = databaseStatus();
   if (!databaseEnabled()) {
-    const [categories, chatPricing] = await Promise.all([
+    const [categories, chatPricing, networkTaskSpendByDay] = await Promise.all([
       categoryItems(new Map(), nowMs),
       chatPricingStatus(),
+      readNetworkTaskSpendByDay({ tables: new Map(), days: networkSpendDays }),
     ]);
     return {
       ok: true,
@@ -1227,13 +1296,15 @@ export async function readSystemStatus() {
       database,
       summary: summarizeCategories(categories),
       chatPricing,
+      networkTaskSpendByDay,
       categories,
     };
   }
   const tables = await tableMap();
-  const [categories, chatPricing] = await Promise.all([
+  const [categories, chatPricing, networkTaskSpendByDay] = await Promise.all([
     categoryItems(tables, nowMs),
     chatPricingStatus(),
+    readNetworkTaskSpendByDay({ tables, days: networkSpendDays }),
   ]);
   return {
     ok: true,
@@ -1241,13 +1312,16 @@ export async function readSystemStatus() {
     database,
     summary: summarizeCategories(categories),
     chatPricing,
+    networkTaskSpendByDay,
     categories,
   };
 }
 
 export async function handleSystemStatusRoute({ json, res, url } = {}) {
   if (url.pathname !== "/api/system/status") return false;
-  const status = await readSystemStatus();
+  const status = await readSystemStatus({
+    networkSpendDays: url.searchParams.get("networkSpendDays") || DEFAULT_NETWORK_TASK_SPEND_DAYS,
+  });
   json(res, 200, status);
   return true;
 }

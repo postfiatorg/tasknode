@@ -448,6 +448,100 @@
   margin-top: 28px;
 }
 
+.system-network-spend-panel {
+  margin-top: 16px;
+  border: 1px solid #e8e6df;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.system-network-spend-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: #24231f;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.system-network-spend-toggle svg {
+  transition: transform 0.16s ease;
+}
+
+.system-network-spend-toggle svg.is-expanded {
+  transform: rotate(90deg);
+}
+
+.system-network-spend-toggle span {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.system-network-spend-toggle strong,
+.system-network-spend-toggle em {
+  color: #4f4d47;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.system-network-spend-toggle strong {
+  color: #1f1f1c;
+}
+
+.system-network-spend-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.system-network-spend-list p {
+  margin: 0;
+  color: #6b6b66;
+  font-size: 13px;
+}
+
+.system-network-spend-row {
+  display: grid;
+  grid-template-columns: 72px minmax(80px, 1fr) minmax(86px, auto) minmax(58px, auto);
+  gap: 9px;
+  align-items: center;
+  color: #5c5a54;
+  font-size: 12px;
+}
+
+.system-network-spend-row > div {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #efede7;
+}
+
+.system-network-spend-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2f7d3b;
+}
+
+.system-network-spend-row strong {
+  color: #1f1f1c;
+  font-weight: 600;
+  text-align: right;
+}
+
+.system-network-spend-row em {
+  color: #6b6b66;
+  font-style: normal;
+  text-align: right;
+}
+
 .system-pricing-panel {
   margin-top: 22px;
   padding: 16px;
@@ -773,5 +867,25 @@
   .system-pricing-card-title {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .system-network-spend-toggle {
+    align-items: flex-start;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .system-network-spend-toggle strong,
+  .system-network-spend-toggle em {
+    grid-column: 2;
+  }
+
+  .system-network-spend-row {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .system-network-spend-row strong,
+  .system-network-spend-row em {
+    grid-column: 2;
+    text-align: left;
   }
 }

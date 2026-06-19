@@ -29,6 +29,9 @@ assert.equal(status.database.enabled, false);
 assert.equal(status.summary.total, 20);
 assert.equal(status.chatPricing.live.enabled, false);
 assert.equal(status.chatPricing.live.status, "disabled");
+assert.equal(status.networkTaskSpendByDay.enabled, false);
+assert.equal(status.networkTaskSpendByDay.windowDays, 30);
+assert.deepEqual(status.networkTaskSpendByDay.totals, { totalPft: 0, taskCount: 0 });
 
 const pricingModes = new Map(status.chatPricing.modes.map((mode) => [mode.mode, mode]));
 assert.equal(pricingModes.get("Private Instant")?.model, "deepseek/deepseek-v4-flash");
