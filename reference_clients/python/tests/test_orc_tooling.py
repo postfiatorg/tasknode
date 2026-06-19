@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import tempfile
@@ -83,6 +84,7 @@ from orc_tooling.review_state import (
     ensure_review_state_schema,
     normalize_orc_work_journal_record,
     orc_work_journal_insert_sql,
+    orc_runtime_directives_schema_sql,
     review_state_summary,
     upsert_review_state,
 )
@@ -1144,10 +1146,13 @@ class OrcToolingTests(unittest.TestCase):
         self.assertIn("orc_work_journal_idempotency_idx", sql)
         self.assertIn("CREATE VIEW orc_review_rollups", sql)
         self.assertIn("last_reviewed_action", sql)
+        self.assertIn("CREATE TABLE IF NOT EXISTS orc_runtime_directives", sql)
         self.assertIn("'historyTable', 'orc_task_reviews'", sql)
         self.assertIn("'itemsTable', 'orc_task_review_items'", sql)
         self.assertIn("'workJournalTable', 'orc_work_journal'", sql)
         self.assertIn("'rollupsView', 'orc_review_rollups'", sql)
+        self.assertIn("'runtimeDirectivesTable', 'orc_runtime_directives'", sql)
+        self.assertIn("orc_runtime_directives_claimed_worker_unique", orc_runtime_directives_schema_sql())
 
     def test_upsert_review_state_appends_history_row(self):
         record = normalize_review_state_record(
@@ -1398,28 +1403,30 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(item["triage"]["capability"], NETWORK_TRIAGE_CAPABILITY_VERSION)
 
     def test_orc_runtime_mailbox_claims_and_completes_durable_directive(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            queued = enqueue_runtime_directive(
-                orc="grashnuk",
-                task_id="task_source",
-                directive="Review task_source.",
-                source="unit",
-                metadata={"safe": "ok", "privateKey": "redacted"},
-                runtime_dir=tmpdir,
-            )
-            first_status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
-            claimed = claim_next_runtime_directive(orc="grashnuk", worker_id="worker-a", runtime_dir=tmpdir)
-            second_claim = claim_next_runtime_directive(orc="grashnuk", worker_id="worker-b", runtime_dir=tmpdir)
-            completed = complete_runtime_directive(
-                directive_id=queued["directiveId"],
-                status="completed",
-                result={"summary": "done"},
-                worker_id="worker-a",
-                runtime_dir=tmpdir,
-            )
-            final_status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+        with patch.dict(os.environ, {}, clear=True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                queued = enqueue_runtime_directive(
+                    orc="grashnuk",
+                    task_id="task_source",
+                    directive="Review task_source.",
+                    source="unit",
+                    metadata={"safe": "ok", "privateKey": "redacted"},
+                    runtime_dir=tmpdir,
+                )
+                first_status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+                claimed = claim_next_runtime_directive(orc="grashnuk", worker_id="worker-a", runtime_dir=tmpdir)
+                second_claim = claim_next_runtime_directive(orc="grashnuk", worker_id="worker-b", runtime_dir=tmpdir)
+                completed = complete_runtime_directive(
+                    directive_id=queued["directiveId"],
+                    status="completed",
+                    result={"summary": "done"},
+                    worker_id="worker-a",
+                    runtime_dir=tmpdir,
+                )
+                final_status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
 
         self.assertEqual(queued["queued"], True)
+        self.assertEqual(queued["backend"], "jsonl")
         self.assertEqual(first_status["statusCounts"]["queued"], 1)
         self.assertEqual(claimed["claimed"], True)
         self.assertEqual(claimed["directive"]["workerId"], "worker-a")
@@ -1429,15 +1436,16 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(final_status["directives"][0]["metadata"]["privateKey"], "[REDACTED]")
 
     def test_orc_runtime_run_once_claims_without_tmux_or_codex_execution(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            enqueue_runtime_directive(
-                orc="grashnuk",
-                task_id="task_source",
-                directive="Review task_source.",
-                runtime_dir=tmpdir,
-            )
-            result = run_runtime_once(orc="grashnuk", worker_id="worker-a", runtime_dir=tmpdir)
-            status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+        with patch.dict(os.environ, {}, clear=True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                enqueue_runtime_directive(
+                    orc="grashnuk",
+                    task_id="task_source",
+                    directive="Review task_source.",
+                    runtime_dir=tmpdir,
+                )
+                result = run_runtime_once(orc="grashnuk", worker_id="worker-a", runtime_dir=tmpdir)
+                status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
 
         self.assertEqual(result["claimed"], True)
         self.assertEqual(result["completed"], True)
@@ -1452,20 +1460,21 @@ class OrcToolingTests(unittest.TestCase):
             recorded.append(kwargs)
             return {"ok": True, "id": "orcint_runtime", "interaction_type": kwargs["interaction_type"]}
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = dispatch_orc_runtime(
-                "grashnuk",
-                orcs_json=json.dumps([{"name": "grashnuk", "tmuxTarget": "grashnuk:0.0"}]),
-                runtime_dir=tmpdir,
-                recorder=fake_recorder,
-                item_reader=lambda **kwargs: {
-                    "task_id": "task_source",
-                    "title": "Audit reward leakage",
-                    "reward_actual_pft": "30000",
-                    "review_disposition": "not_reviewed",
-                },
-            )
-            status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+        with patch.dict(os.environ, {}, clear=True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = dispatch_orc_runtime(
+                    "grashnuk",
+                    orcs_json=json.dumps([{"name": "grashnuk", "tmuxTarget": "grashnuk:0.0"}]),
+                    runtime_dir=tmpdir,
+                    recorder=fake_recorder,
+                    item_reader=lambda **kwargs: {
+                        "task_id": "task_source",
+                        "title": "Audit reward leakage",
+                        "reward_actual_pft": "30000",
+                        "review_disposition": "not_reviewed",
+                    },
+                )
+                status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
 
         self.assertEqual(result["ok"], True)
         self.assertEqual(result["action"], "dispatch_runtime")
@@ -1477,6 +1486,130 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(recorded[0]["metadata"]["reviewDisposition"], "not_reviewed")
         self.assertEqual(recorded[0]["metadata"]["taskAction"], "dispatch_runtime")
         self.assertEqual(recorded[0]["metadata"]["workItem"]["taskId"], "task_source")
+
+    def test_orc_runtime_postgres_claim_uses_skip_locked(self):
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            if "FOR UPDATE SKIP LOCKED" in sql:
+                return {
+                    "ok": True,
+                    "claimed": False,
+                    "workerBusy": False,
+                    "orc": "grashnuk",
+                    "workerId": "worker-a",
+                    "backend": "postgres",
+                    "directive": {},
+                    "secretPrinted": False,
+                }
+            return {"ok": True, "secretPrinted": False}
+
+        with patch("orc_tooling.runtime._run_json", side_effect=fake_run_json):
+            result = claim_next_runtime_directive(
+                orc="grashnuk",
+                worker_id="worker-a",
+                database_url="postgres://unit",
+            )
+
+        claim_sql = "\n".join(calls)
+        self.assertEqual(result["backend"], "postgres")
+        self.assertIn("FOR UPDATE SKIP LOCKED", claim_sql)
+        self.assertIn("status = 'queued'", claim_sql)
+        self.assertIn("status = 'claimed'", claim_sql)
+        self.assertIn("UPDATE orc_runtime_directives", claim_sql)
+
+    def test_orc_runtime_postgres_complete_is_idempotent_for_terminal_row(self):
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            if "WITH selected AS" in sql:
+                return {
+                    "ok": True,
+                    "completed": False,
+                    "alreadyTerminal": True,
+                    "backend": "postgres",
+                    "directive": {
+                        "directiveId": "orcdirective_done",
+                        "status": "completed",
+                        "secretPrinted": False,
+                    },
+                    "secretPrinted": False,
+                }
+            return {"ok": True, "secretPrinted": False}
+
+        with patch("orc_tooling.runtime._run_json", side_effect=fake_run_json):
+            result = complete_runtime_directive(
+                directive_id="orcdirective_done",
+                status="completed",
+                result={"summary": "done"},
+                database_url="postgres://unit",
+            )
+
+        complete_sql = "\n".join(calls)
+        self.assertEqual(result["completed"], False)
+        self.assertEqual(result["alreadyTerminal"], True)
+        self.assertIn("s.status NOT IN ('completed', 'failed', 'cancelled')", complete_sql)
+
+    @unittest.skipUnless(
+        os.environ.get("TASKNODE_ORC_RUNTIME_POSTGRES_TEST_URL"),
+        "set TASKNODE_ORC_RUNTIME_POSTGRES_TEST_URL to run Postgres-backed runtime queue test",
+    )
+    def test_orc_runtime_postgres_claims_are_atomic(self):
+        database_url = os.environ["TASKNODE_ORC_RUNTIME_POSTGRES_TEST_URL"]
+        orc = "grashnuk_atomic_test"
+        first = enqueue_runtime_directive(
+            orc=orc,
+            task_id="task_atomic_a",
+            directive="Review task_atomic_a.",
+            source="unit",
+            database_url=database_url,
+        )
+        second = enqueue_runtime_directive(
+            orc=orc,
+            task_id="task_atomic_b",
+            directive="Review task_atomic_b.",
+            source="unit",
+            database_url=database_url,
+        )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(
+                lambda worker: claim_next_runtime_directive(
+                    orc=orc,
+                    worker_id=worker,
+                    database_url=database_url,
+                ),
+                ["worker-a", "worker-b"],
+            ))
+
+        claimed_ids = sorted(result["directive"]["directiveId"] for result in results if result.get("claimed"))
+        self.assertEqual(len(claimed_ids), 2)
+        self.assertEqual(claimed_ids, sorted([first["directiveId"], second["directiveId"]]))
+        self.assertEqual(len(set(claimed_ids)), 2)
+
+        completed = complete_runtime_directive(
+            directive_id=claimed_ids[0],
+            status="completed",
+            result={"summary": "done"},
+            worker_id="worker-a",
+            database_url=database_url,
+        )
+        completed_again = complete_runtime_directive(
+            directive_id=claimed_ids[0],
+            status="completed",
+            result={"summary": "again"},
+            worker_id="worker-a",
+            database_url=database_url,
+        )
+        status = runtime_status(orc=orc, database_url=database_url)
+
+        self.assertEqual(completed["completed"], True)
+        self.assertEqual(completed_again["completed"], False)
+        self.assertEqual(completed_again["alreadyTerminal"], True)
+        self.assertEqual(status["statusCounts"]["completed"], 1)
+        self.assertEqual(status["statusCounts"]["claimed"], 1)
 
     def test_duplicate_reward_followup_message_is_informational_and_grounded(self):
         message = duplicate_reward_followup_message()

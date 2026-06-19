@@ -12,6 +12,7 @@ from .review_integrity_policy import (
     EXECUTABLE_REWARD_CLAWBACK_SIGNAL,
     apply_reward_clawback_integrity_policy,
 )
+from .runtime import ORC_RUNTIME_DIRECTIVES_SCHEMA, orc_runtime_directives_schema_sql
 
 
 REVIEW_DISPOSITIONS = {
@@ -867,6 +868,8 @@ WHERE lower(COALESCE(item.task_kind, '')) = 'network'
 
 {orc_review_rollups_schema_sql()}
 
+{orc_runtime_directives_schema_sql()}
+
 SELECT jsonb_build_object(
   'ok', true,
   'table', 'orc_task_review_states',
@@ -874,6 +877,8 @@ SELECT jsonb_build_object(
   'itemsTable', 'orc_task_review_items',
   'workJournalTable', 'orc_work_journal',
   'rollupsView', 'orc_review_rollups',
+  'runtimeDirectivesTable', 'orc_runtime_directives',
+  'runtimeDirectivesSchema', {sql_literal(ORC_RUNTIME_DIRECTIVES_SCHEMA)},
   'view', 'orc_task_review_queue',
   'dispositions', {sql_literal(json.dumps(REVIEW_DISPOSITIONS, sort_keys=True))}::jsonb,
   'secretPrinted', false

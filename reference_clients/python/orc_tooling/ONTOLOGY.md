@@ -33,6 +33,10 @@ rewarded Network Task, and why did it get paid?"
   account/wallet and task category. It carries disposition counts, integrity
   signal counts, latest reviewed task id, and timestamps for Board Manager
   routing context without raw review text.
+- `OrcRuntimeDirective`: durable queue row for Nazgûl-to-Orc runtime
+  handoffs, persisted in `orc_runtime_directives` when Postgres is configured
+  and mirrored by JSONL only as a local fallback. One worker claims queued rows
+  atomically with `FOR UPDATE SKIP LOCKED`.
 
 ## Identity Resolution
 
@@ -155,6 +159,15 @@ context: counts by disposition, repeated integrity signals, high-value
 categories, and latest reviewed task pointers. It deliberately excludes raw
 review summaries and recommendations, and it does not enforce bans, reward
 changes, or lifecycle transitions.
+
+`orc_runtime_directives` is the durable queue for future supervised Orc runtime
+work. The status enum is `queued`, `claimed`, `completed`, `failed`, or
+`cancelled`. Claiming is a transaction that selects one queued directive for an
+Orc with `FOR UPDATE SKIP LOCKED`, updates it to `claimed`, and records
+`worker_id`, `claimed_at`, and `attempt_count`. Completion is idempotent:
+terminal rows are reported as already terminal and are not completed again.
+Without a configured database URL, `orc-runtime` uses the legacy JSONL mailbox
+for local fallback only.
 
 Follow-up linkage lives in `orc_task_review_states.metadata_json`, not new
 canonical columns. `request-followup` writes `followup_request_id`, request
