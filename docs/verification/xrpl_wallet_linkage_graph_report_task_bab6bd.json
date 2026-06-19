@@ -1,0 +1,549 @@
+{
+  "schema": "tasknode.xrpl_wallet_linkage_graph.v1",
+  "generatedAt": "2026-06-19T18:16:42.306Z",
+  "lineage": [
+    {
+      "taskId": "task_2ec03c162f35f5060453d1f5476fadf2",
+      "description": "XRPL Sybil Fund Flow Graph Script",
+      "rewardCid": "QmefkU6HW2okwUeuVVNuuDkwcNzGqfu7dyX3358RCX7QRr"
+    },
+    {
+      "taskId": "task_cc79625ec50467785ae070b1e4336fff",
+      "description": "Automated Sybil Blocklist Patch Generator",
+      "rewardCid": "QmbzyjFcUu4EHbW95GqBVKAeVJ3kUa8yGKY4nBmJxiRzUJ"
+    },
+    {
+      "taskId": "task_bab6bd892538d7d4fa0f7ac586b89929",
+      "description": "XRPL Wallet Linkage Graph Analyzer"
+    }
+  ],
+  "inputs": {
+    "graph": null,
+    "transactions": "/home/pfrpc/repos/grashnuk-runtime/docs/verification/xrpl_wallet_linkage_sample_transactions_task_bab6bd.json"
+  },
+  "policy": {
+    "enforcementAllowed": false,
+    "highRiskThreshold": 60,
+    "mode": "recommend_only_read_only",
+    "note": "Risk flags are graph-review leads only. They are not bans, blocklist entries, clawback instructions, or proof of sybil behavior."
+  },
+  "ingest": {
+    "duplicatesSkipped": 0,
+    "rawTransactions": 17,
+    "skipped": 0,
+    "skippedReasons": {},
+    "transactionsIncluded": 17
+  },
+  "graph": {
+    "clusterMetrics": [
+      {
+        "amountPft": 128.750007,
+        "componentId": "component_1",
+        "density": 0.2222,
+        "directedEdgeCount": 16,
+        "knownWalletCount": 5,
+        "knownWallets": [
+          "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+          "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+          "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+        ],
+        "maxDegreeCentrality": 0.625,
+        "possibleDirectedEdges": 72,
+        "secondaryWalletCount": 4,
+        "secondaryWallets": [
+          "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "walletCount": 9
+      }
+    ],
+    "components": [
+      {
+        "componentId": "component_1",
+        "members": [
+          "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+          "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+          "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+          "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+          "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "amountPft": 25,
+        "firstSeen": "2026-05-18T15:39:00.000Z",
+        "lastSeen": "2026-05-18T15:39:00.000Z",
+        "source": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "target": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "txCount": 1,
+        "txHashes": [
+          "2C72150F89A1D8AF05032E41FFEAE1FE077E7A3DE3A109C08B0E3068777BDFE6"
+        ]
+      },
+      {
+        "amountPft": 25,
+        "firstSeen": "2026-05-18T15:38:50.000Z",
+        "lastSeen": "2026-05-18T15:38:50.000Z",
+        "source": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "target": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "txCount": 1,
+        "txHashes": [
+          "098A9EEAB1E4074A320747C898E4198E5C56777B76DCA4FCD920A125E6592610"
+        ]
+      },
+      {
+        "amountPft": 25,
+        "firstSeen": "2026-05-18T15:39:10.000Z",
+        "lastSeen": "2026-05-18T15:39:10.000Z",
+        "source": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "target": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "txCount": 1,
+        "txHashes": [
+          "902ACD29BE9F69DBAEFA621D8FBCA6A9F70ECA7D1C4D9B38C3A233446709AB8B"
+        ]
+      },
+      {
+        "amountPft": 25,
+        "firstSeen": "2026-05-18T15:38:32.000Z",
+        "lastSeen": "2026-05-18T15:38:32.000Z",
+        "source": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "target": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "txCount": 1,
+        "txHashes": [
+          "9A3D01C71D5F0E2DA9972E3BA514593A793CA95F0E362F6489FBD6BD2D07F0AE"
+        ]
+      },
+      {
+        "amountPft": 25,
+        "firstSeen": "2026-05-18T15:38:22.000Z",
+        "lastSeen": "2026-05-18T15:38:22.000Z",
+        "source": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "target": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "txCount": 1,
+        "txHashes": [
+          "1783F5DD1AC3DBDF25683B0394417F42026EBB83244D2D013E383B730CC310B8"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-05-18T15:43:20.000Z",
+        "lastSeen": "2026-05-18T15:43:20.000Z",
+        "source": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+        "target": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "txCount": 1,
+        "txHashes": [
+          "A8E7D7D2D49014B3828785669934C573F7C7EA21A292D0B82D083C806C18C19A"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-05-18T15:43:40.000Z",
+        "lastSeen": "2026-05-18T15:43:40.000Z",
+        "source": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+        "target": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "txCount": 1,
+        "txHashes": [
+          "4529F804C26BB4452B10678F7C3B3AD39664C51BEF7E56D9E5579B9DF23C6F62"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-05-18T15:42:00.000Z",
+        "lastSeen": "2026-05-18T15:42:00.000Z",
+        "source": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+        "target": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "txCount": 1,
+        "txHashes": [
+          "91FC8F6FB7154BD9E19B2E2A15ED23A70AA1E1172343B8E9C15D0B6FB0FD7411"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-05-18T15:42:18.000Z",
+        "lastSeen": "2026-05-18T15:42:18.000Z",
+        "source": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+        "target": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "txCount": 1,
+        "txHashes": [
+          "55F9FA84144DE904DDDF8B5D815F9E3474EB964E3ED6A0E988F22F43669EA2F5"
+        ]
+      },
+      {
+        "amountPft": 0.75,
+        "firstSeen": "2026-05-18T15:42:49.000Z",
+        "lastSeen": "2026-05-18T15:42:49.000Z",
+        "source": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+        "target": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "txCount": 1,
+        "txHashes": [
+          "4B7D02FA85AA22D2C449C8FD3F7F5B068B04CDE5725B90B6D7BF21F0927B308A"
+        ]
+      },
+      {
+        "amountPft": 0.000002,
+        "firstSeen": "2026-05-18T15:40:50.000Z",
+        "lastSeen": "2026-05-18T15:41:02.000Z",
+        "source": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "target": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "txCount": 2,
+        "txHashes": [
+          "FBDB6FA65DEC6B1480B529843CE2AEB686B6921F6AAC63F9C23D07DEE987A5BC",
+          "5804DA92A41FDFA53590E62900942607D2B625776A51075865B7879B864EFF33"
+        ]
+      },
+      {
+        "amountPft": 0.000001,
+        "firstSeen": "2026-05-18T15:41:06.000Z",
+        "lastSeen": "2026-05-18T15:41:06.000Z",
+        "source": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "target": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "txCount": 1,
+        "txHashes": [
+          "5C93A70C9F3B0E251F3E78F50432578095E53768928677AE684D1F9B5C7B33E9"
+        ]
+      },
+      {
+        "amountPft": 0.000001,
+        "firstSeen": "2026-05-18T15:41:04.000Z",
+        "lastSeen": "2026-05-18T15:41:04.000Z",
+        "source": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "target": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "txCount": 1,
+        "txHashes": [
+          "0A7B932C2D5C7E46905D7E8C2E5A63204D15F898611C88DF83C3B1E7C46C3021"
+        ]
+      },
+      {
+        "amountPft": 0.000001,
+        "firstSeen": "2026-05-18T15:41:00.000Z",
+        "lastSeen": "2026-05-18T15:41:00.000Z",
+        "source": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "target": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "txCount": 1,
+        "txHashes": [
+          "8A98DCC9EA89757A40D32BBC76FA9153485D70D84C1EDB8E51341DB74E08F8E8"
+        ]
+      },
+      {
+        "amountPft": 0.000001,
+        "firstSeen": "2026-05-18T15:41:02.000Z",
+        "lastSeen": "2026-05-18T15:41:02.000Z",
+        "source": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "target": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "txCount": 1,
+        "txHashes": [
+          "AB460DD825CF70CCD161E3A6FA52FFF68076C4CD282D7B203B82ACB47DA1F514"
+        ]
+      },
+      {
+        "amountPft": 0.000001,
+        "firstSeen": "2026-05-18T15:40:50.000Z",
+        "lastSeen": "2026-05-18T15:40:50.000Z",
+        "source": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "target": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "txCount": 1,
+        "txHashes": [
+          "858766C85E71B0BFA892D51700696F9754A032A996E0F356F541E3599A230D64"
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "bridgeScore": 0,
+        "clusterId": null,
+        "degree": 5,
+        "degreeCentrality": 0.625,
+        "firstSeen": "2026-05-18T15:38:22.000Z",
+        "flaggedKnown": false,
+        "inPft": 0,
+        "inTx": 0,
+        "lastSeen": "2026-05-18T15:39:10.000Z",
+        "outPft": 125,
+        "outTx": 5,
+        "peers": [
+          "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+          "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+          "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+        ],
+        "wallet": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+        "weightedDegreePft": 125
+      },
+      {
+        "bridgeScore": 0,
+        "clusterId": null,
+        "degree": 3,
+        "degreeCentrality": 0.375,
+        "firstSeen": "2026-05-18T15:42:00.000Z",
+        "flaggedKnown": false,
+        "inPft": 0,
+        "inTx": 0,
+        "lastSeen": "2026-05-18T15:42:49.000Z",
+        "outPft": 2.25,
+        "outTx": 3,
+        "peers": [
+          "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+        ],
+        "wallet": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+        "weightedDegreePft": 2.25
+      },
+      {
+        "bridgeScore": 0,
+        "clusterId": "sybil_003",
+        "degree": 3,
+        "degreeCentrality": 0.375,
+        "firstSeen": "2026-05-18T15:38:50.000Z",
+        "flaggedKnown": true,
+        "inPft": 25.750001,
+        "inTx": 3,
+        "lastSeen": "2026-05-18T15:42:18.000Z",
+        "outPft": 0.000001,
+        "outTx": 1,
+        "peers": [
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "wallet": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "weightedDegreePft": 25.750002
+      },
+      {
+        "bridgeScore": 0,
+        "clusterId": null,
+        "degree": 3,
+        "degreeCentrality": 0.375,
+        "firstSeen": "2026-05-18T15:40:50.000Z",
+        "flaggedKnown": false,
+        "inPft": 0.000004,
+        "inTx": 4,
+        "lastSeen": "2026-05-18T15:41:06.000Z",
+        "outPft": 0.000003,
+        "outTx": 3,
+        "peers": [
+          "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+          "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+          "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+        ],
+        "wallet": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+        "weightedDegreePft": 0.000007
+      },
+      {
+        "bridgeScore": 0,
+        "clusterId": "sybil_003",
+        "degree": 3,
+        "degreeCentrality": 0.375,
+        "firstSeen": "2026-05-18T15:38:32.000Z",
+        "flaggedKnown": true,
+        "inPft": 25.750001,
+        "inTx": 3,
+        "lastSeen": "2026-05-18T15:43:20.000Z",
+        "outPft": 0.000002,
+        "outTx": 2,
+        "peers": [
+          "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "wallet": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "weightedDegreePft": 25.750003
+      },
+      {
+        "bridgeScore": 0,
+        "clusterId": "sybil_003",
+        "degree": 3,
+        "degreeCentrality": 0.375,
+        "firstSeen": "2026-05-18T15:38:22.000Z",
+        "flaggedKnown": true,
+        "inPft": 25.750001,
+        "inTx": 3,
+        "lastSeen": "2026-05-18T15:43:40.000Z",
+        "outPft": 0.000001,
+        "outTx": 1,
+        "peers": [
+          "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+          "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "wallet": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+        "weightedDegreePft": 25.750002
+      },
+      {
+        "bridgeScore": 0,
+        "clusterId": null,
+        "degree": 2,
+        "degreeCentrality": 0.25,
+        "firstSeen": "2026-05-18T15:43:20.000Z",
+        "flaggedKnown": false,
+        "inPft": 0,
+        "inTx": 0,
+        "lastSeen": "2026-05-18T15:43:40.000Z",
+        "outPft": 1.5,
+        "outTx": 2,
+        "peers": [
+          "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+          "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+        ],
+        "wallet": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+        "weightedDegreePft": 1.5
+      },
+      {
+        "bridgeScore": 0,
+        "clusterId": "sybil_003",
+        "degree": 2,
+        "degreeCentrality": 0.25,
+        "firstSeen": "2026-05-18T15:39:00.000Z",
+        "flaggedKnown": true,
+        "inPft": 25.75,
+        "inTx": 2,
+        "lastSeen": "2026-05-18T15:42:00.000Z",
+        "outPft": 0,
+        "outTx": 0,
+        "peers": [
+          "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "wallet": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "weightedDegreePft": 25.75
+      },
+      {
+        "bridgeScore": 0,
+        "clusterId": "sybil_003",
+        "degree": 2,
+        "degreeCentrality": 0.25,
+        "firstSeen": "2026-05-18T15:39:10.000Z",
+        "flaggedKnown": true,
+        "inPft": 25.75,
+        "inTx": 2,
+        "lastSeen": "2026-05-18T15:42:49.000Z",
+        "outPft": 0,
+        "outTx": 0,
+        "peers": [
+          "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+          "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+        ],
+        "wallet": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "weightedDegreePft": 25.75
+      }
+    ],
+    "stats": {
+      "components": 1,
+      "directedEdges": 16,
+      "highRiskSecondaryWallets": 2,
+      "knownWallets": 5,
+      "nodes": 9,
+      "secondaryWallets": 4
+    }
+  },
+  "secondaryRisk": [
+    {
+      "adjacentKnownCount": 3,
+      "degreeCentrality": 0.375,
+      "firstSeen": "2026-05-18T15:40:50.000Z",
+      "knownInPft": 0.000004,
+      "knownOutPft": 0.000003,
+      "knownPeers": [
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-05-18T15:41:06.000Z",
+      "reasons": [
+        "funds multiple known-cluster wallets",
+        "receives from multiple known-cluster wallets",
+        "has bidirectional flow with known-cluster wallets",
+        "adjacent to 3 known-cluster wallets"
+      ],
+      "recommendation": "review_raw_evidence_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "riskScore": 75.6,
+      "wallet": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "weightedDegreePft": 0.000007
+    },
+    {
+      "adjacentKnownCount": 5,
+      "degreeCentrality": 0.625,
+      "firstSeen": "2026-05-18T15:38:22.000Z",
+      "knownInPft": 0,
+      "knownOutPft": 125,
+      "knownPeers": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-05-18T15:39:10.000Z",
+      "reasons": [
+        "funds multiple known-cluster wallets",
+        "adjacent to 5 known-cluster wallets"
+      ],
+      "recommendation": "review_raw_evidence_before_any_enforcement",
+      "riskBand": "high_review_priority",
+      "riskScore": 69.4,
+      "wallet": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "weightedDegreePft": 125
+    },
+    {
+      "adjacentKnownCount": 3,
+      "degreeCentrality": 0.375,
+      "firstSeen": "2026-05-18T15:42:00.000Z",
+      "knownInPft": 0,
+      "knownOutPft": 2.25,
+      "knownPeers": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+      ],
+      "lastSeen": "2026-05-18T15:42:49.000Z",
+      "reasons": [
+        "funds multiple known-cluster wallets",
+        "adjacent to 3 known-cluster wallets"
+      ],
+      "recommendation": "monitor_or_sample_if_cluster_expands",
+      "riskBand": "watch",
+      "riskScore": 40.9,
+      "wallet": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "weightedDegreePft": 2.25
+    },
+    {
+      "adjacentKnownCount": 2,
+      "degreeCentrality": 0.25,
+      "firstSeen": "2026-05-18T15:43:20.000Z",
+      "knownInPft": 0,
+      "knownOutPft": 1.5,
+      "knownPeers": [
+        "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+        "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+      ],
+      "lastSeen": "2026-05-18T15:43:40.000Z",
+      "reasons": [
+        "funds multiple known-cluster wallets"
+      ],
+      "recommendation": "monitor_or_sample_if_cluster_expands",
+      "riskBand": "watch",
+      "riskScore": 33.9,
+      "wallet": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "weightedDegreePft": 1.5
+    }
+  ],
+  "summary": {
+    "highRiskSecondaryWallets": [
+      "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7"
+    ],
+    "interpretation": "Graph structure found secondary wallets with multi-wallet linkage to known clusters. Review raw evidence before any account action.",
+    "status": "review_required"
+  }
+}

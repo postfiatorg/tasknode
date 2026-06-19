@@ -1,0 +1,131 @@
+{
+  "schema": "tasknode.xrpl_contagion_stream_fixture.v1",
+  "taskId": "task_d77a9dc367ff181ff9463f58d01362c9",
+  "note": "Offline stream fixture for the XRPL Contagion Risk Monitor. Addresses are XRPL-format generated or prior fixture addresses. This is read-only review input, not an enforcement list.",
+  "flagged_wallets": [
+    "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+    "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+    "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+    "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+    "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+  ],
+  "clusters": {
+    "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB": "sybil_003",
+    "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE": "sybil_003",
+    "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E": "sybil_003",
+    "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj": "sybil_003",
+    "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4": "sybil_003"
+  },
+  "events": [
+    {
+      "event_id": "stream_evt_001",
+      "ledger_index": 3790001,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000000001",
+      "src": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "dst": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "amount_drops": "250000",
+      "timestamp": "2026-06-19T18:40:00.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "event_id": "stream_evt_002",
+      "ledger_index": 3790002,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000002",
+      "src": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "dst": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "amount_drops": "250000",
+      "timestamp": "2026-06-19T18:40:05.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "event_id": "stream_evt_003",
+      "ledger_index": 3790003,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000003",
+      "src": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "dst": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "amount_drops": "250000",
+      "timestamp": "2026-06-19T18:40:08.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "event_id": "stream_evt_004",
+      "ledger_index": 3790004,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000004",
+      "src": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "dst": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "amount_drops": "1750000",
+      "timestamp": "2026-06-19T18:40:12.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "event_id": "stream_evt_005",
+      "ledger_index": 3790005,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000005",
+      "src": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "dst": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "amount_drops": "750000",
+      "timestamp": "2026-06-19T18:40:20.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "event_id": "stream_evt_006",
+      "ledger_index": 3790006,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000006",
+      "src": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "dst": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "amount_drops": "1000000",
+      "timestamp": "2026-06-19T18:40:30.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "event_id": "stream_evt_007",
+      "ledger_index": 3790007,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000007",
+      "src": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "dst": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "amount_drops": "500000",
+      "timestamp": "2026-06-19T18:40:35.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "event_id": "stream_evt_008",
+      "ledger_index": 3790008,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000008",
+      "src": "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+      "dst": "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+      "amount_drops": "100000",
+      "timestamp": "2026-06-19T18:40:50.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "event_id": "stream_evt_009",
+      "ledger_index": 3790009,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000009",
+      "src": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "dst": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "amount_drops": "300000",
+      "timestamp": "2026-06-19T18:41:00.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "event_id": "stream_evt_010",
+      "ledger_index": 3790010,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000010",
+      "src": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "dst": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "amount_drops": "300000",
+      "timestamp": "2026-06-19T18:41:04.000Z",
+      "tx_type": "Payment"
+    },
+    {
+      "event_id": "stream_evt_011",
+      "ledger_index": 3790011,
+      "tx_hash": "D77A9DC000000000000000000000000000000000000000000000000000011",
+      "src": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "dst": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "amount_drops": "200000",
+      "timestamp": "2026-06-19T18:41:08.000Z",
+      "tx_type": "Payment"
+    }
+  ]
+}
