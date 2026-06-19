@@ -41,7 +41,7 @@ function usage() {
     "  --trigger <name>       Run trigger label. Default: manual_model_exec",
     "  --scope <scope>        Manager scope. Default: global_hive",
     "  --provider <provider>  Decision provider: openrouter or openai. Default: openrouter",
-    "  --model <model>        Provider model. Default: qwen/qwen3.7-max for OpenRouter, gpt-5.5-pro for OpenAI",
+    "  --model <model>        Provider model. Default: z-ai/glm-5.2 for OpenRouter, gpt-5.5-pro for OpenAI",
     "  --reasoning <effort>   Provider reasoning effort. Default: high",
     "  --packet-only          Build and print the source packet without calling the model provider.",
     "  --prompt-only          Build and print the prompt packet without calling the model provider.",
@@ -163,6 +163,7 @@ async function main() {
         dryRun: !execute,
         model,
         reasoningEffort,
+        provider,
         sessionMode: decisionSource.sourceMode === "deepseek_secretary_packet"
           ? `secretary_${provider}`
           : provider === "openai"
@@ -178,6 +179,7 @@ async function main() {
         runId: run.id,
         decision: result.decision,
         outputText: result.outputText,
+        usage: result.usage,
       });
     }
     const actionResult = execute

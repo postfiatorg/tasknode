@@ -293,7 +293,7 @@ const PROMPT_SOURCES = [
     family: "Hive",
     title: "Board Manager Secretary Packet",
     path: "prompts/hive/board_manager_secretary_v1.md",
-    summary: "Direct DeepSeek V4 Pro prompt that compresses raw Hive board state into compact packets for Qwen Board Manager decisions.",
+    summary: "Direct DeepSeek V4 Pro prompt that compresses raw Hive board state into compact packets for GLM 5.2 Board Manager decisions.",
     status: "Active for Board Manager secretary packet generation",
     usedBy: [
       "server/board-manager-secretary-packets.js::fetchBoardManagerSecretaryPacket",

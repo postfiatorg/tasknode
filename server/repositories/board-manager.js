@@ -1113,7 +1113,7 @@ async function recentBoardManagerRuns({ limit = 12, includeInternal = false, inc
       SELECT id, scope, manager_id, trigger, status, source_packet_digest,
              selected_action, action_payload_json, decision_json, dry_run,
              model, reasoning_effort, error, codex_session_id, codex_session_path,
-             session_mode, micro_summary_json, micro_summary_text,
+             session_mode, micro_summary_json, micro_summary_text, usage_json,
              ${includeDetails ? "provider, output_text, source_packet_json," : ""}
              started_at, completed_at
       FROM board_manager_runs
@@ -1164,6 +1164,7 @@ async function recentBoardManagerRuns({ limit = 12, includeInternal = false, inc
     provider: safeText(row.provider, 120),
     model: row.model,
     reasoningEffort: row.reasoning_effort,
+    usage: safeObject(row.usage_json),
     codexSessionId: row.codex_session_id,
     codexSessionPath: row.codex_session_path,
     sessionMode: row.session_mode,
@@ -1728,6 +1729,7 @@ export async function startBoardManagerRun({
   dryRun = true,
   model = "",
   reasoningEffort = "",
+  provider = "",
   codexSessionId = "",
   codexSessionPath = "",
   sessionMode = "untracked",
@@ -1738,9 +1740,9 @@ export async function startBoardManagerRun({
       INSERT INTO board_manager_runs (
         id, scope, manager_id, trigger, status, source_packet_digest,
         source_packet_json, dry_run, model, reasoning_effort,
-        codex_session_id, codex_session_path, session_mode
+        provider, codex_session_id, codex_session_path, session_mode
       )
-      VALUES ($1, $2, $3, $4, 'running', $5, $6::jsonb, $7, $8, $9, $10, $11, $12)
+      VALUES ($1, $2, $3, $4, 'running', $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `,
     [
@@ -1753,6 +1755,7 @@ export async function startBoardManagerRun({
       Boolean(dryRun),
       safeText(model, 120),
       safeText(reasoningEffort, 40),
+      safeText(provider, 80),
       safeText(codexSessionId, 120),
       safeText(codexSessionPath, 1000),
       safeText(sessionMode, 80),
@@ -1765,6 +1768,7 @@ export async function completeBoardManagerRun({
   runId = "",
   decision = {},
   outputText = "",
+  usage = {},
   status = "completed",
   error = "",
 } = {}) {
@@ -1778,7 +1782,8 @@ export async function completeBoardManagerRun({
           action_payload_json = $4::jsonb,
           decision_json = $5::jsonb,
           output_text = $6,
-          error = $7,
+          usage_json = $7::jsonb,
+          error = $8,
           completed_at = now(),
           updated_at = now()
       WHERE id = $1
@@ -1791,6 +1796,7 @@ export async function completeBoardManagerRun({
       jsonValue(normalizedDecision.payload || {}),
       jsonValue(normalizedDecision),
       safeText(outputText, 120_000),
+      jsonValue(usage),
       safeText(error, 2000),
     ]
   );

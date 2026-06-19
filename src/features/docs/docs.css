@@ -530,6 +530,10 @@
   background: #2f7d3b;
 }
 
+.system-board-manager-cost-row i {
+  background: #315d78;
+}
+
 .system-network-spend-row strong {
   color: #1f1f1c;
   font-weight: 600;

@@ -33,7 +33,7 @@ function usage() {
     "  --scope <scope>             Manager scope. Default: global_hive",
     "  --trigger-prefix <name>     Trigger prefix for each tick. Default: board_manager_loop",
     "  --provider <provider>       Decision provider: openrouter or openai. Default: openrouter",
-    "  --model <model>             Provider model. Default: qwen/qwen3.7-max for OpenRouter, gpt-5.5-pro for OpenAI",
+    "  --model <model>             Provider model. Default: z-ai/glm-5.2 for OpenRouter, gpt-5.5-pro for OpenAI",
     "  --reasoning <effort>        Provider reasoning effort. Default: high",
     "  --idle-delay-ms <ms>        Delay after do_nothing/no board change. Default: 120000",
     "  --action-delay-ms <ms>      Delay after a mutating action. Default: 5000",
@@ -49,7 +49,7 @@ function normalizeProvider(value = "openrouter") {
 }
 
 function defaultBoardManagerModel(provider = "openrouter") {
-  return provider === "openai" ? "gpt-5.5-pro" : "qwen/qwen3.7-max";
+  return provider === "openai" ? "gpt-5.5-pro" : "z-ai/glm-5.2";
 }
 
 function sleep(ms, signal) {

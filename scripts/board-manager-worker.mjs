@@ -48,15 +48,16 @@ function usage() {
     "  --poll-ms <ms>              Delay between polls. Default: 15000",
     "  --max-turns <n>             Stop after n worker turns. Default: unlimited",
     "  --provider <provider>       Decision provider: openrouter or openai. Default: openrouter",
-    "  --model <model>             Provider model. Default: qwen/qwen3.7-max for OpenRouter, gpt-5.5-pro for OpenAI",
+    "  --model <model>             Provider model. Default: z-ai/glm-5.2 for OpenRouter, gpt-5.5-pro for OpenAI",
     "  --reasoning <effort>        Provider reasoning effort. Default: high",
-    "  --cadence-seconds <n>       Periodic scope cadence. Default: 120",
+    "  --cadence-seconds <n>       Periodic scope cadence. Default: 300",
     "  --job-limit <n>             Due scope ticks to enqueue per pass. Default: 5",
     "  --max-actions-per-hour <n>  Scope action budget. Default: 60",
     "  --stale-job-seconds <n>     Recover running jobs older than this. Default: 900",
     "  --action-delay-ms <ms>      Follow-up delay after mutating action. Default: 5000",
     "  --error-delay-ms <ms>       Retry delay after failed job. Default: 300000",
     "  --force                     Run even when TASKNODE_BOARD_MANAGER_ENABLED is not true.",
+    "  --print-config              Print resolved config and exit before DB checks.",
   ].join("\n");
 }
 
@@ -65,7 +66,7 @@ function normalizeProvider(value = "openrouter") {
 }
 
 function defaultBoardManagerModel(provider = "openrouter") {
-  return provider === "openai" ? "gpt-5.5-pro" : "qwen/qwen3.7-max";
+  return provider === "openai" ? "gpt-5.5-pro" : "z-ai/glm-5.2";
 }
 
 function sleep(ms, signal) {
@@ -249,7 +250,7 @@ const config = {
   pollMs: numberArg("--poll-ms", Number(process.env.TASKNODE_BOARD_MANAGER_WORKER_POLL_MS || 15000), { min: 1000 }),
   cadenceSeconds: numberArg(
     "--cadence-seconds",
-    Number(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS || 120),
+    Number(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS || 300),
     { min: 60, max: 86400 }
   ),
   actionDelayMs: numberArg("--action-delay-ms", Number(process.env.TASKNODE_BOARD_MANAGER_ACTION_DELAY_MS || 5000), { min: 0 }),
@@ -273,6 +274,22 @@ config.model = argValue("--model", process.env.TASKNODE_BOARD_MANAGER_MODEL || d
 
 if (hasArg("--help") || hasArg("-h")) {
   console.log(usage());
+  process.exit(0);
+}
+
+if (hasArg("--print-config")) {
+  console.log(JSON.stringify({
+    event: "board_manager_worker_config",
+    scope: config.scope,
+    provider: config.provider,
+    model: config.model,
+    reasoning: config.reasoning,
+    pollMs: config.pollMs,
+    cadenceSeconds: config.cadenceSeconds,
+    maxActionsPerHour: config.maxActionsPerHour,
+    staleJobSeconds: config.staleJobSeconds,
+    execute: config.execute,
+  }, null, 2));
   process.exit(0);
 }
 
