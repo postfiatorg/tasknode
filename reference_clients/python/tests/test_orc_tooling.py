@@ -1108,6 +1108,8 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(ontology["table"], "orc_task_review_states")
         self.assertEqual(ontology["historyTable"], "orc_task_reviews")
         self.assertEqual(ontology["itemsTable"], "orc_task_review_items")
+        self.assertEqual(ontology["workJournalTable"], "orc_work_journal")
+        self.assertEqual(ontology["rollupsView"], "orc_review_rollups")
         self.assertEqual(ontology["queueView"], "orc_task_review_queue")
         self.assertIn("reviewed_no_action", ontology["dispositions"])
         self.assertIn("reviewed_follow_up_completed", ontology["dispositions"])
@@ -1140,9 +1142,12 @@ class OrcToolingTests(unittest.TestCase):
         self.assertIn("closed_zero", sql)
         self.assertIn("CREATE TABLE IF NOT EXISTS orc_work_journal", sql)
         self.assertIn("orc_work_journal_idempotency_idx", sql)
+        self.assertIn("CREATE VIEW orc_review_rollups", sql)
+        self.assertIn("last_reviewed_action", sql)
         self.assertIn("'historyTable', 'orc_task_reviews'", sql)
         self.assertIn("'itemsTable', 'orc_task_review_items'", sql)
         self.assertIn("'workJournalTable', 'orc_work_journal'", sql)
+        self.assertIn("'rollupsView', 'orc_review_rollups'", sql)
 
     def test_upsert_review_state_appends_history_row(self):
         record = normalize_review_state_record(

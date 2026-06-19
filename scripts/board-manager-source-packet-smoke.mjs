@@ -23,14 +23,19 @@ const orcAgentId = `orc_board_packet_${suffix}`;
 const orcAccountId = `acct_board_packet_orc_${suffix}`;
 const orcWallet = `rBoardPacketOrc${suffix.slice(-8)}`;
 const orcTaskId = `task_board_packet_orc_${suffix}`;
+const rollupAccountId = `acct_board_packet_rollup_${suffix}`;
+const rollupWallet = `rBoardPacketRollup${suffix.slice(-8)}`;
+const rollupTaskA = `task_board_packet_rollup_a_${suffix}`;
+const rollupTaskB = `task_board_packet_rollup_b_${suffix}`;
+const rollupRawText = `ROLLUP RAW REVIEW TEXT ${suffix} MUST NOT SURFACE`;
 
 async function cleanup() {
   await query("DELETE FROM orc_operator_interactions WHERE orc_handle = $1", ["grashnuk_smoke"]);
   await query("DELETE FROM orc_run_journal WHERE orc_handle = $1", ["grashnuk_smoke"]);
-  await query("DELETE FROM orc_task_review_states WHERE task_id = $1", [completedTaskId]);
+  await query("DELETE FROM orc_task_review_states WHERE task_id = ANY($1::text[])", [[completedTaskId, rollupTaskA, rollupTaskB]]);
   await query("DELETE FROM orc_agents WHERE id = $1 OR handle = $2", [orcAgentId, "grashnuk_smoke"]);
-  await query("DELETE FROM task_events WHERE task_id = ANY($1::text[])", [[completedTaskId, outstandingTaskId, orcTaskId]]);
-  await query("DELETE FROM task_projections WHERE task_id = ANY($1::text[])", [[completedTaskId, outstandingTaskId, orcTaskId]]);
+  await query("DELETE FROM task_events WHERE task_id = ANY($1::text[])", [[completedTaskId, outstandingTaskId, orcTaskId, rollupTaskA, rollupTaskB]]);
+  await query("DELETE FROM task_projections WHERE task_id = ANY($1::text[])", [[completedTaskId, outstandingTaskId, orcTaskId, rollupTaskA, rollupTaskB]]);
   await query("DELETE FROM network_task_profiles WHERE account_id = $1 OR id = $2", [candidateAccountId, candidateProfileId]);
   await query("DELETE FROM pftl_sync_wallets WHERE wallet_address = ANY($1::text[])", [[candidateWallet, orcWallet]]);
   await query("DELETE FROM network_projects WHERE id = $1", [projectId]);
@@ -226,6 +231,59 @@ async function main() {
 
     await query(
       `
+        INSERT INTO task_projections (
+          task_id, account_id, subject_wallet, request_id, status, title, description,
+          task_kind, reward_offer_pft, reward_actual_pft, metadata_json, updated_at
+        )
+        VALUES
+          ($1, $3, $4, $5, 'rewarded',
+            'Rollup Integrity Task A',
+            'Reviewed rollup task A for source packet smoke.',
+            'network', 10000, 10000, '{}'::jsonb, now() - interval '7 minutes'),
+          ($2, $3, $4, $6, 'rewarded',
+            'Rollup Integrity Task B',
+            'Reviewed rollup task B for source packet smoke.',
+            'network', 10000, 10000, '{}'::jsonb, now() - interval '6 minutes')
+      `,
+      [rollupTaskA, rollupTaskB, rollupAccountId, rollupWallet, `req_${rollupTaskA}`, `req_${rollupTaskB}`]
+    );
+
+    await query(
+      `
+        INSERT INTO orc_task_review_states (
+          task_id, disposition, action_required, action_owner, confidence,
+          categories, integrity_signals, summary, recommended_action,
+          reviewer_handle, reviewer_wallet, source_task_ids, source_cids,
+          source_tx_hashes, reviewed_at, updated_at
+        )
+        VALUES
+          ($1, 'reviewed_integrity_follow_up', true, 'operator', 'high',
+            ARRAY['reward_accounting']::text[], ARRAY['reward_abuse_pattern']::text[],
+            $4,
+            'Raw rollup recommendation must not surface in review rollups.',
+            'grashnuk_smoke', $3, ARRAY[$1]::text[], ARRAY[$5]::text[],
+            ARRAY[$7]::text[], now() - interval '7 minutes', now() - interval '7 minutes'),
+          ($2, 'reviewed_integrity_follow_up', true, 'operator', 'high',
+            ARRAY['reward_accounting']::text[], ARRAY['reward_abuse_pattern']::text[],
+            $4,
+            'Raw rollup recommendation must not surface in review rollups.',
+            'grashnuk_smoke', $3, ARRAY[$2]::text[], ARRAY[$6]::text[],
+            ARRAY[$8]::text[], now() - interval '6 minutes', now() - interval '6 minutes')
+      `,
+      [
+        rollupTaskA,
+        rollupTaskB,
+        rollupWallet,
+        rollupRawText,
+        `cid_${rollupTaskA}`,
+        `cid_${rollupTaskB}`,
+        `tx_${rollupTaskA}`,
+        `tx_${rollupTaskB}`,
+      ]
+    );
+
+    await query(
+      `
         INSERT INTO orc_run_journal (
           id, orc_handle, agent_id, command, phase, status, task_id, cid, tx_hash
         )
@@ -385,6 +443,17 @@ async function main() {
       review.actionRequired === true &&
       review.reviewerHandle === "grashnuk_smoke"
     )));
+    const reviewRollup = packet.orcOperations.reviewRollups.recent.find((rollup) => (
+      rollup.walletAddress === rollupWallet &&
+      rollup.accountId === rollupAccountId &&
+      rollup.category === "reward_accounting"
+    ));
+    assert.ok(reviewRollup, "expected review rollup for repeated integrity follow-up wallet");
+    assert.equal(reviewRollup.integrityFollowUpCount, 2);
+    assert.equal(reviewRollup.integritySignalCounts.reward_abuse_pattern, 2);
+    assert.deepEqual(reviewRollup.repeatedIntegritySignals, ["reward_abuse_pattern"]);
+    assert.equal(reviewRollup.lastReviewedAction.taskId, rollupTaskB);
+    assert.equal(JSON.stringify(packet.orcOperations.reviewRollups).includes(rollupRawText), false);
     assert.ok(packet.orcOperations.operatorInteractions.recent.some((interaction) => (
       interaction.orcHandle === "grashnuk_smoke" &&
       interaction.interactionType === "directive"

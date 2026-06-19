@@ -73,6 +73,8 @@ const migrations = [
   "063_orc_task_reviews.sql",
   "064_orc_review_queue_public_items.sql",
   "065_network_task_status_packets.sql",
+  "066_orc_work_journal.sql",
+  "067_orc_review_rollups.sql",
 ];
 
 let migrated = false;

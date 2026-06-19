@@ -16,6 +16,7 @@ const orcOperations = compactBoardManagerOrcOperationsForSourcePacket({
     orcRunJournal: true,
     orcTaskReviews: true,
     orcTaskReviewStates: true,
+    orcReviewRollups: true,
     orcOperatorInteractions: true,
   },
   agents: [
@@ -56,6 +57,34 @@ const orcOperations = compactBoardManagerOrcOperationsForSourcePacket({
       reviewed_count: 5,
       action_required_count: 1,
       by_disposition: { reviewed_follow_up: 1, reviewed_no_action: 4 },
+    },
+  ],
+  reviewRollups: [
+    {
+      account_id: "acct_reviewed_contributor",
+      wallet_address: "rReviewedContributor",
+      category: "reward_accounting",
+      reviewed_count: 3,
+      action_required_count: 2,
+      integrity_follow_up_count: 2,
+      resolved_review_count: 1,
+      has_integrity_signals: true,
+      high_value_category: true,
+      by_disposition: { reviewed_integrity_follow_up: 2, reviewed_no_action: 1 },
+      integrity_signal_counts: { reward_abuse_pattern: 2 },
+      repeated_integrity_signals: ["reward_abuse_pattern"],
+      last_reviewed_action: {
+        taskId: "task_rollup_latest",
+        disposition: "reviewed_integrity_follow_up",
+        actionRequired: true,
+        reviewerHandle: "grashnuk",
+        updatedAt: "2026-06-19T00:03:00.000Z",
+        summary: "RAW REVIEW TEXT MUST NOT SURFACE",
+        recommendedAction: "RAW RECOMMENDATION MUST NOT SURFACE",
+      },
+      last_review_at: "2026-06-19T00:03:00.000Z",
+      summary: "RAW REVIEW TEXT MUST NOT SURFACE",
+      recommended_action: "RAW RECOMMENDATION MUST NOT SURFACE",
     },
   ],
   recentReviews: [
@@ -104,11 +133,20 @@ assert.equal(orcOperations.enforcement, "none_context_only");
 assert.equal(orcOperations.summary.activeAgentCount, 1);
 assert.equal(orcOperations.summary.availableForRoutingCount, 1);
 assert.equal(orcOperations.summary.reviewHistoryCount, 6);
+assert.equal(orcOperations.summary.reviewRollupCount, 1);
+assert.equal(orcOperations.summary.integrityFollowUpRollupCount, 2);
+assert.equal(orcOperations.summary.repeatedIntegritySignalRollupCount, 1);
 assert.equal(orcOperations.tables.orcTaskReviews, true);
+assert.equal(orcOperations.tables.orcReviewRollups, true);
 assert.equal(orcOperations.agents[0].handle, "grashnuk");
 assert.equal(orcOperations.agents[0].accountId, "acct_orc_grashnuk");
 assert.equal(orcOperations.agents[0].walletAddress, "rGrashnukWallet");
 assert.equal(orcOperations.agents[0].reviews.actionRequiredCount, 1);
+assert.equal(orcOperations.reviewRollups.recent[0].walletAddress, "rReviewedContributor");
+assert.equal(orcOperations.reviewRollups.recent[0].integrityFollowUpCount, 2);
+assert.deepEqual(orcOperations.reviewRollups.recent[0].repeatedIntegritySignals, ["reward_abuse_pattern"]);
+assert.equal(JSON.stringify(orcOperations.reviewRollups).includes("RAW REVIEW TEXT"), false);
+assert.equal(JSON.stringify(orcOperations.reviewRollups).includes("RAW RECOMMENDATION"), false);
 assert.equal(orcOperations.routingCandidates[0].availableForNetworkTask, true);
 assert.equal(JSON.stringify(orcOperations).includes("sessionPath"), false);
 assert.equal(JSON.stringify(orcOperations).includes("tasknode_agent_sessions"), false);
@@ -121,6 +159,8 @@ const normalized = normalizeBoardManagerSecretaryPacket({
 assert.equal(normalized.orc_operations_summary.active_agent_count, 1);
 assert.equal(normalized.orc_operations_summary.agents[0].handle, "grashnuk");
 assert.equal(normalized.orc_operations_summary.recent_reviews[0].task_id, "task_reviewed_by_orc");
+assert.equal(normalized.orc_operations_summary.review_rollups[0].integrity_follow_up_count, 2);
+assert.equal(JSON.stringify(normalized.orc_operations_summary.review_rollups).includes("RAW REVIEW TEXT"), false);
 
 const decisionPacket = buildBoardManagerSecretaryDecisionPacket({
   sourcePacket: {

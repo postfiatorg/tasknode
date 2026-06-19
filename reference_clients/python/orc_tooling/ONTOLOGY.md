@@ -29,6 +29,10 @@ rewarded Network Task, and why did it get paid?"
 - `OrcWorkJournal`: append-only Nazgûl/orc work ledger row linking a manager
   interaction to source task id, follow-up request/task, event CID, tx hash,
   operator handle, blocker, action, and terminal outcome.
+- `OrcReviewRollup`: bounded view over reviewed outcomes by contributor
+  account/wallet and task category. It carries disposition counts, integrity
+  signal counts, latest reviewed task id, and timestamps for Board Manager
+  routing context without raw review text.
 
 ## Identity Resolution
 
@@ -143,6 +147,14 @@ append idempotent rows when a source task is known. `orcctl close-followup`
 appends a separate terminal row once the follow-up task reaches a closeable
 state or explicit no-code-needed proof is recorded. Existing rows are not
 rewritten; duplicate exact events are suppressed by an idempotency key.
+
+`orc_review_rollups` is read-only and derived from
+`orc_task_review_states`, `orc_task_review_items`, and `task_projections`. It
+feeds audit outcomes back into Board Manager routing as manager-internal triage
+context: counts by disposition, repeated integrity signals, high-value
+categories, and latest reviewed task pointers. It deliberately excludes raw
+review summaries and recommendations, and it does not enforce bans, reward
+changes, or lifecycle transitions.
 
 Follow-up linkage lives in `orc_task_review_states.metadata_json`, not new
 canonical columns. `request-followup` writes `followup_request_id`, request

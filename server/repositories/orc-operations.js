@@ -133,10 +133,48 @@ function compactReviewCounts(row = {}) {
   };
 }
 
+function compactLastReviewedAction(row = {}) {
+  const action = safeObject(row.last_reviewed_action || row.lastReviewedAction);
+  return {
+    taskId: safeText(action.taskId || action.task_id, 180),
+    disposition: safeText(action.disposition, 120),
+    actionRequired: booleanValue(action.actionRequired ?? action.action_required, false),
+    confidence: safeText(action.confidence, 40),
+    reviewerHandle: safeText(action.reviewerHandle || action.reviewer_handle, 120),
+    reviewedAt: action.reviewedAt || action.reviewed_at || null,
+    updatedAt: action.updatedAt || action.updated_at || null,
+  };
+}
+
+function compactReviewRollup(row = {}) {
+  const integritySignalCounts = safeObject(row.integrity_signal_counts || row.integritySignalCounts);
+  const repeatedIntegritySignals = safeArray(row.repeated_integrity_signals || row.repeatedIntegritySignals)
+    .slice(0, 8)
+    .map((item) => safeText(item, 120))
+    .filter(Boolean);
+  return {
+    accountId: safeText(row.account_id || row.accountId, 180),
+    walletAddress: safeText(row.wallet_address || row.walletAddress, 120),
+    category: safeText(row.category || "uncategorized", 120) || "uncategorized",
+    reviewedCount: numeric(row.reviewed_count || row.reviewedCount, 0),
+    actionRequiredCount: numeric(row.action_required_count || row.actionRequiredCount, 0),
+    integrityFollowUpCount: numeric(row.integrity_follow_up_count || row.integrityFollowUpCount, 0),
+    resolvedReviewCount: numeric(row.resolved_review_count || row.resolvedReviewCount, 0),
+    hasIntegritySignals: booleanValue(row.has_integrity_signals ?? row.hasIntegritySignals, false),
+    highValueCategory: booleanValue(row.high_value_category ?? row.highValueCategory, false),
+    byDisposition: safeObject(row.by_disposition || row.byDisposition),
+    integritySignalCounts,
+    repeatedIntegritySignals,
+    lastReviewedAction: compactLastReviewedAction(row),
+    lastReviewAt: row.last_review_at || row.lastReviewAt || null,
+  };
+}
+
 export function compactBoardManagerOrcOperationsForSourcePacket({
   agents = [],
   taskStats = [],
   reviewCounts = [],
+  reviewRollups = [],
   recentReviews = [],
   reviewHistoryCount = 0,
   runJournal = [],
@@ -147,6 +185,15 @@ export function compactBoardManagerOrcOperationsForSourcePacket({
   const taskStatsByAgent = byAgent(taskStats);
   const recentRunRows = safeArray(runJournal).map(compactRecentRun);
   const recentReviewRows = safeArray(recentReviews).map(compactReview);
+  const reviewRollupRows = safeArray(reviewRollups)
+    .map(compactReviewRollup)
+    .filter((item) => item.accountId || item.walletAddress)
+    .sort((left, right) => (
+      right.integrityFollowUpCount - left.integrityFollowUpCount ||
+      right.actionRequiredCount - left.actionRequiredCount ||
+      right.reviewedCount - left.reviewedCount ||
+      (Date.parse(right.lastReviewAt || "") || 0) - (Date.parse(left.lastReviewAt || "") || 0)
+    ));
   const recentInteractionRows = safeArray(operatorInteractions).map(compactInteraction);
   const compactAgents = safeArray(agents).slice(0, 24).map((agent) => {
     const key = agentKey(agent);
@@ -187,6 +234,9 @@ export function compactBoardManagerOrcOperationsForSourcePacket({
     reviewedTaskCount: compactAgents.reduce((sum, agent) => sum + agent.reviews.reviewedCount, 0),
     reviewHistoryCount: numeric(reviewHistoryCount, 0),
     actionRequiredReviewCount: compactAgents.reduce((sum, agent) => sum + agent.reviews.actionRequiredCount, 0),
+    reviewRollupCount: reviewRollupRows.length,
+    integrityFollowUpRollupCount: reviewRollupRows.reduce((sum, row) => sum + row.integrityFollowUpCount, 0),
+    repeatedIntegritySignalRollupCount: reviewRollupRows.filter((row) => row.repeatedIntegritySignals.length > 0).length,
     recentRunCount: recentRunRows.length,
     recentInteractionCount: recentInteractionRows.length,
   };
@@ -201,6 +251,7 @@ export function compactBoardManagerOrcOperationsForSourcePacket({
       orcRunJournal: Boolean(tableStatus.orcRunJournal ?? tableStatus.orc_run_journal),
       orcTaskReviews: Boolean(tableStatus.orcTaskReviews ?? tableStatus.orc_task_reviews),
       orcTaskReviewStates: Boolean(tableStatus.orcTaskReviewStates ?? tableStatus.orc_task_review_states),
+      orcReviewRollups: Boolean(tableStatus.orcReviewRollups ?? tableStatus.orc_review_rollups),
       orcOperatorInteractions: Boolean(tableStatus.orcOperatorInteractions ?? tableStatus.orc_operator_interactions),
     },
     summary,
@@ -226,6 +277,11 @@ export function compactBoardManagerOrcOperationsForSourcePacket({
       actionRequiredCount: summary.actionRequiredReviewCount,
       recent: recentReviewRows.slice(0, 12),
     },
+    reviewRollups: {
+      policy: "manager_internal_triage_signals_only_not_public_fraud_findings",
+      recent: reviewRollupRows.slice(0, 12),
+      repeatedIntegritySignals: reviewRollupRows.filter((row) => row.repeatedIntegritySignals.length > 0).slice(0, 8),
+    },
     runJournal: {
       recent: recentRunRows.slice(0, 12),
     },
@@ -243,6 +299,7 @@ async function existingOrcTables() {
       orcRunJournal: false,
       orcTaskReviews: false,
       orcTaskReviewStates: false,
+      orcReviewRollups: false,
       orcOperatorInteractions: false,
     };
   }
@@ -252,6 +309,7 @@ async function existingOrcTables() {
       to_regclass('public.orc_run_journal') IS NOT NULL AS orc_run_journal,
       to_regclass('public.orc_task_reviews') IS NOT NULL AS orc_task_reviews,
       to_regclass('public.orc_task_review_states') IS NOT NULL AS orc_task_review_states,
+      to_regclass('public.orc_review_rollups') IS NOT NULL AS orc_review_rollups,
       to_regclass('public.orc_operator_interactions') IS NOT NULL AS orc_operator_interactions
   `);
   const row = result.rows[0] || {};
@@ -261,6 +319,7 @@ async function existingOrcTables() {
     orcRunJournal: Boolean(row.orc_run_journal),
     orcTaskReviews: Boolean(row.orc_task_reviews),
     orcTaskReviewStates: Boolean(row.orc_task_review_states),
+    orcReviewRollups: Boolean(row.orc_review_rollups),
     orcOperatorInteractions: Boolean(row.orc_operator_interactions),
   };
 }
@@ -272,6 +331,7 @@ export async function getBoardManagerOrcOperations({ limit = 24 } = {}) {
     orcRunJournal: false,
     orcTaskReviews: false,
     orcTaskReviewStates: false,
+    orcReviewRollups: false,
     orcOperatorInteractions: false,
   }));
   if (!databaseEnabled() || !tableStatus.orcAgents) {
@@ -484,6 +544,36 @@ export async function getBoardManagerOrcOperations({ limit = 24 } = {}) {
     "SELECT count(*)::int AS count FROM orc_task_reviews"
   ).catch(() => ({ rows: [{ count: 0 }] }))).rows[0]?.count || 0) : 0;
 
+  const reviewRollups = tableStatus.orcReviewRollups ? (await query(
+    `
+      SELECT
+        account_id,
+        wallet_address,
+        category,
+        reviewed_count,
+        action_required_count,
+        integrity_follow_up_count,
+        resolved_review_count,
+        has_integrity_signals,
+        high_value_category,
+        by_disposition,
+        integrity_signal_counts,
+        repeated_integrity_signals,
+        last_reviewed_action,
+        last_review_at
+      FROM orc_review_rollups
+      ORDER BY
+        integrity_follow_up_count DESC,
+        action_required_count DESC,
+        reviewed_count DESC,
+        last_review_at DESC NULLS LAST,
+        account_id ASC,
+        wallet_address ASC,
+        category ASC
+      LIMIT 24
+    `
+  ).catch(() => ({ rows: [] }))).rows : [];
+
   const runJournal = tableStatus.orcRunJournal ? (await query(
     `
       SELECT
@@ -524,6 +614,7 @@ export async function getBoardManagerOrcOperations({ limit = 24 } = {}) {
     agents,
     taskStats,
     reviewCounts,
+    reviewRollups,
     recentReviews,
     reviewHistoryCount,
     runJournal,
