@@ -72,6 +72,7 @@ export async function executeContextEditChat({
   memoryContext,
   taskContext,
   contextStatus,
+  userMetadata = {},
 } = {}) {
   const status = chatExecutionStatus(contextEditChatMode);
   if (!status.enabled) {
@@ -146,7 +147,7 @@ export async function executeContextEditChat({
     assistantMessage: assistantBody,
     userMessageId,
     assistantMessageId,
-    userMetadata: { kind: contextEditMode },
+    userMetadata: { ...userMetadata, kind: contextEditMode },
     assistantMetadata: {
       kind: contextEditMode,
       state: parsed.state,

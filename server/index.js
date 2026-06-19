@@ -79,6 +79,44 @@ function resolveChatWriteConversationId(session, requestedId = "") {
   });
 }
 
+function safeChatAgentText(value = "", max = 120) {
+  return Array.from(String(value || "").trim())
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code >= 32 && code !== 127;
+    })
+    .join("")
+    .slice(0, max);
+}
+
+function chatAgentOriginForSession(session, payload = {}) {
+  if (session?.primaryProvider !== "wallet") return null;
+  const metadata = payload?.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
+    ? payload.metadata
+    : {};
+  const requested = payload?.agentOrigin && typeof payload.agentOrigin === "object" && !Array.isArray(payload.agentOrigin)
+    ? payload.agentOrigin
+    : metadata.agentOrigin && typeof metadata.agentOrigin === "object" && !Array.isArray(metadata.agentOrigin)
+      ? metadata.agentOrigin
+      : {};
+  return {
+    agent: true,
+    actorType: "machine_agent",
+    source: "wallet_login",
+    sessionProvider: "wallet",
+    accountId: session.accountId || "",
+    agentHandle: safeChatAgentText(
+      payload?.agentHandle || payload?.agent || metadata.agentHandle || requested.agentHandle || requested.handle,
+      80
+    ),
+    walletAddress: safeChatAgentText(
+      payload?.walletAddress || payload?.address || metadata.walletAddress || requested.walletAddress || requested.address,
+      120
+    ),
+    client: safeChatAgentText(payload?.client || metadata.client || requested.client || "TaskNodeAgentClient", 120),
+  };
+}
+
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".js", "text/javascript; charset=utf-8"],
@@ -730,7 +768,8 @@ async function routeApi(req, url, res) {
     const conversationId = await resolveChatWriteConversationId(session, payload?.conversationId || "");
     const started = await chatStreamStart(
       { ...payload, accountId: session?.accountId || "", conversationId },
-      req.method
+      req.method,
+      { agentOrigin: chatAgentOriginForSession(session, payload) }
     );
 
     if (!started.stream) {
@@ -827,7 +866,8 @@ async function routeApi(req, url, res) {
     const conversationId = await resolveChatWriteConversationId(session, payload?.conversationId || "");
     const result = await chatSend(
       { ...payload, accountId: session?.accountId || "", conversationId },
-      req.method
+      req.method,
+      { agentOrigin: chatAgentOriginForSession(session, payload) }
     );
     json(res, result.status, result.body);
     return true;

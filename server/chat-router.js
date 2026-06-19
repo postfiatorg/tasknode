@@ -387,6 +387,7 @@ function transientChatTurn({
   userMessage = "",
   assistantMessage = "",
   attachments = [],
+  userMetadata = {},
   assistantMetadata = {},
 } = {}) {
   const createdAt = new Date().toISOString();
@@ -398,6 +399,9 @@ function transientChatTurn({
     mode,
     conversationId,
   };
+  if (userMetadata && typeof userMetadata === "object" && Object.keys(userMetadata).length > 0) {
+    user.metadata = userMetadata;
+  }
   const normalizedAttachments = normalizeChatAttachments(attachments);
   if (normalizedAttachments.length > 0) user.attachments = normalizedAttachments;
 
@@ -1482,6 +1486,7 @@ export async function executeChat({
   jobsEssence,
   clientHistory = [],
   ephemeralHistoryMessages = [],
+  userMetadata = {},
   source = "",
   providerTimeoutMs = 0,
 }) {
@@ -1606,6 +1611,7 @@ export async function executeChat({
       userMessage: message,
       assistantMessage: result.text,
       attachments,
+      userMetadata,
       assistantMetadata,
     });
     return {
@@ -1630,6 +1636,7 @@ export async function executeChat({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
+    userMetadata,
     assistantMetadata,
     runMetadata: { contextStatus: resolvedContextStatus },
   });
@@ -1659,6 +1666,7 @@ export async function executeChatStream({
   jobsEssence,
   clientHistory = [],
   ephemeralHistoryMessages = [],
+  userMetadata = {},
   onDelta,
   signal,
   source = "",
@@ -1840,6 +1848,7 @@ export async function executeChatStream({
       userMessage: message,
       assistantMessage: result.text,
       attachments,
+      userMetadata,
       assistantMetadata,
     });
     return {
@@ -1864,6 +1873,7 @@ export async function executeChatStream({
     assistantMessage: result.text,
     attachments,
     usage: result.usage,
+    userMetadata,
     assistantMetadata,
     runMetadata: { contextStatus: resolvedContextStatus },
   });

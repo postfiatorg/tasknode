@@ -1,11 +1,14 @@
 from types import SimpleNamespace
+from contextlib import redirect_stdout
 from concurrent.futures import ThreadPoolExecutor
+import io
 import json
 import os
 import tempfile
 import unittest
 from unittest.mock import patch
 
+import orc_tooling.orcctl as orcctl_module
 from orc_tooling import (
     NETWORK_CAPACITY_NOTE,
     NETWORK_TRIAGE_CAPABILITY_VERSION,
@@ -119,6 +122,25 @@ class FakeOrcClient:
     def tasks(self):
         self.calls.append(("tasks",))
         return {"networkTasks": {"status": "available_for_routing"}}
+
+    def chat(self, message, **kwargs):
+        self.calls.append(("chat", message, kwargs))
+        return {
+            "ok": True,
+            "conversationId": kwargs.get("conversation_id"),
+            "mode": kwargs.get("mode"),
+            "user": {
+                "metadata": {
+                    "senderType": "machine_agent",
+                    "agentOrigin": {
+                        "agent": True,
+                        "agentHandle": kwargs.get("agent_handle"),
+                    },
+                }
+            },
+            "assistant": {"body": "Orc chat reply."},
+            "secretPrinted": False,
+        }
 
 
 class FakeTasksClient:
@@ -368,6 +390,45 @@ class OrcToolingTests(unittest.TestCase):
                     },
                 ),
                 ("tasks",),
+            ],
+        )
+
+    def test_orcctl_chat_uses_agent_client_and_prints_labeled_response(self):
+        client = FakeOrcClient()
+
+        with patch("orc_tooling.orcctl.build_client", return_value=client):
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                exit_code = orcctl_module.main([
+                    "--agent",
+                    "grashnuk",
+                    "chat",
+                    "--mode",
+                    "Help",
+                    "--conversation-id",
+                    "agent-chat",
+                    "What",
+                    "changed?",
+                ])
+
+        self.assertEqual(exit_code, 0)
+        output = json.loads(buffer.getvalue())
+        self.assertEqual(output["assistant"]["body"], "Orc chat reply.")
+        self.assertEqual(output["user"]["metadata"]["agentOrigin"]["agentHandle"], "grashnuk")
+        self.assertEqual(
+            client.calls,
+            [
+                (
+                    "chat",
+                    "What changed?",
+                    {
+                        "mode": "Help",
+                        "conversation_id": "agent-chat",
+                        "metadata": {},
+                        "agent_handle": "grashnuk",
+                        "dry_run": False,
+                    },
+                )
             ],
         )
 
