@@ -118,6 +118,9 @@ function fixtureDeps({ rows = [taskRow()], databaseEnabledValue = true } = {}) {
   assert.equal(appended.model, "orc_hive_signal");
   assert.equal(appended.assistantMessage, "Reviewed and closed.");
   assert.equal(appended.assistantMetadata.kind, "orc_hive_signal");
+  assert.equal(appended.assistantMetadata.senderType, "machine_agent");
+  assert.equal(appended.assistantMetadata.agentOrigin.agentHandle, "grashnuk");
+  assert.equal(appended.assistantMetadata.agentOrigin.walletAddress, "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW");
   assert.equal(appended.assistantMetadata.taskId, taskId);
   assert.equal(appended.assistantMetadata.taskTitle, "Review Orc Signal Smoke");
   assert.deepEqual(appended.assistantMetadata.extra, { reviewState: "done" });
@@ -175,6 +178,8 @@ function fixtureDeps({ rows = [taskRow()], databaseEnabledValue = true } = {}) {
     extraMetadata: { reviewState: "done" },
   });
   assert.equal(metadata.kind, "orc_hive_signal");
+  assert.equal(metadata.senderType, "machine_agent");
+  assert.equal(metadata.agentOrigin.agentHandle, "grashnuk");
   assert.equal(metadata.source, "scripts/orc-hive-signal.mjs");
   assert.equal(metadata.taskId, taskId);
   assert.deepEqual(metadata.extra, { reviewState: "done" });

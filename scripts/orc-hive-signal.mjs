@@ -185,6 +185,14 @@ export function buildOrcHiveSignalMetadata({
   const metadata = {
     kind: "orc_hive_signal",
     source: SCRIPT_SOURCE,
+    senderType: "machine_agent",
+    agentOrigin: {
+      agent: true,
+      actorType: "machine_agent",
+      agentHandle: safeText(reviewerHandle, 120),
+      walletAddress: safeText(reviewerWallet, 120),
+      client: "orc-hive-signal",
+    },
     taskId: safeId(task?.taskId || taskId),
     taskTitle: safeText(task?.title, 240),
     taskStatus: safeText(task?.status, 80),
@@ -211,6 +219,8 @@ function publicMetadataSummary(metadata = {}) {
     taskStatus: metadata.taskStatus || "",
     reviewerHandle: metadata.reviewerHandle || "",
     reviewerWallet: metadata.reviewerWallet || "",
+    senderType: metadata.senderType || "",
+    agentHandle: metadata.agentOrigin?.agentHandle || "",
     reason: metadata.reason || "",
     extraMetadataKeys: Object.keys(extra).sort(),
   };

@@ -24,15 +24,30 @@ export function normalizeChatMessages(messages) {
 
 export function normalizeChatMessage(message, index = 0) {
   if (!message) return null;
-  const role = message.role === "user" ? "user" : "assistant";
+  const metadata = message.metadata;
+  const agent = agentMessageIdentity(metadata);
+  const role = message.role === "user" || message.role === "agent" ? "user" : "assistant";
   const text = String(message.text || message.content || message.body || "");
+
+  if (agent && role === "user") {
+    return {
+      id: message.id || `agent-${index}`,
+      role: "agent",
+      text,
+      metadata,
+      attachments: Array.isArray(message.attachments) ? message.attachments : [],
+      agentHandle: agent.handle,
+      agentLabel: agent.label,
+      agentClient: agent.client,
+    };
+  }
 
   if (role === "user") {
     return {
       id: message.id || `user-${index}`,
       role,
       text,
-      metadata: message.metadata,
+      metadata,
       attachments: Array.isArray(message.attachments) ? message.attachments : [],
     };
   }
@@ -40,9 +55,24 @@ export function normalizeChatMessage(message, index = 0) {
   return {
     id: message.id || `assistant-${index}`,
     role,
-    metadata: message.metadata,
+    metadata,
     thinking: message.thinking || message.metadata?.thinking,
     blocks: Array.isArray(message.blocks) ? message.blocks : markdownToBlocks(text),
+  };
+}
+
+export function agentMessageIdentity(metadata = {}) {
+  if (!metadata || typeof metadata !== "object") return null;
+  const origin = metadata.agentOrigin && typeof metadata.agentOrigin === "object" ? metadata.agentOrigin : {};
+  const machineSender = metadata.senderType === "machine_agent" || origin.actorType === "machine_agent" || origin.agent === true;
+  if (!machineSender) return null;
+  const rawHandle = String(origin.agentHandle || origin.handle || metadata.agentHandle || "").trim();
+  const handle = rawHandle.replace(/^@+/, "").slice(0, 80);
+  const label = handle ? `@${handle}` : "Orc agent";
+  return {
+    handle,
+    label,
+    client: String(origin.client || metadata.client || "").trim().slice(0, 120),
   };
 }
 
@@ -149,6 +179,11 @@ export function transcriptTextFromThread(thread, title = "Untitled chat") {
   for (const message of thread || []) {
     if (message.role === "user") {
       rows.push(`User: ${message.text || ""}`.trim());
+      continue;
+    }
+
+    if (message.role === "agent") {
+      rows.push(`${message.agentLabel || "Orc agent"}: ${message.text || ""}`.trim());
       continue;
     }
 
