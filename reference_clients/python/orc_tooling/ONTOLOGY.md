@@ -21,8 +21,11 @@ rewarded Network Task, and why did it get paid?"
   payload from `task_events`.
 - `RewardOutcome`: `pf.reward.v1` or `pf.task.reward_decision.v1` review score,
   reviewer reason, feedback, and paid PFT.
-- `ReviewState`: shared orc disposition for one rewarded Network Task, persisted
-  in `orc_task_review_states` and readable through `orc_task_review_queue`.
+- `TaskReview`: immutable Orc review/audit row for one classification event,
+  persisted in `orc_task_reviews`.
+- `ReviewState`: current shared Orc disposition for one rewarded Network Task,
+  persisted in `orc_task_review_states` and readable through
+  `orc_task_review_queue`.
 
 ## Identity Resolution
 
@@ -92,7 +95,7 @@ down starts with:
 uv run orc-review-state queue --disposition not_reviewed --limit 20
 ```
 
-Persist a review state:
+Persist a review state and append a review-history row:
 
 ```bash
 uv run orc-review-state set task_... \
@@ -106,3 +109,7 @@ uv run orc-review-state set task_... \
 Integrity follow-up requires at least one integrity signal such as
 `suspected_sybil_cluster`, `generic_ai_response`, `fabricated_evidence`,
 `nonresponsive_submission`, or `reward_abuse_pattern`.
+
+`orc_task_reviews` is append-only history for Orc/Nazgûl accounting.
+`orc_task_review_states` is the current-state table used by the queue view and
+follow-up logic.

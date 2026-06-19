@@ -70,6 +70,7 @@ const migrations = [
   "060_taskgen_replay_cache.sql",
   "061_projection_fixture_cleanup.sql",
   "062_orc_agents_and_activity.sql",
+  "063_orc_task_reviews.sql",
 ];
 
 let migrated = false;

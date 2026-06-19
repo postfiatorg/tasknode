@@ -138,6 +138,7 @@ export function compactBoardManagerOrcOperationsForSourcePacket({
   taskStats = [],
   reviewCounts = [],
   recentReviews = [],
+  reviewHistoryCount = 0,
   runJournal = [],
   operatorInteractions = [],
   tableStatus = {},
@@ -184,6 +185,7 @@ export function compactBoardManagerOrcOperationsForSourcePacket({
     outstandingOrcNetworkTaskCount: compactAgents.reduce((sum, agent) => sum + agent.currentTasks.outstandingNetworkTaskCount, 0),
     pendingOrcGenerationCount: compactAgents.reduce((sum, agent) => sum + agent.currentTasks.pendingGenerationCount, 0),
     reviewedTaskCount: compactAgents.reduce((sum, agent) => sum + agent.reviews.reviewedCount, 0),
+    reviewHistoryCount: numeric(reviewHistoryCount, 0),
     actionRequiredReviewCount: compactAgents.reduce((sum, agent) => sum + agent.reviews.actionRequiredCount, 0),
     recentRunCount: recentRunRows.length,
     recentInteractionCount: recentInteractionRows.length,
@@ -197,6 +199,7 @@ export function compactBoardManagerOrcOperationsForSourcePacket({
     tables: {
       orcAgents: Boolean(tableStatus.orcAgents ?? tableStatus.orc_agents),
       orcRunJournal: Boolean(tableStatus.orcRunJournal ?? tableStatus.orc_run_journal),
+      orcTaskReviews: Boolean(tableStatus.orcTaskReviews ?? tableStatus.orc_task_reviews),
       orcTaskReviewStates: Boolean(tableStatus.orcTaskReviewStates ?? tableStatus.orc_task_review_states),
       orcOperatorInteractions: Boolean(tableStatus.orcOperatorInteractions ?? tableStatus.orc_operator_interactions),
     },
@@ -238,6 +241,7 @@ async function existingOrcTables() {
       status: "database_disabled",
       orcAgents: false,
       orcRunJournal: false,
+      orcTaskReviews: false,
       orcTaskReviewStates: false,
       orcOperatorInteractions: false,
     };
@@ -246,6 +250,7 @@ async function existingOrcTables() {
     SELECT
       to_regclass('public.orc_agents') IS NOT NULL AS orc_agents,
       to_regclass('public.orc_run_journal') IS NOT NULL AS orc_run_journal,
+      to_regclass('public.orc_task_reviews') IS NOT NULL AS orc_task_reviews,
       to_regclass('public.orc_task_review_states') IS NOT NULL AS orc_task_review_states,
       to_regclass('public.orc_operator_interactions') IS NOT NULL AS orc_operator_interactions
   `);
@@ -254,6 +259,7 @@ async function existingOrcTables() {
     status: row.orc_agents ? "available" : "orc_agents_missing",
     orcAgents: Boolean(row.orc_agents),
     orcRunJournal: Boolean(row.orc_run_journal),
+    orcTaskReviews: Boolean(row.orc_task_reviews),
     orcTaskReviewStates: Boolean(row.orc_task_review_states),
     orcOperatorInteractions: Boolean(row.orc_operator_interactions),
   };
@@ -264,6 +270,7 @@ export async function getBoardManagerOrcOperations({ limit = 24 } = {}) {
     status: "table_check_failed",
     orcAgents: false,
     orcRunJournal: false,
+    orcTaskReviews: false,
     orcTaskReviewStates: false,
     orcOperatorInteractions: false,
   }));
@@ -473,6 +480,10 @@ export async function getBoardManagerOrcOperations({ limit = 24 } = {}) {
     `
   ).catch(() => ({ rows: [] }))).rows : [];
 
+  const reviewHistoryCount = tableStatus.orcTaskReviews ? Number((await query(
+    "SELECT count(*)::int AS count FROM orc_task_reviews"
+  ).catch(() => ({ rows: [{ count: 0 }] }))).rows[0]?.count || 0) : 0;
+
   const runJournal = tableStatus.orcRunJournal ? (await query(
     `
       SELECT
@@ -514,6 +525,7 @@ export async function getBoardManagerOrcOperations({ limit = 24 } = {}) {
     taskStats,
     reviewCounts,
     recentReviews,
+    reviewHistoryCount,
     runJournal,
     operatorInteractions,
     tableStatus,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from typing import Any
+from uuid import uuid4
 
 from tasknode_pftl.app_data import sql_literal, tasknode_database_url
 
@@ -232,6 +233,72 @@ CREATE INDEX IF NOT EXISTS orc_task_review_states_categories_idx
 CREATE INDEX IF NOT EXISTS orc_task_review_states_integrity_idx
   ON orc_task_review_states USING gin (integrity_signals);
 
+CREATE TABLE IF NOT EXISTS orc_task_reviews (
+  id text PRIMARY KEY,
+  task_id text NOT NULL DEFAULT '',
+  disposition text NOT NULL DEFAULT 'not_reviewed',
+  action_required boolean NOT NULL DEFAULT false,
+  action_owner text NOT NULL DEFAULT '',
+  confidence text NOT NULL DEFAULT 'medium',
+  categories text[] NOT NULL DEFAULT ARRAY[]::text[],
+  integrity_signals text[] NOT NULL DEFAULT ARRAY[]::text[],
+  summary text NOT NULL DEFAULT '',
+  recommended_action text NOT NULL DEFAULT '',
+  reviewer_handle text NOT NULL DEFAULT '',
+  reviewer_wallet text NOT NULL DEFAULT '',
+  source_task_ids text[] NOT NULL DEFAULT ARRAY[]::text[],
+  source_cids text[] NOT NULL DEFAULT ARRAY[]::text[],
+  source_tx_hashes text[] NOT NULL DEFAULT ARRAY[]::text[],
+  metadata_json jsonb NOT NULL DEFAULT '{{}}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE orc_task_reviews
+  ADD COLUMN IF NOT EXISTS task_id text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS disposition text NOT NULL DEFAULT 'not_reviewed',
+  ADD COLUMN IF NOT EXISTS action_required boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS action_owner text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS confidence text NOT NULL DEFAULT 'medium',
+  ADD COLUMN IF NOT EXISTS categories text[] NOT NULL DEFAULT ARRAY[]::text[],
+  ADD COLUMN IF NOT EXISTS integrity_signals text[] NOT NULL DEFAULT ARRAY[]::text[],
+  ADD COLUMN IF NOT EXISTS summary text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS recommended_action text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS reviewer_handle text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS reviewer_wallet text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS source_task_ids text[] NOT NULL DEFAULT ARRAY[]::text[],
+  ADD COLUMN IF NOT EXISTS source_cids text[] NOT NULL DEFAULT ARRAY[]::text[],
+  ADD COLUMN IF NOT EXISTS source_tx_hashes text[] NOT NULL DEFAULT ARRAY[]::text[],
+  ADD COLUMN IF NOT EXISTS metadata_json jsonb NOT NULL DEFAULT '{{}}'::jsonb,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE orc_task_reviews
+  DROP CONSTRAINT IF EXISTS orc_task_reviews_disposition_check;
+ALTER TABLE orc_task_reviews
+  ADD CONSTRAINT orc_task_reviews_disposition_check
+    CHECK (disposition = ANY({allowed_dispositions}));
+ALTER TABLE orc_task_reviews
+  DROP CONSTRAINT IF EXISTS orc_task_reviews_confidence_check;
+ALTER TABLE orc_task_reviews
+  ADD CONSTRAINT orc_task_reviews_confidence_check
+    CHECK (confidence = ANY({allowed_confidence}));
+
+CREATE INDEX IF NOT EXISTS orc_task_reviews_task_idx
+  ON orc_task_reviews (task_id, created_at DESC)
+  WHERE task_id <> '';
+CREATE INDEX IF NOT EXISTS orc_task_reviews_reviewer_idx
+  ON orc_task_reviews (reviewer_handle, created_at DESC)
+  WHERE reviewer_handle <> '';
+CREATE INDEX IF NOT EXISTS orc_task_reviews_disposition_idx
+  ON orc_task_reviews (disposition, created_at DESC);
+CREATE INDEX IF NOT EXISTS orc_task_reviews_action_idx
+  ON orc_task_reviews (action_required, created_at DESC);
+CREATE INDEX IF NOT EXISTS orc_task_reviews_categories_idx
+  ON orc_task_reviews USING gin (categories);
+CREATE INDEX IF NOT EXISTS orc_task_reviews_integrity_idx
+  ON orc_task_reviews USING gin (integrity_signals);
+
 CREATE OR REPLACE VIEW orc_task_review_queue AS
 SELECT
   p.task_id,
@@ -277,6 +344,7 @@ WHERE lower(COALESCE(NULLIF(p.task_kind, ''), p.metadata_json->'generatedTask'->
 SELECT jsonb_build_object(
   'ok', true,
   'table', 'orc_task_review_states',
+  'historyTable', 'orc_task_reviews',
   'view', 'orc_task_review_queue',
   'dispositions', {sql_literal(json.dumps(REVIEW_DISPOSITIONS, sort_keys=True))}::jsonb,
   'secretPrinted', false
@@ -289,6 +357,7 @@ def upsert_review_state(record: dict[str, Any], *, database_url: str | None = No
     ensure_review_state_schema(database_url=database_url)
     db_url = tasknode_database_url(database_url)
     disposition = record["disposition"]
+    review_id = f"orcrev_{uuid4()}"
     sql = f"""
 WITH upsert AS (
   INSERT INTO orc_task_review_states (
@@ -347,8 +416,52 @@ WITH upsert AS (
     reviewed_at = EXCLUDED.reviewed_at,
     updated_at = now()
   RETURNING *
+),
+review_insert AS (
+  INSERT INTO orc_task_reviews (
+    id,
+    task_id,
+    disposition,
+    action_required,
+    action_owner,
+    confidence,
+    categories,
+    integrity_signals,
+    summary,
+    recommended_action,
+    reviewer_handle,
+    reviewer_wallet,
+    source_task_ids,
+    source_cids,
+    source_tx_hashes,
+    metadata_json,
+    updated_at
+  )
+  SELECT
+    {sql_literal(review_id)},
+    task_id,
+    disposition,
+    action_required,
+    action_owner,
+    confidence,
+    categories,
+    integrity_signals,
+    summary,
+    recommended_action,
+    reviewer_handle,
+    reviewer_wallet,
+    source_task_ids,
+    source_cids,
+    source_tx_hashes,
+    metadata_json,
+    now()
+  FROM upsert
+  RETURNING id
 )
-SELECT to_jsonb(upsert) || jsonb_build_object('secretPrinted', false)
+SELECT to_jsonb(upsert) || jsonb_build_object(
+  'review_id', (SELECT id FROM review_insert),
+  'secretPrinted', false
+)
 FROM upsert;
 """
     return redact_secrets(_run_json(db_url, sql) or {})
@@ -459,6 +572,7 @@ def review_state_ontology() -> dict[str, Any]:
         "integritySignals": sorted(INTEGRITY_SIGNALS),
         "confidence": sorted(CONFIDENCE_LEVELS),
         "table": "orc_task_review_states",
+        "historyTable": "orc_task_reviews",
         "queueView": "orc_task_review_queue",
         "secretPrinted": False,
     }

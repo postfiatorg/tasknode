@@ -11,8 +11,8 @@ Seed or mnemonic material is never printed.
 
 Use `orcctl` for normal Orc review work. It keeps the review loop compact,
 uses the assigned Orc wallet session, writes durable journal rows for task
-lifecycle actions, and separates Personal follow-up work from Network task
-capacity.
+lifecycle actions, writes shared review state/history rows, and separates
+Personal follow-up work from Network task capacity.
 
 ```bash
 cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
@@ -33,6 +33,11 @@ uv run orcctl signal-user task_original_... \
   --execute
 uv run orcctl close-followup task_original_... --followup-task-id task_followup_...
 ```
+
+`orcctl review classify` writes the current disposition to
+`orc_task_review_states` and appends immutable history to `orc_task_reviews`.
+Nazgûl shared-state summaries read `orc_task_reviews`, `orc_run_journal`, and
+`orc_operator_interactions` when those Postgres tables are present.
 
 Important invariant:
 

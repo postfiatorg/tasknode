@@ -595,6 +595,10 @@ function normalizeOrcOperationsSummary(value = {}) {
       0,
       Math.round(Number(summary.actionRequiredReviewCount ?? summary.action_required_review_count ?? 0) || 0)
     ),
+    review_history_count: Math.max(
+      0,
+      Math.round(Number(summary.reviewHistoryCount ?? summary.review_history_count ?? 0) || 0)
+    ),
     recent_interaction_count: Math.max(
       0,
       Math.round(Number(summary.recentInteractionCount ?? summary.recent_interaction_count ?? 0) || 0)
@@ -783,7 +787,7 @@ function packetText(packet = {}) {
     "",
     "Orc operations summary",
     `enforcement: ${orcOperationsSummary.enforcement || "none_context_only"}`,
-    `agents: ${orcOperationsSummary.agent_count || 0}; active: ${orcOperationsSummary.active_agent_count || 0}; routeable: ${orcOperationsSummary.available_for_routing_count || 0}; action-required reviews: ${orcOperationsSummary.action_required_review_count || 0}`,
+    `agents: ${orcOperationsSummary.agent_count || 0}; active: ${orcOperationsSummary.active_agent_count || 0}; routeable: ${orcOperationsSummary.available_for_routing_count || 0}; review history: ${orcOperationsSummary.review_history_count || 0}; action-required reviews: ${orcOperationsSummary.action_required_review_count || 0}`,
     orcAgents,
     "Recent Orc reviews",
     orcReviews,
