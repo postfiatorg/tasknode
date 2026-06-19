@@ -327,6 +327,47 @@ class AgentClientTests(unittest.TestCase):
         self.assertEqual(sent["metadata"]["agentOrigin"]["walletAddress"], self.wallet.address)
         self.assertEqual(sent["walletAddress"], self.wallet.address)
 
+    def test_hive_chat_sends_labeled_agent_message_and_reads_context_update(self):
+        self.write_session_store(token="cached_session_token", account_id="acct_cached")
+        http = FakeSession([
+            FakeResponse(
+                200,
+                {
+                    "ok": True,
+                    "entry": {
+                        "id": "hivectx_agent",
+                        "metadata": {
+                            "senderType": "machine_agent",
+                            "agentOrigin": {"agent": True, "agentHandle": "grashnuk"},
+                        },
+                    },
+                    "assistant": {"role": "assistant", "body": "Hive reply."},
+                    "context": {"entryCount": 1},
+                },
+            ),
+        ])
+        client = self.client(http=http)
+
+        result = client.hive_chat(
+            "Hive, what should I know?",
+            conversation_id="agent-hive-chat",
+            conversation_title="Hive",
+            metadata={"purpose": "unit_test"},
+            agent_handle="grashnuk",
+        )
+
+        self.assertEqual(result["assistant"]["body"], "Hive reply.")
+        self.assertEqual([call["path"] for call in http.calls], ["/api/hive/chat"])
+        sent = http.calls[0]["json"]
+        self.assertEqual(sent["message"], "Hive, what should I know?")
+        self.assertEqual(sent["conversationId"], "agent-hive-chat")
+        self.assertEqual(sent["conversationTitle"], "Hive")
+        self.assertEqual(sent["metadata"]["purpose"], "unit_test")
+        self.assertEqual(sent["metadata"]["agentOrigin"]["actorType"], "machine_agent")
+        self.assertEqual(sent["metadata"]["agentOrigin"]["agentHandle"], "grashnuk")
+        self.assertEqual(sent["metadata"]["agentOrigin"]["walletAddress"], self.wallet.address)
+        self.assertEqual(sent["walletAddress"], self.wallet.address)
+
     def test_401_discards_cached_session_reauthenticates_once_and_overwrites_cache(self):
         self.write_session_store(token="old_session_token", account_id="acct_cached")
         message = "tasknode.wallet_login.v1:reauth"

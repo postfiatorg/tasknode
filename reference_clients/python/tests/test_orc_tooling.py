@@ -142,6 +142,24 @@ class FakeOrcClient:
             "secretPrinted": False,
         }
 
+    def hive_chat(self, message, **kwargs):
+        self.calls.append(("hive_chat", message, kwargs))
+        return {
+            "ok": True,
+            "entry": {
+                "id": "hivectx_orc_hive",
+                "metadata": {
+                    "senderType": "machine_agent",
+                    "agentOrigin": {
+                        "agent": True,
+                        "agentHandle": kwargs.get("agent_handle"),
+                    },
+                },
+            },
+            "assistant": {"body": "Hive reply."},
+            "secretPrinted": False,
+        }
+
 
 class FakeTasksClient:
     address = "rFakeOperator1111111111111111111111111111"
@@ -427,6 +445,46 @@ class OrcToolingTests(unittest.TestCase):
                         "metadata": {},
                         "agent_handle": "grashnuk",
                         "dry_run": False,
+                    },
+                )
+            ],
+        )
+
+    def test_orcctl_hive_chat_uses_agent_client_and_prints_labeled_response(self):
+        client = FakeOrcClient()
+
+        with patch("orc_tooling.orcctl.build_client", return_value=client):
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                exit_code = orcctl_module.main([
+                    "--agent",
+                    "grashnuk",
+                    "hive-chat",
+                    "--conversation-id",
+                    "agent-hive-chat",
+                    "--conversation-title",
+                    "Hive",
+                    "Report",
+                    "status",
+                    "to",
+                    "Hive",
+                ])
+
+        self.assertEqual(exit_code, 0)
+        output = json.loads(buffer.getvalue())
+        self.assertEqual(output["assistant"]["body"], "Hive reply.")
+        self.assertEqual(output["entry"]["metadata"]["agentOrigin"]["agentHandle"], "grashnuk")
+        self.assertEqual(
+            client.calls,
+            [
+                (
+                    "hive_chat",
+                    "Report status to Hive",
+                    {
+                        "conversation_id": "agent-hive-chat",
+                        "conversation_title": "Hive",
+                        "metadata": {},
+                        "agent_handle": "grashnuk",
                     },
                 )
             ],

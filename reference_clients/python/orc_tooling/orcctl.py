@@ -1112,6 +1112,12 @@ def build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument("--metadata-json", type=_load_json_object, default={})
     chat_parser.add_argument("--dry-run", action="store_true")
 
+    hive_chat_parser = subparsers.add_parser("hive-chat", help="Send a labeled agent message to Hive chat.")
+    hive_chat_parser.add_argument("message", nargs=argparse.REMAINDER, help="Message text to send.")
+    hive_chat_parser.add_argument("--conversation-id", default="")
+    hive_chat_parser.add_argument("--conversation-title", default="Hive")
+    hive_chat_parser.add_argument("--metadata-json", type=_load_json_object, default={})
+
     request_parser = subparsers.add_parser("request-followup", help="Request a Personal follow-up task for this Orc.")
     request_parser.add_argument("task_id")
     request_parser.add_argument("--extra", default="")
@@ -1241,6 +1247,17 @@ def main(argv: list[str] | None = None) -> int:
                 metadata=args.metadata_json,
                 agent_handle=args.agent,
                 dry_run=args.dry_run,
+            )
+        elif args.command == "hive-chat":
+            message = " ".join(args.message).strip()
+            if not message:
+                raise ValueError("hive chat message is required")
+            payload = _client_from_args(args).hive_chat(
+                message,
+                conversation_id=args.conversation_id,
+                conversation_title=args.conversation_title,
+                metadata=args.metadata_json,
+                agent_handle=args.agent,
             )
         elif args.command == "request-followup":
             payload = request_followup_task(
