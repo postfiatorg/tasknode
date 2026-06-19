@@ -59,6 +59,7 @@ import { normalizeClientChatHistory } from "./chat-client-history.js";
 import { validateChatAttachments } from "./chat-attachment-utils.js";
 import { isHelpChatMode } from "./chat-help-mode.js";
 import { metadataWithMachineAgentOrigin } from "./agent-origin.js";
+import { recordAgentActionJournal } from "./agent-quality-gates.js";
 import {
   getContextHistory,
   saveContextDocument,
@@ -873,6 +874,26 @@ export async function chatSend(payload, method, options = {}) {
           source: preflight.chat.source,
           providerTimeoutMs: preflight.chat.providerTimeoutMs,
         });
+    const orcWorkJournal = options.agentOrigin
+      ? await recordAgentActionJournal({
+          agentOrigin: options.agentOrigin,
+          action: "chatbot_chat",
+          status: "recorded",
+          outcomeStatus: "sent",
+          accountId,
+          conversationId,
+          metadata: {
+            mode,
+            provider: result.provider,
+            model: result.model,
+            userMessageId: result.user?.id || "",
+            assistantMessageId: result.assistant?.id || "",
+            responseId: result.responseId || "",
+            messageCharacterCount: message.length,
+          },
+          idempotencyKey: `agent_chatbot_chat:${options.agentOrigin.walletAddress || accountId}:${conversationId}:${result.user?.id || result.responseId || ""}`,
+        })
+      : null;
     return {
       status: 200,
       body: {
@@ -899,6 +920,7 @@ export async function chatSend(payload, method, options = {}) {
           costUsd: result.usage.costUsd,
         },
         ledgerEntry: result.ledgerEntry,
+        orcWorkJournal,
       },
     };
   } catch (error) {

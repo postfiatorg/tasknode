@@ -14,6 +14,12 @@ import { taskLifecycleActions } from "./task-lifecycle-policy.js";
 import { syncPftlWalletTransactions } from "./pftl-cache-sync.js";
 import { runPftlCacheReducerOnce } from "./pftl-cache-reducer.js";
 import { processEvidenceFileForSubmission } from "./task-evidence-processing.js";
+import {
+  agentOriginForTaskSession,
+  enforceAgentActionRateLimit,
+  guardAgentSelfDealing,
+  recordAgentActionJournal,
+} from "./agent-quality-gates.js";
 
 const ACTION_ID = "task_submission";
 const TASK_POINTER_SCHEMA = 1;
@@ -97,7 +103,8 @@ async function requireSessionTask({ payload = {}, session = null } = {}) {
 
   const taskResult = await query(
     `
-      SELECT task_id, account_id, subject_wallet, authority_wallet, allocation_wallet, status, title, description,
+      SELECT task_id, account_id, subject_wallet, authority_wallet, allocation_wallet, request_id, status, title, description,
+             task_kind, reward_offer_pft,
              submission_requirement_text, verification_policy_json
       FROM task_projections
       WHERE task_id = $1
@@ -131,6 +138,8 @@ async function processTaskSubmissionEvidence({ payload, session }) {
   if (resolved.error) return resolved.error;
   const allowed = validateSubmissionAllowed(resolved.task);
   if (allowed.error) return allowed.error;
+  const agentGate = await guardAgentSubmission({ payload, session, resolved, mode: allowed.mode });
+  if (agentGate.error) return agentGate.error;
 
   const file = payload?.file && typeof payload.file === "object" ? payload.file : {};
   const method = safeText(payload?.method || payload?.artifactType || payload?.artifact_type, 80);
@@ -178,11 +187,39 @@ function validateSubmissionAllowed(task) {
   };
 }
 
+async function guardAgentSubmission({ payload, session, resolved, mode }) {
+  const agentOrigin = agentOriginForTaskSession(session, payload, resolved.wallet.address);
+  const action = mode === "verification_response" ? "task_verification_response" : "task_submission";
+  const selfDealing = await guardAgentSelfDealing({
+    agentOrigin,
+    accountId: resolved.accountId,
+    walletAddress: resolved.wallet.address,
+    task: resolved.task,
+    action,
+  });
+  if (!selfDealing.ok) {
+    return {
+      error: {
+        status: selfDealing.status,
+        body: {
+          ...selfDealing.body,
+          action: ACTION_ID,
+        },
+      },
+      agentOrigin,
+      action,
+    };
+  }
+  return { agentOrigin, action };
+}
+
 async function taskSubmissionConfig({ payload, session }) {
   const resolved = await requireSessionTask({ payload, session });
   if (resolved.error) return resolved.error;
   const allowed = validateSubmissionAllowed(resolved.task);
   if (allowed.error) return allowed.error;
+  const agentGate = await guardAgentSubmission({ payload, session, resolved, mode: allowed.mode });
+  if (agentGate.error) return agentGate.error;
 
   const tasknodeEncryptionKey = await resolveTasknodeEncryptionKey(process.env, { checkOnchain: true });
   if (!tasknodeEncryptionKey?.publicKey) {
@@ -222,6 +259,8 @@ async function prepareTaskSubmission({ payload, session }) {
   if (resolved.error) return resolved.error;
   const allowed = validateSubmissionAllowed(resolved.task);
   if (allowed.error) return allowed.error;
+  const agentGate = await guardAgentSubmission({ payload, session, resolved, mode: allowed.mode });
+  if (agentGate.error) return agentGate.error;
 
   const schema = submissionSchemaForMode(allowed.mode);
   const encryptedPayload = payload?.encryptedPayload || payload?.encrypted_payload;
@@ -364,6 +403,30 @@ async function submitTaskSubmission({ payload, session }) {
 
   const allowed = validateSubmissionAllowed(resolved.task);
   if (allowed.error) return allowed.error;
+  const agentGate = await guardAgentSubmission({ payload, session, resolved, mode: allowed.mode });
+  if (agentGate.error) return agentGate.error;
+
+  const rateGate = await enforceAgentActionRateLimit({
+    agentOrigin: agentGate.agentOrigin,
+    action: agentGate.action,
+    accountId: resolved.accountId,
+    taskId: resolved.task.task_id,
+    requestId: resolved.task.request_id || "",
+    metadata: {
+      phase: "submit",
+      submissionMode: allowed.mode,
+      status: resolved.task.status,
+    },
+  });
+  if (!rateGate.ok) {
+    return {
+      status: rateGate.status,
+      body: {
+        ...rateGate.body,
+        action: ACTION_ID,
+      },
+    };
+  }
 
   const submit = await submitSignedPftTransaction({
     signedTxBlob: payload?.signedTxBlob || payload?.signed_tx_blob,
@@ -386,6 +449,26 @@ async function submitTaskSubmission({ payload, session }) {
     txHash,
   });
 
+  const orcWorkJournal = agentGate.agentOrigin
+    ? await recordAgentActionJournal({
+        agentOrigin: agentGate.agentOrigin,
+        action: agentGate.action,
+        status: "recorded",
+        outcomeStatus: "submitted",
+        accountId: resolved.accountId,
+        taskId: resolved.task.task_id,
+        requestId: resolved.task.request_id || "",
+        cid: safeText(payload?.cid, 240),
+        txHash,
+        metadata: {
+          phase: "submit",
+          submissionMode: allowed.mode,
+          previousStatus: resolved.task.status,
+        },
+        idempotencyKey: `agent_task_submission:${agentGate.agentOrigin.walletAddress || resolved.accountId}:${resolved.task.task_id}:${allowed.mode}:${txHash}`,
+      })
+    : null;
+
   return okResponse({
     phase: "submitted",
     message: "Task evidence published to PFT.",
@@ -394,6 +477,7 @@ async function submitTaskSubmission({ payload, session }) {
     txHash,
     engineResult: submit.engineResult,
     refresh,
+    orcWorkJournal,
   });
 }
 

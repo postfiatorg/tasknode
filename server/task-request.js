@@ -20,6 +20,12 @@ import { scheduleTaskGenerationQueue } from "./task-generation-worker.js";
 import { taskRequestCanonicalText, taskRequestIntentStart } from "./task-request-intent.js";
 import { contextBodyText } from "./context-line-map.js";
 import { contextBudgetMetrics, TASKGEN_CONTEXT_MAX_CHARS } from "../shared/context-budget.js";
+import {
+  agentDisclosureMetadata,
+  agentOriginForTaskSession,
+  enforceAgentActionRateLimit,
+  recordAgentActionJournal,
+} from "./agent-quality-gates.js";
 
 const ACTION_ID = "task_request";
 const TASK_POINTER_SCHEMA = 1;
@@ -89,6 +95,16 @@ function requestInput(payload = {}) {
     conversationId: safeText(payload?.conversationId || "", 180),
     attachments,
   };
+}
+
+function requestInputForSession(payload = {}, session = null, walletAddress = "") {
+  const request = requestInput(payload);
+  const agentOrigin = agentOriginForTaskSession(session, payload, walletAddress);
+  if (agentOrigin) {
+    request.source = "agent_capability_client";
+    request.sourceConversationTitle = request.sourceConversationTitle || "Agent";
+  }
+  return { request, agentOrigin };
 }
 
 async function requireSessionWallet(session = null) {
@@ -206,7 +222,7 @@ function queueProjection(tasks = {}) {
   };
 }
 
-export async function buildRequestBundle({ accountId, walletAddress, request, authorityWallet }) {
+export async function buildRequestBundle({ accountId, walletAddress, request, authorityWallet, agentOrigin = null }) {
   const createdAt = new Date();
   const createdAtIso = createdAt.toISOString();
   const acceptByIso = new Date(createdAt.getTime() + DEFAULT_TASK_ACCEPT_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
@@ -234,6 +250,7 @@ export async function buildRequestBundle({ accountId, walletAddress, request, au
       account_id: accountId,
       conversation_id: request.conversationId || null,
       conversation_title: request.sourceConversationTitle,
+      ...agentDisclosureMetadata(agentOrigin),
     },
     request: {
       request_id: request.requestId,
@@ -309,7 +326,7 @@ export async function buildRequestBundle({ accountId, walletAddress, request, au
 async function taskRequestConfig({ payload, session }) {
   const resolved = await requireSessionWallet(session);
   if (resolved.error) return resolved.error;
-  const request = requestInput(payload);
+  const { request, agentOrigin } = requestInputForSession(payload, session, resolved.wallet.address);
   if (!request.userDetailText) {
     return actionResponse({
       status: 400,
@@ -335,6 +352,7 @@ async function taskRequestConfig({ payload, session }) {
     walletAddress: resolved.wallet.address,
     request,
     authorityWallet,
+    agentOrigin,
   });
 
   return okResponse({
@@ -419,7 +437,7 @@ async function pinEncryptedPayload({ payload, encryptedPayload, schema, contentK
 async function prepareRequestBundle({ payload, session }) {
   const resolved = await requireSessionWallet(session);
   if (resolved.error) return resolved.error;
-  const request = requestInput(payload);
+  const { request } = requestInputForSession(payload, session, resolved.wallet.address);
   const pinned = await pinEncryptedPayload({
     payload: { accountId: resolved.accountId, walletAddress: resolved.wallet.address },
     encryptedPayload: payload?.encryptedBundlePayload,
@@ -442,7 +460,7 @@ async function prepareRequestBundle({ payload, session }) {
 async function prepareRequestEvent({ payload, session }) {
   const resolved = await requireSessionWallet(session);
   if (resolved.error) return resolved.error;
-  const request = requestInput(payload);
+  const { request } = requestInputForSession(payload, session, resolved.wallet.address);
   const encryptedPayload = payload?.encryptedEventPayload || payload?.encryptedPayload || payload?.encrypted_payload;
   const pinned = await pinEncryptedPayload({
     payload: { accountId: resolved.accountId, walletAddress: resolved.wallet.address },
@@ -512,7 +530,27 @@ async function bestEffortRefreshTaskRequest({ accountId, walletAddress }) {
 async function submitTaskRequest({ payload, session }) {
   const resolved = await requireSessionWallet(session);
   if (resolved.error) return resolved.error;
-  const request = requestInput(payload);
+  const { request, agentOrigin } = requestInputForSession(payload, session, resolved.wallet.address);
+
+  const rateGate = await enforceAgentActionRateLimit({
+    agentOrigin,
+    action: "task_request",
+    accountId: resolved.accountId,
+    requestId: request.requestId,
+    metadata: {
+      phase: "submit",
+      requestedTaskKind: request.requestedTaskKind,
+    },
+  });
+  if (!rateGate.ok) {
+    return {
+      status: rateGate.status,
+      body: {
+        ...rateGate.body,
+        action: ACTION_ID,
+      },
+    };
+  }
 
   const submit = await submitSignedPftTransaction({
     signedTxBlob: payload?.signedTxBlob || payload?.signed_tx_blob,
@@ -570,6 +608,7 @@ async function submitTaskRequest({ payload, session }) {
       chainSubmitPhase: "submitted",
       pointer: payload?.pointer || {},
       transaction: payload?.transaction || {},
+      ...agentDisclosureMetadata(agentOrigin),
     },
   }).catch((error) => ({ ok: false, error: safeText(error?.message || error, 500) }));
   const generationScheduled = visibleRequest?.ok
@@ -579,6 +618,25 @@ async function submitTaskRequest({ payload, session }) {
         reason: "browser_task_request_submitted",
       })
     : { scheduled: false, reason: "task_request_not_persisted" };
+
+  const orcWorkJournal = agentOrigin
+    ? await recordAgentActionJournal({
+        agentOrigin,
+        action: "task_request",
+        status: "recorded",
+        outcomeStatus: "submitted",
+        accountId: resolved.accountId,
+        requestId: request.requestId,
+        cid: safeText(payload?.cid || payload?.eventCid, 240),
+        txHash,
+        metadata: {
+          requestedTaskKind: request.requestedTaskKind,
+          source: request.source,
+          bundleCid: safeText(payload?.bundleCid, 240),
+        },
+        idempotencyKey: `agent_task_request:${agentOrigin.walletAddress || resolved.accountId}:${request.requestId}:${txHash}`,
+      })
+    : null;
 
   return okResponse({
     phase: "submitted",
@@ -593,6 +651,7 @@ async function submitTaskRequest({ payload, session }) {
     visibleRequest,
     generationScheduled,
     refresh,
+    orcWorkJournal,
   });
 }
 

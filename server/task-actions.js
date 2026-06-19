@@ -13,6 +13,11 @@ import { query } from "./db/pool.js";
 import { canApplyTaskStopAction, taskLifecycleActions } from "./task-lifecycle-policy.js";
 import { syncPftlWalletTransactions } from "./pftl-cache-sync.js";
 import { runPftlCacheReducerOnce } from "./pftl-cache-reducer.js";
+import {
+  agentOriginForTaskSession,
+  enforceAgentActionRateLimit,
+  recordAgentActionJournal,
+} from "./agent-quality-gates.js";
 
 const ACTION_ID = "task_lifecycle_action";
 const TASK_POINTER_SCHEMA = 1;
@@ -96,7 +101,7 @@ async function requireSessionTask({ payload = {}, session = null } = {}) {
 
   const taskResult = await query(
     `
-      SELECT task_id, account_id, subject_wallet, authority_wallet, allocation_wallet, status, title
+      SELECT task_id, account_id, subject_wallet, authority_wallet, allocation_wallet, request_id, status, title
       FROM task_projections
       WHERE task_id = $1
         AND subject_wallet = $2
@@ -290,6 +295,28 @@ async function bestEffortRefreshTaskProjection({ accountId, walletAddress, taskI
 async function submitTaskAction({ payload, session }) {
   const resolved = await requireSessionTask({ payload, session });
   if (resolved.error) return resolved.error;
+  const taskAction = normalizeTaskAction(payload?.taskAction || payload?.task_action) || "task_action";
+  const agentOrigin = agentOriginForTaskSession(session, payload, resolved.wallet.address);
+  const rateGate = await enforceAgentActionRateLimit({
+    agentOrigin,
+    action: "task_action",
+    accountId: resolved.accountId,
+    taskId: resolved.task.task_id,
+    metadata: {
+      phase: "submit",
+      taskAction,
+      status: resolved.task.status,
+    },
+  });
+  if (!rateGate.ok) {
+    return {
+      status: rateGate.status,
+      body: {
+        ...rateGate.body,
+        action: ACTION_ID,
+      },
+    };
+  }
 
   const submit = await submitSignedPftTransaction({
     signedTxBlob: payload?.signedTxBlob || payload?.signed_tx_blob,
@@ -312,6 +339,26 @@ async function submitTaskAction({ payload, session }) {
     txHash,
   });
 
+  const orcWorkJournal = agentOrigin
+    ? await recordAgentActionJournal({
+        agentOrigin,
+        action: `task_${taskAction}`,
+        status: "recorded",
+        outcomeStatus: "submitted",
+        accountId: resolved.accountId,
+        taskId: resolved.task.task_id,
+        requestId: resolved.task.request_id || "",
+        cid: safeText(payload?.cid, 240),
+        txHash,
+        metadata: {
+          phase: "submit",
+          taskAction,
+          previousStatus: resolved.task.status,
+        },
+        idempotencyKey: `agent_task_action:${agentOrigin.walletAddress || resolved.accountId}:${resolved.task.task_id}:${taskAction}:${txHash}`,
+      })
+    : null;
+
   return okResponse({
     phase: "submitted",
     message: "Task action published to PFT.",
@@ -320,6 +367,7 @@ async function submitTaskAction({ payload, session }) {
     txHash,
     engineResult: submit.engineResult,
     refresh,
+    orcWorkJournal,
   });
 }
 

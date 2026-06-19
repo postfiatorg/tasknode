@@ -36,6 +36,7 @@
     "chat-spirit-prompt-smoke": "node scripts/chat-spirit-prompt-smoke.mjs",
     "agent-chat-origin-smoke": "node scripts/agent-chat-origin-smoke.mjs",
     "agent-hive-chat-smoke": "node scripts/agent-hive-chat-smoke.mjs",
+    "agent-quality-gates-smoke": "node scripts/agent-quality-gates-smoke.mjs",
     "chat-memory-worker-request-smoke": "node scripts/chat-memory-worker-request-smoke.mjs",
     "chat-search-smoke": "node scripts/chat-search-smoke.mjs",
     "telegram-bot-webhook-smoke": "node scripts/telegram-bot-webhook-smoke.mjs",

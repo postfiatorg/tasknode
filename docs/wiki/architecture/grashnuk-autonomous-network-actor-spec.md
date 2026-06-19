@@ -57,6 +57,27 @@ pay":
   `nazgul status`; anomalies escalate.
 - **Reserved (unchanged):** bans, deploy, economic policy, public-chain flags stay Sauron's.
 
+### Implemented server guardrails
+
+- Wallet-login agent task requests are server-labeled as `agent_capability_client` and carry
+  `senderType=machine_agent` / `agentOrigin` disclosure in the request bundle metadata.
+- Agent task request, task lifecycle action, evidence submission, verification response, repo
+  chat, and Hive chat actions write `orc_work_journal` when Postgres is enabled.
+- Agent task requests, task lifecycle actions, evidence submissions, and verification responses
+  are rate-limited with env-configurable ceilings:
+  `TASKNODE_AGENT_TASK_REQUEST_RATE_LIMIT_MAX`,
+  `TASKNODE_AGENT_TASK_ACTION_RATE_LIMIT_MAX`,
+  `TASKNODE_AGENT_TASK_SUBMISSION_RATE_LIMIT_MAX`,
+  `TASKNODE_AGENT_TASK_VERIFICATION_RESPONSE_RATE_LIMIT_MAX`, and matching
+  `_RATE_LIMIT_WINDOW_MS` values, with `TASKNODE_AGENT_QUALITY_GATE_WINDOW_MS` as the shared
+  default window.
+- Agent self-dealing is blocked server-side: an agent cannot submit or respond to verification
+  on a task whose `task_requests` row shows the same agent account+wallet requested it through
+  `agent_capability_client`. Board-routed Network Tasks with `source=network_task_generation`
+  are not blocked by this guard.
+- Reward amounts, payout policy, bans, clawbacks, and public-chain enforcement remain outside
+  these guardrails and are reserved for Alex/Sauron.
+
 ## 4. Autonomy substrate
 
 **Option A (start here) — self-directed agent session.** Grashnuk runs as a Codex session
