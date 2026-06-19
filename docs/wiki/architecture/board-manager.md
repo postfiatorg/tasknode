@@ -148,6 +148,43 @@ Board Manager can route follow-up work using packet ids and recommendations.
 This is advisory context only. Evidence packets do not mutate task lifecycle,
 capacity, reward scoring, PFTL pointers, custody, or payment state.
 
+## Orc Accounting
+
+Phase 6 adds Orc operator accounting to the Board Manager source packet. The
+shared Orc registry lives in `orc_agents`; recent Orc activity is read from
+`orc_run_journal`, `orc_task_review_states`, and
+`orc_operator_interactions`
+(`server/db/migrations/062_orc_agents_and_activity.sql`). The Python Orc/Nazgul
+tooling can use the same tables, so the Hive Mind sees the same machine
+operators and review work that the operator pane tooling records.
+
+`server/repositories/orc-operations.js` builds
+`orcOperations` for `buildBoardManagerSourcePacket`. The block contains active
+Orc handles, account ids, wallet addresses, current Network Task load, pending
+generation count, recent run summaries, review dispositions, and operator
+interactions. It deliberately omits seeds, session tokens, local runtime paths,
+tmux pane contents, and raw private evidence.
+
+The field is accounting/context only:
+
+- `orcOperations.enforcement` is `none_context_only`.
+- Orc registry rows do not mutate rewards, custody, task lifecycle, stale-chain
+  recovery, task capacity predicates, bans, deployments, or public exposure
+  policy.
+- Network Task routing still goes through the existing
+  `initiate_network_task` action and the normal candidate eligibility/capacity
+  checks. An Orc must have a real account/wallet identity and still satisfy the
+  existing Network Task path before work is generated for it.
+- The Board Manager prompt may prefer suitable active Orcs for concise
+  evidence-evaluation packets, verification follow-up, repo-access proof, and
+  board-state accounting tasks when the source packet supports that routing.
+
+The Secretary packet preserves a compact `orc_operations_summary` with active
+agent counts, routeable Orc identities, current Orc load, action-required
+review counts, recent review summaries, and operator interactions. This keeps
+Orc state from being compressed away before the downstream Board Manager model
+chooses an action.
+
 ## JSON Handling Hardening
 
 The Board Manager decision provider parses strict JSON, retries once with a

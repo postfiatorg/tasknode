@@ -31,6 +31,7 @@ as first-class packet members:
 - `prior_output_corpus_summary`
 - `deduplication_watchlist`
 - `capability_gap_summary`
+- `orc_operations_summary`
 
 The prompt marks operator standing directives, no-documentation-only generation
 policy, and prior task ids/CIDs/tx hashes as non-compressible facts
@@ -54,6 +55,15 @@ capability gaps. Gaps identify the project, candidate, capability type, safe
 scope label, candidate status, and recommended proof task shape. They do not
 include raw private membership lists or server secrets.
 
+`orc_operations_summary` is the Phase 6 Orc accounting handoff. It preserves
+active Orc handles, account ids, wallet addresses, current Orc Network Task
+load, pending generation count, action-required review counts, and recent Orc
+review/operator-interaction summaries. It comes from `orcOperations` in the
+source packet and is compacted by
+`server/board-manager-secretary-packets.js`. The summary deliberately excludes
+seeds, session tokens, local runtime paths, tmux pane contents, and private
+plaintext.
+
 ## Generation Policy Handoff
 
 `generation_quality_policy` is model-facing policy, not executable gating. It
@@ -71,6 +81,14 @@ blocklist, reward cap, or automatic rejection rule. Durable verified capability
 rows are stored in `board_manager_capability_profiles`; Network Diagnostic
 Report claims remain declared context unless a reviewed operator writes a
 verified row.
+
+`orc_operations_summary` also follows this rule. It helps the downstream Board
+Manager understand which Orc operators exist, whether they already have active
+work, and what review/accounting activity they have recorded. It does not
+change task lifecycle, reward scoring, custody, capacity predicates, bans, or
+deployment behavior. Any task routed to an Orc still goes through the normal
+`initiate_network_task` action and existing Network Task eligibility/capacity
+checks.
 
 ## JSON Repair And Fallback
 

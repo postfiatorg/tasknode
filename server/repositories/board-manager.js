@@ -44,6 +44,7 @@ import {
   createEvidenceEvaluationPacketForTask,
   listEvidenceEvaluationPacketsForBoardManager,
 } from "./evidence-evaluation-packets.js";
+import { getBoardManagerOrcOperations } from "./orc-operations.js";
 
 export { formatBoardManagerAgentJob, formatBoardManagerAgentRun } from "./board-manager-run-summary.js";
 
@@ -1090,6 +1091,7 @@ function boardManagerSourceLogSnapshot(packet = {}) {
     priorOutputCorpusSummary: safeObject(source.priorOutputCorpusSummary),
     deduplicationWatchlist: safeArray(source.deduplicationWatchlist).slice(0, 16),
     capabilityInstrumentation: safeObject(source.capabilityInstrumentation),
+    orcOperations: safeObject(source.orcOperations),
     routingConstraints: safeObject(source.routingConstraints),
     openFollowups: safeArray(source.openFollowups).slice(0, 20),
     hiveProjects: safeObject(source.hiveProjects),
@@ -1326,6 +1328,7 @@ export async function buildBoardManagerSourcePacket({
 	    networkTaskCandidates,
 	    recentRuns,
 	    routingConstraints,
+    orcOperations,
     openFollowups,
   ] = await Promise.all([
     getHiveContextDocument({ limit }),
@@ -1341,6 +1344,17 @@ export async function buildBoardManagerSourcePacket({
 	    listEligibleNetworkTaskCandidates({ limit: 12 }).catch(() => []),
 	    recentBoardManagerRuns({ limit: 20 }),
 	    buildHiveRoutingConstraintsSnapshot({ limit: 120 }).catch(() => ({ ok: false, status: "unavailable", accounts: [] })),
+    getBoardManagerOrcOperations({ limit: 24 }).catch(() => ({
+      schema: "pf.hive.board_manager.orc_operations.v1",
+      status: "unavailable",
+      enforcement: "none_context_only",
+      summary: {},
+      agents: [],
+      routingCandidates: [],
+      reviewQueue: { recent: [] },
+      runJournal: { recent: [] },
+      operatorInteractions: { recent: [] },
+    })),
     expireOpenBoardManagerFollowups()
       .then(() => resolveStaleBoardManagerFollowups())
       .then(() => listOpenBoardManagerFollowups({ limit: 20 }))
@@ -1395,6 +1409,7 @@ export async function buildBoardManagerSourcePacket({
     recentBoardManagerRuns: compactRecentRuns,
     openFollowups,
     freshness,
+    orcOperations,
   });
   const packetCore = {
     schema: "pf.hive.board_manager.source.v0",
@@ -1422,6 +1437,7 @@ export async function buildBoardManagerSourcePacket({
 	    priorOutputCorpusSummary: safeObject(networkTaskOutputCorpus?.summary),
 	    deduplicationWatchlist: safeArray(networkTaskOutputCorpus?.deduplicationWatchlist).slice(0, 16),
 	    capabilityInstrumentation,
+    orcOperations,
 	    taskWorkTypeVocabulary: boardManagerTaskWorkTypeVocabulary,
 	    networkTaskCandidates,
 	    routingConstraints,
