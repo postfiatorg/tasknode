@@ -226,6 +226,73 @@ function publicMetadataSummary(metadata = {}) {
   };
 }
 
+function publicDeliverySummary(row = {}) {
+  const metadata = jsonObject(row.metadata_json || row.metadataJson);
+  return {
+    chatMessageId: safeId(row.id || row.chatMessageId),
+    accountId: safeId(row.account_id || row.accountId),
+    conversationId: safeId(row.conversation_id || row.conversationId),
+    role: safeText(row.role, 40),
+    kind: safeText(metadata.kind, 80),
+    senderType: safeText(metadata.senderType, 80),
+    agentHandle: safeText(metadata.agentOrigin?.agentHandle || metadata.reviewerHandle, 120),
+    createdAt: toIso(row.created_at || row.createdAt),
+  };
+}
+
+export async function verifyOrcHiveSignalDelivery({
+  accountId = "",
+  conversationId = "",
+  chatMessageId = "",
+  reviewerHandle = "",
+  queryImpl = query,
+} = {}) {
+  const normalizedAccountId = safeId(accountId);
+  const normalizedConversationId = safeId(conversationId);
+  const normalizedMessageId = safeId(chatMessageId);
+  if (!normalizedAccountId || !normalizedConversationId || !normalizedMessageId) {
+    throw errorWithCode("orc_hive_signal_delivery_incomplete", "Orc signal delivery identifiers were incomplete", 500);
+  }
+
+  const result = await queryImpl(
+    `
+      SELECT id, account_id, conversation_id, role, body, metadata_json, created_at
+      FROM chat_messages
+      WHERE id = $1
+        AND account_id = $2
+        AND conversation_id = $3
+      LIMIT 1
+    `,
+    [normalizedMessageId, normalizedAccountId, normalizedConversationId]
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw errorWithCode(
+      "orc_hive_signal_delivery_missing",
+      "Orc signal was not readable from the recipient Hive chat after insert",
+      500
+    );
+  }
+
+  const metadata = jsonObject(row.metadata_json);
+  const actualHandle = safeText(metadata.agentOrigin?.agentHandle || metadata.reviewerHandle, 120);
+  const expectedHandle = safeText(reviewerHandle, 120);
+  const mismatches = [];
+  if (row.role !== "assistant") mismatches.push("role");
+  if (metadata.kind !== "orc_hive_signal") mismatches.push("kind");
+  if (metadata.senderType !== "machine_agent") mismatches.push("senderType");
+  if (expectedHandle && actualHandle !== expectedHandle) mismatches.push("agentHandle");
+  if (mismatches.length > 0) {
+    throw errorWithCode(
+      "orc_hive_signal_delivery_mismatch",
+      `Orc signal delivery row failed verification: ${mismatches.join(", ")}`,
+      500
+    );
+  }
+
+  return publicDeliverySummary(row);
+}
+
 export async function sendOrcHiveSignal({
   taskId,
   message,
@@ -313,13 +380,25 @@ export async function sendOrcHiveSignal({
     assistantMessageId,
     assistantMetadata: metadata,
   });
+  const chatMessageId = chatTurn?.assistant?.id || assistantMessageId;
+  const verifyDeliveryImpl = deps.verifyDeliveryImpl || verifyOrcHiveSignalDelivery;
+  const delivery = await verifyDeliveryImpl({
+    accountId: target.accountId,
+    conversationId: finalConversationId,
+    chatMessageId,
+    reviewerHandle,
+    queryImpl: deps.queryImpl || query,
+  });
 
   return {
     ...baseResult,
     dryRun: false,
     executed: true,
     conversationId: finalConversationId,
-    chatMessageId: chatTurn?.assistant?.id || assistantMessageId,
+    chatMessageId,
+    deliveryVerified: true,
+    visibleInHiveChat: true,
+    delivery,
   };
 }
 
@@ -344,7 +423,7 @@ function printResult(result, { json = false } = {}) {
   }
   console.log(
     result.executed
-      ? `Sent Orc Hive signal to ${result.accountId} (${result.chatMessageId || "message queued"})`
+      ? `Verified Orc Hive signal to ${result.accountId} (${result.chatMessageId || "message queued"})`
       : `Dry-run Orc Hive signal to ${result.accountId} (${result.conversationId})`
   );
 }

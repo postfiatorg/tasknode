@@ -4,6 +4,7 @@ import {
   parseArgs,
   resolveSignalTarget,
   sendOrcHiveSignal,
+  verifyOrcHiveSignalDelivery,
 } from "./orc-hive-signal.mjs";
 
 const taskId = "task_orc_signal_smoke";
@@ -24,7 +25,30 @@ function taskRow(overrides = {}) {
   };
 }
 
-function fixtureDeps({ rows = [taskRow()], databaseEnabledValue = true } = {}) {
+function deliveryRow({ messageId = "msg_orcsignal_test_assistant", overrides = {} } = {}) {
+  return {
+    id: messageId,
+    account_id: accountId,
+    conversation_id: defaultConversationId,
+    role: "assistant",
+    body: "Reviewed and closed.",
+    metadata_json: {
+      kind: "orc_hive_signal",
+      senderType: "machine_agent",
+      agentOrigin: {
+        agent: true,
+        actorType: "machine_agent",
+        agentHandle: "grashnuk",
+        walletAddress: "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW",
+        client: "orc-hive-signal",
+      },
+    },
+    created_at: "2026-06-19T00:01:00.000Z",
+    ...overrides,
+  };
+}
+
+function fixtureDeps({ rows = [taskRow()], deliveryRows, databaseEnabledValue = true } = {}) {
   const calls = {
     queries: [],
     ensured: [],
@@ -35,6 +59,9 @@ function fixtureDeps({ rows = [taskRow()], databaseEnabledValue = true } = {}) {
     databaseEnabledImpl: () => databaseEnabledValue,
     queryImpl: async (sql, params) => {
       calls.queries.push({ sql, params });
+      if (String(sql).includes("FROM chat_messages")) {
+        return { rows: deliveryRows === undefined ? [deliveryRow({ messageId: params[0] })] : deliveryRows };
+      }
       return { rows };
     },
     ensureHiveConversationImpl: async (input) => {
@@ -108,6 +135,12 @@ function fixtureDeps({ rows = [taskRow()], databaseEnabledValue = true } = {}) {
   assert.equal(result.ok, true);
   assert.equal(result.executed, true);
   assert.match(result.chatMessageId, /^msg_orcsignal_/);
+  assert.equal(result.deliveryVerified, true);
+  assert.equal(result.visibleInHiveChat, true);
+  assert.equal(result.delivery.chatMessageId, result.chatMessageId);
+  assert.equal(result.delivery.kind, "orc_hive_signal");
+  assert.equal(result.delivery.senderType, "machine_agent");
+  assert.equal(result.delivery.agentHandle, "grashnuk");
   assert.equal(deps.calls.ensured.length, 1);
   assert.deepEqual(deps.calls.ensured[0], { accountId });
   assert.equal(deps.calls.appended.length, 1);
@@ -139,6 +172,43 @@ function fixtureDeps({ rows = [taskRow()], databaseEnabledValue = true } = {}) {
   assert.equal(result.conversationId, conversationId);
   assert.equal(deps.calls.ensured.length, 0, "explicit conversation must not be auto-created");
   assert.equal(deps.calls.appended[0].conversationId, conversationId);
+}
+
+{
+  const deps = fixtureDeps({ deliveryRows: [] });
+  await assert.rejects(
+    () => sendOrcHiveSignal({
+      taskId,
+      message: "Should fail read-back.",
+      reviewerHandle: "grashnuk",
+      execute: true,
+      deps,
+    }),
+    /not readable from the recipient Hive chat/
+  );
+  assert.equal(deps.calls.appended.length, 1, "the smoke simulates an insert that cannot be read back");
+}
+
+{
+  await assert.rejects(
+    () => verifyOrcHiveSignalDelivery({
+      accountId,
+      conversationId: defaultConversationId,
+      chatMessageId: "msg_bad",
+      reviewerHandle: "grashnuk",
+      queryImpl: async () => ({
+        rows: [
+          deliveryRow({
+            messageId: "msg_bad",
+            overrides: {
+              metadata_json: { kind: "hive_manager_response", senderType: "machine_agent" },
+            },
+          }),
+        ],
+      }),
+    }),
+    /failed verification: kind/
+  );
 }
 
 {
