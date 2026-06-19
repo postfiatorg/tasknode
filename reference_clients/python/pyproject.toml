@@ -26,6 +26,7 @@ orc-classify-network = "orc_tooling.glm_review_classifier:main"
 orc-reward-monitor = "orc_tooling.reward_monitor_cli:main"
 orcctl = "orc_tooling.orcctl:main"
 nazgul = "orc_tooling.nazgul:main"
+orc-runtime = "orc_tooling.runtime_cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
