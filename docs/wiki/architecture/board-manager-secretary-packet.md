@@ -57,8 +57,8 @@ include raw private membership lists or server secrets.
 
 `orc_operations_summary` is the Phase 6 Orc accounting handoff. It preserves
 active Orc handles, account ids, wallet addresses, current Orc Network Task
-load, pending generation count, action-required review counts, and recent Orc
-review/operator-interaction summaries. It comes from `orcOperations` in the
+load, pending generation count, review-history count, action-required review
+counts, and recent Orc review/operator-interaction summaries. It comes from `orcOperations` in the
 source packet and is compacted by
 `server/board-manager-secretary-packets.js`. The summary deliberately excludes
 seeds, session tokens, local runtime paths, tmux pane contents, and private

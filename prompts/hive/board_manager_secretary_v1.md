@@ -159,6 +159,7 @@ Return this JSON shape:
 	    "available_for_routing_count": 0,
 	    "outstanding_orc_network_task_count": 0,
 	    "pending_orc_generation_count": 0,
+	    "review_history_count": 0,
 	    "action_required_review_count": 0,
 	    "recent_interaction_count": 0,
 	    "agents": [

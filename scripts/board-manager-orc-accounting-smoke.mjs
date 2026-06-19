@@ -14,6 +14,7 @@ const orcOperations = compactBoardManagerOrcOperationsForSourcePacket({
   tableStatus: {
     orcAgents: true,
     orcRunJournal: true,
+    orcTaskReviews: true,
     orcTaskReviewStates: true,
     orcOperatorInteractions: true,
   },
@@ -72,6 +73,7 @@ const orcOperations = compactBoardManagerOrcOperationsForSourcePacket({
       source_tx_hashes: ["tx_review"],
     },
   ],
+  reviewHistoryCount: 6,
   runJournal: [
     {
       orc_handle: "grashnuk",
@@ -101,6 +103,8 @@ assert.equal(orcOperations.schema, "pf.hive.board_manager.orc_operations.v1");
 assert.equal(orcOperations.enforcement, "none_context_only");
 assert.equal(orcOperations.summary.activeAgentCount, 1);
 assert.equal(orcOperations.summary.availableForRoutingCount, 1);
+assert.equal(orcOperations.summary.reviewHistoryCount, 6);
+assert.equal(orcOperations.tables.orcTaskReviews, true);
 assert.equal(orcOperations.agents[0].handle, "grashnuk");
 assert.equal(orcOperations.agents[0].accountId, "acct_orc_grashnuk");
 assert.equal(orcOperations.agents[0].walletAddress, "rGrashnukWallet");

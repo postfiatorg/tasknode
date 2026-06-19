@@ -152,18 +152,19 @@ capacity, reward scoring, PFTL pointers, custody, or payment state.
 
 Phase 6 adds Orc operator accounting to the Board Manager source packet. The
 shared Orc registry lives in `orc_agents`; recent Orc activity is read from
-`orc_run_journal`, `orc_task_review_states`, and
+`orc_run_journal`, `orc_task_reviews`, `orc_task_review_states`, and
 `orc_operator_interactions`
-(`server/db/migrations/062_orc_agents_and_activity.sql`). The Python Orc/Nazgul
-tooling can use the same tables, so the Hive Mind sees the same machine
-operators and review work that the operator pane tooling records.
+(`server/db/migrations/062_orc_agents_and_activity.sql`,
+`server/db/migrations/063_orc_task_reviews.sql`). The Python Orc/Nazgul tooling
+can use the same tables, so the Hive Mind sees the same machine operators and
+review work that the operator pane tooling records.
 
 `server/repositories/orc-operations.js` builds
 `orcOperations` for `buildBoardManagerSourcePacket`. The block contains active
 Orc handles, account ids, wallet addresses, current Network Task load, pending
-generation count, recent run summaries, review dispositions, and operator
-interactions. It deliberately omits seeds, session tokens, local runtime paths,
-tmux pane contents, and raw private evidence.
+generation count, recent run summaries, review-history counts, current review
+dispositions, and operator interactions. It deliberately omits seeds, session
+tokens, local runtime paths, tmux pane contents, and raw private evidence.
 
 The field is accounting/context only:
 

@@ -54,6 +54,7 @@ from orc_tooling import (
     wait_for_orc_idle,
 )
 from tasknode_pftl.wallets import wallet_from_seed
+from orc_tooling.review_state import ensure_review_state_schema, upsert_review_state
 
 
 SMOKE_MNEMONIC = (
@@ -711,12 +712,64 @@ class OrcToolingTests(unittest.TestCase):
         ontology = review_state_ontology()
 
         self.assertEqual(ontology["table"], "orc_task_review_states")
+        self.assertEqual(ontology["historyTable"], "orc_task_reviews")
         self.assertEqual(ontology["queueView"], "orc_task_review_queue")
         self.assertIn("reviewed_no_action", ontology["dispositions"])
         self.assertIn("reviewed_follow_up_completed", ontology["dispositions"])
         self.assertTrue(review_disposition_requires_action("reviewed_follow_up"))
         self.assertFalse(review_disposition_requires_action("reviewed_follow_up_completed"))
         self.assertFalse(review_disposition_requires_action("reviewed_no_action"))
+
+    def test_review_state_schema_creates_shared_history_table(self):
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            return {"ok": True, "secretPrinted": False}
+
+        with patch("orc_tooling.review_state.tasknode_database_url", return_value="postgres://unit"):
+            with patch("orc_tooling.review_state._run_json", side_effect=fake_run_json):
+                result = ensure_review_state_schema(database_url="postgres://unit")
+
+        sql = calls[0]
+        self.assertEqual(result["ok"], True)
+        self.assertIn("CREATE TABLE IF NOT EXISTS orc_task_review_states", sql)
+        self.assertIn("CREATE TABLE IF NOT EXISTS orc_task_reviews", sql)
+        self.assertIn("CREATE OR REPLACE VIEW orc_task_review_queue", sql)
+        self.assertIn("'historyTable', 'orc_task_reviews'", sql)
+
+    def test_upsert_review_state_appends_history_row(self):
+        record = normalize_review_state_record(
+            task_id="task_review",
+            disposition="reviewed_no_action",
+            summary="Reviewed and no action remains.",
+            recommended_action="No current action remains.",
+            reviewer_handle="orc-alpha",
+            reviewer_wallet="rReviewer",
+        )
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            return {
+                "task_id": "task_review",
+                "disposition": "reviewed_no_action",
+                "review_id": "orcrev_unit",
+                "secretPrinted": False,
+            }
+
+        with patch("orc_tooling.review_state.ensure_review_state_schema", return_value={"ok": True}):
+            with patch("orc_tooling.review_state.tasknode_database_url", return_value="postgres://unit"):
+                with patch("orc_tooling.review_state._run_json", side_effect=fake_run_json):
+                    result = upsert_review_state(record, database_url="postgres://unit")
+
+        sql = calls[0]
+        self.assertEqual(result["review_id"], "orcrev_unit")
+        self.assertIn("INSERT INTO orc_task_review_states", sql)
+        self.assertIn("INSERT INTO orc_task_reviews", sql)
+        self.assertIn("),\nreview_insert AS (", sql)
+        self.assertIn(")\nSELECT to_jsonb(upsert)", sql)
+        self.assertIn("'review_id'", sql)
 
     def test_completed_follow_up_is_terminal_without_action_required(self):
         record = normalize_review_state_record(
