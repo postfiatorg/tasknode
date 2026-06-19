@@ -32,6 +32,8 @@ uv run orcctl signal-user task_original_... \
   --message "Following up on your rewarded task: we verified the issue and completed the fix." \
   --execute
 uv run orcctl close-followup task_original_... --followup-task-id task_followup_...
+uv run orcctl self-cycle --execute
+uv run orcctl self-loop --iterations 10 --sleep-seconds 120 --execute
 ```
 
 ## Onboard An Orc Agent
@@ -96,6 +98,53 @@ task, follow-up task/request, event CID, tx hash, and outcome status.
 For raw packet inspection, use the lower-level commands below. For normal
 burn-down, prefer `orcctl` so the review state, follow-up request, task
 lifecycle, user signal, and final closure stay tied together.
+
+## Self-Cycle
+
+`orcctl self-cycle` is the Option-A autonomous agent loop primitive. One run:
+
+1. reads the Orc inventory through the signed agent session;
+2. closes one already-terminal stale follow-up if present;
+3. otherwise ranks assigned operator work and the shared review queue through the
+   same Network Task triage capability used by `prioritize-network`;
+4. performs one bounded work unit when `--execute` is present.
+
+The default is a dry run. It prints the selected item and the exact action it
+would take without mutating review state or submitting signed transactions.
+
+```bash
+uv run orcctl self-cycle --heuristic-only
+uv run orcctl self-cycle --execute --heuristic-only
+```
+
+For rewarded Network Task review, an executed cycle records a source-backed Orc
+review state. If the review needs a concrete follow-up, it can also create the
+Personal follow-up request through the existing audited path. By default the
+follow-up request is a signed preview; add `--submit-followup` to publish the
+request pointer.
+
+```bash
+uv run orcctl self-cycle --execute --submit-followup
+```
+
+For assigned tasks, the cycle reads the task detail first. It accepts proposed
+assigned tasks only when `--accept-assigned` is provided, and it submits or
+responds only when evidence/response text is explicitly supplied.
+
+```bash
+uv run orcctl self-cycle --source operator-outstanding --execute --accept-assigned
+uv run orcctl self-cycle --source operator-outstanding --execute --evidence-file ./evidence.md
+```
+
+`orcctl self-loop` wraps `self-cycle` with max-iteration and sleep guardrails. It
+stops on idle/blocking outcomes by default.
+
+```bash
+uv run orcctl self-loop --iterations 12 --sleep-seconds 300 --execute
+```
+
+The loop does not deploy, ban, claw back, alter rewards, or approve
+self-verification. Those remain reserved outside Orc autonomy.
 
 ## Nazgul Oversight Console
 

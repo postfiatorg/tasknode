@@ -77,6 +77,8 @@ from .orcctl import (
     operator_status,
     request_followup_task,
     review_next,
+    self_cycle,
+    self_loop,
     run_personal_task,
     validate_followup_action,
 )
@@ -162,6 +164,8 @@ __all__ = [
     "build_rewarded_network_task_review_packet",
     "redirect_orc",
     "review_next",
+    "self_cycle",
+    "self_loop",
     "run_journal_summary",
     "run_personal_task",
     "run_duplicate_reward_followup",

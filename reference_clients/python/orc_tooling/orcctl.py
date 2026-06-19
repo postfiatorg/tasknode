@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from typing import Any
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from .payload import task_payload
 from .priority import DEFAULT_PRIORITY_MODEL, next_network_triage_item, triage_network_work
 from .review import build_rewarded_network_task_review_packet
 from .review_integrity_policy import apply_reward_clawback_integrity_policy
+from .review_integrity_policy import EXECUTABLE_REWARD_CLAWBACK_SIGNAL, NO_SIGNING_NO_FUND_MOVEMENT_MARKER
 from .review_state import (
     ACTION_REQUIRED_DISPOSITIONS,
     FOLLOWUP_CLOSEABLE_TASK_STATUSES,
@@ -40,6 +42,7 @@ FOLLOWUP_DISPOSITIONS = {"reviewed_follow_up", "reviewed_integrity_follow_up"}
 TERMINAL_TASK_STATUSES = {
     *FOLLOWUP_CLOSEABLE_TASK_STATUSES,
 }
+SELF_CYCLE_SOURCES = {"auto", "review-queue", "operator-outstanding", "directory-rewarded-tasks"}
 WEAK_ACTION_PHRASES = {
     "write a memo",
     "draft a memo",
@@ -1280,6 +1283,592 @@ def inspect_verification_request(task_id: str, *, client: Any | None = None) -> 
     })
 
 
+def _inventory_summary(inventory: dict[str, Any]) -> dict[str, Any]:
+    groups = _safe_dict(inventory.get("groups"))
+    return {
+        "networkStatus": inventory.get("networkStatus"),
+        "outstanding": _safe_dict(groups.get("outstanding")).get("count", 0),
+        "verification": _safe_dict(groups.get("verification")).get("count", 0),
+        "staleFollowups": _safe_dict(inventory.get("staleFollowups")).get("count", 0),
+        "reviewQueue": _safe_dict(inventory.get("reviewQueue")),
+    }
+
+
+def _first_closeable_followup(inventory: dict[str, Any]) -> dict[str, Any]:
+    rows = _safe_list(_safe_dict(inventory.get("staleFollowups")).get("closeable"))
+    return _safe_dict(rows[0]) if rows else {}
+
+
+def _source_for_triage(source: str, index: int) -> str:
+    normalized = _safe_text(source, 80) or "auto"
+    if normalized not in SELF_CYCLE_SOURCES:
+        raise ValueError("source must be auto, review-queue, operator-outstanding, or directory-rewarded-tasks")
+    if normalized != "auto":
+        return normalized
+    return "operator-outstanding" if index == 0 else "review-queue"
+
+
+def _review_categories_from_priority(item: dict[str, Any]) -> list[str]:
+    text = " ".join(
+        [
+            _safe_text(item.get("title"), 400),
+            _safe_text(item.get("taskProposalDescription"), 1200),
+            " ".join(_safe_text(value, 300) for value in _safe_list(item.get("reasons"))),
+            " ".join(_safe_text(value, 300) for value in _safe_list(item.get("redFlags"))),
+        ]
+    ).lower()
+    categories: list[str] = []
+    checks = [
+        ("reward_accounting", ("reward", "pft", "payout", "payment", "clawback")),
+        ("security", ("sybil", "abuse", "security", "exploit", "blocklist")),
+        ("task_generation", ("generation", "generated", "taskgen", "board manager")),
+        ("task_routing", ("routing", "allocation", "directory", "hive")),
+        ("verification_policy", ("verification", "evidence", "review", "submission")),
+        ("agent_tooling", ("orc", "agent", "tooling", "script", "cli")),
+        ("operator_workflow", ("workflow", "operator", "friction")),
+        ("docs", ("doc", "wiki", "documentation")),
+    ]
+    for category, terms in checks:
+        if any(term in text for term in terms) and category not in categories:
+            categories.append(category)
+    if not categories:
+        categories.append("product_feedback")
+    return categories[:4]
+
+
+def _review_integrity_signals_from_priority(item: dict[str, Any]) -> list[str]:
+    text = " ".join(
+        [
+            _safe_text(item.get("title"), 400),
+            _safe_text(item.get("taskProposalDescription"), 1200),
+            " ".join(_safe_text(value, 300) for value in _safe_list(item.get("redFlags"))),
+            " ".join(_safe_text(value, 300) for value in _safe_list(item.get("reasons"))),
+        ]
+    ).lower()
+    signals: list[str] = []
+    if "duplicate" in text:
+        signals.append("duplicate_submission")
+    if "sybil" in text:
+        signals.append("suspected_sybil_cluster")
+    if "reward abuse" in text or "farming" in text:
+        signals.append("reward_abuse_pattern")
+    if "generic" in text or "low-value" in text or "low value" in text:
+        signals.append("generic_ai_response")
+    if _safe_dict(item.get("integrityPolicy")).get("controlMarker") == NO_SIGNING_NO_FUND_MOVEMENT_MARKER:
+        signals.append(EXECUTABLE_REWARD_CLAWBACK_SIGNAL)
+    return sorted(set(signals))
+
+
+def _self_cycle_recommended_action(item: dict[str, Any], review: dict[str, Any]) -> str:
+    task = _safe_dict(review.get("task"))
+    title = _safe_text(item.get("title") or task.get("title"), 240)
+    first_slice = _safe_text(item.get("firstWorkSlice"), 1200)
+    if not first_slice:
+        first_slice = "inspect the public evidence packet, verify the current code/data state, and produce the smallest concrete fix or proof packet"
+    return _safe_text(
+        "Verify this rewarded Network task and execute the smallest concrete follow-up. "
+        f"Task: {title or _safe_text(item.get('taskId'), 180)}. "
+        f"First work slice: {first_slice}. "
+        "Deliver concrete evidence: changed files, query results, smoke output, CIDs/tx hashes, "
+        "or a user signal plus proof that no code/data change was required.",
+        4000,
+    )
+
+
+def _self_cycle_review_record(
+    item: dict[str, Any],
+    review: dict[str, Any],
+    *,
+    agent: str,
+    reviewer_wallet: str,
+    min_followup_priority: float,
+) -> dict[str, Any]:
+    triage = _safe_dict(item.get("triage"))
+    task_id = _safe_text(item.get("taskId") or triage.get("taskId"), 180)
+    priority = float(item.get("priorityScore") or 0)
+    rank_bucket = _safe_text(item.get("rankBucket"), 80)
+    integrity_signals = _review_integrity_signals_from_priority(item)
+    categories = _review_categories_from_priority(item)
+    if integrity_signals:
+        disposition = "reviewed_integrity_follow_up"
+        action_required = True
+    elif rank_bucket == "refuse_or_escalate":
+        disposition = "reviewed_unclear"
+        action_required = True
+    elif priority >= min_followup_priority or rank_bucket in {"do_first", "do_next"}:
+        disposition = "reviewed_follow_up"
+        action_required = True
+    else:
+        disposition = "reviewed_unclear"
+        action_required = True
+    reasons = [_safe_text(value, 320) for value in _safe_list(item.get("reasons")) if _safe_text(value, 320)]
+    red_flags = [_safe_text(value, 320) for value in _safe_list(item.get("redFlags")) if _safe_text(value, 320)]
+    summary_parts = [
+        f"Orc self-cycle selected this rewarded Network task with priority {priority:g} ({rank_bucket or 'unbucketed'}).",
+        f"Reasons: {'; '.join(reasons[:3])}." if reasons else "",
+        f"Red flags: {'; '.join(red_flags[:3])}." if red_flags else "",
+    ]
+    task = _safe_dict(review.get("task"))
+    return {
+        "taskId": task_id,
+        "disposition": disposition,
+        "summary": " ".join(part for part in summary_parts if part),
+        "recommendedAction": _self_cycle_recommended_action(item, review),
+        "categories": categories,
+        "integritySignals": integrity_signals,
+        "actionRequired": action_required,
+        "confidence": _safe_text(item.get("confidence"), 40) or "medium",
+        "reviewerHandle": agent,
+        "reviewerWallet": reviewer_wallet,
+        "sourceTaskIds": [task_id],
+        "sourceCids": [
+            cid for cid in _safe_list(task.get("sourceCids"))
+            if _safe_text(cid, 180)
+        ],
+        "sourceTxHashes": [
+            tx for tx in _safe_list(task.get("sourceTxHashes"))
+            if _safe_text(tx, 180)
+        ],
+        "metadata": {
+            "source": "orcctl.self_cycle",
+            "triage": triage,
+            "priority": {
+                "priorityScore": priority,
+                "rankBucket": rank_bucket,
+                "sourceMode": item.get("sourceMode"),
+                "scoredBy": item.get("scoredBy"),
+                "firstWorkSlice": item.get("firstWorkSlice"),
+                "acceptanceRationale": item.get("acceptanceRationale"),
+            },
+        },
+    }
+
+
+def _self_cycle_execute_review(
+    item: dict[str, Any],
+    *,
+    active_client: Any,
+    agent: str,
+    reviewer_wallet: str,
+    database_url: str | None,
+    execute: bool,
+    request_followup: bool,
+    submit_followup: bool,
+    followup_extra: str,
+    min_followup_priority: float,
+) -> dict[str, Any]:
+    task_id = _safe_text(item.get("taskId"), 180)
+    review = review_next(task_id=task_id, database_url=database_url)
+    record = _self_cycle_review_record(
+        item,
+        review,
+        agent=agent,
+        reviewer_wallet=reviewer_wallet,
+        min_followup_priority=min_followup_priority,
+    )
+    actions: list[dict[str, Any]] = [{
+        "action": "review_next",
+        "taskId": task_id,
+        "executed": True,
+        "result": review,
+    }]
+    if not execute:
+        actions.append({
+            "action": "classify_review",
+            "taskId": task_id,
+            "executed": False,
+            "plannedRecord": record,
+        })
+        return {"outcome": "planned_review", "taskId": task_id, "actions": actions}
+
+    classified = classify_review(
+        task_id,
+        disposition=record["disposition"],
+        summary=record["summary"],
+        recommended_action=record["recommendedAction"],
+        categories=record["categories"],
+        integrity_signals=record["integritySignals"],
+        action_required=record["actionRequired"],
+        confidence=record["confidence"],
+        reviewer_handle=record["reviewerHandle"],
+        reviewer_wallet=record["reviewerWallet"],
+        source_task_ids=record["sourceTaskIds"],
+        source_cids=record["sourceCids"],
+        source_tx_hashes=record["sourceTxHashes"],
+        metadata=record["metadata"],
+        database_url=database_url,
+    )
+    actions.append({
+        "action": "classify_review",
+        "taskId": task_id,
+        "executed": True,
+        "result": classified,
+    })
+    if request_followup and record["disposition"] in FOLLOWUP_DISPOSITIONS:
+        followup = request_followup_task(
+            task_id,
+            submit=submit_followup,
+            extra=followup_extra,
+            client=active_client,
+            database_url=database_url,
+        )
+        actions.append({
+            "action": "request_followup",
+            "taskId": task_id,
+            "executed": True,
+            "submitted": bool(followup.get("submitted")),
+            "result": followup,
+        })
+    return {"outcome": "review_executed", "taskId": task_id, "actions": actions}
+
+
+def _self_cycle_execute_required_followup(
+    item: dict[str, Any],
+    *,
+    active_client: Any,
+    execute: bool,
+    submit_followup: bool,
+    followup_extra: str,
+    database_url: str | None,
+) -> dict[str, Any]:
+    task_id = _safe_text(item.get("taskId"), 180)
+    if not execute:
+        return {
+            "outcome": "planned_followup_request",
+            "taskId": task_id,
+            "actions": [{
+                "action": "request_followup",
+                "taskId": task_id,
+                "executed": False,
+                "submit": bool(submit_followup),
+            }],
+        }
+    followup = request_followup_task(
+        task_id,
+        submit=submit_followup,
+        extra=followup_extra,
+        client=active_client,
+        database_url=database_url,
+    )
+    return {
+        "outcome": "followup_requested",
+        "taskId": task_id,
+        "actions": [{
+            "action": "request_followup",
+            "taskId": task_id,
+            "executed": True,
+            "submitted": bool(followup.get("submitted")),
+            "result": followup,
+        }],
+    }
+
+
+def _self_cycle_execute_assigned_task(
+    item: dict[str, Any],
+    *,
+    active_client: Any,
+    execute: bool,
+    accept_assigned: bool,
+    evidence_text: str,
+    response_text: str,
+    notes: str,
+    journal_path: str,
+) -> dict[str, Any]:
+    task_id = _safe_text(item.get("taskId"), 180)
+    detail = task_observe(task_id, client=active_client)
+    task = _detail_task(detail)
+    status = _task_status(task).lower()
+    actions: list[dict[str, Any]] = [{
+        "action": "task_detail",
+        "taskId": task_id,
+        "executed": True,
+        "result": detail,
+    }]
+    if not execute:
+        return {"outcome": "planned_assigned_task", "taskId": task_id, "actions": actions}
+    if status == "proposed":
+        if not accept_assigned:
+            actions.append({
+                "action": "task_accept",
+                "taskId": task_id,
+                "executed": False,
+                "blocker": "accept_assigned_required",
+            })
+            return {"outcome": "blocked_assigned_accept", "taskId": task_id, "actions": actions}
+        actions.append({
+            "action": "task_accept",
+            "taskId": task_id,
+            "executed": True,
+            "result": task_accept(
+                task_id,
+                reason="Accepted by Orc self-cycle after inventory triage.",
+                client=active_client,
+                journal_path=journal_path,
+            ),
+        })
+        status = "accepted"
+    if evidence_text and status in {"accepted", "proposed"}:
+        actions.append({
+            "action": "task_submit",
+            "taskId": task_id,
+            "executed": True,
+            "result": task_submit(
+                task_id,
+                evidence_text=evidence_text,
+                notes=notes,
+                client=active_client,
+                journal_path=journal_path,
+            ),
+        })
+    if response_text:
+        actions.append({
+            "action": "task_respond",
+            "taskId": task_id,
+            "executed": True,
+            "result": task_respond(
+                task_id,
+                response_text=response_text,
+                notes=notes,
+                client=active_client,
+                journal_path=journal_path,
+            ),
+        })
+    return {"outcome": "assigned_task_executed", "taskId": task_id, "actions": actions}
+
+
+def self_cycle(
+    *,
+    client: Any | None = None,
+    agent: str = DEFAULT_ORC_AGENT,
+    reviewer_wallet: str = "",
+    database_url: str | None = None,
+    source: str = "auto",
+    model: str = DEFAULT_PRIORITY_MODEL,
+    use_openrouter: bool = False,
+    max_tasks: int = 20,
+    candidate_limit: int = 25,
+    model_limit: int = 10,
+    task_kind: str = "network",
+    include_fixtures: bool = False,
+    execute: bool = False,
+    close_stale: bool = True,
+    request_followup: bool = True,
+    submit_followup: bool = False,
+    followup_extra: str = "",
+    accept_assigned: bool = False,
+    evidence_text: str = "",
+    response_text: str = "",
+    notes: str = "",
+    journal_path: str = DEFAULT_RUN_JOURNAL_PATH,
+    min_followup_priority: float = 55,
+) -> dict[str, Any]:
+    run_id = f"orcrun_{uuid4()}"
+    active_client = client or build_client(agent=agent)
+    append_run_journal(
+        command="self-cycle",
+        phase="start",
+        status="started",
+        run_id=run_id,
+        metadata={"source": source, "execute": execute},
+        journal_path=journal_path,
+    )
+    try:
+        inventory = operator_status(client=active_client, database_url=database_url, close_stale=False)
+        selected: dict[str, Any] = {}
+        triage_payload: dict[str, Any] = {}
+        actions: list[dict[str, Any]] = []
+        closeable = _first_closeable_followup(inventory) if close_stale else {}
+        if closeable:
+            task_id = _safe_text(closeable.get("sourceTaskId"), 180)
+            followup_task_id = _safe_text(closeable.get("followupTaskId"), 180)
+            if execute:
+                closed = close_followup(
+                    task_id,
+                    followup_task_id=followup_task_id,
+                    payment_tx=_safe_text(closeable.get("followupRewardTx"), 180),
+                    client=active_client,
+                    database_url=database_url,
+                )
+                actions.append({
+                    "action": "close_followup",
+                    "taskId": task_id,
+                    "followupTaskId": followup_task_id,
+                    "executed": True,
+                    "result": closed,
+                })
+                outcome = "stale_followup_closed"
+            else:
+                actions.append({
+                    "action": "close_followup",
+                    "taskId": task_id,
+                    "followupTaskId": followup_task_id,
+                    "executed": False,
+                })
+                outcome = "planned_stale_followup_close"
+            payload = {
+                "ok": True,
+                "runId": run_id,
+                "agent": agent,
+                "mode": "execute" if execute else "dry_run",
+                "inventory": _inventory_summary(inventory),
+                "selected": closeable,
+                "outcome": outcome,
+                "actions": actions,
+                "secretPrinted": False,
+            }
+            append_run_journal(
+                command="self-cycle",
+                phase="finish",
+                status="completed",
+                run_id=run_id,
+                task_id=task_id,
+                followup_task_id=followup_task_id,
+                metadata={"outcome": outcome},
+                journal_path=journal_path,
+            )
+            return redact_secrets(payload)
+
+        for source_index in range(2 if source == "auto" else 1):
+            triage_source = _source_for_triage(source, source_index)
+            triage_payload = triage_network_work(
+                source=triage_source,
+                client=active_client,
+                model=model,
+                max_tasks=max_tasks,
+                candidate_limit=candidate_limit,
+                model_limit=model_limit,
+                disposition="not_reviewed",
+                task_kind=task_kind,
+                use_openrouter=use_openrouter,
+                include_fixtures=include_fixtures,
+                database_url=database_url,
+            )
+            selected = _safe_dict(triage_payload.get("nextItem"))
+            if selected:
+                break
+        if not selected:
+            payload = {
+                "ok": True,
+                "runId": run_id,
+                "agent": agent,
+                "mode": "execute" if execute else "dry_run",
+                "inventory": _inventory_summary(inventory),
+                "triage": triage_payload,
+                "selected": {},
+                "outcome": "idle_no_work",
+                "actions": [],
+                "secretPrinted": False,
+            }
+            append_run_journal(
+                command="self-cycle",
+                phase="finish",
+                status="idle",
+                run_id=run_id,
+                metadata={"outcome": "idle_no_work"},
+                journal_path=journal_path,
+            )
+            return redact_secrets(payload)
+
+        triage = _safe_dict(selected.get("triage"))
+        decision = _safe_text(triage.get("decision"), 120)
+        wallet = reviewer_wallet or _safe_text(getattr(active_client, "address", ""), 180)
+        if decision == "continue_required_followup":
+            result = _self_cycle_execute_required_followup(
+                selected,
+                active_client=active_client,
+                execute=execute,
+                submit_followup=submit_followup,
+                followup_extra=followup_extra,
+                database_url=database_url,
+            )
+        elif decision == "work_assigned_network_task":
+            result = _self_cycle_execute_assigned_task(
+                selected,
+                active_client=active_client,
+                execute=execute,
+                accept_assigned=accept_assigned,
+                evidence_text=evidence_text,
+                response_text=response_text,
+                notes=notes,
+                journal_path=journal_path,
+            )
+        else:
+            result = _self_cycle_execute_review(
+                selected,
+                active_client=active_client,
+                agent=agent,
+                reviewer_wallet=wallet,
+                database_url=database_url,
+                execute=execute,
+                request_followup=request_followup,
+                submit_followup=submit_followup,
+                followup_extra=followup_extra,
+                min_followup_priority=min_followup_priority,
+            )
+
+        payload = {
+            "ok": True,
+            "runId": run_id,
+            "agent": agent,
+            "mode": "execute" if execute else "dry_run",
+            "inventory": _inventory_summary(inventory),
+            "triage": triage_payload,
+            "selected": selected,
+            **result,
+            "secretPrinted": False,
+        }
+        append_run_journal(
+            command="self-cycle",
+            phase="finish",
+            status="completed",
+            run_id=run_id,
+            task_id=_safe_text(selected.get("taskId"), 180),
+            metadata={"outcome": payload.get("outcome"), "decision": decision},
+            journal_path=journal_path,
+        )
+        return redact_secrets(payload)
+    except Exception as exc:
+        append_run_journal(
+            command="self-cycle",
+            phase="finish",
+            status="failed",
+            run_id=run_id,
+            error=f"{type(exc).__name__}: {exc}",
+            journal_path=journal_path,
+        )
+        raise
+
+
+def self_loop(
+    *,
+    iterations: int = 1,
+    sleep_seconds: float = 30,
+    stop_on_idle: bool = True,
+    sleep_fn: Any = time.sleep,
+    **cycle_kwargs: Any,
+) -> dict[str, Any]:
+    max_iterations = max(1, min(1000, int(iterations or 1)))
+    delay = max(0.0, float(sleep_seconds or 0))
+    results: list[dict[str, Any]] = []
+    for index in range(max_iterations):
+        result = self_cycle(**cycle_kwargs)
+        result["iteration"] = index + 1
+        results.append(result)
+        outcome = _safe_text(result.get("outcome"), 120)
+        if stop_on_idle and outcome in {"idle_no_work", "blocked_assigned_accept"}:
+            break
+        if index + 1 < max_iterations and delay > 0:
+            sleep_fn(delay)
+    return redact_secrets({
+        "ok": True,
+        "iterationsRequested": max_iterations,
+        "iterationsRun": len(results),
+        "stoppedOnIdle": bool(stop_on_idle and results and _safe_text(results[-1].get("outcome"), 120) in {"idle_no_work", "blocked_assigned_accept"}),
+        "results": results,
+        "secretPrinted": False,
+    })
+
+
 def run_personal_task(
     task_id: str,
     *,
@@ -1430,6 +2019,53 @@ def build_parser() -> argparse.ArgumentParser:
     request_parser.add_argument("task_id")
     request_parser.add_argument("--extra", default="")
     request_parser.add_argument("--submit", action="store_true")
+
+    self_cycle_parser = subparsers.add_parser("self-cycle", help="Scan inventory, choose one Orc work item, and optionally execute it.")
+    self_cycle_parser.add_argument("--source", choices=sorted(SELF_CYCLE_SOURCES), default="auto")
+    self_cycle_parser.add_argument("--model", default=DEFAULT_PRIORITY_MODEL)
+    self_cycle_parser.add_argument("--max-tasks", type=int, default=20)
+    self_cycle_parser.add_argument("--candidate-limit", type=int, default=25)
+    self_cycle_parser.add_argument("--model-limit", type=int, default=10)
+    self_cycle_parser.add_argument("--task-kind", choices=["network", "personal", "all"], default="network")
+    self_cycle_parser.add_argument("--include-fixtures", action="store_true")
+    self_cycle_parser.add_argument("--heuristic-only", action="store_true", help="Skip OpenRouter and use deterministic local scoring.")
+    self_cycle_parser.add_argument("--execute", action="store_true", help="Persist/submit the selected bounded work unit.")
+    self_cycle_parser.add_argument("--no-close-stale", action="store_true", help="Skip stale follow-up closure candidates.")
+    self_cycle_parser.add_argument("--no-request-followup", action="store_true", help="Do not request a follow-up after classifying a review.")
+    self_cycle_parser.add_argument("--submit-followup", action="store_true", help="Publish the follow-up request pointer instead of previewing it.")
+    self_cycle_parser.add_argument("--followup-extra", default="")
+    self_cycle_parser.add_argument("--accept-assigned", action="store_true", help="Allow accepting a proposed assigned task.")
+    self_cycle_parser.add_argument("--evidence", default="")
+    self_cycle_parser.add_argument("--evidence-file", default="")
+    self_cycle_parser.add_argument("--response", default="")
+    self_cycle_parser.add_argument("--response-file", default="")
+    self_cycle_parser.add_argument("--notes", default="")
+    self_cycle_parser.add_argument("--min-followup-priority", type=float, default=55)
+
+    self_loop_parser = subparsers.add_parser("self-loop", help="Run self-cycle repeatedly with sleep and max-iteration guardrails.")
+    self_loop_parser.add_argument("--iterations", type=int, default=3)
+    self_loop_parser.add_argument("--sleep-seconds", type=float, default=30)
+    self_loop_parser.add_argument("--no-stop-on-idle", action="store_true")
+    self_loop_parser.add_argument("--source", choices=sorted(SELF_CYCLE_SOURCES), default="auto")
+    self_loop_parser.add_argument("--model", default=DEFAULT_PRIORITY_MODEL)
+    self_loop_parser.add_argument("--max-tasks", type=int, default=20)
+    self_loop_parser.add_argument("--candidate-limit", type=int, default=25)
+    self_loop_parser.add_argument("--model-limit", type=int, default=10)
+    self_loop_parser.add_argument("--task-kind", choices=["network", "personal", "all"], default="network")
+    self_loop_parser.add_argument("--include-fixtures", action="store_true")
+    self_loop_parser.add_argument("--heuristic-only", action="store_true", help="Skip OpenRouter and use deterministic local scoring.")
+    self_loop_parser.add_argument("--execute", action="store_true", help="Persist/submit selected bounded work units.")
+    self_loop_parser.add_argument("--no-close-stale", action="store_true", help="Skip stale follow-up closure candidates.")
+    self_loop_parser.add_argument("--no-request-followup", action="store_true", help="Do not request follow-ups after classifying reviews.")
+    self_loop_parser.add_argument("--submit-followup", action="store_true", help="Publish follow-up request pointers instead of previewing them.")
+    self_loop_parser.add_argument("--followup-extra", default="")
+    self_loop_parser.add_argument("--accept-assigned", action="store_true", help="Allow accepting proposed assigned tasks.")
+    self_loop_parser.add_argument("--evidence", default="")
+    self_loop_parser.add_argument("--evidence-file", default="")
+    self_loop_parser.add_argument("--response", default="")
+    self_loop_parser.add_argument("--response-file", default="")
+    self_loop_parser.add_argument("--notes", default="")
+    self_loop_parser.add_argument("--min-followup-priority", type=float, default=55)
 
     priority_parser = subparsers.add_parser("prioritize-network", help="Rank unhandled Network task work by operational importance.")
     priority_parser.add_argument("--model", default=DEFAULT_PRIORITY_MODEL)
@@ -1598,6 +2234,61 @@ def main(argv: list[str] | None = None) -> int:
                 extra=args.extra,
                 client=_client_from_args(args),
                 database_url=database_url,
+            )
+        elif args.command == "self-cycle":
+            payload = self_cycle(
+                client=_client_from_args(args),
+                agent=args.agent,
+                reviewer_wallet=args.wallet_address,
+                database_url=database_url,
+                source=args.source,
+                model=args.model,
+                use_openrouter=not args.heuristic_only,
+                max_tasks=args.max_tasks,
+                candidate_limit=args.candidate_limit,
+                model_limit=args.model_limit,
+                task_kind=args.task_kind,
+                include_fixtures=args.include_fixtures,
+                execute=args.execute,
+                close_stale=not args.no_close_stale,
+                request_followup=not args.no_request_followup,
+                submit_followup=args.submit_followup,
+                followup_extra=args.followup_extra,
+                accept_assigned=args.accept_assigned,
+                evidence_text=_read_text_arg(text=args.evidence, path=args.evidence_file),
+                response_text=_read_text_arg(text=args.response, path=args.response_file),
+                notes=args.notes,
+                journal_path=args.journal_path,
+                min_followup_priority=args.min_followup_priority,
+            )
+        elif args.command == "self-loop":
+            payload = self_loop(
+                iterations=args.iterations,
+                sleep_seconds=args.sleep_seconds,
+                stop_on_idle=not args.no_stop_on_idle,
+                client=_client_from_args(args),
+                agent=args.agent,
+                reviewer_wallet=args.wallet_address,
+                database_url=database_url,
+                source=args.source,
+                model=args.model,
+                use_openrouter=not args.heuristic_only,
+                max_tasks=args.max_tasks,
+                candidate_limit=args.candidate_limit,
+                model_limit=args.model_limit,
+                task_kind=args.task_kind,
+                include_fixtures=args.include_fixtures,
+                execute=args.execute,
+                close_stale=not args.no_close_stale,
+                request_followup=not args.no_request_followup,
+                submit_followup=args.submit_followup,
+                followup_extra=args.followup_extra,
+                accept_assigned=args.accept_assigned,
+                evidence_text=_read_text_arg(text=args.evidence, path=args.evidence_file),
+                response_text=_read_text_arg(text=args.response, path=args.response_file),
+                notes=args.notes,
+                journal_path=args.journal_path,
+                min_followup_priority=args.min_followup_priority,
             )
         elif args.command == "prioritize-network":
             payload = triage_network_work(

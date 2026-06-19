@@ -6,7 +6,7 @@ import json
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import orc_tooling.orcctl as orcctl_module
 from orc_tooling import (
@@ -63,6 +63,8 @@ from orc_tooling import (
     request_followup_task,
     review_disposition_requires_action,
     review_next,
+    self_cycle,
+    self_loop,
     review_state_ontology,
     run_hive_followup,
     run_hive_signal,
@@ -308,6 +310,55 @@ class FakeVerificationClient:
                 },
             },
         }
+
+
+def self_cycle_inventory(*, stale=False):
+    return {
+        "ok": True,
+        "networkStatus": "available_for_routing",
+        "groups": {
+            "outstanding": {"count": 0, "items": []},
+            "verification": {"count": 0, "items": []},
+            "refused": {"count": 0, "items": []},
+            "rewarded": {"count": 0, "items": []},
+        },
+        "reviewQueue": {"not_reviewed": 1},
+        "staleFollowups": {
+            "count": 1 if stale else 0,
+            "closeable": [{
+                "sourceTaskId": "task_source",
+                "followupTaskId": "task_followup",
+                "followupRewardTx": "TXREWARD",
+            }] if stale else [],
+        },
+        "secretPrinted": False,
+    }
+
+
+def self_cycle_triage_item():
+    return {
+        "ok": True,
+        "source": "review_queue",
+        "count": 1,
+        "nextItem": {
+            "taskId": "task_source",
+            "title": "Verify reward accounting drift",
+            "sourceMode": "review_queue",
+            "priorityScore": 88,
+            "rankBucket": "do_first",
+            "confidence": "high",
+            "reasons": ["Reward accounting issue affects network trust."],
+            "redFlags": [],
+            "firstWorkSlice": "Verify affected reward rows and add a regression smoke.",
+            "triage": {
+                "taskId": "task_source",
+                "decision": "review_rewarded_network_task",
+                "requiresAction": True,
+            },
+        },
+        "priorities": [],
+        "secretPrinted": False,
+    }
 
 
 class FakeDirectoryClient:
@@ -614,6 +665,117 @@ class OrcToolingTests(unittest.TestCase):
         self.assertTrue(result["authenticated"]["isGenericVerificationRequest"])
         self.assertEqual(result["publicHive"]["outcome"]["decision"], "partial_reward")
         self.assertIn("exact requested JSON entry", result["publicHive"]["outcome"]["reason"])
+
+    def test_self_cycle_dry_run_scans_and_plans_review_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+            patch("orc_tooling.orcctl.operator_status", return_value=self_cycle_inventory()), \
+            patch("orc_tooling.orcctl.triage_network_work", return_value=self_cycle_triage_item()), \
+            patch("orc_tooling.orcctl.review_next", return_value={
+                "ok": True,
+                "task": {"taskId": "task_source", "title": "Verify reward accounting drift"},
+                "secretPrinted": False,
+            }), \
+            patch("orc_tooling.orcctl.classify_review") as classify_mock, \
+            patch("orc_tooling.orcctl.request_followup_task") as followup_mock:
+            result = self_cycle(
+                client=FakeStatusClient(),
+                agent="grashnuk",
+                reviewer_wallet="rReviewer",
+                source="review-queue",
+                journal_path=os.path.join(tmpdir, "journal.jsonl"),
+            )
+
+        self.assertEqual(result["outcome"], "planned_review")
+        self.assertEqual(result["selected"]["taskId"], "task_source")
+        self.assertEqual(result["actions"][1]["action"], "classify_review")
+        self.assertFalse(result["actions"][1]["executed"])
+        self.assertEqual(result["actions"][1]["plannedRecord"]["disposition"], "reviewed_follow_up")
+        classify_mock.assert_not_called()
+        followup_mock.assert_not_called()
+        self.assertEqual(result["secretPrinted"], False)
+
+    def test_self_cycle_execute_classifies_and_previews_followup(self):
+        captured = {}
+
+        def fake_classify(task_id, **kwargs):
+            captured.update(kwargs)
+            return {"ok": True, "task_id": task_id, "disposition": kwargs["disposition"], "metadata_json": kwargs["metadata"]}
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+            patch("orc_tooling.orcctl.operator_status", return_value=self_cycle_inventory()), \
+            patch("orc_tooling.orcctl.triage_network_work", return_value=self_cycle_triage_item()), \
+            patch("orc_tooling.orcctl.review_next", return_value={
+                "ok": True,
+                "task": {
+                    "taskId": "task_source",
+                    "title": "Verify reward accounting drift",
+                    "sourceCids": ["QmSource"],
+                    "sourceTxHashes": ["TXSOURCE"],
+                },
+                "secretPrinted": False,
+            }), \
+            patch("orc_tooling.orcctl.classify_review", side_effect=fake_classify) as classify_mock, \
+            patch("orc_tooling.orcctl.request_followup_task", return_value={
+                "ok": True,
+                "requestId": "req_preview",
+                "submitted": False,
+                "secretPrinted": False,
+            }) as followup_mock:
+            result = self_cycle(
+                client=FakeStatusClient(),
+                agent="grashnuk",
+                reviewer_wallet="rReviewer",
+                source="review-queue",
+                execute=True,
+                submit_followup=False,
+                journal_path=os.path.join(tmpdir, "journal.jsonl"),
+            )
+
+        self.assertEqual(result["outcome"], "review_executed")
+        self.assertEqual([action["action"] for action in result["actions"]], ["review_next", "classify_review", "request_followup"])
+        self.assertEqual(captured["disposition"], "reviewed_follow_up")
+        self.assertIn("reward_accounting", captured["categories"])
+        self.assertEqual(captured["source_cids"], ["QmSource"])
+        self.assertEqual(captured["source_tx_hashes"], ["TXSOURCE"])
+        self.assertEqual(captured["metadata"]["source"], "orcctl.self_cycle")
+        classify_mock.assert_called_once()
+        followup_mock.assert_called_once_with(
+            "task_source",
+            submit=False,
+            extra="",
+            client=ANY,
+            database_url=None,
+        )
+        self.assertEqual(result["secretPrinted"], False)
+
+    def test_self_cycle_closes_stale_followup_before_new_triage(self):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+            patch("orc_tooling.orcctl.operator_status", return_value=self_cycle_inventory(stale=True)), \
+            patch("orc_tooling.orcctl.close_followup", return_value={"ok": True, "task_id": "task_source"}) as close_mock, \
+            patch("orc_tooling.orcctl.triage_network_work") as triage_mock:
+            result = self_cycle(
+                client=FakeStatusClient(),
+                agent="grashnuk",
+                execute=True,
+                journal_path=os.path.join(tmpdir, "journal.jsonl"),
+            )
+
+        self.assertEqual(result["outcome"], "stale_followup_closed")
+        close_mock.assert_called_once()
+        triage_mock.assert_not_called()
+        self.assertEqual(result["actions"][0]["followupTaskId"], "task_followup")
+
+    def test_self_loop_stops_on_idle(self):
+        with patch("orc_tooling.orcctl.self_cycle", return_value={
+            "ok": True,
+            "outcome": "idle_no_work",
+            "secretPrinted": False,
+        }) as cycle_mock:
+            result = self_loop(iterations=5, sleep_seconds=0, client=FakeStatusClient())
+
+        self.assertEqual(result["iterationsRun"], 1)
+        self.assertTrue(result["stoppedOnIdle"])
+        cycle_mock.assert_called_once()
 
     def test_visible_task_payloads_can_filter_network_tasks(self):
         client = FakePayloadClient()
