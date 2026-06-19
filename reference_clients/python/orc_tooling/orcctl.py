@@ -330,7 +330,7 @@ def review_next(
     )
     tasks = _safe_list(_safe_dict(packet).get("tasks"))
     if not tasks:
-        if _safe_text(queue_row.get("source_mode"), 80) not in {"directory_public", "hive_public_detail"}:
+        if _safe_text(queue_row.get("source_mode"), 80) not in {"directory_public", "hive_public_detail", "network_status_packet"}:
             return {
                 "ok": False,
                 "error": "task_review_packet_missing",
@@ -378,6 +378,7 @@ def review_next(
             },
             "publicHiveTaskDetailUrl": queue_row.get("public_hive_task_detail_url"),
             "queueItemSourceMode": queue_row.get("source_mode"),
+            "statusPacket": _safe_dict(queue_row.get("status_packet_json") or _safe_dict(queue_row.get("item_metadata_json")).get("statusPacket")),
         }]
     review_state = get_review_state(selected_task_id, database_url=database_url)
     compact = compact_review_task(_safe_dict(tasks[0]), include_raw=include_raw)
@@ -385,6 +386,9 @@ def review_next(
         compact["publicHiveTaskDetailUrl"] = queue_row["public_hive_task_detail_url"]
     if queue_row.get("source_mode"):
         compact["queueItemSourceMode"] = queue_row["source_mode"]
+    status_packet = _safe_dict(queue_row.get("status_packet_json") or _safe_dict(queue_row.get("item_metadata_json")).get("statusPacket"))
+    if status_packet:
+        compact["statusPacket"] = status_packet
     compact["reviewState"] = {
         "disposition": review_state.get("disposition") or queue_row.get("review_disposition") or "not_reviewed",
         "actionRequired": review_state.get("action_required") or queue_row.get("action_required") or False,

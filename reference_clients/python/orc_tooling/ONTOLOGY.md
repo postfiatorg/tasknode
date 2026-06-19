@@ -89,10 +89,15 @@ Primary dispositions are mutually exclusive:
 
 `orc_task_review_queue` left joins `orc_task_review_items` to
 `orc_task_review_states` and coalesces missing rows to `not_reviewed`. Review
-items include local `task_projections` rows as `local_projection` plus public
-Directory rewarded-task packets as `directory_public`. Local projection rows are
-the richer forensic source and win on conflict; public packets only fill gaps or
-newer public event pointers. Burn down starts with:
+items include local `task_projections` rows as `local_projection`, public
+Directory rewarded-task packets as `directory_public`, and derived
+`network_status_packet` rows for operational repair cases. Local projection rows
+are the richer forensic source and win on conflict; public packets only fill
+gaps or newer public event pointers. Each item can carry a derived
+`statusPacket` with allocation state, task state, reward movement, and repair
+reason. The queue admits positive-paid, zero-closed, duplicate-guarded, and
+repair-required tasks so review work does not silently drop zero-reward terminal
+outcomes or generation-link repair items. Burn down starts with:
 
 ```bash
 uv run orc-review-state queue --disposition not_reviewed --limit 20
@@ -116,5 +121,5 @@ Integrity follow-up requires at least one integrity signal such as
 `orc_task_reviews` is append-only history for Orc/Nazgûl accounting.
 `orc_task_review_states` is the current-state table used by the queue view and
 follow-up logic. `orc_task_review_items` is the durable ingestion table that
-makes public rewarded tasks visible to every Orc even when a local projection row
-is absent.
+makes public rewarded tasks and derived status-packet repair rows visible to
+every Orc even when a local projection row is absent.

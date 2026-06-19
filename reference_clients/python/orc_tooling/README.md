@@ -113,11 +113,15 @@ next task, next command, source mode, review disposition, or follow-up action.
 By default the command reads the unified `orc_task_review_queue`. That queue is
 backed by `orc_task_review_items`, which preserves local `task_projections`
 forensic rows and also accepts public Directory rewarded-task packets ingested
-from `/api/directory/rewarded-tasks?taskKind=network`. It builds compact
-rewarded-submission packets and asks OpenRouter model `z-ai/glm-5.2` to score
-the top heuristic-ranked candidates. It also computes a deterministic local
-heuristic and returns sanity warnings when the model score diverges sharply,
-omits reasons, or returns inconsistent task ids.
+from `/api/directory/rewarded-tasks?taskKind=network`. Queue items can carry a
+derived status packet (`allocationState`, `taskState`, `rewardMovement`,
+`repairRequired`), so zero-reward terminal outcomes, duplicate-guarded rewards,
+and generation-link repair rows stay reviewable instead of disappearing behind a
+positive-reward-only filter. It builds compact rewarded-submission packets and
+asks OpenRouter model `z-ai/glm-5.2` to score the top heuristic-ranked
+candidates. It also computes a deterministic local heuristic and returns sanity
+warnings when the model score diverges sharply, omits reasons, or returns
+inconsistent task ids.
 
 Refresh the queue from the public Directory source:
 

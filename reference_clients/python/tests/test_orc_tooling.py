@@ -520,13 +520,13 @@ class OrcToolingTests(unittest.TestCase):
     def test_prioritize_review_queue_scores_public_ingested_row_without_local_projection(self):
         queue_row = {
             "task_id": "task_public_only",
-            "source_mode": "directory_public",
-            "title": "Public rewarded routing report",
+            "source_mode": "network_status_packet",
+            "title": "Link-failed routing repair",
             "account_id": "acct_public",
             "wallet_address": "rPublic",
             "operator_handle": "publicorc",
-            "description": "Public Directory packet describes reward routing leakage.",
-            "reward_actual_pft": "25000",
+            "description": "Derived status packet reports a link-failed generated task.",
+            "reward_actual_pft": "0",
             "request_bundle_cid": "bafyRequest",
             "last_event_cid": "bafyReward",
             "last_event_tx_hash": "TXREWARD",
@@ -534,6 +534,14 @@ class OrcToolingTests(unittest.TestCase):
             "public_hive_task_detail_url": "/api/hive/task-detail?taskId=task_public_only",
             "review_disposition": "not_reviewed",
             "task_updated_at": "2026-06-19T01:00:00Z",
+            "status_packet_json": {
+                "schema": "pf.task_node.network_task_status_packet.v1",
+                "allocationState": "link_failed",
+                "taskState": "proposed",
+                "rewardMovement": "none",
+                "repairRequired": True,
+                "repairReason": "link_failed",
+            },
         }
         with patch("orc_tooling.priority.review_queue", return_value={"rows": [queue_row]}), \
             patch("orc_tooling.priority.build_rewarded_network_task_review_packet", return_value={"tasks": []}):
@@ -543,7 +551,7 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(summary["priorities"][0]["taskId"], "task_public_only")
         self.assertEqual(summary["priorities"][0]["sourceMode"], "review_queue")
         self.assertEqual(summary["priorities"][0]["walletAddress"], "rPublic")
-        self.assertIn("reward routing leakage", summary["priorities"][0]["taskProposalDescription"])
+        self.assertIn("link-failed generated task", summary["priorities"][0]["taskProposalDescription"])
         self.assertEqual(summary["packetErrorCount"], 0)
 
     def test_priority_fixture_filter_matches_review_fixture_rows(self):
@@ -839,6 +847,9 @@ class OrcToolingTests(unittest.TestCase):
         self.assertIn("DROP VIEW IF EXISTS orc_task_review_queue", sql)
         self.assertIn("CREATE VIEW orc_task_review_queue", sql)
         self.assertIn("FROM orc_task_review_items item", sql)
+        self.assertIn("network_status_packet", sql)
+        self.assertIn("status_packet_json", sql)
+        self.assertIn("closed_zero", sql)
         self.assertIn("'historyTable', 'orc_task_reviews'", sql)
         self.assertIn("'itemsTable', 'orc_task_review_items'", sql)
 
@@ -936,6 +947,14 @@ class OrcToolingTests(unittest.TestCase):
             "review_disposition": "not_reviewed",
             "item_metadata_json": {
                 "project": {"id": "task_node_core_product"},
+                "statusPacket": {
+                    "schema": "pf.task_node.network_task_status_packet.v1",
+                    "allocationState": "published",
+                    "taskState": "rewarded",
+                    "rewardMovement": "paid_positive",
+                    "repairRequired": False,
+                    "repairReason": "",
+                },
             },
         }
         with patch("orc_tooling.orcctl.review_queue_item", return_value=queue_row), \
@@ -948,6 +967,7 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["task"]["walletAddress"], "rPublic")
         self.assertEqual(result["task"]["rewardActualPft"], "25000")
         self.assertEqual(result["task"]["queueItemSourceMode"], "directory_public")
+        self.assertEqual(result["task"]["statusPacket"]["rewardMovement"], "paid_positive")
         self.assertEqual(result["task"]["publicHiveTaskDetailUrl"], "/api/hive/task-detail?taskId=task_public_only")
         self.assertIn("reward routing leakage", result["task"]["evidenceSummary"])
 

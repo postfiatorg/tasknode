@@ -8,6 +8,7 @@ import { listMachineOperatorDisclosures } from "./capability-profiles.js";
 import { listEvidenceEvaluationPackets, listEvidenceEvaluationPacketsForBoardManager } from "./evidence-evaluation-packets.js";
 import { latestHiveProjectPlanningState, projectHasOperatorArchiveLock } from "./hive-project-planning.js";
 import { getCurrentProjectProductDocs } from "./hive-project-product-docs.js";
+import { deriveNetworkTaskStatusPacketFromRow } from "./network-task-status.js";
 
 function useDatabase() {
   return databaseEnabled();
@@ -290,6 +291,7 @@ function publicTask(row = {}) {
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.projected_updated_at || row.updated_at),
     assigneeNft,
+    statusPacket: deriveNetworkTaskStatusPacketFromRow(row),
   };
 }
 
@@ -1035,6 +1037,12 @@ export const publicHiveTaskDetailFields = [
   "task.assigneeNft.status",
   "task.assigneeNft.imageCid",
   "task.assigneeNft.imageGatewayUrl",
+  "task.statusPacket.schema",
+  "task.statusPacket.allocationState",
+  "task.statusPacket.taskState",
+  "task.statusPacket.rewardMovement",
+  "task.statusPacket.repairRequired",
+  "task.statusPacket.repairReason",
   "task.kind",
   "task.summary",
   "task.description",
@@ -1135,12 +1143,45 @@ export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, 
       SELECT projection.*,
              refs.project_id,
              project.title AS project_title,
-             project.type AS project_type
+             project.type AS project_type,
+             alloc.id AS allocation_id,
+             alloc.allocation_status,
+             alloc.generated_task_id AS allocation_generated_task_id,
+             alloc.task_request_id AS allocation_task_request_id,
+             job.id AS generation_job_id,
+             job.status AS generation_job_status,
+             job.task_id AS generation_job_task_id,
+             job.request_id AS generation_job_request_id,
+             job.offer_cid AS generation_job_offer_cid,
+             job.offer_tx_hash AS generation_job_offer_tx_hash,
+             job.last_error AS generation_job_last_error
       FROM network_project_task_refs refs
       JOIN network_projects project
         ON project.id = refs.project_id
       JOIN task_projections projection
         ON projection.task_id = refs.task_id
+      LEFT JOIN LATERAL (
+        SELECT job.*
+        FROM network_task_generation_jobs job
+        WHERE job.task_id = projection.task_id
+           OR (projection.request_id <> '' AND job.request_id = projection.request_id)
+           OR (refs.metadata_json->>'generation_job_id' <> '' AND job.id = refs.metadata_json->>'generation_job_id')
+        ORDER BY (job.task_id = projection.task_id) DESC,
+                 job.updated_at DESC NULLS LAST,
+                 job.id DESC
+        LIMIT 1
+      ) job ON true
+      LEFT JOIN LATERAL (
+        SELECT alloc.*
+        FROM network_task_allocations alloc
+        WHERE alloc.generated_task_id = projection.task_id
+           OR (projection.request_id <> '' AND alloc.task_request_id = projection.request_id)
+           OR (job.allocation_id <> '' AND alloc.id = job.allocation_id)
+        ORDER BY (alloc.generated_task_id = projection.task_id) DESC,
+                 alloc.updated_at DESC NULLS LAST,
+                 alloc.id DESC
+        LIMIT 1
+      ) alloc ON true
       WHERE refs.task_id = $1
         AND refs.task_id <> ''
       LIMIT 1
@@ -1170,6 +1211,7 @@ export async function getPublicHiveTaskDetail({ taskId = "", queryImpl = query, 
   const timeline = eventsResult.rows.map((eventRow, index) => publicReducerEvent(eventRow, index));
   const publicTimeline = publicTimelineRows(eventsResult.rows);
   const task = publicHiveTaskFromProjection(row);
+  task.statusPacket = deriveNetworkTaskStatusPacketFromRow(row);
   enrichTaskWithWalletIdentity(task, await publicWalletIdentityForWallet(task.assignee, task.assigneeAccountId));
   const metadata = safeObject(row.metadata_json);
   const submissions = publicSubmissionSummaries(metadata);
@@ -1312,14 +1354,33 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
       `
         SELECT refs.*,
                projection.status AS projected_status,
+               projection.status AS status,
                projection.title AS projected_title,
                projection.account_id AS projected_account_id,
                projection.subject_wallet AS projected_subject_wallet,
+               projection.task_kind AS task_kind,
+               projection.reward_offer_pft AS reward_offer_pft,
+               projection.reward_actual_pft AS reward_actual_pft,
+               projection.event_count AS event_count,
+               projection.last_event_tx_hash AS last_event_tx_hash,
+               projection.last_event_cid AS last_event_cid,
+               projection.metadata_json AS metadata_json,
                CASE
                  WHEN projection.status = 'rewarded' THEN projection.reward_actual_pft
                  ELSE projection.reward_offer_pft
                END AS projected_reward_pft,
                projection.updated_at AS projected_updated_at,
+               alloc.id AS allocation_id,
+               alloc.allocation_status,
+               alloc.generated_task_id AS allocation_generated_task_id,
+               alloc.task_request_id AS allocation_task_request_id,
+               job.id AS generation_job_id,
+               job.status AS generation_job_status,
+               job.task_id AS generation_job_task_id,
+               job.request_id AS generation_job_request_id,
+               job.offer_cid AS generation_job_offer_cid,
+               job.offer_tx_hash AS generation_job_offer_tx_hash,
+               job.last_error AS generation_job_last_error,
                nft.title AS assignee_nft_title,
                nft.status AS assignee_nft_status,
                nft.image_cid AS assignee_nft_image_cid,
@@ -1327,6 +1388,28 @@ export async function getHiveProjectsDocument({ includeEmptyActive = false } = {
         FROM network_project_task_refs refs
         JOIN task_projections projection
           ON projection.task_id = refs.task_id
+        LEFT JOIN LATERAL (
+          SELECT job.*
+          FROM network_task_generation_jobs job
+          WHERE job.task_id = projection.task_id
+             OR (projection.request_id <> '' AND job.request_id = projection.request_id)
+             OR (refs.metadata_json->>'generation_job_id' <> '' AND job.id = refs.metadata_json->>'generation_job_id')
+          ORDER BY (job.task_id = projection.task_id) DESC,
+                   job.updated_at DESC NULLS LAST,
+                   job.id DESC
+          LIMIT 1
+        ) job ON true
+        LEFT JOIN LATERAL (
+          SELECT alloc.*
+          FROM network_task_allocations alloc
+          WHERE alloc.generated_task_id = projection.task_id
+             OR (projection.request_id <> '' AND alloc.task_request_id = projection.request_id)
+             OR (job.allocation_id <> '' AND alloc.id = job.allocation_id)
+          ORDER BY (alloc.generated_task_id = projection.task_id) DESC,
+                   alloc.updated_at DESC NULLS LAST,
+                   alloc.id DESC
+          LIMIT 1
+        ) alloc ON true
         LEFT JOIN LATERAL (
           SELECT id, title, status, image_cid, image_gateway_url, selected, created_at, updated_at
           FROM profile_nfts

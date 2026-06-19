@@ -79,6 +79,13 @@ tmux send-keys -t <pane> -l '<directive>'; sleep 1; tmux send-keys -t <pane> Ent
   `local_projection` source, while public Directory rewarded-task packets can be
   ingested as `directory_public` rows so all orcs see the same public rewarded
   task population.
+- Review rows carry a derived Network Task status packet
+  (`allocationState`, `taskState`, `rewardMovement`, `repairRequired`). This is
+  a read model over projections, allocation rows, generation jobs, refs, and
+  events. It is not manually set and does not rewrite lifecycle state. The queue
+  deliberately admits positive-paid, zero-closed, duplicate-guarded, and
+  repair-required rows so Orcs do not confuse operational repair with reward
+  outcome.
 
 ## Guardrails — reserved actions (escalate to Sauron, never execute)
 

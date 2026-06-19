@@ -92,6 +92,7 @@
     "network-task-allocation-repair": "node scripts/network-task-allocation-repair.mjs",
     "network-task-recovery-smoke": "node scripts/network-task-recovery-smoke.mjs",
     "network-task-generation-recovery-smoke": "node scripts/network-task-generation-recovery-smoke.mjs",
+    "network-task-status-packet-smoke": "node scripts/network-task-status-packet-smoke.mjs",
     "network-task-capacity-smoke": "node scripts/network-task-capacity-smoke.mjs",
     "network-task-eligibility-panel-smoke": "node scripts/network-task-eligibility-panel-smoke.mjs",
     "network-task-reward-followup-smoke": "node scripts/network-task-reward-followup-smoke.mjs",
