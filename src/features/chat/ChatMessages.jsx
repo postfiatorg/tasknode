@@ -92,6 +92,32 @@ export function UserMessage({
   );
 }
 
+export function AgentMessage({
+  attachments = [],
+  agentClient = "",
+  agentLabel = "Orc agent",
+  text,
+}) {
+  return (
+    <article className="agent-message">
+      <div className="agent-source-row">
+        <span className="agent-source-label">{agentLabel || "Orc agent"}</span>
+        <span className="agent-source-meta">{agentClient || "machine agent"}</span>
+      </div>
+      {attachments.length > 0 && <MessageAttachmentList attachments={attachments} />}
+      <div className="agent-bubble">{text}</div>
+      <div className="agent-message-tools">
+        <ToolbarButton
+          doneLabel="Copied"
+          icon={Copy}
+          label="Copy agent message"
+          onClick={() => copyText(text)}
+        />
+      </div>
+    </article>
+  );
+}
+
 export function AttachmentTray({ attachments = [], onRemove, onShowInText }) {
   if (attachments.length === 0) return null;
 
@@ -340,6 +366,16 @@ function assistantSourceLabel(metadata = {}) {
       title: metadata.accountLiveStateDigest
         ? `Hive response with account live state ${metadata.accountLiveStateDigest.slice(0, 12)}`
         : "Immediate Hive Chat response",
+    };
+  }
+  if (metadata?.kind === "orc_hive_signal") {
+    const origin = metadata.agentOrigin && typeof metadata.agentOrigin === "object" ? metadata.agentOrigin : {};
+    const reviewer = String(origin.agentHandle || metadata.reviewerHandle || metadata.agentHandle || "").trim().replace(/^@+/, "");
+    return {
+      kind: "orc-agent",
+      label: reviewer ? `@${reviewer}` : "Orc agent",
+      meta: metadata.taskId ? `Task ${shortMetaId(metadata.taskId)}` : "",
+      title: metadata.taskId ? `Orc signal for ${metadata.taskId}` : "Orc agent Hive signal",
     };
   }
   return null;

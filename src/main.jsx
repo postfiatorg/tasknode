@@ -65,6 +65,7 @@ import {
   textFromAttachment,
 } from "./chat-attachments";
 import {
+  AgentMessage,
   AssistantMessage,
   AttachmentTray,
   copyText,
@@ -2872,6 +2873,18 @@ function ChatSurface({
                 );
               }
 
+              if (message.role === "agent") {
+                return (
+                  <AgentMessage
+                    agentClient={message.agentClient}
+                    agentLabel={message.agentLabel}
+                    attachments={message.attachments || []}
+                    key={message.id || `agent-${index}`}
+                    text={message.text}
+                  />
+                );
+              }
+
               return (
                 <AssistantMessage
                   contextEditSavingId={contextEditSavingId}
@@ -3239,6 +3252,11 @@ function ShareModal({ onClose, thread, title }) {
             {previewThread.map((message, index) =>
               message.role === "user" ? (
                 <div className="share-preview-user" key={index}>
+                  <span>{message.text}</span>
+                </div>
+              ) : message.role === "agent" ? (
+                <div className="share-preview-agent" key={index}>
+                  <strong>{message.agentLabel || "Orc agent"}</strong>
                   <span>{message.text}</span>
                 </div>
               ) : (
