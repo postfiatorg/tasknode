@@ -70,6 +70,22 @@ const dailyCost = await readBoardManagerDailyCost({
             total_tokens: 2000,
           },
         },
+        {
+          occurred_at: new Date("2026-06-18T13:00:00Z"),
+          provider: "codex_exec",
+          model: "qwen/qwen3.7-max",
+          usage_json: {},
+        },
+        {
+          occurred_at: new Date("2026-06-17T12:00:00Z"),
+          provider: "deepseek",
+          model: "deepseek-v4-pro",
+          usage_json: {
+            inputTokens: 1000,
+            outputTokens: 1000,
+            totalTokens: 2000,
+          },
+        },
       ],
     };
   },
@@ -80,7 +96,7 @@ assert.match(queryCalls[0].sql, /FROM board_manager_runs/);
 assert.match(queryCalls[0].sql, /FROM board_manager_secretary_packets/);
 assert.deepEqual(queryCalls[0].params, [30]);
 assert.equal(dailyCost.enabled, true);
-assert.equal(dailyCost.rows.length, 2);
+assert.equal(dailyCost.rows.length, 3);
 assert.deepEqual(dailyCost.rows[0], {
   date: "2026-06-19",
   runs: 2,
@@ -97,12 +113,20 @@ assert.deepEqual(dailyCost.rows[1], {
   totalTokens: 2000,
   costUsd: 0.01,
 });
+assert.deepEqual(dailyCost.rows[2], {
+  date: "2026-06-17",
+  runs: 1,
+  inputTokens: 1000,
+  outputTokens: 1000,
+  totalTokens: 2000,
+  costUsd: 0.001305,
+});
 assert.deepEqual(dailyCost.totals, {
-  runs: 3,
-  inputTokens: 2500,
-  outputTokens: 3100,
-  totalTokens: 5600,
-  costUsd: 0.0196,
+  runs: 4,
+  inputTokens: 3500,
+  outputTokens: 4100,
+  totalTokens: 7600,
+  costUsd: 0.020905,
 });
 
 const disabledCost = await readBoardManagerDailyCost({
