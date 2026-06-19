@@ -71,6 +71,7 @@
     "board-manager-orc-accounting-smoke": "node scripts/board-manager-orc-accounting-smoke.mjs",
     "orc-shared-state-smoke": "node scripts/orc-shared-state-smoke.mjs",
     "orc-hive-signal-smoke": "node scripts/orc-hive-signal-smoke.mjs",
+    "sybil-blocklist-regression": "node scripts/sybil-blocklist-regression.mjs",
     "board-manager-micro-summary-smoke": "node scripts/board-manager-micro-summary-smoke.mjs",
     "board-manager-action-hooks-smoke": "node scripts/board-manager-action-hooks-smoke.mjs",
     "board-manager-cancel-network-task-smoke": "node scripts/board-manager-cancel-network-task-smoke.mjs",

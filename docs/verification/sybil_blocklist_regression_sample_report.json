@@ -1,0 +1,170 @@
+{
+  "schema": "tasknode.sybil_blocklist_regression.v1",
+  "generatedAt": "2026-06-19T02:52:13.710Z",
+  "lineage": [
+    {
+      "taskId": "task_2ec03c162f35f5060453d1f5476fadf2",
+      "description": "XRPL Sybil Fund Flow Graph Script",
+      "rewardCid": "QmefkU6HW2okwUeuVVNuuDkwcNzGqfu7dyX3358RCX7QRr"
+    },
+    {
+      "taskId": "task_cc79625ec50467785ae070b1e4336fff",
+      "description": "Automated Sybil Blocklist Patch Generator",
+      "rewardCid": "QmbzyjFcUu4EHbW95GqBVKAeVJ3kUa8yGKY4nBmJxiRzUJ"
+    },
+    {
+      "taskId": "task_07f8a1bcb02702eadbbf797b29b70406",
+      "description": "Blocklist Propagation Verification Script"
+    }
+  ],
+  "inputs": {
+    "graph": "/tmp/orc_blocklist_regression_sources/fund_flow/sample_graph.json",
+    "base": "/tmp/orc_blocklist_regression_sources/blocklist_generator/base_blocklist.json",
+    "blocklist": "/tmp/orc_blocklist_regression_sources/blocklist_generator/blocklist_patch.json"
+  },
+  "policy": {
+    "historicalSource": "flagged_wallets plus explicitly flagged graph nodes/relationships",
+    "deployableSurfaces": [
+      "base blocklist config wallet sets",
+      "non-patch blocklist config wallet sets",
+      "patch ops that add/ban/block wallets",
+      "patch added_entries"
+    ],
+    "reviewEntriesCountAsBlocked": false
+  },
+  "surfaces": {
+    "baseBlocklist": {
+      "count": 3,
+      "wallets": [
+        "r1Z98nc49kiMqwBjbMUb1HQrTrPC4s9xi",
+        "r29oNjkuXd3uY5YQSa1UFk4G94ityZjQG",
+        "r32PcCR4G5s8UbLagAgMohgEcz8ggVwmnd"
+      ]
+    },
+    "blocklistConfig": {
+      "count": 0,
+      "wallets": []
+    },
+    "patchOps": {
+      "count": 2,
+      "wallets": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE"
+      ]
+    },
+    "addedEntries": {
+      "count": 2,
+      "wallets": [
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE"
+      ]
+    },
+    "reviewEntries": {
+      "count": 1,
+      "wallets": [
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E"
+      ]
+    },
+    "summaryDecisions": {
+      "count": 7,
+      "wallets": [
+        "r1Z98nc49kiMqwBjbMUb1HQrTrPC4s9xi",
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rBEf6qx27uzeVwfN2rgbiGmvA3VoE1TAfq",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+        "rsA2Lp7Wo4aHmALz7yWPmHk6tqZ8XYZab"
+      ]
+    },
+    "allPatchReferences": {
+      "count": 7,
+      "wallets": [
+        "r1Z98nc49kiMqwBjbMUb1HQrTrPC4s9xi",
+        "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "rBEf6qx27uzeVwfN2rgbiGmvA3VoE1TAfq",
+        "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+        "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+        "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+        "rsA2Lp7Wo4aHmALz7yWPmHk6tqZ8XYZab"
+      ]
+    }
+  },
+  "results": [
+    {
+      "wallet": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "status": "pass",
+      "expected": "blocked",
+      "observed": "blocked",
+      "deployableBlocked": true,
+      "reviewOnly": false,
+      "presentSurfaces": [
+        "patchOps",
+        "addedEntries",
+        "summaryDecisions",
+        "allPatchReferences"
+      ],
+      "gapReason": null
+    },
+    {
+      "wallet": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "status": "pass",
+      "expected": "blocked",
+      "observed": "blocked",
+      "deployableBlocked": true,
+      "reviewOnly": false,
+      "presentSurfaces": [
+        "patchOps",
+        "addedEntries",
+        "summaryDecisions",
+        "allPatchReferences"
+      ],
+      "gapReason": null
+    },
+    {
+      "wallet": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "status": "fail",
+      "expected": "blocked",
+      "observed": "not_blocked",
+      "deployableBlocked": false,
+      "reviewOnly": true,
+      "presentSurfaces": [
+        "reviewEntries",
+        "summaryDecisions",
+        "allPatchReferences"
+      ],
+      "gapReason": "Wallet is present only in review_entries, which is not a deployable block surface by default."
+    },
+    {
+      "wallet": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "status": "fail",
+      "expected": "blocked",
+      "observed": "not_blocked",
+      "deployableBlocked": false,
+      "reviewOnly": false,
+      "presentSurfaces": [],
+      "gapReason": "Wallet is absent from deployable blocklist surfaces."
+    },
+    {
+      "wallet": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "status": "fail",
+      "expected": "blocked",
+      "observed": "not_blocked",
+      "deployableBlocked": false,
+      "reviewOnly": false,
+      "presentSurfaces": [],
+      "gapReason": "Wallet is absent from deployable blocklist surfaces."
+    }
+  ],
+  "summary": {
+    "totalHistoricalFlaggedWallets": 5,
+    "passed": 2,
+    "failed": 3,
+    "missingWallets": [
+      "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4"
+    ],
+    "status": "fail"
+  }
+}
