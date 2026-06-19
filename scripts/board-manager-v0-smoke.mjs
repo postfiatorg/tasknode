@@ -378,7 +378,7 @@ const smokeDecisionOutput = {
 };
 
 assert.equal(boardManagerProvider(), "openrouter");
-assert.equal(boardManagerModel(), "qwen/qwen3.7-max");
+assert.equal(boardManagerModel(), "z-ai/glm-5.2");
 
 let capturedOpenRouterUrl = "";
 let capturedOpenRouterBody = null;
@@ -393,7 +393,7 @@ const openRouterDecision = await fetchBoardManagerDecision({
       async text() {
         return JSON.stringify({
           id: "or_board_manager_smoke",
-          model: "qwen/qwen3.7-max",
+          model: "z-ai/glm-5.2",
           choices: [{ message: { content: JSON.stringify(smokeDecisionOutput) } }],
           usage: {
             prompt_tokens: 100,
@@ -408,7 +408,7 @@ const openRouterDecision = await fetchBoardManagerDecision({
   },
 });
 assert.match(capturedOpenRouterUrl, /\/chat\/completions$/);
-assert.equal(capturedOpenRouterBody.model, "qwen/qwen3.7-max");
+assert.equal(capturedOpenRouterBody.model, "z-ai/glm-5.2");
 assert.equal(capturedOpenRouterBody.reasoning.effort, "high");
 assert.equal(capturedOpenRouterBody.response_format.type, "json_schema");
 assert.equal(capturedOpenRouterBody.response_format.json_schema.name, "board_manager_action");
@@ -419,7 +419,7 @@ assert.equal(capturedOpenRouterBody.provider.require_parameters, true);
 assert.equal(capturedOpenRouterBody.usage.include, true);
 assert.equal(capturedOpenRouterBody.metadata.prompt_version, "board_manager_v1");
 assert.equal(openRouterDecision.provider, "openrouter");
-assert.equal(openRouterDecision.model, "qwen/qwen3.7-max");
+assert.equal(openRouterDecision.model, "z-ai/glm-5.2");
 assert.equal(openRouterDecision.decision.action, "message_user");
 assert.equal(openRouterDecision.usage.reasoningTokens, 25);
 assert.equal(openRouterDecision.usage.costUsd, 0.000625);
@@ -437,7 +437,7 @@ const repairedOpenRouterDecision = await fetchBoardManagerDecision({
       async text() {
         return JSON.stringify({
           id: `or_board_manager_repair_${repairFetchBodies.length}`,
-          model: "qwen/qwen3.7-max",
+          model: "z-ai/glm-5.2",
           choices: [{ message: { content } }],
           usage: {
             prompt_tokens: repairFetchBodies.length === 1 ? 100 : 120,
@@ -470,7 +470,7 @@ const malformedFallbackDecision = await fetchBoardManagerDecision({
       async text() {
         return JSON.stringify({
           id: `or_board_manager_malformed_${malformedFetchCount}`,
-          model: "qwen/qwen3.7-max",
+          model: "z-ai/glm-5.2",
           choices: [
             {
               message: {

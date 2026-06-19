@@ -28,6 +28,13 @@ import { chatPricingStatus } from "./model-pricing-status.js";
 const recentFailureWindowMs = 24 * hour;
 const DEFAULT_NETWORK_TASK_SPEND_DAYS = 30;
 const MAX_NETWORK_TASK_SPEND_DAYS = 90;
+const DEFAULT_BOARD_MANAGER_COST_DAYS = 30;
+const MAX_BOARD_MANAGER_COST_DAYS = 90;
+const BOARD_MANAGER_MODEL_PRICING = Object.freeze({
+  "z-ai/glm-5.2": { inputUsdPerMillion: 1.2, outputUsdPerMillion: 4.1 },
+  "qwen/qwen3.7-max": { inputUsdPerMillion: 2.5, outputUsdPerMillion: 7.5 },
+  "gpt-5.5-pro": { inputUsdPerMillion: 15, outputUsdPerMillion: 120 },
+});
 
 const recentFailureStatus = (status, count, label = "Recent failures") => (
   Number(count || 0) > 0 ? mergeStatus(status, { status: "warning", label }) : status
@@ -37,6 +44,12 @@ export function networkTaskSpendWindowDays(value = DEFAULT_NETWORK_TASK_SPEND_DA
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_NETWORK_TASK_SPEND_DAYS;
   return Math.min(MAX_NETWORK_TASK_SPEND_DAYS, Math.max(1, Math.round(parsed)));
+}
+
+export function boardManagerCostWindowDays(value = DEFAULT_BOARD_MANAGER_COST_DAYS) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_BOARD_MANAGER_COST_DAYS;
+  return Math.min(MAX_BOARD_MANAGER_COST_DAYS, Math.max(1, Math.round(parsed)));
 }
 
 function normalizeNetworkTaskSpendRows(rows = []) {
@@ -98,8 +111,129 @@ export async function readNetworkTaskSpendByDay({
   };
 }
 
+function usageNumber(usage = {}, keys = []) {
+  for (const key of keys) {
+    const value = Number(usage?.[key]);
+    if (Number.isFinite(value) && value >= 0) return value;
+  }
+  return 0;
+}
+
+function boardManagerUsageCostUsd({ usage = {}, model = "" } = {}) {
+  const providerCost = usageNumber(usage, ["costUsd", "cost_usd", "cost"]);
+  if (providerCost > 0) return providerCost;
+  const pricing = BOARD_MANAGER_MODEL_PRICING[String(model || "").trim()];
+  if (!pricing) return 0;
+  const inputTokens = usageNumber(usage, ["inputTokens", "input_tokens", "prompt_tokens"]);
+  const outputTokens = usageNumber(usage, ["outputTokens", "output_tokens", "completion_tokens"]);
+  return (
+    (inputTokens / 1_000_000) * pricing.inputUsdPerMillion
+    + (outputTokens / 1_000_000) * pricing.outputUsdPerMillion
+  );
+}
+
+function roundCostUsd(value = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.round(parsed * 1_000_000) / 1_000_000;
+}
+
+function normalizeBoardManagerCostRows(rows = []) {
+  const byDate = new Map();
+  for (const row of rows) {
+    const occurredAt = row.occurred_at || row.created_at || row.completed_at;
+    const parsedDate = occurredAt instanceof Date ? occurredAt : new Date(occurredAt || "");
+    if (!Number.isFinite(parsedDate.getTime())) continue;
+    const date = parsedDate.toISOString().slice(0, 10);
+    const usage = row.usage_json && typeof row.usage_json === "object" ? row.usage_json : {};
+    const inputTokens = usageNumber(usage, ["inputTokens", "input_tokens", "prompt_tokens"]);
+    const outputTokens = usageNumber(usage, ["outputTokens", "output_tokens", "completion_tokens"]);
+    const totalTokens = usageNumber(usage, ["totalTokens", "total_tokens", "total"]);
+    const effectiveTotalTokens = totalTokens || inputTokens + outputTokens;
+    const costUsd = boardManagerUsageCostUsd({ usage, model: row.model });
+    const current = byDate.get(date) || {
+      date,
+      runs: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      costUsd: 0,
+    };
+    current.runs += 1;
+    current.inputTokens += inputTokens;
+    current.outputTokens += outputTokens;
+    current.totalTokens += effectiveTotalTokens;
+    current.costUsd += costUsd;
+    byDate.set(date, current);
+  }
+  return [...byDate.values()]
+    .map((row) => ({ ...row, costUsd: roundCostUsd(row.costUsd) }))
+    .sort((left, right) => right.date.localeCompare(left.date));
+}
+
+export async function readBoardManagerDailyCost({
+  tables = new Map(),
+  days = DEFAULT_BOARD_MANAGER_COST_DAYS,
+  databaseReady = databaseEnabled(),
+  queryImpl = query,
+} = {}) {
+  const windowDays = boardManagerCostWindowDays(days);
+  const hasRuns = tables.get("board_manager_runs") === true;
+  const hasSecretaryPackets = tables.get("board_manager_secretary_packets") === true;
+  if (!databaseReady || (!hasRuns && !hasSecretaryPackets)) {
+    return {
+      ok: true,
+      enabled: false,
+      windowDays,
+      rows: [],
+      totals: { runs: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
+    };
+  }
+
+  const selects = [];
+  if (hasRuns) {
+    selects.push(
+      `SELECT 'board_manager_run' AS source,
+              COALESCE(completed_at, started_at, created_at) AS occurred_at,
+              provider,
+              model,
+              usage_json
+         FROM board_manager_runs
+        WHERE status = 'completed'
+          AND COALESCE(completed_at, started_at, created_at) >= now() - ($1::integer * interval '1 day')`
+    );
+  }
+  if (hasSecretaryPackets) {
+    selects.push(
+      `SELECT 'board_manager_secretary_packet' AS source,
+              created_at AS occurred_at,
+              provider,
+              model,
+              usage_json
+         FROM board_manager_secretary_packets
+        WHERE status <> 'failed'
+          AND created_at >= now() - ($1::integer * interval '1 day')`
+    );
+  }
+  const result = await queryImpl(`${selects.join("\nUNION ALL\n")}\nORDER BY occurred_at DESC`, [windowDays]);
+  const rows = normalizeBoardManagerCostRows(result.rows);
+  return {
+    ok: true,
+    enabled: true,
+    windowDays,
+    rows,
+    totals: {
+      runs: rows.reduce((sum, row) => sum + row.runs, 0),
+      inputTokens: rows.reduce((sum, row) => sum + row.inputTokens, 0),
+      outputTokens: rows.reduce((sum, row) => sum + row.outputTokens, 0),
+      totalTokens: rows.reduce((sum, row) => sum + row.totalTokens, 0),
+      costUsd: roundCostUsd(rows.reduce((sum, row) => sum + row.costUsd, 0)),
+    },
+  };
+}
+
 async function boardManagerItem(tables, nowMs) {
-  const cadenceFallback = intEnv(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS, 120, { min: 60, max: 86400 });
+  const cadenceFallback = intEnv(process.env.TASKNODE_BOARD_MANAGER_CADENCE_SECONDS, 300, { min: 60, max: 86400 });
   const [scopeResult, runResult, successResult, jobResult, leaseResult] = await Promise.all([
     optionalQuery(
       tables,
@@ -230,7 +364,7 @@ async function boardManagerSecretaryPacketItem(tables, nowMs) {
     id: "board_manager_secretary_packets",
     category: "hive",
     title: "Board Manager Secretary Packet",
-    description: "DeepSeek compression packet used before Qwen Board Manager decisions.",
+    description: "DeepSeek compression packet used before GLM 5.2 Board Manager decisions.",
     owner: "board-manager process",
     trigger: "inside Board Manager run",
     cadence: "board-manager dependent",
@@ -1280,15 +1414,19 @@ async function categoryItems(tables, nowMs) {
   ];
 }
 
-export async function readSystemStatus({ networkSpendDays = DEFAULT_NETWORK_TASK_SPEND_DAYS } = {}) {
+export async function readSystemStatus({
+  networkSpendDays = DEFAULT_NETWORK_TASK_SPEND_DAYS,
+  boardManagerCostDays = DEFAULT_BOARD_MANAGER_COST_DAYS,
+} = {}) {
   const generatedAt = new Date();
   const nowMs = generatedAt.getTime();
   const database = databaseStatus();
   if (!databaseEnabled()) {
-    const [categories, chatPricing, networkTaskSpendByDay] = await Promise.all([
+    const [categories, chatPricing, networkTaskSpendByDay, boardManagerDailyCost] = await Promise.all([
       categoryItems(new Map(), nowMs),
       chatPricingStatus(),
       readNetworkTaskSpendByDay({ tables: new Map(), days: networkSpendDays }),
+      readBoardManagerDailyCost({ tables: new Map(), days: boardManagerCostDays }),
     ]);
     return {
       ok: true,
@@ -1297,14 +1435,16 @@ export async function readSystemStatus({ networkSpendDays = DEFAULT_NETWORK_TASK
       summary: summarizeCategories(categories),
       chatPricing,
       networkTaskSpendByDay,
+      boardManagerDailyCost,
       categories,
     };
   }
   const tables = await tableMap();
-  const [categories, chatPricing, networkTaskSpendByDay] = await Promise.all([
+  const [categories, chatPricing, networkTaskSpendByDay, boardManagerDailyCost] = await Promise.all([
     categoryItems(tables, nowMs),
     chatPricingStatus(),
     readNetworkTaskSpendByDay({ tables, days: networkSpendDays }),
+    readBoardManagerDailyCost({ tables, days: boardManagerCostDays }),
   ]);
   return {
     ok: true,
@@ -1313,6 +1453,7 @@ export async function readSystemStatus({ networkSpendDays = DEFAULT_NETWORK_TASK
     summary: summarizeCategories(categories),
     chatPricing,
     networkTaskSpendByDay,
+    boardManagerDailyCost,
     categories,
   };
 }
@@ -1321,6 +1462,7 @@ export async function handleSystemStatusRoute({ json, res, url } = {}) {
   if (url.pathname !== "/api/system/status") return false;
   const status = await readSystemStatus({
     networkSpendDays: url.searchParams.get("networkSpendDays") || DEFAULT_NETWORK_TASK_SPEND_DAYS,
+    boardManagerCostDays: url.searchParams.get("boardManagerCostDays") || DEFAULT_BOARD_MANAGER_COST_DAYS,
   });
   json(res, 200, status);
   return true;

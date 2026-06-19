@@ -159,6 +159,7 @@ function MarkdownArticle({ markdown }) {
 function SystemStatusPage({ onOpenDocPage }) {
   const [state, setState] = useState({ loading: true, status: null, error: "" });
   const [showNetworkSpend, setShowNetworkSpend] = useState(false);
+  const [showBoardManagerCost, setShowBoardManagerCost] = useState(false);
 
   async function loadStatus() {
     setState((current) => ({ ...current, loading: true, error: "" }));
@@ -207,6 +208,13 @@ function SystemStatusPage({ onOpenDocPage }) {
             Database: {status.database?.enabled ? "enabled" : "not enabled"} · durable: {status.database?.durable ? "yes" : "no"}
           </p>
           {status.chatPricing && <SystemPricingPanel pricing={status.chatPricing} />}
+          {status.boardManagerDailyCost && (
+            <SystemBoardManagerCostPanel
+              cost={status.boardManagerDailyCost}
+              expanded={showBoardManagerCost}
+              onToggle={() => setShowBoardManagerCost((value) => !value)}
+            />
+          )}
           {status.networkTaskSpendByDay && (
             <SystemNetworkSpendPanel
               spend={status.networkTaskSpendByDay}
@@ -228,6 +236,56 @@ function SystemStatusPage({ onOpenDocPage }) {
             ))}
           </div>
         </>
+      )}
+    </section>
+  );
+}
+
+function SystemBoardManagerCostPanel({ cost, expanded, onToggle }) {
+  const rows = Array.isArray(cost?.rows) ? cost.rows : [];
+  const totals = cost?.totals || {};
+  const maxTotal = rows.reduce((max, row) => Math.max(max, Number(row.costUsd || 0)), 0);
+  return (
+    <section
+      className="system-network-spend-panel system-board-manager-cost-panel"
+      aria-label="Board Manager daily token cost"
+    >
+      <button
+        className="system-network-spend-toggle"
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <ChevronRight className={expanded ? "is-expanded" : ""} size={15} strokeWidth={1.9} />
+        <span>Board Manager daily token cost</span>
+        <strong>{formatUsd(totals.costUsd)}</strong>
+        <em>
+          {Number(totals.runs || 0).toLocaleString()} model calls · {cost.windowDays || 30}d
+        </em>
+      </button>
+      {expanded && (
+        <div className="system-network-spend-list">
+          <p>Operational LLM provider cost in USD. This is separate from Network Task PFT rewards.</p>
+          {rows.length === 0 && (
+            <p>{cost.enabled === false ? "Database token cost data is not available." : "No Board Manager token usage in this window."}</p>
+          )}
+          {rows.map((row) => {
+            const total = Number(row.costUsd || 0);
+            const width = maxTotal > 0 ? Math.max(4, Math.round((total / maxTotal) * 100)) : 0;
+            return (
+              <div className="system-network-spend-row system-board-manager-cost-row" key={row.date}>
+                <span>{formatDateOnly(row.date)}</span>
+                <div aria-hidden="true">
+                  <i style={{ width: `${width}%` }} />
+                </div>
+                <strong>{formatUsd(total)}</strong>
+                <em>
+                  {Number(row.totalTokens || 0).toLocaleString()} tokens · {Number(row.runs || 0).toLocaleString()} calls
+                </em>
+              </div>
+            );
+          })}
+        </div>
       )}
     </section>
   );
@@ -499,6 +557,15 @@ function formatUsdPerMillion(value) {
     minimumFractionDigits: numeric < 1 ? 3 : 2,
     maximumFractionDigits: numeric < 1 ? 6 : 3,
   })}/M`;
+}
+
+function formatUsd(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "$0.00";
+  return `$${numeric.toLocaleString(undefined, {
+    minimumFractionDigits: numeric > 0 && numeric < 0.01 ? 4 : 2,
+    maximumFractionDigits: numeric > 0 && numeric < 0.01 ? 6 : 2,
+  })}`;
 }
 
 function formatCompactNumber(value) {

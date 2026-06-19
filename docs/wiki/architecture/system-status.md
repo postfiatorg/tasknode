@@ -16,6 +16,11 @@ The page also includes a collapsed Network Task spend audit toggle. It reads
 `networkTaskSpendByDay` from `/api/system/status` and shows total PFT spent on
 rewarded Network Tasks by UTC reward day for a bounded window.
 
+The page also includes a collapsed Board Manager daily token-cost toggle. It
+reads `boardManagerDailyCost` from `/api/system/status` and shows operational
+LLM provider cost in USD by UTC day. This is separate from Network Task PFT
+reward spend.
+
 Each status row links to the functional Help page that owns that system. Several
 rows may share the same page when they are part of one product boundary. For
 example, Task Generation owns offer generation, review, verification, and reward
@@ -130,6 +135,19 @@ excluded the same way other rewarded-task audit surfaces exclude them.
 The UI keeps this section collapsed by default. When opened, it displays one row
 per day with total PFT and task count, newest first. The toggle is an audit view
 only; it does not move funds, change rewards, or alter task state.
+
+## Board Manager Daily Token Cost
+
+`server/system-status.js::readBoardManagerDailyCost` aggregates recent
+`board_manager_runs` and `board_manager_secretary_packets` usage rows over a
+30-day default window with a 90-day maximum. It prefers provider-reported
+`usage.cost` when present, then falls back to configured per-model input/output
+token prices such as the Board Manager default `z-ai/glm-5.2` OpenRouter route.
+
+The response returns daily rows with `{date, runs, inputTokens, outputTokens,
+totalTokens, costUsd}` plus totals. The Docs UI keeps this section collapsed by
+default and labels it as operational LLM cost in USD so it is not confused with
+Network Task PFT reward spend.
 
 ## Status Rules
 

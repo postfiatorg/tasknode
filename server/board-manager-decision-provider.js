@@ -34,7 +34,7 @@ export function boardManagerProvider() {
 }
 
 export function boardManagerModel(provider = boardManagerProvider()) {
-  const fallback = provider === "openai" ? "gpt-5.5-pro" : "qwen/qwen3.7-max";
+  const fallback = provider === "openai" ? "gpt-5.5-pro" : "z-ai/glm-5.2";
   return safeText(process.env.TASKNODE_BOARD_MANAGER_MODEL || fallback, 120);
 }
 

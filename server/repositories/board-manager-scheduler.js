@@ -23,6 +23,7 @@ function clampInt(value, fallback, min, max) {
 }
 
 const defaultBoardManagerMaxActionsPerHour = 60;
+const defaultBoardManagerCadenceSeconds = 300;
 const boardManagerRateLimitExclusions = Object.freeze([
   "",
   "do_nothing",
@@ -44,7 +45,7 @@ function nullableTimestampValue(value = null) {
 export async function ensureBoardManagerScope({
   scope = "global_hive",
   status = null,
-  cadenceSeconds = 120,
+  cadenceSeconds = defaultBoardManagerCadenceSeconds,
   maxActionsPerHour = defaultBoardManagerMaxActionsPerHour,
   nextRunAt = null,
   metadata = {},
@@ -77,7 +78,7 @@ export async function ensureBoardManagerScope({
     [
       normalizedScope,
       normalizedStatus,
-      clampInt(cadenceSeconds, 120, 60, 86400),
+      clampInt(cadenceSeconds, defaultBoardManagerCadenceSeconds, 60, 86400),
       clampInt(maxActionsPerHour, defaultBoardManagerMaxActionsPerHour, 0, 200),
       timestampValue(nextRunAt),
       jsonValue(metadata),
