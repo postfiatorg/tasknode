@@ -608,6 +608,42 @@ class TaskNodeAgentClient:
             payload["dryRun"] = True
         return self.request("POST", "/api/chat/send", json_body=payload)
 
+    def hive_chat(
+        self,
+        message: str,
+        *,
+        conversation_id: str = "",
+        conversation_title: str = "Hive",
+        attachments: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        agent_handle: str = "",
+    ) -> dict[str, Any]:
+        clean_message = _safe_text(message, 24000)
+        if not clean_message and not attachments:
+            raise ValueError("hive chat message or attachment is required")
+        agent_origin = {
+            "agent": True,
+            "actorType": "machine_agent",
+            "agentHandle": _safe_text(agent_handle or getattr(self, "agent", "") or "agent", 80),
+            "walletAddress": self.wallet.address,
+            "client": "TaskNodeAgentClient",
+        }
+        merged_metadata = dict(metadata or {})
+        merged_metadata["agentOrigin"] = agent_origin
+        payload: dict[str, Any] = {
+            "message": clean_message,
+            "conversationTitle": _safe_text(conversation_title or "Hive", 160) or "Hive",
+            "metadata": merged_metadata,
+            "agentHandle": agent_origin["agentHandle"],
+            "walletAddress": self.wallet.address,
+            "client": "TaskNodeAgentClient",
+        }
+        if conversation_id:
+            payload["conversationId"] = _safe_text(conversation_id, 180)
+        if attachments is not None:
+            payload["attachments"] = attachments
+        return self.request("POST", "/api/hive/chat", json_body=payload)
+
     def task_detail(self, task_id: str, **params: Any) -> dict[str, Any]:
         return self.request("GET", "/api/tasks/detail", params={"taskId": task_id, **params})
 

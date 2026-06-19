@@ -58,6 +58,7 @@ import { loadChatExecutionContext } from "./chat-context-load.js";
 import { normalizeClientChatHistory } from "./chat-client-history.js";
 import { validateChatAttachments } from "./chat-attachment-utils.js";
 import { isHelpChatMode } from "./chat-help-mode.js";
+import { metadataWithMachineAgentOrigin } from "./agent-origin.js";
 import {
   getContextHistory,
   saveContextDocument,
@@ -249,36 +250,8 @@ function safeClientObject(value, depth = 0) {
   return result;
 }
 
-function normalizeAgentChatOrigin(value = {}) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  if (value.agent !== true && value.actorType !== "machine_agent") return null;
-  return {
-    agent: true,
-    actorType: "machine_agent",
-    source: safeEventText(value.source || "wallet_login", 80) || "wallet_login",
-    sessionProvider: safeEventText(value.sessionProvider || "wallet", 80) || "wallet",
-    accountId: safeEventText(value.accountId, 180),
-    agentHandle: safeEventText(value.agentHandle || value.agent || value.handle, 80),
-    walletAddress: safeEventText(value.walletAddress || value.address, 120),
-    client: safeEventText(value.client || "TaskNodeAgentClient", 120) || "TaskNodeAgentClient",
-  };
-}
-
 function chatUserMetadata(payload = {}, agentOrigin = null) {
-  const metadata = safeClientObject(payload?.metadata || payload?.metadata_json);
-  const normalizedAgentOrigin = normalizeAgentChatOrigin(agentOrigin);
-  if (!normalizedAgentOrigin) {
-    delete metadata.agentOrigin;
-    if (metadata.senderType === "machine_agent" || metadata.senderType === "agent") {
-      delete metadata.senderType;
-    }
-    return metadata;
-  }
-  return {
-    ...metadata,
-    senderType: "machine_agent",
-    agentOrigin: normalizedAgentOrigin,
-  };
+  return metadataWithMachineAgentOrigin(payload, agentOrigin);
 }
 
 function emailCodeHash({ challengeId, canonicalEmail, code }) {

@@ -20,12 +20,53 @@ import { getAccountIdentityProfile } from "./runtime-store.js";
 import { decodeTextDataUrl, normalizeChatAttachments } from "./chat-attachment-utils.js";
 import { executeHiveImmediateResponse } from "./hive-immediate-response.js";
 import { recordUserObservabilityEvent } from "./repositories/user-observability.js";
+import { agentOriginForWalletSession, metadataWithMachineAgentOrigin } from "./agent-origin.js";
+import { recordAgentHiveChatWorkJournal } from "./repositories/orc-work-journal.js";
 
 const maxHiveAttachmentTextLength = 12_000;
 const maxHiveAttachmentExcerptLength = 800;
+const agentHiveChatBuckets = new Map();
 
 function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
+}
+
+function agentHiveChatRateLimitConfig() {
+  return {
+    max: Math.min(Math.max(Number(process.env.TASKNODE_AGENT_HIVE_CHAT_RATE_LIMIT_MAX || 6), 1), 100),
+    windowMs: Math.min(
+      Math.max(Number(process.env.TASKNODE_AGENT_HIVE_CHAT_RATE_LIMIT_WINDOW_MS || 60_000), 1000),
+      60 * 60 * 1000
+    ),
+  };
+}
+
+function checkAgentHiveChatRateLimit(agentOrigin = null, now = Date.now()) {
+  if (!agentOrigin?.agent) return { ok: true };
+  const key = safeText(
+    agentOrigin.walletAddress || agentOrigin.accountId || agentOrigin.agentHandle || "unknown_agent",
+    180
+  );
+  const config = agentHiveChatRateLimitConfig();
+  const existing = agentHiveChatBuckets.get(key);
+  if (!existing || existing.resetAt <= now) {
+    agentHiveChatBuckets.set(key, { count: 1, resetAt: now + config.windowMs });
+    return { ok: true, remaining: config.max - 1, resetAt: now + config.windowMs };
+  }
+  if (existing.count >= config.max) {
+    return {
+      ok: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((existing.resetAt - now) / 1000)),
+      limit: config.max,
+      windowMs: config.windowMs,
+    };
+  }
+  existing.count += 1;
+  return { ok: true, remaining: config.max - existing.count, resetAt: existing.resetAt };
+}
+
+export function resetAgentHiveChatRateLimitForTests() {
+  agentHiveChatBuckets.clear();
 }
 
 function safeAttachments(items = []) {
@@ -93,6 +134,209 @@ async function recordHiveObservabilityEvent({
     metadata,
     metrics,
   }).catch(() => {});
+}
+
+async function saveHiveChatMessage({
+  getLinkedWallet,
+  payload,
+  session,
+  sourceRoute = "server/hive-routes.js::/api/hive/context",
+  agentOrigin = null,
+} = {}) {
+  const body = safeText(payload?.body || payload?.message || "", 24_000);
+  const sourceConversationId = safeText(
+    payload?.conversationId || hiveConversationIdForAccount(session.accountId),
+    180
+  );
+  const sourceConversationTitle = safeText(payload?.conversationTitle || "", 160);
+  const attachments = safeAttachments(payload?.attachments || []);
+  const hiveContextAttachments = hiveContextAttachmentSummaries(attachments);
+  const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
+  const identityProfile = getAccountIdentityProfile({ accountId: session.accountId }) || {};
+  const trustedAgentMetadata = agentOrigin
+    ? metadataWithMachineAgentOrigin(payload, agentOrigin)
+    : metadataWithMachineAgentOrigin({}, null);
+  const entry = await saveHiveContextEntry({
+    accountId: session.accountId,
+    displayName:
+      identityProfile.displayName ||
+      (identityProfile.hiveHandle ? `@${identityProfile.hiveHandle}` : "") ||
+      session.displayName ||
+      session.primaryProvider ||
+      session.accountId,
+    body,
+    sourceConversationId,
+    sourceConversationTitle,
+    walletAddress: linkedWallet?.address || "",
+    walletValidated: Boolean(linkedWallet?.address),
+    attachments: hiveContextAttachments,
+    metadata: {
+      ...trustedAgentMetadata,
+      kind: "hive_input",
+      source: "user_chat",
+      walletValidated: Boolean(linkedWallet?.address),
+    },
+  });
+  const secretary = linkedWallet?.address
+    ? await enqueueHiveSecretaryJob({
+        reason: "hive_input",
+        sourceEntryId: entry.id,
+      })
+    : await getHiveSecretaryState();
+  if (secretary?.queued) {
+    scheduleHiveSecretaryQueue({ delayMs: 250 });
+  }
+  await recordHiveObservabilityEvent({
+    eventType: "user.hive.context_submitted",
+    accountId: session.accountId,
+    walletAddress: linkedWallet?.address || "",
+    conversationId: sourceConversationId,
+    resultStatus: "submitted",
+    sourceRoute,
+    metadata: {
+      entryId: entry.id,
+      sourceConversationTitlePresent: Boolean(sourceConversationTitle),
+      walletValidated: Boolean(linkedWallet?.address),
+      secretaryQueued: secretary?.queued === true,
+      senderType: trustedAgentMetadata.senderType || "",
+      agentHandle: trustedAgentMetadata.agentOrigin?.agentHandle || "",
+    },
+    metrics: {
+      bodyCharacterCount: body.length,
+      attachmentCount: attachments.length,
+    },
+  });
+  let chatTurn = null;
+  let chatHistoryWarning = "";
+  let immediateResponseWarning = "";
+  if (sourceConversationId) {
+    try {
+      const immediate = await executeHiveImmediateResponse({
+        accountId: session.accountId,
+        conversationId: sourceConversationId,
+        message: body,
+        attachments,
+        sourceEntryId: entry.id,
+        requestingUser: {
+          accountId: session.accountId,
+          displayName:
+            identityProfile.displayName ||
+            (identityProfile.hiveHandle ? `@${identityProfile.hiveHandle}` : "") ||
+            session.displayName ||
+            "",
+          hiveHandle: identityProfile.hiveHandle || session.hiveHandle || "",
+          walletAddress: linkedWallet?.address || "",
+          publicDisplayName: identityProfile.publicDisplayName || session.publicDisplayName || "",
+          primaryProvider: session.primaryProvider || "",
+          aliases: identityProfile.aliases || session.linkedProviders || [],
+          identityProfile,
+        },
+      });
+      chatTurn = await appendChatTurn({
+        accountId: session.accountId,
+        conversationId: sourceConversationId,
+        mode: "Hive",
+        provider: immediate.provider,
+        model: immediate.model,
+        responseId: immediate.responseId,
+        userMessage: body,
+        assistantMessage: immediate.text,
+        userMessageId: safeText(payload?.userMessageId || "", 180),
+        assistantMessageId: safeText(payload?.assistantMessageId || "", 180),
+        conversationTitle: "Hive",
+        userMetadata: {
+          ...trustedAgentMetadata,
+          kind: "hive_input",
+          hiveContextEntryId: entry.id,
+        },
+        assistantMetadata: {
+          kind: "hive_immediate_response",
+          hiveContextEntryId: entry.id,
+          sourcePacketDigest: immediate.sourcePacketDigest,
+          accountLiveStateDigest: immediate.accountLiveStateDigest,
+          accountLiveStateSnapshotAt: immediate.accountLiveStateSnapshotAt,
+          accountLiveStateStatus: immediate.accountLiveStateStatus,
+          boardManagerSourcePacketDigest: immediate.boardManagerSourcePacketDigest,
+          boardManagerSecretaryPacketId: immediate.boardManagerSecretaryPacketId,
+          boardManagerSecretaryPacketDigest: immediate.boardManagerSecretaryPacketDigest,
+          boardManagerSecretaryPacketCurrentForSource: immediate.boardManagerSecretaryPacketCurrentForSource,
+        },
+        runMetadata: {
+          kind: "hive_immediate_response",
+          hiveContextEntryId: entry.id,
+          sourcePacketDigest: immediate.sourcePacketDigest,
+          accountLiveStateDigest: immediate.accountLiveStateDigest,
+          accountLiveStateSnapshotAt: immediate.accountLiveStateSnapshotAt,
+          accountLiveStateStatus: immediate.accountLiveStateStatus,
+          boardManagerSourcePacketDigest: immediate.boardManagerSourcePacketDigest,
+          boardManagerSecretarySourceDigest: immediate.boardManagerSecretarySourceDigest,
+          boardManagerSecretaryPacketId: immediate.boardManagerSecretaryPacketId,
+          boardManagerSecretaryPacketDigest: immediate.boardManagerSecretaryPacketDigest,
+          boardManagerSecretaryPacketCurrentForSource: immediate.boardManagerSecretaryPacketCurrentForSource,
+          internalBilling: "system_paid",
+          providerCostUsd: immediate.usage?.providerCostUsd || 0,
+        },
+        attachments,
+        usage: {
+          ...immediate.usage,
+          costUsd: 0,
+        },
+      });
+    } catch (error) {
+      immediateResponseWarning = error?.message || "hive_immediate_response_failed";
+      try {
+        chatTurn = await appendChatUserMessage({
+          accountId: session.accountId,
+          conversationId: sourceConversationId,
+          mode: "Hive",
+          provider: "tasknode",
+          model: "hive_context_store",
+          userMessage: body,
+          userMessageId: safeText(payload?.userMessageId || "", 180),
+          conversationTitle: "Hive",
+          userMetadata: {
+            ...trustedAgentMetadata,
+            kind: "hive_input",
+            hiveContextEntryId: entry.id,
+          },
+          attachments,
+        });
+      } catch (chatError) {
+        chatHistoryWarning = chatError?.message || "chat_history_write_failed";
+      }
+    }
+  }
+
+  const orcWorkJournal = agentOrigin
+    ? await recordAgentHiveChatWorkJournal({
+        agentOrigin,
+        accountId: session.accountId,
+        conversationId: sourceConversationId,
+        hiveContextEntryId: entry.id,
+        chatMessageId: chatTurn?.user?.id || "",
+        messageCharacterCount: body.length,
+      }).catch((error) => ({
+        ok: false,
+        error: error?.message || "orc_work_journal_failed",
+      }))
+    : null;
+
+  return {
+    ok: true,
+    message: "Saved to Hive Context. Hive may respond here if useful.",
+    entry,
+    chatHistoryWarning,
+    immediateResponseWarning,
+    user: chatTurn?.user || null,
+    assistant: chatTurn?.assistant || null,
+    orcWorkJournal,
+    context: await getHiveContextDocument({ limit: 120 }),
+    secretary: await getHiveSecretaryState(),
+    boardManager: {
+      feed: await getBoardManagerAgentFeed({ limit: 20 }),
+      messages: await getBoardManagerUserMessages({ accountId: session.accountId, limit: 12 }),
+    },
+  };
 }
 
 export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, res, session, url }) {
@@ -175,8 +419,33 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
       });
       return true;
     }
-    const result = await enableHiveConversation({ accountId: session.accountId });
-    json(res, result.ok ? 200 : result.status || 400, result);
+    const payload = await readJson(req, 8 * 1024 * 1024);
+    const hasMessage = Boolean(safeText(payload?.body || payload?.message || "", 24_000));
+    const hasAttachments = Array.isArray(payload?.attachments) && payload.attachments.length > 0;
+    if (!hasMessage && !hasAttachments) {
+      const result = await enableHiveConversation({ accountId: session.accountId });
+      json(res, result.ok ? 200 : result.status || 400, result);
+      return true;
+    }
+    const agentOrigin = agentOriginForWalletSession(session, payload);
+    const rateLimit = checkAgentHiveChatRateLimit(agentOrigin);
+    if (!rateLimit.ok) {
+      json(res, 429, {
+        ok: false,
+        error: "agent_hive_chat_rate_limited",
+        message: "Agent Hive chat is rate limited. Retry after the indicated window.",
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      });
+      return true;
+    }
+    const body = await saveHiveChatMessage({
+      getLinkedWallet,
+      payload,
+      session,
+      sourceRoute: "server/hive-routes.js::/api/hive/chat",
+      agentOrigin,
+    });
+    json(res, 200, body);
     return true;
   }
 
@@ -235,176 +504,13 @@ export async function handleHiveRoute({ getLinkedWallet, json, readJson, req, re
   }
 
   const payload = await readJson(req, 8 * 1024 * 1024);
-  const body = safeText(payload?.body || payload?.message || "", 24_000);
-  const sourceConversationId = safeText(
-    payload?.conversationId || hiveConversationIdForAccount(session.accountId),
-    180
-  );
-  const sourceConversationTitle = safeText(payload?.conversationTitle || "", 160);
-  const attachments = safeAttachments(payload?.attachments || []);
-  const hiveContextAttachments = hiveContextAttachmentSummaries(attachments);
-  const linkedWallet = linkedWalletForSession({ getLinkedWallet, session });
-  const identityProfile = getAccountIdentityProfile({ accountId: session.accountId }) || {};
-  const entry = await saveHiveContextEntry({
-    accountId: session.accountId,
-    displayName:
-      identityProfile.displayName ||
-      (identityProfile.hiveHandle ? `@${identityProfile.hiveHandle}` : "") ||
-      session.displayName ||
-      session.primaryProvider ||
-      session.accountId,
-    body,
-    sourceConversationId,
-    sourceConversationTitle,
-    walletAddress: linkedWallet?.address || "",
-    walletValidated: Boolean(linkedWallet?.address),
-    attachments: hiveContextAttachments,
-    metadata: {
-      kind: "hive_input",
-      source: "user_chat",
-      walletValidated: Boolean(linkedWallet?.address),
-    },
-  });
-  const secretary = linkedWallet?.address
-    ? await enqueueHiveSecretaryJob({
-        reason: "hive_input",
-        sourceEntryId: entry.id,
-      })
-    : await getHiveSecretaryState();
-  if (secretary?.queued) {
-    scheduleHiveSecretaryQueue({ delayMs: 250 });
-  }
-  await recordHiveObservabilityEvent({
-    eventType: "user.hive.context_submitted",
-    accountId: session.accountId,
-    walletAddress: linkedWallet?.address || "",
-    conversationId: sourceConversationId,
-    resultStatus: "submitted",
+  const body = await saveHiveChatMessage({
+    getLinkedWallet,
+    payload,
+    session,
     sourceRoute: "server/hive-routes.js::/api/hive/context",
-    metadata: {
-      entryId: entry.id,
-      sourceConversationTitlePresent: Boolean(sourceConversationTitle),
-      walletValidated: Boolean(linkedWallet?.address),
-      secretaryQueued: secretary?.queued === true,
-    },
-    metrics: {
-      bodyCharacterCount: body.length,
-      attachmentCount: attachments.length,
-    },
+    agentOrigin: null,
   });
-  let chatTurn = null;
-  let chatHistoryWarning = "";
-  let immediateResponseWarning = "";
-  if (sourceConversationId) {
-    try {
-      const immediate = await executeHiveImmediateResponse({
-        accountId: session.accountId,
-        conversationId: sourceConversationId,
-        message: body,
-        attachments,
-        sourceEntryId: entry.id,
-        requestingUser: {
-          accountId: session.accountId,
-          displayName:
-            identityProfile.displayName ||
-            (identityProfile.hiveHandle ? `@${identityProfile.hiveHandle}` : "") ||
-            session.displayName ||
-            "",
-          hiveHandle: identityProfile.hiveHandle || session.hiveHandle || "",
-          walletAddress: linkedWallet?.address || "",
-          publicDisplayName: identityProfile.publicDisplayName || session.publicDisplayName || "",
-          primaryProvider: session.primaryProvider || "",
-          aliases: identityProfile.aliases || session.linkedProviders || [],
-          identityProfile,
-        },
-      });
-      chatTurn = await appendChatTurn({
-        accountId: session.accountId,
-        conversationId: sourceConversationId,
-        mode: "Hive",
-        provider: immediate.provider,
-        model: immediate.model,
-        responseId: immediate.responseId,
-        userMessage: body,
-        assistantMessage: immediate.text,
-        userMessageId: safeText(payload?.userMessageId || "", 180),
-        assistantMessageId: safeText(payload?.assistantMessageId || "", 180),
-        conversationTitle: "Hive",
-        userMetadata: {
-          kind: "hive_input",
-          hiveContextEntryId: entry.id,
-        },
-        assistantMetadata: {
-          kind: "hive_immediate_response",
-          hiveContextEntryId: entry.id,
-          sourcePacketDigest: immediate.sourcePacketDigest,
-          accountLiveStateDigest: immediate.accountLiveStateDigest,
-          accountLiveStateSnapshotAt: immediate.accountLiveStateSnapshotAt,
-          accountLiveStateStatus: immediate.accountLiveStateStatus,
-          boardManagerSourcePacketDigest: immediate.boardManagerSourcePacketDigest,
-          boardManagerSecretaryPacketId: immediate.boardManagerSecretaryPacketId,
-          boardManagerSecretaryPacketDigest: immediate.boardManagerSecretaryPacketDigest,
-          boardManagerSecretaryPacketCurrentForSource: immediate.boardManagerSecretaryPacketCurrentForSource,
-        },
-        runMetadata: {
-          kind: "hive_immediate_response",
-          hiveContextEntryId: entry.id,
-          sourcePacketDigest: immediate.sourcePacketDigest,
-          accountLiveStateDigest: immediate.accountLiveStateDigest,
-          accountLiveStateSnapshotAt: immediate.accountLiveStateSnapshotAt,
-          accountLiveStateStatus: immediate.accountLiveStateStatus,
-          boardManagerSourcePacketDigest: immediate.boardManagerSourcePacketDigest,
-          boardManagerSecretarySourceDigest: immediate.boardManagerSecretarySourceDigest,
-          boardManagerSecretaryPacketId: immediate.boardManagerSecretaryPacketId,
-          boardManagerSecretaryPacketDigest: immediate.boardManagerSecretaryPacketDigest,
-          boardManagerSecretaryPacketCurrentForSource: immediate.boardManagerSecretaryPacketCurrentForSource,
-          internalBilling: "system_paid",
-          providerCostUsd: immediate.usage?.providerCostUsd || 0,
-        },
-        attachments,
-        usage: {
-          ...immediate.usage,
-          costUsd: 0,
-        },
-      });
-    } catch (error) {
-      immediateResponseWarning = error?.message || "hive_immediate_response_failed";
-      try {
-        chatTurn = await appendChatUserMessage({
-          accountId: session.accountId,
-          conversationId: sourceConversationId,
-          mode: "Hive",
-          provider: "tasknode",
-          model: "hive_context_store",
-          userMessage: body,
-          userMessageId: safeText(payload?.userMessageId || "", 180),
-          conversationTitle: "Hive",
-          userMetadata: {
-            kind: "hive_input",
-            hiveContextEntryId: entry.id,
-          },
-          attachments,
-        });
-      } catch (chatError) {
-        chatHistoryWarning = chatError?.message || "chat_history_write_failed";
-      }
-    }
-  }
-
-  json(res, 200, {
-    ok: true,
-    message: "Saved to Hive Context. Hive may respond here if useful.",
-    entry,
-    chatHistoryWarning,
-    immediateResponseWarning,
-    user: chatTurn?.user || null,
-    assistant: chatTurn?.assistant || null,
-    context: await getHiveContextDocument({ limit: 120 }),
-    secretary: await getHiveSecretaryState(),
-    boardManager: {
-      feed: await getBoardManagerAgentFeed({ limit: 20 }),
-      messages: await getBoardManagerUserMessages({ accountId: session.accountId, limit: 12 }),
-    },
-  });
+  json(res, 200, body);
   return true;
 }
