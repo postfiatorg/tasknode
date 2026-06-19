@@ -28,9 +28,14 @@ WHERE task_id IN (SELECT task_id FROM tasknode_projection_fixture_cleanup_tasks)
 DELETE FROM network_task_allocations
 WHERE generated_task_id IN (SELECT task_id FROM tasknode_projection_fixture_cleanup_tasks);
 
+-- user_observability_events is append-heavy in production. Keep this cleanup
+-- on indexed fields so boot-time migrations do not full-scan the observability
+-- log looking for local-only fixture metadata.
 DELETE FROM user_observability_events
-WHERE wallet_address LIKE 'rDirQa%'
-   OR COALESCE(metadata_json->>'directoryPolishFixture', 'false') = 'true';
+WHERE wallet_address >= 'rDirQa' AND wallet_address < 'rDirQb';
+
+DELETE FROM user_observability_events
+WHERE task_id IN (SELECT task_id FROM tasknode_projection_fixture_cleanup_tasks);
 
 DELETE FROM profile_public_snapshots
 WHERE COALESCE(input_snapshot->>'directoryPolishFixture', 'false') = 'true'
