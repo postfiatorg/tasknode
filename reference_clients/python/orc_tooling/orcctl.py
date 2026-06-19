@@ -4,9 +4,12 @@ import argparse
 from datetime import datetime, timezone
 import json
 import os
+import subprocess
 import sys
 from typing import Any
 from uuid import uuid4
+
+from tasknode_pftl.app_data import sql_literal, tasknode_database_url
 
 from .client import DEFAULT_EXPECTED_WALLET_ADDRESS, DEFAULT_ORC_AGENT, DEFAULT_TASKNODE_BASE_URL, build_client, request_personal_task
 from .hive_signal import run_hive_signal
@@ -146,6 +149,209 @@ def append_run_journal(
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, sort_keys=True) + "\n")
     return row
+
+
+def _jsonb_literal(value: dict[str, Any] | None) -> str:
+    return sql_literal(json.dumps(value if value is not None else {}, sort_keys=True)) + "::jsonb"
+
+
+def _run_psql(database_url: str, sql: str, *, runner: Any = subprocess.run) -> str:
+    result = runner(
+        ["psql", "-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", database_url, "-c", sql],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return str(result.stdout or "").strip()
+
+
+def _run_json(database_url: str, sql: str, *, runner: Any = subprocess.run) -> Any:
+    output = _run_psql(database_url, sql, runner=runner)
+    lines = [line for line in output.splitlines() if line.strip()]
+    if not lines:
+        return None
+    return json.loads(lines[-1])
+
+
+def _normalize_orc_handle(value: str) -> str:
+    handle = _safe_text(value, 80).lstrip("@").lower()
+    allowed = set("abcdefghijklmnopqrstuvwxyz0123456789_-")
+    normalized = "".join(char for char in handle if char in allowed)
+    return normalized.strip("_-")
+
+
+def _read_required_text_arg(*, text: str = "", path: str = "", label: str = "text") -> str:
+    value = _read_text_arg(text=text, path=path).strip()
+    if not value:
+        raise ValueError(f"{label} is required")
+    return value
+
+
+def _agent_id_from_handle(handle: str) -> str:
+    return f"orc_agent_{handle.replace('-', '_')}"
+
+
+def orc_agent_onboard_sql(record: dict[str, Any]) -> str:
+    metadata = _safe_dict(record.get("metadata"))
+    return f"""
+WITH upserted AS (
+  INSERT INTO orc_agents (
+    id,
+    handle,
+    agent_id,
+    account_id,
+    wallet_address,
+    role,
+    status,
+    active,
+    runtime_kind,
+    tmux_target,
+    capacity_limit,
+    metadata_json,
+    updated_at
+  )
+  VALUES (
+    {sql_literal(record["id"])},
+    {sql_literal(record["handle"])},
+    {sql_literal(record["agentId"])},
+    {sql_literal(record["accountId"])},
+    {sql_literal(record["walletAddress"])},
+    {sql_literal(record["role"])},
+    {sql_literal(record["status"])},
+    {str(bool(record["active"])).lower()},
+    {sql_literal(record["runtimeKind"])},
+    {sql_literal(record["tmuxTarget"])},
+    {int(record["capacityLimit"])},
+    { _jsonb_literal(metadata) },
+    now()
+  )
+  ON CONFLICT (id) DO UPDATE
+    SET handle = EXCLUDED.handle,
+        agent_id = EXCLUDED.agent_id,
+        account_id = EXCLUDED.account_id,
+        wallet_address = EXCLUDED.wallet_address,
+        role = EXCLUDED.role,
+        status = EXCLUDED.status,
+        active = EXCLUDED.active,
+        runtime_kind = EXCLUDED.runtime_kind,
+        tmux_target = EXCLUDED.tmux_target,
+        capacity_limit = EXCLUDED.capacity_limit,
+        metadata_json = COALESCE(orc_agents.metadata_json, '{{}}'::jsonb) || EXCLUDED.metadata_json,
+        updated_at = now()
+  RETURNING
+    id,
+    handle,
+    agent_id,
+    account_id,
+    wallet_address,
+    role,
+    status,
+    active,
+    runtime_kind,
+    tmux_target,
+    capacity_limit,
+    metadata_json,
+    created_at,
+    updated_at
+)
+SELECT to_jsonb(upserted) || jsonb_build_object(
+  'ok', true,
+  'allowlistEnvKey', {sql_literal(record["allowlistEnvKey"])},
+  'allowlistEntry', upserted.wallet_address,
+  'flyCommandHint',
+    'fly secrets set ' || {sql_literal(record["allowlistEnvKey"])}
+      || '=\"<existing_allowlist>,' || upserted.wallet_address || '\" -a tasknodeofficial-dev',
+  'secretPrinted', false
+)
+FROM upserted;
+"""
+
+
+def onboard_orc_agent(
+    *,
+    handle: str,
+    wallet_address: str,
+    charter: str,
+    account_id: str = "",
+    agent_id: str = "",
+    role: str = "operator",
+    status: str = "active",
+    active: bool = True,
+    runtime_kind: str = "codex",
+    tmux_target: str = "",
+    capacity_limit: int = 1,
+    metadata: dict[str, Any] | None = None,
+    allowlist_env_key: str = "TASKNODE_AGENT_WALLET_ALLOWLIST",
+    database_url: str | None = None,
+    runner: Any = subprocess.run,
+) -> dict[str, Any]:
+    normalized_handle = _normalize_orc_handle(handle)
+    if not normalized_handle:
+        raise ValueError("agent handle is required")
+    normalized_wallet = _safe_text(wallet_address, 160)
+    if not normalized_wallet:
+        raise ValueError("wallet address is required")
+    normalized_charter = _safe_text(charter, 12000)
+    if not normalized_charter:
+        raise ValueError("charter is required")
+
+    clean_capacity = max(1, min(24, int(capacity_limit or 1)))
+    clean_agent_id = _safe_text(agent_id, 120) or normalized_handle
+    clean_metadata = {
+        **_safe_dict(metadata),
+        "schema": "pf.orc.agent_onboard.v1",
+        "charter": normalized_charter,
+        "charterUpdatedAt": _utcnow(),
+        "onboardedBy": "orcctl.agent.onboard",
+        "allowlist": {
+            "envKey": _safe_text(allowlist_env_key, 120) or "TASKNODE_AGENT_WALLET_ALLOWLIST",
+            "walletAddress": normalized_wallet,
+            "operatorAddsSecret": True,
+        },
+    }
+    record = {
+        "id": _agent_id_from_handle(normalized_handle),
+        "handle": normalized_handle,
+        "agentId": clean_agent_id,
+        "accountId": _safe_text(account_id, 180),
+        "walletAddress": normalized_wallet,
+        "role": _safe_text(role, 80) or "operator",
+        "status": _safe_text(status, 80) or "active",
+        "active": bool(active),
+        "runtimeKind": _safe_text(runtime_kind, 80) or "codex",
+        "tmuxTarget": _safe_text(tmux_target, 120) or f"{normalized_handle}:0.0",
+        "capacityLimit": clean_capacity,
+        "metadata": clean_metadata,
+        "allowlistEnvKey": _safe_text(allowlist_env_key, 120) or "TASKNODE_AGENT_WALLET_ALLOWLIST",
+    }
+    row = _safe_dict(_run_json(tasknode_database_url(database_url), orc_agent_onboard_sql(record), runner=runner))
+    return redact_secrets({
+        **row,
+        "ok": bool(row.get("ok", True)),
+        "agent": {
+            "id": row.get("id") or record["id"],
+            "handle": row.get("handle") or record["handle"],
+            "agentId": row.get("agent_id") or record["agentId"],
+            "accountId": row.get("account_id") or record["accountId"],
+            "walletAddress": row.get("wallet_address") or record["walletAddress"],
+            "role": row.get("role") or record["role"],
+            "status": row.get("status") or record["status"],
+            "active": row.get("active", record["active"]),
+            "runtimeKind": row.get("runtime_kind") or record["runtimeKind"],
+            "tmuxTarget": row.get("tmux_target") or record["tmuxTarget"],
+            "capacityLimit": row.get("capacity_limit") or record["capacityLimit"],
+        },
+        "charterAssigned": True,
+        "allowlist": {
+            "envKey": row.get("allowlistEnvKey") or record["allowlistEnvKey"],
+            "entry": row.get("allowlistEntry") or record["walletAddress"],
+            "entryToAppend": row.get("allowlistEntry") or record["walletAddress"],
+            "flyCommandHint": row.get("flyCommandHint")
+            or f"fly secrets set {record['allowlistEnvKey']}=\"<existing_allowlist>,{record['walletAddress']}\" -a tasknodeofficial-dev",
+            "operatorMustApply": True,
+        },
+        "secretPrinted": False,
+    })
 
 
 def _task_kind(task: dict[str, Any]) -> str:
@@ -1152,6 +1358,25 @@ def build_parser() -> argparse.ArgumentParser:
     signal_parser.add_argument("--execute", action="store_true")
     signal_parser.add_argument("--tasknode-repo", default="/home/pfrpc/repos/tasknodeofficial")
 
+    agent_parser = subparsers.add_parser("agent", help="Manage Orc agent registry records.")
+    agent_sub = agent_parser.add_subparsers(dest="agent_command", required=True)
+    onboard_parser = agent_sub.add_parser("onboard", help="Register or update an Orc agent and assign its charter.")
+    onboard_parser.add_argument("--handle", required=True, help="Orc handle, for example grashnuk.")
+    onboard_parser.add_argument("--wallet-address", required=True, help="Public classic address for wallet-login allowlisting.")
+    onboard_parser.add_argument("--account-id", default="", help="Optional Task Node account id once known.")
+    onboard_parser.add_argument("--agent-id", default="", help="Optional stable machine agent id; defaults to the handle.")
+    onboard_parser.add_argument("--role", default="operator")
+    onboard_parser.add_argument("--status", default="active")
+    onboard_parser.add_argument("--inactive", action="store_true", help="Register the agent but mark active=false.")
+    onboard_parser.add_argument("--runtime-kind", default="codex")
+    onboard_parser.add_argument("--tmux-target", default="", help="Optional pane target; defaults to <handle>:0.0.")
+    onboard_parser.add_argument("--capacity-limit", type=int, default=1)
+    onboard_charter = onboard_parser.add_mutually_exclusive_group(required=True)
+    onboard_charter.add_argument("--charter", default="")
+    onboard_charter.add_argument("--charter-file", default="")
+    onboard_parser.add_argument("--metadata-json", type=_load_json_object, default={})
+    onboard_parser.add_argument("--allowlist-env-key", default="TASKNODE_AGENT_WALLET_ALLOWLIST")
+
     close_parser = subparsers.add_parser("close-followup", help="Close a source review after terminal follow-up proof.")
     close_parser.add_argument("source_task_id")
     close_parser.add_argument("--followup-task-id", default="")
@@ -1294,6 +1519,23 @@ def main(argv: list[str] | None = None) -> int:
                 reviewer_wallet=args.reviewer_wallet or args.wallet_address,
                 reason=args.reason,
                 metadata=args.metadata_json,
+                database_url=database_url,
+            )
+        elif args.command == "agent" and args.agent_command == "onboard":
+            payload = onboard_orc_agent(
+                handle=args.handle,
+                wallet_address=args.wallet_address,
+                account_id=args.account_id,
+                agent_id=args.agent_id,
+                charter=_read_required_text_arg(text=args.charter, path=args.charter_file, label="charter"),
+                role=args.role,
+                status=args.status,
+                active=not args.inactive,
+                runtime_kind=args.runtime_kind,
+                tmux_target=args.tmux_target,
+                capacity_limit=args.capacity_limit,
+                metadata=args.metadata_json,
+                allowlist_env_key=args.allowlist_env_key,
                 database_url=database_url,
             )
         elif args.command == "close-followup":

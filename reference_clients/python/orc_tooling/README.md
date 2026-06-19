@@ -34,6 +34,26 @@ uv run orcctl signal-user task_original_... \
 uv run orcctl close-followup task_original_... --followup-task-id task_followup_...
 ```
 
+## Onboard An Orc Agent
+
+Register a new Orc in `orc_agents`, assign its charter, and print the public
+wallet allowlist entry that Sauron/operator must add to the production Fly
+secret:
+
+```bash
+uv run orcctl agent onboard \
+  --handle grashnuk \
+  --wallet-address r... \
+  --account-id acct_... \
+  --charter-file /path/to/grashnuk-charter.md
+```
+
+The command stores the charter in `orc_agents.metadata_json` under
+`pf.orc.agent_onboard.v1`. It does not read, write, or print wallet seeds, and
+it does not mutate Fly secrets. The JSON output includes
+`allowlist.entryToAppend`; the operator appends that public classic address to
+`TASKNODE_AGENT_WALLET_ALLOWLIST`.
+
 `orcctl review classify` writes the current disposition to
 `orc_task_review_states` and appends immutable history to `orc_task_reviews`.
 Nazgûl shared-state summaries read `orc_task_reviews`, `orc_run_journal`,
