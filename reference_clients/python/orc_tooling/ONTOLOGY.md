@@ -26,6 +26,9 @@ rewarded Network Task, and why did it get paid?"
 - `ReviewState`: current shared Orc disposition for one rewarded Network Task,
   persisted in `orc_task_review_states` and readable through
   `orc_task_review_queue`.
+- `OrcWorkJournal`: append-only Nazgûl/orc work ledger row linking a manager
+  interaction to source task id, follow-up request/task, event CID, tx hash,
+  operator handle, blocker, action, and terminal outcome.
 
 ## Identity Resolution
 
@@ -133,6 +136,13 @@ Sauron owns any signer approval, fund movement, clawback, ban, or enforcement.
 follow-up logic. `orc_task_review_items` is the durable ingestion table that
 makes public rewarded tasks and derived status-packet repair rows visible to
 every Orc even when a local projection row is absent.
+
+`orc_work_journal` is the linked work ledger for assignment and closure
+bookkeeping. `nazgul redirect`, `dispatch`, `dispatch-runtime`, and `escalate`
+append idempotent rows when a source task is known. `orcctl close-followup`
+appends a separate terminal row once the follow-up task reaches a closeable
+state or explicit no-code-needed proof is recorded. Existing rows are not
+rewritten; duplicate exact events are suppressed by an idempotency key.
 
 Follow-up linkage lives in `orc_task_review_states.metadata_json`, not new
 canonical columns. `request-followup` writes `followup_request_id`, request

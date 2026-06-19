@@ -98,6 +98,12 @@ tmux send-keys -t <pane> -l '<directive>'; sleep 1; tmux send-keys -t <pane> Ent
   task reaches `rewarded`, `refused`, or `cancelled`. Closure remains explicit:
   `status --close-stale` or `close-followup` must see terminal task evidence or
   a no-code-needed proof. Reviews never auto-close at request time.
+- Nazgûl work assignment and closure also append linked rows to
+  `orc_work_journal`. The table does not replace `orc_operator_interactions` or
+  review state; it connects dispatch/redirect/escalation/close-followup events
+  to the source task, follow-up request/task, event CID, tx hash, operator
+  handle, blocker, and terminal outcome so `nazgul status` can account for what
+  work was assigned and what actually closed.
 
 ## Guardrails — reserved actions (escalate to Sauron, never execute)
 
@@ -134,8 +140,10 @@ next priority, and escalates only the reserved actions above.
   claims directives and invokes `orcctl` capabilities.
 - **Phase 6 — orc-accounting in the Hive Mind.** `orc_agents` + orc activity in
   the Board Manager source packet (migration `062_orc_agents_and_activity.sql`,
-  PR #83). **In progress.** The Board Manager must reason about orc operators
-  the same way it reasons about human contributors.
+  PR #83), plus the linked `orc_work_journal` assignment/outcome ledger
+  (migration `066_orc_work_journal.sql`). **In progress.** The Board Manager
+  must reason about orc operators the same way it reasons about human
+  contributors.
 
 ## Non-goals
 

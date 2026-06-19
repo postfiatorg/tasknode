@@ -36,8 +36,9 @@ uv run orcctl close-followup task_original_... --followup-task-id task_followup_
 
 `orcctl review classify` writes the current disposition to
 `orc_task_review_states` and appends immutable history to `orc_task_reviews`.
-Nazgûl shared-state summaries read `orc_task_reviews`, `orc_run_journal`, and
-`orc_operator_interactions` when those Postgres tables are present.
+Nazgûl shared-state summaries read `orc_task_reviews`, `orc_run_journal`,
+`orc_operator_interactions`, and the linked `orc_work_journal` when those
+Postgres tables are present.
 
 Ledger-adjacent executable reward/clawback artifacts are treated as controls,
 not accusations. If a rewarded Network review item in `reward_accounting` or
@@ -64,6 +65,8 @@ only proposes `close-followup` commands; `orcctl status --close-stale` performs
 those closures through the same evidence-gated path. `close-followup` requires
 either a terminal follow-up task (`rewarded`, `refused`, or `cancelled`) or an
 explicit `--no-code-needed-proof`; it never closes immediately at request time.
+`close-followup` also appends a terminal `orc_work_journal` row with the source
+task, follow-up task/request, event CID, tx hash, and outcome status.
 
 For raw packet inspection, use the lower-level commands below. For normal
 burn-down, prefer `orcctl` so the review state, follow-up request, task
@@ -90,7 +93,10 @@ uv run nazgul escalate orc-alpha "Signer approval required before clawback execu
 chip, then send Enter. `nazgul dispatch` pulls the next non-blocked
 `not_reviewed` row from shared review state and injects a compact directive.
 `nazgul escalate` records `orc_operator_interactions` and prints a Sauron-facing
-message in the JSON output.
+message in the JSON output. When `redirect`, `dispatch`, `dispatch-runtime`, or
+`escalate` can identify a source `task_...`, they also append an idempotent
+linked row to `orc_work_journal`; `nazgul status` surfaces recent linked work
+beside the shared review queue.
 
 Phase 5 adds a durable runtime prototype that avoids tmux injection:
 

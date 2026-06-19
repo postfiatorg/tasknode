@@ -65,6 +65,7 @@ FOLLOWUP_CLOSEABLE_TASK_STATUSES = (
     "cancelled",
     "canceled",
 )
+ORC_WORK_JOURNAL_SCHEMA = "pf.orc.work_journal.v1"
 
 
 def _safe_text(value: Any, limit: int = 4000) -> str:
@@ -101,6 +102,218 @@ def _jsonb_literal(value: dict[str, Any] | list[Any] | None) -> str:
 
 def _reviewed_at_sql(disposition: str) -> str:
     return "now()" if disposition.startswith("reviewed_") else "NULL"
+
+
+def _bool_sql(value: bool) -> str:
+    return "true" if value else "false"
+
+
+def orc_work_journal_schema_sql() -> str:
+    return """
+CREATE TABLE IF NOT EXISTS orc_work_journal (
+  id text PRIMARY KEY,
+  interaction_id text NOT NULL DEFAULT '',
+  source_task_id text NOT NULL DEFAULT '',
+  review_disposition text NOT NULL DEFAULT '',
+  followup_request_id text NOT NULL DEFAULT '',
+  followup_task_id text NOT NULL DEFAULT '',
+  task_action text NOT NULL DEFAULT '',
+  event_cid text NOT NULL DEFAULT '',
+  tx_hash text NOT NULL DEFAULT '',
+  operator_handle text NOT NULL DEFAULT '',
+  blocker text NOT NULL DEFAULT '',
+  status text NOT NULL DEFAULT 'recorded',
+  outcome_status text NOT NULL DEFAULT '',
+  terminal boolean NOT NULL DEFAULT false,
+  metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  idempotency_key text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE orc_work_journal
+  ADD COLUMN IF NOT EXISTS interaction_id text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS source_task_id text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS review_disposition text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS followup_request_id text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS followup_task_id text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS task_action text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS event_cid text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS tx_hash text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS operator_handle text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS blocker text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'recorded',
+  ADD COLUMN IF NOT EXISTS outcome_status text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS terminal boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS idempotency_key text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+CREATE UNIQUE INDEX IF NOT EXISTS orc_work_journal_idempotency_idx
+  ON orc_work_journal (idempotency_key)
+  WHERE idempotency_key <> '';
+CREATE INDEX IF NOT EXISTS orc_work_journal_interaction_idx
+  ON orc_work_journal (interaction_id, created_at DESC)
+  WHERE interaction_id <> '';
+CREATE INDEX IF NOT EXISTS orc_work_journal_source_task_idx
+  ON orc_work_journal (source_task_id, created_at DESC)
+  WHERE source_task_id <> '';
+CREATE INDEX IF NOT EXISTS orc_work_journal_followup_task_idx
+  ON orc_work_journal (followup_task_id, created_at DESC)
+  WHERE followup_task_id <> '';
+CREATE INDEX IF NOT EXISTS orc_work_journal_operator_idx
+  ON orc_work_journal (operator_handle, created_at DESC)
+  WHERE operator_handle <> '';
+"""
+
+
+def ensure_orc_work_journal_schema(*, database_url: str | None = None) -> dict[str, Any]:
+    db_url = tasknode_database_url(database_url)
+    sql = f"""
+{orc_work_journal_schema_sql()}
+
+SELECT jsonb_build_object(
+  'ok', true,
+  'table', 'orc_work_journal',
+  'schema', {sql_literal(ORC_WORK_JOURNAL_SCHEMA)},
+  'secretPrinted', false
+);
+"""
+    return redact_secrets(_run_json(db_url, sql) or {})
+
+
+def normalize_orc_work_journal_record(
+    *,
+    interaction_id: str = "",
+    source_task_id: str = "",
+    review_disposition: str = "",
+    followup_request_id: str = "",
+    followup_task_id: str = "",
+    task_action: str = "",
+    event_cid: str = "",
+    tx_hash: str = "",
+    operator_handle: str = "",
+    blocker: str = "",
+    status: str = "recorded",
+    outcome_status: str = "",
+    terminal: bool = False,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    normalized = {
+        "id": f"orcwork_{uuid4()}",
+        "schema": ORC_WORK_JOURNAL_SCHEMA,
+        "interactionId": _safe_text(interaction_id, 180),
+        "sourceTaskId": _safe_text(source_task_id, 180),
+        "reviewDisposition": _safe_text(review_disposition, 120).lower(),
+        "followupRequestId": _safe_text(followup_request_id, 180),
+        "followupTaskId": _safe_text(followup_task_id, 180),
+        "taskAction": _safe_text(task_action, 120).lower(),
+        "eventCid": _safe_text(event_cid, 180),
+        "txHash": _safe_text(tx_hash, 180),
+        "operatorHandle": _safe_text(operator_handle, 160).lstrip("@"),
+        "blocker": _safe_text(blocker, 4000),
+        "status": _safe_text(status or "recorded", 80).lower(),
+        "outcomeStatus": _safe_text(outcome_status, 120).lower(),
+        "terminal": bool(terminal),
+        "metadata": redact_secrets(metadata or {}),
+        "secretPrinted": False,
+    }
+    idempotency_parts = [
+        normalized["interactionId"],
+        normalized["sourceTaskId"],
+        normalized["followupTaskId"],
+        normalized["taskAction"],
+        normalized["eventCid"],
+        normalized["txHash"],
+        normalized["status"],
+        normalized["outcomeStatus"],
+    ]
+    normalized["idempotencyKey"] = "|".join(idempotency_parts)
+    return redact_secrets(normalized)
+
+
+def orc_work_journal_insert_sql(record: dict[str, Any]) -> str:
+    return f"""
+WITH inserted AS (
+  INSERT INTO orc_work_journal (
+    id,
+    interaction_id,
+    source_task_id,
+    review_disposition,
+    followup_request_id,
+    followup_task_id,
+    task_action,
+    event_cid,
+    tx_hash,
+    operator_handle,
+    blocker,
+    status,
+    outcome_status,
+    terminal,
+    metadata_json,
+    idempotency_key,
+    updated_at
+  )
+  VALUES (
+    {sql_literal(record["id"])},
+    {sql_literal(record["interactionId"])},
+    {sql_literal(record["sourceTaskId"])},
+    {sql_literal(record["reviewDisposition"])},
+    {sql_literal(record["followupRequestId"])},
+    {sql_literal(record["followupTaskId"])},
+    {sql_literal(record["taskAction"])},
+    {sql_literal(record["eventCid"])},
+    {sql_literal(record["txHash"])},
+    {sql_literal(record["operatorHandle"])},
+    {sql_literal(record["blocker"])},
+    {sql_literal(record["status"])},
+    {sql_literal(record["outcomeStatus"])},
+    {_bool_sql(bool(record["terminal"]))},
+    {_jsonb_literal(record["metadata"])},
+    {sql_literal(record["idempotencyKey"])},
+    now()
+  )
+  ON CONFLICT DO NOTHING
+  RETURNING *
+)
+SELECT COALESCE(
+  (SELECT to_jsonb(inserted) || jsonb_build_object(
+    'ok', true,
+    'inserted', true,
+    'schema', {sql_literal(ORC_WORK_JOURNAL_SCHEMA)},
+    'secretPrinted', false
+  ) FROM inserted),
+  jsonb_build_object(
+    'ok', true,
+    'inserted', false,
+    'schema', {sql_literal(ORC_WORK_JOURNAL_SCHEMA)},
+    'idempotency_key', {sql_literal(record["idempotencyKey"])},
+    'secretPrinted', false
+  )
+);
+"""
+
+
+def append_orc_work_journal(record: dict[str, Any], *, database_url: str | None = None) -> dict[str, Any]:
+    ensure_orc_work_journal_schema(database_url=database_url)
+    normalized = normalize_orc_work_journal_record(
+        interaction_id=record.get("interactionId") or record.get("interaction_id") or "",
+        source_task_id=record.get("sourceTaskId") or record.get("source_task_id") or "",
+        review_disposition=record.get("reviewDisposition") or record.get("review_disposition") or "",
+        followup_request_id=record.get("followupRequestId") or record.get("followup_request_id") or "",
+        followup_task_id=record.get("followupTaskId") or record.get("followup_task_id") or "",
+        task_action=record.get("taskAction") or record.get("task_action") or "",
+        event_cid=record.get("eventCid") or record.get("event_cid") or "",
+        tx_hash=record.get("txHash") or record.get("tx_hash") or "",
+        operator_handle=record.get("operatorHandle") or record.get("operator_handle") or "",
+        blocker=record.get("blocker") or "",
+        status=record.get("status") or "recorded",
+        outcome_status=record.get("outcomeStatus") or record.get("outcome_status") or "",
+        terminal=bool(record.get("terminal")),
+        metadata=record.get("metadata") if isinstance(record.get("metadata"), dict) else {},
+    )
+    return redact_secrets(_run_json(tasknode_database_url(database_url), orc_work_journal_insert_sql(normalized)) or {})
 
 
 def review_disposition_requires_action(disposition: str) -> bool:
@@ -516,11 +729,14 @@ WHERE lower(COALESCE(item.task_kind, '')) = 'network'
     OR COALESCE(item.metadata_json->'statusPacket'->>'repairRequired', 'false') = 'true'
   );
 
+{orc_work_journal_schema_sql()}
+
 SELECT jsonb_build_object(
   'ok', true,
   'table', 'orc_task_review_states',
   'historyTable', 'orc_task_reviews',
   'itemsTable', 'orc_task_review_items',
+  'workJournalTable', 'orc_work_journal',
   'view', 'orc_task_review_queue',
   'dispositions', {sql_literal(json.dumps(REVIEW_DISPOSITIONS, sort_keys=True))}::jsonb,
   'secretPrinted', false
@@ -883,6 +1099,7 @@ def review_state_ontology() -> dict[str, Any]:
         "table": "orc_task_review_states",
         "historyTable": "orc_task_reviews",
         "itemsTable": "orc_task_review_items",
+        "workJournalTable": "orc_work_journal",
         "queueView": "orc_task_review_queue",
         "secretPrinted": False,
     }

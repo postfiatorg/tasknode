@@ -19,6 +19,7 @@ from .review_state import (
     ACTION_REQUIRED_DISPOSITIONS,
     FOLLOWUP_CLOSEABLE_TASK_STATUSES,
     REVIEW_DISPOSITIONS,
+    append_orc_work_journal,
     get_review_state,
     normalize_review_state_record,
     review_queue_item,
@@ -770,7 +771,33 @@ def close_followup(
         source_cids=[reward_cid],
         source_tx_hashes=[reward_tx],
     )
-    return upsert_review_state(record, database_url=database_url)
+    updated = upsert_review_state(record, database_url=database_url)
+    updated["workJournal"] = append_orc_work_journal(
+        {
+            "interactionId": _safe_text(_review_metadata(existing).get("operator_interaction_id"), 180)
+            or _safe_text(_review_metadata(existing).get("interactionId"), 180),
+            "sourceTaskId": source_task_id,
+            "reviewDisposition": "reviewed_follow_up_completed",
+            "followupRequestId": _safe_text(_review_metadata(existing).get("followup_request_id"), 180)
+            or _safe_text(_review_metadata(existing).get("followupRequestId"), 180),
+            "followupTaskId": clean_followup,
+            "taskAction": "close_followup",
+            "eventCid": reward_cid,
+            "txHash": reward_tx,
+            "operatorHandle": _safe_text(existing.get("reviewer_handle") or existing.get("reviewerHandle"), 160)
+            or DEFAULT_ORC_AGENT,
+            "status": "closed",
+            "outcomeStatus": status,
+            "terminal": True,
+            "metadata": {
+                "source": "orcctl.close_followup",
+                "signalMessageId": _safe_text(signal_message_id, 240),
+                "noCodeNeeded": bool(clean_proof and not clean_followup),
+            },
+        },
+        database_url=database_url,
+    )
+    return updated
 
 
 def _signed_flow_summary(result: Any, *, task_id: str, action: str) -> dict[str, Any]:
