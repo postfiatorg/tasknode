@@ -54,6 +54,17 @@ Important invariant:
 networkStatus=at_capacity blocks Network routing only; Personal task requests are still allowed.
 ```
 
+Follow-up linkage is persisted in review-state `metadata_json`. When
+`request-followup` creates a Personal follow-up request, it records
+`followup_request_id`, request CIDs/tx, `followup_task_id` when already known,
+follow-up status, and user-signal status on the source review state. `orcctl
+status` surfaces stale closeable follow-ups: actionable review states whose
+linked follow-up task has reached a terminal closeable status. By default status
+only proposes `close-followup` commands; `orcctl status --close-stale` performs
+those closures through the same evidence-gated path. `close-followup` requires
+either a terminal follow-up task (`rewarded`, `refused`, or `cancelled`) or an
+explicit `--no-code-needed-proof`; it never closes immediately at request time.
+
 For raw packet inspection, use the lower-level commands below. For normal
 burn-down, prefer `orcctl` so the review state, follow-up request, task
 lifecycle, user signal, and final closure stay tied together.

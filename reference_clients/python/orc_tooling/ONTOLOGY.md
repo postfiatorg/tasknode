@@ -133,3 +133,13 @@ Sauron owns any signer approval, fund movement, clawback, ban, or enforcement.
 follow-up logic. `orc_task_review_items` is the durable ingestion table that
 makes public rewarded tasks and derived status-packet repair rows visible to
 every Orc even when a local projection row is absent.
+
+Follow-up linkage lives in `orc_task_review_states.metadata_json`, not new
+canonical columns. `request-followup` writes `followup_request_id`, request
+CIDs/tx, `followup_task_id` when known, `followup_status`, and
+`user_signal_status`. Stale closeable follow-ups are actionable review states
+whose linked Personal follow-up task has reached `rewarded`, `refused`, or
+`cancelled`. `close-followup` then marks the source review
+`reviewed_follow_up_completed` and records terminal status, reward tx/cid, user
+signal message id, and close time. A source review can also close with explicit
+`no_code_needed` proof, but it never closes at request time.

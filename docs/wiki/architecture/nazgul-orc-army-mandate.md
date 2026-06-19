@@ -92,6 +92,12 @@ tmux send-keys -t <pane> -l '<directive>'; sleep 1; tmux send-keys -t <pane> Ent
   `no_signing_no_fund_movement`, requiring independent Orc review before
   operational use. This is not a fraud accusation and it does not enforce,
   sign, claw back, ban, or move funds; Sauron owns those decisions.
+- Actionable review rows carry follow-up linkage in `metadata_json`.
+  `request-followup` records the Personal follow-up request id and task id when
+  known; `orcctl status` surfaces stale closeable follow-ups once the linked
+  task reaches `rewarded`, `refused`, or `cancelled`. Closure remains explicit:
+  `status --close-stale` or `close-followup` must see terminal task evidence or
+  a no-code-needed proof. Reviews never auto-close at request time.
 
 ## Guardrails — reserved actions (escalate to Sauron, never execute)
 

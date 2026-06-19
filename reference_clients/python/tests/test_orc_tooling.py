@@ -21,6 +21,7 @@ from orc_tooling import (
     classify_review,
     classify_pane_text,
     claim_next_runtime_directive,
+    close_followup,
     compact_review_task,
     complete_runtime_directive,
     dispatch_orc,
@@ -32,6 +33,7 @@ from orc_tooling import (
     extract_evidence_artifacts,
     extract_task_brief,
     extract_task_payload,
+    FOLLOWUP_CLOSEABLE_TASK_STATUSES,
     heuristic_priority_score,
     inject_directive,
     is_probable_fixture_priority_row,
@@ -49,6 +51,7 @@ from orc_tooling import (
     prioritize_review_queue,
     priority_prompt,
     request_personal_task,
+    request_followup_task,
     review_disposition_requires_action,
     review_next,
     review_state_ontology,
@@ -59,6 +62,7 @@ from orc_tooling import (
     run_journal_summary,
     runtime_status,
     sanity_check_priority,
+    stale_followup_closures,
     summarize_signed_flow,
     triage_network_work,
     validate_followup_action,
@@ -159,6 +163,31 @@ class FakeStatusClient:
             "revision": 3,
             "pointerCount": 3,
             "latestContextPointer": {"cid": "QmContext", "txHash": "CTXTX"},
+        }
+
+
+class FakeCloseClient:
+    address = "rFakeOperator1111111111111111111111111111"
+
+    def __init__(self, status="Accepted"):
+        self.status = status
+        self.calls = []
+
+    def login(self):
+        self.calls.append(("login",))
+        return {"ok": True, "cached": True}
+
+    def task_detail(self, task_id):
+        self.calls.append(("task_detail", task_id))
+        return {
+            "task": {
+                "taskId": task_id,
+                "kind": "Personal",
+                "status": self.status,
+                "lastEventTxHash": "TXFOLLOW",
+                "lastEventCid": "QmFollow",
+            },
+            "rewardOutcome": {"txHash": "TXREWARD", "cid": "QmReward"},
         }
 
 
@@ -809,6 +838,141 @@ class OrcToolingTests(unittest.TestCase):
         self.assertIn("reward projection drift", text)
         self.assertIn("reconcile", text)
         self.assertIn("Do not produce a passive memo", text)
+
+    def test_request_followup_records_review_state_linkage(self):
+        existing = {
+            "task_id": "task_source",
+            "disposition": "reviewed_follow_up",
+            "action_required": True,
+            "confidence": "high",
+            "categories": ["reward_accounting"],
+            "summary": "Contributor found reward projection drift.",
+            "recommended_action": "Verify the affected reward rows and add a regression smoke test.",
+            "reviewer_handle": "grashnuk",
+            "reviewer_wallet": "rReviewer",
+            "source_task_ids": ["task_source"],
+            "metadata_json": {"user_signal_status": "sent"},
+        }
+        captured = []
+
+        def fake_upsert(record, **kwargs):
+            captured.append(record)
+            return {"ok": True, "task_id": record["taskId"], "metadata_json": record["metadata"]}
+
+        with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
+            patch("orc_tooling.orcctl.request_personal_task", return_value={
+                "ok": True,
+                "requestId": "req_followup",
+                "submitted": True,
+                "generatedTaskId": "task_followup",
+                "requestStatus": "generated",
+                "bundleCid": "QmBundle",
+                "eventCid": "QmRequestEvent",
+                "txHash": "TXREQUEST",
+            }), \
+            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert):
+            result = request_followup_task("task_source", submit=True)
+
+        metadata = captured[0]["metadata"]
+        self.assertEqual(result["reviewState"]["followupRequestId"], "req_followup")
+        self.assertEqual(result["reviewState"]["followupTaskId"], "task_followup")
+        self.assertEqual(metadata["followup_request_id"], "req_followup")
+        self.assertEqual(metadata["followup_task_id"], "task_followup")
+        self.assertEqual(metadata["followup_request_tx"], "TXREQUEST")
+        self.assertEqual(metadata["user_signal_status"], "sent")
+        self.assertIn("task_followup", captured[0]["sourceTaskIds"])
+
+    def test_status_surfaces_terminal_followup_as_stale_closeable(self):
+        stale = {
+            "ok": True,
+            "rows": [{
+                "sourceTaskId": "task_source",
+                "followupTaskId": "task_followup",
+                "followupRequestId": "req_followup",
+                "followupStatus": "rewarded",
+                "followupRewardTx": "TXREWARD",
+                "followupRewardCid": "QmReward",
+                "closeCommand": "uv run orcctl close-followup task_source --followup-task-id task_followup",
+            }],
+        }
+
+        with patch("orc_tooling.orcctl.review_state_summary", return_value={"counts": {"reviewed_follow_up": 1}}), \
+            patch("orc_tooling.orcctl.stale_followup_closures", return_value=stale):
+            summary = operator_status(client=FakeStatusClient())
+
+        self.assertEqual(summary["staleFollowups"]["count"], 1)
+        self.assertEqual(summary["staleFollowups"]["closeable"][0]["sourceTaskId"], "task_source")
+        self.assertIn("close-followup task_source", summary["staleFollowups"]["closeable"][0]["closeCommand"])
+        self.assertEqual(summary["staleFollowups"]["closedCount"], 0)
+
+    def test_close_followup_refuses_nonterminal_task(self):
+        self.assertIn("rewarded", FOLLOWUP_CLOSEABLE_TASK_STATUSES)
+        self.assertNotIn("accepted", FOLLOWUP_CLOSEABLE_TASK_STATUSES)
+
+        with self.assertRaisesRegex(ValueError, "not terminal"):
+            close_followup(
+                "task_source",
+                followup_task_id="task_followup",
+                client=FakeCloseClient(status="Accepted"),
+            )
+
+    def test_close_followup_records_terminal_evidence_metadata(self):
+        existing = {
+            "task_id": "task_source",
+            "disposition": "reviewed_follow_up",
+            "action_required": True,
+            "confidence": "medium",
+            "categories": ["reward_accounting"],
+            "summary": "Follow-up requested.",
+            "recommended_action": "Verify reward rows and add a smoke.",
+            "source_task_ids": ["task_source"],
+            "metadata_json": {"followup_request_id": "req_followup"},
+        }
+        captured = []
+
+        def fake_upsert(record, **kwargs):
+            captured.append(record)
+            return {"ok": True, "task_id": record["taskId"], "metadata_json": record["metadata"]}
+
+        with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
+            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert):
+            result = close_followup(
+                "task_source",
+                followup_task_id="task_followup",
+                signal_message_id="msg_signal",
+                client=FakeCloseClient(status="Rewarded"),
+            )
+
+        self.assertEqual(result["ok"], True)
+        record = captured[0]
+        metadata = record["metadata"]
+        self.assertEqual(record["disposition"], "reviewed_follow_up_completed")
+        self.assertEqual(record["actionRequired"], False)
+        self.assertEqual(metadata["followup_task_id"], "task_followup")
+        self.assertEqual(metadata["followup_status"], "rewarded")
+        self.assertEqual(metadata["followup_reward_tx"], "TXREWARD")
+        self.assertEqual(metadata["followup_reward_cid"], "QmReward")
+        self.assertEqual(metadata["user_signal_status"], "sent")
+        self.assertIn("task_followup", record["sourceTaskIds"])
+
+    def test_stale_followup_query_filters_to_closeable_terminal_statuses(self):
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            return {"ok": True, "count": 0, "rows": [], "secretPrinted": False}
+
+        with patch("orc_tooling.review_state.ensure_review_state_schema", return_value={"ok": True}), \
+            patch("orc_tooling.review_state.tasknode_database_url", return_value="postgres://unit"), \
+            patch("orc_tooling.review_state._run_json", side_effect=fake_run_json):
+            result = stale_followup_closures(database_url="postgres://unit")
+
+        self.assertEqual(result["count"], 0)
+        self.assertIn("followup_request_id", calls[0])
+        self.assertIn("task_projections", calls[0])
+        self.assertIn("'rewarded'", calls[0])
+        self.assertIn("'refused'", calls[0])
+        self.assertNotIn("'accepted'", calls[0])
 
     def test_append_run_journal_writes_redacted_jsonl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
