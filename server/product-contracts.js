@@ -249,6 +249,38 @@ function safeClientObject(value, depth = 0) {
   return result;
 }
 
+function normalizeAgentChatOrigin(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  if (value.agent !== true && value.actorType !== "machine_agent") return null;
+  return {
+    agent: true,
+    actorType: "machine_agent",
+    source: safeEventText(value.source || "wallet_login", 80) || "wallet_login",
+    sessionProvider: safeEventText(value.sessionProvider || "wallet", 80) || "wallet",
+    accountId: safeEventText(value.accountId, 180),
+    agentHandle: safeEventText(value.agentHandle || value.agent || value.handle, 80),
+    walletAddress: safeEventText(value.walletAddress || value.address, 120),
+    client: safeEventText(value.client || "TaskNodeAgentClient", 120) || "TaskNodeAgentClient",
+  };
+}
+
+function chatUserMetadata(payload = {}, agentOrigin = null) {
+  const metadata = safeClientObject(payload?.metadata || payload?.metadata_json);
+  const normalizedAgentOrigin = normalizeAgentChatOrigin(agentOrigin);
+  if (!normalizedAgentOrigin) {
+    delete metadata.agentOrigin;
+    if (metadata.senderType === "machine_agent" || metadata.senderType === "agent") {
+      delete metadata.senderType;
+    }
+    return metadata;
+  }
+  return {
+    ...metadata,
+    senderType: "machine_agent",
+    agentOrigin: normalizedAgentOrigin,
+  };
+}
+
 function emailCodeHash({ challengeId, canonicalEmail, code }) {
   return authHmac(`email-code:${challengeId}:${canonicalEmail}:${String(code || "").trim()}`);
 }
@@ -485,7 +517,7 @@ function usageAction({ id, label, path, requiredEnv = [], enabled = false, statu
   };
 }
 
-function chatPayload(payload, { source = "", providerTimeoutMs = 0 } = {}) {
+function chatPayload(payload, { source = "", providerTimeoutMs = 0, agentOrigin = null } = {}) {
   const accountId = typeof payload?.accountId === "string" ? payload.accountId.trim().slice(0, 160) : "";
   const message = typeof payload?.message === "string" ? payload.message.trim() : "";
   const contextMode = isContextEditPayload(payload) ? contextEditMode : "";
@@ -508,6 +540,7 @@ function chatPayload(payload, { source = "", providerTimeoutMs = 0 } = {}) {
     dryRun,
     attachments,
     clientHistory,
+    userMetadata: chatUserMetadata(payload, agentOrigin),
     source: typeof source === "string" ? source.trim().slice(0, 80) : "",
     providerTimeoutMs: Number(providerTimeoutMs) > 0 ? Number(providerTimeoutMs) : 0,
   };
@@ -834,6 +867,7 @@ export async function chatSend(payload, method, options = {}) {
     taskContext,
     contextStatus,
     clientHistory,
+    userMetadata,
   } = preflight.chat;
   const { estimate } = preflight;
   if (!preflight.ok) return { status: preflight.status, body: preflight.body };
@@ -849,6 +883,7 @@ export async function chatSend(payload, method, options = {}) {
           memoryContext,
           taskContext,
           contextStatus,
+          userMetadata,
         })
       : await executeChat({
           accountId,
@@ -860,6 +895,7 @@ export async function chatSend(payload, method, options = {}) {
           memoryContext,
           taskContext,
           contextStatus,
+          userMetadata,
           ephemeralHistoryMessages: clientHistory,
           source: preflight.chat.source,
           providerTimeoutMs: preflight.chat.providerTimeoutMs,

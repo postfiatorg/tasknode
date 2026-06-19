@@ -1105,6 +1105,13 @@ def build_parser() -> argparse.ArgumentParser:
     classify_parser.add_argument("--metadata-json", type=_load_json_object, default={})
     classify_parser.add_argument("--action-required", action=argparse.BooleanOptionalAction, default=None)
 
+    chat_parser = subparsers.add_parser("chat", help="Send a labeled agent message to Task Node chat.")
+    chat_parser.add_argument("message", nargs=argparse.REMAINDER, help="Message text to send.")
+    chat_parser.add_argument("--mode", default="Help", help="Task Node chat mode label.")
+    chat_parser.add_argument("--conversation-id", default="agent-chat")
+    chat_parser.add_argument("--metadata-json", type=_load_json_object, default={})
+    chat_parser.add_argument("--dry-run", action="store_true")
+
     request_parser = subparsers.add_parser("request-followup", help="Request a Personal follow-up task for this Orc.")
     request_parser.add_argument("task_id")
     request_parser.add_argument("--extra", default="")
@@ -1222,6 +1229,18 @@ def main(argv: list[str] | None = None) -> int:
                 source_tx_hashes=args.source_tx_hash,
                 metadata=args.metadata_json,
                 database_url=database_url,
+            )
+        elif args.command == "chat":
+            message = " ".join(args.message).strip()
+            if not message:
+                raise ValueError("chat message is required")
+            payload = _client_from_args(args).chat(
+                message,
+                mode=args.mode,
+                conversation_id=args.conversation_id,
+                metadata=args.metadata_json,
+                agent_handle=args.agent,
+                dry_run=args.dry_run,
             )
         elif args.command == "request-followup":
             payload = request_followup_task(

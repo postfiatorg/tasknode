@@ -570,6 +570,44 @@ class TaskNodeAgentClient:
     def tasks(self, **params: Any) -> dict[str, Any]:
         return self.request("GET", "/api/tasks", params=params)
 
+    def chat(
+        self,
+        message: str,
+        *,
+        mode: str = "Help",
+        conversation_id: str = "agent-chat",
+        attachments: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        agent_handle: str = "",
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        clean_message = _safe_text(message, 20000)
+        if not clean_message and not attachments:
+            raise ValueError("chat message or attachment is required")
+        agent_origin = {
+            "agent": True,
+            "actorType": "machine_agent",
+            "agentHandle": _safe_text(agent_handle or getattr(self, "agent", "") or "agent", 80),
+            "walletAddress": self.wallet.address,
+            "client": "TaskNodeAgentClient",
+        }
+        merged_metadata = dict(metadata or {})
+        merged_metadata["agentOrigin"] = agent_origin
+        payload: dict[str, Any] = {
+            "message": clean_message,
+            "mode": _safe_text(mode or "Help", 80) or "Help",
+            "conversationId": _safe_text(conversation_id or "agent-chat", 160) or "agent-chat",
+            "metadata": merged_metadata,
+            "agentHandle": agent_origin["agentHandle"],
+            "walletAddress": self.wallet.address,
+            "client": "TaskNodeAgentClient",
+        }
+        if attachments is not None:
+            payload["attachments"] = attachments
+        if dry_run:
+            payload["dryRun"] = True
+        return self.request("POST", "/api/chat/send", json_body=payload)
+
     def task_detail(self, task_id: str, **params: Any) -> dict[str, Any]:
         return self.request("GET", "/api/tasks/detail", params={"taskId": task_id, **params})
 
