@@ -75,6 +75,7 @@ const migrations = [
   "065_network_task_status_packets.sql",
   "066_orc_work_journal.sql",
   "067_orc_review_rollups.sql",
+  "068_orc_runtime_directives.sql",
 ];
 
 let migrated = false;

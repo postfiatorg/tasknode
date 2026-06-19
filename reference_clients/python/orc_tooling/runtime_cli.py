@@ -26,9 +26,10 @@ def _load_json_object(value: str) -> dict:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="orc-runtime",
-        description="Prototype durable Orc runtime mailbox. No tmux injection.",
+        description="Durable Orc runtime mailbox. Uses Postgres when a DB URL is configured; JSONL otherwise.",
     )
     parser.add_argument("--runtime-dir", default=DEFAULT_ORC_RUNTIME_DIR)
+    parser.add_argument("--database-url", default="", help="Override Task Node Postgres URL.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     enqueue = subparsers.add_parser("enqueue", help="Append a durable directive for an Orc.")
@@ -59,6 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    database_url = args.database_url or None
     try:
         if args.command == "enqueue":
             payload = enqueue_runtime_directive(
@@ -68,12 +70,14 @@ def main(argv: list[str] | None = None) -> int:
                 source=args.source,
                 metadata=args.metadata_json,
                 runtime_dir=args.runtime_dir,
+                database_url=database_url,
             )
         elif args.command == "claim":
             payload = claim_next_runtime_directive(
                 orc=args.orc,
                 worker_id=args.worker_id,
                 runtime_dir=args.runtime_dir,
+                database_url=database_url,
             )
         elif args.command == "complete":
             payload = complete_runtime_directive(
@@ -82,15 +86,17 @@ def main(argv: list[str] | None = None) -> int:
                 worker_id=args.worker_id,
                 result=args.result_json,
                 runtime_dir=args.runtime_dir,
+                database_url=database_url,
             )
         elif args.command == "run-once":
             payload = run_runtime_once(
                 orc=args.orc,
                 worker_id=args.worker_id,
                 runtime_dir=args.runtime_dir,
+                database_url=database_url,
             )
         elif args.command == "status":
-            payload = runtime_status(runtime_dir=args.runtime_dir, orc=args.orc)
+            payload = runtime_status(runtime_dir=args.runtime_dir, orc=args.orc, database_url=database_url)
         else:  # pragma: no cover - argparse prevents this
             raise RuntimeError(f"Unhandled command: {args.command}")
     except Exception as exc:

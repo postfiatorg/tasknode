@@ -5,18 +5,30 @@ from datetime import datetime, timezone
 import fcntl
 import json
 import os
+import subprocess
 from typing import Any, Callable, Iterator
 from uuid import uuid4
+
+from tasknode_pftl.app_data import sql_literal, tasknode_database_url
 
 from .payload import redact_secrets
 
 
 DEFAULT_ORC_RUNTIME_DIR = "~/.cache/tasknode/orc_runtime"
 DEFAULT_ORC_RUNTIME_EVENTS_FILE = "orc_runtime_events.jsonl"
+ORC_RUNTIME_DIRECTIVES_SCHEMA = "pf.orc.runtime_directives.v1"
 RUNTIME_EVENT_ENQUEUED = "directive_enqueued"
 RUNTIME_EVENT_CLAIMED = "directive_claimed"
 RUNTIME_EVENT_COMPLETED = "directive_completed"
+POSTGRES_DIRECTIVE_STATUSES = {"queued", "claimed", "completed", "failed", "cancelled"}
+POSTGRES_TERMINAL_DIRECTIVE_STATUSES = {"completed", "failed", "cancelled"}
 TERMINAL_DIRECTIVE_STATUSES = {"completed", "failed", "cancelled", "claimed_only"}
+DATABASE_URL_ENV_KEYS = (
+    "TASKNODEOFFICIAL_DATABASE_URL",
+    "TASKNODE_APP_DATABASE_URL",
+    "TASKNODE_DATABASE_URL",
+    "DATABASE_URL",
+)
 
 
 def _safe_text(value: Any, limit: int = 4000) -> str:
@@ -27,8 +39,140 @@ def _safe_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _jsonb_literal(value: dict[str, Any] | list[Any] | None) -> str:
+    return sql_literal(json.dumps(redact_secrets(value if value is not None else {}), sort_keys=True)) + "::jsonb"
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _configured_database_url(database_url: str | None = None) -> str:
+    if database_url:
+        return database_url
+    for key in DATABASE_URL_ENV_KEYS:
+        value = os.environ.get(key)
+        if value:
+            return value
+    return ""
+
+
+def _run_psql(database_url: str, sql: str) -> str:
+    result = subprocess.run(
+        ["psql", "-X", "-q", "-t", "-A", "-v", "ON_ERROR_STOP=1", database_url, "-c", sql],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or "psql failed").strip())
+    return result.stdout.strip()
+
+
+def _run_json(database_url: str, sql: str) -> Any:
+    output = _run_psql(database_url, sql)
+    lines = [line for line in output.splitlines() if line.strip()]
+    if not lines:
+        return None
+    return json.loads(lines[-1])
+
+
+def _directive_json_sql(alias: str = "d") -> str:
+    return f"""jsonb_build_object(
+      'directiveId', {alias}.directive_id,
+      'orc', {alias}.orc,
+      'directive', {alias}.directive,
+      'taskId', {alias}.task_id,
+      'source', {alias}.source,
+      'metadata', {alias}.metadata_json,
+      'status', {alias}.status::text,
+      'workerId', {alias}.worker_id,
+      'claimedAt', {alias}.claimed_at,
+      'completedAt', {alias}.completed_at,
+      'result', {alias}.result,
+      'attemptCount', {alias}.attempt_count,
+      'createdAt', {alias}.created_at,
+      'updatedAt', {alias}.updated_at,
+      'secretPrinted', false
+    )"""
+
+
+def orc_runtime_directives_schema_sql() -> str:
+    return """
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type
+    WHERE typname = 'orc_runtime_directive_status'
+  ) THEN
+    CREATE TYPE orc_runtime_directive_status AS ENUM (
+      'queued',
+      'claimed',
+      'completed',
+      'failed',
+      'cancelled'
+    );
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS orc_runtime_directives (
+  directive_id text PRIMARY KEY,
+  orc text NOT NULL DEFAULT '',
+  directive text NOT NULL DEFAULT '',
+  task_id text NOT NULL DEFAULT '',
+  source text NOT NULL DEFAULT '',
+  status orc_runtime_directive_status NOT NULL DEFAULT 'queued',
+  worker_id text NOT NULL DEFAULT '',
+  claimed_at timestamptz,
+  completed_at timestamptz,
+  result jsonb NOT NULL DEFAULT '{}'::jsonb,
+  metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  attempt_count integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE orc_runtime_directives
+  ADD COLUMN IF NOT EXISTS orc text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS directive text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS task_id text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS status orc_runtime_directive_status NOT NULL DEFAULT 'queued',
+  ADD COLUMN IF NOT EXISTS worker_id text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS claimed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS completed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS result jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS attempt_count integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS orc_runtime_directives_orc_status_created_idx
+  ON orc_runtime_directives (orc, status, created_at);
+
+CREATE INDEX IF NOT EXISTS orc_runtime_directives_status_created_idx
+  ON orc_runtime_directives (status, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS orc_runtime_directives_claimed_worker_unique
+  ON orc_runtime_directives (worker_id, status)
+  WHERE status = 'claimed' AND worker_id <> '';
+"""
+
+
+def ensure_orc_runtime_directives_schema(*, database_url: str | None = None) -> dict[str, Any]:
+    db_url = tasknode_database_url(database_url)
+    sql = f"""
+{orc_runtime_directives_schema_sql()}
+
+SELECT jsonb_build_object(
+  'ok', true,
+  'table', 'orc_runtime_directives',
+  'schema', {sql_literal(ORC_RUNTIME_DIRECTIVES_SCHEMA)},
+  'secretPrinted', false
+);
+"""
+    return redact_secrets(_run_json(db_url, sql) or {})
 
 
 def _runtime_dir(runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR) -> str:
@@ -126,7 +270,233 @@ def _state_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(directives.values(), key=lambda row: (row.get("createdAt") or "", row.get("directiveId") or ""))
 
 
-def runtime_directives(*, runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR, orc: str = "") -> list[dict[str, Any]]:
+def _postgres_runtime_directives(*, database_url: str, orc: str = "") -> list[dict[str, Any]]:
+    ensure_orc_runtime_directives_schema(database_url=database_url)
+    wanted = _safe_text(orc, 120).lstrip("@").lower()
+    filter_sql = ""
+    if wanted:
+        filter_sql = f"WHERE lower(ltrim(orc, '@')) = {sql_literal(wanted)}"
+    sql = f"""
+SELECT COALESCE(jsonb_agg(row.directive ORDER BY row.created_at ASC, row.directive_id ASC), '[]'::jsonb)
+FROM (
+  SELECT
+    d.directive_id,
+    d.created_at,
+    {_directive_json_sql("d")} AS directive
+  FROM orc_runtime_directives d
+  {filter_sql}
+  ORDER BY d.created_at ASC, d.directive_id ASC
+) row;
+"""
+    rows = _run_json(database_url, sql)
+    return [redact_secrets(row) for row in (rows if isinstance(rows, list) else [])]
+
+
+def _postgres_runtime_status(*, database_url: str, orc: str = "") -> dict[str, Any]:
+    rows = _postgres_runtime_directives(database_url=database_url, orc=orc)
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = _safe_text(row.get("status"), 80) or "unknown"
+        counts[status] = counts.get(status, 0) + 1
+    return redact_secrets({
+        "ok": True,
+        "backend": "postgres",
+        "table": "orc_runtime_directives",
+        "schema": ORC_RUNTIME_DIRECTIVES_SCHEMA,
+        "orc": _safe_text(orc, 120).lstrip("@"),
+        "count": len(rows),
+        "statusCounts": counts,
+        "directives": rows,
+        "secretPrinted": False,
+    })
+
+
+def _postgres_enqueue_runtime_directive(
+    *,
+    database_url: str,
+    orc: str,
+    directive: str,
+    task_id: str = "",
+    source: str = "nazgul",
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    ensure_orc_runtime_directives_schema(database_url=database_url)
+    directive_id = f"orcdirective_{uuid4()}"
+    clean_metadata = redact_secrets(metadata or {})
+    sql = f"""
+WITH inserted AS (
+  INSERT INTO orc_runtime_directives (
+    directive_id,
+    orc,
+    directive,
+    task_id,
+    source,
+    metadata_json,
+    updated_at
+  )
+  VALUES (
+    {sql_literal(directive_id)},
+    {sql_literal(orc)},
+    {sql_literal(directive)},
+    {sql_literal(task_id)},
+    {sql_literal(source)},
+    {_jsonb_literal(clean_metadata)},
+    now()
+  )
+  RETURNING *
+)
+SELECT {_directive_json_sql("inserted")}
+FROM inserted;
+"""
+    stored = _run_json(database_url, sql) or {}
+    return redact_secrets({
+        "ok": True,
+        "queued": True,
+        "backend": "postgres",
+        "directiveId": stored.get("directiveId") or directive_id,
+        "orc": orc,
+        "taskId": stored.get("taskId", ""),
+        "source": stored.get("source", ""),
+        "table": "orc_runtime_directives",
+        "directivePreview": directive[:500],
+        "secretPrinted": False,
+    })
+
+
+def _postgres_claim_next_runtime_directive(
+    *,
+    database_url: str,
+    orc: str,
+    worker_id: str = "",
+) -> dict[str, Any]:
+    ensure_orc_runtime_directives_schema(database_url=database_url)
+    normalized_orc = _safe_text(orc, 120).lstrip("@").lower()
+    clean_worker = _safe_text(worker_id, 180) or f"orcworker_{uuid4()}"
+    sql = f"""
+BEGIN;
+WITH busy AS (
+  SELECT directive_id
+  FROM orc_runtime_directives
+  WHERE status = 'claimed'
+    AND worker_id = {sql_literal(clean_worker)}
+  LIMIT 1
+),
+candidate AS (
+  SELECT directive_id
+  FROM orc_runtime_directives
+  WHERE status = 'queued'
+    AND lower(ltrim(orc, '@')) = {sql_literal(normalized_orc)}
+    AND NOT EXISTS (SELECT 1 FROM busy)
+  ORDER BY created_at ASC, directive_id ASC
+  FOR UPDATE SKIP LOCKED
+  LIMIT 1
+),
+updated AS (
+  UPDATE orc_runtime_directives d
+  SET
+    status = 'claimed',
+    worker_id = {sql_literal(clean_worker)},
+    claimed_at = now(),
+    attempt_count = attempt_count + 1,
+    updated_at = now()
+  FROM candidate c
+  WHERE d.directive_id = c.directive_id
+  RETURNING d.*
+)
+SELECT jsonb_build_object(
+  'ok', true,
+  'claimed', EXISTS (SELECT 1 FROM updated),
+  'workerBusy', EXISTS (SELECT 1 FROM busy),
+  'orc', {sql_literal(orc)},
+  'workerId', {sql_literal(clean_worker)},
+  'backend', 'postgres',
+  'directive', COALESCE((SELECT {_directive_json_sql("updated")} FROM updated), '{{}}'::jsonb),
+  'secretPrinted', false
+);
+COMMIT;
+"""
+    payload = _run_json(database_url, sql) or {}
+    return redact_secrets(payload)
+
+
+def _postgres_complete_runtime_directive(
+    *,
+    database_url: str,
+    directive_id: str,
+    status: str = "completed",
+    result: dict[str, Any] | None = None,
+    worker_id: str = "",
+) -> dict[str, Any]:
+    ensure_orc_runtime_directives_schema(database_url=database_url)
+    clean_status = _safe_text(status, 80).lower() or "completed"
+    if clean_status == "claimed_only":
+        clean_status = "completed"
+    if clean_status not in POSTGRES_TERMINAL_DIRECTIVE_STATUSES:
+        raise ValueError(f"unsupported terminal directive status for Postgres runtime: {clean_status}")
+    clean_result = redact_secrets(result or {})
+    sql = f"""
+BEGIN;
+WITH selected AS (
+  SELECT *
+  FROM orc_runtime_directives
+  WHERE directive_id = {sql_literal(directive_id)}
+  FOR UPDATE
+),
+updated AS (
+  UPDATE orc_runtime_directives d
+  SET
+    status = {sql_literal(clean_status)}::orc_runtime_directive_status,
+    worker_id = COALESCE(NULLIF({sql_literal(worker_id)}, ''), d.worker_id),
+    completed_at = now(),
+    result = {_jsonb_literal(clean_result)},
+    updated_at = now()
+  FROM selected s
+  WHERE d.directive_id = s.directive_id
+    AND s.status NOT IN ('completed', 'failed', 'cancelled')
+  RETURNING d.*
+)
+SELECT COALESCE(
+  (SELECT jsonb_build_object(
+    'ok', true,
+    'completed', true,
+    'backend', 'postgres',
+    'directive', {_directive_json_sql("updated")},
+    'secretPrinted', false
+  ) FROM updated),
+  (SELECT jsonb_build_object(
+    'ok', true,
+    'completed', false,
+    'alreadyTerminal', s.status IN ('completed', 'failed', 'cancelled'),
+    'backend', 'postgres',
+    'directive', {_directive_json_sql("s")},
+    'secretPrinted', false
+  ) FROM selected s),
+  jsonb_build_object(
+    'ok', false,
+    'completed', false,
+    'error', 'unknown_directive',
+    'directiveId', {sql_literal(directive_id)},
+    'backend', 'postgres',
+    'secretPrinted', false
+  )
+);
+COMMIT;
+"""
+    payload = _run_json(database_url, sql) or {}
+    if payload.get("error") == "unknown_directive":
+        raise ValueError(f"unknown directive: {directive_id}")
+    return redact_secrets(payload)
+
+
+def runtime_directives(
+    *,
+    runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR,
+    orc: str = "",
+    database_url: str | None = None,
+) -> list[dict[str, Any]]:
+    db_url = _configured_database_url(database_url)
+    if db_url:
+        return _postgres_runtime_directives(database_url=db_url, orc=orc)
     wanted = _safe_text(orc, 120).lstrip("@").lower()
     rows = _state_from_events(read_runtime_events(runtime_dir=runtime_dir))
     if wanted:
@@ -134,14 +504,23 @@ def runtime_directives(*, runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR, orc: str =
     return [redact_secrets(row) for row in rows]
 
 
-def runtime_status(*, runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR, orc: str = "") -> dict[str, Any]:
-    rows = runtime_directives(runtime_dir=runtime_dir, orc=orc)
+def runtime_status(
+    *,
+    runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR,
+    orc: str = "",
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    db_url = _configured_database_url(database_url)
+    if db_url:
+        return _postgres_runtime_status(database_url=db_url, orc=orc)
+    rows = runtime_directives(runtime_dir=runtime_dir, orc=orc, database_url="")
     counts: dict[str, int] = {}
     for row in rows:
         status = _safe_text(row.get("status"), 80) or "unknown"
         counts[status] = counts.get(status, 0) + 1
     return redact_secrets({
         "ok": True,
+        "backend": "jsonl",
         "runtimeDir": _runtime_dir(runtime_dir),
         "eventsPath": runtime_events_path(runtime_dir),
         "orc": _safe_text(orc, 120).lstrip("@"),
@@ -160,6 +539,7 @@ def enqueue_runtime_directive(
     source: str = "nazgul",
     metadata: dict[str, Any] | None = None,
     runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR,
+    database_url: str | None = None,
 ) -> dict[str, Any]:
     clean_orc = _safe_text(orc, 120).lstrip("@")
     clean_directive = _safe_text(directive, 100000)
@@ -167,6 +547,16 @@ def enqueue_runtime_directive(
         raise ValueError("orc is required")
     if not clean_directive:
         raise ValueError("directive is required")
+    db_url = _configured_database_url(database_url)
+    if db_url:
+        return _postgres_enqueue_runtime_directive(
+            database_url=db_url,
+            orc=clean_orc,
+            directive=clean_directive,
+            task_id=_safe_text(task_id, 180),
+            source=_safe_text(source, 160),
+            metadata=metadata or {},
+        )
     event = {
         "eventType": RUNTIME_EVENT_ENQUEUED,
         "directiveId": f"orcdirective_{uuid4()}",
@@ -183,6 +573,7 @@ def enqueue_runtime_directive(
     return redact_secrets({
         "ok": True,
         "queued": True,
+        "backend": "jsonl",
         "directiveId": stored["directiveId"],
         "orc": clean_orc,
         "taskId": stored.get("taskId", ""),
@@ -198,10 +589,18 @@ def claim_next_runtime_directive(
     orc: str,
     worker_id: str = "",
     runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR,
+    database_url: str | None = None,
 ) -> dict[str, Any]:
     clean_orc = _safe_text(orc, 120).lstrip("@")
     if not clean_orc:
         raise ValueError("orc is required")
+    db_url = _configured_database_url(database_url)
+    if db_url:
+        return _postgres_claim_next_runtime_directive(
+            database_url=db_url,
+            orc=clean_orc,
+            worker_id=worker_id,
+        )
     normalized_orc = clean_orc.lower()
     clean_worker = _safe_text(worker_id, 180) or f"orcworker_{uuid4()}"
     with _runtime_lock(runtime_dir) as path:
@@ -218,6 +617,7 @@ def claim_next_runtime_directive(
             return {
                 "ok": True,
                 "claimed": False,
+                "backend": "jsonl",
                 "orc": clean_orc,
                 "workerId": clean_worker,
                 "secretPrinted": False,
@@ -240,6 +640,7 @@ def claim_next_runtime_directive(
     return redact_secrets({
         "ok": True,
         "claimed": True,
+        "backend": "jsonl",
         "directive": selected,
         "secretPrinted": False,
     })
@@ -252,11 +653,21 @@ def complete_runtime_directive(
     result: dict[str, Any] | None = None,
     worker_id: str = "",
     runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR,
+    database_url: str | None = None,
 ) -> dict[str, Any]:
     clean_directive_id = _safe_text(directive_id, 180)
     clean_status = _safe_text(status, 80) or "completed"
     if not clean_directive_id:
         raise ValueError("directive_id is required")
+    db_url = _configured_database_url(database_url)
+    if db_url:
+        return _postgres_complete_runtime_directive(
+            database_url=db_url,
+            directive_id=clean_directive_id,
+            status=clean_status,
+            result=result or {},
+            worker_id=worker_id,
+        )
     with _runtime_lock(runtime_dir) as path:
         rows = _state_from_events(_read_events_unlocked(path))
         selected = next((row for row in rows if row.get("directiveId") == clean_directive_id), None)
@@ -267,6 +678,7 @@ def complete_runtime_directive(
                 "ok": True,
                 "completed": False,
                 "alreadyTerminal": True,
+                "backend": "jsonl",
                 "directive": selected,
                 "secretPrinted": False,
             })
@@ -290,6 +702,7 @@ def complete_runtime_directive(
     return redact_secrets({
         "ok": True,
         "completed": True,
+        "backend": "jsonl",
         "directive": selected,
         "secretPrinted": False,
     })
@@ -300,9 +713,15 @@ def run_runtime_once(
     orc: str,
     worker_id: str = "",
     runtime_dir: str = DEFAULT_ORC_RUNTIME_DIR,
+    database_url: str | None = None,
     executor: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    claimed = claim_next_runtime_directive(orc=orc, worker_id=worker_id, runtime_dir=runtime_dir)
+    claimed = claim_next_runtime_directive(
+        orc=orc,
+        worker_id=worker_id,
+        runtime_dir=runtime_dir,
+        database_url=database_url,
+    )
     if not claimed.get("claimed"):
         return claimed
     directive = _safe_dict(claimed.get("directive"))
@@ -316,18 +735,20 @@ def run_runtime_once(
             "directivePreview": _safe_text(directive.get("directive"), 500),
             "secretPrinted": False,
         }
-        status = "claimed_only"
+        status = "completed" if _configured_database_url(database_url) else "claimed_only"
     completed = complete_runtime_directive(
         directive_id=directive["directiveId"],
         status=status,
         result=result,
         worker_id=_safe_text(worker_id, 180) or _safe_text(directive.get("workerId"), 180),
         runtime_dir=runtime_dir,
+        database_url=database_url,
     )
     return redact_secrets({
         "ok": True,
         "claimed": True,
         "completed": completed.get("completed", False),
+        "backend": completed.get("backend") or claimed.get("backend"),
         "directive": completed.get("directive"),
         "secretPrinted": False,
     })

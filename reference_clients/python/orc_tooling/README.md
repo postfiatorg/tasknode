@@ -111,11 +111,17 @@ uv run orc-runtime status --orc grashnuk
 uv run orc-runtime run-once --orc grashnuk --worker-id grashnuk-runtime-1
 ```
 
-`dispatch-runtime` writes an append-only directive event to
-`~/.cache/tasknode/orc_runtime/orc_runtime_events.jsonl`. `orc-runtime` can
-claim and complete those directives without reading or writing a tmux pane. The
-prototype executor marks directives `claimed_only`; production execution still
-needs the supervised worker described in
+`dispatch-runtime` and `orc-runtime` prefer the Postgres
+`orc_runtime_directives` table whenever `--database-url` or a Task Node database
+URL environment variable is configured. Claiming uses
+`SELECT ... FOR UPDATE SKIP LOCKED` so multiple workers can claim concurrently
+without double-assignment. When no database URL is configured, the commands
+fall back to the local JSONL mailbox at
+`~/.cache/tasknode/orc_runtime/orc_runtime_events.jsonl`.
+
+The prototype executor does not run Codex or submit task transactions. It only
+claims a directive and marks it terminal so the queue primitive can be tested.
+Production execution still needs the supervised worker described in
 `docs/wiki/architecture/orc-durable-runtime.md`.
 
 Orc panes can be configured with:

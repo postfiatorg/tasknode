@@ -18,8 +18,16 @@ const migration065 = await readFile(
   new URL("../server/db/migrations/065_network_task_status_packets.sql", import.meta.url),
   "utf8"
 );
+const migration068 = await readFile(
+  new URL("../server/db/migrations/068_orc_runtime_directives.sql", import.meta.url),
+  "utf8"
+);
 const reviewStatePy = await readFile(
   new URL("../reference_clients/python/orc_tooling/review_state.py", import.meta.url),
+  "utf8"
+);
+const runtimePy = await readFile(
+  new URL("../reference_clients/python/orc_tooling/runtime.py", import.meta.url),
   "utf8"
 );
 const nazgulPy = await readFile(
@@ -31,6 +39,7 @@ assert.match(migrateJs, /062_orc_agents_and_activity\.sql/);
 assert.match(migrateJs, /063_orc_task_reviews\.sql/);
 assert.match(migrateJs, /064_orc_review_queue_public_items\.sql/);
 assert.match(migrateJs, /065_network_task_status_packets\.sql/);
+assert.match(migrateJs, /068_orc_runtime_directives\.sql/);
 assert.ok(
   migrateJs.indexOf("062_orc_agents_and_activity.sql") < migrateJs.indexOf("063_orc_task_reviews.sql"),
   "orc task review history migration must run after the shared state base migration"
@@ -42,6 +51,10 @@ assert.ok(
 assert.ok(
   migrateJs.indexOf("064_orc_review_queue_public_items.sql") < migrateJs.indexOf("065_network_task_status_packets.sql"),
   "network task status packets must run after public review item ingestion"
+);
+assert.ok(
+  migrateJs.indexOf("067_orc_review_rollups.sql") < migrateJs.indexOf("068_orc_runtime_directives.sql"),
+  "orc runtime queue migration must run after existing Orc accounting migrations"
 );
 
 for (const table of ["orc_run_journal", "orc_operator_interactions"]) {
@@ -65,6 +78,10 @@ assert.match(migration065, /pf\.task_node\.network_task_status_packet\.v1/);
 assert.match(migration065, /status_packet_json/);
 assert.match(migration065, /closed_zero/);
 assert.match(migration065, /repairRequired/);
+assert.match(migration068, /CREATE TABLE IF NOT EXISTS orc_runtime_directives/);
+assert.match(migration068, /orc_runtime_directive_status AS ENUM/);
+assert.match(migration068, /orc_runtime_directives_orc_status_created_idx/);
+assert.match(migration068, /orc_runtime_directives_claimed_worker_unique/);
 
 assert.match(reviewStatePy, /CREATE TABLE IF NOT EXISTS orc_task_reviews/);
 assert.match(reviewStatePy, /CREATE TABLE IF NOT EXISTS orc_task_review_items/);
@@ -74,5 +91,10 @@ assert.match(reviewStatePy, /network_status_packet/);
 assert.match(reviewStatePy, /status_packet_json/);
 assert.match(reviewStatePy, /closed_zero/);
 assert.match(reviewStatePy, /historyTable.*orc_task_reviews/s);
+assert.match(reviewStatePy, /runtimeDirectivesTable.*orc_runtime_directives/s);
+
+assert.match(runtimePy, /CREATE TABLE IF NOT EXISTS orc_runtime_directives/);
+assert.match(runtimePy, /FOR UPDATE SKIP LOCKED/);
+assert.match(runtimePy, /_configured_database_url/);
 
 console.log("orc-shared-state-smoke ok");

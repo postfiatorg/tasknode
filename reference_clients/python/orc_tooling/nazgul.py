@@ -954,6 +954,7 @@ def dispatch_orc_runtime(
             "wallet": orc.get("wallet"),
         },
         runtime_dir=runtime_dir,
+        database_url=database_url,
     )
     record = recorder or record_operator_interaction
     interaction = record(
