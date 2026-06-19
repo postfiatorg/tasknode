@@ -219,7 +219,7 @@ assert.deepEqual(gatedFull.responseGate.auditJson, {
 
 for (const [mode, model] of [
   ["Private Instant", "deepseek/deepseek-v4-flash"],
-  ["Private Thinking", "deepseek/deepseek-v4-pro"],
+  ["Private Thinking", "z-ai/glm-5.2"],
 ]) {
   const request = openRouterChatRequest({
     mode,

@@ -9,7 +9,7 @@ The code owner for this boundary is `server/chat-router.js`. The product contrac
 | User-facing mode | Provider | API path | Default model | Reasoning | Web search | Privacy policy |
 | --- | --- | --- | --- | --- | --- | --- |
 | Private Instant | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-flash` | `none`, excluded from response | Disabled | `zdr=true`, `data_collection="deny"`, provider allowlist, `require_parameters=true` |
-| Private Thinking | OpenRouter | `/api/v1/chat/completions` | `deepseek/deepseek-v4-pro` | `high`, excluded from response | Disabled | `zdr=true`, `data_collection="deny"`, provider allowlist, `require_parameters=true` |
+| Private Thinking | OpenRouter | `/api/v1/chat/completions` | `z-ai/glm-5.2` | `xhigh`, excluded from response | Disabled | `zdr=true`, `data_collection="deny"`, GLM 5.2 ZDR provider allowlist, `require_parameters=true` |
 | Discount Thinking | DeepSeek API Direct | `/chat/completions` | `deepseek-v4-pro` | `high` | Disabled | Direct DeepSeek API route; not OpenRouter ZDR; text-only attachments |
 | Frontier Instant | OpenAI | `/v1/responses` | `chat-latest` | `medium` | Prompt-governed | Direct OpenAI route, `store=false` |
 | Help | DeepSeek API Direct | `/chat/completions` | `deepseek-v4-pro` | `none` | Disabled | Direct DeepSeek API route; not OpenRouter ZDR; product-help prompt with embedded User Guide |
@@ -56,7 +56,7 @@ Private modes call OpenRouter through Chat Completions. Task Node sends:
 - `provider.order` and `provider.only`: keep routing inside the mode-specific provider allowlist.
 - `max_tokens=16384` on Private Instant, matching OpenRouter's current `deepseek/deepseek-v4-flash` top-provider completion ceiling.
 - `reasoning.effort="none"` and `reasoning.exclude=true` on Private Instant so fast chat spends its answer budget on visible response text instead of returned reasoning text.
-- `reasoning.effort="high"` on Private Thinking.
+- `reasoning.effort="xhigh"` on Private Thinking.
 - `reasoning.exclude=true` on Private Thinking so reasoning text is not returned to the UI.
 - `provider.require_parameters=true` when reasoning is controlled, so OpenRouter does not silently ignore the reasoning policy.
 
@@ -264,12 +264,13 @@ rates drive preflight estimates and confirmation thresholds. OpenRouter live
 metadata explains current market/provider pricing. Actual OpenRouter billing uses
 the provider-returned `usage.cost` field when present.
 
-The DeepSeek V4 Pro headline price is now available to Discount Thinking and
-Help through the direct DeepSeek API. It is still not the same thing as the Task
-Node ZDR route. Private Thinking sends `provider.zdr=true`,
-`provider.data_collection="deny"`, and a provider allowlist, so eligible
-endpoints are the OpenRouter ZDR/provider-policy-compatible endpoints rather
-than the cheapest public endpoint.
+DeepSeek V4 Pro is available to Discount Thinking and Help through the direct
+DeepSeek API. It is still not the same thing as the Task Node ZDR route. Private
+Thinking now uses OpenRouter GLM 5.2 with `reasoning.effort="xhigh"`,
+`reasoning.exclude=true`, `provider.zdr=true`, `provider.data_collection="deny"`,
+and the GLM 5.2 ZDR provider allowlist (`z-ai`, `wafer`, `fireworks`, `novita`).
+Eligible endpoints are the OpenRouter ZDR/provider-policy-compatible endpoints
+rather than the cheapest public endpoint.
 
 ## Diagram
 
