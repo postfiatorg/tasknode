@@ -102,3 +102,7 @@ CREATE INDEX IF NOT EXISTS sybil_review_flags_rules_idx
 
 CREATE INDEX IF NOT EXISTS sybil_review_flags_status_idx
   ON sybil_review_flags (status, risk_score DESC, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS user_observability_events_account_provider_idx
+  ON user_observability_events (account_id, provider)
+  WHERE provider <> '';

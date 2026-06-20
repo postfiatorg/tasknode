@@ -590,6 +590,30 @@ async function dbQuery() {
   return import("../server/db/pool.js");
 }
 
+async function loadProviderRowsForAccounts(query, accountIds) {
+  const rows = [];
+  for (const accountId of accountIds) {
+    const result = await query(
+      `
+        SELECT DISTINCT provider
+        FROM (
+          SELECT provider
+          FROM user_observability_events
+          WHERE account_id = $1
+          ORDER BY occurred_at DESC, id DESC
+          LIMIT 1000
+        ) recent
+        WHERE provider <> ''
+      `,
+      [accountId]
+    );
+    for (const row of result.rows) {
+      rows.push({ account_id: accountId, provider: row.provider });
+    }
+  }
+  return rows;
+}
+
 async function loadDbInput(options) {
   const { query, closePool } = await dbQuery();
   try {
@@ -626,18 +650,7 @@ async function loadDbInput(options) {
           [taskIds]
         )
       : { rows: [] };
-    const providersResult = accountIds.length
-      ? await query(
-          `
-            SELECT account_id, provider
-            FROM user_observability_events
-            WHERE account_id = ANY($1::text[])
-              AND provider <> ''
-            GROUP BY account_id, provider
-          `,
-          [accountIds]
-        )
-      : { rows: [] };
+    const providerRows = accountIds.length ? await loadProviderRowsForAccounts(query, accountIds) : [];
     const handlesResult = accountIds.length
       ? await query(
           `
@@ -655,7 +668,7 @@ async function loadDbInput(options) {
       eventsByTask.set(event.task_id, rows);
     }
     const providersByAccount = new Map();
-    for (const row of providersResult.rows) {
+    for (const row of providerRows) {
       const rows = providersByAccount.get(row.account_id) || [];
       rows.push(row.provider);
       providersByAccount.set(row.account_id, rows);
@@ -698,10 +711,14 @@ async function loadDbInput(options) {
         submittedAt: submissionEvent?.occurred_at || "",
         submission: submissionEvent
           ? {
-              payload: submissionEvent.payload_json,
-              sourceCid: submissionEvent.source_cid,
-              sourceTxHash: submissionEvent.source_tx_hash,
-            }
+            payload: submissionEvent.payload_json,
+          }
+          : {},
+        submissionProvenance: submissionEvent
+          ? {
+            sourceCid: submissionEvent.source_cid,
+            sourceTxHash: submissionEvent.source_tx_hash,
+          }
           : {},
       });
       contributorMap.set(subjectKey, contributor);
