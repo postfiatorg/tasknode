@@ -2794,6 +2794,52 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["secretPrinted"], False)
         self.assertNotIn("command", result)
 
+    def test_run_hive_followup_execute_requires_verified_delivery_fields(self):
+        def fake_runner(command, **kwargs):
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"ok": True, "executed": True, "chatMessageId": "msg_followup"}),
+                stderr="",
+            )
+
+        result = run_hive_followup(
+            task_id="task_test",
+            message="Follow-up note.",
+            execute=True,
+            tasknode_repo="/repo/tasknodeofficial",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["error"], "orc_hive_followup_delivery_contract_incomplete")
+        self.assertEqual(result["returnCode"], 0)
+        self.assertNotIn("command", result)
+
+    def test_run_hive_followup_execute_accepts_verified_delivery_fields(self):
+        def fake_runner(command, **kwargs):
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({
+                    "ok": True,
+                    "executed": True,
+                    "chatMessageId": "msg_followup",
+                    "conversationId": "account_acct_hive",
+                }),
+                stderr="",
+            )
+
+        result = run_hive_followup(
+            task_id="task_test",
+            message="Follow-up note.",
+            execute=True,
+            tasknode_repo="/repo/tasknodeofficial",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["chatMessageId"], "msg_followup")
+        self.assertEqual(result["conversationId"], "account_acct_hive")
+
     def test_build_hive_signal_command_uses_direct_signal_script(self):
         command = build_hive_signal_command(
             task_id="task_test",
