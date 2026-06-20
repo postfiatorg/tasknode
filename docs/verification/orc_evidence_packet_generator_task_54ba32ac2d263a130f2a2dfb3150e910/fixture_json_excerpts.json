@@ -1,0 +1,34 @@
+{
+  "excerpts": [
+    {
+      "label": "failure_classification",
+      "file": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair/repair_report.json",
+      "path": "$.records[?(@.messageId=='msg_zoz_retrieval_failure')].inspection",
+      "excerpt": {
+        "failingApiStep": "message_retrieval",
+        "observedPattern": "post_success_then_direct_read_missing",
+        "postHttpStatus": 201,
+        "retrievalHttpStatus": 404,
+        "rootCause": "direct_message_retrieval_read_path_missing_index_after_successful_post"
+      }
+    },
+    {
+      "label": "before_after_summary",
+      "file": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair/repair_report.json",
+      "path": "$.{before,after}",
+      "excerpt": {
+        "before": {
+          "totalMessages": 5,
+          "deliveredVerified": 1,
+          "failed": 4
+        },
+        "after": {
+          "totalMessages": 5,
+          "deliveredVerified": 3,
+          "failed": 2,
+          "repaired": 2
+        }
+      }
+    }
+  ]
+}
