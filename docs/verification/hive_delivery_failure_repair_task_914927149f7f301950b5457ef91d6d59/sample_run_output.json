@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "schema": "pf.orc.hive_delivery_repair.v1",
+  "outputDir": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair",
+  "reportPath": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair/repair_report.json",
+  "summaryPath": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair/discord_summary.md",
+  "before": {
+    "totalMessages": 5,
+    "deliveredVerified": 1,
+    "failed": 4,
+    "byFailureStage": {
+      "none": 1,
+      "message_retrieval": 2,
+      "conversation_lookup": 1,
+      "message_post": 1
+    }
+  },
+  "after": {
+    "totalMessages": 5,
+    "deliveredVerified": 3,
+    "failed": 2,
+    "repaired": 2,
+    "byFailureStage": {
+      "none": 3,
+      "conversation_lookup": 1,
+      "message_post": 1
+    },
+    "byRepairStatus": {
+      "not_needed": 1,
+      "repaired": 2,
+      "not_applicable": 2
+    },
+    "byRepairMethod": {
+      "none": 3,
+      "conversation_scan_fallback": 1,
+      "idempotent_repost": 1
+    }
+  }
+}

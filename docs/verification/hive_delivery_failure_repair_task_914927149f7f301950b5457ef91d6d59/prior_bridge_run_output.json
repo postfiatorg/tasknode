@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "schema": "pf.orc.hive_delivery_repair.v1",
+  "outputDir": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/prior_bridge_diagnostic",
+  "reportPath": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/prior_bridge_diagnostic/repair_report.json",
+  "summaryPath": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/prior_bridge_diagnostic/discord_summary.md",
+  "before": {
+    "totalMessages": 5,
+    "deliveredVerified": 2,
+    "failed": 3,
+    "byFailureStage": {
+      "none": 2,
+      "conversation_lookup": 1,
+      "message_post": 1,
+      "message_retrieval": 1
+    }
+  },
+  "after": {
+    "totalMessages": 5,
+    "deliveredVerified": 3,
+    "failed": 2,
+    "repaired": 1,
+    "byFailureStage": {
+      "none": 3,
+      "conversation_lookup": 1,
+      "message_post": 1
+    },
+    "byRepairStatus": {
+      "not_needed": 2,
+      "not_applicable": 2,
+      "repaired": 1
+    },
+    "byRepairMethod": {
+      "none": 4,
+      "idempotent_repost": 1
+    }
+  }
+}

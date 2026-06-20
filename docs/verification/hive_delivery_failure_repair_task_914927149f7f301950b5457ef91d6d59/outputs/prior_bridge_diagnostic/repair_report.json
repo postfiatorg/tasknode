@@ -1,0 +1,301 @@
+{
+  "ok": true,
+  "schema": "pf.orc.hive_delivery_repair.v1",
+  "generatedAt": "2026-06-20T06:30:00.000Z",
+  "generatedBy": "grashnuk",
+  "mode": "mock",
+  "inputs": {
+    "diagnostics": "docs/verification/verified_orc_messaging_bridge_task_c6a991a7ef8956a53c3b593e93cbc2a1/outputs/delivery_log.json",
+    "repairFixture": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/sample_repair_fixture.json"
+  },
+  "before": {
+    "totalMessages": 5,
+    "deliveredVerified": 2,
+    "failed": 3,
+    "byFailureStage": {
+      "none": 2,
+      "conversation_lookup": 1,
+      "message_post": 1,
+      "message_retrieval": 1
+    }
+  },
+  "after": {
+    "totalMessages": 5,
+    "deliveredVerified": 3,
+    "failed": 2,
+    "repaired": 1,
+    "byFailureStage": {
+      "none": 3,
+      "conversation_lookup": 1,
+      "message_post": 1
+    },
+    "byRepairStatus": {
+      "not_needed": 2,
+      "not_applicable": 2,
+      "repaired": 1
+    },
+    "byRepairMethod": {
+      "none": 4,
+      "idempotent_repost": 1
+    }
+  },
+  "records": [
+    {
+      "messageId": "msg_reward_visibility_followup",
+      "sourceTaskId": "task_mock_reward_visibility",
+      "sourceReviewId": "orcrev_mock_001",
+      "target": {
+        "id": "contrib_gmoney",
+        "handle": "gmoney",
+        "accountId": "acct_gmoney_primary",
+        "walletAddress": "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+        "conversationId": "hive_convo_gmoney_rewarded_work"
+      },
+      "before": {
+        "finalStatus": "delivered_verified",
+        "failureStage": "none",
+        "failureCode": "",
+        "error": "",
+        "postedMessageId": "hmsg_gmoney_verified_001",
+        "postHttpStatus": 201,
+        "retrievalHttpStatus": 200
+      },
+      "inspection": {
+        "failingApiStep": "none",
+        "observedPattern": "already_verified",
+        "postHttpStatus": 201,
+        "retrievalHttpStatus": 200,
+        "retrievalFailureCode": "",
+        "retrievalError": "",
+        "rootCause": "none"
+      },
+      "repairStatus": "not_needed",
+      "repairMethod": "none",
+      "after": {
+        "finalStatus": "delivered_verified",
+        "failureStage": "none",
+        "verification": {
+          "ok": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "messageId": "msg_zoz_delivery_retry",
+      "sourceTaskId": "task_mock_hive_delivery_retry",
+      "sourceReviewId": "orcrev_mock_002",
+      "target": {
+        "id": "contrib_zoz",
+        "handle": "zoz",
+        "accountId": "acct_zoz_primary",
+        "walletAddress": "rsS2Y6pQmdXUuHpgemrGMvxu5cVdLjjaXRZ",
+        "conversationId": "hive_convo_zoz_retry_diagnostics"
+      },
+      "before": {
+        "finalStatus": "delivered_verified",
+        "failureStage": "none",
+        "failureCode": "",
+        "error": "",
+        "postedMessageId": "hmsg_zoz_verified_after_retry_001",
+        "postHttpStatus": 201,
+        "retrievalHttpStatus": 200
+      },
+      "inspection": {
+        "failingApiStep": "none",
+        "observedPattern": "already_verified",
+        "postHttpStatus": 201,
+        "retrievalHttpStatus": 200,
+        "retrievalFailureCode": "",
+        "retrievalError": "",
+        "rootCause": "none"
+      },
+      "repairStatus": "not_needed",
+      "repairMethod": "none",
+      "after": {
+        "finalStatus": "delivered_verified",
+        "failureStage": "none",
+        "verification": {
+          "ok": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "messageId": "msg_agticorp_missing_conversation",
+      "sourceTaskId": "task_mock_conversation_missing",
+      "sourceReviewId": "orcrev_mock_003",
+      "target": {
+        "id": "contrib_agticorp",
+        "handle": "agticorp",
+        "accountId": "acct_agticorp_primary",
+        "walletAddress": "rAgticorpMockWallet111111111111111111",
+        "conversationId": ""
+      },
+      "before": {
+        "finalStatus": "failed",
+        "failureStage": "conversation_lookup",
+        "failureCode": "conversation_not_found",
+        "error": "Contributor resolved, but no Hive conversation id was available",
+        "postedMessageId": "",
+        "postHttpStatus": null,
+        "retrievalHttpStatus": null
+      },
+      "inspection": {
+        "failingApiStep": "conversation_lookup",
+        "observedPattern": "not_repaired_by_this_tool",
+        "postHttpStatus": null,
+        "retrievalHttpStatus": null,
+        "retrievalFailureCode": "conversation_not_found",
+        "retrievalError": "Contributor resolved, but no Hive conversation id was available",
+        "rootCause": "outside_retrieval_repair_scope"
+      },
+      "repairStatus": "not_applicable",
+      "repairMethod": "none",
+      "after": {
+        "finalStatus": "failed",
+        "failureStage": "conversation_lookup",
+        "failureCode": "conversation_not_found",
+        "error": "Contributor resolved, but no Hive conversation id was available",
+        "verification": {
+          "ok": false,
+          "visible": false
+        }
+      }
+    },
+    {
+      "messageId": "msg_donravle_http_error",
+      "sourceTaskId": "task_mock_post_http_error",
+      "sourceReviewId": "orcrev_mock_004",
+      "target": {
+        "id": "contrib_donravle",
+        "handle": "donravle",
+        "accountId": "acct_donravle_primary",
+        "walletAddress": "raL2kvFQfXWrmT7n4UxvpKwrgBQQWFGwzd",
+        "conversationId": "hive_convo_donravle_http_errors"
+      },
+      "before": {
+        "finalStatus": "failed",
+        "failureStage": "message_post",
+        "failureCode": "message_post_failed",
+        "error": "final post attempt failed",
+        "postedMessageId": "",
+        "postHttpStatus": 500,
+        "retrievalHttpStatus": null
+      },
+      "inspection": {
+        "failingApiStep": "message_post",
+        "observedPattern": "not_repaired_by_this_tool",
+        "postHttpStatus": 500,
+        "retrievalHttpStatus": null,
+        "retrievalFailureCode": "message_post_failed",
+        "retrievalError": "final post attempt failed",
+        "rootCause": "outside_retrieval_repair_scope"
+      },
+      "repairStatus": "not_applicable",
+      "repairMethod": "none",
+      "after": {
+        "finalStatus": "failed",
+        "failureStage": "message_post",
+        "failureCode": "message_post_failed",
+        "error": "final post attempt failed",
+        "verification": {
+          "ok": false,
+          "visible": false
+        }
+      }
+    },
+    {
+      "messageId": "msg_yuuki_retrieval_failure",
+      "sourceTaskId": "task_mock_retrieval_failure",
+      "sourceReviewId": "orcrev_mock_005",
+      "target": {
+        "id": "contrib_yuuki",
+        "handle": "yuuki",
+        "accountId": "acct_yuuki_primary",
+        "walletAddress": "rfCbJWtYBZ6ntX7UuYfQK8Ut3T9K51z96h",
+        "conversationId": "hive_convo_yuuki_retrieval_failure"
+      },
+      "before": {
+        "finalStatus": "failed",
+        "failureStage": "message_retrieval",
+        "failureCode": "message_retrieval_failed",
+        "error": "message not visible in Hive Chat read path",
+        "postedMessageId": "hmsg_yuuki_unretrievable_001",
+        "postHttpStatus": 201,
+        "retrievalHttpStatus": 404
+      },
+      "inspection": {
+        "failingApiStep": "message_retrieval",
+        "observedPattern": "post_success_then_direct_read_missing",
+        "postHttpStatus": 201,
+        "retrievalHttpStatus": 404,
+        "retrievalFailureCode": "message_retrieval_failed",
+        "retrievalError": "message not visible in Hive Chat read path",
+        "rootCause": "direct_message_retrieval_read_path_missing_index_after_successful_post"
+      },
+      "repairStatus": "repaired",
+      "repairMethod": "idempotent_repost",
+      "rootCause": "direct_message_retrieval_read_path_missing_index_after_successful_post",
+      "fixApplied": "Conversation scan could not prove visibility, so the repair uses an idempotent repost with a stable key and verifies the replacement message.",
+      "conversationScan": {
+        "ok": false,
+        "method": "conversation_scan_fallback",
+        "httpStatus": 200,
+        "durationMs": 12,
+        "matchedMessageId": "",
+        "error": "conversation scan did not find the posted message",
+        "response": {
+          "scannedMessageCount": 0,
+          "visibleMatch": false,
+          "conversationId": "hive_convo_yuuki_retrieval_failure"
+        }
+      },
+      "idempotentRepost": {
+        "ok": true,
+        "method": "idempotent_repost",
+        "attempted": true,
+        "attempts": [
+          {
+            "attempt": 1,
+            "ok": true,
+            "httpStatus": 201,
+            "durationMs": 23,
+            "idempotencyKey": "orc-delivery-repair-yuuki-001",
+            "response": {
+              "messageId": "hmsg_yuuki_repost_visible_001"
+            },
+            "error": ""
+          }
+        ],
+        "retrieval": {
+          "ok": true,
+          "httpStatus": 200,
+          "durationMs": 9,
+          "response": {
+            "messageId": "hmsg_yuuki_repost_visible_001",
+            "visible": true
+          },
+          "error": ""
+        },
+        "verification": {
+          "ok": true,
+          "visible": true,
+          "expectedMessageId": "hmsg_yuuki_repost_visible_001",
+          "retrievedMessageId": "hmsg_yuuki_repost_visible_001"
+        },
+        "error": ""
+      },
+      "after": {
+        "finalStatus": "delivered_verified",
+        "failureStage": "none",
+        "postedMessageId": "hmsg_yuuki_repost_visible_001",
+        "verification": {
+          "ok": true,
+          "visible": true,
+          "method": "idempotent_repost",
+          "matchedMessageId": "hmsg_yuuki_repost_visible_001"
+        }
+      }
+    }
+  ]
+}
