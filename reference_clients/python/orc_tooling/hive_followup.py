@@ -12,6 +12,35 @@ DEFAULT_TASKNODE_REPO = "/home/pfrpc/repos/tasknodeofficial"
 DEFAULT_DUPLICATE_REWARD_TASK_ID = "task_d2527276782f04a30ce1bbe19bc5c188"
 
 
+def validate_orc_delivery_payload(
+    payload: Any,
+    *,
+    stdout: str,
+    stderr: str,
+    return_code: int,
+    error_prefix: str,
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {
+            "ok": False,
+            "error": f"{error_prefix}_invalid_json_shape",
+            "returnCode": return_code,
+            "stdout": stdout,
+            "stderr": stderr,
+            "secretPrinted": False,
+        }
+    if not isinstance(payload.get("ok"), bool):
+        return {
+            "ok": False,
+            "error": f"{error_prefix}_invalid_ok_type",
+            "returnCode": return_code,
+            "stdout": stdout,
+            "stderr": stderr,
+            "secretPrinted": False,
+        }
+    return payload
+
+
 def duplicate_reward_followup_message(
     *,
     task_id: str = DEFAULT_DUPLICATE_REWARD_TASK_ID,
@@ -121,15 +150,15 @@ def run_hive_followup(
             "stderr": stderr,
             "secretPrinted": False,
         }
-    if not isinstance(payload, dict):
-        return {
-            "ok": False,
-            "error": "orc_hive_followup_invalid_json_shape",
-            "returnCode": result.returncode,
-            "stdout": stdout,
-            "stderr": stderr,
-            "secretPrinted": False,
-        }
+    payload = validate_orc_delivery_payload(
+        payload,
+        stdout=stdout,
+        stderr=stderr,
+        return_code=result.returncode,
+        error_prefix="orc_hive_followup",
+    )
+    if not payload.get("ok"):
+        return payload
     payload.setdefault("secretPrinted", False)
     payload.setdefault("command", " ".join(command))
     return payload

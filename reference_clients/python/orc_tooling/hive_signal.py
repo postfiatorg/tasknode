@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from tasknode_pftl.app_data import tasknode_database_url
 
-from .hive_followup import DEFAULT_TASKNODE_REPO
+from .hive_followup import DEFAULT_TASKNODE_REPO, validate_orc_delivery_payload
 
 
 def build_hive_signal_command(
@@ -116,15 +116,15 @@ def run_hive_signal(
             "stderr": stderr,
             "secretPrinted": False,
         }
-    if not isinstance(payload, dict):
-        return {
-            "ok": False,
-            "error": "orc_hive_signal_invalid_json_shape",
-            "returnCode": result.returncode,
-            "stdout": stdout,
-            "stderr": stderr,
-            "secretPrinted": False,
-        }
+    payload = validate_orc_delivery_payload(
+        payload,
+        stdout=stdout,
+        stderr=stderr,
+        return_code=result.returncode,
+        error_prefix="orc_hive_signal",
+    )
+    if not payload.get("ok"):
+        return payload
     payload.setdefault("secretPrinted", False)
     payload.setdefault("command", " ".join(command))
     return payload
