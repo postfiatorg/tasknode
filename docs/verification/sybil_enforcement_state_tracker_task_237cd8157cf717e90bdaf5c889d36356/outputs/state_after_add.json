@@ -1,0 +1,993 @@
+{
+  "schema": "pf.orc.sybil_enforcement_state.v1",
+  "generatedAt": "2026-06-20T05:43:30.878Z",
+  "generatedBy": "grashnuk",
+  "mode": "recommend_only_state_tracking",
+  "readOnly": true,
+  "enforcementBoundary": {
+    "wouldMutateLiveRouting": false,
+    "wouldMoveFunds": false,
+    "wouldBanAccounts": false,
+    "wouldClawBackRewards": false,
+    "wouldDeploy": false,
+    "requiresHumanApprovalForAnyOperationalUse": true
+  },
+  "sources": {
+    "riskMatrix": {
+      "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+      "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+      "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+      "generatedAt": "2026-06-20T05:20:00.000Z",
+      "rows": 13
+    },
+    "suppressionConfig": {
+      "taskId": "task_e2473aa56887d24f354d008c553ffc57",
+      "cid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+      "schema": "pf.orc.contributor_routing_suppression_config.v1",
+      "generatedAt": "2026-06-20T05:30:00.000Z",
+      "entries": 11
+    },
+    "verifierReport": {
+      "taskId": "task_06376269c285c93f098d02f585d2dc92",
+      "cid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+      "schema": "pf.orc.routing_suppression_enforcement_verification.v1",
+      "generatedAt": "2026-06-20T06:10:00.000Z",
+      "contributors": 6
+    }
+  },
+  "records": [
+    {
+      "walletAddress": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 37.1,
+        "riskBand": "low",
+        "role": "connected_wallet",
+        "compositeScore": 30.8,
+        "reviewPriorityScore": 37.1,
+        "reasons": [
+          "adjacent to two known-cluster wallets",
+          "below suppression threshold"
+        ],
+        "recommendation": "monitor only"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": false,
+        "status": "not_suppressed",
+        "reason": "",
+        "mode": "",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "expiresAt": "",
+        "supportingTaskIds": []
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "No action beyond continued monitoring."
+    },
+    {
+      "walletAddress": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 81.3,
+        "riskBand": "high_review_priority",
+        "role": "contagion_review_lead",
+        "compositeScore": 57.9,
+        "reviewPriorityScore": 81.3,
+        "reasons": [
+          "adjacent to prior high-risk wallets",
+          "has bidirectional flow with risk-source wallets"
+        ],
+        "recommendation": "review raw transactions and operator identity before any enforcement decision"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "sybil_risk_threshold:reviewPriorityScore=81.3>=60",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "2026-06-20T05:30:00.000Z",
+        "expiresAt": "2026-07-04T05:30:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_78bc0498dfcc292ed909b1da6743a1ba"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 62.2,
+        "riskBand": "high_review_priority",
+        "role": "known_source_wallet",
+        "compositeScore": 62.2,
+        "reviewPriorityScore": 62.2,
+        "reasons": [
+          "known risk-source wallet from input artifact"
+        ],
+        "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "manual_review_seed_wallet;sybil_risk_threshold:reviewPriorityScore=62.2>=60",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "",
+        "expiresAt": "2026-07-04T04:00:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_78bc0498dfcc292ed909b1da6743a1ba",
+          "task_c4682ae05cbc47f9669a58d5121cf38d"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": true,
+        "status": "violated",
+        "lastVerifiedAt": "2026-06-20T06:10:00.000Z",
+        "finding": "Suppressed contributor received an active proposed network allocation during the active suppression window.",
+        "allocationCounts": {
+          "totalMatched": 2,
+          "preSuppression": 0,
+          "inSuppressionWindow": 2,
+          "postSuppression": 2,
+          "postExpiry": 0,
+          "activePostSuppression": 1,
+          "blockedPostSuppression": 1
+        },
+        "activePostSuppressionAllocations": [
+          {
+            "allocationId": "sample_alloc_r99_active",
+            "taskId": "task_sample_post_suppression_active",
+            "title": "Sample post-suppression active allocation",
+            "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+            "accountId": "",
+            "handle": "",
+            "status": "proposed",
+            "allocatedAt": "2026-06-20T05:45:00.000Z",
+            "routingDecision": "proposed",
+            "source": "sample_board_state"
+          }
+        ],
+        "blockedPostSuppressionAllocations": [
+          {
+            "allocationId": "sample_alloc_r99_blocked",
+            "taskId": "task_sample_post_suppression_blocked",
+            "title": "Sample post-suppression blocked allocation",
+            "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+            "accountId": "",
+            "handle": "",
+            "status": "suppressed",
+            "allocatedAt": "2026-06-20T05:50:00.000Z",
+            "routingDecision": "suppressed",
+            "source": "sample_board_state"
+          }
+        ]
+      },
+      "detectedGaps": [
+        "post_suppression_active_allocation_detected"
+      ],
+      "recommendedNextAction": "Escalate to Nazgul/Sauron for human routing investigation; do not auto-enforce."
+    },
+    {
+      "walletAddress": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 44,
+        "riskBand": "watch",
+        "role": "connected_wallet",
+        "compositeScore": 38,
+        "reviewPriorityScore": 44,
+        "reasons": [
+          "adjacent to known-cluster wallets",
+          "watch only"
+        ],
+        "recommendation": "monitor in future streams or sample raw evidence if the cluster expands"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": false,
+        "status": "not_suppressed",
+        "reason": "",
+        "mode": "",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "expiresAt": "",
+        "supportingTaskIds": []
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": true,
+        "status": "not_tested",
+        "lastVerifiedAt": "2026-06-20T06:10:00.000Z",
+        "finding": "Watch wallet included to exercise non-high-risk suppression-review boundary.",
+        "allocationCounts": {
+          "totalMatched": 0,
+          "preSuppression": 0,
+          "inSuppressionWindow": 0,
+          "postSuppression": 0,
+          "postExpiry": 0,
+          "activePostSuppression": 0,
+          "blockedPostSuppression": 0
+        },
+        "activePostSuppressionAllocations": [],
+        "blockedPostSuppressionAllocations": []
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "No action beyond continued monitoring."
+    },
+    {
+      "walletAddress": "rClusterWallet6666666666666666666",
+      "accountId": "acct_cluster_wallet",
+      "handle": "clusterwallet",
+      "contributorKey": "rClusterWallet6666666666666666666",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": false,
+        "riskScore": 0,
+        "riskBand": "unknown",
+        "role": "",
+        "reasons": [],
+        "recommendation": ""
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "quality_threshold_failures:repeated_unverifiable_submissions,consecutive_unverifiable_submissions,low_verified_to_total_ratio",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "",
+        "expiresAt": "2026-07-04T04:00:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_cluster_wallet_001",
+          "task_cluster_wallet_002"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": true,
+        "status": "not_tested",
+        "lastVerifiedAt": "2026-06-20T06:10:00.000Z",
+        "finding": "No matching allocation records were present for this suppressed contributor.",
+        "allocationCounts": {
+          "totalMatched": 0,
+          "preSuppression": 0,
+          "inSuppressionWindow": 0,
+          "postSuppression": 0,
+          "postExpiry": 0,
+          "activePostSuppression": 0,
+          "blockedPostSuppression": 0
+        },
+        "activePostSuppressionAllocations": [],
+        "blockedPostSuppressionAllocations": []
+      },
+      "detectedGaps": [
+        "missing_risk_matrix_row",
+        "suppression_not_tested_by_allocation_sample"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 66,
+        "riskBand": "high_review_priority",
+        "role": "known_source_wallet",
+        "compositeScore": 66,
+        "reviewPriorityScore": 66,
+        "reasons": [
+          "cluster density score 23.6",
+          "known risk-source wallet from input artifact"
+        ],
+        "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "sybil_risk_threshold:reviewPriorityScore=66>=60",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "2026-06-20T05:30:00.000Z",
+        "expiresAt": "2026-07-04T05:30:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_78bc0498dfcc292ed909b1da6743a1ba"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": true,
+        "status": "enforced",
+        "lastVerifiedAt": "2026-06-20T06:10:00.000Z",
+        "finding": "No active allocations were found during the active suppression window.",
+        "allocationCounts": {
+          "totalMatched": 1,
+          "preSuppression": 0,
+          "inSuppressionWindow": 1,
+          "postSuppression": 1,
+          "postExpiry": 0,
+          "activePostSuppression": 0,
+          "blockedPostSuppression": 1
+        },
+        "activePostSuppressionAllocations": [],
+        "blockedPostSuppressionAllocations": [
+          {
+            "allocationId": "sample_alloc_rd6_blocked",
+            "taskId": "task_sample_blocked_rd6",
+            "title": "Sample blocked allocation",
+            "walletAddress": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+            "accountId": "",
+            "handle": "",
+            "status": "suppressed",
+            "allocatedAt": "2026-06-20T05:35:00.000Z",
+            "routingDecision": "suppressed",
+            "source": "sample_board_state"
+          }
+        ]
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "No action beyond continued monitoring."
+    },
+    {
+      "walletAddress": "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 12.5,
+        "riskBand": "low",
+        "role": "connected_wallet",
+        "compositeScore": 12.5,
+        "reviewPriorityScore": 12.5,
+        "reasons": [
+          "low score despite dense local component"
+        ],
+        "recommendation": "no suppression recommended"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": false,
+        "status": "not_suppressed",
+        "reason": "",
+        "mode": "",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "expiresAt": "",
+        "supportingTaskIds": []
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "No action beyond continued monitoring."
+    },
+    {
+      "walletAddress": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 81.4,
+        "riskBand": "high_review_priority",
+        "role": "contagion_review_lead",
+        "compositeScore": 56.7,
+        "reviewPriorityScore": 81.4,
+        "reasons": [
+          "adjacent to known-cluster wallets",
+          "funds multiple risk-source wallets"
+        ],
+        "recommendation": "review raw transactions and operator identity before any enforcement decision"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "sybil_risk_threshold:reviewPriorityScore=81.4>=60",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "2026-06-20T05:30:00.000Z",
+        "expiresAt": "2026-07-04T05:30:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_78bc0498dfcc292ed909b1da6743a1ba"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 12.5,
+        "riskBand": "low",
+        "role": "connected_wallet",
+        "compositeScore": 12.5,
+        "reviewPriorityScore": 12.5,
+        "reasons": [
+          "low score despite dense local component"
+        ],
+        "recommendation": "no suppression recommended"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": false,
+        "status": "not_suppressed",
+        "reason": "",
+        "mode": "",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "expiresAt": "",
+        "supportingTaskIds": []
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "No action beyond continued monitoring."
+    },
+    {
+      "walletAddress": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 62.2,
+        "riskBand": "high_review_priority",
+        "role": "known_source_wallet",
+        "compositeScore": 62.2,
+        "reviewPriorityScore": 62.2,
+        "reasons": [
+          "known risk-source wallet from input artifact"
+        ],
+        "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "sybil_risk_threshold:reviewPriorityScore=62.2>=60",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "2026-06-20T05:30:00.000Z",
+        "expiresAt": "2026-07-04T05:30:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_78bc0498dfcc292ed909b1da6743a1ba"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rLowRiskSuppressed777777777777777777",
+      "accountId": "acct_low_risk_suppressed",
+      "handle": "lowsuppressed",
+      "contributorKey": "rLowRiskSuppressed777777777777777777",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": false,
+        "riskScore": 0,
+        "riskBand": "unknown",
+        "role": "",
+        "reasons": [],
+        "recommendation": ""
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": false,
+        "status": "not_suppressed",
+        "reason": "",
+        "mode": "",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "expiresAt": "",
+        "supportingTaskIds": []
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": true,
+        "status": "expired",
+        "lastVerifiedAt": "2026-06-20T06:10:00.000Z",
+        "finding": "Suppression entry expired before this verification run; post-expiry allocations are not counted as violations.",
+        "allocationCounts": {
+          "totalMatched": 1,
+          "preSuppression": 0,
+          "inSuppressionWindow": 0,
+          "postSuppression": 0,
+          "postExpiry": 1,
+          "activePostSuppression": 0,
+          "blockedPostSuppression": 0
+        },
+        "activePostSuppressionAllocations": [],
+        "blockedPostSuppressionAllocations": []
+      },
+      "detectedGaps": [
+        "missing_risk_matrix_row"
+      ],
+      "recommendedNextAction": "Review detected gap manually before any operational use."
+    },
+    {
+      "walletAddress": "rManualWatchState8888888888888888888",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "rManualWatchState8888888888888888888",
+      "risk": {
+        "sourceTaskId": "manual",
+        "sourceCid": "",
+        "present": true,
+        "riskScore": 45,
+        "riskBand": "watch",
+        "role": "",
+        "compositeScore": 45,
+        "reviewPriorityScore": 45,
+        "reasons": [],
+        "recommendation": ""
+      },
+      "suppression": {
+        "sourceTaskId": "manual",
+        "sourceCid": "",
+        "present": false,
+        "status": "not_suppressed",
+        "reason": "",
+        "mode": "recommend_only_state_tracking",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": []
+      },
+      "verification": {
+        "sourceTaskId": "manual",
+        "sourceCid": "",
+        "present": true,
+        "status": "not_tested",
+        "lastVerifiedAt": "2026-06-20T06:25:00.000Z",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [
+        "manual_follow_up_needed"
+      ],
+      "recommendedNextAction": "Review detected gap manually before any operational use."
+    },
+    {
+      "walletAddress": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 81.4,
+        "riskBand": "high_review_priority",
+        "role": "contagion_review_lead",
+        "compositeScore": 57.9,
+        "reviewPriorityScore": 81.4,
+        "reasons": [
+          "adjacent to prior high-risk wallets",
+          "receives from multiple risk-source wallets"
+        ],
+        "recommendation": "review raw transactions and operator identity before any enforcement decision"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "sybil_risk_threshold:reviewPriorityScore=81.4>=60",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "2026-06-20T05:30:00.000Z",
+        "expiresAt": "2026-07-04T05:30:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_78bc0498dfcc292ed909b1da6743a1ba"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": true,
+        "status": "enforced",
+        "lastVerifiedAt": "2026-06-20T06:10:00.000Z",
+        "finding": "No active allocations were found during the active suppression window.",
+        "allocationCounts": {
+          "totalMatched": 1,
+          "preSuppression": 1,
+          "inSuppressionWindow": 0,
+          "postSuppression": 0,
+          "postExpiry": 0,
+          "activePostSuppression": 0,
+          "blockedPostSuppression": 0
+        },
+        "activePostSuppressionAllocations": [],
+        "blockedPostSuppressionAllocations": []
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "No action beyond continued monitoring."
+    },
+    {
+      "walletAddress": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 66,
+        "riskBand": "high_review_priority",
+        "role": "known_source_wallet",
+        "compositeScore": 66,
+        "reviewPriorityScore": 66,
+        "reasons": [
+          "known risk-source wallet from input artifact"
+        ],
+        "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "sybil_risk_threshold:reviewPriorityScore=66>=60",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "2026-06-20T05:30:00.000Z",
+        "expiresAt": "2026-07-04T05:30:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_78bc0498dfcc292ed909b1da6743a1ba"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rSelfAttested5555555555555555555",
+      "accountId": "acct_self_attested",
+      "handle": "selfattested",
+      "contributorKey": "selfattested",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": false,
+        "riskScore": 0,
+        "riskBand": "unknown",
+        "role": "",
+        "reasons": [],
+        "recommendation": ""
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "quality_threshold_failures:self_attested_only_pattern",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "",
+        "expiresAt": "2026-07-04T04:00:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_self_attested_001"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [
+        "missing_risk_matrix_row",
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 69.3,
+        "riskBand": "high_review_priority",
+        "role": "contagion_review_lead",
+        "compositeScore": 58.1,
+        "reviewPriorityScore": 69.3,
+        "reasons": [
+          "adjacent to five known-cluster wallets",
+          "cluster density score 23.6"
+        ],
+        "recommendation": "review raw transactions and operator identity before any enforcement decision"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "sybil_risk_threshold:reviewPriorityScore=69.3>=60",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "2026-06-20T05:30:00.000Z",
+        "expiresAt": "2026-07-04T05:30:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_78bc0498dfcc292ed909b1da6743a1ba"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "accountId": "",
+      "handle": "",
+      "contributorKey": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "risk": {
+        "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+        "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+        "present": true,
+        "riskScore": 66,
+        "riskBand": "high_review_priority",
+        "role": "known_source_wallet",
+        "compositeScore": 66,
+        "reviewPriorityScore": 66,
+        "reasons": [
+          "known risk-source wallet from input artifact"
+        ],
+        "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+      },
+      "suppression": {
+        "sourceTaskId": "task_e2473aa56887d24f354d008c553ffc57",
+        "sourceCid": "Qme8s5wg6C69EnUbEZ6hCahNYN9vNocaJRdxWNak2KX4gc",
+        "present": true,
+        "status": "suppression_recommended",
+        "rawStatus": "routing_suppression_recommended",
+        "reason": "sybil_risk_threshold:reviewPriorityScore=66>=60",
+        "scope": "network_task_routing_review",
+        "mode": "recommend_only_no_enforcement",
+        "effectiveAt": "2026-06-20T05:30:00.000Z",
+        "expiresAt": "2026-07-04T05:30:00.000Z",
+        "operationalUseAllowed": false,
+        "requiresHumanApproval": true,
+        "supportingTaskIds": [
+          "task_78bc0498dfcc292ed909b1da6743a1ba"
+        ]
+      },
+      "verification": {
+        "sourceTaskId": "task_06376269c285c93f098d02f585d2dc92",
+        "sourceCid": "QmdUzjpPXHm2kLjEBxxMJ5drxCFKUqWCvwbj92MhzyAAJe",
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    }
+  ],
+  "summary": {
+    "walletCount": 17,
+    "riskBandCounts": {
+      "low": 3,
+      "high_review_priority": 9,
+      "watch": 2,
+      "unknown": 3
+    },
+    "suppressionStatusCounts": {
+      "not_suppressed": 6,
+      "suppression_recommended": 11
+    },
+    "verificationStatusCounts": {
+      "missing_verification": 10,
+      "violated": 1,
+      "not_tested": 3,
+      "enforced": 2,
+      "expired": 1
+    },
+    "detectedGapCounts": {
+      "suppression_entry_missing_verification": 7,
+      "post_suppression_active_allocation_detected": 1,
+      "missing_risk_matrix_row": 3,
+      "suppression_not_tested_by_allocation_sample": 1,
+      "manual_follow_up_needed": 1
+    },
+    "walletsWithDetectedGaps": 11,
+    "violatedWallets": [
+      "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB"
+    ],
+    "noActionWallets": [
+      "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+      "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+      "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n"
+    ]
+  }
+}

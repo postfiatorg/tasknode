@@ -1,0 +1,108 @@
+{
+  "schema": "pf.orc.sybil_enforcement_state.v1.list.v1",
+  "count": 10,
+  "records": [
+    {
+      "walletAddress": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "riskBand": "high_review_priority",
+      "riskScore": 81.3,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ]
+    },
+    {
+      "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "riskBand": "high_review_priority",
+      "riskScore": 62.2,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "violated",
+      "detectedGaps": [
+        "post_suppression_active_allocation_detected"
+      ]
+    },
+    {
+      "walletAddress": "rClusterWallet6666666666666666666",
+      "riskBand": "unknown",
+      "riskScore": 0,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "not_tested",
+      "detectedGaps": [
+        "missing_risk_matrix_row",
+        "suppression_not_tested_by_allocation_sample"
+      ]
+    },
+    {
+      "walletAddress": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "riskBand": "high_review_priority",
+      "riskScore": 81.4,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ]
+    },
+    {
+      "walletAddress": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "riskBand": "high_review_priority",
+      "riskScore": 62.2,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ]
+    },
+    {
+      "walletAddress": "rLowRiskSuppressed777777777777777777",
+      "riskBand": "unknown",
+      "riskScore": 0,
+      "suppressionStatus": "not_suppressed",
+      "verificationStatus": "expired",
+      "detectedGaps": [
+        "missing_risk_matrix_row"
+      ]
+    },
+    {
+      "walletAddress": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "riskBand": "high_review_priority",
+      "riskScore": 66,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ]
+    },
+    {
+      "walletAddress": "rSelfAttested5555555555555555555",
+      "riskBand": "unknown",
+      "riskScore": 0,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "missing_risk_matrix_row",
+        "suppression_entry_missing_verification"
+      ]
+    },
+    {
+      "walletAddress": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "riskBand": "high_review_priority",
+      "riskScore": 69.3,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ]
+    },
+    {
+      "walletAddress": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "riskBand": "high_review_priority",
+      "riskScore": 66,
+      "suppressionStatus": "suppression_recommended",
+      "verificationStatus": "missing_verification",
+      "detectedGaps": [
+        "suppression_entry_missing_verification"
+      ]
+    }
+  ]
+}
