@@ -383,6 +383,10 @@ function decisionUserMessageText(decision = {}, messageText = "") {
   ].filter(Boolean).join("\n");
 }
 
+function messageIsInformationalNoFollowup(decision = {}) {
+  return safeObject(decision.payload).followup_required === false;
+}
+
 function messageRequestsTaskAction(text = "") {
   const value = safeText(text, 5000).toLowerCase();
   if (!value) return false;
@@ -618,6 +622,10 @@ export function guardBoardManagerMessageUserFreshness({
   const combinedText = decisionUserMessageText(decision, messageText);
   const wantsTaskAction = messageRequestsTaskAction(combinedText);
   const hasStructuredPrecondition = messagePreconditionHasAssertions(decision);
+  const strictlyRequiresRelatedTask = messageRequiresRelatedTaskPrecondition(combinedText);
+  if (messageIsInformationalNoFollowup(decision) && !hasStructuredPrecondition && !strictlyRequiresRelatedTask) {
+    return { ok: true, reason: "informational_message_no_followup" };
+  }
   if (!wantsTaskAction && !hasStructuredPrecondition) {
     return { ok: true, reason: "message_not_task_action" };
   }
@@ -840,30 +848,33 @@ async function executeMessageUser({ runId, decision, sourcePacket }) {
       reason: decision.reason,
     },
   });
-  const followup = await createBoardManagerFollowup({
-    runId,
-    accountId,
-    projectId,
-    hiveContextEntryId: target.hiveContextEntryId,
-    conversationId,
-    boardMessageId: inserted.rows[0]?.id || messageId,
-    chatMessageId: chatTurn.assistant?.id || assistantMessageId,
-    blockerType: projectId ? "project_blocked_on_user" : "account_followup",
-    blockerSummary: safeText(decision.reason || decision.payload.summary, 1200),
-    expectedResponse: safeText(decision.payload.next_steps?.join("; ") || decision.payload.summary, 1200),
-    sourcePacketDigest: safeText(sourcePacket.sourcePacketDigest, 120),
-    metadata: {
-      target_type: decision.target_type,
-      target_id: decision.target_id,
-      hive_context_entry_id: target.hiveContextEntryId,
-      decision_summary: decision.payload.summary,
-      account_live_state_digest: safeText(accountLiveState.digest, 120),
-      account_live_state_snapshot_at: safeText(accountLiveState.snapshotAt, 80),
-      related_task_ids: safeArray(accountLiveState.networkTasks).map((task) => task.taskId).filter(Boolean),
-      related_allocation_ids: safeArray(accountLiveState.networkTasks).map((task) => task.allocationId).filter(Boolean),
-      message_precondition: messagePreconditionForAudit,
-    },
-  }).catch((error) => ({ ok: false, error: error?.message || String(error) }));
+  const followupRequired = decision.payload.followup_required !== false;
+  const followup = followupRequired
+    ? await createBoardManagerFollowup({
+        runId,
+        accountId,
+        projectId,
+        hiveContextEntryId: target.hiveContextEntryId,
+        conversationId,
+        boardMessageId: inserted.rows[0]?.id || messageId,
+        chatMessageId: chatTurn.assistant?.id || assistantMessageId,
+        blockerType: projectId ? "project_blocked_on_user" : "account_followup",
+        blockerSummary: safeText(decision.reason || decision.payload.summary, 1200),
+        expectedResponse: safeText(decision.payload.next_steps?.join("; ") || decision.payload.summary, 1200),
+        sourcePacketDigest: safeText(sourcePacket.sourcePacketDigest, 120),
+        metadata: {
+          target_type: decision.target_type,
+          target_id: decision.target_id,
+          hive_context_entry_id: target.hiveContextEntryId,
+          decision_summary: decision.payload.summary,
+          account_live_state_digest: safeText(accountLiveState.digest, 120),
+          account_live_state_snapshot_at: safeText(accountLiveState.snapshotAt, 80),
+          related_task_ids: safeArray(accountLiveState.networkTasks).map((task) => task.taskId).filter(Boolean),
+          related_allocation_ids: safeArray(accountLiveState.networkTasks).map((task) => task.allocationId).filter(Boolean),
+          message_precondition: messagePreconditionForAudit,
+        },
+      }).catch((error) => ({ ok: false, error: error?.message || String(error) }))
+    : { ok: true, skipped: true, reason: "followup_not_required", followup: null };
   await recordUserObservabilityEvent({
     eventType: "user.hive.board_message_delivered",
     accountId,
@@ -880,7 +891,8 @@ async function executeMessageUser({ runId, decision, sourcePacket }) {
       hiveContextEntryId: target.hiveContextEntryId,
       sourcePacketDigest: safeText(sourcePacket.sourcePacketDigest, 120),
       followupId: followup.followup?.id || "",
-      followupCreated: followup.ok === true && followup.idempotent !== true,
+      followupCreated: followupRequired && followup.ok === true && followup.idempotent !== true,
+      followupRequired,
     },
     metrics: {
       messageCharacterCount: messageText.length,
