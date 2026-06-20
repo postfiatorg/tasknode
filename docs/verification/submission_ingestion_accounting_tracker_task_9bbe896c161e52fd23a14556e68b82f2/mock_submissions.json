@@ -1,0 +1,296 @@
+{
+  "schema": "pf.orc.mock_submission_packet_set.v1",
+  "generatedForTask": "task_9bbe896c161e52fd23a14556e68b82f2",
+  "submissions": [
+    {
+      "submissionId": "sub_ingest_001",
+      "taskId": "task_mock_001",
+      "title": "Document Task Acceptance Workflow",
+      "project": "task_node_core_product",
+      "rewardPft": 10500,
+      "submittedAt": "2026-06-18T14:11:00.000Z",
+      "contributor": {
+        "handle": "gmoney",
+        "accountId": "acct_gmoney",
+        "walletAddress": "rKTbxKmockGmoneyWallet001"
+      },
+      "evidence": {
+        "cid": "QmMockAcceptanceWorkflow001",
+        "txHash": "AAAABBBBCCCC0001",
+        "summary": "Concrete acceptance-flow notes grounded in observed proposed and accepted task states.",
+        "artifacts": ["docs/task_acceptance_workflow.md"]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "operator_workflow",
+        "score": 82,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Fold the missing verification-step affordance into the task detail UX backlog.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      }
+    },
+    {
+      "submissionId": "sub_ingest_002",
+      "taskId": "task_mock_002",
+      "title": "Trace Distribution V3 Reward Routing Consistency",
+      "project": "task_node_core_product",
+      "rewardPft": 18000,
+      "submittedAt": "2026-06-18T15:22:00.000Z",
+      "contributor": {
+        "handle": "zoz",
+        "accountId": "acct_zoz",
+        "walletAddress": "rsS2Y6mockZozWallet002"
+      },
+      "evidence": {
+        "cid": "QmMockRewardRouting002",
+        "txHash": "AAAABBBBCCCC0002",
+        "summary": "Reward accounting discrepancy analysis with duplicate-payment mitigation notes.",
+        "artifacts": ["reports/reward_routing_consistency.json"]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "reward_accounting",
+        "score": 88,
+        "actionOwner": "core_protocol_backlog",
+        "recommendedAction": "Confirm duplicate-payment mitigation and reconcile affected historical rewards.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      }
+    },
+    {
+      "submissionId": "sub_ingest_003",
+      "taskId": "task_mock_003",
+      "title": "Hive Chat Evidence Submission Friction",
+      "project": "task_node_core_product",
+      "rewardPft": 9000,
+      "submittedAt": "2026-06-18T16:03:00.000Z",
+      "contributor": {
+        "handle": "goodalexander",
+        "accountId": "acct_goodalexander",
+        "walletAddress": "rPo8GkmockGoodAlexander003"
+      },
+      "evidence": {
+        "cid": "QmMockEvidenceFriction003",
+        "txHash": "AAAABBBBCCCC0003",
+        "summary": "Specific product friction notes for finding where to submit evidence from Hive context.",
+        "artifacts": ["notes/hive_evidence_friction.md"]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "product_ux",
+        "score": 76,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Route to product UX backlog and connect Hive task cards to task submission actions.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      }
+    },
+    {
+      "submissionId": "sub_ingest_004",
+      "taskId": "task_mock_004",
+      "title": "Task Completion to Reward Routing Friction",
+      "project": "task_node_core_product",
+      "rewardPft": 8500,
+      "submittedAt": "2026-06-18T16:19:00.000Z",
+      "contributor": {
+        "handle": "boscovich",
+        "accountId": "acct_boscovich",
+        "walletAddress": "rDT8rfmockBoscovich004"
+      },
+      "evidence": {
+        "cid": "QmMockRewardFriction004",
+        "txHash": "AAAABBBBCCCC0004",
+        "summary": "Observed gap between completion, review request, and reward visibility.",
+        "artifacts": ["notes/task_reward_routing_friction.md"]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "operator_workflow",
+        "score": 74,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Clarify post-submission states and add visible reward-review progress.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      }
+    },
+    {
+      "submissionId": "sub_ingest_005",
+      "taskId": "task_mock_005",
+      "title": "Proposed Task Acceptance Edge Cases",
+      "project": "task_node_core_product",
+      "rewardPft": 7000,
+      "submittedAt": "2026-06-18T16:42:00.000Z",
+      "contributor": {
+        "handle": "donravle",
+        "accountId": "acct_donravle",
+        "walletAddress": "raL2kvmockDonravle005"
+      },
+      "evidence": {
+        "cid": "QmMockAcceptanceEdges005",
+        "txHash": "AAAABBBBCCCC0005",
+        "summary": "Documented acceptance/refusal edge cases and stale offer confusion.",
+        "artifacts": ["notes/proposed_task_acceptance_edges.md"]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_no_action",
+        "category": "docs",
+        "score": 68,
+        "actionOwner": "none",
+        "recommendedAction": "No action required; covered by existing task lifecycle docs.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      }
+    },
+    {
+      "submissionId": "sub_ingest_006",
+      "taskId": "task_mock_006",
+      "title": "Dashboard to Submission Workflow Friction",
+      "project": "task_node_core_product",
+      "rewardPft": 9000,
+      "submittedAt": "2026-06-18T17:01:00.000Z",
+      "contributor": {
+        "handle": "yuuki",
+        "accountId": "acct_yuuki",
+        "walletAddress": "rfCbJWmockYuuki006"
+      },
+      "evidence": {
+        "cid": "QmMockDashboardSubmission006",
+        "txHash": "AAAABBBBCCCC0006",
+        "summary": "Dashboard navigation notes showing where task evidence submission gets lost.",
+        "artifacts": ["notes/dashboard_submission_friction.md"]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "product_ux",
+        "score": 78,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Add direct submission entry point from dashboard task rows.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      }
+    },
+    {
+      "submissionId": "sub_ingest_007",
+      "taskId": "task_mock_007",
+      "title": "Reward Routing Workflow UX Gaps",
+      "project": "task_node_core_product",
+      "rewardPft": 11000,
+      "submittedAt": "2026-06-18T17:28:00.000Z",
+      "contributor": {
+        "handle": "node-d46cae0c",
+        "accountId": "acct_node_d46cae0c",
+        "walletAddress": "r322EAmockNode007"
+      },
+      "evidence": {
+        "cid": "QmMockRewardUx007",
+        "txHash": "AAAABBBBCCCC0007",
+        "summary": "Reward state visibility gap with screenshots and user-facing state labels.",
+        "artifacts": ["notes/reward_routing_ux_gaps.md"]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "product_ux",
+        "score": 81,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Expose reward-review worker state and payment pointer after reward issuance.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      }
+    },
+    {
+      "submissionId": "sub_ingest_008",
+      "taskId": "task_mock_008",
+      "title": "Evidence Submission Workflow UX Gaps",
+      "project": "task_node_core_product",
+      "rewardPft": 10000,
+      "submittedAt": "2026-06-18T18:00:00.000Z",
+      "contributor": {
+        "handle": "gmoney",
+        "accountId": "acct_gmoney",
+        "walletAddress": "rKTbxKmockGmoneyWallet001"
+      },
+      "evidence": {
+        "cid": "QmMockEvidenceUx008",
+        "txHash": "AAAABBBBCCCC0008",
+        "summary": "Evidence submission UX notes with repeated friction examples.",
+        "artifacts": ["notes/evidence_submission_ux_gaps.md"]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_no_action",
+        "category": "product_ux",
+        "score": 64,
+        "actionOwner": "none",
+        "recommendedAction": "No separate action; duplicate of existing evidence UX routing ticket.",
+        "integritySignals": ["duplicate_theme"],
+        "reviewer": "grashnuk"
+      }
+    },
+    {
+      "submissionId": "sub_ingest_009",
+      "taskId": "task_mock_009",
+      "title": "Compare Task Acceptance and Submission Screens",
+      "project": "task_node_core_product",
+      "rewardPft": 12000,
+      "submittedAt": "2026-06-18T18:23:00.000Z",
+      "contributor": {
+        "handle": "zoz",
+        "accountId": "acct_zoz",
+        "walletAddress": "rsS2Y6mockZozWallet002"
+      },
+      "evidence": {
+        "cid": "QmMockCompareScreens009",
+        "txHash": "AAAABBBBCCCC0009",
+        "summary": "Screen-by-screen comparison with concrete copy and affordance inconsistencies.",
+        "artifacts": ["notes/acceptance_submission_screen_compare.md"]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "product_ux",
+        "score": 79,
+        "actionOwner": "product_engineering_triage",
+        "recommendedAction": "Unify state labels and primary actions across accept and submit screens.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      }
+    },
+    {
+      "submissionId": "sub_ingest_010",
+      "taskId": "task_mock_010",
+      "title": "Hive Chat to Task Creation Friction",
+      "project": "task_node_core_product",
+      "rewardPft": 18000,
+      "submittedAt": "2026-06-18T18:47:00.000Z",
+      "contributor": {
+        "handle": "goodalexander",
+        "accountId": "acct_goodalexander",
+        "walletAddress": "rPo8GkmockGoodAlexander003"
+      },
+      "evidence": {
+        "cid": "QmMockHiveTaskCreation010",
+        "txHash": "AAAABBBBCCCC0010",
+        "summary": "Hive chat task creation friction with reproduction notes and desired product flow.",
+        "artifacts": ["notes/hive_chat_task_creation_friction.md"]
+      },
+      "review": {
+        "status": "verified",
+        "disposition": "reviewed_follow_up",
+        "category": "hive_product",
+        "score": 84,
+        "actionOwner": "hive_product_backlog",
+        "recommendedAction": "Add a structured task request affordance from Hive chat without conflating it with normal chat replies.",
+        "integritySignals": [],
+        "reviewer": "grashnuk"
+      }
+    }
+  ]
+}
