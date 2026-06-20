@@ -1,0 +1,157 @@
+{
+  "schema": "pf.orc.submitted_work_review_ledger.v1",
+  "updatedAt": "2026-06-20T02:45:00.000Z",
+  "records": [
+    {
+      "id": "swrev_action_001",
+      "taskId": "task_product_acceptance_friction",
+      "recipientHandle": "gmoney",
+      "recipientAccountId": "acct_gmoney_demo",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 84,
+      "reviewFlags": [],
+      "archiveAction": "needs_followup",
+      "timestamp": "2026-06-20T02:10:00.000Z",
+      "actionRequired": true,
+      "actionOwner": "product_engineering_triage",
+      "category": "operator_workflow",
+      "disposition": "reviewed_follow_up",
+      "priority": 72,
+      "recommendedAction": "Route the acceptance-state friction into the product backlog and tie it to the proposed-task visibility work.",
+      "source": {
+        "cid": "QmDemoAcceptanceFriction",
+        "txHash": "DEMO_ACCEPTANCE_FRICTION_TX"
+      }
+    },
+    {
+      "id": "swrev_action_002",
+      "taskId": "task_reward_projection_mismatch",
+      "recipientHandle": "zoz",
+      "recipientAccountId": "acct_zoz_demo",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 91,
+      "reviewFlags": [
+        "reward_projection_mismatch"
+      ],
+      "archiveAction": "hold",
+      "timestamp": "2026-06-20T02:12:00.000Z",
+      "actionRequired": true,
+      "actionOwner": "protocol_owner_review",
+      "category": "reward_accounting",
+      "disposition": "reviewed_follow_up",
+      "priority": 88,
+      "integritySignals": [
+        "projection_delta",
+        "reward_accounting_sensitive"
+      ],
+      "recommendedAction": "Confirm whether the reward projection mismatch is display-only or ledger-affecting before closing the review.",
+      "source": {
+        "cid": "QmDemoProjectionMismatch",
+        "txHash": "DEMO_PROJECTION_MISMATCH_TX"
+      }
+    },
+    {
+      "id": "swrev_action_003",
+      "taskId": "task_cross_wallet_cluster_candidate",
+      "recipientHandle": "unknown_cluster",
+      "recipientAccountId": "acct_cluster_demo",
+      "reviewer": "grashnuk",
+      "reviewStatus": "self_attested",
+      "score": 42,
+      "reviewFlags": [
+        "thin_evidence",
+        "cross_wallet_pattern"
+      ],
+      "archiveAction": "hold",
+      "timestamp": "2026-06-20T02:14:00.000Z",
+      "actionRequired": true,
+      "actionOwner": "nazgul_alex_review",
+      "category": "integrity_review",
+      "disposition": "reviewed_integrity_follow_up",
+      "priority": 96,
+      "integritySignals": [
+        "cross_wallet_pattern",
+        "thin_evidence",
+        "repeat_title_family"
+      ],
+      "recommendedAction": "Escalate as suspected-only evidence for human integrity review; recommend blacklist-if-proven, no clawback execution.",
+      "source": {
+        "cid": "QmDemoCrossWalletCluster",
+        "txHash": "DEMO_CROSS_WALLET_TX"
+      }
+    },
+    {
+      "id": "swrev_action_004",
+      "taskId": "task_hive_chat_delivery_gap",
+      "recipientHandle": "goodalexander",
+      "recipientAccountId": "acct_goodalexander_demo",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 79,
+      "reviewFlags": [],
+      "archiveAction": "needs_followup",
+      "timestamp": "2026-06-20T02:16:00.000Z",
+      "actionRequired": true,
+      "actionOwner": "product_engineering_triage",
+      "category": "hive_chat",
+      "disposition": "reviewed_follow_up",
+      "priority": 69,
+      "recommendedAction": "Add a product backlog item for visible contributor feedback delivery status and failure reasons.",
+      "source": {
+        "cid": "QmDemoHiveDeliveryGap",
+        "txHash": "DEMO_HIVE_DELIVERY_TX"
+      }
+    },
+    {
+      "id": "swrev_action_005",
+      "taskId": "task_completed_self_contained_docs",
+      "recipientHandle": "yuuki",
+      "recipientAccountId": "acct_yuuki_demo",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 93,
+      "reviewFlags": [],
+      "archiveAction": "archive_hot",
+      "timestamp": "2026-06-20T02:18:00.000Z",
+      "actionRequired": false,
+      "actionOwner": "none",
+      "category": "documentation",
+      "disposition": "reviewed_no_action",
+      "priority": 20,
+      "recommendedAction": "No action required; the task is self-contained and already verified.",
+      "source": {
+        "cid": "QmDemoSelfContainedDocs",
+        "txHash": "DEMO_SELF_CONTAINED_TX"
+      }
+    },
+    {
+      "id": "swrev_action_006",
+      "taskId": "task_unl_overlay_security_followup",
+      "recipientHandle": "boscovich",
+      "recipientAccountId": "acct_boscovich_demo",
+      "reviewer": "grashnuk",
+      "reviewStatus": "verified",
+      "score": 87,
+      "reviewFlags": [
+        "infrastructure_sensitive"
+      ],
+      "archiveAction": "hold",
+      "timestamp": "2026-06-20T02:20:00.000Z",
+      "actionRequired": true,
+      "actionOwner": "protocol_owner_review",
+      "category": "validator_operations",
+      "disposition": "reviewed_follow_up",
+      "priority": 82,
+      "integritySignals": [
+        "infrastructure_sensitive"
+      ],
+      "recommendedAction": "Review the Docker overlay in a non-production test lane before referencing it in operator runbooks.",
+      "source": {
+        "cid": "QmDemoUnlOverlay",
+        "txHash": "DEMO_UNL_OVERLAY_TX"
+      }
+    }
+  ]
+}

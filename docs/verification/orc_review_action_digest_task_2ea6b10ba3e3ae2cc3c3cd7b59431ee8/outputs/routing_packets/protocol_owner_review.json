@@ -1,0 +1,101 @@
+{
+  "schema": "pf.orc.review_action_digest.v1",
+  "packetType": "owner_action_routing_packet",
+  "generatedAt": "2026-06-20T02:31:03.872Z",
+  "generatedBy": "grashnuk",
+  "sourceLedgerSchema": "pf.orc.submitted_work_review_ledger.v1",
+  "actionOwner": "protocol_owner_review",
+  "summary": {
+    "totalItems": 2,
+    "byCategory": {
+      "reward_accounting": 1,
+      "validator_operations": 1
+    },
+    "byDisposition": {
+      "reviewed_follow_up": 2
+    },
+    "integritySignalFrequencies": {
+      "projection_delta": 1,
+      "reward_accounting_sensitive": 1,
+      "reward_projection_mismatch": 1,
+      "infrastructure_sensitive": 1
+    },
+    "highestPriority": 88
+  },
+  "tasks": [
+    {
+      "reviewId": "swrev_action_002",
+      "taskId": "task_reward_projection_mismatch",
+      "contributor": {
+        "handle": "zoz",
+        "accountId": "acct_zoz_demo",
+        "walletAddress": ""
+      },
+      "reviewStatus": "verified",
+      "disposition": "reviewed_follow_up",
+      "category": "reward_accounting",
+      "priority": 88,
+      "integritySignals": [
+        "projection_delta",
+        "reward_accounting_sensitive",
+        "reward_projection_mismatch"
+      ],
+      "recommendedAction": "Confirm whether the reward projection mismatch is display-only or ledger-affecting before closing the review.",
+      "source": {
+        "cid": "QmDemoProjectionMismatch",
+        "txHash": "DEMO_PROJECTION_MISMATCH_TX"
+      },
+      "feedbackCompatiblePayload": {
+        "recipientAccountId": "acct_zoz_demo",
+        "messageBody": "Follow-up on reviewed task task_reward_projection_mismatch.\nDisposition: reviewed_follow_up.\nRecommended action: Confirm whether the reward projection mismatch is display-only or ledger-affecting before closing the review.",
+        "metadata": {
+          "schema": "pf.orc.review_action_digest.v1",
+          "sourceReviewId": "swrev_action_002",
+          "sourceTaskId": "task_reward_projection_mismatch",
+          "actionOwner": "protocol_owner_review",
+          "category": "reward_accounting",
+          "integritySignals": [
+            "projection_delta",
+            "reward_accounting_sensitive",
+            "reward_projection_mismatch"
+          ]
+        }
+      }
+    },
+    {
+      "reviewId": "swrev_action_006",
+      "taskId": "task_unl_overlay_security_followup",
+      "contributor": {
+        "handle": "boscovich",
+        "accountId": "acct_boscovich_demo",
+        "walletAddress": ""
+      },
+      "reviewStatus": "verified",
+      "disposition": "reviewed_follow_up",
+      "category": "validator_operations",
+      "priority": 82,
+      "integritySignals": [
+        "infrastructure_sensitive"
+      ],
+      "recommendedAction": "Review the Docker overlay in a non-production test lane before referencing it in operator runbooks.",
+      "source": {
+        "cid": "QmDemoUnlOverlay",
+        "txHash": "DEMO_UNL_OVERLAY_TX"
+      },
+      "feedbackCompatiblePayload": {
+        "recipientAccountId": "acct_boscovich_demo",
+        "messageBody": "Follow-up on reviewed task task_unl_overlay_security_followup.\nDisposition: reviewed_follow_up.\nRecommended action: Review the Docker overlay in a non-production test lane before referencing it in operator runbooks.",
+        "metadata": {
+          "schema": "pf.orc.review_action_digest.v1",
+          "sourceReviewId": "swrev_action_006",
+          "sourceTaskId": "task_unl_overlay_security_followup",
+          "actionOwner": "protocol_owner_review",
+          "category": "validator_operations",
+          "integritySignals": [
+            "infrastructure_sensitive"
+          ]
+        }
+      }
+    }
+  ]
+}

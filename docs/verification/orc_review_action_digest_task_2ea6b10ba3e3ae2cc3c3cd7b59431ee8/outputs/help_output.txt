@@ -1,0 +1,9 @@
+Usage:
+  node scripts/orc-review-action-digest.mjs batch --ledger <file> --out <dir> [--generated-by <handle>]
+  node scripts/orc-review-action-digest.mjs generate --ledger <file> [--generated-by <handle>]
+
+Commands:
+  batch     Write digest.json, discord_briefing.md, and routing_packets/<owner>.json files.
+  generate  Print the action digest bundle to stdout without writing files.
+
+The ledger must contain records[] compatible with pf.orc.submitted_work_review_ledger.v1.
