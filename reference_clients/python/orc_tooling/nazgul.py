@@ -167,6 +167,24 @@ def record_orc_work_journal(
     )
 
 
+def safe_record_orc_work_journal(
+    record: dict[str, Any],
+    *,
+    database_url: str | None = None,
+    runner: Runner = subprocess.run,
+) -> dict[str, Any]:
+    try:
+        return record_orc_work_journal(record, database_url=database_url, runner=runner)
+    except Exception as exc:
+        return redact_secrets({
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+            "taskAction": _safe_text(record.get("taskAction") or record.get("task_action"), 120),
+            "sourceTaskId": _safe_text(record.get("sourceTaskId") or record.get("source_task_id"), 180),
+            "secretPrinted": False,
+        })
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -788,7 +806,7 @@ FROM inserted;
         metadata=metadata,
     )
     if journal:
-        interaction["workJournal"] = record_orc_work_journal(journal, database_url=database_url, runner=runner)
+        interaction["workJournal"] = safe_record_orc_work_journal(journal, database_url=database_url, runner=runner)
     return redact_secrets(interaction)
 
 
