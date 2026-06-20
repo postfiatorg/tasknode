@@ -441,3 +441,8 @@ chat message with `kind=orc_hive_signal` metadata. It does not write
 conversation, task id, reviewer, reason, and exact message body: the script
 returns the existing verified chat row instead of appending a duplicate Orc
 message.
+
+The Python wrapper fails closed unless the Node script returns valid JSON. A
+zero-exit process with malformed stdout returns `ok=false` and the CLI exits
+non-zero, so an Orc cannot claim a direct message was sent without a parsed
+delivery contract.

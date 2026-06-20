@@ -2660,6 +2660,23 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["secretPrinted"], False)
         self.assertIn("orc-hive-signal.mjs", result["command"])
 
+    def test_run_hive_signal_rejects_malformed_json_output(self):
+        def fake_runner(command, **kwargs):
+            return SimpleNamespace(returncode=0, stdout="sent maybe", stderr="")
+
+        result = run_hive_signal(
+            task_id="task_test",
+            message="Direct note.",
+            tasknode_repo="/repo/tasknodeofficial",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["error"], "orc_hive_signal_invalid_json")
+        self.assertEqual(result["returnCode"], 0)
+        self.assertEqual(result["stdout"], "sent maybe")
+        self.assertEqual(result["secretPrinted"], False)
+
     def test_signal_user_updates_review_state_after_verified_delivery(self):
         existing = {
             "task_id": "task_source",
