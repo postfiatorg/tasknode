@@ -159,6 +159,10 @@ Reconciliation vs existing config:
 
 ## Public artifact
 
+Public PR: https://github.com/postfiatorg/tasknodeofficial/pull/138
+
+Commit: https://github.com/postfiatorg/tasknodeofficial/commit/388d73923a1d1173a948290edc564efbf60a8377
+
 Branch: `codex/routing-suppression-config-generator`
 
 No deploy was performed.
