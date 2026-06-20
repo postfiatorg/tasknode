@@ -1,0 +1,9 @@
+Usage:
+  node scripts/orc-verified-messaging-bridge.mjs deliver --messages <messages.json> --contributors <contributors.json> --out <dir> [--mode mock] [--generated-by grashnuk] [--generated-at ISO] [--max-attempts 3] [--base-delay-ms 250] [--diagnostic]
+
+Resolves Hive contributors by account id or wallet, posts a Hive Chat message through the selected transport, re-fetches the posted message, and writes a structured delivery log.
+
+Modes:
+  mock  Uses the local contributor fixture as the Hive Chat transport. This is the default and does not call live Hive Chat.
+
+The mock transport records conversation lookup, post, retry, retrieval, and verification stages. It does not sign transactions, move funds, apply enforcement, ban users, or send live messages. Live Hive Chat sending must be wired through a separately reviewed connector.

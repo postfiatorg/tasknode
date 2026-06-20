@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "schema": "pf.orc.verified_hive_messaging_bridge.v1",
+  "taskId": "task_c6a991a7ef8956a53c3b593e93cbc2a1",
+  "mode": "mock",
+  "outputDir": "docs/verification/verified_orc_messaging_bridge_task_c6a991a7ef8956a53c3b593e93cbc2a1/outputs",
+  "deliveryLogPath": "docs/verification/verified_orc_messaging_bridge_task_c6a991a7ef8956a53c3b593e93cbc2a1/outputs/delivery_log.json",
+  "discordSummaryPath": "docs/verification/verified_orc_messaging_bridge_task_c6a991a7ef8956a53c3b593e93cbc2a1/outputs/discord_summary.md",
+  "totalMessages": 5,
+  "deliveredVerified": 2,
+  "failed": 3,
+  "byStatus": {
+    "delivered_verified": 2,
+    "failed": 3
+  },
+  "byFailureStage": {
+    "none": 2,
+    "conversation_lookup": 1,
+    "message_post": 1,
+    "message_retrieval": 1
+  },
+  "retriedMessages": 2
+}
