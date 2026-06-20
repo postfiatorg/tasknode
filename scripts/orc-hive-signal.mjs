@@ -293,6 +293,53 @@ export async function verifyOrcHiveSignalDelivery({
   return publicDeliverySummary(row);
 }
 
+export async function findExistingOrcHiveSignal({
+  accountId = "",
+  conversationId = "",
+  taskId = "",
+  message = "",
+  reviewerHandle = "",
+  reviewerWallet = "",
+  reason = "",
+  queryImpl = query,
+} = {}) {
+  const normalizedAccountId = safeId(accountId);
+  const normalizedConversationId = safeId(conversationId);
+  const normalizedTaskId = safeId(taskId);
+  const normalizedMessage = String(message || "").trim();
+  if (!normalizedAccountId || !normalizedConversationId || !normalizedTaskId || !normalizedMessage) {
+    return null;
+  }
+
+  const result = await queryImpl(
+    `
+      SELECT id, account_id, conversation_id, role, body, metadata_json, created_at
+      FROM chat_messages
+      WHERE account_id = $1
+        AND conversation_id = $2
+        AND role = 'assistant'
+        AND body = $3
+        AND metadata_json->>'kind' = 'orc_hive_signal'
+        AND metadata_json->>'taskId' = $4
+        AND COALESCE(metadata_json->>'reviewerHandle', '') = $5
+        AND COALESCE(metadata_json->>'reviewerWallet', '') = $6
+        AND COALESCE(metadata_json->>'reason', '') = $7
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `,
+    [
+      normalizedAccountId,
+      normalizedConversationId,
+      normalizedMessage,
+      normalizedTaskId,
+      safeText(reviewerHandle, 120),
+      safeText(reviewerWallet, 120),
+      safeText(reason, 500),
+    ]
+  );
+  return result.rows[0] ? publicDeliverySummary(result.rows[0]) : null;
+}
+
 export async function sendOrcHiveSignal({
   taskId,
   message,
@@ -365,6 +412,40 @@ export async function sendOrcHiveSignal({
       );
     }
     finalConversationId = hiveConversation.conversation.id;
+  }
+
+  const findExistingSignalImpl = deps.findExistingSignalImpl || findExistingOrcHiveSignal;
+  const existingSignal = await findExistingSignalImpl({
+    accountId: target.accountId,
+    conversationId: finalConversationId,
+    taskId: normalizedTaskId,
+    message: normalizedMessage,
+    reviewerHandle,
+    reviewerWallet,
+    reason,
+    queryImpl: deps.queryImpl || query,
+  });
+  if (existingSignal?.chatMessageId) {
+    const verifyDeliveryImpl = deps.verifyDeliveryImpl || verifyOrcHiveSignalDelivery;
+    const delivery = await verifyDeliveryImpl({
+      accountId: target.accountId,
+      conversationId: finalConversationId,
+      chatMessageId: existingSignal.chatMessageId,
+      reviewerHandle,
+      queryImpl: deps.queryImpl || query,
+    });
+    return {
+      ...baseResult,
+      dryRun: false,
+      executed: true,
+      idempotent: true,
+      reason: "existing_orc_hive_signal",
+      conversationId: finalConversationId,
+      chatMessageId: existingSignal.chatMessageId,
+      deliveryVerified: true,
+      visibleInHiveChat: true,
+      delivery,
+    };
   }
 
   const signalId = `orcsignal_${randomUUID()}`;
