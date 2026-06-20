@@ -88,7 +88,41 @@ assert.equal(delivered.ok, true);
 assert.equal(delivered.executed, true);
 assert.equal(delivered.boardManagerMessageId, "boardmsg_test");
 assert.equal(delivered.chatMessageId, "msg_boardmsg_test_assistant");
+assert.equal(delivered.conversationId, "account_acct_owner_hive");
 assert.equal(delivered.followupId, "");
+
+const incompleteDelivery = await sendOrcHiveFollowup({
+  taskId: "task_test",
+  message: "Following up on this rewarded Network Task. No action is needed.",
+  execute: true,
+  deps: {
+    databaseEnabledImpl: () => true,
+    queryImpl: async (_sql, params) => ({
+      rows: [{
+        task_id: params[0],
+        account_id: "acct_owner",
+        subject_wallet: "rOwner",
+        status: "rewarded",
+        title: "Rewarded task",
+        task_kind: "network",
+        reward_actual_pft: "12.5",
+        updated_at: "2026-06-20T00:00:00Z",
+      }],
+    }),
+    executeBoardManagerDecisionImpl: async () => ({
+      ok: true,
+      result: {
+        executed: true,
+        messageId: "boardmsg_missing_chat",
+        accountId: "acct_owner",
+        conversationId: "account_acct_owner_hive",
+      },
+    }),
+  },
+});
+assert.equal(incompleteDelivery.ok, false);
+assert.equal(incompleteDelivery.executed, false);
+assert.equal(incompleteDelivery.error, "orc_hive_followup_delivery_contract_incomplete");
 
 const skipped = await sendOrcHiveFollowup({
   taskId: "task_test",

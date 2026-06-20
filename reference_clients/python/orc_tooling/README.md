@@ -428,7 +428,9 @@ The Python wrapper fails closed unless the Node script returns a valid JSON
 object with a boolean `ok`. A zero-exit process with malformed stdout,
 non-object JSON, or stringly `ok` returns `ok=false` and the CLI exits non-zero,
 so an Orc cannot claim a Board-Manager-routed message was sent without a parsed
-delivery contract.
+delivery contract. Executed follow-ups additionally require `executed=true`, a
+concrete `chatMessageId`, and a concrete `conversationId`; otherwise both the
+Node script and Python wrapper report `orc_hive_followup_delivery_contract_incomplete`.
 
 ## Send Direct Orc Hive Signals
 
