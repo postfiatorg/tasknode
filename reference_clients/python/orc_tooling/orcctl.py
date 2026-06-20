@@ -1092,15 +1092,23 @@ def signal_user(
         database_url=database_url,
     )
     chat_message_id = _safe_text(result.get("chatMessageId") or result.get("chat_message_id"), 240)
+    conversation_id = _safe_text(result.get("conversationId") or result.get("conversation_id"), 240)
     visible = bool(result.get("visibleInHiveChat") or result.get("visible_in_hive_chat"))
-    if not (result.get("ok") and result.get("executed") and visible and chat_message_id):
+    if not (result.get("ok") and result.get("executed") and visible and chat_message_id and conversation_id):
+        if result.get("ok") and result.get("executed") and visible and chat_message_id:
+            return {
+                **result,
+                "ok": False,
+                "error": "orc_hive_signal_delivery_contract_incomplete",
+                "secretPrinted": False,
+            }
         return result
 
     existing = get_review_state(task_id, database_url=database_url) or {"task_id": task_id}
     signal_metadata = {
         "user_signal_status": "sent",
         "user_signal_message_id": chat_message_id,
-        "user_signal_conversation_id": _safe_text(result.get("conversationId") or result.get("conversation_id"), 240),
+        "user_signal_conversation_id": conversation_id,
         "user_signal_sent_at": _utcnow(),
         "user_signal_reason": _safe_text(reason, 1000),
         "user_signal_idempotent": bool(result.get("idempotent")),

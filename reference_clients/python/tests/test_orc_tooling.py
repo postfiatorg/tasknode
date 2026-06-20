@@ -3061,6 +3061,26 @@ class OrcToolingTests(unittest.TestCase):
         upsert_mock.assert_not_called()
         journal_mock.assert_not_called()
 
+    def test_signal_user_requires_conversation_id_before_review_state_update(self):
+        with patch("orc_tooling.orcctl.run_hive_signal", return_value={
+            "ok": True,
+            "executed": True,
+            "visibleInHiveChat": True,
+            "chatMessageId": "msg_signal",
+            "secretPrinted": False,
+        }), \
+            patch("orc_tooling.orcctl.get_review_state") as get_mock, \
+            patch("orc_tooling.orcctl.upsert_review_state") as upsert_mock, \
+            patch("orc_tooling.orcctl.append_orc_work_journal") as journal_mock:
+            result = signal_user("task_source", message="Direct note.", execute=True)
+
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["error"], "orc_hive_signal_delivery_contract_incomplete")
+        self.assertNotIn("reviewState", result)
+        get_mock.assert_not_called()
+        upsert_mock.assert_not_called()
+        journal_mock.assert_not_called()
+
     def test_signal_user_idempotent_delivery_updates_review_state(self):
         existing = {
             "task_id": "task_source",
