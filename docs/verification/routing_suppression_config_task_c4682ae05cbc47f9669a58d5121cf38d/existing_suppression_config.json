@@ -1,0 +1,120 @@
+{
+  "schema": "pf.orc.contributor_routing_suppression_config.v1",
+  "generatedAt": "2026-06-19T03:45:00.000Z",
+  "generatedBy": "grashnuk",
+  "mode": "recommend_only_no_enforcement",
+  "dryRunOnly": true,
+  "operationalUseAllowed": false,
+  "note": "Prior dry-run-only sample config used to prove reconciliation.",
+  "summary": {
+    "suppressionEntryCount": 3
+  },
+  "entries": [
+    {
+      "contributorKey": "rLowQuality333333333333333333333",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "accountId": "acct_low_quality",
+      "handle": "lowquality",
+      "status": "routing_suppression_recommended",
+      "mode": "recommend_only_no_enforcement",
+      "qualityMetrics": {
+        "verifiedRatio": 0.2
+      },
+      "thresholdFailures": [
+        {
+          "rule": "repeated_unverifiable_submissions",
+          "taskIds": [
+            "task_low_quality_002",
+            "task_low_quality_003",
+            "task_low_quality_004",
+            "task_low_quality_005"
+          ]
+        },
+        {
+          "rule": "consecutive_unverifiable_submissions",
+          "taskIds": [
+            "task_low_quality_002",
+            "task_low_quality_003",
+            "task_low_quality_004",
+            "task_low_quality_005"
+          ]
+        },
+        {
+          "rule": "low_verified_to_total_ratio",
+          "taskIds": [
+            "task_low_quality_001",
+            "task_low_quality_002",
+            "task_low_quality_003",
+            "task_low_quality_004",
+            "task_low_quality_005"
+          ]
+        }
+      ],
+      "supportingTaskIds": [
+        "task_low_quality_001",
+        "task_low_quality_002",
+        "task_low_quality_003",
+        "task_low_quality_004",
+        "task_low_quality_005"
+      ],
+      "expiresAt": "2026-07-03T03:45:00.000Z",
+      "requiresHumanApproval": true,
+      "operationalUseAllowed": false
+    },
+    {
+      "contributorKey": "rRefusedOperator4444444444444444",
+      "walletAddress": "rRefusedOperator4444444444444444",
+      "accountId": "acct_refused_operator",
+      "handle": "refusedoperator",
+      "status": "routing_suppression_recommended",
+      "mode": "recommend_only_no_enforcement",
+      "qualityMetrics": {
+        "verifiedRatio": 0.5
+      },
+      "thresholdFailures": [
+        {
+          "rule": "recent_refusals",
+          "taskIds": [
+            "task_refused_002"
+          ]
+        }
+      ],
+      "supportingTaskIds": [
+        "task_refused_001",
+        "task_refused_002"
+      ],
+      "expiresAt": "2026-07-03T03:45:00.000Z",
+      "requiresHumanApproval": true,
+      "operationalUseAllowed": false
+    },
+    {
+      "contributorKey": "rLegacyStale8888888888888888888",
+      "walletAddress": "rLegacyStale8888888888888888888",
+      "accountId": "acct_legacy_stale",
+      "handle": "legacystale",
+      "status": "routing_suppression_recommended",
+      "mode": "recommend_only_no_enforcement",
+      "qualityMetrics": {
+        "verifiedRatio": 0.25
+      },
+      "thresholdFailures": [
+        {
+          "rule": "low_verified_to_total_ratio",
+          "taskIds": [
+            "task_legacy_stale_001",
+            "task_legacy_stale_002",
+            "task_legacy_stale_003"
+          ]
+        }
+      ],
+      "supportingTaskIds": [
+        "task_legacy_stale_001",
+        "task_legacy_stale_002",
+        "task_legacy_stale_003"
+      ],
+      "expiresAt": "2026-07-03T03:45:00.000Z",
+      "requiresHumanApproval": true,
+      "operationalUseAllowed": false
+    }
+  ]
+}

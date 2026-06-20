@@ -1,0 +1,285 @@
+{
+  "schema": "pf.orc.contributor_quality_routing_report.v1",
+  "generatedAt": "2026-06-20T03:45:00.000Z",
+  "generatedBy": "grashnuk",
+  "sourceLedgerSchema": "pf.orc.submitted_work_review_ledger.v1",
+  "enforcementMode": "recommend_only_no_enforcement",
+  "note": "Sample report for routing-suppression config generation. It recommends human routing review only.",
+  "thresholds": {
+    "minTotalForRatio": 3,
+    "minVerifiedRatio": 0.3,
+    "maxUnverifiable": 2,
+    "maxRefusals": 1,
+    "refusalWindowDays": 7,
+    "maxConsecutiveUnverifiable": 2
+  },
+  "summary": {
+    "totalRecords": 26,
+    "contributors": 7,
+    "flaggedForRoutingReview": 5,
+    "noActionRecommended": 2,
+    "violationCounts": {
+      "repeated_unverifiable_submissions": 3,
+      "consecutive_unverifiable_submissions": 2,
+      "low_verified_to_total_ratio": 3,
+      "recent_refusals": 1,
+      "self_attested_only_pattern": 1
+    }
+  },
+  "flaggedContributors": [
+    {
+      "contributorKey": "rLowQuality333333333333333333333",
+      "accountId": "acct_low_quality",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "handle": "lowquality",
+      "recommendation": "routing_review_recommended",
+      "enforcementMode": "recommend_only_no_enforcement",
+      "metrics": {
+        "total": 5,
+        "verified": 1,
+        "unverifiable": 4,
+        "selfAttested": 0,
+        "refused": 0,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0.2,
+        "refusalCountWindow": 0,
+        "maxConsecutiveUnverifiable": 4
+      },
+      "violations": [
+        {
+          "rule": "repeated_unverifiable_submissions",
+          "observed": 4,
+          "threshold": 2,
+          "taskIds": [
+            "task_low_quality_002",
+            "task_low_quality_003",
+            "task_low_quality_004",
+            "task_low_quality_005"
+          ]
+        },
+        {
+          "rule": "consecutive_unverifiable_submissions",
+          "observed": 4,
+          "threshold": 2,
+          "taskIds": [
+            "task_low_quality_002",
+            "task_low_quality_003",
+            "task_low_quality_004",
+            "task_low_quality_005"
+          ]
+        },
+        {
+          "rule": "low_verified_to_total_ratio",
+          "observed": 0.2,
+          "threshold": 0.3,
+          "taskIds": [
+            "task_low_quality_001",
+            "task_low_quality_002",
+            "task_low_quality_003",
+            "task_low_quality_004",
+            "task_low_quality_005"
+          ]
+        }
+      ],
+      "supportingTaskIds": [
+        "task_low_quality_001",
+        "task_low_quality_002",
+        "task_low_quality_003",
+        "task_low_quality_004",
+        "task_low_quality_005"
+      ]
+    },
+    {
+      "contributorKey": "rRefusedOperator4444444444444444",
+      "accountId": "acct_refused_operator",
+      "walletAddress": "rRefusedOperator4444444444444444",
+      "handle": "refusedoperator",
+      "recommendation": "routing_review_recommended",
+      "enforcementMode": "recommend_only_no_enforcement",
+      "metrics": {
+        "total": 3,
+        "verified": 1,
+        "unverifiable": 0,
+        "selfAttested": 0,
+        "refused": 2,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0.3333,
+        "refusalCountWindow": 2,
+        "maxConsecutiveUnverifiable": 0
+      },
+      "violations": [
+        {
+          "rule": "recent_refusals",
+          "observed": 2,
+          "threshold": 1,
+          "windowDays": 7,
+          "taskIds": [
+            "task_refused_002",
+            "task_refused_003"
+          ]
+        }
+      ],
+      "supportingTaskIds": [
+        "task_refused_001",
+        "task_refused_002",
+        "task_refused_003"
+      ]
+    },
+    {
+      "contributorKey": "rThinReview555555555555555555555",
+      "accountId": "acct_thin_review",
+      "walletAddress": "rThinReview555555555555555555555",
+      "handle": "thinreviewer",
+      "recommendation": "routing_review_recommended",
+      "enforcementMode": "recommend_only_no_enforcement",
+      "metrics": {
+        "total": 4,
+        "verified": 0,
+        "unverifiable": 3,
+        "selfAttested": 1,
+        "refused": 0,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0,
+        "refusalCountWindow": 0,
+        "maxConsecutiveUnverifiable": 3
+      },
+      "violations": [
+        {
+          "rule": "repeated_unverifiable_submissions",
+          "observed": 3,
+          "threshold": 2,
+          "taskIds": [
+            "task_thin_review_001",
+            "task_thin_review_002",
+            "task_thin_review_003"
+          ]
+        },
+        {
+          "rule": "low_verified_to_total_ratio",
+          "observed": 0,
+          "threshold": 0.3,
+          "taskIds": [
+            "task_thin_review_001",
+            "task_thin_review_002",
+            "task_thin_review_003",
+            "task_thin_review_004"
+          ]
+        }
+      ],
+      "supportingTaskIds": [
+        "task_thin_review_001",
+        "task_thin_review_002",
+        "task_thin_review_003",
+        "task_thin_review_004"
+      ]
+    },
+    {
+      "contributorKey": "rClusterWallet6666666666666666666",
+      "accountId": "acct_cluster_wallet",
+      "walletAddress": "rClusterWallet6666666666666666666",
+      "handle": "clusterwallet",
+      "recommendation": "routing_review_recommended",
+      "enforcementMode": "recommend_only_no_enforcement",
+      "metrics": {
+        "total": 6,
+        "verified": 1,
+        "unverifiable": 5,
+        "selfAttested": 0,
+        "refused": 0,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0.1667,
+        "refusalCountWindow": 0,
+        "maxConsecutiveUnverifiable": 3
+      },
+      "violations": [
+        {
+          "rule": "repeated_unverifiable_submissions",
+          "observed": 5,
+          "threshold": 2,
+          "taskIds": [
+            "task_cluster_wallet_002",
+            "task_cluster_wallet_003",
+            "task_cluster_wallet_004",
+            "task_cluster_wallet_005",
+            "task_cluster_wallet_006"
+          ]
+        },
+        {
+          "rule": "consecutive_unverifiable_submissions",
+          "observed": 3,
+          "threshold": 2,
+          "taskIds": [
+            "task_cluster_wallet_004",
+            "task_cluster_wallet_005",
+            "task_cluster_wallet_006"
+          ]
+        },
+        {
+          "rule": "low_verified_to_total_ratio",
+          "observed": 0.1667,
+          "threshold": 0.3,
+          "taskIds": [
+            "task_cluster_wallet_001",
+            "task_cluster_wallet_002",
+            "task_cluster_wallet_003",
+            "task_cluster_wallet_004",
+            "task_cluster_wallet_005",
+            "task_cluster_wallet_006"
+          ]
+        }
+      ],
+      "supportingTaskIds": [
+        "task_cluster_wallet_001",
+        "task_cluster_wallet_002",
+        "task_cluster_wallet_003",
+        "task_cluster_wallet_004",
+        "task_cluster_wallet_005",
+        "task_cluster_wallet_006"
+      ]
+    },
+    {
+      "contributorKey": "rSelfAttested7777777777777777777",
+      "accountId": "acct_self_attested",
+      "walletAddress": "rSelfAttested7777777777777777777",
+      "handle": "selfattested",
+      "recommendation": "routing_review_recommended",
+      "enforcementMode": "recommend_only_no_enforcement",
+      "metrics": {
+        "total": 4,
+        "verified": 0,
+        "unverifiable": 0,
+        "selfAttested": 4,
+        "refused": 0,
+        "cancelled": 0,
+        "other": 0,
+        "verifiedRatio": 0,
+        "refusalCountWindow": 0,
+        "maxConsecutiveUnverifiable": 0
+      },
+      "violations": [
+        {
+          "rule": "self_attested_only_pattern",
+          "observed": 4,
+          "threshold": 2,
+          "taskIds": [
+            "task_self_attested_001",
+            "task_self_attested_002",
+            "task_self_attested_003",
+            "task_self_attested_004"
+          ]
+        }
+      ],
+      "supportingTaskIds": [
+        "task_self_attested_001",
+        "task_self_attested_002",
+        "task_self_attested_003",
+        "task_self_attested_004"
+      ]
+    }
+  ],
+  "contributors": []
+}

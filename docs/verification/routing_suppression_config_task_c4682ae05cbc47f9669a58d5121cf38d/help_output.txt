@@ -1,0 +1,14 @@
+Usage:
+  node scripts/orc-contributor-routing-suppression-config.mjs generate --report <file> [--out <file>] [--dry-run] [options]
+  node scripts/orc-contributor-routing-suppression-config.mjs reconcile --existing-config <file> --report <file> [--out <file>] [options]
+  node scripts/orc-contributor-routing-suppression-config.mjs batch --report <file> --existing-config <file> --out <dir> [options]
+
+Options:
+  --generated-by <handle>         Default: grashnuk
+  --generated-at <iso timestamp>  Default: current time
+  --expiry-days <n>               Default: 14
+  --expires-at <iso timestamp>    Overrides --expiry-days
+
+The script consumes pf.orc.contributor_quality_routing_report.v1 reports and produces pf.orc.contributor_routing_suppression_config.v1
+artifacts. It is intentionally recommend-only: it never mutates live routing,
+executes bans, signs enforcement transactions, clawbacks funds, or deploys.
