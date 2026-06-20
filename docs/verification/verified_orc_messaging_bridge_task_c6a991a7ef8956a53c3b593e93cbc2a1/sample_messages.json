@@ -1,0 +1,51 @@
+{
+  "messages": [
+    {
+      "id": "msg_reward_visibility_followup",
+      "recipientAccountId": "acct_gmoney_primary",
+      "recipientWalletAddress": "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+      "body": "Following up on your rewarded task: the reward visibility issue was triaged and routed as product work.",
+      "metadata": {
+        "sourceTaskId": "task_mock_reward_visibility",
+        "sourceReviewId": "orcrev_mock_001"
+      }
+    },
+    {
+      "id": "msg_zoz_delivery_retry",
+      "recipientWalletAddress": "rsS2Y6pQmdXUuHpgemrGMvxu5cVdLjjaXRZ",
+      "body": "Following up on your rewarded task: the Hive Chat delivery path is being verified with retry diagnostics.",
+      "metadata": {
+        "sourceTaskId": "task_mock_hive_delivery_retry",
+        "sourceReviewId": "orcrev_mock_002"
+      }
+    },
+    {
+      "id": "msg_agticorp_missing_conversation",
+      "recipientAccountId": "acct_agticorp_primary",
+      "body": "Following up on your rewarded task: the system could not find a Hive conversation for this account.",
+      "metadata": {
+        "sourceTaskId": "task_mock_conversation_missing",
+        "sourceReviewId": "orcrev_mock_003"
+      }
+    },
+    {
+      "id": "msg_donravle_http_error",
+      "recipientAccountId": "acct_donravle_primary",
+      "recipientWalletAddress": "raL2kvFQfXWrmT7n4UxvpKwrgBQQWFGwzd",
+      "body": "Following up on your rewarded task: posting failed and the bridge recorded the upstream HTTP errors.",
+      "metadata": {
+        "sourceTaskId": "task_mock_post_http_error",
+        "sourceReviewId": "orcrev_mock_004"
+      }
+    },
+    {
+      "id": "msg_yuuki_retrieval_failure",
+      "recipientWalletAddress": "rfCbJWtYBZ6ntX7UuYfQK8Ut3T9K51z96h",
+      "body": "Following up on your rewarded task: posting succeeded but retrieval verification failed.",
+      "metadata": {
+        "sourceTaskId": "task_mock_retrieval_failure",
+        "sourceReviewId": "orcrev_mock_005"
+      }
+    }
+  ]
+}

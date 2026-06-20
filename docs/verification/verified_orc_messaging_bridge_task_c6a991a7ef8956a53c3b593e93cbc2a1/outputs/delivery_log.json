@@ -1,0 +1,429 @@
+{
+  "ok": true,
+  "schema": "pf.orc.verified_hive_messaging_bridge.v1",
+  "taskId": "task_c6a991a7ef8956a53c3b593e93cbc2a1",
+  "generatedAt": "2026-06-20T00:00:00.000Z",
+  "generatedBy": "grashnuk",
+  "mode": "mock",
+  "retryPolicy": {
+    "maxAttempts": 3,
+    "baseDelayMs": 250,
+    "backoff": "exponential_without_sleep_in_mock_mode"
+  },
+  "inputs": {
+    "messages": "docs/verification/verified_orc_messaging_bridge_task_c6a991a7ef8956a53c3b593e93cbc2a1/sample_messages.json",
+    "contributors": "docs/verification/verified_orc_messaging_bridge_task_c6a991a7ef8956a53c3b593e93cbc2a1/sample_contributors.json"
+  },
+  "summary": {
+    "totalMessages": 5,
+    "deliveredVerified": 2,
+    "failed": 3,
+    "byStatus": {
+      "delivered_verified": 2,
+      "failed": 3
+    },
+    "byFailureStage": {
+      "none": 2,
+      "conversation_lookup": 1,
+      "message_post": 1,
+      "message_retrieval": 1
+    },
+    "retriedMessages": 2
+  },
+  "records": [
+    {
+      "messageId": "msg_reward_visibility_followup",
+      "sourceTaskId": "task_mock_reward_visibility",
+      "sourceReviewId": "orcrev_mock_001",
+      "recipient": {
+        "accountId": "acct_gmoney_primary",
+        "walletAddress": "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3"
+      },
+      "resolvedBy": "account_id",
+      "target": {
+        "id": "contrib_gmoney",
+        "handle": "gmoney",
+        "accountId": "acct_gmoney_primary",
+        "walletAddress": "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+        "conversationId": "hive_convo_gmoney_rewarded_work"
+      },
+      "conversationLookup": {
+        "ok": true,
+        "method": "account_id",
+        "httpStatus": 200,
+        "durationMs": 11,
+        "conversationId": "hive_convo_gmoney_rewarded_work",
+        "conversationTitle": "Hive follow-up: @gmoney",
+        "target": {
+          "id": "contrib_gmoney",
+          "handle": "gmoney",
+          "accountId": "acct_gmoney_primary",
+          "walletAddress": "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+          "conversationId": "hive_convo_gmoney_rewarded_work"
+        },
+        "response": {
+          "conversationId": "hive_convo_gmoney_rewarded_work",
+          "handle": "gmoney",
+          "source": "account_id_directory"
+        }
+      },
+      "finalStatus": "delivered_verified",
+      "failureStage": "none",
+      "failureCode": "",
+      "error": "",
+      "postedMessageId": "hmsg_gmoney_verified_001",
+      "postAttempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "httpStatus": 201,
+          "durationMs": 19,
+          "retryScheduled": false,
+          "nextBackoffMs": 0,
+          "response": {
+            "messageId": "hmsg_gmoney_verified_001"
+          },
+          "error": ""
+        }
+      ],
+      "retrieval": {
+        "ok": true,
+        "httpStatus": 200,
+        "durationMs": 8,
+        "response": {
+          "id": "hmsg_gmoney_verified_001",
+          "conversationId": "hive_convo_gmoney_rewarded_work",
+          "visible": true,
+          "bodyPreview": "Following up on your rewarded task: the reward visibility issue was triaged and routed as product work."
+        }
+      },
+      "verification": {
+        "ok": true,
+        "visible": true,
+        "expectedMessageId": "hmsg_gmoney_verified_001",
+        "retrievedMessageId": "hmsg_gmoney_verified_001",
+        "failureCode": "",
+        "error": ""
+      },
+      "diagnostics": {
+        "failureStage": "none",
+        "lookupMethod": "account_id",
+        "accountIdPresent": true,
+        "walletAddressPresent": true,
+        "conversationIdPresent": true
+      }
+    },
+    {
+      "messageId": "msg_zoz_delivery_retry",
+      "sourceTaskId": "task_mock_hive_delivery_retry",
+      "sourceReviewId": "orcrev_mock_002",
+      "recipient": {
+        "accountId": "",
+        "walletAddress": "rsS2Y6pQmdXUuHpgemrGMvxu5cVdLjjaXRZ"
+      },
+      "resolvedBy": "wallet_address",
+      "target": {
+        "id": "contrib_zoz",
+        "handle": "zoz",
+        "accountId": "acct_zoz_primary",
+        "walletAddress": "rsS2Y6pQmdXUuHpgemrGMvxu5cVdLjjaXRZ",
+        "conversationId": "hive_convo_zoz_retry_diagnostics"
+      },
+      "conversationLookup": {
+        "ok": true,
+        "method": "wallet_address",
+        "httpStatus": 200,
+        "durationMs": 13,
+        "conversationId": "hive_convo_zoz_retry_diagnostics",
+        "conversationTitle": "Hive follow-up: @zoz",
+        "target": {
+          "id": "contrib_zoz",
+          "handle": "zoz",
+          "accountId": "acct_zoz_primary",
+          "walletAddress": "rsS2Y6pQmdXUuHpgemrGMvxu5cVdLjjaXRZ",
+          "conversationId": "hive_convo_zoz_retry_diagnostics"
+        },
+        "response": {
+          "conversationId": "hive_convo_zoz_retry_diagnostics",
+          "handle": "zoz",
+          "source": "wallet_directory"
+        }
+      },
+      "finalStatus": "delivered_verified",
+      "failureStage": "none",
+      "failureCode": "",
+      "error": "",
+      "postedMessageId": "hmsg_zoz_verified_after_retry_001",
+      "postAttempts": [
+        {
+          "attempt": 1,
+          "ok": false,
+          "httpStatus": 503,
+          "durationMs": 31,
+          "retryScheduled": true,
+          "nextBackoffMs": 250,
+          "response": {
+            "error": "transient upstream unavailable"
+          },
+          "error": "transient upstream unavailable"
+        },
+        {
+          "attempt": 2,
+          "ok": true,
+          "httpStatus": 201,
+          "durationMs": 22,
+          "retryScheduled": false,
+          "nextBackoffMs": 0,
+          "response": {
+            "messageId": "hmsg_zoz_verified_after_retry_001"
+          },
+          "error": ""
+        }
+      ],
+      "retrieval": {
+        "ok": true,
+        "httpStatus": 200,
+        "durationMs": 9,
+        "response": {
+          "id": "hmsg_zoz_verified_after_retry_001",
+          "conversationId": "hive_convo_zoz_retry_diagnostics",
+          "visible": true,
+          "bodyPreview": "Following up on your rewarded task: the Hive Chat delivery path is being verified with retry diagnostics."
+        }
+      },
+      "verification": {
+        "ok": true,
+        "visible": true,
+        "expectedMessageId": "hmsg_zoz_verified_after_retry_001",
+        "retrievedMessageId": "hmsg_zoz_verified_after_retry_001",
+        "failureCode": "",
+        "error": ""
+      },
+      "diagnostics": {
+        "failureStage": "none",
+        "lookupMethod": "wallet_address",
+        "accountIdPresent": false,
+        "walletAddressPresent": true,
+        "conversationIdPresent": true
+      }
+    },
+    {
+      "messageId": "msg_agticorp_missing_conversation",
+      "sourceTaskId": "task_mock_conversation_missing",
+      "sourceReviewId": "orcrev_mock_003",
+      "recipient": {
+        "accountId": "acct_agticorp_primary",
+        "walletAddress": ""
+      },
+      "resolvedBy": "account_id",
+      "target": {
+        "id": "contrib_agticorp",
+        "handle": "agticorp",
+        "accountId": "acct_agticorp_primary",
+        "walletAddress": "rAgticorpMockWallet111111111111111111",
+        "conversationId": ""
+      },
+      "conversationLookup": {
+        "ok": false,
+        "method": "account_id",
+        "httpStatus": 404,
+        "durationMs": 7,
+        "failureCode": "conversation_not_found",
+        "error": "Contributor resolved, but no Hive conversation id was available",
+        "target": {
+          "id": "contrib_agticorp",
+          "handle": "agticorp",
+          "accountId": "acct_agticorp_primary",
+          "walletAddress": "rAgticorpMockWallet111111111111111111",
+          "conversationId": ""
+        },
+        "response": {}
+      },
+      "finalStatus": "failed",
+      "failureStage": "conversation_lookup",
+      "failureCode": "conversation_not_found",
+      "error": "Contributor resolved, but no Hive conversation id was available",
+      "postAttempts": [],
+      "retrieval": {},
+      "verification": {
+        "ok": false,
+        "visible": false
+      },
+      "diagnostics": {
+        "failureStage": "conversation_lookup",
+        "lookupMethod": "account_id",
+        "accountIdPresent": true,
+        "walletAddressPresent": false,
+        "conversationIdPresent": false
+      }
+    },
+    {
+      "messageId": "msg_donravle_http_error",
+      "sourceTaskId": "task_mock_post_http_error",
+      "sourceReviewId": "orcrev_mock_004",
+      "recipient": {
+        "accountId": "acct_donravle_primary",
+        "walletAddress": "raL2kvFQfXWrmT7n4UxvpKwrgBQQWFGwzd"
+      },
+      "resolvedBy": "account_id",
+      "target": {
+        "id": "contrib_donravle",
+        "handle": "donravle",
+        "accountId": "acct_donravle_primary",
+        "walletAddress": "raL2kvFQfXWrmT7n4UxvpKwrgBQQWFGwzd",
+        "conversationId": "hive_convo_donravle_http_errors"
+      },
+      "conversationLookup": {
+        "ok": true,
+        "method": "account_id",
+        "httpStatus": 200,
+        "durationMs": 10,
+        "conversationId": "hive_convo_donravle_http_errors",
+        "conversationTitle": "Hive follow-up: @donravle",
+        "target": {
+          "id": "contrib_donravle",
+          "handle": "donravle",
+          "accountId": "acct_donravle_primary",
+          "walletAddress": "raL2kvFQfXWrmT7n4UxvpKwrgBQQWFGwzd",
+          "conversationId": "hive_convo_donravle_http_errors"
+        },
+        "response": {
+          "conversationId": "hive_convo_donravle_http_errors",
+          "handle": "donravle",
+          "source": "account_id_directory"
+        }
+      },
+      "finalStatus": "failed",
+      "failureStage": "message_post",
+      "failureCode": "message_post_failed",
+      "error": "final post attempt failed",
+      "postAttempts": [
+        {
+          "attempt": 1,
+          "ok": false,
+          "httpStatus": 500,
+          "durationMs": 44,
+          "retryScheduled": true,
+          "nextBackoffMs": 250,
+          "response": {
+            "error": "primary Hive Chat post failed"
+          },
+          "error": "primary Hive Chat post failed"
+        },
+        {
+          "attempt": 2,
+          "ok": false,
+          "httpStatus": 502,
+          "durationMs": 39,
+          "retryScheduled": true,
+          "nextBackoffMs": 500,
+          "response": {
+            "error": "retry gateway failed"
+          },
+          "error": "retry gateway failed"
+        },
+        {
+          "attempt": 3,
+          "ok": false,
+          "httpStatus": 500,
+          "durationMs": 41,
+          "retryScheduled": false,
+          "nextBackoffMs": 0,
+          "response": {
+            "error": "final post attempt failed"
+          },
+          "error": "final post attempt failed"
+        }
+      ],
+      "retrieval": {},
+      "verification": {
+        "ok": false,
+        "visible": false
+      },
+      "diagnostics": {
+        "failureStage": "message_post",
+        "lookupMethod": "account_id",
+        "accountIdPresent": true,
+        "walletAddressPresent": true,
+        "conversationIdPresent": true
+      }
+    },
+    {
+      "messageId": "msg_yuuki_retrieval_failure",
+      "sourceTaskId": "task_mock_retrieval_failure",
+      "sourceReviewId": "orcrev_mock_005",
+      "recipient": {
+        "accountId": "",
+        "walletAddress": "rfCbJWtYBZ6ntX7UuYfQK8Ut3T9K51z96h"
+      },
+      "resolvedBy": "wallet_address",
+      "target": {
+        "id": "contrib_yuuki",
+        "handle": "yuuki",
+        "accountId": "acct_yuuki_primary",
+        "walletAddress": "rfCbJWtYBZ6ntX7UuYfQK8Ut3T9K51z96h",
+        "conversationId": "hive_convo_yuuki_retrieval_failure"
+      },
+      "conversationLookup": {
+        "ok": true,
+        "method": "wallet_address",
+        "httpStatus": 200,
+        "durationMs": 12,
+        "conversationId": "hive_convo_yuuki_retrieval_failure",
+        "conversationTitle": "Hive follow-up: @yuuki",
+        "target": {
+          "id": "contrib_yuuki",
+          "handle": "yuuki",
+          "accountId": "acct_yuuki_primary",
+          "walletAddress": "rfCbJWtYBZ6ntX7UuYfQK8Ut3T9K51z96h",
+          "conversationId": "hive_convo_yuuki_retrieval_failure"
+        },
+        "response": {
+          "conversationId": "hive_convo_yuuki_retrieval_failure",
+          "handle": "yuuki",
+          "source": "wallet_directory"
+        }
+      },
+      "finalStatus": "failed",
+      "failureStage": "message_retrieval",
+      "failureCode": "message_retrieval_failed",
+      "error": "message not visible in Hive Chat read path",
+      "postedMessageId": "hmsg_yuuki_unretrievable_001",
+      "postAttempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "httpStatus": 201,
+          "durationMs": 21,
+          "retryScheduled": false,
+          "nextBackoffMs": 0,
+          "response": {
+            "messageId": "hmsg_yuuki_unretrievable_001"
+          },
+          "error": ""
+        }
+      ],
+      "retrieval": {
+        "ok": false,
+        "httpStatus": 404,
+        "durationMs": 16,
+        "failureCode": "message_retrieval_failed",
+        "error": "message not visible in Hive Chat read path",
+        "response": {
+          "error": "message not visible in Hive Chat read path"
+        }
+      },
+      "verification": {
+        "ok": false,
+        "visible": false
+      },
+      "diagnostics": {
+        "failureStage": "message_retrieval",
+        "lookupMethod": "wallet_address",
+        "accountIdPresent": false,
+        "walletAddressPresent": true,
+        "conversationIdPresent": true
+      }
+    }
+  ]
+}

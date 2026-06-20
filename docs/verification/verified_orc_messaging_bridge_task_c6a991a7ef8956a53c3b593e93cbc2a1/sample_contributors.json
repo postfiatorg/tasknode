@@ -1,0 +1,155 @@
+{
+  "contributors": [
+    {
+      "id": "contrib_gmoney",
+      "handle": "gmoney",
+      "accountId": "acct_gmoney_primary",
+      "walletAddress": "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+      "conversationId": "hive_convo_gmoney_rewarded_work",
+      "conversationTitle": "Hive follow-up: @gmoney",
+      "lookup": {
+        "httpStatus": 200,
+        "durationMs": 11,
+        "source": "account_id_directory"
+      },
+      "postPlan": [
+        {
+          "httpStatus": 201,
+          "durationMs": 19,
+          "response": {
+            "messageId": "hmsg_gmoney_verified_001"
+          }
+        }
+      ],
+      "retrieval": {
+        "httpStatus": 200,
+        "durationMs": 8,
+        "response": {
+          "messageId": "hmsg_gmoney_verified_001",
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "contrib_zoz",
+      "handle": "zoz",
+      "accountId": "acct_zoz_primary",
+      "walletAddress": "rsS2Y6pQmdXUuHpgemrGMvxu5cVdLjjaXRZ",
+      "conversationId": "hive_convo_zoz_retry_diagnostics",
+      "conversationTitle": "Hive follow-up: @zoz",
+      "lookup": {
+        "httpStatus": 200,
+        "durationMs": 13,
+        "source": "wallet_directory"
+      },
+      "postPlan": [
+        {
+          "httpStatus": 503,
+          "durationMs": 31,
+          "response": {
+            "error": "transient upstream unavailable"
+          }
+        },
+        {
+          "httpStatus": 201,
+          "durationMs": 22,
+          "response": {
+            "messageId": "hmsg_zoz_verified_after_retry_001"
+          }
+        }
+      ],
+      "retrieval": {
+        "httpStatus": 200,
+        "durationMs": 9,
+        "response": {
+          "messageId": "hmsg_zoz_verified_after_retry_001",
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "contrib_agticorp",
+      "handle": "agticorp",
+      "accountId": "acct_agticorp_primary",
+      "walletAddress": "rAgticorpMockWallet111111111111111111",
+      "conversationId": "",
+      "conversationTitle": "Hive follow-up: @agticorp",
+      "lookup": {
+        "httpStatus": 200,
+        "durationMs": 7,
+        "source": "account_id_directory"
+      },
+      "postPlan": [
+        {
+          "httpStatus": 201,
+          "durationMs": 20
+        }
+      ]
+    },
+    {
+      "id": "contrib_donravle",
+      "handle": "donravle",
+      "accountId": "acct_donravle_primary",
+      "walletAddress": "raL2kvFQfXWrmT7n4UxvpKwrgBQQWFGwzd",
+      "conversationId": "hive_convo_donravle_http_errors",
+      "conversationTitle": "Hive follow-up: @donravle",
+      "lookup": {
+        "httpStatus": 200,
+        "durationMs": 10,
+        "source": "account_id_directory"
+      },
+      "postPlan": [
+        {
+          "httpStatus": 500,
+          "durationMs": 44,
+          "response": {
+            "error": "primary Hive Chat post failed"
+          }
+        },
+        {
+          "httpStatus": 502,
+          "durationMs": 39,
+          "response": {
+            "error": "retry gateway failed"
+          }
+        },
+        {
+          "httpStatus": 500,
+          "durationMs": 41,
+          "response": {
+            "error": "final post attempt failed"
+          }
+        }
+      ]
+    },
+    {
+      "id": "contrib_yuuki",
+      "handle": "yuuki",
+      "accountId": "acct_yuuki_primary",
+      "walletAddress": "rfCbJWtYBZ6ntX7UuYfQK8Ut3T9K51z96h",
+      "conversationId": "hive_convo_yuuki_retrieval_failure",
+      "conversationTitle": "Hive follow-up: @yuuki",
+      "lookup": {
+        "httpStatus": 200,
+        "durationMs": 12,
+        "source": "wallet_directory"
+      },
+      "postPlan": [
+        {
+          "httpStatus": 201,
+          "durationMs": 21,
+          "response": {
+            "messageId": "hmsg_yuuki_unretrievable_001"
+          }
+        }
+      ],
+      "retrieval": {
+        "httpStatus": 404,
+        "durationMs": 16,
+        "response": {
+          "error": "message not visible in Hive Chat read path"
+        }
+      }
+    }
+  ]
+}
