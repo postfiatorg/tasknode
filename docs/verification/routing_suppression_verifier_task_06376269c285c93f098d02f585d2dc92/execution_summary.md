@@ -147,6 +147,10 @@ No enforcement, bans, clawbacks, fund movement, signing, deployment, or live rou
 
 ## Public artifact
 
+Public PR: https://github.com/postfiatorg/tasknodeofficial/pull/142
+
+Commit: https://github.com/postfiatorg/tasknodeofficial/commit/1effacade9eaf8c9762727fbceed9312bb3d9df6
+
 Branch: `codex/routing-suppression-enforcement-verifier`
 
 No deploy was performed.
