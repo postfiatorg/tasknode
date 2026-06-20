@@ -290,6 +290,13 @@ function countBy(items, finder) {
   return counts;
 }
 
+function uniqueTexts(values) {
+  return values
+    .map((value) => safeText(value, 180))
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index);
+}
+
 function buildBatch({ ledger, digest, generatedAt, generatedBy, records }) {
   const updates = records.map((record) =>
     buildUpdate({
@@ -307,10 +314,9 @@ function buildBatch({ ledger, digest, generatedAt, generatedBy, records }) {
     source: {
       reviewLedgerSchema: ledger.schema,
       actionDigestSchema: digest.schema,
-      sourceTaskIds: [
-        "task_01ba5f1d70d620780c333693c99a0cab",
-        "task_2ea6b10ba3e3ae2cc3c3cd7b59431ee8",
-      ],
+      sourceTaskIds: uniqueTexts(records.map((record) => record.taskId)),
+      sourceReviewIds: uniqueTexts(records.map((record) => record.id || record.reviewId)),
+      routingPacketFiles: digest.routingPacketFiles,
     },
     summary: {
       totalUpdates: updates.length,
