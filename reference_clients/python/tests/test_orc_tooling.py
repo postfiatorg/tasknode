@@ -167,6 +167,42 @@ class FakeOrcClient:
         }
 
 
+class FakeTaskActionClient:
+    address = "rFakeOperator1111111111111111111111111111"
+    agent = "grashnuk"
+
+    def __init__(self):
+        self.calls = []
+
+    def login(self):
+        self.calls.append(("login",))
+        return {"ok": True, "cached": True}
+
+    def _flow(self, action):
+        return SimpleNamespace(
+            payload={"schema": f"pf.task.{action}.v1"},
+            prepared={"cid": f"QmPrepared{action}"},
+            signed=SimpleNamespace(tx_hash=f"TX{action.upper()}"),
+            submitted={
+                "cid": f"QmSubmitted{action}",
+                "txHash": f"TX{action.upper()}",
+                "engineResult": "tesSUCCESS",
+            },
+        )
+
+    def accept_task(self, task_id, *, reason="", submit=False):
+        self.calls.append(("accept_task", task_id, reason, submit))
+        return self._flow("accept")
+
+    def submit_evidence(self, task_id, *, evidence_text="", notes="", submit=False):
+        self.calls.append(("submit_evidence", task_id, evidence_text, notes, submit))
+        return self._flow("submit")
+
+    def respond_verification(self, task_id, *, response_text="", notes="", submit=False):
+        self.calls.append(("respond_verification", task_id, response_text, notes, submit))
+        return self._flow("respond")
+
+
 class FakeTasksClient:
     address = "rFakeOperator1111111111111111111111111111"
 
@@ -1515,6 +1551,73 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(stored["metadata"]["privateKey"], "[REDACTED]")
         self.assertEqual(stored["metadata"]["safe"], "ok")
         self.assertEqual(stored["txHash"], "TXHASH")
+
+    def test_task_actions_append_shared_work_journal_rows(self):
+        client = FakeTaskActionClient()
+        journal_rows = []
+
+        def fake_journal(record, **kwargs):
+            journal_rows.append(record)
+            return {"ok": True, "inserted": True, "source_task_id": record["sourceTaskId"]}
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=fake_journal):
+            path = os.path.join(tmpdir, "journal.jsonl")
+            accept = orcctl_module.task_accept(
+                "task_lifecycle",
+                reason="Taking the task.",
+                client=client,
+                journal_path=path,
+                run_id="orcrun_test",
+                database_url="postgres://unit",
+            )
+            submit = orcctl_module.task_submit(
+                "task_lifecycle",
+                evidence_text="Evidence packet.",
+                notes="done",
+                client=client,
+                journal_path=path,
+                run_id="orcrun_test",
+                database_url="postgres://unit",
+            )
+            respond = orcctl_module.task_respond(
+                "task_lifecycle",
+                response_text="Verification response.",
+                notes="done",
+                client=client,
+                journal_path=path,
+                run_id="orcrun_test",
+                database_url="postgres://unit",
+            )
+
+        self.assertEqual([row["taskAction"] for row in journal_rows], ["task_accept", "task_submit", "task_respond"])
+        self.assertEqual([row["sourceTaskId"] for row in journal_rows], ["task_lifecycle"] * 3)
+        self.assertEqual([row["operatorHandle"] for row in journal_rows], ["grashnuk"] * 3)
+        self.assertEqual([row["status"] for row in journal_rows], ["submitted"] * 3)
+        self.assertEqual(journal_rows[0]["eventCid"], "QmSubmittedaccept")
+        self.assertEqual(journal_rows[1]["txHash"], "TXSUBMIT")
+        self.assertEqual(journal_rows[2]["metadata"]["source"], "orcctl.task_respond")
+        self.assertEqual(accept["workJournal"]["inserted"], True)
+        self.assertEqual(submit["workJournal"]["inserted"], True)
+        self.assertEqual(respond["workJournal"]["inserted"], True)
+
+    def test_task_action_keeps_success_when_shared_work_journal_fails(self):
+        client = FakeTaskActionClient()
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=RuntimeError("db unavailable")):
+            result = orcctl_module.task_accept(
+                "task_lifecycle",
+                client=client,
+                journal_path=os.path.join(tmpdir, "journal.jsonl"),
+                run_id="orcrun_test",
+                database_url="postgres://unit",
+            )
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["txHash"], "TXACCEPT")
+        self.assertEqual(result["workJournal"]["ok"], False)
+        self.assertIn("db unavailable", result["workJournal"]["error"])
 
     def test_review_state_record_normalizes_and_defaults_action_required(self):
         record = normalize_review_state_record(

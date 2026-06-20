@@ -157,7 +157,9 @@ development only.
    and stores request/task linkage in `orc_task_review_states.metadata_json`.
    It also appends an idempotent `request_followup` row to `orc_work_journal`.
 5. The Orc completes the follow-up task through normal signed task lifecycle
-   actions and submits verifiable evidence.
+   actions and submits verifiable evidence. `orcctl task accept`, `task submit`,
+   and `task respond` append `task_accept`, `task_submit`, and `task_respond`
+   rows to `orc_work_journal` after successful signed submissions.
 6. `orcctl close-followup` closes the source review only when terminal
    follow-up evidence exists, or when explicit no-code-needed proof is recorded.
 7. `orc_work_journal` links assignment, follow-up, evidence CIDs/tx hashes,
