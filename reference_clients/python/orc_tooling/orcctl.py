@@ -1246,6 +1246,49 @@ def _signed_flow_summary(result: Any, *, task_id: str, action: str) -> dict[str,
     })
 
 
+def _append_task_action_work_journal(
+    summary: dict[str, Any],
+    *,
+    task_id: str,
+    action: str,
+    active_client: Any,
+    run_id: str,
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    task_action = f"task_{_safe_text(action, 80)}"
+    try:
+        return append_orc_work_journal(
+            {
+                "sourceTaskId": task_id,
+                "taskAction": task_action,
+                "eventCid": _safe_text(summary.get("cid"), 180),
+                "txHash": _safe_text(summary.get("txHash"), 180),
+                "operatorHandle": _safe_text(getattr(active_client, "agent", ""), 160) or DEFAULT_ORC_AGENT,
+                "status": "submitted" if summary.get("submitted") else "prepared",
+                "outcomeStatus": _safe_text(summary.get("engineResult"), 120),
+                "terminal": False,
+                "metadata": {
+                    "source": f"orcctl.{task_action}",
+                    "runId": run_id,
+                    "schema": _safe_text(summary.get("schema"), 180),
+                    "submitted": bool(summary.get("submitted")),
+                    "cid": _safe_text(summary.get("cid"), 180),
+                    "txHash": _safe_text(summary.get("txHash"), 180),
+                    "engineResult": _safe_text(summary.get("engineResult"), 120),
+                },
+            },
+            database_url=database_url,
+        )
+    except Exception as exc:
+        return redact_secrets({
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+            "taskAction": task_action,
+            "sourceTaskId": task_id,
+            "secretPrinted": False,
+        })
+
+
 def task_accept(
     task_id: str,
     *,
@@ -1253,6 +1296,7 @@ def task_accept(
     client: Any | None = None,
     journal_path: str = DEFAULT_RUN_JOURNAL_PATH,
     run_id: str = "",
+    database_url: str | None = None,
 ) -> dict[str, Any]:
     current_run_id = run_id or f"orcrun_{uuid4()}"
     append_run_journal(
@@ -1280,6 +1324,14 @@ def task_accept(
             journal_path=journal_path,
         )
         summary["runId"] = current_run_id
+        summary["workJournal"] = _append_task_action_work_journal(
+            summary,
+            task_id=task_id,
+            action="accept",
+            active_client=active_client,
+            run_id=current_run_id,
+            database_url=database_url,
+        )
         return summary
     except Exception as exc:
         append_run_journal(
@@ -1302,6 +1354,7 @@ def task_submit(
     client: Any | None = None,
     journal_path: str = DEFAULT_RUN_JOURNAL_PATH,
     run_id: str = "",
+    database_url: str | None = None,
 ) -> dict[str, Any]:
     if not _safe_text(evidence_text, 1_000_000):
         raise ValueError("evidence text is required")
@@ -1331,6 +1384,14 @@ def task_submit(
             journal_path=journal_path,
         )
         summary["runId"] = current_run_id
+        summary["workJournal"] = _append_task_action_work_journal(
+            summary,
+            task_id=task_id,
+            action="submit",
+            active_client=active_client,
+            run_id=current_run_id,
+            database_url=database_url,
+        )
         return summary
     except Exception as exc:
         append_run_journal(
@@ -1353,6 +1414,7 @@ def task_respond(
     client: Any | None = None,
     journal_path: str = DEFAULT_RUN_JOURNAL_PATH,
     run_id: str = "",
+    database_url: str | None = None,
 ) -> dict[str, Any]:
     if not _safe_text(response_text, 1_000_000):
         raise ValueError("verification response text is required")
@@ -1382,6 +1444,14 @@ def task_respond(
             journal_path=journal_path,
         )
         summary["runId"] = current_run_id
+        summary["workJournal"] = _append_task_action_work_journal(
+            summary,
+            task_id=task_id,
+            action="respond",
+            active_client=active_client,
+            run_id=current_run_id,
+            database_url=database_url,
+        )
         return summary
     except Exception as exc:
         append_run_journal(
@@ -1792,6 +1862,7 @@ def _self_cycle_execute_assigned_task(
     response_text: str,
     notes: str,
     journal_path: str,
+    database_url: str | None,
 ) -> dict[str, Any]:
     task_id = _safe_text(item.get("taskId"), 180)
     detail = task_observe(task_id, client=active_client)
@@ -1823,6 +1894,7 @@ def _self_cycle_execute_assigned_task(
                 reason="Accepted by Orc self-cycle after inventory triage.",
                 client=active_client,
                 journal_path=journal_path,
+                database_url=database_url,
             ),
         })
         status = "accepted"
@@ -1837,6 +1909,7 @@ def _self_cycle_execute_assigned_task(
                 notes=notes,
                 client=active_client,
                 journal_path=journal_path,
+                database_url=database_url,
             ),
         })
     if response_text:
@@ -1850,6 +1923,7 @@ def _self_cycle_execute_assigned_task(
                 notes=notes,
                 client=active_client,
                 journal_path=journal_path,
+                database_url=database_url,
             ),
         })
     return {"outcome": "assigned_task_executed", "taskId": task_id, "actions": actions}
@@ -2010,6 +2084,7 @@ def self_cycle(
                 response_text=response_text,
                 notes=notes,
                 journal_path=journal_path,
+                database_url=database_url,
             )
         else:
             result = _self_cycle_execute_review(
@@ -2097,6 +2172,7 @@ def run_personal_task(
     notes: str = "",
     client: Any | None = None,
     journal_path: str = DEFAULT_RUN_JOURNAL_PATH,
+    database_url: str | None = None,
 ) -> dict[str, Any]:
     run_id = f"orcrun_{uuid4()}"
     active_client = client or build_client()
@@ -2122,6 +2198,7 @@ def run_personal_task(
             client=active_client,
             journal_path=journal_path,
             run_id=run_id,
+            database_url=database_url,
         ))
         detail = task_observe(task_id, client=active_client)
         status = _safe_text(_safe_dict(detail.get("task")).get("status"), 80).lower()
@@ -2133,6 +2210,7 @@ def run_personal_task(
             client=active_client,
             journal_path=journal_path,
             run_id=run_id,
+            database_url=database_url,
         ))
         detail = task_observe(task_id, client=active_client)
     if response_text:
@@ -2143,6 +2221,7 @@ def run_personal_task(
             client=active_client,
             journal_path=journal_path,
             run_id=run_id,
+            database_url=database_url,
         ))
         detail = task_observe(task_id, client=active_client)
     append_run_journal(
@@ -2570,7 +2649,13 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "task" and args.task_command == "verification-request":
             payload = inspect_verification_request(args.task_id, client=_client_from_args(args))
         elif args.command == "task" and args.task_command == "accept":
-            payload = task_accept(args.task_id, reason=args.reason, client=_client_from_args(args), journal_path=args.journal_path)
+            payload = task_accept(
+                args.task_id,
+                reason=args.reason,
+                client=_client_from_args(args),
+                journal_path=args.journal_path,
+                database_url=database_url,
+            )
         elif args.command == "task" and args.task_command == "submit":
             payload = task_submit(
                 args.task_id,
@@ -2578,6 +2663,7 @@ def main(argv: list[str] | None = None) -> int:
                 notes=args.notes,
                 client=_client_from_args(args),
                 journal_path=args.journal_path,
+                database_url=database_url,
             )
         elif args.command == "task" and args.task_command == "respond":
             payload = task_respond(
@@ -2586,6 +2672,7 @@ def main(argv: list[str] | None = None) -> int:
                 notes=args.notes,
                 client=_client_from_args(args),
                 journal_path=args.journal_path,
+                database_url=database_url,
             )
         elif args.command == "run-personal-task":
             payload = run_personal_task(
@@ -2596,6 +2683,7 @@ def main(argv: list[str] | None = None) -> int:
                 notes=args.notes,
                 client=_client_from_args(args),
                 journal_path=args.journal_path,
+                database_url=database_url,
             )
         else:  # pragma: no cover - argparse prevents this
             raise RuntimeError(f"Unhandled command: {args.command}")

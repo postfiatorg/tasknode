@@ -61,6 +61,12 @@ it does not mutate Fly secrets. The JSON output includes
 Nazgûl shared-state summaries read `orc_task_reviews`, `orc_run_journal`,
 `orc_operator_interactions`, and the linked `orc_work_journal` when those
 Postgres tables are present.
+`orcctl task accept`, `orcctl task submit`, and `orcctl task respond` keep the
+local JSONL run journal and append DB-backed `task_accept`, `task_submit`, and
+`task_respond` rows to `orc_work_journal` after successful signed submissions;
+if that shared journal write fails after a tx is submitted, the command reports
+the journal error in `workJournal` instead of rethrowing and encouraging an
+unsafe retry.
 Board Manager source packets also read `orc_review_rollups`, a bounded
 manager-internal view that aggregates reviewed outcomes by contributor
 account/wallet and task category. Rollups carry counts, controlled integrity
