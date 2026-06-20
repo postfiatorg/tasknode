@@ -242,8 +242,9 @@ controls, not trust in one pane:
   direct Hive signal is verified visible in Hive Chat, then appends a
   `signal_user` row to `orc_work_journal` for the status page and operator
   audit trail. The Python direct-signal and Board-Manager-follow-up wrappers
-  also fail closed on malformed stdout from their Node delivery scripts, so a
-  process exit alone cannot be treated as a sent user message.
+  also fail closed unless their Node delivery scripts return JSON objects, so a
+  process exit or malformed stdout alone cannot be treated as a sent user
+  message.
 - **Reserved actions:** bans, Sybil labels on live accounts, deploys, economic
   policy, reward changes, public-chain flags, and secrets remain outside Orc
   authority.

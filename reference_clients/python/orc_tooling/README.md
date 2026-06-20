@@ -420,10 +420,10 @@ unless `--execute` is provided. Duplicate-reward follow-ups are informational
 by default, so they do not open a new Board Manager follow-up waiting on the
 user.
 
-The Python wrapper fails closed unless the Node script returns valid JSON. A
-zero-exit process with malformed stdout returns `ok=false` and the CLI exits
-non-zero, so an Orc cannot claim a Board-Manager-routed message was sent
-without a parsed delivery contract.
+The Python wrapper fails closed unless the Node script returns a valid JSON
+object. A zero-exit process with malformed stdout or non-object JSON returns
+`ok=false` and the CLI exits non-zero, so an Orc cannot claim a
+Board-Manager-routed message was sent without a parsed delivery contract.
 
 ## Send Direct Orc Hive Signals
 
@@ -447,7 +447,7 @@ conversation, task id, reviewer, reason, and exact message body: the script
 returns the existing verified chat row instead of appending a duplicate Orc
 message.
 
-The Python wrapper fails closed unless the Node script returns valid JSON. A
-zero-exit process with malformed stdout returns `ok=false` and the CLI exits
-non-zero, so an Orc cannot claim a direct message was sent without a parsed
-delivery contract.
+The Python wrapper fails closed unless the Node script returns a valid JSON
+object. A zero-exit process with malformed stdout or non-object JSON returns
+`ok=false` and the CLI exits non-zero, so an Orc cannot claim a direct message
+was sent without a parsed delivery contract.
