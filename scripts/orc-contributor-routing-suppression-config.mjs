@@ -101,7 +101,7 @@ function contributorLabel(contributor) {
 }
 
 function entryKey(entry) {
-  return safeText(entry.walletAddress || entry.accountId || entry.contributorKey || entry.handle).toLowerCase();
+  return safeText(entry.accountId || entry.contributorKey || entry.walletAddress || entry.handle).toLowerCase();
 }
 
 function asArray(value) {
@@ -144,8 +144,11 @@ function buildEntry(contributor, report, expiresAt) {
   return {
     contributorKey,
     walletAddress: safeText(contributor.walletAddress),
+    walletAddresses: asArray(contributor.walletAddresses).map(String).filter(Boolean),
     accountId: safeText(contributor.accountId),
+    accountIds: asArray(contributor.accountIds).map(String).filter(Boolean),
     handle: normalizeHandle(contributor.handle),
+    handles: asArray(contributor.handles).map(normalizeHandle).filter(Boolean),
     status: "routing_suppression_recommended",
     mode: MODE,
     suppressionScope: "network_task_routing_review",
@@ -220,7 +223,9 @@ function buildDryRun(config, targetPath = "") {
       key: entryKey(entry),
       label: contributorLabel(entry),
       walletAddress: entry.walletAddress,
+      walletAddresses: asArray(entry.walletAddresses).map(String).filter(Boolean),
       accountId: entry.accountId,
+      accountIds: asArray(entry.accountIds).map(String).filter(Boolean),
       expiresAt: entry.expiresAt,
       thresholdFailureRules: entry.thresholdFailures.map((failure) => failure.rule),
       supportingTaskIds: entry.supportingTaskIds,
@@ -245,8 +250,11 @@ function summarizeEntry(entry) {
     key: entryKey(entry),
     contributorKey: safeText(entry.contributorKey),
     walletAddress: safeText(entry.walletAddress),
+    walletAddresses: asArray(entry.walletAddresses).map(String).filter(Boolean),
     accountId: safeText(entry.accountId),
+    accountIds: asArray(entry.accountIds).map(String).filter(Boolean),
     handle: normalizeHandle(entry.handle),
+    handles: asArray(entry.handles).map(normalizeHandle).filter(Boolean),
     expiresAt: safeText(entry.expiresAt),
     thresholdFailureRules: asArray(entry.thresholdFailures).map((failure) => normalizeKey(failure.rule, "")),
     supportingTaskIds: asArray(entry.supportingTaskIds).map(String).filter(Boolean),
@@ -256,8 +264,11 @@ function summarizeEntry(entry) {
 function comparableEntry(entry) {
   return JSON.stringify({
     walletAddress: safeText(entry.walletAddress),
+    walletAddresses: asArray(entry.walletAddresses).map(String).filter(Boolean).sort(),
     accountId: safeText(entry.accountId),
+    accountIds: asArray(entry.accountIds).map(String).filter(Boolean).sort(),
     handle: normalizeHandle(entry.handle),
+    handles: asArray(entry.handles).map(normalizeHandle).filter(Boolean).sort(),
     thresholdFailureRules: asArray(entry.thresholdFailures).map((failure) => normalizeKey(failure.rule, "")).sort(),
     supportingTaskIds: asArray(entry.supportingTaskIds).map(String).filter(Boolean).sort(),
   });

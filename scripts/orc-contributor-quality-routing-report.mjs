@@ -88,6 +88,13 @@ function asArray(value) {
   return Array.isArray(value) ? value : [value];
 }
 
+function uniqueTexts(values) {
+  return values
+    .map((value) => safeText(value))
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index);
+}
+
 function readNested(record, paths) {
   for (const pathSpec of paths) {
     const parts = pathSpec.split(".");
@@ -125,7 +132,7 @@ function contributorIdentity(record) {
     "assigneeHandle",
     "submitterHandle",
   ]));
-  const contributorKey = walletAddress || accountId || handle || "unknown_contributor";
+  const contributorKey = accountId || walletAddress || handle || "unknown_contributor";
   return { contributorKey, walletAddress, accountId, handle };
 }
 
@@ -255,12 +262,18 @@ function evaluateContributor(contributorKey, records, thresholds, generatedAt) {
       taskIds: sortedRecords.map((record) => record.taskId),
     });
   }
-  const firstIdentity = sortedRecords[0]?.identity || {};
+  const identities = sortedRecords.map((record) => record.identity || {});
+  const accountIds = uniqueTexts(identities.map((identity) => identity.accountId));
+  const walletAddresses = uniqueTexts(identities.map((identity) => identity.walletAddress));
+  const handles = uniqueTexts(identities.map((identity) => identity.handle));
   return {
     contributorKey,
-    accountId: firstIdentity.accountId || "",
-    walletAddress: firstIdentity.walletAddress || "",
-    handle: firstIdentity.handle || "",
+    accountId: accountIds[0] || "",
+    walletAddress: walletAddresses[0] || "",
+    handle: handles[0] || "",
+    accountIds,
+    walletAddresses,
+    handles,
     recommendation: violations.length ? "routing_review_recommended" : "no_routing_action_recommended",
     enforcementMode: RECOMMEND_ONLY,
     metrics: {
