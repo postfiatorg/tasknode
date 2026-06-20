@@ -1,5 +1,6 @@
 import { closePool, databaseEnabled, query } from "../server/db/pool.js";
 import { appendAssistantMessage } from "../server/repositories/chat-assistant-messages.js";
+import { fileURLToPath } from "node:url";
 
 if (process.env.DATABASE_URL && !process.env.TASKNODE_DATABASE_ENABLED) {
   process.env.TASKNODE_DATABASE_ENABLED = "true";
@@ -13,11 +14,11 @@ function safeText(value = "", max = 1000) {
   return String(value || "").trim().slice(0, max);
 }
 
-async function resolveConversation({ accountId, createdAt, metadata = {} }) {
+export async function resolveConversation({ accountId, createdAt, metadata = {}, queryImpl = query }) {
   const metadataConversationId = safeText(metadata.conversation_id || metadata.conversationId, 180);
   if (metadataConversationId) return { conversationId: metadataConversationId, source: "metadata" };
 
-  const result = await query(
+  const result = await queryImpl(
     `
       SELECT source_conversation_id
       FROM hive_context_entries
@@ -35,9 +36,16 @@ async function resolveConversation({ accountId, createdAt, metadata = {} }) {
     : { conversationId: "", source: "not_found" };
 }
 
-async function repairUndeliveredMessages({ apply = false, limit = 25 } = {}) {
-  if (!databaseEnabled()) return { ok: false, skipped: true, reason: "database_not_configured" };
-  const result = await query(
+export async function repairUndeliveredMessages({
+  apply = false,
+  limit = 25,
+  queryImpl = query,
+  appendAssistantMessageImpl = appendAssistantMessage,
+  databaseEnabledImpl = databaseEnabled,
+  now = () => new Date().toISOString(),
+} = {}) {
+  if (!databaseEnabledImpl()) return { ok: false, skipped: true, reason: "database_not_configured" };
+  const result = await queryImpl(
     `
       SELECT m.id, m.run_id, m.account_id, m.message_text, m.metadata_json, m.created_at,
              r.trigger, r.manager_id
@@ -61,6 +69,7 @@ async function repairUndeliveredMessages({ apply = false, limit = 25 } = {}) {
       accountId: row.account_id,
       createdAt: row.created_at,
       metadata,
+      queryImpl,
     });
     if (!target.conversationId) {
       skipped.push({ id: row.id, runId: row.run_id, reason: "source_conversation_not_found" });
@@ -69,9 +78,9 @@ async function repairUndeliveredMessages({ apply = false, limit = 25 } = {}) {
 
     const chatMessageId = `msg_${row.id}_assistant`.slice(0, 180);
     if (apply) {
-      const existing = await query("SELECT id FROM chat_messages WHERE id = $1", [chatMessageId]);
+      const existing = await queryImpl("SELECT id FROM chat_messages WHERE id = $1", [chatMessageId]);
       if (!existing.rows[0]) {
-        await appendAssistantMessage({
+        await appendAssistantMessageImpl({
           accountId: row.account_id,
           conversationId: target.conversationId,
           mode: "Hive",
@@ -88,10 +97,10 @@ async function repairUndeliveredMessages({ apply = false, limit = 25 } = {}) {
           },
         });
       }
-      await query(
+      await queryImpl(
         `
           UPDATE board_manager_user_messages
-          SET metadata_json = metadata_json || $2::jsonb
+          SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) || $2::jsonb
           WHERE id = $1
         `,
         [
@@ -99,7 +108,7 @@ async function repairUndeliveredMessages({ apply = false, limit = 25 } = {}) {
           JSON.stringify({
             conversation_id: target.conversationId,
             chat_message_id: chatMessageId,
-            delivery_repaired_at: new Date().toISOString(),
+            delivery_repaired_at: now(),
             delivery_repair_source: target.source,
           }),
         ]
@@ -118,12 +127,18 @@ async function repairUndeliveredMessages({ apply = false, limit = 25 } = {}) {
   return { ok: true, apply, candidateCount: result.rows.length, repaired, skipped };
 }
 
-try {
+async function main() {
   const apply = hasArg("--apply");
   const limitArg = process.argv.indexOf("--limit");
   const limit = limitArg >= 0 ? Number(process.argv[limitArg + 1]) : 25;
   const output = await repairUndeliveredMessages({ apply, limit });
   console.log(JSON.stringify(output, null, 2));
-} finally {
-  await closePool();
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  try {
+    await main();
+  } finally {
+    await closePool();
+  }
 }
