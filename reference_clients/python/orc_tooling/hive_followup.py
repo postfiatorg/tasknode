@@ -159,6 +159,19 @@ def run_hive_followup(
     )
     if not payload.get("ok"):
         return payload
+    if execute and not (
+        payload.get("executed") is True
+        and str(payload.get("chatMessageId") or payload.get("chat_message_id") or "").strip()
+        and str(payload.get("conversationId") or payload.get("conversation_id") or "").strip()
+    ):
+        return {
+            "ok": False,
+            "error": "orc_hive_followup_delivery_contract_incomplete",
+            "returnCode": result.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "secretPrinted": False,
+        }
     payload.setdefault("secretPrinted", False)
     payload.setdefault("command", " ".join(command))
     return payload
