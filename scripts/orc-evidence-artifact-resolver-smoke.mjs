@@ -41,6 +41,25 @@ const { stdout } = await execFileAsync(process.execPath, [
   "--generated-at",
   "2026-06-20T10:30:00.000Z",
 ]);
+
+await assert.rejects(
+  execFileAsync(process.execPath, [
+    scriptPath,
+    "resolve",
+    "--pr-url",
+    "https://github.com/postfiatorg/tasknodeofficial/pull/169",
+    "--commit",
+    "ba3b732669c7d98c0dd9dac67b3faeb6ec32e05a",
+    "--artifact",
+    "../package.json",
+    "--out",
+    outDir,
+    "--repo-root",
+    repoRoot,
+  ]),
+  (error) => /Artifact path must be a relative path inside the repository/.test(error.stderr)
+);
+
 const output = JSON.parse(stdout);
 assert.equal(output.ok, true);
 assert.equal(output.artifactCount, 3);

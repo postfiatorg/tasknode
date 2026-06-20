@@ -204,8 +204,21 @@ function githubUrls(pr, commit, artifactPath) {
   };
 }
 
+function normalizeArtifactPath(artifactPath) {
+  const normalized = safeText(artifactPath, 1000).replace(/\\/g, "/").replace(/^\.\//, "");
+  if (
+    !normalized ||
+    normalized.includes("\0") ||
+    path.isAbsolute(normalized) ||
+    normalized.split("/").includes("..")
+  ) {
+    throw new Error("Artifact path must be a relative path inside the repository");
+  }
+  return normalized;
+}
+
 async function artifactRow({ repoRoot, pr, commit, changedFiles, artifactPath, excerptBytes }) {
-  const normalized = safeText(artifactPath, 1000).replace(/^\.\//, "");
+  const normalized = normalizeArtifactPath(artifactPath);
   const absolute = path.join(repoRoot, normalized);
   const localExists = existsSync(absolute);
   const committedExists = await commitObjectExists(repoRoot, commit, normalized);
