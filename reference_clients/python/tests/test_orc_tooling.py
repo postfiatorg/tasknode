@@ -731,6 +731,33 @@ class OrcToolingTests(unittest.TestCase):
         followup_mock.assert_not_called()
         self.assertEqual(result["secretPrinted"], False)
 
+    def test_self_cycle_keeps_result_when_local_run_journal_fails(self):
+        with patch("orc_tooling.orcctl.append_run_journal", side_effect=RuntimeError("journal path unavailable")), \
+            patch("orc_tooling.orcctl.operator_status", return_value=self_cycle_inventory()), \
+            patch("orc_tooling.orcctl.triage_network_work", return_value=self_cycle_triage_item()), \
+            patch("orc_tooling.orcctl.review_next", return_value={
+                "ok": True,
+                "task": {"taskId": "task_source", "title": "Verify reward accounting drift"},
+                "secretPrinted": False,
+            }), \
+            patch("orc_tooling.orcctl.classify_review") as classify_mock, \
+            patch("orc_tooling.orcctl.request_followup_task") as followup_mock:
+            result = self_cycle(
+                client=FakeStatusClient(),
+                agent="grashnuk",
+                reviewer_wallet="rReviewer",
+                source="review-queue",
+            )
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["outcome"], "planned_review")
+        self.assertEqual(result["runJournal"]["ok"], False)
+        self.assertEqual(result["runJournal"]["command"], "self-cycle")
+        self.assertEqual(result["runJournal"]["phase"], "finish")
+        self.assertIn("journal path unavailable", result["runJournal"]["error"])
+        classify_mock.assert_not_called()
+        followup_mock.assert_not_called()
+
     def test_self_cycle_execute_classifies_and_previews_followup(self):
         captured = {}
 
@@ -1724,6 +1751,26 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["txHash"], "TXACCEPT")
         self.assertEqual(result["workJournal"]["ok"], False)
         self.assertIn("db unavailable", result["workJournal"]["error"])
+
+    def test_task_action_keeps_success_when_local_run_journal_fails(self):
+        client = FakeTaskActionClient()
+
+        with patch("orc_tooling.orcctl.append_run_journal", side_effect=RuntimeError("journal path unavailable")), \
+            patch("orc_tooling.orcctl.append_orc_work_journal", return_value={"ok": True, "inserted": True}):
+            result = orcctl_module.task_accept(
+                "task_lifecycle",
+                client=client,
+                run_id="orcrun_test",
+                database_url="postgres://unit",
+            )
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["txHash"], "TXACCEPT")
+        self.assertEqual(result["workJournal"]["inserted"], True)
+        self.assertEqual(result["runJournal"]["ok"], False)
+        self.assertEqual(result["runJournal"]["command"], "task.accept")
+        self.assertEqual(result["runJournal"]["phase"], "accept")
+        self.assertIn("journal path unavailable", result["runJournal"]["error"])
 
     def test_review_state_record_normalizes_and_defaults_action_required(self):
         record = normalize_review_state_record(

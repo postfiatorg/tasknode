@@ -108,6 +108,10 @@ These post-action `orc_work_journal` writes are best-effort after the real
 action or review-state update has succeeded: if the journal insert fails, the
 command returns the journal error in `workJournal` instead of throwing after a
 request, visible signal, signed tx, or terminal closure has already happened.
+The local JSONL `orc_run_journal` fallback is also best-effort for task actions,
+`run-personal-task`, and `self-cycle`: an unwritable local cache path returns a
+`runJournal` error in command output without blocking inventory reads, review
+planning, signed task submissions, or terminal closure.
 
 For raw packet inspection, use the lower-level commands below. For normal
 burn-down, prefer `orcctl` so the review state, follow-up request, task

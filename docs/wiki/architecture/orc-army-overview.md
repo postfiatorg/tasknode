@@ -178,7 +178,10 @@ otherwise risk duplicating work if idempotency metadata changes.
    Post-action and post-dispatch journal writes are best-effort after the
    underlying action, operator interaction, or review-state update succeeds;
    journal failures are returned in `workJournal` instead of turning completed
-   work into a retry trap.
+   work into a retry trap. The local JSONL `orc_run_journal` fallback is also
+   best-effort for Orc execution commands; local cache write failures are
+   returned in `runJournal` without blocking inventory reads, review planning,
+   signed task submissions, or terminal closure.
 
 Important invariant:
 
