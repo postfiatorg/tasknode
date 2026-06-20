@@ -15,7 +15,7 @@ from .client import build_client
 from .payload import extract_task_payload, redact_secrets
 from .review_integrity_policy import apply_reward_clawback_integrity_policy
 from .review import build_rewarded_network_task_review_packet
-from .review_state import REVIEW_DISPOSITIONS, review_queue
+from .review_state import REVIEW_DISPOSITIONS, get_review_state, review_queue
 
 
 DEFAULT_PRIORITY_MODEL = "z-ai/glm-5.2"
@@ -1054,6 +1054,7 @@ def prioritize_directory_rewarded_tasks(
     candidate_limit: int = 200,
     model_limit: int = 20,
     include_prompt: bool = False,
+    database_url: str | None = None,
 ) -> dict[str, Any]:
     active_client = client or build_client()
     login = active_client.login()
@@ -1072,6 +1073,14 @@ def prioritize_directory_rewarded_tasks(
     ]
     scored_candidates: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for row in rows:
+        task_id = _safe_text(row.get("taskId") or row.get("task_id"), 180)
+        if not task_id:
+            continue
+        review_state = get_review_state(task_id, database_url=database_url)
+        disposition = _safe_text(review_state.get("disposition"), 80) or "not_reviewed"
+        if disposition != "not_reviewed":
+            continue
+        row = {**row, "reviewDisposition": disposition}
         packet = build_directory_rewarded_task_packet(row)
         heuristic = normalize_priority_result(heuristic_priority_score(packet), packet, scored_by="heuristic")
         scored_candidates.append((packet, heuristic))
@@ -1160,6 +1169,7 @@ def prioritize_network_work(
             candidate_limit=candidate_limit,
             model_limit=model_limit,
             include_prompt=include_prompt,
+            database_url=database_url,
         )
     raise ValueError("source must be directory-rewarded-tasks, review-queue, or operator-outstanding")
 
