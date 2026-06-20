@@ -10,7 +10,7 @@ Task: `task_4cf53094fbe28950dd4a0bcb66b656c7`
 - `docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/sample_action_digest.json` - action-digest sample used for owner/priority enrichment.
 - `docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/outputs/batch/hive_secretary_batch_payload.json` - consolidated Hive Secretary batch payload.
 - `docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/outputs/batch/hive_secretary_context_updates.json` - update array extracted from the batch.
-- `docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/outputs/single/hive_secretary_single_update.json` - single-record output for `swrev_secretary_002`.
+- `docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/outputs/single/hive_secretary_single_update.json` - single-record output for `swrev_secretary_004`.
 - `docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/outputs/*/discord_summary.md` - reviewer-ready summaries.
 - `docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/batch_run_output.json` and `single_run_output.json` - command stdout.
 - `docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/help_output.txt` - CLI help output.
@@ -57,16 +57,29 @@ The sample review ledger contains five records:
 {
   "schema": "pf.hive_secretary.context_update.v1",
   "source": {
-    "reviewId": "swrev_secretary_002",
-    "taskId": "task_hive_chat_delivery_gap"
+    "reviewId": "swrev_secretary_004",
+    "taskId": "task_unverifiable_cluster_submission"
+  },
+  "review": {
+    "score": 22,
+    "grading": {
+      "score": 22,
+      "scale": 100,
+      "source": "orc_review_ledger"
+    }
   },
   "action": {
     "required": true,
-    "owner": "product_engineering_triage",
-    "priority": 78
+    "owner": "nazgul_alex_review",
+    "priority": 94,
+    "integrityPolicy": {
+      "clawbackFlag": "blacklist_if_proven_no_clawback",
+      "archivalDirective": "hold_for_human_integrity_review",
+      "enforcementAllowed": false
+    }
   },
   "contextUpdate": {
-    "title": "reviewed_follow_up: task_hive_chat_delivery_gap",
+    "title": "reviewed_negative_follow_up: task_unverifiable_cluster_submission",
     "status": "ready_for_hive_secretary"
   }
 }
@@ -93,7 +106,7 @@ node scripts/orc-hive-secretary-context-converter.mjs batch \
 node scripts/orc-hive-secretary-context-converter.mjs single \
   --ledger docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/sample_review_ledger.json \
   --digest docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/sample_action_digest.json \
-  --review-id swrev_secretary_002 \
+  --review-id swrev_secretary_004 \
   --out docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/outputs/single \
   --generated-by grashnuk \
   --generated-at 2026-06-20T06:46:00.000Z \

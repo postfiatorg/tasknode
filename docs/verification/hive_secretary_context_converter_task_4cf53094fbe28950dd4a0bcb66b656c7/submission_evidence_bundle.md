@@ -37,13 +37,26 @@ Task: `task_4cf53094fbe28950dd4a0bcb66b656c7`
     "operation": "append_context_update"
   },
   "source": {
-    "reviewId": "swrev_secretary_002",
-    "taskId": "task_hive_chat_delivery_gap"
+    "reviewId": "swrev_secretary_004",
+    "taskId": "task_unverifiable_cluster_submission"
+  },
+  "review": {
+    "score": 22,
+    "grading": {
+      "score": 22,
+      "scale": 100,
+      "source": "orc_review_ledger"
+    }
   },
   "action": {
     "required": true,
-    "owner": "product_engineering_triage",
-    "priority": 78
+    "owner": "nazgul_alex_review",
+    "priority": 94,
+    "integrityPolicy": {
+      "clawbackFlag": "blacklist_if_proven_no_clawback",
+      "archivalDirective": "hold_for_human_integrity_review",
+      "enforcementAllowed": false
+    }
   },
   "contextUpdate": {
     "status": "ready_for_hive_secretary"

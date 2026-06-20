@@ -12,6 +12,8 @@
       "actionOwner": "nazgul_alex_review",
       "category": "integrity_review",
       "priority": 94,
+      "clawbackFlag": "blacklist_if_proven_no_clawback",
+      "archivalDirective": "hold_for_human_integrity_review",
       "disposition": "reviewed_negative_follow_up",
       "integritySignals": [
         "thin_evidence",

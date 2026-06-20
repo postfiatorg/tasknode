@@ -81,6 +81,8 @@
       "actionRequired": true,
       "actionOwner": "nazgul_alex_review",
       "priority": 94,
+      "clawbackFlag": "blacklist_if_proven_no_clawback",
+      "archivalDirective": "hold_for_human_integrity_review",
       "integritySignals": [
         "thin_evidence",
         "automation_pattern",

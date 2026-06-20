@@ -176,6 +176,29 @@ function priority(record, digestItem) {
   return Math.max(0, Math.min(100, safeNumber(record.priority ?? digestItem?.priority, actionRequired(record, digestItem) ? 60 : 10)));
 }
 
+function clawbackFlag(record, digestItem) {
+  return normalizeKey(
+    record.clawbackFlag ||
+      record.clawbackRecommendation ||
+      record.integrityPolicy?.clawbackFlag ||
+      digestItem?.clawbackFlag ||
+      digestItem?.integrityPolicy?.clawbackFlag ||
+      "none"
+  );
+}
+
+function archivalDirective(record, digestItem) {
+  return normalizeKey(
+    record.archivalDirective ||
+      record.archiveAction ||
+      record.integrityPolicy?.archivalDirective ||
+      digestItem?.archivalDirective ||
+      digestItem?.archiveAction ||
+      digestItem?.integrityPolicy?.archivalDirective ||
+      (actionRequired(record, digestItem) ? "keep_active_for_follow_up" : "archive_as_reviewed")
+  );
+}
+
 function contextBody({ record, digestItem, state, required, owner, action, signals }) {
   const who = contributor(record).handle || contributor(record).walletAddress || "unknown contributor";
   const lines = [
@@ -227,6 +250,11 @@ function buildUpdate({ record, digest, generatedAt, generatedBy }) {
       disposition: state,
       category,
       score: safeNumber(record.score, null),
+      grading: {
+        score: safeNumber(record.score, null),
+        scale: 100,
+        source: "orc_review_ledger",
+      },
       evidenceClass: normalizeKey(record.evidenceClass || record.evidenceType || record.reviewStatus, "unknown"),
       confidence: normalizeKey(record.confidence || (record.reviewStatus === "verified" ? "high" : "medium"), "unknown"),
       integritySignals: signals,
@@ -237,6 +265,11 @@ function buildUpdate({ record, digest, generatedAt, generatedBy }) {
       priority: priority(record, digestItem),
       recommendedAction: action,
       routingPacketHint: required ? `routing_packets/${owner}.json` : "",
+      integrityPolicy: {
+        clawbackFlag: clawbackFlag(record, digestItem),
+        archivalDirective: archivalDirective(record, digestItem),
+        enforcementAllowed: false,
+      },
     },
     contextUpdate: {
       title: `${state}: ${safeText(record.taskId, 180)}`,

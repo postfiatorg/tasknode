@@ -8,13 +8,13 @@
     "actionRequired": 1,
     "noAction": 0,
     "byDisposition": {
-      "reviewed_follow_up": 1
+      "reviewed_negative_follow_up": 1
     },
     "byActionOwner": {
-      "product_engineering_triage": 1
+      "nazgul_alex_review": 1
     },
     "byReviewStatus": {
-      "verified": 1
+      "unverifiable": 1
     }
   },
   "files": [

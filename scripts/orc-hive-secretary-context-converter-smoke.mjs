@@ -57,6 +57,10 @@ assert.equal(batchPayload.summary.byActionOwner.protocol_owner_review, 1);
 const negative = batchPayload.updates.find((update) => update.review.disposition === "reviewed_negative_follow_up");
 assert.equal(negative.action.required, true);
 assert.equal(negative.action.owner, "nazgul_alex_review");
+assert.equal(negative.review.grading.score, 22);
+assert.equal(negative.action.integrityPolicy.clawbackFlag, "blacklist_if_proven_no_clawback");
+assert.equal(negative.action.integrityPolicy.archivalDirective, "hold_for_human_integrity_review");
+assert.equal(negative.action.integrityPolicy.enforcementAllowed, false);
 assert.ok(negative.contextUpdate.body.includes("Integrity/routing signals"));
 
 const noAction = batchPayload.updates.find((update) => update.review.disposition === "reviewed_no_action");
