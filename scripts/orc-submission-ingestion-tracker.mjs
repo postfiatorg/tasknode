@@ -21,7 +21,7 @@ function usage() {
 
 Commands:
   run       Process every submission packet into a fresh accounting pass.
-  catch-up  Process only submissions missing from the ledger or not yet terminal.
+  catch-up  Process submissions missing from the ledger, not yet terminal, or missing complete accounting artifacts.
   dashboard Write status dashboard and summary artifacts from the current ledger.
 
 Outputs:
@@ -168,6 +168,41 @@ function normalizeSubmission(row, index) {
 
 function recordKey(submission) {
   return submission.taskId || submission.submissionId || `index_${submission.sourceIndex}`;
+}
+
+function stageCompleted(record, stageName) {
+  return record?.stages?.[stageName]?.status === "completed";
+}
+
+function hasCompleteFeedbackPayload(record) {
+  return (
+    record?.feedbackPayload?.schema === FEEDBACK_SCHEMA &&
+    Boolean(record.feedbackPayload?.payloadId) &&
+    record.feedbackPayload?.safety?.deliveredLive === false &&
+    record.feedbackPayload?.safety?.enforcementAllowed === false
+  );
+}
+
+function hasCompleteSecretaryPayload(record) {
+  return (
+    record?.secretaryUpdatePayload?.schema === SECRETARY_SCHEMA &&
+    Boolean(record.secretaryUpdatePayload?.updateId) &&
+    record.secretaryUpdatePayload?.action?.enforcementAllowed === false
+  );
+}
+
+function isCompleteTerminalRecord(record) {
+  if (!record || !TERMINAL_STATES.has(record.state)) return false;
+  if (record.state === "failed") {
+    return record.stages?.ingest?.status === "failed" && asArray(record.accounting?.failureReasons).length > 0;
+  }
+  return (
+    record.state === "accounted_for" &&
+    STAGES.every((stageName) => stageCompleted(record, stageName)) &&
+    Boolean(record.accounting?.ledgerRecordKey) &&
+    hasCompleteFeedbackPayload(record) &&
+    hasCompleteSecretaryPayload(record)
+  );
 }
 
 function validateSubmission(submission) {
@@ -504,7 +539,7 @@ function buildRun({ command, submissions, ledger, generatedAt, generatedBy }) {
   for (const submission of submissions) {
     const key = recordKey(submission);
     const existing = existingByKey.get(key);
-    if (command === "catch-up" && existing && TERMINAL_STATES.has(existing.state)) {
+    if (command === "catch-up" && isCompleteTerminalRecord(existing)) {
       skippedTerminalCount += 1;
       continue;
     }

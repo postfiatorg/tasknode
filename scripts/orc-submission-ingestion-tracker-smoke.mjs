@@ -64,6 +64,22 @@ const initialRecords = fixture.submissions.slice(0, 2).map((submission, index) =
   feedbackPayload: { payloadId: `seed_feedback_${index + 1}` },
   secretaryUpdatePayload: { updateId: `seed_secretary_${index + 1}` },
 }));
+initialRecords[0].feedbackPayload = {
+  schema: "pf.orc.review_feedback_delivery_payload.v1",
+  payloadId: "seed_feedback_1",
+  safety: {
+    signed: false,
+    deliveredLive: false,
+    enforcementAllowed: false,
+  },
+};
+initialRecords[0].secretaryUpdatePayload = {
+  schema: "pf.hive_secretary.context_update.v1",
+  updateId: "seed_secretary_1",
+  action: {
+    enforcementAllowed: false,
+  },
+};
 await writeFile(
   ledgerPath,
   `${JSON.stringify(
@@ -97,8 +113,8 @@ const { stdout } = await execFileAsync(process.execPath, [
 const output = JSON.parse(stdout);
 assert.equal(output.ok, true);
 assert.equal(output.run.sourceSubmissionCount, 10);
-assert.equal(output.run.processedCount, 8);
-assert.equal(output.run.skippedTerminalCount, 2);
+assert.equal(output.run.processedCount, 9);
+assert.equal(output.run.skippedTerminalCount, 1);
 assert.equal(output.summary.totalRecords, 10);
 assert.equal(output.summary.byState.accounted_for, 10);
 assert.equal(output.summary.feedbackPayloadsReady, 10);
@@ -109,6 +125,13 @@ assert.equal(ledger.records.length, 10);
 assert.ok(ledger.records.every((record) => record.state === "accounted_for"));
 assert.ok(ledger.records.every((record) => record.stages.secretary_update.status === "completed"));
 assert.ok(ledger.records.every((record) => record.stateHistory.some((entry) => entry.state === "reviewed")));
+const skippedSeed = ledger.records.find((record) => record.taskId === fixture.submissions[0].taskId);
+assert.equal(skippedSeed.lastRunId, "seed_run");
+assert.equal(skippedSeed.feedbackPayload.payloadId, "seed_feedback_1");
+const repairedSeed = ledger.records.find((record) => record.taskId === fixture.submissions[1].taskId);
+assert.equal(repairedSeed.lastRunId, output.run.runId);
+assert.equal(repairedSeed.feedbackPayload.schema, "pf.orc.review_feedback_delivery_payload.v1");
+assert.equal(repairedSeed.secretaryUpdatePayload.schema, "pf.hive_secretary.context_update.v1");
 
 const dashboard = JSON.parse(await readFile(path.join(outDir, "status_dashboard.json"), "utf8"));
 assert.equal(dashboard.summary.stageCounts.secretary_update.completed, 10);
