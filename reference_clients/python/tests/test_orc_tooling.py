@@ -2016,6 +2016,32 @@ class OrcToolingTests(unittest.TestCase):
         self.assertIn(EXECUTABLE_REWARD_CLAWBACK_SIGNAL, calls[0])
         self.assertIn("integrityControls", calls[0])
 
+    def test_review_state_summary_counts_public_only_reviewed_unclear_states(self):
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            return {
+                "ok": True,
+                "counts": {"not_reviewed": 2, "reviewed_unclear": 10},
+                "integrityControls": {
+                    "executable_reward_clawback_artifact": 0,
+                    "no_signing_no_fund_movement": 0,
+                    "independentOrcReviewRequired": 0,
+                },
+                "secretPrinted": False,
+            }
+
+        with patch("orc_tooling.review_state.ensure_review_state_schema", return_value={"ok": True}):
+            with patch("orc_tooling.review_state.tasknode_database_url", return_value="postgres://unit"):
+                with patch("orc_tooling.review_state._run_json", side_effect=fake_run_json):
+                    result = review_state_summary(database_url="postgres://unit")
+
+        self.assertEqual(result["counts"]["reviewed_unclear"], 10)
+        self.assertIn("FROM orc_task_review_states", calls[0])
+        self.assertIn("WHERE disposition <> 'not_reviewed'", calls[0])
+        self.assertIn("WHERE review_disposition = 'not_reviewed'", calls[0])
+
     def test_completed_follow_up_is_terminal_without_action_required(self):
         record = normalize_review_state_record(
             task_id="task_review",

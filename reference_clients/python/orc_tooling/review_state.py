@@ -1105,9 +1105,25 @@ def review_state_summary(*, database_url: str | None = None) -> dict[str, Any]:
     ensure_review_state_schema(database_url=database_url)
     db_url = tasknode_database_url(database_url)
     sql = f"""
-WITH counts AS (
+WITH state_counts AS (
+  SELECT disposition AS review_disposition, count(*) AS total
+  FROM orc_task_review_states
+  WHERE disposition <> 'not_reviewed'
+  GROUP BY disposition
+),
+queue_counts AS (
   SELECT review_disposition, count(*) AS total
   FROM orc_task_review_queue
+  WHERE review_disposition = 'not_reviewed'
+  GROUP BY review_disposition
+),
+counts AS (
+  SELECT review_disposition, sum(total)::int AS total
+  FROM (
+    SELECT review_disposition, total FROM state_counts
+    UNION ALL
+    SELECT review_disposition, total FROM queue_counts
+  ) combined
   GROUP BY review_disposition
 ),
 integrity_controls AS (
