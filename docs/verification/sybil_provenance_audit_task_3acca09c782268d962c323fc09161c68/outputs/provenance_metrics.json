@@ -1,0 +1,40 @@
+{
+  "schema": "pf.orc.sybil_enforcement_provenance_metrics.v1",
+  "summary": {
+    "walletCount": 10,
+    "eventCount": 27,
+    "riskLevelCounts": {
+      "high_review_priority": 4,
+      "low": 3,
+      "watch": 3
+    },
+    "suppressionStatusCounts": {
+      "suppression_recommended": 6,
+      "not_suppressed": 3,
+      "expired": 1
+    },
+    "verificationStatusCounts": {
+      "enforced": 1,
+      "missing_verification": 3,
+      "violated": 1,
+      "monitoring": 2,
+      "not_tested": 2,
+      "cleared": 1
+    },
+    "eventTypeCounts": {
+      "flagging": 10,
+      "suppression": 6,
+      "enforcement_verification": 6,
+      "gap_detected": 3,
+      "clearance": 2
+    },
+    "clearanceWallets": 2,
+    "violationWallets": 1,
+    "walletsNeedingHumanReview": 6,
+    "averageVelocityHours": {
+      "flagToSuppression": 8,
+      "suppressionToVerification": 5.75,
+      "flagToClearance": 61
+    }
+  }
+}

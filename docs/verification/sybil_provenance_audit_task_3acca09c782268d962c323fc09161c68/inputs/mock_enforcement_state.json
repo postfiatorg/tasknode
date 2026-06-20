@@ -1,0 +1,128 @@
+{
+  "schema": "pf.orc.sybil_enforcement_state.v1",
+  "generatedAt": "2026-06-20T11:00:00.000Z",
+  "generatedBy": "grashnuk",
+  "mode": "recommend_only_state_tracking",
+  "readOnly": true,
+  "records": [
+    {
+      "walletAddress": "rHighEnforced1111111111111111111",
+      "contributorKey": "rHighEnforced1111111111111111111",
+      "verification": {
+        "present": true,
+        "status": "enforced",
+        "lastVerifiedAt": "2026-06-20T12:00:00.000Z",
+        "finding": "No active post-suppression allocations in mock sample.",
+        "allocationCounts": {"before": 2, "after": 0},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "No action beyond continued monitoring."
+    },
+    {
+      "walletAddress": "rHighViolation2222222222222222222",
+      "contributorKey": "rHighViolation2222222222222222222",
+      "verification": {
+        "present": true,
+        "status": "violated",
+        "lastVerifiedAt": "2026-06-20T13:00:00.000Z",
+        "finding": "Mock active allocation observed after suppression recommendation.",
+        "allocationCounts": {"before": 1, "after": 1},
+        "activePostSuppressionAllocations": ["alloc_mock_violation_001"]
+      },
+      "detectedGaps": ["post_suppression_active_allocation_detected"],
+      "recommendedNextAction": "Escalate to Nazgul/Sauron for human routing investigation; do not auto-enforce."
+    },
+    {
+      "walletAddress": "rWatchNotTested4444444444444444",
+      "contributorKey": "rWatchNotTested4444444444444444",
+      "verification": {
+        "present": true,
+        "status": "not_tested",
+        "lastVerifiedAt": "2026-06-20T14:00:00.000Z",
+        "finding": "Mock allocation sample did not include this wallet.",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": ["suppression_not_tested_by_allocation_sample"],
+      "recommendedNextAction": "Run or refresh allocation verification before making any enforcement claim."
+    },
+    {
+      "walletAddress": "rWatchCleared5555555555555555555",
+      "contributorKey": "rWatchCleared5555555555555555555",
+      "verification": {
+        "present": true,
+        "status": "cleared",
+        "lastVerifiedAt": "2026-06-20T10:00:00.000Z",
+        "finding": "Mock review cleared this wallet after no matching allocations.",
+        "allocationCounts": {"before": 1, "after": 0},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "Clearance path recorded; continue monitoring."
+    },
+    {
+      "walletAddress": "rLowExpired8888888888888888888",
+      "contributorKey": "rLowExpired8888888888888888888",
+      "verification": {
+        "present": false,
+        "status": "missing_verification",
+        "lastVerifiedAt": "",
+        "finding": "",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "Clearance path recorded; continue monitoring."
+    },
+    {
+      "walletAddress": "rLowUnexpectedSuppression10101010",
+      "contributorKey": "rLowUnexpectedSuppression10101010",
+      "verification": {
+        "present": true,
+        "status": "not_tested",
+        "lastVerifiedAt": "2026-06-20T15:00:00.000Z",
+        "finding": "Low-risk wallet still has a suppression recommendation.",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": ["low_risk_has_suppression_entry_review_boundary"],
+      "recommendedNextAction": "Review whether suppression remains justified for this risk level."
+    },
+    {
+      "walletAddress": "rWatchMonitor666666666666666666",
+      "contributorKey": "rWatchMonitor666666666666666666",
+      "verification": {
+        "present": true,
+        "status": "monitoring",
+        "lastVerifiedAt": "2026-06-20T16:00:00.000Z",
+        "finding": "Watch-only wallet remains in monitoring.",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "No action beyond continued monitoring."
+    },
+    {
+      "walletAddress": "rLowMonitor7777777777777777777",
+      "contributorKey": "rLowMonitor7777777777777777777",
+      "verification": {
+        "present": true,
+        "status": "monitoring",
+        "lastVerifiedAt": "2026-06-20T17:00:00.000Z",
+        "finding": "Low-risk wallet remains in monitoring.",
+        "allocationCounts": {},
+        "activePostSuppressionAllocations": []
+      },
+      "detectedGaps": [],
+      "recommendedNextAction": "No action beyond continued monitoring."
+    }
+  ],
+  "enforcementBoundary": {
+    "wouldMutateLiveRouting": false,
+    "wouldMoveFunds": false,
+    "wouldBanAccounts": false,
+    "wouldClawBackRewards": false,
+    "wouldDeploy": false
+  }
+}

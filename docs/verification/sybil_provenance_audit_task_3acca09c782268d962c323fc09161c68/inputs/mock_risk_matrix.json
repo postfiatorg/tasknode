@@ -1,0 +1,119 @@
+{
+  "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+  "generatedAt": "2026-06-20T00:00:00.000Z",
+  "policy": {
+    "mode": "recommend_only"
+  },
+  "riskMatrix": [
+    {
+      "wallet": "rHighEnforced1111111111111111111",
+      "role": "cluster_funding_source",
+      "riskBand": "high_review_priority",
+      "compositeScore": 82,
+      "reviewPriorityScore": 91,
+      "firstSeen": "2026-06-20T00:00:00.000Z",
+      "lastSeen": "2026-06-20T00:30:00.000Z",
+      "reasons": ["funds multiple risk-source wallets", "high linkage centrality"],
+      "recommendation": "review raw transactions and operator identity before any enforcement decision"
+    },
+    {
+      "wallet": "rHighViolation2222222222222222222",
+      "role": "post_suppression_allocator",
+      "riskBand": "high_review_priority",
+      "compositeScore": 76,
+      "reviewPriorityScore": 88,
+      "firstSeen": "2026-06-20T01:00:00.000Z",
+      "lastSeen": "2026-06-20T01:30:00.000Z",
+      "reasons": ["post-suppression routing candidate", "adjacent to prior high-risk wallet"],
+      "recommendation": "review active allocations before any enforcement decision"
+    },
+    {
+      "wallet": "rHighMissingSuppression333333333333",
+      "role": "cluster_intermediary",
+      "riskBand": "high_review_priority",
+      "compositeScore": 71,
+      "reviewPriorityScore": 79,
+      "firstSeen": "2026-06-20T02:00:00.000Z",
+      "lastSeen": "2026-06-20T02:30:00.000Z",
+      "reasons": ["risk score above suppression threshold", "dense cluster membership"],
+      "recommendation": "prepare recommend-only suppression review packet"
+    },
+    {
+      "wallet": "rHighMissingVerification9999999999",
+      "role": "risk_cluster_peer",
+      "riskBand": "high_review_priority",
+      "compositeScore": 69,
+      "reviewPriorityScore": 74,
+      "firstSeen": "2026-06-20T03:00:00.000Z",
+      "lastSeen": "2026-06-20T03:30:00.000Z",
+      "reasons": ["threshold-qualified", "suppression verification absent"],
+      "recommendation": "refresh allocation verification"
+    },
+    {
+      "wallet": "rWatchNotTested4444444444444444",
+      "role": "watch_cluster_peer",
+      "riskBand": "watch",
+      "compositeScore": 49,
+      "reviewPriorityScore": 52,
+      "firstSeen": "2026-06-20T04:00:00.000Z",
+      "lastSeen": "2026-06-20T04:30:00.000Z",
+      "reasons": ["watch score with suppression candidate"],
+      "recommendation": "monitor and verify before escalation"
+    },
+    {
+      "wallet": "rWatchCleared5555555555555555555",
+      "role": "cleared_watch_peer",
+      "riskBand": "watch",
+      "compositeScore": 43,
+      "reviewPriorityScore": 48,
+      "firstSeen": "2026-06-17T10:00:00.000Z",
+      "lastSeen": "2026-06-17T11:00:00.000Z",
+      "reasons": ["watch score later cleared by verification"],
+      "recommendation": "record clearance and monitor"
+    },
+    {
+      "wallet": "rWatchMonitor666666666666666666",
+      "role": "watch_peer",
+      "riskBand": "watch",
+      "compositeScore": 40,
+      "reviewPriorityScore": 42,
+      "firstSeen": "2026-06-20T06:00:00.000Z",
+      "lastSeen": "2026-06-20T06:30:00.000Z",
+      "reasons": ["watch only"],
+      "recommendation": "monitor only"
+    },
+    {
+      "wallet": "rLowMonitor7777777777777777777",
+      "role": "low_risk_peer",
+      "riskBand": "low",
+      "compositeScore": 24,
+      "reviewPriorityScore": 28,
+      "firstSeen": "2026-06-20T07:00:00.000Z",
+      "lastSeen": "2026-06-20T07:30:00.000Z",
+      "reasons": ["below threshold"],
+      "recommendation": "monitor only"
+    },
+    {
+      "wallet": "rLowExpired8888888888888888888",
+      "role": "expired_low_peer",
+      "riskBand": "low",
+      "compositeScore": 22,
+      "reviewPriorityScore": 24,
+      "firstSeen": "2026-06-16T10:00:00.000Z",
+      "lastSeen": "2026-06-16T10:30:00.000Z",
+      "reasons": ["old low-risk suppression expired"],
+      "recommendation": "clear expired suppression"
+    },
+    {
+      "wallet": "rLowUnexpectedSuppression10101010",
+      "role": "low_suppressed_peer",
+      "riskBand": "low",
+      "compositeScore": 18,
+      "reviewPriorityScore": 21,
+      "firstSeen": "2026-06-20T08:00:00.000Z",
+      "lastSeen": "2026-06-20T08:30:00.000Z",
+      "reasons": ["low risk but suppression row exists"],
+      "recommendation": "review whether suppression remains justified"
+    }
+  ]
+}
