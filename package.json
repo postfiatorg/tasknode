@@ -79,6 +79,7 @@
     "board-manager-orc-ui-smoke": "node scripts/board-manager-orc-ui-smoke.mjs",
     "board-manager-orc-accounting-smoke": "node scripts/board-manager-orc-accounting-smoke.mjs",
     "orc-shared-state-smoke": "node scripts/orc-shared-state-smoke.mjs",
+    "orc-hive-followup-smoke": "node scripts/orc-hive-followup-smoke.mjs",
     "orc-hive-signal-smoke": "node scripts/orc-hive-signal-smoke.mjs",
     "orc-review-queue-ingestion": "node scripts/orc-review-queue-ingest.mjs",
     "orc-review-queue-ingestion-smoke": "node scripts/orc-review-queue-ingestion-smoke.mjs",

@@ -220,6 +220,7 @@ function normalizePayload(payload = {}) {
     summary: safeText(input.summary, 2000),
     next_steps: safeArray(input.next_steps || input.nextSteps).slice(0, 8).map((item) => safeText(item, 500)).filter(Boolean),
     message_text: safeText(input.message_text || input.messageText, 4000),
+    followup_required: input.followup_required === false || input.followupRequired === false ? false : true,
     archive_reason: safeText(input.archive_reason || input.archiveReason, 1000),
     project: {
       id: safeText(project.id, 180),
