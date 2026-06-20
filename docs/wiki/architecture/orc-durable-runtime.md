@@ -139,6 +139,12 @@ the `workerId` supplied to `orc-runtime complete` must match the worker that
 claimed it. Terminal rows remain idempotent, but queued rows and rows claimed by
 another worker are not completed by ID alone.
 
+Enqueue is also idempotent for active source work. When `taskId` is present,
+the runtime will not queue a second `queued` or `claimed` directive for the same
+`orc + source + taskId`; it returns the existing directive with
+`reason=active_directive_exists`. Once the existing directive reaches a terminal
+status, the source task can be dispatched again if a new review pass is needed.
+
 ## Security And Secrets
 
 - The mailbox must never store seeds, mnemonics, private keys, or session

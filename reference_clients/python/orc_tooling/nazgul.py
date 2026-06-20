@@ -956,24 +956,28 @@ def dispatch_orc_runtime(
         runtime_dir=runtime_dir,
         database_url=database_url,
     )
-    record = recorder or record_operator_interaction
-    interaction = record(
-        orc=orc.get("name") or clean_orc,
-        interaction_type="dispatch_runtime",
-        directive=directive,
-        status="queued",
-        metadata={
-            "directiveId": queued.get("directiveId"),
-            "runtimeDir": runtime_dir,
-            **_dispatch_work_metadata(item, task_action="dispatch_runtime"),
-        },
-        database_url=database_url,
-    )
+    interaction = {}
+    if queued.get("queued"):
+        record = recorder or record_operator_interaction
+        interaction = record(
+            orc=orc.get("name") or clean_orc,
+            interaction_type="dispatch_runtime",
+            directive=directive,
+            status="queued",
+            metadata={
+                "directiveId": queued.get("directiveId"),
+                "runtimeDir": runtime_dir,
+                **_dispatch_work_metadata(item, task_action="dispatch_runtime"),
+            },
+            database_url=database_url,
+        )
     return redact_secrets({
         "ok": True,
         "orc": orc.get("name"),
         "action": "dispatch_runtime",
-        "dispatched": True,
+        "dispatched": bool(queued.get("queued")),
+        "idempotent": bool(queued.get("idempotent")),
+        "message": "Active runtime directive already exists." if queued.get("idempotent") else "",
         "runtime": queued,
         "operatorInteraction": interaction,
         "workItem": {

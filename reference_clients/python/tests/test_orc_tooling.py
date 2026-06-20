@@ -1851,6 +1851,33 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(blocked["error"], "directive_not_claimed")
         self.assertEqual(status["statusCounts"]["queued"], 1)
 
+    def test_orc_runtime_jsonl_enqueue_is_idempotent_for_active_task(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                first = enqueue_runtime_directive(
+                    orc="grashnuk",
+                    task_id="task_source",
+                    directive="Review task_source.",
+                    source="unit",
+                    runtime_dir=tmpdir,
+                )
+                duplicate = enqueue_runtime_directive(
+                    orc="grashnuk",
+                    task_id="task_source",
+                    directive="Review task_source again.",
+                    source="unit",
+                    runtime_dir=tmpdir,
+                )
+                status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+
+        self.assertEqual(first["queued"], True)
+        self.assertEqual(first["idempotent"], False)
+        self.assertEqual(duplicate["queued"], False)
+        self.assertEqual(duplicate["idempotent"], True)
+        self.assertEqual(duplicate["reason"], "active_directive_exists")
+        self.assertEqual(duplicate["directiveId"], first["directiveId"])
+        self.assertEqual(status["statusCounts"]["queued"], 1)
+
     def test_orc_runtime_run_once_claims_only_without_real_executor(self):
         with patch.dict(os.environ, {}, clear=True):
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -1902,6 +1929,86 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(recorded[0]["metadata"]["reviewDisposition"], "not_reviewed")
         self.assertEqual(recorded[0]["metadata"]["taskAction"], "dispatch_runtime")
         self.assertEqual(recorded[0]["metadata"]["workItem"]["taskId"], "task_source")
+
+    def test_dispatch_orc_runtime_does_not_duplicate_active_directive(self):
+        recorded = []
+        item = {
+            "task_id": "task_source",
+            "title": "Audit reward leakage",
+            "reward_actual_pft": "30000",
+            "review_disposition": "not_reviewed",
+        }
+
+        def fake_recorder(**kwargs):
+            recorded.append(kwargs)
+            return {"ok": True, "id": f"orcint_runtime_{len(recorded)}", "interaction_type": kwargs["interaction_type"]}
+
+        with patch.dict(os.environ, {}, clear=True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                first = dispatch_orc_runtime(
+                    "grashnuk",
+                    orcs_json=json.dumps([{"name": "grashnuk", "tmuxTarget": "grashnuk:0.0"}]),
+                    runtime_dir=tmpdir,
+                    recorder=fake_recorder,
+                    item_reader=lambda **kwargs: dict(item),
+                )
+                duplicate = dispatch_orc_runtime(
+                    "grashnuk",
+                    orcs_json=json.dumps([{"name": "grashnuk", "tmuxTarget": "grashnuk:0.0"}]),
+                    runtime_dir=tmpdir,
+                    recorder=fake_recorder,
+                    item_reader=lambda **kwargs: dict(item),
+                )
+                status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+
+        self.assertEqual(first["dispatched"], True)
+        self.assertEqual(first["runtime"]["queued"], True)
+        self.assertEqual(duplicate["dispatched"], False)
+        self.assertEqual(duplicate["idempotent"], True)
+        self.assertEqual(duplicate["runtime"]["directiveId"], first["runtime"]["directiveId"])
+        self.assertEqual(duplicate["operatorInteraction"], {})
+        self.assertEqual(len(recorded), 1)
+        self.assertEqual(status["statusCounts"]["queued"], 1)
+
+    def test_orc_runtime_postgres_enqueue_is_idempotent_for_active_task(self):
+        calls = []
+
+        def fake_run_json(_database_url, sql):
+            calls.append(sql)
+            if "active_directive_exists" in sql:
+                return {
+                    "ok": True,
+                    "queued": False,
+                    "idempotent": True,
+                    "reason": "active_directive_exists",
+                    "directive": {
+                        "directiveId": "orcdirective_existing",
+                        "taskId": "task_source",
+                        "source": "unit",
+                        "status": "queued",
+                        "secretPrinted": False,
+                    },
+                    "secretPrinted": False,
+                }
+            return {"ok": True, "secretPrinted": False}
+
+        with patch("orc_tooling.runtime._run_json", side_effect=fake_run_json):
+            result = enqueue_runtime_directive(
+                orc="grashnuk",
+                task_id="task_source",
+                directive="Review task_source.",
+                source="unit",
+                database_url="postgres://unit",
+            )
+
+        enqueue_sql = "\n".join(calls)
+        self.assertEqual(result["queued"], False)
+        self.assertEqual(result["idempotent"], True)
+        self.assertEqual(result["directiveId"], "orcdirective_existing")
+        self.assertIn("pg_advisory_xact_lock", enqueue_sql)
+        self.assertIn("active_directive_exists", enqueue_sql)
+        self.assertIn("status IN ('queued', 'claimed')", enqueue_sql)
+        self.assertIn("WHERE NOT EXISTS (SELECT 1 FROM existing)", enqueue_sql)
 
     def test_orc_runtime_postgres_claim_uses_skip_locked(self):
         calls = []
