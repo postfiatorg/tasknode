@@ -106,6 +106,8 @@ Recommended action: review the flagged contributors before any routing policy ch
 
 ## Public artifact
 
-Public PR: to be added after branch push.
+Public PR: https://github.com/postfiatorg/tasknodeofficial/pull/133
+
+Branch: `codex/contributor-quality-routing-report`.
 
 No deploy was performed.
