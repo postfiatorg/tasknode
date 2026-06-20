@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "schema": "pf.hive_secretary.context_update_batch.v1",
+  "mode": "batch",
+  "outDir": "docs/verification/hive_secretary_context_converter_task_4cf53094fbe28950dd4a0bcb66b656c7/outputs/batch",
+  "summary": {
+    "totalUpdates": 5,
+    "actionRequired": 4,
+    "noAction": 1,
+    "byDisposition": {
+      "reviewed_no_action": 1,
+      "reviewed_follow_up": 3,
+      "reviewed_negative_follow_up": 1
+    },
+    "byActionOwner": {
+      "product_engineering_triage": 1,
+      "orc_ops": 1,
+      "nazgul_alex_review": 1,
+      "protocol_owner_review": 1
+    },
+    "byReviewStatus": {
+      "verified": 3,
+      "self_attested": 1,
+      "unverifiable": 1
+    }
+  },
+  "files": [
+    "hive_secretary_batch_payload.json",
+    "hive_secretary_context_updates.json",
+    "discord_summary.md"
+  ]
+}
