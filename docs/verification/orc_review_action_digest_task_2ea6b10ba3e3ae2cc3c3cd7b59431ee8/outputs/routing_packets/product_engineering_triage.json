@@ -1,0 +1,84 @@
+{
+  "schema": "pf.orc.review_action_digest.v1",
+  "packetType": "owner_action_routing_packet",
+  "generatedAt": "2026-06-20T02:31:03.872Z",
+  "generatedBy": "grashnuk",
+  "sourceLedgerSchema": "pf.orc.submitted_work_review_ledger.v1",
+  "actionOwner": "product_engineering_triage",
+  "summary": {
+    "totalItems": 2,
+    "byCategory": {
+      "operator_workflow": 1,
+      "hive_chat": 1
+    },
+    "byDisposition": {
+      "reviewed_follow_up": 2
+    },
+    "integritySignalFrequencies": {},
+    "highestPriority": 72
+  },
+  "tasks": [
+    {
+      "reviewId": "swrev_action_001",
+      "taskId": "task_product_acceptance_friction",
+      "contributor": {
+        "handle": "gmoney",
+        "accountId": "acct_gmoney_demo",
+        "walletAddress": ""
+      },
+      "reviewStatus": "verified",
+      "disposition": "reviewed_follow_up",
+      "category": "operator_workflow",
+      "priority": 72,
+      "integritySignals": [],
+      "recommendedAction": "Route the acceptance-state friction into the product backlog and tie it to the proposed-task visibility work.",
+      "source": {
+        "cid": "QmDemoAcceptanceFriction",
+        "txHash": "DEMO_ACCEPTANCE_FRICTION_TX"
+      },
+      "feedbackCompatiblePayload": {
+        "recipientAccountId": "acct_gmoney_demo",
+        "messageBody": "Follow-up on reviewed task task_product_acceptance_friction.\nDisposition: reviewed_follow_up.\nRecommended action: Route the acceptance-state friction into the product backlog and tie it to the proposed-task visibility work.",
+        "metadata": {
+          "schema": "pf.orc.review_action_digest.v1",
+          "sourceReviewId": "swrev_action_001",
+          "sourceTaskId": "task_product_acceptance_friction",
+          "actionOwner": "product_engineering_triage",
+          "category": "operator_workflow",
+          "integritySignals": []
+        }
+      }
+    },
+    {
+      "reviewId": "swrev_action_004",
+      "taskId": "task_hive_chat_delivery_gap",
+      "contributor": {
+        "handle": "goodalexander",
+        "accountId": "acct_goodalexander_demo",
+        "walletAddress": ""
+      },
+      "reviewStatus": "verified",
+      "disposition": "reviewed_follow_up",
+      "category": "hive_chat",
+      "priority": 69,
+      "integritySignals": [],
+      "recommendedAction": "Add a product backlog item for visible contributor feedback delivery status and failure reasons.",
+      "source": {
+        "cid": "QmDemoHiveDeliveryGap",
+        "txHash": "DEMO_HIVE_DELIVERY_TX"
+      },
+      "feedbackCompatiblePayload": {
+        "recipientAccountId": "acct_goodalexander_demo",
+        "messageBody": "Follow-up on reviewed task task_hive_chat_delivery_gap.\nDisposition: reviewed_follow_up.\nRecommended action: Add a product backlog item for visible contributor feedback delivery status and failure reasons.",
+        "metadata": {
+          "schema": "pf.orc.review_action_digest.v1",
+          "sourceReviewId": "swrev_action_004",
+          "sourceTaskId": "task_hive_chat_delivery_gap",
+          "actionOwner": "product_engineering_triage",
+          "category": "hive_chat",
+          "integritySignals": []
+        }
+      }
+    }
+  ]
+}

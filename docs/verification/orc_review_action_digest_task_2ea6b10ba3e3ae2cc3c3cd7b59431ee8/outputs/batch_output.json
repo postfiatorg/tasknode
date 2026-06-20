@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "schema": "pf.orc.review_action_digest.v1",
+  "outDir": "docs/verification/orc_review_action_digest_task_2ea6b10ba3e3ae2cc3c3cd7b59431ee8/outputs",
+  "files": [
+    "digest.json",
+    "discord_briefing.md",
+    "routing_packets/nazgul_alex_review.json",
+    "routing_packets/product_engineering_triage.json",
+    "routing_packets/protocol_owner_review.json"
+  ],
+  "counts": {
+    "totalReviewRecords": 6,
+    "actionRequiredRecords": 5,
+    "noActionRecords": 1,
+    "actionOwners": 3
+  }
+}

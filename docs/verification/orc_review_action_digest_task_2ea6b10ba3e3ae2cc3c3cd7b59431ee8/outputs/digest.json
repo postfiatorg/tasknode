@@ -1,0 +1,105 @@
+{
+  "schema": "pf.orc.review_action_digest.v1",
+  "packetType": "consolidated_review_action_digest",
+  "generatedAt": "2026-06-20T02:31:03.872Z",
+  "generatedBy": "grashnuk",
+  "sourceLedgerSchema": "pf.orc.submitted_work_review_ledger.v1",
+  "counts": {
+    "totalReviewRecords": 6,
+    "actionRequiredRecords": 5,
+    "noActionRecords": 1,
+    "actionOwners": 3
+  },
+  "byReviewStatus": {
+    "verified": 5,
+    "self_attested": 1
+  },
+  "byDisposition": {
+    "reviewed_follow_up": 4,
+    "reviewed_integrity_follow_up": 1,
+    "reviewed_no_action": 1
+  },
+  "byActionOwner": {
+    "product_engineering_triage": 2,
+    "protocol_owner_review": 2,
+    "nazgul_alex_review": 1
+  },
+  "byCategory": {
+    "operator_workflow": 1,
+    "reward_accounting": 1,
+    "integrity_review": 1,
+    "hive_chat": 1,
+    "validator_operations": 1
+  },
+  "integritySignalFrequencies": {
+    "projection_delta": 1,
+    "reward_accounting_sensitive": 1,
+    "reward_projection_mismatch": 1,
+    "cross_wallet_pattern": 1,
+    "thin_evidence": 1,
+    "repeat_title_family": 1,
+    "infrastructure_sensitive": 1
+  },
+  "highestPriorityItems": [
+    {
+      "taskId": "task_cross_wallet_cluster_candidate",
+      "actionOwner": "nazgul_alex_review",
+      "category": "integrity_review",
+      "priority": 96,
+      "disposition": "reviewed_integrity_follow_up",
+      "integritySignals": [
+        "cross_wallet_pattern",
+        "thin_evidence",
+        "repeat_title_family"
+      ],
+      "recommendedAction": "Escalate as suspected-only evidence for human integrity review; recommend blacklist-if-proven, no clawback execution."
+    },
+    {
+      "taskId": "task_reward_projection_mismatch",
+      "actionOwner": "protocol_owner_review",
+      "category": "reward_accounting",
+      "priority": 88,
+      "disposition": "reviewed_follow_up",
+      "integritySignals": [
+        "projection_delta",
+        "reward_accounting_sensitive",
+        "reward_projection_mismatch"
+      ],
+      "recommendedAction": "Confirm whether the reward projection mismatch is display-only or ledger-affecting before closing the review."
+    },
+    {
+      "taskId": "task_unl_overlay_security_followup",
+      "actionOwner": "protocol_owner_review",
+      "category": "validator_operations",
+      "priority": 82,
+      "disposition": "reviewed_follow_up",
+      "integritySignals": [
+        "infrastructure_sensitive"
+      ],
+      "recommendedAction": "Review the Docker overlay in a non-production test lane before referencing it in operator runbooks."
+    },
+    {
+      "taskId": "task_product_acceptance_friction",
+      "actionOwner": "product_engineering_triage",
+      "category": "operator_workflow",
+      "priority": 72,
+      "disposition": "reviewed_follow_up",
+      "integritySignals": [],
+      "recommendedAction": "Route the acceptance-state friction into the product backlog and tie it to the proposed-task visibility work."
+    },
+    {
+      "taskId": "task_hive_chat_delivery_gap",
+      "actionOwner": "product_engineering_triage",
+      "category": "hive_chat",
+      "priority": 69,
+      "disposition": "reviewed_follow_up",
+      "integritySignals": [],
+      "recommendedAction": "Add a product backlog item for visible contributor feedback delivery status and failure reasons."
+    }
+  ],
+  "routingPacketFiles": [
+    "routing_packets/nazgul_alex_review.json",
+    "routing_packets/product_engineering_triage.json",
+    "routing_packets/protocol_owner_review.json"
+  ]
+}

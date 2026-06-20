@@ -1,0 +1,64 @@
+{
+  "schema": "pf.orc.review_action_digest.v1",
+  "packetType": "owner_action_routing_packet",
+  "generatedAt": "2026-06-20T02:31:03.872Z",
+  "generatedBy": "grashnuk",
+  "sourceLedgerSchema": "pf.orc.submitted_work_review_ledger.v1",
+  "actionOwner": "nazgul_alex_review",
+  "summary": {
+    "totalItems": 1,
+    "byCategory": {
+      "integrity_review": 1
+    },
+    "byDisposition": {
+      "reviewed_integrity_follow_up": 1
+    },
+    "integritySignalFrequencies": {
+      "cross_wallet_pattern": 1,
+      "thin_evidence": 1,
+      "repeat_title_family": 1
+    },
+    "highestPriority": 96
+  },
+  "tasks": [
+    {
+      "reviewId": "swrev_action_003",
+      "taskId": "task_cross_wallet_cluster_candidate",
+      "contributor": {
+        "handle": "unknown_cluster",
+        "accountId": "acct_cluster_demo",
+        "walletAddress": ""
+      },
+      "reviewStatus": "self_attested",
+      "disposition": "reviewed_integrity_follow_up",
+      "category": "integrity_review",
+      "priority": 96,
+      "integritySignals": [
+        "cross_wallet_pattern",
+        "thin_evidence",
+        "repeat_title_family"
+      ],
+      "recommendedAction": "Escalate as suspected-only evidence for human integrity review; recommend blacklist-if-proven, no clawback execution.",
+      "source": {
+        "cid": "QmDemoCrossWalletCluster",
+        "txHash": "DEMO_CROSS_WALLET_TX"
+      },
+      "feedbackCompatiblePayload": {
+        "recipientAccountId": "acct_cluster_demo",
+        "messageBody": "Follow-up on reviewed task task_cross_wallet_cluster_candidate.\nDisposition: reviewed_integrity_follow_up.\nRecommended action: Escalate as suspected-only evidence for human integrity review; recommend blacklist-if-proven, no clawback execution.",
+        "metadata": {
+          "schema": "pf.orc.review_action_digest.v1",
+          "sourceReviewId": "swrev_action_003",
+          "sourceTaskId": "task_cross_wallet_cluster_candidate",
+          "actionOwner": "nazgul_alex_review",
+          "category": "integrity_review",
+          "integritySignals": [
+            "cross_wallet_pattern",
+            "thin_evidence",
+            "repeat_title_family"
+          ]
+        }
+      }
+    }
+  ]
+}
