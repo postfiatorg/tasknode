@@ -1173,18 +1173,24 @@ def close_followup(
         _safe_text(reward_outcome.get("cid") or reward_outcome.get("eventCid") or reward_outcome.get("sourceCid"), 180)
         or _safe_text(task.get("lastEventCid") or task.get("cid"), 180)
     )
+    existing_metadata = _review_metadata(existing)
+    clean_signal_message_id = (
+        _safe_text(signal_message_id, 240)
+        or _safe_text(existing_metadata.get("user_signal_message_id"), 240)
+        or _safe_text(existing_metadata.get("signalMessageId"), 240)
+    )
     metadata = {
         "followup_status": status,
         "followup_closed_at": _utcnow(),
         "followup_reward_tx": reward_tx,
         "followup_reward_cid": reward_cid,
         "followup_no_code_needed_proof": clean_proof,
-        "user_signal_status": "sent" if _safe_text(signal_message_id, 240) else _safe_text(_review_metadata(existing).get("user_signal_status"), 120) or "not_sent",
-        "user_signal_message_id": _safe_text(signal_message_id, 240),
+        "user_signal_status": "sent" if clean_signal_message_id else _safe_text(existing_metadata.get("user_signal_status"), 120) or "not_sent",
+        "user_signal_message_id": clean_signal_message_id,
         # Backward-compatible aliases for older local Orc tooling.
         "followupStatus": status,
         "paymentTx": reward_tx,
-        "signalMessageId": _safe_text(signal_message_id, 240),
+        "signalMessageId": clean_signal_message_id,
     }
     if clean_followup:
         metadata["followup_task_id"] = clean_followup
@@ -1232,7 +1238,7 @@ def close_followup(
             "terminal": True,
             "metadata": {
                 "source": "orcctl.close_followup",
-                "signalMessageId": _safe_text(signal_message_id, 240),
+                "signalMessageId": clean_signal_message_id,
                 "noCodeNeeded": bool(clean_proof and not clean_followup),
             },
         },

@@ -102,7 +102,8 @@ those closures through the same evidence-gated path. `close-followup` requires
 either a terminal follow-up task (`rewarded`, `refused`, or `cancelled`) or an
 explicit `--no-code-needed-proof`; it never closes immediately at request time.
 `close-followup` also appends a terminal `orc_work_journal` row with the source
-task, follow-up task/request, event CID, tx hash, and outcome status.
+task, follow-up task/request, event CID, tx hash, outcome status, and the
+previously recorded user-signal message id when one exists.
 These post-action `orc_work_journal` writes are best-effort after the real
 action or review-state update has succeeded: if the journal insert fails, the
 command returns the journal error in `workJournal` instead of throwing after a

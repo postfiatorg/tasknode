@@ -162,6 +162,8 @@ development only.
    rows to `orc_work_journal` after successful signed submissions.
 6. `orcctl close-followup` closes the source review only when terminal
    follow-up evidence exists, or when explicit no-code-needed proof is recorded.
+   Closure preserves the existing user-signal message id so completed reviews
+   still point back to the visible Hive message.
 7. `orc_work_journal` links assignment, follow-up, evidence CIDs/tx hashes,
    user signal status, and terminal outcome for later audit.
    Post-action journal writes are best-effort after the underlying action or

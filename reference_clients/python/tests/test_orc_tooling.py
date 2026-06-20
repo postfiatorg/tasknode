@@ -1547,6 +1547,49 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(ledger_rows[0]["outcomeStatus"], "rewarded")
         self.assertTrue(ledger_rows[0]["terminal"])
 
+    def test_close_followup_preserves_existing_signal_message_id(self):
+        existing = {
+            "task_id": "task_source",
+            "disposition": "reviewed_follow_up",
+            "action_required": True,
+            "confidence": "medium",
+            "categories": ["reward_accounting"],
+            "summary": "Follow-up requested.",
+            "recommended_action": "Verify reward rows and add a smoke.",
+            "source_task_ids": ["task_source"],
+            "metadata_json": {
+                "followup_request_id": "req_followup",
+                "user_signal_status": "sent",
+                "user_signal_message_id": "msg_existing_signal",
+            },
+        }
+        captured = []
+        ledger_rows = []
+
+        def fake_upsert(record, **kwargs):
+            captured.append(record)
+            return {"ok": True, "task_id": record["taskId"], "metadata_json": record["metadata"]}
+
+        def fake_ledger(record, **kwargs):
+            ledger_rows.append(record)
+            return {"ok": True, "inserted": True, "source_task_id": record["sourceTaskId"]}
+
+        with patch("orc_tooling.orcctl.get_review_state", return_value=existing), \
+            patch("orc_tooling.orcctl.upsert_review_state", side_effect=fake_upsert), \
+            patch("orc_tooling.orcctl.append_orc_work_journal", side_effect=fake_ledger):
+            result = close_followup(
+                "task_source",
+                followup_task_id="task_followup",
+                client=FakeCloseClient(status="Rewarded"),
+            )
+
+        self.assertEqual(result["ok"], True)
+        metadata = captured[0]["metadata"]
+        self.assertEqual(metadata["user_signal_status"], "sent")
+        self.assertEqual(metadata["user_signal_message_id"], "msg_existing_signal")
+        self.assertEqual(metadata["signalMessageId"], "msg_existing_signal")
+        self.assertEqual(ledger_rows[0]["metadata"]["signalMessageId"], "msg_existing_signal")
+
     def test_close_followup_keeps_terminal_state_when_work_journal_fails(self):
         existing = {
             "task_id": "task_source",
