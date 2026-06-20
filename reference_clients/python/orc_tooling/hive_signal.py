@@ -125,6 +125,20 @@ def run_hive_signal(
     )
     if not payload.get("ok"):
         return payload
+    if execute and not (
+        payload.get("executed") is True
+        and payload.get("visibleInHiveChat") is True
+        and str(payload.get("chatMessageId") or "").strip()
+        and str(payload.get("conversationId") or "").strip()
+    ):
+        return {
+            "ok": False,
+            "error": "orc_hive_signal_delivery_contract_incomplete",
+            "returnCode": result.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "secretPrinted": False,
+        }
     payload.setdefault("secretPrinted", False)
     payload.setdefault("command", " ".join(command))
     return payload

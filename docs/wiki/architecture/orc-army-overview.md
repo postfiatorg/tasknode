@@ -247,7 +247,9 @@ controls, not trust in one pane:
   audit trail. The Python direct-signal and Board-Manager-follow-up wrappers
   also fail closed unless their Node delivery scripts return JSON objects with
   a boolean `ok`, so a process exit, malformed stdout, or stringly status alone
-  cannot be treated as a sent user message.
+  cannot be treated as a sent user message. Executed direct Orc Hive signals
+  additionally require `visibleInHiveChat`, `conversationId`, and
+  `chatMessageId` before the wrapper reports success.
 - **Reserved actions:** bans, Sybil labels on live accounts, deploys, economic
   policy, reward changes, public-chain flags, and secrets remain outside Orc
   authority.
