@@ -100,6 +100,33 @@ await writeJson(ledgerPath, {
       reviewStatus: "refused",
       timestamp: "2026-06-19T18:00:00.000Z",
     },
+    {
+      id: "orcrev_rotating_1",
+      taskId: "task_rotating_wallet_1",
+      walletAddress: "rRotatingContributor333333333333333A",
+      accountId: "acct_rotating",
+      contributor: { handle: "rotatingwallet" },
+      reviewStatus: "unverifiable",
+      timestamp: "2026-06-19T10:00:00.000Z",
+    },
+    {
+      id: "orcrev_rotating_2",
+      taskId: "task_rotating_wallet_2",
+      walletAddress: "rRotatingContributor333333333333333B",
+      accountId: "acct_rotating",
+      contributor: { handle: "rotatingwallet" },
+      reviewStatus: "unverifiable",
+      timestamp: "2026-06-19T11:00:00.000Z",
+    },
+    {
+      id: "orcrev_rotating_3",
+      taskId: "task_rotating_wallet_3",
+      walletAddress: "rRotatingContributor333333333333333C",
+      accountId: "acct_rotating",
+      contributor: { handle: "rotatingwallet" },
+      reviewStatus: "unverifiable",
+      timestamp: "2026-06-19T12:00:00.000Z",
+    },
   ],
 });
 
@@ -116,16 +143,17 @@ const reportOutput = await runScript("orc-contributor-quality-routing-report.mjs
 assert.equal(reportOutput.ok, true);
 assert.equal(reportOutput.schema, "pf.orc.contributor_quality_routing_report.v1");
 assert.equal(reportOutput.enforcementMode, "recommend_only_no_enforcement");
-assert.equal(reportOutput.summary.flaggedForRoutingReview, 1);
+assert.equal(reportOutput.summary.flaggedForRoutingReview, 2);
 
 const report = await readJson(path.join(reportDir, "quality_routing_report.json"));
 assert.equal(report.schema, "pf.orc.contributor_quality_routing_report.v1");
 assert.equal(report.enforcementMode, "recommend_only_no_enforcement");
 assert.match(report.note, /does not execute pauses, bans, blocklists, clawbacks, or payment actions/);
-assert.equal(report.flaggedContributors.length, 1);
-assert.equal(report.flaggedContributors[0].walletAddress, "rRiskyContributor2222222222222222222");
+assert.equal(report.flaggedContributors.length, 2);
+const riskyContributor = report.flaggedContributors.find((contributor) => contributor.accountId === "acct_risky");
+assert.equal(riskyContributor.walletAddress, "rRiskyContributor2222222222222222222");
 assert.deepEqual(
-  report.flaggedContributors[0].violations.map((violation) => violation.rule).sort(),
+  riskyContributor.violations.map((violation) => violation.rule).sort(),
   [
     "consecutive_unverifiable_submissions",
     "low_verified_to_total_ratio",
@@ -133,6 +161,14 @@ assert.deepEqual(
     "repeated_unverifiable_submissions",
   ]
 );
+const rotatingContributor = report.flaggedContributors.find((contributor) => contributor.accountId === "acct_rotating");
+assert.equal(rotatingContributor.contributorKey, "acct_rotating");
+assert.deepEqual(rotatingContributor.walletAddresses, [
+  "rRotatingContributor333333333333333A",
+  "rRotatingContributor333333333333333B",
+  "rRotatingContributor333333333333333C",
+]);
+assert.equal(rotatingContributor.violations.some((violation) => violation.rule === "repeated_unverifiable_submissions"), true);
 
 const existingConfigPath = path.join(tempDir, "existing-suppression-config.json");
 await writeJson(existingConfigPath, {
@@ -156,7 +192,7 @@ const suppressionOutput = await runScript("orc-contributor-routing-suppression-c
 assert.equal(suppressionOutput.ok, true);
 assert.equal(suppressionOutput.schema, "pf.orc.contributor_routing_suppression_config.v1");
 assert.equal(suppressionOutput.mode, "recommend_only_no_enforcement");
-assert.equal(suppressionOutput.summary.suppressionEntryCount, 1);
+assert.equal(suppressionOutput.summary.suppressionEntryCount, 2);
 
 const suppressionConfig = await readJson(path.join(suppressionDir, "suppression_config.json"));
 assert.equal(suppressionConfig.dryRunOnly, true);
@@ -164,10 +200,17 @@ assert.equal(suppressionConfig.operationalUseAllowed, false);
 assert.match(suppressionConfig.note, /does not execute bans, blocklists, clawbacks, payment actions, or deploys/);
 assert.equal(suppressionConfig.entries[0].requiresHumanApproval, true);
 assert.equal(suppressionConfig.entries[0].operationalUseAllowed, false);
+const rotatingSuppression = suppressionConfig.entries.find((entry) => entry.accountId === "acct_rotating");
+assert.equal(rotatingSuppression.contributorKey, "acct_rotating");
+assert.deepEqual(rotatingSuppression.walletAddresses, [
+  "rRotatingContributor333333333333333A",
+  "rRotatingContributor333333333333333B",
+  "rRotatingContributor333333333333333C",
+]);
 
 const dryRun = await readJson(path.join(suppressionDir, "dry_run_output.json"));
 assert.equal(dryRun.wouldMutateLiveRouting, false);
-assert.equal(dryRun.proposedSuppressionCount, 1);
+assert.equal(dryRun.proposedSuppressionCount, 2);
 assert.match(dryRun.warnings.join("\n"), /No bans, clawbacks, fund movement, signing, deployment, or task-routing mutation occurred/);
 
 const riskMatrixPath = path.join(tempDir, "risk-matrix.json");
@@ -226,10 +269,15 @@ assert.equal(integratedOutput.reconciliation.belowThresholdWallets, 1);
 const enhancedConfig = await readJson(path.join(integratedDir, "enhanced_suppression_config.json"));
 assert.equal(enhancedConfig.operationalUseAllowed, false);
 assert.equal(enhancedConfig.enforcementBoundary.wouldDeploy, false);
-assert.equal(enhancedConfig.entries.length, 1);
-assert.equal(enhancedConfig.entries[0].sybilRisk.selectedScore, 88);
-assert.equal(enhancedConfig.entries[0].requiresHumanApproval, true);
-assert.equal(enhancedConfig.entries[0].operationalUseAllowed, false);
+assert.equal(enhancedConfig.entries.length, 2);
+const enhancedRisky = enhancedConfig.entries.find((entry) => entry.walletAddress === "rRiskyContributor2222222222222222222");
+assert.equal(enhancedRisky.sybilRisk.selectedScore, 88);
+assert.equal(enhancedRisky.requiresHumanApproval, true);
+assert.equal(enhancedRisky.operationalUseAllowed, false);
+const enhancedRotating = enhancedConfig.entries.find((entry) => entry.accountId === "acct_rotating");
+assert.equal(enhancedRotating.sybilRisk, undefined);
+assert.equal(enhancedRotating.requiresHumanApproval, true);
+assert.equal(enhancedRotating.operationalUseAllowed, false);
 
 const reconciliation = await readJson(path.join(integratedDir, "reconciliation_report.json"));
 assert.equal(reconciliation.schema, "pf.orc.sybil_risk_routing_suppression_reconciliation.v1");
