@@ -456,4 +456,6 @@ The Python wrapper fails closed unless the Node script returns a valid JSON
 object with a boolean `ok`. A zero-exit process with malformed stdout,
 non-object JSON, or stringly `ok` returns `ok=false` and the CLI exits non-zero,
 so an Orc cannot claim a direct message was sent without a parsed delivery
-contract.
+contract. For `--execute`, the wrapper additionally requires the delivery proof
+fields produced by the Node script after verification: `executed=true`,
+`visibleInHiveChat=true`, `conversationId`, and `chatMessageId`.
