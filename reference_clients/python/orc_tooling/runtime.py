@@ -337,9 +337,32 @@ def _postgres_enqueue_runtime_directive(
 ) -> dict[str, Any]:
     ensure_orc_runtime_directives_schema(database_url=database_url)
     directive_id = f"orcdirective_{uuid4()}"
+    normalized_orc = _safe_text(orc, 120).lstrip("@").lower()
+    clean_task_id = _safe_text(task_id, 180)
+    clean_source = _safe_text(source, 160)
     clean_metadata = redact_secrets(metadata or {})
+    active_dedup_sql = ""
+    active_dedup_enabled = "false"
+    if clean_task_id:
+        active_dedup_sql = f"""
+SELECT pg_advisory_xact_lock(hashtext({sql_literal(f"orc_runtime_directive:{normalized_orc}:{clean_source}:{clean_task_id}")}));
+"""
+        active_dedup_enabled = "true"
     sql = f"""
-WITH inserted AS (
+BEGIN;
+{active_dedup_sql}
+WITH existing AS (
+  SELECT *
+  FROM orc_runtime_directives
+  WHERE {active_dedup_enabled}
+    AND task_id = {sql_literal(clean_task_id)}
+    AND source = {sql_literal(clean_source)}
+    AND lower(ltrim(orc, '@')) = {sql_literal(normalized_orc)}
+    AND status IN ('queued', 'claimed')
+  ORDER BY created_at ASC, directive_id ASC
+  LIMIT 1
+),
+inserted AS (
   INSERT INTO orc_runtime_directives (
     directive_id,
     orc,
@@ -349,24 +372,49 @@ WITH inserted AS (
     metadata_json,
     updated_at
   )
-  VALUES (
+  SELECT
     {sql_literal(directive_id)},
     {sql_literal(orc)},
     {sql_literal(directive)},
-    {sql_literal(task_id)},
-    {sql_literal(source)},
+    {sql_literal(clean_task_id)},
+    {sql_literal(clean_source)},
     {_jsonb_literal(clean_metadata)},
     now()
-  )
+  WHERE NOT EXISTS (SELECT 1 FROM existing)
   RETURNING *
 )
-SELECT {_directive_json_sql("inserted")}
-FROM inserted;
+SELECT COALESCE(
+  (SELECT jsonb_build_object(
+    'ok', true,
+    'queued', true,
+    'idempotent', false,
+    'directive', {_directive_json_sql("inserted")},
+    'secretPrinted', false
+  ) FROM inserted),
+  (SELECT jsonb_build_object(
+    'ok', true,
+    'queued', false,
+    'idempotent', true,
+    'reason', 'active_directive_exists',
+    'directive', {_directive_json_sql("existing")},
+    'secretPrinted', false
+  ) FROM existing),
+  jsonb_build_object(
+    'ok', false,
+    'queued', false,
+    'error', 'runtime_enqueue_failed',
+    'secretPrinted', false
+  )
+);
+COMMIT;
 """
-    stored = _run_json(database_url, sql) or {}
+    payload = _run_json(database_url, sql) or {}
+    stored = _safe_dict(payload.get("directive"))
     return redact_secrets({
-        "ok": True,
-        "queued": True,
+        "ok": bool(payload.get("ok", True)),
+        "queued": bool(payload.get("queued")),
+        "idempotent": bool(payload.get("idempotent")),
+        "reason": payload.get("reason", ""),
         "backend": "postgres",
         "directiveId": stored.get("directiveId") or directive_id,
         "orc": orc,
@@ -662,10 +710,40 @@ def enqueue_runtime_directive(
         "secretPrinted": False,
     }
     with _runtime_lock(runtime_dir) as path:
+        active_task_id = _safe_text(task_id, 180)
+        active_source = _safe_text(source, 160)
+        if active_task_id:
+            rows = _state_from_events(_read_events_unlocked(path))
+            existing = next(
+                (
+                    row for row in rows
+                    if _safe_text(row.get("taskId"), 180) == active_task_id
+                    and _safe_text(row.get("source"), 160) == active_source
+                    and _safe_text(row.get("orc"), 120).lstrip("@").lower() == clean_orc.lower()
+                    and _safe_text(row.get("status"), 80) in {"queued", "claimed"}
+                ),
+                None,
+            )
+            if existing:
+                return redact_secrets({
+                    "ok": True,
+                    "queued": False,
+                    "idempotent": True,
+                    "reason": "active_directive_exists",
+                    "backend": "jsonl",
+                    "directiveId": existing.get("directiveId"),
+                    "orc": clean_orc,
+                    "taskId": existing.get("taskId", ""),
+                    "source": existing.get("source", ""),
+                    "eventsPath": runtime_events_path(runtime_dir),
+                    "directivePreview": _safe_text(existing.get("directive"), 500),
+                    "secretPrinted": False,
+                })
         stored = _append_event_unlocked(path, event)
     return redact_secrets({
         "ok": True,
         "queued": True,
+        "idempotent": False,
         "backend": "jsonl",
         "directiveId": stored["directiveId"],
         "orc": clean_orc,

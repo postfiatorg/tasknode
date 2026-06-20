@@ -195,6 +195,10 @@ be overridden with `TASKNODE_ORC_RUNTIME_CLAIM_TTL_SECONDS` or
 updates the stale row to the new worker in one transaction and records the
 previous claim in `metadata_json.lastStaleClaimRecovery`.
 
+`dispatch-runtime` is idempotent for active source work: while a directive for
+the same Orc, source, and task id is still queued or claimed, a repeat dispatch
+returns the existing directive instead of queueing duplicate agent work.
+
 The prototype executor does not run Codex or submit task transactions. It only
 claims a directive and returns a `prototype_claim_only` result in the command
 output. It does not mark the row completed without a real embedded executor.
