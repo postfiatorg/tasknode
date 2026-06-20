@@ -104,6 +104,8 @@ Postgres is the product cache and account database. It is critical for speed, UX
 | `recommended_connection_runs` | Weekly-scale rerank audit rows for one target account, including candidate ids, provider/model/prompt metadata, output JSON, usage, status, and errors. | Private Profile recommendation refresh state, worker audit, manual refresh diagnostics. | `053_recommended_connections.sql` |
 | `recommended_connections` | Persisted 3-4 recommendation rows from the latest successful rerank, including reason, suggested first action, supporting signals, public candidate snapshot, score, status, and expiry. | Private Profile recommended connection cards. | `053_recommended_connections.sql` |
 | `recommended_connection_events` | Feedback events for recommendation rows, such as useful or dismissed. These events do not message or connect users; they only record local feedback. | Recommendation quality review and future ranking feedback. | `053_recommended_connections.sql` |
+| `sybil_review_runs` | Recommend-only Sybil detector runs with criteria, summary, source metadata, detector version, generator, and timestamp. | Orc review, Nazgul/Sauron oversight, Network Task abuse monitoring. | `071_sybil_review_flags.sql` |
+| `sybil_review_flags` | Recommend-only subject-level review flags with account, wallet addresses, handles, provider risk, score, band, triggered rules, evidence JSON, and recommended action. Database constraints keep operational use disabled and human approval required. | Orc review, Nazgul/Sauron oversight, suspected-only Sybil review queues. | `071_sybil_review_flags.sql` |
 
 ## Planned Board Manager Tables
 
