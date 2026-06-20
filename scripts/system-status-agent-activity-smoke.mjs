@@ -44,6 +44,8 @@ const document = await readAgentActivity({
             id: "orc_agent_grashnuk",
             handle: "grashnuk",
             agent_id: "agent_grashnuk",
+            account_id: "acct_grashnuk",
+            wallet_address: "raUWC44pUJdFgrQYvP8aVUTMJ9TJWSTbsW",
             role: "operator",
             status: "active",
             active: true,
@@ -55,6 +57,8 @@ const document = await readAgentActivity({
             id: "orc_agent_burzghash",
             handle: "burzghash",
             agent_id: "agent_burzghash",
+            account_id: "acct_burzghash",
+            wallet_address: "rh8jpDYBeYyVKPzxaAFzMfxSSdRaCaenSt",
             role: "operator",
             status: "idle",
             active: true,
@@ -95,6 +99,8 @@ const document = await readAgentActivity({
     }
     if (/orc_work_journal journal/.test(sql)) {
       assert.match(sql, /rank <= 5/);
+      assert.match(sql, /lower\(journal\.operator_handle\) = lower\(agents\.wallet_address\)/);
+      assert.match(sql, /lower\(journal\.operator_handle\) = lower\(agents\.account_id\)/);
       return {
         rows: [
           {
@@ -108,6 +114,18 @@ const document = await readAgentActivity({
             tx_hash: "ABC123",
             event_cid: "QmCid",
             created_at: "2026-06-19T20:12:00.000Z",
+          },
+          {
+            agent_id: "orc_agent_grashnuk",
+            task_action: "hive_signal",
+            status: "recorded",
+            outcome_status: "sent",
+            blocker: "",
+            source_task_id: "task_signal",
+            followup_task_id: "",
+            tx_hash: "",
+            event_cid: "",
+            created_at: "2026-06-19T20:13:00.000Z",
           },
         ],
       };
@@ -123,7 +141,7 @@ assert.deepEqual(document.summary, {
   agentCount: 2,
   activeAgentCount: 2,
   currentTaskCount: 1,
-  recentActionCount: 1,
+  recentActionCount: 2,
   rewardedTaskCount: 2,
   rewardActualPft: 42.5,
 });
@@ -133,6 +151,8 @@ assert.equal(grashnuk.currentTask.taskId, "task_current");
 assert.equal(grashnuk.currentTask.status, "accepted");
 assert.equal(grashnuk.recentActions[0].action, "task_submission");
 assert.equal(grashnuk.recentActions[0].outcomeStatus, "submitted");
+assert.equal(grashnuk.recentActions[1].action, "hive_signal");
+assert.equal(grashnuk.recentActions[1].outcomeStatus, "sent");
 assert.equal(grashnuk.rewards.taskCount, 2);
 assert.equal(grashnuk.rewards.totalPft, 42.5);
 assert.equal(grashnuk.rewards.recent[0].taskId, "task_rewarded");

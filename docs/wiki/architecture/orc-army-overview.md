@@ -244,12 +244,18 @@ controls, not trust in one pane:
   `chatMessageId` in `orc_task_review_states.metadata_json` only after the
   direct Hive signal is verified visible in Hive Chat, then appends a
   `signal_user` row to `orc_work_journal` for the status page and operator
-  audit trail. The Python direct-signal and Board-Manager-follow-up wrappers
-  also fail closed unless their Node delivery scripts return JSON objects with
-  a boolean `ok`, so a process exit, malformed stdout, or stringly status alone
-  cannot be treated as a sent user message. Executed direct Orc Hive signals
-  additionally require `visibleInHiveChat`, `conversationId`, and
-  `chatMessageId` before the wrapper reports success.
+  audit trail. Raw direct-signal script executions also append an idempotent
+  `hive_signal` row after delivery verification, so messages sent outside
+  `orcctl signal-user` still appear in agent activity. The status reader joins
+  `orc_work_journal.operator_handle` against Orc handle, agent id, account id,
+  and wallet address, because server-side agent origins may only have the
+  verified wallet/account when a client omits a handle. The Python
+  direct-signal and Board-Manager-follow-up wrappers also fail closed unless
+  their Node delivery scripts return JSON objects with a boolean `ok`, so a
+  process exit, malformed stdout, or stringly status alone cannot be treated as
+  a sent user message. Executed direct Orc Hive signals additionally require
+  `visibleInHiveChat`, `conversationId`, and `chatMessageId` before the wrapper
+  reports success.
 - **Reserved actions:** bans, Sybil labels on live accounts, deploys, economic
   policy, reward changes, public-chain flags, and secrets remain outside Orc
   authority.
