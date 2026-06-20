@@ -214,6 +214,8 @@ const networkDetail = await getPublicHiveTaskDetail({
               task_id: "task_hive_clickable_network",
               evidence_count: 1,
               public_summary: "Submitted a public GitHub proof and a compact execution note.",
+              description: "raw submission description should stay private",
+              notes: "raw submission notes should stay private",
               encrypted_payload: "private-ciphertext-redacted",
               evidence_items: [{
                 artifact_type: "github_pr",
@@ -246,7 +248,8 @@ const networkDetail = await getPublicHiveTaskDetail({
             payload_json: {
               schema: "pf.task.verification_response.v1",
               task_id: "task_hive_clickable_network",
-              response: "The HiveTaskPopout opened read-only.",
+              response: "Raw verification response should not become an evidence excerpt.",
+              response_summary: "The HiveTaskPopout opened read-only.",
               evidence_items: [{
                 artifact_type: "text",
                 label: "verification excerpt",
@@ -291,8 +294,11 @@ assert.equal(networkDetail.review.evidence[0].artifactRefs[0].cid, "bafybeihivec
 assert.equal(networkDetail.review.evidence[0].artifactRefs.at(-1).txHash, "ABC123SUBMIT");
 assert.equal(networkDetail.review.evidence[0].privateContentHidden, true);
 assert.equal(JSON.stringify(networkDetail.review.evidence).includes("private-ciphertext-redacted"), false);
+assert.equal(JSON.stringify(networkDetail.review.evidence).includes("raw submission description should stay private"), false);
+assert.equal(JSON.stringify(networkDetail.review.evidence).includes("raw submission notes should stay private"), false);
 assert.equal(networkDetail.review.evidence[1].type, "Verification response");
 assert.equal(networkDetail.review.evidence[1].excerpt, "The HiveTaskPopout opened read-only.");
+assert.equal(JSON.stringify(networkDetail.review.evidence).includes("Raw verification response should not become an evidence excerpt."), false);
 assert.equal(networkDetail.review.evidence[1].artifactRefs.at(-1).cid, "bafybeihiveclickableverifyresponse");
 assert.equal(networkDetail.review.verification.request, "Confirm the exact component opened.");
 assert.equal(networkDetail.review.verification.response, "Verification response submitted.");

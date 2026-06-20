@@ -805,17 +805,13 @@ function publicEvidenceExcerpt(payload = {}, schema = "") {
     payload.publicSummary,
     payload.evidence_summary,
     payload.evidenceSummary,
-    payload.summary,
-    payload.description,
-    payload.notes,
     evidence.public_summary,
     evidence.publicSummary,
-    evidence.summary,
-    evidence.description,
-    evidence.notes,
+    evidence.evidence_summary,
+    evidence.evidenceSummary,
   ];
   if (safeText(schema, 160) === "pf.task.verification_response.v1") {
-    candidates.push(payload.response_summary, payload.responseSummary, payload.response, evidence.response_summary, evidence.responseSummary);
+    candidates.push(payload.response_summary, payload.responseSummary, evidence.response_summary, evidence.responseSummary);
   }
   return publicSummaryText(candidates.find((candidate) => publicSummaryText(candidate, 900)) || "", 900);
 }
