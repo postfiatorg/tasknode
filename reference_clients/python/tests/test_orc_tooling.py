@@ -2623,6 +2623,23 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["secretPrinted"], False)
         self.assertIn("orc-hive-followup.mjs", result["command"])
 
+    def test_run_hive_followup_rejects_malformed_json_output(self):
+        def fake_runner(command, **kwargs):
+            return SimpleNamespace(returncode=0, stdout="message sent maybe", stderr="")
+
+        result = run_hive_followup(
+            task_id="task_test",
+            message="Follow-up note.",
+            tasknode_repo="/repo/tasknodeofficial",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["error"], "orc_hive_followup_invalid_json")
+        self.assertEqual(result["returnCode"], 0)
+        self.assertEqual(result["stdout"], "message sent maybe")
+        self.assertEqual(result["secretPrinted"], False)
+
     def test_build_hive_signal_command_uses_direct_signal_script(self):
         command = build_hive_signal_command(
             task_id="task_test",
