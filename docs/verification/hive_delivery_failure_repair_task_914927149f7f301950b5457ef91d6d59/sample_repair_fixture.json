@@ -1,0 +1,53 @@
+{
+  "repairs": [
+    {
+      "messageId": "msg_zoz_retrieval_failure",
+      "rootCause": "direct_message_retrieval_read_path_missing_index_after_successful_post",
+      "repairMethod": "conversation_scan_fallback",
+      "conversationScan": {
+        "httpStatus": 200,
+        "durationMs": 14,
+        "conversationId": "hive_convo_zoz_delivery_failure",
+        "messages": [
+          {
+            "id": "hmsg_zoz_posted_but_direct_read_404",
+            "visible": true,
+            "bodyPreview": "Following up on your rewarded task: the Hive Chat delivery path has a retrieval fallback."
+          }
+        ]
+      }
+    },
+    {
+      "messageId": "msg_yuuki_retrieval_failure",
+      "rootCause": "direct_message_retrieval_read_path_missing_index_after_successful_post",
+      "repairMethod": "conversation_scan_then_idempotent_repost",
+      "conversationScan": {
+        "httpStatus": 200,
+        "durationMs": 12,
+        "conversationId": "hive_convo_yuuki_retrieval_failure",
+        "messages": []
+      },
+      "fallbackPost": {
+        "idempotencyKey": "orc-delivery-repair-yuuki-001",
+        "postAttempts": [
+          {
+            "httpStatus": 201,
+            "durationMs": 23,
+            "idempotencyKey": "orc-delivery-repair-yuuki-001",
+            "response": {
+              "messageId": "hmsg_yuuki_repost_visible_001"
+            }
+          }
+        ],
+        "retrieval": {
+          "httpStatus": 200,
+          "durationMs": 9,
+          "response": {
+            "messageId": "hmsg_yuuki_repost_visible_001",
+            "visible": true
+          }
+        }
+      }
+    }
+  ]
+}

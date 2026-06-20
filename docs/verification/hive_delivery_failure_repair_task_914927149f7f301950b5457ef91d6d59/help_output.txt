@@ -1,0 +1,12 @@
+Usage:
+  node scripts/orc-hive-delivery-repair.mjs repair --diagnostics <delivery_log.json> --repair-fixture <fixture.json> --out <dir> [--generated-by grashnuk] [--generated-at ISO]
+
+Reads verified Orc messaging diagnostics, identifies the Hive Chat delivery failure point, and applies a mock repair/fallback plan.
+
+Repair behavior:
+  - Successful records are carried forward unchanged.
+  - Non-retrieval failures are preserved with their original failure stage.
+  - message_retrieval failures first use a conversation-scan fallback to verify a posted message by conversation transcript.
+  - If conversation scan cannot prove visibility, an optional idempotent repost fallback can post and verify a replacement message.
+
+This script writes repair_report.json and discord_summary.md. Mock mode only: it does not send live Hive messages, sign transactions, move funds, or mutate user state.

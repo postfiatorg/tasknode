@@ -1,0 +1,222 @@
+{
+  "schema": "pf.orc.verified_hive_messaging_bridge.v1",
+  "summary": {
+    "totalMessages": 5,
+    "deliveredVerified": 1,
+    "failed": 4
+  },
+  "records": [
+    {
+      "messageId": "msg_gmoney_already_visible",
+      "sourceTaskId": "task_mock_reward_visibility",
+      "sourceReviewId": "orcrev_repair_001",
+      "target": {
+        "id": "contrib_gmoney",
+        "handle": "gmoney",
+        "accountId": "acct_gmoney_primary",
+        "walletAddress": "rKTbxK4DRZii5hFmvqJ5z5nxvD6uYCgot3",
+        "conversationId": "hive_convo_gmoney_rewarded_work"
+      },
+      "finalStatus": "delivered_verified",
+      "failureStage": "none",
+      "failureCode": "",
+      "postedMessageId": "hmsg_gmoney_visible_001",
+      "postAttempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "httpStatus": 201,
+          "durationMs": 18,
+          "retryScheduled": false,
+          "nextBackoffMs": 0,
+          "response": {
+            "messageId": "hmsg_gmoney_visible_001"
+          }
+        }
+      ],
+      "retrieval": {
+        "ok": true,
+        "httpStatus": 200,
+        "durationMs": 8,
+        "response": {
+          "messageId": "hmsg_gmoney_visible_001",
+          "visible": true
+        }
+      },
+      "verification": {
+        "ok": true,
+        "visible": true
+      }
+    },
+    {
+      "messageId": "msg_zoz_retrieval_failure",
+      "sourceTaskId": "task_mock_zoz_delivery_failure",
+      "sourceReviewId": "orcrev_repair_002",
+      "target": {
+        "id": "contrib_zoz",
+        "handle": "zoz",
+        "accountId": "acct_zoz_primary",
+        "walletAddress": "rsS2Y6pQmdXUuHpgemrGMvxu5cVdLjjaXRZ",
+        "conversationId": "hive_convo_zoz_delivery_failure"
+      },
+      "finalStatus": "failed",
+      "failureStage": "message_retrieval",
+      "failureCode": "message_retrieval_failed",
+      "error": "message not visible in Hive Chat direct read path",
+      "postedMessageId": "hmsg_zoz_posted_but_direct_read_404",
+      "postAttempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "httpStatus": 201,
+          "durationMs": 24,
+          "retryScheduled": false,
+          "nextBackoffMs": 0,
+          "response": {
+            "messageId": "hmsg_zoz_posted_but_direct_read_404"
+          }
+        }
+      ],
+      "retrieval": {
+        "ok": false,
+        "httpStatus": 404,
+        "durationMs": 15,
+        "failureCode": "message_retrieval_failed",
+        "error": "message not visible in Hive Chat direct read path",
+        "response": {
+          "error": "direct message lookup returned not found"
+        }
+      },
+      "verification": {
+        "ok": false,
+        "visible": false
+      }
+    },
+    {
+      "messageId": "msg_agticorp_missing_conversation",
+      "sourceTaskId": "task_mock_conversation_missing",
+      "sourceReviewId": "orcrev_repair_003",
+      "target": {
+        "id": "contrib_agticorp",
+        "handle": "agticorp",
+        "accountId": "acct_agticorp_primary",
+        "walletAddress": "rAgticorpMockWallet111111111111111111",
+        "conversationId": ""
+      },
+      "finalStatus": "failed",
+      "failureStage": "conversation_lookup",
+      "failureCode": "conversation_not_found",
+      "error": "Contributor resolved, but no Hive conversation id was available",
+      "postAttempts": [],
+      "retrieval": {},
+      "verification": {
+        "ok": false,
+        "visible": false
+      }
+    },
+    {
+      "messageId": "msg_donravle_http_error",
+      "sourceTaskId": "task_mock_post_http_error",
+      "sourceReviewId": "orcrev_repair_004",
+      "target": {
+        "id": "contrib_donravle",
+        "handle": "donravle",
+        "accountId": "acct_donravle_primary",
+        "walletAddress": "raL2kvFQfXWrmT7n4UxvpKwrgBQQWFGwzd",
+        "conversationId": "hive_convo_donravle_http_errors"
+      },
+      "finalStatus": "failed",
+      "failureStage": "message_post",
+      "failureCode": "message_post_failed",
+      "error": "final post attempt failed",
+      "postAttempts": [
+        {
+          "attempt": 1,
+          "ok": false,
+          "httpStatus": 500,
+          "durationMs": 44,
+          "retryScheduled": true,
+          "nextBackoffMs": 250,
+          "response": {
+            "error": "primary Hive Chat post failed"
+          },
+          "error": "primary Hive Chat post failed"
+        },
+        {
+          "attempt": 2,
+          "ok": false,
+          "httpStatus": 502,
+          "durationMs": 39,
+          "retryScheduled": true,
+          "nextBackoffMs": 500,
+          "response": {
+            "error": "retry gateway failed"
+          },
+          "error": "retry gateway failed"
+        },
+        {
+          "attempt": 3,
+          "ok": false,
+          "httpStatus": 500,
+          "durationMs": 41,
+          "retryScheduled": false,
+          "nextBackoffMs": 0,
+          "response": {
+            "error": "final post attempt failed"
+          },
+          "error": "final post attempt failed"
+        }
+      ],
+      "retrieval": {},
+      "verification": {
+        "ok": false,
+        "visible": false
+      }
+    },
+    {
+      "messageId": "msg_yuuki_retrieval_failure",
+      "sourceTaskId": "task_mock_retrieval_failure",
+      "sourceReviewId": "orcrev_repair_005",
+      "target": {
+        "id": "contrib_yuuki",
+        "handle": "yuuki",
+        "accountId": "acct_yuuki_primary",
+        "walletAddress": "rfCbJWtYBZ6ntX7UuYfQK8Ut3T9K51z96h",
+        "conversationId": "hive_convo_yuuki_retrieval_failure"
+      },
+      "finalStatus": "failed",
+      "failureStage": "message_retrieval",
+      "failureCode": "message_retrieval_failed",
+      "error": "message not visible in Hive Chat read path",
+      "postedMessageId": "hmsg_yuuki_unretrievable_001",
+      "postAttempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "httpStatus": 201,
+          "durationMs": 21,
+          "retryScheduled": false,
+          "nextBackoffMs": 0,
+          "response": {
+            "messageId": "hmsg_yuuki_unretrievable_001"
+          },
+          "error": ""
+        }
+      ],
+      "retrieval": {
+        "ok": false,
+        "httpStatus": 404,
+        "durationMs": 16,
+        "failureCode": "message_retrieval_failed",
+        "error": "message not visible in Hive Chat read path",
+        "response": {
+          "error": "message not visible in Hive Chat read path"
+        }
+      },
+      "verification": {
+        "ok": false,
+        "visible": false
+      }
+    }
+  ]
+}
