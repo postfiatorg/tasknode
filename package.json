@@ -81,6 +81,7 @@
     "orc-shared-state-smoke": "node scripts/orc-shared-state-smoke.mjs",
     "orc-hive-followup-smoke": "node scripts/orc-hive-followup-smoke.mjs",
     "orc-hive-signal-smoke": "node scripts/orc-hive-signal-smoke.mjs",
+    "orc-routing-suppression-enforcement-verifier-smoke": "node scripts/orc-routing-suppression-enforcement-verifier-smoke.mjs",
     "orc-review-queue-ingestion": "node scripts/orc-review-queue-ingest.mjs",
     "orc-review-queue-ingestion-smoke": "node scripts/orc-review-queue-ingestion-smoke.mjs",
     "sybil-blocklist-regression": "node scripts/sybil-blocklist-regression.mjs",

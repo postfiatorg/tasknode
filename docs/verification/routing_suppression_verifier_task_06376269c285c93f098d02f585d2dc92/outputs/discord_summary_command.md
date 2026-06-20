@@ -5,6 +5,7 @@ Suppressed contributors checked: 5
 Board allocation records scanned: 6
 Enforced: 3
 Violated: 1
+Expired: 0
 Not tested: 1
 
 - @clusterwallet: violated; active post-suppression allocations 1; effective 2026-06-20T04:00:00.000Z

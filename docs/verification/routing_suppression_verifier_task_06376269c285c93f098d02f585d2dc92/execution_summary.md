@@ -7,6 +7,7 @@ Title: Build Routing Suppression Enforcement Verifier Script
 
 - Added `scripts/orc-routing-suppression-enforcement-verifier.mjs`, a dependency-free Node CLI that reads a `pf.orc.contributor_routing_suppression_config.v1` suppression config and board allocation records.
 - Added sample board allocation data with suppressed and unsuppressed contributors.
+- Added `scripts/orc-routing-suppression-enforcement-verifier-smoke.mjs` to prove suppression `expiresAt` is honored: active allocations after an expired suppression window are classified as `expired`, not `violated`.
 - Generated a structured JSON verification report and Discord-ready summary under `docs/verification/routing_suppression_verifier_task_06376269c285c93f098d02f585d2dc92/outputs/`.
 
 This is verification-only tooling. It does not mutate live routing, execute bans, sign enforcement transactions, move funds, claw back rewards, or deploy.
@@ -16,6 +17,7 @@ This is verification-only tooling. It does not mutate live routing, execute bans
 ```bash
 chmod +x scripts/orc-routing-suppression-enforcement-verifier.mjs
 node --check scripts/orc-routing-suppression-enforcement-verifier.mjs
+npm run orc-routing-suppression-enforcement-verifier-smoke
 node scripts/orc-routing-suppression-enforcement-verifier.mjs --help \
   > docs/verification/routing_suppression_verifier_task_06376269c285c93f098d02f585d2dc92/help_output.txt
 node scripts/orc-routing-suppression-enforcement-verifier.mjs batch \
@@ -63,6 +65,7 @@ The sample allocation fixture contains 6 board allocation records:
     "allocationRecords": 6,
     "enforced": 3,
     "violated": 1,
+    "expired": 0,
     "notTested": 1,
     "nonSuppressedAllocationRecords": 1,
     "violationContributorHandles": [
@@ -138,6 +141,7 @@ Suppressed contributors checked: 5
 Board allocation records scanned: 6
 Enforced: 3
 Violated: 1
+Expired: 0
 Not tested: 1
 
 Escalation recommended: clusterwallet had active post-suppression allocation evidence. Human review required before any routing action.
@@ -149,7 +153,7 @@ No enforcement, bans, clawbacks, fund movement, signing, deployment, or live rou
 
 Public PR: https://github.com/postfiatorg/tasknodeofficial/pull/142
 
-Commit: https://github.com/postfiatorg/tasknodeofficial/commit/1effacade9eaf8c9762727fbceed9312bb3d9df6
+Branch head: `codex/routing-suppression-enforcement-verifier`
 
 Branch: `codex/routing-suppression-enforcement-verifier`
 

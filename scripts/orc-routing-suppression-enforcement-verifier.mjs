@@ -154,6 +154,11 @@ function suppressionEffectiveAt(entry, config) {
   );
 }
 
+function suppressionExpiresAt(entry) {
+  const expiresAt = safeText(entry.expiresAt);
+  return expiresAt ? ensureIsoTimestamp(expiresAt, "suppression expiration timestamp") : "";
+}
+
 function compactAllocation(allocation) {
   return {
     allocationId: safeText(allocation.allocationId),
@@ -169,9 +174,18 @@ function compactAllocation(allocation) {
   };
 }
 
-function classifyContributor(entry, config, allocations) {
+function allocationMs(allocation) {
+  const parsed = Date.parse(allocation.allocatedAt);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function classifyContributor(entry, config, allocations, { generatedAt } = {}) {
   const effectiveAt = suppressionEffectiveAt(entry, config);
   const effectiveMs = Date.parse(effectiveAt);
+  const expiresAt = suppressionExpiresAt(entry);
+  const expiresMs = expiresAt ? Date.parse(expiresAt) : Infinity;
+  const generatedMs = Date.parse(generatedAt);
+  const expiredAtVerification = Number.isFinite(generatedMs) && expiresAt ? expiresMs <= generatedMs : false;
   const matches = allocations.filter((allocation) => {
     const entryKeys = new Set(identityKeys(entry));
     return identityKeys(allocation).some((key) => entryKeys.has(key));
@@ -181,19 +195,33 @@ function classifyContributor(entry, config, allocations) {
     if (byTime !== 0) return byTime;
     return left.taskId.localeCompare(right.taskId);
   });
-  const preSuppressionAllocations = compactMatches.filter((allocation) => Date.parse(allocation.allocatedAt) < effectiveMs);
-  const postSuppressionAllocations = compactMatches.filter((allocation) => Date.parse(allocation.allocatedAt) >= effectiveMs);
-  const activePostSuppressionAllocations = postSuppressionAllocations.filter((allocation) => ACTIVE_ALLOCATION_STATUSES.has(allocation.status));
-  const blockedPostSuppressionAllocations = postSuppressionAllocations.filter((allocation) => BLOCKED_ALLOCATION_STATUSES.has(allocation.status));
+  const preSuppressionAllocations = compactMatches.filter((allocation) => allocationMs(allocation) < effectiveMs);
+  const inSuppressionWindowAllocations = compactMatches.filter((allocation) => {
+    const ms = allocationMs(allocation);
+    return ms >= effectiveMs && ms < expiresMs;
+  });
+  const postExpiryAllocations = compactMatches.filter((allocation) => {
+    const ms = allocationMs(allocation);
+    return Number.isFinite(expiresMs) && ms >= expiresMs;
+  });
+  const activePostSuppressionAllocations = inSuppressionWindowAllocations.filter((allocation) =>
+    ACTIVE_ALLOCATION_STATUSES.has(allocation.status)
+  );
+  const blockedPostSuppressionAllocations = inSuppressionWindowAllocations.filter((allocation) =>
+    BLOCKED_ALLOCATION_STATUSES.has(allocation.status)
+  );
 
   let enforcementStatus = "not_tested";
   let finding = "No matching allocation records were present for this suppressed contributor.";
   if (activePostSuppressionAllocations.length > 0) {
     enforcementStatus = "violated";
-    finding = "Suppressed contributor received at least one active allocation at or after the suppression effective timestamp.";
-  } else if (postSuppressionAllocations.length > 0 || preSuppressionAllocations.length > 0) {
+    finding = "Suppressed contributor received at least one active allocation during the active suppression window.";
+  } else if (expiredAtVerification) {
+    enforcementStatus = "expired";
+    finding = "Suppression entry expired before this verification run; post-expiry allocations are not counted as violations.";
+  } else if (inSuppressionWindowAllocations.length > 0 || preSuppressionAllocations.length > 0) {
     enforcementStatus = "enforced";
-    finding = "No active post-suppression allocations were found for this suppressed contributor.";
+    finding = "No active allocations were found during the active suppression window.";
   }
 
   return {
@@ -202,7 +230,8 @@ function classifyContributor(entry, config, allocations) {
     accountId: safeText(entry.accountId),
     handle: normalizeHandle(entry.handle),
     suppressionEffectiveAt: effectiveAt,
-    expiresAt: safeText(entry.expiresAt),
+    expiresAt,
+    expiredAtVerification,
     suppressionReason: safeText(entry.suppressionReason),
     sourceRecommendation: safeText(entry.sourceRecommendation),
     status: enforcementStatus,
@@ -212,17 +241,22 @@ function classifyContributor(entry, config, allocations) {
     allocationCounts: {
       totalMatched: compactMatches.length,
       preSuppression: preSuppressionAllocations.length,
-      postSuppression: postSuppressionAllocations.length,
+      inSuppressionWindow: inSuppressionWindowAllocations.length,
+      postSuppression: inSuppressionWindowAllocations.length,
+      postExpiry: postExpiryAllocations.length,
       activePostSuppression: activePostSuppressionAllocations.length,
       blockedPostSuppression: blockedPostSuppressionAllocations.length,
     },
     activePostSuppressionAllocations,
     blockedPostSuppressionAllocations,
+    postExpiryAllocations,
     preSuppressionAllocations,
     allMatchedAllocations: compactMatches,
     recommendedAction:
       enforcementStatus === "violated"
         ? "Escalate to human operator for routing investigation; do not auto-enforce."
+        : enforcementStatus === "expired"
+          ? "Refresh the suppression decision before making any current routing claim."
         : enforcementStatus === "not_tested"
           ? "Add live board allocation data before making an enforcement claim."
           : "No follow-up needed unless live data changes.",
@@ -242,7 +276,7 @@ function buildReport(config, allocationData, options) {
     ? ensureIsoTimestamp(options["generated-at"], "--generated-at")
     : new Date().toISOString();
   const generatedBy = normalizeHandle(options["generated-by"] || "grashnuk") || "grashnuk";
-  const contributors = config.entries.map((entry) => classifyContributor(entry, config, allocationData.allocations));
+  const contributors = config.entries.map((entry) => classifyContributor(entry, config, allocationData.allocations, { generatedAt }));
   const counts = contributors.reduce((acc, contributor) => {
     acc[contributor.status] = (acc[contributor.status] || 0) + 1;
     return acc;
@@ -275,10 +309,12 @@ function buildReport(config, allocationData, options) {
     },
     rules: {
       suppressionEffectiveAt: "entry.suppressionEffectiveAt || config.generatedAt || entry.sourceReportGeneratedAt",
+      suppressionWindow: "Allocations are checked from suppressionEffectiveAt inclusive until expiresAt exclusive when expiresAt is present.",
       activeAllocationStatuses: [...ACTIVE_ALLOCATION_STATUSES].sort(),
       blockedAllocationStatuses: [...BLOCKED_ALLOCATION_STATUSES].sort(),
-      violatedDefinition: "Any active allocation with allocatedAt >= suppressionEffectiveAt.",
-      enforcedDefinition: "Matching allocation evidence exists and no active post-suppression allocation exists.",
+      violatedDefinition: "Any active allocation with suppressionEffectiveAt <= allocatedAt < expiresAt when expiresAt is present; otherwise allocatedAt >= suppressionEffectiveAt.",
+      enforcedDefinition: "Matching allocation evidence exists in an active suppression window and no active allocation exists in that window.",
+      expiredDefinition: "The suppression entry's expiresAt is at or before report generatedAt and no active allocation occurred inside the suppression window.",
       notTestedDefinition: "No matching allocation evidence exists for the suppressed contributor.",
     },
     summary: {
@@ -286,6 +322,7 @@ function buildReport(config, allocationData, options) {
       allocationRecords: allocationData.allocations.length,
       enforced: counts.enforced || 0,
       violated: counts.violated || 0,
+      expired: counts.expired || 0,
       notTested: counts.not_tested || 0,
       nonSuppressedAllocationRecords: nonSuppressed.length,
       violationContributorHandles: contributors.filter((contributor) => contributor.status === "violated").map((contributor) => contributor.handle),
@@ -304,6 +341,7 @@ function buildDiscordSummary(report) {
     `Board allocation records scanned: ${report.summary.allocationRecords}`,
     `Enforced: ${report.summary.enforced}`,
     `Violated: ${report.summary.violated}`,
+    `Expired: ${report.summary.expired}`,
     `Not tested: ${report.summary.notTested}`,
     "",
   ];

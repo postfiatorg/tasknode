@@ -25,6 +25,7 @@
   },
   "rules": {
     "suppressionEffectiveAt": "entry.suppressionEffectiveAt || config.generatedAt || entry.sourceReportGeneratedAt",
+    "suppressionWindow": "Allocations are checked from suppressionEffectiveAt inclusive until expiresAt exclusive when expiresAt is present.",
     "activeAllocationStatuses": [
       "accepted",
       "assigned",
@@ -39,8 +40,9 @@
       "rejected_by_routing_gate",
       "suppressed"
     ],
-    "violatedDefinition": "Any active allocation with allocatedAt >= suppressionEffectiveAt.",
-    "enforcedDefinition": "Matching allocation evidence exists and no active post-suppression allocation exists.",
+    "violatedDefinition": "Any active allocation with suppressionEffectiveAt <= allocatedAt < expiresAt when expiresAt is present; otherwise allocatedAt >= suppressionEffectiveAt.",
+    "enforcedDefinition": "Matching allocation evidence exists in an active suppression window and no active allocation exists in that window.",
+    "expiredDefinition": "The suppression entry's expiresAt is at or before report generatedAt and no active allocation occurred inside the suppression window.",
     "notTestedDefinition": "No matching allocation evidence exists for the suppressed contributor."
   },
   "summary": {
@@ -48,6 +50,7 @@
     "allocationRecords": 6,
     "enforced": 3,
     "violated": 1,
+    "expired": 0,
     "notTested": 1,
     "nonSuppressedAllocationRecords": 1,
     "violationContributorHandles": [
@@ -62,10 +65,11 @@
       "handle": "clusterwallet",
       "suppressionEffectiveAt": "2026-06-20T04:00:00.000Z",
       "expiresAt": "2026-07-04T04:00:00.000Z",
+      "expiredAtVerification": false,
       "suppressionReason": "quality_threshold_failures:repeated_unverifiable_submissions,consecutive_unverifiable_submissions,low_verified_to_total_ratio",
       "sourceRecommendation": "routing_review_recommended",
       "status": "violated",
-      "finding": "Suppressed contributor received at least one active allocation at or after the suppression effective timestamp.",
+      "finding": "Suppressed contributor received at least one active allocation during the active suppression window.",
       "qualityMetrics": {
         "total": 6,
         "verified": 1,
@@ -86,7 +90,9 @@
       "allocationCounts": {
         "totalMatched": 1,
         "preSuppression": 0,
+        "inSuppressionWindow": 1,
         "postSuppression": 1,
+        "postExpiry": 0,
         "activePostSuppression": 1,
         "blockedPostSuppression": 0
       },
@@ -105,6 +111,7 @@
         }
       ],
       "blockedPostSuppressionAllocations": [],
+      "postExpiryAllocations": [],
       "preSuppressionAllocations": [],
       "allMatchedAllocations": [
         {
@@ -129,10 +136,11 @@
       "handle": "lowquality",
       "suppressionEffectiveAt": "2026-06-20T04:00:00.000Z",
       "expiresAt": "2026-07-04T04:00:00.000Z",
+      "expiredAtVerification": false,
       "suppressionReason": "quality_threshold_failures:repeated_unverifiable_submissions,consecutive_unverifiable_submissions,low_verified_to_total_ratio",
       "sourceRecommendation": "routing_review_recommended",
       "status": "enforced",
-      "finding": "No active post-suppression allocations were found for this suppressed contributor.",
+      "finding": "No active allocations were found during the active suppression window.",
       "qualityMetrics": {
         "total": 5,
         "verified": 1,
@@ -153,7 +161,9 @@
       "allocationCounts": {
         "totalMatched": 2,
         "preSuppression": 1,
+        "inSuppressionWindow": 1,
         "postSuppression": 1,
+        "postExpiry": 0,
         "activePostSuppression": 0,
         "blockedPostSuppression": 1
       },
@@ -172,6 +182,7 @@
           "source": "mock_board_state"
         }
       ],
+      "postExpiryAllocations": [],
       "preSuppressionAllocations": [
         {
           "allocationId": "netalloc_low_quality_pre_suppression",
@@ -221,10 +232,11 @@
       "handle": "refusedoperator",
       "suppressionEffectiveAt": "2026-06-20T04:00:00.000Z",
       "expiresAt": "2026-07-04T04:00:00.000Z",
+      "expiredAtVerification": false,
       "suppressionReason": "quality_threshold_failures:recent_refusals",
       "sourceRecommendation": "routing_review_recommended",
       "status": "enforced",
-      "finding": "No active post-suppression allocations were found for this suppressed contributor.",
+      "finding": "No active allocations were found during the active suppression window.",
       "qualityMetrics": {
         "total": 3,
         "verified": 1,
@@ -243,12 +255,15 @@
       "allocationCounts": {
         "totalMatched": 1,
         "preSuppression": 1,
+        "inSuppressionWindow": 0,
         "postSuppression": 0,
+        "postExpiry": 0,
         "activePostSuppression": 0,
         "blockedPostSuppression": 0
       },
       "activePostSuppressionAllocations": [],
       "blockedPostSuppressionAllocations": [],
+      "postExpiryAllocations": [],
       "preSuppressionAllocations": [
         {
           "allocationId": "netalloc_refusedoperator_pre_suppression",
@@ -286,6 +301,7 @@
       "handle": "selfattested",
       "suppressionEffectiveAt": "2026-06-20T04:00:00.000Z",
       "expiresAt": "2026-07-04T04:00:00.000Z",
+      "expiredAtVerification": false,
       "suppressionReason": "quality_threshold_failures:self_attested_only_pattern",
       "sourceRecommendation": "routing_review_recommended",
       "status": "not_tested",
@@ -308,12 +324,15 @@
       "allocationCounts": {
         "totalMatched": 0,
         "preSuppression": 0,
+        "inSuppressionWindow": 0,
         "postSuppression": 0,
+        "postExpiry": 0,
         "activePostSuppression": 0,
         "blockedPostSuppression": 0
       },
       "activePostSuppressionAllocations": [],
       "blockedPostSuppressionAllocations": [],
+      "postExpiryAllocations": [],
       "preSuppressionAllocations": [],
       "allMatchedAllocations": [],
       "recommendedAction": "Add live board allocation data before making an enforcement claim."
@@ -325,10 +344,11 @@
       "handle": "thinreviewer",
       "suppressionEffectiveAt": "2026-06-20T04:00:00.000Z",
       "expiresAt": "2026-07-04T04:00:00.000Z",
+      "expiredAtVerification": false,
       "suppressionReason": "quality_threshold_failures:repeated_unverifiable_submissions,low_verified_to_total_ratio",
       "sourceRecommendation": "routing_review_recommended",
       "status": "enforced",
-      "finding": "No active post-suppression allocations were found for this suppressed contributor.",
+      "finding": "No active allocations were found during the active suppression window.",
       "qualityMetrics": {
         "total": 4,
         "verified": 0,
@@ -348,7 +368,9 @@
       "allocationCounts": {
         "totalMatched": 1,
         "preSuppression": 0,
+        "inSuppressionWindow": 1,
         "postSuppression": 1,
+        "postExpiry": 0,
         "activePostSuppression": 0,
         "blockedPostSuppression": 1
       },
@@ -367,6 +389,7 @@
           "source": "mock_board_state"
         }
       ],
+      "postExpiryAllocations": [],
       "preSuppressionAllocations": [],
       "allMatchedAllocations": [
         {

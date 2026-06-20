@@ -6,6 +6,7 @@
     "allocationRecords": 6,
     "enforced": 3,
     "violated": 1,
+    "expired": 0,
     "notTested": 1,
     "nonSuppressedAllocationRecords": 1,
     "violationContributorHandles": [
