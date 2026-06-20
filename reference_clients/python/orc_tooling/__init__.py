@@ -80,6 +80,7 @@ from .orcctl import (
     self_cycle,
     self_loop,
     run_personal_task,
+    signal_user,
     validate_followup_action,
 )
 from .nazgul import (
@@ -166,6 +167,7 @@ __all__ = [
     "review_next",
     "self_cycle",
     "self_loop",
+    "signal_user",
     "run_journal_summary",
     "run_personal_task",
     "run_duplicate_reward_followup",

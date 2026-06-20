@@ -958,6 +958,71 @@ def request_followup_task(
     return result
 
 
+def signal_user(
+    task_id: str,
+    *,
+    message: str,
+    execute: bool = False,
+    tasknode_repo: str = "/home/pfrpc/repos/tasknodeofficial",
+    account_id: str = "",
+    conversation_id: str = "",
+    reviewer_handle: str = "",
+    reviewer_wallet: str = "",
+    reason: str = "",
+    metadata: dict[str, Any] | None = None,
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    result = run_hive_signal(
+        task_id=task_id,
+        message=message,
+        execute=execute,
+        tasknode_repo=tasknode_repo,
+        account_id=account_id,
+        conversation_id=conversation_id,
+        reviewer_handle=reviewer_handle,
+        reviewer_wallet=reviewer_wallet,
+        reason=reason,
+        metadata=metadata or {},
+        database_url=database_url,
+    )
+    chat_message_id = _safe_text(result.get("chatMessageId") or result.get("chat_message_id"), 240)
+    visible = bool(result.get("visibleInHiveChat") or result.get("visible_in_hive_chat"))
+    if not (result.get("ok") and result.get("executed") and visible and chat_message_id):
+        return result
+
+    existing = get_review_state(task_id, database_url=database_url) or {"task_id": task_id}
+    signal_metadata = {
+        "user_signal_status": "sent",
+        "user_signal_message_id": chat_message_id,
+        "user_signal_conversation_id": _safe_text(result.get("conversationId") or result.get("conversation_id"), 240),
+        "user_signal_sent_at": _utcnow(),
+        "user_signal_reason": _safe_text(reason, 1000),
+        "user_signal_idempotent": bool(result.get("idempotent")),
+        "user_signal_visible_in_hive_chat": True,
+        # Backward-compatible alias for local Orc tooling and older close-followup output.
+        "signalMessageId": chat_message_id,
+    }
+    if metadata:
+        signal_metadata["user_signal_metadata"] = metadata
+    record = _review_state_update_from_existing(
+        existing,
+        metadata=signal_metadata,
+        source_task_ids=[task_id],
+        reviewer_handle=reviewer_handle,
+        reviewer_wallet=reviewer_wallet,
+    )
+    updated = upsert_review_state(record, database_url=database_url)
+    result["reviewState"] = {
+        "taskId": task_id,
+        "updated": bool(updated),
+        "userSignalStatus": "sent",
+        "userSignalMessageId": chat_message_id,
+        "conversationId": signal_metadata["user_signal_conversation_id"],
+        "metadata": signal_metadata,
+    }
+    return result
+
+
 def _detail_task(detail: dict[str, Any]) -> dict[str, Any]:
     return _safe_dict(detail.get("task") or detail)
 
@@ -2364,7 +2429,7 @@ def main(argv: list[str] | None = None) -> int:
                 database_url=database_url,
             )
         elif args.command == "signal-user":
-            payload = run_hive_signal(
+            payload = signal_user(
                 task_id=args.task_id,
                 message=args.message,
                 execute=args.execute,
