@@ -1,0 +1,22 @@
+{
+  "commands": [
+    {
+      "label": "syntax_check",
+      "command": "node --check scripts/orc-hive-delivery-repair.mjs",
+      "status": "passed",
+      "output": "No syntax errors."
+    },
+    {
+      "label": "smoke_test",
+      "command": "node scripts/orc-hive-delivery-repair-smoke.mjs",
+      "status": "passed",
+      "output": "orc-hive-delivery-repair-smoke ok"
+    },
+    {
+      "label": "format_check",
+      "command": "npm run format-check",
+      "status": "passed",
+      "output": "format check ok"
+    }
+  ]
+}

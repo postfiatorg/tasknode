@@ -1,0 +1,121 @@
+{
+  "ok": true,
+  "schema": "pf.orc.evidence_packet_summary.v1",
+  "taskId": "task_914927149f7f301950b5457ef91d6d59",
+  "title": "Repair Hive Chat Delivery Failure Path",
+  "publicLinks": {
+    "prUrl": "https://github.com/postfiatorg/tasknodeofficial/pull/162",
+    "commitUrl": "https://github.com/postfiatorg/tasknodeofficial/commit/8b00e39"
+  },
+  "commit": "8b00e39",
+  "changedFiles": [
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/execution_summary.md",
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/help_output.txt",
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/prior_bridge_diagnostic/discord_summary.md",
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/prior_bridge_diagnostic/repair_report.json",
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair/discord_summary.md",
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair/repair_report.json",
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/prior_bridge_run_output.json",
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/sample_before_delivery_log.json",
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/sample_repair_fixture.json",
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/sample_run_output.json",
+    "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/submission_evidence_bundle.md",
+    "scripts/orc-hive-delivery-repair-smoke.mjs",
+    "scripts/orc-hive-delivery-repair.mjs"
+  ],
+  "changedFilesError": "",
+  "artifacts": [
+    {
+      "path": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair/repair_report.json",
+      "exists": true
+    },
+    {
+      "path": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/execution_summary.md",
+      "exists": true
+    }
+  ],
+  "commands": [
+    {
+      "label": "syntax_check",
+      "command": "node --check scripts/orc-hive-delivery-repair.mjs",
+      "status": "passed",
+      "output": "No syntax errors."
+    },
+    {
+      "label": "smoke_test",
+      "command": "node scripts/orc-hive-delivery-repair-smoke.mjs",
+      "status": "passed",
+      "output": "orc-hive-delivery-repair-smoke ok"
+    },
+    {
+      "label": "format_check",
+      "command": "npm run format-check",
+      "status": "passed",
+      "output": "format check ok"
+    }
+  ],
+  "jsonExcerpts": [
+    {
+      "label": "failure_classification",
+      "file": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair/repair_report.json",
+      "path": "$.records[?(@.messageId=='msg_zoz_retrieval_failure')].inspection",
+      "excerpt": {
+        "failingApiStep": "message_retrieval",
+        "observedPattern": "post_success_then_direct_read_missing",
+        "postHttpStatus": 201,
+        "retrievalHttpStatus": 404,
+        "rootCause": "direct_message_retrieval_read_path_missing_index_after_successful_post"
+      }
+    },
+    {
+      "label": "before_after_summary",
+      "file": "docs/verification/hive_delivery_failure_repair_task_914927149f7f301950b5457ef91d6d59/outputs/sample_zoz_repair/repair_report.json",
+      "path": "$.{before,after}",
+      "excerpt": {
+        "before": {
+          "totalMessages": 5,
+          "deliveredVerified": 1,
+          "failed": 4
+        },
+        "after": {
+          "totalMessages": 5,
+          "deliveredVerified": 3,
+          "failed": 2,
+          "repaired": 2
+        }
+      }
+    }
+  ],
+  "reviewerChecklist": [
+    {
+      "item": "Public PR URL is present and GitHub-shaped",
+      "ok": true,
+      "detail": "https://github.com/postfiatorg/tasknodeofficial/pull/162"
+    },
+    {
+      "item": "Public commit URL is present",
+      "ok": true,
+      "detail": "https://github.com/postfiatorg/tasknodeofficial/commit/8b00e39"
+    },
+    {
+      "item": "Changed file paths are included",
+      "ok": true,
+      "detail": "13 files"
+    },
+    {
+      "item": "Local artifacts exist",
+      "ok": true,
+      "detail": "2/2 found"
+    },
+    {
+      "item": "Command results are included",
+      "ok": true,
+      "detail": "3 command entries"
+    },
+    {
+      "item": "Critical JSON excerpts are included",
+      "ok": true,
+      "detail": "2 excerpts"
+    }
+  ]
+}

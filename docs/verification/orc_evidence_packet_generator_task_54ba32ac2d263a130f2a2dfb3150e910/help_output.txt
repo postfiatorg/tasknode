@@ -1,0 +1,15 @@
+Usage:
+  node scripts/orc-evidence-packet-generator.mjs generate --task-id <task_id> --title <title> --pr-url <github_pr_url> --commit <sha> --out <dir> [--artifact <path>] [--commands <commands.json>] [--json-excerpts <excerpts.json>] [--repo-root <path>]
+
+Generates a Task Node evidence markdown packet and compact JSON summary from public repository links plus local verification artifacts.
+
+Inputs:
+  --pr-url          Public GitHub PR URL.
+  --commit         Commit SHA or ref. The script resolves changed files with git show when possible.
+  --artifact       Repeatable local artifact path to include and validate.
+  --commands       JSON array or {commands:[...]} with command/result/status entries.
+  --json-excerpts  JSON array or {excerpts:[...]} with reviewer-critical excerpt objects.
+
+Outputs:
+  evidence_packet.md
+  submission_summary.json

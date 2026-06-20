@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "schema": "pf.orc.evidence_packet_summary.v1",
+  "markdownPath": "docs/verification/orc_evidence_packet_generator_task_54ba32ac2d263a130f2a2dfb3150e910/outputs/evidence_packet.md",
+  "summaryPath": "docs/verification/orc_evidence_packet_generator_task_54ba32ac2d263a130f2a2dfb3150e910/outputs/submission_summary.json",
+  "checklistPassed": 6,
+  "checklistTotal": 6,
+  "changedFileCount": 13,
+  "artifactCount": 2,
+  "commandCount": 3,
+  "excerptCount": 2
+}
