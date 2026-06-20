@@ -500,6 +500,7 @@ def _postgres_complete_runtime_directive(
     if clean_status not in POSTGRES_TERMINAL_DIRECTIVE_STATUSES:
         raise ValueError(f"unsupported terminal directive status for Postgres runtime: {clean_status}")
     clean_result = redact_secrets(result or {})
+    clean_worker = _safe_text(worker_id, 180)
     sql = f"""
 BEGIN;
 WITH selected AS (
@@ -508,17 +509,25 @@ WITH selected AS (
   WHERE directive_id = {sql_literal(directive_id)}
   FOR UPDATE
 ),
+eligible AS (
+  SELECT *
+  FROM selected s
+  WHERE s.status = 'claimed'
+    AND (
+      s.worker_id = ''
+      OR s.worker_id = {sql_literal(clean_worker)}
+    )
+),
 updated AS (
   UPDATE orc_runtime_directives d
   SET
     status = {sql_literal(clean_status)}::orc_runtime_directive_status,
-    worker_id = COALESCE(NULLIF({sql_literal(worker_id)}, ''), d.worker_id),
+    worker_id = COALESCE(NULLIF({sql_literal(clean_worker)}, ''), d.worker_id),
     completed_at = now(),
     result = {_jsonb_literal(clean_result)},
     updated_at = now()
-  FROM selected s
+  FROM eligible s
   WHERE d.directive_id = s.directive_id
-    AND s.status NOT IN ('completed', 'failed', 'cancelled')
   RETURNING d.*
 )
 SELECT COALESCE(
@@ -536,7 +545,25 @@ SELECT COALESCE(
     'backend', 'postgres',
     'directive', {_directive_json_sql("s")},
     'secretPrinted', false
-  ) FROM selected s),
+  ) FROM selected s WHERE s.status IN ('completed', 'failed', 'cancelled')),
+  (SELECT jsonb_build_object(
+    'ok', false,
+    'completed', false,
+    'error', 'directive_not_claimed',
+    'backend', 'postgres',
+    'directive', {_directive_json_sql("s")},
+    'secretPrinted', false
+  ) FROM selected s WHERE s.status NOT IN ('claimed', 'completed', 'failed', 'cancelled')),
+  (SELECT jsonb_build_object(
+    'ok', false,
+    'completed', false,
+    'error', 'directive_worker_mismatch',
+    'workerId', {sql_literal(clean_worker)},
+    'expectedWorkerId', s.worker_id,
+    'backend', 'postgres',
+    'directive', {_directive_json_sql("s")},
+    'secretPrinted', false
+  ) FROM selected s WHERE s.status = 'claimed' AND s.worker_id <> '' AND s.worker_id <> {sql_literal(clean_worker)}),
   jsonb_build_object(
     'ok', false,
     'completed', false,
@@ -750,11 +777,34 @@ def complete_runtime_directive(
                 "directive": selected,
                 "secretPrinted": False,
             })
+        selected_status = _safe_text(selected.get("status"), 80)
+        if selected_status != "claimed":
+            return redact_secrets({
+                "ok": False,
+                "completed": False,
+                "error": "directive_not_claimed",
+                "backend": "jsonl",
+                "directive": selected,
+                "secretPrinted": False,
+            })
+        clean_worker = _safe_text(worker_id, 180)
+        claimed_worker = _safe_text(selected.get("workerId"), 180)
+        if claimed_worker and clean_worker != claimed_worker:
+            return redact_secrets({
+                "ok": False,
+                "completed": False,
+                "error": "directive_worker_mismatch",
+                "workerId": clean_worker,
+                "expectedWorkerId": claimed_worker,
+                "backend": "jsonl",
+                "directive": selected,
+                "secretPrinted": False,
+            })
         event = {
             "eventType": RUNTIME_EVENT_COMPLETED,
             "directiveId": clean_directive_id,
             "orc": selected.get("orc", ""),
-            "workerId": _safe_text(worker_id, 180) or _safe_text(selected.get("workerId"), 180),
+            "workerId": clean_worker or claimed_worker,
             "status": clean_status,
             "result": result or {},
             "completedAt": _utcnow(),

@@ -134,14 +134,16 @@ cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
 uv run nazgul dispatch-runtime grashnuk
 uv run orc-runtime status --orc grashnuk
 uv run orc-runtime claim --orc grashnuk --worker-id grashnuk-runtime-1
-uv run orc-runtime complete orcdirective_... --status completed --result-json '{"summary":"done"}'
+uv run orc-runtime complete orcdirective_... --worker-id grashnuk-runtime-1 --status completed --result-json '{"summary":"done"}'
 ```
 
 When a database URL is configured, the runtime uses `orc_runtime_directives`
 with `SELECT ... FOR UPDATE SKIP LOCKED`. The Postgres claim path recovers stale
 claims for the requested Orc after the configured TTL so a crashed worker does
-not wedge the queue permanently. Without a database URL it falls back to the
-local JSONL mailbox for development only.
+not wedge the queue permanently. Completion requires the directive to be claimed
+by the same worker ID, so another worker cannot close a claimed directive by ID
+alone. Without a database URL it falls back to the local JSONL mailbox for
+development only.
 
 ## Work And Review Flow
 

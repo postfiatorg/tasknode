@@ -91,7 +91,7 @@ cd /home/pfrpc/repos/tasknodeofficial/reference_clients/python
 uv run nazgul dispatch-runtime grashnuk
 uv run orc-runtime status --orc grashnuk
 uv run orc-runtime claim --orc grashnuk --worker-id grashnuk-runtime-1
-uv run orc-runtime complete orcdirective_... --status completed --result-json '{"summary":"done"}'
+uv run orc-runtime complete orcdirective_... --worker-id grashnuk-runtime-1 --status completed --result-json '{"summary":"done"}'
 uv run orc-runtime run-once --orc grashnuk --worker-id grashnuk-runtime-1
 ```
 
@@ -133,6 +133,11 @@ transactions, spend rewards, or mutate Task Node board state.
 The JSONL fallback uses a file lock around reads and appends so one local worker
 can claim a queued directive atomically. It is a local compatibility path, not
 the production multi-host queue.
+
+Completion is ownership-checked: a directive must be in `claimed` status, and
+the `workerId` supplied to `orc-runtime complete` must match the worker that
+claimed it. Terminal rows remain idempotent, but queued rows and rows claimed by
+another worker are not completed by ID alone.
 
 ## Security And Secrets
 
