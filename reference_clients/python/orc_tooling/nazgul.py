@@ -185,6 +185,38 @@ def safe_record_orc_work_journal(
         })
 
 
+def safe_record_operator_interaction(
+    record: Callable[..., dict[str, Any]],
+    record_kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        return redact_secrets(record(**record_kwargs) or {})
+    except Exception as exc:
+        metadata = _safe_dict(record_kwargs.get("metadata"))
+        item = _work_item(metadata)
+        return redact_secrets({
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+            "recordingFailed": True,
+            "orc": _safe_text(record_kwargs.get("orc"), 120).lstrip("@"),
+            "interactionType": _safe_text(record_kwargs.get("interaction_type"), 80),
+            "status": _safe_text(record_kwargs.get("status"), 80),
+            "taskAction": _first_text(metadata.get("taskAction"), metadata.get("task_action"), limit=120),
+            "sourceTaskId": _first_text(
+                metadata.get("sourceTaskId"),
+                metadata.get("source_task_id"),
+                metadata.get("taskId"),
+                metadata.get("task_id"),
+                item.get("sourceTaskId"),
+                item.get("source_task_id"),
+                item.get("taskId"),
+                item.get("task_id"),
+                limit=180,
+            ),
+            "secretPrinted": False,
+        })
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -827,21 +859,22 @@ def redirect_orc(
     interaction: dict[str, Any] = {}
     if injected.get("ok"):
         record = recorder or record_operator_interaction
+        interaction_metadata = {
+            "tmuxTarget": orc.get("tmuxTarget"),
+            "chipCount": injected.get("chipCount"),
+            **_safe_dict(metadata),
+        }
         record_kwargs = {
             "orc": orc.get("name") or orc_name,
             "interaction_type": interaction_type,
             "directive": directive,
             "status": "submitted",
-            "metadata": {
-                "tmuxTarget": orc.get("tmuxTarget"),
-                "chipCount": injected.get("chipCount"),
-                **_safe_dict(metadata),
-            },
+            "metadata": interaction_metadata,
             "database_url": database_url,
         }
         if recorder is None:
             record_kwargs["runner"] = runner
-        interaction = record(**record_kwargs)
+        interaction = safe_record_operator_interaction(record, record_kwargs)
     return redact_secrets({
         "ok": bool(injected.get("ok")),
         "orc": orc.get("name"),
@@ -977,18 +1010,19 @@ def dispatch_orc_runtime(
     interaction = {}
     if queued.get("queued"):
         record = recorder or record_operator_interaction
-        interaction = record(
-            orc=orc.get("name") or clean_orc,
-            interaction_type="dispatch_runtime",
-            directive=directive,
-            status="queued",
-            metadata={
+        record_kwargs = {
+            "orc": orc.get("name") or clean_orc,
+            "interaction_type": "dispatch_runtime",
+            "directive": directive,
+            "status": "queued",
+            "metadata": {
                 "directiveId": queued.get("directiveId"),
                 "runtimeDir": runtime_dir,
                 **_dispatch_work_metadata(item, task_action="dispatch_runtime"),
             },
-            database_url=database_url,
-        )
+            "database_url": database_url,
+        }
+        interaction = safe_record_operator_interaction(record, record_kwargs)
     return redact_secrets({
         "ok": True,
         "orc": orc.get("name"),

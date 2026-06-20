@@ -2291,6 +2291,38 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(len(recorded), 1)
         self.assertEqual(status["statusCounts"]["queued"], 1)
 
+    def test_dispatch_orc_runtime_keeps_queue_success_when_interaction_record_fails(self):
+        item = {
+            "task_id": "task_source",
+            "title": "Audit reward leakage",
+            "reward_actual_pft": "30000",
+            "review_disposition": "not_reviewed",
+        }
+
+        def failing_recorder(**kwargs):
+            raise RuntimeError("operator interaction unavailable")
+
+        with patch.dict(os.environ, {}, clear=True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = dispatch_orc_runtime(
+                    "grashnuk",
+                    orcs_json=json.dumps([{"name": "grashnuk", "tmuxTarget": "grashnuk:0.0"}]),
+                    runtime_dir=tmpdir,
+                    recorder=failing_recorder,
+                    item_reader=lambda **kwargs: dict(item),
+                )
+                status = runtime_status(runtime_dir=tmpdir, orc="grashnuk")
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["dispatched"], True)
+        self.assertEqual(result["runtime"]["queued"], True)
+        self.assertEqual(status["statusCounts"]["queued"], 1)
+        self.assertEqual(result["operatorInteraction"]["ok"], False)
+        self.assertEqual(result["operatorInteraction"]["recordingFailed"], True)
+        self.assertEqual(result["operatorInteraction"]["taskAction"], "dispatch_runtime")
+        self.assertEqual(result["operatorInteraction"]["sourceTaskId"], "task_source")
+        self.assertIn("operator interaction unavailable", result["operatorInteraction"]["error"])
+
     def test_orc_runtime_postgres_enqueue_is_idempotent_for_active_task(self):
         calls = []
 
@@ -2964,6 +2996,42 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["ok"], True)
         self.assertEqual(result["operatorInteraction"]["workJournal"]["source_task_id"], "task_redirected")
         self.assertTrue(any(command[:2] == ["tmux", "send-keys"] for command in calls))
+
+    def test_redirect_orc_keeps_injection_success_when_interaction_record_fails(self):
+        calls = []
+
+        def fake_runner(command, **kwargs):
+            calls.append(command)
+            if command[0] == "tmux":
+                if command[:2] == ["tmux", "capture-pane"]:
+                    return SimpleNamespace(returncode=0, stdout="[Pasted Content 500 chars]\n", stderr="")
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"ok": True}), stderr="")
+
+        def failing_recorder(**kwargs):
+            raise RuntimeError("operator interaction unavailable")
+
+        result = redirect_orc(
+            "orc-alpha",
+            "Review task_redirected and report blockers.",
+            orcs_json=json.dumps([{"name": "orc-alpha", "tmuxTarget": "orc-alpha:0.0"}]),
+            runner=fake_runner,
+            sleeper=lambda seconds: None,
+            recorder=failing_recorder,
+            metadata={
+                "sourceTaskId": "task_redirected",
+                "taskAction": "redirect",
+            },
+        )
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["injection"]["ok"], True)
+        self.assertTrue(any(command[:2] == ["tmux", "send-keys"] for command in calls))
+        self.assertEqual(result["operatorInteraction"]["ok"], False)
+        self.assertEqual(result["operatorInteraction"]["recordingFailed"], True)
+        self.assertEqual(result["operatorInteraction"]["taskAction"], "redirect")
+        self.assertEqual(result["operatorInteraction"]["sourceTaskId"], "task_redirected")
+        self.assertIn("operator interaction unavailable", result["operatorInteraction"]["error"])
 
     def test_wait_for_orc_idle_requires_stable_non_working_capture(self):
         captures = iter([
