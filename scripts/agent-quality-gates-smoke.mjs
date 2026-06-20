@@ -95,8 +95,17 @@ const boardRoutedTask = agentSelfDealingDecision({
 assert.equal(boardRoutedTask.ok, true);
 
 resetAgentQualityGateRateLimitsForTests();
+const sameAccountOtherWalletOrigin = {
+  ...agentOrigin,
+  walletAddress: "rh8jpDYBeYyVKPzxaAFzMfxSSdRaCaenSt",
+};
 const first = await checkAgentActionRateLimit({ agentOrigin, action: "task_request" });
 assert.equal(first.ok, true);
+const differentWalletSameAccount = await checkAgentActionRateLimit({
+  agentOrigin: sameAccountOtherWalletOrigin,
+  action: "task_request",
+});
+assert.equal(differentWalletSameAccount.ok, true, "rate buckets must be keyed by verified wallet before account");
 const second = await enforceAgentActionRateLimit({
   agentOrigin,
   action: "task_request",

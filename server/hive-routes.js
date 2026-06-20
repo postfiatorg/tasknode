@@ -47,7 +47,7 @@ function agentHiveChatRateLimitConfig() {
 async function checkAgentHiveChatRateLimit(agentOrigin = null, now = Date.now()) {
   if (!agentOrigin?.agent) return { ok: true };
   const key = safeText(
-    agentOrigin.accountId || agentOrigin.walletAddress || agentOrigin.agentHandle || "unknown_agent",
+    agentOrigin.walletAddress || agentOrigin.accountId || agentOrigin.agentHandle || "unknown_agent",
     180
   );
   const config = agentHiveChatRateLimitConfig();
