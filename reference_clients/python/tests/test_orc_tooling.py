@@ -2640,6 +2640,23 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["stdout"], "message sent maybe")
         self.assertEqual(result["secretPrinted"], False)
 
+    def test_run_hive_followup_rejects_non_object_json_output(self):
+        def fake_runner(command, **kwargs):
+            return SimpleNamespace(returncode=0, stdout=json.dumps(["ok", True]), stderr="")
+
+        result = run_hive_followup(
+            task_id="task_test",
+            message="Follow-up note.",
+            tasknode_repo="/repo/tasknodeofficial",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["error"], "orc_hive_followup_invalid_json_shape")
+        self.assertEqual(result["returnCode"], 0)
+        self.assertEqual(result["stdout"], '["ok", true]')
+        self.assertEqual(result["secretPrinted"], False)
+
     def test_build_hive_signal_command_uses_direct_signal_script(self):
         command = build_hive_signal_command(
             task_id="task_test",
@@ -2692,6 +2709,23 @@ class OrcToolingTests(unittest.TestCase):
         self.assertEqual(result["error"], "orc_hive_signal_invalid_json")
         self.assertEqual(result["returnCode"], 0)
         self.assertEqual(result["stdout"], "sent maybe")
+        self.assertEqual(result["secretPrinted"], False)
+
+    def test_run_hive_signal_rejects_non_object_json_output(self):
+        def fake_runner(command, **kwargs):
+            return SimpleNamespace(returncode=0, stdout=json.dumps("sent"), stderr="")
+
+        result = run_hive_signal(
+            task_id="task_test",
+            message="Direct note.",
+            tasknode_repo="/repo/tasknodeofficial",
+            runner=fake_runner,
+        )
+
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["error"], "orc_hive_signal_invalid_json_shape")
+        self.assertEqual(result["returnCode"], 0)
+        self.assertEqual(result["stdout"], '"sent"')
         self.assertEqual(result["secretPrinted"], False)
 
     def test_signal_user_updates_review_state_after_verified_delivery(self):

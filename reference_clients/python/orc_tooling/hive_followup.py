@@ -121,9 +121,17 @@ def run_hive_followup(
             "stderr": stderr,
             "secretPrinted": False,
         }
-    if isinstance(payload, dict):
-        payload.setdefault("secretPrinted", False)
-        payload.setdefault("command", " ".join(command))
+    if not isinstance(payload, dict):
+        return {
+            "ok": False,
+            "error": "orc_hive_followup_invalid_json_shape",
+            "returnCode": result.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "secretPrinted": False,
+        }
+    payload.setdefault("secretPrinted", False)
+    payload.setdefault("command", " ".join(command))
     return payload
 
 
