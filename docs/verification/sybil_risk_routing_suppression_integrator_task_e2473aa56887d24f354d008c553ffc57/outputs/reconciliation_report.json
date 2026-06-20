@@ -1,0 +1,225 @@
+{
+  "schema": "pf.orc.sybil_risk_routing_suppression_reconciliation.v1",
+  "generatedAt": "2026-06-20T05:30:00.000Z",
+  "generatedBy": "grashnuk",
+  "mode": "recommend_only_no_enforcement",
+  "dryRunOnly": true,
+  "threshold": 60,
+  "scoreField": "reviewPriorityScore",
+  "sourceRiskMatrix": {
+    "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+    "taskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+    "cid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB"
+  },
+  "sourceSuppressionConfig": {
+    "schema": "pf.orc.contributor_routing_suppression_config.v1",
+    "taskId": "task_c4682ae05cbc47f9669a58d5121cf38d",
+    "cid": "QmczB9qF2TfMs9ZDsLbx8gasowsp92EmAXzAj4Cej26xRL"
+  },
+  "counts": {
+    "riskMatrixWallets": 13,
+    "existingSuppressionEntries": 3,
+    "enhancedSuppressionEntries": 11,
+    "qualifyingRiskWallets": 9,
+    "belowThresholdWallets": 4,
+    "added": 8,
+    "updated": 1,
+    "unchanged": 2
+  },
+  "added": [
+    {
+      "key": "r3qkvcb8rdazdpokhavb5nrpjwcfhevwgc",
+      "contributorKey": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "walletAddress": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "accountId": "",
+      "handle": "",
+      "suppressionReason": "sybil_risk_threshold:reviewPriorityScore=81.3>=60",
+      "riskBand": "high_review_priority",
+      "selectedScore": 81.3,
+      "sourceTaskIds": [
+        "task_78bc0498dfcc292ed909b1da6743a1ba"
+      ]
+    },
+    {
+      "key": "rd6ybkdldso1yqpznxugvnbg7hgekb7jhe",
+      "contributorKey": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "walletAddress": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "accountId": "",
+      "handle": "",
+      "suppressionReason": "sybil_risk_threshold:reviewPriorityScore=66>=60",
+      "riskBand": "high_review_priority",
+      "selectedScore": 66,
+      "sourceTaskIds": [
+        "task_78bc0498dfcc292ed909b1da6743a1ba"
+      ]
+    },
+    {
+      "key": "rdu5mswz4mrcpvwayjumkzpsumb9uwguhb",
+      "contributorKey": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "walletAddress": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "accountId": "",
+      "handle": "",
+      "suppressionReason": "sybil_risk_threshold:reviewPriorityScore=81.4>=60",
+      "riskBand": "high_review_priority",
+      "selectedScore": 81.4,
+      "sourceTaskIds": [
+        "task_78bc0498dfcc292ed909b1da6743a1ba"
+      ]
+    },
+    {
+      "key": "rgweck5kkcqmcp8mognqhxqj3pi6qgk96e",
+      "contributorKey": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "walletAddress": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "accountId": "",
+      "handle": "",
+      "suppressionReason": "sybil_risk_threshold:reviewPriorityScore=62.2>=60",
+      "riskBand": "high_review_priority",
+      "selectedScore": 62.2,
+      "sourceTaskIds": [
+        "task_78bc0498dfcc292ed909b1da6743a1ba"
+      ]
+    },
+    {
+      "key": "rn5bggsqgh5aafnebdgbitns568tssmv1n",
+      "contributorKey": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "walletAddress": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "accountId": "",
+      "handle": "",
+      "suppressionReason": "sybil_risk_threshold:reviewPriorityScore=81.4>=60",
+      "riskBand": "high_review_priority",
+      "selectedScore": 81.4,
+      "sourceTaskIds": [
+        "task_78bc0498dfcc292ed909b1da6743a1ba"
+      ]
+    },
+    {
+      "key": "rnhx6xze9yxgsp66k5vv1urweoudwnfepj",
+      "contributorKey": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "walletAddress": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "accountId": "",
+      "handle": "",
+      "suppressionReason": "sybil_risk_threshold:reviewPriorityScore=66>=60",
+      "riskBand": "high_review_priority",
+      "selectedScore": 66,
+      "sourceTaskIds": [
+        "task_78bc0498dfcc292ed909b1da6743a1ba"
+      ]
+    },
+    {
+      "key": "rwdm72s9yvkkzjeadku2bbumuy4vpnsfh7",
+      "contributorKey": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "walletAddress": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "accountId": "",
+      "handle": "",
+      "suppressionReason": "sybil_risk_threshold:reviewPriorityScore=69.3>=60",
+      "riskBand": "high_review_priority",
+      "selectedScore": 69.3,
+      "sourceTaskIds": [
+        "task_78bc0498dfcc292ed909b1da6743a1ba"
+      ]
+    },
+    {
+      "key": "rwgkffbxraclthuhvbr9puuwqu6vze1pk4",
+      "contributorKey": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "walletAddress": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "accountId": "",
+      "handle": "",
+      "suppressionReason": "sybil_risk_threshold:reviewPriorityScore=66>=60",
+      "riskBand": "high_review_priority",
+      "selectedScore": 66,
+      "sourceTaskIds": [
+        "task_78bc0498dfcc292ed909b1da6743a1ba"
+      ]
+    }
+  ],
+  "updated": [
+    {
+      "before": {
+        "key": "r99grjej3ytp6mmopqyvbb9bnzmnrhjljb",
+        "contributorKey": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "accountId": "",
+        "handle": "",
+        "suppressionReason": "manual_review_seed_wallet",
+        "riskBand": "",
+        "selectedScore": null,
+        "sourceTaskIds": [
+          "task_c4682ae05cbc47f9669a58d5121cf38d"
+        ]
+      },
+      "after": {
+        "key": "r99grjej3ytp6mmopqyvbb9bnzmnrhjljb",
+        "contributorKey": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "walletAddress": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+        "accountId": "",
+        "handle": "",
+        "suppressionReason": "manual_review_seed_wallet;sybil_risk_threshold:reviewPriorityScore=62.2>=60",
+        "riskBand": "high_review_priority",
+        "selectedScore": 62.2,
+        "sourceTaskIds": [
+          "task_78bc0498dfcc292ed909b1da6743a1ba",
+          "task_c4682ae05cbc47f9669a58d5121cf38d"
+        ]
+      }
+    }
+  ],
+  "unchanged": [
+    {
+      "key": "rclusterwallet6666666666666666666",
+      "contributorKey": "rClusterWallet6666666666666666666",
+      "walletAddress": "rClusterWallet6666666666666666666",
+      "accountId": "acct_cluster_wallet",
+      "handle": "clusterwallet",
+      "suppressionReason": "quality_threshold_failures:repeated_unverifiable_submissions,consecutive_unverifiable_submissions,low_verified_to_total_ratio",
+      "riskBand": "",
+      "selectedScore": null,
+      "sourceTaskIds": [
+        "task_cluster_wallet_001",
+        "task_cluster_wallet_002"
+      ]
+    },
+    {
+      "key": "rselfattested5555555555555555555",
+      "contributorKey": "selfattested",
+      "walletAddress": "rSelfAttested5555555555555555555",
+      "accountId": "acct_self_attested",
+      "handle": "selfattested",
+      "suppressionReason": "quality_threshold_failures:self_attested_only_pattern",
+      "riskBand": "",
+      "selectedScore": null,
+      "sourceTaskIds": [
+        "task_self_attested_001"
+      ]
+    }
+  ],
+  "belowThreshold": [
+    {
+      "walletAddress": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "riskBand": "watch",
+      "selectedScore": 44,
+      "role": "connected_wallet"
+    },
+    {
+      "walletAddress": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "riskBand": "low",
+      "selectedScore": 37.1,
+      "role": "connected_wallet"
+    },
+    {
+      "walletAddress": "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+      "riskBand": "low",
+      "selectedScore": 12.5,
+      "role": "connected_wallet"
+    },
+    {
+      "walletAddress": "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+      "riskBand": "low",
+      "selectedScore": 12.5,
+      "role": "connected_wallet"
+    }
+  ],
+  "warnings": [
+    "Recommendation artifact only. No live routing mutation occurred.",
+    "Do not use these entries for bans, clawbacks, fund movement, or production routing until reviewed by a human operator."
+  ]
+}

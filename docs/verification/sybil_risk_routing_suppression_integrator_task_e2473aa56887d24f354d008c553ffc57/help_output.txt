@@ -1,0 +1,28 @@
+Usage:
+  node scripts/orc-sybil-risk-routing-suppression-integrator.mjs integrate \
+    --risk-matrix <risk-matrix.json> \
+    --suppression-config <suppression-config.json> \
+    [--out <enhanced-config.json>] \
+    [--report <reconciliation-report.json>] \
+    [--summary-out <discord-summary.md>] \
+    [--threshold 60] \
+    [--score-field reviewPriorityScore]
+
+  node scripts/orc-sybil-risk-routing-suppression-integrator.mjs batch \
+    --risk-matrix <risk-matrix.json> \
+    --suppression-config <suppression-config.json> \
+    --out <dir> [options]
+
+Options:
+  --generated-by <handle>            Default: grashnuk
+  --generated-at <iso timestamp>     Default: current time
+  --expiry-days <n>                  Default: 14
+  --expires-at <iso timestamp>       Overrides --expiry-days
+  --risk-task-id <task_id>           Default: task_78bc0498dfcc292ed909b1da6743a1ba
+  --risk-matrix-cid <cid>            Default: QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB
+  --suppression-task-id <task_id>    Default: task_c4682ae05cbc47f9669a58d5121cf38d
+  --suppression-config-cid <cid>     Default: QmczB9qF2TfMs9ZDsLbx8gasowsp92EmAXzAj4Cej26xRL
+
+This script produces inspectable JSON artifacts only. It never mutates live
+routing, signs transactions, bans accounts, moves funds, clawbacks rewards, or
+deploys anything.

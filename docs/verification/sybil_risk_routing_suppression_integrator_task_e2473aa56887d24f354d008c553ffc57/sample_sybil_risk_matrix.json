@@ -1,0 +1,200 @@
+{
+  "schema": "tasknode.xrpl_sybil_risk_matrix.v1",
+  "generatedAt": "2026-06-20T05:20:00.000Z",
+  "policy": {
+    "mode": "recommend_only_no_enforcement",
+    "sourceTaskId": "task_78bc0498dfcc292ed909b1da6743a1ba",
+    "sourceCid": "QmcLKpe9ckisrEhc4tps4xiwuQLsBM7rD5eBRWhBJUkEgB",
+    "note": "Sample data derived from the rewarded Unified XRPL Sybil Risk Matrix. Review raw transaction lineage before any enforcement."
+  },
+  "stats": {
+    "totalWallets": 13,
+    "highReviewPriority": 9,
+    "watch": 1,
+    "low": 3
+  },
+  "riskMatrix": [
+    {
+      "wallet": "rn5bGGSQGh5aafNEBdgBiTNs568tsSmV1n",
+      "role": "contagion_review_lead",
+      "riskBand": "high_review_priority",
+      "compositeScore": 57.9,
+      "reviewPriorityScore": 81.4,
+      "componentScores": {
+        "linkageCentrality": { "score": 41.7, "source": "contagion.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "contagion.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 81.4, "source": "contagion.alerts", "weight": 0.5 }
+      },
+      "reasons": ["adjacent to prior high-risk wallets", "receives from multiple risk-source wallets"],
+      "recommendation": "review raw transactions and operator identity before any enforcement decision"
+    },
+    {
+      "wallet": "rDU5msWZ4mrCpVwayJuMKZpSuMb9uWguhB",
+      "role": "contagion_review_lead",
+      "riskBand": "high_review_priority",
+      "compositeScore": 56.7,
+      "reviewPriorityScore": 81.4,
+      "componentScores": {
+        "linkageCentrality": { "score": 37.5, "source": "contagion.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "contagion.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 81.4, "source": "contagion.alerts", "weight": 0.5 }
+      },
+      "reasons": ["adjacent to known-cluster wallets", "funds multiple risk-source wallets"],
+      "recommendation": "review raw transactions and operator identity before any enforcement decision"
+    },
+    {
+      "wallet": "r3qkVCB8rDazdPokhAvb5nRPjwCfhEVWGC",
+      "role": "contagion_review_lead",
+      "riskBand": "high_review_priority",
+      "compositeScore": 57.9,
+      "reviewPriorityScore": 81.3,
+      "componentScores": {
+        "linkageCentrality": { "score": 41.7, "source": "contagion.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "contagion.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 81.3, "source": "contagion.alerts", "weight": 0.5 }
+      },
+      "reasons": ["adjacent to prior high-risk wallets", "has bidirectional flow with risk-source wallets"],
+      "recommendation": "review raw transactions and operator identity before any enforcement decision"
+    },
+    {
+      "wallet": "rwdm72S9YVKkZjeADKU2bbUMuY4vPnSfH7",
+      "role": "contagion_review_lead",
+      "riskBand": "high_review_priority",
+      "compositeScore": 58.1,
+      "reviewPriorityScore": 69.3,
+      "componentScores": {
+        "linkageCentrality": { "score": 62.5, "source": "contagion.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "contagion.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 69.3, "source": "contagion.alerts", "weight": 0.5 }
+      },
+      "reasons": ["adjacent to five known-cluster wallets", "cluster density score 23.6"],
+      "recommendation": "review raw transactions and operator identity before any enforcement decision"
+    },
+    {
+      "wallet": "rD6YbKDLDso1YQpZNxUgvNbG7hGekb7JHE",
+      "role": "known_source_wallet",
+      "riskBand": "high_review_priority",
+      "compositeScore": 66,
+      "reviewPriorityScore": 66,
+      "componentScores": {
+        "linkageCentrality": { "score": 37.5, "source": "linkage.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "linkage.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 100, "source": "known_source_wallet", "weight": 0.5 }
+      },
+      "reasons": ["known risk-source wallet from input artifact", "cluster density score 23.6"],
+      "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+    },
+    {
+      "wallet": "rNHx6Xze9YXgsp66k5Vv1UrWEoudWNfepj",
+      "role": "known_source_wallet",
+      "riskBand": "high_review_priority",
+      "compositeScore": 66,
+      "reviewPriorityScore": 66,
+      "componentScores": {
+        "linkageCentrality": { "score": 37.5, "source": "linkage.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "linkage.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 100, "source": "known_source_wallet", "weight": 0.5 }
+      },
+      "reasons": ["known risk-source wallet from input artifact"],
+      "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+    },
+    {
+      "wallet": "rwgkFFBxRacLTHuhvbr9pUUWQu6VZe1PK4",
+      "role": "known_source_wallet",
+      "riskBand": "high_review_priority",
+      "compositeScore": 66,
+      "reviewPriorityScore": 66,
+      "componentScores": {
+        "linkageCentrality": { "score": 37.5, "source": "linkage.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "linkage.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 100, "source": "known_source_wallet", "weight": 0.5 }
+      },
+      "reasons": ["known risk-source wallet from input artifact"],
+      "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+    },
+    {
+      "wallet": "r99Grjej3Ytp6MmopQYvBB9bNZmNrhJLjB",
+      "role": "known_source_wallet",
+      "riskBand": "high_review_priority",
+      "compositeScore": 62.2,
+      "reviewPriorityScore": 62.2,
+      "componentScores": {
+        "linkageCentrality": { "score": 25, "source": "linkage.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "linkage.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 100, "source": "known_source_wallet", "weight": 0.5 }
+      },
+      "reasons": ["known risk-source wallet from input artifact"],
+      "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+    },
+    {
+      "wallet": "rGWeCk5kkCqMcp8MognqhxQj3Pi6QGk96E",
+      "role": "known_source_wallet",
+      "riskBand": "high_review_priority",
+      "compositeScore": 62.2,
+      "reviewPriorityScore": 62.2,
+      "componentScores": {
+        "linkageCentrality": { "score": 25, "source": "linkage.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "linkage.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 100, "source": "known_source_wallet", "weight": 0.5 }
+      },
+      "reasons": ["known risk-source wallet from input artifact"],
+      "recommendation": "confirm source labeling and raw transaction lineage before using as a seed risk source"
+    },
+    {
+      "wallet": "raNPH8hdpy3S9uvcc4jK5tuE9Eysvk8Y3j",
+      "role": "connected_wallet",
+      "riskBand": "watch",
+      "compositeScore": 38,
+      "reviewPriorityScore": 44,
+      "componentScores": {
+        "linkageCentrality": { "score": 37.5, "source": "linkage.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "linkage.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 44, "source": "contagion.alerts", "weight": 0.5 }
+      },
+      "reasons": ["adjacent to known-cluster wallets", "watch only"],
+      "recommendation": "monitor in future streams or sample raw evidence if the cluster expands"
+    },
+    {
+      "wallet": "r333GeMFLp38KsJqX4WK5mdPaQcb2Dzsro",
+      "role": "connected_wallet",
+      "riskBand": "low",
+      "compositeScore": 30.8,
+      "reviewPriorityScore": 37.1,
+      "componentScores": {
+        "linkageCentrality": { "score": 25, "source": "linkage.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 23.6, "source": "linkage.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 37.1, "source": "secondary_linkage", "weight": 0.5 }
+      },
+      "reasons": ["adjacent to two known-cluster wallets", "below suppression threshold"],
+      "recommendation": "monitor only"
+    },
+    {
+      "wallet": "rDs4x9euEzm9C8L3Vezc9oKbZeonpEf6c4",
+      "role": "connected_wallet",
+      "riskBand": "low",
+      "compositeScore": 12.5,
+      "reviewPriorityScore": 12.5,
+      "componentScores": {
+        "linkageCentrality": { "score": 0, "source": "linkage.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 50, "source": "linkage.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 0, "source": "none", "weight": 0.5 }
+      },
+      "reasons": ["low score despite dense local component"],
+      "recommendation": "no suppression recommended"
+    },
+    {
+      "wallet": "rDyW2BFC1nEKcDktt63AFnbsRVXhnQirVj",
+      "role": "connected_wallet",
+      "riskBand": "low",
+      "compositeScore": 12.5,
+      "reviewPriorityScore": 12.5,
+      "componentScores": {
+        "linkageCentrality": { "score": 0, "source": "linkage.graph.nodes", "weight": 0.3 },
+        "clusterDensity": { "score": 50, "source": "linkage.graph.components", "weight": 0.2 },
+        "contagionProximity": { "score": 0, "source": "none", "weight": 0.5 }
+      },
+      "reasons": ["low score despite dense local component"],
+      "recommendation": "no suppression recommended"
+    }
+  ]
+}

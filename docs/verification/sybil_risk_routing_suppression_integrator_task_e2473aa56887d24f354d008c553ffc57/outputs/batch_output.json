@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "schema": "pf.orc.sybil_risk_routing_suppression_batch.v1",
+  "generatedAt": "2026-06-20T05:30:00.000Z",
+  "mode": "recommend_only_no_enforcement",
+  "files": [
+    "enhanced_suppression_config.json",
+    "reconciliation_report.json",
+    "discord_summary.md",
+    "batch_output.json"
+  ],
+  "summary": {
+    "contributorsEvaluated": 7,
+    "flaggedForRoutingReview": 3,
+    "suppressionEntryCount": 3,
+    "expiresAt": "2026-07-04T04:00:00.000Z",
+    "existingSuppressionEntryCount": 3,
+    "riskMatrixWallets": 13,
+    "riskLevels": {
+      "high_review_priority": 9,
+      "watch": 1,
+      "low": 3
+    },
+    "riskThreshold": 60,
+    "riskScoreField": "reviewPriorityScore",
+    "qualifyingRiskWallets": 9,
+    "belowThresholdWallets": 4,
+    "enhancedSuppressionEntryCount": 11,
+    "automaticSybilRiskEntryCount": 9,
+    "requiresHumanApproval": true
+  },
+  "reconciliation": {
+    "riskMatrixWallets": 13,
+    "existingSuppressionEntries": 3,
+    "enhancedSuppressionEntries": 11,
+    "qualifyingRiskWallets": 9,
+    "belowThresholdWallets": 4,
+    "added": 8,
+    "updated": 1,
+    "unchanged": 2
+  },
+  "enforcementBoundary": {
+    "readOnly": true,
+    "wouldMutateLiveRouting": false,
+    "wouldMoveFunds": false,
+    "wouldBanAccounts": false,
+    "wouldDeploy": false
+  }
+}
