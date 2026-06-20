@@ -1,0 +1,80 @@
+{
+  "schema": "pf.orc.routing_suppression_allocation_sample.v1",
+  "generatedAt": "2026-06-20T04:30:00.000Z",
+  "source": "mock_board_state",
+  "note": "Mock allocation data for read-only routing suppression verification. No live routing mutation is represented or executed.",
+  "allocations": [
+    {
+      "allocationId": "netalloc_low_quality_pre_suppression",
+      "taskId": "task_low_quality_pre_001",
+      "title": "Pre-suppression historical allocation",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "accountId": "acct_low_quality",
+      "handle": "lowquality",
+      "status": "rewarded",
+      "routingDecision": "allocated_before_suppression",
+      "allocatedAt": "2026-06-19T18:00:00.000Z",
+      "source": "mock_board_state"
+    },
+    {
+      "allocationId": "netalloc_low_quality_blocked",
+      "taskId": "task_low_quality_blocked_001",
+      "title": "Post-suppression allocation attempt blocked",
+      "walletAddress": "rLowQuality333333333333333333333",
+      "accountId": "acct_low_quality",
+      "handle": "lowquality",
+      "status": "blocked",
+      "routingDecision": "suppressed",
+      "allocatedAt": "2026-06-20T04:35:00.000Z",
+      "source": "mock_board_state"
+    },
+    {
+      "allocationId": "netalloc_clusterwallet_violation",
+      "taskId": "task_cluster_wallet_new_001",
+      "title": "Post-suppression allocation violation",
+      "walletAddress": "rClusterWallet6666666666666666666",
+      "accountId": "acct_cluster_wallet",
+      "handle": "clusterwallet",
+      "status": "proposed",
+      "routingDecision": "allocated",
+      "allocatedAt": "2026-06-20T04:20:00.000Z",
+      "source": "mock_board_state"
+    },
+    {
+      "allocationId": "netalloc_refusedoperator_pre_suppression",
+      "taskId": "task_refused_pre_001",
+      "title": "Only historical allocation before suppression",
+      "walletAddress": "rRefusedOperator4444444444444444",
+      "accountId": "acct_refused_operator",
+      "handle": "refusedoperator",
+      "status": "accepted",
+      "routingDecision": "allocated_before_suppression",
+      "allocatedAt": "2026-06-19T23:55:00.000Z",
+      "source": "mock_board_state"
+    },
+    {
+      "allocationId": "netalloc_thinreviewer_suppressed",
+      "taskId": "task_thin_review_suppressed_001",
+      "title": "Post-suppression allocation attempt suppressed",
+      "walletAddress": "rThinReview555555555555555555555",
+      "accountId": "acct_thin_review",
+      "handle": "thinreviewer",
+      "status": "suppressed",
+      "routingDecision": "suppressed",
+      "allocatedAt": "2026-06-20T04:40:00.000Z",
+      "source": "mock_board_state"
+    },
+    {
+      "allocationId": "netalloc_normal_operator",
+      "taskId": "task_normal_operator_001",
+      "title": "Normal unsuppressed contributor allocation",
+      "walletAddress": "rNormalOperator999999999999999999",
+      "accountId": "acct_normal_operator",
+      "handle": "normaloperator",
+      "status": "proposed",
+      "routingDecision": "allocated",
+      "allocatedAt": "2026-06-20T04:45:00.000Z",
+      "source": "mock_board_state"
+    }
+  ]
+}

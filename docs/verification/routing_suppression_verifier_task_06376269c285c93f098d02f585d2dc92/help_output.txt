@@ -1,0 +1,11 @@
+Usage:
+  node scripts/orc-routing-suppression-enforcement-verifier.mjs verify --config <file> --allocations <file> [--out <file>] [--summary-out <file>] [options]
+  node scripts/orc-routing-suppression-enforcement-verifier.mjs batch --config <file> --allocations <file> --out <dir> [options]
+
+Options:
+  --generated-by <handle>         Default: grashnuk
+  --generated-at <iso timestamp>  Default: current time
+
+The verifier reads pf.orc.contributor_routing_suppression_config.v1 plus board allocation data and emits a
+pf.orc.routing_suppression_enforcement_verification.v1 report. It is read-only: it does not mutate live routing, sign
+enforcement transactions, ban accounts, claw back rewards, move funds, or deploy.

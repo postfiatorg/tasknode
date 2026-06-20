@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "schema": "pf.orc.routing_suppression_enforcement_verification.v1",
+  "summary": {
+    "suppressedContributors": 5,
+    "allocationRecords": 6,
+    "enforced": 3,
+    "violated": 1,
+    "expired": 0,
+    "notTested": 1,
+    "nonSuppressedAllocationRecords": 1,
+    "violationContributorHandles": [
+      "clusterwallet"
+    ]
+  },
+  "mode": "verification_only_no_enforcement"
+}
