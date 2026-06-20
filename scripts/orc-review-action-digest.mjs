@@ -6,6 +6,15 @@ import path from "node:path";
 
 const INPUT_LEDGER_SCHEMA = "pf.orc.submitted_work_review_ledger.v1";
 const OUTPUT_SCHEMA = "pf.orc.review_action_digest.v1";
+const OPERATIONAL_BOUNDARY = {
+  artifactOnly: true,
+  enforcementAllowed: false,
+  liveRoutingMutationAllowed: false,
+  fundsMovementAllowed: false,
+  signingAllowed: false,
+  deploymentAllowed: false,
+  humanReviewRequiredForEnforcement: true,
+};
 
 function usage() {
   return `Usage:
@@ -16,7 +25,11 @@ Commands:
   batch     Write digest.json, discord_briefing.md, and routing_packets/<owner>.json files.
   generate  Print the action digest bundle to stdout without writing files.
 
-The ledger must contain records[] compatible with ${INPUT_LEDGER_SCHEMA}.`;
+The ledger must contain records[] compatible with ${INPUT_LEDGER_SCHEMA}.
+
+This script prepares review-routing artifacts only. It does not mutate routing,
+sign transactions, move funds, ban accounts, claw back rewards, deploy, or apply
+enforcement.`;
 }
 
 function parseArgs(argv) {
@@ -293,6 +306,7 @@ function buildRoutingPackets(actionRecords, generatedBy, generatedAt, sourceLedg
         generatedBy,
         sourceLedgerSchema,
         actionOwner: owner,
+        operationalBoundary: OPERATIONAL_BOUNDARY,
         summary: {
           totalItems: sortedItems.length,
           byCategory: countBy(sortedItems, (item) => item.category),
@@ -313,6 +327,7 @@ function buildDigest(ledger, records, actionRecords, packets, generatedBy, gener
     generatedAt,
     generatedBy,
     sourceLedgerSchema: safeText(ledger.schema, INPUT_LEDGER_SCHEMA),
+    operationalBoundary: OPERATIONAL_BOUNDARY,
     counts: {
       totalReviewRecords: records.length,
       actionRequiredRecords: actionRecords.length,
@@ -364,7 +379,9 @@ function buildDiscordBriefing(digest, packets) {
     "Generated artifacts:",
     "- digest.json",
     "- discord_briefing.md",
-    "- routing_packets/<owner>.json"
+    "- routing_packets/<owner>.json",
+    "",
+    "Boundary: review-routing artifact only; no bans, clawbacks, fund movement, signing, deployment, enforcement, or live routing mutation occurred."
   );
   return `${lines.join("\n")}\n`;
 }
