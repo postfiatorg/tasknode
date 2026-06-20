@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildOrcHiveSignalMetadata,
+  findExistingOrcHiveSignal,
   parseArgs,
   resolveSignalTarget,
   sendOrcHiveSignal,
@@ -48,7 +49,7 @@ function deliveryRow({ messageId = "msg_orcsignal_test_assistant", overrides = {
   };
 }
 
-function fixtureDeps({ rows = [taskRow()], deliveryRows, databaseEnabledValue = true } = {}) {
+function fixtureDeps({ rows = [taskRow()], deliveryRows, existingSignalRows = [], databaseEnabledValue = true } = {}) {
   const calls = {
     queries: [],
     ensured: [],
@@ -59,6 +60,9 @@ function fixtureDeps({ rows = [taskRow()], deliveryRows, databaseEnabledValue = 
     databaseEnabledImpl: () => databaseEnabledValue,
     queryImpl: async (sql, params) => {
       calls.queries.push({ sql, params });
+      if (String(sql).includes("metadata_json->>'kind' = 'orc_hive_signal'")) {
+        return { rows: existingSignalRows };
+      }
       if (String(sql).includes("FROM chat_messages")) {
         return { rows: deliveryRows === undefined ? [deliveryRow({ messageId: params[0] })] : deliveryRows };
       }
@@ -160,6 +164,26 @@ function fixtureDeps({ rows = [taskRow()], deliveryRows, databaseEnabledValue = 
 }
 
 {
+  const existing = deliveryRow({ messageId: "msg_existing_orc_signal" });
+  const deps = fixtureDeps({ existingSignalRows: [existing], deliveryRows: [existing] });
+  const result = await sendOrcHiveSignal({
+    taskId,
+    message: "Reviewed and closed.",
+    reviewerHandle: "grashnuk",
+    execute: true,
+    deps,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.idempotent, true);
+  assert.equal(result.reason, "existing_orc_hive_signal");
+  assert.equal(result.chatMessageId, "msg_existing_orc_signal");
+  assert.equal(result.deliveryVerified, true);
+  assert.equal(result.visibleInHiveChat, true);
+  assert.equal(deps.calls.ensured.length, 1, "conversation is still resolved before idempotency check");
+  assert.equal(deps.calls.appended.length, 0, "duplicate signal must not append another chat message");
+}
+
+{
   const deps = fixtureDeps();
   const conversationId = "account_acct_orc_signal_manual_hive";
   const result = await sendOrcHiveSignal({
@@ -231,6 +255,29 @@ function fixtureDeps({ rows = [taskRow()], deliveryRows, databaseEnabledValue = 
   assert.equal(target.accountId, "acct_explicit");
   assert.equal(target.conversationId, "account_acct_explicit_hive");
   assert.equal(deps.calls.queries.length, 0, "explicit-account dry-run does not need the DB");
+}
+
+{
+  const existing = await findExistingOrcHiveSignal({
+    accountId,
+    conversationId: defaultConversationId,
+    taskId,
+    message: "Reviewed and closed.",
+    reviewerHandle: "grashnuk",
+    queryImpl: async (sql, params) => {
+      assert.match(sql, /metadata_json->>'kind' = 'orc_hive_signal'/);
+      assert.deepEqual(params.slice(0, 5), [
+        accountId,
+        defaultConversationId,
+        "Reviewed and closed.",
+        taskId,
+        "grashnuk",
+      ]);
+      return { rows: [deliveryRow({ messageId: "msg_existing_direct" })] };
+    },
+  });
+  assert.equal(existing.chatMessageId, "msg_existing_direct");
+  assert.equal(existing.kind, "orc_hive_signal");
 }
 
 {

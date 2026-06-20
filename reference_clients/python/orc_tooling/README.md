@@ -414,5 +414,8 @@ uv run orc-hive-signal \
 
 This calls `/home/pfrpc/repos/tasknodeofficial/scripts/orc-hive-signal.mjs`,
 ensures the task owner's Hive conversation exists, and appends an assistant
-chat message with `kind=orc_hive_signal` metadata. It bypasses Board Manager
-dedupe and does not write `board_manager_user_messages`.
+chat message with `kind=orc_hive_signal` metadata. It does not write
+`board_manager_user_messages`. Retries are idempotent for the same recipient,
+conversation, task id, reviewer, reason, and exact message body: the script
+returns the existing verified chat row instead of appending a duplicate Orc
+message.
